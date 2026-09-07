@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-07 UTC**
 
+GDN wave-normalization admission:five chunk1024 full-logit/state/KV cases
+exact,21/84 serial-prefix calls,zero decode;18 CPU tests. Both binders0.
+Corrected harness count36->21 reflects existing tiled suffix,not widening.
+[Evidence](results/2026-09-07-framework-qwen4exp-gdn-wave-norm-state.json).
+
 GDN exact wave-tail normalization candidate:Hk16/Hv48/D128 synthetic
 512/1024 tokens2.812->2.699ms /5.574->5.358ms (~4% kernel gain),
 60 measured pairs exact. Scratch24->36B; no runtime/default change.

@@ -76,6 +76,16 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**GDN wave-normalization admission (September7 UTC):** default-off,
+existing serial-register prefix only. Five chunk1024 full-logit/state/KV
+cases exact,21/84 expected calls,zero decode. The first harness attempt
+incorrectly expected36 GDN calls; production already sends the later
+15 GDN layers to tiled prefill. Corrected counts are derived from that
+route, not an arithmetic relaxation.18 CPU tests pass;both binders0,
+throughput qualification pending. User requests expedited screening;
+single-sample variance must not be interpreted as repeatability evidence.
+[State evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-gdn-wave-norm-state.json).
+
 **GDN exact normalization wave-tail candidate (September7 UTC):**
 source comparison confirms current Strix tiled recurrence uses a different
 sum/contraction order; it is not an exact drop-in. In-tree alternative

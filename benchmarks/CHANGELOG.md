@@ -1,5 +1,7 @@
 # hipEngine Benchmark Changelog
 
+- [2026-09-07 UTC GDN wave-norm admission] Five chunk1024 full-logit/state/KV cases exact,21/84 calls,zero decode;18 CPU tests. Harness expected36 corrected to existing serial prefix21;both binders0,throughput delta N/A. `benchmarks/results/2026-09-07-framework-qwen4exp-gdn-wave-norm-state.json`.
+
 - [2026-09-07 UTC GDN wave norm] Exact normalization tail,synthetic Hk16/Hv48/D128 at512/1024 tokens2.812->2.699ms /5.574->5.358ms (~4% kernel gain),60 exact pairs;scratch24->36B. Kernel-only,small model contribution unmeasured. `benchmarks/results/2026-09-07-framework-qwen4exp-gdn-wave-norm.json`.
 
 - [2026-09-07 UTC Q4 block-pair rejected] Actual layer3 gate/up+SiLU at512/1024 tokens0.910x/0.909x (~10% slower),40 exact pairs,14 tests;VGPR88->112,LDS/scratch unchanged. Candidate removed,production unchanged. `benchmarks/results/2026-09-07-framework-qwen4exp-q4-block-pair-rejected.json`.

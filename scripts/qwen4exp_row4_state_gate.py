@@ -28,7 +28,8 @@ from scripts.qwen4exp_layer2_profile_gate import _state_summary
 from scripts.qwen4exp_halo_box_campaign_ab import (
     q8_down_row4_expected_calls, q51_fold128_expected_calls, q51_fold_pair_expected_calls,
     q8_mmq_vec4_expected_calls,q8_mmq_raw_vector_expected_calls,q8_mapped_down_expected_calls,
-    q8_bundle_call_in_scope,apply_chunk_mode,validate_chunk_coverage,q8_down_register_expected_calls)
+    q8_bundle_call_in_scope,apply_chunk_mode,validate_chunk_coverage,q8_down_register_expected_calls,
+    gdn_wave_norm_expected_calls)
 
 
 def apply_state_gate_mode(runner, package, enabled, flag, *, environment=os.environ):
@@ -44,7 +45,7 @@ def main():
     p.add_argument("--model-root", type=Path, required=True)
     p.add_argument("--compiler-version-file", type=Path, required=True)
     p.add_argument("--output", type=Path, required=True)
-    p.add_argument("--route-package", choices=("q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "prefill-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "chunk1024", "q8-down-register", "q51-row-publish"), default="q5k-row4")
+    p.add_argument("--route-package", choices=("q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "prefill-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "chunk1024", "q8-down-register", "q51-row-publish", "gdn-wave-norm"), default="q5k-row4")
     p.add_argument("--case-id", action="append")
     p.add_argument("--all-cases", action="store_true")
     p.add_argument("--decode-steps", type=int, default=1)
@@ -65,7 +66,7 @@ def main():
         model_path=args.model_root, weight_index=index,
         model_plugin=resolve_model(index.architecture or ""),
         backend="hip_gfx1151", max_sequence_length=4352,
-        prefill_chunk_size=1024 if args.route_package in {"chunk1024","q8-down-register", "q51-row-publish"} else 512))
+        prefill_chunk_size=1024 if args.route_package in {"chunk1024","q8-down-register", "q51-row-publish", "gdn-wave-norm"} else 512))
     flag = ("HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL"
             if args.route_package == "q5k-row4"
             else "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL")
@@ -75,6 +76,8 @@ def main():
         flag = "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL"
     if args.route_package == "gdn-register":
         flag = "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL"
+    if args.route_package == "gdn-wave-norm":
+        flag = "HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM"
     if args.route_package == "q4-pair":
         flag = "HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL"
     if args.route_package == "q8-wave-scale":
@@ -158,6 +161,9 @@ def main():
     if args.route_package=="q8-down-register":
         key=KernelKey("hip_gfx1151","linear","gguf_q8_0",
                       "selected_grouped_row4_register_gemv_bf16_bf16_out")
+    if args.route_package == "gdn-wave-norm":
+        key=KernelKey("hip_gfx1151","gdn_recurrence_norm_gate",
+                      "f32_state","qwen4exp_sigmoid_wave_norm_prefill")
     original = (None if args.route_package=="chunk1024" else
                 resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant))
     calls = [0]
@@ -198,7 +204,7 @@ def main():
         register(qsa_key, counted_qsa, replace=True)
     report = {
         "status": "running",
-        "allocated_chunk_size":1024 if args.route_package in {"chunk1024","q8-down-register", "q51-row-publish"} else 512,
+        "allocated_chunk_size":1024 if args.route_package in {"chunk1024","q8-down-register", "q51-row-publish", "gdn-wave-norm"} else 512,
         "source": _git_metadata(ROOT), "host": _host_metadata(), "command": sys.argv,
         "manifest_sha256": resolved.manifest_sha256,
         "strict_manifest_sha256": resolved.strict_manifest_sha256,
@@ -274,6 +280,11 @@ def main():
                             kv_digest.update(raw)
                     state["full_kv_sha256"] = kv_digest.hexdigest()
                 invoked = calls[0] - start_calls
+                if args.route_package == "gdn-wave-norm":
+                    expected_gdn=gdn_wave_norm_expected_calls(
+                        case["prompt_tokens"],1024) if enabled=="1" else 0
+                    assert prefill_invoked==expected_gdn,(prefill_invoked,expected_gdn)
+                    assert invoked==prefill_invoked,"wave norm ran in decode"
                 if args.route_package=="q8-down-register":
                     expected_register=q8_down_register_expected_calls(case["prompt_tokens"],1024) if enabled=="1" else 0
                     assert prefill_invoked==expected_register
@@ -320,6 +331,8 @@ def main():
                     expected = expected_mapped_calls > 0
                 if args.route_package=="q8-down-register":
                     expected=expected_register>0
+                if args.route_package == "gdn-wave-norm":
+                    expected=expected_gdn>0
                 if args.route_package == "chunk1024":
                     validate_chunk_coverage(observed_chunks,case["prompt_tokens"],
                                             generator.runner.prefill_chunk_size)
