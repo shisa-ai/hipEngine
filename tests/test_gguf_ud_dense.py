@@ -20,8 +20,9 @@ def bf16(x):
     return ((bits + 0x7fff + ((bits >> 16) & 1)) >> 16).astype(np.uint16)
 
 
-@pytest.mark.parametrize('kwargs', ({'rows': 0}, {'hidden_size': 255}, {'vocab_size': 0},
-                                    {'threads': 128}, {'token_ids_ptr': 0}))
+@pytest.mark.parametrize('kwargs', ({'rows': 0}, {'rows': 65536}, {'hidden_size': 255},
+                                    {'vocab_size': 0}, {'threads': 128},
+                                    {'token_ids_ptr': 0}, {'qweight_ptr': 0}, {'out_ptr': 0}))
 def test_q3_embedding_rejects_invalid_args(kwargs, monkeypatch):
     from hipengine.kernels.hip_gfx1100.quant import gguf_iq_dense as dense
     monkeypatch.setattr(dense, 'build_gguf_iq_dense', lambda: pytest.fail('built before validation'))
@@ -31,14 +32,26 @@ def test_q3_embedding_rejects_invalid_args(kwargs, monkeypatch):
         dense.embedding(**args)
 
 
-def test_q3_embedding_real_rows(library):
+@pytest.mark.parametrize('rows', (1, 2, 3, 4, 5, 7, 8, 9, 12, 16, 28, 32))
+@pytest.mark.parametrize('invalid_ids', (False, True))
+def test_q3_embedding_real_rows(library, rows, invalid_ids):
     from hipengine.kernels.hip_gfx1100.quant.gguf_iq_dense import embedding
-    entry = next(e for e in ENTRIES if e['type'] == 'Q3_K')
+    entry = next(e for e in ENTRIES
+                 if e['type'] == 'Q3_K' and e['tensor'] == 'token_embd.weight')
     with np.load(FIXTURE / 'real_rows.npz') as data:
         raw = np.ascontiguousarray(data[entry['key']+'_raw'])
         weights = data[entry['key']+'_f32']
-    ids = np.array([1, 0, 1], dtype=np.int64)
-    out = np.zeros((3, weights.shape[1]), dtype=np.uint16)
+    # Real K, first/last vocabulary rows, repeats, and int64 boundary IDs.
+    vocab = len(weights)
+    pattern = [vocab-1, 0, vocab-1]
+    if invalid_ids:
+        pattern = [-1, vocab, np.iinfo(np.int64).min, np.iinfo(np.int64).max, 0, vocab-1]
+    ids = np.resize(np.asarray(pattern, dtype=np.int64), rows)
+    out = np.full((rows+2, weights.shape[1]), 0x5a5a, dtype=np.uint16)
+    expected = out.copy()
+    for row, token in enumerate(ids):
+        if 0 <= token < vocab:
+            expected[row+1] = bf16(weights[token])
     buffers = []
     try:
         for array in (ids, raw, out):
@@ -46,9 +59,16 @@ def test_q3_embedding_real_rows(library):
             buffers.append(buf)
             copy_host_to_device(buf, host_array_ptr(array), array.nbytes)
         for _ in range(3):
-            embedding(*(b.ptr for b in buffers), 3, weights.shape[1], len(weights), library=library)
+            embedding(buffers[0].ptr, buffers[1].ptr, buffers[2].ptr+out.strides[0],
+                      rows, weights.shape[1], vocab, library=library)
             copy_device_to_host(host_array_ptr(out), buffers[2], out.nbytes)
-            np.testing.assert_array_equal(out, bf16(weights[ids]))
+            # The leaf must leave invalid-ID rows untouched (not alias row0),
+            # and preserve both outer canaries. Public token validation is separate.
+            np.testing.assert_array_equal(out, expected)
+        for original, buffer in zip((ids, raw), buffers):
+            actual = np.empty_like(original)
+            copy_device_to_host(host_array_ptr(actual), buffer, actual.nbytes)
+            np.testing.assert_array_equal(actual, original)
     finally:
         for buf in reversed(buffers):
             free(buf)
