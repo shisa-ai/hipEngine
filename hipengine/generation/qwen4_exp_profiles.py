@@ -275,9 +275,9 @@ def _production_selections() -> tuple[VariantSelection, ...]:
         ),
         _selection(
             "gdn_recurrence_norm_gate", "prefill_rows_ge2_serial_gdn_hk16_hv48_d128",
-            "qwen4exp_sigmoid_register_prefill", "qwen4exp_sigmoid_strict_prefill",
+            "qwen4exp_sigmoid_wave_norm_prefill", "qwen4exp_sigmoid_strict_prefill",
             "f32_state",
-            evidence="benchmarks/results/2026-09-05-framework-qwen4exp-gdn-register-production.json",
+            evidence="benchmarks/results/2026-09-07-framework-qwen4exp-gdn-wave-norm-owner.json",
         ),
         _selection(
             "moe_linear", "prefill_rows_ge64_lt512_exact_grouped_q5_1_down",
@@ -486,7 +486,7 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         "HIPENGINE_QWEN4_EXP_Q51_REGISTER_CACHE": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q51_ROW_PUBLISH": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL": "1" if production else "0",
-        "HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM": "0",
+        "HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL": "page256" if production else "0",
         # ds4-MMQ MoE suffixes are superseded by the certified WMMA-MoE27
         # routing on layers 27-47.

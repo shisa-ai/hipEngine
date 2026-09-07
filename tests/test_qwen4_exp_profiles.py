@@ -272,10 +272,10 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert wave["strict_fallback_variant"] == "coltile8_rowbatch4_f32_f32_out"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL"] == "1"
-    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM"] == "0"
+    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM"] == "1"
     gdn = _selection_map(production)[(
         "gdn_recurrence_norm_gate", "prefill_rows_ge2_serial_gdn_hk16_hv48_d128")]
-    assert gdn["selected_variant"] == "qwen4exp_sigmoid_register_prefill"
+    assert gdn["selected_variant"] == "qwen4exp_sigmoid_wave_norm_prefill"
     assert gdn["strict_fallback_variant"] == "qwen4exp_sigmoid_strict_prefill"
     pair = _selection_map(production)[("moe_linear", "prefill_rows_ge64_lt512_exact_grouped_q5_1_down")]
     assert pair["selected_variant"] == "selected_grouped_prefill_pair2_fold128_bf16_bf16_out"

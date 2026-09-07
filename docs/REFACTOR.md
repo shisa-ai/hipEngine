@@ -1,17 +1,19 @@
 # hipEngine Refactor / Dead-Path Ledger
 
-## Qwen4Exp GDN wave-tail normalization candidate
+## Qwen4Exp GDN wave-tail normalization production
 
 - Kernel-only `qwen4exp_sigmoid_wave_norm_prefill`: original serial
   recurrence, exact128-element normalization tree with wave-local tail.
 - Hk16/Hv48/D128 at512/1024 tokens wins1.042x/1.040x; private scratch
   rises24->36B. Whole-prefill contribution expected small,not measured.
-- Default-off `HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM=1` replaces only the
+- Production-bound `HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM=1` replaces only the
   serial-register parent;21-layer prefix, tiled suffix unchanged.
   Five chunk1024 full-state/KV cases exact,21/84 calls,zero decode.
-  Both binders0; full72 trajectories exact but model timing mixed/nearzero
-  (+0.010%/+0.139%/-0.044% PP). Retain kernel saving; actual-model
-  GDN owner sub-window evidence is the remaining promotion blocker.
+  Full72 trajectories exact but model timing mixed/nearzero
+  (+0.010%/+0.139%/-0.044% PP). Actual-model owner probe saves~19ms
+  at p4096 across all categories,378 calls exact/all paired means faster.
+- Strict binds0. Retain parent opt-out for bisection; remove flag chain when
+  profile plans own selection. No headline throughput speedup claim.
 
 ## Qwen4Exp Q4 paired-block pipeline: removed
 
