@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-07 UTC**
 
+ROCr MWAITX-request diagnostic:parent/candidate tg128 wall8.496/8.937s,
+early CPU-frequency split persists. Exact state;runtime hashes retained,
+actual MWAITX engagement unproven. No production environment change.
+[Evidence](results/2026-09-07-framework-qwen4exp-qsa-mwaitx.json).
+
 HIP wait-policy QSA probe:spin was already1;yield1->2 accepted but early
 CPU recovery penalty persists. Parent/candidate tg128 wall8.496/8.925s
 (spin),8.509/8.940s (yield),exact state. No production flag change.

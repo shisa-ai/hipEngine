@@ -1,5 +1,12 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## QSA MWAITX request diagnostic
+
+- HSA_ENABLE_MWAITX=1 request does not eliminate early decode recovery
+  penalty;installed-runtime path engagement not proven. No production override.
+- Probe now records loaded HIP/HSA hashes and requested wait environment.
+  Do not claim env readback proves the instruction path ran.
+
 ## QSA transition HIP scheduling diagnostic
 
 - Initial HIP flags already spin1;explicit1->1 did not constitute a change.

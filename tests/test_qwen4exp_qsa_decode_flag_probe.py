@@ -29,3 +29,13 @@ def test_cpu_counter_delta():
     assert counter_delta({"thread_seconds":1.0,"minor_faults":4},
                          {"thread_seconds":1.5,"minor_faults":7})=={
                              "thread_seconds":.5,"minor_faults":3}
+
+
+def test_wait_runtime_identity_records_env_without_claiming_activation(monkeypatch):
+    from scripts.qwen4exp_qsa_decode_flag_probe import wait_runtime_identity
+    monkeypatch.setenv("HSA_ENABLE_MWAITX","1")
+    monkeypatch.setattr("pathlib.Path.read_text",lambda self: "")
+    result=wait_runtime_identity()
+    assert result["environment"]["HSA_ENABLE_MWAITX"]=="1"
+    assert result["libraries"]=={}
+    assert "not wait-path engagement proof" in result["caveat"]
