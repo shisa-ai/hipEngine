@@ -4,7 +4,7 @@ A one-request group is a valid one-row provider group plus one R2/R3/R4 target
 frontier under the same staged adapter/resource transaction as C>1. The legacy
 AR-row singleton route (`Qwen35GGUFTransactionalVerifier` /
 `_ensure_active_singleton_target_verifier`) stays authoritative for gfx1151,
-Qwen3.6, and capacity-1 engines; these tests pin the gfx1100 physical-C1 route
+Qwen3.6, and unqualified capacity-1 engines; these tests pin the physical-C1 route
 without touching those uses.
 """
 
@@ -69,6 +69,7 @@ def _c1_eligibility(rid: int) -> SpeculativeMTPStaticEligibility:
     return SpeculativeMTPStaticEligibility(
         state=SpeculativeMTPStaticState.SPECULATIVE_CAPABLE,
         reason="qualified_test_physical_c1",
+        packed_c1_target=True,
         max_candidate_count=3,
         max_realized_group_rows=1,
         automatic_eligible=False,
@@ -135,9 +136,10 @@ def test_claims_recheck_each_requests_safety_envelope(monkeypatch, screening, in
     assert adapter._states == {}
 
 
-def test_prepare_physical_c1_never_installs_legacy_target_verifier(monkeypatch) -> None:
+@pytest.mark.parametrize("capacity", [1, 2, 8])
+def test_prepare_physical_c1_never_installs_legacy_target_verifier(monkeypatch, capacity) -> None:
     adapter = _adapter(
-        backend="hip_gfx1100", capacity=8, rid=7, eligibility=_c1_eligibility(7),
+        backend="hip_gfx1100", capacity=capacity, rid=7, eligibility=_c1_eligibility(7),
     )
     adapter._states[7] = SimpleNamespace(verifier=None)
 
@@ -145,6 +147,7 @@ def test_prepare_physical_c1_never_installs_legacy_target_verifier(monkeypatch) 
         raise AssertionError("physical C1 must not create a legacy singleton verifier")
 
     monkeypatch.setattr(mtp2_module, "Qwen35GGUFTransactionalVerifier", forbidden)
+    monkeypatch.setattr(adapter, "_ensure_active_singleton_target_verifier", forbidden)
     plan = _c1_plan(7)
     adapter.prepare_requests(plan, ())
     assert adapter._states[7].verifier is None
@@ -172,7 +175,81 @@ def test_diagnostic_c1_clone_bounds_the_repaired_target_to_one_row(monkeypatch) 
     assert row.resident_capacity == 8
     assert row.candidate_budget == 7
     assert row.automatic_eligible is False
+    assert row.packed_c1_target is True
     assert plugin.speculative_mtp_serving_evidence[:-1] == original
+
+
+def test_packed_c1_evidence_roundtrip_and_legacy_default(monkeypatch) -> None:
+    from hipengine.models import qwen35
+    from hipengine.speculative.serving import _admit
+    from scripts.qwen38_packet5_k4_watchdog_probe import _inject_k4_evidence_row
+
+    original = qwen35.QWEN35_GGUF.speculative_mtp_serving_evidence
+    plugin = SimpleNamespace(speculative_mtp_serving_evidence=original)
+    monkeypatch.setattr(qwen35, "QWEN35_GGUF", plugin)
+    # No public evidence changes owner merely because a package flag is set.
+    assert not any(row.packed_c1_target for row in original)
+    _inject_k4_evidence_row(1, 3, capacity=1)
+    row = plugin.speculative_mtp_serving_evidence[-1]
+    assert row.resident_capacity == 1
+    assert row.as_dict()["packed_c1_target"] is True
+    decision = _admit(SimpleNamespace(candidate_budget=3), row)
+    eligibility = decision.static_eligibility
+    assert eligibility.packed_c1_target is True
+    assert SpeculativeMTPStaticEligibility.from_mapping(eligibility.as_dict()) == eligibility
+    legacy = replace(eligibility, packed_c1_target=False)
+    assert legacy.fingerprint != eligibility.fingerprint
+    mapping = legacy.as_dict()
+    del mapping["packed_c1_target"]
+    assert SpeculativeMTPStaticEligibility.from_mapping(mapping) == legacy
+    with pytest.raises(ValueError, match="one-row"):
+        replace(row, max_realized_group_rows=2, resident_capacity=2)
+    with pytest.raises(ValueError, match="one-row"):
+        replace(eligibility, max_realized_group_rows=2)
+
+
+@pytest.mark.parametrize("capacity", [1, 2, 8])
+def test_packed_c1_requires_evidence_owned_target(capacity) -> None:
+    adapter = _adapter(
+        backend="hip_gfx1100", capacity=capacity, rid=7,
+        eligibility=replace(_c1_eligibility(7), packed_c1_target=False),
+    )
+    assert adapter._physical_c1_request(7) is False
+
+
+@pytest.mark.parametrize("capacity", [1, 2, 8])
+def test_packed_c1_prompt_finish_and_commit_preparation(monkeypatch, capacity) -> None:
+    adapter = _adapter(
+        backend="hip_gfx1100", capacity=capacity, rid=7, eligibility=_c1_eligibility(7),
+    )
+    row = adapter.owner._row(7)
+    row.prompt_ids = (1, 2)
+    target = row.lease.session
+    prepared = []
+    target.prepare_external_verify_state_commit = lambda: prepared.append(7)
+    adapter.owner._row = lambda rid: row
+    buffer = SimpleNamespace(ptr=0x7000, nbytes=8)
+    closed = []
+    adapter._prompt_streaming_sinks[7] = SimpleNamespace(
+        take_final_pending_buffer=lambda: buffer, close=lambda: closed.append(7),
+    )
+    adapter._prompt_streaming_group_keys[7] = "test"
+    adapter._provider_groups["test"] = SimpleNamespace(
+        provider=SimpleNamespace(executor=SimpleNamespace()), provider_pool_key="test",
+    )
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("prompt finish installed a legacy verifier")
+
+    monkeypatch.setattr(mtp2_module, "Qwen35GGUFTransactionalVerifier", forbidden)
+    adapter.finish_prompt_streaming((7,), success=True)
+    assert adapter._states[7].verifier is None
+    assert adapter._states[7].root_hidden_buffer is buffer
+    assert target._last_target_hidden_ptr == buffer.ptr
+    assert closed == [7]
+    assert adapter._active_prompt_claims is None
+    adapter.observe_prefill_result(7, row.prompt_ids, SimpleNamespace(token_id=3))
+    assert prepared == [7]
 
 
 def test_physical_c1_route_flag_is_package_owned() -> None:
@@ -188,12 +265,13 @@ def test_physical_c1_route_flag_is_package_owned() -> None:
     )
 
 
-def test_physical_c1_partition_admits_qualified_single_request() -> None:
+@pytest.mark.parametrize("capacity", [1, 2, 8])
+def test_physical_c1_partition_admits_qualified_single_request(capacity) -> None:
     """A C1-qualified request resolves partition bound 1; others stay closed."""
 
     adapter = _adapter(
         backend="hip_gfx1100",
-        capacity=8,
+        capacity=capacity,
         rid=7,
         eligibility=_c1_eligibility(7),
     )
@@ -319,15 +397,16 @@ def test_physical_c1_single_survivor_keeps_legacy_route_for_gfx1151(
     assert constructed == []
 
 
+@pytest.mark.parametrize("capacity", [1, 2, 8])
 def test_physical_c1_state_open_routes_to_batch_owner(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, capacity: int,
 ) -> None:
     """A missing C1 state opens the physical batch group, not the legacy open."""
 
     calls: list[tuple[str, tuple[int, ...]]] = []
     adapter = _adapter(
         backend="hip_gfx1100",
-        capacity=8,
+        capacity=capacity,
         rid=7,
         eligibility=_c1_eligibility(7),
     )

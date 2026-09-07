@@ -964,8 +964,8 @@ class Qwen35GGUFMTP2Adapter:
 
         Requires rows==1 static evidence, a listed (1, K) policy cell or an
         explicit-only screening cell, and the package-owned physical-C1 flag.
-        Capacity-1 engines keep the legacy AR-row singleton route. gfx1151
-        has no package flag; Qwen3.6 C1 evidence requires capacity 1.
+        Target ownership must be explicitly qualified in static evidence.
+        Existing Qwen3.6 and gfx1151 evidence retains the legacy singleton.
         """
 
         if not self._physical_c1_enabled():
@@ -975,7 +975,7 @@ class Qwen35GGUFMTP2Adapter:
             return False
         if int(eligibility.max_realized_group_rows) != 1:
             return False
-        if int(getattr(self.owner, "capacity", 1)) <= 1:
+        if not eligibility.packed_c1_target:
             return False
         return self._physical_width_depth_admitted_for_group(
             1,
@@ -1446,12 +1446,10 @@ class Qwen35GGUFMTP2Adapter:
                         ),
                     )
                     if len(ids) == 1
+                    and not self._physical_c1_request(request_id)
                     and (
                         int(getattr(self.owner, "capacity", 1)) == 1
-                        or (
-                            self._singleton_only(request_id)
-                            and not self._physical_c1_request(request_id)
-                        )
+                        or self._singleton_only(request_id)
                     )
                     else None
                 )
@@ -1561,7 +1559,10 @@ class Qwen35GGUFMTP2Adapter:
         rid = int(request_id)
         if rid not in self._intents:
             return
-        if int(getattr(self.owner, "capacity", 1)) > 1:
+        if (
+            int(getattr(self.owner, "capacity", 1)) > 1
+            or self._physical_c1_request(rid)
+        ):
             row = self.owner._row(rid)
             target = None if row.lease is None else row.lease.session
             prepare_device_commit = getattr(
