@@ -76,6 +76,29 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Post-Q5_1-row-publication refresh (September7 UTC):** clean e7024541b,
+six cases/twelve phases at explicit chunk1024. Four-category p4096
+FFN11.231->10.281s (-8.46%),non-GR linear4.515->4.523s,
+GR3.429->3.414s,QSA2.071->2.068s,GDN0.835->0.826s.
+Total device22.196->21.227s (-4.36% snapshot); all phases fully
+attributed,restored decode/state exact,zero final owners.
+Pinned Vulkan profiles reused:FFN2.352x,linear4.437x,GR2.000x,
+QSA3.204x,GDN0.594x. Do not interpret as new logger-off parity factors.
+Code-p4096 Q5_1 row-publication kernel2.575->1.616s; Q4 paired
+gate/up3.397s remains largest individual FFN kernel. Linear's increase
+is retained; snapshots do not establish single-change causality.
+Fixed-live4097 decode QSA16.961vs3.161ms remains open.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-post-q51-row-publish-family.json).
+
+**Next priority:** FFN and non-GR linear retain the largest absolute
+excess over the reused Vulkan family intervals (5.909s and3.503s).
+The new fork's GDN source comparison stays queued, but the entire
+current GDN owner is only0.826s; do not prioritize geometry copying over
+multi-second owners without an operation-complete measured case.
+Investigate whether per-row publication/lifetime shortening applies to
+the Q4 paired gate/up owner; preserve its distinct accumulation/reduction
+contract and reject unchanged prior cache/retile experiments.
+
 ### Current Strix Fork Follow-ups (September 7, 2026)
 
 Read-only source: `/home/lhl/strix-llama.cpp`, clean
@@ -101,8 +124,8 @@ Preserve the bounded head-major AOTriton scratch decision in
 Vulkan LDS/compiler/command policies are not HIP launch settings. ROCmFPx,
 new quant formats and DeepSeek-only kernels stay out of this Qwen patch scope.
 
-Execution order: finish the promoted Q5_1 current-default owner refresh,
-then use fresh costs to rank the GDN comparison against FFN/linear work.
+Execution order: the promoted Q5_1 owner refresh above is complete;
+fresh costs retain FFN/linear ahead of a GPU GDN port.
 The P1 poisoned-cell audit is a correctness follow-up, not an assertion of
 a known defect. Existing historical PR11 explanations and `b212548e0`
 measurements retain their revision identity; they do not describe this fork.
@@ -116,8 +139,8 @@ TG-0.012%/-0.048%/-0.201% is incidental and explicitly retained under
 prefill-first direction,not a decode improvement. Max PP CV1.068%,
 TG CV4.423%; measured span28m07s excludes loading/initial warmup.
 Production binder1/strict0; parent-only K640/rows>=512 guard unchanged.
-The current family table predates this promotion; refresh before selecting
-another owner. Frozen comparator rates are not updated by this internal A/B.
+The current family table now includes this promotion. Frozen comparator
+throughput rates are not updated by this internal A/B.
 [Production evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-q51-row-publish-production.json).
 
 **Historical Q5_1 per-row publication admission (September7 UTC):** default-off
