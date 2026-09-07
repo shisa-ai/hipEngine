@@ -473,8 +473,10 @@ The follow-up implements K1-K7 capacity and records a 56-cell diagnostic sweep,
 but is not complete. The 2026-09-07 review found that C1 preparation installed
 a legacy target verifier: those C1 measurements do not qualify the repaired
 packed target, and its public evidence is withdrawn. The repaired C1/K3 target
-passes a ten-prompt exact diagnostic; N=1 ownership, capacity/depth, numerical,
-lifecycle and repeated-economics gates remain. C2/K3 and C8/K3 explicit keys and
+passes a ten-prompt exact diagnostic at N=1/2/8. Packed C1 target ownership
+is now an explicit serving-evidence/static-eligibility field (default false),
+not inferred from resident capacity. No public C1 row is added by this change;
+slot/depth, numerical, lifecycle and repeated-economics gates remain. C2/K3 and C8/K3 explicit keys and
 qualified kernel improvements stay enabled; automatic Qwen3.8 remains K0.
 Deeper public execution and automatic depth selection remain separately gated.
 Source audit and rejected alternatives remain in

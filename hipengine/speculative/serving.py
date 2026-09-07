@@ -161,6 +161,8 @@ class SpeculativeMTPServingEvidence:
     max_realized_group_rows: int | None = None
     strict_fallback_key: str = _DEFAULT_STRICT_FALLBACK
     automatic_eligible: bool = False
+    # Target ownership is part of qualification, not inferred from N or backend.
+    packed_c1_target: bool = False
 
     def __post_init__(self) -> None:
         for name in (
@@ -213,6 +215,8 @@ class SpeculativeMTPServingEvidence:
                 "max_realized_group_rows must cover the evidence row and fit capacity"
             )
         object.__setattr__(self, "max_realized_group_rows", max_group_rows)
+        if self.packed_c1_target and max_group_rows != 1:
+            raise ValueError("packed_c1_target requires a one-row evidence scope")
         if self.max_context_tokens < self.min_context_tokens:
             raise ValueError("context-token bounds are invalid")
         if self.max_output_horizon_tokens < self.min_output_horizon_tokens:
@@ -256,6 +260,7 @@ class SpeculativeMTPServingEvidence:
             "evidence_artifacts": list(self.evidence_artifacts),
             "strict_fallback_key": self.strict_fallback_key,
             "automatic_eligible": self.automatic_eligible,
+            "packed_c1_target": self.packed_c1_target,
         }
 
 
@@ -284,6 +289,7 @@ class SpeculativeMTPStaticEligibility:
     evidence_key: str | None = None
     evidence_fingerprint: str | None = None
     evidence_artifacts: tuple[str, ...] = ()
+    packed_c1_target: bool = False
 
     def __post_init__(self) -> None:
         state = SpeculativeMTPStaticState(self.state)
@@ -291,6 +297,10 @@ class SpeculativeMTPStaticEligibility:
         fallback = _required_text(self.strict_fallback_key, "strict_fallback_key")
         candidates = int(self.max_candidate_count)
         rows = int(self.max_realized_group_rows)
+        if self.packed_c1_target and (
+            state is not SpeculativeMTPStaticState.SPECULATIVE_CAPABLE or rows != 1
+        ):
+            raise ValueError("packed_c1_target requires speculative one-row eligibility")
         if min(candidates, rows) < 0:
             raise ValueError("static eligibility bounds must be non-negative")
         if state is SpeculativeMTPStaticState.SPECULATIVE_CAPABLE:
@@ -340,6 +350,7 @@ class SpeculativeMTPStaticEligibility:
             "state": self.state.value,
             "eligible": self.eligible,
             "reason": self.reason,
+            "packed_c1_target": self.packed_c1_target,
             "max_candidate_count": self.max_candidate_count,
             "max_realized_group_rows": self.max_realized_group_rows,
             "automatic_eligible": self.automatic_eligible,
@@ -370,6 +381,7 @@ class SpeculativeMTPStaticEligibility:
                 payload.get("max_realized_group_rows", 0) or 0
             ),
             automatic_eligible=bool(payload.get("automatic_eligible")),
+            packed_c1_target=bool(payload.get("packed_c1_target", False)),
             strict_fallback_key=str(
                 payload.get("strict_fallback_key") or _DEFAULT_STRICT_FALLBACK
             ),
@@ -408,6 +420,7 @@ class SpeculativeMTPServingDecision:
     automatic_eligible: bool = False
     static_max_realized_group_rows: int | None = None
     static_eligibility_override: SpeculativeMTPStaticEligibility | None = None
+    packed_c1_target: bool = False
 
     @property
     def static_eligibility(self) -> SpeculativeMTPStaticEligibility:
@@ -432,6 +445,7 @@ class SpeculativeMTPServingDecision:
                 else 0
             ),
             automatic_eligible=(self.automatic_eligible if eligible else False),
+            packed_c1_target=(self.packed_c1_target if eligible else False),
             strict_fallback_key=self.strict_fallback_key,
             evidence_key=self.evidence_key,
             evidence_fingerprint=self.evidence_fingerprint,
@@ -578,6 +592,7 @@ def _admit(
         evidence_fingerprint=_canonical_sha256(row.as_dict()),
         evidence_artifacts=row.evidence_artifacts,
         automatic_eligible=row.automatic_eligible,
+        packed_c1_target=row.packed_c1_target,
         static_max_realized_group_rows=row.max_realized_group_rows,
     )
 

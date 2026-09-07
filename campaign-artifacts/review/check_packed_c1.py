@@ -26,10 +26,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", default="/models/gguf/Qwen3.8-27B-Q4_K_M.gguf")
     parser.add_argument("--budget", type=int, choices=range(1, 8), default=3)
+    parser.add_argument("--capacity", type=int, choices=(1, 2, 8), default=8)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     os.environ["HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS"] = "1"
-    _inject_k4_evidence_row(1, args.budget)
+    _inject_k4_evidence_row(1, args.budget, capacity=args.capacity)
     faulthandler.dump_traceback_later(300, exit=True)
     calls: list[tuple[int, ...]] = []
     original = mtp2.Qwen35GGUFMTP2Adapter._execute_target_frontier_batch
@@ -45,7 +46,7 @@ def main() -> None:
     mtp2.Qwen35GGUFTransactionalVerifier = forbidden
     llm = bench.LLM(
         args.model, backend="hip_gfx1100", execution_profile="production",
-        max_active_requests=8, max_sequence_length=1024,
+        max_active_requests=args.capacity, max_sequence_length=1024,
         speculative_candidate_budget=args.budget,
     )
     rows = []
@@ -55,7 +56,7 @@ def main() -> None:
             model=args.model, backend="hip_gfx1100", quant="gguf_q4_k_m",
             served_model_name="review", eager_load=False,
             generation_batch_window_ms=20, max_context_tokens=1024,
-            max_active_requests=8, speculative_mtp_serving="opt_in",
+            max_active_requests=args.capacity, speculative_mtp_serving="opt_in",
             speculative_candidate_budget=args.budget, shutdown_grace_seconds=5.0,
         ), llm=llm)
         prompts = bench.load_prompt_suite(ROOT / "benchmarks/prompts/mtpbench-code-general-ja.jsonl")
@@ -83,7 +84,7 @@ def main() -> None:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps({
             "diagnostic_only": True, "performance_claim": False,
-            "budget": args.budget, "resident_capacity": 8, "cells": rows,
+            "budget": args.budget, "resident_capacity": args.capacity, "cells": rows,
             "passed": len(rows) == 10 and all(
                 r["exact"] and r["engaged"] and r["budget_conformed"] and r["packed_calls"] > 0
                 for r in rows

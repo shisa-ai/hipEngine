@@ -19,7 +19,12 @@ Status (2026-09-07 review): partial implementation ready for integration;
   It is neither a complete fixed-N=8 curve nor N=1/2 C1 qualification.
   Its seven C1 cells cannot certify packed-target K1-K7 execution. K4-K7
   remain diagnostic-only, not publicly safety-qualified depths.
-- Still required: native N=1 ownership, N=2 C1 and missing fixed-N=8 controls;
+- Native N=1 ownership now uses evidence-owned `packed_c1_target` selection;
+  N=1/2 C1/K3 each pass the ten-prompt exact/engagement diagnostic with 70
+  packed-target calls and the legacy constructor forbidden. N=8 has the prior
+  review diagnostic. No public evidence is added. See the
+  [capacity diagnostic](../benchmarks/results/2026-09-07-w7900-native-n1-packed-c1-diagnostic.json).
+- Still required: slot/transition qualification and missing fixed-N=8 controls;
   packed C1 K1-K7 gates; production numerical/task and dynamic service-owner
   latency/queueing gates; sustained horizons/contexts; three balanced pairs
   before promotion. Token equality is not a replacement for these gates.

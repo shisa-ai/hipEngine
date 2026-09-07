@@ -61,7 +61,7 @@ def _patch_depth_bound(depth: int) -> list[str]:
     return patched
 
 
-def _inject_k4_evidence_row(width: int, budget: int) -> str:
+def _inject_k4_evidence_row(width: int, budget: int, *, capacity: int | None = None) -> str:
     """Append a diagnostic K4 clone of the registered C8/K3 evidence row.
 
     The model plugin is a frozen dataclass instance registered at import
@@ -105,6 +105,8 @@ def _inject_k4_evidence_row(width: int, budget: int) -> str:
         max_realized_group_rows=(1 if int(width) == 1 else base.max_realized_group_rows),
         evidence_key=f"qwen38-q4km-gfx1100-production-bf16-c{width}-k{budget}-d24-k4probe",
         candidate_budget=int(budget),
+        resident_capacity=(base.resident_capacity if capacity is None else int(capacity)),
+        packed_c1_target=int(width) == 1,
         reason=_PROBE_LABEL,
         evidence_artifacts=(
             "scripts/qwen38_packet5_k4_watchdog_probe.py (runtime-injected diagnostic row)",
