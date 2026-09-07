@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from hipengine.generation.gguf_profile_qualification import qualify_plain_gguf_profile
 from hipengine.execution_profiles import (
     ExecutionProfile,
     ResolvedRuntimeProfile,
@@ -133,6 +134,7 @@ def _register_profile(
             kv_policy="paged_bf16",
             graph_policy=str(graph_policy),
             binder=binder,
+            qualifier=qualify_plain_gguf_profile,
         ),
     )
     return True

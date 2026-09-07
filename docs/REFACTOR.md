@@ -18,6 +18,18 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
+## 2026-09-07 GGUF profile qualification — lifecycle debt
+
+- Artifact-scoped profile plans now validate header identity before resolution,
+  construction and public binder application; no new environment flag or
+  default-off path is introduced. Successful legacy binders still apply
+  process-global environment policy. Preserve existing serialized construction
+  and explicit caller restore contexts; this is not concurrent per-generator
+  isolation. Replace those writes with generator/session-owned resolved policy
+  when all consumers can accept it, preserving explicit rollback semantics,
+  artifact revalidation and failure/restore tests. Do not remove qualification
+  or infer numerical permission from a generic operation certificate.
+
 ## 2026-09-07 GGUF native execution authorization — bounded cleanup
 
 - F1 native session entries, enqueue and standalone native-layer entries all

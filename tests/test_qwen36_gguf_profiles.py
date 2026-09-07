@@ -16,6 +16,7 @@ These cover PN1 registration semantics of
 from __future__ import annotations
 
 import os
+from tests._gguf_profile_fixture import profile_context
 from types import SimpleNamespace
 
 import pytest
@@ -81,6 +82,7 @@ def _resolution(profile: ExecutionProfile | str):
         backend=QWEN36_GGUF_BACKEND,
         quant=QWEN36_GGUF_QUANT,
         profile=profile,
+        qualification_context=profile_context(QWEN36_GGUF_MODEL),
     )
 
 
@@ -219,10 +221,8 @@ def test_production_binder_applies_cooperative_policy() -> None:
     _register()
     resolved = _resolution(ExecutionProfile.PRODUCTION)
     generator = resolved.construct_generator(
-        lambda **kwargs: SimpleNamespace(kwargs=kwargs),
-        model_path="/tmp/fake.gguf",
-        weight_index=None,
-        model_plugin=None,
+        lambda **kwargs: SimpleNamespace(**kwargs),
+        **profile_context(QWEN36_GGUF_MODEL),
     )
     assert os.environ.get(ROUTER_COOP_ENV) == "1"
     assert os.environ.get(ROUTER_PERSISTENT_ENV) == "1"
@@ -242,10 +242,8 @@ def test_strict_binder_applies_exact_policy() -> None:
     _register()
     resolved = _resolution(ExecutionProfile.STRICT)
     generator = resolved.construct_generator(
-        lambda **kwargs: SimpleNamespace(kwargs=kwargs),
-        model_path="/tmp/fake.gguf",
-        weight_index=None,
-        model_plugin=None,
+        lambda **kwargs: SimpleNamespace(**kwargs),
+        **profile_context(QWEN36_GGUF_MODEL),
     )
     assert os.environ.get(ROUTER_COOP_ENV) == "0"
     assert os.environ.get(ROUTER_PERSISTENT_ENV) == "0"
