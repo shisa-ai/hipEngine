@@ -46,8 +46,25 @@ def launch(x_ptr, qweight_ptr, out_ptr, rows, in_features, out_features, *,
         raise RuntimeError(f'dense IQ launch failed: {rt.error_string(err)}')
 
 
+def embedding(token_ids_ptr, qweight_ptr, out_ptr, rows, hidden_size, vocab_size, *,
+              threads=256, stream=0, library=None, runtime=None):
+    if not 0 < rows <= 65535 or hidden_size <= 0 or hidden_size % 256 or vocab_size <= 0:
+        raise ValueError('Q3_K embedding requires positive dimensions and block-aligned hidden size')
+    if threads != 256 or not all((token_ids_ptr, qweight_ptr, out_ptr)):
+        raise ValueError('Q3_K embedding requires 256 threads and nonzero pointers')
+    library = library or build_gguf_iq_dense()
+    fn = library.hipengine_gguf_q3_k_embedding
+    fn.argtypes = [ctypes.c_void_p]*3 + [ctypes.c_int64]*3 + [ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    err = fn(token_ids_ptr, qweight_ptr, out_ptr, rows, hidden_size, vocab_size, stream)
+    if err:
+        raise RuntimeError(f'Q3_K embedding launch failed: {(runtime or get_hip_runtime()).error_string(err)}')
+
+
 def register_gguf_iq_dense_kernels(*, backend='hip_gfx1100', replace=True):
     from functools import partial
+    register(KernelKey(backend, 'embedding', 'gguf_q3_k', 'lookup_bf16_out'),
+             embedding, replace=replace)
     for quant in QUANTS:
         for output in OUTPUTS:
             fn = partial(launch, quant=quant, output=output)

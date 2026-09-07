@@ -70,8 +70,8 @@ def test_rank3_iq_and_q3_experts_stay_raw_without_model_fixture(
         assert spec.sidecar_layouts == ()
 
 
-@pytest.mark.parametrize("qtype", [GGMLQuantizationType.IQ2_XS, GGMLQuantizationType.IQ4_XS])
-def test_rank2_iq2_iq4_xs_keep_dense_bf16_fallback_without_model_fixture(
+@pytest.mark.parametrize("qtype", [GGMLQuantizationType.IQ2_XS])
+def test_rank2_iq2_xs_keeps_dense_bf16_fallback_without_model_fixture(
     qtype: GGMLQuantizationType,
 ) -> None:
     tensor = _tensor_info(
@@ -87,14 +87,16 @@ def test_rank2_iq2_iq4_xs_keep_dense_bf16_fallback_without_model_fixture(
     assert spec.allocation_names == ("raw",)
 
 
-@pytest.mark.parametrize("qtype", [GGMLQuantizationType.IQ3_XXS, GGMLQuantizationType.Q3_K])
-def test_rank2_iq3_and_q3_are_rejected_without_model_fixture(
+@pytest.mark.parametrize("qtype", [GGMLQuantizationType.IQ3_XXS, GGMLQuantizationType.Q3_K, GGMLQuantizationType.IQ4_XS])
+def test_rank2_iq3_q3_iq4_have_raw_consumers_without_model_fixture(
     qtype: GGMLQuantizationType,
 ) -> None:
     tensor = _tensor_info(qtype, (8, 256), name="blk.0.ffn_gate.weight")
 
-    with pytest.raises(ValueError, match="outside rank-3 expert slots"):
-        _spec_for_tensor("layers.0.ffn_gate", tensor, decode_repack=False)
+    spec = _spec_for_tensor("layers.0.ffn_gate", tensor, decode_repack=False)
+    assert spec.layout == LAYOUT_RAW_GGUF
+    assert spec.quant_key == f"gguf_{qtype.name.lower()}"
+    assert spec.allocation_names == ("raw",)
 
 
 @pytest.mark.skipif(not MODEL.exists(), reason=f"local GGUF fixture not found: {MODEL}")

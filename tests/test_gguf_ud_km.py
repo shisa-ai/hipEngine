@@ -7,7 +7,7 @@ from hipengine.loading.qwen35_gguf_consumer_surface import source_linear_dispatc
 from hipengine.quant.gguf import GGMLQuantizationType
 
 
-@pytest.mark.parametrize('name,stride', [('IQ4_XS', 136), ('IQ4_NL', 144), ('IQ3_S', 110), ('Q3_K', 110)])
+@pytest.mark.parametrize('name,stride', [('IQ4_XS', 136), ('IQ4_NL', 144), ('IQ3_S', 110), ('Q3_K', 110), ('IQ3_XXS', 98), ('IQ2_S', 82)])
 @pytest.mark.parametrize('repack', [False, True])
 def test_raw_dense_plan_and_consumer(name, stride, repack):
     tensor = GGUFTensorInfo('blk.0.ffn_gate.weight', (3, 5120), (5120, 3),

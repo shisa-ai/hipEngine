@@ -537,21 +537,13 @@ def test_preflight_accepts_ud_q4_k_m_c1_consumer_surface():
 
 
 @pytest.mark.skipif(not UD_Q4_K_S.exists(), reason=f"pinned artifact missing: {UD_Q4_K_S}")
-def test_preflight_aggregates_every_unsupported_slot_on_ud_q4_k_s():
-    report = _preflight_real(UD_Q4_K_S, "hip_gfx1100")
-    assert report.supported is False
-    assert report.preset is not None
-    assert report.preset.preset_key == GGUF_UD_Q4_K_S_PRESET
-    refused = {u.slot_path for u in report.unsupported if u.stage == "planner_refused"}
-    # K_M leaves remove 34 of the original 41 refusals. K_S still needs
-    # IQ3_XXS/IQ2_S projections and the Q3_K token embedding.
-    assert len(refused) == 7
-    assert "root.token_embedding" in refused
-    refused_types = {
-        u.slot_path: u.source_ggml_type for u in report.unsupported if u.stage == "planner_refused"
-    }
-    type_values = set(refused_types.values())
-    assert type_values == {"Q3_K", "IQ3_XXS", "IQ2_S"}
+def test_preflight_accepts_ud_q4_k_s_consumer_surface():
+    for backend in ("hip_gfx1100", "hip_gfx1151"):
+        report = _preflight_real(UD_Q4_K_S, backend)
+        assert report.supported
+        assert report.preset.preset_key == GGUF_UD_Q4_K_S_PRESET
+        assert not report.unsupported
+        report.raise_for_errors()
 
 
 @pytest.mark.skipif(not PLAIN_Q4_K_M.exists(), reason=f"pinned artifact missing: {PLAIN_Q4_K_M}")
@@ -694,7 +686,7 @@ def test_dense_bf16_embedding_multirow_is_refused_not_silently_singleton():
     assert raw_records[0].resident_layout == LAYOUT_RAW_GGUF
 
 
-def test_q3_k_embedding_has_no_consumer_until_ud_u5():
+def test_q3_k_embedding_has_raw_consumer():
     q3_embedding_map = _synthetic_model_map(
         embedding_type=GGMLQuantizationType.Q3_K,
     )
@@ -703,10 +695,10 @@ def test_q3_k_embedding_has_no_consumer_until_ud_u5():
         backend="hip_gfx1100",
         operations=(QWEN35_GGUF_OP_EMBEDDING_LOOKUP,),
     )
-    assert report.supported is False
-    refusals = [u for u in report.unsupported if u.role_class == "token_embedding"]
-    assert refusals and refusals[0].stage == "planner_refused"
-    assert "Q3_K" in refusals[0].reason
+    assert report.supported
+    records = [r for r in report.qualified_records if r.role_class == "token_embedding"]
+    assert records and records[0].resident_layout == LAYOUT_RAW_GGUF
+    assert records[0].kernel_quant == "gguf_q3_k"
 
 
 # ---------------------------------------------------------------------------
@@ -1066,8 +1058,8 @@ class _AllocationSentinel:
 
 
 @pytest.mark.skipif(not UD_Q4_K_S.exists(), reason=f"pinned artifact missing: {UD_Q4_K_S}")
-def test_ud_materialization_refused_before_any_device_allocation(monkeypatch):
-    """UD-U1: the loader aggregates refusals before the first malloc call."""
+def test_ud_materialization_passes_preflight_and_reaches_allocation(monkeypatch):
+    """Published K_S now has all required base consumers."""
 
     from hipengine.loading import materialize as host_materialize
     from hipengine.loading import qwen35_gguf_materialize as loader
@@ -1077,13 +1069,9 @@ def test_ud_materialization_refused_before_any_device_allocation(monkeypatch):
     )
     monkeypatch.setattr(loader, "malloc", sentinel)
     monkeypatch.setattr(host_materialize, "malloc", sentinel)
-    with pytest.raises(Qwen35GGUFAdmissionError) as excinfo:
+    with pytest.raises(AssertionError, match="allocator invoked"):
         materialize_qwen35_gguf_weights(str(UD_Q4_K_S), backend="hip_gfx1100")
-    assert sentinel.calls == []
-    message = str(excinfo.value)
-    assert "gguf_ud_q4_k_s" in message
-    assert "root.token_embedding" in message
-    assert "layers.0.ffn_up" in message
+    assert sentinel.calls
 
 
 @pytest.mark.skipif(not SMALL_Q8_0.exists(), reason=f"pinned artifact missing: {SMALL_Q8_0}")
@@ -1656,7 +1644,7 @@ def test_rank3_iq3_xxs_selected_experts_keep_their_registered_moe_consumers():
         assert backend_report.supported, backend_report.render_refusals()
 
 
-def test_rank2_dense_iq3_xxs_is_refused_not_silently_supported():
+def test_rank2_dense_iq3_xxs_has_concrete_raw_consumer():
     from types import MappingProxyType
 
     config = _config((LINEAR_ATTENTION,))
@@ -1682,12 +1670,9 @@ def test_rank2_dense_iq3_xxs_is_refused_not_silently_supported():
         validation=None,
     )
     report = preflight_qwen35_gguf_artifact(dense_iq3_map, backend="hip_gfx1100")
-    assert report.supported is False
-    refusals = [u for u in report.unsupported if u.slot_path == "layers.0.ffn_gate"]
-    assert refusals and refusals[0].stage == "planner_refused"
-    assert "rank-3" in refusals[0].reason
-    with pytest.raises(Qwen35GGUFAdmissionError):
-        report.raise_for_errors()
+    assert report.supported
+    assert not report.unsupported
+    report.raise_for_errors()
 
 
 # ---------------------------------------------------------------------------
