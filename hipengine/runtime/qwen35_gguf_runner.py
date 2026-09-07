@@ -11,7 +11,7 @@ from dataclasses import asdict, dataclass, field, replace
 from functools import partial
 from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
-from typing import Mapping, Protocol, Sequence
+from typing import Callable, Mapping, Protocol, Sequence
 
 import numpy as np
 
@@ -14433,6 +14433,7 @@ class Qwen35GGUFResidentSession:
     dms_metadata_path: str | Path | None = None
     dms_max_new_tokens: int = 256
     dms_decision_mode: str = "sidecar"
+    dms_backend_factory: Callable | None = None
     runner: Qwen35GGUFFullStackRunner | None = field(default=None, init=False)
     scratch: object | None = field(default=None, init=False)
     _target_scratch_owner: object | None = field(default=None, init=False)
@@ -15244,7 +15245,8 @@ class Qwen35GGUFResidentSession:
                 )[0]
                 max_live = max(max_live, int(np.count_nonzero(keep)))
         per_head = max_live + int(self.dms_max_new_tokens)
-        backend = create_dms_bf16_backend(
+        backend_factory = self.dms_backend_factory or create_dms_bf16_backend
+        backend = backend_factory(
             retrofit=source.config,
             slots_per_layer=source.config.num_kv_heads * per_head,
             max_request_rows=1,

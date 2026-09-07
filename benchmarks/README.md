@@ -98,9 +98,12 @@ two concurrent requests on the W7900.
 | Context 54,272 | 54,255 / 16 | 23.972 GiB |
 
 DMS INT8 device fixtures pass codec, eviction, attention and rollback checks,
-including 16,385 tokens with an 8,192-token protected window. Model-serving
-integration and category/heldout quality qualification are incomplete; no
-DMS INT8 capacity gain is claimed. Commands, identity and accounting:
+including 16,385 tokens with an 8,192-token protected window. An offline
+integrated INT8 model smoke at 768 prompt tokens / eight decode steps passes
+(maximum KL 0.00396, top-1 100% versus dense BF16); this is below the eviction
+window, not serving qualification. Category/heldout quality remains incomplete;
+no DMS INT8 capacity gain is claimed.
+[Integrated smoke evidence](results/2026-09-07-rx7900xtx-dms-int8-integrated-smoke.json). Commands, identity and accounting:
 [INT8 evidence audit](results/2026-09-07-rx7900xtx-int8-repair-capacity-audit.json).
 
 ## Current default notes

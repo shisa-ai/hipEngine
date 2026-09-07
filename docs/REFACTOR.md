@@ -18,6 +18,19 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
+## 2026-09-07 DMS codec evaluation bootstrap — open
+
+- `create_dms_int8_evaluation_backend` permits offline model measurement without
+  inventing a qualification record. Snapshots explicitly report
+  `codec_evaluation_only`; default resident/serving construction stays BF16.
+- `Qwen35GGUFResidentSession.dms_backend_factory` injects a codec factory without
+  codec-specific dispatch branches. The quality tools expose
+  `--codec int8_evaluation`, never a serving promotion switch.
+- Keep the evaluation factory only while it is needed to qualify new artifacts
+  or codecs. Consolidate it into a shared evaluator capability when one exists;
+  never replace its explicit unqualified status with fabricated passing scores.
+  Production INT8 construction continues to require artifact qualification.
+
 ## 2026-09-07 DMS INT8 device correctness path — open
 
 - `dms_compact_int8.hip` uses ordered row-by-row pack and append compaction
