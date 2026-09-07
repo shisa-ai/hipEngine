@@ -76,6 +76,21 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q8 early wave publication rejected (September7 UTC):** fresh trace
+identifies attention-gate projection as1.579s of code4096 linear time.
+Unlike Q4 pair2,its Q8 coltile8/row4 parent publishes wave sums after
+all shuffles. Interleaving each exact accumulator's publication shortens
+VGPR72->64 but loses:actual layer0 attention-gate512/1024 ratios
+0.874x/0.910x,shared-down0.722x/0.651x. All80 pairs exact,
+ten tests pass;cached trace confirms512B LDS/scratch0 both.
+The512 attention case has substantial order effects,retained without
+favorable rerun;both1024 attention order strata lose.
+Candidate removed,no runtime admission or full-model qualification.
+Do not equate fewer registers with faster execution or repeat this
+publication-only rewrite. Q4 already publishes per accumulator;its
+Q5_1-like lifetime opportunity is not the same missing mechanism.
+[Evidence/recipe](../benchmarks/results/2026-09-07-framework-qwen4exp-q8-early-publication-rejected.json).
+
 **Post-four-head owner refresh (September7 UTC):** clean `30b92de13`,
 six cases/twelve phases at explicit chunk1024,complete semantic attribution.
 Four-category p4096 mean:FFN10.214s,non-GR linear4.452s,GR3.395s,

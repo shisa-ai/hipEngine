@@ -1,5 +1,14 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Qwen4Exp Q8 early wave publication: removed
+
+- Publishing each accumulator immediately after its shuffle tree instead
+  of bulk publication lowers VGPR72->64 but loses on actual Q8 attention
+  gate and shared-down weights at512/1024 rows (0.651-0.910x).
+- Eighty exact pairs,ten tests,512B LDS/scratch0 both;candidate removed.
+  No runtime flag or registry debt remains. Do not repeat unchanged.
+  Recipe: `benchmarks/results/2026-09-07-framework-qwen4exp-q8-early-publication-rejected.json`.
+
 ## H256 QSA four-head production
 
 - `strict_h256_head_quad_rows_spans` shares K/V across four heads,
