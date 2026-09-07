@@ -34,6 +34,10 @@ def test_int8_pack_append_attention_and_restore(tokens, dim, heads, q_heads, mon
         bf16 = DMSDevicePayloadStore(retrofit=retrofit, slots_per_layer=slots,
                                      max_pack_rows=tokens)
         try:
+            # Per-layer payloads are allocated lazily on first touch; touch the
+            # single layer on both codecs before comparing residency.
+            bf16._ensure_layer(0)
+            store._ensure_layer(0)
             assert bf16.resident_bytes - store.resident_bytes == slots * (2 * dim - 8)
         finally:
             bf16.close()
