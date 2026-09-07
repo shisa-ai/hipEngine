@@ -1490,8 +1490,10 @@ proposed `tests/test_gguf_ud_km.py`.
   at 39–71 input tokens and nine forced positions each. Both files match
   llama.cpp on 161/162 top-1 choices; default mean/max KL is 0.000873/0.014724
   (K_M) and 0.000593/0.013256 (K_S). The Q5/Q6 compact candidate is not promoted:
-  K_M p95 KL exceeds 0.005 and K_S prefill top-1 is 17/18 in both arms. Repeat,
-  task, long-context and serving gates remain open. See
+  K_M p95 KL exceeds 0.005 and K_S prefill top-1 is 17/18 in both arms. Three
+  fresh-process Q5/Q6 candidate captures per model now have byte-identical
+  full logits at all 162 positions; see the `ud-q56-repeats` worklog entry.
+  Task, long-context and serving gates remain open. See
   `benchmarks/results/2026-09-07-zbook-ud-c1-residency-logits-diagnostic.json`.
   A separate explicit tokenwise llama.cpp comparison matches 162/162 choices
   for both files and both residency paths, with maximum KL 0.004469 across
