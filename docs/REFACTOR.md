@@ -2,10 +2,11 @@
 
 ## Qwen4Exp router shuffle-tail candidate
 
-- Kernel-only `f32_hidden_token_tile4_shuffle_exact` removes shared
-  reduction barriers while preserving exact F32 logits. No model flag yet.
-- Require full-model logits/routing/state/KV and canonical A/B before
-  promotion;remove candidate if rejected. Existing shared-tree tile4
+- Default-off `HIPENGINE_QWEN4_EXP_ROUTER_SHUFFLE` selects
+  `f32_hidden_token_tile4_shuffle_exact` only after existing multirow
+  tile4 selection;both profile binders0. Full logits/routing/state/KV pass.
+- Require canonical A/B at current chunk1024 before promotion;
+  remove candidate if rejected. Existing shared-tree tile4
   remains strict fallback. Router owner ceiling is limited;no inflated
   whole-model forecast from its isolated13% time reduction.
 

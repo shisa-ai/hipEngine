@@ -76,6 +76,16 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Router shuffle default-off admission (September7 UTC):** five cases at
+current chunk1024 pass full logits,four decode steps,state/full KV and
+all prefill router-logit/selected-expert/routing-weight hashes.
+Calls0/48/0 at512 or0/192/0 at4096,zero decode/final owners.
+18 CPU tests pass;only existing exact multirow tile4 route eligible,
+both binders0. Next canonical12-case A/B must explicitly use chunk1024.
+The state harness now accepts explicit1024 for this route and records it;
+older route protocols retain512 rather than silently changing count gates.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-router-shuffle-state.json).
+
 **Exact router shuffle-tail candidate (September7 UTC):** router owns
 about0.618s of code4096. Preserve dense per-thread FMA sequence and
 shared reduction128/64;wave0 combines32 then shuffles16..1 in identical

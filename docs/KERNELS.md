@@ -797,6 +797,12 @@ positive;32 VGPR/scratch0/dynamic LDS4096B unchanged. Existing tile4
 shared-tree owner remains strict fallback;model gates pending.
 Evidence: `2026-09-07-framework-qwen4exp-router-shuffle.json`.
 
+Default-off router model admission passes five chunk1024 full-logit/
+routing/state/KV cases.48/192 enabled prefill calls,zero decode/final
+owners;18 CPU tests. Both binders0;only existing exact multirow router
+eligible. Canonical A/B remains. Evidence:
+`2026-09-07-framework-qwen4exp-router-shuffle-state.json`.
+
 Existing Q8 `selected_grouped_row4_bundle_gemv_bf16_bf16_out` supports
 non-null sorted-lane-to-original-row maps,not just compact buffers. Actual
 layer2 weights with borrowed layer0 counts screen2.126x/2.153x over
