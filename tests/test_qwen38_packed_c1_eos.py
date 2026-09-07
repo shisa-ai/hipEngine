@@ -44,6 +44,19 @@ def test_eos_marker_selection_fails_without_valid_room(budget,ids):
         select_survivor_eos_index(ids,budget=budget)
 
 
+@pytest.mark.parametrize('budget', range(1, 8))
+def test_shifted_eos_marker_preserves_retirement_bound(budget):
+    from scripts.qwen38_packed_c1_eos import select_survivor_eos_index
+    ids = list(range(24))
+    start = max(12, 8 + budget)
+    assert select_survivor_eos_index(ids, budget=budget, offset=1) == start + 1
+    ids[start + 1] = ids[0]
+    assert select_survivor_eos_index(ids, budget=budget, offset=1) == start + 2
+    for offset in (-1, 24):
+        with pytest.raises(ValueError):
+            select_survivor_eos_index(ids, budget=budget, offset=offset)
+
+
 def test_eos_request_keeps_execution_ownership():
     from hipengine.generation.registry import GenerationRequest
     from scripts.qwen38_packed_c1_eos import configure_eos_request

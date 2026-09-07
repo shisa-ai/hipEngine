@@ -206,7 +206,11 @@ def main() -> None:
                         help='Configure EOS at a first-occurrence AR token after index 11 and check the collector')
     parser.add_argument('--eos-state', action='store_true',
                         help='Check canonical isolation and selected-state bytes for EOS C1 cycles')
+    parser.add_argument('--eos-marker-offset', type=int, default=0,
+                        help='Shift the diagnostic EOS marker search later by this many tokens')
     args = parser.parse_args()
+    if args.eos_marker_offset < 0 or (args.eos_marker_offset and not args.eos_state):
+        parser.error('--eos-marker-offset must be nonnegative and requires --eos-state')
     if args.budget != 3 and not args.eos_state:
         parser.error('nondefault --budget requires --eos-state')
     if args.eos_state and not args.eos_survivor:
@@ -405,7 +409,8 @@ def main() -> None:
                 if args.eos_survivor:
                     oracle_ids = expected[1]['generated_ids']
                     from scripts.qwen38_packed_c1_eos import select_survivor_eos_index
-                    index = select_survivor_eos_index(oracle_ids, budget=args.budget)
+                    index = select_survivor_eos_index(oracle_ids, budget=args.budget,
+                                                      offset=args.eos_marker_offset)
                     eos = dict(oracle_ids=oracle_ids, index=index)
                 if args.refill_peer:
                     expected.append(expected[0])  # Same prompt and D8 as the first independent AR arm.
@@ -495,6 +500,7 @@ def main() -> None:
             close_and_report(llm, args.output, dict(
                 diagnostic_only=True, performance_claim=False, full_profile_qualification=False,
                 passed=passed, capacity=args.capacity, budget=args.budget, horizons=list(horizons),
+                eos_marker_offset=args.eos_marker_offset,
                 cancellation_requested=args.cancel_peer, refill_requested=args.refill_peer,
                 wide_refill_requested=args.wide_refill, precommit_failure_requested=args.precommit_failure,
                 eos_requested=args.eos_survivor, eos_state_requested=args.eos_state,
