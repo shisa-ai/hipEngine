@@ -3,6 +3,7 @@ import argparse
 import gc
 import hashlib
 import json
+import math
 import os
 import resource
 from pathlib import Path
@@ -59,6 +60,16 @@ def phase_flags(vary_prefill, arm):
         raise ValueError("invalid arm")
     return (str(arm),"0") if vary_prefill else ("0",str(arm))
 
+def active_transition(milliseconds, clock=time.perf_counter):
+    """Diagnostic busy interval; caller must charge its full wall time."""
+    if not math.isfinite(milliseconds) or not 0 <= milliseconds <= 500:
+        raise ValueError("active transition must be finite and0..500ms")
+    start=clock()
+    end=start
+    while end-start < milliseconds/1000:
+        end=clock()
+    return end-start
+
 def step_marker(case, pair, arm, step):
     return f"qsa_phase:{case}:pair{pair}:arm{arm}:step{step}"
 
@@ -97,9 +108,14 @@ def main():
                    help="Temporary requested minimum on pinned CPU policy; restored at exit")
     p.add_argument("--hip-wait",choices=("auto","spin","yield","blocking"),
                    help="Disposable-process device scheduling flag before model allocation")
+    p.add_argument("--transition-active-ms",type=float,
+                   help="Both arms candidate-prefill; arm1 adds charged CPU-active interval (0..500ms)")
     p.add_argument("--case-id",action="append",choices=("code-p4096","mixed_ja_en-p4096"))
     a=p.parse_args()
     schedule=orders(a.pairs)
+    if a.transition_active_ms is not None:
+        if not a.vary_prefill or not math.isfinite(a.transition_active_ms) or not 0 < a.transition_active_ms <= 500:
+            p.error("transition-active-ms requires vary-prefill and finite0<ms<=500")
     if a.cpu_min_khz is not None and a.pin_cpu is None:
         p.error("--cpu-min-khz requires --pin-cpu")
     frequency=None
@@ -155,6 +171,10 @@ def main():
         report.update(
             protocol="Fresh prefill per arm,flag toggles only prefill;decode flag always0,one warmup per arm,balanced pairs. No snapshot restore or host hashes between prefill and decode.",
             limits="Bounded two-case phase diagnostic with telemetry/step clocks,not full-suite throughput or thermal causal proof. No clock changes.")
+    if a.transition_active_ms is not None:
+        report.update(transition_active_ms=a.transition_active_ms,
+            protocol="Both arms fresh candidate-prefill,decode flag0;arm0 direct transition,arm1 bounded CPU-active interval. Charge interval in transition_plus_decode and request totals.",
+            limits="Diagnostic busy work is not production code. Lower decode time alone is not a win; all added transition wall must be counted. No power-efficiency claim.")
     previous=os.environ.get(FLAG)
     from scripts.qwen4exp_thread_affinity import ThreadAffinity
     affinity=ThreadAffinity(a.pin_cpu)
@@ -191,6 +211,8 @@ def main():
                 for arm in order:
                     before=telemetry()
                     prefill_flag,decode_flag=phase_flags(a.vary_prefill,arm)
+                    if a.transition_active_ms is not None:
+                        prefill_flag,decode_flag="1","0"
                     prefill_seconds=None
                     if a.vary_prefill:
                         os.environ[FLAG]=prefill_flag
@@ -200,7 +222,7 @@ def main():
                                             capture_target_hidden=False)
                         runner.runtime.device_synchronize()
                         prefill_seconds=time.perf_counter()-start
-                        if calls[0]-start_calls!=(24 if arm else 0):
+                        if calls[0]-start_calls!=(24 if prefill_flag=="1" else 0):
                             raise AssertionError("prefill engagement mismatch")
                     else:
                         runner.restore(snapshot)
@@ -213,6 +235,8 @@ def main():
                     frequency_steps=[]
                     gc_events.clear()
                     runner.runtime.device_synchronize()
+                    transition_seconds=active_transition(
+                        a.transition_active_ms if a.transition_active_ms is not None and arm else 0)
                     if perf:
                         perf.start()
                     start=time.perf_counter()
@@ -248,6 +272,10 @@ def main():
                         rows.append(dict(pair=pair-1,flag=arm,seconds=elapsed,
                             prefill_flag=prefill_flag,decode_flag=decode_flag,
                             prefill_seconds=prefill_seconds,step_seconds=step_seconds,
+                            transition_seconds=transition_seconds,
+                            transition_plus_decode_seconds=transition_seconds+elapsed,
+                            request_seconds=(prefill_seconds+transition_seconds+elapsed
+                                             if prefill_seconds is not None else None),
                             cpu_steps=cpu_steps,gc_events=list(gc_events),
                             hardware_counters=hardware,
                             frequency_steps=frequency_steps,

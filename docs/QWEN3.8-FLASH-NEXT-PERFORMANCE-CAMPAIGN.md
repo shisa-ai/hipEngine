@@ -76,6 +76,18 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Charged CPU-active transition rejected (September7 UTC):** both arms
+use paired-head prefill;arm1 adds100ms CPU busy interval before decode,
+fully charged in transition+decode/request totals. Code4096,two balanced
+tg128 pairs:decode-only8.948->8.861s,but interval+decode8.948->8.961s.
+Full request averages29.922->29.939s. This moves delay between timers,
+not a latency gain. Exact tokens/state/layout and clean teardown pass;
+no policy/affinity writes. Do not add CPU warm-up to production or report
+its uncharged decode-only benefit. Stop bounded active-delay tuning here;
+paired-head candidate still needs an explicit complete-request retention
+decision or a demonstrated hardware/runtime fix.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-qsa-active-transition.json).
+
 **Requested CPU floor intervention (September7 UTC):** caller pinned17,
 policy17 minimum temporarily2->4GHz,readback verified. Parent/candidate
 early decode1.169/1.589s;feedback still~1.5GHz/~600MHz. The original

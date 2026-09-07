@@ -1,5 +1,12 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## QSA CPU-active transition diagnostic
+
+-100ms busy interval improves decode-only timer but not charged total:
+  direct8.948s versus interval+decode8.961s. No production warm-up added.
+- Diagnostic remains explicitly cost-accounted;never export decode-only
+  gain as request speedup or tune delay to benchmark inputs.
+
 ## QSA requested CPU minimum diagnostic
 
 - Policy17 floor2->4GHz accepted but early feedback remained~600MHz
