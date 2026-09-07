@@ -76,6 +76,17 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q4 two-block pipeline rejected (September7 UTC):** actual layer3
+gate/up+SiLU with synthetic routing/activations at512/1024 tokens yields
+0.910252x/0.909234x (~10% slower),all40 pairs exact,14 tests pass.
+Prefetching two weight blocks preserves row8 reuse and product/reduction
+order but raises VGPR88->112;LDS4608B/scratch0 unchanged. Candidate
+removed before model admission. Q5_1's per-row spill removal does not
+directly transfer: this Q4 parent already has zero scratch and moving
+the row loop outside K would sacrifice weight reuse. Neither an unchanged
+full-weight cache nor another two-block pipeline is a justified next step.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-q4-block-pair-rejected.json).
+
 **Post-Q5_1-row-publication refresh (September7 UTC):** clean e7024541b,
 six cases/twelve phases at explicit chunk1024. Four-category p4096
 FFN11.231->10.281s (-8.46%),non-GR linear4.515->4.523s,

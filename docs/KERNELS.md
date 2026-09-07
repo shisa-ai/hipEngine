@@ -788,6 +788,12 @@ Fallback requirements:
 
 ## Source-lineage audit
 
+Q4 pair2 two-block weight-pipeline experiment removed: actual layer3
+gate/up+SiLU screen0.910x/0.909x at512/1024 tokens,40 exact pairs,
+14 tests pass. VGPR88->112,LDS4608B/scratch0 unchanged. Original
+pair2 kernel/wrapper/registry/screen restored; no runtime admission.
+Evidence: `2026-09-07-framework-qwen4exp-q4-block-pair-rejected.json`.
+
 Q5_1 promotes
 `selected_grouped_prefill_pair2_row_publish_bf16_bf16_out`: K640
 register-cache pair2, per-row folded partial publication with identical

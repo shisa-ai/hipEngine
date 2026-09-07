@@ -1,5 +1,7 @@
 # hipEngine Benchmark Changelog
 
+- [2026-09-07 UTC Q4 block-pair rejected] Actual layer3 gate/up+SiLU at512/1024 tokens0.910x/0.909x (~10% slower),40 exact pairs,14 tests;VGPR88->112,LDS/scratch unchanged. Candidate removed,production unchanged. `benchmarks/results/2026-09-07-framework-qwen4exp-q4-block-pair-rejected.json`.
+
 - [2026-09-07 UTC post-Q5_1-row-publication families] Clean e7024541b/chunk1024 six-case capture:FFN11.231->10.281s (-8.46%),total22.196->21.227s (-4.36% snapshot);linear4.523s,GR3.414s. All12 phases attributed;Vulkan reused,not causal A/B. `benchmarks/results/2026-09-07-framework-qwen4exp-post-q51-row-publish-family.json`.
 
 - [2026-09-07 UTC Q5_1 row-publication production] Full12-case chunk1024 PP181.824->189.634 (+4.296%)/191.750->200.824 (+4.732%)/177.070->184.724 (+4.323%),72 exact,all prefill/request averages improve,total1.024648x. Spill-free exact path promoted;TG-0.012%/-0.048%/-0.201% explicit. `benchmarks/results/2026-09-07-framework-qwen4exp-q51-row-publish-production.json`.

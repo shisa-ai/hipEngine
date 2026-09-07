@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-07 UTC**
 
+Q4 two-block prefetch rejected:actual layer3 gate/up+SiLU screen
+0.910x/0.909x at512/1024 tokens,40 pairs exact;14 tests.
+VGPR88->112,no scratch; candidate removed,production unchanged.
+[Evidence](results/2026-09-07-framework-qwen4exp-q4-block-pair-rejected.json).
+
 Post-Q5_1-row-publication family refresh,clean e7024541b/chunk1024:
 p4096 four-category FFN11.231->10.281s (-8.46%),total22.196->21.227s
 (-4.36% snapshot). Linear4.523s,GR3.414s,QSA2.068s,GDN0.826s.
