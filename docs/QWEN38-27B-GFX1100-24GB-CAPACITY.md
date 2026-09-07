@@ -338,7 +338,7 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
 
 ### Packet 2 — Reduce exact allocation costs
 
-- [ ] Prove AR-only omits NextN weights and MTP-only state/graphs/hidden capture.
+- [ ] **PARTIAL — AR-only omission proven and K0-off baselines measured; only the "after active MTP" half remains (cross-campaign MTP blocker).** Prove AR-only omits NextN weights and MTP-only state/graphs/hidden capture.
   Measure MTP-capable K0 both before and after active MTP; do not call it unloaded.
   AR-only omission proven 2026-09-06: with MTP serving off the materialization
   plan omits the 4 NextN tensors (0.052 GiB source bytes), the resident census
@@ -350,13 +350,6 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
   21.307 GiB at context 1024 and 21.578 GiB at context 1536 (BF16 KV,
   post-scratch-cap; pre-cap 1536 was 22.574). Evidence:
   `results/2026-09-07-rx7900xtx-capacity-k0-mtp-off.json`. The MTP-armed
-  opt_in mode additionally cannot reach readiness: its startup scratch-probe
-  engine-service child hangs at width 2 (`STARTUP_SCRATCH_PROBE ... engine
-  service command timed out`) — same subsystem as the enabled KeyError. The
-  K0->K resident delta and the opt_in K0 state are blocked by that MTP-serving
-  warmup bug — owned by the MTP campaign; re-measure with the probe pair when
-  it serves. **BLOCKED (cross-campaign): only the "after active MTP" half
-  remains; the MTP warmup fix unblocks it.**
   opt_in mode additionally cannot reach readiness: its startup scratch-probe
   engine-service child hangs at width 2 (`STARTUP_SCRATCH_PROBE ... engine
   service command timed out`) — same subsystem as the enabled KeyError. The
