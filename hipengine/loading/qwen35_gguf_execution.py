@@ -1,8 +1,7 @@
-"""Full execution scopes over the shared GGUF invocation owners.
+"""Load-time GGUF route dependencies and resident compatibility checks.
 
-No payload reads, planning, allocation, backend import or numerical permission.
-Load scopes are diagnostic; only a full pre-certified scope can authorize a
-native model entry. Native eager/capture/replay callers share this boundary.
+No payload reads, allocation, backend import or numerical permission. Native
+sessions check their resident once at construction, not during model execution.
 """
 from dataclasses import dataclass, replace
 
@@ -56,71 +55,12 @@ def bind_resident_execution(weights):
                                     weights.artifact_preset_key, resident_snapshot(weights))
 
 
-def native_scratch_identity(scratch, config, *, rows, recurrent_state_dtype):
-    """Validate raw-buffer extents and state storage before any native writer.
-
-    Scratch has no element dtype on DeviceBuffer. Its allocator-owned reset
-    arrays record state storage; exact byte extents plus stable pointer owners
-    bind that declaration. This does not infer numerical contents.
-    """
-    from hipengine.loading.qwen35_gguf_admission import Qwen35GGUFAdmissionError
-    def fail(reason):
-        raise Qwen35GGUFAdmissionError("ar_decode_native_rows scratch contract: " + reason)
-    if scratch is None or int(getattr(scratch, "slot_count", 0)) < rows:
-        fail("missing or insufficient row capacity")
-    if str(getattr(getattr(scratch, "recurrent_zero", None), "dtype", "")) != (
-            "float16" if recurrent_state_dtype == "fp16" else "float32"):
-        fail("recurrent state storage does not match the certified operand")
-    qkv = 2 * config.ssm_group_count * config.ssm_state_size + config.ssm_inner_size
-    extents = {"norm": config.hidden_size * 2, "post_norm": config.hidden_size * 2,
-               "linear_qkv": qkv * 2, "linear_z": config.ssm_inner_size * 2,
-               "linear_alpha": config.ssm_time_step_rank * 2, "linear_beta": config.ssm_time_step_rank * 2,
-               "conv_out": qkv * 4, "recurrent_out": config.ssm_inner_size * 4,
-               "recurrent_bf16": config.ssm_inner_size * 2}
-    if config.is_moe:
-        lanes = int(config.expert_used_count)
-        if lanes <= 0 or int(getattr(scratch, "moe_selected_rows_capacity", 0)) < rows * lanes:
-            fail("selected-expert row capacity/ownership mismatch")
-        extents.update({"moe_router_logits": config.expert_count * 4,
-                        "moe_selected_experts": lanes * 4, "moe_routing_weights": lanes * 4,
-                        "ffn_gate_up": lanes * config.expert_feed_forward_length * 4,
-                        "ffn_intermediate": lanes * config.expert_feed_forward_length * 2,
-                        "moe_down_out": lanes * config.hidden_size * 2})
-    signature = []
-    def check(name, buf, size):
-        if buf is None or int(getattr(buf, "ptr", 0)) <= 0 or int(getattr(buf, "nbytes", 0)) < size:
-            fail(f"{name}: missing/undersized operand for rows={rows}")
-        signature.append((name, int(buf.ptr), int(buf.nbytes)))
-    for name, size in extents.items():
-        check(name, getattr(scratch, name, None), rows * size)
-    states = []
-    for layer, kind in enumerate(config.layer_types):
-        if kind != "linear_attention":
-            continue
-        for name, size in (("layer_conv_states", qkv * config.ssm_conv_kernel * 4),
-                           ("layer_recurrent_states", config.ssm_inner_size * config.ssm_state_size *
-                            (2 if recurrent_state_dtype == "fp16" else 4))):
-            buffers = getattr(scratch, name, ())
-            buf = buffers[layer] if layer < len(buffers) else None
-            check(f"{name}.{layer}", buf, rows * size)
-            extent = (int(buf.ptr), int(buf.ptr) + int(buf.nbytes))
-            if any(extent[0] < end and start < extent[1] for start, end in states):
-                fail("recurrent/conv state owners overlap")
-            states.append(extent)
-    # Owning allocations are not the launch plan: named KV/position/rotary
-    # views may change while scratch.buffers remains identical. Traverse ALL
-    # named physical views, including nested span metadata and host readbacks.
-    from hipengine.loading.qwen35_gguf_native_operands import physical_operand_inventory
-    return (id(scratch), int(scratch.slot_count), tuple(signature),
-            physical_operand_inventory(scratch))
-
-
 def authorize_native_execution(weights, *, backend, rows, recurrent_state_dtype="f32"):
     """Check actual resident calls against pre-allocation F4 qualification.
 
     Rebind invocation descriptors to existing specs, never run the planner or
     mint a certificate after allocation. Native scratch.norm supplies BF16.
-    Returned immutable identity can be pinned by graph owners, not widened.
+    This is a construction-time check; private layer calls do not use it.
     """
     from hipengine.loading.qwen35_gguf_admission import (
         Qwen35GGUFAdmissionError, QWEN35_GGUF_OP_AR_DECODE_NATIVE_ROWS as operation,

@@ -1437,11 +1437,11 @@ def _native_entry_session(resident, *, scratch_owner):
     session._buffers = tuple(getattr(session, name) for name in (
         "_token_buf", "_hidden_a", "_hidden_b", "_logits_buf", "_native_cu_seqlens_buf",
         "_native_state_indices_buf", "_lm_block_values", "_lm_block_indices", "_lm_out_index", "_lm_out_value"))
-    from hipengine.loading.qwen35_gguf_native_operands import NativeIndexBinding
-    # Mock the same successful canonical H2D publication as the real allocator.
-    session._native_index_binding = NativeIndexBinding.after_upload(
-        session._native_cu_seqlens_buf, session._native_state_indices_buf,
-        np.arange(9, dtype=np.int32), np.arange(8, dtype=np.int64))
+    from hipengine.loading.qwen35_gguf_execution import authorize_native_execution
+    session._native_rows_ready = False
+    if QWEN35_GGUF_OP_AR_DECODE_NATIVE_ROWS in resident.admission_certificate.operations:
+        authorize_native_execution(resident, backend=session.backend, rows=8)
+        session._native_rows_ready = True
     scratch_owner.decode_spans = SimpleNamespace(span_role="decode", max_live_count=64)
     return session
 
@@ -1504,8 +1504,8 @@ def test_step_rows_native_refuses_unbound_native_owner_before_state_or_device(mo
         session.step_rows_native((11, 22))
     message = str(excinfo.value)
     assert "ar_decode_native_rows" in message
-    assert "partial certificate" in message
-    assert owner.calls == [], "positions mutated before the native-row binding check"
+    assert "session construction" in message
+    assert owner.calls == [], "positions mutated before the native-row route check"
     assert int(owner.position_host[0]) == 0
 
 
