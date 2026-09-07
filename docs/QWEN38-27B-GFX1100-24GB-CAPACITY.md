@@ -529,20 +529,26 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
 - [x] Inventory the trained sidecar, hash/model/quant binding, protected window,
   calibration and actual eviction policy. Missing or mismatched qualification
   fails closed; training alone does not authorize serving.
-  Fails closed on this host 2026-09-07: the trained-sidecar artifact set the
-  2026-08-23 CR2 candidate evidence binds to
-  (`/home/lhl/dms-artifacts/qwen38-external-v1/sidecar-cr2-qualified-candidate/`
-  — sidecar safetensors, `dms_metadata.json`, data manifest, calibrated
-  labels) is not present on this machine, and the integrated DMS harnesses
-  (`scripts/qwen38_dms_integrated_long.py` et al.) require `--metadata` and
-  `--data-manifest` from that set. Per this item's own rule the missing
-  qualification fails closed: no XTX DMS serving point is measured and none
-  is simulated. The following items stay blocked on artifact re-provisioning
-  (a fresh capture/label/calibrate/train cycle is the DMS campaign's
-  sub-project, and training alone would not authorize serving); the
-  DMS+INT8 composition item additionally requires the independent codec and
-  topology gates first. XTX DMS capacity work resumes when the DMS campaign
-  publishes a host-local qualified artifact set.
+  Fails closed on this host 2026-09-07 — CORRECTED 2026-09-07 (second
+  pass): the trained-sidecar package IS locally available in the HF cache
+  (`~/.cache/huggingface/hub/models--shisa-ai--Qwen3.8-27B-Q4_K_M-DMS-W8192/`
+  — sidecar safetensors 655,640 B sha `e52fc60a…`, `dms_metadata.json`,
+  `MANIFEST.json`, `qualification.json` "qualified_explicit_c1_default_off",
+  protected window 8,192, exact-budget prefill selection); the original
+  record searched only the path the 2026-08-23 artifact recorded
+  (`/home/lhl/dms-artifacts/…`), which is absent. Two binding gates remain
+  before any XTX measurement: (1) the package binds to
+  `unsloth/Qwen3.8-27B-GGUF@4121cb19` — `Qwen3.8-27B-Q4_K_M.gguf`,
+  17,106,775,008 bytes, sha `7e78da5d…` — while the local model file is
+  17,106,773,984 bytes / sha `7b2aec3b…` (a 1,024-byte-different build), so
+  strict hash binding fails closed on the local file and the matching GGUF
+  revision must be downloaded (17.1 GiB; host disk at 99%); (2) the
+  package's recorded runtime scope is gfx1151/8060S explicit
+  resident-session C1 — the XTX is a new lane and its gfx1100 backend gate
+  plus quality controls must pass here before any XTX DMS number. The
+  integrated long/quality harnesses additionally require a `--data-manifest`
+  built from the training-time source manifest, which is not on this host;
+  `scripts/dms_backend_gate.py` (fixture device/lifecycle) runs without it.
 - [ ] **BLOCKED (cross-campaign, DMS artifact re-provisioning):** Measure dense BF16, compact no-evict and trained DMS BF16 through the same
   owner. Record logical tokens, per-layer/head survivors, allocated extents,
   free capacity, fragmentation and all transient/metadata/predictor bytes.
