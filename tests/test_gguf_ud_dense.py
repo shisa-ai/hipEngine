@@ -70,22 +70,25 @@ def reference(x, w):
     return out
 
 
-def test_iq2_xs_synthetic_decoder_on_device(library):
+@pytest.mark.parametrize('quant', ('IQ4_XS', 'IQ4_NL', 'IQ3_S', 'Q3_K',
+                                   'IQ3_XXS', 'IQ2_S', 'IQ2_XS'))
+def test_synthetic_decoder_on_device(library, quant):
     """One-hot activations expose every independently generated packed value."""
     from hipengine.kernels.hip_gfx1100.quant.gguf_iq_dense import launch
     with np.load(FIXTURE / 'synthetic.npz') as fixture:
-        raw = fixture['IQ2_XS_raw']
-        weights = fixture['IQ2_XS_f32']
-    x = bf16(np.eye(256, dtype=np.float32))
-    out = np.full((256, len(raw)), np.nan, dtype=np.float32)
+        raw = fixture[quant+'_raw']
+        weights = fixture[quant+'_f32']
+    width = weights.shape[1]
+    x = bf16(np.eye(width, dtype=np.float32))
+    out = np.full((width, len(raw)), np.nan, dtype=np.float32)
     buffers = []
     try:
         for array in (x, raw, out):
             buf = malloc(array.nbytes)
             buffers.append(buf)
             copy_host_to_device(buf, host_array_ptr(array), array.nbytes)
-        launch(*(buf.ptr for buf in buffers), 256, 256, len(raw),
-               quant='gguf_iq2_xs', output='f32', library=library)
+        launch(*(buf.ptr for buf in buffers), width, width, len(raw),
+               quant='gguf_'+quant.lower(), output='f32', library=library)
         copy_device_to_host(host_array_ptr(out), buffers[2], out.nbytes)
         # The reduction normalizes negative zero; codec signed-zero parity is
         # separately tested before projection in the CPU oracle suite.
@@ -135,7 +138,7 @@ def test_dense_rejects_invalid_shape_before_build(kwargs, monkeypatch):
 
 
 @pytest.mark.parametrize('entry', CASES, ids=lambda e: e['model'] + ':' + e['tensor'])
-@pytest.mark.parametrize('rows', (1, 3))
+@pytest.mark.parametrize('rows', (1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 16, 28, 32))
 @pytest.mark.parametrize('output', ('f32', 'bf16'))
 def test_dense_real_rows_exact_and_cpu_outer_gate(library, entry, rows, output):
     from hipengine.kernels.hip_gfx1100.quant.gguf_iq_dense import launch
@@ -146,7 +149,9 @@ def test_dense_real_rows_exact_and_cpu_outer_gate(library, entry, rows, output):
     weights = weights[[0, 1, 0]]
     x = bf16(np.random.default_rng(27).normal(0, 0.125, (rows, weights.shape[1])))
     expected = reference(bf16_to_float32(x), weights)
-    host = np.empty((rows, 3), dtype=np.float32 if output == 'f32' else np.uint16)
+    dtype = np.float32 if output == 'f32' else np.uint16
+    host = np.full((rows+2, 3), 123, dtype=dtype)
+    canary = host[[0, -1]].copy()
     buffers = []
     try:
         for array in (x, raw, host):
@@ -154,15 +159,16 @@ def test_dense_real_rows_exact_and_cpu_outer_gate(library, entry, rows, output):
             buffers.append(buf)
             copy_host_to_device(buf, host_array_ptr(array), array.nbytes)
         for _ in range(3):
-            launch(buffers[0].ptr, buffers[1].ptr, buffers[2].ptr, rows,
+            launch(buffers[0].ptr, buffers[1].ptr, buffers[2].ptr+host.strides[0], rows,
                    weights.shape[1], 3, quant='gguf_'+entry['type'].lower(),
                    output=output, library=library)
             copy_device_to_host(host_array_ptr(host), buffers[2], host.nbytes)
             want = expected if output == 'f32' else bf16(expected)
-            np.testing.assert_array_equal(host.view(np.uint32 if output == 'f32' else np.uint16),
+            np.testing.assert_array_equal(host[[0, -1]], canary)
+            np.testing.assert_array_equal(host[1:-1].view(np.uint32 if output == 'f32' else np.uint16),
                                           want.view(np.uint32 if output == 'f32' else np.uint16))
         teacher = bf16_to_float32(x).astype(np.float64) @ weights.astype(np.float64).T
-        actual = host if output == 'f32' else bf16_to_float32(host)
+        actual = host[1:-1] if output == 'f32' else bf16_to_float32(host[1:-1])
         def probabilities(a):
             e = np.exp(a - a.max(axis=1, keepdims=True))
             return e / e.sum(axis=1, keepdims=True)
