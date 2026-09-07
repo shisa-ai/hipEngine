@@ -32,6 +32,9 @@ def test_ud_codec_exact_f32_and_row_boundaries(name):
         actual = dequantize_gguf_data(raw.reshape(rows, -1), qtype)
         assert actual.shape == (rows, expected.size // rows)
         np.testing.assert_array_equal(actual.view(np.uint32), expected.reshape(rows, -1).view(np.uint32))
+    actual = dequantize_gguf_data(raw.reshape(2, 4, -1), qtype)
+    assert actual.shape == (2, 4, expected.size // 8)
+    np.testing.assert_array_equal(actual.view(np.uint32), expected.reshape(actual.shape).view(np.uint32))
 
 
 def test_ud_fixture_exercises_all_new_codebooks_signs_and_high_bits():
@@ -51,3 +54,29 @@ def test_ud_fixture_exercises_all_new_codebooks_signs_and_high_bits():
         scales = raw[:, 74:82] if count == 1024 else raw[:, 106:110]
         assert set((scales & 15).ravel()) == set(range(16))
         assert set((scales >> 4).ravel()) == set(range(16))
+
+
+REAL = json.loads((FIXTURES / 'real_rows.json').read_text())
+
+
+def test_real_fixture_provenance_and_coverage():
+    assert REAL['commit'] == '17252c769a63c1cb650ce98ae309cf4de0da7778'
+    assert hashlib.sha256((FIXTURES / 'real_rows.npz').read_bytes()).hexdigest() == REAL['fixture_sha256']
+    assert {e['type'] for e in REAL['entries']} == set(FORMATS)
+    assert {e['shape'][-1] for e in REAL['entries']} == {5120, 17408}
+    pins = json.loads((FIXTURES.parents[2] / 'docs/UD-QUANTS-U0-IDENTITY.json').read_text())['files']
+    for entry in REAL['entries']:
+        pin = next(p for p in pins if p['file'] == entry['model'])
+        assert entry['published_sha256'] == pin['published_sha256']
+        assert entry['rows'] == [0, entry['shape'][0] - 1]
+
+
+@pytest.mark.parametrize('entry', REAL['entries'], ids=lambda e: e['model'] + ':' + e['tensor'])
+def test_ud_real_rows_exact_f32(entry):
+    with np.load(FIXTURES / 'real_rows.npz') as fixture:
+        raw = fixture[entry['key'] + '_raw']
+        expected = fixture[entry['key'] + '_f32']
+    actual = dequantize_gguf_data(raw, GGMLQuantizationType[entry['type']])
+    assert actual.shape == (2, entry['shape'][-1])
+    assert np.isfinite(actual).all()
+    np.testing.assert_array_equal(actual.view(np.uint32), expected.view(np.uint32))
