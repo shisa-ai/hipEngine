@@ -1,0 +1,217 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-07",
+  "status": "survey_microbench_diagnostic",
+  "diagnostic_only": true,
+  "promotion_qualified": false,
+  "host": "zbook",
+  "hardware": "AMD RYZEN AI MAX+ PRO 395 / Radeon 8060S (laptop form factor: variable power/clocks; gross numbers only, not for single-digit-percent differentiation)",
+  "backend": "hip_gfx1151",
+  "purpose": "External kernel survey plus GEMV leaf bandwidth microbench to decide whether an optimization pass is warranted.",
+  "external_survey": {
+    "pwilkin/strix-halo": {
+      "commit": "4d0bf821cab29734dacce5321fcd73add72908c0",
+      "finding": "Website/installer project (index.html, install.sh); contains no kernels. Confirms docs/UD-QUANTS.md decision 8: no quant-kernel delta. Nothing to apply."
+    },
+    "halo-box/strix-llama.cpp": {
+      "commit": "3e2312ac3b3564ef719d31e67f182ef4d4082d4b",
+      "finding": "llama.cpp fork with an RDNA3.5-specific MMQ config table (ggml/src/ggml-cuda/mmq-config-rdna3-5.cuh, 301 lines of tile geometry per type/J) and MTP fixes. Prefill-side (MMQ) tuning plus standard upstream C++ dispatch; no exotic decode kernel technique absent from upstream. Their speed comes from the same llama.cpp MMVQ/MMQ kernels our pinned teacher binary (17252c76) already runs."
+    }
+  },
+  "e2e_gross_comparison": {
+    "llama_bench_command": "/home/lhl/llama.cpp/llama.cpp-hip/build-hip/bin/llama-bench -m /models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf -p 512 -n 128 -ngl 99 -t 4",
+    "llama_cpp": {
+      "pp512_tok_s": 287.17,
+      "tg128_tok_s": 11.58,
+      "build": "17252c769"
+    },
+    "hipengine_production_flags": {
+      "prefill_tok_s": 6.5,
+      "decode_tok_s": 3.85,
+      "note": "direct resident session and public LLM path agree (public telemetry: 121-token prefill 20.4 s, decode ~253 ms/step)"
+    },
+    "conclusion": "hipEngine UD decode is ~3x slower than llama.cpp on the same host/file; prefill runs per-token (~169 ms/token). Decode effective weight bandwidth 59 GB/s vs llama.cpp ~178 GB/s."
+  },
+  "gemv_leaf_bandwidth": {
+    "command": "PYTHONPATH=. HIPENGINE_COMPILER_VERSION_FILE=/tmp/ud-hipcc-version.txt .venv/bin/python /tmp/ud-gemv-bandwidth.py",
+    "script_sha256": "ad7062e244f8c1d98e24c36810217d6b941e7ed2752a12b5274439042889e50b",
+    "method": "production launch_gguf_linear rows=1 BF16-activation F32-output route on the largest rank-2 tensor of each quant family, 200 reps after warmup, device-synchronized wall time",
+    "rows": [
+      {
+        "file": "K_M",
+        "type": "Q5_K",
+        "tensor": "blk.22.ffn_up.weight",
+        "shape": [
+          17408,
+          5120
+        ],
+        "MB": 61.3,
+        "ms": 0.486,
+        "GB_s": 126.0
+      },
+      {
+        "file": "K_M",
+        "type": "Q6_K",
+        "tensor": "blk.63.ffn_down.weight",
+        "shape": [
+          5120,
+          17408
+        ],
+        "MB": 73.1,
+        "ms": 0.533,
+        "GB_s": 137.2
+      },
+      {
+        "file": "K_M",
+        "type": "Q4_K",
+        "tensor": "blk.3.ffn_gate.weight",
+        "shape": [
+          17408,
+          5120
+        ],
+        "MB": 50.1,
+        "ms": 1.495,
+        "GB_s": 33.5
+      },
+      {
+        "file": "K_M",
+        "type": "IQ4_XS",
+        "tensor": "blk.0.ffn_down.weight",
+        "shape": [
+          5120,
+          17408
+        ],
+        "MB": 47.3,
+        "ms": 1.298,
+        "GB_s": 36.5
+      },
+      {
+        "file": "K_M",
+        "type": "IQ3_S",
+        "tensor": "blk.11.ffn_gate.weight",
+        "shape": [
+          17408,
+          5120
+        ],
+        "MB": 38.3,
+        "ms": 1.415,
+        "GB_s": 27.1
+      },
+      {
+        "file": "K_S",
+        "type": "Q5_K",
+        "tensor": "blk.24.ffn_down.weight",
+        "shape": [
+          5120,
+          17408
+        ],
+        "MB": 61.3,
+        "ms": 0.496,
+        "GB_s": 123.6
+      },
+      {
+        "file": "K_S",
+        "type": "Q6_K",
+        "tensor": "blk.63.ffn_up.weight",
+        "shape": [
+          17408,
+          5120
+        ],
+        "MB": 73.1,
+        "ms": 0.53,
+        "GB_s": 137.9
+      },
+      {
+        "file": "K_S",
+        "type": "Q4_K",
+        "tensor": "blk.3.ffn_gate.weight",
+        "shape": [
+          17408,
+          5120
+        ],
+        "MB": 50.1,
+        "ms": 1.509,
+        "GB_s": 33.2
+      },
+      {
+        "file": "K_S",
+        "type": "Q3_K",
+        "tensor": "blk.1.ffn_up.weight",
+        "shape": [
+          17408,
+          5120
+        ],
+        "MB": 38.3,
+        "ms": 1.223,
+        "GB_s": 31.3
+      },
+      {
+        "file": "K_S",
+        "type": "IQ4_XS",
+        "tensor": "blk.0.ffn_down.weight",
+        "shape": [
+          5120,
+          17408
+        ],
+        "MB": 47.3,
+        "ms": 1.252,
+        "GB_s": 37.8
+      },
+      {
+        "file": "K_S",
+        "type": "IQ3_S",
+        "tensor": "blk.1.ffn_gate.weight",
+        "shape": [
+          17408,
+          5120
+        ],
+        "MB": 38.3,
+        "ms": 1.364,
+        "GB_s": 28.1
+      },
+      {
+        "file": "K_S",
+        "type": "IQ3_XXS",
+        "tensor": "blk.10.ffn_gate.weight",
+        "shape": [
+          17408,
+          5120
+        ],
+        "MB": 34.1,
+        "ms": 1.207,
+        "GB_s": 28.3
+      },
+      {
+        "file": "K_S",
+        "type": "IQ2_S",
+        "tensor": "blk.0.ffn_up.weight",
+        "shape": [
+          17408,
+          5120
+        ],
+        "MB": 28.5,
+        "ms": 0.998,
+        "GB_s": 28.6
+      },
+      {
+        "file": "K_S",
+        "type": "IQ2_XS",
+        "tensor": "blk.0.ffn_gate.weight",
+        "shape": [
+          17408,
+          5120
+        ],
+        "MB": 25.8,
+        "ms": 1.13,
+        "GB_s": 22.8
+      }
+    ],
+    "conclusion": "The raw IQ/Q3/Q4 rows=1 GEMV family runs at 23-38 GB/s while Q5_K/Q6_K paths reach 124-138 GB/s on the same host and session. The slow families dominate both published UD files (K_M: Q4_K 95 tensors; K_S: IQ4_XS 172 tensors). This is device time (~2 us dispatch floor excluded) and is the concrete decode bottleneck behind the 3x E2E gap.",
+    "optimization_trigger": "Met: the user's 'only if super slow' rule is satisfied with 4-6x per-family headroom against the already-achieved Q5/Q6 kernel bandwidth on identical geometry."
+  },
+  "limitations": [
+    "Laptop power/clock variability: gross numbers only.",
+    "Single tensor per family, rows=1 only; prefill widths not benched here.",
+    "No kernel modifications made in this survey; optimization pass is a separate task."
+  ]
+}
