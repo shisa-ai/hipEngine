@@ -1,4 +1,5 @@
 """The concurrency oracle must reject finite but altered reference logits."""
+import json
 from types import SimpleNamespace
 
 import numpy as np
@@ -8,7 +9,7 @@ from scripts import qwen38_dms_concurrency_probe as probe
 
 
 @pytest.mark.parametrize('corrupt', [False, True])
-def test_independent_c1_oracle_compares_logits(monkeypatch, corrupt):
+def test_independent_c1_oracle_compares_logits(monkeypatch, tmp_path, corrupt):
     instances = []
     class Session:
         def __init__(self, *args, **kwargs):
@@ -32,10 +33,16 @@ def test_independent_c1_oracle_compares_logits(monkeypatch, corrupt):
     monkeypatch.setattr(probe, 'Qwen35GGUFFullStackRunner', lambda *a, **k: SimpleNamespace(close=lambda: None))
     monkeypatch.setattr(probe, 'memory_stats', lambda: {'current_allocated_bytes': 0})
     args = SimpleNamespace(model='fixture', metadata='fixture', backend='hip_gfx1100',
-                           codec='int8_evaluation', verify_c1=True, cancel_after_steps=1)
+                           codec='int8_evaluation', verify_c1=True, cancel_after_steps=1,
+                           output=tmp_path / 'result.json')
     if corrupt:
         with pytest.raises(AssertionError, match='C1 logit mismatch'):
             probe._run_cycle(args, 0, [[1,2], [3,4]], [2,2], 3, '', [])
+        diagnostic = json.loads(args.output.with_suffix('.mismatch.json').read_text())
+        assert diagnostic['status'] == 'failed_exact_replay'
+        assert diagnostic['unequal_elements'] == 1
+        assert diagnostic['max_abs_diff'] == pytest.approx(.01)
+        assert diagnostic['expected_sha256'] != diagnostic['replay_sha256']
     else:
         result = probe._run_cycle(args, 0, [[1,2], [3,4]], [2,2], 3, '', [])
         assert len(result['decode']) == 4
