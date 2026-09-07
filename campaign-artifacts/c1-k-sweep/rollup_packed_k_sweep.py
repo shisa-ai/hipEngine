@@ -21,13 +21,14 @@ from pathlib import Path
 
 SWEEP_DIR = Path("/tmp/he-bettermtp-raw/packed-sweep")
 OUT_PATH = Path(
-    "benchmarks/results/2026-09-07-w7900-packed-route-c1-k0-k7-economics.json"
+    "benchmarks/results/2026-09-07-w7900-packed-route-c1-k0-k3-economics.json"
 )
 MODEL_SHA256 = "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
 MODEL_SIZE_BYTES = 17_106_773_984
 GPU_UNIQUE_ID = "0xe282895b62c2b295"
 HOST = "epyc"
-RUNTIME_PATHS = ("hipengine/", "scripts/", "campaign-artifacts/c1-k-sweep/")
+RUNTIME_PATHS = ("hipengine/", "scripts/")
+POLICY_REFUSED_DEPTHS = (1, 4, 5, 6, 7)
 
 
 def load_run(path: Path) -> dict:
@@ -67,7 +68,7 @@ def main() -> int:
     depths: dict[int, dict] = {}
     commits: set[str] = set()
     fingerprints: set[str] = set()
-    for k in range(8):
+    for k in (0, 2, 3):
         runs = []
         for r in (1, 2, 3):
             path = SWEEP_DIR / f"r{r}-k{k}.json"
@@ -173,21 +174,24 @@ def main() -> int:
             print(f"  - {f}")
         return 1
 
-    print("Packed-route C1 K0-K7 balanced-pair economics (GPU0 W7900, D24, 20 ms):")
+    print("Packed-route C1 balanced-pair economics (GPU0 W7900, D24, 20 ms):")
     print(f"{'depth':>5} {'median ratio':>12} {'range':>17} {'ar tok/s':>9} {'mtp tok/s':>10}")
-    for k in range(8):
+    for k in (0, 2, 3):
         d = depths[k]
         rng = f"[{d['min_ratio']:.4f},{d['max_ratio']:.4f}]"
         mtp = "-" if k == 0 else f"{d['median_mtp_tok_s']:.2f}"
         print(f"{'K' + str(k):>5} {d['median_ratio']:>12.4f} {rng:>17} "
               f"{d['median_ar_tok_s']:>9.2f} {mtp:>10}")
-    positive = {k: depths[k]["median_ratio"] for k in range(1, 8)}
+    positive = {k: depths[k]["median_ratio"] for k in (2, 3)}
     winner = max(positive, key=positive.get)
     print(f"\nWinning packed-route depth: K{winner} "
           f"(median {positive[winner]:.4f}); legacy-route comparison at K3: 1.6329x")
+    print("Physically refused packed depths (not in "
+          "GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS production): "
+          + ", ".join(f"K{k}" for k in POLICY_REFUSED_DEPTHS))
 
     artifact = {
-        "kind": "packed_route_c1_k0_k7_economics",
+        "kind": "packed_route_c1_k0_k3_economics",
         "date": datetime.now(timezone.utc).date().isoformat(),
         "host": HOST,
         "hardware": "GPU0 AMD Radeon Pro W7900 gfx1100",
@@ -225,7 +229,18 @@ def main() -> int:
             "true no-MTP autoregressive decode: the K0 'ar' arms (speculative_mtp="
             "false) and the automatic control runs (automatic selects K0, engaged 0/10)"
         ),
-        "depths": {f"k{k}": depths[k] for k in range(8)},
+        "policy_refused_depths": {
+            str(k): (
+                "the backend physical width-depth policy "
+                "(GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS production = "
+                "((1,2),(1,3),(2,2),(2,3),(8,3))) lists no (C1, K{d}) cell; the "
+                "harness attempt at K1 additionally hung engine close after the "
+                "fully-decoded decline-fallback sequence (r1-k1 log; close-hang "
+                "finding)".replace("{d}", str(k))
+            )
+            for k in POLICY_REFUSED_DEPTHS
+        },
+        "depths": {f"k{k}": depths[k] for k in (0, 2, 3)},
         "winning_depth": f"k{winner}",
         "winner_median_ratio": depths[winner]["median_ratio"],
         "legacy_route_comparison_k3": {

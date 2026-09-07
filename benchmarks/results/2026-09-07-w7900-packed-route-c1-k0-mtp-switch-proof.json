@@ -1,0 +1,462 @@
+{
+  "kind": "native_c1_k0_mtp_switch_proof",
+  "diagnostic_only": true,
+  "performance_claim": false,
+  "passed": true,
+  "failure_reasons": [],
+  "source_commit": "48c8fd872863d99cb1784bded5454a1810fae16e",
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "budget": 3,
+  "capacity": 8,
+  "max_tokens": 24,
+  "prompts": 10,
+  "legs_per_prompt": 4,
+  "packed_target_calls": 130,
+  "total_switches": {
+    "mtp_to_k0": 15,
+    "k0_to_mtp": 15
+  },
+  "legacy_target_forbidden": true,
+  "rows": [
+    {
+      "prompt_id": "code_merge_intervals",
+      "legs": [
+        "mtp",
+        "k0",
+        "mtp",
+        "k0"
+      ],
+      "switches": {
+        "mtp_to_k0": 2,
+        "k0_to_mtp": 1
+      },
+      "packed_calls": 12,
+      "exact": true,
+      "reasons": [],
+      "leg_walls_s": [
+        8.1703,
+        0.9677,
+        0.8481,
+        0.9682
+      ],
+      "leg_draft": [
+        {
+          "used": true,
+          "cycles": 6,
+          "tokens": 18
+        },
+        {
+          "used": false,
+          "cycles": 0,
+          "tokens": 0
+        },
+        {
+          "used": true,
+          "cycles": 6,
+          "tokens": 18
+        },
+        {
+          "used": false,
+          "cycles": 0,
+          "tokens": 0
+        }
+      ]
+    },
+    {
+      "prompt_id": "code_topological_sort",
+      "legs": [
+        "k0",
+        "mtp",
+        "k0",
+        "mtp"
+      ],
+      "switches": {
+        "mtp_to_k0": 1,
+        "k0_to_mtp": 2
+      },
+      "packed_calls": 14,
+      "exact": true,
+      "reasons": [],
+      "leg_walls_s": [
+        0.9729,
+        0.9146,
+        0.9729,
+        0.9189
+      ],
+      "leg_draft": [
+        {
+          "used": false,
+          "cycles": 0,
+          "tokens": 0
+        },
+        {
+          "used": true,
+          "cycles": 7,
+          "tokens": 21
+        },
+        {
+          "used": false,
+          "cycles": 0,
+          "tokens": 0
+        },
+        {
+          "used": true,
+          "cycles": 7,
+          "tokens": 21
+        }
+      ]
+    },
+    {
+      "prompt_id": "code_lru_cache",
+      "legs": [
+        "mtp",
+        "k0",
+        "mtp",
+        "k0"
+      ],
+      "switches": {
+        "mtp_to_k0": 2,
+        "k0_to_mtp": 1
+      },
+      "packed_calls": 12,
+      "exact": true,
+      "reasons": [],
+      "leg_walls_s": [
+        0.8567,
+        0.975,
+        0.8591,
+        1.0048
+      ],
+      "leg_draft": [
+        {
+          "used": true,
+          "cycles": 6,
+          "tokens": 18
+        },
+        {
+          "used": false,
+          "cycles": 0,
+          "tokens": 0
+        },
+        {
+          "used": true,
+          "cycles": 6,
+          "tokens": 18
+        },
+        {
+          "used": false,
+          "cycles": 0,
+          "tokens": 0
+        }
+      ]
+    },
+    {
+      "prompt_id": "code_markdown_table",
+      "legs": [
+        "k0",
+        "mtp",
+        "k0",
+        "mtp"
+      ],
+      "switches": {
+        "mtp_to_k0": 1,
+        "k0_to_mtp": 2
+      },
+      "packed_calls": 12,
+      "exact": true,
+      "reasons": [],
+      "leg_walls_s": [
+        0.9789,
+        0.7928,
+        0.9785,
+        0.7946
+      ],
+      "leg_draft": [
+        {
+          "used": false,
+          "cycles": 0,
+          "tokens": 0
+        },
+        {
+          "used": true,
+          "cycles": 6,
+          "tokens": 17
+        },
+        {
+          "used": false,
+          "cycles": 0,
+          "tokens": 0
+        },
+        {
+          "used": true,
+          "cycles": 6,
+          "tokens": 17
+        }
+      ]
+    },
+    {
+      "prompt_id": "general_en_plan",
+      "legs": [
+        "mtp",
+        "k0",
+        "mtp",
+        "k0"
+      ],
+      "switches": {
+        "mtp_to_k0": 2,
+        "k0_to_mtp": 1
+      },
+      "packed_calls": 12,
+      "exact": true,
+      "reasons": [],
+      "leg_walls_s": [
+        0.8234,
+        0.9739,
+        0.8248,
+        0.9752
+      ],
+      "leg_draft": [
+        {
+          "used": true,
+          "cycles": 6,
+          "tokens": 18
+        },
+        {
+          "used": false,
+          "cycles": 0,
+          "tokens": 0
+        },
+        {
+          "used": true,
+          "cycles": 6,
+          "tokens": 18
+        },
+        {
+          "used": false,
+          "cycles": 0,
+          "tokens": 0
+        }
+      ]
+    },
+    {
+      "prompt_id": "general_en_explain",
+      "legs": [
+        "k0",
+        "mtp",
+        "k0",
+        "mtp"
+      ],
+      "switches": {
+        "mtp_to_k0": 1,
+        "k0_to_mtp": 2
+      },
+      "packed_calls": 14,
+      "exact": true,
+      "reasons": [],
+      "leg_walls_s": [
+        0.979,
+        0.8896,
+        0.9768,
+        0.8894
+      ],
+      "leg_draft": [
+        {
+          "used": false,
+          "cycles": 0,
+          "tokens": 0
+        },
+        {
+          "used": true,
+          "cycles": 7,
+          "tokens": 20
+        },
+        {
+          "used": false,
+          "cycles": 0,
+          "tokens": 0
+        },
+        {
+          "used": true,
+          "cycles": 7,
+          "tokens": 20
+        }
+      ]
+    },
+    {
+      "prompt_id": "general_ja_plan",
+      "legs": [
+        "mtp",
+        "k0",
+        "mtp",
+        "k0"
+      ],
+      "switches": {
+        "mtp_to_k0": 2,
+        "k0_to_mtp": 1
+      },
+      "packed_calls": 14,
+      "exact": true,
+      "reasons": [],
+      "leg_walls_s": [
+        0.9614,
+        0.9816,
+        0.9629,
+        0.9833
+      ],
+      "leg_draft": [
+        {
+          "used": true,
+          "cycles": 7,
+          "tokens": 21
+        },
+        {
+          "used": false,
+          "cycles": 0,
+          "tokens": 0
+        },
+        {
+          "used": true,
+          "cycles": 7,
+          "tokens": 21
+        },
+        {
+          "used": false,
+          "cycles": 0,
+          "tokens": 0
+        }
+      ]
+    },
+    {
+      "prompt_id": "general_ja_explain",
+      "legs": [
+        "k0",
+        "mtp",
+        "k0",
+        "mtp"
+      ],
+      "switches": {
+        "mtp_to_k0": 1,
+        "k0_to_mtp": 2
+      },
+      "packed_calls": 16,
+      "exact": true,
+      "reasons": [],
+      "leg_walls_s": [
+        0.9822,
+        0.9924,
+        0.981,
+        0.9975
+      ],
+      "leg_draft": [
+        {
+          "used": false,
+          "cycles": 0,
+          "tokens": 0
+        },
+        {
+          "used": true,
+          "cycles": 8,
+          "tokens": 23
+        },
+        {
+          "used": false,
+          "cycles": 0,
+          "tokens": 0
+        },
+        {
+          "used": true,
+          "cycles": 8,
+          "tokens": 23
+        }
+      ]
+    },
+    {
+      "prompt_id": "mixed_ja_en_translate",
+      "legs": [
+        "mtp",
+        "k0",
+        "mtp",
+        "k0"
+      ],
+      "switches": {
+        "mtp_to_k0": 2,
+        "k0_to_mtp": 1
+      },
+      "packed_calls": 12,
+      "exact": true,
+      "reasons": [],
+      "leg_walls_s": [
+        0.8923,
+        1.0072,
+        0.8958,
+        1.01
+      ],
+      "leg_draft": [
+        {
+          "used": true,
+          "cycles": 6,
+          "tokens": 18
+        },
+        {
+          "used": false,
+          "cycles": 0,
+          "tokens": 0
+        },
+        {
+          "used": true,
+          "cycles": 6,
+          "tokens": 18
+        },
+        {
+          "used": false,
+          "cycles": 0,
+          "tokens": 0
+        }
+      ]
+    },
+    {
+      "prompt_id": "mixed_ja_en_review",
+      "legs": [
+        "k0",
+        "mtp",
+        "k0",
+        "mtp"
+      ],
+      "switches": {
+        "mtp_to_k0": 1,
+        "k0_to_mtp": 2
+      },
+      "packed_calls": 12,
+      "exact": true,
+      "reasons": [],
+      "leg_walls_s": [
+        1.038,
+        0.9245,
+        1.0368,
+        0.9264
+      ],
+      "leg_draft": [
+        {
+          "used": false,
+          "cycles": 0,
+          "tokens": 0
+        },
+        {
+          "used": true,
+          "cycles": 6,
+          "tokens": 18
+        },
+        {
+          "used": false,
+          "cycles": 0,
+          "tokens": 0
+        },
+        {
+          "used": true,
+          "cycles": 6,
+          "tokens": 18
+        }
+      ]
+    }
+  ]
+}
