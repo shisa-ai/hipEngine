@@ -91,6 +91,30 @@ def _comparison(before: Sequence[Mapping[str, Any]], after: Sequence[Mapping[str
     }
 
 
+def staged_slots(case_index: int, stage: int) -> list[tuple[int, str]]:
+    if stage not in (0,1):
+        raise ValueError("invalid screen stage")
+    slots=list(enumerate(arm_sequence(case_index)))
+    return slots[:2] if stage==0 else slots[2:]
+
+
+def clear_screen_losses(samples, wall_increase):
+    if not 0 < wall_increase < 1:
+        raise ValueError("invalid screening threshold")
+    summary=summarize_campaign_ab(samples,repetitions_per_mode=1)
+    if len(summary["by_case"])!=12:
+        raise ValueError("staged screen requires all12 cases")
+    losses=[]
+    for case in sorted(summary["by_case"]):
+        rows={r["mode"]:r for r in samples if r["case_id"]==case}
+        before,after=rows["before"],rows["after"]
+        if (after["prefill_ms"]>before["prefill_ms"]*(1+wall_increase)
+                and after["prefill_ms"]+after["decode_ms"]>
+                (before["prefill_ms"]+before["decode_ms"])*(1+wall_increase)):
+            losses.append(case)
+    return losses if len(losses)>=2 else []
+
+
 def measurement_sequence(case_index: int, repetitions: int) -> tuple[str, ...]:
     if repetitions not in (1,3):
         raise ValueError("only one-pair screen or three-pair publication supported")
@@ -374,6 +398,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--repetitions-per-mode", type=int, default=3)
     parser.add_argument("--screen-only", action="store_true",
                         help="Permit one pair/case; diagnostic only, no promotion evidence")
+    parser.add_argument("--staged-screen",action="store_true",
+                        help="One full-suite pair, then stop for multiple clear losses or finish remaining pairs in-residency")
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--route-package", choices=("pf13", "q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "chunk1024", "q8-down-register", "q51-row-publish", "gdn-wave-norm", "mmq-token64"), default="pf13")
@@ -389,6 +415,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise SystemExit("screen-only requires --repetitions-per-mode 1")
     if not args.screen_only and args.repetitions_per_mode != 3:
         raise SystemExit("publication protocol requires --repetitions-per-mode 3")
+    if args.staged_screen and (args.screen_only or args.repetitions_per_mode!=3 or args.case_id):
+        raise SystemExit("staged-screen requires full suite,three repeats,no screen-only")
     if args.route_package == "chunk1024" and args.prefill_chunk_size != 1024:
         raise SystemExit("chunk1024 requires --prefill-chunk-size1024 for shared allocation")
     if args.compiler_version_file is not None:
@@ -705,6 +733,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             "after":{"q8_down":"selected_grouped_row4_register_gemv_bf16_bf16_out"}}
     artifact["diagnostic_subset"] = bool(args.case_id)
     artifact["screen_only"] = args.screen_only
+    if args.staged_screen:
+        artifact["protocol"].update(
+            qualification="staged-one-then-three",
+            case_order="fixture order per stage; warmup once per case in first stage",
+            early_stop_wall_increase=0.05,
+            early_stop_minimum_cases=2,
+            early_promotion=False)
     if args.route_package=="mmq-token64":
         artifact["arms"]={
             "before":{"raw_q":"mmq128_raw_vec4_q8_1_d4x3_guarded_f32_f32_out"},
@@ -798,10 +833,34 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "count": len(owner.mapping),
                 "protocol": "Prepared before either timing arm; raw weights remain resident.",
             }
-        for case in cases:
+        stages = (0,1) if args.staged_screen else (None,)
+        measured_repetitions=args.repetitions_per_mode
+        for stage in stages:
+          if stage==1:
+            try:
+                losses=clear_screen_losses(artifact["samples"],0.05)
+            except ValueError as error:
+                artifact["status"]="failed_correctness_or_protocol"
+                artifact["error"]=str(error)
+                _write_json(args.output,artifact)
+                return 2
+            artifact["screen_decision"]={
+                "clear_loss_cases":losses,
+                "action":"stop_diagnostic" if losses else "continue_same_residency",
+                "first_stage_sample_count":len(artifact["samples"])}
+            _write_json(args.output,artifact)
+            if losses:
+                artifact["screen_only"]=True
+                artifact["protocol"]["promotion_eligible_protocol"]=False
+                artifact["protocol"]["measured_repetitions_per_mode_per_case"]=1
+                artifact["protocol"]["arm_order_even_case"]=list(measurement_sequence(0,1))
+                artifact["protocol"]["arm_order_odd_case"]=list(measurement_sequence(1,1))
+                measured_repetitions=1
+                break
+          for case in cases:
             case_index = fixture_case_index(fixture["cases"], case)
             warmup_modes = ("before", "after") if case_index % 2 == 0 else ("after", "before")
-            for warmup in range(args.warmups_per_mode):
+            for warmup in range(0 if stage==1 else args.warmups_per_mode):
                 for mode in warmup_modes:
                     row = sample(mode, case, warmup)
                     artifact["warmups"].append(
@@ -812,9 +871,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                         f"pp={row['prefill_tok_s']:.3f} tg={row['decode_tok_s']:.3f}",
                         flush=True,
                     )
-            mode_counts = {"before": 0, "after": 0}
+            mode_counts = {"before": int(stage==1), "after": int(stage==1)}
             sequence = measurement_sequence(case_index,args.repetitions_per_mode)
-            for slot, mode in enumerate(sequence):
+            slots=staged_slots(case_index,stage) if stage is not None else enumerate(sequence)
+            for slot, mode in slots:
                 row = sample(mode, case, mode_counts[mode])
                 mode_counts[mode] += 1
                 row.update(
@@ -822,6 +882,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                         "mode": mode,
                         "sequence_slot": slot,
                         "case_sequence": list(sequence),
+                        "measurement_stage":stage,
                     }
                 )
                 artifact["samples"].append(row)
@@ -835,7 +896,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         try:
             artifact["summary"] = summarize_campaign_ab(
                 artifact["samples"],
-                repetitions_per_mode=args.repetitions_per_mode,
+                repetitions_per_mode=measured_repetitions,
             )
         except ValueError as error:
             artifact["status"] = "failed_correctness_or_protocol"
