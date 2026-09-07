@@ -338,6 +338,11 @@ class DMSDevicePayloadStore:
         self._buffers.append(buf)
         return buf
 
+    def layer_scale_ptrs(self, layer: int) -> dict[str, int]:
+        if not 0 <= int(layer) < self._layers:
+            raise ValueError("DMS layer index is out of range")
+        return self._scale_kwargs(int(layer))
+
     def _scale_kwargs(self, layer: int) -> dict[str, int]:
         if not self._k_scales:
             return {}

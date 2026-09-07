@@ -1073,8 +1073,6 @@ class DMSCompactBackend:
     ) -> None:
         if codec not in _DMS_CODECS:
             raise ValueError(f"unsupported compact DMS codec {codec!r}")
-        if device_payloads_requested(device_payloads) and codec != "bf16":
-            raise ValueError("compact DMS device payloads are BF16-only")
         if codec == "int8_per_token_head":
             if codec_qualification is None:
                 raise ValueError("compact INT8 DMS requires artifact qualification")
@@ -1137,6 +1135,7 @@ class DMSCompactBackend:
                     slots_per_layer=self.slots_per_layer,
                     max_pack_rows=self.max_pack_rows,
                     backend=self.device_backend,
+                    codec=self.codec,
                 )
             except DMSDeviceUnavailable:
                 # Host parent remains the registered fallback.
@@ -1803,6 +1802,8 @@ class DMSCompactBackend:
             self._device_store.split_workspace_ptrs
         )
         return {
+            "codec": self.codec,
+            **self._device_store.layer_scale_ptrs(layer),
             "k_ptr": k_ptr,
             "v_ptr": v_ptr,
             "base_ptr": base_ptr,
@@ -1843,8 +1844,9 @@ class DMSCompactBackend:
         scales = None
         if self.codec == "int8_per_token_head":
             scales = KVScaleMetadata(
-                k_scale=Tensor.from_handle(base + 0x7000, (rows, layers, heads, capacity), DType.FP16, _CPU),
-                v_scale=Tensor.from_handle(base + 0x8000, (rows, layers, heads, capacity), DType.FP16, _CPU),
+                scale_dtype=DType.FP32,
+                k_scale=Tensor.from_handle(base + 0x7000, (rows, layers, heads, capacity), DType.FP32, _CPU),
+                v_scale=Tensor.from_handle(base + 0x8000, (rows, layers, heads, capacity), DType.FP32, _CPU),
             )
         spans = KVLiveSpans(
             base_offsets=Tensor.from_handle(base + 0x1000, (rows, layers, heads), DType.INT32, _CPU),
