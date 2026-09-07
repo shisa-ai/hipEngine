@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-07 UTC**
 
+Router shuffle model admission at chunk1024:five cases exact for full
+logits/routing/state/KV;48/192 prefill calls,zero decode/final owners.
+Both binders0;canonical throughput gate remains.
+[Evidence](results/2026-09-07-framework-qwen4exp-router-shuffle-state.json).
+
 Exact router shuffle-tail kernel candidate:layer0/27 at1024 rows
 3.043->2.635ms /3.051->2.648ms,80 pairs exact,both orders positive.
 16 tests pass,resources unchanged. Model gates pending,default unchanged.
