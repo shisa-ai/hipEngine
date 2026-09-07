@@ -265,7 +265,7 @@ def default_selected_call_intents(slot_quants: Mapping[str, str], operations, *,
         prefix = gate.rsplit(".", 1)[0]
         up, down = prefix + ".ffn_up_exps", prefix + ".ffn_down_exps"
         for op in operations:
-            if op not in {"ar_decode_c1", "ar_decode_rows", "ar_prefill"}:
+            if op not in {"ar_decode_c1", "ar_decode_rows", "ar_prefill", "ar_decode_native_rows"}:
                 continue
             gate_kind, down_kind = selected_ffn_modes(slot_quants[gate], slot_quants.get(up, ""), slot_quants.get(down, ""), allow_legacy_silu=op == "ar_decode_c1")
             calls.extend((

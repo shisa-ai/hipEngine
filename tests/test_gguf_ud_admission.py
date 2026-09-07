@@ -1398,14 +1398,34 @@ def _native_entry_session(resident, *, scratch_owner):
         backend="hip_gfx1100",
         hidden_size=256,
         vocab_size=64,
+        fp16_recurrent_state=False,
     )
     session._target_scratch_owner = scratch_owner
-    session._token_buf = object()
-    session._hidden_a = object()
-    session._hidden_b = object()
-    session._logits_buf = object()
-    session._native_cu_seqlens_buf = object()
-    session._native_state_indices_buf = object()
+    # Truthful raw-buffer geometry for the mocked native allocation owner.
+    cfg = resident.config
+    cursor = 0x1000000
+    def buffer(nbytes):
+        nonlocal cursor
+        ptr = cursor
+        cursor += int(nbytes) + 256
+        return SimpleNamespace(ptr=ptr, nbytes=int(nbytes))
+    qkv = 2 * cfg.ssm_group_count * cfg.ssm_state_size + cfg.ssm_inner_size
+    scratch_owner.slot_count = 8
+    scratch_owner.recurrent_zero = np.zeros(1, dtype=np.float32)
+    for name, width in (("norm", cfg.hidden_size * 2), ("post_norm", cfg.hidden_size * 2),
+                        ("linear_qkv", qkv * 2), ("linear_z", cfg.ssm_inner_size * 2),
+                        ("linear_alpha", cfg.ssm_time_step_rank * 2), ("linear_beta", cfg.ssm_time_step_rank * 2),
+                        ("conv_out", qkv * 4), ("recurrent_out", cfg.ssm_inner_size * 4),
+                        ("recurrent_bf16", cfg.ssm_inner_size * 2)):
+        setattr(scratch_owner, name, buffer(8 * width))
+    scratch_owner.layer_conv_states = tuple(buffer(8 * qkv * cfg.ssm_conv_kernel * 4) for _ in resident.layers)
+    scratch_owner.layer_recurrent_states = tuple(buffer(8 * cfg.ssm_inner_size * cfg.ssm_state_size * 4) for _ in resident.layers)
+    session._token_buf = buffer(8 * 8)
+    session._hidden_a = buffer(8 * cfg.hidden_size * 2)
+    session._hidden_b = buffer(8 * cfg.hidden_size * 2)
+    session._logits_buf = buffer(8 * cfg.vocab_size * 4)
+    session._native_cu_seqlens_buf = buffer(9 * 4)
+    session._native_state_indices_buf = buffer(8 * 8)
     session._native_token_ids_host = object()
     return session
 
@@ -1468,7 +1488,7 @@ def test_step_rows_native_refuses_unbound_native_owner_before_state_or_device(mo
         session.step_rows_native((11, 22))
     message = str(excinfo.value)
     assert "ar_decode_native_rows" in message
-    assert "ssm_alpha" in message and "ssm_beta" in message
+    assert "partial certificate" in message
     assert owner.calls == [], "positions mutated before the native-row binding check"
     assert int(owner.position_host[0]) == 0
 
@@ -1517,7 +1537,8 @@ def test_step_rows_native_admits_contracted_bf16_owner_and_reaches_device_entry(
     )
     path = tmp_path / "raw-iq-contracted.gguf"
     write_qwen35_gguf(path, tensors, fixture_metadata(1))
-    resident = _materialize_fixture_on_cpu(path, monkeypatch)
+    resident = _materialize_fixture_on_cpu(path, monkeypatch,
+        requested_operations=(QWEN35_GGUF_OP_AR_DECODE_NATIVE_ROWS,))
     assert qwen35_gguf_native_row_binding_errors(resident) == ()
 
     owner = _PositionOwnerSentinel()
@@ -2621,7 +2642,7 @@ def test_same_residents_do_not_upgrade_row_operations():
     ar_report = preflight_qwen35_gguf_artifact(
         raw_iq_map,
         backend="hip_gfx1100",
-        operations=(QWEN35_GGUF_OP_AR_DECODE_C1, QWEN35_GGUF_OP_AR_PREFILL),
+        operations=DEFAULT_AR_OPERATIONS,
         **plan_kwargs,
     )
     assert ar_report.supported, ar_report.render_refusals()
