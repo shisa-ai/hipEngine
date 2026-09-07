@@ -1,0 +1,72 @@
+{
+  "schema": 1,
+  "status": "positive_long_prompt_screen_with_tradeoffs_memory_gate_pending",
+  "performance_claim": false,
+  "default_changed": false,
+  "source": {"head": "e5afb7b412f5c47d6bf9e61913380fa1c659703e", "tracked_clean": true},
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "hardware": "Framework Desktop Ryzen AI Max+395 Radeon8060S",
+    "arch": "gfx1151",
+    "policy": "unchanged high, requested2900MHz;no causal thermal claim"
+  },
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "model_fingerprint": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+  "kv": "BF16",
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "command": ".venv/bin/python scripts/qwen4exp_halo_box_campaign_ab.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --route-package chunk1024 --prefill-chunk-size 1024 --output /tmp/qwen4exp-chunk1024-full.json",
+  "environment": {
+    "PATH_prefix": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin",
+    "LD_LIBRARY_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib",
+    "HIPENGINE_HIP_ARCH": "gfx1151",
+    "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-hipcc-version.txt",
+    "compiler_revision": "8f497e0992fb7513f7f78a6f6b6f1056c375e961",
+    "hip_version": "7.15.26333-0000000"
+  },
+  "protocol": {
+    "cases": 12, "samples": 72, "repetitions_per_arm": 3,
+    "warmups_per_arm_case": 1, "decode_transitions": 128,
+    "one_residency": true, "allocated_chunk_size": 1024,
+    "before_chunk": 512, "after_chunk": 1024,
+    "even_case_order": ["before","after","after","before","before","after"],
+    "odd_case_order": ["after","before","before","after","after","before"],
+    "all_executed_chunk_sequences_verified": true,
+    "first_to_last_measured_seconds": 1747.220849789,
+    "memory_limit": "Both timing arms use1024-capacity scratch;not allocation-size neutrality"
+  },
+  "by_shape": [
+    {"prompt": 512, "before_pp": 180.2636753148435, "after_pp": 180.16782059435053, "before_tg": 19.48378087833017, "after_tg": 19.485262533908195},
+    {"prompt": 1024, "before_pp": 176.70591679677628, "after_pp": 190.61435723038903, "before_tg": 18.84484451956444, "after_tg": 18.802559438210853},
+    {"prompt": 4096, "before_pp": 162.79947407823596, "after_pp": 176.11354796320893, "before_tg": 14.330963097317367, "after_tg": 14.084022245479172}
+  ],
+  "by_case_rounded": [
+    {"case": "code-p512", "pp_delta_percent": 0.0462, "tg_delta_percent": -0.0229, "request_speedup": 0.9999818530},
+    {"case": "code-p1024", "pp_delta_percent": 6.6210, "tg_delta_percent": -0.0486, "request_speedup": 1.0292699060},
+    {"case": "code-p4096", "pp_delta_percent": 5.9022, "tg_delta_percent": -0.4383, "request_speedup": 1.0419226863},
+    {"case": "general_en-p512", "pp_delta_percent": -0.3517, "tg_delta_percent": 0.0194, "request_speedup": 0.9990600505},
+    {"case": "general_en-p1024", "pp_delta_percent": 5.4878, "tg_delta_percent": -0.4489, "request_speedup": 1.0219533683},
+    {"case": "general_en-p4096", "pp_delta_percent": 8.7117, "tg_delta_percent": -0.5133, "request_speedup": 1.0615865572},
+    {"case": "general_ja-p512", "pp_delta_percent": 0.1061, "tg_delta_percent": 0.2325, "request_speedup": 1.0019495743},
+    {"case": "general_ja-p1024", "pp_delta_percent": 9.0170, "tg_delta_percent": -0.1968, "request_speedup": 1.0382411097},
+    {"case": "general_ja-p4096", "pp_delta_percent": 8.5981, "tg_delta_percent": -3.1389, "request_speedup": 1.0520998210},
+    {"case": "mixed_ja_en-p512", "pp_delta_percent": -0.0170, "tg_delta_percent": -0.1985, "request_speedup": 0.9985591333},
+    {"case": "mixed_ja_en-p1024", "pp_delta_percent": 10.3063, "tg_delta_percent": -0.2049, "request_speedup": 1.0438506354},
+    {"case": "mixed_ja_en-p4096", "pp_delta_percent": 9.4679, "tg_delta_percent": -2.5955, "request_speedup": 1.0599084185}
+  ],
+  "max_prefill_cv": 0.009503515324206168,
+  "max_decode_cv": 0.03204475283276173,
+  "correctness": {
+    "all72_trajectories_exact": true, "within_arm_deterministic": true,
+    "state_gate": "benchmarks/results/2026-09-06-framework-qwen4exp-chunk1024-state.json",
+    "final_allocations": 0, "final_bytes": 0, "peak_bytes": 86093186980
+  },
+  "raw_path": "/tmp/qwen4exp-chunk1024-full.json",
+  "raw_sha256": "145c4d15281d66cde0003a47c4c6a9e2acb06c5d0f269f216ea5349b829b3a3f",
+  "limits": [
+    "p512 executes identical[512] work in both arms and is near-neutral,with mixed sample signs;not every request case improves.",
+    "p1024/p4096 all improve prefill and total request time,but p4096 aggregate decode loses1.72%,worst Japanese3.14%.",
+    "No significance or causal heat/clock conclusion. No sample dropped or favorable rerun.",
+    "Native-context/c2 allocation margin and final production default decision remain;default stays512."
+  ]
+}
