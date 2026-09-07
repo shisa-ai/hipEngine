@@ -12,7 +12,7 @@ from hipengine.quant.gguf import bf16_to_float32
 
 FIXTURE = Path(__file__).parent / 'fixtures/gguf_ud'
 ENTRIES = json.loads((FIXTURE / 'real_rows.json').read_text())['entries']
-CASES = [e for e in ENTRIES if e['type'] in ('IQ4_XS', 'IQ4_NL', 'IQ3_S', 'Q3_K')]
+CASES = [e for e in ENTRIES if e['type'] in ('IQ4_XS', 'IQ4_NL', 'IQ3_S', 'Q3_K', 'IQ3_XXS', 'IQ2_S')]
 
 
 def bf16(x):
@@ -57,7 +57,7 @@ def test_dense_registry_strict_keys(backend):
     from hipengine.kernels.hip_gfx1100.quant.gguf_iq_dense import register_gguf_iq_dense_kernels
     register_gguf_iq_dense_kernels()
     load_backend_kernel_package(backend)
-    for quant in ('gguf_iq4_xs', 'gguf_iq4_nl', 'gguf_iq3_s', 'gguf_q3_k'):
+    for quant in ('gguf_iq4_xs', 'gguf_iq4_nl', 'gguf_iq3_s', 'gguf_q3_k', 'gguf_iq3_xxs', 'gguf_iq2_s'):
         for output in ('bf16', 'f32'):
             for prefix in ('gemv', 'prefill'):
                 assert is_registered(KernelKey(backend, 'linear', quant, f'{prefix}_bf16_{output}_out'))
