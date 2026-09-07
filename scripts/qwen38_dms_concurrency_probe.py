@@ -204,6 +204,7 @@ def _run_cycle(
     sessions: list[Qwen35GGUFResidentSession] = []
     prefill_rows: list[dict[str, Any]] = []
     decode_rows: list[dict[str, Any]] = []
+    oracle_logits: dict[tuple[int, int], np.ndarray] = {}
     cancellation: dict[str, Any] | None = None
     snapshots: list[dict[str, Any]] = []
     all_prefilled_at = 0.0
@@ -261,6 +262,8 @@ def _run_cycle(
                 step_started = time.perf_counter()
                 result_step = session.step(currents[index], return_logits=True)
                 currents[index] = int(result_step.token_id)
+                if getattr(args, "verify_c1", False):
+                    oracle_logits[index, step] = result_step.logits.copy()
                 decode_rows.append(
                     {
                         "cycle": cycle_index,
@@ -318,7 +321,21 @@ def _run_cycle(
                         current = int(replay.token_id)
                         row["c1_logits_exact"] = hashlib.sha256(replay.logits.tobytes()).hexdigest() == row["logits_sha256"]
                         if not row["c1_logits_exact"]:
-                            raise AssertionError(f"DMS C1 logit mismatch at session {index}, step {row['step']}")
+                            expected_logits = oracle_logits[index, row['step']]
+                            diagnostic = {
+                                "status": "failed_exact_replay", "cycle": cycle_index,
+                                "session": index, "step": row['step'],
+                                "max_abs_diff": float(np.max(np.abs(expected_logits.astype(np.float64) - replay.logits.astype(np.float64)))),
+                                "unequal_elements": int(np.count_nonzero(expected_logits != replay.logits)),
+                                "expected_token": row['output_token'], "replay_token": int(replay.token_id),
+                                "expected_sha256": row['logits_sha256'],
+                                "replay_sha256": hashlib.sha256(replay.logits.tobytes()).hexdigest(),
+                            }
+                            if getattr(args, 'output', None) is not None:
+                                failure_path = args.output.with_suffix('.mismatch.json')
+                                failure_path.parent.mkdir(parents=True, exist_ok=True)
+                                failure_path.write_text(json.dumps(diagnostic, indent=2) + '\n')
+                            raise AssertionError(f"DMS C1 logit mismatch at session {index}, step {row['step']}: {diagnostic}")
     finally:
         close_started = time.perf_counter()
         errors = []
