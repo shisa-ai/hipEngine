@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-07 UTC**
 
+Q5_1 per-row publication kernel candidate:two-bank512/1024 screen
+1.413x/1.523x; captured mixed512 routing1.498x.60 pairs exact,
+22 tests pass,scratch36->0B. No runtime/default change; model gates pending.
+[Evidence](results/2026-09-07-framework-qwen4exp-q51-row-publish.json).
+
 Q5_1 first-wave reduction rejected before model admission:
 actual-weight paired-down screen0.809x/0.798x at512/1024 tokens,
 all40 pairs exact.21 tests pass; production unchanged.

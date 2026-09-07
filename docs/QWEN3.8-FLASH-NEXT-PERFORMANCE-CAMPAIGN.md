@@ -76,6 +76,18 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q5_1 spill-free per-row publication candidate (September7 UTC):**
+interchange row/pass work so both logical256 streams finish and publish
+the exact folded sum to LDS before the next row. The register weight cache,
+tile and full original LDS tree stay unchanged. Actual layer0/1 weights
+with synthetic routing512/1024 improve1.413x/1.523x; historical captured
+mixed-p4096 chunk0 (512-token routing, synthetic activations) improves1.498x.
+All60 pairs exact,both orders positive;22 tests include current10240
+compact rows. VGPR96/dynamic LDS8672B unchanged,scratch36->0B.
+Kernel only. Next: default-off K640 current-chunk admission, full logits/
+state/KV and canonical12-case A/B before a production claim.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-q51-row-publish.json).
+
 **Q5_1 first-wave reduction rejected (September7 UTC):** preserve register
 cache arithmetic, replace seven LDS reduction stages with first-wave
 stride64/32 reads then shuffle16/8/4/2/1. Actual layer0/1 down banks,

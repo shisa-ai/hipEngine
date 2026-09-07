@@ -788,6 +788,15 @@ Fallback requirements:
 
 ## Source-lineage audit
 
+Q5_1 exposes kernel-only
+`selected_grouped_prefill_pair2_row_publish_bf16_bf16_out`: K640
+register-cache pair2, per-row folded partial publication with identical
+original LDS tree. Actual two-bank512/1024 synthetic-routing screen
+1.413x/1.523x; captured mixed512 routing1.498x. All60 pairs exact,
+22 tests pass. VGPR96/dynamic LDS8672B unchanged,scratch36->0B.
+No runtime/default change; full-model admission pending.
+Evidence: `2026-09-07-framework-qwen4exp-q51-row-publish.json`.
+
 Q5_1 register-cache paired-down first-wave reduction experiment removed:
 exact stride64/32 LDS reads followed by shuffle tail is0.809x/0.798x
 at512/1024 synthetic-routing tokens with actual layer0/1 weights.
