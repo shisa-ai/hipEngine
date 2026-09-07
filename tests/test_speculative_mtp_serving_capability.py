@@ -259,8 +259,6 @@ def test_qwen38_q4km_gfx1100_production_c8_k3_d24_is_exact_automatic_key() -> No
 
 
 def test_w7900_dense_evidence_tracks_current_profile_manifests() -> None:
-    from tests._gguf_profile_fixture import profile_context
-
     register_qwen36_dense_gguf_gfx1100_profiles()
     evidence = Qwen35GGUFModel().speculative_mtp_serving_evidence
     for profile in ("strict", "production"):
@@ -269,7 +267,6 @@ def test_w7900_dense_evidence_tracks_current_profile_manifests() -> None:
             backend=QWEN36_DENSE_GGUF_BACKEND,
             quant=QWEN36_DENSE_GGUF_QUANT,
             profile=profile,
-            qualification_context=profile_context(),
         )
         relevant = tuple(
             row

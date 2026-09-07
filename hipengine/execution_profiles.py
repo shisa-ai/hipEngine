@@ -46,19 +46,13 @@ class VariantSelection:
 
 @dataclass(frozen=True, slots=True)
 class RuntimeProfilePlan:
-    """Plugin-owned cold-path construction plan for one execution profile.
-
-    Artifact-scoped plugins supply a qualifier that consumes actual factory
-    metadata and returns an immutable identity or raises. Registry availability
-    is not artifact qualification; neither hook may allocate device storage.
-    """
+    """Plugin-owned cold-path construction plan for one execution profile."""
 
     selections: tuple[VariantSelection, ...]
     kv_policy: str
     graph_policy: str
     factory: Callable[..., Any] | None = None
     binder: Callable[[Any, "ResolvedRuntimeProfile"], None] | None = None
-    qualifier: Callable[["RuntimeProfileKey", Mapping[str, Any]], object] | None = None
 
     def __post_init__(self) -> None:
         normalized = tuple(
@@ -100,18 +94,6 @@ class ResolvedRuntimeProfile:
     binder: Callable[[Any, "ResolvedRuntimeProfile"], None] | None
     fell_back_to_strict: bool
     source_profile: ExecutionProfile
-    qualification_key: RuntimeProfileKey | None = None
-    qualifier: Callable[[RuntimeProfileKey, Mapping[str, Any]], object] | None = None
-    artifact_identity: object = None
-
-    def validate_qualification(self, context: Mapping[str, Any]) -> None:
-        """Revalidate the actual construction input, not a cached quant label."""
-        if self.qualifier is not None:
-            if self.qualification_key is None:
-                raise ValueError("execution-profile qualification key is missing")
-            identity = self.qualifier(self.qualification_key, context)
-            if identity != self.artifact_identity:
-                raise ValueError("execution-profile qualification artifact changed")
 
     def construct_generator(
         self,
@@ -120,12 +102,10 @@ class ResolvedRuntimeProfile:
     ) -> Any:
         """Construct and bind the generator before any resident runner is created."""
 
-        self.validate_qualification(factory_kwargs)
         selected_factory = self.factory or base_factory
         generator = selected_factory(**factory_kwargs)
-        # Validate custom factories too, before metadata publication or binding.
-        if self.qualifier is not None:
-            self.validate_qualification(_generator_qualification_context(generator))
+        if self.binder is not None:
+            self.binder(generator, self)
         for name, value in (
             ("execution_profile", self.profile.value),
             ("execution_profile_manifest", self.manifest),
@@ -142,45 +122,7 @@ class ResolvedRuntimeProfile:
                 raise TypeError(
                     "profile-aware generator must accept immutable profile metadata"
                 ) from exc
-        if self.binder is not None:
-            self.binder(generator, self)
         return generator
-
-
-def _generator_qualification_context(generator: Any) -> dict[str, Any]:
-    return {
-        name: getattr(generator, name, None)
-        for name in ("weight_index", "model_path", "model_plugin")
-    }
-
-
-def _qualified_binder(
-    binder: Callable[[Any, ResolvedRuntimeProfile], None],
-    qualifier: Callable[[RuntimeProfileKey, Mapping[str, Any]], object] | None,
-    key: RuntimeProfileKey,
-    identity: object,
-) -> Callable[[Any, ResolvedRuntimeProfile], None]:
-    """Protect direct use of the public resolved binder, including rollback."""
-    def bind(generator: Any, resolved: ResolvedRuntimeProfile) -> None:
-        if resolved.qualification_key != key or resolved.artifact_identity != identity:
-            raise ValueError("execution-profile qualification belongs to another plan")
-        if qualifier is not None:
-            actual = qualifier(key, _generator_qualification_context(generator))
-            if actual != identity:
-                raise ValueError("execution-profile qualification artifact changed")
-        before = dict(os.environ)
-        try:
-            binder(generator, resolved)
-        except BaseException:
-            # No partial profile environment survives a failed application.
-            for name in set(os.environ) | set(before):
-                if name in before:
-                    if os.environ.get(name) != before[name]:
-                        os.environ[name] = before[name]
-                else:
-                    os.environ.pop(name, None)
-            raise
-    return bind
 
 
 class DuplicateRuntimeProfilePlanError(ValueError):
@@ -526,7 +468,6 @@ def resolve_runtime_profile(
     backend: str,
     quant: str,
     profile: ExecutionProfile | str,
-    qualification_context: Mapping[str, Any] | None = None,
 ) -> ResolvedRuntimeProfile:
     """Resolve one immutable plugin plan before generator/hot-path construction."""
 
@@ -546,13 +487,6 @@ def resolve_runtime_profile(
             "no strict execution-profile plan registered for "
             f"({model_key}, {backend_key}, {quant_key})"
         )
-    # Artifact qualification precedes backend package loading, factory calls
-    # and any profile environment/arithmetic application. A missing context
-    # is not a qualified plain artifact. Plugins without artifact-scoped plans
-    # retain their existing resolution contract.
-    context = {} if qualification_context is None else qualification_context
-    if strict_plan.qualifier is not None:
-        strict_plan.qualifier(strict_key, context)
     strict_manifest = build_variant_manifest(
         profile=ExecutionProfile.STRICT,
         backend=backend_key,
@@ -577,9 +511,6 @@ def resolve_runtime_profile(
         requested_plan=requested_plan,
     )
     source_plan = requested_plan or strict_plan
-    qualification_key = RuntimeProfileKey(model_key, backend_key, quant_key, requested)
-    qualifier = source_plan.qualifier or strict_plan.qualifier
-    identity = None if qualifier is None else qualifier(qualification_key, context)
     _verify_registered_variants(
         backend=backend_key,
         model_quant=quant_key,
@@ -600,18 +531,11 @@ def resolve_runtime_profile(
         manifest_sha256=manifest_sha256(manifest),
         strict_manifest_sha256=strict_manifest_hash,
         factory=source_plan.factory,
-        binder=(
-            None if source_plan.binder is None else _qualified_binder(
-                source_plan.binder, qualifier, qualification_key, identity
-            )
-        ),
+        binder=source_plan.binder,
         fell_back_to_strict=fell_back,
         source_profile=(
             requested if requested_plan is not None else ExecutionProfile.STRICT
         ),
-        qualification_key=qualification_key,
-        qualifier=qualifier,
-        artifact_identity=identity,
     )
 
 

@@ -1003,11 +1003,6 @@ class LLM:
             backend=concrete_backend,
             quant=concrete_quant,
             profile=self.execution_profile,
-            qualification_context={
-                "weight_index": self._weight_index,
-                "model_path": self.model,
-                "model_plugin": model_plugin,
-            },
         )
         return self._resolved_execution_profile
 
