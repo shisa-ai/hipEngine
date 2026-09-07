@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import statistics
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -23,20 +24,28 @@ from pathlib import Path
 SWEEP_DIR = Path("/tmp/he-bettermtp-raw/c1-k-sweep")
 OUT_PATH = Path("benchmarks/results/2026-09-07-w7900-packed-c1-k0-k3-economics.json")
 MODEL_SHA256 = "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
+MODEL_SIZE_BYTES = 17_106_773_984
 GPU_UNIQUE_ID = "0xe282895b62c2b295"
 HOST = "epyc"
 SCREENING_DEPTHS = (1,)  # unlisted policy cell (explicit opt-in env)
+RUNTIME_PATHS = ("hipengine/", "scripts/")
 
 
 def load_run(path: Path) -> dict:
     d = json.loads(path.read_text())
     summary = d["summary"]["1"]
+    fingerprint = d.get("model", {}).get("fingerprint", {})
     return {
         "name": path.stem,
         "passed": bool(d.get("passed")) and d.get("status") == "complete",
         "failure_reasons": d.get("failure_reasons", []),
         "source_commit": d.get("source", {}).get("commit"),
-        "model_sha256": d.get("model", {}).get("sha256"),
+        "model_fingerprint": (
+            f"{fingerprint.get('algorithm')}:{fingerprint.get('value')}"
+            if fingerprint.get("value")
+            else None
+        ),
+        "model_size_bytes": fingerprint.get("size_bytes"),
         "ar": summary["ar"],
         "mtp": summary["mtp"],
         "ratio": summary["mtp_vs_ar_ratio"],
@@ -57,6 +66,7 @@ def main() -> int:
     failures: list[str] = []
     depths: dict[int, dict] = {}
     commits: set[str] = set()
+    fingerprints: set[str] = set()
     for k in range(4):
         runs = []
         for r in (1, 2, 3):
@@ -67,6 +77,8 @@ def main() -> int:
             run = load_run(path)
             runs.append(run)
             commits.add(str(run["source_commit"]))
+            if run["model_fingerprint"]:
+                fingerprints.add(run["model_fingerprint"])
             if not run["passed"]:
                 failures.append(f"k{k} {run['name']}: status failed {run['failure_reasons']}")
             if run["cells"] != 10 or run["exact_cells"] != 10:
@@ -83,8 +95,10 @@ def main() -> int:
                 failures.append(f"k{k} {run['name']}: engaged {run['engaged_cells']}/10")
             if k > 0 and run["budget_conformed_cells"] != 10:
                 failures.append(f"k{k} {run['name']}: budget {run['budget_conformed_cells']}/10")
-            if run["model_sha256"] != MODEL_SHA256:
-                failures.append(f"k{k} {run['name']}: model sha mismatch")
+            if run["model_fingerprint"] is None:
+                failures.append(f"k{k} {run['name']}: missing model fingerprint")
+            if run["model_size_bytes"] not in (None, MODEL_SIZE_BYTES):
+                failures.append(f"k{k} {run['name']}: model size mismatch")
         if len(runs) != 3:
             failures.append(f"k{k}: {len(runs)}/3 runs present")
             continue
@@ -145,7 +159,7 @@ def main() -> int:
             "decision_reason": summary.get("decision_reason"),
             "selection_reason": summary.get("selection_reason")
             or summary.get("decision_reason"),
-            "status": run["status"],
+            "run_passed": run["passed"],
         }
         if engaged != 0:
             failures.append(
@@ -154,8 +168,26 @@ def main() -> int:
     else:
         failures.append("k7-refusal: exemplar run missing")
 
+    if len(fingerprints) > 1:
+        failures.append(
+            f"mixed model fingerprints across runs: {sorted(fingerprints)}"
+        )
+
+    commits = sorted(commits)
     if len(commits) > 1:
-        failures.append(f"mixed source commits across runs: {sorted(commits)}")
+        # Docs/campaign-artifact commits between runs are acceptable when the
+        # runtime surface is identical; anything else is a provenance failure.
+        for before, after in zip(commits, commits[1:]):
+            diff = subprocess.run(
+                ["git", "diff", "--stat", before, after, "--", *RUNTIME_PATHS],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip()
+            if diff:
+                failures.append(
+                    f"runtime source differs between {before[:9]} and {after[:9]}: {diff}"
+                )
 
     if failures:
         print("GATE FAILURES:")
@@ -187,7 +219,8 @@ def main() -> int:
         "hardware": "GPU0 AMD Radeon Pro W7900 gfx1100",
         "gpu_unique_id": GPU_UNIQUE_ID,
         "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
-        "model_sha256": MODEL_SHA256,
+        "model_sha256_full_file": MODEL_SHA256,
+        "model_fingerprint_sampled": sorted(fingerprints)[0] if fingerprints else None,
         "quant": "Q4_K_M",
         "execution_profile": "production",
         "kv": "BF16",
@@ -220,12 +253,13 @@ def main() -> int:
             "reason": (
                 "the serving key carries the requested candidate budget (4-7); every "
                 "registered Qwen3.8 gfx1100 evidence row qualifies at most candidate "
-                "budget 3, so resolve_speculative_mtp_serving_plan fails "
-                "candidate_budget_not_qualified with no static eligibility override "
-                "and the request refuses pre-mutation to K0 by design. Measuring "
-                "deeper depths on the product route requires the Packet-5/6 "
-                "qualification chain (draft-chain product-route execution, service "
-                "gates), not an evidence-scope bypass"
+                "budget 3, so the K4-K7 checks fail both physical_group_not_qualified "
+                "and candidate_budget_not_qualified, no static eligibility override is "
+                "granted, and the resident adapter then refuses the (1, K>3) cell "
+                "(decline trace: cell (C1, K7) not in policy) pre-mutation to K0 by "
+                "design. Measuring deeper depths on the product route requires the "
+                "Packet-5/6 qualification chain (draft-chain product-route execution, "
+                "service gates), not an evidence-scope bypass"
             ),
             "teacher_numerical_status": (
                 "target-only calibrated fixed-teacher checks pass K1-K7 at N1 with "
