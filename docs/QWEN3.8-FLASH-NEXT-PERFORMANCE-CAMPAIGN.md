@@ -76,6 +76,23 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**GDN layer graph baseline corrected (September7 UTC):** existing
+stateful graph probe now supports `--gdn-moe-baseline`,limited to
+production GDN-only segments. Eager baseline uses the actual MoE cache
+and records capture/replay counts;full-layer graph excludes nested MoE
+capture. Code4096/chunk1024/layer0:four state/output replays exact,
+capture nonexecuting,final measured state equal. Verified eager cache
+delta1 capture/19 replay,zero eager/reject. Exploratory medians
+0.938->0.904ms (1.037x),with cold first samples retained.
+Not counterbalanced,not full-step AR,and full-graph setup cost excluded;
+no production change or qualified speedup. Initial run0.944->0.904ms
+is also retained,then repeated only to add missing engagement validation.
+Next counterbalance operation-complete timings and cover other GDN layers
+before considering runtime integration. Reducing real submission work is
+preferable to artificial CPU-active delay,but this packet does not establish
+a transition mitigation.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-gdn-layer-graph-current.json).
+
 **Charged CPU-active transition rejected (September7 UTC):** both arms
 use paired-head prefill;arm1 adds100ms CPU busy interval before decode,
 fully charged in transition+decode/request totals. Code4096,two balanced

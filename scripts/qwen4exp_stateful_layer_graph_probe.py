@@ -10,7 +10,7 @@ if str(ROOT) not in sys.path:sys.path.insert(0,str(ROOT))
 from scripts.qwen4exp_canonical_ar_bench import _git_metadata,_host_metadata
 
 def build_parser():
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('--model-root',type=Path,required=True);source=p.add_mutually_exclusive_group(required=True);source.add_argument('--prompt-file',type=Path);source.add_argument('--fixture',type=Path);p.add_argument('--case-id');p.add_argument('--profile',choices=('strict','production'),default='strict');p.add_argument('--named-production-baseline',action='store_true');p.add_argument('--timing-order',choices=('production-first','graph-first'),default='production-first');p.add_argument('--layer',type=int,default=-1);p.add_argument('--segment-length',type=int,default=1);p.add_argument('--advance-position',action='store_true');p.add_argument('--include-root-head',action='store_true');p.add_argument('--dynamic-ple',action='store_true');p.add_argument('--omit-ple',action='store_true');p.add_argument('--replays',type=int,default=4);p.add_argument('--samples',type=int,default=30);p.add_argument('--max-sequence-length',type=int,default=64);p.add_argument('--prefill-chunk-size',type=int,default=64);p.add_argument('--output',type=Path,required=True);return p
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--model-root',type=Path,required=True);source=p.add_mutually_exclusive_group(required=True);source.add_argument('--prompt-file',type=Path);source.add_argument('--fixture',type=Path);p.add_argument('--case-id');p.add_argument('--profile',choices=('strict','production'),default='strict');p.add_argument('--named-production-baseline',action='store_true');p.add_argument('--timing-order',choices=('production-first','graph-first'),default='production-first');p.add_argument('--layer',type=int,default=-1);p.add_argument('--segment-length',type=int,default=1);p.add_argument('--advance-position',action='store_true');p.add_argument('--include-root-head',action='store_true');p.add_argument('--dynamic-ple',action='store_true');p.add_argument('--omit-ple',action='store_true');p.add_argument('--replays',type=int,default=4);p.add_argument('--samples',type=int,default=30);p.add_argument('--max-sequence-length',type=int,default=64);p.add_argument('--prefill-chunk-size',type=int,default=64);p.add_argument('--output',type=Path,required=True);p.add_argument('--gdn-moe-baseline',action='store_true');return p
 
 def _prompt_ids(args,generator):
  if args.fixture is None:
@@ -75,6 +75,8 @@ def run(args,*,command:Sequence[str])->dict[str,Any]:
   if args.include_root_head and (layers[0]!=0 or len(layers)!=len(cfg.layer_types)):raise ValueError('root/head capture requires all physical layers')
   if args.dynamic_ple and not (args.include_root_head and args.advance_position and not args.omit_ple):raise ValueError('dynamic PLE requires advancing all-layer root/head capture with PLE')
   layer_kinds=tuple(cfg.layer_types[item] for item in layers)
+  if args.gdn_moe_baseline and (args.profile!='production' or any(k!='gdn' for k in layer_kinds) or args.include_root_head or args.named_production_baseline):
+   raise ValueError('gdn-moe-baseline requires production GDN-only segment without root/head')
   if any(kind not in {'gdn','qsa'} for kind in layer_kinds):raise ValueError('selected segment contains an unsupported layer kind')
   assert runner.state is not None and runner.gdn_scratch is not None and runner.qsa_scratch is not None and runner.ple_scratch is not None
   conv_row=(2*cfg.gdn_group_count*cfg.gdn_state_size+cfg.gdn_inner_size)*cfg.gdn_conv_kernel*4;matrix_row=cfg.gdn_time_step_rank*cfg.gdn_state_size*cfg.gdn_state_size*4
@@ -121,7 +123,7 @@ def run(args,*,command:Sequence[str])->dict[str,Any]:
     runner.index_states[qsa_index].count=position
   token_weight=runner.resident.weight('root.token_embedding')
   embedding=resolve(backend=runner.backend,layer='embedding',quant=token_weight.spec.quant_key,variant='lookup_bf16_out')
-  def launch(stream_id,current_position=position,graph_owned=False):
+  def launch(stream_id,current_position=position,graph_owned=False,production_moe=False):
    residual_ptr=runner.state.residual.ptr
    if args.include_root_head:
     embedding(runner.token_id_buffer.ptr,token_weight.allocation('raw').tensor.ptr,runner.embedding_buffer.ptr,1,cfg.hidden_size,cfg.vocab_size,stream=stream_id,runtime=rt)
@@ -132,7 +134,7 @@ def run(args,*,command:Sequence[str])->dict[str,Any]:
      residual_ptr=run_qwen4_exp_ple(residual_ptr,runner.ple_embedding_buffer.ptr,{'ple_key':runner.resident.weight(layer_prefix+'ple_key'),'ple_value':runner.resident.weight(layer_prefix+'ple_value')},norm_key_ptr=runner.resident.weight(layer_prefix+'ple_norm_key').allocation('raw').tensor.ptr,norm_query_ptr=runner.resident.weight(layer_prefix+'ple_norm_query').allocation('raw').tensor.ptr,norm_conv_ptr=runner.resident.weight(layer_prefix+'ple_norm_conv').allocation('raw').tensor.ptr,conv_weight_ptr=runner.resident.weight(layer_prefix+'ple_conv1d').allocation('raw').tensor.ptr,conv_history_ptr=runner.state.ple_conv.ptr,scratch=runner.ple_scratch,rows=1,branches=cfg.residual_branch_count,hidden=cfg.hidden_size,conv_kernel=cfg.ple_conv_kernel,dilation=cfg.ple_ngram_size,stream=stream_id,runtime=rt).ptr
     if kind=='gdn':
      binding=runner.gdn_bindings[item]
-     residual_ptr=run_qwen4_exp_gdn_layer(residual_ptr,binding,conv_state_ptr=runner.state.gdn_conv.ptr+binding.gdn_state_index*conv_row,recurrent_state_ptr=runner.state.gdn_matrix.ptr+binding.gdn_state_index*matrix_row,scratch=runner.gdn_scratch,rows=1,branches=cfg.residual_branch_count,hidden=cfg.hidden_size,low_rank=cfg.residual_low_rank,num_k_heads=cfg.gdn_group_count,num_v_heads=cfg.gdn_time_step_rank,head_dim=cfg.gdn_state_size,conv_kernel=cfg.gdn_conv_kernel,ffn=cfg.expert_feed_forward_length,experts=cfg.expert_count,top_k=cfg.expert_used_count,stream=stream_id,runtime=rt,moe_graph_cache=None,moe_graph_key=None).ptr
+     residual_ptr=run_qwen4_exp_gdn_layer(residual_ptr,binding,conv_state_ptr=runner.state.gdn_conv.ptr+binding.gdn_state_index*conv_row,recurrent_state_ptr=runner.state.gdn_matrix.ptr+binding.gdn_state_index*matrix_row,scratch=runner.gdn_scratch,rows=1,branches=cfg.residual_branch_count,hidden=cfg.hidden_size,low_rank=cfg.residual_low_rank,num_k_heads=cfg.gdn_group_count,num_v_heads=cfg.gdn_time_step_rank,head_dim=cfg.gdn_state_size,conv_kernel=cfg.gdn_conv_kernel,ffn=cfg.expert_feed_forward_length,experts=cfg.expert_count,top_k=cfg.expert_used_count,stream=stream_id,runtime=rt,moe_graph_cache=runner.moe_graph_cache if production_moe else None,moe_graph_key=("gdn",item,os.environ.get("HIPENGINE_QWEN4_EXP_Q4_DP4A64",""),os.environ.get("HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS","")) if production_moe else None).ptr
     else:
      binding=runner.qsa_bindings[item]
      residual_ptr=run_qwen4_exp_dense_qsa_layer(residual_ptr,binding,attention_state=runner.attention_states[binding.qsa_state_index],index_state=runner.index_states[binding.qsa_state_index],scratch=runner.qsa_scratch,position=current_position,rows=1,branches=cfg.residual_branch_count,hidden=cfg.hidden_size,low_rank=cfg.residual_low_rank,query_heads=cfg.attention_head_count,kv_heads=cfg.attention_kv_head_count,head_dim=cfg.attention_key_length,rotary_dim=cfg.rope_dimension_count,theta=cfg.rope_freq_base,index_heads=cfg.indexer_head_count,index_dim=cfg.indexer_key_length,index_rotary_dim=cfg.rope_dimension_count,position_prepared=graph_owned or not args.advance_position,device_position_owned=graph_owned and args.advance_position,attention_context_limit=context_limit if graph_owned and args.advance_position else None,ffn=cfg.expert_feed_forward_length,experts=cfg.expert_count,top_k=cfg.expert_used_count,stream=stream_id,runtime=rt,moe_graph_cache=None,moe_graph_key=None).ptr
@@ -192,6 +194,8 @@ def run(args,*,command:Sequence[str])->dict[str,Any]:
    for qsa_index in qsa_indices:runner.index_states[qsa_index].count=position+3
    resume_state=state_hashes(snapshot_state());resume_ref=refs[2];resume_exact=all(resume_state[name]==digest for name,digest in resume_ref[0].items()) and hashlib.sha256(output_bytes()).hexdigest()==resume_ref[1] and token==resume_ref[3]
    transition_lifecycle={'reset_base_exact':reset_base_exact,'reset_replay_exact':reset_exact,'forced_eager_then_graph_resume_exact':resume_exact};lifecycle_gate=all(transition_lifecycle.values())
+  if args.gdn_moe_baseline and not runner.moe_graph_cache.enabled:raise ValueError('production MoE graph cache disabled')
+  moe_before=runner.moe_graph_cache.stats if args.gdn_moe_baseline else None
   restore_state(base);prepare_fixed_qsa_control();eager_ms=[];eager_ple_states=dict(base_ple_states);eager_token=initial_token
   if not args.named_production_baseline:
    for sample in range(args.samples):
@@ -200,9 +204,13 @@ def run(args,*,command:Sequence[str])->dict[str,Any]:
      for qsa_index in qsa_indices:runner.index_states[qsa_index].count=position
     rt.device_synchronize();start=time.perf_counter()
     if args.dynamic_ple:eager_ple_states,_=stage_ple_input(current_position,eager_ple_states,int(eager_token))
-    launch(0,current_position);rt.device_synchronize()
+    launch(0,current_position,production_moe=args.gdn_moe_baseline);rt.device_synchronize()
     if args.include_root_head:eager_token=read_token()
     eager_ms.append((time.perf_counter()-start)*1e3)
+  eager_final=state_hashes(snapshot_state()) if args.gdn_moe_baseline else None
+  moe_delta={k:v-moe_before[k] for k,v in runner.moe_graph_cache.stats.items()} if args.gdn_moe_baseline else None
+  if moe_delta is not None and (moe_delta['capture']+moe_delta['replay']!=args.samples*len(layers) or moe_delta['eager'] or moe_delta['reject']):
+   raise ValueError(f'production MoE graph engagement mismatch: {moe_delta}')
   def measure_graph():
    restore_state(base);prepare_fixed_qsa_control();walls=[];tokens=[];states=dict(base_ple_states);token=initial_token
    for sample in range(args.samples):
@@ -220,9 +228,13 @@ def run(args,*,command:Sequence[str])->dict[str,Any]:
    if args.timing_order=='production-first':production_ms,production_tokens=measure_production();graph_ms,graph_tokens=measure_graph()
    else:graph_ms,graph_tokens=measure_graph();production_ms,production_tokens=measure_production()
   else:graph_ms,graph_tokens=measure_graph()
-  eager_median=statistics.median(eager_ms) if eager_ms else None;graph_median=statistics.median(graph_ms);mismatch=_first_mismatch(rows);production_exact=not production_tokens or production_tokens==graph_tokens;correct=bool(capture_nonexecuting and mismatch is None and lifecycle_gate and production_exact and (discarded_warm is None or discarded_warm['tokens_exact']))
+  gdn_moe_exact=eager_final==state_hashes(snapshot_state()) if args.gdn_moe_baseline else None
+  eager_median=statistics.median(eager_ms) if eager_ms else None;graph_median=statistics.median(graph_ms);mismatch=_first_mismatch(rows);production_exact=not production_tokens or production_tokens==graph_tokens;correct=bool(capture_nonexecuting and mismatch is None and lifecycle_gate and production_exact and gdn_moe_exact is not False and (discarded_warm is None or discarded_warm['tokens_exact']))
   production_timing={'samples':args.samples,'timing_order':args.timing_order,'discarded_warm':discarded_warm,'median_ms':statistics.median(production_ms),'ms':production_ms,'tokens':production_tokens,'graph_tokens_exact':production_exact,'graph_speedup':statistics.median(production_ms)/graph_median} if production_ms else None
   payload={'schema':1,'kind':'qwen4exp_stateful_layer_graph_probe','status':'passed' if correct else 'reproduced_corruption','command':list(command),'source':_git_metadata(ROOT),'host':_host_metadata(),'profile':{'name':args.profile,'manifest_sha256':resolved.manifest_sha256},'model':str(args.model_root),'layers':list(layers),'layer_kinds':list(layer_kinds),'gdn_state_indices':[runner.gdn_bindings[item].gdn_state_index for item in layers if cfg.layer_types[item]=='gdn'],'qsa_state_indices':list(qsa_indices),'ple_layers':[item for item in layers if item in cfg.ple_layers and not args.omit_ple],'root_head_included':bool(args.include_root_head),'ple_input_dynamic':bool(args.dynamic_ple),'ple_publication':'host_hash_mmap_stage_h2d' if args.dynamic_ple else 'static_device_buffer','ple_table':{'semantic_rows':runner.resident.ple_table.semantic_rows,'row_width':runner.resident.ple_table.row_width,'ggml_type':runner.resident.ple_table.tensor.ggml_type_name,'nbytes':runner.resident.ple_table.tensor.nbytes,'rows_per_token':len(cfg.ple_head_offsets)} if args.dynamic_ple else None,'advancing_position':bool(args.advance_position),'start_position':position,'fixed_position':None if args.advance_position else position,'attention_context_limit':context_limit if args.advance_position else None,'host_cursor_replay_safe':not qsa_indices or bool(args.advance_position),'prompt_tokens':len(ids),'capture_nonexecuting':capture_nonexecuting,'transition_lifecycle':transition_lifecycle,'rows':rows,'first_mismatch':mismatch,'timing':{'samples':args.samples,'eager_median_ms':eager_median,'graph_median_ms':graph_median,'speedup':eager_median/graph_median if eager_median is not None else None,'eager_ms':eager_ms,'graph_ms':graph_ms,'graph_tokens':graph_tokens},'named_production_timing':production_timing}
+  payload['gdn_moe_baseline']={'enabled':args.gdn_moe_baseline,'final_state_exact':gdn_moe_exact,
+      'cache_delta':moe_delta,
+      'scope':'Layer-only eager uses production MoE graph cache; not full-step AR. Fixed input, eager-first timing; no interleaved counterbalance.'}
  finally:
   if exec_ and generator:generator.runner.runtime.graph_exec_destroy(exec_)
   if graph and generator:generator.runner.runtime.graph_destroy(graph)

@@ -1,0 +1,433 @@
+{
+  "schema": 1,
+  "status": "layer_graph_feasibility_only",
+  "production_changed": false,
+  "runs": [
+    {
+      "advancing_position": false,
+      "attention_context_limit": null,
+      "capture_nonexecuting": true,
+      "command": [
+        "qwen4exp_stateful_layer_graph_probe.py",
+        "--model-root",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--fixture",
+        "benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+        "--case-id",
+        "code-p4096",
+        "--profile",
+        "production",
+        "--gdn-moe-baseline",
+        "--layer",
+        "0",
+        "--samples",
+        "20",
+        "--replays",
+        "4",
+        "--max-sequence-length",
+        "4352",
+        "--prefill-chunk-size",
+        "1024",
+        "--output",
+        "/tmp/qwen4exp-gdn-layer-graph-current.json"
+      ],
+      "first_mismatch": null,
+      "fixed_position": 4096,
+      "gdn_moe_baseline": {
+        "enabled": true,
+        "final_state_exact": true,
+        "scope": "Layer-only eager uses production MoE graph cache; not full-step AR. Fixed input, eager-first timing; no interleaved counterbalance."
+      },
+      "gdn_state_indices": [
+        0
+      ],
+      "host": {
+        "cpu_governors": {
+          "performance": 32
+        },
+        "gpu_clock_policies": {
+          "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+        },
+        "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+        "hostname": "gfx1151",
+        "kernel": "7.1.6-1-cachyos",
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "rocm_platform": null,
+        "tuned_active": "Current active profile: accelerator-performance"
+      },
+      "host_cursor_replay_safe": true,
+      "kind": "qwen4exp_stateful_layer_graph_probe",
+      "layer_kinds": [
+        "gdn"
+      ],
+      "layers": [
+        0
+      ],
+      "lifecycle": {
+        "after_close": {
+          "active_allocations": 0,
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 86094241540,
+          "peak_allocations": 1717,
+          "total_allocated_bytes": 86100532996,
+          "total_freed_bytes": 86100532996
+        },
+        "passed": true
+      },
+      "model": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "named_production_timing": null,
+      "ple_input_dynamic": false,
+      "ple_layers": [],
+      "ple_publication": "static_device_buffer",
+      "ple_table": null,
+      "profile": {
+        "manifest_sha256": "f2d77a5215d8fbfb57a4ffa1276885dfaae5ab6cc65215005bb398d4d959c239",
+        "name": "production"
+      },
+      "prompt_tokens": 4096,
+      "qsa_state_indices": [],
+      "root_head_included": false,
+      "rows": [
+        {
+          "input_token": null,
+          "output_exact": true,
+          "output_token": null,
+          "position": 4096,
+          "replay": 1,
+          "state_exact": true,
+          "state_owners": {
+            "decode.gdn_conv": true,
+            "decode.gdn_matrix": true,
+            "decode.ple_conv": true,
+            "decode.residual": true
+          },
+          "token_exact": true
+        },
+        {
+          "input_token": null,
+          "output_exact": true,
+          "output_token": null,
+          "position": 4096,
+          "replay": 2,
+          "state_exact": true,
+          "state_owners": {
+            "decode.gdn_conv": true,
+            "decode.gdn_matrix": true,
+            "decode.ple_conv": true,
+            "decode.residual": true
+          },
+          "token_exact": true
+        },
+        {
+          "input_token": null,
+          "output_exact": true,
+          "output_token": null,
+          "position": 4096,
+          "replay": 3,
+          "state_exact": true,
+          "state_owners": {
+            "decode.gdn_conv": true,
+            "decode.gdn_matrix": true,
+            "decode.ple_conv": true,
+            "decode.residual": true
+          },
+          "token_exact": true
+        },
+        {
+          "input_token": null,
+          "output_exact": true,
+          "output_token": null,
+          "position": 4096,
+          "replay": 4,
+          "state_exact": true,
+          "state_owners": {
+            "decode.gdn_conv": true,
+            "decode.gdn_matrix": true,
+            "decode.ple_conv": true,
+            "decode.residual": true
+          },
+          "token_exact": true
+        }
+      ],
+      "schema": 1,
+      "source": {
+        "head": "7de46903df3cfcb68b7a9f391a446fbb61bb85dd",
+        "path": "/home/lhl/hipEngine",
+        "tracked_clean": false
+      },
+      "start_position": 4096,
+      "status": "passed",
+      "timing": {
+        "eager_median_ms": 0.9440865833312273,
+        "eager_ms": [
+          7.369007915258408,
+          1.0208359453827143,
+          0.9489301592111588,
+          0.9405750315636396,
+          0.9347640443593264,
+          0.937347998842597,
+          0.939172925427556,
+          0.9371079504489899,
+          0.9331910405308008,
+          0.9351740591228008,
+          0.9910198859870434,
+          0.9363670833408833,
+          0.9482488967478275,
+          0.9628268890082836,
+          0.9548719972372055,
+          0.9532580152153969,
+          0.9534291457384825,
+          0.944782979786396,
+          0.9428500197827816,
+          0.9433901868760586
+        ],
+        "graph_median_ms": 0.9044324979186058,
+        "graph_ms": [
+          1.0168179869651794,
+          0.8982350118458271,
+          0.9071419481188059,
+          0.9011609945446253,
+          0.9041070006787777,
+          0.907092122361064,
+          0.9047579951584339,
+          0.9016408585011959,
+          0.9025840554386377,
+          0.9038560092449188,
+          0.9057589340955019,
+          0.9040359873324633,
+          0.9101380128413439,
+          0.9078439325094223,
+          0.9001889266073704,
+          0.9066809434443712,
+          0.9062010794878006,
+          0.9009700734168291,
+          0.9050779044628143,
+          0.9002890437841415
+        ],
+        "graph_tokens": [],
+        "samples": 20,
+        "speedup": 1.0438441625039774
+      },
+      "transition_lifecycle": null
+    },
+    {
+      "advancing_position": false,
+      "attention_context_limit": null,
+      "capture_nonexecuting": true,
+      "command": [
+        "qwen4exp_stateful_layer_graph_probe.py",
+        "--model-root",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--fixture",
+        "benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+        "--case-id",
+        "code-p4096",
+        "--profile",
+        "production",
+        "--gdn-moe-baseline",
+        "--layer",
+        "0",
+        "--samples",
+        "20",
+        "--replays",
+        "4",
+        "--max-sequence-length",
+        "4352",
+        "--prefill-chunk-size",
+        "1024",
+        "--output",
+        "/tmp/qwen4exp-gdn-layer-graph-engagement.json"
+      ],
+      "first_mismatch": null,
+      "fixed_position": 4096,
+      "gdn_moe_baseline": {
+        "cache_delta": {
+          "capture": 1,
+          "eager": 0,
+          "reject": 0,
+          "replay": 19
+        },
+        "enabled": true,
+        "final_state_exact": true,
+        "scope": "Layer-only eager uses production MoE graph cache; not full-step AR. Fixed input, eager-first timing; no interleaved counterbalance."
+      },
+      "gdn_state_indices": [
+        0
+      ],
+      "host": {
+        "cpu_governors": {
+          "performance": 32
+        },
+        "gpu_clock_policies": {
+          "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+        },
+        "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+        "hostname": "gfx1151",
+        "kernel": "7.1.6-1-cachyos",
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "rocm_platform": null,
+        "tuned_active": "Current active profile: accelerator-performance"
+      },
+      "host_cursor_replay_safe": true,
+      "kind": "qwen4exp_stateful_layer_graph_probe",
+      "layer_kinds": [
+        "gdn"
+      ],
+      "layers": [
+        0
+      ],
+      "lifecycle": {
+        "after_close": {
+          "active_allocations": 0,
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 86094241540,
+          "peak_allocations": 1717,
+          "total_allocated_bytes": 86100532996,
+          "total_freed_bytes": 86100532996
+        },
+        "passed": true
+      },
+      "model": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "named_production_timing": null,
+      "ple_input_dynamic": false,
+      "ple_layers": [],
+      "ple_publication": "static_device_buffer",
+      "ple_table": null,
+      "profile": {
+        "manifest_sha256": "f2d77a5215d8fbfb57a4ffa1276885dfaae5ab6cc65215005bb398d4d959c239",
+        "name": "production"
+      },
+      "prompt_tokens": 4096,
+      "qsa_state_indices": [],
+      "root_head_included": false,
+      "rows": [
+        {
+          "input_token": null,
+          "output_exact": true,
+          "output_token": null,
+          "position": 4096,
+          "replay": 1,
+          "state_exact": true,
+          "state_owners": {
+            "decode.gdn_conv": true,
+            "decode.gdn_matrix": true,
+            "decode.ple_conv": true,
+            "decode.residual": true
+          },
+          "token_exact": true
+        },
+        {
+          "input_token": null,
+          "output_exact": true,
+          "output_token": null,
+          "position": 4096,
+          "replay": 2,
+          "state_exact": true,
+          "state_owners": {
+            "decode.gdn_conv": true,
+            "decode.gdn_matrix": true,
+            "decode.ple_conv": true,
+            "decode.residual": true
+          },
+          "token_exact": true
+        },
+        {
+          "input_token": null,
+          "output_exact": true,
+          "output_token": null,
+          "position": 4096,
+          "replay": 3,
+          "state_exact": true,
+          "state_owners": {
+            "decode.gdn_conv": true,
+            "decode.gdn_matrix": true,
+            "decode.ple_conv": true,
+            "decode.residual": true
+          },
+          "token_exact": true
+        },
+        {
+          "input_token": null,
+          "output_exact": true,
+          "output_token": null,
+          "position": 4096,
+          "replay": 4,
+          "state_exact": true,
+          "state_owners": {
+            "decode.gdn_conv": true,
+            "decode.gdn_matrix": true,
+            "decode.ple_conv": true,
+            "decode.residual": true
+          },
+          "token_exact": true
+        }
+      ],
+      "schema": 1,
+      "source": {
+        "head": "7de46903df3cfcb68b7a9f391a446fbb61bb85dd",
+        "path": "/home/lhl/hipEngine",
+        "tracked_clean": false
+      },
+      "start_position": 4096,
+      "status": "passed",
+      "timing": {
+        "eager_median_ms": 0.93777512665838,
+        "eager_ms": [
+          7.547012064605951,
+          1.0146740823984146,
+          0.9562938939779997,
+          0.947427935898304,
+          1.0034129954874516,
+          0.937469070777297,
+          0.9337631054222584,
+          0.9439010173082352,
+          0.9328299202024937,
+          0.9366280864924192,
+          0.9312580805271864,
+          0.9409848134964705,
+          0.9371989872306585,
+          0.9362869895994663,
+          0.9386609308421612,
+          0.9268801659345627,
+          0.9358660317957401,
+          0.936657190322876,
+          0.938081182539463,
+          0.9386811871081591
+        ],
+        "graph_median_ms": 0.9041514713317156,
+        "graph_ms": [
+          1.021185889840126,
+          0.8991369977593422,
+          0.9105380158871412,
+          0.9035959374159575,
+          0.9024629835039377,
+          0.9005700703710318,
+          0.9041170123964548,
+          0.8987369947135448,
+          0.9078341536223888,
+          0.9041859302669764,
+          0.9050888475030661,
+          0.9061309974640608,
+          0.9012010414153337,
+          0.9031041990965605,
+          0.9072432294487953,
+          0.9059000294655561,
+          0.9048080537468195,
+          0.9027640335261822,
+          0.8983050938695669,
+          0.9046979248523712
+        ],
+        "graph_tokens": [],
+        "samples": 20,
+        "speedup": 1.0371880778749831
+      },
+      "transition_lifecycle": null
+    }
+  ],
+  "limits": [
+    "Single GDN layer0 after code-p4096 prefill;fixed layer input,stateful replays,not complete decode step.",
+    "Eager baseline retains production MoE graph cache;engagement1 capture/19 replay verified in second run.",
+    "Eager-first timing with cold samples retained;not counterbalanced or a production performance claim.",
+    "Full-layer graph capture/setup overhead not included in replay medians;must be charged before production qualification."
+  ]
+}
