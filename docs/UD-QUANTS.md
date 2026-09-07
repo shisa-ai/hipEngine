@@ -4,10 +4,17 @@ Last updated: 2026-09-07.
 Status: **U0 complete; CPU IQ3_S/IQ2_S decoders and synthetic/real-row oracles
 added; raw IQ4_XS/IQ4_NL/IQ3_S/Q3_K/IQ3_XXS/IQ2_S dense GPU leaves and
 Q3_K embedding pass bounded gfx1151 checks. Published K_M and K_S run through
-public `LLM.generate()` on gfx1151.**
+public `LLM.generate()` on gfx1151; layer IQ2_XS now plans raw residency in
+the production loading path (no dense-BF16 expansion).**
 The eight-token eager smoke returns finite logits; public generation returns the
-same text without importing torch. Teacher-logit quality and broader
-serving are not qualified. Loader preflight has zero K_M or K_S refusals. Q5/Q6 expansion still needs compact resident integration.
+same text without importing torch. A 20-prompt real category/heldout E2E
+suite (chat-template prompts, greedy, EOS enabled) completes on both files
+with three byte-identical fresh-process repeats per file
+(see `benchmarks/results/2026-09-07-zbook-ud-public-c1-generation.json`).
+Teacher-logit quality and broader serving are not qualified. Loader preflight
+has zero K_M or K_S refusals. Q5/Q6 expansion still needs compact resident
+integration. The active lane is zbook/gfx1151 only; gfx1100 work is deferred
+until a separate hardware allocation exists.
 **No gfx1100 numerical validation is claimed.** General certificate
 cleanup is deferred in favor of end-to-end inference. Generic profile lifecycle
 transactions and per-call native authorization scans have been removed.
@@ -1490,6 +1497,11 @@ proposed `tests/test_gguf_ud_km.py`.
 - [ ] Validate c1 AR, teacher logits and compact memory before broader modes.
   gfx1151 published-file smoke generates eight tokens with finite full logits
   from `The capital of France is`: ` Paris.\nThe capital of Germany is`.
+  A broader public c1 E2E suite (20 real category/heldout chat prompts plus
+  raw string prompts, greedy with EOS enabled, three byte-identical
+  fresh-process repeats per file, torch-free) is retained in
+  `benchmarks/results/2026-09-07-zbook-ud-public-c1-generation.json`;
+  it validates inference delivery and determinism, not task quality.
   This is a smoke, not a teacher-quality gate or compact-memory claim. See
   `worklog/entries/20260907T035440.022336Z-lhl-ud-km-c1-integration-c5bbd6.md`.
   Public `LLM.generate()` matches this completion in a fresh process without
@@ -1526,26 +1538,32 @@ Files: IQ2/IQ3 donors, proposed dense family,
 gfx1151 peer, `runtime/gguf_embedding.py`;
 proposed `tests/test_gguf_ud_ks.py`.
 
-- [ ] Q3 embedding lookup RED: repeated/boundary IDs, prompt/decode gather,
+- [x] Q3 embedding lookup RED: repeated/boundary IDs, prompt/decode gather,
   row output ownership and vocabulary bounds. The real embedding fixture
   passes 35 boundary/ownership and host-validation checks on gfx1151,
   including first/last rows at their actual full-vocabulary addresses and row6.
   See the `ud-q3-vocabulary` worklog entry. Public callers remain open.
 - [ ] Dense IQ3_XXS and IQ2_XS from existing math. Both raw leaves have
   bounded gfx1151 numerical evidence. IQ2_XS passes exact BF16/F32 real-row
-  projection gates and synthetic one-hot decode coverage; model residency still
-  uses its BF16 fallback pending integration. A temporary raw-resident K_S
-  diagnostic matches all 162 baseline top-1 choices on 18 category/heldout
-  prompts, max KL 0.000923, and removes 152,494,080 counted weight bytes. The
-  batched-teacher prefill miss persists. Three fresh-process captures have
-  byte-identical logits and forced tokens. The tokenwise teacher matches all
-  162 choices with maximum KL 0.003912; broader gates remain open. See
+  projection gates and synthetic one-hot decode coverage; rank-2 layer
+  IQ2_XS now plans raw residency in the production loading path
+  (`tests/test_gguf_ud_ks.py`), removing the 152,494,080-byte dense-BF16
+  expansion of `blk.0.ffn_gate.weight` in normal K_S loads. A raw-resident
+  K_S diagnostic matches all 162 baseline top-1 choices on 18 category/heldout
+  prompts, max KL 0.000923. The batched-teacher prefill miss persists. Three
+  fresh-process captures have byte-identical logits and forced tokens. The
+  tokenwise teacher matches all 162 choices with maximum KL 0.003912;
+  broader gates remain open. See
   `benchmarks/results/2026-09-07-zbook-ud-iq2-xs-diagnostic.json` and
   `benchmarks/results/2026-09-07-zbook-ud-tokenwise-teacher.json`.
-  gfx1100 remains unverified.
+  Non-layer/rank-3 IQ2_XS keeps the dense-BF16 fallback. gfx1100 remains
+  unverified (deferred: no hardware allocation).
 - [ ] IQ2_S device decoder/strict consumers from U2 oracle.
-- [ ] Clear 41 refusals and IQ2_XS expansion; any temporary fallback reports
-  bytes/removal trigger, not silent permanent debt.
+- [x] Clear 41 refusals and IQ2_XS expansion; any temporary fallback reports
+  bytes/removal trigger, not silent permanent debt. Layer rank-2 IQ2_XS now
+  plans raw residency in production loading (`tests/test_gguf_ud_ks.py`);
+  the remaining dense-BF16 IQ2_XS/IQ4_XS fallback covers only non-layer and
+  rank-3 slots, which the published files do not exercise.
 - [ ] Same c1 AR/logit/memory gates as K_M before broader admission.
 
 Run: `.venv/bin/python -m pytest tests/test_gguf_ud_ks.py -q`.
