@@ -129,6 +129,30 @@ def test_cross_prompt_vocabulary_change_rejected(tmp_path):
                              expected_prompts=[PROMPT, dict(PROMPT, id='other')])
 
 
+@pytest.mark.parametrize('fault', [None, 'missing', 'hash', 'profile', 'kv'])
+def test_required_runtime_provenance(tmp_path, fault):
+    from hipengine.execution_profiles import build_variant_manifest, manifest_sha256
+    path = fixture(tmp_path)
+    data = json.loads((path / 'teacher.json').read_text())
+    manifest = build_variant_manifest(profile='production' if fault == 'profile' else 'strict',
+        backend='hip_gfx1100', model='example', quant='gguf', kv_policy='bf16',
+        graph_policy='eager', selections=[dict(layer='linear', scope='all',
+        selected_variant='strict', strict_fallback_variant='strict')])
+    if fault != 'missing':
+        data.update(runtime_manifest=manifest, runtime_manifest_sha256=(
+            '0' * 64 if fault == 'hash' else manifest_sha256(manifest)),
+            kv_storage_dtype='DType.FP32' if fault == 'kv' else 'DType.BF16')
+    (path / 'teacher.json').write_text(json.dumps(data))
+    def run():
+        return load_teacher_fixture(path, expected_model_sha256=MODEL,
+            expected_prompts=[PROMPT], require_runtime_provenance=True)
+    if fault is None:
+        assert run()['runtime_manifest_sha256'] == manifest_sha256(manifest)
+    else:
+        with pytest.raises(ValueError, match='provenance'):
+            run()
+
+
 def test_default_suite_requires_all_canonical_and_heldout_prompts(tmp_path):
     with pytest.raises(ValueError):
         load_teacher_fixture(fixture(tmp_path), expected_model_sha256=MODEL)

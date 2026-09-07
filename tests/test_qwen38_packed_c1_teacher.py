@@ -5,6 +5,34 @@ import pytest
 from scripts.qwen38_packed_c1_teacher import capture_teacher, teacher_windows
 
 
+def test_runtime_provenance_matches_actual_strict_manifest():
+    from hipengine.execution_profiles import build_variant_manifest, manifest_sha256
+    from hipengine.core import DType
+    from scripts.qwen38_packed_c1_teacher import strict_runtime_provenance
+    manifest = build_variant_manifest(profile='strict', backend='hip_gfx1100',
+        model='example', quant='gguf', kv_policy='bf16', graph_policy='eager',
+        selections=[dict(layer='linear', scope='all', selected_variant='strict',
+                         strict_fallback_variant='strict')])
+    digest = manifest_sha256(manifest)
+    llm = NS(execution_profile_manifest=manifest, execution_profile_manifest_sha256=digest)
+    generator = NS(execution_profile='strict', execution_profile_manifest_sha256=digest)
+    session = NS(kv_storage_dtype=DType.BF16)
+    result = strict_runtime_provenance(llm, generator, session)
+    assert result['runtime_manifest'] == manifest
+    assert result['runtime_manifest_sha256'] == digest
+    generator.execution_profile_manifest_sha256 = '0' * 64
+    with pytest.raises(ValueError, match='manifest'):
+        strict_runtime_provenance(llm, generator, session)
+    generator.execution_profile_manifest_sha256 = digest
+    generator.execution_profile = 'production'
+    with pytest.raises(ValueError, match='strict'):
+        strict_runtime_provenance(llm, generator, session)
+    generator.execution_profile = 'strict'
+    session.kv_storage_dtype = DType.FP32
+    with pytest.raises(ValueError, match='BF16'):
+        strict_runtime_provenance(llm, generator, session)
+
+
 class Session:
     def __init__(self):
         self.position = 99

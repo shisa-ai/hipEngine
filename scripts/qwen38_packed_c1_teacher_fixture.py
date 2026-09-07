@@ -22,12 +22,15 @@ def _ids(value, name):
     return tuple(value)
 
 
-def load_teacher_fixture(directory, *, expected_model_sha256, expected_prompts=None):
+def load_teacher_fixture(directory, *, expected_model_sha256, expected_prompts=None,
+                         require_runtime_provenance=False):
     """Return manifest fields with validated, owned arrays in ``records``.
 
     Each record contains tuple prompt_ids/inputs and FP32 logits/prefill_logits,
     and can be passed to teacher_windows. Defaults require the complete canonical
     and heldout suites; explicit expected_prompts support bounded CPU fixtures.
+    Set require_runtime_provenance for captures that must include a validated
+    strict manifest and BF16 KV metadata. Legacy diagnostic fixtures omit these.
     full_profile_qualification is always False, regardless of input metadata.
     """
     directory = Path(directory).resolve()
@@ -41,6 +44,17 @@ def load_teacher_fixture(directory, *, expected_model_sha256, expected_prompts=N
             or manifest.get('execution_profile') != 'strict'
             or manifest.get('model_sha256') != expected_model_sha256):
         raise ValueError('teacher requires complete strict same-model manifest')
+    if require_runtime_provenance or 'runtime_manifest' in manifest:
+        from hipengine.execution_profiles import manifest_sha256, validate_variant_manifest
+        try:
+            runtime_manifest = validate_variant_manifest(manifest['runtime_manifest'])
+            digest = manifest_sha256(runtime_manifest)
+            if (runtime_manifest['execution_profile'] != 'strict'
+                    or digest != manifest.get('runtime_manifest_sha256')
+                    or manifest.get('kv_storage_dtype') != 'DType.BF16'):
+                raise ValueError('strict manifest or BF16 KV mismatch')
+        except (KeyError, TypeError, ValueError) as error:
+            raise ValueError('teacher runtime provenance is missing or invalid') from error
     steps = manifest.get('steps')
     if type(steps) is not int or steps < 1:
         raise ValueError('teacher steps must be a positive integer')
