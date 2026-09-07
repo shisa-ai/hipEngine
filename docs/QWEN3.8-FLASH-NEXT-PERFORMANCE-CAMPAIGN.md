@@ -76,6 +76,27 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Post-Q8-register family refresh (September7 UTC):** clean `cc3d48a70`,
+explicit chunk1024, six cases/twelve phases with complete attribution and
+restored-state/output checks. Four-category p4096 FFN11.356->11.231s,
+non-GR linear4.517->4.515s, GR3.404->3.429s, QSA2.070->2.071s,
+GDN0.820->0.835s; total device22.281->22.196s (-0.38% snapshot).
+Preserve the GR/GDN increases; this is not single-change causal evidence.
+Pinned Vulkan `b212548e0` capture/reference are reused, not rerun:
+FFN2.569x/linear4.430x/GR2.008x/QSA3.208x, while GDN remains0.601x.
+Fixed-live4097 decode QSA16.956vs3.161ms remains open; this is not a tg128
+absolute refresh. Generated shared-taxonomy tables are in the halo-box campaign.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-post-q8-register-family.json).
+
+**Next structural screen:** code-p4096 individual kernel sums identify
+Q4 paired gate/up3.398s, Q5_1 paired down2.575s, and exact Q8 attention
+gate1.578s. Inspect exact Q8 coltile load sharing/vector staging on the
+gate/GR paths while preserving K-lane ownership, FMA order and publication
+tree. This is an investigation, not a predicted win. Do not repeat the
+rejected attention-gate MMQ policy expansion (numerical gate failure) or
+tile-only attention-gate geometry screen. Require current-host actual
+weights and operation-complete timing before model admission.
+
 **Q8 down register promoted (September7 UTC):** clean58dcdbdb2 full12-case
 chunk1024 A/B,72 exact trajectories, all12 prefill/request averages improve.
 PP512/1024/4096:181.424->182.969 (+0.851%),
@@ -85,8 +106,8 @@ so do not call request improvement robust. Max within-case PP CV1.181%,
 TG CV3.356%; TG aggregate -0.028%/+0.067%/+0.458% is incidental,
 not a decode-kernel win. Measured span28m19s excludes loading/initial
 warmup. Production binds1/strict0; K640/rows>=512 and map-ready guards stay.
-The family table below predates this promotion; current default family
-refresh and a combined-default external/decode refresh remain follow-ups.
+The post-promotion family refresh above supersedes the older snapshot;
+a combined-default external/decode throughput refresh remains a follow-up.
 [Production evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-q8-down-register-production.json).
 
 **Q8 down register-weight admission (historical, September7 UTC):** cache five K640
