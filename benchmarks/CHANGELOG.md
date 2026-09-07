@@ -1,5 +1,7 @@
 # hipEngine Benchmark Changelog
 
+- [2026-09-07 UTC QSA CPU perf] First16 decode wall1.169->1.581s with nearly unchanged~3.91B user instructions/~1.74B cycles,100% counter running;supports rate rather than extra-work investigation. No clock changes or promotion. `benchmarks/results/2026-09-07-framework-qwen4exp-qsa-phase-perf.json`.
+
 - [2026-09-07 UTC QSA CPU accounting] First16 decode after parent/candidate prefill:wall1.170->1.574s,thread CPU1.165->1.563s,no GC/major faults. Extra on-CPU time localized;hardware counters available,next instructions/cycles. `benchmarks/results/2026-09-07-framework-qwen4exp-qsa-phase-cpu.json`.
 
 - [2026-09-07 UTC QSA transition trace] First16 decode steps after parent/candidate prefill:GPU busy981.8->976.1ms,same29440 kernels,wall1203.1->1569.3ms. Extra non-kernel/outside-API time localized;profiling queue caveat explicit,no production change. `benchmarks/results/2026-09-07-framework-qwen4exp-qsa-phase-trace.json`.

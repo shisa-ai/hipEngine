@@ -69,9 +69,18 @@ def main():
     p.add_argument("--trace-markers",action="store_true")
     p.add_argument("--cpu-accounting",action="store_true",
                    help="Read thread CPU/fault/switch deltas and observe GC without disabling it")
+    p.add_argument("--thread-perf",action="store_true",
+                   help="Count calling-thread user cycles/instructions only during decode")
     p.add_argument("--case-id",action="append",choices=("code-p4096","mixed_ja_en-p4096"))
     a=p.parse_args()
     schedule=orders(a.pairs)
+    perf=None
+    if a.thread_perf:
+        from scripts.qwen4exp_thread_perf import ThreadPerf
+        # Fail permissions/capability checks before loading the model.
+        perf=ThreadPerf()
+        perf.close()
+        perf=None
     marker=None
     if a.trace_markers:
         from scripts.qwen4exp_profile_gap import Roctx
@@ -101,7 +110,7 @@ def main():
     report=dict(status="running",source=gate._git_metadata(ROOT),host=gate._host_metadata(),
         model_identity=identity,fixture_sha256=digest,command=sys.argv,cases=[],
         steps=a.steps,pairs=a.pairs,vary_prefill=a.vary_prefill,trace_markers=a.trace_markers,
-        cpu_accounting=a.cpu_accounting,
+        cpu_accounting=a.cpu_accounting,thread_perf=a.thread_perf,
         protocol="Parent prefill once per case; restore identical root before each arm,one warmup per flag,balanced measured pairs; host hashes and telemetry outside timing",
         limits="Snapshot restore and inter-arm inspection change cache/power history. This isolates flag-at-decode only,not the effects of preceding candidate prefill. No clock changes.")
     if a.vary_prefill:
@@ -121,6 +130,8 @@ def main():
                 gc_events.append(dict(step=step,seconds=time.perf_counter()-start,**info))
             gc_start[0]=None
     try:
+        if a.thread_perf:
+            perf=ThreadPerf()
         if a.cpu_accounting:
             gc.callbacks.append(on_gc)
         register(key,counted,replace=True)
@@ -157,6 +168,8 @@ def main():
                     cpu_steps=[]
                     gc_events.clear()
                     runner.runtime.device_synchronize()
+                    if perf:
+                        perf.start()
                     start=time.perf_counter()
                     for step in range(a.steps):
                         if marker:
@@ -176,6 +189,7 @@ def main():
                         tokens.append(token)
                     runner.runtime.device_synchronize()
                     elapsed=time.perf_counter()-start
+                    hardware=perf.stop() if perf else None
                     state=gate._state_summary(runner)
                     result=(tokens,state["state_sha256"],state["layout_sha256"])
                     if expected is None:
@@ -187,6 +201,7 @@ def main():
                             prefill_flag=prefill_flag,decode_flag=decode_flag,
                             prefill_seconds=prefill_seconds,step_seconds=step_seconds,
                             cpu_steps=cpu_steps,gc_events=list(gc_events),
+                            hardware_counters=hardware,
                             state_sha256=state["state_sha256"],tokens=tokens,candidate_calls=0,
                             telemetry_before=before,telemetry_after=telemetry()))
             means=[statistics.mean(r["seconds"] for r in rows if r["flag"]==i) for i in (0,1)]
@@ -200,6 +215,8 @@ def main():
         report.update(status="failed",error=repr(error))
         raise
     finally:
+        if perf:
+            perf.close()
         if on_gc in gc.callbacks:
             gc.callbacks.remove(on_gc)
         register(key,original,replace=True)
