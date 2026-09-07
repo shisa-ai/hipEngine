@@ -73,7 +73,7 @@ def test_device_payloads_flag_controls_mode() -> None:
     assert os.environ.get("HIPENGINE_DMS_DEVICE_PAYLOADS") is None
 
 
-def test_int8_device_payloads_rejected() -> None:
+def test_int8_device_payloads_require_qualification() -> None:
     retrofit = DMSRetrofitConfig(
         artifact_fingerprint="fixture:dms-device-int8",
         model_family="qwen35",
@@ -91,24 +91,14 @@ def test_int8_device_payloads_rejected() -> None:
         evidence_source="unit fixture",
         source_path="tests/fixtures/dms_device_int8",
     )
-    from hipengine.kvcache.dms import DMSCodecQualification
-
-    qual = DMSCodecQualification(
-        codec="int8_per_token_head",
-        artifact_fingerprint="fixture:dms-device-int8",
-        kl_divergence=0.0,
-        top1_agreement=1.0,
-        no_dense_shadow=True,
-        evidence_source="unit fixture",
-    )
-    with pytest.raises(ValueError, match="device"):
+    with pytest.raises(ValueError, match="requires artifact qualification"):
         DMSCompactBackend(
             retrofit=retrofit,
             codec="int8_per_token_head",
             slots_per_layer=32,
             max_request_rows=8,
             max_pack_rows=64,
-            codec_qualification=qual,
+            codec_qualification=None,
             device_payloads=True,
         )
 
