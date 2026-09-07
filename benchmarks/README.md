@@ -2,6 +2,12 @@
 
 Last updated: **2026-09-07 UTC**
 
+QSA early-transition trace:same29440 kernels,parent/candidate GPU
+busy981.8/976.1ms but wall1203.1/1569.3ms. Extra time is outside
+kernel execution;CPU/submission investigation next. Profiler changes
+queue ring;no production or throughput claim.
+[Evidence](results/2026-09-07-framework-qwen4exp-qsa-phase-trace.json).
+
 QSA phase isolation:decode flag held0,preceding candidate prefill changes
 code/mixed tg128 wall8.478->8.925s /8.482->8.936s,exact tokens/state.
 Extra~0.45s concentrates in first16 steps;steady tail converges.

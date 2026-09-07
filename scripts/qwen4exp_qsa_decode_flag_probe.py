@@ -28,6 +28,9 @@ def phase_flags(vary_prefill, arm):
         raise ValueError("invalid arm")
     return (str(arm),"0") if vary_prefill else ("0",str(arm))
 
+def step_marker(case, pair, arm, step):
+    return f"qsa_phase:{case}:pair{pair}:arm{arm}:step{step}"
+
 
 def telemetry():
     paths=list(Path("/sys/class/drm").glob("card*/device/pp_dpm_sclk"))
@@ -50,8 +53,14 @@ def main():
     p.add_argument("--steps",type=int,default=16)
     p.add_argument("--vary-prefill",action="store_true",
                    help="Re-prefill per arm with selected variant; decode flag always0")
+    p.add_argument("--trace-markers",action="store_true")
+    p.add_argument("--case-id",action="append",choices=("code-p4096","mixed_ja_en-p4096"))
     a=p.parse_args()
     schedule=orders(a.pairs)
+    marker=None
+    if a.trace_markers:
+        from scripts.qwen4exp_profile_gap import Roctx
+        marker=Roctx()
     if not 1<=a.steps<=128:
         p.error("steps must be1..128")
     check_host()
@@ -76,7 +85,7 @@ def main():
         return original(*args,**kwargs)
     report=dict(status="running",source=gate._git_metadata(ROOT),host=gate._host_metadata(),
         model_identity=identity,fixture_sha256=digest,command=sys.argv,cases=[],
-        steps=a.steps,pairs=a.pairs,vary_prefill=a.vary_prefill,
+        steps=a.steps,pairs=a.pairs,vary_prefill=a.vary_prefill,trace_markers=a.trace_markers,
         protocol="Parent prefill once per case; restore identical root before each arm,one warmup per flag,balanced measured pairs; host hashes and telemetry outside timing",
         limits="Snapshot restore and inter-arm inspection change cache/power history. This isolates flag-at-decode only,not the effects of preceding candidate prefill. No clock changes.")
     if a.vary_prefill:
@@ -86,7 +95,7 @@ def main():
     previous=os.environ.get(FLAG)
     try:
         register(key,counted,replace=True)
-        for name in ("code-p4096","mixed_ja_en-p4096"):
+        for name in a.case_id or ("code-p4096","mixed_ja_en-p4096"):
             case=next(c for c in fixture["cases"] if c["id"]==name)
             os.environ[FLAG]="0"
             if not a.vary_prefill:
@@ -118,9 +127,15 @@ def main():
                     step_seconds=[]
                     runner.runtime.device_synchronize()
                     start=time.perf_counter()
-                    for _ in range(a.steps):
+                    for step in range(a.steps):
+                        if marker:
+                            marker.push(step_marker(name,pair-1,arm,step))
                         step_start=time.perf_counter()
-                        token=runner.step(token,capture_logits=False,capture_target_hidden=False).token_id
+                        try:
+                            token=runner.step(token,capture_logits=False,capture_target_hidden=False).token_id
+                        finally:
+                            if marker:
+                                marker.pop()
                         step_seconds.append(time.perf_counter()-step_start)
                         tokens.append(token)
                     runner.runtime.device_synchronize()
