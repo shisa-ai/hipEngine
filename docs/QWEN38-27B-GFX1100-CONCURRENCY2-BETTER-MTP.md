@@ -71,10 +71,18 @@ Status: partial implementation integrated;
   refuses and falls back to the legacy singleton, which the harness guard
   turns into a hard 500 (the shutdown timeout afterwards is teardown noise,
   not an idle hang; the earlier unexplained-hang hypothesis is withdrawn for
-  these occurrences). Reducing the packed one-row frontier overhead is the
-  blocking economics gap for any packed-C1 registration; until then the
-  legacy route is the only measured single-request MTP path. See the
-  [packed economics](../benchmarks/results/2026-09-07-w7900-packed-route-c1-k0-k3-economics.json).
+  these occurrences). The packed-vs-legacy cost gap is localized: cycle
+  structure is identical (same cycles, same tokens/cycle, same acceptance),
+  and the gap is per-cycle wall cost — the packed route's accept stage
+  round-trips through the host (~57 ms/cycle D2H target readback where the
+  legacy graph route accepts on device) and runs the target eager instead of
+  graph-captured. Device-side acceptance and graph capture of the packed
+  one-row target are the concrete levers; reducing the packed one-row
+  frontier overhead is the blocking economics gap for any packed-C1
+  registration; until then the legacy route is the only measured
+  single-request MTP path. See the
+  [packed economics](../benchmarks/results/2026-09-07-w7900-packed-route-c1-k0-k3-economics.json)
+  and the [stage-timing diagnostic](../benchmarks/results/2026-09-07-w7900-packed-route-c1-stage-timing-diagnostic.json).
 - The native K0↔MTP lifecycle proof **passed** on the packed route:
   40 sequential legs on one resident product server (10 prompts × alternating
   explicit-MTP / automatic-K0, counterbalanced start, both switch directions),
