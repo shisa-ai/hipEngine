@@ -76,6 +76,14 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q8 gate paired-load admission (September7 UTC):** default-off route
+K2560/N6144,rows>=64,existing wave-scale parent only. Full chunk1024
+five-case off/on/off gate passes exact prefill/four decode logits,
+state/full KV; p512 calls0/36/0,p4096 calls0/144/0,zero decode calls
+and final tracked owners. Both profile binders remain0. Shared-down
+and GR are untouched. Clean canonical12-case throughput A/B is next.
+[State evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-q8-prefetch2-state.json).
+
 **Q8 gate paired-load kernel candidate (September7 UTC):** pipeline two
 K-lane weight/activation loads before consuming them, preserving exact
 FMA order and the current coltile8/rowbatch4 reduction. Actual layer0/4
@@ -83,8 +91,8 @@ K2560/N6144 at1024 rows10.909->7.992ms /10.893->7.998ms (1.365x/1.362x);
 layer20 with64MiB fill wins1.255x/1.360x/1.368x at64/511/1024 rows.
 All180 pairs across the full screen are exact; K640 shared-down medians
 lose0.5-1.3%, so exclude that shape. VGPR72->80,LDS512B/scratch0.
-No runtime default or GR expansion. Next: gate-only default-off admission
-at K2560/N6144, rows>=64, full logits/state/KV and canonical1024 A/B.
+No runtime default or GR expansion. Gate-only default-off admission has
+passed above; canonical1024 A/B remains pending.
 [Kernel evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-q8-prefetch2.json).
 
 **Post-Q8-register family refresh (September7 UTC):** clean `cc3d48a70`,

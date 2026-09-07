@@ -1,5 +1,7 @@
 # hipEngine Benchmark Changelog
 
+- [2026-09-07 UTC Q8 paired-load admission] Five chunk1024 full-logit/state/KV cases exact,36/144 prefill calls,zero decode/final owners. Parent/geometry/capability scoped,both binders0;throughput delta N/A pending canonical A/B. `benchmarks/results/2026-09-07-framework-qwen4exp-q8-prefetch2-state.json`.
+
 - [2026-09-07 UTC Q8 paired-load kernel] Actual K2560/N6144 layer0/4 at1024 rows10.909->7.992ms (-26.74%)/10.893->7.998ms (-26.58%),180 exact pairs including pressure/negative K640 screens. VGPR72->80,scratch0;gate-only model admission pending. `benchmarks/results/2026-09-07-framework-qwen4exp-q8-prefetch2.json`.
 
 - [2026-09-07 UTC post-Q8-register families] Cleancc3d48a70 chunk1024 six-case capture:FFN11.356->11.231s (-1.10%),total22.281->22.196s (-0.38% snapshot,not causal A/B);linear4.515s,GR3.429s,GDN0.835s.12 phases fully attributed;Vulkan reused. `benchmarks/results/2026-09-07-framework-qwen4exp-post-q8-register-family.json`.

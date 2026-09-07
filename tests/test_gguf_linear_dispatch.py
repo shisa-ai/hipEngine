@@ -6178,6 +6178,7 @@ def test_qwen4exp_mmq_prefill_session_swaps_f32_f32_prefill(monkeypatch) -> None
     assert policy is not None
     weight = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q8_0")
     keys = (_PREFILL_F32, _PREFILL_MMQ128_X3_GUARDED_F32)
+    weight.backend = _PREFILL_F32.backend
     originals = {
         k: resolve(backend=k.backend, layer=k.layer, quant=k.quant, variant=k.variant)
         for k in keys
