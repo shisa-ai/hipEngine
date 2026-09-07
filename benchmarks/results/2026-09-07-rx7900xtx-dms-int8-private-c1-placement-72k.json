@@ -1,0 +1,112 @@
+{
+  "after": {
+    "sampled_headroom_mib": 1052.93359375,
+    "source_commit": "1ba036df3cbdfacdb0a445b4560d2b57073dcee3",
+    "tracked_peak_gib": 22.520569764077663,
+    "whole_card_peak_delta_gib": 22.930042266845703,
+    "wiring": {
+      "host_token_embedding_reason": "mapped_host_private_c1_auto",
+      "session_owns_runner": true,
+      "sessions": 1,
+      "shared_runner": false,
+      "small_weight_arena_enabled": true,
+      "small_weight_arena_reason": "packed_small_weights:897:16401463296:16402108416",
+      "token_embedding_placement": "host"
+    },
+    "working_tree_dirty": "probe wiring change only (committed after this artifact)"
+  },
+  "arithmetic_equality": {
+    "c1_73728": "all 8 decode rows token- and logits-sha-exact versus the device-placement baseline run",
+    "c2_control": "32 decode rows token- and logits-sha-exact, old-code vs new-code scripts at identical args (sessions=2, 8192 tokens, 2 refill cycles)",
+    "c2_wiring": {
+      "host_token_embedding_reason": null,
+      "session_owns_runner": false,
+      "sessions": 2,
+      "shared_runner": true,
+      "small_weight_arena_enabled": false,
+      "small_weight_arena_reason": "shared_runner_fallback",
+      "token_embedding_placement": "device"
+    }
+  },
+  "before": {
+    "sampled_headroom_mib": 9.6484375,
+    "source_commit": "ce9320ba71ceb661fd08b8629a785e91791699a3",
+    "tracked_peak_gib": 23.186015091836452,
+    "whole_card_peak_delta_gib": 23.94884490966797,
+    "wiring": {
+      "small_weight_arena": [
+        false,
+        "shared_runner_fallback"
+      ],
+      "token_embedding": [
+        "device",
+        "shared_runner_device_fallback"
+      ]
+    }
+  },
+  "change": {
+    "commit": null,
+    "file": "scripts/qwen38_dms_concurrency_probe.py",
+    "semantics": "runner constructed only when len(prompts) > 1; cycle record gains runner_wiring labels",
+    "tests": "tests/test_dms_concurrency_runner_wiring.py (RED-first: 3 cases)"
+  },
+  "data_manifest": {
+    "path": "/models/dms/xtx-manifests/qwen38-27b-q4km-xtx-capacity-manifest.json",
+    "sha256": "9b8dacd9111ddf5b44dc55a0cd199ca7c3cafed763a21bb13eae0a98cdfc72cc"
+  },
+  "date": "2026-09-07",
+  "date_timezone": "UTC",
+  "evidence_files": {
+    "baseline_monitor": "/tmp/xtx-capacity/dms-int8-baseline-73728.monitor.json",
+    "baseline_raw": "/tmp/xtx-capacity/dms-int8-baseline-73728.json",
+    "c2_new_code": "/tmp/xtx-capacity-target2-c2/c2-control.json",
+    "c2_old_code": "/tmp/xtx-capacity-target2-c2/c2-old-code.json",
+    "monitor_sha256_target2": "9a754533fb1cfbd6f9ae7035617a9057b8372a3d7e896bbd463b9242e34a0b14",
+    "raw_sha256_target2": "aa2ffad13bb25f1d2d84902414eb4c9249d8fcbb03eec99f97db46fc9492bc95",
+    "target2_monitor": "/tmp/xtx-capacity/dms-int8-target2-73728.monitor.json",
+    "target2_raw": "/tmp/xtx-capacity/dms-int8-target2-73728.json"
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "cpu": "AMD Ryzen 9 5950X",
+    "gpu": "RX 7900 XTX",
+    "host": "epyc",
+    "other_workloads": "GPU0 not used; GPU1 idle baseline verified per run",
+    "pci": "0000:10:00.0",
+    "physical_gpu_index": 1,
+    "unique_id": "cc4d02090dc9c3ff",
+    "vram_total_bytes": 25753026560
+  },
+  "limitations": [
+    "Evaluation-only DMS INT8 probe route; no serving, throughput or quality claim.",
+    "Whole-card peaks are 20 ms samples; savings are differences of sampled peaks.",
+    "The capacity boundary (highest observed passing prompt) is unchanged in this unit; re-measuring the ladder happens after the remaining review targets.",
+    "mapped-host embedding moves token lookups to host memory during decode; this probe measured no wall-clock regression at 73,728 tokens, but latency sensitivity is not qualified here."
+  ],
+  "metadata": {
+    "path": "/models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json",
+    "sha256": "4c16f9e94d8c870194d37cc46f9e2ec5f6c05b8e97721f799b78d9d2b240ba0b"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
+  },
+  "provenance": "1ba036df3cbdfacdb0a445b4560d2b57073dcee3",
+  "purpose": "Review target 2: single-session (C1) DMS probe cycles no longer construct a shared Qwen35GGUFFullStackRunner; the resident session owns its runner so the existing private-C1 placement policies apply (mapped-host token embedding, selective small-weight arena). Multi-session cycles keep the shared runner unchanged. Decode arithmetic is bit-exact against the device-placement baseline.",
+  "route": "offline eager C1, compact DMS INT8 K/V, FP32 per-token/head scales, W8192, MTP/prefix reuse off",
+  "route_details": {
+    "codec": "int8_evaluation",
+    "decode_steps": 8,
+    "probe_sessions": 1
+  },
+  "savings": {
+    "elapsed_seconds_after": 265.90890846028924,
+    "elapsed_seconds_before": 268.4831007234752,
+    "tracked_peak_mib": 681.416015625,
+    "whole_card_peak_mib": 1043.25390625
+  },
+  "schema": "hipengine_dms_int8_private_c1_placement_v1",
+  "serving_qualification": false,
+  "status": "measured_improvement",
+  "throughput_claim": false
+}
