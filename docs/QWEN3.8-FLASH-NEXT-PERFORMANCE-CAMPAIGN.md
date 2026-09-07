@@ -76,6 +76,15 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**MMQ bank-first loop order closed (September7 UTC):** move output
+fragment bank outside token-group loop,keeping each output's accumulation
+order. Actual qkv/Q512 medians1.000x/0.998x,1024 medians1.013x/1.020x,
+but order-stratified means disagree in all four shapes.80 pairs exact,
+22 tests pass. VGPR184->192,scratch0;the intended register reduction
+did not materialize. Candidate removed;no full-model run or favorable
+rescreen. Raw-vector production remains.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-mmq-bank-first-rejected.json).
+
 **Dense MMQ scale-hoist rejected (September7 UTC):** move16 weight
 scales/subblock outside token-group loop,keep integer WMMA and F32
 accumulation order. Actual layer0 qkv/layer3 Q at512/1024 rows,

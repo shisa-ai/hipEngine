@@ -788,6 +788,12 @@ Fallback requirements:
 
 ## Source-lineage audit
 
+Q8 MMQ bank-first compute experiment removed:actual qkv/Q512 medians
+1.000x/0.998x,1024 medians1.013x/1.020x but opposite-order means
+regress for all four shapes.80 pairs exact,22 tests pass,
+VGPR184->192,scratch0. No model admission or production change.
+Evidence: `2026-09-07-framework-qwen4exp-mmq-bank-first-rejected.json`.
+
 Q8 raw-vector MMQ output-scale hoist tested and removed:actual qkv/Q
 projections at512/1024 rows yield0.319-0.338x operation-complete speedup,
 80 pairs exact,22 tests pass. VGPR184->256,scratch0->1132B.

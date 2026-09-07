@@ -1,5 +1,12 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Qwen4Exp MMQ bank-first order: removed
+
+- Output-bank-first compute gives mixed order results despite small
+  positive1024 medians. VGPR184->192,scratch0;candidate removed.
+- Do not repeat unchanged bank/scale loop reorderings. Production
+  raw-vector schedule remains; larger architectural work still open.
+
 ## Qwen4Exp MMQ output-scale hoist: removed
 
 - Hoisting16 scales across token groups triggers VGPR184->256 and

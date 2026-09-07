@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-07 UTC**
 
+MMQ bank-first loop rejected:nearflat512/small positive1024 medians,
+but mixed arm-order evidence.80 pairs exact,22 tests;VGPR184->192.
+Candidate removed,production unchanged.
+[Evidence](results/2026-09-07-framework-qwen4exp-mmq-bank-first-rejected.json).
+
 MMQ scale-hoist rejected:actual qkv/Q projection screen0.319-0.338x
 at512/1024 rows,80 exact pairs,22 tests. VGPR184->256,
 scratch0->1132B;candidate removed,production unchanged.
