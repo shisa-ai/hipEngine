@@ -788,6 +788,14 @@ Fallback requirements:
 
 ## Source-lineage audit
 
+GDN exposes kernel-only `qwen4exp_sigmoid_wave_norm_prefill`: exact128
+normalization reduction, stride64/32 grouped as parent then wave shuffle
+16/8/4/2/1; serial recurrence unchanged. Dk=Dv128 only. Synthetic
+Hk16/Hv48 at512/1024 tokens2.812->2.699ms /5.574->5.358ms.
+Output/state exact including split execution; VGPR256 unchanged,
+private scratch24->36B,dynamic LDS2560B unchanged. No runtime default.
+Evidence: `2026-09-07-framework-qwen4exp-gdn-wave-norm.json`.
+
 Q4 pair2 two-block weight-pipeline experiment removed: actual layer3
 gate/up+SiLU screen0.910x/0.909x at512/1024 tokens,40 exact pairs,
 14 tests pass. VGPR88->112,LDS4608B/scratch0 unchanged. Original
