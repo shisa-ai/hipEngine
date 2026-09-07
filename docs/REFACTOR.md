@@ -1,5 +1,12 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Qwen4Exp prepacked MMQ token64: removed
+
+- Independent prepacked qkv/SSM screen loses0.931-0.969x despite
+  VGPR144->112,scratch0. Candidate removed;prepacked128 remains.
+- Promoted raw-Q token64 is separate and unchanged. Do not expand its
+  scope to prepacked weights based on raw-only evidence.
+
 ## Qwen4Exp raw MMQ token64 production
 
 - `mmq128_token64_q8_1_d4x3_guarded_f32_f32_out` reduces
