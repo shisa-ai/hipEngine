@@ -1054,6 +1054,9 @@ class DMSOperation:
     counter_snapshot: tuple[int, int, int, int]
 
 
+_CODEC_EVALUATION_ACCESS = object()
+
+
 class DMSCompactBackend:
     """Compact DMS topology whose codec does not alter scheduler lifecycle."""
 
@@ -1070,21 +1073,26 @@ class DMSCompactBackend:
         codec_qualification: DMSCodecQualification | None = None,
         device_payloads: bool | None = None,
         device_backend: str = "hip_gfx1100",
+        _codec_evaluation_access: object | None = None,
     ) -> None:
         if codec not in _DMS_CODECS:
             raise ValueError(f"unsupported compact DMS codec {codec!r}")
-        if device_payloads_requested(device_payloads) and codec != "bf16":
-            raise ValueError("compact DMS device payloads are BF16-only")
+        evaluation_only = _codec_evaluation_access is _CODEC_EVALUATION_ACCESS
+        if _codec_evaluation_access is not None and not evaluation_only:
+            raise ValueError("invalid DMS codec evaluation access")
+        if evaluation_only and (codec != "int8_per_token_head" or codec_qualification is not None):
+            raise ValueError("codec evaluation cannot carry qualification")
         if codec == "int8_per_token_head":
-            if codec_qualification is None:
+            if codec_qualification is None and not evaluation_only:
                 raise ValueError("compact INT8 DMS requires artifact qualification")
-            if codec_qualification.artifact_fingerprint != retrofit.artifact_fingerprint:
+            if codec_qualification is not None and codec_qualification.artifact_fingerprint != retrofit.artifact_fingerprint:
                 raise ValueError("compact INT8 qualification artifact mismatch")
         elif codec_qualification is not None:
             raise ValueError("BF16 compact DMS does not accept codec qualification")
         self.retrofit = retrofit
         self.codec = codec
         self.codec_qualification = codec_qualification
+        self.codec_evaluation_only = evaluation_only
         self.device_backend = str(device_backend)
         self.slots_per_layer = int(slots_per_layer)
         self.max_request_rows = int(max_request_rows)
@@ -1137,6 +1145,7 @@ class DMSCompactBackend:
                     slots_per_layer=self.slots_per_layer,
                     max_pack_rows=self.max_pack_rows,
                     backend=self.device_backend,
+                    codec=self.codec,
                 )
             except DMSDeviceUnavailable:
                 # Host parent remains the registered fallback.
@@ -1803,6 +1812,8 @@ class DMSCompactBackend:
             self._device_store.split_workspace_ptrs
         )
         return {
+            "codec": self.codec,
+            **self._device_store.layer_scale_ptrs(layer),
             "k_ptr": k_ptr,
             "v_ptr": v_ptr,
             "base_ptr": base_ptr,
@@ -1843,8 +1854,9 @@ class DMSCompactBackend:
         scales = None
         if self.codec == "int8_per_token_head":
             scales = KVScaleMetadata(
-                k_scale=Tensor.from_handle(base + 0x7000, (rows, layers, heads, capacity), DType.FP16, _CPU),
-                v_scale=Tensor.from_handle(base + 0x8000, (rows, layers, heads, capacity), DType.FP16, _CPU),
+                scale_dtype=DType.FP32,
+                k_scale=Tensor.from_handle(base + 0x7000, (rows, layers, heads, capacity), DType.FP32, _CPU),
+                v_scale=Tensor.from_handle(base + 0x8000, (rows, layers, heads, capacity), DType.FP32, _CPU),
             )
         spans = KVLiveSpans(
             base_offsets=Tensor.from_handle(base + 0x1000, (rows, layers, heads), DType.INT32, _CPU),
@@ -2003,6 +2015,7 @@ class DMSCompactBackend:
             "backend": {
                 "topology": "dms_compact",
                 "codec": self.codec,
+                "codec_evaluation_only": self.codec_evaluation_only,
                 "artifact_fingerprint": self.retrofit.artifact_fingerprint,
                 "retrofit_fingerprint": self.retrofit.fingerprint,
                 "decision_source": self.retrofit.decision_source,
@@ -2026,6 +2039,9 @@ class DMSCompactBackend:
                 ),
                 "payload_bytes": payload_bytes,
                 "scale_bytes": scale_bytes,
+                "device_resident_bytes": (
+                    None if self._device_store is None else self._device_store.resident_bytes
+                ),
             },
             "operations": {
                 "streaming_pack_calls": self.pack_calls,
@@ -2234,6 +2250,15 @@ class DMSCompactResidentRunnerAdapter:
 
     def resource_observability_snapshot(self) -> dict[str, Any]:
         return self.admission.resource_observability_snapshot()
+
+
+def create_dms_int8_evaluation_backend(**kwargs: Any) -> DMSCompactBackend:
+    """Create an unqualified candidate for offline codec evaluation, not serving."""
+    return DMSCompactBackend(
+        codec="int8_per_token_head",
+        _codec_evaluation_access=_CODEC_EVALUATION_ACCESS,
+        **kwargs,
+    )
 
 
 def create_dms_bf16_backend(**kwargs: Any) -> DMSCompactBackend:

@@ -50,10 +50,12 @@ def tripwire_enabled() -> bool:
 class DMSLayerView:
     """Readback of one layer's device slot buffers (test/observability only)."""
 
-    k_bits: np.ndarray  # [slots, dim] uint16
-    v_bits: np.ndarray  # [slots, dim] uint16
+    k_bits: np.ndarray  # [slots, dim] uint16 BF16 or int8
+    v_bits: np.ndarray  # [slots, dim] uint16 BF16 or int8
     positions: np.ndarray  # [slots] int32
     evict: np.ndarray  # [slots] uint8
+    k_scales: np.ndarray | None = None
+    v_scales: np.ndarray | None = None
 
 
 @dataclass(frozen=True)
@@ -66,6 +68,8 @@ class DMSDeviceExtentSnapshot:
     v_bits: np.ndarray
     positions: np.ndarray
     evict: np.ndarray
+    k_scales: np.ndarray | None = None
+    v_scales: np.ndarray | None = None
 
 
 @dataclass(frozen=True)
@@ -220,43 +224,49 @@ class DMSDevicePayloadStore:
         slots_per_layer: int,
         max_pack_rows: int,
         backend: str = "hip_gfx1100",
+        codec: str = "bf16",
     ) -> None:
         from hipengine.core.hip import get_hip_runtime
         from hipengine.kernels.backends import load_backend_kernel_package
         from hipengine.kernels.hip_gfx1100.attention import build_dms_compact
 
+        if codec not in {"bf16", "int8_per_token_head"}:
+            raise ValueError(f"unsupported DMS device codec {codec!r}")
+        self.codec = codec
+        self._payload_dtype = np.dtype(np.uint16 if codec == "bf16" else np.int8)
         self._runtime = get_hip_runtime()  # raises when HIP is unavailable
         self._backend = str(backend)
-        self._library = build_dms_compact(load=True)
-        required_keys = (
-            KernelKey(self._backend, "dms_streaming_pack", "bf16", "count_rank_scatter"),
-            KernelKey(self._backend, "dms_append_decode", "bf16", "compact_append_evict"),
-            KernelKey(self._backend, "dms_compact_attn_decode", "bf16", "grouped_gqa"),
-            KernelKey(
-                self._backend,
-                "dms_compact_attn_decode",
-                "bf16",
-                "grouped_gqa_splitk",
-            ),
-        )
-        if not all(is_registered(key) for key in required_keys):
-            from hipengine.kernels.hip_gfx1100.attention import (
-                register_dms_compact_kernels,
+        from hipengine.kernels.hip_gfx1100.attention import register_dms_compact_kernels
+        build = build_dms_compact
+        register_kernels = register_dms_compact_kernels
+        if codec == "int8_per_token_head":
+            from hipengine.kernels.hip_gfx1100.attention.dms_compact_int8 import (
+                build_dms_compact_int8, register_dms_compact_int8_kernels,
             )
-
-            register_dms_compact_kernels(replace=True)
+            build = build_dms_compact_int8
+            register_kernels = register_dms_compact_int8_kernels
+        required_keys = (
+            KernelKey(self._backend, "dms_streaming_pack", codec, "count_rank_scatter"),
+            KernelKey(self._backend, "dms_append_decode", codec, "compact_append_evict"),
+            KernelKey(self._backend, "dms_compact_attn_decode", codec, "grouped_gqa_splitk"),
+        )
+        if codec == "bf16":
+            required_keys += (KernelKey(self._backend, "dms_compact_attn_decode", codec, "grouped_gqa"),)
+        if not all(is_registered(key) for key in required_keys):
+            register_kernels(replace=True)
             load_backend_kernel_package(self._backend)
+        self._library = build(load=True)
         try:
             self._pack_fn = resolve(
                 backend=self._backend,
                 layer="dms_streaming_pack",
-                quant="bf16",
+                quant=codec,
                 variant="count_rank_scatter",
             )
             self._append_fn = resolve(
                 backend=self._backend,
                 layer="dms_append_decode",
-                quant="bf16",
+                quant=codec,
                 variant="compact_append_evict",
             )
             self._attn_fn = resolve(
@@ -264,11 +274,11 @@ class DMSDevicePayloadStore:
                 layer="dms_compact_attn_decode",
                 quant="bf16",
                 variant="grouped_gqa",
-            )
+            ) if codec == "bf16" else None
             self._attn_split_fn = resolve(
                 backend=self._backend,
                 layer="dms_compact_attn_decode",
-                quant="bf16",
+                quant=codec,
                 variant="grouped_gqa_splitk",
             )
         except Exception as exc:  # unregistered kernels = unavailable device path
@@ -284,8 +294,11 @@ class DMSDevicePayloadStore:
             raise ValueError("retrofit GQA geometry must divide evenly")
 
         self._buffers: list[DeviceBuffer] = []
-        self._k_slot = [self._alloc(self._slots * self._dim * 2) for _ in range(self._layers)]
-        self._v_slot = [self._alloc(self._slots * self._dim * 2) for _ in range(self._layers)]
+        payload_bytes = self._slots * self._dim * self._payload_dtype.itemsize
+        self._k_slot = [self._alloc(payload_bytes) for _ in range(self._layers)]
+        self._v_slot = [self._alloc(payload_bytes) for _ in range(self._layers)]
+        self._k_scales = [self._alloc(self._slots * 4) for _ in range(self._layers)] if codec != "bf16" else []
+        self._v_scales = [self._alloc(self._slots * 4) for _ in range(self._layers)] if codec != "bf16" else []
         self._positions = [self._alloc(self._slots * 4) for _ in range(self._layers)]
         self._slot_evict = [self._alloc(self._slots) for _ in range(self._layers)]
         # Serving metadata is persistent per compact layer. Host-composition
@@ -324,6 +337,17 @@ class DMSDevicePayloadStore:
         buf = malloc(nbytes)
         self._buffers.append(buf)
         return buf
+
+    def layer_scale_ptrs(self, layer: int) -> dict[str, int]:
+        if not 0 <= int(layer) < self._layers:
+            raise ValueError("DMS layer index is out of range")
+        return self._scale_kwargs(int(layer))
+
+    def _scale_kwargs(self, layer: int) -> dict[str, int]:
+        if not self._k_scales:
+            return {}
+        return {"k_scale_ptr": self._k_scales[layer].ptr,
+                "v_scale_ptr": self._v_scales[layer].ptr}
 
     def _upload(self, name: str, array: np.ndarray) -> None:
         array = np.ascontiguousarray(array)
@@ -462,6 +486,7 @@ class DMSDevicePayloadStore:
             stream=int(stream),
             library=self._library,
             runtime=self._runtime,
+            **self._scale_kwargs(layer),
         )
 
     def append_layer_device(
@@ -506,6 +531,7 @@ class DMSDevicePayloadStore:
             stream=int(stream),
             library=self._library,
             runtime=self._runtime,
+            **self._scale_kwargs(layer),
         )
 
     def _ensure_split_workspace(self, score_capacity: int) -> int:
@@ -560,7 +586,7 @@ class DMSDevicePayloadStore:
         effective_scale = (
             float(scale) if scale is not None else float(self._dim**-0.5)
         )
-        if capacity <= self._split_chunk:
+        if capacity <= self._split_chunk and self.codec == "bf16":
             self._attn_fn(
                 int(q_ptr),
                 self._k_slot[layer].ptr,
@@ -603,6 +629,7 @@ class DMSDevicePayloadStore:
             stream=int(stream),
             library=self._library,
             runtime=self._runtime,
+            **self._scale_kwargs(layer),
         )
 
     def pack_layer(
@@ -732,7 +759,7 @@ class DMSDevicePayloadStore:
     def layer_view(self, layer: int) -> DMSLayerView:
         self._check_closed()
         dim = self._dim
-        k_bits = np.zeros((self._slots, dim), dtype=np.uint16)
+        k_bits = np.zeros((self._slots, dim), dtype=self._payload_dtype)
         v_bits = np.zeros_like(k_bits)
         positions = np.zeros(self._slots, dtype=np.int32)
         evict = np.zeros(self._slots, dtype=np.uint8)
@@ -743,9 +770,20 @@ class DMSDevicePayloadStore:
             (evict, self._slot_evict[layer]),
         ):
             copy_device_to_host(host_array_ptr(array), buf, array.nbytes)
+        k_scales, v_scales = self._read_scales(layer, 0, self._slots)
         return DMSLayerView(
-            k_bits=k_bits, v_bits=v_bits, positions=positions, evict=evict
+            k_bits=k_bits, v_bits=v_bits, positions=positions, evict=evict,
+            k_scales=k_scales, v_scales=v_scales,
         )
+
+    def _read_scales(self, layer: int, start: int, length: int):
+        if not self._k_scales:
+            return None, None
+        arrays = [np.empty(length, dtype=np.float32) for _ in range(2)]
+        for array, buffers in zip(arrays, (self._k_scales, self._v_scales)):
+            copy_device_to_host(host_array_ptr(array),
+                                DeviceBuffer(buffers[layer].ptr + start * 4, array.nbytes), array.nbytes)
+        return tuple(arrays)
 
     def snapshot(
         self,
@@ -767,13 +805,13 @@ class DMSDevicePayloadStore:
                 length = int(capacities[layer, head])
                 if start < 0 or length <= 0 or start + length > self._slots:
                     raise ValueError("DMS device snapshot extent is out of range")
-                k_bits = np.empty((length, self._dim), dtype=np.uint16)
+                k_bits = np.empty((length, self._dim), dtype=self._payload_dtype)
                 v_bits = np.empty_like(k_bits)
                 positions = np.empty((length,), dtype=np.int32)
                 evict = np.empty((length,), dtype=np.uint8)
                 for array, source, byte_offset in (
-                    (k_bits, self._k_slot[layer], start * self._dim * 2),
-                    (v_bits, self._v_slot[layer], start * self._dim * 2),
+                    (k_bits, self._k_slot[layer], start * self._dim * self._payload_dtype.itemsize),
+                    (v_bits, self._v_slot[layer], start * self._dim * self._payload_dtype.itemsize),
                     (positions, self._positions[layer], start * 4),
                     (evict, self._slot_evict[layer], start),
                 ):
@@ -782,6 +820,7 @@ class DMSDevicePayloadStore:
                         DeviceBuffer(source.ptr + byte_offset, array.nbytes),
                         array.nbytes,
                     )
+                k_scales, v_scales = self._read_scales(layer, start, length)
                 extents.append(
                     DMSDeviceExtentSnapshot(
                         layer=layer,
@@ -792,6 +831,8 @@ class DMSDevicePayloadStore:
                         v_bits=v_bits,
                         positions=positions,
                         evict=evict,
+                        k_scales=k_scales,
+                        v_scales=v_scales,
                     )
                 )
         return DMSDevicePayloadSnapshot(extents=tuple(extents))
@@ -805,6 +846,7 @@ class DMSDevicePayloadStore:
         if len(snapshot.extents) != self._layers * self._heads:
             raise ValueError("DMS device snapshot extent count mismatch")
         seen: set[tuple[int, int]] = set()
+        all_planes = []
         for extent in snapshot.extents:
             key = (int(extent.layer), int(extent.head))
             if key in seen:
@@ -818,26 +860,36 @@ class DMSDevicePayloadStore:
             if start < 0 or length <= 0 or start + length > self._slots:
                 raise ValueError("DMS device snapshot extent is out of range")
             expected_payload = (length, self._dim)
-            if extent.k_bits.shape != expected_payload or extent.k_bits.dtype != np.uint16:
+            if extent.k_bits.shape != expected_payload or extent.k_bits.dtype != self._payload_dtype:
                 raise ValueError("DMS device snapshot K shape/dtype mismatch")
-            if extent.v_bits.shape != expected_payload or extent.v_bits.dtype != np.uint16:
+            if extent.v_bits.shape != expected_payload or extent.v_bits.dtype != self._payload_dtype:
                 raise ValueError("DMS device snapshot V shape/dtype mismatch")
             if extent.positions.shape != (length,) or extent.positions.dtype != np.int32:
                 raise ValueError("DMS device snapshot position shape/dtype mismatch")
             if extent.evict.shape != (length,) or extent.evict.dtype != np.uint8:
                 raise ValueError("DMS device snapshot eviction shape/dtype mismatch")
-            for array, destination, byte_offset in (
-                (extent.k_bits, self._k_slot[layer], start * self._dim * 2),
-                (extent.v_bits, self._v_slot[layer], start * self._dim * 2),
+            planes = [
+                (extent.k_bits, self._k_slot[layer], start * self._dim * self._payload_dtype.itemsize),
+                (extent.v_bits, self._v_slot[layer], start * self._dim * self._payload_dtype.itemsize),
                 (extent.positions, self._positions[layer], start * 4),
                 (extent.evict, self._slot_evict[layer], start),
-            ):
-                contiguous = np.ascontiguousarray(array)
-                copy_host_to_device(
-                    DeviceBuffer(destination.ptr + byte_offset, contiguous.nbytes),
-                    host_array_ptr(contiguous),
-                    contiguous.nbytes,
-                )
+            ]
+            for values, buffers in ((extent.k_scales, self._k_scales), (extent.v_scales, self._v_scales)):
+                if buffers:
+                    if values is None or values.shape != (length,) or values.dtype != np.float32:
+                        raise ValueError("DMS device snapshot scale shape/dtype mismatch")
+                    planes.append((values, buffers[layer], start * 4))
+                elif values is not None:
+                    raise ValueError("BF16 DMS snapshot must not contain INT8 scales")
+            all_planes.extend(planes)
+        # Validate every extent before mutating any device bytes.
+        for array, destination, byte_offset in all_planes:
+            contiguous = np.ascontiguousarray(array)
+            copy_host_to_device(
+                DeviceBuffer(destination.ptr + byte_offset, contiguous.nbytes),
+                host_array_ptr(contiguous),
+                contiguous.nbytes,
+            )
 
     def close(self) -> None:
         if self._closed:

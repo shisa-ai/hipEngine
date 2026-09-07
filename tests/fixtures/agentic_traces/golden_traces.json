@@ -786,7 +786,7 @@
             "finish_details": {"reason": "stop", "cache_action": "append_none"},
             "prompt_contains": [
               "Read the README with hidden reasoning.",
-              "<tool_call>{\"name\":\"read\",\"arguments\":{\"path\":\"README.md\"}}</tool_call>",
+              "<tool_call>\n<function=read>\n<parameter=path>\nREADME.md\n</parameter>\n</function>\n</tool_call>",
               "<tool_response>\nhello from README\n</tool_response>"
             ],
             "prompt_excludes": ["hidden plan", "<think>"]
@@ -911,7 +911,7 @@
             "finish_details": {"reason": "stop", "cache_action": "append_none"},
             "prompt_contains": [
               "Read the README with hidden reasoning.",
-              "<tool_call>{\"name\":\"read\",\"arguments\":{\"path\":\"README.md\"}}</tool_call>",
+              "<tool_call>\n<function=read>\n<parameter=path>\nREADME.md\n</parameter>\n</function>\n</tool_call>",
               "<tool_response>\nhello from README\n</tool_response>"
             ],
             "prompt_excludes": ["hidden plan", "<think>"]

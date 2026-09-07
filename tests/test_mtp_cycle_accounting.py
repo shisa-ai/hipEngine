@@ -179,8 +179,18 @@ def test_stage_and_kernel_family_classification():
 
 
 def test_inconsistent_bucket_raises():
-    a = _rec([3], [16], [100.0], [1])
-    b = _rec([3], [16], [100.0], [1])
-    cell = _cell(2, [a, b], 6)  # rows claim 16 but only 2*4 member rows
-    with pytest.raises(AssertionError):
+    a = _rec([3], [4], [100.0], [1])
+    b = _rec([3], [4], [100.0], [1])
+    cell = _cell(2, [a, b], 6)  # 8 logical rows cannot fit 4 physical rows.
+    with pytest.raises(AssertionError, match="exceeds reported rows"):
         mca._analyze_cell(cell)
+
+
+def test_padding_counts_dispatched_rows_without_duplicate_pass_time():
+    records = [_rec([3], [12], [100.0], [1]) for _ in range(2)]
+    row = mca._analyze_cell(_cell(2, records, 6))
+    assert row["physical_target_passes"] == 1
+    assert row["target_rows_total"] == 12
+    assert row["target_ms_total"] == 100.0
+    assert row["committed_output_tokens"] == 6
+    assert row["committed_identity_residual_tokens"] == 0

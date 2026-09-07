@@ -474,7 +474,7 @@ failure in a completed broad run, follow the focused-repair rule in
 | --- | --- | --- | --- |
 | IKV-C0 integration + capability identity | `completed` | approved campaign | passing/rejected/unknown identities resolve correctly |
 | IKV-C1 compact serial c>N | `completed` | C0 | no-mirror c2/c4 lifecycle exact |
-| IKV-C2 row-batched INT8 attention | `ready` | C0, C1 oracle | CPU/model/trace gates pass |
+| IKV-C2 row-batched INT8 attention | `model gate passed (pre-promotion)` | C0, C1 oracle | CPU/model/trace gates pass |
 | IKV-C3 shared prefill ownership | `blocked` | C1/C2 measured ownership | c2/c4 remains memory-positive |
 | IKV-C4 complete admission | `blocked` | C3 byte plan | pressure rejects before OOM and recovers |
 | IKV-C5 lifecycle/telemetry | `blocked` | C2-C4 | cancellation/grow/shrink/overload matrix passes |
@@ -484,3 +484,20 @@ failure in a completed broad run, follow the focused-repair rule in
 The next executable unit is **IKV-C2**: row-batched direct INT8 split-K
 attention for the qualified 24Q/4KV/D256 shape, retaining c1 and unfused
 fallbacks and requiring CPU-reference, model, and `rocprofv3` ownership gates.
+
+Coordination note (2026-09-07, capacity campaign): the model-level XTX
+pre-promotion gate now passes exactly — token-exact, max KL 0.0, top-1 1.0,
+zero hidden and zero state/KV-scale mismatches over 4 rows x 4 steps versus
+independent c1 oracles, every step routed `kv_live_spans_int8_batch` at
+physical_rows 4 with zero host row iterations under
+`per_token_head_gqa_splitk_gate_bf16_batch_strided_spans`
+([artifact](../benchmarks/results/2026-09-07-rx7900xtx-ikv-c2-batch-decode-gate.json)).
+The artifact capability still admits c1, so capability promotion to direct
+rows remains this campaign's decision under its own protocol. Still not
+integrated, per the capacity-campaign inspection: packed decode graphs
+hard-require BF16 KV; c=1 decode graphs admit INT8 only in the
+tail4-Hadamard-group32 layout; batched prefill remains IKV-C3-blocked; and
+the MTP native spec target graph N1 requires BF16 KV. The capacity campaign
+holds the item-level details in
+[`QWEN38-27B-GFX1100-24GB-CAPACITY.md`](QWEN38-27B-GFX1100-24GB-CAPACITY.md)
+Packet 3.

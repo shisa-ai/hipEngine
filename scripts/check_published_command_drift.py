@@ -30,6 +30,7 @@ import ast
 import json
 import re
 import shlex
+import subprocess
 import sys
 from functools import lru_cache
 from pathlib import Path
@@ -108,8 +109,22 @@ def _commands(payload: Any) -> list[str]:
     return found
 
 
+def _worktree_roots(repo: Path) -> tuple[Path, ...]:
+    """Recognize only linked checkouts registered in this repository's Git metadata."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(repo), "worktree", "list", "--porcelain", "-z"],
+            capture_output=True, text=True, check=True, timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return (repo,)
+    roots = tuple(Path(field.removeprefix("worktree ")).resolve()
+                  for field in result.stdout.split("\0") if field.startswith("worktree "))
+    return tuple(dict.fromkeys((repo, *roots)))
+
+
 def _violations_for_command(
-    artifact: str, command: str, repo: Path
+    artifact: str, command: str, repo: Path, *, worktrees: tuple[Path, ...] = ()
 ) -> list[dict[str, str]]:
     try:
         tokens = shlex.split(command)
@@ -121,9 +136,11 @@ def _violations_for_command(
     raw = tokens[indexes[0]]
     script = Path(raw)
     if script.is_absolute():
-        try:
-            script = script.relative_to(repo)
-        except ValueError:
+        for root in (repo, *worktrees):
+            if script.is_relative_to(root):
+                script = script.relative_to(root)
+                break
+        else:
             return [
                 {
                     "artifact": artifact,
@@ -132,7 +149,10 @@ def _violations_for_command(
                     "command": command,
                 }
             ]
-    path = repo / script
+    path = (repo / script).resolve()
+    if not path.is_relative_to(repo):
+        return [{"artifact": artifact, "problem": "SCRIPT-NOT-IN-REPO",
+                 "detail": raw, "command": command}]
     if not path.is_file():
         return [
             {
@@ -165,7 +185,8 @@ def _violations_for_command(
 
 def check_repo(repo: Path, exceptions: dict[str, str] | None = None) -> dict[str, Any]:
     """Audit the commands of every artifact cited by benchmarks/README.md."""
-    repo = Path(repo)
+    repo = Path(repo).resolve()
+    worktrees = _worktree_roots(repo)
     allow = EXCEPTIONS if exceptions is None else exceptions
     readme = repo / "benchmarks" / "README.md"
     if not readme.is_file():
@@ -187,7 +208,7 @@ def check_repo(repo: Path, exceptions: dict[str, str] | None = None) -> dict[str
             )
             continue
         for command in _commands(payload):
-            violations.extend(_violations_for_command(name, command, repo))
+            violations.extend(_violations_for_command(name, command, repo, worktrees=worktrees))
 
     matched: list[str] = []
     kept: list[dict[str, str]] = []

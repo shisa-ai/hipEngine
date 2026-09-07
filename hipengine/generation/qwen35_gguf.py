@@ -13,6 +13,7 @@ import weakref
 from collections import Counter, deque
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
+from types import SimpleNamespace
 from functools import wraps
 from pathlib import Path
 from typing import Any, ClassVar, Iterator, Mapping, Sequence
@@ -1074,6 +1075,23 @@ class Qwen35GGUFBringupGenerator:
         requested_storage = getattr(params, "kv_storage", "auto") or "auto"
         if current is not None and str(requested_storage) == "auto":
             return
+        if params is None or str(requested_storage) == "auto":
+            hint = getattr(self, "request_kv_policy_hint", None)
+            if hint is not None:
+                # The eager model-load prepare passes no request. A
+                # server-configured policy hint locks the real policy instead
+                # of auto-resolving BF16, which would later reject the
+                # explicit policy as "cannot change after preparation".
+                hint_storage, hint_scale_dtype, hint_granularity = (
+                    str(hint[0]),
+                    str(hint[1]),
+                    str(hint[2]),
+                )
+                params = SimpleNamespace(
+                    kv_storage=hint_storage,
+                    kv_scale_dtype=hint_scale_dtype,
+                    kv_scale_granularity=hint_granularity,
+                )
         policy, scale_dtype, signature = self._resolve_request_kv_policy(params)
         if current is not None and current != signature:
             raise ValueError(
@@ -5552,19 +5570,19 @@ class Qwen35GGUFResidentModelRunner:
                 global_capacity = min(global_capacity, high_water_pages)
             if global_capacity <= 0:
                 raise ValueError("GGUF global KV capacity must be positive")
-            # Eager packed-execution workspace lease: sized to the union-geometry
-            # ceiling (max(8, capacity) slots x max(1024, request context)
-            # tokens), equal to today's peak private mirror footprint, so
-            # admission accounting always sees the pinned pages and the
-            # workspace never grows.
+            # Eager packed-execution workspace lease: sized to the capacity-
+            # honest union-geometry ceiling (serving-capacity slots x
+            # max(1024, request context) tokens). The serving loop cannot
+            # open more resident slots than ``self.capacity``, so the lease
+            # follows it instead of the historical 8-slot floor; admission
+            # accounting still sees every pinned page and the workspace
+            # never grows.
             workspace_pages_per_slot = max(
                 max_pages_per_request,
                 _PACKED_VERIFY_MIN_MAX_SEQUENCE // 256,
             )
-            workspace_pages = (
-                max(_PACKED_VERIFY_DEFAULT_SLOT_CAPACITY, self.capacity)
-                * workspace_pages_per_slot
-            )
+            workspace_slots = max(1, int(self.capacity))
+            workspace_pages = workspace_slots * workspace_pages_per_slot
             self._kv_pool_generation += 1
             self._kv_pool = create_global_pool(
                 page_capacity=global_capacity + workspace_pages,

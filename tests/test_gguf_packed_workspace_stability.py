@@ -67,6 +67,11 @@ def _make_owner(recorder: _AllocRecorder) -> gguf_runner.Qwen35GGUFResidentSessi
     owner.runner = SimpleNamespace(weights=None)
     owner.scratch = None
     owner._device_kv_layout = None
+    # The fake must declare the serving cap the scheduler guarantees: the
+    # capacity-honest union (b753495b4) sizes the first packed allocation to
+    # ``max_batch_size`` instead of the historical 8-slot floor. Without this,
+    # the dataclass class default of 1 makes the interleave churn by design.
+    owner.max_batch_size = 4
     owner._packed_verify_state = None
     owner._packed_verify_scratch = None
     owner._packed_ar_attention_workspace = None
@@ -168,6 +173,25 @@ def test_packed_workspace_long_packed_prefill_covers_total_rows(monkeypatch) -> 
 
     assert int(scratch.rows) >= 4096
     assert int(scratch.max_positions) >= 4096
+
+
+def test_packed_workspace_first_allocation_covers_declared_cap(monkeypatch) -> None:
+    """The capacity-honest union sizes the first allocation to the serving cap.
+
+    Guards both regressions: per-request sizing (churn on the first wider
+    geometry) and the historical fixed 8-slot floor (wasting resident memory
+    at small caps).
+    """
+
+    recorder = _AllocRecorder(monkeypatch)
+    recorder.install()
+    owner = _make_owner(recorder)
+
+    owner._ensure_packed_verify_workspace(
+        slot_count=1, rows=4, max_sequence_length=1024, runtime=SimpleNamespace()
+    )
+    assert int(recorder.state_allocations[0].slot_count) == 4
+    assert int(recorder.scratch_allocations[0].gdn_segment_capacity) == 4
 
 
 def test_packed_workspace_growth_invalidates_live_graph_first(monkeypatch) -> None:

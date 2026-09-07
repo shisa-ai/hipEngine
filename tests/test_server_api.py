@@ -820,6 +820,8 @@ def _fake_kv_pool_stats() -> SimpleNamespace:
         free_pages=4,
         refcounted_pages=5,
         pinned_pages=1,
+        retired_pages=2,
+        retired_bytes=8192,
     )
 
 
@@ -835,6 +837,8 @@ def _fake_kv_pool_metadata() -> dict[str, float]:
         "free_pages": 4.0,
         "refcounted_pages": 5.0,
         "pinned_pages": 1.0,
+        "retired_pages": 2.0,
+        "retired_bytes": 8192.0,
     }
 
 
@@ -3089,6 +3093,9 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
         speculative_provider: str | None = None,
         draft_model: str | None = None,
         speculative_candidate_budget: int = 4,
+        kv_storage: str = "auto",
+        kv_scale_dtype: str = "fp16",
+        kv_scale_granularity: str = "per_token_head",
     ) -> FakeLLM:
         captured.update(
             {
@@ -3102,6 +3109,9 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
                 "speculative_provider": speculative_provider,
                 "draft_model": draft_model,
                 "speculative_candidate_budget": speculative_candidate_budget,
+                "kv_storage": kv_storage,
+                "kv_scale_dtype": kv_scale_dtype,
+                "kv_scale_granularity": kv_scale_granularity,
             }
         )
         return fake
@@ -3115,6 +3125,9 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
             max_active_requests=8,
             max_context_tokens=768,
             prefix_cache="radix",
+            kv_storage="int8_per_token_head",
+            kv_scale_dtype="fp32",
+            kv_scale_granularity="per_token_head",
         )
     )
     with TestClient(app) as client:
@@ -3135,6 +3148,9 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
         "speculative_provider": None,
         "draft_model": None,
         "speculative_candidate_budget": 4,
+        "kv_storage": "int8_per_token_head",
+        "kv_scale_dtype": "fp32",
+        "kv_scale_granularity": "per_token_head",
     }
 
 
@@ -21046,6 +21062,8 @@ def test_metrics_endpoint_is_opt_in_and_additive() -> None:
         shrink_events=3,
         free_pages=4,
         refcounted_pages=5,
+        retired_pages=2,
+        retired_bytes=8192,
     )
     fake.graph_bucket_stats = SimpleNamespace(
         entries=6,
@@ -21125,6 +21143,8 @@ def test_metrics_endpoint_is_opt_in_and_additive() -> None:
     assert _metric_value(metrics.text, "hipengine_kv_pool_shrink_events_total") == 3
     assert _metric_value(metrics.text, "hipengine_kv_pool_free_pages") == 4
     assert _metric_value(metrics.text, "hipengine_kv_pool_refcounted_pages") == 5
+    assert _metric_value(metrics.text, "hipengine_kv_pool_retired_pages_total") == 2
+    assert _metric_value(metrics.text, "hipengine_kv_pool_retired_bytes_total") == 8192
     assert _metric_value(metrics.text, "hipengine_graph_bucket_entries") == 6
     assert _metric_value(metrics.text, "hipengine_graph_bucket_hits_total") == 7
     assert _metric_value(metrics.text, "hipengine_graph_bucket_misses_total") == 8

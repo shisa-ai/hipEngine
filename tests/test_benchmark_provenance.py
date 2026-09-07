@@ -97,6 +97,7 @@ def test_artifact_provenance_resolves_auto_backend_and_validates_schema(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.delenv("HIPENGINE_HIP_ARCH", raising=False)
     repo = _repo(tmp_path)
     monkeypatch.setattr(provenance_module.socket, "gethostname", lambda: "zbook-test")
     model = repo / "model.gguf"

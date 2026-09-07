@@ -46,6 +46,17 @@ row, not across them.
 | --- | --- | ---: | ---: | ---: | ---: |
 | Maple-Preview | 2-bit | **1917.5** | **402.4** | — | — |
 
+Blank cells are shapes we have not measured yet, not failures. Max context is
+published only where a dedicated ceiling run exists.
+
+- **Qwen3.8-27B `Q4_K_M` fits long contexts on the RX 7900 XTX.** One-request
+  measurements reach **40,960 tokens with BF16 KV** and **54,272 with INT8 KV**
+  (FP32 scales, 54,255 prompt + 16 output tokens, **23.972 GiB peak**).
+  These are observed passes, not operational reserve recommendations.
+  Runs used the same card/protocol at different revisions, without a fresh
+  matched quality comparison or a proven INT8 maximum.
+  [Results and qualification scope](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-07-rx7900xtx-int8-repair-capacity-audit.json)
+
 ### Serving several requests at once
 
 hipEngine is very strong at multi-concurrency vs llama.cpp (or even vLLM).
@@ -78,6 +89,24 @@ Qwen3.6-35B-A3B GGUF reaches **93.644 tok/s public** — 1.1565x its own AR — 
 two concurrent requests on the W7900.
 <!-- END TOPLINE:README_HIGHLIGHTS -->
 
+### DMS INT8 offline evaluation — RX 7900 XTX
+
+| Qwen3.8-27B `Q4_K_M`, W8192 | BF16-DMS | INT8-DMS, FP32 scales | Reduction |
+| --- | ---: | ---: | ---: |
+| 16,384/32 device-store bytes, including workspaces | 829,473,104 | 432,046,928 | 397,426,176 (47.9%) |
+| C1 execution fit, 65,536 prompt / eight decode; tracked device peak | Not paired | 22.54 GiB; exact replay | Not compared |
+
+Four long-context categories pass (maximum KL 0.014937592; top-1 100%).
+All ten canonical short prompts, including four category heldouts, pass dense-BF16
+and BF16-DMS-relative checks (64 steps; dense-relative top-1 649/650).
+Resident C1/interleaved-C2 replay is byte-exact; cancellation/refill/drain pass.
+These are not calibrated production-profile or free-running task gates; heldouts
+are not proven sidecar-train-disjoint. Packed/larger-C execution and full-session
+speculative rollback are unqualified. BF16 fallback stays; no serving promotion,
+whole-process memory percentage, throughput gain or proven context maximum.
+[Numerical/lifecycle evidence](results/2026-09-07-rx7900xtx-dms-int8-postfix-audit.json);
+[64K fit and C2 checks](results/2026-09-07-rx7900xtx-dms-int8-bounded-merge-gate.json); [dense context measurements](results/2026-09-07-rx7900xtx-int8-repair-capacity-audit.json).
+
 ## Current default notes
 
 W7900 Qwen3.6 enables automatic MTP only for its qualified single-request and
@@ -87,25 +116,23 @@ at every width.** Explicit MTP is available with production/BF16 KV, context
 K2/K3, or eight at capacity 8 with K3. K denotes
 maximum draft candidates per request; other keys fall back to AR.
 
-The 2026-09-06 server-protocol snapshots on physical host `epyc`/W7900 use the
-complete ten-prompt category/heldout suite, greedy sampling, a 20 ms batch
-window, and a true AR arm in the same process. All rows are token-exact and
-physically engaged on 10/10 prompts. These are individual suite runs, not
-three-pair confidence estimates or a serving-latency qualification.
+The 2026-09-06 `epyc`/W7900 snapshots use all ten category/heldout prompts,
+greedy sampling, a 20 ms batch window and same-process true AR. All rows engage
+and are token-exact on 10/10 prompts; these single runs do not qualify latency
+or supply repeated-pair confidence estimates.
 
 | Active requests / resident capacity | Requested depth | AR tok/s | MTP tok/s | MTP / AR |
 | --- | --- | ---: | ---: | ---: |
 | 2 / 2 | K2 | 42.20 | 42.41 | 1.005x |
 | 8 / 8 | K3 | 92.67 | 97.35 | 1.051x |
 
-A separate C2/K3 qualification run measured 44.69 versus 41.87 AR tok/s
-(1.067x); that key is now available by explicit request. The 56-cell depth
-screen is diagnostic, mixes resident capacities, and does not establish
-N=1 support. C1 public admission is withdrawn: its measurements used a legacy
-target verifier, not the required packed target. The repaired target is
-diagnostic-only pending qualification. Automatic promotion awaits repeated
-performance, numerical and service-lifecycle gates. See the [measurements and exact commands](results/2026-09-06-w7900-q4km-mtp-packet6-grid-and-c2k3.json)
-and [remaining qualification work](../docs/QWEN38-27B-GFX1100-CONCURRENCY2-BETTER-MTP.md).
+A separate explicit C2/K3 run measured 44.69 versus 41.87 AR tok/s (1.067x).
+The 56-cell screen mixes capacities and does not establish N=1 support.
+C1 public admission is withdrawn: its measurements used a legacy verifier;
+the repaired packed target is diagnostic-only. Automatic promotion needs
+repeated performance, numerical and lifecycle gates.
+[Measurements](results/2026-09-06-w7900-q4km-mtp-packet6-grid-and-c2k3.json);
+[qualification work](../docs/QWEN38-27B-GFX1100-CONCURRENCY2-BETTER-MTP.md).
 
 Strix Halo `Q4_K_M`: strict C1/K3 automatic at **18.191 tok/s (1.6445x AR)**; production explicit/K0. Production C8/K3 is **52.103 vs 52.025 AR tok/s**. Detailed gfx1151 evidence remains in result artifacts.
 
@@ -456,31 +483,17 @@ CUDA resident batching and serving are not claimed by these c1 rows.
 
 ## Reading the tables
 
-Workloads use `prompt_tokens/decode_tokens`. Compare only matching timing,
-model/quant/KV, concurrency, and memory scopes; bold identifies the reported
-row, not a universal leader. A blank cell is a shape not yet measured, not a
-failure, and Max context is published only where a dedicated ceiling run exists.
+Workloads use `prompt_tokens/decode_tokens`; compare matching timing, model/quant/KV, concurrency and memory scopes.
+Bold marks the reported row, not a universal leader. Blank cells are unmeasured, not failures; Max context requires a dedicated ceiling run.
 
 ## Maintenance contract
 
-1. Replace the current row for a protocol tuple; do not append an optimization
-   diary beneath it.
-2. Put exact commands, samples, deltas, profiler data, correctness details, and
-   candidate decisions in the compact JSON artifact.
-3. Put the one-line old-to-new transition in [`CHANGELOG.md`](CHANGELOG.md) and
-   substantial implementation decisions in a new immutable worklog entry.
-4. Mention a blocked/rejected run here only when it removes a current numeric
-   row or defines a user-visible limitation. Link one artifact and one rerun
-   condition; keep candidate ladders out of the scoreboard.
-5. Keep superseded tables in [`HISTORY.md`](HISTORY.md), artifacts, or Git
-   history rather than copying them forward (`git show 6a8d38ae70b9e2c4244df10d8621db83da6c8112:benchmarks/README.md`).
-6. Update `Last updated`, then synchronize the public block:
-
-```bash
-python3 scripts/sync_benchmark_readme.py --write
-python3 scripts/sync_benchmark_readme.py --check
-git diff --check
-```
-
-The full evidence and artifact requirements remain authoritative in
-[`docs/BENCHMARK.md`](../docs/BENCHMARK.md).
+Replace protocol rows rather than adding optimization diaries. Keep commands,
+samples, deltas, profiler/correctness details and decisions in compact artifacts;
+record transitions in [`CHANGELOG.md`](CHANGELOG.md), decisions in immutable
+worklog entries and old tables in [`HISTORY.md`](HISTORY.md) or Git history (`git show 6a8d38ae70b9e2c4244df10d8621db83da6c8112:benchmarks/README.md`).
+Blocked/rejected runs belong here only for withdrawn rows or user-visible limits,
+with an artifact and rerun condition. [`docs/BENCHMARK.md`](../docs/BENCHMARK.md)
+defines the full evidence contract. Update `Last updated`, run
+`python3 scripts/sync_benchmark_readme.py --write`, then `--check` and
+`git diff --check`.

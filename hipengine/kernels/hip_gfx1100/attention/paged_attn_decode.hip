@@ -3684,7 +3684,7 @@ __global__ void qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_key_bf
   }
 }
 
-template <bool SHORT_BLOCK256>
+template <bool SHORT_BLOCK256, bool GLOBAL_SCORES = false>
 __global__ void qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel(
     const float* __restrict__ query,       // [rows, num_q_heads, head_dim]
     const uint16_t* __restrict__ key_cache,
@@ -3703,7 +3703,9 @@ __global__ void qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel(
     int64_t head_dim,
     int64_t gate_stride1,
     int64_t gate_stride2,
-    float scale) {
+    float scale,
+    float* __restrict__ score_workspace,
+    int64_t score_stride) {
   const int64_t q_head = blockIdx.x;
   const int64_t row = blockIdx.y;
   if (q_head >= num_q_heads || row >= rows) {
@@ -3725,8 +3727,12 @@ __global__ void qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel(
   }
 
   extern __shared__ float shared[];
-  float* scores = shared;
-  float* warp_buf = scores + visible_len;
+  // Only score storage changes: keep the same warp partition, reductions,
+  // normalization and value accumulation as the shared-score parent.
+  float* scores = GLOBAL_SCORES
+      ? score_workspace + (row * num_q_heads + q_head) * score_stride
+      : shared;
+  float* warp_buf = GLOBAL_SCORES ? shared : scores + visible_len;
   const int num_warps = blockDim.x / warpSize;
   float* q_shared = warp_buf + num_warps;
   const int64_t kv_group = num_q_heads / num_kv_heads;
@@ -6031,7 +6037,7 @@ int launch_qwen35_paged_full_attn_prefill_gqa_gate_bf16(
   const bool use_short_block256 = block_size == 256 && max_context_len <= 512;
 #define HIPENGINE_LAUNCH_PREFILL_GQA_BF16(SHORT) \
   hipLaunchKernelGGL( \
-      (qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel<SHORT>), \
+      (qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel<SHORT, false>), \
       dim3(static_cast<unsigned int>(num_q_heads), static_cast<unsigned int>(rows)), \
       dim3(threads), \
       shared, \
@@ -6053,13 +6059,56 @@ int launch_qwen35_paged_full_attn_prefill_gqa_gate_bf16(
       head_dim, \
       gate_stride1, \
       gate_stride2, \
-      scale)
+      scale, \
+      nullptr, \
+      0)
   if (use_short_block256) {
     HIPENGINE_LAUNCH_PREFILL_GQA_BF16(true);
   } else {
     HIPENGINE_LAUNCH_PREFILL_GQA_BF16(false);
   }
 #undef HIPENGINE_LAUNCH_PREFILL_GQA_BF16
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_bf16_global_scores_spans(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    const uint16_t* gate,
+    uint16_t* out,
+    const int32_t* block_tables,
+    const int64_t* context_counts,
+    const int64_t* row_positions,
+    int64_t rows,
+    int64_t max_context_len,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t gate_stride1,
+    int64_t gate_stride2,
+    float scale,
+    hipStream_t stream,
+    float* score_workspace,
+    int64_t score_stride) {
+  if (rows <= 0 || max_context_len <= 0 || block_size <= 0 || block_table_len <= 0 ||
+      num_q_heads <= 0 || num_kv_heads <= 0 || head_dim <= 0 || head_dim > 256 ||
+      (head_dim % 4) != 0 || gate_stride1 <= 0 || gate_stride2 <= 0 ||
+      (num_q_heads % num_kv_heads) != 0 || score_workspace == nullptr ||
+      score_stride < max_context_len) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = max_context_len <= 1024 ? 32 : 64;
+  const size_t shared = static_cast<size_t>(threads + head_dim) * sizeof(float);
+  hipLaunchKernelGGL(
+      (qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel<false, true>),
+      dim3(static_cast<unsigned int>(num_q_heads), static_cast<unsigned int>(rows)),
+      dim3(threads), shared, stream,
+      query, key_cache, value_cache, gate, out, block_tables, context_counts, row_positions,
+      rows, max_context_len, block_size, block_table_len, num_q_heads, num_kv_heads,
+      head_dim, gate_stride1, gate_stride2, scale, score_workspace, score_stride);
   return static_cast<int>(hipGetLastError());
 }
 

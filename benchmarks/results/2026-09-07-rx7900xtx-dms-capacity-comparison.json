@@ -1,0 +1,329 @@
+{
+  "schema_version": 1,
+  "kind": "hipengine_rx7900xtx_dms_capacity_comparison",
+  "date": "2026-09-07",
+  "host": "7900 XTX (gfx1100), GPU1, PCI 0000:10:00.0",
+  "performance_claim": false,
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256_16": "7b2aec3b9ababdfd",
+    "bytes": 17106773984
+  },
+  "sidecar_binding_extension": {
+    "original_package": "shisa-ai/Qwen3.8-27B-Q4_K_M-DMS-W8192",
+    "original_required_gguf_sha256_16": "7e78da5d7e3ae28d",
+    "original_required_gguf_bytes": 17106775008,
+    "local_binding": "7b2aec3b9ababdfd",
+    "metadata_path": "/models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json",
+    "original_metadata_sha256_16": "62c1f2d2c590aff2",
+    "equivalence_evidence": {
+      "structural": "both GGUF v3; 51 metadata KVs; 866-tensor tables byte-identical (names, shapes, ggml qtypes, data offsets); only metadata difference is tokenizer.chat_template (+1,048 bytes, chat text, no compute effect)",
+      "sampled": "14 x 256 KiB tensor-body range samples across the full 17.1 GB (output.weight, blk.0 attn_qkv, blk.15 ffn_gate, blk.31 ffn_down, blk.47 attn_q, blk.64.nextn.eh_proj, token_embd) all byte-identical",
+      "artifact": "benchmarks/results/2026-09-07-qwen38-gguf-build-equivalence-samples.json"
+    }
+  },
+  "backend_gate": {
+    "status": "accepted_host_backend",
+    "passed": true,
+    "widths": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      32
+    ],
+    "device_backend": "hip_gfx1100",
+    "artifact": "benchmarks/results/2026-09-07-rx7900xtx-dms-backend-gate.json"
+  },
+  "same_owner_three_arm_comparison": {
+    "owner": "Qwen35GGUFResidentSession (dense teacher + no_evict + sidecar through one shared runner)",
+    "data_manifest": {
+      "path": "/models/dms/xtx-manifests/qwen38-27b-q4km-xtx-capacity-manifest.json",
+      "sha256_16": "9b8dacd9111ddf5b",
+      "shape": "8 sequences x 32,768 tokens; 4 categories x (1 calibration + 1 validation)",
+      "train_disjoint": false,
+      "caveat": "not train-disjoint (no training-time source manifest on this host); KL/top-1 vs dense teacher are indicative same-owner consistency checks, authoritative heldout DMS quality remains the gfx1151 lane qualification"
+    },
+    "prompt_tokens_768": {
+      "note": "prompt+decode inside the 8,192 protected window: sidecar evicts nothing and matches no_evict exactly",
+      "arms": {
+        "code": {
+          "no_evict": {
+            "max_kl": 0.0059,
+            "mean_kl": 0.00082853,
+            "top1_agreement": 1.0,
+            "finite_logits": true,
+            "actual_compression_ratio": 1.0,
+            "live_token_rows": 49664,
+            "logical_token_rows": 49664,
+            "payload_bytes": 50855936
+          },
+          "sidecar": {
+            "max_kl": 0.0059,
+            "mean_kl": 0.00082853,
+            "top1_agreement": 1.0,
+            "finite_logits": true,
+            "actual_compression_ratio": 1.0,
+            "live_token_rows": 49664,
+            "logical_token_rows": 49664,
+            "payload_bytes": 50855936
+          },
+          "dense_teacher": {
+            "max_kl_vs_dense_teacher_baseline": 0.0,
+            "decode_rows": 8,
+            "memory_before_close_alloc_MiB": 17678.7
+          }
+        },
+        "general_en": {
+          "no_evict": {
+            "max_kl": 0.00048,
+            "mean_kl": 0.00013284,
+            "top1_agreement": 1.0,
+            "finite_logits": true,
+            "actual_compression_ratio": 1.0,
+            "live_token_rows": 49664,
+            "logical_token_rows": 49664,
+            "payload_bytes": 50855936
+          },
+          "sidecar": {
+            "max_kl": 0.00048,
+            "mean_kl": 0.00013284,
+            "top1_agreement": 1.0,
+            "finite_logits": true,
+            "actual_compression_ratio": 1.0,
+            "live_token_rows": 49664,
+            "logical_token_rows": 49664,
+            "payload_bytes": 50855936
+          },
+          "dense_teacher": {
+            "max_kl_vs_dense_teacher_baseline": 0.0,
+            "decode_rows": 8,
+            "memory_before_close_alloc_MiB": 17678.7
+          }
+        },
+        "general_ja": {
+          "no_evict": {
+            "max_kl": 0.000949,
+            "mean_kl": 0.00022478,
+            "top1_agreement": 1.0,
+            "finite_logits": true,
+            "actual_compression_ratio": 1.0,
+            "live_token_rows": 49664,
+            "logical_token_rows": 49664,
+            "payload_bytes": 50855936
+          },
+          "sidecar": {
+            "max_kl": 0.000949,
+            "mean_kl": 0.00022478,
+            "top1_agreement": 1.0,
+            "finite_logits": true,
+            "actual_compression_ratio": 1.0,
+            "live_token_rows": 49664,
+            "logical_token_rows": 49664,
+            "payload_bytes": 50855936
+          },
+          "dense_teacher": {
+            "max_kl_vs_dense_teacher_baseline": 0.0,
+            "decode_rows": 8,
+            "memory_before_close_alloc_MiB": 17678.7
+          }
+        },
+        "mixed_ja_en": {
+          "no_evict": {
+            "max_kl": 0.000243,
+            "mean_kl": 9.484e-05,
+            "top1_agreement": 1.0,
+            "finite_logits": true,
+            "actual_compression_ratio": 1.0,
+            "live_token_rows": 49664,
+            "logical_token_rows": 49664,
+            "payload_bytes": 50855936
+          },
+          "sidecar": {
+            "max_kl": 0.000243,
+            "mean_kl": 9.484e-05,
+            "top1_agreement": 1.0,
+            "finite_logits": true,
+            "actual_compression_ratio": 1.0,
+            "live_token_rows": 49664,
+            "logical_token_rows": 49664,
+            "payload_bytes": 50855936
+          },
+          "dense_teacher": {
+            "max_kl_vs_dense_teacher_baseline": 0.0,
+            "decode_rows": 8,
+            "memory_before_close_alloc_MiB": 17678.7
+          }
+        }
+      },
+      "artifact": "benchmarks/results/2026-09-07-rx7900xtx-dms-quality-suite-768.json"
+    },
+    "prompt_tokens_16384": {
+      "note": "above-window: sidecar compresses to ~1.333x with top-1 agreement 1.0 in all categories",
+      "arms": {
+        "code": {
+          "no_evict": {
+            "max_kl": 8e-06,
+            "mean_kl": 1e-06,
+            "top1_agreement": 1.0,
+            "finite_logits": true,
+            "actual_compression_ratio": 1.0,
+            "live_token_rows": 1049088,
+            "logical_token_rows": 1049088,
+            "payload_bytes": 1074266112
+          },
+          "sidecar": {
+            "max_kl": 0.000136,
+            "mean_kl": 1.98e-05,
+            "top1_agreement": 1.0,
+            "finite_logits": true,
+            "actual_compression_ratio": 1.33301,
+            "live_token_rows": 787008,
+            "logical_token_rows": 1049088,
+            "payload_bytes": 805896192
+          },
+          "dense_teacher": {
+            "max_kl_vs_dense_teacher_baseline": 0.0,
+            "decode_rows": 8,
+            "memory_before_close_alloc_MiB": 18687.0
+          }
+        },
+        "general_en": {
+          "no_evict": {
+            "max_kl": 0.00017,
+            "mean_kl": 6.678e-05,
+            "top1_agreement": 1.0,
+            "finite_logits": true,
+            "actual_compression_ratio": 1.0,
+            "live_token_rows": 1049088,
+            "logical_token_rows": 1049088,
+            "payload_bytes": 1074266112
+          },
+          "sidecar": {
+            "max_kl": 0.003323,
+            "mean_kl": 0.00079059,
+            "top1_agreement": 1.0,
+            "finite_logits": true,
+            "actual_compression_ratio": 1.33301,
+            "live_token_rows": 787008,
+            "logical_token_rows": 1049088,
+            "payload_bytes": 805896192
+          },
+          "dense_teacher": {
+            "max_kl_vs_dense_teacher_baseline": 0.0,
+            "decode_rows": 8,
+            "memory_before_close_alloc_MiB": 18687.0
+          }
+        },
+        "general_ja": {
+          "no_evict": {
+            "max_kl": 0.000121,
+            "mean_kl": 4.792e-05,
+            "top1_agreement": 1.0,
+            "finite_logits": true,
+            "actual_compression_ratio": 1.0,
+            "live_token_rows": 1049088,
+            "logical_token_rows": 1049088,
+            "payload_bytes": 1074266112
+          },
+          "sidecar": {
+            "max_kl": 0.008396,
+            "mean_kl": 0.00180304,
+            "top1_agreement": 1.0,
+            "finite_logits": true,
+            "actual_compression_ratio": 1.33301,
+            "live_token_rows": 787008,
+            "logical_token_rows": 1049088,
+            "payload_bytes": 805896192
+          },
+          "dense_teacher": {
+            "max_kl_vs_dense_teacher_baseline": 0.0,
+            "decode_rows": 8,
+            "memory_before_close_alloc_MiB": 18687.0
+          }
+        },
+        "mixed_ja_en": {
+          "no_evict": {
+            "max_kl": 0.000372,
+            "mean_kl": 9.006e-05,
+            "top1_agreement": 1.0,
+            "finite_logits": true,
+            "actual_compression_ratio": 1.0,
+            "live_token_rows": 1049088,
+            "logical_token_rows": 1049088,
+            "payload_bytes": 1074266112
+          },
+          "sidecar": {
+            "max_kl": 0.001245,
+            "mean_kl": 0.00061072,
+            "top1_agreement": 1.0,
+            "finite_logits": true,
+            "actual_compression_ratio": 1.33301,
+            "live_token_rows": 787008,
+            "logical_token_rows": 1049088,
+            "payload_bytes": 805896192
+          },
+          "dense_teacher": {
+            "max_kl_vs_dense_teacher_baseline": 0.0,
+            "decode_rows": 8,
+            "memory_before_close_alloc_MiB": 18687.0
+          }
+        }
+      },
+      "artifact": "benchmarks/results/2026-09-07-rx7900xtx-dms-quality-suite-16384.json"
+    }
+  },
+  "integrated_long_16384": {
+    "status": "passed",
+    "prompt_tokens": 16384,
+    "dms_operations": {
+      "decode_appends": 4,
+      "evicted_tokens": 0,
+      "released_provisional_slots": 0,
+      "streaming_pack_calls": 1
+    },
+    "capacity": {
+      "actual_compression_ratio": 1.333116407711706,
+      "live_token_rows": 786752,
+      "logical_token_rows": 1048832,
+      "max_live_count": 12293,
+      "payload_bytes": 805634048,
+      "scale_bytes": 0,
+      "target_compression_ratio": 2
+    },
+    "extent_pool": {
+      "capacity_slots": 786816,
+      "free_slots": 0,
+      "allocation_failures": 0,
+      "largest_free_extent": 0,
+      "free_ranges_nonempty": false
+    },
+    "memory_checkpoints_MiB": {
+      "after_close": 0.0,
+      "after_compact_pack_and_dense_release": 17754.4,
+      "after_decode": 17755.6,
+      "before": 0.0,
+      "constructed_dense_prefill_owner": 18006.2
+    },
+    "dense_release_delta_MiB": 251.8,
+    "dense_peak_note": "dense BF16 prefill owner is the prefill-stage peak (documented limiting stage; released after direct compact pack; no dense shadow in decode)",
+    "artifact": "benchmarks/results/2026-09-07-rx7900xtx-dms-long-16384.json"
+  },
+  "gfx1100_fused_qk_policy": {
+    "change": "GGUF_FULL_ATTN_QK_POSTPROCESS_DECODE_POLICIES added to hipengine/kernels/hip_gfx1100/__init__.py admitting (1, 24, 4, 256) -> qwen35_position_qk_bf16_f32; required by external DMS serving and now shared by dense full-attention decode",
+    "parity_evidence": "tests/test_qwen38_full_attn_qk_postprocess.py: composite bit-identical to the unfused GPU control chain (raw uint32/gate-bit equality) and within 2e-6 of the CPU reference with KL/top-1 gate; 100 passed in the focused decode/dispatch bundle",
+    "lineage": "same registered kernel and policy already default on hip_gfx1151"
+  },
+  "limitations": [
+    "diagnostic capacity evidence (performance_claim false in every source artifact)",
+    "eviction exercised at prefill exact-budget only; decode-time eviction not exercised by these runs",
+    "768-token run is window-protected (no eviction; sidecar == no_evict by construction)",
+    "KL/top-1 comparisons are same-owner, same-corpus, and not train-disjoint"
+  ],
+  "commands": {
+    "backend_gate": "HIP_VISIBLE_DEVICES=1 GPU_MAX_HW_QUEUES=1 python3 scripts/dms_backend_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --metadata /models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json --expected-artifact 7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+    "quality_suite": "HIP_VISIBLE_DEVICES=1 GPU_MAX_HW_QUEUES=1 python3 scripts/qwen38_dms_integrated_quality_suite.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --metadata /models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json --data-manifest /models/dms/xtx-manifests/qwen38-27b-q4km-xtx-capacity-manifest.json --prompt-tokens {768|16384} --decode-steps 8 --modes no_evict,sidecar --backend hip_gfx1100",
+    "long_smoke": "HIP_VISIBLE_DEVICES=1 GPU_MAX_HW_QUEUES=1 python3 scripts/qwen38_dms_integrated_long.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --metadata /models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json --data-manifest /models/dms/xtx-manifests/qwen38-27b-q4km-xtx-capacity-manifest.json --prompt-tokens 16384 --decode-steps 4 --backend hip_gfx1100"
+  }
+}

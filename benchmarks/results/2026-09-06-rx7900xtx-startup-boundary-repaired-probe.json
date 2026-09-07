@@ -1,0 +1,143 @@
+{
+  "schema": 1,
+  "date": "2026-09-06",
+  "kind": "rx7900xtx_qwen38_startup_boundary_repaired_probe",
+  "campaign": "docs/QWEN38-27B-GFX1100-24GB-CAPACITY.md",
+  "packet": "1 (probe repair) + first Packet 5 startup-boundary rows",
+  "performance_claim": false,
+  "claim_scope": "Startup-boundary rows for Qwen3.8-27B Q4_K_M on the RX 7900 XTX (GPU[1]/card0/0000:10:00.0) with the repaired direct probe: cold server start, one exact-accounting request (prompt fitted to context-16 tokens, 16 greedy outputs, ignore_eos), continuous 20 ms whole-card sysfs sampling, verified device identity, effective-KV gate, and clean post-request ownership. Declared context, not a live-context ceiling.",
+  "harness": {
+    "path": "scripts/gguf_context_ceiling_probe.py",
+    "schema": 2,
+    "commit_at_run": "312f67c4a (Packet 0) + Packet 1 working tree",
+    "repairs": [
+      "exact prompt/output token accounting with usage and finish_reason validation",
+      "continuous 20 ms sysfs VRAM sampling through startup and the request with stage peaks",
+      "card resolved by PCI id with unique_id recorded; server-reported device cross-checked",
+      "OOM classified only from matching evidence; distinct oom_startup/hip_error/ready_timeout/request_timeout statuses",
+      "effective KV storage validated; a requested-KV fallback fails the point (kv_fallback)",
+      "post-request ownership drain with the packed-workspace lease accounted as persistent baseline"
+    ]
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sampled_fingerprint_sha256": "9fb7bd4ac04dd0be6946550474299cba8808e11b30e4d94b5a3911c1727b49b1"
+  },
+  "device": {
+    "rocm_index": 1,
+    "drm_card": "card0",
+    "pci_id": "0000:10:00.0",
+    "unique_id": "0xcc4d02090dc9c3ff",
+    "vram_total_bytes": 25753026560
+  },
+  "config_common": {
+    "backend": "hip_gfx1100",
+    "quant": "gguf_q4_k_m",
+    "max_active_requests": 1,
+    "max_tokens": 16,
+    "speculative_mtp_serving": "off",
+    "prefix_cache": "off",
+    "gpu_max_hw_queues": 1,
+    "kv_pool_idle_grace_seconds": 0,
+    "sample_interval_ms": 20
+  },
+  "points": {
+    "bf16_2048": {
+      "status": "ok",
+      "peak_gib": 21.868946075439453,
+      "startup_peak_gib": 21.833,
+      "request_peak_gib": 21.869,
+      "prompt_tokens": 2031,
+      "completion_tokens": 16,
+      "finish_reason": "length",
+      "samples": 3611,
+      "kv_capability_action": "not_applicable",
+      "artifact": "benchmarks/results/2026-09-06-rx7900xtx-bf16-2048.json"
+    },
+    "bf16_3072": {
+      "status": "ok",
+      "peak_gib": 23.327884674072266,
+      "startup_peak_gib": 23.292,
+      "request_peak_gib": 23.328,
+      "prompt_tokens": 3055,
+      "completion_tokens": 16,
+      "finish_reason": "length",
+      "samples": 3945,
+      "kv_capability_action": "not_applicable",
+      "artifact": "benchmarks/results/2026-09-06-rx7900xtx-bf16-3072.json"
+    },
+    "bf16_4096": {
+      "status": "oom_startup",
+      "peak_gib": 23.950759887695312,
+      "startup_peak_gib": null,
+      "request_peak_gib": null,
+      "prompt_tokens": null,
+      "completion_tokens": null,
+      "finish_reason": null,
+      "samples": 3831,
+      "kv_capability_action": null,
+      "artifact": "benchmarks/results/2026-09-06-rx7900xtx-bf16-4096.json"
+    },
+    "int8_per_token_head_2048": {
+      "status": "ok",
+      "peak_gib": 21.348812103271484,
+      "startup_peak_gib": 21.349,
+      "request_peak_gib": 21.349,
+      "prompt_tokens": 2031,
+      "completion_tokens": 16,
+      "finish_reason": "length",
+      "samples": 4310,
+      "kv_capability_action": "admit",
+      "artifact": "benchmarks/results/2026-09-06-rx7900xtx-int8-fp32-2048.json"
+    },
+    "int8_per_token_head_3072": {
+      "status": "ok",
+      "peak_gib": 22.600772857666016,
+      "startup_peak_gib": 22.601,
+      "request_peak_gib": 22.601,
+      "prompt_tokens": 3055,
+      "completion_tokens": 16,
+      "finish_reason": "length",
+      "samples": 4603,
+      "kv_capability_action": "admit",
+      "artifact": "benchmarks/results/2026-09-06-rx7900xtx-int8-fp32-3072.json"
+    },
+    "int8_per_token_head_4096": {
+      "status": "ok",
+      "peak_gib": 23.75109100341797,
+      "startup_peak_gib": 23.751,
+      "request_peak_gib": 23.751,
+      "prompt_tokens": 4078,
+      "completion_tokens": 16,
+      "finish_reason": "length",
+      "samples": 5198,
+      "kv_capability_action": "admit",
+      "artifact": "benchmarks/results/2026-09-06-rx7900xtx-int8-fp32-4096.json"
+    },
+    "int8_per_token_head_5120": {
+      "status": "oom_startup",
+      "peak_gib": 23.941925048828125,
+      "startup_peak_gib": null,
+      "request_peak_gib": null,
+      "prompt_tokens": null,
+      "completion_tokens": null,
+      "finish_reason": null,
+      "samples": 4592,
+      "kv_capability_action": null,
+      "artifact": "benchmarks/results/2026-09-06-rx7900xtx-int8-fp32-5120.json"
+    }
+  },
+  "findings": {
+    "startup_boundary_bf16": "passes 2048 and 3072; warmup HIP OOM (error 2) at 4096 with a true sampled failure peak of 23.951 GiB (the earlier artifact's 16.9 GiB was incomplete sampling before the failure)",
+    "startup_boundary_int8_qualified": "with the qualified fp32 per-token/head scale contract engaged (runtime_action admit), INT8 passes 2048/3072/4096 and first fails at 5120 (warmup OOM, 23.942 GiB)",
+    "int8_saving_measured": "engaged INT8 peaks are 21.349/22.601/23.751 GiB versus BF16 21.869/23.328/OOM at the same contexts: the earlier 'INT8 saves no memory' row measured an unengaged fallback (fp16-scale contract miss, runtime_action fallback_bf16), not the compact route",
+    "fixed_overhead_dominates": "both routes share an ~18.95 GiB fixed intercept; the declared-token slope is 1.459 MiB (BF16) and 1.203 MiB (INT8) versus payload 64 KiB / 32.5 KiB, so most context-proportional memory is not KV payload (attribution is Packet 2 work; the eight-slot packed-workspace lease of max(8,N) x ceil(ctx/256) pages is one confirmed component)",
+    "historical_reconciliation": "the historical 112K/126K INT8 rows used the soak route with explicit fp32 scales; on current main the engaged INT8 server route was broken at startup since commit 9701985dd (eager prepare_runner resolves auto->bf16 first, then the explicit policy raises 'KV policy cannot change after preparation'); repaired in this campaign with a policy hint"
+  },
+  "limitations": [
+    "Startup-boundary rows only: max-active-requests 1, no concurrency, no throughput claim, and no task-quality gate.",
+    "Peaks are 20 ms sysfs samples; sub-interval transients are lower-bounded.",
+    "The 18.618 GiB 128/24 anchor remains unrecovered; historical comparisons stay unmatched."
+  ],
+  "next": "Packet 2 attribution of the fixed intercept and the context-proportional excess; then soak-route concurrency controls."
+}

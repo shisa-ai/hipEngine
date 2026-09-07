@@ -58,7 +58,8 @@ _SOURCE_ADMISSION = {
     "no_subset_or_favorable_rerun": True,
 }
 _NORMALIZED_PACKAGE_SHA256 = (
-    "b3afdda1aafa4b3cfb2c6ed058c57739067c5b190ef056262bb57b98133febbb"
+    # Audited Qwen-only policy additions; all 39 Laguna assignments are unchanged.
+    "1d52f4eb9d9f601e74eb700a87ceb408099735ea9ce859f714ec717af0a24cd9"
 )
 _SOURCE_SHA256 = {
     "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": (
@@ -86,7 +87,8 @@ _POST_MERGE_SOURCE_SHA256 = {
         "ae4375a31bf62afe3ef341dfaf26cbd1c6bf456097f63567d521c59ab3a0c82b"
     ),
     "hipengine/runtime/gguf_linear.py": (
-        "e106ee7d834022018b5f40be6f6476d1c7c8062e3eddc8c1d17596eac51d4277"
+        # Only Q4 dual-SiLU row48 dispatch changed; Q5 cache consumers did not.
+        "e2c59bee0146e5298c1d72e60894dcff9ee557fba7503b2a8ee123504f6db706"
     ),
     "hipengine/runtime/laguna_gguf_runner.py": (
         "ae45f9e3e39fd93f971e5aa0b3394b3e5ce0a797b7cef8a9e1a20b1f2a133825"

@@ -198,6 +198,17 @@ row, not across them.
 | --- | --- | ---: | ---: | ---: | ---: |
 | Maple-Preview | 2-bit | **1917.5** | **402.4** | — | — |
 
+Blank cells are shapes we have not measured yet, not failures. Max context is
+published only where a dedicated ceiling run exists.
+
+- **Qwen3.8-27B `Q4_K_M` fits long contexts on the RX 7900 XTX.** One-request
+  measurements reach **40,960 tokens with BF16 KV** and **54,272 with INT8 KV**
+  (FP32 scales, 54,255 prompt + 16 output tokens, **23.972 GiB peak**).
+  These are observed passes, not operational reserve recommendations.
+  Runs used the same card/protocol at different revisions, without a fresh
+  matched quality comparison or a proven INT8 maximum.
+  [Results and qualification scope](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-07-rx7900xtx-int8-repair-capacity-audit.json)
+
 ### Serving several requests at once
 
 hipEngine is very strong at multi-concurrency vs llama.cpp (or even vLLM).

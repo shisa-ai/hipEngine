@@ -180,3 +180,76 @@ def test_final_pool_is_preserved_from_the_live_idle_snapshot() -> None:
     assert observed["free_pages"] == 5
     assert observed["refcounted_pages"] == 0
     assert observed["pinned_pages"] == 0
+
+
+def test_pool_plan_and_workloads_rescale_to_small_card_contexts() -> None:
+    contexts = (512, 1_024, 2_048, 3_072)
+    plan = gate.build_pool_plan(
+        decode_tokens=32,
+        longer_context_tokens=4_096,
+        contexts=contexts,
+    )
+
+    assert plan.pages_by_context == {
+        512: 3,
+        1_024: 5,
+        2_048: 9,
+        3_072: 13,
+        4_096: 17,
+    }
+    assert plan.initial_pages == plan.low_water_pages == plan.chunk_pages == 3
+    assert plan.pressure_live_context == 3_072
+    assert plan.pressure_reject_context == 1_024
+    assert plan.pressure_high_water_pages == 3 + 13
+    assert plan.mixed_contexts == (512, 1_024, 3_072)
+    assert gate._required_admission(plan, workspace_lease_pages=4) == {
+        "resource": "device_kv_pool",
+        "requested_units": 5,
+        "current_units": 20,
+        "capacity_units": 20,
+    }
+
+    workloads = gate.build_workload_specs(
+        decode_tokens=32,
+        longer_context_tokens=4_096,
+        backend="hip_gfx1100",
+        contexts=contexts,
+    )
+
+    assert tuple(workloads) == (
+        "context_512_c2",
+        "context_1k_c2",
+        "context_2k_c2",
+        "context_3k_c2",
+        "mixed_512_1k_3k",
+        "context_4k_c2",
+        "graph_seed_3k_c1",
+        "graph_regrow_3k_c1",
+    )
+    assert [row.prompt_length for row in workloads["context_512_c2"]] == [512, 512]
+    assert [row.prompt_length for row in workloads["context_3k_c2"]] == [3_072, 3_072]
+    assert [row.prompt_length for row in workloads["mixed_512_1k_3k"]] == [512, 1_024, 3_072]
+    assert [row.prompt_length for row in workloads["context_4k_c2"]] == [4_096, 4_096]
+    assert [row.prompt_length for row in workloads["graph_regrow_3k_c1"]] == [512, 3_072]
+
+    live_spec, reject_spec = gate._pressure_specs(decode_tokens=32, contexts=contexts)
+    assert (live_spec.prompt_length, reject_spec.prompt_length) == (3_072, 1_024)
+
+
+def test_pool_plan_rejects_degenerate_context_sets() -> None:
+    import pytest
+
+    with pytest.raises(ValueError, match="at least two"):
+        gate.build_pool_plan(decode_tokens=32, longer_context_tokens=None, contexts=(1_024,))
+    with pytest.raises(ValueError, match="at least two"):
+        gate.build_workload_specs(
+            decode_tokens=32,
+            longer_context_tokens=None,
+            contexts=(1_024,),
+        )
+    with pytest.raises(ValueError, match="exceed the largest required context"):
+        gate.build_pool_plan(
+            decode_tokens=32,
+            longer_context_tokens=2_048,
+            contexts=(512, 1_024, 4_096),
+        )

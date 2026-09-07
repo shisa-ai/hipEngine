@@ -754,14 +754,15 @@ def test_configure_engine_loop_leases_packed_workspace_pages() -> None:
     pool = runner.kv_pool
     batch_owner = owner.sessions[0]
     # capacity=2 requests * 3 pages/request = 6 request pages; the packed
-    # workspace lease adds max(8, capacity) * max(3, 1024/256) = 32 pinned
-    # pages on top (the union floor is 1024 tokens per slot even when the
-    # request context is shorter).
-    assert pool.current_pages == 38
+    # workspace lease adds capacity slots * max(3, 1024/256) = 8 pinned pages
+    # on top (the lease is capacity-honest: serving can never open more
+    # resident slots than max_active_requests, and the 1024-token per-slot
+    # union floor still applies to short request contexts).
+    assert pool.current_pages == 14
     lease = pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY)
-    assert lease is not None and len(lease) == 32
+    assert lease is not None and len(lease) == 8
     assert pool.stats.free_pages == 6
-    assert pool.stats.pinned_pages == 32
+    assert pool.stats.pinned_pages == 8
     assert batch_owner.bound_workspace_pools == [pool]
 
     # Reconfiguration releases the lease and the idle workspace before the
@@ -771,8 +772,88 @@ def test_configure_engine_loop_leases_packed_workspace_pages() -> None:
     assert new_pool is not pool
     assert batch_owner.workspace_release_calls == 1
     assert pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY) is None
-    assert len(new_pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY)) == 32
+    assert len(new_pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY)) == 8
     assert batch_owner.bound_workspace_pools[-1] is new_pool
 
     runner.close()
     assert runner.kv_pool is None
+
+
+def test_configure_engine_loop_leases_single_slot_workspace_at_c1() -> None:
+    """At capacity=1 the packed workspace leases one slot, not the 8-slot floor.
+
+    Only one resident slot can ever be opened at C1 (MTP serving widths and
+    packed group layouts are both bounded by max_active_requests), so leasing
+    eight slots pins 4x more arena pages than the serving loop can touch.
+    """
+
+    from hipengine.runtime.qwen35_gguf_runner import _GGUF_PACKED_WORKSPACE_LEASE_KEY
+
+    owner = _FakeGlobalPoolOwner()
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=1)
+    config = EngineLoopConfig(
+        max_active_requests=1,
+        kv_pool_initial_pages=8,
+        kv_pool_low_water_pages=8,
+        kv_pool_chunk_pages=8,
+        prefix_cache="off",
+    )
+    runner._reserve_sessions()
+    runner.configure_engine_loop(config)
+
+    pool = runner.kv_pool
+    assert pool is not None
+    # capacity=1 request * 3 pages/request = 3 request pages; the workspace
+    # lease is one slot * max(3, 4) = 4 pages.
+    assert pool.current_pages == 7
+    lease = pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY)
+    assert lease is not None and len(lease) == 4
+    assert pool.stats.pinned_pages == 4
+    assert pool.stats.free_pages == 3
+
+    runner.close()
+
+
+def test_packed_verify_union_geometry_is_capacity_honest() -> None:
+    """The union geometry caps workspace slots at the real serving capacity."""
+
+    from types import SimpleNamespace
+
+    from hipengine.runtime.qwen35_gguf_runner import (
+        Qwen35GGUFResidentSession,
+        _PACKED_VERIFY_DEFAULT_SLOT_CAPACITY,
+    )
+
+    def geometry(max_batch_size, slot_count=1):
+        namespace = SimpleNamespace(
+            max_batch_size=max_batch_size,
+            _packed_verify_state=None,
+            _packed_verify_scratch=None,
+            _bulk_prefill_scratch=None,
+            _packed_verify_prefill_row_cap=lambda: 128,
+        )
+        return Qwen35GGUFResidentSession._packed_verify_union_geometry(
+            namespace,
+            slot_count=slot_count,
+            rows=8,
+            max_sequence_length=3072,
+        )
+
+    # C1 serves one slot: state slots and GDN segments follow the real cap.
+    union_slots, _union_rows, _union_max_seq, union_segments = geometry(1)
+    assert union_slots == 1
+    assert union_segments == 1
+
+    # The default C8 geometry is unchanged.
+    union_slots, _union_rows, _union_max_seq, union_segments = geometry(8)
+    assert union_slots == _PACKED_VERIFY_DEFAULT_SLOT_CAPACITY
+    assert union_segments == _PACKED_VERIFY_DEFAULT_SLOT_CAPACITY
+
+    # C4 right-sizes to four slots.
+    union_slots, _union_rows, _union_max_seq, union_segments = geometry(4)
+    assert union_slots == 4
+    assert union_segments == 4
+
+    # Absent serving caps keep the historical 8-slot fallback.
+    union_slots, _union_rows, _union_max_seq, union_segments = geometry(None)
+    assert union_slots == _PACKED_VERIFY_DEFAULT_SLOT_CAPACITY

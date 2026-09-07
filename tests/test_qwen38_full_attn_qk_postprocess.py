@@ -108,7 +108,7 @@ def test_qk_postprocess_wrapper_is_exposed() -> None:
     assert callable(_candidate())
 
 
-def test_qk_postprocess_registers_and_routes_only_qualified_gfx1151_shape() -> None:
+def test_qk_postprocess_registers_and_routes_only_qualified_shape() -> None:
     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
 
     register_gfx1151_kernels(replace=True)
@@ -119,13 +119,19 @@ def test_qk_postprocess_registers_and_routes_only_qualified_gfx1151_shape() -> N
         quant=_QUANT,
         variant=_VARIANT,
     ) is candidate
+    assert resolve(
+        backend="hip_gfx1100",
+        layer=_LAYER,
+        quant=_QUANT,
+        variant=_VARIANT,
+    ) is candidate
 
     config = SimpleNamespace(head_count=24, head_count_kv=4, key_length=256)
-    qualified = SimpleNamespace(
+    qualified_gfx1151 = SimpleNamespace(
         backend="hip_gfx1151",
         weights=SimpleNamespace(config=config),
     )
-    miss_backend = SimpleNamespace(
+    qualified_gfx1100 = SimpleNamespace(
         backend="hip_gfx1100",
         weights=SimpleNamespace(config=config),
     )
@@ -136,8 +142,8 @@ def test_qk_postprocess_registers_and_routes_only_qualified_gfx1151_shape() -> N
         ),
     )
     method = Qwen35GGUFFullStackRunner._full_attn_qk_postprocess_fn
-    assert method(qualified) is candidate
-    assert method(miss_backend) is None
+    assert method(qualified_gfx1151) is candidate
+    assert method(qualified_gfx1100) is candidate
     assert method(miss_shape) is None
 
 
