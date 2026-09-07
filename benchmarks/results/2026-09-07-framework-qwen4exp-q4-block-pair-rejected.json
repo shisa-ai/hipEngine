@@ -1,0 +1,207 @@
+{
+  "disposition": "rejected_removed_kernel_loss",
+  "performance_claim": false,
+  "mechanism": "Prefetch two Q4_K blocks for four gate/up weight banks before consuming in original block order; row8 reuse and reduction unchanged.",
+  "validation": {
+    "tests_passed": 14,
+    "all40_pairs_exact": true,
+    "trace_path": "/tmp/qwen4exp-q4-block-pair-trace/gfx1151/3976319_kernel_trace.csv",
+    "vgpr_parent": 88,
+    "vgpr_candidate": 112,
+    "lds_bytes_both": 4608,
+    "scratch_bytes_both": 0
+  },
+  "limits": "Actual layer3 weights,synthetic routing/activations at512/1024 tokens; gate/up+SiLU operation-complete kernel screen. No captured-routing or full-model claim. Increased VGPR is observed, causal occupancy impact not measured.",
+  "cleanup": "Candidate kernel/wrapper/registry/screen changes and tests removed; tracked code matches ac8b491ba.",
+  "schema": 1,
+  "kind": "qwen4exp_q4_bundle_gate_up_silu",
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "ac8b491bae6a9a69af075193ecb5536a75996964",
+    "tracked_clean": false
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "command": [
+    "scripts/qwen4exp_q4_bundle_screen.py",
+    "--model-root",
+    "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--require-cached-build",
+    "--block-pair",
+    "--rows",
+    "512",
+    "1024",
+    "--pairs",
+    "20",
+    "--layer",
+    "3",
+    "--output",
+    "/tmp/qwen4exp-q4-block-pair.json"
+  ],
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "weights": [
+    {
+      "tensor": "blk.3.ffn_gate_exps.weight",
+      "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "sha256": "5c72577b467c69b6b525be0ed6e2524386e3678074beeb14e250c7d5089d9b01"
+    },
+    {
+      "tensor": "blk.3.ffn_up_exps.weight",
+      "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "sha256": "d60023c47b0ff4cf5182569cf585e2e52dfd8cc23cd767b2fc3d3bb5da4e1810"
+    }
+  ],
+  "arithmetic_class": "T0",
+  "runtime_default_changed": false,
+  "boundary": "grouped Q4_K gate/up plus unchanged BF16 SiLU, no routing/down/combine",
+  "parent_variant": "gguf_q4_k_selected_dual_grouped_pair2_bf16_bf16_out",
+  "candidate_variant": "gguf_q4_k_selected_dual_grouped_pair2_block_pair_bf16_bf16_out",
+  "routing": "uniform",
+  "layer": 3,
+  "cases": [
+    {
+      "tokens": 512,
+      "compact_rows": 5120,
+      "active_experts": 512,
+      "seconds": {
+        "parent": [
+          0.01860410813242197,
+          0.018512726994231343,
+          0.018531912937760353,
+          0.01855159900151193,
+          0.018513749120756984,
+          0.018567228922620416,
+          0.018646497977897525,
+          0.01847555604763329,
+          0.01854891492985189,
+          0.01859564194455743,
+          0.018835962982848287,
+          0.01873853988945484,
+          0.018688556039705873,
+          0.01858629402704537,
+          0.018746264977380633,
+          0.01868514996021986,
+          0.01868946896865964,
+          0.01872888207435608,
+          0.018888731952756643,
+          0.01844946714118123
+        ],
+        "candidate": [
+          0.02054162393324077,
+          0.02038358710706234,
+          0.020334254950284958,
+          0.020465078996494412,
+          0.0205659088678658,
+          0.02042425307445228,
+          0.02033340302295983,
+          0.020401970949023962,
+          0.020386282121762633,
+          0.020325017161667347,
+          0.020443278830498457,
+          0.020491310162469745,
+          0.0204655509442091,
+          0.020408543990924954,
+          0.020649125101044774,
+          0.020651168888434768,
+          0.020383256021887064,
+          0.020386743126437068,
+          0.02045975998044014,
+          0.02048677997663617
+        ]
+      },
+      "max_expert_rows": 21,
+      "median_active_expert_rows": 10.0,
+      "weight_passes_by_row_batch": {
+        "8": 867,
+        "16": 528,
+        "32": 512
+      },
+      "speedup": 0.9102519370021702,
+      "all_pairs_exact": true
+    },
+    {
+      "tokens": 1024,
+      "compact_rows": 10240,
+      "active_experts": 512,
+      "seconds": {
+        "parent": [
+          0.033786836080253124,
+          0.03399019711650908,
+          0.03399276197887957,
+          0.03405889682471752,
+          0.03399535804055631,
+          0.033713157987222075,
+          0.03390991687774658,
+          0.03393144812434912,
+          0.0338989261072129,
+          0.03401010483503342,
+          0.0340216769836843,
+          0.03400287195108831,
+          0.03406470688059926,
+          0.03379835793748498,
+          0.03383909398689866,
+          0.034212494967505336,
+          0.033755667973309755,
+          0.03394668595865369,
+          0.03416351298801601,
+          0.03384380298666656
+        ],
+        "candidate": [
+          0.03735330910421908,
+          0.03732420387677848,
+          0.03736551105976105,
+          0.037349732127040625,
+          0.037371962796896696,
+          0.037370439851656556,
+          0.0374173391610384,
+          0.03748853108845651,
+          0.037392721977084875,
+          0.03732871194370091,
+          0.03740515513345599,
+          0.037337288027629256,
+          0.037313292967155576,
+          0.037338721100240946,
+          0.03740227990783751,
+          0.03718237788416445,
+          0.037385358940809965,
+          0.03729695314541459,
+          0.037451101932674646,
+          0.0373008290771395
+        ]
+      },
+      "max_expert_rows": 33,
+      "median_active_expert_rows": 20.0,
+      "weight_passes_by_row_batch": {
+        "8": 1497,
+        "16": 911,
+        "32": 513
+      },
+      "speedup": 0.9092338841280748,
+      "all_pairs_exact": true
+    }
+  ]
+}

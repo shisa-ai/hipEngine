@@ -1,5 +1,12 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Qwen4Exp Q4 paired-block pipeline: removed
+
+- Two-block weight prefetch loses ~10% at512/1024 tokens,exact outputs;
+  VGPR88->112,LDS4608B/scratch0 unchanged. Candidate removed.
+- Do not repeat unchanged paired-block/full-weight caches or row retiles.
+  Production pair2 and all prior promotions remain.
+
 ## Qwen4Exp Q5_1 per-row partial publication production
 
 - Production-bound `HIPENGINE_QWEN4_EXP_Q51_ROW_PUBLISH=1` selects
