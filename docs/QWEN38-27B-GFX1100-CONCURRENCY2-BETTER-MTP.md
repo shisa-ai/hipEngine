@@ -30,6 +30,16 @@ Status (2026-09-07 review): partial implementation ready for integration;
   mean/max KL 4.56e-5/0.00160. It uses candidate trajectories, not the required
   strict-teacher schedule or full state/task gate. See the
   [depth and logit diagnostic](../benchmarks/results/2026-09-07-w7900-packed-c1-depth-and-logits-diagnostic.json).
+- The repaired N1 target passes the calibrated fixed-teacher numerical envelope
+  at every K1-K7 depth: three bit-identical captures per depth, each with all
+  18 canonical/category-heldout prompts, 432 decode and 18 prefill rows.
+  K5/K7 have one decode top-1 mismatch (431/432 overall, 47/48 in the heldout
+  mixed-language scope). They pass the binding 99% overall/97% scoped floors
+  and all KL/review gates, while failing the separately reported conservative
+  99%-everywhere screen. No threshold was relaxed. These host-selected target
+  windows do not qualify provider, lifecycle, task or service behavior.
+  See [K5](../benchmarks/results/2026-09-07-w7900-packed-c1-teacher-k5-repeats.json)
+  and [K6/K7](../benchmarks/results/2026-09-07-w7900-packed-c1-teacher-k6-k7-repeats.json).
 - Still required: slot/transition qualification and missing fixed-N=8 controls;
   packed C1 K1-K7 gates; production numerical/task and dynamic service-owner
   latency/queueing gates; sustained horizons/contexts; three balanced pairs
