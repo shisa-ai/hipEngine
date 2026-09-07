@@ -76,6 +76,20 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**GDN wave normalization promoted on owner evidence (September7 UTC):**
+model-input probe intercepts all21 serial-prefix calls/chunk,restores
+identical starting state outside timing,and compares full output/state
+hashes after every warmup/measured pair. Six cases,378 calls,756 measured
+pairs exact;all call means improve (minimum1.0158x).
+p51261.357->58.972ms,p1024121.671->116.900ms;
+four p4096 categories486.661-486.922->467.330-467.521ms (~19ms saving).
+Promote under existing exact sub-window-retention policy,production1/
+strict0,tiled suffix unchanged. Prior full72-trajectory A/B stays mixed
+nearzero,not a statistical headline win. Scratch24->36B explicit.
+Instrumented event timings include no state-copy/hash time and are not
+normal serving throughput. No favorable full-suite rerun was performed.
+[Owner evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-gdn-wave-norm-owner.json).
+
 **GDN full-model qualification (September7 UTC):** clean ffe46a7c6,
 canonical12 cases/chunk1024,72 exact trajectories,expected21/84
 engagement,zero final owners. PP512/1024/4096 +0.010%/+0.139%/-0.044%;

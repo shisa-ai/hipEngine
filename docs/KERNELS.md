@@ -804,6 +804,11 @@ Full canonical72 trajectories exact; model means nearzero and mixed,
 not a statistical non-regression result. Keep default-off pending
 actual-model owner timing; kernel saving is retained,not discarded.
 Model evidence: `2026-09-07-framework-qwen4exp-gdn-wave-norm-model.json`.
+Superseding owner qualification:378 actual-model calls exact,all paired
+means faster across six cases; p4096 serial GDN~487->467ms. Production
+now binds1/strict0 under sub-window-retention policy. Prior mixed model
+means stay explicit; no headline speedup claimed.
+Owner evidence: `2026-09-07-framework-qwen4exp-gdn-wave-norm-owner.json`.
 
 Q4 pair2 two-block weight-pipeline experiment removed: actual layer3
 gate/up+SiLU screen0.910x/0.909x at512/1024 tokens,40 exact pairs,

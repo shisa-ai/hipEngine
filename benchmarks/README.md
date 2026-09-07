@@ -2,6 +2,12 @@
 
 Last updated: **2026-09-07 UTC**
 
+GDN wave normalization promoted on actual-model owner saving:
+serial p4096~487->467ms across four categories,378 calls/756 measured
+pairs exact,all call means faster. Full-suite throughput remains mixed
+nearzero; no new headline rate. Strict/tiled paths unchanged.
+[Evidence](results/2026-09-07-framework-qwen4exp-gdn-wave-norm-owner.json).
+
 GDN wave-norm full-model qualification:72 exact trajectories,
 PP+0.010%/+0.139%/-0.044%,mixed request-case means. No headline win
 established; kernel retained default-off pending actual-model owner timing.
