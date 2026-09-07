@@ -81,6 +81,7 @@ def test_real_commit_hook_checks_metadata_and_destination(monkeypatch, tmp_path,
             with pytest.raises(ValueError):
                 run()
             assert 'selected_commit' not in recorder.records[0]
+            assert recorder.records[0]['commit_error'].startswith('ValueError:')
         else:
             assert run() == 'executed'
             assert recorder.records[0]['selected_commit'] == dict(passed=True, accepted=1, checked_buffers=1)
