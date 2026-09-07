@@ -1,11 +1,10 @@
 """Optional published-weight Q5/Q6 gates; sampled/full N, actual role K.
 
 Set HIPENGINE_UD_ROLE_MODEL to the published K_M GGUF. These tests qualify
-raw leaves, not loader repacks, runtime dispatch, or NextN state semantics.
+raw leaves and linear runtime dispatch, not loader repacks or NextN state semantics.
 """
 from __future__ import annotations
 
-import ctypes
 import hashlib
 import os
 from pathlib import Path
@@ -14,6 +13,7 @@ import numpy as np
 import pytest
 
 from hipengine.quant.gguf import dequantize_gguf_data, bf16_to_float32
+from tests._ud_hip import ud_hip_backend
 
 
 # SHA256 of concatenated first/middle/last/first/second compressed rows.
@@ -29,14 +29,10 @@ ROW_HASHES = {
 
 
 @pytest.fixture(scope="module")
-def model():
+def model(ud_hip_backend):
     path = Path(os.environ.get("HIPENGINE_UD_ROLE_MODEL", "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf"))
     if not path.is_file():
         pytest.skip("published UD K_M model unavailable")
-    try:
-        ctypes.CDLL("libamdhip64.so")
-    except OSError:
-        pytest.skip("HIP runtime unavailable")
     from hipengine.loading.gguf import load_gguf_index
     from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import build_gguf_k_gemv
     return path, {t.name: t for t in load_gguf_index(path).tensors}, build_gguf_k_gemv(load=True)
@@ -59,7 +55,8 @@ def bf16(x):
 @pytest.mark.parametrize("rows", (1, 8, 32))
 @pytest.mark.parametrize("output", ("f32", "bf16"))
 @pytest.mark.parametrize("geometry", ("sampled", "full"))
-def test_raw_role_rows(model, name, quant, width, rows, output, geometry):
+@pytest.mark.parametrize("caller", ("leaf", "runtime"))
+def test_raw_role_rows(model, ud_hip_backend, name, quant, width, rows, output, geometry, caller):
     from hipengine.core.memory import malloc, free, copy_host_to_device, copy_device_to_host, host_array_ptr
     from hipengine.kernels.hip_gfx1100.quant import gguf_k_gemv
     path, tensors, library = model
@@ -97,18 +94,41 @@ def test_raw_role_rows(model, name, quant, width, rows, output, geometry):
             buffer = malloc(array.nbytes)
             buffers.append(buffer)
             copy_host_to_device(buffer, host_array_ptr(array), array.nbytes)
+        if caller == "runtime":
+            from types import SimpleNamespace
+            from hipengine.loading.qwen35_gguf_materialize import LAYOUT_RAW_GGUF
+            from hipengine.runtime.gguf_linear import launch_gguf_linear
+            quant_key = "gguf_" + quant.lower()
+            allocations = {"raw": SimpleNamespace(tensor=SimpleNamespace(ptr=buffers[1].ptr))}
+            weight = SimpleNamespace(
+                backend=ud_hip_backend,
+                spec=SimpleNamespace(layout=LAYOUT_RAW_GGUF, quant_key=quant_key),
+                allocations=allocations,
+                allocation=lambda name="raw": allocations[name],
+            )
         def launch(row, count):
-            fn(buffers[0].ptr + row * x.strides[0], buffers[1].ptr,
-               buffers[2].ptr + (row + 1) * host.strides[0], count, width, n, library=library)
+            x_ptr = buffers[0].ptr + row * x.strides[0]
+            out_ptr = buffers[2].ptr + (row + 1) * host.strides[0]
+            if caller == "runtime":
+                launch_gguf_linear(
+                    weight, x_ptr, out_ptr, count, width, n,
+                    activation_dtype="bf16", output_dtype=output,
+                    use_wmma_prefill=False, use_gemv_decode=True,
+                )
+            else:
+                fn(x_ptr, buffers[1].ptr, out_ptr, count, width, n, library=library)
         launch(0, rows)
         copy_device_to_host(host_array_ptr(host), buffers[2], host.nbytes)
         original = host.copy()
         for _ in range(2):
             host[1:-1].view(np.uint8).fill(0xff)
             copy_host_to_device(buffers[2], host_array_ptr(host), host.nbytes)
+            expected = host.copy()
             for row in range(rows):
                 launch(row, 1)
-            copy_device_to_host(host_array_ptr(host), buffers[2], host.nbytes)
+                copy_device_to_host(host_array_ptr(host), buffers[2], host.nbytes)
+                expected[row + 1] = original[row + 1]
+                np.testing.assert_array_equal(host.view(np.uint8), expected.view(np.uint8))
             np.testing.assert_array_equal(host.view(np.uint8), original.view(np.uint8))
         np.testing.assert_array_equal(host[[0, -1]], np.full((2, n), 123, dtype=dtype))
         actual = host[1:-1] if output == "f32" else bf16_to_float32(host[1:-1])
