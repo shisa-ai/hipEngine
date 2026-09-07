@@ -76,6 +76,20 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**QSA transition frequency samples (September7 UTC):** code4096,
+2 balanced pairs/16 steps,CPU accounting+hardware counters+read-only
+CPUFreq snapshots. Parent/candidate wall1.170/1.567s. Candidate
+prefill leaves early decode samples near600MHz for several steps;parent
+reaches~1.5GHz earlier. Both later reach~5.1GHz. CPU IDs/migrations
+retained;sampling costs3.5-8ms/window,not the~400ms penalty.
+Combined with similar instructions/cycles and GPU kernel time,this
+localizes the observed slowdown to delayed CPU frequency recovery.
+It does not identify which firmware/power-policy mechanism triggers it.
+No clocks/affinity changed;next controlled CPU policy or affinity
+isolation must record and restore settings rather than silently lock clocks.
+Candidate remains default-off until the mitigation/retention decision.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-qsa-phase-frequency.json).
+
 **QSA transition CPU hardware counters (September7 UTC):** unprofiled
 code4096,2 balanced pairs/16 decode steps,decode flag0. Parent/candidate
 wall1.169/1.581s;both retire~3.91B user instructions and1.72-1.75B

@@ -2,6 +2,12 @@
 
 Last updated: **2026-09-07 UTC**
 
+QSA transition frequency sampling:after candidate prefill,early decode
+remains near600MHz versus parent~1.5GHz;both later~5.1GHz.
+Wall1.170->1.567s,sampling3.5-8ms. No clock changes;policy/firmware
+trigger still unproven and candidate remains default-off.
+[Evidence](results/2026-09-07-framework-qwen4exp-qsa-phase-frequency.json).
+
 QSA CPU-counter isolation:early decode wall1.169->1.581s despite
 ~3.91B instructions and1.72-1.75B cycles in both arms,100% counter
 running. Lower effective CPU rate is plausible;clock cause unproven.
