@@ -27,6 +27,23 @@ def test_real_pair_submission_configures_only_survivor():
     assert evidence['backend_request_id'] == 41 and evidence['collector_exact']
 
 
+@pytest.mark.parametrize('budget', range(1,8))
+def test_eos_marker_leaves_room_after_peer_retirement(budget):
+    from scripts.qwen38_packed_c1_eos import select_survivor_eos_index
+    ids = list(range(24))
+    assert select_survivor_eos_index(ids, budget=budget) == max(12,8+budget)
+    ids[max(12,8+budget)] = ids[0]
+    assert select_survivor_eos_index(ids, budget=budget) == max(12,8+budget)+1
+
+
+@pytest.mark.parametrize('budget,ids', [(0,list(range(24))), (8,list(range(24))),
+                                        (7,[1]*24), (7,list(range(16)))])
+def test_eos_marker_selection_fails_without_valid_room(budget,ids):
+    from scripts.qwen38_packed_c1_eos import select_survivor_eos_index
+    with pytest.raises(ValueError):
+        select_survivor_eos_index(ids,budget=budget)
+
+
 def test_eos_request_keeps_execution_ownership():
     from hipengine.generation.registry import GenerationRequest
     from scripts.qwen38_packed_c1_eos import configure_eos_request

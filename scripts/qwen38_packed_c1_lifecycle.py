@@ -82,30 +82,31 @@ def validate_response(expected: dict, actual: dict) -> None:
         raise ValueError('concurrent token usage differs from independent AR')
 
 
-def install_lifecycle_evidence(capacity: int, widths=(1, 2)) -> None:
+def install_lifecycle_evidence(capacity: int, widths=(1, 2), *, budget=3) -> None:
     """Extend only runtime diagnostic clones to cover the short retirement child."""
     from dataclasses import replace
     from hipengine.models import qwen35
     from scripts.qwen38_packet5_k4_watchdog_probe import _inject_k4_evidence_row
     for width in widths:
-        _inject_k4_evidence_row(width, 3, capacity=capacity)
+        _inject_k4_evidence_row(width, budget, capacity=capacity)
         plugin = qwen35.QWEN35_GGUF
         rows = plugin.speculative_mtp_serving_evidence
         diagnostic = replace(rows[-1], min_output_horizon_tokens=8,
-                             evidence_key=f'lifecycle-d8-d24-n{capacity}-c{width}-k3-diagnostic',
+                             evidence_key=f'lifecycle-d8-d24-n{capacity}-c{width}-k{budget}-diagnostic',
                              reason='unqualified engine lifecycle D8-D24 diagnostic',
                              evidence_artifacts=('scripts/qwen38_packed_c1_lifecycle.py',),
                              automatic_eligible=False)
         object.__setattr__(plugin, 'speculative_mtp_serving_evidence', rows[:-1] + (diagnostic,))
 
 
-def combine_engine_intent(c1, c2):
+def combine_engine_intent(c1, c2, *, budget=3):
     """Bind separately resolved C1 and C2 permissions for this diagnostic only."""
     from dataclasses import replace
     import hashlib
     if (not c1.eligible or not c2.eligible or not c1.packed_c1_target
             or c1.max_realized_group_rows != 1 or c2.max_realized_group_rows < 2
-            or min(c1.max_candidate_count, c2.max_candidate_count) < 3
+            or not 1 <= budget <= 7
+            or min(c1.max_candidate_count, c2.max_candidate_count) < budget
             or c1.strict_fallback_key != c2.strict_fallback_key):
         raise ValueError('separate C1 and C2 eligibility is required')
     sources = [c1.as_dict(), c2.as_dict()]
@@ -118,7 +119,7 @@ def combine_engine_intent(c1, c2):
                    evidence_artifacts=tuple(dict.fromkeys(c1.evidence_artifacts + c2.evidence_artifacts)))
 
 
-def resolve_engine_intents(llm, prompt: str, horizons=(8, 24)):
+def resolve_engine_intents(llm, prompt: str, horizons=(8, 24), *, budget=3):
     intents, sources = [], []
     for horizon in horizons:
         decisions = [llm.resolve_speculative_mtp_serving_plan(
@@ -129,7 +130,7 @@ def resolve_engine_intents(llm, prompt: str, horizons=(8, 24)):
             raise ValueError('engine diagnostic scope lacks C1 or C2 admission: ' +
                              json.dumps({'horizon': horizon, 'decisions': [
                                  None if d is None else d.as_dict() for d in decisions]}))
-        intents.append(combine_engine_intent(*(d.static_eligibility for d in decisions)))
+        intents.append(combine_engine_intent(*(d.static_eligibility for d in decisions), budget=budget))
         sources.append([d.as_dict() for d in decisions])
     return tuple(intents), sources
 
@@ -190,6 +191,7 @@ def main() -> None:
     parser.add_argument('--model', default='/models/gguf/Qwen3.8-27B-Q4_K_M.gguf')
     parser.add_argument('--capacity', type=int, choices=(2, 8), default=8)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--budget', type=int, choices=range(1,8), default=3)
     parser.add_argument('--engine-boundary', action='store_true',
                         help='Submit unequal-horizon children atomically below HTTP batching')
     parser.add_argument('--cancel-peer', action='store_true',
@@ -205,6 +207,8 @@ def main() -> None:
     parser.add_argument('--eos-state', action='store_true',
                         help='Check canonical isolation and selected-state bytes for EOS C1 cycles')
     args = parser.parse_args()
+    if args.budget != 3 and not args.eos_state:
+        parser.error('nondefault --budget requires --eos-state')
     if args.eos_state and not args.eos_survivor:
         parser.error('--eos-state requires --eos-survivor')
     if args.eos_survivor and (not args.engine_boundary or args.wide_refill
@@ -226,7 +230,7 @@ def main() -> None:
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
     os.environ['HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS'] = '1'
-    install_lifecycle_evidence(args.capacity, range(1, 9) if args.wide_refill else (1, 2))
+    install_lifecycle_evidence(args.capacity, range(1, 9) if args.wide_refill else (1, 2), budget=args.budget)
     traces = []
     paired_ready = None
     singleton_ready = None
@@ -375,13 +379,13 @@ def main() -> None:
     try:
         llm = bench.LLM(args.model, backend='hip_gfx1100', execution_profile='production',
                         max_active_requests=args.capacity, max_sequence_length=1024,
-                        speculative_candidate_budget=3)
+                        speculative_candidate_budget=args.budget)
         llm.prepare(max_sequence_length=1024)
         app = bench.create_app(bench.ServerConfig(
             model=args.model, backend='hip_gfx1100', quant='gguf_q4_k_m',
             served_model_name='lifecycle', eager_load=False, generation_batch_window_ms=20,
             max_context_tokens=1024, max_active_requests=args.capacity,
-            speculative_mtp_serving='opt_in', speculative_candidate_budget=3,
+            speculative_mtp_serving='opt_in', speculative_candidate_budget=args.budget,
             shutdown_grace_seconds=5.0), llm=llm)
         suite = bench.load_prompt_suite(ROOT / 'benchmarks/prompts/mtpbench-code-general-ja.jsonl')
         with bench.TestClient(app) as client:
@@ -400,10 +404,8 @@ def main() -> None:
                 eos = None
                 if args.eos_survivor:
                     oracle_ids = expected[1]['generated_ids']
-                    index = next((i for i in range(12, len(oracle_ids) - 1)
-                                  if oracle_ids[i] not in oracle_ids[:i]), None)
-                    if index is None:
-                        raise ValueError('no first-occurrence EOS marker after the paired phase')
+                    from scripts.qwen38_packed_c1_eos import select_survivor_eos_index
+                    index = select_survivor_eos_index(oracle_ids, budget=args.budget)
                     eos = dict(oracle_ids=oracle_ids, index=index)
                 if args.refill_peer:
                     expected.append(expected[0])  # Same prompt and D8 as the first independent AR arm.
@@ -415,7 +417,7 @@ def main() -> None:
                     actual, refill = submit_wide_refill(llm._get_text_generator(),
                         prompt['rendered_prompt'], intents, singleton_ready)
                 elif args.engine_boundary:
-                    intents, intent_sources = resolve_engine_intents(llm, prompt['rendered_prompt'], horizons)
+                    intents, intent_sources = resolve_engine_intents(llm, prompt['rendered_prompt'], horizons, budget=args.budget)
                     actual = submit_engine_pair(llm._get_text_generator(), prompt['rendered_prompt'], intents,
                                                 horizons=horizons, paired_ready=paired_ready,
                                                 cancellation=cancellation,
@@ -484,12 +486,15 @@ def main() -> None:
                 print(json.dumps({k: v for k, v in cell.items() if k not in ('trace', 'responses', 'oracle_responses', 'intent_sources')}), flush=True)
                 if not exact or not engaged:
                     raise ValueError('concurrent outputs or engagement failed')
+        if args.eos_state and not any(t.get('eos_logical_rows') == args.budget + 1
+                                      and t.get('eos_state', {}).get('passed') for t in traces):
+            raise ValueError('requested EOS frontier depth never executed')
         passed = len(cells) == len(suite) == 10
     finally:
         try:
             close_and_report(llm, args.output, dict(
                 diagnostic_only=True, performance_claim=False, full_profile_qualification=False,
-                passed=passed, capacity=args.capacity, budget=3, horizons=list(horizons),
+                passed=passed, capacity=args.capacity, budget=args.budget, horizons=list(horizons),
                 cancellation_requested=args.cancel_peer, refill_requested=args.refill_peer,
                 wide_refill_requested=args.wide_refill, precommit_failure_requested=args.precommit_failure,
                 eos_requested=args.eos_survivor, eos_state_requested=args.eos_state,
