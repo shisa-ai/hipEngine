@@ -76,6 +76,20 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**QSA preceding-prefill isolation (September7 UTC):** fresh p4096
+prefill per arm,decode flag held0,both code/mixed,2 balanced pairs of128
+steps after warmups. Parent/candidate-prefill decode8.478->8.925s and
+8.482->8.936s;both orders reproduce~5% rate loss. All tokens/final
+state/layout exact,24 candidate-prefill calls and zero candidate-decode
+calls. Extra~0.45s concentrates in first16 decode steps;last16 steps
+~1.043-1.046s in both arms. The effect follows preceding prefill workload,
+not the decode flag,and is transient rather than steady-tail degradation.
+No snapshot restore or state hashing between prefill and decode.
+Read-only clocks/temperatures do not identify the hardware mechanism.
+Next: trace early decode kernel versus host gaps under both prefill arms;
+keep candidate default-off and retain original staged regressions.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-qsa-prefill-phase.json).
+
 **Paired-head decode flag isolation (September7 UTC):** fixed
 parent-prefilled p4096 roots restored before each arm,only HEAD_PAIR
 flag toggled at decode. Code/mixed,4 balanced pairs of16 steps:

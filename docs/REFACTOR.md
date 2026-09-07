@@ -15,7 +15,8 @@
   interference is localized;no favorable full-suite rerun.
   Fixed parent-root16-step flag-only probe is near-neutral (wall+0.055%/
   +0.019%),exact state and zero candidate calls;candidate-prefill effect
-  remains untested by that probe.
+  now reproduces~0.45s extra early decode with decode flag held0.
+  Last16 steps converge;trace early kernel/host gaps before promotion.
   Do not assume all QSA cost shrinks by the kernel ratio.
 
 ## Qwen4Exp raw-vector square64: removed
