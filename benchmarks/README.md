@@ -252,6 +252,12 @@ the 97% transition gate. Weight-buffer sums exclude load peak, scratch and KV.
 No speed, BF16-model quality, long-context or serving qualification is claimed.
 [Protocol, per-category results and reproduction sources](results/2026-09-07-zbook-ud-c1-residency-logits-diagnostic.json).
 
+A separate K_S raw IQ2_XS candidate reduces counted weight buffers from
+21,125,912,576 to 20,973,418,496 bytes (−0.72%), with 162/162 baseline top-1
+matches and maximum baseline-relative KL 0.000923. It has the same independent
+teacher prefill top-1 miss and is also off by default.
+[IQ2_XS diagnostic](results/2026-09-07-zbook-ud-iq2-xs-diagnostic.json).
+
 ## Current Qwen3.6-35B quantization quality
 
 The current gate scores 90 full-vocabulary BF16-teacher positions across all ten
