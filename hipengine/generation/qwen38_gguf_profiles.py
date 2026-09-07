@@ -21,6 +21,8 @@ from hipengine.execution_profiles import (
     registered_runtime_profile_keys,
 )
 
+from hipengine.generation.gguf_profile_qualification import qualify_plain_gguf_profile
+
 QWEN38_GGUF_MODEL = "qwen3_5_gguf"
 QWEN38_GGUF_BACKEND = "hip_gfx1151"
 QWEN38_GGUF_QUANT = "gguf_q4_k_m"
@@ -234,6 +236,7 @@ def register_qwen38_gguf_gfx1151_profiles() -> bool:
             kv_policy="paged_bf16",
             graph_policy="specdec2_eager_c1",
             binder=_strict_binder,
+            qualifier=qualify_plain_gguf_profile,
         ),
     )
     register_runtime_profile_plan(
@@ -246,6 +249,7 @@ def register_qwen38_gguf_gfx1151_profiles() -> bool:
             kv_policy="paged_bf16",
             graph_policy="specdec2_eager_c1",
             binder=_production_binder,
+            qualifier=qualify_plain_gguf_profile,
         ),
     )
     return True
