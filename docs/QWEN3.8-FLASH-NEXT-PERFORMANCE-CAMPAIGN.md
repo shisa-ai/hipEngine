@@ -76,6 +76,23 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Advancing GDN graph feasibility (September7 UTC):** diagnostic wrapper
+captures all36 full GDN layers inside real code/mixed p4096 decode.
+Each first use snapshots BF16 residual and FP32 conv/matrix state,runs
+production eager reference,verifies capture is nonexecuting,restores
+starting bytes and validates graph state/output exactly. No extra recurrent
+update is published. All16-step off/on/on/off trajectories/state match.
+First graph arms include228/232ms setup/validation and total1.225/1.231s;
+warm graph1.049/1.049s versus final eager1.046/1.047s. Thus the layer
+microprobe's larger ratios do NOT produce a demonstrated warm AR win.
+36 captures+540 replays then576 warm replays per case verified,
+clean teardown. Initial BF16 snapshot-size adapter error retained as failed
+instrumentation,not performance evidence. No production graph/default
+change or QSA-transition mitigation claim. Stop expanding this GDN-only
+graph path without a paying full-request protocol;larger CPU submission/
+sparse-QSA ownership and explicit prefill-first retention remain open.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-gdn-advancing-graph.json).
+
 **Paired GDN layer-graph screen (September7 UTC):** production-profile
 layer0/24/46 after code4096 at chunk1024,20 balanced pairs per layer,
 restoring identical layer state before every arm. Eager retains MoE cache:

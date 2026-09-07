@@ -2,6 +2,12 @@
 
 Last updated: **2026-09-07 UTC**
 
+Advancing GDN full-layer graphs:code/mixed4096 tokens/state exact across
+all36 captured layers. Warm16-step graph~1.049s versus eager~1.046-1.047s,
+setup228-232ms charged in first graph arm. No warm AR speedup established;
+production unchanged.
+[Evidence](results/2026-09-07-framework-qwen4exp-gdn-advancing-graph.json).
+
 GDN paired layer-graph candidate:layers0/24/46 restored-state medians
 1.405->1.021ms /1.464->1.034ms /1.534->1.098ms,60 pairs exact.
 Setup8.4-9.3ms/layer;production MoE baseline engaged. Not full-step AR
