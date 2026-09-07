@@ -888,7 +888,9 @@ def compare_reference(reference, measured):
                 raise ValueError(f"instrumentation output mismatch: {case['id']} {phase}")
 
 
-def baseline_commands(queue, run_root):
+def baseline_commands(queue, run_root, *, prefill_chunk_size=512):
+    if prefill_chunk_size < 1:
+        raise ValueError("prefill chunk size must be positive")
     script = str(ROOT / "scripts/qwen4exp_canonical_ar_bench.py")
     common = [
         "--fixture",
@@ -911,7 +913,7 @@ def baseline_commands(queue, run_root):
                 "--execution-profile",
                 "production",
                 "--prefill-chunk-size",
-                "512",
+                str(prefill_chunk_size),
                 "--compiler-version-file",
                 "/tmp/hipengine-hipcc-version.txt",
                 "--require-cached-build",
@@ -950,6 +952,7 @@ def baseline_commands(queue, run_root):
 
 
 def run_baselines(args):
+    hip_chunk_arguments(args.prefill_chunk_size)
     check_host()
     queue = json.loads(args.queue.read_text())
     if queue["host"]["machine_id"] != HOST_ID or queue["comparator"]["commit"] != PIN:
@@ -977,6 +980,7 @@ def run_baselines(args):
             or report["queue_sha256"] != digest(args.queue)
             or report["binary_hashes"] != binary_hashes
             or report["host"]["machine_id"] != HOST_ID
+            or report.get("hipengine_prefill_chunk_size",512) != args.prefill_chunk_size
         ):
             raise ValueError("resume does not match the frozen run")
         for stage in report["stages"]:
@@ -997,10 +1001,11 @@ def run_baselines(args):
             "queue_sha256": digest(args.queue),
             "binary_hashes": binary_hashes,
             "stages": [],
+            "hipengine_prefill_chunk_size": args.prefill_chunk_size,
         }
     args.output.write_text(json.dumps(report, indent=2) + "\n")
     try:
-        for label, argv in baseline_commands(queue, run_root):
+        for label, argv in baseline_commands(queue, run_root, prefill_chunk_size=args.prefill_chunk_size):
             if any(stage["engine"] == label for stage in report["stages"]):
                 continue
             if _git_metadata(ROOT) != source:
@@ -1123,6 +1128,8 @@ def main():
     )
     baseline.add_argument("--output", type=Path, required=True)
     baseline.add_argument("--resume", action="store_true")
+    baseline.add_argument("--prefill-chunk-size",type=int,default=512,
+                          help="hipEngine allocation/execution chunk; comparator args unchanged")
     args = parser.parse_args()
     if args.mode == "capture-vulkan":
         capture_vulkan(args)

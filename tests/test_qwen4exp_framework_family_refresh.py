@@ -142,6 +142,12 @@ def test_baseline_commands_preserve_full_suite_and_use_original_binaries(tmp_pat
         assert argv[argv.index("--repetitions") + 1] == "3"
         assert argv[argv.index("--warmups") + 1] == "1"
     assert "--server-arg=bf16" in commands[1][1]
+    current = baseline_commands(queue, tmp_path, prefill_chunk_size=1024)
+    assert current[0][1][current[0][1].index("--prefill-chunk-size")+1] == "1024"
+    assert current[1:] == commands[1:]
+    assert commands[0][1][commands[0][1].index("--prefill-chunk-size")+1] == "512"
+    with pytest.raises(ValueError,match="positive"):
+        baseline_commands(queue,tmp_path,prefill_chunk_size=0)
 
 
 def test_overview_rejects_incomplete_or_duplicate_case_matrix():
