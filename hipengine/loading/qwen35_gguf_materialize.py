@@ -1557,6 +1557,18 @@ def _spec_for_tensor(
             layout=LAYOUT_RAW_GGUF,
             allocation_names=("raw",),
         )
+    if (
+        qtype in (GGMLQuantizationType.IQ4_XS, GGMLQuantizationType.IQ4_NL,
+                  GGMLQuantizationType.IQ3_S, GGMLQuantizationType.Q3_K)
+        and slot_path.startswith("layers.") and len(tensor.shape) == 2
+    ):
+        # Dense leaves consume the original compressed rows. Root lookup and
+        # rank-3 experts retain their independent operation contracts below.
+        return Qwen35GGUFWeightSpec(
+            slot_path=slot_path, source=tensor,
+            quant_key=f"gguf_{tensor.ggml_type_name.lower()}",
+            layout=LAYOUT_RAW_GGUF, allocation_names=("raw",),
+        )
     if qtype in (
         GGMLQuantizationType.IQ3_XXS,
         GGMLQuantizationType.Q3_K,
@@ -1565,8 +1577,8 @@ def _spec_for_tensor(
         and _is_selected_expert_tensor(slot_path, tensor)
     ):
         # Native selected GEMV keeps routed rank-3 IQ2/IQ3/IQ4 experts raw.
-        # Rank-2 IQ2_XS/IQ4_XS tensors keep the dense-BF16 fallback below;
-        # rank-2 IQ3_XXS/Q3_K remain unsupported rather than silently expanding.
+        # IQ2_XS and root IQ4_XS keep the dense-BF16 fallback below;
+        # other non-expert IQ3_XXS/Q3_K slots remain unsupported.
         if not _is_selected_expert_tensor(slot_path, tensor):
             raise ValueError(
                 f"unsupported Qwen3.5 GGUF tensor type {tensor.ggml_type_name!r} outside "
