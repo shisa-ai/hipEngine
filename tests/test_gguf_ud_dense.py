@@ -20,6 +20,40 @@ def bf16(x):
     return ((bits + 0x7fff + ((bits >> 16) & 1)) >> 16).astype(np.uint16)
 
 
+@pytest.mark.parametrize('kwargs', ({'rows': 0}, {'hidden_size': 255}, {'vocab_size': 0},
+                                    {'threads': 128}, {'token_ids_ptr': 0}))
+def test_q3_embedding_rejects_invalid_args(kwargs, monkeypatch):
+    from hipengine.kernels.hip_gfx1100.quant import gguf_iq_dense as dense
+    monkeypatch.setattr(dense, 'build_gguf_iq_dense', lambda: pytest.fail('built before validation'))
+    args = dict(token_ids_ptr=1, qweight_ptr=2, out_ptr=3, rows=1, hidden_size=256, vocab_size=2)
+    args.update(kwargs)
+    with pytest.raises(ValueError):
+        dense.embedding(**args)
+
+
+def test_q3_embedding_real_rows(library):
+    from hipengine.kernels.hip_gfx1100.quant.gguf_iq_dense import embedding
+    entry = next(e for e in ENTRIES if e['type'] == 'Q3_K')
+    with np.load(FIXTURE / 'real_rows.npz') as data:
+        raw = np.ascontiguousarray(data[entry['key']+'_raw'])
+        weights = data[entry['key']+'_f32']
+    ids = np.array([1, 0, 1], dtype=np.int64)
+    out = np.zeros((3, weights.shape[1]), dtype=np.uint16)
+    buffers = []
+    try:
+        for array in (ids, raw, out):
+            buf = malloc(array.nbytes)
+            buffers.append(buf)
+            copy_host_to_device(buf, host_array_ptr(array), array.nbytes)
+        for _ in range(3):
+            embedding(*(b.ptr for b in buffers), 3, weights.shape[1], len(weights), library=library)
+            copy_device_to_host(host_array_ptr(out), buffers[2], out.nbytes)
+            np.testing.assert_array_equal(out, bf16(weights[ids]))
+    finally:
+        for buf in reversed(buffers):
+            free(buf)
+
+
 def reference(x, w):
     # Contract: 128 strided accumulators, separate F32 multiply/add, wave32
     # shuffle tree, then four wave sums accumulated serially from zero.
@@ -57,6 +91,7 @@ def test_dense_registry_strict_keys(backend):
     from hipengine.kernels.hip_gfx1100.quant.gguf_iq_dense import register_gguf_iq_dense_kernels
     register_gguf_iq_dense_kernels()
     load_backend_kernel_package(backend)
+    assert is_registered(KernelKey(backend, 'embedding', 'gguf_q3_k', 'lookup_bf16_out'))
     for quant in ('gguf_iq4_xs', 'gguf_iq4_nl', 'gguf_iq3_s', 'gguf_q3_k', 'gguf_iq3_xxs', 'gguf_iq2_s'):
         for output in ('bf16', 'f32'):
             for prefix in ('gemv', 'prefill'):

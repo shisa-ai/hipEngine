@@ -80,6 +80,8 @@ RAW_LINEAR_SOURCE_QUANT_KEYS: Mapping[str, str] = MappingProxyType({
     "IQ4_XS": "gguf_iq4_xs",
     "IQ4_NL": "gguf_iq4_nl",
     "IQ3_S": "gguf_iq3_s",
+    "IQ3_XXS": "gguf_iq3_xxs",
+    "IQ2_S": "gguf_iq2_s",
     "Q3_K": "gguf_q3_k",
 })
 _RAW_LINEAR_OUTPUTS = MappingProxyType({
@@ -88,6 +90,8 @@ _RAW_LINEAR_OUTPUTS = MappingProxyType({
     "IQ4_XS": frozenset({"bf16", "f32"}),
     "IQ4_NL": frozenset({"bf16", "f32"}),
     "IQ3_S": frozenset({"bf16", "f32"}),
+    "IQ3_XXS": frozenset({"bf16", "f32"}),
+    "IQ2_S": frozenset({"bf16", "f32"}),
     "Q3_K": frozenset({"bf16", "f32"}),
 })
 
@@ -411,7 +415,7 @@ def resolve_linear_consumer_contract(
                    quant=quant_key if row.quant == FROM_WEIGHT_QUANT_TOKEN else row.quant)
 
 
-RAW_EMBEDDING_QUANTS = frozenset({"gguf_q4_k", "gguf_q5_k", "gguf_q6_k", "gguf_q8_0"})
+RAW_EMBEDDING_QUANTS = frozenset({"gguf_q3_k", "gguf_q4_k", "gguf_q5_k", "gguf_q6_k", "gguf_q8_0"})
 
 
 def resolve_embedding_consumer_contract(layout: str, quant: str, output: str = "bf16", *, rows: int = 1) -> ConsumerContract:

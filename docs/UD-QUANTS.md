@@ -2,12 +2,12 @@
 
 Last updated: 2026-09-07.
 Status: **U0 complete; CPU IQ3_S/IQ2_S decoders and synthetic/real-row oracles
-added; raw IQ4_XS/IQ4_NL/IQ3_S/Q3_K dense GPU leaves pass bounded gfx1151
-checks. Published K_M eager c1 and public `LLM.generate()` run on gfx1151.**
+added; raw IQ4_XS/IQ4_NL/IQ3_S/Q3_K/IQ3_XXS/IQ2_S dense GPU leaves and
+Q3_K embedding pass bounded gfx1151 checks. Published K_M and K_S run through
+public `LLM.generate()` on gfx1151.**
 The eight-token eager smoke returns finite logits; public generation returns the
 same text without importing torch. Teacher-logit quality and broader
-serving are not qualified. Loader preflight has zero K_M refusals and seven
-remaining K_S refusals. Q5/Q6 expansion still needs compact resident integration.
+serving are not qualified. Loader preflight has zero K_M or K_S refusals. Q5/Q6 expansion still needs compact resident integration.
 **No gfx1100 numerical validation is claimed.** General certificate
 cleanup is deferred in favor of end-to-end inference. Generic profile lifecycle
 transactions and per-call native authorization scans have been removed.
@@ -57,8 +57,8 @@ historical v2, stamp-only policy semantics; see
 
 1. **The baseline had 18/41 refusals.** Published UD K_M requires Q3_K,
    IQ4_NL and IQ3_S; K_S additionally requires IQ3_XXS and IQ2_S. Raw dense
-   IQ4_XS/Q3_K/IQ4_NL/IQ3_S integration removes all K_M refusals and leaves
-   seven K_S refusals. IQ2_XS still expands to BF16; historical audit tables
+   IQ4_XS/Q3_K/IQ4_NL/IQ3_S/IQ3_XXS/IQ2_S and Q3_K embedding integration
+   removes all K_M and K_S base-operation refusals. IQ2_XS still expands to BF16; historical audit tables
    below describe the pre-integration planner.
 2. **Do not reduce this campaign to a different two-format model.** That is a
    useful optional integration fixture, but it does not support the requested
@@ -1432,6 +1432,9 @@ proposed `tests/test_gguf_ud_km.py`.
   `worklog/entries/20260907T035440.022336Z-lhl-ud-km-c1-integration-c5bbd6.md`.
   Public `LLM.generate()` matches this completion in a fresh process without
   importing torch; see the `ud-km-public-smoke` worklog entry.
+  K_S public generation also returns this completion without torch after raw
+  IQ3_XXS/IQ2_S and Q3_K embedding integration; see
+  `worklog/entries/20260907T041214.806691Z-lhl-ud-ks-integration-e0d117.md`.
 - [ ] Reject unsupported requested modes in preflight; c1 is not full serving.
 
 Run: `.venv/bin/python -m pytest tests/test_gguf_ud_km.py -q`.

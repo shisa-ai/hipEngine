@@ -1288,6 +1288,7 @@ def _spec_for_tensor(
             allocation_names=("raw",),
         )
     if _is_token_embedding_slot(slot_path) and qtype in (
+        GGMLQuantizationType.Q3_K,
         GGMLQuantizationType.Q4_K,
         GGMLQuantizationType.Q5_K,
         GGMLQuantizationType.Q6_K,
@@ -1559,7 +1560,8 @@ def _spec_for_tensor(
         )
     if (
         qtype in (GGMLQuantizationType.IQ4_XS, GGMLQuantizationType.IQ4_NL,
-                  GGMLQuantizationType.IQ3_S, GGMLQuantizationType.Q3_K)
+                  GGMLQuantizationType.IQ3_S, GGMLQuantizationType.Q3_K,
+                  GGMLQuantizationType.IQ3_XXS, GGMLQuantizationType.IQ2_S)
         and slot_path.startswith("layers.") and len(tensor.shape) == 2
     ):
         # Dense leaves consume the original compressed rows. Root lookup and
