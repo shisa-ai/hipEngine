@@ -221,9 +221,15 @@ def main() -> None:
     legacy = mtp2.Qwen35GGUFTransactionalVerifier
     from hipengine.runtime.qwen35_gguf_nextn import Qwen35GGUFNextNExecutor
     from scripts.qwen38_packed_c1_recovery import PrecommitProbe, InjectedPrecommitFailure
+    capture_checkpoint = Qwen35GGUFNextNExecutor.capture_request_checkpoint
     restore_checkpoint = Qwen35GGUFNextNExecutor.restore_request_checkpoint
     recover_failure = mtp2.Qwen35GGUFMTP2Adapter.recover_cycle_failure
     recovery = None
+
+    def captured(executor, request_id):
+        if recovery is not None:
+            return recovery.capture(capture_checkpoint, executor, request_id)
+        return capture_checkpoint(executor, request_id)
 
     def restored(executor, checkpoint):
         if recovery is not None and recovery.evidence['injected']:
@@ -306,6 +312,7 @@ def main() -> None:
     Qwen35GGUFResidentSession.verify_target_blocks_batch = packed
     mtp2.Qwen35GGUFTransactionalVerifier = forbidden
     if args.precommit_failure:
+        Qwen35GGUFNextNExecutor.capture_request_checkpoint = captured
         Qwen35GGUFNextNExecutor.restore_request_checkpoint = restored
         mtp2.Qwen35GGUFMTP2Adapter.recover_cycle_failure = recovered
     cells = []
@@ -368,6 +375,8 @@ def main() -> None:
                 elif args.precommit_failure:
                     from scripts.qwen38_packed_c1_recovery import validate_recovery
                     transition = validate_recovery(trace, recovery.evidence)
+                    if not recovery.evidence.get('provider_kv_restored') or recovery.evidence.get('provider_kv_position', 0) < 1:
+                        raise ValueError('provider live KV recovery is unverified')
                 else:
                     transition = validate_transition(trace)
                 if args.refill_peer or args.wide_refill or args.precommit_failure:
@@ -421,6 +430,7 @@ def main() -> None:
             mtp2.Qwen35GGUFMTP2Adapter._execute_target_frontier_batch = execute
             Qwen35GGUFResidentSession.verify_target_blocks_batch = verify
             mtp2.Qwen35GGUFTransactionalVerifier = legacy
+            Qwen35GGUFNextNExecutor.capture_request_checkpoint = capture_checkpoint
             Qwen35GGUFNextNExecutor.restore_request_checkpoint = restore_checkpoint
             mtp2.Qwen35GGUFMTP2Adapter.recover_cycle_failure = recover_failure
             faulthandler.cancel_dump_traceback_later()
