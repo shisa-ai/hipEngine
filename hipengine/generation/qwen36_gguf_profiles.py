@@ -35,6 +35,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from hipengine.generation.gguf_profile_qualification import qualify_plain_gguf_profile
 from hipengine.execution_profiles import (
     ExecutionProfile,
     ResolvedRuntimeProfile,
@@ -247,6 +248,7 @@ def register_qwen36_gguf_gfx1151_profiles() -> bool:
             kv_policy=_KV_POLICY,
             graph_policy=_GRAPH_POLICY,
             binder=_strict_binder,
+            qualifier=qualify_plain_gguf_profile,
         ),
     )
     register_runtime_profile_plan(
@@ -259,6 +261,7 @@ def register_qwen36_gguf_gfx1151_profiles() -> bool:
             kv_policy=_KV_POLICY,
             graph_policy=_GRAPH_POLICY,
             binder=_production_binder,
+            qualifier=qualify_plain_gguf_profile,
         ),
     )
     return True
