@@ -44,7 +44,10 @@ def load_candidate_capture(directory, fixture, *, teacher_manifest_sha256):
                 or len(record['windows']) != len(windows)):
             raise ValueError('candidate scope or window count differs from teacher')
         for actual, expected in zip(record['windows'], windows, strict=True):
-            if (actual['position'] != expected['position']
+            if (type(actual['position']) is not int or type(actual['rows']) is not int
+                    or not isinstance(actual['tokens'], list)
+                    or any(type(token) is not int for token in actual['tokens'])
+                    or actual['position'] != expected['position']
                     or tuple(actual['tokens']) != tuple(expected['tokens'])
                     or actual['rows'] != len(expected['tokens'])
                     or type(actual['resident_slot']) is not int
