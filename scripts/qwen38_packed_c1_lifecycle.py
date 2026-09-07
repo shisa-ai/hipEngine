@@ -202,7 +202,11 @@ def main() -> None:
                         help='Inject one native C1 failure after packed verification, before acceptance')
     parser.add_argument('--eos-survivor', action='store_true',
                         help='Configure EOS at a first-occurrence AR token after index 11 and check the collector')
+    parser.add_argument('--eos-state', action='store_true',
+                        help='Check canonical isolation and selected-state bytes for EOS C1 cycles')
     args = parser.parse_args()
+    if args.eos_state and not args.eos_survivor:
+        parser.error('--eos-state requires --eos-survivor')
     if args.eos_survivor and (not args.engine_boundary or args.wide_refill
                              or args.cancel_peer or args.refill_peer or args.precommit_failure):
         parser.error('--eos-survivor requires engine boundary and no other scenario')
@@ -236,6 +240,15 @@ def main() -> None:
     restore_checkpoint = Qwen35GGUFNextNExecutor.restore_request_checkpoint
     recover_failure = mtp2.Qwen35GGUFMTP2Adapter.recover_cycle_failure
     recovery = None
+    eos_probes = {}
+    commit_states = Qwen35GGUFResidentSession._commit_deferred_packed_verify_states_batch_device
+
+    def checked_eos_commit(owner, results, sessions, **kwargs):
+        context = current.get()
+        probe = None if context is None else eos_probes.get(id(context[0]))
+        if probe is not None:
+            return probe.commit(commit_states, owner, results, sessions, **kwargs)
+        return commit_states(owner, results, sessions, **kwargs)
 
     def captured(executor, request_id):
         if recovery is not None:
@@ -268,10 +281,17 @@ def main() -> None:
                       resident_slots=[int(getattr(s, '_resident_slot_index', 0) or 0) for s in sessions],
                       native_c1=len(ids) == 1 and adapter._physical_c1_request(ids[0]),
                       packed_request_ids=[], packed_group_sizes=[], error=None)
+        if args.eos_state and record['native_c1']:
+            row = adapter.owner._row(ids[0])
+            record['eos_logical_rows'] = 1 + int(plan.candidate_counts[plan.request_ids.index(ids[0])])
+            record['eos_token_id'] = row.request.eos_token_id
+            record['remaining_decode'] = row.request.max_tokens - len(row.slot.generated_ids)
         traces.append(record)
         token = current.set((record, sessions))
         try:
             result = execute(adapter, plan, *positional, **kwargs)
+            if args.eos_state and record.get('eos_token_id') is not None and not record.get('eos_state', {}).get('passed'):
+                raise ValueError('EOS cycle omitted selected-state verification')
             if (paired_ready is not None and len(ids) == 2
                     and record['active_request_ids'] == ids
                     and record['packed_request_ids'] == ids
@@ -303,7 +323,25 @@ def main() -> None:
                   and context[0]['active_request_ids'] == context[0]['request_ids'])
         if inject:
             recovery.prepare(context[1][0], context[0]['request_ids'][0])
+        probe = None
+        if args.eos_state and context is not None and context[0].get('eos_token_id') is not None:
+            from scripts.qwen38_packed_c1_eos_state import EosStateProbe
+            from scripts.qwen38_packed_c1_logits import _read_device
+            import numpy as np
+            if len(jobs) != 1 or not kwargs.get('device_result'):
+                raise ValueError('EOS state check requires one native device-result job')
+            tokens = list(jobs[0]['input_token_ids'])
+            device = jobs[0].get('candidate_token_ids_device')
+            if device is not None:
+                tokens[1:] = _read_device(device.ptr,(len(tokens)-1,),np.int32,owner.runtime).tolist()
+            tokens = tokens[:context[0]['eos_logical_rows']]
+            probe = EosStateProbe(context[1][0], eos=context[0]['eos_token_id'],
+                                  remaining=context[0]['remaining_decode'])
+            eos_probes[id(context[0])] = probe
+            context[0]['eos_state'] = probe.evidence
         result = verify(owner, jobs, **kwargs)
+        if probe is not None:
+            probe.verified(owner, result[0], tokens)
         if context is not None:
             record, sessions = context
             record['packed_group_sizes'].append(len(jobs))
@@ -322,6 +360,8 @@ def main() -> None:
     mtp2.Qwen35GGUFMTP2Adapter._execute_target_frontier_batch = target
     Qwen35GGUFResidentSession.verify_target_blocks_batch = packed
     mtp2.Qwen35GGUFTransactionalVerifier = forbidden
+    if args.eos_state:
+        Qwen35GGUFResidentSession._commit_deferred_packed_verify_states_batch_device = checked_eos_commit
     if args.precommit_failure:
         Qwen35GGUFNextNExecutor.capture_request_checkpoint = captured
         Qwen35GGUFNextNExecutor.restore_request_checkpoint = restored
@@ -411,6 +451,9 @@ def main() -> None:
                                  loop={k: snapshot['loop'][k] for k in ('requests', 'physical_bucket')},
                                  runner=dict(model_runner={k: snapshot['runner']['model_runner'][k]
                                      for k in ('capacity', 'active_requests', 'active_request_ids', 'available_sessions')}))
+                if args.eos_state and not any(t.get('eos_state', {}).get('passed') and
+                                                  t['eos_state'].get('terminal') for t in trace):
+                    raise ValueError('no verified native terminal EOS state commit')
                 if args.eos_survivor:
                     if eos['backend_request_id'] != transition['survivor_request_id']:
                         raise ValueError('EOS collector does not belong to the traced survivor')
@@ -449,7 +492,7 @@ def main() -> None:
                 passed=passed, capacity=args.capacity, budget=3, horizons=list(horizons),
                 cancellation_requested=args.cancel_peer, refill_requested=args.refill_peer,
                 wide_refill_requested=args.wide_refill, precommit_failure_requested=args.precommit_failure,
-                eos_requested=args.eos_survivor,
+                eos_requested=args.eos_survivor, eos_state_requested=args.eos_state,
                 last_eos=eos, last_responses=actual,
                 last_recovery=None if recovery is None else recovery.evidence,
                 boundary='engine_service' if args.engine_boundary else 'http',
@@ -458,6 +501,7 @@ def main() -> None:
             mtp2.Qwen35GGUFMTP2Adapter._execute_target_frontier_batch = execute
             Qwen35GGUFResidentSession.verify_target_blocks_batch = verify
             mtp2.Qwen35GGUFTransactionalVerifier = legacy
+            Qwen35GGUFResidentSession._commit_deferred_packed_verify_states_batch_device = commit_states
             Qwen35GGUFNextNExecutor.capture_request_checkpoint = capture_checkpoint
             Qwen35GGUFNextNExecutor.restore_request_checkpoint = restore_checkpoint
             mtp2.Qwen35GGUFMTP2Adapter.recover_cycle_failure = recover_failure
