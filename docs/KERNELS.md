@@ -788,14 +788,18 @@ Fallback requirements:
 
 ## Source-lineage audit
 
-Q5_1 exposes kernel-only
+Q5_1 exposes default-off
 `selected_grouped_prefill_pair2_row_publish_bf16_bf16_out`: K640
 register-cache pair2, per-row folded partial publication with identical
 original LDS tree. Actual two-bank512/1024 synthetic-routing screen
 1.413x/1.523x; captured mixed512 routing1.498x. All60 pairs exact,
 22 tests pass. VGPR96/dynamic LDS8672B unchanged,scratch36->0B.
-No runtime/default change; full-model admission pending.
+`HIPENGINE_QWEN4_EXP_Q51_ROW_PUBLISH=1` selects only existing
+register-cache parent at rows>=512/K640. Five chunk1024 full-logit/
+state/KV cases exact,25/100 prefill calls,zero decode calls/final owners.
+Both binders0 pending canonical A/B; no production-default change.
 Evidence: `2026-09-07-framework-qwen4exp-q51-row-publish.json`.
+Admission: `2026-09-07-framework-qwen4exp-q51-row-publish-state.json`.
 
 Q5_1 register-cache paired-down first-wave reduction experiment removed:
 exact stride64/32 LDS reads followed by shuffle tail is0.809x/0.798x

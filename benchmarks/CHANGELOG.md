@@ -1,5 +1,7 @@
 # hipEngine Benchmark Changelog
 
+- [2026-09-07 UTC Q5_1 row-publication admission] Five chunk1024 full-logit/state/KV cases exact,25/100 prefill calls,zero decode/final owners;16 CPU tests,both binders0. Throughput delta N/A pending canonical A/B. `benchmarks/results/2026-09-07-framework-qwen4exp-q51-row-publish-state.json`.
+
 - [2026-09-07 UTC Q5_1 row publication] Exact per-row partial publication improves actual two-bank512/1024 screen1.413x/1.523x (-29.2%/-34.3%);captured mixed512 1.498x.60 exact pairs,22 tests,scratch36->0B;kernel-only admission pending. `benchmarks/results/2026-09-07-framework-qwen4exp-q51-row-publish.json`.
 
 - [2026-09-07 UTC Q5_1 wave-tail rejected] Actual two-bank down screen0.809x/0.798x at512/1024 tokens (~24%/25% slower),40 pairs exact/both orders lose;21 tests. VGPR96 unchanged,scratch36->24B;candidate removed,production unchanged. `benchmarks/results/2026-09-07-framework-qwen4exp-q51-wave-tail-rejected.json`.
