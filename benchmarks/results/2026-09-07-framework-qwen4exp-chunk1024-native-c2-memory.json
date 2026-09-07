@@ -1,0 +1,108 @@
+{
+  "schema": 1,
+  "status": "passed",
+  "performance_claim": false,
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "856b03b81ce074ee30332c751f85a82ba76c2c63",
+    "tracked_clean": true
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "model_identity": {
+    "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+    "fingerprint": {
+      "algorithm": "sha256-directory-manifest-v1",
+      "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+      "size_bytes": 111334654784,
+      "sampled_bytes": 12582912,
+      "file_count": 4,
+      "exists": true,
+      "path_type": "directory"
+    }
+  },
+  "command": [
+    "scripts/qwen4exp_chunk_memory_probe.py",
+    "--model-root",
+    "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--chunk-size",
+    "1024",
+    "--capacity",
+    "2",
+    "--output",
+    "/tmp/qwen4exp-chunk1024-native-c2-memory.json"
+  ],
+  "chunk_size": 1024,
+  "resident_capacity": 2,
+  "manifest_sha256": "3f9b240bcd5e8926879ade6578483f78c955d57480418a89e47773cf26103243",
+  "limits": "Allocation/admission only,no native-length inference or throughput claim. Tracked allocator excludes driver-owned memory;existing reserve remains.",
+  "admission": {
+    "mode": "explicit",
+    "device_free_bytes": 128844787712,
+    "device_total_bytes": 128849018880,
+    "vision_weight_reserve_bytes": 0,
+    "plan": {
+      "available_device_bytes": 128844787712,
+      "required_bytes": 112624398688,
+      "device_weight_bytes": 82523491840,
+      "staging_bytes": 20971520,
+      "kv_bytes": 12884901888,
+      "index_bytes": 4071064416,
+      "runtime_state_bytes": 239067136,
+      "scratch_bytes": 8589934592,
+      "reserve_bytes": 4294967296,
+      "context_tokens": 262144,
+      "resident_capacity": 2
+    },
+    "scratch_policy": "4GiB per runner includes current MMQ sidecars and prefill scratch"
+  },
+  "first_runner_memory": {
+    "current_allocated_bytes": 94695186388,
+    "peak_allocated_bytes": 94695186388,
+    "total_allocated_bytes": 94695186388,
+    "total_freed_bytes": 0,
+    "active_allocations": 1715,
+    "peak_allocations": 1715
+  },
+  "prepared_context": 262144,
+  "prepared_runners": 2,
+  "prepared_memory": {
+    "current_allocated_bytes": 106866880936,
+    "peak_allocated_bytes": 106866880936,
+    "total_allocated_bytes": 106866880936,
+    "total_freed_bytes": 0,
+    "active_allocations": 2207,
+    "peak_allocations": 2207
+  },
+  "allocation_margins": {
+    "explicit_components_bytes": 99739496800,
+    "observed_remainder_bytes": 7127384136,
+    "scratch_allowance_bytes": 8589934592,
+    "scratch_margin_bytes": 1462550456,
+    "including_reserve_margin_bytes": 5757517752
+  },
+  "memory_after_close": {
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 106866880936,
+    "total_allocated_bytes": 106866880936,
+    "total_freed_bytes": 106866880936,
+    "active_allocations": 0,
+    "peak_allocations": 2207
+  },
+  "elapsed_seconds": 50.299161507049575
+}

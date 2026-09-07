@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-07 UTC**
 
+Chunk1024 native-context/c2 allocation passes:two262144-context runners,
+106.87GB tracked,1.46GB scratch margin before reserve,zero final owners.
+Allocation only,not native-length inference;default selection still pending.
+[Evidence](results/2026-09-07-framework-qwen4exp-chunk1024-native-c2-memory.json).
+
 Full-category chunk512->1024 screen:PP1024176.71->190.61 (+7.87%),
 PP4096162.80->176.11 (+8.18%);p512-0.053% neutral-work control.
 72 exact trajectories;all long requests faster,but p4096 decode-1.72%
