@@ -92,6 +92,44 @@ def test_actual_route_capture_requires_fresh_head_and_exact_context(monkeypatch,
     assert payload["complete"] is (failure is None)
 
 
+@pytest.mark.parametrize("failure", [None, "duplicate", "partial", "metadata", "digest", "bytes", "nonfinite", "shape"])
+def test_repeat_comparison_checks_independent_directories_and_actual_bytes(tmp_path, failure):
+    import hashlib
+    import json
+    from scripts.qwen38_packed_c1_logits import compare_captures
+
+    directories = [tmp_path / str(i) for i in range(3)]
+    for i, directory in enumerate(directories):
+        directory.mkdir()
+        logits = np.zeros((2, 16), dtype=np.float32)
+        record = dict(prompt_id="p", logical_rows=2, prefix=[1, 2],
+                      logits_file="cycle.npz", logits_sha256=hashlib.sha256(logits.tobytes()).hexdigest())
+        if i == 2:
+            if failure in {"digest", "bytes"}:
+                logits[0, 0] = 1
+            if failure == "nonfinite":
+                logits[0, 0] = np.nan
+            if failure == "shape":
+                logits = logits.reshape(1, 32)
+            if failure == "metadata":
+                record["prefix"] = [1, 3]
+            if failure in {"bytes", "nonfinite", "shape"}:
+                record["logits_sha256"] = hashlib.sha256(logits.tobytes()).hexdigest()
+        np.savez(directory / "cycle.npz", logits=logits)
+        (directory / "capture.json").write_text(json.dumps(dict(
+            complete=not (i == 2 and failure == "partial"), records=[record])))
+    if failure == "duplicate":
+        directories[-1] = directories[0]
+    if failure:
+        with pytest.raises(ValueError):
+            compare_captures(directories)
+    else:
+        result = compare_captures(directories)
+        assert result["full_logit_bytes_exact"] and result["metadata_exact"]
+        assert result["runs"] == 3 and result["active_rows_per_run"] == 2
+        assert not result["full_profile_qualification"]
+
+
 def _capture():
     return dict(prefix=(10, 11), tokens=(12, 13, 0, 0), position=2,
                 logical_rows=2, logits=np.zeros((4, 16), dtype=np.float32))

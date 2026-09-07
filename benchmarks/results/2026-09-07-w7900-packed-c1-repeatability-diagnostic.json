@@ -1,0 +1,45 @@
+{
+  "runs": 3,
+  "cycles_per_run": 70,
+  "active_rows_per_run": 267,
+  "prompts": 10,
+  "metadata_exact": true,
+  "full_logit_bytes_exact": true,
+  "finite": true,
+  "digests_verified": true,
+  "full_profile_qualification": false,
+  "directories": [
+    "/tmp/packed-c1-logits-n1k3",
+    "/tmp/packed-c1-logits-n1k3-repeat2",
+    "/tmp/packed-c1-logits-n1k3-repeat3"
+  ],
+  "kind": "packed_c1_full_logit_repeatability_diagnostic",
+  "performance_claim": false,
+  "base_commit": "6ea4359de9878bcb22ce9470681941aa9fe1e0fc",
+  "hardware": {
+    "host": "epyc",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+    "gpu": "AMD Radeon Pro W7900",
+    "uuid": "GPU-e282895b62c2b295",
+    "target_arch": "gfx1100",
+    "rocm": "7.2.4",
+    "identity_source": "campaign-artifacts/packet0/provenance.txt"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+    "quant": "Q4_K_M",
+    "kv": "bf16",
+    "execution_profile": "production",
+    "manifest_sha256": "2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960"
+  },
+  "scope": "C1 N1 K3, canonical ten prompts, D24 greedy, 1024 sequence limit, 20ms batch window",
+  "validation": "28 CPU tests passed; eight RED failures before comparator implementation",
+  "limitation": "Only captured contexts, coordinates, route metadata and full-logit bytes; not component-state, teacher-schedule, lifecycle or full-profile qualification",
+  "commands": [
+    "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 .venv/bin/python scripts/qwen38_packed_c1_logits.py capture --directory /tmp/packed-c1-logits-n1k3 --capacity 1 --budget 3",
+    "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 .venv/bin/python scripts/qwen38_packed_c1_logits.py capture --directory /tmp/packed-c1-logits-n1k3-repeat2 --capacity 1 --budget 3",
+    "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 .venv/bin/python scripts/qwen38_packed_c1_logits.py capture --directory /tmp/packed-c1-logits-n1k3-repeat3 --capacity 1 --budget 3",
+    ".venv/bin/python scripts/qwen38_packed_c1_logits.py compare --directory /tmp/packed-c1-logits-n1k3 --repeat-directory /tmp/packed-c1-logits-n1k3-repeat2 --repeat-directory /tmp/packed-c1-logits-n1k3-repeat3 --output /tmp/packed-c1-n1k3-repeat-comparison.json"
+  ]
+}
