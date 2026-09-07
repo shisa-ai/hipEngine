@@ -76,6 +76,17 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Exact router shuffle-tail candidate (September7 UTC):** router owns
+about0.618s of code4096. Preserve dense per-thread FMA sequence and
+shared reduction128/64;wave0 combines32 then shuffles16..1 in identical
+order,removing six block barriers. Actual layer0/27 weights at1024 rows:
+3.043->2.635ms /3.051->2.648ms (1.155x/1.152x);512 rows also
+positive,both orders.80 pairs exact,16 GPU tests pass. Trace32 VGPR/
+zero scratch/dynamic LDS4096B unchanged. Kernel-only;full model
+logits/routing/state/KV and canonical A/B required before promotion.
+No proportional whole-model speedup claimed.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-router-shuffle.json).
+
 **Current chunk1024 owner refresh (September7 UTC):** clean `fc947658a`,
 six cases/twelve phases,explicit1024 child/join metadata. All100%
 attribution,matched decode roots,restored state/output and zero owners.

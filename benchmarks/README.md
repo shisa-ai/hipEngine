@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-07 UTC**
 
+Exact router shuffle-tail kernel candidate:layer0/27 at1024 rows
+3.043->2.635ms /3.051->2.648ms,80 pairs exact,both orders positive.
+16 tests pass,resources unchanged. Model gates pending,default unchanged.
+[Evidence](results/2026-09-07-framework-qwen4exp-router-shuffle.json).
+
 Chunk1024 full family refresh at `fc947658a`:p4096 FFN12.698->11.356s,
 GR3.755->3.404s;QSA1.922->2.070s. Snapshot includes mapped-Q8 and
 chunk promotions,not single-change attribution. All12 phases pass

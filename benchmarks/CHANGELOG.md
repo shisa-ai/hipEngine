@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-07 UTC router shuffle candidate] Layer0/27 router1024 rows3.043->2.635ms (-13.42%)/3.051->2.648ms (-13.20%),80 exact pairs,both orders positive;16 tests,32 VGPR/scratch0 unchanged. Kernel-only,model gates pending. `benchmarks/results/2026-09-07-framework-qwen4exp-router-shuffle.json`.
+
 - [2026-09-07 UTC chunk1024 families] Cleanfc947658a:FFN12.698->11.356s,GR3.755->3.404s,linear4.556->4.517s;QSA1.922->2.070s/GDN0.784->0.820s regress. Snapshot spans mapped-Q8+chunk promotions;all12 phases valid,explicit1024,reused Vulkan. `benchmarks/results/2026-09-07-framework-qwen4exp-post-chunk1024-family.json`.
 
 - [2026-09-07 UTC chunk1024 scoped promotion] Registered gfx1151 UD-Q4_K_XL production512->1024 retains measured PP1024+7.87%/PP4096+8.18%;72 exact,full state/KV/native-c2 and public8K gates pass. Decode-1.72%/short controls explicit;strict active512,other quants/direct defaults unchanged. `benchmarks/results/2026-09-07-framework-qwen4exp-chunk1024-promotion.json`.
