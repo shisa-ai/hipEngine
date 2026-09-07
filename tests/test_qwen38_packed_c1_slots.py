@@ -57,3 +57,41 @@ def test_capture_scopes_and_restores_real_owner_hook(tmp_path, slot):
     finally:
         capture.close(success=False)
     assert Owner._acquire_lease is original
+
+
+@pytest.mark.parametrize('slot', range(8))
+def test_slot_choice_covers_atomic_admission(tmp_path, monkeypatch, slot):
+    from scripts.qwen38_packed_c1_logits import PackedC1Capture
+    from hipengine.generation.qwen35_gguf import Qwen35GGUFResidentModelRunner as Owner
+    leases = [NS(session=NS(_resident_slot_index=i)) for i in range(8)]
+    def reserve(owner):
+        owner._available.extend(leases)
+    monkeypatch.setattr(Owner, '_reserve_sessions', reserve)
+    owner = NS(capacity=8, _available=[])
+    capture = PackedC1Capture(tmp_path / 'capture', slot=slot)
+    try:
+        capture.install()
+        Owner._reserve_sessions(owner)
+        # Atomic admission intentionally bypasses _acquire_lease.
+        assert owner._available.pop() is leases[slot]
+        assert {id(x) for x in owner._available} == {id(x) for x in leases if x is not leases[slot]}
+    finally:
+        capture.close(success=False)
+    assert Owner._reserve_sessions is reserve
+
+
+def test_target_entry_failure_is_recorded_before_logits(tmp_path):
+    import json
+    from scripts.qwen38_packed_c1_logits import PackedC1Capture
+    from hipengine.generation.qwen35_gguf_mtp2 import Qwen35GGUFMTP2Adapter as Adapter
+    capture = PackedC1Capture(tmp_path / 'capture')
+    try:
+        capture.install()
+        with pytest.raises(ValueError, match='scoped physical request'):
+            Adapter._execute_target_frontier_batch(None, NS(speculative_request_ids=()))
+        assert not capture.records
+    finally:
+        capture.close(success=True)
+    saved = json.loads((capture.directory / 'capture.json').read_text())
+    assert saved['complete'] is False
+    assert saved['target_errors'] == ['ValueError: capture requires one scoped physical request']
