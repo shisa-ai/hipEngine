@@ -1,0 +1,410 @@
+{
+  "schema": 1,
+  "hardware": {
+    "host": "epyc",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+    "gpu": "AMD Radeon Pro W7900",
+    "uuid": "GPU-e282895b62c2b295",
+    "target_arch": "gfx1100",
+    "rocm": "7.2.4",
+    "identity_source": "campaign-artifacts/packet0/provenance.txt"
+  },
+  "model_path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "quant": "Q4_K_M",
+  "execution_profile": "production",
+  "kv": "bf16",
+  "candidate_budget": 3,
+  "boundary": "EngineService.submit_speculative_children",
+  "kind": "packed_c1_actual_c8_survivor_refill_diagnostic",
+  "base_commit": "3b84e96db",
+  "capacity": 8,
+  "initial_horizons": [
+    8,
+    8,
+    8,
+    8,
+    8,
+    8,
+    8,
+    24
+  ],
+  "refill_horizons": [
+    8,
+    8,
+    8,
+    8,
+    8,
+    8,
+    8
+  ],
+  "performance_claim": false,
+  "full_profile_qualification": false,
+  "http_usage_qualified": false,
+  "passed": true,
+  "clean_teardown": true,
+  "source": "/tmp/packed-c1-wide-refill-n8.json",
+  "sha256": "9244002fc160a5aca7ae623a9b077a22d7a816b0f5390f04af3bb2e5ae86e0ab",
+  "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 .venv/bin/python scripts/qwen38_packed_c1_lifecycle.py --engine-boundary --wide-refill --capacity 8 --output /tmp/packed-c1-wide-refill-n8.json",
+  "cells": [
+    {
+      "prompt_id": "code_merge_intervals",
+      "category": "code",
+      "transition": {
+        "survivor_request_id": 9,
+        "resident_slot": 0,
+        "initial_width": 8,
+        "refill_width": 8
+      },
+      "initial_request_ids": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "refill_request_ids": [
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16
+      ],
+      "exact_children": 15,
+      "output_ids_sha256": "c4e6d8ec5d40e524a1f812c9e969d5159feabb6ff8bff4d1ed169ff12130a614",
+      "initial_c8_cycles": 2,
+      "survivor_cycles": 2,
+      "refilled_c8_cycles": 3,
+      "request_drain_passed": true
+    },
+    {
+      "prompt_id": "code_topological_sort",
+      "category": "code",
+      "transition": {
+        "survivor_request_id": 26,
+        "resident_slot": 0,
+        "initial_width": 8,
+        "refill_width": 8
+      },
+      "initial_request_ids": [
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26
+      ],
+      "refill_request_ids": [
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33
+      ],
+      "exact_children": 15,
+      "output_ids_sha256": "abadd0f77f8b8ea79b86d5821aac2fa47311f7a775b9e0fef4d4385173b3630c",
+      "initial_c8_cycles": 2,
+      "survivor_cycles": 3,
+      "refilled_c8_cycles": 2,
+      "request_drain_passed": true
+    },
+    {
+      "prompt_id": "code_lru_cache",
+      "category": "code",
+      "transition": {
+        "survivor_request_id": 43,
+        "resident_slot": 1,
+        "initial_width": 8,
+        "refill_width": 8
+      },
+      "initial_request_ids": [
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43
+      ],
+      "refill_request_ids": [
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50
+      ],
+      "exact_children": 15,
+      "output_ids_sha256": "805bd49fc547747b15f597a0b3c7ecc7ecb625dfd6a393735c0208e2ec5710a4",
+      "initial_c8_cycles": 2,
+      "survivor_cycles": 2,
+      "refilled_c8_cycles": 2,
+      "request_drain_passed": true
+    },
+    {
+      "prompt_id": "code_markdown_table",
+      "category": "code",
+      "transition": {
+        "survivor_request_id": 60,
+        "resident_slot": 1,
+        "initial_width": 8,
+        "refill_width": 8
+      },
+      "initial_request_ids": [
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60
+      ],
+      "refill_request_ids": [
+        61,
+        62,
+        63,
+        64,
+        65,
+        66,
+        67
+      ],
+      "exact_children": 15,
+      "output_ids_sha256": "5629994c6df3cff063efed9ef12cc0252f5723e5d6d36cee10b26edebf469fe7",
+      "initial_c8_cycles": 2,
+      "survivor_cycles": 2,
+      "refilled_c8_cycles": 2,
+      "request_drain_passed": true
+    },
+    {
+      "prompt_id": "general_en_plan",
+      "category": "general_en",
+      "transition": {
+        "survivor_request_id": 77,
+        "resident_slot": 1,
+        "initial_width": 8,
+        "refill_width": 8
+      },
+      "initial_request_ids": [
+        70,
+        71,
+        72,
+        73,
+        74,
+        75,
+        76,
+        77
+      ],
+      "refill_request_ids": [
+        78,
+        79,
+        80,
+        81,
+        82,
+        83,
+        84
+      ],
+      "exact_children": 15,
+      "output_ids_sha256": "c60e9d5cf2b3ae04559ed4fbf5a31a702a920f368dca79bfd8ef2ef989d961a9",
+      "initial_c8_cycles": 2,
+      "survivor_cycles": 2,
+      "refilled_c8_cycles": 2,
+      "request_drain_passed": true
+    },
+    {
+      "prompt_id": "general_en_explain",
+      "category": "general_en",
+      "transition": {
+        "survivor_request_id": 94,
+        "resident_slot": 1,
+        "initial_width": 8,
+        "refill_width": 8
+      },
+      "initial_request_ids": [
+        87,
+        88,
+        89,
+        90,
+        91,
+        92,
+        93,
+        94
+      ],
+      "refill_request_ids": [
+        95,
+        96,
+        97,
+        98,
+        99,
+        100,
+        101
+      ],
+      "exact_children": 15,
+      "output_ids_sha256": "41133d5634723ba1b493b0642275837e4f730563c467986675e200dced3219ae",
+      "initial_c8_cycles": 2,
+      "survivor_cycles": 2,
+      "refilled_c8_cycles": 3,
+      "request_drain_passed": true
+    },
+    {
+      "prompt_id": "general_ja_plan",
+      "category": "general_ja",
+      "transition": {
+        "survivor_request_id": 111,
+        "resident_slot": 2,
+        "initial_width": 8,
+        "refill_width": 8
+      },
+      "initial_request_ids": [
+        104,
+        105,
+        106,
+        107,
+        108,
+        109,
+        110,
+        111
+      ],
+      "refill_request_ids": [
+        112,
+        113,
+        114,
+        115,
+        116,
+        117,
+        118
+      ],
+      "exact_children": 15,
+      "output_ids_sha256": "e44c1e21af7e78b6e040f24f57337e2aea9b118c72e77af4548063284bf4bcc5",
+      "initial_c8_cycles": 3,
+      "survivor_cycles": 1,
+      "refilled_c8_cycles": 4,
+      "request_drain_passed": true
+    },
+    {
+      "prompt_id": "general_ja_explain",
+      "category": "general_ja",
+      "transition": {
+        "survivor_request_id": 128,
+        "resident_slot": 2,
+        "initial_width": 8,
+        "refill_width": 8
+      },
+      "initial_request_ids": [
+        121,
+        122,
+        123,
+        124,
+        125,
+        126,
+        127,
+        128
+      ],
+      "refill_request_ids": [
+        129,
+        130,
+        131,
+        132,
+        133,
+        134,
+        135
+      ],
+      "exact_children": 15,
+      "output_ids_sha256": "1bcb4280bc33b482f106d1cc1b2cca78f58443acb886e31a84eef9c822f10cf7",
+      "initial_c8_cycles": 2,
+      "survivor_cycles": 2,
+      "refilled_c8_cycles": 3,
+      "request_drain_passed": true
+    },
+    {
+      "prompt_id": "mixed_ja_en_translate",
+      "category": "mixed_ja_en",
+      "transition": {
+        "survivor_request_id": 145,
+        "resident_slot": 3,
+        "initial_width": 8,
+        "refill_width": 8
+      },
+      "initial_request_ids": [
+        138,
+        139,
+        140,
+        141,
+        142,
+        143,
+        144,
+        145
+      ],
+      "refill_request_ids": [
+        146,
+        147,
+        148,
+        149,
+        150,
+        151,
+        152
+      ],
+      "exact_children": 15,
+      "output_ids_sha256": "f4e1344761bf6a54436766ce12f9953b633788230860c72159c31c311b8b4d1e",
+      "initial_c8_cycles": 2,
+      "survivor_cycles": 1,
+      "refilled_c8_cycles": 3,
+      "request_drain_passed": true
+    },
+    {
+      "prompt_id": "mixed_ja_en_review",
+      "category": "mixed_ja_en",
+      "transition": {
+        "survivor_request_id": 162,
+        "resident_slot": 4,
+        "initial_width": 8,
+        "refill_width": 8
+      },
+      "initial_request_ids": [
+        155,
+        156,
+        157,
+        158,
+        159,
+        160,
+        161,
+        162
+      ],
+      "refill_request_ids": [
+        163,
+        164,
+        165,
+        166,
+        167,
+        168,
+        169
+      ],
+      "exact_children": 15,
+      "output_ids_sha256": "d21005bb4f7ae8816dff4be9787c9ad9ee117b8d752ed1b25c676d46abd3bbe9",
+      "initial_c8_cycles": 2,
+      "survivor_cycles": 3,
+      "refilled_c8_cycles": 2,
+      "request_drain_passed": true
+    }
+  ],
+  "validation": [
+    "200 packed-C1 CPU tests plus 26 focused lifecycle tests after extending diagnostic evidence preservation coverage.",
+    "Independent raw-capture inspection of all 150 child outputs versus AR, unique IDs/slots, ordered actual 8-to-1-to-8 packed groups, same survivor storage and final service/scheduler/lease drain.",
+    "Every saved D8/D24 admission source covers widths 1 through 8; public evidence and automatic policy unchanged."
+  ],
+  "limitations": [
+    "Diagnostic engine boundary only; no performance or public safety promotion.",
+    "Observed survivor physical slots 0 through 4; this run does not cover all slots or arbitrary transition schedules.",
+    "No HTTP usage, EOS, provisional rollback, KV-page reclamation, full numerical or depth-through-K7 qualification."
+  ]
+}
