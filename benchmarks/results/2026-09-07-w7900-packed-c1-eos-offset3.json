@@ -1,0 +1,568 @@
+{
+  "schema": 1,
+  "hardware": {
+    "host": "epyc",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+    "gpu": "AMD Radeon Pro W7900",
+    "uuid": "GPU-e282895b62c2b295",
+    "target_arch": "gfx1100",
+    "rocm": "7.2.4",
+    "identity_source": "campaign-artifacts/packet0/provenance.txt"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+    "quant": "Q4_K_M",
+    "kv": "bf16",
+    "execution_profile": "production",
+    "manifest_sha256": "2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960"
+  },
+  "performance_claim": false,
+  "full_profile_qualification": false,
+  "public_serving_qualified": false,
+  "kind": "native_c1_eos_offset3_diagnostic",
+  "base_commit": "a025dd05b1b13ca9632e1354614839c11bfddcc3",
+  "prior_evidence": "benchmarks/results/2026-09-07-w7900-packed-c1-eos-offset2.json",
+  "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 .venv/bin/python scripts/qwen38_packed_c1_lifecycle.py --engine-boundary --eos-survivor --eos-state --capacity 8 --budget 7 --eos-marker-offset 3 --output /tmp/packed-c1-eos-offset3-n8k7.json",
+  "source": "/tmp/packed-c1-eos-offset3-n8k7.json",
+  "sha256": "b97c12baa4ebb2aa3ac6c55734b1e25ad3a105eaca197585a98d3f0bd93ed693",
+  "passed": true,
+  "clean_teardown": true,
+  "budget": 7,
+  "capacity": 8,
+  "offset": 3,
+  "checked_cycles_by_actual_depth": {
+    "7": 25,
+    "5": 5
+  },
+  "terminal_counts": [
+    {
+      "actual_depth": 5,
+      "accepted": 0,
+      "count": 4
+    },
+    {
+      "actual_depth": 5,
+      "accepted": 1,
+      "count": 1
+    },
+    {
+      "actual_depth": 7,
+      "accepted": 3,
+      "count": 1
+    },
+    {
+      "actual_depth": 7,
+      "accepted": 4,
+      "count": 1
+    },
+    {
+      "actual_depth": 7,
+      "accepted": 5,
+      "count": 2
+    },
+    {
+      "actual_depth": 7,
+      "accepted": 7,
+      "count": 1
+    }
+  ],
+  "combined_missing_k7_terminal_counts": [],
+  "cells": [
+    {
+      "prompt_id": "code_merge_intervals",
+      "category": "code",
+      "states": [
+        {
+          "logical_depth": 7,
+          "precommit_buffers": 131,
+          "accepted": 5,
+          "terminal": false,
+          "start_position": 44,
+          "passed": true,
+          "state_buffers": 97,
+          "aux_buffers": 4,
+          "kv_planes": 32
+        },
+        {
+          "logical_depth": 7,
+          "precommit_buffers": 131,
+          "accepted": 0,
+          "terminal": false,
+          "start_position": 50,
+          "passed": true,
+          "state_buffers": 97,
+          "aux_buffers": 4,
+          "kv_planes": 32
+        },
+        {
+          "logical_depth": 7,
+          "precommit_buffers": 131,
+          "accepted": 1,
+          "terminal": false,
+          "start_position": 51,
+          "passed": true,
+          "state_buffers": 97,
+          "aux_buffers": 4,
+          "kv_planes": 32
+        },
+        {
+          "logical_depth": 5,
+          "precommit_buffers": 131,
+          "accepted": 0,
+          "terminal": true,
+          "start_position": 53,
+          "passed": true,
+          "state_buffers": 97,
+          "aux_buffers": 4,
+          "kv_planes": 32
+        }
+      ],
+      "eos": {
+        "index": 18,
+        "backend_request_id": 3,
+        "service_request_id": 3,
+        "eos_token_id": 26864,
+        "eos_index": 18,
+        "visible_tokens": 19,
+        "collector_exact": true
+      },
+      "exact_output_identity_transition_and_drain_independently_checked": true
+    },
+    {
+      "prompt_id": "code_topological_sort",
+      "category": "code",
+      "states": [
+        {
+          "logical_depth": 7,
+          "precommit_buffers": 131,
+          "accepted": 0,
+          "terminal": false,
+          "start_position": 53,
+          "passed": true,
+          "state_buffers": 97,
+          "aux_buffers": 4,
+          "kv_planes": 32
+        },
+        {
+          "logical_depth": 7,
+          "precommit_buffers": 131,
+          "accepted": 2,
+          "terminal": false,
+          "start_position": 54,
+          "passed": true,
+          "state_buffers": 97,
+          "aux_buffers": 4,
+          "kv_planes": 32
+        },
+        {
+          "logical_depth": 7,
+          "precommit_buffers": 131,
+          "accepted": 0,
+          "terminal": false,
+          "start_position": 57,
+          "passed": true,
+          "state_buffers": 97,
+          "aux_buffers": 4,
+          "kv_planes": 32
+        },
+        {
+          "logical_depth": 7,
+          "precommit_buffers": 131,
+          "accepted": 5,
+          "terminal": true,
+          "start_position": 58,
+          "passed": true,
+          "state_buffers": 97,
+          "aux_buffers": 4,
+          "kv_planes": 32
+        }
+      ],
+      "eos": {
+        "index": 18,
+        "backend_request_id": 7,
+        "service_request_id": 7,
+        "eos_token_id": 1510,
+        "eos_index": 18,
+        "visible_tokens": 19,
+        "collector_exact": true
+      },
+      "exact_output_identity_transition_and_drain_independently_checked": true
+    },
+    {
+      "prompt_id": "code_lru_cache",
+      "category": "code",
+      "states": [
+        {
+          "logical_depth": 7,
+          "precommit_buffers": 131,
+          "accepted": 4,
+          "terminal": true,
+          "start_position": 56,
+          "passed": true,
+          "state_buffers": 97,
+          "aux_buffers": 4,
+          "kv_planes": 32
+        }
+      ],
+      "eos": {
+        "index": 18,
+        "backend_request_id": 11,
+        "service_request_id": 11,
+        "eos_token_id": 2113,
+        "eos_index": 18,
+        "visible_tokens": 19,
+        "collector_exact": true
+      },
+      "exact_output_identity_transition_and_drain_independently_checked": true
+    },
+    {
+      "prompt_id": "code_markdown_table",
+      "category": "code",
+      "states": [
+        {
+          "logical_depth": 7,
+          "precommit_buffers": 131,
+          "accepted": 1,
+          "terminal": false,
+          "start_position": 55,
+          "passed": true,
+          "state_buffers": 97,
+          "aux_buffers": 4,
+          "kv_planes": 32
+        },
+        {
+          "logical_depth": 7,
+          "precommit_buffers": 131,
+          "accepted": 4,
+          "terminal": false,
+          "start_position": 57,
+          "passed": true,
+          "state_buffers": 97,
+          "aux_buffers": 4,
+          "kv_planes": 32
+        },
+        {
+          "logical_depth": 7,
+          "precommit_buffers": 131,
+          "accepted": 3,
+          "terminal": true,
+          "start_position": 62,
+          "passed": true,
+          "state_buffers": 97,
+          "aux_buffers": 4,
+          "kv_planes": 32
+        }
+      ],
+      "eos": {
+        "index": 18,
+        "backend_request_id": 15,
+        "service_request_id": 15,
+        "eos_token_id": 72815,
+        "eos_index": 18,
+        "visible_tokens": 19,
+        "collector_exact": true
+      },
+      "exact_output_identity_transition_and_drain_independently_checked": true
+    },
+    {
+      "prompt_id": "general_en_plan",
+      "category": "general_en",
+      "states": [
+        {
+          "logical_depth": 7,
+          "precommit_buffers": 131,
+          "accepted": 2,
+          "terminal": false,
+          "start_position": 42,
+          "passed": true,
+          "state_buffers": 97,
+          "aux_buffers": 4,
+          "kv_planes": 32
+        },
+        {
+          "logical_depth": 7,
+          "precommit_buffers": 131,
+          "accepted": 7,
+          "terminal": true,
+          "start_position": 45,
+          "passed": true,
+          "state_buffers": 97,
+          "aux_buffers": 4,
+          "kv_planes": 32
+        }
+      ],
+      "eos": {
+        "index": 18,
+        "backend_request_id": 19,
+        "service_request_id": 19,
+        "eos_token_id": 71100,
+        "eos_index": 18,
+        "visible_tokens": 19,
+        "collector_exact": true
+      },
+      "exact_output_identity_transition_and_drain_independently_checked": true
+    },
+    {
+      "prompt_id": "general_en_explain",
+      "category": "general_en",
+      "states": [
+        {
+          "logical_depth": 7,
+          "precommit_buffers": 131,
+          "accepted": 6,
+          "terminal": false,
+          "start_position": 43,
+          "passed": true,
+          "state_buffers": 97,
+          "aux_buffers": 4,
+          "kv_planes": 32
+        },
+        {
+          "logical_depth": 7,
+          "precommit_buffers": 131,
+          "accepted": 2,
+          "terminal": false,
+          "start_position": 50,
+          "passed": true,
+          "state_buffers": 97,
+          "aux_buffers": 4,
+          "kv_planes": 32
+        },
+        {
+          "logical_depth": 5,
+          "precommit_buffers": 131,
+          "accepted": 0,
+          "terminal": true,
+          "start_position": 53,
+          "passed": true,
+          "state_buffers": 97,
+          "aux_buffers": 4,
+          "kv_planes": 32
+        }
+      ],
+      "eos": {
+        "index": 18,
+        "backend_request_id": 23,
+        "service_request_id": 23,
+        "eos_token_id": 2136,
+        "eos_index": 18,
+        "visible_tokens": 19,
+        "collector_exact": true
+      },
+      "exact_output_identity_transition_and_drain_independently_checked": true
+    },
+    {
+      "prompt_id": "general_ja_plan",
+      "category": "general_ja",
+      "states": [
+        {
+          "logical_depth": 7,
+          "precommit_buffers": 131,
+          "accepted": 5,
+          "terminal": true,
+          "start_position": 51,
+          "passed": true,
+          "state_buffers": 97,
+          "aux_buffers": 4,
+          "kv_planes": 32
+        }
+      ],
+      "eos": {
+        "index": 18,
+        "backend_request_id": 27,
+        "service_request_id": 27,
+        "eos_token_id": 247243,
+        "eos_index": 18,
+        "visible_tokens": 19,
+        "collector_exact": true
+      },
+      "exact_output_identity_transition_and_drain_independently_checked": true
+    },
+    {
+      "prompt_id": "general_ja_explain",
+      "category": "general_ja",
+      "states": [
+        {
+          "logical_depth": 7,
+          "precommit_buffers": 131,
+          "accepted": 1,
+          "terminal": false,
+          "start_position": 46,
+          "passed": true,
+          "state_buffers": 97,
+          "aux_buffers": 4,
+          "kv_planes": 32
+        },
+        {
+          "logical_depth": 7,
+          "precommit_buffers": 131,
+          "accepted": 2,
+          "terminal": false,
+          "start_position": 48,
+          "passed": true,
+          "state_buffers": 97,
+          "aux_buffers": 4,
+          "kv_planes": 32
+        },
+        {
+          "logical_depth": 7,
+          "precommit_buffers": 131,
+          "accepted": 1,
+          "terminal": false,
+          "start_position": 51,
+          "passed": true,
+          "state_buffers": 97,
+          "aux_buffers": 4,
+          "kv_planes": 32
+        },
+        {
+          "logical_depth": 7,
+          "precommit_buffers": 131,
+          "accepted": 2,
+          "terminal": false,
+          "start_position": 53,
+          "passed": true,
+          "state_buffers": 97,
+          "aux_buffers": 4,
+          "kv_planes": 32
+        },
+        {
+          "logical_depth": 5,
+          "precommit_buffers": 131,
+          "accepted": 1,
+          "terminal": true,
+          "start_position": 56,
+          "passed": true,
+          "state_buffers": 97,
+          "aux_buffers": 4,
+          "kv_planes": 32
+        }
+      ],
+      "eos": {
+        "index": 19,
+        "backend_request_id": 31,
+        "service_request_id": 31,
+        "eos_token_id": 3069,
+        "eos_index": 19,
+        "visible_tokens": 20,
+        "collector_exact": true
+      },
+      "exact_output_identity_transition_and_drain_independently_checked": true
+    },
+    {
+      "prompt_id": "mixed_ja_en_translate",
+      "category": "mixed_ja_en",
+      "states": [
+        {
+          "logical_depth": 7,
+          "precommit_buffers": 131,
+          "accepted": 6,
+          "terminal": false,
+          "start_position": 67,
+          "passed": true,
+          "state_buffers": 97,
+          "aux_buffers": 4,
+          "kv_planes": 32
+        },
+        {
+          "logical_depth": 7,
+          "precommit_buffers": 131,
+          "accepted": 2,
+          "terminal": false,
+          "start_position": 74,
+          "passed": true,
+          "state_buffers": 97,
+          "aux_buffers": 4,
+          "kv_planes": 32
+        },
+        {
+          "logical_depth": 5,
+          "precommit_buffers": 131,
+          "accepted": 0,
+          "terminal": true,
+          "start_position": 77,
+          "passed": true,
+          "state_buffers": 97,
+          "aux_buffers": 4,
+          "kv_planes": 32
+        }
+      ],
+      "eos": {
+        "index": 18,
+        "backend_request_id": 35,
+        "service_request_id": 35,
+        "eos_token_id": 6163,
+        "eos_index": 18,
+        "visible_tokens": 19,
+        "collector_exact": true
+      },
+      "exact_output_identity_transition_and_drain_independently_checked": true
+    },
+    {
+      "prompt_id": "mixed_ja_en_review",
+      "category": "mixed_ja_en",
+      "states": [
+        {
+          "logical_depth": 7,
+          "precommit_buffers": 131,
+          "accepted": 0,
+          "terminal": false,
+          "start_position": 75,
+          "passed": true,
+          "state_buffers": 97,
+          "aux_buffers": 4,
+          "kv_planes": 32
+        },
+        {
+          "logical_depth": 7,
+          "precommit_buffers": 131,
+          "accepted": 4,
+          "terminal": false,
+          "start_position": 76,
+          "passed": true,
+          "state_buffers": 97,
+          "aux_buffers": 4,
+          "kv_planes": 32
+        },
+        {
+          "logical_depth": 7,
+          "precommit_buffers": 131,
+          "accepted": 2,
+          "terminal": false,
+          "start_position": 81,
+          "passed": true,
+          "state_buffers": 97,
+          "aux_buffers": 4,
+          "kv_planes": 32
+        },
+        {
+          "logical_depth": 5,
+          "precommit_buffers": 131,
+          "accepted": 0,
+          "terminal": true,
+          "start_position": 84,
+          "passed": true,
+          "state_buffers": 97,
+          "aux_buffers": 4,
+          "kv_planes": 32
+        }
+      ],
+      "eos": {
+        "index": 18,
+        "backend_request_id": 39,
+        "service_request_id": 39,
+        "eos_token_id": 1965,
+        "eos_index": 18,
+        "visible_tokens": 19,
+        "collector_exact": true
+      },
+      "exact_output_identity_transition_and_drain_independently_checked": true
+    }
+  ],
+  "limitations": [
+    "Five terminal cycles clipped to K5; only actual K7 rows count as K7 coverage.",
+    "Pooled N8 coverage across prompts, not every position per prompt/capacity.",
+    "Independent numerical and public-serving qualification remain open."
+  ]
+}
