@@ -49,15 +49,13 @@ row, not across them.
 Blank cells are shapes we have not measured yet, not failures. Max context is
 published only where a dedicated ceiling run exists.
 
-- **On a 24 GB card, Qwen3.8-27B `Q4_K_M` fits long contexts.** Measured on a
-  physical RX 7900 XTX with one active request: BF16 KV serves declared
-  contexts through **40,960 tokens** (32,768 peaks at 23.162 GiB; 45,056
-  first fails warmup). Compact INT8 KV (FP32 scales) serves
-  through **15,872 tokens**; larger contexts fail on a route defect, not
-  memory. Prefill scratch is bounded to fixed 1,024-row chunks, so session
-  memory follows the KV payload (64 KiB/token BF16, 32.5 KiB/token INT8)
-  rather than the declared context.
-  [`scratch row cap`](results/2026-09-06-rx7900xtx-capacity-scratch-row-cap.json)
+- **Qwen3.8-27B `Q4_K_M` fits long contexts on the RX 7900 XTX.** One-request
+  measurements reach **40,960 tokens with BF16 KV** and **54,272 with INT8 KV**
+  (FP32 scales, 54,255 prompt + 16 output tokens, **23.972 GiB peak**).
+  These are observed passes, not operational reserve recommendations.
+  Runs used the same card/protocol at different revisions, without a fresh
+  matched quality comparison or a proven INT8 maximum.
+  [Results and qualification scope](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-07-rx7900xtx-int8-repair-capacity-audit.json)
 
 ### Serving several requests at once
 
@@ -89,6 +87,21 @@ decoding runs automatically in production it is scoped to a qualified shape:
 Qwen3.6-35B-A3B GGUF reaches **93.644 tok/s public** — 1.1565x its own AR — at
 two concurrent requests on the W7900.
 <!-- END TOPLINE:README_HIGHLIGHTS -->
+
+### INT8 capacity and qualification audit — RX 7900 XTX
+
+| Qwen3.8-27B `Q4_K_M` · INT8 FP32 scales | Prompt / output tokens | Peak VRAM |
+| --- | ---: | ---: |
+| Context 16,128 | 16,111 / 16 | 20.357 GiB |
+| Context 32,768 | 32,751 / 16 | 21.919 GiB |
+| Context 49,152 | 49,135 / 16 | 23.484 GiB |
+| Context 54,272 | 54,255 / 16 | 23.972 GiB |
+
+DMS INT8 device fixtures pass codec, eviction, attention and rollback checks,
+including 16,385 tokens with an 8,192-token protected window. Model-serving
+integration and category/heldout quality qualification are incomplete; no
+DMS INT8 capacity gain is claimed. Commands, identity and accounting:
+[INT8 evidence audit](results/2026-09-07-rx7900xtx-int8-repair-capacity-audit.json).
 
 ## Current default notes
 
