@@ -2987,6 +2987,14 @@ def _qwen4_exp_q51_register_cache_key(key: KernelKey, *, rows: int, in_features:
     return candidate if is_registered(candidate) else key
 
 
+def _qwen4_exp_gdn_wave_norm_key(key: KernelKey) -> KernelKey:
+    if (key.variant != "qwen4exp_sigmoid_register_prefill"
+            or os.environ.get("HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM","0") != "1"):
+        return key
+    candidate = KernelKey(key.backend,key.layer,key.quant,"qwen4exp_sigmoid_wave_norm_prefill")
+    return candidate if is_registered(candidate) else key
+
+
 def _qwen4_exp_q51_row_publish_key(key: KernelKey, *, rows: int, in_features: int) -> KernelKey:
     if (rows < 512 or in_features != 640
             or key.variant != "selected_grouped_prefill_pair2_register_cache_bf16_bf16_out"
@@ -4918,10 +4926,12 @@ def run_qwen4_exp_gdn_token_mixer(
                 backend=backend, rows=rows, num_k_heads=num_k_heads,
                 num_v_heads=num_v_heads, head_dim=head_dim,
             ):
+                serial_key = _qwen4_exp_gdn_wave_norm_key(KernelKey(
+                    backend,"gdn_recurrence_norm_gate","f32_state",
+                    "qwen4exp_sigmoid_register_prefill"))
                 serial_prefill = resolve(
-                    backend=backend, layer="gdn_recurrence_norm_gate",
-                    quant="f32_state", variant="qwen4exp_sigmoid_register_prefill",
-                )
+                    backend=serial_key.backend, layer=serial_key.layer,
+                    quant=serial_key.quant, variant=serial_key.variant)
             serial_prefill(
                 scratch.conv.ptr,
                 scratch.gate.ptr,

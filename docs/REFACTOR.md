@@ -6,8 +6,10 @@
   recurrence, exact128-element normalization tree with wave-local tail.
 - Hk16/Hv48/D128 at512/1024 tokens wins1.042x/1.040x; private scratch
   rises24->36B. Whole-prefill contribution expected small,not measured.
-- No runtime flag yet. Require full-model state/KV and canonical A/B
-  before promotion; remove candidate if rejected.
+- Default-off `HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM=1` replaces only the
+  serial-register parent;21-layer prefix, tiled suffix unchanged.
+  Five chunk1024 full-state/KV cases exact,21/84 calls,zero decode.
+  Both binders0; throughput qualification pending.
 
 ## Qwen4Exp Q4 paired-block pipeline: removed
 

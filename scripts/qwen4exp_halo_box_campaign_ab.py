@@ -240,6 +240,12 @@ def q8_down_register_expected_calls(tokens: int,chunk: int) -> int:
     return q8_down_row4_expected_calls(tokens,chunk)+q8_mapped_down_expected_calls(tokens,chunk)
 
 
+def gdn_wave_norm_expected_calls(tokens: int, chunk: int) -> int:
+    # Layers0..26 exclude six QSA layers; later GDN layers use tiled prefill.
+    full, tail = divmod(tokens, chunk)
+    return 21 * (full * (chunk >= 2) + (tail >= 2))
+
+
 def apply_chunk_mode(runner: Any, mode: str, *, allocated_chunk_size: int) -> None:
     if mode not in {"before","after"}:
         raise ValueError("invalid chunk mode")
@@ -267,7 +273,7 @@ def _apply_mode(
         if mode not in {"before","after"}:
             raise ValueError("invalid chunk mode")
         return
-    if route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "q8-down-register", "q51-row-publish"}:
+    if route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "q8-down-register", "q51-row-publish", "gdn-wave-norm"}:
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
         flag = ROW4_ENV if route_package == "q5k-row4" else QSA_H256_ENV
@@ -277,6 +283,8 @@ def _apply_mode(
             flag = Q51_PAIR_ENV
         if route_package == "gdn-register":
             flag = "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL"
+        if route_package == "gdn-wave-norm":
+            flag = "HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM"
         if route_package == "q4-pair":
             flag = "HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL"
         if route_package == "q8-wave-scale":
@@ -343,7 +351,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--repetitions-per-mode", type=int, default=3)
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
-    parser.add_argument("--route-package", choices=("pf13", "q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "chunk1024", "q8-down-register", "q51-row-publish"), default="pf13")
+    parser.add_argument("--route-package", choices=("pf13", "q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "chunk1024", "q8-down-register", "q51-row-publish", "gdn-wave-norm"), default="pf13")
     parser.add_argument("--case-id", action="append", help="Diagnostic subset; omitted for full gate")
     return parser
 
@@ -488,7 +496,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     row4_calls = [0]
     register_mapped_calls = [0]
     original_row4 = None
-    if args.route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "q8-down-register", "q51-row-publish"}:
+    if args.route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "q8-down-register", "q51-row-publish", "gdn-wave-norm"}:
         from hipengine.kernels.registry import KernelKey, register, resolve
         row4_key = (KernelKey(
             "hip_gfx1151", "linear", "gguf_q5_k",
@@ -559,6 +567,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.route_package=="q8-down-register":
             row4_key=KernelKey("hip_gfx1151","linear","gguf_q8_0",
                               "selected_grouped_row4_register_gemv_bf16_bf16_out")
+        if args.route_package == "gdn-wave-norm":
+            row4_key = KernelKey("hip_gfx1151","gdn_recurrence_norm_gate",
+                                "f32_state","qwen4exp_sigmoid_wave_norm_prefill")
         original_row4 = resolve(
             backend=row4_key.backend, layer=row4_key.layer,
             quant=row4_key.quant, variant=row4_key.variant)
@@ -661,6 +672,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             "before":{"q8_down":"selected_grouped_row4_bundle_gemv_bf16_bf16_out"},
             "after":{"q8_down":"selected_grouped_row4_register_gemv_bf16_bf16_out"}}
     artifact["diagnostic_subset"] = bool(args.case_id)
+    if args.route_package == "gdn-wave-norm":
+        artifact["arms"] = {
+            "before":{"gdn":"qwen4exp_sigmoid_register_prefill"},
+            "after":{"gdn":"qwen4exp_sigmoid_wave_norm_prefill"}}
     if args.route_package == "q51-row-publish":
         artifact["arms"] = {
             "before": {"q51_down": "selected_grouped_prefill_pair2_register_cache_bf16_bf16_out"},
@@ -682,6 +697,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             row["active_chunk_size"] = generator.runner.prefill_chunk_size
         if original_row4 is not None:
             calls = row4_calls[0] - start_calls
+            if args.route_package == "gdn-wave-norm":
+                expected=gdn_wave_norm_expected_calls(
+                    int(case["prompt_tokens"]),args.prefill_chunk_size) if mode=="after" else 0
+                assert calls==expected,(calls,expected)
             if args.route_package=="q8-down-register":
                 expected=q8_down_register_expected_calls(int(case["prompt_tokens"]),args.prefill_chunk_size) if mode=="after" else 0
                 mapped=register_mapped_calls[0]-start_mapped

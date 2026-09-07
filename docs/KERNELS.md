@@ -795,6 +795,11 @@ Hk16/Hv48 at512/1024 tokens2.812->2.699ms /5.574->5.358ms.
 Output/state exact including split execution; VGPR256 unchanged,
 private scratch24->36B,dynamic LDS2560B unchanged. No runtime default.
 Evidence: `2026-09-07-framework-qwen4exp-gdn-wave-norm.json`.
+Default-off model admission via `HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM=1`
+passes five full-logit/state/KV cases at chunk1024. Existing serial
+prefix21 layers only,21/84 prefill calls,zero decode; tiled suffix unchanged.
+Both binders0 pending throughput gate.
+Admission: `2026-09-07-framework-qwen4exp-gdn-wave-norm-state.json`.
 
 Q4 pair2 two-block weight-pipeline experiment removed: actual layer3
 gate/up+SiLU screen0.910x/0.909x at512/1024 tokens,40 exact pairs,
