@@ -136,7 +136,7 @@ def resolve_engine_intents(llm, prompt: str, horizons=(8, 24)):
 
 def submit_engine_pair(service, prompt: str, intents, *, horizons=(8, 24),
                        paired_ready=None, cancellation=None,
-                       singleton_ready=None, refill=None) -> list[dict]:
+                       singleton_ready=None, refill=None, eos=None) -> list[dict]:
     """Admit both real children before polling either; no HTTP usage claim."""
     from hipengine.generation.registry import GenerationRequest
     if len(intents) != 2 or any(not i.eligible or not i.packed_c1_target for i in intents):
@@ -145,6 +145,9 @@ def submit_engine_pair(service, prompt: str, intents, *, horizons=(8, 24),
                                        top_p=1.0, ignore_eos=False,
                                        speculative_mtp_static_eligibility=intent)
                      for n, intent in zip(horizons, intents, strict=True))
+    if eos is not None:
+        from scripts.qwen38_packed_c1_eos import configure_eos_request
+        requests = (requests[0], configure_eos_request(requests[1], eos['oracle_ids'], index=eos['index']))
     handles = service.submit_speculative_children(requests)
     if len(handles) != 2:
         raise ValueError('engine did not return two independent handles')
@@ -158,6 +161,9 @@ def submit_engine_pair(service, prompt: str, intents, *, horizons=(8, 24),
         from scripts.qwen38_packed_c1_cancel import collect_cancelled_pair
         outputs, evidence = collect_cancelled_pair(handles, paired_ready)
         cancellation.update(evidence)
+    if eos is not None:
+        from scripts.qwen38_packed_c1_eos import validate_eos_terminal
+        eos.update(validate_eos_terminal(handles[1], outputs[1], eos['oracle_ids'], index=eos['index']))
     if any(output.generated_token_ids is None for output in outputs):
         raise ValueError('engine omitted authoritative generated IDs')
     return [dict(generated_ids=list(output.generated_token_ids), usage=None,
@@ -194,7 +200,12 @@ def main() -> None:
                         help='Test eight initial children, their C1 survivor, then seven new peers')
     parser.add_argument('--precommit-failure', action='store_true',
                         help='Inject one native C1 failure after packed verification, before acceptance')
+    parser.add_argument('--eos-survivor', action='store_true',
+                        help='Configure EOS at a first-occurrence AR token after index 11 and check the collector')
     args = parser.parse_args()
+    if args.eos_survivor and (not args.engine_boundary or args.wide_refill
+                             or args.cancel_peer or args.refill_peer or args.precommit_failure):
+        parser.error('--eos-survivor requires engine boundary and no other scenario')
     if args.precommit_failure and (not args.engine_boundary or args.wide_refill
                                   or args.cancel_peer or args.refill_peer):
         parser.error('--precommit-failure requires engine boundary and no other scenario')
@@ -316,6 +327,8 @@ def main() -> None:
         Qwen35GGUFNextNExecutor.restore_request_checkpoint = restored
         mtp2.Qwen35GGUFMTP2Adapter.recover_cycle_failure = recovered
     cells = []
+    eos = None
+    actual = None
     llm = None
     passed = False
     faulthandler.dump_traceback_later(900, exit=True)
@@ -344,6 +357,14 @@ def main() -> None:
                 singleton_ready = threading.Event() if args.refill_peer or args.wide_refill else None
                 refill = {} if args.refill_peer else None
                 drain = None
+                eos = None
+                if args.eos_survivor:
+                    oracle_ids = expected[1]['generated_ids']
+                    index = next((i for i in range(12, len(oracle_ids) - 1)
+                                  if oracle_ids[i] not in oracle_ids[:i]), None)
+                    if index is None:
+                        raise ValueError('no first-occurrence EOS marker after the paired phase')
+                    eos = dict(oracle_ids=oracle_ids, index=index)
                 if args.refill_peer:
                     expected.append(expected[0])  # Same prompt and D8 as the first independent AR arm.
                 intent_sources = None
@@ -358,7 +379,7 @@ def main() -> None:
                     actual = submit_engine_pair(llm._get_text_generator(), prompt['rendered_prompt'], intents,
                                                 horizons=horizons, paired_ready=paired_ready,
                                                 cancellation=cancellation,
-                                                singleton_ready=singleton_ready, refill=refill)
+                                                singleton_ready=singleton_ready, refill=refill, eos=eos)
                 else:
                     barrier = threading.Barrier(3)
                     with ThreadPoolExecutor(max_workers=2) as pool:
@@ -379,7 +400,7 @@ def main() -> None:
                         raise ValueError('provider live KV recovery is unverified')
                 else:
                     transition = validate_transition(trace)
-                if args.refill_peer or args.wide_refill or args.precommit_failure:
+                if args.refill_peer or args.wide_refill or args.precommit_failure or args.eos_survivor:
                     from scripts.qwen38_packed_c1_drain import validate_request_drain
                     if args.refill_peer:
                         from scripts.qwen38_packed_c1_refill import validate_refill_transition
@@ -390,7 +411,12 @@ def main() -> None:
                                  loop={k: snapshot['loop'][k] for k in ('requests', 'physical_bucket')},
                                  runner=dict(model_runner={k: snapshot['runner']['model_runner'][k]
                                      for k in ('capacity', 'active_requests', 'active_request_ids', 'available_sessions')}))
-                if args.cancel_peer:
+                if args.eos_survivor:
+                    if eos['backend_request_id'] != transition['survivor_request_id']:
+                        raise ValueError('EOS collector does not belong to the traced survivor')
+                    exact = (actual[0]['generated_ids'] == expected[0]['generated_ids']
+                             and actual[1]['generated_ids'] == expected[1]['generated_ids'][:eos['index'] + 1])
+                elif args.cancel_peer:
                     from scripts.qwen38_packed_c1_cancel import validate_cancel_outputs
                     validate_cancel_outputs(expected, actual, cancellation, transition)
                     exact = True  # Cancelled child is an exact prefix; peer is full exact.
@@ -405,7 +431,7 @@ def main() -> None:
                             usage_exact=None if args.engine_boundary else True,
                             engaged=engaged, transition=transition, trace=trace,
                             intent_sources=intent_sources, cancellation=cancellation,
-                            refill=refill, request_drain=drain,
+                            refill=refill, request_drain=drain, eos=eos,
                             recovery=None if recovery is None else recovery.evidence,
                             responses=[{k: r[k] for k in ('generated_ids', 'usage', 'route', 'mtp')}
                                        for r in actual],
@@ -423,6 +449,8 @@ def main() -> None:
                 passed=passed, capacity=args.capacity, budget=3, horizons=list(horizons),
                 cancellation_requested=args.cancel_peer, refill_requested=args.refill_peer,
                 wide_refill_requested=args.wide_refill, precommit_failure_requested=args.precommit_failure,
+                eos_requested=args.eos_survivor,
+                last_eos=eos, last_responses=actual,
                 last_recovery=None if recovery is None else recovery.evidence,
                 boundary='engine_service' if args.engine_boundary else 'http',
                 cells=cells, all_target_traces=traces))
