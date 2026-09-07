@@ -41,6 +41,11 @@ def main() -> None:
     capacity = int(_argv_value("--resident-capacity", "8"))
     if width != 1:
         raise SystemExit("packed-C1 harness only wraps width-1 runs")
+    # Mid-run hang watchdog: the K1 policy-refused scenario hangs during the
+    # first generation cycle (zero completed requests in both observed
+    # failures), so dump every live thread stack at 60 s while the stuck
+    # frames are still alive; the run continues to its natural failure.
+    faulthandler.dump_traceback_later(60, exit=False)
     injected_key = _inject_k4_evidence_row(width, budget, capacity=capacity)
     print(f"[packed-harness] injected evidence row: {injected_key}", flush=True)
 
