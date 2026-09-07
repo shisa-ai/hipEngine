@@ -525,24 +525,15 @@ def _real_stamp(path: Path) -> str | None:
 
 
 @pytest.mark.skipif(not UD_Q4_K_M.exists(), reason=f"pinned artifact missing: {UD_Q4_K_M}")
-def test_preflight_aggregates_every_unsupported_slot_on_ud_q4_k_m():
+def test_preflight_accepts_ud_q4_k_m_c1_consumer_surface():
+    # Metadata coverage is not a full-model numerical qualification.
     for backend in ("hip_gfx1100", "hip_gfx1151"):
         report = _preflight_real(UD_Q4_K_M, backend)
-        assert report.supported is False
+        assert report.supported is True
         assert report.preset is not None
         assert report.preset.preset_key == GGUF_UD_Q4_K_M_PRESET
-        refused = {
-            u.slot_path for u in report.unsupported if u.stage == "planner_refused"
-        }
-        # Every one of the 18 unsupported slots is reported, not just the
-        # first exception, and no other slot is planner-refused.
-        assert refused == UD_K_M_REFUSED_SLOTS
-        with pytest.raises(Qwen35GGUFAdmissionError) as excinfo:
-            report.raise_for_errors()
-        message = str(excinfo.value)
-        for slot in sorted(UD_K_M_REFUSED_SLOTS)[:8]:
-            assert slot in message
-        assert "unsupported slots/modes: 54" in message
+        assert not report.unsupported
+        report.raise_for_errors()
 
 
 @pytest.mark.skipif(not UD_Q4_K_S.exists(), reason=f"pinned artifact missing: {UD_Q4_K_S}")
@@ -552,15 +543,15 @@ def test_preflight_aggregates_every_unsupported_slot_on_ud_q4_k_s():
     assert report.preset is not None
     assert report.preset.preset_key == GGUF_UD_Q4_K_S_PRESET
     refused = {u.slot_path for u in report.unsupported if u.stage == "planner_refused"}
-    # 40 projection refusals plus the Q3_K token embedding = the 41 pinned
-    # AR refusals of docs/UD-QUANTS.md section 3.1.
-    assert len(refused) == 41
+    # K_M leaves remove 34 of the original 41 refusals. K_S still needs
+    # IQ3_XXS/IQ2_S projections and the Q3_K token embedding.
+    assert len(refused) == 7
     assert "root.token_embedding" in refused
     refused_types = {
         u.slot_path: u.source_ggml_type for u in report.unsupported if u.stage == "planner_refused"
     }
     type_values = set(refused_types.values())
-    assert {"Q3_K", "IQ4_NL", "IQ3_S", "IQ3_XXS", "IQ2_S"} <= type_values
+    assert type_values == {"Q3_K", "IQ3_XXS", "IQ2_S"}
 
 
 @pytest.mark.skipif(not PLAIN_Q4_K_M.exists(), reason=f"pinned artifact missing: {PLAIN_Q4_K_M}")
@@ -1074,7 +1065,7 @@ class _AllocationSentinel:
         raise AssertionError(self.message)
 
 
-@pytest.mark.skipif(not UD_Q4_K_M.exists(), reason=f"pinned artifact missing: {UD_Q4_K_M}")
+@pytest.mark.skipif(not UD_Q4_K_S.exists(), reason=f"pinned artifact missing: {UD_Q4_K_S}")
 def test_ud_materialization_refused_before_any_device_allocation(monkeypatch):
     """UD-U1: the loader aggregates refusals before the first malloc call."""
 
@@ -1087,12 +1078,12 @@ def test_ud_materialization_refused_before_any_device_allocation(monkeypatch):
     monkeypatch.setattr(loader, "malloc", sentinel)
     monkeypatch.setattr(host_materialize, "malloc", sentinel)
     with pytest.raises(Qwen35GGUFAdmissionError) as excinfo:
-        materialize_qwen35_gguf_weights(str(UD_Q4_K_M), backend="hip_gfx1100")
+        materialize_qwen35_gguf_weights(str(UD_Q4_K_S), backend="hip_gfx1100")
     assert sentinel.calls == []
     message = str(excinfo.value)
-    assert "gguf_ud_q4_k_m" in message
-    for slot in sorted(UD_K_M_REFUSED_SLOTS):
-        assert slot in message
+    assert "gguf_ud_q4_k_s" in message
+    assert "root.token_embedding" in message
+    assert "layers.0.ffn_up" in message
 
 
 @pytest.mark.skipif(not SMALL_Q8_0.exists(), reason=f"pinned artifact missing: {SMALL_Q8_0}")
@@ -1905,7 +1896,9 @@ def test_coverage_families_are_registered_consumers_not_just_valid_keys():
     )
     from hipengine.kernels.registry import DuplicateKernelError
 
+    from hipengine.kernels.hip_gfx1100.quant.gguf_iq_dense import register_gguf_iq_dense_kernels
     for registrar in (
+        register_gguf_iq_dense_kernels,
         iq_gemv.register_gguf_iq_gemv_kernels,
         dense_gemv.register_dense_gemv_kernels,
         register_gguf_k_gemv_kernels,
