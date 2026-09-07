@@ -8,9 +8,10 @@ from hipengine.core.hip import get_hip_runtime
 from hipengine.kernels.registry import KernelKey, register
 
 SOURCE = Path(__file__).with_suffix('.hip')
-TABLE_HASH = hashlib.sha256(SOURCE.with_name('gguf_iq_dense_tables.h').read_bytes()).hexdigest()
+TABLE_HASH = hashlib.sha256(b''.join(SOURCE.with_name(name).read_bytes() for name in
+    ('gguf_iq_dense_tables.h', 'gguf_iq2_xs_dense_table.h'))).hexdigest()
 QUANTS = {'gguf_iq4_xs': 0, 'gguf_iq4_nl': 1, 'gguf_iq3_s': 2, 'gguf_q3_k': 3,
-          'gguf_iq3_xxs': 4, 'gguf_iq2_s': 5}
+          'gguf_iq3_xxs': 4, 'gguf_iq2_s': 5, 'gguf_iq2_xs': 6}
 OUTPUTS = {'f32': 0, 'bf16': 1}
 _HANDLES = {}
 
