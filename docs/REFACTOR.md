@@ -18,6 +18,16 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
+## 2026-09-07 DMS INT8 device correctness path — open
+
+- `dms_compact_int8.hip` uses ordered row-by-row pack and append compaction
+  with exact INT8 byte/scale moves. It is a correctness implementation, not
+  a tuned serving path; no model quality or speed claim follows from it.
+- Replace serialized row movement with a race-free tiled implementation after
+  the same codec, overflow, above-window, snapshot, and model gates pass.
+  Keep the CPU-reference oracle and BF16 fallback. Do not re-quantize moved
+  payloads or detach their scales from token positions.
+
 ## 2026-09-01 gfx1100 segmented GDN wave reduction — closed
 
 - The complete counterbalanced C5-C8 category+heldout gate retained the exact

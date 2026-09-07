@@ -136,6 +136,13 @@ These families implement Qwen3.5/Qwen3.6 PARO W4A16, shared W8A16, full-attentio
 
 **Compact DMS attention** — `attention/dms_compact.{hip,py}` registers `dms_extract_decision`, `dms_decision_source`, `dms_streaming_pack`, `dms_append_decode`, and `dms_compact_attn_decode` (grouped GQA fallback plus bounded-LDS split-K) for the compact-KV path. The CPU-reference oracles in `cpu_reference/dms.py` are the registered strict fallbacks for every key; the kernels are wired into `DMSCompactBackend` behind explicit device-payload selection, and no model package defaults to DMS.
 
+The explicit gfx1100 `attention/dms_compact_int8.{hip,py}` family adds compact
+INT8 pack/append and bounded split-K attention with FP32 per-token/head scales.
+Device fixtures cover exact codec bytes/scales and ownership, above-window
+retention, fail-closed overflow, attention numerics, and snapshot restoration.
+BF16 kernels remain unchanged fallbacks; model-serving INT8 DMS qualification
+is separate and is not established by these device fixtures.
+
 ### GGUF / Qwen / Laguna path
 
 GGUF is not a PARO alias. Raw GGML blocks, pack8/T16/qmicro/X8 replacement layouts, exact expanded planes, and source-F16 Laguna tensors have distinct storage and registry keys.
