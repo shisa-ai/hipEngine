@@ -969,8 +969,16 @@ diagnostics must name their own intent. Certificates bind resolved operands,
 adapters, state storage, geometry/row domains and backend alongside actual
 planned residents, with independent completeness accounting before narrowing.
 This is invocation/residency qualification, not numerical-profile permission.
-U1 runtime-entry dependency/certificate consumption (F1) and integrated profile
-binder authorization (F5) remain separate open work; see [`UD-QUANTS.md`](UD-QUANTS.md).
+U1 F1 adds `loading/qwen35_gguf_execution.py`: session/engine-selected native
+routes add their complete dependencies to the loader's default scope before
+payload reads/allocation. Native eager, capture, replay and direct native-layer
+entries consume the pre-certified F4 contract against actual residents, caller
+operands, rows and state/scratch ownership; they never replan allocated weights
+or turn a filtered diagnostic certificate into full-model permission. Graphs
+pin the invocation and physical ownership identity. F1 is pending independent
+review; integrated profile-binder authorization (F5) remains OPEN. Availability
+and ABI checks still confer no numerical-profile permission; see
+[`UD-QUANTS.md`](UD-QUANTS.md).
 
 Public APIs and server entry points default to `backend="auto"`. Auto is a selector
 resolved before registry lookup, not a registry key: exact `gfx1100`/`gfx1151`

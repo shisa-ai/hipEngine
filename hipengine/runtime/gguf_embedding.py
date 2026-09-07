@@ -37,9 +37,10 @@ def resolve_gguf_embedding_dispatch(
     *,
     output_dtype: str = GGUF_EMBEDDING_OUTPUT_BF16,
     backend: str | None = None,
+    rows: int = 1,
 ) -> GGUFEmbeddingDispatch:
     resolved_backend = backend or getattr(weight, "backend", "hip_gfx1100")
-    contract = resolve_embedding_consumer_contract(weight.spec.layout, weight.spec.quant_key, output_dtype)
+    contract = resolve_embedding_consumer_contract(weight.spec.layout, weight.spec.quant_key, output_dtype, rows=rows)
     return GGUFEmbeddingDispatch(contract.key(resolved_backend), contract.abi)
 
 
@@ -58,10 +59,12 @@ def launch_gguf_embedding(
     libraries: Mapping[str, ctypes.CDLL] | None = None,
     runtime=None,
 ) -> None:
+    # Shared owner refuses unsupported rows before registry/device work.
     dispatch = resolve_gguf_embedding_dispatch(
         weight,
         output_dtype=output_dtype,
         backend=backend,
+        rows=rows,
     )
     _ensure_embedding_kernel_registered(dispatch.key)
     fn = resolve(
@@ -92,6 +95,8 @@ def _launch_raw(fn, weight, token_ids_ptr, out_ptr, rows, hidden_size, vocab_siz
 
 
 def _launch_dense_bf16(fn, weight, token_ids_ptr, out_ptr, rows, hidden_size, vocab_size, kwargs) -> None:
+    if int(rows) != 1:
+        raise ValueError("dense BF16 embedding requires rows=1")
     fn(
         weight.allocation("raw").tensor.ptr,
         token_ids_ptr,
