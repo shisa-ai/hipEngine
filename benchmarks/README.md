@@ -2,6 +2,12 @@
 
 Last updated: **2026-09-07 UTC**
 
+Exact Q8 paired-load kernel candidate, actual layer0/4 gates at1024 rows:
+10.909->7.992ms /10.893->7.998ms; independent layer20 pressure screen
+11.078->8.096ms. All180 pairs exact, VGPR72->80/no scratch.
+K640 shared-down loses and is excluded; full-model gates pending.
+[Evidence](results/2026-09-07-framework-qwen4exp-q8-prefetch2.json).
+
 Post-Q8-register chunk1024 family refresh at cleancc3d48a70:
 four-category p4096 FFN11.356->11.231s, linear4.515s, GR3.429s,
 QSA2.071s, GDN0.835s; total22.281->22.196s (-0.38% snapshot).

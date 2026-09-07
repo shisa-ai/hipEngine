@@ -641,7 +641,7 @@ template <
     typename out_t,
     int qtype,
     int COL_TILE,
-    int ROW_BATCH, bool WAVE_SCALE = false>
+    int ROW_BATCH, bool WAVE_SCALE = false, bool PREFETCH_PAIR = false>
 __launch_bounds__(128, 2)
 __global__ void gguf_k_prefill_out_coltile_rowbatch_kernel(
     const scalar_t* __restrict__ x,
@@ -674,6 +674,46 @@ __global__ void gguf_k_prefill_out_coltile_rowbatch_kernel(
   }
 
   float acc[ROW_BATCH][COL_TILE] = {};
+  if constexpr (PREFETCH_PAIR) {
+    static_assert(qtype == 8 && WAVE_SCALE, "paired loads require uniform Q8");
+    for (int base = tid; base < in_features; base += 2 * blockDim.x) {
+      float weights[2][COL_TILE];
+      float inputs[2][ROW_BATCH];
+#pragma unroll
+      for (int step = 0; step < 2; ++step) {
+        const int k = base + step * blockDim.x;
+        if (k < in_features) {
+#pragma unroll
+          for (int col = 0; col < COL_TILE; ++col) {
+            weights[step][col] = q8_0_weight_wave_scale(weight_rows[col], k);
+          }
+#pragma unroll
+          for (int row_idx = 0; row_idx < ROW_BATCH; ++row_idx) {
+            const int row = row_base + row_idx;
+            inputs[step][row_idx] = row < rows
+                ? scalar_to_float<scalar_t>(x[static_cast<int64_t>(row) * in_features + k])
+                : 0.0f;
+          }
+        }
+      }
+      // Loads may overlap; each output retains its original K/FMA order.
+#pragma unroll
+      for (int step = 0; step < 2; ++step) {
+        if (base + step * blockDim.x < in_features) {
+#pragma unroll
+          for (int row_idx = 0; row_idx < ROW_BATCH; ++row_idx) {
+            if (row_base + row_idx < rows) {
+#pragma unroll
+              for (int col = 0; col < COL_TILE; ++col) {
+                acc[row_idx][col] = fmaf(
+                    inputs[step][row_idx], weights[step][col], acc[row_idx][col]);
+              }
+            }
+          }
+        }
+      }
+    }
+  } else {
   for (int k = tid; k < in_features; k += blockDim.x) {
     float weights[COL_TILE];
 #pragma unroll
@@ -700,6 +740,7 @@ __global__ void gguf_k_prefill_out_coltile_rowbatch_kernel(
         }
       }
     }
+  }
   }
 
 #pragma unroll
@@ -4371,7 +4412,7 @@ template <
     typename out_t,
     int qtype,
     int COL_TILE,
-    int ROW_BATCH, bool WAVE_SCALE = false>
+    int ROW_BATCH, bool WAVE_SCALE = false, bool PREFETCH_PAIR = false>
 int launch_gguf_k_gemv_coltile_rowbatch_out(
     const scalar_t* x,
     const uint8_t* qweight,
@@ -4397,7 +4438,7 @@ int launch_gguf_k_gemv_coltile_rowbatch_out(
       out_t,
       qtype,
       COL_TILE,
-      ROW_BATCH, WAVE_SCALE><<<grid, block, 0, stream>>>(
+      ROW_BATCH, WAVE_SCALE, PREFETCH_PAIR><<<grid, block, 0, stream>>>(
       x,
       qweight,
       out,
@@ -4882,6 +4923,13 @@ extern "C" int hipengine_gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_f32_f32_ou
     const float* x, const uint8_t* qweight, float* out, int64_t rows,
     int64_t in_features, int64_t out_features, int64_t threads, hipStream_t stream) {
   return launch_gguf_k_gemv_coltile_rowbatch_out<float, float, 8, 8, 4, true>(
+      x, qweight, out, rows, in_features, out_features, threads, stream);
+}
+
+extern "C" int hipengine_gguf_q8_0_gemv_coltile8_rowbatch4_prefetch2_f32_f32_out(
+    const float* x, const uint8_t* qweight, float* out, int64_t rows,
+    int64_t in_features, int64_t out_features, int64_t threads, hipStream_t stream) {
+  return launch_gguf_k_gemv_coltile_rowbatch_out<float, float, 8, 8, 4, true, true>(
       x, qweight, out, rows, in_features, out_features, threads, stream);
 }
 

@@ -1,5 +1,15 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Qwen4Exp Q8 coltile paired-load candidate
+
+- Kernel-only `coltile8_rowbatch4_prefetch2_f32_f32_out` pipelines two
+  K-lane steps, preserves exact FMA/reduction order. No runtime flag.
+- Actual K2560/N6144 gates improve; K640 shared-down loses and must not
+  be admitted. Scope future route to the measured gate geometry, rows>=64.
+- Require full model state/KV and canonical chunk1024 A/B before promotion.
+  Remove candidate if model gate rejects it; do not widen to GR without
+  operation-complete GR evidence.
+
 ## Qwen4Exp Q8 down register-weight production
 
 - Production-bound `HIPENGINE_QWEN4_EXP_Q8_DOWN_REGISTER=1` selects
