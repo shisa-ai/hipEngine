@@ -76,6 +76,21 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**QSA transition trace (September7 UTC):** code4096,first16 steps,
+decode flag0 after parent/candidate prefill,2 balanced pairs. Same29440
+kernel launches per window. Parent/candidate wall1203.112/1569.281ms,
+kernel interval-union981.766/976.068ms,residual221.346/593.213ms.
+HIP API interval-union724.192/685.656ms;wall outside HIP API calls
+478.920/883.626ms. Launch API totals rise,blocking memcpy totals fall.
+The penalty is not slower GPU kernel arithmetic;investigate CPU execution/
+scheduling between submissions next. Residual is not automatically CPU
+work: it includes transfers/idle/untraced activity. Profiler explicitly
+substitutes a system-memory queue ring and drops priority/CU-mask metadata,
+so absolute rates are instrumented. Exact tokens/state/layout and clean
+teardown pass. Candidate remains default-off;no clock change or thermal
+causality claim. Committed marker/CSV-summary tooling enables reproduction.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-qsa-phase-trace.json).
+
 **QSA preceding-prefill isolation (September7 UTC):** fresh p4096
 prefill per arm,decode flag held0,both code/mixed,2 balanced pairs of128
 steps after warmups. Parent/candidate-prefill decode8.478->8.925s and
