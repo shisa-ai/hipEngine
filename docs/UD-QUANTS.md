@@ -1407,8 +1407,11 @@ justify it, proposed `tests/test_gguf_ud_codecs.py`, `tests/fixtures/gguf_ud/`.
   The earlier donor pin is unavailable in this host's checkout. Fixtures compile
   an exact Git archive, not the moving worktree. RED: two missing decoders;
   GREEN: 136 codec/reader/admission tests. See the `ud-codecs` worklog entry.
-- [ ] Cover all codebook/sign/high bits, struct sizes, scale corners, row
-  transitions and dimension order.
+- [x] Cover all codebook/sign/high bits, struct sizes, scale corners, row
+  transitions and dimension order. Selector-domain assertions exposed missing
+  IQ2_XS grids and IQ3_XXS sign selectors in the original random fixture; the
+  pinned C-oracle generator now supplies exhaustive selector coverage at
+  nonzero scale. This is not exhaustive Cartesian-product coverage.
 - [x] After payload checksums, extract small real-row fixtures from multiple
   roles/layers, first/last blocks and actual dense widths. `real_rows.npz`
   covers first/last full rows of 20 tensors across both published files, all
@@ -1417,8 +1420,12 @@ justify it, proposed `tests/test_gguf_ud_codecs.py`, `tests/fixtures/gguf_ud/`.
 - [x] Record donor revision, fixture hash, generation command and license.
   New decoder/tables cannot be their own sole oracle. The fixture generator
   compiles the pinned C implementation; tests need neither model nor compiler.
-- [ ] Gate decoded F32 independently; separately specify BF16/FP16 rounding
-  and strict accumulation/output contracts.
+- [x] Gate decoded F32 independently; separately specify BF16/FP16 rounding
+  and strict accumulation/output contracts. See
+  `tests/fixtures/gguf_ud/README.md`: raw dense leaves keep F32 decoded weights,
+  consume BF16, and use a declared separate-multiply/add F32 reduction with
+  F32 or final RNE-BF16 output. FP16 is unsupported, not implicitly qualified.
+  The CPU codec suite passes 42 tests; model-quality gates remain separate.
 
 Run: `.venv/bin/python -m pytest tests/test_gguf_ud_codecs.py -q`.
 Exit: independent oracles for all seven type ABIs.
