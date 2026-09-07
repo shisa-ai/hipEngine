@@ -1,8 +1,8 @@
 # Dense UD Q4_K_S / Q4_K_M Support Campaign
 
 Last updated: 2026-09-07.
-Status: **U0 complete; CPU IQ3_S/IQ2_S decoders and synthetic oracles added;
-dense GPU consumers are next.** Shared resident prerequisites and invocation
+Status: **U0 complete; CPU IQ3_S/IQ2_S decoders and synthetic/real-row oracles
+added; dense GPU consumers are next.** Shared resident prerequisites and invocation
 contracts have CPU coverage. K_M/K_S still have 18/41 refused slots.
 **No full UD generation or GPU validation is claimed.** General certificate
 cleanup is deferred in favor of end-to-end inference. Generic profile lifecycle
@@ -1362,10 +1362,14 @@ justify it, proposed `tests/test_gguf_ud_codecs.py`, `tests/fixtures/gguf_ud/`.
   GREEN: 136 codec/reader/admission tests. See the `ud-codecs` worklog entry.
 - [ ] Cover all codebook/sign/high bits, struct sizes, scale corners, row
   transitions and dimension order.
-- [ ] After payload checksums, extract small real-row fixtures from multiple
-  roles/layers, first/last blocks and actual dense widths.
-- [ ] Record donor revision, fixture hash, generation command and license.
-  New decoder/tables cannot be their own sole oracle.
+- [x] After payload checksums, extract small real-row fixtures from multiple
+  roles/layers, first/last blocks and actual dense widths. `real_rows.npz`
+  covers first/last full rows of 20 tensors across both published files, all
+  seven types, and widths 5120/17408. Both full payload hashes were recomputed
+  on zbook before extraction and matched the identity pins.
+- [x] Record donor revision, fixture hash, generation command and license.
+  New decoder/tables cannot be their own sole oracle. The fixture generator
+  compiles the pinned C implementation; tests need neither model nor compiler.
 - [ ] Gate decoded F32 independently; separately specify BF16/FP16 rounding
   and strict accumulation/output contracts.
 
