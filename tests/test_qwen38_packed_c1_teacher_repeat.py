@@ -47,10 +47,19 @@ def test_candidate_loader_checks_actual_arrays_and_windows(tmp_path):
     path.write_text(json.dumps(data))
     result = load_candidate_capture(tmp_path, fixture, teacher_manifest_sha256='teacher')
     assert np.array_equal(result['records'][0]['logits'], logits)
-    for fault in ('position', 'slot', 'capacity', 'hash', 'runtime', 'teacher', 'kv', 'file', 'shape'):
+    for fault in ('position', 'float_position', 'float_rows', 'float_token', 'bool_token',
+                  'slot', 'capacity', 'hash', 'runtime', 'teacher', 'kv', 'file', 'shape'):
         broken = deepcopy(data)
         if fault == 'position':
             broken['records'][0]['windows'][0]['position'] += 1
+        elif fault == 'float_position':
+            broken['records'][0]['windows'][0]['position'] = 2.0
+        elif fault == 'float_rows':
+            broken['records'][0]['windows'][0]['rows'] = 2.0
+        elif fault == 'float_token':
+            broken['records'][0]['windows'][0]['tokens'] = [1.0, 2.0]
+        elif fault == 'bool_token':
+            broken['records'][0]['windows'][0]['tokens'] = [True, 2]
         elif fault == 'slot':
             broken['records'][0]['windows'][0]['resident_slot'] = 1
         elif fault == 'capacity':
