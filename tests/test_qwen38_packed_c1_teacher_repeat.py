@@ -74,6 +74,21 @@ def test_candidate_loader_checks_actual_arrays_and_windows(tmp_path):
             load_candidate_capture(tmp_path, fixture, teacher_manifest_sha256='teacher')
 
 
+def test_audit_cli_requires_three_captures():
+    import subprocess
+    import sys
+    from pathlib import Path
+    script = Path(__file__).resolve().parents[1] / 'scripts/qwen38_packed_c1_teacher_repeat.py'
+    help_result = subprocess.run([sys.executable, str(script), '--help'], capture_output=True, text=True)
+    assert help_result.returncode == 0
+    assert '--teacher' in help_result.stdout and '--capture' in help_result.stdout
+    result = subprocess.run([sys.executable, str(script), '--teacher', 'missing',
+        '--capture', 'one', '--capture', 'two', '--output', 'unused.json'],
+        capture_output=True, text=True)
+    assert result.returncode == 2
+    assert 'at least three captures' in result.stderr
+
+
 def test_three_bit_identical_runs():
     assert assert_teacher_repeats(runs()) == dict(repeats=3, prompts=1, decode_rows=2,
         prefill_rows=1, bit_identical=True, full_profile_qualification=False)
