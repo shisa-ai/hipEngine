@@ -1,5 +1,9 @@
 # hipEngine Benchmark Changelog
 
+- [2026-09-07 UTC iu8-risk exact MoE candidate] Actual-weight layer0/3/10/26 gate/up,uniform/skewed,512/1024 rows:candidate iu8-WMMA+Kahan-risk+sparse pair2-exact repair is bit-identical to the exact pair2 parent in all32 screen cases;1.50-2.00x operation-complete (m=1..8),floor m<1 misses. No runtime route yet. `benchmarks/results/2026-09-07-framework-qwen4exp-q4-iu8-exact-screen.json`.
+
+- [2026-09-07 UTC iu8-vs-pair2 flip probe] Actual layer0 gate/up:production iu8 kernel is2.24x/2.43x faster than exact pair2 at512/1024 rows;BF16 flip fraction0.030%/0.029%,94% +-1ulp,large outliers are extreme-cancellation outputs. `benchmarks/results/2026-09-07-framework-qwen4exp-q4-iu8-flip-probe.json`.
+
 - [2026-09-07 UTC Q8 F32 cache rejected] Framework actual attention-gate1024 projection11.079->69.026ms (+523.0%);512/shared-down also lose,80 exact pairs,11 tests,resources unchanged. Adds60MiB/~14.8ms setup;candidate removed. `benchmarks/results/2026-09-07-framework-qwen4exp-q8-f32-cache-rejected.json`.
 
 - [2026-09-07 UTC Q8 early publication rejected] Actual attention-gate512/1024 projection5.200->5.953ms (+14.5%)/11.019->12.114ms (+9.94%),shared-down also loses;80 exact pairs,10 tests,VGPR72->64/scratch0. Candidate removed,no model A/B. `benchmarks/results/2026-09-07-framework-qwen4exp-q8-early-publication-rejected.json`.
