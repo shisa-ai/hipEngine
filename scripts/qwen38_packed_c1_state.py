@@ -6,6 +6,7 @@ selected state, provider repair, or full lifecycle qualification.
 from __future__ import annotations
 
 from typing import Any
+from types import SimpleNamespace
 
 import numpy as np
 
@@ -58,6 +59,50 @@ def snapshot_committed_state(session: Any) -> dict[str, Any]:
         "context_host": np.asarray(scratch.context_host).tolist(),
         "buffers": buffers,
     }
+
+
+def selected_prefix(tokens, top1, remaining: int) -> int:
+    """Independent greedy chain selection, reserving one correction/bonus token."""
+    if not tokens or len(tokens) != len(top1) or remaining < 1:
+        raise ValueError("invalid chain or remaining decode budget")
+    accepted = 0
+    while accepted < min(len(tokens) - 1, remaining - 1):
+        if int(tokens[accepted + 1]) != int(top1[accepted]):
+            break
+        accepted += 1
+    return accepted
+
+
+def selected_state_sources(owner, session, *, selected_row: int) -> dict:
+    """Hash a CPU-selected source row before the real device commit runs."""
+    if selected_row < 0:
+        raise ValueError("negative selected row")
+    owner.runtime.device_synchronize()
+    result = {}
+
+    def capture(name, source, destination):
+        if source is None or destination is None or int(destination.nbytes) <= 0:
+            raise ValueError(f"missing selected state: {name}")
+        size = int(destination.nbytes)
+        offset = selected_row * size
+        if offset + size > int(source.nbytes):
+            raise ValueError(f"selected row exceeds source: {name}")
+        view = SimpleNamespace(ptr=int(source.ptr) + offset, nbytes=size)
+        result[name] = dict(ptr=int(destination.ptr), nbytes=size,
+                            hash=_device_hash(owner, view))
+
+    for layer, (conv, recurrent) in enumerate(zip(
+        session.scratch.layer_conv_states, session.scratch.layer_recurrent_states, strict=True,
+    )):
+        if conv is None and recurrent is None:
+            continue
+        pair = owner._verify_linear_state_row_pair(layer)
+        if pair is None:
+            raise ValueError(f"missing selected linear rows: {layer}")
+        capture(f"conv:{layer}", pair[0], conv)
+        capture(f"recurrent:{layer}", pair[1], recurrent)
+    capture("hidden_seed", owner._verify_hidden_seed_buf, session.scratch.hidden_seed_fp32)
+    return result
 
 
 def assert_committed_state_unchanged(before: dict, after: dict) -> None:

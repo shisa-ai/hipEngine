@@ -35,7 +35,7 @@ def test_strict_replay_prefills_only_prompt_then_steps_generated_prefix(batched_
     assert session.position == 5
 
 
-@pytest.mark.parametrize("failure", [None, "stale", "direct_top1", "root", "prefix", "state"])
+@pytest.mark.parametrize("failure", [None, "stale", "direct_top1", "root", "prefix", "state", "missing_commit"])
 def test_actual_route_capture_requires_fresh_head_and_exact_context(monkeypatch, tmp_path, failure):
     from types import SimpleNamespace as NS
     import json
@@ -72,7 +72,7 @@ def test_actual_route_capture_requires_fresh_head_and_exact_context(monkeypatch,
     monkeypatch.setattr(Session, "verify_target_blocks_batch", verify)
     monkeypatch.setattr(module, "_read_device", lambda ptr, shape, dtype, runtime: np.zeros(shape, dtype=dtype))
     row = NS(prompt_ids=(10,) if failure == "prefix" else (10, 11),
-             slot=NS(generated_ids=(12,)))
+             slot=NS(generated_ids=(12,)), request=NS(max_tokens=24))
     adapter = NS(owner=NS(capacity=1, _row=lambda rid: row),
                  _physical_c1_request=lambda rid: True,
                  generator=NS(execution_profile="production", execution_profile_manifest_sha256="a"*64,
@@ -82,14 +82,18 @@ def test_actual_route_capture_requires_fresh_head_and_exact_context(monkeypatch,
     monkeypatch.setattr(Adapter, "_execute_target_frontier_batch",
                         lambda *args, **kwargs: Session.verify_target_blocks_batch(target, [job], device_result=True))
     monkeypatch.setattr(bench, "_run_arm", lambda *args, **kwargs: Adapter._execute_target_frontier_batch(adapter, plan))
-    recorder = module.PackedC1Capture(tmp_path / "capture", check_state=True)
+    recorder = module.PackedC1Capture(tmp_path / "capture", check_state=True,
+                                      check_commit=failure == "missing_commit")
     original = Session.verify_target_blocks_batch
     try:
         recorder.install()
         if failure:
             with pytest.raises(ValueError):
                 bench._run_arm(prompt="test prompt", width=1)
-            assert recorder.records == []
+            if failure == "missing_commit":
+                assert "selected_commit" not in recorder.records[0]
+            else:
+                assert recorder.records == []
         else:
             bench._run_arm(prompt="test prompt", width=1)
             assert recorder.records[0]["prefix"] == (10, 11)

@@ -86,10 +86,11 @@ def _read_device(ptr: int, shape: tuple[int, ...], dtype, runtime) -> np.ndarray
 class PackedC1Capture:
     """Instrument the real adapter and its target; never replace its execution."""
 
-    def __init__(self, directory: Path, *, check_state: bool = False):
+    def __init__(self, directory: Path, *, check_state: bool = False, check_commit: bool = False):
         directory.mkdir(parents=True, exist_ok=False)
         self.directory = directory
-        self.check_state = check_state
+        self.check_state = check_state or check_commit
+        self.check_commit = check_commit
         self.current = ContextVar("packed_c1_capture", default=None)
         self.records: list[dict[str, Any]] = []
         self.prompt: dict[str, Any] | None = None
@@ -143,9 +144,16 @@ class PackedC1Capture:
                 "profile": str(adapter.generator.execution_profile),
                 "manifest_sha256": str(adapter.generator.execution_profile_manifest_sha256),
             }
+            if self.check_commit:
+                context["remaining_decode"] = int(row.request.max_tokens) - len(generated)
             token = self.current.set(context)
             try:
-                return execute(adapter, plan, *args, **kwargs)
+                output = execute(adapter, plan, *args, **kwargs)
+                if self.check_commit:
+                    index = context.get("record_index")
+                    if index is None or not self.records[index].get("selected_commit", {}).get("passed"):
+                        raise ValueError("target execution omitted checked selected commit")
+                return output
             finally:
                 self.current.reset(token)
 
@@ -210,7 +218,41 @@ class PackedC1Capture:
                 "physical_rows": len(tokens), "logits_file": name,
                 "logits_sha256": hashlib.sha256(logits.tobytes()).hexdigest(),
             })
+            context["record_index"] = index
             return result
+
+        if self.check_commit:
+            commit = Qwen35GGUFResidentSession._commit_deferred_packed_verify_states_batch_device
+
+            def checked_commit(owner, results, sessions, *, accept_buffers, **kwargs):
+                context = self.current.get()
+                if context is None:
+                    return commit(owner, results, sessions, accept_buffers=accept_buffers, **kwargs)
+                from scripts.qwen38_packed_c1_state import selected_prefix, selected_state_sources, snapshot_committed_state
+                if len(results) != 1 or len(sessions) != 1:
+                    raise ValueError("selected commit requires physical C1")
+                record = self.records[context["record_index"]]
+                with np.load(self.directory / record["logits_file"]) as data:
+                    accepted = selected_prefix(record["tokens"], data["logits"].argmax(axis=1), context["remaining_decode"])
+                result = results[0]
+                if int(result.start_position) != record["position"]:
+                    raise ValueError("selected commit start position changed")
+                for name, expected in (("accepted_counts", accepted),
+                                       ("commit_positions", record["position"] + accepted)):
+                    actual = _read_device(getattr(accept_buffers, name).ptr, (1,), np.int32, owner.runtime)
+                    if int(actual[0]) != expected:
+                        raise ValueError(f"device acceptance differs from CPU oracle: {name}")
+                expected_state = selected_state_sources(owner, sessions[0], selected_row=int(result.row_start) + accepted)
+                output = commit(owner, results, sessions, accept_buffers=accept_buffers, **kwargs)
+                after = snapshot_committed_state(sessions[0])
+                for name, expected in expected_state.items():
+                    actual = after["buffers"][name]
+                    if (actual["ptr"], actual["allocation_nbytes"], actual["blake2b_128"]) != (expected["ptr"], expected["nbytes"], expected["hash"]):
+                        raise ValueError(f"selected commit state mismatch: {name}")
+                record["selected_commit"] = dict(passed=True, accepted=accepted, checked_buffers=len(expected_state))
+                return output
+
+            self._patch(Qwen35GGUFResidentSession, "_commit_deferred_packed_verify_states_batch_device", checked_commit)
 
         self._patch(bench, "_run_arm", measured_arm)
         self._patch(Qwen35GGUFMTP2Adapter, "_execute_target_frontier_batch", target)
@@ -228,7 +270,7 @@ class PackedC1Capture:
 
 
 def capture(args) -> None:
-    recorder = PackedC1Capture(args.directory, check_state=args.check_state)
+    recorder = PackedC1Capture(args.directory, check_state=args.check_state, check_commit=args.check_commit)
     success = False
     previous = sys.argv
     try:
@@ -370,6 +412,8 @@ def main() -> None:
     parser.add_argument("mode", choices=("capture", "reference", "compare"))
     parser.add_argument("--model", type=Path, default=Path("/models/gguf/Qwen3.8-27B-Q4_K_M.gguf"))
     parser.add_argument("--directory", type=Path, required=True)
+    parser.add_argument("--check-commit", action="store_true",
+                        help="Check GPU acceptance and selected Conv/GDN/hidden state against CPU-selected rows")
     parser.add_argument("--check-state", action="store_true",
                         help="Check committed resident state is unchanged before acceptance")
     parser.add_argument("--repeat-directory", type=Path, action="append", default=[],
