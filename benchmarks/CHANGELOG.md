@@ -1,5 +1,7 @@
 # hipEngine Benchmark Changelog
 
+- [2026-09-07 UTC Q8 early publication rejected] Actual attention-gate512/1024 projection5.200->5.953ms (+14.5%)/11.019->12.114ms (+9.94%),shared-down also loses;80 exact pairs,10 tests,VGPR72->64/scratch0. Candidate removed,no model A/B. `benchmarks/results/2026-09-07-framework-qwen4exp-q8-early-publication-rejected.json`.
+
 - [2026-09-07 UTC post-QSA-quad families] Clean30b92de13/chunk1024 six-case capture:QSA2.068->1.331s (-35.66%),total21.227->20.305s (-4.345% snapshot);FFN10.214s,linear4.452s. Interval spans three promotions;Vulkan reused,not causal A/B. `benchmarks/results/2026-09-07-framework-qwen4exp-post-qsa-quad-family.json`.
 
 - [2026-09-07 UTC QSA quad promotion] Staged72 exact,p4096 PP185.413->192.034 (+3.571%),TG13.990->13.496 (-3.531%);all4 long-request means1.010-1.016x with transition included. Scoped prefill-first promotion,short paths unchanged,variance retained. `benchmarks/results/2026-09-07-framework-qwen4exp-qsa-head-quad-production.json`.

@@ -2,6 +2,12 @@
 
 Last updated: **2026-09-07 UTC**
 
+Q8 early wave publication rejected on Framework gfx1151:
+UD-Q4_K_XL actual attention-gate512/1024 projection5.200->5.953ms
+and11.019->12.114ms (+14.5%/+9.94%);all80 gate/shared-down pairs exact.
+VGPR72->64 did not pay;candidate removed,production rates unchanged.
+[Evidence](results/2026-09-07-framework-qwen4exp-q8-early-publication-rejected.json).
+
 Post-four-head QSA family refresh at clean `30b92de13`,Framework gfx1151,
 UD-Q4_K_XL/BF16 KV/chunk1024:four-category p4096 device sum
 21.227->20.305s (-4.345% snapshot),QSA2.068->1.331s (-35.66%).
