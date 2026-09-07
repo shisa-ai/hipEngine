@@ -40,10 +40,20 @@ Status: partial implementation integrated;
   windows do not qualify provider, lifecycle, task or service behavior.
   See [K5](../benchmarks/results/2026-09-07-w7900-packed-c1-teacher-k5-repeats.json)
   and [K6/K7](../benchmarks/results/2026-09-07-w7900-packed-c1-teacher-k6-k7-repeats.json).
-- Still required: slot/transition qualification and missing fixed-N=8 controls;
-  packed C1 K1-K7 gates; production numerical/task and dynamic service-owner
-  latency/queueing gates; sustained horizons/contexts;
-  three balanced pairs before promotion. Token equality is not a replacement for these gates.
+- Still required: slot/transition qualification and missing fixed-N=8 controls
+  apply only to a future packed-C1 promotion, which the 2026-09-07 economics
+  rejected (the packed route is a net loss at K2 and 1.1140x at K3 versus the
+  legacy route's 1.6329x, with graph-captured parity as its best case), so
+  nothing is queued for promotion. The packed C1 depth gates are closed by
+  policy and measurement: the physical policy admits only K2/K3 (verified
+  refusals elsewhere), and the K2/K3 packed cells are measured. The dynamic
+  service-owner latency/queueing gates passed (mixed-cohort isolation at
+  capacities 8 and 2; 16-request queue through a capacity-8 server with
+  per-prompt MTP-vs-AR token equality), and the sustained-horizon gate is
+  bounded by the evidence rows' qualified 24-token horizon with verified
+  fail-closed refusal at D128. Three balanced pairs before promotion remains
+  the standing rule for any future cell. Token equality is not a replacement
+  for these gates.
 - The realized width-miss deferral dropped the request-time static eligibility
   override, which closed the explicit C1 route at every depth after the evidence
   withdrawal (resident adapter refused the C1 singleton shape into K0). Repair
