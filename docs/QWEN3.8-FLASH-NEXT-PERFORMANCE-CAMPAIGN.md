@@ -76,6 +76,18 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**GDN full-model qualification (September7 UTC):** clean ffe46a7c6,
+canonical12 cases/chunk1024,72 exact trajectories,expected21/84
+engagement,zero final owners. PP512/1024/4096 +0.010%/+0.139%/-0.044%;
+TG-0.094%/+0.001%/+0.061%. Six request-case means regress,maximum
+loss0.180%; worst PP case-0.306%. Max within-case PP CV1.188%,TG CV3.690%.
+Measured span27m45s. These mixed nearzero means do not establish a
+headline win or statistical non-regression. User wants the measured small
+gain retained: keep the kernel/default-off route and measure the actual-model
+GDN owner sub-window next. A verified sub-window saving may justify promotion
+under the existing microsecond-retention policy; no favorable full-suite rerun.
+[Model evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-gdn-wave-norm-model.json).
+
 **Expedited qualification tooling (September7 UTC):** user requested fewer
 repeats for clear outcomes. `qwen4exp_halo_box_campaign_ab.py --screen-only
 --repetitions-per-mode 1` now runs all12 cases with one measured pair each,

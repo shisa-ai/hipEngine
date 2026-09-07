@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-07 UTC**
 
+GDN wave-norm full-model qualification:72 exact trajectories,
+PP+0.010%/+0.139%/-0.044%,mixed request-case means. No headline win
+established; kernel retained default-off pending actual-model owner timing.
+[Evidence](results/2026-09-07-framework-qwen4exp-gdn-wave-norm-model.json).
+
 GDN wave-normalization admission:five chunk1024 full-logit/state/KV cases
 exact,21/84 serial-prefix calls,zero decode;18 CPU tests. Both binders0.
 Corrected harness count36->21 reflects existing tiled suffix,not widening.
