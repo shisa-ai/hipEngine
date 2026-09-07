@@ -479,8 +479,13 @@ not inferred from resident capacity. Explicit C1 ownership can coexist with a
 wider static request bound: N2/N8 engine-boundary D8/D24 survivor diagnostics
 pass all ten prompts without replacing the packed target with a legacy verifier.
 This uses separately resolved, runtime-only C1/C2 diagnostic evidence and does
-not qualify HTTP lifecycle or usage. No public C1 row is added by this change;
-slot/depth, numerical, lifecycle and repeated-economics gates remain. C2/K3 and C8/K3 explicit keys and
+not qualify HTTP lifecycle or usage. The repaired N1 target now passes three
+bit-identical fixed-teacher captures at every K1-K7 depth over 18 prompts and
+450 rows per capture. K5/K7 pass the normative 99% overall/97% scoped top-1
+and KL gates but fail the separately reported conservative scoped screen.
+This is target-only numerical evidence, not full provider/task/service
+qualification. No public C1 row is added; wider-capacity isolation, lifecycle,
+task/context and repeated-economics gates remain. C2/K3 and C8/K3 explicit keys and
 qualified kernel improvements stay enabled; automatic Qwen3.8 remains K0.
 Deeper public execution and automatic depth selection remain separately gated.
 Source audit and rejected alternatives remain in
