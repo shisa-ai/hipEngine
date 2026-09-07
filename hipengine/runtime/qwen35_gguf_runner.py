@@ -4081,6 +4081,7 @@ class Qwen35GGUFFullStackRunner:
         runtime = self.runtime or get_hip_runtime()
         output = np.empty_like(hidden)
         buffers = []
+        split_growth_scratch = None
         try:
             hidden_buf = malloc(hidden.nbytes, runtime=runtime)
             out_buf = malloc(output.nbytes, runtime=runtime)
@@ -4089,6 +4090,7 @@ class Qwen35GGUFFullStackRunner:
             if use_aotriton:
                 prefill_scratch = _GGUFFullAttentionPrefillScratch.allocate(self, rows=rows, runtime=runtime)
                 buffers.extend(prefill_scratch.buffers)
+                split_growth_scratch = prefill_scratch
                 used_aotriton = self._run_full_attention_prefill_layer_aotriton(
                     layer_id,
                     hidden_buf.ptr,
@@ -4102,6 +4104,7 @@ class Qwen35GGUFFullStackRunner:
             else:
                 scratch = _FullStackScratch.allocate(self, runtime=runtime)
                 buffers.extend(scratch.buffers)
+                split_growth_scratch = scratch
                 scratch.zero_states(runtime)
                 hidden_row_nbytes = self.hidden_size * 2
                 for row in range(rows):
@@ -4117,6 +4120,12 @@ class Qwen35GGUFFullStackRunner:
             runtime.device_synchronize()
             copy_device_to_host(host_array_ptr(output), out_buf, runtime=runtime)
         finally:
+            for buffer in reversed(
+                getattr(
+                    split_growth_scratch, "full_attn_split_growth_buffers", ()
+                )
+            ):
+                free(buffer, runtime=runtime)
             for buffer in reversed(buffers):
                 free(buffer, runtime=runtime)
         return Qwen35GGUFFullAttentionPrefillResult(
@@ -4566,6 +4575,11 @@ class Qwen35GGUFFullStackRunner:
                 runtime=runtime,
             )
         else:
+            # Native fallback path: grow the demand-driven split-K partials
+            # to the prefill batch-row count before the launch.
+            _ensure_full_attn_split_rows(
+                scratch, scratch.full_attn_split_batch_rows, runtime=runtime
+            )
             self._full_attn_prefill_native_fn()(
                 scratch.full_query.ptr,
                 scratch.key_cache.ptr,
@@ -7097,6 +7111,7 @@ class Qwen35GGUFFullStackRunner:
                 int(scratch.full_attn_split_count),
                 max(1, (max_context_len + chunk_size - 1) // chunk_size),
             )
+            _ensure_full_attn_split_rows(scratch, rows, runtime=runtime)
             qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_batch_spans(
                 scratch.full_query.ptr,
                 key_cache.ptr,
@@ -8708,6 +8723,7 @@ class Qwen35GGUFFullStackRunner:
                 int(scratch.full_attn_split_count),
                 max(1, (attention_context_cap + chunk_size - 1) // chunk_size),
             )
+            _ensure_full_attn_split_rows(scratch, 1, runtime=runtime)
             if getattr(scratch, "int8_kv_value_bf16", False):
                 qwen35_paged_attn_decode_int8_key_bf16_value_gqa_splitk_gate_bf16_spans(
                     scratch.full_query.ptr,
@@ -8781,6 +8797,7 @@ class Qwen35GGUFFullStackRunner:
                     int(scratch.full_attn_split_count),
                     max(1, (attention_context_cap + chunk_size - 1) // chunk_size),
                 )
+                _ensure_full_attn_split_rows(scratch, 1, runtime=runtime)
                 split_gate_fn = _gguf_full_attention_split_gate_bf16_fn(
                     cfg,
                     backend=self.backend,
@@ -13438,6 +13455,20 @@ def _try_launch_dense_q8_pair_dp4a_f32_out(
     return True
 
 
+
+def _ensure_full_attn_split_rows(scratch, query_rows: int, *, runtime: HipRuntime) -> None:
+    """Grow demand-driven split-K partials when the scratch supports them.
+
+    ``_GGUFFullAttentionPrefillScratch`` allocates its split buffers at the
+    single-query decode floor and grows them on demand; ``_FullStackScratch``
+    sizes its split buffers per slot at allocation and needs no growth.
+    """
+
+    ensure = getattr(scratch, "ensure_full_attn_split_query_rows", None)
+    if ensure is not None:
+        ensure(int(query_rows), runtime=runtime)
+
+
 def _gguf_aotriton_prefill_mode(start: int, rows: int, key_rows: int) -> str:
     """Resolve the GGUF AOTriton prefill wrapper for the current query window.
 
@@ -15092,57 +15123,6 @@ class Qwen35GGUFResidentSession:
         )
         self._lm_out_index = malloc(self.max_batch_size * DType.INT64.itemsize, runtime=runtime)
         self._lm_out_value = malloc(self.max_batch_size * DType.FP32.itemsize, runtime=runtime)
-        prefill_capacity = int(self.scratch.max_positions)
-        prefill_rows = self._prefill_scratch_rows(prefill_capacity)
-        self._int8_prefill_lifetime_plan = _plan_gguf_int8_prefill_lifetime_for_session(
-            self,
-            scratch_rows=prefill_rows,
-        )
-        self.prefill_chunk_tuning["int8_prefill_lifetime"] = asdict(
-            self._int8_prefill_lifetime_plan
-        )
-        alloc_capacity = (
-            prefill_capacity
-            if self.use_expert_sidecar
-            else int(self._int8_prefill_lifetime_plan.required_hidden_capacity)
-        )
-        self._prefill_token_buf = malloc(alloc_capacity * DType.INT64.itemsize, runtime=runtime)
-        self._prefill_hidden_a, self._prefill_hidden_b = (
-            _allocate_prefill_hidden_buffers(
-                self.runner,
-                rows=prefill_rows,
-                nbytes=alloc_capacity * hidden_bytes,
-                runtime=runtime,
-            )
-        )
-        self._bulk_prefill_scratch = _GGUFFullAttentionPrefillScratch.allocate(
-            self.runner,
-            rows=prefill_rows,
-            capacity=prefill_capacity,
-            allocate_kv_cache=False,
-            runtime=runtime,
-            runtime_state_library=self._runtime_state_library,
-        )
-        head_major_pair = _try_allocate_gguf_aotriton_head_major_kv_scratch(
-            backend=self.backend,
-            capacity_tokens=prefill_capacity,
-            kv_width=self.runner.kv_width,
-            runtime=runtime,
-        )
-        if head_major_pair is not None:
-            head_major_key_cache, head_major_value_cache = head_major_pair
-            self._bulk_prefill_scratch = replace(
-                self._bulk_prefill_scratch,
-                head_major_key_cache=head_major_key_cache,
-                head_major_value_cache=head_major_value_cache,
-                head_major_kv_capacity=prefill_capacity,
-                buffers=(*self._bulk_prefill_scratch.buffers, *head_major_pair),
-            )
-        prefill_hidden_buffers = (
-            (self._prefill_hidden_a,)
-            if self._prefill_hidden_a.ptr == self._prefill_hidden_b.ptr
-            else (self._prefill_hidden_a, self._prefill_hidden_b)
-        )
         self._buffers = (
             self._token_buf,
             self._hidden_a,
@@ -15154,10 +15134,8 @@ class Qwen35GGUFResidentSession:
             self._lm_block_indices,
             self._lm_out_index,
             self._lm_out_value,
-            self._prefill_token_buf,
-            *prefill_hidden_buffers,
-            *self._bulk_prefill_scratch.buffers,
         )
+        self._allocate_bulk_prefill_workspace(runtime)
         # Lazily-created per-layer MoE FFN graph cache (rows==1 resident decode),
         # gated by HIPENGINE_GGUF_MOE_GRAPH. None until first graphed decode.
         self._moe_graph: MoeGraphCache | None = None
@@ -15172,6 +15150,154 @@ class Qwen35GGUFResidentSession:
                 granularity=self.prefill_flight_recorder_granularity,
             )
         self._decode_graph_min_replay_steps_cache = self._resolve_decode_graph_min_replay_steps()
+
+
+    def _allocate_bulk_prefill_workspace(self, runtime: HipRuntime) -> None:
+        """Allocate (or re-acquire) the bulk prefill workspace.
+
+        Extracted from ``__post_init__`` (2026-09-07 memory review, target 3)
+        so the workspace can be released at DMS prefill finalization and
+        re-acquired lazily by a later prefill. No-op when already allocated;
+        raises on closed sessions. The INT8 prefill lifetime plan is computed
+        once and reused across release/re-acquire cycles.
+        """
+
+        if self.runner is None or self.scratch is None:
+            raise RuntimeError("GGUF resident session is closed")
+        if self._bulk_prefill_scratch is not None:
+            return
+        prefill_capacity = int(self.scratch.max_positions)
+        prefill_rows = self._prefill_scratch_rows(prefill_capacity)
+        if self._int8_prefill_lifetime_plan is None:
+            self._int8_prefill_lifetime_plan = (
+                _plan_gguf_int8_prefill_lifetime_for_session(
+                    self,
+                    scratch_rows=prefill_rows,
+                )
+            )
+            self.prefill_chunk_tuning["int8_prefill_lifetime"] = asdict(
+                self._int8_prefill_lifetime_plan
+            )
+        alloc_capacity = (
+            prefill_capacity
+            if self.use_expert_sidecar
+            else int(self._int8_prefill_lifetime_plan.required_hidden_capacity)
+        )
+        hidden_bytes = self.runner.hidden_size * 2
+        prefill_token_buf = malloc(alloc_capacity * DType.INT64.itemsize, runtime=runtime)
+        prefill_hidden_a = None
+        prefill_hidden_b = None
+        try:
+            prefill_hidden_a, prefill_hidden_b = _allocate_prefill_hidden_buffers(
+                self.runner,
+                rows=prefill_rows,
+                nbytes=alloc_capacity * hidden_bytes,
+                runtime=runtime,
+            )
+            bulk_prefill_scratch = _GGUFFullAttentionPrefillScratch.allocate(
+                self.runner,
+                rows=prefill_rows,
+                capacity=prefill_capacity,
+                allocate_kv_cache=False,
+                runtime=runtime,
+                runtime_state_library=self._runtime_state_library,
+            )
+        except BaseException:
+            free(prefill_token_buf, runtime=runtime)
+            for buffer in (prefill_hidden_a, prefill_hidden_b):
+                if buffer is not None and buffer is not prefill_hidden_a:
+                    free(buffer, runtime=runtime)
+            if prefill_hidden_a is not None:
+                free(prefill_hidden_a, runtime=runtime)
+            raise
+        head_major_pair = _try_allocate_gguf_aotriton_head_major_kv_scratch(
+            backend=self.backend,
+            capacity_tokens=prefill_capacity,
+            kv_width=self.runner.kv_width,
+            runtime=runtime,
+        )
+        if head_major_pair is not None:
+            head_major_key_cache, head_major_value_cache = head_major_pair
+            bulk_prefill_scratch = replace(
+                bulk_prefill_scratch,
+                head_major_key_cache=head_major_key_cache,
+                head_major_value_cache=head_major_value_cache,
+                head_major_kv_capacity=prefill_capacity,
+                buffers=(*bulk_prefill_scratch.buffers, *head_major_pair),
+            )
+        self._prefill_token_buf = prefill_token_buf
+        self._prefill_hidden_a = prefill_hidden_a
+        self._prefill_hidden_b = prefill_hidden_b
+        self._bulk_prefill_scratch = bulk_prefill_scratch
+        prefill_hidden_buffers = (
+            (prefill_hidden_a,)
+            if prefill_hidden_a.ptr == prefill_hidden_b.ptr
+            else (prefill_hidden_a, prefill_hidden_b)
+        )
+        self._buffers = (
+            *self._buffers,
+            prefill_token_buf,
+            *prefill_hidden_buffers,
+            *bulk_prefill_scratch.buffers,
+        )
+
+    def _release_bulk_prefill_workspace(self, *, runtime: HipRuntime | None = None) -> None:
+        """Release the bulk prefill workspace ahead of decode/pack residency.
+
+        Frees the bulk prefill scratch, prefill hidden buffers and prefill
+        token buffer and prunes them from ``_buffers`` so ``close`` frees each
+        buffer exactly once. Kept conservative: the workspace is only
+        released for standalone sessions (no resident slot views and not a
+        slot view itself), because views share the owner's scratch object.
+        """
+
+        if self._bulk_prefill_scratch is None:
+            return
+        if getattr(self, "_resident_batch_owner", None) is not None:
+            return
+        if getattr(self, "_resident_slot_views", None):
+            return
+        runtime = runtime or self.runtime or get_hip_runtime()
+        released: list[object] = []
+        bulk_scratch = self._bulk_prefill_scratch
+        for buffer in (
+            *getattr(bulk_scratch, "full_attn_split_growth_buffers", ()),
+            *bulk_scratch.buffers,
+        ):
+            if buffer is not None:
+                free(buffer, runtime=runtime)
+                released.append(buffer)
+        for buffer in (self._prefill_hidden_a, self._prefill_hidden_b, self._prefill_token_buf):
+            if buffer is not None and buffer not in released:
+                free(buffer, runtime=runtime)
+                released.append(buffer)
+        released_ids = {id(buffer) for buffer in released}
+        # A and B may alias; free each distinct buffer once.
+        self._buffers = tuple(
+            buffer for buffer in self._buffers if id(buffer) not in released_ids
+        )
+        self._prefill_token_buf = None
+        self._prefill_hidden_a = None
+        self._prefill_hidden_b = None
+        self._bulk_prefill_scratch = None
+
+    def _ensure_bulk_prefill_workspace(self) -> None:
+        """Re-acquire the bulk prefill workspace if it was released."""
+
+        if self._bulk_prefill_scratch is None:
+            if self.runner is None or self.scratch is None:
+                raise RuntimeError("GGUF resident bulk prefill scratch is closed")
+            if getattr(self, "_resident_batch_owner", None) is not None:
+                owner = self._resident_batch_owner
+                owner._ensure_bulk_prefill_workspace()
+                self._bulk_prefill_scratch = owner._bulk_prefill_scratch
+                self._prefill_token_buf = owner._prefill_token_buf
+                self._prefill_hidden_a = owner._prefill_hidden_a
+                self._prefill_hidden_b = owner._prefill_hidden_b
+                return
+            self._allocate_bulk_prefill_workspace(
+                self.runtime or get_hip_runtime()
+            )
 
     def _initialize_external_dms_serving(self, runtime: HipRuntime) -> None:
         from hipengine.kvcache.dms import load_dms_retrofit_config
@@ -15240,6 +15366,12 @@ class Qwen35GGUFResidentSession:
         source = self._dms_source
         if source is None or self.scratch is None:
             raise RuntimeError("external DMS prefill owner is unavailable")
+        # The bulk prefill workspace (bulk scratch, prefill hidden/token
+        # buffers) is dead once prefill compute has completed. Release it
+        # before the compact pack so it does not coexist with the dense
+        # BF16 pool and the compact destination (2026-09-07 memory review,
+        # target 3). A later prefill re-acquires it lazily.
+        self._release_bulk_prefill_workspace()
         decisions = collector.finalize(stream=stream)
         positions = np.arange(int(tokens), dtype=np.int32)
         max_live = 1
@@ -17864,8 +17996,10 @@ class Qwen35GGUFResidentSession:
     def _q6_f16_rocblas_prefill_context(self, *, request_rows: int | None = None):
         """Return the model-scoped, sole-resident Q4/Q5/Q6 prefill owner context."""
 
-        if self.runner is None or self.runner.weights is None or self._bulk_prefill_scratch is None:
+        if self.runner is None or self.runner.weights is None:
             raise RuntimeError("GGUF resident bulk prefill scratch is closed")
+        if self._bulk_prefill_scratch is None:
+            self._ensure_bulk_prefill_workspace()
         if self.use_q6_f16_rocblas_prefill is False:
             return q6_t16_f16_rocblas_prefill_session(None)
         policy = _gguf_t16_f16_rocblas_prefill_policy(self.runner)
@@ -18060,8 +18194,10 @@ class Qwen35GGUFResidentSession:
     def _q8_mmq_prefill_context(self):
         """Return the bounded Q8 MMQ context selected by the generator plugin."""
 
-        if self.runner is None or self._bulk_prefill_scratch is None:
+        if self.runner is None:
             raise RuntimeError("GGUF resident bulk prefill scratch is closed")
+        if self._bulk_prefill_scratch is None:
+            self._ensure_bulk_prefill_workspace()
         policy = getattr(self.runner, "_gguf_q8_mmq_prefill_policy", None)
         if policy is not None and getattr(self, "_q8_mmq_prefill_library", None) is None:
             self._q8_mmq_prefill_library = build_gguf_q8_0_mmq_prefill(
@@ -18412,7 +18548,7 @@ class Qwen35GGUFResidentSession:
         if self._prefill_token_buf is None or self._prefill_hidden_a is None or self._prefill_hidden_b is None:
             raise RuntimeError("GGUF resident bulk prefill buffers are closed")
         if self._bulk_prefill_scratch is None:
-            raise RuntimeError("GGUF resident bulk prefill scratch is closed")
+            self._ensure_bulk_prefill_workspace()
         rows = int(len(token_ids))
         if rows <= 0:
             raise ValueError("token_ids must be non-empty")
@@ -19090,7 +19226,7 @@ class Qwen35GGUFResidentSession:
         if self._prefill_token_buf is None or self._prefill_hidden_a is None or self._prefill_hidden_b is None:
             raise RuntimeError("GGUF resident packed verifier buffers are closed")
         if self._bulk_prefill_scratch is None:
-            raise RuntimeError("GGUF resident bulk prefill scratch is closed")
+            self._ensure_bulk_prefill_workspace()
         if self.kv_storage_dtype != DType.BF16:
             raise NotImplementedError("packed target verifier currently supports BF16 KV only")
         if self.use_expert_sidecar:
@@ -19537,7 +19673,7 @@ class Qwen35GGUFResidentSession:
         if self._prefill_token_buf is None or self._prefill_hidden_a is None or self._prefill_hidden_b is None:
             raise RuntimeError("GGUF resident bulk prefill buffers are closed")
         if self._bulk_prefill_scratch is None:
-            raise RuntimeError("GGUF resident bulk prefill scratch is closed")
+            self._ensure_bulk_prefill_workspace()
         if bulk_attention_mode not in {"bulk", "native"}:
             raise ValueError("bulk_attention_mode must be 'bulk' or 'native'")
         rows = int(len(input_token_ids))
@@ -20378,7 +20514,7 @@ class Qwen35GGUFResidentSession:
         if int(self._target_scratch_owner.position_host[slot]) != 0:
             raise ValueError("prefill slot must be empty")
         if self._bulk_prefill_scratch is None:
-            raise RuntimeError("GGUF resident bulk prefill scratch is closed")
+            self._ensure_bulk_prefill_workspace()
         owner = self._target_scratch_owner
         if owner.kv_storage_dtype != DType.BF16:
             raise NotImplementedError("native GGUF slot prefill currently requires BF16 KV")
@@ -21400,7 +21536,7 @@ class Qwen35GGUFResidentSession:
         ):
             raise ValueError("prefill chunk extends beyond its declared full prompt length")
         if self._bulk_prefill_scratch is None:
-            raise RuntimeError("GGUF resident bulk prefill scratch is closed")
+            self._ensure_bulk_prefill_workspace()
         row_capacity = int(self._bulk_prefill_scratch.rows)
         chunks = _plan_packed_ar_prefill_chunks(
             prompt_tuple,
@@ -21698,7 +21834,7 @@ class Qwen35GGUFResidentSession:
         if self._prefill_token_buf is None or self._prefill_hidden_a is None or self._prefill_hidden_b is None:
             raise RuntimeError("GGUF resident packed prefill buffers are closed")
         if self._bulk_prefill_scratch is None:
-            raise RuntimeError("GGUF resident bulk prefill scratch is closed")
+            self._ensure_bulk_prefill_workspace()
         if self.use_expert_sidecar:
             raise NotImplementedError("packed AR prefill does not support expert sidecars yet")
         if self.host_token_embedding_enabled:
@@ -21881,8 +22017,10 @@ class Qwen35GGUFResidentSession:
                 elif layer_type == FULL_ATTENTION:
                     if slot_local_full_prefill:
                         for slot_index, session in enumerate(session_tuple):
-                            if session.scratch is None or session._bulk_prefill_scratch is None:
+                            if session.scratch is None:
                                 raise RuntimeError("packed prefill slot scratch is closed")
+                            if session._bulk_prefill_scratch is None:
+                                session._ensure_bulk_prefill_workspace()
                             row_start = int(layout.cu_seqlens[slot_index])
                             row_end = int(layout.cu_seqlens[slot_index + 1])
                             slot_rows = row_end - row_start
@@ -22431,7 +22569,7 @@ class Qwen35GGUFResidentSession:
         if tuple(self.runner.weights.config.layer_types) != (FULL_ATTENTION,):
             raise NotImplementedError("prompt KV sequence requires one NextN attention block")
         if self._bulk_prefill_scratch is None or self._prefill_hidden_b is None:
-            raise RuntimeError("GGUF prompt KV packed buffers are closed")
+            self._ensure_bulk_prefill_workspace()
         slot_capacity = _packed_ar_slot_capacity(pos[-1] + 1)
         layout = _build_gguf_packed_verify_layout(
             (
@@ -22545,7 +22683,7 @@ class Qwen35GGUFResidentSession:
         if self.runner is None or self.runner.weights is None or self.scratch is None:
             raise RuntimeError("GGUF resident session is closed")
         if self._bulk_prefill_scratch is None or self._prefill_hidden_b is None:
-            raise RuntimeError("GGUF resident packed buffers are closed")
+            self._ensure_bulk_prefill_workspace()
         for session, position in zip(session_tuple, position_tuple, strict=True):
             if not isinstance(session, Qwen35GGUFResidentSession):
                 raise TypeError("hidden batch requires resident GGUF sessions")
@@ -22716,7 +22854,7 @@ class Qwen35GGUFResidentSession:
         if self._prefill_token_buf is None or self._prefill_hidden_a is None or self._prefill_hidden_b is None:
             raise RuntimeError("GGUF resident packed decode buffers are closed")
         if self._bulk_prefill_scratch is None:
-            raise RuntimeError("GGUF resident bulk prefill scratch is closed")
+            self._ensure_bulk_prefill_workspace()
         if self.use_expert_sidecar:
             raise NotImplementedError("packed AR decode does not support expert sidecars yet")
         if self.host_token_embedding_enabled:
@@ -24134,6 +24272,19 @@ class Qwen35GGUFResidentSession:
                     free(buffer, runtime=runtime)
         self._packed_ar_attention_workspace = None
         if self._packed_verify_scratch is not None:
+            for buffer in reversed(
+                getattr(
+                    self._packed_verify_scratch,
+                    "full_attn_split_growth_buffers",
+                    (),
+                )
+            ):
+                if buffer is not None:
+                    free(buffer, runtime=runtime)
+            if hasattr(self._packed_verify_scratch, "full_attn_split_growth_buffers"):
+                object.__setattr__(
+                    self._packed_verify_scratch, "full_attn_split_growth_buffers", ()
+                )
             for buffer in reversed(self._packed_verify_scratch.buffers):
                 if buffer is not None:
                     free(buffer, runtime=runtime)
@@ -27876,6 +28027,18 @@ class Qwen35GGUFResidentSession:
         self._free_verify_linear_state_row_buffers(runtime=runtime)
         self._free_verify_linear_initial_snapshot_buffers(runtime=runtime)
         self._free_packed_verify_workspace(runtime=runtime)
+        # Demand-driven split-K partials grown after construction are not in
+        # the flattened _buffers tuple; free them through the live scratch.
+        bulk_scratch = self._bulk_prefill_scratch
+        if bulk_scratch is not None:
+            for buffer in reversed(
+                getattr(bulk_scratch, "full_attn_split_growth_buffers", ())
+            ):
+                free(buffer, runtime=runtime)
+            if hasattr(bulk_scratch, "full_attn_split_growth_buffers"):
+                object.__setattr__(
+                    bulk_scratch, "full_attn_split_growth_buffers", ()
+                )
         for buffer in reversed(self._buffers):
             if buffer is not None:
                 free(buffer, runtime=runtime)
@@ -28882,6 +29045,20 @@ class _GGUFFullAttentionPrefillScratch:
     start: int = 0
     gdn_segment_capacity: int = 1
     gdn_active_segments: int = 1
+    # Demand-driven split-K partials (2026-09-07 memory review, target 3):
+    # the buffers are allocated at the single-query decode floor and grown
+    # on demand by ``ensure_full_attn_split_query_rows`` when a caller needs
+    # more query rows (native prefill fallback, multi-row batch decode).
+    # ``full_attn_split_root`` is the owning scratch for views created by
+    # ``for_chunk``/``for_packed_verify_layout``; growth always mutates the
+    # root so later views observe the grown buffers. Grown buffers are
+    # tracked separately (``full_attn_split_growth_buffers``) because the
+    # session/packed-verify owners free their fixed ``buffers`` tuples.
+    full_attn_split_capacity_rows: int = 1
+    full_attn_split_partial_row_bytes: int = 0
+    full_attn_split_stat_row_bytes: int = 0
+    full_attn_split_root: "_GGUFFullAttentionPrefillScratch | None" = None
+    full_attn_split_growth_buffers: tuple[object, ...] = ()
 
     @classmethod
     def allocate(
@@ -29003,14 +29180,20 @@ class _GGUFFullAttentionPrefillScratch:
         cache_nbytes = max_positions * cfg.head_count_kv * cfg.key_length * 2 if allocate_kv_cache else 0
         full_attn_split_count = (capacity + block_size - 1) // block_size
         full_attn_split_batch_rows = min(rows, _GGUF_FULL_ATTN_PREFILL_SPLIT_BATCH_ROWS)
+        # Demand-driven split-K partials: allocate the single-query decode
+        # floor here; the native prefill fallback and multi-row batch decode
+        # grow the buffers through ensure_full_attn_split_query_rows. Grown
+        # buffers stay owned for the scratch lifetime (they are small
+        # relative to the eager 16-row allocation this replaces).
+        full_attn_split_query_rows = 1
         full_attn_split_partial_bytes = (
-            full_attn_split_batch_rows
+            full_attn_split_query_rows
             * runner.q_width
             * full_attn_split_count
             * DType.FP32.itemsize
         )
         full_attn_split_stat_bytes = (
-            full_attn_split_batch_rows
+            full_attn_split_query_rows
             * cfg.head_count
             * full_attn_split_count
             * DType.FP32.itemsize
@@ -29337,6 +29520,15 @@ class _GGUFFullAttentionPrefillScratch:
                     max_positions=capacity,
                     full_attn_split_batch_rows=full_attn_split_batch_rows,
                     full_attn_split_count=full_attn_split_count,
+                    full_attn_split_capacity_rows=full_attn_split_query_rows,
+                    full_attn_split_partial_row_bytes=(
+                        runner.q_width * full_attn_split_count * DType.FP32.itemsize
+                    ),
+                    full_attn_split_stat_row_bytes=(
+                        cfg.head_count * full_attn_split_count * DType.FP32.itemsize
+                    ),
+                    full_attn_split_root=None,
+                    full_attn_split_growth_buffers=(),
                     moe_group_counts_zero=moe_group_counts_zero,
                     moe_scatter_offsets_zero=moe_scatter_offsets_zero,
                     moe_wmma_total_host=moe_wmma_total_host,
@@ -29362,6 +29554,53 @@ class _GGUFFullAttentionPrefillScratch:
             for buffer in reversed(owners):
                 free(buffer, runtime=runtime)
             raise
+
+    def ensure_full_attn_split_query_rows(self, query_rows: int, *, runtime: HipRuntime) -> None:
+        """Grow the split-K partial buffers to the requested query-row count.
+
+        The buffers are allocated at the single-query decode floor; callers
+        that need more rows (the native prefill fallback with its 16-row
+        batch, multi-row batch decode) grow them here. Growth always
+        mutates the root scratch (``full_attn_split_root``) so views created
+        later observe the grown buffers, and the grown buffers are tracked
+        in ``full_attn_split_growth_buffers`` for explicit freeing by the
+        owning session/workspace. Growth is monotonic; requests at or below
+        the current capacity only re-sync view fields.
+        """
+        needed = int(query_rows)
+        if needed <= 0:
+            raise ValueError("full-attention split query rows must be positive")
+        root = self if self.full_attn_split_root is None else self.full_attn_split_root
+        if root.full_attn_split_capacity_rows < needed:
+            partial = malloc(needed * root.full_attn_split_partial_row_bytes, runtime=runtime)
+            try:
+                split_m = malloc(needed * root.full_attn_split_stat_row_bytes, runtime=runtime)
+                try:
+                    split_l = malloc(needed * root.full_attn_split_stat_row_bytes, runtime=runtime)
+                except BaseException:
+                    free(split_m, runtime=runtime)
+                    raise
+            except BaseException:
+                free(partial, runtime=runtime)
+                raise
+            object.__setattr__(root, "full_attn_split_partial", partial)
+            object.__setattr__(root, "full_attn_split_m", split_m)
+            object.__setattr__(root, "full_attn_split_l", split_l)
+            object.__setattr__(root, "full_attn_split_capacity_rows", needed)
+            object.__setattr__(
+                root,
+                "full_attn_split_growth_buffers",
+                (
+                    *root.full_attn_split_growth_buffers,
+                    partial,
+                    split_m,
+                    split_l,
+                ),
+            )
+        if self is not root:
+            object.__setattr__(self, "full_attn_split_partial", root.full_attn_split_partial)
+            object.__setattr__(self, "full_attn_split_m", root.full_attn_split_m)
+            object.__setattr__(self, "full_attn_split_l", root.full_attn_split_l)
 
     def for_chunk(self, start: int, rows: int, total_tokens: int, *, runtime: HipRuntime, stream: int = 0):
         start = int(start)
@@ -29454,6 +29693,9 @@ class _GGUFFullAttentionPrefillScratch:
             append_spans=append_spans,
             prefill_spans=prefill_spans,
             gdn_active_segments=1,
+            full_attn_split_root=(
+                self if self.full_attn_split_root is None else self.full_attn_split_root
+            ),
         )
 
     def for_packed_verify_layout(
@@ -29566,6 +29808,9 @@ class _GGUFFullAttentionPrefillScratch:
             prefill_spans=prefill_spans,
             gdn_active_segments=int(layout.slot_count),
             metadata_prepare_path=metadata_prepare_path,
+            full_attn_split_root=(
+                self if self.full_attn_split_root is None else self.full_attn_split_root
+            ),
         )
 
     def for_rows(self, rows: int, *, runtime: HipRuntime, stream: int = 0):
