@@ -1,5 +1,7 @@
 # hipEngine Benchmark Changelog
 
+- [2026-09-07 UTC Q5_1 wave-tail rejected] Actual two-bank down screen0.809x/0.798x at512/1024 tokens (~24%/25% slower),40 pairs exact/both orders lose;21 tests. VGPR96 unchanged,scratch36->24B;candidate removed,production unchanged. `benchmarks/results/2026-09-07-framework-qwen4exp-q51-wave-tail-rejected.json`.
+
 - [2026-09-07 UTC Q8 paired-load rejected] Full12-case PP+0.433%/+1.664%/+1.865%,but code-p512 PP-1.052% and nine request cases regress;p4096 TG13.289->11.319 (-14.822%),total request0.975227x.72 exact;candidate removed,production unchanged. `benchmarks/results/2026-09-07-framework-qwen4exp-q8-prefetch2-rejected.json`.
 
 - [2026-09-07 UTC Q8 paired-load admission] Five chunk1024 full-logit/state/KV cases exact,36/144 prefill calls,zero decode/final owners. Parent/geometry/capability scoped,both binders0;throughput delta N/A pending canonical A/B. `benchmarks/results/2026-09-07-framework-qwen4exp-q8-prefetch2-state.json`.

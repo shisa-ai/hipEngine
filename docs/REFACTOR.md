@@ -1,5 +1,12 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Qwen4Exp Q5_1 first-wave reduction: removed
+
+- Exact first-wave stride64/32 plus shuffle tail loses at512/1024 tokens
+  (0.809x/0.798x), despite scratch36->24B and unchanged VGPR96.
+- Candidate kernel/key/wrapper/screen/tests removed before runtime admission.
+  Register-cache production unchanged; no unchanged rescreen.
+
 ## Qwen4Exp Q8 coltile paired-load candidate: removed
 
 - Full12-case A/B retains72 exact trajectories but one prefill/nine

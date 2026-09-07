@@ -76,6 +76,19 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q5_1 first-wave reduction rejected (September7 UTC):** preserve register
+cache arithmetic, replace seven LDS reduction stages with first-wave
+stride64/32 reads then shuffle16/8/4/2/1. Actual layer0/1 down banks,
+synthetic routing/activations at512/1024 tokens:0.809x/0.798x speedup
+(about24%/25% slower), all40 pairs exact, both orders lose.21 tests pass.
+VGPR96 unchanged,scratch36->24B,dynamic LDS8672B unchanged. Fewer barriers
+did not pay off; first-wave concentration is a hypothesis, not a measured
+cause. Candidate removed before model admission; no full-model A/B.
+Do not repeat this unchanged reduction. Next FFN investigation should
+address weight traversal/activation reuse or different work distribution,
+not simply replace the same LDS tree with one-wave shuffles.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-q51-wave-tail-rejected.json).
+
 **Q8 paired loads rejected/removed (September7 UTC):** clean067a9bcc0
 full12-case chunk1024 A/B preserves72 exact trajectories, but code-p512
 prefill regresses1.052% and nine request-wall cases regress.
