@@ -2,6 +2,12 @@
 
 Last updated: **2026-09-07 UTC**
 
+QSA phase isolation:decode flag held0,preceding candidate prefill changes
+code/mixed tg128 wall8.478->8.925s /8.482->8.936s,exact tokens/state.
+Extra~0.45s concentrates in first16 steps;steady tail converges.
+Candidate remains default-off;hardware cause not established.
+[Evidence](results/2026-09-07-framework-qwen4exp-qsa-prefill-phase.json).
+
 Paired-head flag-only decode isolation:fixed parent roots,code/mixed4096,
 4 balanced pairs of16 steps,wall+0.055%/+0.019%,exact tokens/state,
 zero paired-head calls. Does not explain candidate-prefill phase effects;
