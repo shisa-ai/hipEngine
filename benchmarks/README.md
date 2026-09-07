@@ -2,6 +2,14 @@
 
 Last updated: **2026-09-07 UTC**
 
+Non-GR linear structural floor measured on Framework gfx1151:
+the GDN-gate (2560,6144) exact coltile is 1.94x/1.86x slower than the
+3-plane MMQ chain, but 91.2% of F32 outputs differ and the MMQ error is
+only ~2x the parent's own f32-order deviation from float64 truth, so no
+plane count or repair can lift the failed T2 bars. The linear family is
+at its structural floor under the current numerics policy.
+[Discriminator](results/2026-09-07-framework-qwen4exp-gate-mmq-discriminator.json).
+
 Exact iu8-risk+repair MoE gate/up PROMOTED on Framework gfx1151:
 clean full12-case chunk1024 A/B preserves all 72 trajectories exactly and
 improves every prefill case; PP512/1024/4096 +7.602%/+8.842%/+8.361%,

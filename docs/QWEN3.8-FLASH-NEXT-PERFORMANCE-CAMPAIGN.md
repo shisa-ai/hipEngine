@@ -76,6 +76,27 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Non-GR linear structural floor measured (September7 UTC):** a
+discriminator probe on actual blk.0.attn_gate weights (Q8_0, K2560->N6144,
+F32 in/out, rows512/1024) closes the linear-family half of the FFN/linear
+structural study. The exact wave-scale coltile runs 5.47/10.99 ms versus
+2.83/5.91 ms for the 3-plane quantize+MMQ chain (1.94x/1.86x), but 91.2%
+of F32 outputs differ between the chains, so the exact iu8-risk+repair
+scheme does not transfer to this owner (F32 consumer, no rounding boundary).
+Against float64 truth the parent coltile itself deviates ~1 ulp (median
+5.7e-8) and the 3-plane MMQ ~2 ulp (median 1.2e-7): the chain's error is
+f32-accumulation-order dominated, so a 4th residual plane cannot move the
+T2 bars that rejected the (2560,6144) MMQ policy row (p95 5.26e-3 vs 5e-3,
+top-1 98.67% vs 99%). Combined with the 2-plane rejection (KL mean 2.8e-3
+vs 1e-3), the whole non-GR linear family (4.45 s: exact coltile ~1.9 s +
+3-plane MMQ ~2.7 s + tails) is at its structural floor under the current
+numerics policy; the residual Vulkan gap there is the deliberate price of
+3-plane MMQ plus exact fallbacks versus Vulkan's single-plane MMQ.
+Future structural effort should go to owners where a rounding boundary
+exists: the Q5_1 exact down (1.6 s, scheme transfers) and the GR composite
+(2.44 s, BF16 consumers).
+[Discriminator](../benchmarks/results/2026-09-07-framework-qwen4exp-gate-mmq-discriminator.json).
+
 **Exact iu8-risk+repair MoE gate/up promoted (September7 UTC):** clean
 73dc4acf2 full12-case chunk1024 A/B preserves all72 trajectories exactly
 and improves every prefill case: PP512/1024/4096 aggregate
