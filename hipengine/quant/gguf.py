@@ -15,6 +15,8 @@ from typing import Callable, Sequence
 
 import numpy as np
 
+from hipengine.quant.gguf_iq_s_tables import IQ2_S_GRID, IQ3_S_GRID
+
 QK_K = 256
 
 
@@ -730,6 +732,36 @@ def _dequant_iq2_xs_blocks(blocks: np.ndarray) -> np.ndarray:
     return (db * grid * signs).reshape(n_blocks, QK_K)
 
 
+def _dequant_iq2_s_blocks(blocks: np.ndarray) -> np.ndarray:
+    """Decode 82-byte IQ2_S blocks, matching the pinned C operation order."""
+    n = blocks.shape[0]
+    d = np.ascontiguousarray(blocks[:, :2]).view('<f2').astype(np.float32).reshape(n, 1, 1, 1)
+    low = blocks[:, 2:34].astype(np.uint16).reshape(n, 8, 4)
+    high = blocks[:, 66:74, None].astype(np.uint16)
+    index = low | (((high >> (2 * np.arange(4, dtype=np.uint16))) & 3) << 8)
+    scales = (blocks[:, 74:82, None] >> np.array([0, 4], dtype=np.uint8)) & 15
+    scale = np.repeat(scales, 2, axis=2)[..., None].astype(np.float32)
+    db = d * (np.float32(0.5) + scale) * np.float32(0.25)
+    bits = (blocks[:, 34:66].reshape(n, 8, 4, 1) >> np.arange(8, dtype=np.uint8)) & 1
+    sign = np.float32(1) - np.float32(2) * bits.astype(np.float32)
+    return (db * IQ2_S_GRID[index].astype(np.float32) * sign).reshape(n, QK_K)
+
+
+def _dequant_iq3_s_blocks(blocks: np.ndarray) -> np.ndarray:
+    """Decode 110-byte IQ3_S blocks with direct sign bytes and 9-bit grids."""
+    n = blocks.shape[0]
+    d = np.ascontiguousarray(blocks[:, :2]).view('<f2').astype(np.float32).reshape(n, 1, 1, 1)
+    low = blocks[:, 2:66].astype(np.uint16).reshape(n, 8, 8)
+    high = blocks[:, 66:74, None].astype(np.uint16)
+    index = low | (((high >> np.arange(8, dtype=np.uint16)) & 1) << 8)
+    grid = IQ3_S_GRID[index].reshape(n, 8, 4, 8).astype(np.float32)
+    scales = ((blocks[:, 106:110, None] >> np.array([0, 4], dtype=np.uint8)) & 15).reshape(n, 8, 1, 1)
+    db = d * (np.float32(1) + np.float32(2) * scales.astype(np.float32))
+    bits = (blocks[:, 74:106].reshape(n, 8, 4, 1) >> np.arange(8, dtype=np.uint8)) & 1
+    sign = np.float32(1) - np.float32(2) * bits.astype(np.float32)
+    return (db * grid * sign).reshape(n, QK_K)
+
+
 def _dequant_iq3_xxs_blocks(blocks: np.ndarray) -> np.ndarray:
     """Dequantize IQ3_XXS blocks (98 bytes per 256 values).
 
@@ -850,6 +882,8 @@ _DEQUANT_BLOCKS: dict[GGMLQuantizationType, Callable[[np.ndarray], np.ndarray]] 
     GGMLQuantizationType.Q5_K: _dequant_q5_k_blocks,
     GGMLQuantizationType.Q6_K: _dequant_q6_k_blocks,
     GGMLQuantizationType.IQ2_XS: _dequant_iq2_xs_blocks,
+    GGMLQuantizationType.IQ2_S: _dequant_iq2_s_blocks,
+    GGMLQuantizationType.IQ3_S: _dequant_iq3_s_blocks,
     GGMLQuantizationType.IQ3_XXS: _dequant_iq3_xxs_blocks,
     GGMLQuantizationType.IQ4_NL: _dequant_iq4_nl_blocks,
     GGMLQuantizationType.IQ4_XS: _dequant_iq4_xs_blocks,

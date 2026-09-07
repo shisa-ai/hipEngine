@@ -1,13 +1,12 @@
 # Dense UD Q4_K_S / Q4_K_M Support Campaign
 
 Last updated: 2026-09-07.
-Status: **U0 audit/identity/pinning complete; direct cleanup in progress.**
-Shared resident prerequisites and invocation contracts have CPU coverage.
-The subagent experiment did not implement the missing dense UD consumers:
-K_M/K_S still have 18/41 refused slots. **No full UD generation or GPU
-validation is claimed.** Certificate and execution-authorization infrastructure
-is being simplified; generic profile qualification and lifecycle transactions
-have been removed from the working implementation.
+Status: **U0 complete; CPU IQ3_S/IQ2_S decoders and synthetic oracles added;
+dense GPU consumers are next.** Shared resident prerequisites and invocation
+contracts have CPU coverage. K_M/K_S still have 18/41 refused slots.
+**No full UD generation or GPU validation is claimed.** General certificate
+cleanup is deferred in favor of end-to-end inference. Generic profile lifecycle
+transactions and per-call native authorization scans have been removed.
 hipEngine source audited: `bf46abefc5ad8fbb00608cd5fb274ca1af21f716`;
 U0 audit/identity repair landed on the `ud-quants` branch (see
 [UD-QUANTS-REVIEW-v2.json](UD-QUANTS-REVIEW-v2.json) for its schema-v2
@@ -1355,8 +1354,12 @@ Dependencies: U0; CPU-only before GPU leaf tests.
 Files: `hipengine/quant/gguf.py`, codebook module only if existing conventions
 justify it, proposed `tests/test_gguf_ud_codecs.py`, `tests/fixtures/gguf_ud/`.
 
-- [ ] Add llama.cpp-pinned IQ3_S/IQ2_S byte-to-F32 fixtures before CPU decoders;
-  add standalone IQ4_NL independent coverage.
+- [x] Add llama.cpp-pinned IQ3_S/IQ2_S byte-to-F32 fixtures before CPU decoders;
+  add standalone IQ4_NL independent coverage. Synthetic fixtures cover all seven
+  type ABIs at `llama.cpp@17252c769a63c1cb650ce98ae309cf4de0da7778`.
+  The earlier donor pin is unavailable in this host's checkout. Fixtures compile
+  an exact Git archive, not the moving worktree. RED: two missing decoders;
+  GREEN: 136 codec/reader/admission tests. See the `ud-codecs` worklog entry.
 - [ ] Cover all codebook/sign/high bits, struct sizes, scale corners, row
   transitions and dimension order.
 - [ ] After payload checksums, extract small real-row fixtures from multiple
