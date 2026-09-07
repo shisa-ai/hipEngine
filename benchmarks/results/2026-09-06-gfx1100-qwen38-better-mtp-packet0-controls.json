@@ -1,0 +1,397 @@
+{
+ "schema": 1,
+ "kind": "gfx1100-qwen38-better-mtp-packet0-controls",
+ "created_at": "2026-09-06",
+ "status": "complete",
+ "passed": true,
+ "performance_claim": null,
+ "claim_scope": "Packet 0 reproduction of controls and reachability map for docs/QWEN38-27B-GFX1100-CONCURRENCY2-BETTER-MTP.md. Ratios reproduce the withdrawn 2026-09-06 sweep; no new performance result is claimed and automatic policy stays K0.",
+ "source": {
+  "branch": "campaign/gfx1100-concurrency2-better-mtp",
+  "commit": "4cf722409f93f0c88b15a823c884c3d0ef463435",
+  "worktree": "hipEngine-gfx1100-concurrency2-better-mtp"
+ },
+ "model": {
+  "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+  "size_bytes": 17106773984
+ },
+ "hardware": {
+  "physical_host": "epyc",
+  "gpu": "AMD Radeon Pro W7900",
+  "gpu_uuid": "GPU-e282895b62c2b295",
+  "arch": "gfx1100",
+  "device_index": 0,
+  "rocm": "7.2.4",
+  "gpu_max_hw_queues": 1
+ },
+ "runtime_profile": {
+  "requested": "production",
+  "resolved": "production",
+  "manifest_sha256": "2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960",
+  "strict_manifest_sha256": "52a3d5b8b02c4dc8230c8c9dc8e43b01135db7ae1b44b027fc8915d66bedcdbb"
+ },
+ "protocol": {
+  "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl (10 prompts, 4 categories + heldouts)",
+  "max_tokens": 24,
+  "batch_window_ms": 20,
+  "sampling": "greedy",
+  "correctness_contract": "ar_exact",
+  "kv": "BF16",
+  "execution_profile": "production",
+  "manifest_sha256": "2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960",
+  "arm_order": "AR/MTP arms alternate per prompt inside each process (5 MTP-first, 5 AR-first); repeats are separate processes",
+  "screening_cells": "explicit sub-capacity/depth cells measured through the fail-closed diagnostic plan resolver plus HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS=1; both are explicitly unqualified test-candidate paths and the adapter records last_screening_cell"
+ },
+ "commands": {
+  "template": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --mtp-request-mode explicit --widths {W} --resident-capacity {N} --expected-mtp-widths {EW} --candidate-budget {K} --max-tokens 24 --batch-window-ms 20 --correctness-contract ar_exact --output {OUT}",
+  "automatic_control": "same with --mtp-request-mode automatic --expected-mtp-widths none",
+  "screening_cells": "same with --generation2-diagnostic and HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS=1",
+  "note": "per-run outputs retained in the campaign worktree under campaign-artifacts/packet0/ (raw, not committed)"
+ },
+ "reproductions": {
+  "C8K3": [
+   {
+    "file": "p0-c8k3-explicit-rep1",
+    "status": "complete",
+    "engaged": 10,
+    "cells": 10,
+    "exact": 10,
+    "ar_tok_s": 93.595,
+    "mtp_tok_s": 92.39,
+    "mtp_vs_ar_ratio": 0.9871
+   },
+   {
+    "file": "p0-c8k3-explicit-rep2",
+    "status": "complete",
+    "engaged": 10,
+    "cells": 10,
+    "exact": 10,
+    "ar_tok_s": 92.09,
+    "mtp_tok_s": 91.104,
+    "mtp_vs_ar_ratio": 0.9893
+   }
+  ],
+  "C2K2": [
+   {
+    "file": "p0-c2k2-explicit-rep1",
+    "status": "complete",
+    "engaged": 10,
+    "cells": 10,
+    "exact": 10,
+    "ar_tok_s": 41.822,
+    "mtp_tok_s": 38.72,
+    "mtp_vs_ar_ratio": 0.9258
+   },
+   {
+    "file": "p0-c2k2-explicit-rep2",
+    "status": "complete",
+    "engaged": 10,
+    "cells": 10,
+    "exact": 10,
+    "ar_tok_s": 41.535,
+    "mtp_tok_s": 38.443,
+    "mtp_vs_ar_ratio": 0.9256
+   }
+  ],
+  "C5K3_screening": [
+   {
+    "file": "p0-c5k3-screen-rep1",
+    "status": "complete",
+    "engaged": 10,
+    "cells": 10,
+    "exact": 10,
+    "ar_tok_s": 76.937,
+    "mtp_tok_s": 61.786,
+    "mtp_vs_ar_ratio": 0.8031
+   },
+   {
+    "file": "p0-c5k3-screen-rep2",
+    "status": "complete",
+    "engaged": 10,
+    "cells": 10,
+    "exact": 10,
+    "ar_tok_s": 77.644,
+    "mtp_tok_s": 62.101,
+    "mtp_vs_ar_ratio": 0.7998
+   }
+  ],
+  "C7K3_screening": [
+   {
+    "file": "p0-c7k3-screen-rep1",
+    "status": "complete",
+    "engaged": 10,
+    "cells": 10,
+    "exact": 10,
+    "ar_tok_s": 89.212,
+    "mtp_tok_s": 78.697,
+    "mtp_vs_ar_ratio": 0.8821
+   }
+  ],
+  "C2K1_screening": [
+   {
+    "file": "p0-c2k1-screen-rep1",
+    "status": "complete",
+    "engaged": 10,
+    "cells": 10,
+    "exact": 10,
+    "ar_tok_s": 41.443,
+    "mtp_tok_s": 29.889,
+    "mtp_vs_ar_ratio": 0.7212
+   }
+  ]
+ },
+ "comparison_to_withdrawn_sweep": {
+  "C8K3": {
+   "sweep_ratio_2026_09_06": 0.9902,
+   "reproduction_ratios": [
+    0.9871,
+    0.9893
+   ],
+   "reproduction_median": 0.9882,
+   "delta_vs_sweep": -0.002
+  },
+  "C2K2": {
+   "sweep_ratio_2026_09_06": 0.9147,
+   "reproduction_ratios": [
+    0.9258,
+    0.9256
+   ],
+   "reproduction_median": 0.9257,
+   "delta_vs_sweep": 0.011
+  },
+  "C5K3_screening": {
+   "sweep_ratio_2026_09_06": 0.8031,
+   "reproduction_ratios": [
+    0.8031,
+    0.7998
+   ],
+   "reproduction_median": 0.8014,
+   "delta_vs_sweep": -0.0017
+  },
+  "C7K3_screening": {
+   "sweep_ratio_2026_09_06": 0.8795,
+   "reproduction_ratios": [
+    0.8821
+   ],
+   "reproduction_median": 0.8821,
+   "delta_vs_sweep": 0.0026
+  },
+  "C2K1_screening": {
+   "sweep_ratio_2026_09_06": 0.7221,
+   "reproduction_ratios": [
+    0.7212
+   ],
+   "reproduction_median": 0.7212,
+   "delta_vs_sweep": -0.0009
+  }
+ },
+ "automatic_k0_controls": {
+  "C2": {
+   "file": "p0-c2-automatic-k0",
+   "status": "complete",
+   "engaged": 0,
+   "cells": 10,
+   "exact": 10,
+   "ar_tok_s": 41.643,
+   "mtp_tok_s": 41.527,
+   "mtp_vs_ar_ratio": 0.9972
+  },
+  "C5": {
+   "file": "p0-c5-automatic-k0",
+   "status": "complete",
+   "engaged": 0,
+   "cells": 10,
+   "exact": 10,
+   "ar_tok_s": 75.889,
+   "mtp_tok_s": 75.612,
+   "mtp_vs_ar_ratio": 0.9964
+  },
+  "C8": {
+   "file": "p0-c8-automatic-k0",
+   "status": "complete",
+   "engaged": 0,
+   "cells": 10,
+   "exact": 10,
+   "ar_tok_s": 91.989,
+   "mtp_tok_s": 92.136,
+   "mtp_vs_ar_ratio": 1.0016
+  }
+ },
+ "automatic_k0_evidence": {
+  "engaged": "0/10 at C2, C5, C8; both arms AR-equivalent (0.9972x/0.9964x/1.0016x)",
+  "adapter_absent": "the automatic runs construct no mtp2 adapter (no provider allocation, all specdec2 counters zero)",
+  "policy_source": "both Qwen3.8 gfx1100 rows are automatic_eligible=False with _measured_slower_than_ar_2026_09_06 reasons; resolver requires automatic_eligible with stable reason automatic_mtp_scope_not_promoted",
+  "qwen36_controls": "Qwen3.6/gfx1151 rows untouched; screening admission refuses automatic_eligible rows (seam-tested)"
+ },
+ "decline_reason_capture": {
+  "log": "campaign-artifacts/packet0/p0-c5k3-decline-trace.log (working copy; not published raw)",
+  "decline_line": "[mtp2-decline] cell (C5, K3) not in policy ((1, 2), (1, 3), (2, 2), (8, 3))",
+  "run_status": "complete",
+  "note": "explicit C5/K3 with the diagnostic plan but without the screening env: the adapter capability declines the unlisted cell and the group falls back to K0/AR exactly"
+ },
+ "c2k3_rejection_proof": {
+  "file": "p0-c2k3-rejection-proof",
+  "status": "complete",
+  "engaged": 0,
+  "cells": 10,
+  "exact": 10,
+  "ar_tok_s": 41.694,
+  "mtp_tok_s": 28.008,
+  "mtp_vs_ar_ratio": 0.6718,
+  "reason": "no serving-evidence row covers K3 at resident capacity 2 (C2/K2 row caps at K2; C8/K3 row requires capacity 8); the request fails before provider mutation"
+ },
+ "route_map_observations": [
+  {
+   "cell": "C8/K3",
+   "logical_R": 32,
+   "padded_P": [
+    32
+   ],
+   "note": "exact R32 policy confirmed; not padded to 36; accept capacity 36; cycle workspace [8,5120]; eager routes; graph capture 1 / replays 23 (AR path)"
+  },
+  {
+   "cell": "C2/K2",
+   "logical_R": 6,
+   "padded_P": [
+    6
+   ],
+   "note": "exact R6; accept capacity 24 (capacity-2 floor)"
+  },
+  {
+   "cell": "C5/K3",
+   "logical_R": 20,
+   "padded_P": [
+    24
+   ],
+   "note": "floor/rows6-padded to 24; 62 of 71 cycles ride the padded 24-row pass whose wall nearly equals the C8 32-row pass"
+  },
+  {
+   "cell": "C7/K3",
+   "logical_R": 28,
+   "padded_P": [
+    28
+   ],
+   "note": "exact R28 dispatch"
+  },
+  {
+   "cell": "C2/K1",
+   "logical_R": 4,
+   "padded_P": [
+    6
+   ],
+   "note": "rows6-padded to 6"
+  }
+ ],
+ "inventory_24_cells": {
+  "engaged_measured": [
+   [
+    2,
+    1
+   ],
+   [
+    2,
+    2
+   ],
+   [
+    5,
+    1
+   ],
+   [
+    5,
+    2
+   ],
+   [
+    5,
+    3
+   ],
+   [
+    7,
+    1
+   ],
+   [
+    7,
+    2
+   ],
+   [
+    7,
+    3
+   ],
+   [
+    8,
+    3
+   ]
+  ],
+  "rejected_before_mutation": {
+   "C1/K1": "partition_max_requests forces width-1 groups to K0; native physical C1 is Packet 2",
+   "C1/K2": "partition_max_requests forces width-1 groups to K0; native physical C1 is Packet 2",
+   "C1/K3": "partition_max_requests forces width-1 groups to K0; native physical C1 is Packet 2",
+   "C2/K3": "no serving-evidence row covers K3 at resident capacity 2 (C2/K2 row caps at K2; C8/K3 row requires capacity 8)"
+  },
+  "unmeasured_for_packet6": [
+   [
+    3,
+    1
+   ],
+   [
+    3,
+    2
+   ],
+   [
+    3,
+    3
+   ],
+   [
+    4,
+    1
+   ],
+   [
+    4,
+    2
+   ],
+   [
+    4,
+    3
+   ],
+   [
+    6,
+    1
+   ],
+   [
+    6,
+    2
+   ],
+   [
+    6,
+    3
+   ],
+   [
+    8,
+    1
+   ],
+   [
+    8,
+    2
+   ]
+  ]
+ },
+ "cycle_accounting_first_cut": {
+  "C8K3": {
+   "cycles": 63,
+   "acceptance": 0.7725,
+   "cycle_cost_ar_steps": 3.3607,
+   "target_ms_per_pass_32rows": 27.492,
+   "target_ms_per_row": 0.8591,
+   "note": "per-request member sums; accept member-sum includes blocking readback wait"
+  },
+  "C5K3": {
+   "cycles": 71,
+   "acceptance": 0.7889,
+   "cycle_cost_ar_steps": 3.9987,
+   "target_ms_per_pass_24rows": 26.777,
+   "target_ms_per_row_padded": 1.1736
+  },
+  "tooling_fixes": "mtp_cycle_accounting.py: k0-catchup tokens added to the committed identity; frontier padding tolerated in the row identity (member rows <= reported rows)"
+ },
+ "worklog": "worklog/entries/20260906T091319.916695Z-lhl-gfx1100-better-mtp-packet0-screening-965f1e.md"
+}

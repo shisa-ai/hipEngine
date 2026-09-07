@@ -66,6 +66,11 @@ cliffs and sensitive tensor families, not as substitutes for Laguna evaluation.
 
 The distinction is native compressed execution, not merely parsing the type id.
 
+This table covers the whole engine, so a type listed as native may still be
+unavailable on a narrower route. What each type does on the dense model route
+specifically — read as quantized, converted to dense BF16, or refused at load — is
+measured per file in [`UD-QUANTS.md`](UD-QUANTS.md).
+
 | GGML type | Current status | Relevant execution role |
 | --- | --- | --- |
 | `F32`, `BF16` | Native | Norm/router/dense weights and unquantized fallback |

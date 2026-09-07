@@ -238,6 +238,60 @@ def test_policy_caps_k_and_decomposes_c8_deterministically() -> None:
     assert first.execution_route == "graph"
 
 
+def test_policy_reports_requested_depth_alongside_admitted_cap() -> None:
+    """A bounded request must expose both its requested and admitted depth.
+
+    The campaign contract: min(requested, qualified) admission may cap a
+    request, but the cap must be visible and cannot silently masquerade
+    as the requested depth.
+    """
+
+    semantics = (_semantics(1, remaining_decode=64),)
+    # Requested K7; the capability qualifies at most 3.
+    plan = _plan(_capability(max_candidates_per_request=3), semantics, (7,))
+
+    assert plan.candidate_counts == (3,)
+    assert plan.requested_candidate_counts == (7,)
+
+    # Unbounded admission reports requested == admitted.
+    plan = _plan(_capability(max_candidates_per_request=8), semantics, (7,))
+    assert plan.candidate_counts == (7,)
+    assert plan.requested_candidate_counts == (7,)
+
+    # Suppression zeroes the admitted depth but preserves the request.
+    plan = _plan(
+        _capability(max_candidates_per_request=8),
+        semantics,
+        (7,),
+        suppress_speculation=(True,),
+    )
+    assert plan.candidate_counts == (0,)
+    assert plan.requested_candidate_counts == (7,)
+
+    # A defaulted plan (legacy constructor path) reports requested == admitted.
+    from hipengine.speculative import SpecRequestPlan
+
+    legacy = SpecRequestPlan(
+        operation_id="legacy:1",
+        cycle_id=1,
+        request_ids=(1,),
+        resident_slots=(0,),
+        candidate_counts=(0,),
+        reasons=(SpecPlanReason.POLICY_SELECTED_AR,),
+        k0_classes=(SpecK0Class.PURE,),
+        mode="decode",
+        capability_key=None,
+        provider_key=None,
+        target_transaction_mode=SpecTransactionMode.PACKED_SCRATCH,
+        provider_transaction_mode=None,
+        proposal_widths=(),
+        target_row_decomposition=(1,),
+        context_bucket_size=256,
+        execution_route="ar",
+    )
+    assert legacy.requested_candidate_counts == (0,)
+
+
 def test_policy_rejects_misaligned_or_negative_desired_depth() -> None:
     semantics = (_semantics(1), _semantics(2))
     with pytest.raises(ValueError, match="desired_candidate_counts"):

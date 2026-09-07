@@ -125,7 +125,7 @@ def test_backend_packages_expose_independently_qualified_adapter_scopes() -> Non
     assert backend_package_capability(
         "hip_gfx1100", "GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS", {}
     ) == {
-        "production": ((1, 2), (1, 3), (2, 2), (8, 3)),
+        "production": ((1, 2), (1, 3), (2, 2), (2, 3), (8, 3)),
         "strict": ((2, 2),),
     }
     assert backend_package_capability(
@@ -262,7 +262,7 @@ def test_physical_width_depth_policy_is_package_owned_and_capacity_clamped() -> 
         {"production": 0},
         {"production": None},
         {"production": ((0, 3),)},
-        {"production": ((8, 5),)},
+        {"production": ((8, 8),)},
         {"production": ((8,),)},
     ],
 )
@@ -398,6 +398,204 @@ def test_physical_width_depth_policy_gates_capability_and_claims() -> None:
                 candidate_counts=(depth,) * 8,
             )
         ) is False
+
+
+def _gfx1100_screening_owner(*, capacity: int = 8) -> SimpleNamespace:
+    return SimpleNamespace(
+        generator=SimpleNamespace(
+            backend="hip_gfx1100",
+            execution_profile="production",
+        ),
+        capacity=capacity,
+        _shared_runner=None,
+        _row=lambda rid: SimpleNamespace(
+            native_greedy=True,
+            first_token_emitted=True,
+            lease=SimpleNamespace(
+                session=SimpleNamespace(
+                    runner=SimpleNamespace(fp16_recurrent_state=False),
+                    target_layout=SimpleNamespace(max_sequence_length=1024),
+                    kv_storage_dtype="bf16",
+                )
+            ),
+            slot=SimpleNamespace(),
+        ),
+    )
+
+
+def _explicit_only_eligibility(rid: int, *, rows: int = 8, depth: int = 3) -> SpeculativeMTPStaticEligibility:
+    return SpeculativeMTPStaticEligibility(
+        state=SpeculativeMTPStaticState.SPECULATIVE_CAPABLE,
+        reason="screening_test_explicit_only_row",
+        max_candidate_count=depth,
+        max_realized_group_rows=rows,
+        automatic_eligible=False,
+        strict_fallback_key="gguf_target_ar",
+        evidence_key=f"test-screening-{rid}",
+        evidence_fingerprint=f"sha256:test-screening-{rid}",
+    )
+
+
+def test_screening_unqualified_cells_default_off_keeps_policy_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without the screening env, an explicit-only unqualified cell stays K0."""
+
+    monkeypatch.delenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", raising=False)
+    adapter = Qwen35GGUFMTP2Adapter(
+        _gfx1100_screening_owner(),
+        enabled=True,
+        target_verify_mode="packed",
+        candidate_budget=3,
+    )
+    ids = (11, 12, 13, 14, 15)
+    adapter._static_eligibility_by_request = {
+        rid: _explicit_only_eligibility(rid) for rid in ids
+    }
+
+    assert adapter._physical_width_depth_admitted_for_group(5, 3, ids) is False
+    assert adapter._last_screening_cell is None
+
+
+def test_screening_unqualified_cells_admits_explicit_only_group(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The screening env opens unlisted cells only for explicit-only rows."""
+
+    monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", "1")
+    adapter = Qwen35GGUFMTP2Adapter(
+        _gfx1100_screening_owner(),
+        enabled=True,
+        target_verify_mode="packed",
+        candidate_budget=3,
+    )
+    ids = tuple(range(1, 6))
+    adapter._intents = {rid: 3 for rid in ids}
+    adapter._static_eligibility_by_request = {
+        rid: _explicit_only_eligibility(rid) for rid in ids
+    }
+    adapter._prompt_hidden_rows = {rid: object() for rid in ids}
+    adapter._states = {}
+    adapter._disabled_requests = set()
+    adapter._active_claims = None
+
+    assert adapter._physical_width_depth_admitted_for_group(5, 3, ids) is True
+    assert adapter._last_screening_cell == {
+        "width": 5,
+        "depth": 3,
+        "request_ids": list(ids),
+    }
+    semantics = tuple(
+        SpeculativeRequestSemantics(rid, "greedy", "verify_chain", 32, 25)
+        for rid in ids
+    )
+    capability = adapter.capability(semantics)
+    assert capability is not None
+    # Depth-3 listed cells exist at widths 1, 2, and 8 (C2/K3 qualified by
+    # the Packet 6 grid + retained reproduction), so the listed derivation
+    # still owns the tuple; the screening group does not extend it.
+    assert capability.proposal_widths == (1, 2, 8)
+    assert adapter.claims_fit(
+        SimpleNamespace(
+            request_ids=ids,
+            speculative_request_ids=ids,
+            candidate_counts=(3,) * len(ids),
+        )
+    ) is True
+
+
+def test_screening_depth_without_listed_cell_keeps_nonempty_proposal_widths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A K1 screening group at C2 must still expose its proposal width.
+
+    The gfx1100 production policy lists no depth-1 cell, so the listed
+    proposal-width derivation is empty; the server rejects empty widths and
+    the C2/K1 screening measurement 400s without this fallback.
+    """
+
+    monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", "1")
+    adapter = Qwen35GGUFMTP2Adapter(
+        _gfx1100_screening_owner(capacity=2),
+        enabled=True,
+        target_verify_mode="packed",
+        candidate_budget=1,
+    )
+    ids = (41, 42)
+    adapter._intents = {rid: 1 for rid in ids}
+    adapter._static_eligibility_by_request = {
+        rid: _explicit_only_eligibility(rid, rows=8, depth=1) for rid in ids
+    }
+    adapter._prompt_hidden_rows = {rid: object() for rid in ids}
+    adapter._states = {}
+    adapter._disabled_requests = set()
+    adapter._active_claims = None
+
+    semantics = tuple(
+        SpeculativeRequestSemantics(rid, "greedy", "verify_chain", 32, 25)
+        for rid in ids
+    )
+    capability = adapter.capability(semantics)
+    assert capability is not None
+    # The capability advertises the eligibility bound; the executed per-request
+    # K comes from the plan. The K1 cell itself must fit and the proposal
+    # width tuple must be non-empty (the server rejects empty widths).
+    assert capability.proposal_widths == (2,)
+    assert adapter.claims_fit(
+        SimpleNamespace(
+            request_ids=ids,
+            speculative_request_ids=ids,
+            candidate_counts=(1, 1),
+        )
+    ) is True
+
+
+def test_screening_unqualified_cells_never_widen_automatic_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Qwen3.6/gfx1151 automatic policy cannot inherit screening cells."""
+
+    monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", "1")
+    adapter = Qwen35GGUFMTP2Adapter(
+        _gfx1100_screening_owner(),
+        enabled=True,
+        target_verify_mode="packed",
+        candidate_budget=3,
+    )
+    ids = (21, 22, 23, 24, 25)
+    adapter._static_eligibility_by_request = {
+        rid: SpeculativeMTPStaticEligibility(
+            state=SpeculativeMTPStaticState.SPECULATIVE_CAPABLE,
+            reason="automatic_qualified_row",
+            max_candidate_count=3,
+            max_realized_group_rows=8,
+            automatic_eligible=True,
+            strict_fallback_key="gguf_target_ar",
+            evidence_key=f"test-automatic-{rid}",
+            evidence_fingerprint=f"sha256:test-automatic-{rid}",
+        )
+        for rid in ids
+    }
+
+    assert adapter._physical_width_depth_admitted_for_group(5, 3, ids) is False
+    assert adapter._last_screening_cell is None
+
+
+def test_screening_unqualified_cells_require_static_eligibility(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A request without a serving-evidence row cannot screen a cell open."""
+
+    monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", "1")
+    adapter = Qwen35GGUFMTP2Adapter(
+        _gfx1100_screening_owner(capacity=2),
+        enabled=True,
+        target_verify_mode="packed",
+        candidate_budget=3,
+    )
+
+    assert adapter._physical_width_depth_admitted_for_group(2, 4, (31, 32)) is False
+    assert adapter._last_screening_cell is None
 
 
 def test_unregistered_model_plugin_mtp2_adapter_fails_closed() -> None:
@@ -4096,3 +4294,105 @@ def test_mtp2_production_routes_full_batches_above_the_measured_bound_to_ar() ->
     # Over-width due batches route to a single full-batch AR decode.
     assert adapter.partition_max_requests(ids) == 0
     assert adapter.partition_max_requests(ids[:5]) == 0
+
+
+def test_mtp2_candidate_budget_admission_derives_from_declared_depth() -> None:
+    """Adapter admission must follow the declared implementation-depth limit.
+
+    The K4 server hang traced to a hardcoded ``{1, 2, 3}`` admission literal:
+    lifting the declared depth constant did not lift admission, and the
+    resulting ValueError escaped the batcher worker and orphaned queued
+    requests. Admission now derives from ``_MTP2_MAX_CANDIDATE_DEPTH``.
+    """
+
+    import hipengine.generation.qwen35_gguf_mtp2 as module
+
+    assert module._MTP2_MAX_CANDIDATE_DEPTH == 7
+
+    # At the declared depth, budget 8 remains rejected.
+    with pytest.raises(ValueError, match="candidate budget"):
+        Qwen35GGUFMTP2Adapter(
+            _width_bound_owner(profile="production", capacity=8),
+            enabled=True,
+            target_verify_mode="packed",
+            candidate_budget=8,
+        )
+
+    # Lifting the declared depth lifts admission coherently.
+    original = module._MTP2_MAX_CANDIDATE_DEPTH
+    module._MTP2_MAX_CANDIDATE_DEPTH = 8
+    try:
+        lifted = Qwen35GGUFMTP2Adapter(
+            _width_bound_owner(profile="production", capacity=8),
+            enabled=True,
+            target_verify_mode="packed",
+            candidate_budget=8,
+        )
+        assert lifted.candidate_budget == 8
+    finally:
+        module._MTP2_MAX_CANDIDATE_DEPTH = original
+
+
+def test_c8_frontier_padded_boundaries_follow_the_campaign_table() -> None:
+    """C8 K3-K7 logical/padded frontier rows must match the campaign table.
+
+    K3 32→36, K4 40→42, K5 48→48 (already a rows6 multiple), K6 56→60,
+    K7 64→66. The 66-row padded frontier is representable: row validity is
+    a per-row uint8 array (batch.active_mask), not a u64 bitmask.
+    """
+
+    from hipengine.speculative.frontier import physical_group_pad_rows
+
+    for depth, logical, padded in (
+        (3, 32, 36),
+        (4, 40, 42),
+        (5, 48, 48),
+        (6, 56, 60),
+        (7, 64, 66),
+    ):
+        candidate_rows = 8 * depth
+        pad = physical_group_pad_rows(
+            (6,),
+            8,
+            candidate_rows,
+            max_rows=1024,
+        )
+        assert 8 + candidate_rows == logical, depth
+        assert logical + pad == padded, (depth, pad)
+
+    # A group whose padded shape exceeds the accept-row capacity stays
+    # unpadded (strict fallback route) rather than overrunning the buffer.
+    assert physical_group_pad_rows((6,), 8, 8 * 7, max_rows=65) == 0
+
+
+def test_adapter_frontier_geometry_derives_from_declared_budget() -> None:
+    """Adapter frontier/accept geometry must scale with the declared budget."""
+
+    import hipengine.generation.qwen35_gguf_mtp2 as module
+
+    real = module.backend_package_capability
+    policy = tuple(
+        (width, depth) for width in range(1, 9) for depth in range(1, 8)
+    )
+
+    def fake(backend: str, name: str, default: object = None) -> object:
+        if name == "GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS":
+            return {"production": policy}
+        if name == "GGUF_SPECDEC2_TARGET_VERIFY_PAD_ROW_COUNTS":
+            return (6,)
+        return real(backend, name, default)
+
+    module.backend_package_capability = fake
+    try:
+        adapter = Qwen35GGUFMTP2Adapter(
+            _width_bound_owner(profile="production", capacity=8),
+            enabled=True,
+            target_verify_mode="packed",
+            candidate_budget=7,
+        )
+        assert adapter.physical_max_requests == 8
+        assert adapter.candidate_budget == 7
+        # Logical C8/K7 frontier: 8 requests × (7 candidates + 1 root).
+        assert adapter.physical_accept_max_rows == 66
+    finally:
+        module.backend_package_capability = real

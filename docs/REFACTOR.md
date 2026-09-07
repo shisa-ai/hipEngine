@@ -41,6 +41,49 @@ should be removed or collapsed.
   Keep the CPU-reference oracle and BF16 fallback. Do not re-quantize moved
   payloads or detach their scales from token positions.
 
+## 2026-09-06 GGUF file-type stamp switches — open
+
+- The initial audit found two gfx1151 switches that choose behavior from the header
+  (`general.file_type`) instead of the file's actual per-tensor format mix:
+  `GGUF_FP16_RECURRENT_STATE_DEFAULT_FILE_TYPES` and
+  `GGUF_DENSE_Q4_QMICRO_T16_GATE_UP_FILE_TYPES`. Any file stamped `MOSTLY_Q4_K_S`
+  passes those identity predicates. Current UD K_S still fails planning on 41
+  tensors; its file-global IQ veto prevents actual Q4 qmicro repacking, so this
+  is an admission hazard, not observed recurrent/kernel execution.
+- The verified audit also finds K_M/K_S policy identities in NextN, GDN,
+  scratch/source-F16, Q6 arithmetic and automatic-MTP admission. Audit all
+  callers rather than fixing only the original two constants.
+- Removal trigger: bind policy to the actual role/shape/type/resident-layout
+  manifest and artifact/profile evidence. A histogram or successful load alone
+  is insufficient. Test identical stamps with different maps and identical
+  histograms with types exchanged between sensitive roles. Preserve certified
+  plain-file behavior; new UD load support must not inherit its numerical or
+  speculative certificates.
+- Related audit debt: fix `root.token_embd` versus `root.token_embedding`,
+  AR/NextN scope, partial-header validation, omitted sidecars/capabilities and
+  allocation accounting in `scripts/gguf_quant_route_audit.py` and its tests.
+  Decouple global IQ repack admission from `contract_f32_linear` without changing
+  existing MoE precision. Remove the diagnostic policy mirror after a pure
+  cold-path shared planner/capability interface supplies the report.
+- Analysis and the wider campaign this sits inside:
+  [`UD-QUANTS.md`](UD-QUANTS.md), sections 2, 7.3 and U0/U1.
+
+## 2026-09-07 W7900 packed C1 target qualification — open
+
+- The physical-provider C1 route previously installed a legacy singleton
+  target during preparation. Review prevents that substitution; its old C1
+  rates are not packed-target evidence. Public C1 rows are withdrawn.
+- Keep the repaired route diagnostic-only until packed C1 K1-K7, native N=1,
+  N=2/8 slots/transitions, numerical/task, lifecycle and repeated-economics
+  gates pass. Then register exact evidence keys; do not restore old rows by
+  copying their legacy-target measurements.
+- `HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS` remains a test-only admission aid,
+  not public safety evidence. Remove it and the runtime row-injection probe
+  after the matrix is qualified or the campaign is explicitly stopped.
+- Consolidate the duplicated implementation-depth tuples and B1-B7 graph-cache
+  fields after lifecycle coverage proves the cleanup. Shared capacity is not
+  permission to widen Qwen3.6/gfx1151 public evidence.
+
 ## 2026-09-01 gfx1100 segmented GDN wave reduction — closed
 
 - The complete counterbalanced C5-C8 category+heldout gate retained the exact
@@ -5418,3 +5461,17 @@ run justifies each:
   `<|im_start|>user` block; the checkpoint template merges consecutive tool
   messages into one user block. Merge when multi-tool transcripts show
   degraded behavior.
+
+## 2026-09-06 HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS — screening-only env
+
+`HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS=1` lets `Qwen35GGUFMTP2Adapter`
+admit width/depth cells outside the backend's listed
+`GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS` policy so the Qwen3.8 gfx1100
+better-MTP campaign (Packet 0) can measure explicitly unqualified cells.
+It is scoped to groups whose every request carries static eligibility with
+`automatic_eligible=false`, so automatic policy cannot widen and qualified
+Qwen3.6/gfx1151 routes are untouched; admission is recorded in
+`physical_width_contract()["last_screening_cell"]`. Remove this env, the
+`_physical_width_depth_admitted_for_group` screening branch, and its tests
+when the campaign's final C1-C8/K1-K7 matrix lands and every measured cell
+either has a qualified serving-evidence row or stays explicitly rejected.

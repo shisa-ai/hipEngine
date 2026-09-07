@@ -1,0 +1,131 @@
+{
+ "kind": "mtp-retained-economics-revalidation",
+ "date": "2026-09-06",
+ "hardware": "AMD Radeon Pro W7900 (gfx1100)",
+ "model": "Qwen3.8-27B Q4_K_M",
+ "protocol": "gguf_mtp_c1c8_server_bench.py, 10-prompt canonical suite (mtpbench-code-general-ja), per-prompt AR/MTP arm alternation, D24 greedy, 20 ms batch window, ar_exact token contract, GPU_MAX_HW_QUEUES=1",
+ "change": "Retention re-sweep after the packet4 L1 q4 dual-SiLU row48 routing (retile branch rows<=48 -> row48 owner, commit 409c3817d). Confirms the packet3 planar-Q6 down band (rows 4-128 shared4_row64) and the q4 row48 routing do not regress any retained cell. No band or dispatch change in this unit; this artifact records the joint-state proof only.",
+ "decision": "All seven MTP cells above their retained floors with 10/10 token-exact, engaged, budget-conformed arms; both automatic K0 controls engaged 0. Every cell reproduces the prior band-ON sweep within same-run AR variance (largest delta c2k2 -0.054, AR 39.32 -> 41.98 tok/s). Packet 3 retention holds on the packet4 tree.",
+ "measurements": {
+  "c1k3": {
+   "floor": 1.4734,
+   "mtp": 40.2,
+   "ar": 24.36,
+   "ratio": 1.6502,
+   "route": "explicit product (registered evidence row)",
+   "width": 1,
+   "budget": 3,
+   "delta_vs_floor": 0.1768,
+   "tokens_exact": "10/10",
+   "engaged": "10/10",
+   "budget_conformed": "10/10",
+   "prior_sweep_same_band": 1.6301
+  },
+  "c1k2": {
+   "floor": 1.559,
+   "mtp": 39.13,
+   "ar": 24.33,
+   "ratio": 1.6083,
+   "route": "explicit product (registered evidence row)",
+   "width": 1,
+   "budget": 2,
+   "delta_vs_floor": 0.0493,
+   "tokens_exact": "10/10",
+   "engaged": "10/10",
+   "budget_conformed": "10/10",
+   "prior_sweep_same_band": 1.5989
+  },
+  "c2k2": {
+   "floor": 0.917,
+   "mtp": 41.95,
+   "ar": 41.98,
+   "ratio": 0.9993,
+   "route": "explicit product (registered evidence row)",
+   "width": 2,
+   "budget": 2,
+   "delta_vs_floor": 0.0823,
+   "tokens_exact": "10/10",
+   "engaged": "10/10",
+   "budget_conformed": "10/10",
+   "prior_sweep_same_band": 1.0536
+  },
+  "c8k3": {
+   "floor": 0.987,
+   "mtp": 96.95,
+   "ar": 92.46,
+   "ratio": 1.0486,
+   "route": "explicit product (registered evidence row)",
+   "width": 8,
+   "budget": 3,
+   "delta_vs_floor": 0.0616,
+   "tokens_exact": "10/10",
+   "engaged": "10/10",
+   "budget_conformed": "10/10",
+   "prior_sweep_same_band": 1.0484
+  },
+  "c5k3": {
+   "floor": 0.8,
+   "mtp": 65.82,
+   "ar": 77.28,
+   "ratio": 0.8518,
+   "route": "generation2-diagnostic screen",
+   "width": 5,
+   "budget": 3,
+   "delta_vs_floor": 0.0518,
+   "tokens_exact": "10/10",
+   "engaged": "10/10",
+   "budget_conformed": "10/10",
+   "prior_sweep_same_band": 0.8729
+  },
+  "c2k1": {
+   "floor": 0.721,
+   "mtp": 32.9,
+   "ar": 41.45,
+   "ratio": 0.7939,
+   "route": "generation2-diagnostic screen",
+   "width": 2,
+   "budget": 1,
+   "delta_vs_floor": 0.0729,
+   "tokens_exact": "10/10",
+   "engaged": "10/10",
+   "budget_conformed": "10/10",
+   "prior_sweep_same_band": 0.8333
+  },
+  "c7k3": {
+   "floor": 0.882,
+   "mtp": 82.44,
+   "ar": 88.06,
+   "ratio": 0.9361,
+   "route": "generation2-diagnostic screen",
+   "width": 7,
+   "budget": 3,
+   "delta_vs_floor": 0.0541,
+   "tokens_exact": "10/10",
+   "engaged": "10/10",
+   "budget_conformed": "10/10",
+   "prior_sweep_same_band": 0.9361
+  }
+ },
+ "controls": {
+  "automatic_k0_c2": "engaged 0",
+  "automatic_k0_c8": "engaged 0"
+ },
+ "commands": [
+  "bash campaign-artifacts/packet3/run_p3_retained.sh  # nine cells, HIPENGINE_MTP_SCREEN_UNQUALIFIED_CELLS=1 for the three screening cells",
+  ".venv/bin/python scripts/qwen38_packet3_retained_rollup.py  # gate: floors + token-exactness + route expectations + K0 (exit 0, 'All packet 3 retention gates pass')"
+ ],
+ "links": {
+  "worklog": [
+   "worklog/entries/20260906T112529.271841Z-lhl-gfx1100-better-mtp-packet3-519dc6.md",
+   "worklog/entries/20260906T123224.552482Z-lhl-gfx1100-better-mtp-packet3-6fbecc.md"
+  ],
+  "prior_retained_artifact": "benchmarks/results/2026-09-06-w7900-q4km-mtp-packet3-row64-band-retained.json",
+  "row48_screen_artifact": "benchmarks/results/2026-09-06-w7900-q4km-q4-dual-silu-row-screen.json",
+  "raw_results": "/tmp/he-bettermtp-raw/packet3/p3-*.json (outside repo)"
+ },
+ "limitations": [
+  "Diagnostic-screen cells (C5/K3, C2/K1, C7/K3) run the generation2-diagnostic resolver; they are screening evidence, not registered serving rows.",
+  "Ratios are against the same-run AR arm; absolute MTP/AR rates move run to run (e.g., c2k2 AR 39.32 -> 41.98 tok/s between the two band-ON sweeps).",
+  "This sweep re-validates a retained state at commit 409c3817d; it introduces no new kernel or dispatch change."
+ ]
+}

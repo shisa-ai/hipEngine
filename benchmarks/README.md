@@ -18,7 +18,7 @@ speculative decoding, which is enabled only where it is qualified for that
 model and shape. Rows use different models and protocols — compare within a
 row, not across them.
 
-### At a glance — one request
+### Performance
 
 #### Radeon Pro W7900 — 48 GB (`gfx1100`)
 
@@ -59,9 +59,10 @@ published only where a dedicated ceiling run exists.
 
 ### Serving several requests at once
 
-This is where hipEngine pulls furthest ahead. Aggregate tokens per second
-across all active requests, Qwen3.8-27B `Q4_K_M` on the W7900 under one server
-protocol; the peers use F16 KV where hipEngine uses BF16.
+hipEngine is very strong at multi-concurrency vs llama.cpp (or even vLLM).
+Aggregate tokens per second across all active requests, Qwen3.8-27B `Q4_K_M`
+on the W7900 under one server protocol; the peers use F16 KV where hipEngine
+uses BF16.
 
 | Requests | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -79,7 +80,7 @@ generated tokens per request, showing what each added request costs in memory:
 | Peak memory (GiB) | 19.4 | 20.3 | 21.1 | 22.0 | 22.8 | 23.7 | 24.5 | 25.4 |
 
 Eight concurrent requests need about 25 GiB, so this shape wants a 32 GB or
-larger card; a 24 GB card runs the same model comfortably at one or two.
+larger card. What the same model tolerates on a 24 GB card is not qualified yet.
 
 On Strix Halo, Maple-Preview 2-bit scales to **214.788** tok/s across eight
 requests (123.131 at one, 165.697 at two, 202.038 at four). Where speculative
@@ -88,54 +89,49 @@ Qwen3.6-35B-A3B GGUF reaches **93.644 tok/s public** — 1.1565x its own AR — 
 two concurrent requests on the W7900.
 <!-- END TOPLINE:README_HIGHLIGHTS -->
 
-### INT8 capacity and qualification audit — RX 7900 XTX
+### DMS INT8 offline evaluation — RX 7900 XTX
 
-| Qwen3.8-27B `Q4_K_M` · INT8 FP32 scales | Prompt / output tokens | Peak VRAM |
-| --- | ---: | ---: |
-| Context 16,128 | 16,111 / 16 | 20.357 GiB |
-| Context 32,768 | 32,751 / 16 | 21.919 GiB |
-| Context 49,152 | 49,135 / 16 | 23.484 GiB |
-| Context 54,272 | 54,255 / 16 | 23.972 GiB |
+| Qwen3.8-27B `Q4_K_M`, W8192, 16,384 prompt / 32 decode | BF16-DMS | INT8-DMS, FP32 scales | Reduction |
+| --- | ---: | ---: | ---: |
+| Device-store bytes, including workspaces | 829,473,104 | 432,046,928 | 397,426,176 (47.9%) |
 
-DMS INT8 offline evaluation on the same RX 7900 XTX uses less device-store
-memory than BF16-DMS at matched 16,384 prompt / 32 decode tokens:
-
-| Qwen3.8-27B `Q4_K_M`, DMS W8192 | Device-store bytes, including workspaces |
-| --- | ---: |
-| BF16-DMS | 829,473,104 |
-| INT8-DMS, FP32 scales | 432,046,928 |
-| Reduction | 397,426,176 (47.9%) |
-
-Post-repair tests pass all four long-context categories (maximum KL 0.014937592,
-top-1 100%) and all ten canonical short prompts, including four category
-heldouts, against dense BF16 and BF16-DMS (64 decode steps; dense-relative
-top-1 649/650). Resident C1 and interleaved C2 independent replay are byte-exact;
-cancellation, refill and allocation drain pass.
-
-These are offline numerical/lifecycle checks, not calibrated production-profile
-or free-running task certification. Heldouts are not proven disjoint from
-sidecar training. Packed multi-request execution, larger concurrency and
-full-session speculative rollback are unqualified. BF16 fallback is preserved;
-no general-serving promotion, whole-process memory percentage, throughput gain
-or new DMS INT8 context capacity is claimed.
-[Post-repair evidence and scope](results/2026-09-07-rx7900xtx-dms-int8-postfix-audit.json).
-Dense context commands, identity and accounting:
-[INT8 evidence audit](results/2026-09-07-rx7900xtx-int8-repair-capacity-audit.json).
+Four long-context categories pass (maximum KL 0.014937592; top-1 100%).
+All ten canonical short prompts, including four category heldouts, pass dense-BF16
+and BF16-DMS-relative checks (64 steps; dense-relative top-1 649/650).
+Resident C1/interleaved-C2 replay is byte-exact; cancellation/refill/drain pass.
+These are not calibrated production-profile or free-running task gates; heldouts
+are not proven sidecar-train-disjoint. Packed/larger-C execution and full-session
+speculative rollback are unqualified. BF16 fallback stays; no serving promotion,
+whole-process memory percentage, throughput gain or new context-capacity claim.
+[Numerical/lifecycle evidence](results/2026-09-07-rx7900xtx-dms-int8-postfix-audit.json);
+[dense context measurements](results/2026-09-07-rx7900xtx-int8-repair-capacity-audit.json).
 
 ## Current default notes
 
-W7900 automatic MTP is deliberately narrow. Qwen3.6 enables only its qualified
-C1 and resident-capacity-2 C2 keys; all other scopes use K0. Qwen3.8 retains
-production/BF16 C2/K2 at resident capacity 2, context 4-95, and D24. Every
-other scope miss remains K0. Evidence links are in the model sections below.
+W7900 Qwen3.6 enables automatic MTP only for its qualified single-request and
+capacity-2/two-request keys. **Qwen3.8-27B `Q4_K_M` uses ordinary AR by default
+at every width.** Explicit MTP is available with production/BF16 KV, context
+4-95 and 24 generated tokens: two active requests at resident capacity 2 with
+K2/K3, or eight at capacity 8 with K3. K denotes
+maximum draft candidates per request; other keys fall back to AR.
 
-**Qwen3.8-27B `Q4_K_M` no longer uses speculative decoding on this backend.** A
-full depth sweep on 2026-09-06 measured 20 cells across C2-C8 and K1-K3, each
-against an AR arm in the same process: every cell ran below its own AR, the
-closest being C8/K3 at 0.9902x. Both Qwen3.8 rows are therefore no longer
-automatic and the route selects AR at every width; explicit opt-in still works.
-Earlier published C2/K2 and C8/K3 speedups are withdrawn
-([artifact](results/2026-09-06-gfx1100-qwen38-mtp-ck-matrix.json)).
+The 2026-09-06 `epyc`/W7900 snapshots use all ten category/heldout prompts,
+greedy sampling, a 20 ms batch window and same-process true AR. All rows engage
+and are token-exact on 10/10 prompts; these single runs do not qualify latency
+or supply repeated-pair confidence estimates.
+
+| Active requests / resident capacity | Requested depth | AR tok/s | MTP tok/s | MTP / AR |
+| --- | --- | ---: | ---: | ---: |
+| 2 / 2 | K2 | 42.20 | 42.41 | 1.005x |
+| 8 / 8 | K3 | 92.67 | 97.35 | 1.051x |
+
+A separate explicit C2/K3 run measured 44.69 versus 41.87 AR tok/s (1.067x).
+The 56-cell screen mixes capacities and does not establish N=1 support.
+C1 public admission is withdrawn: its measurements used a legacy verifier;
+the repaired packed target is diagnostic-only. Automatic promotion needs
+repeated performance, numerical and lifecycle gates.
+[Measurements](results/2026-09-06-w7900-q4km-mtp-packet6-grid-and-c2k3.json);
+[qualification work](../docs/QWEN38-27B-GFX1100-CONCURRENCY2-BETTER-MTP.md).
 
 Strix Halo `Q4_K_M`: strict C1/K3 automatic at **18.191 tok/s (1.6445x AR)**; production explicit/K0. Production C8/K3 is **52.103 vs 52.025 AR tok/s**. Detailed gfx1151 evidence remains in result artifacts.
 
@@ -210,6 +206,14 @@ Aggregate prefill drops from c1 to c2 and then stays flat because one request
 prefills its 512 rows in a single slab while wider groups split into slot-fair
 bounded rounds against the 256-row prefill scratch. Tracked peak grows about
 0.85 GiB per added request, so the c8 shape does not fit a 24 GB card.
+No long-context setting is qualified for a 24 GB RX 7900 XTX. The 2026-09-06
+startup probe served one request at 3,072 context tokens and failed to start at
+4,096, with no measured BF16-versus-INT8 difference, but it sampled memory
+outside the prefill and decode peaks and never checked the live context length,
+so those points are not a published ceiling. Rerun condition: a repaired
+[`gguf_context_ceiling_probe.py`](../scripts/gguf_context_ceiling_probe.py)
+([`capacity notes`](../docs/QWEN38-27B-GFX1100-24GB-CAPACITY.md),
+[`probe artifact`](results/2026-09-06-rx7900xtx-qwen38-c1-context-ceiling.json)).
 Evidence: [`direct c1-c8 sweep`](results/2026-09-06-gfx1100-qwen38-q4km-direct-c1c8-sweep.json).
 
 ### Agentic quality (quality-only; no speed claim)
@@ -478,30 +482,17 @@ CUDA resident batching and serving are not claimed by these c1 rows.
 
 ## Reading the tables
 
-Workloads use `prompt_tokens/decode_tokens`. Compare only matching timing,
-model/quant/KV, concurrency, and memory scopes; bold identifies the reported
-row, not a universal leader.
+Workloads use `prompt_tokens/decode_tokens`; compare matching timing, model/quant/KV, concurrency and memory scopes.
+Bold marks the reported row, not a universal leader. Blank cells are unmeasured, not failures; Max context requires a dedicated ceiling run.
 
 ## Maintenance contract
 
-1. Replace the current row for a protocol tuple; do not append an optimization
-   diary beneath it.
-2. Put exact commands, samples, deltas, profiler data, correctness details, and
-   candidate decisions in the compact JSON artifact.
-3. Put the one-line old-to-new transition in [`CHANGELOG.md`](CHANGELOG.md) and
-   substantial implementation decisions in a new immutable worklog entry.
-4. Mention a blocked/rejected run here only when it removes a current numeric
-   row or defines a user-visible limitation. Link one artifact and one rerun
-   condition; keep candidate ladders out of the scoreboard.
-5. Keep superseded tables in [`HISTORY.md`](HISTORY.md), artifacts, or Git
-   history rather than copying them forward (`git show 6a8d38ae70b9e2c4244df10d8621db83da6c8112:benchmarks/README.md`).
-6. Update `Last updated`, then synchronize the public block:
-
-```bash
-python3 scripts/sync_benchmark_readme.py --write
-python3 scripts/sync_benchmark_readme.py --check
-git diff --check
-```
-
-The full evidence and artifact requirements remain authoritative in
-[`docs/BENCHMARK.md`](../docs/BENCHMARK.md).
+Replace protocol rows rather than adding optimization diaries. Keep commands,
+samples, deltas, profiler/correctness details and decisions in compact artifacts;
+record transitions in [`CHANGELOG.md`](CHANGELOG.md), decisions in immutable
+worklog entries and old tables in [`HISTORY.md`](HISTORY.md) or Git history (`git show 6a8d38ae70b9e2c4244df10d8621db83da6c8112:benchmarks/README.md`).
+Blocked/rejected runs belong here only for withdrawn rows or user-visible limits,
+with an artifact and rerun condition. [`docs/BENCHMARK.md`](../docs/BENCHMARK.md)
+defines the full evidence contract. Update `Last updated`, run
+`python3 scripts/sync_benchmark_readme.py --write`, then `--check` and
+`git diff --check`.
