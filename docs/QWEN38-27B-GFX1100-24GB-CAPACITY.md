@@ -3,7 +3,37 @@
 Status: measurement and optimization plan with scoped offline DMS INT8
 integration evidence. General production-serving qualification is not established.
 
-## Requested 75K / 74K / 72K ladder — 2026-09-07 UTC
+## Post-memory-cut ladder — 2026-09-07 UTC
+
+Four GPU-side memory cuts landed on the C1 DMS INT8 route (private-C1
+placement in the probe, demand-driven split-K partials, bulk prefill
+workspace release at DMS finalize, and layerwise compact pack with
+per-layer dense release; commits `6b46dcfdb`, `c85aaeeb3`, `9862407d2`,
+each with bit-exact decode logits against the pre-change route at 72K).
+At the unchanged 72K shape they cut the probe's whole-card peak from
+23.949 GiB to 21.467 GiB (−2.42 GiB; tracked 23.186 → 21.123 GiB) with
+no wall-clock change.
+
+The ladder after the cuts (same fresh-process/20 ms/600 s protocol):
+
+| Prompt tokens / decode appends | Outcome | Sampled whole-card peak | Headroom |
+| --- | --- | ---: | ---: |
+| 98,304 / 8 (96K) | Pass | 22.685 GiB | 993.0 MiB |
+| 102,400 / 8 (100K) | Pass | 22.933 GiB | 733.0 MiB |
+| 106,496 / 8 (104K) | Pass | 23.187 GiB | 473.0 MiB |
+| 110,592 / 8 (108K) | Pass | 23.441 GiB | 211.0 MiB |
+| 114,688 / 8 (112K) | Pass | 23.920 GiB | 38.8 MiB |
+| 118,784 / 8 (116K) | OOM (HIP error 2, 79.7 s in, early dense allocation) | 19.737 GiB before failure | — |
+
+The largest observed passing prompt is now **114,688** (+55.56% over the
+pre-cut 73,728); 118,784 is the smallest tested OOM and intermediate sizes
+are unqualified. 114,688 matches the August no-mirror INT8 singleton
+route's repeated-context size on the same model file. No maximum, quality,
+long-output or serving claim is made; DMS discards history, so fitting a
+longer prompt does not establish full-context quality.
+[`Post-cut ladder evidence`](../benchmarks/results/2026-09-07-rx7900xtx-dms-int8-postcuts-ladder.json).
+
+## Requested 75K / 74K / 72K ladder — 2026-09-07 UTC (pre-cut)
 
 | Prompt tokens / decode appends | Outcome | Sampled whole-card peak |
 | --- | --- | ---: |
@@ -13,9 +43,11 @@ integration evidence. General production-serving qualification is not establishe
 
 The passing point has 47.42 MiB sampled headroom; tracked peak is 23.186 GiB.
 This reaches the requested 23.9 GiB+ whole-card target. All three fresh
-processes returned GPU1 to baseline. The largest observed passing prompt is
-now 73,728; 75,776 is the smallest tested OOM. No maximum, long-output
-stability, new replay/teacher gate or general-serving qualification is claimed.
+processes returned GPU1 to baseline. The largest observed passing prompt
+was 73,728 before the same-day memory cuts above moved it to 114,688;
+75,776 was the smallest tested OOM on the pre-cut route. No maximum,
+long-output stability, new replay/teacher gate or general-serving
+qualification is claimed.
 [`Requested ladder evidence`](../benchmarks/results/2026-09-07-rx7900xtx-dms-int8-requested-backoff.json).
 The prior near-limit section below records the earlier measurements.
 
