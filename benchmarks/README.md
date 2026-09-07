@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-07 UTC**
 
+Q5_1 row16 publication rejected:two-bank512/1024 screen0.429x/0.412x,
+40 exact pairs,9 tests;no spills but larger LDS. Candidate removed,
+production row8 unchanged.
+[Evidence](results/2026-09-07-framework-qwen4exp-q51-row16-rejected.json).
+
 GDN wave normalization promoted on actual-model owner saving:
 serial p4096~487->467ms across four categories,378 calls/756 measured
 pairs exact,all call means faster. Full-suite throughput remains mixed

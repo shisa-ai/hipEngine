@@ -1,5 +1,7 @@
 # hipEngine Benchmark Changelog
 
+- [2026-09-07 UTC Q5_1 row16 rejected] Current spill-free row8->row16 two-bank screen0.429x/0.412x at512/1024 tokens,40 exact pairs,9 tests;LDS8672->16864B,VGPR96->88,scratch0. Candidate removed,production unchanged. `benchmarks/results/2026-09-07-framework-qwen4exp-q51-row16-rejected.json`.
+
 - [2026-09-07 UTC GDN wave-norm owner promotion] Six-case actual-model paired probe:serial p4096~487->467ms (~4% owner gain),378 calls/756 measured pairs exact,all means faster. Promote exact sub-window saving;prior mixed headline A/B retained,scratch24->36B. `benchmarks/results/2026-09-07-framework-qwen4exp-gdn-wave-norm-owner.json`.
 
 - [2026-09-07 UTC GDN wave-norm model] Full12-case PP189.921->189.940 (+0.010%)/200.458->200.736 (+0.139%)/184.904->184.822 (-0.044%),72 exact,mixed request means. Kernel retained default-off;actual-model sub-window gate next,no headline win. `benchmarks/results/2026-09-07-framework-qwen4exp-gdn-wave-norm-model.json`.
