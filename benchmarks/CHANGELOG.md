@@ -1,5 +1,7 @@
 # hipEngine Benchmark Changelog
 
+- [2026-09-07 UTC raw-Q token64 promotion] Full12-case PP190.315->191.353 (+0.545%)/202.324->203.168 (+0.417%)/186.490->186.895 (+0.217%),72 exact,all PP means positive.11 request wins,Japanese4096 request-0.183% retained per prefill-first,total1.001647x. `benchmarks/results/2026-09-07-framework-qwen4exp-mmq-token64-production.json`.
+
 - [2026-09-07 UTC raw-Q token64 admission] Five chunk1024 full-logit/state/KV cases exact,12/48 calls,zero decode/final owners;only raw-vector K2560/N12288 rows>=512. Both binders0,throughput delta N/A. `benchmarks/results/2026-09-07-framework-qwen4exp-mmq-token64-state.json`.
 
 - [2026-09-07 UTC raw MMQ token64] Exact128-output/64-token candidate:Q1024 layers3/7 1.109x/1.138x,200 exact screen pairs,23 tests,VGPR184->160/scratch0. Mixed short-Q/long-GR excluded;raw-Q model admission pending. `benchmarks/results/2026-09-07-framework-qwen4exp-mmq-token64.json`.

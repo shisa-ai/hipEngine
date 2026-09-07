@@ -800,8 +800,11 @@ Evidence: `2026-09-07-framework-qwen4exp-mmq-token64.json`.
 Default-off `HIPENGINE_QWEN4_EXP_MMQ_TOKEN64=1` model admission passes
 five chunk1024 full-logit/state/KV cases,12/48 calls,zero decode/final
 owners. Parent raw-vector K2560/N12288 rows>=512 only;prepacked unchanged.
-Both binders0 pending throughput qualification.
+Production binder1/strict0 after full72 exact trajectories and all12
+prefill means improve. One request-case loss0.183% explicitly retained
+under prefill-first policy;prepacked/GR unchanged.
 Admission: `2026-09-07-framework-qwen4exp-mmq-token64-state.json`.
+Production: `2026-09-07-framework-qwen4exp-mmq-token64-production.json`.
 
 Q8 MMQ bank-first compute experiment removed:actual qkv/Q512 medians
 1.000x/0.998x,1024 medians1.013x/1.020x but opposite-order means

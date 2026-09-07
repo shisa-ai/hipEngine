@@ -76,6 +76,20 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Raw-Q token64 promoted (September7 UTC):** clean ee36b0b75,
+full12-case chunk1024 A/B,72 exact trajectories,all12 prefill means
+improve. PP512/1024/4096:190.315->191.353 (+0.545%),
+202.324->203.168 (+0.417%),186.490->186.895 (+0.217%).
+Total request1.001647x;11/12 request means improve. Japanese4096
+request wall increases0.183%,TG decreases0.706%;retain explicitly
+under prefill-first direction. Aggregate TG-0.003%/-0.076%/+0.088%.
+The all-request-win retention helper correctly declines;this is a
+documented prefill-first retention,not an all-case non-regression claim.
+Max PP/TG CV1.016%/5.131%,measured span27m39s. No favorable rerun.
+Production1/strict0,parent raw-vector K2560/N12288 rows>=512 only;
+prepacked qkv/GR unchanged. External screening rates remain revision-pinned.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-mmq-token64-production.json).
+
 **Raw-Q token64 admission (September7 UTC):** default-off
 `HIPENGINE_QWEN4_EXP_MMQ_TOKEN64=1` replaces only existing raw-vector
 K2560/N12288 Q at rows>=512. Five full-logit/state/KV off/on/off cases
