@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import types
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -13,6 +14,7 @@ from hipengine.kernels.policy import (
     QWEN35_MOE_H2048_E256_GEOMETRY,
 )
 from hipengine.runtime import qwen35_gguf_runner as gguf_runner
+from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 from hipengine.runtime.qwen35_gguf_mtp import _resolve_gguf_verifier_backend
 
 _Q4_K_M = "MOSTLY_Q4_K_M"
@@ -81,10 +83,78 @@ def test_dense_backend_policies_are_geometry_keyed() -> None:
         "GGUF_Q4_T16_UNEQUAL_PAIR_PREFILL_POLICIES",
         "GGUF_DENSE_T16_F16_ROCBLAS_PREFILL_POLICIES",
         "GGUF_DENSE_PREFILL_SCRATCH_LIVENESS_POLICIES",
+        "GGUF_DENSE_PREFILL_SCRATCH_ROW_CAP_POLICIES",
     ):
         policies = backend_package_capability("hip_gfx1100", capability, {})
         assert identity in policies
         assert all(not isinstance(key[0], str) for key in policies)
+
+
+def test_gfx1100_qwen38_dense_prefill_scratch_row_cap_bounds_declared_context() -> None:
+    """Declared 1K+ contexts must not size bulk-prefill scratch by max_positions.
+
+    On the 24GB-class XTX the retained >1K policy resolves a 4096-row full-attn
+    query chunk, so any declared context at or below 4096 made
+    ``_prefill_scratch_rows`` return the full declared capacity and the session
+    scratch scaled ~1 MiB per declared token (measured 2026-09-06: BF16
+    3,328->3,840 cost +0.496 GiB peak for +512 declared tokens while KV payload
+    is 64 KiB/token). The geometry policy bounds scratch rows to the retained
+    1024-row chunk that the low-memory and 8K+ policies already use; prompts
+    below 1,024 rows keep today's unchunked scratch. The d512 concurrency arm
+    (declared 1,280, ~0.99 GiB/request slope) is dominated by the same scratch
+    (2026-09-06: N=4/5 warmup OOM unchanged with only the 2,048 threshold).
+    """
+
+    runner = _dense_runner()
+    identity = (QWEN35_DENSE_H5120_GEOMETRY, _Q4_K_M)
+    policies = backend_package_capability(
+        "hip_gfx1100", "GGUF_DENSE_PREFILL_SCRATCH_ROW_CAP_POLICIES", {}
+    )
+    assert identity in policies
+    assert all(not isinstance(key[0], str) for key in policies)
+
+    assert gguf_runner._gguf_dense_prefill_scratch_row_cap(
+        runner, capacity=768
+    ) is None
+    assert gguf_runner._gguf_dense_prefill_scratch_row_cap(
+        runner, capacity=1_024
+    ) == 1_024
+    assert gguf_runner._gguf_dense_prefill_scratch_row_cap(
+        runner, capacity=2_048
+    ) == 1_024
+    assert gguf_runner._gguf_dense_prefill_scratch_row_cap(
+        runner, capacity=3_840
+    ) == 1_024
+    assert gguf_runner._gguf_dense_prefill_scratch_row_cap(
+        runner, capacity=4_864
+    ) == 1_024
+    assert gguf_runner._gguf_dense_prefill_scratch_row_cap(
+        runner, capacity=8_192
+    ) == 1_024
+
+    session = SimpleNamespace(
+        runner=runner,
+        prefill_config=None,
+        prefill_chunk_size=0,
+    )
+    for method in (
+        "_manual_prefill_chunk_size",
+        "_linear_prefill_layer_chunk_size",
+        "_full_attention_prefill_layer_chunk_size",
+        "_prefill_scratch_rows",
+    ):
+        setattr(
+            session,
+            method,
+            types.MethodType(getattr(Qwen35GGUFResidentSession, method), session),
+        )
+    # Static helper: must stay an unbound plain function on the fake session.
+    session._smallest_positive_or_total = (
+        Qwen35GGUFResidentSession._smallest_positive_or_total
+    )
+    assert session._prefill_scratch_rows(3_840) == 1_024
+    assert session._prefill_scratch_rows(1_280) == 1_024
+    assert session._prefill_scratch_rows(768) == 768
 
 
 def test_gfx1151_qwen38_memory_policies_are_geometry_and_quant_scoped() -> None:

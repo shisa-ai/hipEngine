@@ -277,6 +277,48 @@ def test_chunked_kv_pool_grows_and_shrinks_on_burst_idle() -> None:
     assert again.pointers == (pool.pointer_for(0),)
 
 
+def test_device_chunked_kv_pool_reports_retired_pages_and_bytes() -> None:
+    freed: list[int] = []
+
+    def allocate_chunk(start_block_id: int, pages: int):
+        return {
+            "ptr": 0x90000000 + len(freed) * 0x100000,
+            "pages": int(pages),
+        }
+
+    pool = DeviceChunkedKVPool(
+        page_bytes=4096,
+        initial_pages=2,
+        low_water_pages=2,
+        chunk_pages=2,
+        idle_grace_seconds=1.0,
+        allocate_chunk=allocate_chunk,
+        free_chunk=lambda backing: freed.append(int(backing["ptr"])),
+        page_pointer=lambda backing, local_page: int(backing["ptr"]) + int(local_page) * 4096,
+    )
+
+    pool.allocate(10, 4, now_seconds=1.0)
+    pool.release(10, now_seconds=2.0)
+    assert pool.shrink_idle(now_seconds=4.0) == 4
+    assert pool.stats.retired_pages == 4
+    assert pool.stats.retired_bytes == 4 * 4096
+
+    pool.allocate(20, 4, now_seconds=5.0)
+    pool.release(20, now_seconds=6.0)
+    assert pool.shrink_idle(now_seconds=8.0) == 4
+    assert pool.stats.retired_pages == 8
+    assert pool.stats.retired_bytes == 8 * 4096
+
+    pool.close()
+    assert pool.stats.retired_pages == 10
+    assert pool.stats.retired_bytes == 10 * 4096
+    assert len(freed) == 3
+
+    payload = pool.stats.to_json_dict()
+    assert payload["retired_pages"] == 10
+    assert payload["retired_bytes"] == 10 * 4096
+
+
 def test_device_chunked_kv_pool_burst_shrink_regrow_preserves_live_pointers() -> None:
     allocated: list[tuple[int, int, int]] = []
     freed: list[int] = []

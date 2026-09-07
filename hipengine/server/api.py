@@ -4579,6 +4579,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 speculative_provider=config.speculative_provider,
                 draft_model=config.draft_model,
                 speculative_candidate_budget=config.speculative_candidate_budget,
+                kv_storage=config.kv_storage,
+                kv_scale_dtype=config.kv_scale_dtype,
+                kv_scale_granularity=config.kv_scale_granularity,
             )
             _log_effective_mtp_config(config, engine=app.state.hipengine_llm)
         mtp_circuit_breaker.attach(app.state.hipengine_llm)
@@ -8679,6 +8682,8 @@ def _render_prometheus_metrics(
         "hipengine_kv_pool_free_pages": pool["free_pages"],
         "hipengine_kv_pool_refcounted_pages": pool["refcounted_pages"],
         "hipengine_kv_pool_pinned_pages": pool["pinned_pages"],
+        "hipengine_kv_pool_retired_pages_total": pool["retired_pages"],
+        "hipengine_kv_pool_retired_bytes_total": pool["retired_bytes"],
         "hipengine_graph_bucket_entries": graph["entries"],
         "hipengine_graph_bucket_hits_total": graph["hits"],
         "hipengine_graph_bucket_misses_total": graph["misses"],
@@ -8746,6 +8751,8 @@ def _render_prometheus_metrics(
         "hipengine_kv_pool_free_pages": "Current dynamic KV pool free pages, or 0 when unavailable.",
         "hipengine_kv_pool_refcounted_pages": "Current dynamic KV pool refcounted pages, or 0 when unavailable.",
         "hipengine_kv_pool_pinned_pages": "Current graph-pinned dynamic KV pages, or 0 when unavailable.",
+        "hipengine_kv_pool_retired_pages_total": "Cumulative dynamic KV pool pages returned to the device allocator, or 0 when unavailable.",
+        "hipengine_kv_pool_retired_bytes_total": "Cumulative dynamic KV pool bytes returned to the device allocator, or 0 when unavailable.",
         "hipengine_graph_bucket_entries": "Current graph bucket cache entries, or 0 when unavailable.",
         "hipengine_graph_bucket_hits_total": "Graph bucket cache hits, or 0 when unavailable.",
         "hipengine_graph_bucket_misses_total": "Graph bucket cache misses, or 0 when unavailable.",
@@ -8909,6 +8916,8 @@ _KV_POOL_METRIC_DEFAULTS = {
     "free_pages": 0.0,
     "refcounted_pages": 0.0,
     "pinned_pages": 0.0,
+    "retired_pages": 0.0,
+    "retired_bytes": 0.0,
 }
 
 
@@ -9075,6 +9084,8 @@ def _stats_to_mapping(stats: Any) -> Mapping[str, Any]:
         "free_pages",
         "refcounted_pages",
         "pinned_pages",
+        "retired_pages",
+        "retired_bytes",
         "entries",
         "hits",
         "misses",

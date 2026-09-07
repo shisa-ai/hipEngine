@@ -43,7 +43,8 @@ _ARTIFACT_SHA256 = (
     "f9b9669ec935585fe425617db138751c75aa3f0aa12d67e7139061bcb9c8c4c3"
 )
 _POST_MERGE_PACKAGE_SHA256 = (
-    "3ad3c08b4243a3636c88e4f55cd087f2aaa7d35f2e801093627b4d3c6bb651a8"
+    # Audited Qwen-only policy additions; all 39 Laguna assignments are unchanged.
+    "714910eca69c3633d3c810d9647beacb6f28e0830df173f8ca88708d0ae28ea9"
 )
 _POST_MERGE_SOURCE_SHA256 = {
     # Maple P1 templates the existing stable parallel count/scatter bodies so

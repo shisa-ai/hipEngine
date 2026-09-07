@@ -15,7 +15,8 @@ def test_smoke_add_registers_lazy_wrapper_without_building() -> None:
     assert resolve(backend="hip_gfx1100", layer="smoke_add", quant="fp16") is smoke_add_f32
 
 
-def test_smoke_add_build_plan_is_dry_run_safe(tmp_path) -> None:
+def test_smoke_add_build_plan_is_dry_run_safe(tmp_path, monkeypatch) -> None:
+    monkeypatch.delenv("HIPENGINE_HIP_ARCH", raising=False)
     artifact = plan_smoke_add_build(
         cache_root=tmp_path / "cache",
         compiler_version="hipcc smoke test version",

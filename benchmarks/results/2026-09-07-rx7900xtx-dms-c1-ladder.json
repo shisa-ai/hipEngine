@@ -1,0 +1,190 @@
+{
+  "schema_version": 1,
+  "kind": "hipengine_rx7900xtx_dms_c1_ladder",
+  "date": "2026-09-07",
+  "host": "7900 XTX (gfx1100), GPU1, PCI 0000:10:00.0",
+  "performance_claim": false,
+  "protocol": "scripts/qwen38_dms_integrated_long.py, cold session per run, trained DMS BF16 (window 8,192, target ratio 2, exact-budget prefill), decode-steps 4, backend hip_gfx1100, XTX manifest sha 9b8dacd9111ddf5b (not train-disjoint, same stream all rungs)",
+  "command": "HIP_VISIBLE_DEVICES=1 GPU_MAX_HW_QUEUES=1 python3 scripts/qwen38_dms_integrated_long.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --metadata /models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json --data-manifest /models/dms/xtx-manifests/qwen38-27b-q4km-xtx-capacity-manifest.json --prompt-tokens {W} --decode-steps 4 --backend hip_gfx1100",
+  "passes": [
+    {
+      "prompt_tokens": 8192,
+      "status": "passed",
+      "max_live_count": 8196,
+      "logical_token_rows": 524544,
+      "actual_compression_ratio": 1.0,
+      "payload_MiB": 512.2,
+      "dense_prefill_owner_peak_MiB": 17477.3,
+      "after_compact_pack_MiB": 17480.1,
+      "after_close_MiB": 0.0,
+      "prefill_seconds": 10.7,
+      "extent_allocation_failures": 0,
+      "finite_logits": true
+    },
+    {
+      "prompt_tokens": 16384,
+      "status": "passed",
+      "max_live_count": 12293,
+      "logical_token_rows": 1048832,
+      "actual_compression_ratio": 1.33312,
+      "payload_MiB": 768.3,
+      "dense_prefill_owner_peak_MiB": 18006.2,
+      "after_compact_pack_MiB": 17754.4,
+      "after_close_MiB": 0.0,
+      "prefill_seconds": 23.5,
+      "extent_allocation_failures": 0,
+      "finite_logits": true
+    },
+    {
+      "prompt_tokens": 24576,
+      "status": "passed",
+      "max_live_count": 16389,
+      "logical_token_rows": 1573120,
+      "actual_compression_ratio": 1.49979,
+      "payload_MiB": 1024.3,
+      "dense_prefill_owner_peak_MiB": 18535.2,
+      "after_compact_pack_MiB": 18028.6,
+      "after_close_MiB": 0.0,
+      "prefill_seconds": 38.4,
+      "extent_allocation_failures": 0,
+      "finite_logits": true
+    },
+    {
+      "prompt_tokens": 32768,
+      "status": "passed",
+      "max_live_count": 20485,
+      "logical_token_rows": 2097408,
+      "actual_compression_ratio": 1.5998,
+      "payload_MiB": 1280.3,
+      "dense_prefill_owner_peak_MiB": 19064.2,
+      "after_compact_pack_MiB": 18302.9,
+      "after_close_MiB": 0.0,
+      "prefill_seconds": 55.7,
+      "extent_allocation_failures": 0,
+      "finite_logits": true
+    },
+    {
+      "prompt_tokens": 40960,
+      "status": "passed",
+      "max_live_count": 24581,
+      "logical_token_rows": 2621696,
+      "actual_compression_ratio": 1.66649,
+      "payload_MiB": 1536.3,
+      "dense_prefill_owner_peak_MiB": 19593.2,
+      "after_compact_pack_MiB": 18577.1,
+      "after_close_MiB": 0.0,
+      "prefill_seconds": 75.6,
+      "extent_allocation_failures": 0,
+      "finite_logits": true
+    },
+    {
+      "prompt_tokens": 45056,
+      "status": "passed",
+      "max_live_count": 26629,
+      "logical_token_rows": 2883840,
+      "actual_compression_ratio": 1.69214,
+      "payload_MiB": 1664.3,
+      "dense_prefill_owner_peak_MiB": 19857.6,
+      "after_compact_pack_MiB": 18714.2,
+      "after_close_MiB": 0.0,
+      "prefill_seconds": 86.2,
+      "extent_allocation_failures": 0,
+      "finite_logits": true
+    },
+    {
+      "prompt_tokens": 49152,
+      "status": "passed",
+      "max_live_count": 28677,
+      "logical_token_rows": 3145984,
+      "actual_compression_ratio": 1.71413,
+      "payload_MiB": 1792.3,
+      "dense_prefill_owner_peak_MiB": 20122.1,
+      "after_compact_pack_MiB": 18851.3,
+      "after_close_MiB": 0.0,
+      "prefill_seconds": 96.6,
+      "extent_allocation_failures": 0,
+      "finite_logits": true
+    },
+    {
+      "prompt_tokens": 57344,
+      "status": "passed",
+      "max_live_count": 32773,
+      "logical_token_rows": 3670272,
+      "actual_compression_ratio": 1.74986,
+      "payload_MiB": 2048.3,
+      "dense_prefill_owner_peak_MiB": 20651.1,
+      "after_compact_pack_MiB": 19125.5,
+      "after_close_MiB": 0.0,
+      "prefill_seconds": 121.6,
+      "extent_allocation_failures": 0,
+      "finite_logits": true
+    },
+    {
+      "prompt_tokens": 65536,
+      "status": "passed",
+      "max_live_count": 36869,
+      "logical_token_rows": 4194560,
+      "actual_compression_ratio": 1.77765,
+      "payload_MiB": 2304.3,
+      "dense_prefill_owner_peak_MiB": 21180.1,
+      "after_compact_pack_MiB": 19399.8,
+      "after_close_MiB": 0.0,
+      "prefill_seconds": 148.3,
+      "extent_allocation_failures": 0,
+      "finite_logits": true
+    },
+    {
+      "prompt_tokens": 73728,
+      "status": "passed",
+      "max_live_count": 40965,
+      "logical_token_rows": 4718848,
+      "actual_compression_ratio": 1.79988,
+      "payload_MiB": 2560.3,
+      "dense_prefill_owner_peak_MiB": 21709.1,
+      "after_compact_pack_MiB": 19674.0,
+      "after_close_MiB": 0.0,
+      "prefill_seconds": 175.2,
+      "extent_allocation_failures": 0,
+      "finite_logits": true
+    }
+  ],
+  "failures": [
+    {
+      "prompt_tokens": 73984,
+      "result": "HIP error 1 (invalid argument)",
+      "stage": "dense prefill kernel qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans",
+      "classification": "pre-existing functional blocker class (same error-1 class recorded for qualified INT8 at (15,872, 16,128] on the base tree); width-adjacent, non-monotone (81,920 prefill succeeded)"
+    },
+    {
+      "prompt_tokens": 74752,
+      "result": "HIP error 2 (out of memory)",
+      "stage": "compact backend allocation in _finalize_external_dms_prefill -> create_dms_bf16_backend (dense owner still live)"
+    },
+    {
+      "prompt_tokens": 75776,
+      "result": "HIP error 2 (out of memory)",
+      "stage": "compact backend allocation at pack (same as 74,752)"
+    },
+    {
+      "prompt_tokens": 81920,
+      "result": "HIP error 2 (out of memory)",
+      "stage": "compact backend allocation at pack (same as 74,752)"
+    }
+  ],
+  "boundary": {
+    "last_pass_declared_tokens": 73728,
+    "first_failure_declared_tokens": 73984,
+    "first_oom_failure_declared_tokens": 74752,
+    "refinement": "256-token page-aligned steps above 73,728; 73,728 passed three times across the session (repeat-stable)",
+    "failure_mechanisms": {
+      "oom_binding_constraint": "dense BF16 prefill owner + compact backend coexist at pack time; the sum is the memory limit, not either alone (dense peak 21,709 MiB at 73,728 + compact payload 2,560 MiB + metadata exceeds the 24 GB card)",
+      "error1_blocker": "HIP error 1 in the dense prefill owner at 73,984 - pre-existing functional blocker class, not a memory ceiling; recorded, not diagnosed here"
+    }
+  },
+  "window_boundary_note": "8,192 rung sits at the protected-window edge (ratio 1.0, no eviction); ratio climbs toward the 2.0 target as the window shrinks relative to context (1.778 at 65,536)",
+  "limitations": [
+    "diagnostic capacity evidence; no throughput claim (prefill time recorded for context only)",
+    "single resident session C1 only; C2/C4/C8 concurrency, heterogeneous lengths, cancellation, pressure/refill not yet run",
+    "decode-time eviction not exercised (exact-budget prefill selection only)"
+  ]
+}

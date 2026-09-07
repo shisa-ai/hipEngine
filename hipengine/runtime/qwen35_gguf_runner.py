@@ -11,7 +11,7 @@ from dataclasses import asdict, dataclass, field, replace
 from functools import partial
 from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
-from typing import Mapping, Protocol, Sequence
+from typing import Callable, Mapping, Protocol, Sequence
 
 import numpy as np
 
@@ -14433,6 +14433,7 @@ class Qwen35GGUFResidentSession:
     dms_metadata_path: str | Path | None = None
     dms_max_new_tokens: int = 256
     dms_decision_mode: str = "sidecar"
+    dms_backend_factory: Callable | None = None
     runner: Qwen35GGUFFullStackRunner | None = field(default=None, init=False)
     scratch: object | None = field(default=None, init=False)
     _target_scratch_owner: object | None = field(default=None, init=False)
@@ -15252,7 +15253,8 @@ class Qwen35GGUFResidentSession:
                 )[0]
                 max_live = max(max_live, int(np.count_nonzero(keep)))
         per_head = max_live + int(self.dms_max_new_tokens)
-        backend = create_dms_bf16_backend(
+        backend_factory = self.dms_backend_factory or create_dms_bf16_backend
+        backend = backend_factory(
             retrofit=source.config,
             slots_per_layer=source.config.num_kv_heads * per_head,
             max_request_rows=1,
@@ -21086,6 +21088,7 @@ class Qwen35GGUFResidentSession:
         )
         gpu_stage_recorder.start()
         try:
+            self._refresh_dms_decode_owner_marker()
             with gemv_decode_session(self.use_gemv_decode):
                 hidden_ptr = self._run_token_to_final_hidden(
                     int(token_id),
@@ -21115,6 +21118,7 @@ class Qwen35GGUFResidentSession:
 
         if position is not None and int(position) != self._position:
             raise ValueError(f"position {position} does not match session cursor {self._position}")
+        self._refresh_dms_decode_owner_marker()
         with gemv_decode_session(self.use_gemv_decode):
             hidden_ptr = self._run_token_to_final_hidden(
                 int(token_id),
@@ -21128,6 +21132,28 @@ class Qwen35GGUFResidentSession:
         """Read the token produced by ``step_async_top1`` after stream sync."""
 
         return self._read_sample(return_logits=False)
+
+    def _refresh_dms_decode_owner_marker(self) -> None:
+        """Claim (or clear) the shared runner's DMS decode-owner marker.
+
+        External DMS decode dispatch resolves the owning session from a single
+        runner-level marker set at prefill finalize. With multiple resident
+        sessions sharing one runner, the last-prefilled session would
+        otherwise keep ownership and every other session's decode would route
+        through its DMS backend/state. Decode steps execute sequentially on
+        the shared runner, so refreshing the marker at each decode entry
+        gives each interleaved step its own session's DMS context; a session
+        without a DMS backend clears a foreign marker so dense decode never
+        inherits DMS routing.
+        """
+
+        runner = self.runner
+        if runner is None:
+            return
+        if self._dms_backend is not None:
+            runner.__dict__["_dms_decode_owner"] = self
+            return
+        runner.__dict__.pop("_dms_decode_owner", None)
 
     def _resident_ar_kv_layout_for_sessions(
         self,
@@ -24216,7 +24242,12 @@ class Qwen35GGUFResidentSession:
         scratch = self._packed_verify_scratch
         capacity = getattr(self, "max_batch_size", None)
         try:
-            capacity = max(_PACKED_VERIFY_DEFAULT_SLOT_CAPACITY, int(capacity))
+            # Capacity-honest workspace ceiling: the serving loop can never
+            # open more resident slots than max_active_requests (MTP serving
+            # widths and packed group layouts are both bounded by it), so the
+            # workspace follows the real cap instead of the historical 8-slot
+            # floor. Absent or invalid caps keep the historical fallback.
+            capacity = max(1, int(capacity))
         except (TypeError, ValueError):
             capacity = _PACKED_VERIFY_DEFAULT_SLOT_CAPACITY
         state_slots = capacity

@@ -1,0 +1,41 @@
+{
+  "schema": "hipengine.benchmark-artifact/v1",
+  "date": "2026-09-07",
+  "kind": "diagnostic",
+  "campaign": "qwen38-27b-gfx1100-24gb-capacity",
+  "packet": 2,
+  "performance_claim": "MTP-capable K0 (serving off) request peaks at Qwen3.8-27B Q4_K_M BF16 KV on RX 7900 XTX, N=2: context 1024 = 21.307 GiB and context 1536 = 21.578 GiB measured from cold with the fixed prompt-fit probe and the 1024-row prefill-scratch cap; the MTP-armed opt_in mode cannot reach serving readiness because its startup scratch-probe engine-service child hangs (width 2), so 'before' is measurable only as serving-off today.",
+  "diagnostic": true,
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "backend": "hip_gfx1100",
+    "quant": "gguf_q4_k_m"
+  },
+  "device": {
+    "host": "lhl-xtx",
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "gfx": "gfx1100",
+    "device_index": 1,
+    "env": ["HIP_VISIBLE_DEVICES=1", "GPU_MAX_HW_QUEUES=1"]
+  },
+  "protocol": {
+    "tool": "scripts/gguf_context_ceiling_probe.py",
+    "mode": "paired-owner-serving cold start, one N=2 exact request to the intended horizon, post-request idle gate",
+    "commit": "facc0dc9f",
+    "command": "HIP_VISIBLE_DEVICES=1 GPU_MAX_HW_QUEUES=1 uv run python scripts/gguf_context_ceiling_probe.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage bf16 --context {1024,1536} --max-tokens 16 --max-active-requests 2 --speculative-mtp-serving off --gpu-index 1 --json /tmp/xtx-capacity/k0r-{ctx}-off.json"
+  },
+  "points": [
+    {"context": 1024, "kv_storage": "bf16", "mtp_serving": "off", "status": "ok", "peak_gib": 21.307},
+    {"context": 1536, "kv_storage": "bf16", "mtp_serving": "off", "status": "ok", "peak_gib": 21.578}
+  ],
+  "prior_context": {
+    "note": "Pre-cap probe attempts (commit 667ba49) never landed: the 1024 pair failed on the probe prompt-fit off-by-one (fixed) plus an orphaned-server idle-gate flake; pre-cap 1536 off measured 22.574 GiB (not committed). Post-cap 1536 improves to 21.578 GiB (-0.996 GiB), consistent with the retained-scratch reduction.",
+    "pre_cap_1536_off_peak_gib": 22.574
+  },
+  "blocker": {
+    "owner": "MTP campaign",
+    "finding": "speculative_mtp_serving=opt_in cannot reach readiness: STARTUP_SCRATCH_PROBE 'failed at probe_prompt_tokens=1023: engine service command timed out' — the MTP-armed warmup path hangs the engine-service child at width 2, while speculative_mtp_serving=enabled crashes the same path with KeyError blk.40.attn_q_norm.weight. Both non-off modes are unusable at startup; the armed-but-unengaged K0 state (opt_in) and the engaged K state are unmeasurable until the MTP warmup bug is fixed.",
+    "evidence": "/tmp/xtx-capacity/k0r-1024-optin.server.log (probe exit 124 after 700 s, server returning 503 throughout)"
+  },
+  "note": "K0-off points complete the 'before' half of the Packet 2 K0 clause; the opt_in arm and the K0->K engaged delta remain blocked on the MTP-serving warmup bug."
+}

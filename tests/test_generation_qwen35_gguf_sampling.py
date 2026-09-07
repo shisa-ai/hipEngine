@@ -434,6 +434,56 @@ def test_gguf_generator_prepares_explicit_int8_session_policy_and_rejects_switch
         generator._prepare_kv_policy(_request(kv_storage="bf16"))
 
 
+def test_eager_model_load_prepare_honors_a_server_policy_hint(monkeypatch) -> None:
+    """The eager driver prepare must lock the server policy, not auto-BF16.
+
+    Since the eager ``prepare_runner()`` in SubmitPollTextGenerator, a server
+    started with ``--kv-storage int8_per_token_head`` failed at startup:
+    the no-request prepare resolved ``auto`` to BF16 and the later explicit
+    INT8 prepare raised "KV policy cannot change after preparation".
+    """
+
+    for name in qwen35_gguf._GGUF_INT8_KV_DIAGNOSTIC_OVERRIDE_ENVS:
+        monkeypatch.delenv(name, raising=False)
+    generator = _generator()
+    generator.model_plugin = Qwen35GGUFModel()
+    generator.weight_index = SimpleNamespace(file_type_name="MOSTLY_Q4_K_M")
+    generator._kv_model_artifact_identity = lambda: qwen35_gguf.ModelArtifactIdentity(
+        path="/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        size_bytes=17_106_773_984,
+        sha256="7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+        content_verified=True,
+    )
+    generator.request_kv_policy_hint = (
+        "int8_per_token_head",
+        "fp32",
+        "per_token_head",
+    )
+
+    generator._prepare_kv_policy(None)
+
+    assert generator._prepared_kv_signature == (
+        "int8_per_token_head",
+        "uniform",
+        "fp32",
+        "per_token_head",
+    )
+    assert generator.kv_capability_provenance["runtime_action"] == "admit"
+
+
+def test_eager_model_load_prepare_without_hint_keeps_auto_bf16() -> None:
+    generator = _generator()
+
+    generator._prepare_kv_policy(None)
+
+    assert generator._prepared_kv_signature == (
+        "bf16",
+        "uniform",
+        "fp16",
+        "per_token_head",
+    )
+
+
 def test_gguf_unknown_int8_artifact_fails_closed_to_bf16(monkeypatch) -> None:
     for name in qwen35_gguf._GGUF_INT8_KV_DIAGNOSTIC_OVERRIDE_ENVS:
         monkeypatch.delenv(name, raising=False)

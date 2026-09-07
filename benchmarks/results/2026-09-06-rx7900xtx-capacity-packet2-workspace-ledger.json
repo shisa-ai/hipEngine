@@ -1,0 +1,281 @@
+{
+  "schema": 1,
+  "kind": "capacity_packet2_workspace_rightsize_ledger",
+  "created_at": "2026-09-06T12:05:00Z",
+  "performance_claim": false,
+  "diagnostic": true,
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "host": "AMD Radeon Pro W7900 workstation, campaign GPU = RX 7900 XTX (PCI 0000:10:00.0, unique_id 0xcc4d02090dc9c3ff)",
+  "command": "uv run python scripts/qwen38_xtx_allocation_ledger.py --kv-storage {bf16|int8_per_token_head} --context 3072 --max-active-requests 1 --run-request --json <artifact> (HIP_VISIBLE_DEVICES=1 GPU_MAX_HW_QUEUES=1)",
+  "protocol": "one cold in-process server per point, MTP off, prefix cache off, sysfs VramSampler 20 ms, concurrent tracked-allocation histogram sampling; fixed intercept separated from request transients via live snapshots",
+  "change": "packed workspace lease + union geometry right-sized from max(8, capacity) slots to capacity slots (server fix: capacity-honest serving cap)",
+  "runs": {
+    "before_bf16_3072_c1": {
+      "kv_storage": "bf16",
+      "context_tokens": 3072,
+      "max_active_requests": 1,
+      "lease_pages": 96,
+      "pool_pages": 108,
+      "load_sysfs_gib": 19.742,
+      "request_peak_sysfs_gib": 23.328,
+      "tracked_peak_gib": 19.162,
+      "request": {
+        "prompt_tokens": 2677,
+        "elapsed_s": 4.601,
+        "output_chars": 92,
+        "peak_live_large_allocations": {
+          "total_bytes": 6025875456,
+          "allocation_count": 49,
+          "largest_bytes": 1042944000,
+          "top_sizes": [
+            [
+              73113600,
+              32
+            ],
+            [
+              1042944000,
+              1
+            ],
+            [
+              715161600,
+              1
+            ],
+            [
+              75497472,
+              6
+            ],
+            [
+              213909504,
+              2
+            ],
+            [
+              106954752,
+              4
+            ],
+            [
+              367853568,
+              1
+            ],
+            [
+              125829120,
+              2
+            ]
+          ]
+        }
+      },
+      "planned_weight_census": {
+        "logical_tensor_count": 851,
+        "alias_count": 0,
+        "source_nbytes": 16806250496,
+        "resident_nbytes": 17170958336,
+        "alternate_layout_nbytes": 0,
+        "issues": [],
+        "gguf_nextn_tensor_count": 4,
+        "gguf_nextn_source_nbytes": 55767040,
+        "gguf_file_bytes": 17106773984
+      },
+      "device": {
+        "pci_id": "0000:10:00.0",
+        "drm_card": "card0",
+        "unique_id": "cc4d02090dc9c3ff",
+        "vram_total_bytes": 25753026560,
+        "hip_visible_devices": "1"
+      },
+      "config_full": {
+        "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "backend": "hip_gfx1100",
+        "quant": "gguf_q4_k_m",
+        "kv_storage": "bf16",
+        "kv_scale_dtype": null,
+        "kv_scale_granularity": null,
+        "context_tokens": 3072,
+        "max_active_requests": 1,
+        "max_tokens": 16,
+        "run_request": true
+      },
+      "metric_note": "tracked_allocator counts hipengine malloc/free bookkeeping; dynamic_pool is the shared KV pool's own accounting; sysfs is whole-card committed VRAM, which includes driver/runtime overhead the tracked allocator cannot see."
+    },
+    "after_bf16_3072_c1": {
+      "kv_storage": "bf16",
+      "context_tokens": 3072,
+      "max_active_requests": 1,
+      "lease_pages": 12,
+      "pool_pages": 24,
+      "load_sysfs_gib": 18.429,
+      "request_peak_sysfs_gib": 20.998,
+      "tracked_peak_gib": 17.849,
+      "request": {
+        "prompt_tokens": 2677,
+        "elapsed_s": 4.564,
+        "output_chars": 92,
+        "peak_live_large_allocations": {
+          "total_bytes": 6025875456,
+          "allocation_count": 49,
+          "largest_bytes": 1042944000,
+          "top_sizes": [
+            [
+              73113600,
+              32
+            ],
+            [
+              1042944000,
+              1
+            ],
+            [
+              715161600,
+              1
+            ],
+            [
+              75497472,
+              6
+            ],
+            [
+              213909504,
+              2
+            ],
+            [
+              106954752,
+              4
+            ],
+            [
+              367853568,
+              1
+            ],
+            [
+              125829120,
+              2
+            ]
+          ]
+        }
+      },
+      "planned_weight_census": {
+        "logical_tensor_count": 851,
+        "alias_count": 0,
+        "source_nbytes": 16806250496,
+        "resident_nbytes": 17170958336,
+        "alternate_layout_nbytes": 0,
+        "issues": [],
+        "gguf_nextn_tensor_count": 4,
+        "gguf_nextn_source_nbytes": 55767040,
+        "gguf_file_bytes": 17106773984
+      },
+      "device": {
+        "pci_id": "0000:10:00.0",
+        "drm_card": "card0",
+        "unique_id": "cc4d02090dc9c3ff",
+        "vram_total_bytes": 25753026560,
+        "hip_visible_devices": "1"
+      },
+      "config_full": {
+        "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "backend": "hip_gfx1100",
+        "quant": "gguf_q4_k_m",
+        "kv_storage": "bf16",
+        "kv_scale_dtype": null,
+        "kv_scale_granularity": null,
+        "context_tokens": 3072,
+        "max_active_requests": 1,
+        "max_tokens": 16,
+        "run_request": true
+      },
+      "metric_note": "tracked_allocator counts hipengine malloc/free bookkeeping; dynamic_pool is the shared KV pool's own accounting; sysfs is whole-card committed VRAM, which includes driver/runtime overhead the tracked allocator cannot see."
+    },
+    "after_int8fp32_3072_c1": {
+      "kv_storage": "int8_per_token_head",
+      "context_tokens": 3072,
+      "max_active_requests": 1,
+      "lease_pages": 12,
+      "pool_pages": 24,
+      "load_sysfs_gib": 18.3,
+      "request_peak_sysfs_gib": 20.841,
+      "tracked_peak_gib": 17.665,
+      "request": {
+        "prompt_tokens": 2677,
+        "elapsed_s": 7.153,
+        "output_chars": 92,
+        "peak_live_large_allocations": {
+          "total_bytes": 6025875456,
+          "allocation_count": 49,
+          "largest_bytes": 1042944000,
+          "top_sizes": [
+            [
+              73113600,
+              32
+            ],
+            [
+              1042944000,
+              1
+            ],
+            [
+              715161600,
+              1
+            ],
+            [
+              75497472,
+              6
+            ],
+            [
+              213909504,
+              2
+            ],
+            [
+              106954752,
+              4
+            ],
+            [
+              367853568,
+              1
+            ],
+            [
+              125829120,
+              2
+            ]
+          ]
+        }
+      },
+      "planned_weight_census": {
+        "logical_tensor_count": 851,
+        "alias_count": 0,
+        "source_nbytes": 16806250496,
+        "resident_nbytes": 17170958336,
+        "alternate_layout_nbytes": 0,
+        "issues": [],
+        "gguf_nextn_tensor_count": 4,
+        "gguf_nextn_source_nbytes": 55767040,
+        "gguf_file_bytes": 17106773984
+      },
+      "device": {
+        "pci_id": "0000:10:00.0",
+        "drm_card": "card0",
+        "unique_id": "cc4d02090dc9c3ff",
+        "vram_total_bytes": 25753026560,
+        "hip_visible_devices": "1"
+      },
+      "config_full": {
+        "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "backend": "hip_gfx1100",
+        "quant": "gguf_q4_k_m",
+        "kv_storage": "int8_per_token_head",
+        "kv_scale_dtype": "fp32",
+        "kv_scale_granularity": "per_token_head",
+        "context_tokens": 3072,
+        "max_active_requests": 1,
+        "max_tokens": 16,
+        "run_request": true
+      },
+      "metric_note": "tracked_allocator counts hipengine malloc/free bookkeeping; dynamic_pool is the shared KV pool's own accounting; sysfs is whole-card committed VRAM, which includes driver/runtime overhead the tracked allocator cannot see."
+    }
+  },
+  "delta_after_minus_before_bf16": {
+    "lease_pages": -84,
+    "load_sysfs_gib": -1.313,
+    "request_peak_sysfs_gib": -2.33,
+    "tracked_peak_gib": -1.313,
+    "request_transient_sysfs_gib": -1.017
+  },
+  "page_independent_residents_unattributed": {
+    "ffn_down_q6_t16_weights": "32 x 69.73 MiB = 2.179 GiB, identified 2026-09-06 as the planned blk.*.ffn_down.weight Q6_K_T16 residents; the planned weight census reconciles exactly (zero unexplained weight bytes)",
+    "prefill_scratch_liveness_arena": "1 x 350.81 MiB at _allocate_prefill_scratch_liveness_arenas, page-independent",
+    "sysfs_over_tracked_gib": 0.58
+  }
+}

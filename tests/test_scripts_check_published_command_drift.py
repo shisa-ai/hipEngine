@@ -88,6 +88,33 @@ def test_commands_pointing_outside_the_repo_cannot_be_reproduced(
     assert [v["problem"] for v in report["violations"]] == ["SCRIPT-NOT-IN-REPO"], report
 
 
+@pytest.mark.parametrize("extra,expected", [("", []), (" --removed", ["UNKNOWN-FLAG"])])
+def test_registered_peer_worktree_commands_use_current_script(
+    tool, tmp_path: pathlib.Path, monkeypatch, extra, expected,
+) -> None:
+    repo = tmp_path / "current"
+    peer = tmp_path / "peer"
+    _make_repo(repo, command=f"python {peer}/scripts/bench.py --widths 1{extra}")
+    monkeypatch.setattr(tool, "_worktree_roots", lambda root: (repo, peer), raising=False)
+    report = tool.check_repo(repo)
+    assert [v["problem"] for v in report["violations"]] == expected
+
+
+def test_unregistered_same_basename_is_not_a_worktree_alias(tool, tmp_path, monkeypatch):
+    repo = tmp_path / "current"
+    _make_repo(repo, command=f"python {tmp_path}/outside/scripts/bench.py --widths 1")
+    monkeypatch.setattr(tool, "_worktree_roots", lambda root: (repo,), raising=False)
+    assert tool.check_repo(repo)["violations"][0]["problem"] == "SCRIPT-NOT-IN-REPO"
+
+
+def test_peer_worktree_path_cannot_escape_current_repo(tool, tmp_path, monkeypatch):
+    repo = tmp_path / "current"
+    peer = tmp_path / "peer"
+    _make_repo(repo, command=f"python {peer}/../outside/scripts/bench.py --widths 1")
+    monkeypatch.setattr(tool, "_worktree_roots", lambda root: (repo, peer), raising=False)
+    assert tool.check_repo(repo)["violations"][0]["problem"] == "SCRIPT-NOT-IN-REPO"
+
+
 def test_missing_script_is_a_violation(tool, tmp_path: pathlib.Path) -> None:
     repo = _make_repo(tmp_path, command=".venv/bin/python scripts/gone.py --widths 1")
     report = tool.check_repo(repo)

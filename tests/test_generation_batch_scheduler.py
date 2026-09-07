@@ -191,6 +191,14 @@ from scripts.qwen35_batch_int8_diagnostic import build_parser as build_int8_diag
 from scripts.qwen35_batch_serial_bench import _load_prompt_slices, _summarize_samples
 
 
+@pytest.fixture(autouse=True)
+def _isolate_synthetic_device_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    # These CPU fixtures declare their own device/provenance selectors.
+    for key in ("HIP_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES",
+                "HIPENGINE_HIP_ARCH", "GPU_MAX_HW_QUEUES"):
+        monkeypatch.delenv(key, raising=False)
+
+
 def _clear_qwen35_batch_env() -> None:
     for key in list(os.environ):
         if key.startswith("HIPENGINE_QWEN35_BATCH_") or key == "HIPENGINE_QWEN35_SHARED_EXPERT_PARO_W4_FORCE_GEMV":

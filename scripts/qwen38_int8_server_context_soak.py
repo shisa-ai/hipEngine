@@ -559,7 +559,7 @@ def _capture(command: Sequence[str]) -> dict[str, Any]:
 
 
 def _server_command(args: argparse.Namespace) -> list[str]:
-    return [
+    command = [
         str(Path(sys.executable)),
         "-m",
         "hipengine.server",
@@ -568,38 +568,48 @@ def _server_command(args: argparse.Namespace) -> list[str]:
         "--backend",
         "hip_gfx1100",
         "--quant",
-        "gguf_q4_k_m",
+        str(args.quant),
         "--served-model-name",
         str(args.served_model_name),
         "--max-context-tokens",
         str(args.context_tokens),
         "--max-active-requests",
-        str(args.concurrency),
+        str(args.resident_slots),
         "--kv-storage",
-        "int8_per_token_head",
-        "--kv-scale-dtype",
-        "fp32",
-        "--kv-scale-granularity",
-        "per_token_head",
-        "--generation-batch-window-ms",
-        str(args.batch_window_ms),
-        "--metrics",
-        "prometheus",
-        "--speculative-mtp-serving",
-        "off",
-        "--prefix-cache",
-        "off",
-        "--startup-min-free-mib",
-        str(args.startup_min_free_mib),
-        "--shutdown-grace-seconds",
-        "10",
-        "--host",
-        str(args.host),
-        "--port",
-        str(args.port),
-        "--log-level",
-        str(args.server_log_level),
+        str(args.kv_storage),
     ]
+    if str(args.kv_storage) != "bf16":
+        command.extend(
+            [
+                "--kv-scale-dtype",
+                str(args.kv_scale_dtype),
+                "--kv-scale-granularity",
+                str(args.kv_scale_granularity),
+            ]
+        )
+    command.extend(
+        [
+            "--generation-batch-window-ms",
+            str(args.batch_window_ms),
+            "--metrics",
+            "prometheus",
+            "--speculative-mtp-serving",
+            "off",
+            "--prefix-cache",
+            "off",
+            "--startup-min-free-mib",
+            str(args.startup_min_free_mib),
+            "--shutdown-grace-seconds",
+            "10",
+            "--host",
+            str(args.host),
+            "--port",
+            str(args.port),
+            "--log-level",
+            str(args.server_log_level),
+        ]
+    )
+    return command
 
 
 def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
@@ -612,6 +622,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError(f"model does not exist: {args.model}")
     if args.concurrency not in {1, 2, 4, 8}:
         raise ValueError("concurrency must be one of 1,2,4,8")
+    if int(args.resident_slots) <= 0:
+        args.resident_slots = int(args.concurrency)
+    if int(args.resident_slots) < int(args.concurrency):
+        raise ValueError("resident slots N cannot be below the offered concurrency C")
     if min(args.context_tokens, args.cycles, args.turns, args.max_tokens) <= 0:
         raise ValueError("context, cycles, turns, and max-tokens must be positive")
     target_prompt_tokens = int(args.context_tokens) - int(args.max_tokens) - 1
@@ -626,7 +640,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             f"{args.maximum_baseline_mib} MiB"
         )
 
-    pages = pool_pages(int(args.context_tokens), int(args.concurrency))
+    pages = pool_pages(int(args.context_tokens), int(args.resident_slots))
     per_request_pages = math.ceil(int(args.context_tokens) / 256)
     env = os.environ.copy()
     env.update(
@@ -649,7 +663,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         env["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file.resolve())
 
     args.work_dir.mkdir(parents=True, exist_ok=True)
-    log_path = args.work_dir / f"c{args.concurrency}-ctx{args.context_tokens}.server.log"
+    log_path = args.work_dir / (
+        f"c{args.concurrency}-n{args.resident_slots}-ctx{args.context_tokens}-"
+        f"{str(args.kv_storage).replace('_', '')}.server.log"
+    )
     command = _server_command(args)
     invocation = [str(Path(sys.executable)), str(Path(__file__).resolve()), *sys.argv[1:]]
     artifact: dict[str, Any] = {
@@ -664,15 +681,21 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "max_tokens": int(args.max_tokens),
             "reserved_context_slots": 1,
             "offered_client_concurrency": int(args.concurrency),
+            "configured_resident_slots": int(args.resident_slots),
             "aggregate_offered_context_tokens": int(args.context_tokens) * int(args.concurrency),
             "cycles": int(args.cycles),
             "turns_per_lane_per_cycle": int(args.turns),
             "prefix_cache": "off",
             "speculative_mtp": "off",
             "sampling": "greedy temperature=0, ignore_eos=true",
-            "kv_storage": "int8_per_token_head",
-            "kv_scale_dtype": "fp32",
-            "kv_scale_granularity": "per_token_head",
+            "quant": str(args.quant),
+            "kv_storage": str(args.kv_storage),
+            "kv_scale_dtype": (
+                None if str(args.kv_storage) == "bf16" else str(args.kv_scale_dtype)
+            ),
+            "kv_scale_granularity": (
+                None if str(args.kv_storage) == "bf16" else str(args.kv_scale_granularity)
+            ),
             "requested_pool_initial_low_high_pages": pages,
             "pool_chunk_pages": per_request_pages,
             "whole_card_poll_ms": float(args.memory_poll_ms),
@@ -736,7 +759,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         resident_capacity = effective_resident_capacity(
             current_pool_pages=current_pool_pages,
             pages_per_request=per_request_pages,
-            offered_concurrency=int(args.concurrency),
+            offered_concurrency=max(int(args.concurrency), int(args.resident_slots)),
         )
         artifact["protocol"].update(
             {
@@ -916,6 +939,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--turns", type=int, default=4)
     parser.add_argument("--max-tokens", type=int, default=4)
     parser.add_argument("--served-model-name", default="qwen38-27b-q4km")
+    parser.add_argument("--quant", default="gguf_q4_k_m")
+    parser.add_argument("--kv-storage", default="int8_per_token_head")
+    parser.add_argument("--kv-scale-dtype", default="fp32")
+    parser.add_argument("--kv-scale-granularity", default="per_token_head")
+    parser.add_argument(
+        "--resident-slots",
+        type=int,
+        default=0,
+        help=(
+            "server --max-active-requests (configured resident slots N); "
+            "0 means match the offered client concurrency"
+        ),
+    )
     parser.add_argument("--hip-device", default="1")
     parser.add_argument("--drm-card", default="card0")
     parser.add_argument("--host", default="127.0.0.1")

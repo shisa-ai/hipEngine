@@ -50,8 +50,10 @@ def test_mtp_chain_compiler_uses_mtp_depth_buckets() -> None:
     assert MtpChainCompiler(candidate_budget=1).candidate_budget == 1
     assert MtpChainCompiler(candidate_budget=4).candidate_budget == 4
     assert MtpChainCompiler(candidate_budget=5).candidate_budget == 5
+    assert MtpChainCompiler(candidate_budget=6).candidate_budget == 6
+    assert MtpChainCompiler(candidate_budget=7).candidate_budget == 7
     with pytest.raises(ValueError, match="candidate_budget"):
-        MtpChainCompiler(candidate_budget=6)
+        MtpChainCompiler(candidate_budget=8)
 
 
 def test_dflash_and_mtp_can_share_chain_request_shape() -> None:

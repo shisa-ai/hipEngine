@@ -15,9 +15,10 @@ Pass reconstruction: per tick t, every request r reports its subgroup's total
 target rows (specdec2_mtp2_target_physical_rows[t]) and the same wall time of
 that subgroup pass (specdec2_mtp2_target_pass_ms[t]). Requests are therefore
 partitioned per tick by the exact (rows, sample) pair; each bucket is valid
-only when sum over members of (candidate_counts[t] + 1) equals the reported
-rows. No shape is hardcoded, so tail-shrink and width-4 partition cycles are
-both reconstructed exactly.
+only when sum over members of (candidate_counts[t] + 1) does not exceed the
+reported physical rows. Inactive padding counts as dispatched rows, not
+committed tokens. No shape is hardcoded, so tail-shrink and width-4 partition
+cycles are both reconstructed exactly.
 
 Consistency invariants (violation = hard error):
 - len(target_pass_ms) == target_batch_calls and sum(samples) == target_ms

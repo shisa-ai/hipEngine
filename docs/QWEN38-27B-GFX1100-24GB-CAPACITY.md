@@ -1,7 +1,122 @@
 # Qwen3.8-27B: capacity on a 24 GB RX 7900 XTX
 
-Status: measurement and optimization plan. Initial startup probes are recorded
-below; current operational context and concurrency limits are not qualified.
+Status: measurement and optimization plan with scoped offline DMS INT8
+integration evidence. General production-serving qualification is not established.
+
+## Bounded correctness and capacity closeout — 2026-09-07
+
+The user narrowed closeout to implementation correctness and observed capacity,
+without exhaustive benchmarking or further dense boundary probes. On the clean
+merged source `f955ea2d8` (including main `ccf67ca6a`), GPU1 RX 7900 XTX:
+
+| DMS INT8 route | Workload | Result |
+| --- | --- | --- |
+| Eager resident C1 | 65,536 prompt tokens + eight decode appends | 8/8 independent replay steps byte-exact; finite logits; 24,200,876,888 bytes (22.54 GiB) tracked device peak |
+| Interleaved resident C2 | 8,192/16,384 prompts, four rounds, cancel first request after two | 6/6 executed steps byte-exact against C1 replay; survivor continues; no cycle errors |
+
+Both processes return to zero tracked allocations. The 64K point is an
+**execution fit**, not a proven maximum or a recommended operating reserve;
+65,544 logical tokens are present after the eight appends. The peak includes
+prefill and independent replay and is not a sampled whole-card peak. Existing
+dense BF16 40,960 and dense INT8 54,272 observed passes were not rerun.
+
+Affected GPU/CPU tests pass after repairing one stale lazy-server mock;
+572 server tests, 183 MTP interface tests and the benchmark documentation
+checks pass. Existing post-repair numerical and repeated-refill evidence below
+is reused. No throughput sweep or new performance ratio is claimed.
+
+This completes the user-requested bounded correctness/capacity check for merge.
+It does not close the broader serving-qualification requirements of task #20:
+DMS INT8 stays explicit offline evaluation, BF16 fallback stays available,
+and packed/larger-C execution, full-session MTP rollback, calibrated
+production-profile and train-disjoint task certification remain deferred.
+The replay harness uses identical valid token transitions, seeded from the
+last prompt token; it is not a natural-response quality test.
+[`Bounded merge evidence`](../benchmarks/results/2026-09-07-rx7900xtx-dms-int8-bounded-merge-gate.json).
+
+## INT8 completion audit — 2026-09-07
+
+This audit updates the historical packet notes below. All INT8 work is assigned
+here; there is no external dense or DMS INT8 owner.
+
+- Dense native-prefill repair `8e0d8eae1` fixes the confirmed shared-memory
+  overflow. Cold-server INT8/FP32 C1 requests pass at 16,128 / 32,768 / 49,152 /
+  54,272 declared tokens, peaking at 20.357 / 21.919 / 23.484 / 23.972 GiB.
+  Each uses context minus 17 prompt tokens, 16 outputs and one reserved token,
+  MTP off, prefix cache off, and clean post-request ownership.
+- **54,272 is the highest demonstrated context, not a proven maximum.**
+  Sampled headroom is 12.7 MiB. The user stopped the adjacent 54,528 probe to
+  prioritize DMS INT8; it has no pass/fail verdict. Prior BF16 evidence on the
+  same card reaches 40,960, but no fresh matched quality comparison was run.
+- Compact INT8 K/V, FP32 per-token/head scales, pack/compaction, append,
+  split-K attention and resident `dms_backend_factory` integration are
+  implemented. BF16 fallback and fail-closed ordinary INT8 admission are
+  preserved; offline evaluation creates no `DMSCodecQualification`.
+- A shared-memory softmax race was repaired in `eabb08fc2`. Only post-repair
+  INT8 results below supply final numerical/replay evidence. Earlier numerical
+  passes, including the 768-token smoke, do not qualify the repaired path.
+- Post-repair affected pytest: 48 passed. Cached `rocprofv3` fixture run:
+  five passed, with INT8 pack, append and attention launches confirmed.
+  Device/backend fixtures cover CPU oracles, overflow, exact payload/scale
+  restoration, eviction and neighbor isolation.
+- Resident C1 at 8,192 prompt tokens passes one-step independent replay
+  byte-exactly. Interleaved C2 at 8,192/16,384 passes independent C1 replay,
+  cancellation after two rounds, eight survivor decode steps and two refill
+  cycles, with no cycle errors or tracked allocations after close.
+
+| Post-repair numerical gate | Result |
+| --- | --- |
+| Four categories, 16,384 prompt + 32 teacher-forced decode tokens, sidecar vs dense BF16 | 128 rows; mean/p95/p99/max KL 0.001011881/0.005126758/0.009845243/0.014937592; top-1 100% |
+| Same long suite, INT8 no-evict vs dense BF16 | Maximum KL 0.007665685; top-1 100% |
+| Ten canonical prompts, four category heldouts, 64 decode steps | All dense-BF16 and BF16-DMS-relative numerical gates pass; INT8 dense-relative maximum KL 0.006015874; top-1 649/650 |
+
+The long suite removes history during above-window prefill packing; its
+32-step decode reports zero additional evicted tokens. The full canonical
+suite uses 27-59-token raw user prompts below W8192, with 65 comparisons per
+prompt including prefill. Its sole top-1 disagreement is `code_lru_cache`
+(64/65); it is not a free-running task-success evaluation.
+
+Matched same-host, same-model, same-prompt sidecar storage after 16,384 prompt
+and 32 decode tokens, including device-store workspaces:
+
+| Codec | Device-store bytes | Live token rows |
+| --- | ---: | ---: |
+| BF16-DMS | 829,473,104 | 788,544 |
+| INT8-DMS, FP32 scales | 432,046,928 | 788,544 |
+
+The difference is 397,426,176 bytes (47.9131%). This is device-store memory
+savings, not a whole-process percentage, throughput gain or new capacity result.
+The unchanged BF16 control is valid; the INT8 measurements are post-repair.
+
+**Task #20 stays open for qualification.** Implementation, the tested offline
+numerical/lifecycle scope and evidence publication are complete, not general
+production serving. Required distinctions and outstanding scope:
+
+- Tested eager resident C1 and interleaved C2, not packed multi-request kernels
+  or larger concurrency. Backend-advertised widths are not measured model widths.
+- Device/backend rollback is tested, not full-session speculative/MTP rollback.
+- Numerical smoke gates are not calibrated production-profile or free-running
+  task certification. Category heldouts are not proven sidecar-train-disjoint.
+- Artifact-scoped qualification validation and serving admission/promotion
+  are not established. No fabricated qualification is issued.
+- Whole-process benefit, operational reserve and context/throughput gains are
+  not established by store accounting. Dense detailed allocation attribution
+  and further boundary qualification remain deferred by user instruction.
+
+The requirement audit uses the supplied task title/handoff and the
+[integration handoff](../worklog/entries/20260907T115602.481176Z-lhl-dms-int8-evaluation-2b7b71.md);
+the original external task record is not available in this worktree.
+The packet checkmarks below are historical campaign records, not evidence that
+these outstanding DMS INT8 requirements are fulfilled.
+
+Commands, physical identity, pool/payload/scale accounting and raw-file hashes:
+[`INT8 evidence artifact`](../benchmarks/results/2026-09-07-rx7900xtx-int8-repair-capacity-audit.json).
+Post-repair commands, raw-file hashes, per-category/per-prompt metrics, lifecycle
+checks and qualification limits:
+[`DMS INT8 consolidated evidence`](../benchmarks/results/2026-09-07-rx7900xtx-dms-int8-postfix-audit.json).
+Raw runs report dirty parent `9af884bda`, followed by repair commit `eabb08fc2`;
+they lack canonical profile/variant-manifest and detailed dirtiness capture.
+Publication does not upgrade that provenance or imply production qualification.
 
 ## 1. Scope and required results
 
@@ -259,132 +374,617 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
 
 ### Packet 0 — Establish matched XTX controls
 
-- [ ] Record model hashes/tensor census, XTX UUID/PCI identity, driver/compiler,
+- [x] Record model hashes/tensor census, XTX UUID/PCI identity, driver/compiler,
   profile/variants, environment, display/other usage and actual total/free bytes.
-- [ ] Recover the 18.618 GiB 128/24 and historical 32K/112K commands and routes.
+  Recorded 2026-09-06: Q4_K_M 17,106,773,984 B / 866 tensors,
+  Q4_K_S 16,121,359,328 B / 866 tensors with inventory hashes, XTX PCI
+  `0000:10:00.0` unique_id `0xcc4d02090dc9c3ff`, ROCm 7.2.4 userspace on driver
+  7.1.3-2-cachyos. Artifact:
+  `results/2026-09-06-rx7900xtx-capacity-packet0-controls.json`.
+- [x] Recover the 18.618 GiB 128/24 and historical 32K/112K commands and routes.
   Run a narrow matched control first; mark unrecoverable anchors unmatched.
-- [ ] Freeze direct versus service-owner 512/128 controls, C/N, S, pool plan,
+  Recovered 2026-09-06 with per-anchor statuses (soak 112K INT8 RECOVERED with
+  harness+measured commits, 126K page-aligned probes RECOVERED, BF16 32K graph
+  row PARTIALLY RECOVERED); unsupported public interpretations corrected in the
+  same unit. Artifact:
+  `results/2026-09-06-rx7900xtx-capacity-packet0-controls.json`.
+- [x] Freeze direct versus service-owner 512/128 controls, C/N, S, pool plan,
   prefix policy, graph mode and MTP residency. Verify device selection at runtime.
-- [ ] Recover original probe logs/commands; correct unsupported public ceiling
+  Frozen 2026-09-06: direct-probe and service-owner 512/128 controls with
+  C/N=1, MTP off, prefix off, one cold server per point, runtime device
+  cross-check. Artifact:
+  `results/2026-09-06-rx7900xtx-startup-boundary-repaired-probe.json`.
+- [x] Recover original probe logs/commands; correct unsupported public ceiling
   or regression interpretations without modifying recorded sample values.
+  Done 2026-09-06: original anchors recovered with commands where available;
+  the published 32K/112K context rows were withdrawn and the INT8 "no memory
+  saving" row was re-interpreted as an unengaged BF16 fallback, with recorded
+  samples left untouched.
 
 ### Packet 1 — Repair the probe and account for shared reservations
 
-- [ ] Tokenize prompts and record actual L, requested/actual D, usage and finish
+- [x] Tokenize prompts and record actual L, requested/actual D, usage and finish
   reason. Complete the intended horizon or label it early-stop; do not equate
   configured context with live tokens. Validate response schema and correctness.
-- [ ] Sample through load, prefill and decode concurrently with the request;
+  Done 2026-09-06 (`caacf3bcf`): the probe fits the prompt to the exact token
+  target through the server tokenizer and validates choices/usage/finish
+  reason/authoritative token IDs before accepting a sample.
+- [x] Sample through load, prefill and decode concurrently with the request;
   record interval/gaps and allocation-stage peaks. Treat samples as lower bounds
   unless transient peaks are covered by instrumentation.
-- [ ] Verify child/device/port identity; freeze inherited configuration. Record
+  Done 2026-09-06: 20 ms sysfs `VramSampler` spans startup through request, and
+  warmup-failure sampling was corrected (the prior artifact's 16.9 GiB was
+  incomplete sampling; true 4,096 failure peak 23.951 GiB).
+- [x] Verify child/device/port identity; freeze inherited configuration. Record
   effective KV/scales/mirrors, MTP allocation/engagement, profile, pool/workspace
   plan, graph/prefix settings, full command, source and exit/stage logs.
-- [ ] Classify OOM only from matching error evidence; test other HIP errors,
+  Done 2026-09-06: the probe resolves the card by PCI id, requires the server
+  readiness payload to report the same device, and records effective KV/MTP/
+  pool/graph state with the full command; the INT8-with-FP16-scales fallback
+  (`runtime_action fallback_bf16`) is now classified instead of misreported.
+- [x] Classify OOM only from matching error evidence; test other HIP errors,
   process exits, readiness/request timeouts and malformed/short responses.
-- [ ] Compare N=1/2/4/8 at C=1 and full occupancy. Attribute global request pages,
+  Done 2026-09-06: OOM matches only `out of memory` / `hipErrorOutOfMemory` /
+  `HIP error 2`; other HIP errors, process exits, readiness/request timeouts
+  and malformed/short responses are classified separately.
+- [x] Compare N=1/2/4/8 at C=1 and full occupancy. Attribute global request pages,
   leased workspace, private preparation, recurrent state and cached graphs.
   Trace the eight-slot workspace minimum before changing it.
-- [ ] Test atomic admission against complete claims, including temporary/MTP
+  Traced 2026-09-06: the floor lives in `_packed_verify_union_geometry` and the
+  global-pool lease in `configure_engine_loop`; serving slot requests (MTP
+  widths, packed group layouts, prefill widths) are all bounded by
+  `max_active_requests`, and the only >1-slot C1 path (B3 C2-shadow ABI) has no
+  callers. Right-sized both sites to the honest capacity (see Packet 2).
+- [x] Test atomic admission against complete claims, including temporary/MTP
   peaks. Shared free capacity, not a per-request private cache maximum, decides
   aggregate fit. Retain bounded rejection and exact reclaim under pressure.
+  Passed 2026-09-06 on the XTX (BF16 KV, contexts 512/1024/2048, max-active 3):
+  all six rescaled workloads pass route/correctness/SLO gates; the pressure
+  contract holds — a live 2048-token row completes while a 1024-token candidate
+  receives retryable 429 `engine_busy` with exact admission metadata
+  (requested=5 vs capacity=39 units, the complete-claim accounting), then the
+  pool shrinks/regrows with fresh block ids, graphs rebind, memory recovers and
+  ownership drains exactly. The gate gained `--required-contexts` rescaling and
+  KV-policy plumbing; the dual-session exactness harness does not fit at 3.1K
+  max-sequence on 24 GB (prepared owner + reference session > card), and the
+  continuous packed owner remains fail-closed to BF16 KV (INT8 requests serve
+  exact but serially). Artifact:
+  `results/2026-09-06-rx7900xtx-capacity-packet1-admission-pressure.json`.
 
 ### Packet 2 — Reduce exact allocation costs
 
-- [ ] Prove AR-only omits NextN weights and MTP-only state/graphs/hidden capture.
+- [ ] **PARTIAL — AR-only omission proven and K0-off baselines measured; only the "after active MTP" half remains (cross-campaign MTP blocker).** Prove AR-only omits NextN weights and MTP-only state/graphs/hidden capture.
   Measure MTP-capable K0 both before and after active MTP; do not call it unloaded.
-- [ ] Deduplicate actual weight aliases and release conversion staging safely.
+  AR-only omission proven 2026-09-06: with MTP serving off the materialization
+  plan omits the 4 NextN tensors (0.052 GiB source bytes), the resident census
+  holds 851 tensors / 15.992 GiB with zero NextN bytes, and the draft provider
+  is lazily acquired and pooled (never load/unloaded per decode cycle) — so
+  true AR-only is the default configuration. Evidence:
+  `results/2026-09-06-rx7900xtx-capacity-ar-only-nextn-omission.json`.
+  The K0-off "before" points are measured 2026-09-07: N=2 request peaks
+  21.307 GiB at context 1024 and 21.578 GiB at context 1536 (BF16 KV,
+  post-scratch-cap; pre-cap 1536 was 22.574). Evidence:
+  `results/2026-09-07-rx7900xtx-capacity-k0-mtp-off.json`. The MTP-armed
+  opt_in mode additionally cannot reach readiness: its startup scratch-probe
+  engine-service child hangs at width 2 (`STARTUP_SCRATCH_PROBE ... engine
+  service command timed out`) — same subsystem as the enabled KeyError. The
+  K0->K resident delta and the opt_in K0 state are blocked by that MTP-serving
+  warmup bug — owned by the MTP campaign; re-measure with the probe pair when
+  it serves.
+- [x] Deduplicate actual weight aliases and release conversion staging safely.
   Count resident payloads, not GGUF size, as the device-weight baseline.
-- [ ] Right-size shared workspace and prefill scratch by supported execution
+  Done 2026-09-06: the planned residency census reports 851 logical tensors,
+  0 aliases, 15.995 GiB planned resident vs 15.932 GiB GGUF file bytes, and a
+  malloc-site attribution run mapped every >=64 MiB live load allocation to a
+  planned weight (the 32 x 69.73 MiB group is the `ffn_down` Q6_K_T16 set) or
+  the 350.81 MiB prefill-scratch liveness arena — zero retained conversion
+  staging. Baseline: resident payload bytes. Evidence:
+  `results/2026-09-06-rx7900xtx-capacity-packet2-workspace-ledger.json`.
+- [x] Right-size shared workspace and prefill scratch by supported execution
   shapes; reuse sequential scratch without merging per-request GDN state.
   Preserve graph pointer lifetimes and overlap constraints.
-- [ ] Bound cached graph/workspace buckets and safe retirement. Test wide-to-C1
+  Workspace done 2026-09-06: lease + union geometry follow the real serving
+  capacity instead of the 8-slot floor; measured on the XTX at BF16/3072/N=1:
+  load 19.742 -> 18.429 GiB, request peak 23.328 -> 20.998 GiB (-2.330, -10.0%),
+  lease 96 -> 12 pages, transients 3.586 -> 2.569 GiB; INT8 fp32 route verified
+  serving under the smaller lease (peak 20.841 GiB). Prefill scratch rows done
+  2026-09-06: a gfx1100 geometry policy (`GGUF_DENSE_PREFILL_SCRATCH_ROW_CAP_
+  POLICIES`, dense H5120 Q4_K_M, min_capacity 1024 -> max_rows 1024) bounds the
+  session scratch that previously scaled with the declared context (~1 MiB per
+  declared token vs the 64 KiB/token BF16 KV payload); measured on the XTX:
+  BF16 3,840 request peak 21.820 -> 19.375 GiB (-11.2%), BF16 declared-context
+  boundary 3,840 -> 40,960 tokens (10.7x), INT8 fp32 5,120-class passes at
+  19.290 GiB, d512 solid concurrency N=3 -> N=4; exactness: a 2,650-token
+  greedy server request is token-identical capped vs uncapped (the 1,024-row
+  chunks route through the registered exact F16/rocBLAS pair producer;
+  full production-profile KL/top-1 gates remain a Packet 6 item). Bucket
+  bounding and retirement remain open; the 512/128 arm (declared 768) is
+  unchanged and still scratch-dominated below the 1,024-row threshold.
+- [x] Bound cached graph/workspace buckets and safe retirement. Test wide-to-C1
   and C1-to-wide histories. Report reusable pool capacity separately from memory
-  returned to the device allocator.
+  returned to the device allocator. In-session interleave stability is
+  enforced under the capacity-honest union (2026-09-06: repaired the stale
+  interleave fake that predated the serving-cap right-size — the fake now
+  declares `max_batch_size`, and a contract test pins the first packed
+  allocation to the declared cap; failure window bisected to b753495b4).
+  Done 2026-09-07: the device pool stats now carry cumulative
+  `retired_pages`/`retired_bytes` (pages returned to the device allocator,
+  distinct from `free_pages` reusable capacity), exposed as
+  `hipengine_kv_pool_retired_pages_total`/`_bytes_total`; and a one-session
+  history probe drove wide(1,535 tok) <-> C1(63 tok) alternation on the XTX
+  (BF16, N=2, ctx 2048): all five phases validate exactly, whole-card usage is
+  flat at 22,224 MiB across every shape change (zero creep), the default pool
+  is born at full serving capacity (32 pages = 512 MiB, grow 0 / shrink 0 /
+  retired 0), parking 16 pages (256 MiB) as reusable capacity with 16 pages
+  pinned by resident sessions — retirement is grow-scenario machinery
+  (CPU-verified) and the default path never grows. Evidence:
+  `results/2026-09-07-rx7900xtx-capacity-pool-history-wide-c1.json`.
 - [ ] Provide a true AR-only configuration. Optional lazy MTP activation must
   reserve its full peak before mutation; unloading must not free borrowed or
   in-flight graph assets. Do not load/unload weights per decode cycle.
+  **BLOCKED (cross-campaign): the lazy-activation clause cannot be exercised
+  while MTP serving cannot start at any width (warmup hang at width 2, blk.40
+  KeyError at width >=2, c=1 sentinel route — MTP campaign owns the fix);
+  the true-AR-only half is proven (see the preceding item).**
 
 ### Packet 3 — Qualify smaller weights and compact INT8
 
-- [ ] Compare actual resident and load-peak `Q4_K_M`/`Q4_K_S` bytes, throughput
+- [x] Compare actual resident and load-peak `Q4_K_M`/`Q4_K_S` bytes, throughput
   and quality. Inventory MTP tensor availability and preserve artifact identity.
-- [ ] Prove effective compact INT8 has no persistent BF16 shadow. Bound and
+  Bytes done 2026-09-06: Q4_K_S saves 0.918 GiB of file bytes but parks more
+  device memory (resident +0.176 GiB, request peak +2.061 GiB pre-scratch-cap)
+  because it stores 8 ffn_down, 3 attn_qkv and 1 attn_v as dense BF16 where
+  Q4_K_M stores Q6_K_T16 layouts. Throughput and MTP availability done
+  2026-09-07: same-session matched pairs on the XTX at 512/128 (BF16 KV,
+  persistent session, graph-replay decode) — decode ties (~34.0 tok/s both
+  routes) while Q4_K_S prefills 38.4% slower on the shipping AR route (602.5
+  vs 978.7 tok/s; default route 320.1 vs 963.3), and both files carry the
+  identical 4 `blk.64.nextn` tensors so MTP availability is unchanged.
+  Evidence: `results/2026-09-07-rx7900xtx-capacity-q4ks-q4km-throughput.json`
+  and `results/2026-09-06-rx7900xtx-capacity-q4ks-vs-q4km-bytes.json`.
+  Q4_K_M remains the default; per-quant quality gates stay with the
+  teacher-gating item (no reuse of Q4_K_M/gfx1151 evidence for Q4_K_S/XTX).
+- [x] Prove effective compact INT8 has no persistent BF16 shadow. Bound and
   reuse prefill oracles; a smaller steady cache with an oversized prefill peak
   does not fit. Account for scales, pool planes and graph scratch.
-- [ ] Inspect existing `qwen38_int8_batch_decode_gate.py` and service selection.
+  Proven 2026-09-07 on the XTX with a mid-flight residency audit: one
+  per-token/head INT8 (FP32 scales) request at 3,168 prompt tokens sampled
+  `device_kv_layout_audit()` 206 times while the row was resident — every
+  sample reports zero `persistent_bf16_payload_bytes` and zero
+  `persistent_bf16_mirror_bytes`, with INT8 payload and scale bytes exactly
+  `request_pages x 8,388,608` and `x 131,072` (13-page peak = 3,328 tokens).
+  Pool accounting agrees exactly: 64 planes (32 INT8 payload + 32 scale),
+  272,629,760 B for 32 pages = 8,519,680 B/page, zero slack — a BF16 shadow
+  plane set would cost 16,777,216 B/page. Graph scratch is zero by
+  construction (packed decode graphs hard-require BF16 KV). Transient
+  prefill oracle cost at the 4,096 boundary is bounded by the ledger point:
+  request peak 19.192 GiB versus 19.162 GiB after request (whole-card sysfs,
+  20 ms sampling; 3,072/4,096 INT8 points stay ~1.8-2.1 GiB below the
+  equivalent BF16 request peaks). Evidence:
+  `results/2026-09-07-rx7900xtx-int8-kv-no-shadow-audit.json` and
+  `results/2026-09-07-rx7900xtx-int8-kv-boundary-ledger-4096.json`.
+- [x] Inspect existing `qwen38_int8_batch_decode_gate.py` and service selection.
   Separate serial compact residency from native no-mirror batched prefill,
   decode, graphs and MTP. Coordinate missing integration with the INT8 campaign.
-- [ ] Gate each quant's INT8 against its same-weight BF16 teacher. Do not reuse
+  Inspection and gate run recorded 2026-09-07. Serial compact residency is
+  qualified: IKV-C1 no-mirror audits report zero persistent BF16 payload bytes
+  and the 2026-09-06 XTX probe points are serial c=1 per-token/head INT8
+  (FP32 scales) at 2,048/3,072/4,096 ok (request peaks 21.35/22.60/23.75 GiB)
+  and 5,120 OOM at startup. Batched decode (IKV-C2) is now model-level proven
+  on the XTX: the gate passes exactly (token-exact, max KL 0.0, top-1 1.0,
+  zero hidden and zero state/KV-scale mismatches over 4 rows x 4 steps vs
+  independent c1 oracles) with every step routed `kv_live_spans_int8_batch`,
+  physical_rows 4 and zero host row iterations under the
+  `per_token_head_gqa_splitk_gate_bf16_batch_strided_spans` variant; the
+  artifact capability still admits c1, so this is a pre-promotion gate and
+  capability promotion belongs to the INT8 campaign
+  (`results/2026-09-07-rx7900xtx-ikv-c2-batch-decode-gate.json`). Not
+  integrated: batched prefill stays IKV-C3-blocked (the gate prefetches
+  prompts through independent scalar sessions by design); packed decode
+  graphs hard-require BF16 KV (`gguf_packed_decode_graph` raises
+  NotImplementedError), so all INT8 decode is eager; c=1 decode graphs admit
+  INT8 only in the tail4-Hadamard-group32 layout, not the per-token/head
+  FP32-scale layout the probe points use; and the MTP native spec target
+  graph N1 requires BF16 KV, so INT8+MTP is unproven on both axes. Capacity
+  consequence: INT8 buys residency at serial widths today; batched-eager
+  decode is proven but graph and prefill ownership must land before INT8
+  batched serving is throughput-eligible.
+- [x] Gate each quant's INT8 against its same-weight BF16 teacher. Do not reuse
   `Q4_K_M`/gfx1151 evidence for `Q4_K_S`/XTX. MTP composition needs its own
   acceptance, selected-prefix and provider/target rollback tests.
-- [ ] Price bounded prefill, selective output heads and hidden capture against
+  Done 2026-09-07. Q4_K_M: already qualified and promoted with complete 512/8
+  and 4K/16 teacher suites on gfx1100 (2026-08-15/16 artifacts; weighted mean/max
+  KL 0.000113/0.002293 at 512/8 and 0.000146/0.014308 at 4K/16, minimum-prompt
+  top-1 100%/94.12%, zero BF16 mirror). Q4_K_S: teacher-gated at the same
+  depth via a new opt-in `--diagnostic-kv-capability` suite injection that
+  exercises the real no-mirror compact route for an artifact without retained
+  plugin evidence — 512/8 passes at mean/max KL 0.000101/0.001915 with top-1
+  1.0, and 4K/16 passes at 0.000132/0.008881 with aggregate top-1 0.9893 and
+  minimum-prompt top-1 0.9412, both zero-mirror and all 16 layers INT8
+  (`results/2026-09-07-rx7900xtx-q4ks-int8-teacher-gate-512-8.json` and
+  `...-4k-16.json`; injection recorded in both payloads). Without the
+  injection the Q4_K_S INT8 request silently takes a mirrored fallback route
+  (48 MiB BF16 mirror, token-exact because it reads BF16 values, not INT8
+  math) because the plugin evidence tuple has no Q4_K_S row; adding that row
+  is a promotion decision that belongs to the INT8 campaign under its own
+  protocol, and this run is the diagnostic evidence for it. MTP composition
+  acceptance/rollback tests stay blocked by the MTP warmup bug recorded in
+  Packet 2.
+- [x] Price bounded prefill, selective output heads and hidden capture against
   first-token latency. Lower-precision recurrent state is a separate numerical
   candidate, not a KV switch. Never omit required verifier scores.
+  Priced 2026-09-07 from measured evidence, provenance-labeled per row.
+  Bounded prefill (XTX, 2026-08-15 matched 4K/128): prefill rate −0.050%
+  versus BF16 graph (978.626 vs 979.118 tok/s, overlapping ranges) with
+  tracked peak 17.920 → 17.330 GiB — TTFT-neutral, memory win retained.
+  Selective output heads (selected NextN proposal head; W7900, same gfx1100
+  target, 2026-09-01 retained counterbalanced artifact): +3.59% tok/s at c5
+  with proposal-stage time −29.19% and draft acceptance 0.7877 recorded with
+  full denominators — the proposal head engages after prefill, so TTFT
+  impact is structurally zero; XTX-specific rows would need an XTX rerun per
+  the two-lane rule before any XTX topline use. Hidden capture (XTX,
+  2026-09-07, same-route A/B at 4,096 tokens, exact-GDN prefill mode on both
+  arms): capturing all 64 layers' output hiddens costs +0.133 s median
+  prefill wall (+0.52%, 25.347 → 25.480 s) for 1.25 MiB fp32 per prefill,
+  final token identical — prefill-phase capture is nearly free; decode-step
+  capture pricing belongs to the MTP campaign. Lower-precision recurrent
+  state stays a separate numerical candidate and is not priced here. No MTP
+  speed claim is made in this item, so no verifier-score omission arises;
+  the referenced MTP artifact carries its own acceptance telemetry.
 
 ### Packet 4 — Qualify FastDMS capacity on the shared pool
 
-- [ ] Inventory the trained sidecar, hash/model/quant binding, protected window,
+- [x] Inventory the trained sidecar, hash/model/quant binding, protected window,
   calibration and actual eviction policy. Missing or mismatched qualification
   fails closed; training alone does not authorize serving.
-- [ ] Measure dense BF16, compact no-evict and trained DMS BF16 through the same
+  Fails closed on this host 2026-09-07 — CORRECTED 2026-09-07 (second
+  pass): the trained-sidecar package IS locally available in the HF cache
+  (`~/.cache/huggingface/hub/models--shisa-ai--Qwen3.8-27B-Q4_K_M-DMS-W8192/`
+  — sidecar safetensors 655,640 B sha `e52fc60a…`, `dms_metadata.json`,
+  `MANIFEST.json`, `qualification.json` "qualified_explicit_c1_default_off",
+  protected window 8,192, exact-budget prefill selection); the original
+  record searched only the path the 2026-08-23 artifact recorded
+  (`/home/lhl/dms-artifacts/…`), which is absent. Two binding gates remain
+  before any XTX measurement: (1) the package binds to
+  `unsloth/Qwen3.8-27B-GGUF@4121cb19` — `Qwen3.8-27B-Q4_K_M.gguf`,
+  17,106,775,008 bytes, sha `7e78da5d…` — while the local model file is
+  17,106,773,984 bytes / sha `7b2aec3b…` (a 1,024-byte-different build), so
+  strict hash binding fails closed on the local file and the matching GGUF
+  revision must be downloaded (17.1 GiB; host disk at 99%); (2) the
+  package's recorded runtime scope is gfx1151/8060S explicit
+  resident-session C1 — the XTX is a new lane and its gfx1100 backend gate
+  plus quality controls must pass here before any XTX DMS number. The
+  integrated long/quality harnesses additionally require a `--data-manifest`
+  built from the training-time source manifest, which is not on this host;
+  `scripts/dms_backend_gate.py` (fixture device/lifecycle) runs without it.
+  Binding CLEARED 2026-09-07 without the 17.1 GiB download (campaign-lead
+  directive): the 1,024-byte difference was proven container-level — both
+  GGUF v3 files have byte-identical 866-tensor tables (names/shapes/qtypes/
+  offsets) and the only metadata difference is `tokenizer.chat_template`
+  (+1,048 bytes); 14×256 KiB tensor-body range samples spanning the full file
+  all match byte-for-byte (artifact:
+  `results/2026-09-07-qwen38-gguf-build-equivalence-samples.json`). A derived
+  local package `/models/dms/qwen38-27b-q4km-dms-w8192-local/` (copy of the
+  sidecar + metadata with the local sha `7b2aec3b…` and full
+  `artifact_binding_extension` provenance; original HF snapshot untouched)
+  passes the gfx1100 backend gate on all widths 1–32
+  (`accepted_host_backend`, artifact:
+  `results/2026-09-07-rx7900xtx-dms-backend-gate.json`). One dispatch
+  enablement was required: `GGUF_FULL_ATTN_QK_POSTPROCESS_DECODE_POLICIES`
+  on gfx1100 for the qualified (1, 24, 4, 256) shape — the same exact
+  registered kernel already default on gfx1151, bit-identical to the unfused
+  GPU control chain and CPU-reference gated
+  (tests/test_qwen38_full_attn_qk_postprocess.py; focused decode/dispatch
+  bundle 100 passed).
+- [x] Measure dense BF16, compact no-evict and trained DMS BF16 through the same
   owner. Record logical tokens, per-layer/head survivors, allocated extents,
   free capacity, fragmentation and all transient/metadata/predictor bytes.
-- [ ] Trace streaming compact prefill and direct compact decode. Eliminate a
+  Measured 2026-09-07 on the XTX through one shared runner (dense teacher +
+  `no_evict` + `sidecar`), XTX-local deterministic manifest (8×32,768 tokens,
+  4 categories, sha `9b8dacd9…`, NOT train-disjoint — recorded caveat; KL/
+  top-1 vs the dense teacher are indicative same-owner checks, authoritative
+  heldout quality remains the gfx1151 qualification). At 768 tokens (inside
+  the 8,192 protected window) the sidecar evicts nothing and matches
+  no-evict exactly. At 16,384 tokens the sidecar compresses to 1.333×
+  (787,008 of 1,048,832 logical token rows; window-protected arithmetic
+  exact) with top-1 agreement 1.0 in all four categories and max KL ≤ 0.0084
+  (gate 0.05); no-evict matches the dense teacher at max KL ≤ 0.0004.
+  Integrated 16,384-token smoke: streaming compact prefill + direct compact
+  decode, payload 805,634,048 B across 16 layers, extent pool 786,816 slots
+  with zero free ranges/allocation failures (no fragmentation), dense BF16
+  prefill owner peaks at 18,006.2 MiB allocated and releases 251.8 MiB after
+  direct compact pack, zero allocations after close. Artifacts:
+  `results/2026-09-07-rx7900xtx-dms-capacity-comparison.json` (+ per-run
+  JSONs). Diagnostic capacity evidence (`performance_claim: false` in every
+  source artifact).
+- [x] Trace streaming compact prefill and direct compact decode. Eliminate a
   dense peak or document it as the limiting stage; no dense shadow in a claimed
   compact-capacity route. Verify shared-pool credits recover after eviction.
-- [ ] Run native C1 then C2/C4/C8 where supported, heterogeneous lengths,
-  protected-window boundaries, cancellation, pressure and refill. DMS prefix
+  Traced 2026-09-07 at 16,384 tokens on the XTX: `dms_compact` topology with
+  `no_dense_shadow: true`, `streaming_pack_calls: 1` (exact-budget prefill
+  selection), `decode_appends: 4` through direct compact attention; the dense
+  BF16 prefill owner is documented as the prefill-stage limiting peak
+  (18,006.2 MiB) and is released after pack — decode carries no dense shadow.
+  Credit recovery verified as measured: extent-pool free ranges empty and
+  zero allocations after close (prefill exact-budget eviction only;
+  decode-time eviction was not exercised by these runs — recorded, not
+  inferred). Artifacts: `results/2026-09-07-rx7900xtx-dms-long-16384.json`,
+  `results/2026-09-07-rx7900xtx-dms-capacity-comparison.json`.
+- [x] **Measured through C1/C2/C4/C8, heterogeneous lengths, cancellation, pressure/refill; DMS prefix sharing stays off.** DMS prefix
   sharing remains off until snapshot/overlay semantics qualify; sharing pool
   capacity does not authorize sharing divergent evicted histories.
-- [ ] Gate the trained policy against dense and no-evict controls on all
+  Native C1 measured 2026-09-07 on the XTX (trained DMS BF16, cold session
+  per run, XTX manifest): last pass **73,728** declared tokens (dense prefill
+  owner peak 21,709.1 MiB, compact payload 2,560.3 MiB, ratio 1.7999, zero
+  extent failures, 0.0 MiB after close; repeat-stable across three runs);
+  first OOM **74,752** — the binding constraint is dense-owner +
+  compact-backend coexistence at pack time (the sum, not either alone);
+  73,984 additionally hit the pre-existing HIP error 1 prefill blocker class
+  (width-adjacent, non-monotone). Window edge covered at 8,192 (ratio 1.0,
+  no eviction); ratio climbs toward the 2.0 target with context (1.778 at
+  65,536). Artifact: `results/2026-09-07-rx7900xtx-dms-c1-ladder.json`.
+  C2/C4/C8 UNBLOCKED and measured 2026-09-07 (fix: per-step decode-owner
+  routing). The shared runner's `_dms_decode_owner` marker is now claimed or
+  cleared by each session at every decode entry (`step()` and
+  `step_async_top1()`) instead of being set once at prefill finalize, so
+  interleaved steps route through their own session's DMS backend/state and
+  a dense session on a shared runner never inherits DMS routing. RED:
+  pre-fix C2@16,384 failed deterministically on the first decode step
+  (0 rows survive; probe preserved). GREEN: C2 and C4 @ 16,384 tokens/session
+  (16,384/session, ratio 1.3331 per session, above-window eviction) and C8
+  @ 4,096 tokens/session all pass with finite logits, per-session extent
+  ledgers consistent, and 0.0 MiB after close. C8 @ 8,192/16,384 OOM at
+  compact-backend pack-time allocation — the same dense-owner + payload
+  coexistence memory boundary as the C1 ladder, not a routing blocker.
+  Unit marker semantics: `tests/test_qwen38_dms_decode_owner_routing.py`
+  (6 cases); focused bundle 124 passed; single-session 768 quality suite
+  identical post-fix (max KL/top-1 unchanged). Artifact:
+  `results/2026-09-07-rx7900xtx-dms-concurrency-ladder.json`.
+  Heterogeneous lengths, cancellation, and pressure/refill MEASURED
+  2026-09-07 on the now-working multi-session protocol: heterogeneous
+  C4 (2,048/4,096/8,192/16,384 in one shared runner) passes with
+  width-independent window protection (ratio 1.0 at ≤8,192, 1.3331 at
+  16,384); cancelling session 0 mid-decode closes in 14 ms, reclaims its
+  compact resources (allocation drop recorded), and the three survivors
+  continue with their own live counts intact (owner-marker pop is
+  owner-guarded); three full open/prefill/decode/close refill cycles at
+  C2@16,384 each return to exactly 0.0 MiB. C4 widths doubling to 32,768
+  OOM at pack-time coexistence (ladder rescaled). Artifact:
+  `results/2026-09-07-rx7900xtx-dms-hetero-cancel-refill.json`. Remaining
+  Packet 4 items are cross-campaign feature blockers only (MTP rollback;
+  INT8 codec qualification).
+- [ ] **PARTIAL — C1-protocol scope measured through cancellation/refill; remaining gates are cross-campaign feature blockers.** Gate the trained policy against dense and no-evict controls on all
   categories/heldouts and long trajectories. Add MTP provisional-state/eviction
   rollback before combining them; rejected drafts must not evict committed KV.
-- [ ] Evaluate DMS+INT8 only after independent codec/topology gates. Measure
+  Categories/heldouts within XTX authority: measured 2026-09-07 on the
+  same-owner suite (all four categories, dense vs no-evict vs sidecar at
+  768 and 16,384 tokens; results/2026-09-07-rx7900xtx-dms-quality-suite-*.json)
+  — but on the not-train-disjoint XTX manifest, so these are indicative
+  same-owner checks; authoritative heldout quality remains the gfx1151
+  qualification (the training-time source manifest needed to build
+  train-disjoint long manifests is absent from this host). MTP
+  provisional-state/eviction rollback is DMS+MTP feature work owned by the
+  MTP campaign; the C2 decode-owner routing fix does not touch MTP paths.
+- [ ] **IN PROGRESS (offline integration and tested numerical/lifecycle gates pass; serving qualification open).** Evaluate DMS+INT8 only after independent codec/topology gates. Measure
   actual compression and quality; do not multiply nominal factors into a fit
   claim. Keep scope-specific failures linked to the DMS campaign.
+  Historical blocker audit, before device implementation `e2ec238ab`: the gfx1151 sidecar package
+  carries no INT8 codec qualification (its `qualification.json` has no codec
+  section), none exists for the local artifact, and the in-tree quality
+  harnesses compare only the BF16 compact backend
+  (`create_dms_bf16_backend`); the INT8 gate
+  (`scripts/dms_backend_gate.py --codec int8_per_token_head`) fails closed
+  without a qualification file proving KL ≤ 0.05, top-1 ≥ 90%, and no dense
+  shadow for the exact artifact (`hipengine/kvcache/dms.py:606-626`).
+  The offline INT8 compact-vs-dense owner comparison is now implemented and
+  post-repair measurements are published in the completion audit above.
+  Ordinary serving still requires real artifact-scoped qualification; the
+  evaluation path deliberately does not manufacture it. This item stays open
+  for the qualification requirements listed in that audit.
 
 ### Packet 5 — Measure context and concurrency limits
 
-- [ ] Sweep supported quant × KV/topology × MTP combinations, classifying each
+- [x] Sweep supported quant × KV/topology × MTP combinations, classifying each
   as estimate, unsupported, load-only, execution fit, operational fit, OOM or
   stall. Preserve requested/effective modes and actual physical groups.
-- [ ] C1: start below the reported startup boundary, then test 4K/8K/16K/32K/
+  Exhausted within XTX authority 2026-09-07: every executable cell is
+  measured and classified — Q4_K_M×BF16×AR across contexts (C1 refinement +
+  scratch-cap artifacts) and concurrency (D=24/128/512 arms, N=1..8 with
+  OOM/stall stage evidence); Q4_K_M×INT8-fp32 (qualified capability engaged;
+  15,872 functional-blocked, not a memory ceiling); Q4_K_S (bytes +
+  route-matched throughput; memory-dominated, not retained). Requested vs
+  effective modes are recorded per point (the unengaged-INT8 fallback lesson
+  is fixed in the probe). Remaining cells are blocked, not estimated: MTP
+  combinations (MTP warmup/journal bugs, MTP campaign), DMS (fails closed,
+  Packet 4), and other quants/topologies belong to their owning campaigns —
+  recorded as blocked assignments, never as estimates.
+- [x] C1: start below the reported startup boundary, then test 4K/8K/16K/32K/
   64K/96K/112K/128K total budgets as supported. Refine last pass/first failure
   at page-aligned steps; extend only with a justified byte estimate and within
   the model context limit. Do not infer a physical ceiling from a policy cap.
-- [ ] Budget D=24/128/512 and reduce L to leave output/lookahead space. Include
+  Refined 2026-09-06 at 256-token page-aligned steps after the workspace
+  right-size, with clean ownership on every point: BF16 last pass 3,840
+  (3,328/3,584/3,840 pass at 21.324/21.525/21.820 GiB; 4,096 still fails eager
+  warmup); qualified INT8 fp32 last pass 4,864 (4,352/4,608/4,864 pass at
+  21.841/21.843/21.849 GiB; 5,120 still first fails). 4K+ totals are
+  card-infeasible at this model size; 8K-128K rows are policy-capped
+  unreachable, not measured ceilings. Artifact:
+  `results/2026-09-06-rx7900xtx-capacity-c1-boundary-refinement.json`.
+  Superseded same day by the prefill scratch row cap (that scratch, not KV
+  bytes, was the binding constraint below 4K): BF16 last pass **40,960**
+  declared tokens (4,096/8,192/16,384/32,768 pass at 19.379/19.955/21.098/
+  23.162 GiB; 40,960 razor-thin at 23.973; 45,056 first fails startup OOM at
+  23.943 GiB); qualified INT8 fp32 reaches **15,872** (20.349 GiB) before a
+  pre-existing functional blocker — request-time HIP error 1 (invalid
+  argument) in (15,872, 16,128], reproduced uncapped on the base tree — not a
+  memory ceiling. Artifact:
+  `results/2026-09-06-rx7900xtx-capacity-scratch-row-cap.json`.
+- [x] Budget D=24/128/512 and reduce L to leave output/lookahead space. Include
   natural long-output cases; an early EOS proves only the work actually done.
-- [ ] Concurrent baseline: 512 prompt/128 output at N=C=1 through 8, including
+  Measured 2026-09-07 on the XTX (BF16 KV, one cold server per point, exact
+  request accounting): D=24 at declared 768 (prompt 512, page-aligned) passes
+  N=1..6 at request peaks 18.748/20.859/21.381/22.822/23.358/23.676 GiB with
+  N=7/8 failing eager warmup (STARTUP_SCRATCH_PROBE OOM, sampled failure
+  peaks 23.972/23.961 GiB) — boundary identical to the D=128 arm (last pass
+  N=6, slope ~0.99 GiB/request): the per-request peak is startup-scratch +
+  pool dominated and the 104-token output-horizon difference is below
+  sampling resolution. D=512 at declared 1,280 is strictly tighter (last
+  solid N=4 post-scratch-cap, N=5 marginal) because two extra KV pages per
+  request push the warmup probe over one row earlier. All arms use
+  `ignore_eos`-equivalent exact token accounting, so a completed point proves
+  the full declared horizon was served. Artifact:
+  `results/2026-09-07-rx7900xtx-capacity-concurrency-d24.json` (cross-ref:
+  `...-concurrency-512-128.json`, `...-concurrency-d512.json`).
+- [x] Concurrent baseline: 512 prompt/128 output at N=C=1 through 8, including
   the disputed c5/c6 boundary. Increase per-request budgets through 1K/2K/4K/
   8K/16K where possible. Add N=8/C=1, mixed lengths, gradual fill and survivors.
-- [ ] Measure K1-K3 where engaged; include K4-K7 as their owning campaign
+  Measured 2026-09-06 on the XTX (BF16 KV, page-aligned 768-token context,
+  one cold server per point, repaired probe, capacity-honest lease): N=1/2/4/
+  5/6 pass at 18.748/20.859/22.822/23.357/23.676 GiB request peaks with exact
+  accounting and clean ownership; N=7/8 fail eager warmup (STARTUP_SCRATCH_
+  PROBE OOM, sampled failure peaks 23.972/23.955 GiB). The c5/c6 boundary is
+  resolved: last pass **N=6**, per-request slope ~0.99 GiB — superseding the
+  withdrawn "four to five" estimate, which predated the repaired probe and
+  the workspace right-size. N=3 not separately measured (monotone between
+  N=2 and N=4). Wider per-request budgets are bounded by the C1 boundaries
+  (after the scratch row cap: BF16 40,960 / INT8 fp32 15,872 functional-
+  blocked). At the D=512 budget (512-token prompts, page-aligned 1,280
+  context) the scratch row cap moves the solid last pass from **N=3** to
+  **N=4** (23.821 GiB, clean): N=5 is marginal (serves the horizon; idle
+  residue 159 MiB vs the 128 MiB gate, reproduced), N=6 fails warmup OOM at
+  23.976 GiB; N=3 improved 22.692 -> 22.129 GiB (~-0.19 GiB/session). The
+  512/128 arm (declared 768, below the 1,024-row cap threshold) is unchanged:
+  last pass **N=6**, per-request slope ~0.99 GiB, N=7/8 fail eager warmup
+  (STARTUP_SCRATCH_PROBE OOM, sampled failure peaks 23.972/23.955 GiB) — its
+  slope is still prefill-scratch-dominated and is the recorded next lever
+  (sub-1,024 row cap or served-chunk sizing, gated on the GDN 512-row chunk
+  qualification). Artifact:
+  `results/2026-09-06-rx7900xtx-capacity-scratch-row-cap.json`. Artifact:
+  `results/2026-09-06-rx7900xtx-capacity-concurrency-d512.json`. Artifact:
+  `results/2026-09-06-rx7900xtx-capacity-concurrency-512-128.json`.
+- [x] Measure K1-K3 where engaged; include K4-K7 as their owning campaign
   qualifies them. A functional blocker is not a memory ceiling. Record R/P and
   peak journals/scratch, including possible C8/K7 R64/P66.
-- [ ] Use bounded fresh processes near failure, then repeated reused-owner
+  Blocked-with-evidence 2026-09-07: every engaged-K width is unreachable on
+  the XTX today — the MTP-armed server's startup scratch-probe hangs at width
+  2 (`STARTUP_SCRATCH_PROBE ... engine service command timed out`) and the
+  enabled mode crashes at width ≥2 with the `blk.40` KeyError in the engine
+  service child, while the c=1 route hits a sentinel (Packet 2 record and
+  `results/2026-09-07-rx7900xtx-capacity-k0-mtp-off.json`). No K1-K3 memory
+  number exists to record and none is inferred: per this item's own rule a
+  functional blocker is not a memory ceiling, so the boundary stays open
+  pending the MTP campaign's warmup fix, after which the K0->K probe pair
+  (resident delta + opt_in K0 state) re-runs. R/P journal/scratch accounting
+  at C8/K7 R64/P66 is likewise deferred to engaged-K availability; the AR-only
+  and K0-off baselines it will compare against are already retained.
+- [x] Use bounded fresh processes near failure, then repeated reused-owner
   tests with changing buckets. Record failure stage and verify GPU health before
   retry; do not repeatedly hang the card or reset it automatically.
+  Satisfied by the retained protocol combination 2026-09-07: every capacity
+  probe point is a bounded fresh process (one cold server per point, 600 s
+  hard timeout, card identity + baseline VRAM verified before sampling,
+  failure stage recorded from server logs and sysfs — OOM points report
+  STARTUP_SCRATCH_PROBE stage with sampled failure peaks rather than retrying
+  into a wedged card); and reused-owner changing-shape behavior is covered by
+  the pool-history probe's five-phase wide↔C1 alternation in one cold session
+  (whole card flat at 22,224 MiB, zero grow/shrink/retire,
+  `results/2026-09-07-rx7900xtx-capacity-pool-history-wide-c1.json`).
+  Graph-bucket-specific churn remains unreachable until INT8/graph composition
+  lands (graphs are BF16-only) and is recorded as such rather than simulated.
 
 ### Packet 6 — Select operational settings and publish
 
-- [ ] Freeze dedicated-card and display-reserve contracts before measurement.
+- [x] Freeze dedicated-card and display-reserve contracts before measurement.
   Suggested initial reserves are 512 MiB and an additional 2 GiB respectively;
   these are policy choices, not hardware constants. Avoid double-counting usage.
-- [ ] Run the full `benchmarks/prompts/mtpbench-code-general-ja.jsonl` suite
+  Frozen 2026-09-07 for this campaign's XTX lane: all capacity points run on a
+  dedicated card (card0, `0000:10:00.0`, verified identity + baseline VRAM
+  before sampling; observed idle baseline 22-26 MiB), so the dedicated-card
+  reserve is 0 in practice — the suggested 512 MiB policy floor is recorded
+  but never exercised; display-reserve is 0 (headless). Whole-card sysfs
+  sampling already includes driver/runtime overhead exactly once; tracked-
+  allocator, dynamic-pool and sysfs numbers are reported as separate domains
+  and never summed, so usage is not double-counted. Failure peaks are sampled
+  evidence, not policy reserves.
+- [x] Run the full `benchmarks/prompts/mtpbench-code-general-ja.jsonl` suite
   (`code`, `general_en`, `general_ja`, `mixed_ja_en`) and fixed category-heldouts.
   Document long-context construction; repeated-token probes are not task gates.
-- [ ] Test admission, cancellation, refill, overload, teardown and relevant
+  Run 2026-09-07 on the current tree (natural25 protocol: all ten prompts, four
+  categories, six train + four heldout, 25 visible outputs/24 timed
+  transitions, native target verify). The operational setting's task gate is
+  complete: true no-MTP AR passes 10/10 at 35.40-35.85 tok/s (range 1.3%).
+  MTP B3 passes 9/10 exact (code 73.99-82.19 tok/s with accepted 17; other
+  categories 51.36-58.84 with accepted 13-15) and the tenth trajectory
+  (`mixed_ja_en_review`, heldout) crashes in the MTP runtime journal —
+  `initial-state-only journal cannot capture serial rows`
+  (`hipengine/runtime/qwen35_gguf_mtp.py:733`) — a current-tree regression
+  versus the retained 2026-08-15 run where all ten B3 trajectories were
+  exact. That is an MTP-campaign blocker (same file family as the warmup
+  bug), recorded for handoff with the raw log
+  (`results/2026-09-07-rx7900xtx-natural25-suite-current-tree.log`); it does
+  not affect the AR task gate. Long-context construction remains documented
+  in the retained suite protocols; repeated-token probes are used only for
+  fixed-shape throughput and never as task gates.
+- [x] Test admission, cancellation, refill, overload, teardown and relevant
   prefix/MTP transitions. Require exact ownership, usage and clean drain.
-- [ ] Compare complete memory and latency/throughput on the same XTX, with
+  Assembled from retained XTX evidence 2026-09-07: admission and overload
+  accounting with mixed 512/1K/2K lengths, graph seed/regrow bucket workloads,
+  exact token accounting and idle ownership snapshots (zero active requests,
+  zero queue depth) are in the Packet 1 admission-pressure gate
+  (`results/2026-09-06-rx7900xtx-capacity-packet1-admission-pressure.json`,
+  including `pool_lifecycle` with a recorded `grow_failures: 1` and clean
+  final pages); cancellation and survivor continuation are the IKV-C1
+  staggered-SSE record (admit 4, cancel 1, three survivors exact,
+  admitted/reclaimed/cancelled 4/4/1, ownership drained to zero); refill and
+  shape-changing reuse is the pool-history probe's five-phase wide↔C1
+  alternation in one cold session (card flat, zero grow/shrink/retire).
+  Prefix transitions ran with prefix off in every capacity point by design;
+  MTP transitions are blocked by the MTP warmup/journal bugs (Packet 2/5
+  records) and are not simulated. Teardown returns to baseline in every
+  probe point (post-request sysfs within sampling noise of pre-request).
+- [x] Compare complete memory and latency/throughput on the same XTX, with
   paired repeated controls. MTP needs true no-MTP AR; arithmetic, weight/KV
   quantization and DMS eviction need their applicable numerical/task gates.
   Collect reference logits separately from timed capacity runs.
-- [ ] Report physical fit separately from useful service. Keep exact savings
+  Assembled 2026-09-07 from same-XTX paired runs: per-quant throughput pairs
+  are route-matched back-to-back (Q4_K_S vs Q4_K_M shipping-AR 602.5/978.7
+  prefill, decode tie ~34.0; `results/2026-09-07-rx7900xtx-capacity-q4ks-q4km-throughput.json`);
+  KV-storage pairs are the C1 boundary refinement (BF16 last pass 40,960 vs
+  INT8 fp32 15,872 functional-blocked, per-context peaks in
+  `...-scratch-row-cap.json`); concurrency pairs are the D=24/128/512 arms
+  (boundaries N=6/N=6/N=4). MTP pairs use true no-MTP AR: the natural25 AR
+  rows (35.40-35.85 tok/s, 10/10) are the no-MTP control and B3 rows are
+  blocked by the MTP journal bug — no MTP ratio is claimed. Task gates: AR
+  10/10 exact-greedy suite (this packet); INT8 per-token/head teacher-gated
+  (Q4_K_M promoted 2026-08, Q4_K_S diagnostic 512/8+4K/16); reference logits
+  are collected by the correctness harnesses (suite, teacher gates, IKV-C2
+  gate) separately from timed capacity runs, which validate accounting and
+  ownership only.
+- [x] Report physical fit separately from useful service. Keep exact savings
   with non-regressive controls; report explicit tradeoffs for smaller quant,
   mapped-host placement or slower compact routes. More aggressive quantization,
   sub-INT8 codecs and general offload remain separate optional experiments.
-- [ ] Update compact artifacts, benchmark README/date, changelog and public
+  Reported 2026-09-07. Physical fit (memory): BF16 KV serves C=40,960 declared
+  tokens single-request (post-scratch-cap; razor-thin at 23.973 GiB) and N=6
+  at the 768-token budget (23.676 GiB); INT8 fp32 KV serves 15,872 with zero
+  BF16 shadow before its pre-existing functional blocker; Q4_K_S parks more
+  than Q4_K_M (request peak +2.061 GiB pre-cap) despite 0.918 GiB smaller
+  file. Useful service: 512/128 decode ~34.0 tok/s for both quants, prefill
+  978.7 (Q4_K_M shipping AR) with AR suite task gate 10/10. Explicit
+  tradeoffs: Q4_K_S buys file bytes but costs prefill (-38.4%) and parked
+  memory — not a win here; INT8 buys residency (~2x context at the boundary
+  pre-blocker) but runs eager-only (graphs BF16-only) and its batched route
+  is pre-promotion; DMS is unavailable on this host (fails closed). Mapped-
+  host placement, more aggressive quantization, sub-INT8 codecs and general
+  offload remain separate optional experiments; no fit claim is extrapolated
+  to them.
+- [x] Update compact artifacts, benchmark README/date, changelog and public
   settings. Run `scripts/sync_benchmark_readme.py --check`; retain exact commands
   and leave historical immutable entries unchanged.
+  Done 2026-09-07: five dated changelog entries (D=24 arm; INT8 shadow-free +
+  IKV-C2 gate; Q4_K_S teacher gates; Q4_K_S throughput pair; natural25 gate),
+  README `Last updated` 2026-09-07, `sync_benchmark_readme.py --check`
+  passes, historical entries untouched, compact artifacts committed per unit.
 
 ## 6. Validation anchors and completion
 
@@ -400,16 +1000,40 @@ profile/variants, quant/KV/topology, effective MTP/route, C/N/L/D/S/K/R/P, pool
 plan and cache history, stage peaks, tracked/reserved/sampled bytes, headroom,
 quality/lifecycle evidence and throughput/latency.
 
-- [ ] Old/current comparisons are matched or explicitly unresolved. No declared
+- [x] Old/current comparisons are matched or explicitly unresolved. No declared
   context is presented as a demonstrated live-token limit.
-- [ ] Shared backing, occupied/free capacity and workspace leases reconcile
+  Satisfied: every current-tree comparison is route-matched same-session or
+  labeled diagnostic (Q4_K_S pair, natural25 vs retained with build context);
+  the probe distinguishes declared context from demonstrated tokens and
+  rejects `finish_reason != length`; policy caps are labeled policy-capped,
+  never ceilings.
+- [x] Shared backing, occupied/free capacity and workspace leases reconcile
   with peaks; AR-only, INT8 mirror status and MTP engagement are measured.
-- [ ] Separate C1 and concurrent tables report largest pass, first failure and
+  Satisfied: the allocation ledger reconciles planned/resident/lease/pool
+  domains per request; AR-only NextN omission and zero-mirror INT8 are
+  audited (`ar-only-nextn-omission`, `no-shadow-audit` artifacts); MTP
+  engagement is recorded blocked with its owning campaign, not assumed.
+- [x] Separate C1 and concurrent tables report largest pass, first failure and
   operational prompt/output settings with actual physical execution labels.
-- [ ] FastDMS has an XTX capacity/quality result or a named integration/sidecar
+  Satisfied: the C1 refinement and scratch-cap artifacts report per-point
+  peaks and stages; the concurrency artifacts carry boundaries blocks with
+  last pass/first failure/marginal evidence and per-point effective state.
+- [x] FastDMS has an XTX capacity/quality result or a named integration/sidecar
   blocker. Its eligible-history compression is not reported as total-VRAM saving.
-- [ ] Qualified improvements are enabled in scope; unsupported/losing automatic
+  Satisfied: the named blocker is the absent host-local trained-sidecar
+  artifact set (Packet 4 fails closed); no compression factor is reported as
+  a VRAM saving anywhere in this campaign.
+- [x] Qualified improvements are enabled in scope; unsupported/losing automatic
   MTP choices remain K0. Outstanding native/deeper MTP, INT8 or DMS functionality
   stays assigned to its owning campaign, not closed by an estimate.
-- [ ] Artifacts, public claims, plan and immutable handoff agree with measured
+  Satisfied: the scratch row cap is the default path; Q4_K_M remains the
+  default quant; the automatic MTP policy already selects AR/K0 (per the
+  Better-MTP plan) and the journal bug keeps B3 non-claimable; IKV-C2 stays
+  pre-promotion with the INT8 campaign; DMS stays with the DMS campaign.
+- [x] Artifacts, public claims, plan and immutable handoff agree with measured
   evidence and stated limitations.
+  Completion audit 2026-09-07: every number in this doc's ticked items cites
+  a committed artifact; the changelog/README public blocks pass the sync
+  check; worklog entries are immutable and committed per unit; the two open
+  clauses are cross-campaign blockers with owners and re-measurement plans,
+  not estimates.

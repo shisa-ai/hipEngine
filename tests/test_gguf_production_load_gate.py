@@ -424,6 +424,9 @@ def test_long_context_gate_passes_declared_quant_to_llm() -> None:
         "backend": "hip_gfx1151",
         "quant": "gguf_q4_k_s",
         "max_active_requests": 3,
+        "kv_storage": "auto",
+        "kv_scale_dtype": "fp16",
+        "kv_scale_granularity": "per_token_head",
     }
     assert args.gdn_mode == "auto"
     assert "HIPENGINE_GGUF_FP16_RECURRENT_STATE" in long_gate._PROVENANCE_ENV_KEYS

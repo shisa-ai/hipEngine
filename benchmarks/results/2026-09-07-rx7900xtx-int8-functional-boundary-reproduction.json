@@ -1,0 +1,295 @@
+{
+  "schema_version": 1,
+  "kind": "xtx_int8_functional_boundary_reproduction",
+  "date": "2026-09-07",
+  "performance_claim": false,
+  "host": "epyc",
+  "source": {
+    "commit": "c3c75c9d7fc257297cf3648663ed6d965891dcc2",
+    "tracked_clean": false,
+    "command": "python -m hipengine.server --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage int8_per_token_head --max-context-tokens 16128 --max-active-requests 1 --speculative-mtp-serving off --prefix-cache off",
+    "environment": {
+      "HIP_VISIBLE_DEVICES": "1",
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIPENGINE_KV_POOL_IDLE_GRACE_SECONDS": "0",
+      "ROCR_VISIBLE_DEVICES": null
+    }
+  },
+  "device": {
+    "gpu_index_requested": 1,
+    "pci_id": "0000:10:00.0",
+    "drm_card": "card0",
+    "unique_id": "cc4d02090dc9c3ff",
+    "vram_total_bytes": 25753026560,
+    "hip_visible_devices": "1",
+    "selection_note": "card resolved by pci_id through hipengine.util.amdgpu_vram; server-reported ordinal cross-checked against the request"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "size_bytes": 17106773984,
+    "sampled_fingerprint_sha256": "9fb7bd4ac04dd0be6946550474299cba8808e11b30e4d94b5a3911c1727b49b1"
+  },
+  "command": "HIP_VISIBLE_DEVICES=1 GPU_MAX_HW_QUEUES=1 .venv/bin/python scripts/gguf_context_ceiling_probe.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage int8_per_token_head --kv-scale-dtype fp32 --kv-scale-granularity per_token_head --context 16128 --max-tokens 16 --max-active-requests 1 --gpu-index 1 --json /tmp/xtx-capacity/int8-reopen-16128.json",
+  "config": {
+    "kv_storage": "int8_per_token_head",
+    "kv_scale_dtype": "fp32",
+    "kv_scale_granularity": "per_token_head",
+    "max_context_tokens": 16128,
+    "max_active_requests": 1,
+    "max_tokens": 16,
+    "prompt_tokens": null,
+    "speculative_mtp_serving": "off",
+    "prefix_cache": "off",
+    "startup_min_free_mib": 0,
+    "batch_window_ms": 5.0,
+    "sample_interval_ms": 20.0
+  },
+  "prompt": {
+    "target_prompt_tokens": 16111,
+    "counted_prompt_tokens": 16111,
+    "filler_corpus_chars": 248,
+    "suffix_chars": 54
+  },
+  "status": "hip_error_1_request",
+  "reason": "non-OOM HIP error 1 during request: letions status=500 code=generation_failed param=None message=generation failed: HIP error 1: invalid argument INFO: 127.0.0.1:49962 - \"POST /v1/completions HTTP/1.1\" 500 Internal Server Error None",
+  "peak_gib": 20.3565673828125,
+  "effective_state": {
+    "kv_capacity": {
+      "storage": "int8_per_token_head",
+      "scale_dtype": "fp32",
+      "scale_granularity": "per_token_head",
+      "estimate": null,
+      "pool": {
+        "current_bytes": 1073479680.0,
+        "high_water_observed_bytes": 545259520.0,
+        "current_pages": 126.0,
+        "high_water_observed_pages": 64.0,
+        "grow_events": 0.0,
+        "grow_failures": 0.0,
+        "shrink_events": 0.0,
+        "free_pages": 63.0,
+        "refcounted_pages": 63.0,
+        "pinned_pages": 63.0,
+        "retired_pages": 0.0,
+        "retired_bytes": 0.0
+      }
+    },
+    "prefix_cache": {
+      "mode": "off",
+      "block_size_tokens": 256,
+      "stats": null,
+      "usable_hits": 0,
+      "unusable_hits": 0,
+      "admission_fallbacks": 0,
+      "reused_tokens": 0,
+      "state_clone_bytes": 0,
+      "snapshot_entries": 0,
+      "snapshot_limit": 1,
+      "retained_snapshot_entries": 0,
+      "snapshot_hits": 0,
+      "snapshot_evictions": 0,
+      "snapshot_bytes": 0,
+      "retained_kv_pages": 0,
+      "retained_kv_bytes": 0,
+      "resident_bytes": 0,
+      "resident_limit_bytes": 1073479680
+    },
+    "graph_cache": {
+      "entries": 0.0,
+      "hits": 0.0,
+      "misses": 0.0,
+      "replay_hit_rate": 0.0
+    },
+    "context": {
+      "configured_max_context_tokens": 16128,
+      "effective_max_context_tokens": 16128,
+      "chat_default_max_tokens": 4096
+    },
+    "queue": {
+      "depth": 0,
+      "max_depth": null,
+      "worker_active": false,
+      "active_requests": 0,
+      "max_active_requests": 1,
+      "scheduler_fairness": {
+        "policy": "fifo_compatible_sampling_key",
+        "compatible_sampling_coalescing": true,
+        "continuous_decode": true,
+        "preemptive_fairness": false
+      },
+      "batch_window_ms": 5.0
+    },
+    "startup": {
+      "eager_load": true,
+      "warmup_complete": true,
+      "last_timings_s": {
+        "engine_create_s": 8.7e-05,
+        "resident_prepare_s": 81.757981,
+        "warmup_s": 0.256734,
+        "scratch_probe_s": 0.000263,
+        "chat_smoke_s": 0.199708,
+        "startup_total_s": 82.259257
+      },
+      "checks": {
+        "raw_warmup": {
+          "status": "passed",
+          "max_tokens": 1
+        },
+        "scratch_probe": {
+          "enabled": true,
+          "status": "passed",
+          "max_prompt_tokens": 16127,
+          "probe_prompt_tokens": 16127,
+          "context_unknown": false,
+          "result": {
+            "max_prompt_tokens": 16127,
+            "max_batch_size": 1,
+            "release_after_probe": true,
+            "packed_ar_prefill_widths": [],
+            "packed_ar_prefill_prompt_lengths": [],
+            "packed_ar_prefill_skipped": true,
+            "packed_mtp_prefill_widths": [],
+            "packed_mtp_prefill_prompt_lengths": [],
+            "packed_mtp_prefill_skipped": true,
+            "packed_mtp_verify_widths": [],
+            "packed_mtp_verify_prompt_lengths": [],
+            "packed_mtp_verify_skipped": true,
+            "packed_ar_prefill_reason": "batch_width_le_1_or_disabled",
+            "reason": "batch_width_le_1_or_disabled",
+            "packed_mtp_prefill_reason": "startup_warmup_disabled",
+            "packed_mtp_verify_reason": "startup_warmup_disabled"
+          }
+        },
+        "chat_smoke": {
+          "enabled": true,
+          "status": "passed",
+          "prompt_tokens": 9,
+          "max_tokens": 1
+        }
+      },
+      "memory": {
+        "startup_begin": {
+          "free_bytes": 25715277824,
+          "total_bytes": 25753026560,
+          "used_bytes": 37748736,
+          "free_gib": 23.949219,
+          "used_gib": 0.035156
+        },
+        "after_resident_prepare": {
+          "free_bytes": 5305794560,
+          "total_bytes": 25753026560,
+          "used_bytes": 20447232000,
+          "free_gib": 4.941406,
+          "used_gib": 19.042969
+        },
+        "after_raw_warmup": {
+          "free_bytes": 4200595456,
+          "total_bytes": 25753026560,
+          "used_bytes": 21552431104,
+          "free_gib": 3.912109,
+          "used_gib": 20.072266
+        },
+        "after_scratch_probe": {
+          "free_bytes": 4200595456,
+          "total_bytes": 25753026560,
+          "used_bytes": 21552431104,
+          "free_gib": 3.912109,
+          "used_gib": 20.072266
+        },
+        "after_chat_smoke": {
+          "free_bytes": 4200595456,
+          "total_bytes": 25753026560,
+          "used_bytes": 21552431104,
+          "free_gib": 3.912109,
+          "used_gib": 20.072266
+        },
+        "guard": {
+          "free_bytes": 4200595456,
+          "total_bytes": 25753026560,
+          "used_bytes": 21552431104,
+          "free_gib": 3.912109,
+          "used_gib": 20.072266
+        }
+      },
+      "error": null
+    },
+    "model": {
+      "id": "ceiling-probe",
+      "backend": "hip_gfx1100",
+      "quant": "gguf_q4_k_m",
+      "loaded": true,
+      "loaded_model_count": 1,
+      "kv_capability": {
+        "schema_version": 1,
+        "capability_id": "3a1055955c47e3a1493d63b0ee7485437769c20679a6d0b7f14f863b5d53827b",
+        "status": "qualified",
+        "runtime_action": "admit",
+        "promotion_eligible": true,
+        "diagnostic_override": false,
+        "requested": {
+          "artifact_sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+          "artifact_size_bytes": 17106773984,
+          "backend": "hip_gfx1100",
+          "target_arch": "gfx1100",
+          "weight_quant": "gguf_q4_k_m",
+          "kv_storage": "int8_per_token_head",
+          "storage_layout": "uniform",
+          "scale_dtype": "fp32",
+          "scale_granularity": "per_token_head"
+        },
+        "effective_kv_storage": "int8_per_token_head",
+        "artifact": {
+          "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+          "size_bytes": 17106773984,
+          "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+          "content_verified": true,
+          "error": null
+        },
+        "evidence": {
+          "decision": "qualified",
+          "scope": "explicit_no_mirror_c1_direct_c4_serial",
+          "quality_artifact": "benchmarks/results/2026-08-16-qwen38-27b-actual-context-quality-w7900.json",
+          "reason": "complete 512/8 and 4K/16 plus bounded 129024/16 quality pass on gfx1100; direct compact execution is qualified at physical c1, with artifact-scoped serial c1-per-row residency through logical c4",
+          "max_direct_rows": 1,
+          "max_serial_resident_rows": 4,
+          "persistent_bf16_mirror": false,
+          "decode_batch_variant": "per_token_head_gqa_splitk_gate_bf16_batch_strided_spans"
+        },
+        "reason": "complete 512/8 and 4K/16 plus bounded 129024/16 quality pass on gfx1100; direct compact execution is qualified at physical c1, with artifact-scoped serial c1-per-row residency through logical c4"
+      }
+    },
+    "speculative_mtp_capability": null
+  },
+  "isolated_leaf": {
+    "command": "HIP_VISIBLE_DEVICES=1 GPU_MAX_HW_QUEUES=1 .venv/bin/python -m pytest -xq tests/test_qwen35_prefill_long_context.py",
+    "results": {
+      "15872": "passed analytic uniform-attention oracle",
+      "16128": "HIP error 1 at _launch_prefill_gqa_gate -> _check_launch",
+      "81920": "not run: pytest -x stopped on 16128"
+    },
+    "kernel": "qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel",
+    "requested_dynamic_shared_bytes": 65792,
+    "dynamic_shared_formula": "(16128 + 64 + 256) * sizeof(float)",
+    "interpretation": "Confirmed isolated native-prefill launch defect; server trace is not yet captured, so attribution of the server failure to this exact leaf remains a hypothesis."
+  },
+  "dms_int8": {
+    "device_status": "not implemented",
+    "evidence": [
+      "hipengine/kvcache/dms.py DMSCompactBackend rejects non-BF16 device payloads",
+      "hipengine/kvcache/dms_device.py DMSDevicePayloadStore resolves BF16 pack/append/attention and allocates 2-byte slots",
+      "hipengine/runtime/qwen35_gguf_runner.py DMS finalize constructs create_dms_bf16_backend"
+    ],
+    "qualification_file_alone_sufficient": false
+  },
+  "audit_tests": {
+    "command": "HIP_VISIBLE_DEVICES=1 GPU_MAX_HW_QUEUES=1 .venv/bin/python -m pytest -q tests/test_kvcache_dms_device_hip.py::test_int8_device_payloads_rejected tests/test_qwen35_gguf_int8_kv_policy.py",
+    "passed": 30
+  },
+  "limitations": [
+    "Failure evidence only; no repaired capacity or throughput claim.",
+    "Cold-server log reports HIP code but not failing kernel stack.",
+    "The sampled model fingerprint is not a full-file SHA256.",
+    "Isolated RED test is reserved for the subsequent validated repair commit."
+  ]
+}

@@ -3,12 +3,14 @@
 """Validate gfx11 GGUF long-context concurrency and bounded device-KV pressure.
 
 The packet reuses the production OpenAI/Uvicorn machinery but gives memory
-lifecycle its own fail-closed protocol.  It runs concurrent 1K, 4K, 32K, mixed
-1K/4K/32K, and an optional feasible longer context; then it reconfigures the
-same idle owner to a deliberately tight device-KV high water.  A live 32K row
-must survive while a 4K row receives retryable ``429 engine_busy`` from KV
-capacity, after which the pool must shrink, regrow with fresh logical block ids,
-invalidate/rebind graphs, remain c1-exact, and drain all ownership.
+lifecycle its own fail-closed protocol.  It runs concurrent per-context pairs
+(defaults 1K, 4K, 32K; ``--required-contexts`` rescales the whole packet to
+smaller cards), a mixed row, and an optional feasible longer context; then it
+reconfigures the same idle owner to a deliberately tight device-KV high water.
+A live largest-context row must survive while the second-smallest context
+receives retryable ``429 engine_busy`` from KV capacity, after which the pool
+must shrink, regrow with fresh logical block ids, invalidate/rebind graphs,
+remain c1-exact, and drain all ownership.
 """
 
 from __future__ import annotations
@@ -72,8 +74,7 @@ from scripts.gguf_production_load_gate import (
 
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 _SUPPORTED_BACKENDS = ("hip_gfx1100", "hip_gfx1151")
-_REQUIRED_CONTEXTS = (1_024, 4_096, 16_384, 32_768)
-# _execute_workload is shared with the production packet and intentionally
+_REQUIRED_CONTEXTS = (1_024, 4_096, 16_384, 32_768)# _execute_workload is shared with the production packet and intentionally
 # sends this retained model id. Keep the focused pressure request identical.
 _SERVED_MODEL_NAME = "qwen35-production-load"
 _PROVENANCE_ENV_KEYS = (
@@ -92,6 +93,10 @@ class LongContextPoolPlan:
     block_size: int
     decode_tokens: int
     longer_context_tokens: int | None
+    contexts: tuple[int, ...]
+    mixed_contexts: tuple[int, ...]
+    pressure_live_context: int
+    pressure_reject_context: int
     pages_by_context: dict[int, int]
     initial_pages: int
     low_water_pages: int
@@ -106,6 +111,15 @@ class LongContextPoolPlan:
             for context, pages in sorted(self.pages_by_context.items())
         }
         return payload
+
+
+def _context_label(context_tokens: int) -> str:
+    tokens = int(context_tokens)
+    if tokens <= 0:
+        raise ValueError("context tokens must be positive")
+    if tokens >= 1_024 and tokens % 1_024 == 0:
+        return f"{tokens // 1_024}k"
+    return str(tokens)
 
 
 def _request_pages(prompt_tokens: int, decode_tokens: int, *, block_size: int = 256) -> int:
@@ -131,26 +145,30 @@ def build_pool_plan(
     decode_tokens: int,
     longer_context_tokens: int | None,
     block_size: int = 256,
+    contexts: Sequence[int] = _REQUIRED_CONTEXTS,
 ) -> LongContextPoolPlan:
     decode = int(decode_tokens)
     longer = None if longer_context_tokens in (None, 0) else int(longer_context_tokens)
-    contexts = [*_REQUIRED_CONTEXTS]
+    resolved = tuple(sorted({int(value) for value in contexts}))
+    if len(resolved) < 2 or any(value <= 0 for value in resolved):
+        raise ValueError("at least two distinct positive contexts are required")
     if longer is not None:
-        if longer <= _REQUIRED_CONTEXTS[-1]:
-            raise ValueError("longer context must exceed 32K")
-        contexts.append(longer)
+        if longer <= resolved[-1]:
+            raise ValueError("longer context must exceed the largest required context")
     pages = {
         context: _request_pages(context, decode, block_size=int(block_size))
-        for context in contexts
+        for context in (*resolved, *(() if longer is None else (longer,)))
     }
-    initial = pages[_REQUIRED_CONTEXTS[0]]
+    initial = pages[resolved[0]]
+    mixed_contexts = (
+        (resolved[0], resolved[1], resolved[-1])
+        if len(resolved) >= 3
+        else resolved
+    )
     phase_shapes = [
-        (pages[1_024], pages[1_024]),
-        (pages[4_096], pages[4_096]),
-        (pages[16_384], pages[16_384]),
-        (pages[32_768], pages[32_768]),
-        (pages[1_024], pages[4_096], pages[16_384], pages[32_768]),
-        (pages[32_768],),
+        *[(pages[context], pages[context]) for context in resolved],
+        tuple(pages[context] for context in mixed_contexts),
+        (pages[resolved[-1]],),
     ]
     if longer is not None:
         phase_shapes.append((pages[longer], pages[longer]))
@@ -158,11 +176,15 @@ def build_pool_plan(
         _phase_pool_pages(shape, initial_pages=initial)
         for shape in phase_shapes
     )
-    pressure_high = initial + pages[32_768]
+    pressure_high = initial + pages[resolved[-1]]
     return LongContextPoolPlan(
         block_size=int(block_size),
         decode_tokens=decode,
         longer_context_tokens=longer,
+        contexts=resolved,
+        mixed_contexts=mixed_contexts,
+        pressure_live_context=int(resolved[-1]),
+        pressure_reject_context=int(resolved[1]),
         pages_by_context=pages,
         initial_pages=initial,
         low_water_pages=initial,
@@ -192,50 +214,50 @@ def build_workload_specs(
     decode_tokens: int,
     longer_context_tokens: int | None,
     backend: str = "hip_gfx1151",
+    contexts: Sequence[int] = _REQUIRED_CONTEXTS,
 ) -> dict[str, tuple[WorkloadRequest, ...]]:
     decode = int(decode_tokens)
     if decode <= 0:
         raise ValueError("decode-tokens must be positive")
+    resolved = tuple(sorted({int(value) for value in contexts}))
+    if len(resolved) < 2 or any(value <= 0 for value in resolved):
+        raise ValueError("at least two distinct positive contexts are required")
     graph_decode = _graph_output_tokens(str(backend), decode)
-    workloads: dict[str, tuple[WorkloadRequest, ...]] = {
-        "context_1k_c2": (
-            WorkloadRequest("context-1k-a", 9707, 1_024, decode),
-            WorkloadRequest("context-1k-b", 9708, 1_024, decode),
-        ),
-        "context_4k_c2": (
-            WorkloadRequest("context-4k-a", 9707, 4_096, decode),
-            WorkloadRequest("context-4k-b", 9708, 4_096, decode),
-        ),
-        "context_16k_c2": (
-            WorkloadRequest("context-16k-a", 9707, 16_384, decode),
-            WorkloadRequest("context-16k-b", 9708, 16_384, decode),
-        ),
-        "context_32k_c2": (
-            WorkloadRequest("context-32k-a", 9707, 32_768, decode),
-            WorkloadRequest("context-32k-b", 9708, 32_768, decode),
-        ),
-        "mixed_1k_4k_32k": (
-            WorkloadRequest("mixed-1k", 9707, 1_024, decode),
-            WorkloadRequest("mixed-4k", 9709, 4_096, decode),
-            WorkloadRequest("mixed-32k", 9710, 32_768, decode),
-        ),
-    }
+    labels = [_context_label(context) for context in resolved]
+    workloads: dict[str, tuple[WorkloadRequest, ...]] = {}
+    for context, label in zip(resolved, labels, strict=True):
+        workloads[f"context_{label}_c2"] = (
+            WorkloadRequest(f"context-{label}-a", 9707, context, decode),
+            WorkloadRequest(f"context-{label}-b", 9708, context, decode),
+        )
+    mixed = (
+        (resolved[0], resolved[1], resolved[-1])
+        if len(resolved) >= 3
+        else resolved
+    )
+    mixed_labels = [_context_label(context) for context in mixed]
+    workloads[f"mixed_{mixed_labels[0]}_{mixed_labels[1]}_{mixed_labels[-1]}"] = tuple(
+        WorkloadRequest(f"mixed-{mixed_labels[index]}", 9707 + index, context, decode)
+        for index, context in enumerate(mixed)
+    )
     longer = None if longer_context_tokens in (None, 0) else int(longer_context_tokens)
     if longer is not None:
-        label = f"context_{longer // 1024}k_c2"
-        workloads[label] = (
-            WorkloadRequest(f"context-{longer // 1024}k-a", 9707, longer, decode),
-            WorkloadRequest(f"context-{longer // 1024}k-b", 9708, longer, decode),
+        if longer <= resolved[-1]:
+            raise ValueError("longer context must exceed the largest required context")
+        longer_label = _context_label(longer)
+        workloads[f"context_{longer_label}_c2"] = (
+            WorkloadRequest(f"context-{longer_label}-a", 9707, longer, decode),
+            WorkloadRequest(f"context-{longer_label}-b", 9708, longer, decode),
         )
-    workloads["graph_seed_32k_c1"] = (
-        WorkloadRequest("graph-seed-32k", 9709, 32_768, graph_decode),
+    workloads[f"graph_seed_{labels[-1]}_c1"] = (
+        WorkloadRequest(f"graph-seed-{labels[-1]}", 9709, resolved[-1], graph_decode),
     )
-    workloads["graph_regrow_32k_c1"] = (
-        WorkloadRequest("graph-regrow-blocker-1k", 9708, 1_024, graph_decode),
+    workloads[f"graph_regrow_{labels[-1]}_c1"] = (
+        WorkloadRequest(f"graph-regrow-blocker-{labels[0]}", 9708, resolved[0], graph_decode),
         WorkloadRequest(
-            "graph-regrow-32k",
+            f"graph-regrow-{labels[-1]}",
             9710,
-            32_768,
+            resolved[-1],
             graph_decode,
             arrival_offset_seconds=0.1,
         ),
@@ -243,10 +265,19 @@ def build_workload_specs(
     return workloads
 
 
-def _pressure_specs(*, decode_tokens: int) -> tuple[WorkloadRequest, WorkloadRequest]:
+def _pressure_specs(
+    *,
+    decode_tokens: int,
+    contexts: Sequence[int] = _REQUIRED_CONTEXTS,
+) -> tuple[WorkloadRequest, WorkloadRequest]:
+    resolved = tuple(sorted({int(value) for value in contexts}))
+    if len(resolved) < 2:
+        raise ValueError("at least two distinct positive contexts are required")
+    live_label = _context_label(resolved[-1])
+    reject_label = _context_label(resolved[1])
     return (
-        WorkloadRequest("pressure-live-32k", 9709, 32_768, int(decode_tokens)),
-        WorkloadRequest("pressure-reject-4k", 9710, 4_096, int(decode_tokens)),
+        WorkloadRequest(f"pressure-live-{live_label}", 9709, resolved[-1], int(decode_tokens)),
+        WorkloadRequest(f"pressure-reject-{reject_label}", 9710, resolved[1], int(decode_tokens)),
     )
 
 
@@ -278,7 +309,7 @@ def _required_admission(
     )
     return {
         "resource": "device_kv_pool",
-        "requested_units": int(plan.pages_by_context[4_096]),
+        "requested_units": int(plan.pages_by_context[plan.pressure_reject_context]),
         "current_units": effective_capacity,
         "capacity_units": effective_capacity,
     }
@@ -299,6 +330,7 @@ def evaluate_packet(
         build_workload_specs(
             decode_tokens=plan.decode_tokens,
             longer_context_tokens=plan.longer_context_tokens,
+            contexts=plan.contexts,
         )
     )
     if set(workloads) != set(expected_names) or any(
@@ -498,7 +530,10 @@ def _execute_pressure_workload(
     workspace_lease_pages: int,
     speculative_mtp: bool = False,
 ) -> tuple[dict[str, Any], tuple[int, ...], tuple[int, ...]]:
-    long_spec, candidate_spec = _pressure_specs(decode_tokens=plan.decode_tokens)
+    long_spec, candidate_spec = _pressure_specs(
+        decode_tokens=plan.decode_tokens,
+        contexts=plan.contexts,
+    )
     before_ids = set(reclaimed)
     metrics_before = _metrics_snapshot(host, port)
     memory_before = _memory_snapshot("before_kv_pressure", runner)
@@ -672,6 +707,9 @@ def _llm_construction_kwargs(
         "backend": str(args.backend),
         "quant": str(args.quant),
         "max_active_requests": int(args.max_active_requests),
+        "kv_storage": str(args.kv_storage),
+        "kv_scale_dtype": str(args.kv_scale_dtype),
+        "kv_scale_granularity": str(args.kv_scale_granularity),
     }
 
 
@@ -682,18 +720,27 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if int(args.max_active_requests) < 3:
         raise ValueError("max-active-requests must be at least three for the mixed-context gate")
     longer = None if int(args.longer_context_tokens) == 0 else int(args.longer_context_tokens)
+    contexts = tuple(
+        sorted({int(value) for value in str(args.required_contexts).split(",") if value.strip()})
+    )
     plan = build_pool_plan(
         decode_tokens=int(args.decode_tokens),
         longer_context_tokens=longer,
+        contexts=contexts,
     )
     all_workloads = build_workload_specs(
         decode_tokens=int(args.decode_tokens),
         longer_context_tokens=longer,
         backend=str(args.backend),
+        contexts=contexts,
     )
-    workload_names = _parse_workload_names(
-        args.workloads,
-        available=tuple(all_workloads),
+    workload_names = (
+        tuple(all_workloads)
+        if not str(args.workloads).strip()
+        else _parse_workload_names(
+            args.workloads,
+            available=tuple(all_workloads),
+        )
     )
     workloads = {name: all_workloads[name] for name in workload_names}
     run_pressure = not bool(args.skip_pressure)
@@ -702,7 +749,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         and run_pressure
         and longer is not None
     )
-    pressure_specs = _pressure_specs(decode_tokens=int(args.decode_tokens))
+    pressure_specs = _pressure_specs(
+        decode_tokens=int(args.decode_tokens),
+        contexts=contexts,
+    )
     all_specs = [spec for rows in workloads.values() for spec in rows]
     if run_pressure:
         all_specs.extend(pressure_specs)
@@ -732,6 +782,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "HIPENGINE_KV_POOL_IDLE_GRACE_SECONDS": "0",
         "HIPENGINE_PREFIX_CACHE": "off",
     }
+    regrow_name = f"graph_regrow_{_context_label(contexts[-1])}_c1"
     source_commit = subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True
     ).strip()
@@ -774,6 +825,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 max_sequence_length=max_sequence_length,
                 use_wmma_prefill=True,
                 use_gemv_decode=True,
+                prefill_chunk_size=int(args.prefill_chunk_tokens),
                 compiler_version=compiler_version,
                 require_cached_build=bool(args.require_cached_build),
             )
@@ -814,6 +866,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     queue_retry_after_seconds=int(args.queue_retry_after_seconds),
                     stream_queue_max_chunks=int(args.stream_queue_max_chunks),
                     shutdown_grace_seconds=10.0,
+                    kv_storage=str(args.kv_storage),
+                    kv_scale_dtype=str(args.kv_scale_dtype),
+                    kv_scale_granularity=str(args.kv_scale_granularity),
                 ),
                 llm=llm,
             )
@@ -825,7 +880,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 if not bool(ready.get("ready")):
                     raise RuntimeError(f"server readiness failed: {ready}")
                 for name, specs in workloads.items():
-                    if name == "graph_regrow_32k_c1":
+                    if name == regrow_name:
                         continue
                     summary = _execute_workload(
                         name,
@@ -903,10 +958,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         file=sys.stderr,
                         flush=True,
                     )
-                if "graph_regrow_32k_c1" in workloads:
+                if regrow_name in workloads:
                     summary = _execute_workload(
-                        "graph_regrow_32k_c1",
-                        workloads["graph_regrow_32k_c1"],
+                        regrow_name,
+                        workloads[regrow_name],
                         host="127.0.0.1",
                         port=server.port,
                         llm=llm,
@@ -923,13 +978,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         request_timeout_seconds=float(args.request_timeout_seconds),
                         speculative_mtp=bool(args.speculative_mtp),
                     )
-                    workload_results["graph_regrow_32k_c1"] = summary
+                    workload_results[regrow_name] = summary
                     regrow_block_ids, regrow_pointers = _allocation_for_workload(
                         summary,
                         reclaimed,
                     )
                     print(
-                        f"graph_regrow_32k_c1: passed={summary['passed']}",
+                        f"{regrow_name}: passed={summary['passed']}",
                         file=sys.stderr,
                         flush=True,
                     )
@@ -1107,15 +1162,24 @@ def build_parser() -> argparse.ArgumentParser:
         "--longer-context-tokens",
         type=int,
         default=65_536,
-        help="Feasible context above 32K; use 0 to disable for a diagnostic.",
+        help="Feasible context above the largest required context; use 0 to disable for a diagnostic.",
     )
-    default_workloads = ",".join(
-        build_workload_specs(decode_tokens=32, longer_context_tokens=65_536)
+    parser.add_argument(
+        "--required-contexts",
+        default=",".join(str(value) for value in _REQUIRED_CONTEXTS),
+        help=(
+            "Comma-separated ascending prompt contexts for the per-context, "
+            "mixed, graph and pressure workloads (default matches the "
+            "long-context packet; smaller sets fit smaller cards)."
+        ),
     )
     parser.add_argument(
         "--workloads",
-        default=default_workloads,
-        help="Comma-separated workload subset; subsets are diagnostic only.",
+        default="",
+        help=(
+            "Comma-separated workload subset; empty runs every workload for "
+            "the selected contexts; subsets are diagnostic only."
+        ),
     )
     parser.add_argument("--skip-pressure", action="store_true")
     parser.add_argument(
@@ -1127,6 +1191,21 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--max-active-requests", type=int, default=3)
+    parser.add_argument(
+        "--kv-storage",
+        default="auto",
+        help="Device KV storage contract for the served gate (auto, bf16, int8_per_token_head).",
+    )
+    parser.add_argument(
+        "--kv-scale-dtype",
+        default="fp16",
+        help="KV scale dtype contract when the storage contract needs scales.",
+    )
+    parser.add_argument(
+        "--kv-scale-granularity",
+        default="per_token_head",
+        help="KV scale granularity contract when the storage contract needs scales.",
+    )
     parser.add_argument("--max-pending-requests", type=int, default=8)
     parser.add_argument("--max-queued-requests", type=int, default=8)
     parser.add_argument("--stream-queue-max-chunks", type=int, default=64)
