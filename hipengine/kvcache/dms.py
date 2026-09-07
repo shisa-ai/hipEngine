@@ -1680,38 +1680,40 @@ class DMSCompactBackend:
         expected = (self.retrofit.num_layers, self.retrofit.num_kv_heads)
         if evict_new.shape != expected:
             raise ValueError("DMS direct append eviction metadata shape mismatch")
+        position = int(position)
+        window = int(self.retrofit.window_size)
+        evicted_total = 0
         for layer in range(self.retrofit.num_layers):
             device_live = self._device_store.live_counts(layer)
             for head in range(self.retrofit.num_kv_heads):
                 live = int(state.live_counts[layer, head])
                 prior_positions = state.token_positions[layer, head, :live]
                 prior_evict = state.evict_mask[layer, head, :live]
-                keep = (~prior_evict) | (
-                    int(position) - prior_positions <= self.retrofit.window_size
-                )
-                removed = int(live - np.count_nonzero(keep))
-                combined_positions = np.concatenate(
-                    (
-                        prior_positions[keep],
-                        np.asarray([int(position)], dtype=np.int32),
-                    )
-                )
-                combined_evict = np.concatenate(
-                    (prior_evict[keep], np.asarray([evict_new[layer, head]]))
-                )
-                final_live = int(combined_positions.size)
+                keep = (~prior_evict) | (position - prior_positions <= window)
+                final_live = int(live - np.count_nonzero(~keep)) + 1
                 if final_live != int(device_live[head]):
                     raise RuntimeError("DMS direct append device/host live-count mismatch")
                 capacity = int(state.range_capacity[layer, head])
                 if final_live > capacity:
                     raise MemoryError("DMS direct append exceeded committed extent")
-                state.live_counts[layer, head] = final_live
-                state.token_positions[layer, head, :final_live] = combined_positions
+                removed = live - (final_live - 1)
+                if removed:
+                    # Compact only the eviction case: kept entries to the
+                    # front, then append the new token. The steady state
+                    # evicts ~1 entry per (layer, head) per step, so the
+                    # common path below writes only the appended slot.
+                    state.token_positions[layer, head, : final_live - 1] = prior_positions[keep]
+                    state.evict_mask[layer, head, : final_live - 1] = prior_evict[keep]
+                state.token_positions[layer, head, final_live - 1] = position
                 state.token_positions[layer, head, final_live:capacity] = -1
-                state.evict_mask[layer, head, :final_live] = combined_evict
+                state.evict_mask[layer, head, final_live - 1] = bool(
+                    evict_new[layer, head]
+                )
                 state.evict_mask[layer, head, final_live:capacity] = False
-                self.evicted_tokens += removed
-        state.logical_tokens = max(state.logical_tokens, int(position) + 1)
+                state.live_counts[layer, head] = final_live
+                evicted_total += removed
+        state.logical_tokens = max(state.logical_tokens, position + 1)
+        self.evicted_tokens += evicted_total
         self.decode_appends += 1
 
     def compact_decode_attention(
