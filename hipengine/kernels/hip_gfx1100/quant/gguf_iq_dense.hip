@@ -565,6 +565,16 @@ template<int Q> __device__ float weight(const uint8_t* b, int k) {
         int scale = (((b[4+g/2] >> (4*(g&1))) & 15) | (((hi >> (2*g)) & 3) << 4)) - 32;
         int code = (b[8+g*16+(j&15)] >> (4*(j>>4))) & 15;
         return (half_load(b) * float(scale)) * float(iq4_values[code]);
+    } else if constexpr (Q == 3) {
+        // block_q3_K: hmask[32], qs[64], scales[12], fp16 d.
+        // Same indexing as the in-tree selected Q3_K leaf. Multiply d by
+        // the signed scale before the quant, matching the pinned C decoder.
+        int group = k >> 4;
+        int scale = ((b[96+(group&7)] >> (4*(group>>3))) & 15)
+                  | (((b[104+(group&3)] >> (2*(group>>2))) & 3) << 4);
+        int q = (b[32+(k>>7)*32+(k&31)] >> (2*((k&127)>>5))) & 3;
+        q -= (b[k&31] & (1 << (k>>5))) ? 0 : 4;
+        return (half_load(b+108) * float(scale-32)) * float(q);
     } else {
         int g = k >> 5, j = k & 31, grid_slot = j >> 2;
         int index = b[2+g*8+grid_slot] | (((b[66+g] >> grid_slot)&1) << 8);
@@ -607,6 +617,7 @@ extern "C" int hipengine_gguf_iq_dense(const void* x,const void* w,void* out,
         case 0: run<0>(x,w,out,rows,K,N,output,(hipStream_t)stream); break;
         case 1: run<1>(x,w,out,rows,K,N,output,(hipStream_t)stream); break;
         case 2: run<2>(x,w,out,rows,K,N,output,(hipStream_t)stream); break;
+        case 3: run<3>(x,w,out,rows,K,N,output,(hipStream_t)stream); break;
         default: return int(hipErrorInvalidValue);
     }
     return int(hipGetLastError());
