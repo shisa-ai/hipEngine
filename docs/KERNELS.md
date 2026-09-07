@@ -799,6 +799,11 @@ Default-off `HEAD_PAIR=quad` model admission passes six full-logit/state/
 KV cases including all four p4096 categories,24 sparse calls each,
 zero dense/decode calls. Page256-parent Hq24/Hkv2 only;profile binders0.
 Admission: `2026-09-07-framework-qwen4exp-qsa-head-quad-state.json`.
+Production now bindsquad/strict0 after staged72 exact trajectories;
+all4 p4096 request means improve including transition,PP+3.571%,
+TG-3.531% explicitly retained. Dense/decode kernels unchanged;not a
+statistical all-case non-regression or CPU-recovery fix.
+Production: `2026-09-07-framework-qwen4exp-qsa-head-quad-production.json`.
 
 H256 QSA exposes kernel-only `strict_h256_head_pair_rows_spans`,
 page256 with even GQA ratio;two adjacent query heads share each K/V
