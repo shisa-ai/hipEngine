@@ -32,6 +32,7 @@ def main():
     p.add_argument("--fold128",action="store_true")
     p.add_argument("--fold-pair",action="store_true")
     p.add_argument("--register-cache",action="store_true")
+    p.add_argument("--row-publish", action="store_true")
     p.add_argument("--routing-capture",type=Path)
     p.add_argument("--case-id",default="code-p4096")
     p.add_argument("--chunk",type=int,default=0)
@@ -46,6 +47,10 @@ def main():
     if a.register_cache:
         from tests.test_qwen4exp_q51_pair import FOLD_PAIR, REGISTER_CACHE
         parent_name, candidate_name = FOLD_PAIR, REGISTER_CACHE
+    if a.row_publish:
+        from tests.test_qwen4exp_q51_pair import REGISTER_CACHE
+        from tests.test_qwen4exp_q51_row_publish import CANDIDATE as ROW_PUBLISH
+        parent_name, candidate_name = REGISTER_CACHE, ROW_PUBLISH
     capture = None
     if a.routing_capture:
         from scripts.qwen4exp_routing_capture import select_routing, validate_replay_identity
