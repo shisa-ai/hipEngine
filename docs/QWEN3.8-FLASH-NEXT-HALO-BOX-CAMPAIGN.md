@@ -1,5 +1,13 @@
 # Qwen3.8-Flash-Next halo-box Follow-up Campaign
 
+**September 7 source update:** `/home/lhl/strix-llama.cpp` at clean
+`7baf0a98c7ed0bd7c9f6fd3b7f8c3d8747c3889a` has a non-KDA H48 tiled
+GDN default and a Q8_0 single-query D64/128/256 support predicate without
+the older blanket GQA6 restriction. Section5.3's PR11 descriptions and
+all `b212548e0` timing rows remain historical, not measurements of this
+checkout. See the [source-pinned follow-up queue](QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md#current-strix-fork-follow-ups-september-7-2026).
+No new comparator benchmark or BF16-KV policy change is implied.
+
 Status: **Current Framework Desktop comparator screen completed 2026-09-05 at
 hipEngine `c0cfdc3ef`, upstream llama.cpp `4d9176092`, and halo-box master
 `b212548e0`.** Section 0 is the current c=1 overview. The original HB/PF
