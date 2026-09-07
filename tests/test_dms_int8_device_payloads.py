@@ -15,7 +15,7 @@ def _quantize(bits):
     return encode_dms_payload(_bf16_from_bits(bits), codec="int8_per_token_head")
 
 
-@pytest.mark.parametrize("tokens,dim,heads,q_heads", [(19, 16, 2, 8), (1025, 256, 2, 8), (1025, 256, 4, 24), (16385, 256, 4, 24)])
+@pytest.mark.parametrize("tokens,dim,heads,q_heads", [(19, 16, 2, 8), (1025, 256, 2, 8), (1025, 256, 4, 24), (8193, 256, 4, 24), (16385, 256, 4, 24)])
 def test_int8_pack_append_attention_and_restore(tokens, dim, heads, q_heads, monkeypatch):
     window = 8192 if tokens > 8192 else 7
     slots = (tokens + 8) * heads + 11
@@ -101,8 +101,9 @@ def test_int8_pack_append_attention_and_restore(tokens, dim, heads, q_heads, mon
         assert np.max(np.sum(p * np.log(p / qprob), axis=-1)) <= .05
         assert np.mean(np.argmax(out, axis=-1) == np.argmax(reference, axis=-1)) >= .9
         repeat = np.empty_like(out)
-        store.attention_layer(0, q=q, out=repeat, base=base, live=new_live)
-        np.testing.assert_array_equal(out, repeat)
+        for _ in range(16):
+            store.attention_layer(0, q=q, out=repeat, base=base, live=new_live)
+            np.testing.assert_array_equal(out, repeat)
         store.restore(snapshot)
         restored = store.layer_view(0)
         for h in range(heads):

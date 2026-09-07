@@ -139,6 +139,9 @@ __global__ void dms_int8_attn_split_kernel(const float* q, const int8_t* k,
     __syncthreads();
   }
   const float maximum = reduction[0];
+  // Every warp must finish reading the maximum before lane 0 reuses its
+  // shared slot for the probability reduction (a write-after-read hazard).
+  __syncthreads();
   const float probability = tid < n ? expf(score-maximum) : 0;
   scores[tid] = probability; reduction[tid] = probability;
   __syncthreads();
