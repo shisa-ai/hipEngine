@@ -1,5 +1,15 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## GDN full-layer diagnostic graph cache
+
+- `scripts/qwen4exp_gdn_decode_graph_probe.py` is single-runner/c1
+  diagnostic only,not a production graph owner. It snapshots state for
+  first-use validation and charges setup in first graph arm.
+- Real advancing code/mixed trajectories exact,but warm graph~1.049s/
+  16 steps is effectively equal to eager~1.046-1.047s.
+- No default flag or runtime integration justified. Keep probe for
+  lifecycle/reference evidence;do not generalize keying/lifetimes to serving.
+
 ## QSA CPU-active transition diagnostic
 
 -100ms busy interval improves decode-only timer but not charged total:
