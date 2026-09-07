@@ -4,7 +4,11 @@ Last updated: **2026-09-07 UTC**
 
 Q8 down register-weight kernel candidate:compact37.373->32.127ms,
 mapped37.228->30.808ms,40 exact pairs/both orders positive.
-18 tests pass,VGPR24->32/no scratch;model gates pending.
+18 kernel tests pass,VGPR24->32/no scratch. Default-off admission also
+passes30 CPU tests and five chunk1024 full-logit/state/KV cases exactly;
+compact/mapped engagement verified, zero decode calls/final owners.
+Whole-model throughput A/B pending; no production change.
+[State evidence](results/2026-09-07-framework-qwen4exp-q8-down-register-state.json).
 [Evidence](results/2026-09-07-framework-qwen4exp-q8-down-register.json).
 
 Router shuffle rejected after full12-case A/B:PP+0.357%/+0.168%/+0.253%

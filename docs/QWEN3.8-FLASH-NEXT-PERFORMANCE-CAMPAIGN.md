@@ -82,8 +82,13 @@ row4 bundled arithmetic. Actual layer4 compact/counts37.373->32.127ms
 (1.163x);layer2 mapped with explicitly borrowed layer0 counts37.228->
 30.808ms (1.208x).40 pairs exact,both orders positive;18 tests pass.
 Trace VGPR24->32,LDS512B/scratch0 unchanged. These512-token projection
-screens are not current1024 whole-model results;model state/KV/map and
-canonical A/B are next. No runtime default change.
+screens are not current1024 whole-model throughput results. Default-off
+admission passes five chunk1024 full-logit/state/KV cases: p512 runs4
+compact+1 mapped call; p4096 runs16+4, zero decode calls, clean teardown.
+Both binders remain0; canonical12-case A/B is next. No throughput/default
+promotion yet. Keep thermal/clock experiments deferred; prioritize
+substantial prefill owner reductions over gains that change sign with noise.
+[State gate](../benchmarks/results/2026-09-07-framework-qwen4exp-q8-down-register-state.json).
 [Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-q8-down-register.json).
 
 **Router shuffle rejected and removed (September7 UTC):** full12-case
