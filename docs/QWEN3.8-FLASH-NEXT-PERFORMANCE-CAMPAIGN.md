@@ -76,6 +76,18 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Chunk1024 native/c2 allocation gate (September7 UTC):** clean `856b03b81`
+allocates two262144-context runners with shared model weights and
+1024-capacity prefill scratch. Tracked allocation106,866,880,936B versus
+explicit plan components99,739,496,800B plus8GiB scratch;remaining
+scratch margin1,462,550,456B before the separate4GiB reserve.
+Both runners prepared and teardown returns0 allocations/bytes. No
+native-length inference or c2 throughput claim. Existing admission
+allowance fits this measured configuration without a policy increase.
+All chunk candidate gates are now recorded;the default remains512 until
+the scoped production selection is updated with explicit tradeoffs.
+[Memory evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-chunk1024-native-c2-memory.json).
+
 **Chunk1024 full-category screen (September7 UTC):** clean `e5afb7b41`,
 72/72 trajectories exact,coverage verified,zero final owners. PP512
 180.264->180.168 (-0.053%,identical work control);PP1024176.706->

@@ -1,5 +1,12 @@
 # Qwen4Exp context capacity: the 2051 boundary, the cap that was raised, and what it cost
 
+**September7 UTC chunk1024 allocation follow-up:** two native262144-context
+Framework runners prepare with106,866,880,936 tracked bytes and clean teardown.
+The existing4GiB-per-runner scratch allowance has1,462,550,456 bytes of
+margin before reserve. This is allocation evidence,not native-length inference;
+chunk default promotion is tracked in the performance campaign.
+[Packet](../benchmarks/results/2026-09-07-framework-qwen4exp-chunk1024-native-c2-memory.json).
+
 Status: public native-context plumbing, real c2 completions/chat startup and
 8K retrieval, native-capacity boundary gates complete on Framework gfx1151
 (2026-09-06). Section4c records the short

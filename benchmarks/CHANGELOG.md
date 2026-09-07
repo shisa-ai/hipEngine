@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-07 UTC Framework chunk1024 native/c2 memory] Two262144-context runners allocate106.87GB,within existing scratch allowance by1.46GB before reserve;zero final owners. Allocation-only delta N/A,not inference/throughput. `benchmarks/results/2026-09-07-framework-qwen4exp-chunk1024-native-c2-memory.json`.
+
 - [2026-09-07 UTC Framework chunk1024 full screen] PP512180.264->180.168 (-0.053%),PP1024176.706->190.614 (+7.871%),PP4096162.799->176.114 (+8.178%);72 exact,all long requests faster. P4096 TG-1.723%/small short-request losses explicit,native/c2 memory gate pending,default unchanged. `benchmarks/results/2026-09-07-framework-qwen4exp-chunk1024-full.json`.
 
 - [2026-09-06 UTC Framework chunk1024 state] All12 cases pass512/1024/512 full-logit/state/KV equality and coverage;zero owners,peak86.094GB(shared larger allocation). Throughput delta N/A;full categories and native/c2 memory margins remain. `benchmarks/results/2026-09-06-framework-qwen4exp-chunk1024-state.json`.
