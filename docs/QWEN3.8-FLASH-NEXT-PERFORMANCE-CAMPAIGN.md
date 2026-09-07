@@ -76,6 +76,15 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Prepacked MMQ token64 expansion rejected (September7 UTC):** actual
+layer0 qkv/SSM,512/1024 rows,complete quantize/clear/MMQ/repair
+boundary ratios0.941/0.969 and0.931/0.952.80 pairs exact,both orders
+lose;27 tests pass. VGPR144->112,scratch0,dynamic LDS57856->48384B.
+Despite lower resource usage,prepacked path loses. Candidate removed;
+prepacked128 production and promoted raw-Q64 remain unchanged.
+Do not transfer raw-Q tile results to prepacked or GR paths.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-prepacked-token64-rejected.json).
+
 **Raw-Q token64 promoted (September7 UTC):** clean ee36b0b75,
 full12-case chunk1024 A/B,72 exact trajectories,all12 prefill means
 improve. PP512/1024/4096:190.315->191.353 (+0.545%),

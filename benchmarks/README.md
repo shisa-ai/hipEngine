@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-07 UTC**
 
+Prepacked MMQ token64 rejected:qkv/SSM512/1024 screen0.931-0.969x,
+80 exact pairs,27 tests. Lower VGPR did not improve timing.
+Prepacked128 and promoted raw-Q64 defaults unchanged.
+[Evidence](results/2026-09-07-framework-qwen4exp-prepacked-token64-rejected.json).
+
 Raw-Q token64 promoted:full12-case PP190.315->191.353 (+0.545%)/
 202.324->203.168 (+0.417%)/186.490->186.895 (+0.217%),72 exact.
 All PP and11 request means improve;Japanese4096 request loss0.183%

@@ -788,6 +788,12 @@ Fallback requirements:
 
 ## Source-lineage audit
 
+Prepacked token64 MMQ specialization tested and removed:actual qkv/SSM
+at512/1024 rows0.931-0.969x,80 pairs exact,27 tests pass.
+VGPR144->112,scratch0,dynamic LDS57856->48384B. Prepacked128 and
+promoted raw-Q64 remain independently selected;no blanket tile policy.
+Evidence: `2026-09-07-framework-qwen4exp-prepacked-token64-rejected.json`.
+
 Raw Q8 MMQ exposes kernel-only
 `mmq128_token64_q8_1_d4x3_guarded_f32_f32_out`:128-output/64-token
 tile with existing vector activation staging. Exact per-output arithmetic,
