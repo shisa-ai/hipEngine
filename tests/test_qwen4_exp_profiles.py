@@ -307,7 +307,10 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert selected[("moe_linear", "prefill_rows_ge2_lt64_exact_grouped_q4_gate_up")]["selected_variant"] == (
         "selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out")
     assert selected[("moe_linear", "prefill_rows_ge64_exact_grouped_q4_gate_up")]["selected_variant"] == (
-        "selected_dual_grouped_pair2_bf16_bf16_out")
+        "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out")
+    assert selected[("moe_linear", "prefill_rows_ge64_exact_grouped_q4_gate_up")]["strict_fallback_variant"] == (
+        "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out")
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT"] == "1"
     assert selected[("qsa_sparse_attention", "prefill_h256_page256_sparse_rows_ge16")]["selected_variant"] == (
         "strict_h256_head_quad_rows_spans")
     row4 = _selection_map(production)[("linear", "ungrouped_prefill_rows_ge64_q5k_gate_up")]
