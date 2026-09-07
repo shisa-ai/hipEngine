@@ -76,6 +76,14 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Current-default baseline plumbing (September7 UTC):**
+`qwen4exp_framework_family_refresh.py baselines --prefill-chunk-size 1024`
+now explicitly selects the current hipEngine chunk. Historical default512
+and pinned comparator command arguments remain unchanged. The runner
+records the selected chunk and rejects resume with a different chunk;
+legacy manifests imply512. Use1024 for the queued combined-default
+logger-off baseline refresh. This tooling change alone updates no rates.
+
 **MMQ bank-first loop order closed (September7 UTC):** move output
 fragment bank outside token-group loop,keeping each output's accumulation
 order. Actual qkv/Q512 medians1.000x/0.998x,1024 medians1.013x/1.020x,
