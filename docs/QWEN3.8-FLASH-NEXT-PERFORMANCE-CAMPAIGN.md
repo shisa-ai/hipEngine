@@ -76,6 +76,13 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Family capture chunk provenance (September7 UTC):** collector accepts
+explicit `--prefill-chunk-size`,passes it to both prefill/decode children
+and emits `hipengine_prefill_chunk_size` in joined evidence. Join rejects
+declared/child mismatches. Historical default512 is preserved;current
+qualified production refresh must explicitly pass1024.22 CPU tests pass.
+No new timing claim until the clean1024 capture completes.
+
 **Chunk1024 scoped production promotion (September7 UTC):** retain the
 full-category +7.87%/+8.18% p1024/p4096 prefill gains and faster long
 requests under prefill-first direction. p512-0.053% is a same-work

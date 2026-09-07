@@ -214,3 +214,16 @@ def test_decode_join_rejects_different_root_token():
     assert joined["hipengine_source"] == he["source"]
     assert joined["comparator_source"] == vk["comparator_source"]
     assert joined["hip_raw_sources"][0]["raw_sha256"] == "child-hash"
+    he["prefill_chunk_size"] = 1024
+    he["cases"][0]["command"] += ["--prefill-chunk-size","1024"]
+    assert join_captures(he,vk)["hipengine_prefill_chunk_size"] == 1024
+    he["cases"][0]["command"][-1] = "512"
+    with pytest.raises(ValueError,match="chunk"):
+        join_captures(he,vk)
+
+
+def test_capture_chunk_arguments_validate_positive_size():
+    from scripts.qwen4exp_framework_family_refresh import hip_chunk_arguments
+    assert hip_chunk_arguments(1024) == ["--prefill-chunk-size","1024"]
+    with pytest.raises(ValueError):
+        hip_chunk_arguments(0)

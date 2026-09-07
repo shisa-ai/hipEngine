@@ -408,10 +408,17 @@ def normalize_hip_roles(raw):
     }
 
 
+def hip_chunk_arguments(size):
+    if size < 1:
+        raise ValueError("prefill chunk size must be positive")
+    return ["--prefill-chunk-size",str(size)]
+
+
 def capture_hipengine(args):
     from scripts.qwen4exp_role_analyze import analyze
 
     check_host()
+    chunk_arguments = hip_chunk_arguments(args.prefill_chunk_size)
     if not _git_metadata(ROOT)["tracked_clean"]:
         raise ValueError("commit the validated collector before frozen HIP captures")
     fixture, fixture_hash = load_fixture(DEFAULT_FIXTURE)
@@ -433,6 +440,7 @@ def capture_hipengine(args):
         "model_identity": model_identity(args.model_root),
         "quant": "UD-Q4_K_XL",
         "kv_dtype": "BF16",
+        "prefill_chunk_size": args.prefill_chunk_size,
         "cases": [],
     }
     try:
@@ -461,6 +469,7 @@ def capture_hipengine(args):
                     "--require-cached-build",
                     "--output",
                     str(raw_output),
+                    *chunk_arguments,
                 ]
                 if phase == "prefill":
                     command += ["--mode", "prefill", "--repetitions", "1"]
@@ -569,6 +578,14 @@ def join_captures(hip, vk):
     check_capture_identity(hip, vk)
     comparisons = []
     for row in hip["cases"]:
+        if "prefill_chunk_size" in hip:
+            command = row.get("command",[])
+            try:
+                declared = int(command[command.index("--prefill-chunk-size")+1])
+            except (ValueError,IndexError) as error:
+                raise ValueError("missing/invalid HIP child chunk metadata") from error
+            if declared != hip["prefill_chunk_size"]:
+                raise ValueError("HIP child chunk metadata mismatch")
         other = next(c for c in vk["cases"] if c["id"] == row["id"])
         phase = row["phase"]
         if row["prompt_tokens"] != other["prompt_tokens"]:
@@ -620,6 +637,7 @@ def join_captures(hip, vk):
         "performance_claim": False,
         "comparisons": comparisons,
         "hipengine_source": hip.get("source"),
+        "hipengine_prefill_chunk_size": hip.get("prefill_chunk_size"),
         "comparator_source": vk.get("comparator_source"),
         "hip_raw_sources": [
             {key: case[key] for key in ("id", "phase", "raw_path", "raw_sha256", "command")}
@@ -1084,6 +1102,8 @@ def main():
     hip.add_argument("--model-root", type=Path, required=True)
     hip.add_argument("--case-id", action="append", required=True)
     hip.add_argument("--compiler-version-file", type=Path, required=True)
+    hip.add_argument("--prefill-chunk-size",type=int,default=512,
+                     help="Explicit current production uses1024;512 preserves historical capture default")
     hip.add_argument("--rocprof-bin", type=Path, default=Path("rocprofv3"))
     hip.add_argument("--output", type=Path, required=True)
     join = sub.add_parser("join")
