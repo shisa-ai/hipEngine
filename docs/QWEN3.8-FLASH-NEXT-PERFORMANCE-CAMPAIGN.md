@@ -76,6 +76,18 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Poisoned-QSA reader coverage (September7 UTC):**
+`tests/test_qwen4exp_qsa_poisoned_padding.py` now checks parent,
+H256 wave,and production page256 wave readers against BF16 NaN/Inf in
+every unselected physical KV row. The union of all query-required cells
+is preserved,so neighboring live inputs remain valid. Unused selection
+slots receive INT64_MAX;empty selection and invalid active indices are
+included. Repeated poison/restore cycles preserve exact F32 output bits.
+18 focused GPU/CPU tests pass on Framework gfx1151. No runtime zeroing
+or performance change. This closes this kernel-level coverage gap only:
+served multi-request reset/checkpoint isolation and top-k publication
+ordering still require their own tests. Do not mark the full P1 audit done.
+
 **One-pair empirical calibration (September7 UTC):** committed
 `scripts/qwen4exp_screen_calibration.py` validates same Framework/model/
 chunk1024,72 samples,12 cases,canonical order and exact trajectories.
