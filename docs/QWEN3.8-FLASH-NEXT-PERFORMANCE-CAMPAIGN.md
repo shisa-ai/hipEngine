@@ -76,6 +76,18 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Four-head QSA leaf candidate (September7 UTC):** existing exact
+head-sharing template instantiated for4 adjacent query heads/page256,
+GQA ratio divisible by4. Synthetic selected2051 at512/1024 rows gives
+1.033121x/1.063059x versus two-head candidate,both order means positive,
+20 pairs exact.23 focused tests pass including extreme query scales,
+invalid grouping and poisoned unused KV. VGPR72->112,no LDS/scratch.
+Cold first pair/quad samples retained;warmup label corrected explicitly.
+Kernel-only,no runtime selector or complete-QSA/request speedup claim.
+This may increase prefill savings but does not solve the CPU transition;
+any admission must preserve full-state/KV gates and charge transition time.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-qsa-head-quad.json).
+
 **Advancing GDN graph feasibility (September7 UTC):** diagnostic wrapper
 captures all36 full GDN layers inside real code/mixed p4096 decode.
 Each first use snapshots BF16 residual and FP32 conv/matrix state,runs

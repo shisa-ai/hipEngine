@@ -1,5 +1,7 @@
 # hipEngine Benchmark Changelog
 
+- [2026-09-07 UTC QSA four-head leaf] Synthetic2051-selected512/1024 attention1.033x/1.063x vs two-head candidate,20 exact pairs,23 tests,VGPR72->112/no scratch. Kernel-only,no request/CPU-recovery claim. `benchmarks/results/2026-09-07-framework-qwen4exp-qsa-head-quad.json`.
+
 - [2026-09-07 UTC advancing GDN graphs] Code/mixed4096 full36-layer graphs preserve16-step tokens/state,setup228-232ms included;warm graph1.049s vs eager1.046-1.047s,not a demonstrated win. Diagnostic only,production unchanged. `benchmarks/results/2026-09-07-framework-qwen4exp-gdn-advancing-graph.json`.
 
 - [2026-09-07 UTC GDN paired graphs] Layers0/24/46 restored-state medians1.405->1.021/1.464->1.034/1.534->1.098ms,60 exact pairs,both orders positive,production MoE cache verified. Setup8.4-9.3ms;no AR/default claim. `benchmarks/results/2026-09-07-framework-qwen4exp-gdn-layer-graph-paired.json`.

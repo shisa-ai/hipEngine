@@ -1532,6 +1532,7 @@ extern "C" int NAME(const void* q,const void* k,const void* v,const void* pos, \
 }
 QSA_HEADS_ENTRY(hipengine_qwen4_exp_qsa_sparse_attention_paged_bf16_h256_page256_wave_rows_f32,1)
 QSA_HEADS_ENTRY(hipengine_qwen4_exp_qsa_sparse_attention_paged_bf16_h256_head_pair_rows_f32,2)
+QSA_HEADS_ENTRY(hipengine_qwen4_exp_qsa_sparse_attention_paged_bf16_h256_head_quad_rows_f32,4)
 #undef QSA_HEADS_ENTRY
 
 __global__ void qsa_sparse_attention_paged_bf16_ordered_rows_scores_f32_kernel(

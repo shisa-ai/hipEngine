@@ -724,6 +724,7 @@ def qwen4_exp_qsa_sparse_attention_paged_bf16_h256_wave_rows_f32(
     library: ctypes.CDLL | None = None, runtime: HipRuntime | None = None,
     _page256: bool = False,
     _head_pair: bool = False,
+    _head_quad: bool = False,
 ) -> None:
     """Exact H256 parent reduction mapped to eight coordinates per wave lane."""
     if spans.spans_mode != "uniform" or spans.storage_dtype != DType.BF16:
@@ -738,12 +739,16 @@ def qwen4_exp_qsa_sparse_attention_paged_bf16_h256_wave_rows_f32(
         raise ValueError("page256 QSA requires block_size=256")
     if _head_pair and (block_size != 256 or (query_heads//kv_heads)%2):
         raise ValueError("head pair requires page256 and even GQA ratio")
+    if _head_quad and (block_size !=256 or (query_heads//kv_heads)%4):
+        raise ValueError("head quad requires page256 and GQA ratio divisible by4")
     if spans.live_counts.numel != rows or spans.base_offsets.numel % rows:
         raise ValueError("row QSA spans must provide one table and live count per row")
     library = library or build_qwen4_exp_qsa(load=True)
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(
         library, (
+            "hipengine_qwen4_exp_qsa_sparse_attention_paged_bf16_h256_head_quad_rows_f32"
+            if _head_quad else
             "hipengine_qwen4_exp_qsa_sparse_attention_paged_bf16_h256_head_pair_rows_f32"
             if _head_pair else
             "hipengine_qwen4_exp_qsa_sparse_attention_paged_bf16_h256_page256_wave_rows_f32"
@@ -766,6 +771,10 @@ def qwen4_exp_qsa_sparse_attention_paged_bf16_h256_page256_wave_rows_f32(*args, 
 def qwen4_exp_qsa_sparse_attention_paged_bf16_h256_head_pair_rows_f32(*args, **kwargs) -> None:
     qwen4_exp_qsa_sparse_attention_paged_bf16_h256_wave_rows_f32(
         *args, **kwargs, _page256=True, _head_pair=True)
+
+def qwen4_exp_qsa_sparse_attention_paged_bf16_h256_head_quad_rows_f32(*args, **kwargs) -> None:
+    qwen4_exp_qsa_sparse_attention_paged_bf16_h256_wave_rows_f32(
+        *args, **kwargs, _page256=True, _head_quad=True)
 
 
 def qwen4_exp_qsa_sparse_attention_paged_bf16_ordered_rows_f32(
@@ -1205,6 +1214,10 @@ def register_qwen4_exp_qsa_kernels(*, replace: bool = True) -> None:
         ): qwen4_exp_qsa_sparse_attention_paged_bf16_h256_wave_rows_f32,
         KernelKey(
             "hip_gfx1100", "qsa_sparse_attention", "bf16_kv",
+            "strict_h256_head_quad_rows_spans",
+        ): qwen4_exp_qsa_sparse_attention_paged_bf16_h256_head_quad_rows_f32,
+        KernelKey(
+            "hip_gfx1100", "qsa_sparse_attention", "bf16_kv",
             "strict_h256_head_pair_rows_spans",
         ): qwen4_exp_qsa_sparse_attention_paged_bf16_h256_head_pair_rows_f32,
         KernelKey(
@@ -1315,6 +1328,7 @@ __all__ = [
     "qwen4_exp_qsa_sparse_attention_paged_bf16_h256_wave_rows_f32",
     "qwen4_exp_qsa_sparse_attention_paged_bf16_h256_page256_wave_rows_f32",
     "qwen4_exp_qsa_sparse_attention_paged_bf16_h256_head_pair_rows_f32",
+    "qwen4_exp_qsa_sparse_attention_paged_bf16_h256_head_quad_rows_f32",
     "qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32",
     "qwen4_exp_qsa_sparse_attention_paged_bf16_wave32_f32",
     "qwen4_exp_qsa_sparse_attention_paged_bf16_rows_wave32_f32",
