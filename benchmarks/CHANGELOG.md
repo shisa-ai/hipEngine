@@ -1,5 +1,7 @@
 # hipEngine Benchmark Changelog
 
+- **2026-09-07** — zbook / Radeon 8060S UD K_M/K_S short-context teacher diagnosis: changing only llama.cpp to explicit tokenwise execution gives 162/162 top-1 matches for both baseline and Q5/Q6 candidates, versus 161/162 with batched execution. Raw IQ2_XS also matches 162/162 and has three byte-identical fresh-process captures. This is schedule evidence, not a speed or quality improvement; defaults and memory counts unchanged. [Artifact](results/2026-09-07-zbook-ud-tokenwise-teacher.json).
+
 - **2026-09-07** — zbook / Radeon 8060S Qwen3.8-27B UD K_S raw IQ2_XS diagnostic: counted weight buffers 21,125,912,576→20,973,418,496 bytes (−0.72%), 162/162 baseline top-1 matches and max KL 0.000923 on 18 category/heldout prompts. Defaults unchanged; independent-teacher prefill top-1 remains 17/18 and repeat/task/serving gates are incomplete. No speed or peak-memory claim. [Artifact](results/2026-09-07-zbook-ud-iq2-xs-diagnostic.json).
 
 - **2026-09-07** — zbook / Radeon 8060S Qwen3.8-27B UD short-context diagnostic: Q5/Q6 residency reduces counted weight buffers K_M 26.397→21.527 GB (−18.45%), K_S 21.126→18.600 GB (−11.96%); both match 162/162 baseline top-1 choices across 18 prompts. Independent same-file llama.cpp comparison matches 161/162 in each arm/file. Defaults unchanged: K_M candidate p95 KL and K_S prefill top-1 miss their gates; repeat/task/serving coverage is incomplete. No speed or peak-memory claim. [Artifact](results/2026-09-07-zbook-ud-c1-residency-logits-diagnostic.json).
