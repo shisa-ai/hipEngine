@@ -76,6 +76,22 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Expanded F32 Q8 cache rejected (September7 UTC):** exact host
+dequantization plus resident F32 weights keeps the same coltile8/row4
+FMA/reduction tree but increases layer0 attention-gate512/1024 projection
+5.633->34.879ms /11.079->69.026ms (0.161x/0.161x).
+Shared-down also loses0.787x/0.782x. All80 pairs exact,11 focused
+tests pass;cached trace resources remain72 VGPR/512B LDS/scratch0.
+Gate sidecar is60MiB versus15.9375MiB raw,adds~14.8ms CPU
+dequant/upload setup outside steady-state timing;both costs are retained.
+This rejects removing dequantization by widening the existing row-major
+weight representation. Larger traffic/cache footprint is a hypothesis,
+not a measured cache-miss attribution. Candidate removed,no model A/B.
+Do not repeat this unchanged cache or the already rejected MMQ gate
+policy expansion;future layout work must preserve compact weights and
+address actual traversal/shared-input reuse.
+[Evidence/recipe](../benchmarks/results/2026-09-07-framework-qwen4exp-q8-f32-cache-rejected.json).
+
 **Q8 early wave publication rejected (September7 UTC):** fresh trace
 identifies attention-gate projection as1.579s of code4096 linear time.
 Unlike Q4 pair2,its Q8 coltile8/row4 parent publishes wave sums after

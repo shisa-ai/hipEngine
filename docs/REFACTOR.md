@@ -1,5 +1,14 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Qwen4Exp Q8 expanded F32 cache: removed
+
+- Exact dequantized row-major sidecar with unchanged coltile8/row4
+  loses0.161x on attention-gate512/1024 and0.787x/0.782x shared-down.
+  Gate sidecar60MiB plus~14.8ms setup;80 exact pairs,11 tests.
+- Resources unchanged72 VGPR/512B LDS/scratch0. No production path,
+  wrapper or registry entry retained;do not repeat unchanged.
+  Recipe:`benchmarks/results/2026-09-07-framework-qwen4exp-q8-f32-cache-rejected.json`.
+
 ## Qwen4Exp Q8 early wave publication: removed
 
 - Publishing each accumulator immediately after its shuffle tree instead
