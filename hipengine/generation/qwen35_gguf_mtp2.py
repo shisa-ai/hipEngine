@@ -3194,6 +3194,33 @@ class Qwen35GGUFMTP2Adapter:
         )
         return True
 
+    @staticmethod
+    def _limit_target_batch_eos(proposal, results, rows, remaining, *, runtime):
+        """Read only EOS requests' bounded IDs before selecting committed state."""
+        from hipengine.speculative.streaming import greedy_chain_eos_limit
+
+        limits = list(remaining)
+        offset = 0
+        for index, (rid, count, result, row) in enumerate(zip(
+            proposal.request_ids, proposal.candidate_counts, results, rows, strict=True
+        )):
+            if int(result.request_id) != int(rid):
+                raise ValueError("EOS target/proposal request identities differ")
+            request = row.request
+            eos = getattr(request, "eos_token_id", None)
+            if eos is not None and not bool(getattr(request, "ignore_eos", False)):
+                candidates = np.empty((int(count),), dtype=np.int32)
+                target = np.empty((int(count) + 1,), dtype=np.int32)
+                copy_device_to_host(host_array_ptr(candidates), DeviceBuffer(
+                    proposal.token_ids.ptr + offset * DType.INT32.itemsize,
+                    candidates.nbytes), runtime=runtime)
+                copy_device_to_host(host_array_ptr(target), DeviceBuffer(
+                    result.target_top1.ptr, target.nbytes), runtime=runtime)
+                limits[index] = greedy_chain_eos_limit(
+                    candidates, target, remaining_decode=limits[index], eos_token_id=eos)
+            offset += int(count)
+        return tuple(limits)
+
     def _enqueue_target_batch_accept(
         self,
         batch: TargetVerifyBatch,
@@ -3842,6 +3869,8 @@ class Qwen35GGUFMTP2Adapter:
             raise RuntimeError("physical target owner has no packed verifier")
         target_started_ns = time.perf_counter_ns()
         device_result = batch is None or ngram_proposal is not None
+        if not device_result and any(getattr(row.request, "eos_token_id", None) is not None for row in rows):
+            raise ValueError("EOS requires native device acceptance before selected commit")
         with (
             target_verifier_active_slots_session(len(jobs)),
             q4_t16_physical_extra_rowtiles_session(
@@ -3940,6 +3969,9 @@ class Qwen35GGUFMTP2Adapter:
                     ),
                     cancelled_request_ids=cancelled,
                 )
+            remaining = self._limit_target_batch_eos(
+                device_candidates, results, rows, remaining, runtime=targets[0].runtime
+            )
             accept_started = time.perf_counter()
             accept_enqueue_started = time.perf_counter()
             pending = self._enqueue_target_batch_accept(
@@ -4155,6 +4187,7 @@ class Qwen35GGUFMTP2Adapter:
             row.mtp2_selected_commit_batch_calls += 1
             row.mtp2_execution_routes.append("eager")
         output_ids: list[tuple[int, ...]] = []
+        finish_reasons: list[str | None] = []
         next_tokens = accept.next_tokens or (None,) * len(ids)
         for index, (request_id, target, row, accepted, accepted_tokens, next_token) in enumerate(
             zip(
@@ -4182,7 +4215,11 @@ class Qwen35GGUFMTP2Adapter:
             row.slot.prev_token = int(visible[-1])
             row.slot.seq_position = int(target.position)
             row.slot.native_decode_steps += 1
-            row.slot.done = len(row.slot.generated_ids) >= int(row.request.max_tokens)
+            eos = getattr(row.request, "eos_token_id", None)
+            eos_finished = (eos is not None and not row.request.ignore_eos
+                            and int(visible[-1]) == int(eos))
+            row.slot.done = eos_finished or len(row.slot.generated_ids) >= int(row.request.max_tokens)
+            finish_reasons.append("eos" if eos_finished else None)
             row.mtp2_cycles += 1
             row.mtp2_candidate_counts.append(
                 int(plan.candidate_counts[plan.request_ids.index(request_id)])
@@ -4227,7 +4264,7 @@ class Qwen35GGUFMTP2Adapter:
             correction_or_bonus_tokens=tuple(next_tokens),
             target_cursor_deltas=tuple(len(tokens) for tokens in output_ids),
             provider_cursor_deltas=accept.accepted_counts,
-            finish_reasons=(None,) * len(ids),
+            finish_reasons=tuple(finish_reasons),
         )
         telemetry = SpecCycleTelemetry(
             operation_id=plan.operation_id,
