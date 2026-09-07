@@ -1,0 +1,645 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-07",
+  "status": "diagnostic_only_defaults_unchanged",
+  "host": "zbook",
+  "hardware": "AMD RYZEN AI MAX+ PRO 395 / Radeon 8060S",
+  "backend": "hip_gfx1151",
+  "runtime_commit": "bfced7b466914773c0e153e21164b38b50d1a9c3",
+  "workload": {
+    "concurrency": 1,
+    "prompt_tokens_min": 39,
+    "prompt_tokens_max": 71,
+    "teacher_steps": 9,
+    "prompts": 18,
+    "logit_rows": 162,
+    "prefill": "serial eager hipEngine; explicit single-token llama_decode calls, immediate logit copies",
+    "profile": null,
+    "hipengine_kv": "session default; not separately logged by this diagnostic",
+    "llama_kv": "default F16",
+    "independent_teacher": "same published UD artifact, llama.cpp HIP",
+    "bf16_model_teacher": false
+  },
+  "baseline_protocol_artifact": "2026-09-07-zbook-ud-c1-residency-logits-diagnostic.json",
+  "iq2_protocol_artifact": "2026-09-07-zbook-ud-iq2-xs-diagnostic.json",
+  "teacher": {
+    "commit": "17252c769a63c1cb650ce98ae309cf4de0da7778",
+    "source": "/tmp/ud-llama-teacher-tokenwise.cpp",
+    "source_sha256": "a840e3ef211f0fe3c1f4c158d7bda689c99cd4abad69f5d492db01d2f6b0bff1",
+    "binary_sha256": "bae9e399af4f9a7c30ee7cfd71221bc94a53bab158330515a96cf044bfda9d80",
+    "libllama_sha256": "f27465fcadea69490a4c243f69f7e9bb40bee7764efccb1c7635217dc8ffc2de",
+    "libggml_hip_sha256": "02043adae248b4b37fd6922d0f12e0f8866fe2f3fededc52c351905f90596943"
+  },
+  "prompts": [
+    {
+      "id": "code_merge_intervals",
+      "category": "code"
+    },
+    {
+      "id": "code_topological_sort",
+      "category": "code"
+    },
+    {
+      "id": "code_lru_cache",
+      "category": "code"
+    },
+    {
+      "id": "code_markdown_table",
+      "category": "code"
+    },
+    {
+      "id": "general_en_plan",
+      "category": "general_en"
+    },
+    {
+      "id": "general_en_explain",
+      "category": "general_en"
+    },
+    {
+      "id": "general_ja_plan",
+      "category": "general_ja"
+    },
+    {
+      "id": "general_ja_explain",
+      "category": "general_ja"
+    },
+    {
+      "id": "mixed_ja_en_translate",
+      "category": "mixed_ja_en"
+    },
+    {
+      "id": "mixed_ja_en_review",
+      "category": "mixed_ja_en"
+    },
+    {
+      "id": "heldout_code_rate_limiter",
+      "category": "code"
+    },
+    {
+      "id": "heldout_code_interval_schedule",
+      "category": "code"
+    },
+    {
+      "id": "heldout_general_en_incident",
+      "category": "general_en"
+    },
+    {
+      "id": "heldout_general_en_quant",
+      "category": "general_en"
+    },
+    {
+      "id": "heldout_general_ja_migration",
+      "category": "general_ja"
+    },
+    {
+      "id": "heldout_general_ja_speculative",
+      "category": "general_ja"
+    },
+    {
+      "id": "heldout_mixed_summary",
+      "category": "mixed_ja_en"
+    },
+    {
+      "id": "heldout_mixed_review",
+      "category": "mixed_ja_en"
+    }
+  ],
+  "models": {
+    "M": {
+      "model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+      "model_sha256": "322e194ff79741c7baa497c240f677f54b201b0efab44ca8e50f122b39123482",
+      "teacher_sha256": "78671c04df51de0e4f9ddfc1e04650dc8de0e7c4d91f4afb70db6f8e3e701df4",
+      "input_sha256": "11435013dd78f4a5b48726633653412446f6caa940ceed6185e564271e98b6db",
+      "finite": true,
+      "adjacent_identical_rows": 0,
+      "comparisons": {
+        "baseline": {
+          "capture_sha256": "158cd54d62554e377d5f8422ae6fc20bf0f4424445c904b9261b2e308125111e",
+          "slices": {
+            "code": {
+              "rows": 54,
+              "kl_mean": 0.00011245706248293159,
+              "kl_p95": 0.0005625160787759162,
+              "kl_p99": 0.001543626046732124,
+              "kl_max": 0.0021344043701661294,
+              "top1_matches": 54,
+              "top1": 1.0
+            },
+            "general_en": {
+              "rows": 36,
+              "kl_mean": 0.00023381372420010465,
+              "kl_p95": 0.0014572300193382882,
+              "kl_p99": 0.00211996619403988,
+              "kl_max": 0.002185278027232831,
+              "top1_matches": 36,
+              "top1": 1.0
+            },
+            "general_ja": {
+              "rows": 36,
+              "kl_mean": 0.00019094845780118805,
+              "kl_p95": 0.0009545228023323925,
+              "kl_p99": 0.0010880882767963168,
+              "kl_max": 0.0010892650839055711,
+              "top1_matches": 36,
+              "top1": 1.0
+            },
+            "mixed_ja_en": {
+              "rows": 36,
+              "kl_mean": 0.0002691031139106501,
+              "kl_p95": 0.0010941252585330093,
+              "kl_p99": 0.0015204670843304486,
+              "kl_max": 0.0015846666332933101,
+              "top1_matches": 36,
+              "top1": 1.0
+            },
+            "prefill": {
+              "rows": 18,
+              "kl_mean": 0.00039435259569911915,
+              "kl_p95": 0.0012256762397505371,
+              "kl_p99": 0.0018440734795810547,
+              "kl_max": 0.0019986727895386857,
+              "top1_matches": 18,
+              "top1": 1.0
+            },
+            "decode": {
+              "rows": 144,
+              "kl_mean": 0.00016634364794669513,
+              "kl_p95": 0.0008190787612333215,
+              "kl_p99": 0.0018980171433108134,
+              "kl_max": 0.002185278027232831,
+              "top1_matches": 144,
+              "top1": 1.0
+            },
+            "all": {
+              "rows": 162,
+              "kl_mean": 0.00019167797547474226,
+              "kl_p95": 0.001018329568530915,
+              "kl_p99": 0.002051608105983387,
+              "kl_max": 0.002185278027232831,
+              "top1_matches": 162,
+              "top1": 1.0
+            }
+          },
+          "mismatch_rows": []
+        },
+        "candidate": {
+          "capture_sha256": "d07cfbf41e132213a99c7e6d0f6c36b14c4fd044333ceaae91c1458f6b808d9d",
+          "slices": {
+            "code": {
+              "rows": 54,
+              "kl_mean": 0.00013024066653127361,
+              "kl_p95": 0.0006334339843989744,
+              "kl_p99": 0.0019529761571080964,
+              "kl_max": 0.002024295591612112,
+              "top1_matches": 54,
+              "top1": 1.0
+            },
+            "general_en": {
+              "rows": 36,
+              "kl_mean": 0.0002572521362060246,
+              "kl_p95": 0.0011036020685965286,
+              "kl_p99": 0.0019927593348207095,
+              "kl_max": 0.0024057404856867933,
+              "top1_matches": 36,
+              "top1": 1.0
+            },
+            "general_ja": {
+              "rows": 36,
+              "kl_mean": 0.00019033199802834298,
+              "kl_p95": 0.0008292011414004405,
+              "kl_p99": 0.0015115161310177664,
+              "kl_max": 0.0015793836000311118,
+              "top1_matches": 36,
+              "top1": 1.0
+            },
+            "mixed_ja_en": {
+              "rows": 36,
+              "kl_mean": 0.00040779886499939006,
+              "kl_p95": 0.0015673037932830544,
+              "kl_p99": 0.0024091836325921025,
+              "kl_max": 0.002723642891024617,
+              "top1_matches": 36,
+              "top1": 1.0
+            },
+            "prefill": {
+              "rows": 18,
+              "kl_mean": 0.00044860399018077695,
+              "kl_p95": 0.0017033371328794627,
+              "kl_p99": 0.002265259815125326,
+              "kl_max": 0.0024057404856867933,
+              "top1_matches": 18,
+              "top1": 1.0
+            },
+            "decode": {
+              "rows": 144,
+              "kl_mean": 0.00020661050098506995,
+              "kl_p95": 0.0011963435972877795,
+              "kl_p99": 0.001966432654184325,
+              "kl_max": 0.002723642891024617,
+              "top1_matches": 144,
+              "top1": 1.0
+            },
+            "all": {
+              "rows": 162,
+              "kl_mean": 0.0002334986664512596,
+              "kl_p95": 0.0012754459330430418,
+              "kl_p99": 0.0021730591003012324,
+              "kl_max": 0.002723642891024617,
+              "top1_matches": 162,
+              "top1": 1.0
+            }
+          },
+          "mismatch_rows": []
+        },
+        "batched_teacher": {
+          "capture_sha256": "189f6347c9b77459819d6e741640e4d38008475ef932c4931206b6eb72eb941b",
+          "slices": {
+            "code": {
+              "rows": 54,
+              "kl_mean": 0.0002521689930928472,
+              "kl_p95": 0.002120199398350498,
+              "kl_p99": 0.002636736241643972,
+              "kl_max": 0.003139432026220231,
+              "top1_matches": 54,
+              "top1": 1.0
+            },
+            "general_en": {
+              "rows": 36,
+              "kl_mean": 0.0013220283984146156,
+              "kl_p95": 0.005827578413330261,
+              "kl_p99": 0.011227657336190739,
+              "kl_max": 0.01210403112539189,
+              "top1_matches": 36,
+              "top1": 1.0
+            },
+            "general_ja": {
+              "rows": 36,
+              "kl_mean": 0.0015430038642336664,
+              "kl_p95": 0.007711209869485585,
+              "kl_p99": 0.01828031475442581,
+              "kl_max": 0.018850239532385696,
+              "top1_matches": 35,
+              "top1": 0.9722222222222222
+            },
+            "mixed_ja_en": {
+              "rows": 36,
+              "kl_mean": 0.0009513316717823182,
+              "kl_p95": 0.004024277759209249,
+              "kl_p99": 0.0064432017262252995,
+              "kl_max": 0.007645671685470941,
+              "top1_matches": 36,
+              "top1": 1.0
+            },
+            "prefill": {
+              "rows": 18,
+              "kl_mean": 0.0030791043738634862,
+              "kl_p95": 0.012871708910172433,
+              "kl_p99": 0.01635184820117759,
+              "kl_max": 0.017221883023928887,
+              "top1_matches": 18,
+              "top1": 1.0
+            },
+            "decode": {
+              "rows": 144,
+              "kl_mean": 0.0006637663092845321,
+              "kl_p95": 0.0035316408848373513,
+              "kl_p99": 0.007437190189355122,
+              "kl_max": 0.018850239532385696,
+              "top1_matches": 143,
+              "top1": 0.9930555555555556
+            },
+            "all": {
+              "rows": 162,
+              "kl_mean": 0.0009321372053488602,
+              "kl_p95": 0.004206486030269861,
+              "kl_p99": 0.01409999336582125,
+              "kl_max": 0.018850239532385696,
+              "top1_matches": 161,
+              "top1": 0.9938271604938271
+            }
+          },
+          "mismatch_rows": [
+            134
+          ]
+        }
+      }
+    },
+    "S": {
+      "model": "Qwen3.8-27B-UD-Q4_K_S.gguf",
+      "model_sha256": "75bc9c8adba2842e72f0ab5201aaa07133c5010b566305c09187fcbdcd364017",
+      "teacher_sha256": "ff7a77056de5eeb2e6b011efcf34ba00f215b6f9c2631fe47ab3ba67c6841432",
+      "input_sha256": "e46e614fd0047fefc965415d6a46b5752465be45964de8eeda79b181e8f200f6",
+      "finite": true,
+      "adjacent_identical_rows": 0,
+      "comparisons": {
+        "baseline": {
+          "capture_sha256": "17af2cb85bb8f81b4ade8b1b5ab74ee63cefe91df476f82dfb68b0620997a99f",
+          "slices": {
+            "code": {
+              "rows": 54,
+              "kl_mean": 0.00013366728023304818,
+              "kl_p95": 0.0005412451520675135,
+              "kl_p99": 0.002278780801419045,
+              "kl_max": 0.0028328605780471154,
+              "top1_matches": 54,
+              "top1": 1.0
+            },
+            "general_en": {
+              "rows": 36,
+              "kl_mean": 0.0002490261394854521,
+              "kl_p95": 0.0010551984576735688,
+              "kl_p99": 0.0017984266226104485,
+              "kl_max": 0.0020879161352203727,
+              "top1_matches": 36,
+              "top1": 1.0
+            },
+            "general_ja": {
+              "rows": 36,
+              "kl_mean": 0.00024997956484211286,
+              "kl_p95": 0.0012235955932030328,
+              "kl_p99": 0.0019643451447030687,
+              "kl_max": 0.0020896792375409952,
+              "top1_matches": 36,
+              "top1": 1.0
+            },
+            "mixed_ja_en": {
+              "rows": 36,
+              "kl_mean": 0.00033769762292961114,
+              "kl_p95": 0.0017225901984251205,
+              "kl_p99": 0.0021134023428003874,
+              "kl_max": 0.002185023346480016,
+              "top1_matches": 36,
+              "top1": 1.0
+            },
+            "prefill": {
+              "rows": 18,
+              "kl_mean": 0.0004638552981954667,
+              "kl_p95": 0.001785031975300795,
+              "kl_p99": 0.0020273393032364567,
+              "kl_max": 0.0020879161352203727,
+              "top1_matches": 18,
+              "top1": 1.0
+            },
+            "decode": {
+              "rows": 144,
+              "kl_mean": 0.00020131914962725377,
+              "kl_p95": 0.0010601472663738787,
+              "kl_p99": 0.0021440253796362364,
+              "kl_max": 0.0028328605780471154,
+              "top1_matches": 144,
+              "top1": 1.0
+            },
+            "all": {
+              "rows": 162,
+              "kl_mean": 0.00023048983280149967,
+              "kl_p95": 0.0012508223293116979,
+              "kl_p99": 0.0021268634400272123,
+              "kl_max": 0.0028328605780471154,
+              "top1_matches": 162,
+              "top1": 1.0
+            }
+          },
+          "mismatch_rows": []
+        },
+        "candidate": {
+          "capture_sha256": "87dd177e176d63e86aaaf56bc4d8faf309db92bbe740ea9ee31c7310b82be145",
+          "slices": {
+            "code": {
+              "rows": 54,
+              "kl_mean": 0.00023312274652813127,
+              "kl_p95": 0.001500813468079269,
+              "kl_p99": 0.0038621981873292214,
+              "kl_max": 0.00446905376886594,
+              "top1_matches": 54,
+              "top1": 1.0
+            },
+            "general_en": {
+              "rows": 36,
+              "kl_mean": 0.00038573340255055975,
+              "kl_p95": 0.0015909774929844542,
+              "kl_p99": 0.003846555860741399,
+              "kl_max": 0.0041042758649533105,
+              "top1_matches": 36,
+              "top1": 1.0
+            },
+            "general_ja": {
+              "rows": 36,
+              "kl_mean": 0.00024826831354380247,
+              "kl_p95": 0.0011758363828312762,
+              "kl_p99": 0.002159482031316319,
+              "kl_max": 0.0023984494325901187,
+              "top1_matches": 36,
+              "top1": 1.0
+            },
+            "mixed_ja_en": {
+              "rows": 36,
+              "kl_mean": 0.00029847114249227267,
+              "kl_p95": 0.0011204397349246426,
+              "kl_p99": 0.0018054357173850188,
+              "kl_max": 0.0021604974799754838,
+              "top1_matches": 36,
+              "top1": 1.0
+            },
+            "prefill": {
+              "rows": 18,
+              "kl_mean": 0.0005288248110556133,
+              "kl_p95": 0.0020739739943510826,
+              "kl_p99": 0.0036982154908328617,
+              "kl_max": 0.0041042758649533105,
+              "top1_matches": 18,
+              "top1": 1.0
+            },
+            "decode": {
+              "rows": 144,
+              "kl_mean": 0.00025443614321275624,
+              "kl_p95": 0.0010949205463980807,
+              "kl_p99": 0.0033490603997883327,
+              "kl_max": 0.00446905376886594,
+              "top1_matches": 144,
+              "top1": 1.0
+            },
+            "all": {
+              "rows": 162,
+              "kl_mean": 0.0002849237729730737,
+              "kl_p95": 0.001144328930064191,
+              "kl_p99": 0.003655106714755399,
+              "kl_max": 0.00446905376886594,
+              "top1_matches": 162,
+              "top1": 1.0
+            }
+          },
+          "mismatch_rows": []
+        },
+        "batched_teacher": {
+          "capture_sha256": "54e8080251b69e9cbe2413ad9d8a66c7f88e260a8c0104fa6f8bd8a12fd0df69",
+          "slices": {
+            "code": {
+              "rows": 54,
+              "kl_mean": 0.000185301991124223,
+              "kl_p95": 0.0008098616213716687,
+              "kl_p99": 0.0020807935313653723,
+              "kl_max": 0.0028293919395523982,
+              "top1_matches": 54,
+              "top1": 1.0
+            },
+            "general_en": {
+              "rows": 36,
+              "kl_mean": 0.0013159290045029026,
+              "kl_p95": 0.004269866135841416,
+              "kl_p99": 0.011205907490466845,
+              "kl_max": 0.014116964406642547,
+              "top1_matches": 35,
+              "top1": 0.9722222222222222
+            },
+            "general_ja": {
+              "rows": 36,
+              "kl_mean": 0.0005032450520474201,
+              "kl_p95": 0.0020685217226191284,
+              "kl_p99": 0.0038932330943508052,
+              "kl_max": 0.004774905821757186,
+              "top1_matches": 36,
+              "top1": 1.0
+            },
+            "mixed_ja_en": {
+              "rows": 36,
+              "kl_mean": 0.0006152665205411811,
+              "kl_p95": 0.002515422553536694,
+              "kl_p99": 0.004983516969461765,
+              "kl_max": 0.006067225858556707,
+              "top1_matches": 36,
+              "top1": 1.0
+            },
+            "prefill": {
+              "rows": 18,
+              "kl_mean": 0.001525283193661258,
+              "kl_p95": 0.004642822195824717,
+              "kl_p99": 0.012222135964478966,
+              "kl_max": 0.014116964406642547,
+              "top1_matches": 17,
+              "top1": 0.9444444444444444
+            },
+            "decode": {
+              "rows": 144,
+              "kl_mean": 0.00048743799173680234,
+              "kl_p95": 0.0027058954488278397,
+              "kl_p99": 0.005359015094512855,
+              "kl_max": 0.006067225858556707,
+              "top1_matches": 144,
+              "top1": 1.0
+            },
+            "all": {
+              "rows": 162,
+              "kl_mean": 0.000602754125283964,
+              "kl_p95": 0.0029638386064916576,
+              "kl_p99": 0.005904010033268578,
+              "kl_max": 0.014116964406642547,
+              "top1_matches": 161,
+              "top1": 0.9938271604938271
+            }
+          },
+          "mismatch_rows": [
+            108
+          ]
+        },
+        "raw_iq2_xs": {
+          "capture_sha256": "ffbc29921a08603d2b3b1a3f91e22aae9d1be95e08d5656b5537838c6e86ee84",
+          "slices": {
+            "code": {
+              "rows": 54,
+              "kl_mean": 0.00011579895939327848,
+              "kl_p95": 0.0006651302003385761,
+              "kl_p99": 0.0016383506971495716,
+              "kl_max": 0.0020109883184737123,
+              "top1_matches": 54,
+              "top1": 1.0
+            },
+            "general_en": {
+              "rows": 36,
+              "kl_mean": 0.00022549856713123458,
+              "kl_p95": 0.0007700976592132334,
+              "kl_p99": 0.0012278974386861795,
+              "kl_max": 0.0014585125977472297,
+              "top1_matches": 36,
+              "top1": 1.0
+            },
+            "general_ja": {
+              "rows": 36,
+              "kl_mean": 0.0003461818514384652,
+              "kl_p95": 0.0016888174098780775,
+              "kl_p99": 0.003260391851886091,
+              "kl_max": 0.003912433870048277,
+              "top1_matches": 36,
+              "top1": 1.0
+            },
+            "mixed_ja_en": {
+              "rows": 36,
+              "kl_mean": 0.0003845030588234898,
+              "kl_p95": 0.0014214147831886647,
+              "kl_p99": 0.0021909889417875156,
+              "kl_max": 0.002530287839487045,
+              "top1_matches": 36,
+              "top1": 1.0
+            },
+            "prefill": {
+              "rows": 18,
+              "kl_mean": 0.0004112454213824791,
+              "kl_p95": 0.0012252583323774861,
+              "kl_p99": 0.00188461700671484,
+              "kl_max": 0.00204945667529918,
+              "top1_matches": 18,
+              "top1": 1.0
+            },
+            "decode": {
+              "rows": 144,
+              "kl_mean": 0.0002310648014479669,
+              "kl_p95": 0.0013280702570839954,
+              "kl_p99": 0.0023069890454513083,
+              "kl_max": 0.003912433870048277,
+              "top1_matches": 144,
+              "top1": 1.0
+            },
+            "all": {
+              "rows": 162,
+              "kl_mean": 0.0002510848703295794,
+              "kl_p95": 0.001330443408868144,
+              "kl_p99": 0.002236980829332441,
+              "kl_max": 0.003912433870048277,
+              "top1_matches": 162,
+              "top1": 1.0
+            }
+          },
+          "mismatch_rows": []
+        }
+      }
+    }
+  },
+  "repeatability": {
+    "repeat2": {
+      "capture_sha256": "ffbc29921a08603d2b3b1a3f91e22aae9d1be95e08d5656b5537838c6e86ee84",
+      "byte_exact_logits": true,
+      "byte_exact_tokens": true
+    },
+    "repeat3": {
+      "capture_sha256": "ffbc29921a08603d2b3b1a3f91e22aae9d1be95e08d5656b5537838c6e86ee84",
+      "byte_exact_logits": true,
+      "byte_exact_tokens": true
+    }
+  },
+  "reproduction_sources": {
+    "/tmp/ud-llama-teacher-tokenwise.cpp": "// Capture full teacher-forced logits with a llama.cpp-compatible C API.\n//\n// Input is written by qwen36_teacher.py capture-bf16. Output is contiguous\n// float32 [prompts * teacher_steps, vocab] data for register-raw.\n\n#include \"llama.h\"\n\n#include <algorithm>\n#include <cstdint>\n#include <cstdio>\n#include <cstdlib>\n#include <fstream>\n#include <string>\n#include <vector>\n\nstruct Prompt {\n    std::vector<llama_token> prompt;\n    std::vector<llama_token> teacher;\n};\n\nstatic bool read_u32(std::ifstream & in, uint32_t * value) {\n    in.read(reinterpret_cast<char *>(value), sizeof(*value));\n    return static_cast<bool>(in);\n}\n\nstatic bool read_input(const std::string & path, std::vector<Prompt> * prompts) {\n    std::ifstream in(path, std::ios::binary);\n    char magic[4] = {};\n    uint32_t version = 0;\n    uint32_t count = 0;\n    in.read(magic, sizeof(magic));\n    if (!in || std::string(magic, sizeof(magic)) != \"Q36Q\" ||\n            !read_u32(in, &version) || version != 1 || !read_u32(in, &count)) {\n        return false;\n    }\n    prompts->clear();\n    prompts->reserve(count);\n    for (uint32_t i = 0; i < count; ++i) {\n        uint32_t prompt_count = 0;\n        uint32_t teacher_count = 0;\n        if (!read_u32(in, &prompt_count) || !read_u32(in, &teacher_count) ||\n                prompt_count == 0 || teacher_count == 0) {\n            return false;\n        }\n        Prompt row;\n        row.prompt.resize(prompt_count);\n        row.teacher.resize(teacher_count);\n        in.read(reinterpret_cast<char *>(row.prompt.data()),\n                static_cast<std::streamsize>(prompt_count * sizeof(int32_t)));\n        in.read(reinterpret_cast<char *>(row.teacher.data()),\n                static_cast<std::streamsize>(teacher_count * sizeof(int32_t)));\n        if (!in) {\n            return false;\n        }\n        prompts->push_back(std::move(row));\n    }\n    return true;\n}\n\nstatic void usage(const char * argv0) {\n    std::fprintf(stderr,\n        \"usage: %s MODEL INPUT.bin OUTPUT.f32 [THREADS=16] [GPU_LAYERS=0]\\n\",\n        argv0);\n}\n\nint main(int argc, char ** argv) {\n    if (argc < 4 || argc > 6) {\n        usage(argv[0]);\n        return 2;\n    }\n    const std::string model_path = argv[1];\n    const std::string input_path = argv[2];\n    const std::string output_path = argv[3];\n    const int threads = argc >= 5 ? std::atoi(argv[4]) : 16;\n    const int gpu_layers = argc >= 6 ? std::atoi(argv[5]) : 0;\n    if (threads <= 0 || gpu_layers < 0) {\n        usage(argv[0]);\n        return 2;\n    }\n\n    std::vector<Prompt> prompts;\n    if (!read_input(input_path, &prompts)) {\n        std::fprintf(stderr, \"failed to read teacher input: %s\\n\", input_path.c_str());\n        return 3;\n    }\n    size_t max_tokens = 0;\n    size_t output_rows = 0;\n    for (const auto & prompt : prompts) {\n        max_tokens = std::max(max_tokens, prompt.prompt.size() + prompt.teacher.size() - 1);\n        output_rows += prompt.teacher.size();\n    }\n\n    llama_backend_init();\n    llama_model_params mparams = llama_model_default_params();\n    mparams.n_gpu_layers = gpu_layers;\n    llama_model * model = llama_model_load_from_file(model_path.c_str(), mparams);\n    if (model == nullptr) {\n        std::fprintf(stderr, \"failed to load model: %s\\n\", model_path.c_str());\n        llama_backend_free();\n        return 4;\n    }\n    const llama_vocab * vocab = llama_model_get_vocab(model);\n    const int32_t vocab_size = llama_vocab_n_tokens(vocab);\n\n    llama_context_params cparams = llama_context_default_params();\n    cparams.n_ctx = static_cast<uint32_t>(std::max<size_t>(256, max_tokens + 1));\n    cparams.n_batch = static_cast<uint32_t>(max_tokens);\n    cparams.n_ubatch = static_cast<uint32_t>(max_tokens);\n    cparams.n_threads = threads;\n    cparams.n_threads_batch = threads;\n    cparams.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_DISABLED;\n    llama_context * ctx = llama_init_from_model(model, cparams);\n    if (ctx == nullptr) {\n        std::fprintf(stderr, \"failed to create context\\n\");\n        llama_model_free(model);\n        llama_backend_free();\n        return 5;\n    }\n\n    std::ofstream output(output_path, std::ios::binary);\n    if (!output) {\n        std::fprintf(stderr, \"failed to open output: %s\\n\", output_path.c_str());\n        llama_free(ctx);\n        llama_model_free(model);\n        llama_backend_free();\n        return 6;\n    }\n\n    for (size_t prompt_index = 0; prompt_index < prompts.size(); ++prompt_index) {\n        const Prompt & prompt = prompts[prompt_index];\n        std::vector<llama_token> tokens = prompt.prompt;\n        tokens.insert(tokens.end(), prompt.teacher.begin(), prompt.teacher.end() - 1);\n        llama_memory_clear(llama_get_memory(ctx), true);\n\n        llama_batch batch = llama_batch_init(1, 0, 1);\n        batch.n_tokens = 1;\n        const int32_t first_output = static_cast<int32_t>(prompt.prompt.size()) - 1;\n        for (int32_t i = 0; i < static_cast<int32_t>(tokens.size()); ++i) {\n            batch.token[0] = tokens[static_cast<size_t>(i)];\n            batch.pos[0] = i;\n            batch.n_seq_id[0] = 1;\n            batch.seq_id[0][0] = 0;\n            batch.logits[0] = i >= first_output ? 1 : 0;\n            const int decode_rc = llama_decode(ctx, batch);\n            if (decode_rc != 0) {\n                std::fprintf(stderr, \"decode failed prompt %zu position %d: %d\\n\", prompt_index, i, decode_rc);\n                return 7;\n            }\n            llama_synchronize(ctx);\n            if (i >= first_output) {\n                const float * logits = llama_get_logits_ith(ctx, 0);\n                if (logits == nullptr) return 8;\n                output.write(reinterpret_cast<const char *>(logits),\n                        static_cast<std::streamsize>(vocab_size * sizeof(float)));\n            }\n        }\n        llama_batch_free(batch);\n        output.flush();\n        std::fprintf(stderr, \"llama logits %2zu/%zu (%zu rows)\\n\",\n                prompt_index + 1, prompts.size(), prompt.teacher.size());\n    }\n\n    output.close();\n    std::printf(\n        \"{\\\"prompts\\\":%zu,\\\"rows\\\":%zu,\\\"vocab_size\\\":%d,\\\"dtype\\\":\\\"float32\\\"}\\n\",\n        prompts.size(), output_rows, vocab_size);\n    llama_free(ctx);\n    llama_model_free(model);\n    llama_backend_free();\n    return 0;\n}\n",
+    "/tmp/ud-tokenwise-summary.py": "import hashlib,json\nfrom pathlib import Path\nimport numpy as np\nfrom scripts.quant_quality.metrics import per_row_metrics\n\ndef sha(path):\n    h=hashlib.sha256()\n    with open(path,'rb') as f:\n        for b in iter(lambda:f.read(8<<20),b''): h.update(b)\n    return h.hexdigest()\nprior=json.loads(Path('benchmarks/results/2026-09-07-zbook-ud-iq2-xs-diagnostic.json').read_text())\nrows=prior['vs_hipengine_baseline']['prompts']\ncategories=np.repeat([r['category'] for r in rows],9)\nmasks={c:categories==c for c in sorted(set(categories))}\nmasks.update(prefill=np.arange(162)%9==0,decode=np.arange(162)%9!=0,all=np.ones(162,dtype=bool))\nout={'schema_version':1,'date':'2026-09-07','status':'diagnostic_only_defaults_unchanged','host':prior['host'],'hardware':prior['hardware'],'backend':prior['backend'],'runtime_commit':'bfced7b466914773c0e153e21164b38b50d1a9c3','workload':dict(prior['workload'],prefill='serial eager hipEngine; explicit single-token llama_decode calls, immediate logit copies'),'baseline_protocol_artifact':prior['baseline_protocol_artifact'],'iq2_protocol_artifact':'2026-09-07-zbook-ud-iq2-xs-diagnostic.json','teacher':dict(prior['teacher'],source='/tmp/ud-llama-teacher-tokenwise.cpp',source_sha256=sha('/tmp/ud-llama-teacher-tokenwise.cpp'),binary_sha256=sha('/tmp/ud-llama-teacher-tokenwise')),'prompts':[{'id':r['id'],'category':r['category']} for r in rows],'models':{},'repeatability':{},'reproduction_sources':{'/tmp/ud-llama-teacher-tokenwise.cpp':Path('/tmp/ud-llama-teacher-tokenwise.cpp').read_text(),'/tmp/ud-tokenwise-summary.py':Path(__file__).read_text()},'limitations':['Short-context eager c1 only, no graph/serving/long-context or BF16 model/task qualification.','One tokenwise llama capture per file; three captures only for raw IQ2_XS candidate.','Batched teacher evidence is preserved; same-file serial and batched schedules differ.','No throughput timing, peak allocation or total device memory claim.','No runtime or residency default changes.']}\nfor kind,modelhash in [('M','322e194ff79741c7baa497c240f677f54b201b0efab44ca8e50f122b39123482'),('S',prior['model_sha256'])]:\n    tp=f'/tmp/ud-llama-teacher-tokenwise-{kind}.f32'\n    teacher=np.fromfile(tp,np.float32).reshape(162,248320)\n    assert np.isfinite(teacher).all()\n    entry={'model':f'Qwen3.8-27B-UD-Q4_K_{kind}.gguf','model_sha256':modelhash,'teacher_sha256':sha(tp),'input_sha256':sha(f'/tmp/ud-llama-teacher-{kind}.bin'),'finite':True,'adjacent_identical_rows':int(np.all(teacher[1:]==teacher[:-1],axis=1).sum()),'comparisons':{}}\n    candidates={m:f'/tmp/ud-q56-suite-{kind}-{m}.npz' for m in ('baseline','candidate')}\n    candidates['batched_teacher']=f'/tmp/ud-llama-teacher-{kind}.f32'\n    if kind=='S':candidates['raw_iq2_xs']='/tmp/ud-iq2-xs-suite-S.npz'\n    for name,path in candidates.items():\n        x=np.load(path)['logits'].reshape(teacher.shape) if path.endswith('npz') else np.fromfile(path,np.float32).reshape(teacher.shape)\n        assert np.isfinite(x).all()\n        metrics=per_row_metrics(teacher,x,teacher.argmax(-1))\n        slices={}\n        for key,mask in masks.items():\n            k=metrics['kl_nats'][mask];t=metrics['top1_equal'][mask]\n            slices[key]={'rows':len(k),'kl_mean':float(k.mean()),'kl_p95':float(np.percentile(k,95)),'kl_p99':float(np.percentile(k,99)),'kl_max':float(k.max()),'top1_matches':int(t.sum()),'top1':float(t.mean())}\n        entry['comparisons'][name]={'capture_sha256':sha(path),'slices':slices,'mismatch_rows':np.flatnonzero(~metrics['top1_equal']).tolist()}\n    out['models'][kind]=entry\nfirst=np.load('/tmp/ud-iq2-xs-suite-S.npz')\nfor tag in ('repeat2','repeat3'):\n    path=f'/tmp/ud-iq2-xs-suite-S-{tag}.npz'; other=np.load(path)\n    for key in ('logits','tokens'): assert np.array_equal(first[key].view(np.uint8),other[key].view(np.uint8))\n    out['repeatability'][tag]={'capture_sha256':sha(path),'byte_exact_logits':True,'byte_exact_tokens':True}\nout['commands']=['ROOT=/home/lhl/llama.cpp/llama.cpp-hip; g++ -O2 /tmp/ud-llama-teacher-tokenwise.cpp -I\"$ROOT/include\" -I\"$ROOT/ggml/include\" -L\"$ROOT/build-hip/bin\" -Wl,-rpath,\"$ROOT/build-hip/bin\" -lllama -o /tmp/ud-llama-teacher-tokenwise','for kind in M S; do /tmp/ud-llama-teacher-tokenwise /models/gguf/Qwen3.8-27B-UD-Q4_K_${kind}.gguf /tmp/ud-llama-teacher-${kind}.bin /tmp/ud-llama-teacher-tokenwise-${kind}.f32 16 99; done','for tag in repeat2 repeat3; do PYTHONPATH=. HIPENGINE_COMPILER_VERSION_FILE=/tmp/ud-hipcc-version.txt .venv/bin/python -u /tmp/ud-iq2-xs-suite.py \"$tag\"; done','PYTHONPATH=. .venv/bin/python /tmp/ud-tokenwise-summary.py']\nPath('benchmarks/results/2026-09-07-zbook-ud-tokenwise-teacher.json').write_text(json.dumps(out,indent=2)+'\\n')\nfor kind,m in out['models'].items():\n for name,c in m['comparisons'].items():print(kind,name,c['slices']['all'])\n"
+  },
+  "limitations": [
+    "Short-context eager c1 only, no graph/serving/long-context or BF16 model/task qualification.",
+    "One tokenwise llama capture per file; three captures only for raw IQ2_XS candidate.",
+    "Batched teacher evidence is preserved; same-file serial and batched schedules differ.",
+    "No throughput timing, peak allocation or total device memory claim.",
+    "No runtime or residency default changes."
+  ],
+  "commands": [
+    "ROOT=/home/lhl/llama.cpp/llama.cpp-hip; g++ -O2 /tmp/ud-llama-teacher-tokenwise.cpp -I\"$ROOT/include\" -I\"$ROOT/ggml/include\" -L\"$ROOT/build-hip/bin\" -Wl,-rpath,\"$ROOT/build-hip/bin\" -lllama -o /tmp/ud-llama-teacher-tokenwise",
+    "for kind in M S; do /tmp/ud-llama-teacher-tokenwise /models/gguf/Qwen3.8-27B-UD-Q4_K_${kind}.gguf /tmp/ud-llama-teacher-${kind}.bin /tmp/ud-llama-teacher-tokenwise-${kind}.f32 16 99; done",
+    "for tag in repeat2 repeat3; do PYTHONPATH=. HIPENGINE_COMPILER_VERSION_FILE=/tmp/ud-hipcc-version.txt .venv/bin/python -u /tmp/ud-iq2-xs-suite.py \"$tag\"; done",
+    "PYTHONPATH=. .venv/bin/python /tmp/ud-tokenwise-summary.py"
+  ]
+}

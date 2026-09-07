@@ -236,26 +236,30 @@ also remain blocked. [`gfx1151 campaign final`](results/2026-08-24-gfx1151-qwen3
 
 ## Qwen3.8-27B UD short-context diagnostic
 
-On zbook / Radeon 8060S, both published UD files match 161/162 next-token
-choices against llama.cpp HIP using the same artifact, 18 category/heldout
-prompts (39–71 tokens) and nine forced logit positions per prompt.
+On zbook / Radeon 8060S, both published UD files match 162/162 next-token
+choices against tokenwise llama.cpp HIP using the same artifact, 18
+category/heldout prompts (39–71 tokens) and nine forced logit positions per
+prompt. Both engines process the prompt serially in this comparison.
 
 | UD file | Default mean/max KL vs llama.cpp | Q5/Q6 candidate allocated weight bytes | Status |
 | --- | ---: | ---: | --- |
-| `UD-Q4_K_M` | 0.000873 / 0.014724 | 26,396,502,016 → 21,526,849,536 (−18.45%) | Diagnostic only |
-| `UD-Q4_K_S` | 0.000593 / 0.013256 | 21,125,912,576 → 18,599,622,656 (−11.96%) | Diagnostic only |
+| `UD-Q4_K_M` | 0.000192 / 0.002185 | 26,396,502,016 → 21,526,849,536 (−18.45%) | Diagnostic only |
+| `UD-Q4_K_S` | 0.000230 / 0.002833 | 21,125,912,576 → 18,599,622,656 (−11.96%) | Diagnostic only |
 
 The candidate changes Q5/Q6 residency, matches all 162 baseline top-1 choices
-per file, and is not enabled by default. Its K_M p95 KL against llama.cpp is
-0.005398, above the 0.005 gate; K_S prefill top-1 is 17/18 for both arms, below
-the 97% transition gate. Weight-buffer sums exclude load peak, scratch and KV.
-No speed, BF16-model quality, long-context or serving qualification is claimed.
-[Protocol, per-category results and reproduction sources](results/2026-09-07-zbook-ud-c1-residency-logits-diagnostic.json).
+per file, and is not enabled by default. Maximum tokenwise-teacher KL is
+0.002724 (K_M) and 0.004469 (K_S). Batched llama.cpp instead matches 161/162
+choices per file, so these results depend on the execution schedule; they do
+not establish batch invariance. Weight-buffer sums exclude load peak, scratch
+and KV. No speed, BF16-model quality, long-context or serving qualification is
+claimed. [Tokenwise protocol and category results](results/2026-09-07-zbook-ud-tokenwise-teacher.json);
+[batched-teacher protocol and memory results](results/2026-09-07-zbook-ud-c1-residency-logits-diagnostic.json).
 
 A separate K_S raw IQ2_XS candidate reduces counted weight buffers from
 21,125,912,576 to 20,973,418,496 bytes (−0.72%), with 162/162 baseline top-1
-matches and maximum baseline-relative KL 0.000923. It has the same independent
-teacher prefill top-1 miss and is also off by default.
+matches and maximum baseline-relative KL 0.000923. Three fresh-process captures
+have byte-identical logits and forced tokens. Against the tokenwise teacher,
+it matches 162/162 choices with maximum KL 0.003912. It is also off by default.
 [IQ2_XS diagnostic](results/2026-09-07-zbook-ud-iq2-xs-diagnostic.json).
 
 ## Current Qwen3.6-35B quantization quality

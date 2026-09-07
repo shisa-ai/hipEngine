@@ -1487,6 +1487,11 @@ proposed `tests/test_gguf_ud_km.py`.
   K_M p95 KL exceeds 0.005 and K_S prefill top-1 is 17/18 in both arms. Repeat,
   task, long-context and serving gates remain open. See
   `benchmarks/results/2026-09-07-zbook-ud-c1-residency-logits-diagnostic.json`.
+  A separate explicit tokenwise llama.cpp comparison matches 162/162 choices
+  for both files and both residency paths, with maximum KL 0.004469 across
+  those comparisons. This diagnoses a schedule-dependent discrepancy, not
+  batch invariance; the batched-teacher results remain valid. See
+  `benchmarks/results/2026-09-07-zbook-ud-tokenwise-teacher.json`.
   K_S public generation also returns this completion without torch after raw
   IQ3_XXS/IQ2_S and Q3_K embedding integration; see
   `worklog/entries/20260907T041214.806691Z-lhl-ud-ks-integration-e0d117.md`.
@@ -1506,15 +1511,20 @@ gfx1151 peer, `runtime/gguf_embedding.py`;
 proposed `tests/test_gguf_ud_ks.py`.
 
 - [ ] Q3 embedding lookup RED: repeated/boundary IDs, prompt/decode gather,
-  row output ownership and vocabulary bounds.
+  row output ownership and vocabulary bounds. The real embedding fixture
+  passes 32 boundary/ownership and host-validation checks on gfx1151
+  (`b6f403fa0`); full-vocabulary addressing and public callers remain open.
 - [ ] Dense IQ3_XXS and IQ2_XS from existing math. Both raw leaves have
   bounded gfx1151 numerical evidence. IQ2_XS passes exact BF16/F32 real-row
   projection gates and synthetic one-hot decode coverage; model residency still
   uses its BF16 fallback pending integration. A temporary raw-resident K_S
   diagnostic matches all 162 baseline top-1 choices on 18 category/heldout
   prompts, max KL 0.000923, and removes 152,494,080 counted weight bytes. The
-  independent-teacher prefill miss persists; repeat and broader gates remain
-  open. See `benchmarks/results/2026-09-07-zbook-ud-iq2-xs-diagnostic.json`.
+  batched-teacher prefill miss persists. Three fresh-process captures have
+  byte-identical logits and forced tokens. The tokenwise teacher matches all
+  162 choices with maximum KL 0.003912; broader gates remain open. See
+  `benchmarks/results/2026-09-07-zbook-ud-iq2-xs-diagnostic.json` and
+  `benchmarks/results/2026-09-07-zbook-ud-tokenwise-teacher.json`.
   gfx1100 remains unverified.
 - [ ] IQ2_S device decoder/strict consumers from U2 oracle.
 - [ ] Clear 41 refusals and IQ2_XS expansion; any temporary fallback reports
