@@ -32,8 +32,10 @@ implementation, runtime replacement, or new registry axis.
 
 This corrects conclusions of the initial audit in `8bd27fe` and `bf46abe`;
 their immutable worklogs remain historical evidence, not current guidance.
-Execution requires a future GPU allocation coordinated with the profiling owner.
-Checkboxes below are future work unless explicitly marked complete.
+The active bring-up lane is zbook / gfx1151; gfx1100 needs a separate hardware
+allocation. Unchecked items remain open unless explicitly excluded by the scoped
+admission decision below. Historical audit and review sections describe their
+stated snapshots, not the integrated model's current refusal inventory.
 
 Related: [architecture](PLAN.md), [intake](GGUF.md), [type portfolio](QUANTS.md),
 [MoE Q3 work](GGUF-Q3-OPT.md), [kernels](KERNELS.md),
@@ -122,6 +124,36 @@ route can be reported as supported in its qualified scope while those speed
 targets remain open. No equivalent numeric speed promise is invented for K_S:
 freeze its comparator/evaluator before tuning and report losses honestly.
 This review does not loosen the older charter or claim it has passed.
+
+### 1.2 Bring-up Scope And Review Lessons
+
+The immediate milestone is published-file eager c1 generation, followed by
+compact residents and numerical validation. Both published files now generate
+through the public API on gfx1151; this does not close the broader campaign.
+Implementation continues directly, without subagents.
+
+- Retain pre-allocation checks for actual dtype, shape, layout, ordered operands
+  and requested operations. These prevented concrete invalid-pointer routes.
+- Do not turn a valid review counterexample into an automatic requirement.
+  Arbitrary mutation of private pointers, custom-factory transactions, model
+  hot replacement and concurrent profile isolation are not supported bring-up
+  operations. A new session is the reconfiguration boundary.
+- Generic profile lifecycle transactions and repeated native pointer/certificate
+  scans were removed. The remaining cold-path certificate machinery is deferred
+  cleanup, not a prerequisite for adding codecs or running published models.
+- Classify review findings by supported call path, reproducible failure and
+  milestone impact before implementing a remedy. A reviewer can identify a
+  technically real limitation without establishing that a new framework belongs
+  in this task. The coordinator owns that scope decision.
+- A green metadata suite proves only the tested structural contract. Keep
+  published-file generation, independent codec/math checks, model-logit quality
+  and measured memory/performance as separate evidence.
+
+Initial execution uses a fresh process with no named profile or production
+overrides. Process-scoped binders are unchanged; generic profile authorization
+and lifecycle isolation are not claimed. Numerical profile qualification remains
+required before promoting arithmetic-changing optimizations. See the immutable
+`ud-direct-cleanup` and `ud-native-cleanup` worklog entries for removal evidence.
 
 ## 2. Audit Of The Previous Claims
 
@@ -720,9 +752,18 @@ path.
 
 ### U1. Role-safe Admission And Policy
 
-**Acceptance status: OPEN.** The checked items below record implementation
-history, not end-to-end acceptance. The integrated review and bounded resident
-prerequisite repair below identify the remaining F1/F3/F4/F5 gaps.
+**Scoped admission status: implemented and tested.** Load-time role/layout/
+operation checks, resident prerequisites and native route exclusions pass the
+136-test admission/invocation/execution bundle on 2026-09-07. Both published
+files have zero default AR preflight refusals and public eager c1 smoke evidence
+on gfx1151. This establishes the scoped U1 deliverable, not numerical, native
+batch, NextN, named-profile or gfx1100 qualification.
+
+The checked items and review rounds below are implementation history. Their
+18/41 refusal inventories and pending review verdicts describe earlier commits.
+The section 1.2 scope decision excludes generic lifecycle/private-mutation
+frameworks; cold certificate simplification is deferred. Remaining numerical
+and serving acceptance belongs to U2–U6, not further generic U1 authorization.
 
 Dependencies: U0; CPU tests first.
 Files: `hipengine/loading/qwen35_gguf_materialize.py`,
