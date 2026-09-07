@@ -74,6 +74,10 @@ _QSA_ORDERED_DECODE_EVIDENCE = (
     "benchmarks/results/"
     "2026-09-02-gfx1151-qwen38-flash-next-p6-qsa-ordered-decode.json"
 )
+_QSA_ORDERED_DECODE_V2_EVIDENCE = (
+    "benchmarks/results/"
+    "2026-09-08-framework-qwen4exp-qsa-ordered-v2-production.json"
+)
 _HALO_PF13_EVIDENCE = (
     "benchmarks/results/"
     "2026-09-04-gfx1151-qwen38-flash-next-halo-pf13-production-refresh.json"
@@ -176,6 +180,13 @@ def _strict_selections() -> tuple[VariantSelection, ...]:
         _selection(
             "qsa_sparse_attention",
             "qwen4exp_c1_h256_indexed_sparse_decode",
+            "strict_spans",
+            "strict_spans",
+            "bf16_kv",
+        ),
+        _selection(
+            "qsa_sparse_attention",
+            "qwen4exp_c1_h256_indexed_sparse_decode_v2",
             "strict_spans",
             "strict_spans",
             "bf16_kv",
@@ -349,6 +360,14 @@ def _production_selections() -> tuple[VariantSelection, ...]:
             "strict_spans",
             "bf16_kv",
             evidence=_QSA_ORDERED_DECODE_EVIDENCE,
+        ),
+        _selection(
+            "qsa_sparse_attention",
+            "qwen4exp_c1_h256_indexed_sparse_decode_v2",
+            "strict_ordered_three_pass_v2_spans",
+            "strict_spans",
+            "bf16_kv",
+            evidence=_QSA_ORDERED_DECODE_V2_EVIDENCE,
         ),
         _selection(
             "linear+gr_gated_mean",
@@ -546,6 +565,7 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
             else ""
         ),
         "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE": "1" if production else "0",
+        "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN": "1",
         "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4": "1",
         "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4_ALL": "1",
