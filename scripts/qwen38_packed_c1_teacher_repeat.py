@@ -96,3 +96,59 @@ def assert_teacher_repeats(runs):
                 decode_rows=sum(len(r['logits']) for r in base['records']),
                 prefill_rows=len(base['records']), bit_identical=True,
                 full_profile_qualification=False)
+
+
+def main():
+    """Audit complete fixed-teacher captures without loading a GPU runtime."""
+    import argparse
+    import sys
+    root = Path(__file__).resolve().parents[1]
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    parser = argparse.ArgumentParser(description=main.__doc__)
+    parser.add_argument('--teacher', type=Path, required=True)
+    parser.add_argument('--capture', type=Path, action='append', required=True,
+                        help='Capture directory; repeat at least three times for one schedule.')
+    parser.add_argument('--output', type=Path, required=True)
+    args = parser.parse_args()
+    if len(args.capture) < 3:
+        parser.error('at least three captures are required')
+    if len({p.resolve() for p in args.capture}) != len(args.capture):
+        parser.error('capture directories must be distinct')
+    from scripts.qwen38_packed_c1_teacher_fixture import load_teacher_fixture
+    from scripts.qwen38_packed_c1_teacher_scopes import summarize_teacher_scopes
+    teacher_bytes = (args.teacher / 'teacher.json').read_bytes()
+    teacher_hash = hashlib.sha256(teacher_bytes).hexdigest()
+    model_hash = json.loads(teacher_bytes)['model_sha256']
+    fixture = load_teacher_fixture(args.teacher, expected_model_sha256=model_hash,
+                                   require_runtime_provenance=True)
+    runs = [load_candidate_capture(p, fixture, teacher_manifest_sha256=teacher_hash)
+            for p in args.capture]
+    repeat = assert_teacher_repeats(runs)
+    # Every actual array and schedule has been checked. Identical bytes allow
+    # the numerical envelope to be evaluated once for the identical captures.
+    scopes = {}
+    for kind, key in (('decode', 'logits'), ('prefill', 'prefill_logits')):
+        pairs = []
+        for actual, reference in zip(runs[0]['records'], fixture['records'], strict=True):
+            a, b = actual[key], reference[key]
+            pairs.append(dict(prompt_id=actual['prompt_id'], category=actual['category'],
+                              suite=actual['suite'], candidate=a if kind == 'decode' else a[None, :],
+                              reference=b if kind == 'decode' else b[None, :]))
+        scopes[kind] = summarize_teacher_scopes(pairs)
+    passed = all(s['numerical_envelope_passed'] for s in scopes.values())
+    report = dict(verification=repeat, scopes=scopes, numerical_envelope_passed=passed,
+                  full_profile_qualification=False, teacher_manifest_sha256=teacher_hash,
+                  model_sha256=model_hash, capacity=runs[0]['capacity'], budget=runs[0]['budget'],
+                  captures=[dict(directory=str(p), manifest_sha256=hashlib.sha256(
+                      (p / 'candidate.json').read_bytes()).hexdigest()) for p in args.capture],
+                  limitation='Target-only fixed schedules; no provider, lifecycle or service qualification.')
+    with args.output.open('x') as output:
+        output.write(json.dumps(report, indent=2) + '\n')
+    print(json.dumps(dict(repeat, numerical_envelope_passed=passed)))
+    if not passed:
+        raise SystemExit(1)
+
+
+if __name__ == '__main__':
+    main()
