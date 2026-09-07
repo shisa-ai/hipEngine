@@ -1043,8 +1043,10 @@ def test_gfx1151_right_sized_short_scratch_uses_owner_slots(monkeypatch) -> None
     )
 
     assert scratch.allocation_mode == "liveness_aliased"
-    # Includes standalone full-attention RoPE cos/sin buffers.
-    assert sum(buffer.nbytes for buffer in scratch.buffers) == 70_183_976
+    # Includes standalone full-attention RoPE cos/sin buffers. Split-K
+    # partials are demand-driven: sized for one query row here (was 16),
+    # grown via ensure_full_attn_split_query_rows by the native fallback.
+    assert sum(buffer.nbytes for buffer in scratch.buffers) == 69_440_936
     assert len(set(scratch.allocation_groups.values())) == 21
     assert scratch.moe_down_out_f32 == DeviceBuffer(ptr=0, nbytes=0)
     assert scratch.conv_out.ptr == scratch.moe_down_out.ptr
@@ -1066,8 +1068,10 @@ def test_gfx1151_short_diagnostics_keep_dedicated_scratch_fallback(monkeypatch) 
     )
 
     assert scratch.allocation_mode == "dedicated"
-    # Includes standalone full-attention RoPE cos/sin buffers.
-    assert sum(buffer.nbytes for buffer in scratch.buffers) == 355_575_880
+    # Includes standalone full-attention RoPE cos/sin buffers. Split-K
+    # partials are demand-driven: sized for one query row here (was 16),
+    # grown via ensure_full_attn_split_query_rows by the native fallback.
+    assert sum(buffer.nbytes for buffer in scratch.buffers) == 354_832_840
     assert scratch.moe_down_out_f32.ptr != 0
     assert not scratch.allocation_offsets
     assert not scratch.allocation_groups
