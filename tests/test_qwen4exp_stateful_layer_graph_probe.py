@@ -34,6 +34,24 @@ def test_parser_accepts_gdn_moe_baseline(tmp_path):
  args=_load().build_parser().parse_args(['--model-root',str(tmp_path),'--prompt-file',str(tmp_path/'p'),'--output',str(tmp_path/'o'),'--gdn-moe-baseline'])
  assert args.gdn_moe_baseline
 
+def test_paired_layer_timing_restores_and_preserves_every_sample():
+ module=_load();calls=[];state=[0];ticks=iter(range(100))
+ def restore():state[0]=0;calls.append('restore')
+ def eager():state[0]+=1;calls.append('eager')
+ def graph():state[0]+=1;calls.append('graph')
+ result=module.paired_layer_timing(restore,eager,graph,lambda:None,lambda:state[0],4,clock=lambda:next(ticks))
+ assert result['exact'] and len(result['eager_ms'])==len(result['graph_ms'])==4
+ assert result['orders']==[['eager','graph'],['graph','eager'],['eager','graph'],['graph','eager']]
+ assert calls.count('restore')==10
+
+def test_paired_layer_timing_rejects_mismatch():
+ module=_load();state=[0];ticks=iter(range(100))
+ def restore():state[0]=0
+ def eager():state[0]=1
+ def graph():state[0]=2
+ with pytest.raises(ValueError,match='state/output'):
+  module.paired_layer_timing(restore,eager,graph,lambda:None,lambda:state[0],4,clock=lambda:next(ticks))
+
 @pytest.mark.parametrize(('prepared','expected'),((False,[7]),(True,[])))
 def test_qsa_position_prepared_skips_legacy_stream_upload(monkeypatch,prepared,expected):
  import hipengine.runtime.qwen4_exp_runner as module

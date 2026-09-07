@@ -76,6 +76,20 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Paired GDN layer-graph screen (September7 UTC):** production-profile
+layer0/24/46 after code4096 at chunk1024,20 balanced pairs per layer,
+restoring identical layer state before every arm. Eager retains MoE cache:
+1 capture/20 replay per layer,zero fallback/reject. All60 pairs state/output
+exact plus four chained replay checks. Layer medians1.405->1.021ms,
+1.464->1.034ms,1.534->1.098ms;both orders favor graph. Full graph setup
+9.079/9.285/8.413ms and warmup timings retained separately.
+This differs materially from no-restore AR-like replay:host restoration/
+hashes perturb cache and CPU state. No full-step speedup or transition
+mitigation claimed. Next request-owned integration gate must measure
+real advancing decode with setup costs and strict fallback,not multiply
+these isolated ratios by36 layers.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-gdn-layer-graph-paired.json).
+
 **GDN layer graph baseline corrected (September7 UTC):** existing
 stateful graph probe now supports `--gdn-moe-baseline`,limited to
 production GDN-only segments. Eager baseline uses the actual MoE cache
