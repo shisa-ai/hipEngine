@@ -28,7 +28,14 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--page256", action="store_true")
     parser.add_argument("--compare-generic", action="store_true")
+    parser.add_argument("--head-pair", action="store_true")
     args = parser.parse_args()
+    if args.head_pair and args.pairs%2:
+        parser.error("head-pair screening requires even pairs")
+    if args.head_pair:
+        if args.compare_generic:
+            parser.error("head-pair cannot combine compare-generic")
+        args.page256=True
     if args.compare_generic and not args.page256:
         parser.error("--compare-generic requires --page256")
     if args.pairs < 1 or not 1 <= args.selected <= 4352 or any(r <= 0 for r in args.rows):
@@ -45,7 +52,10 @@ def main():
         "fixture": "seed506 random Q/BF16 KV, per-row page permutations and sorted unique selected positions",
         "cases": [],
         "page256": args.page256,
-        "baseline": "generic_h256_wave" if args.compare_generic else "strict_rows",
+        "baseline": "page256_h256_wave" if args.head_pair else
+                    "generic_h256_wave" if args.compare_generic else "strict_rows",
+        "head_pair":args.head_pair,
+        "warmup_note":"Head-pair timing retains its cold first sample; parent and strict reference pre-run" if args.head_pair else None,
     }
     for rows in args.rows:
         f = Fixture(rows, args.selected, page256=args.page256)
@@ -59,10 +69,17 @@ def main():
                     if args.compare_generic:
                         f.page256 = candidate
                     start = time.perf_counter()
-                    f.run(True if args.compare_generic else candidate)
+                    if args.head_pair:
+                        if candidate:
+                            from tests.test_qwen4exp_qsa_head_pair import run_pair
+                            run_pair(f)
+                        else:
+                            f.run(True)
+                    else:
+                        f.run(True if args.compare_generic else candidate)
                     timing["candidate" if candidate else "parent"].append(time.perf_counter()-start)
                     np.testing.assert_array_equal(
-                        f.download(True if args.compare_generic else candidate).view(np.uint32), expected)
+                        f.download(True if args.compare_generic or args.head_pair else candidate).view(np.uint32), expected)
                 np.testing.assert_array_equal(f.download(True).view(np.uint32), f.download(False).view(np.uint32))
             report["cases"].append({
                 "rows": rows, "selected_stride": args.selected,
@@ -70,6 +87,10 @@ def main():
                 "counts_sha256": hashlib.sha256(f.counts).hexdigest(),
                 "seconds": timing, "all_pairs_exact": True,
                 "speedup": statistics.median(timing["parent"])/statistics.median(timing["candidate"]),
+                "order_speedups": [
+                    statistics.mean(timing["parent"][i::2])/
+                    statistics.mean(timing["candidate"][i::2])
+                    for i in (0,1) if len(timing["parent"])>i],
             })
         finally:
             f.close()

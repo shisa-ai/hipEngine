@@ -563,7 +563,7 @@ __global__ void qsa_sparse_attention_paged_bf16_rows_f32_kernel(
 }
 
 // Eight coordinates per lane reproduce the 256-thread parent tree exactly.
-template <bool PAGE256>
+template <bool PAGE256, int HEADS = 1>
 __global__ __launch_bounds__(32) void qsa_sparse_attention_h256_wave_rows_f32_kernel(
     const float* __restrict__ query,
     const uint16_t* __restrict__ key_cache,
@@ -575,17 +575,21 @@ __global__ __launch_bounds__(32) void qsa_sparse_attention_h256_wave_rows_f32_ke
     int64_t rows, int64_t selected_stride, int64_t block_size,
     int64_t block_table_len, int64_t query_heads, int64_t kv_heads,
     float scale) {
-  const int64_t row = blockIdx.y, head = blockIdx.x;
+  const int64_t row = blockIdx.y, head = blockIdx.x * HEADS;
   const int lane = threadIdx.x;
   if (row >= rows) return;
   const int count = selected_counts[row];
   if (count <= 0 || count > selected_stride) return;
   const int64_t kv_head = head / (query_heads / kv_heads);
   const int64_t out_base = (row * query_heads + head) * 256;
-  float q[8], acc[8] = {};
+  float q[HEADS][8], acc[HEADS][8] = {};
+  float maximum[HEADS], denominator[HEADS] = {};
 #pragma unroll
-  for (int i = 0; i < 8; ++i) q[i] = query[out_base + lane + 32 * i];
-  float maximum = -INFINITY, denominator = 0.0f;
+  for (int h = 0; h < HEADS; ++h) {
+    maximum[h] = -INFINITY;
+#pragma unroll
+    for (int i = 0; i < 8; ++i) q[h][i] = query[out_base + h*256 + lane + 32*i];
+  }
   for (int s = 0; s < count; ++s) {
     const int64_t pos = selected_positions[row * selected_stride + s];
     const int64_t logical = PAGE256 ? (pos >> 8) : pos / block_size;
@@ -594,10 +598,20 @@ __global__ __launch_bounds__(32) void qsa_sparse_attention_h256_wave_rows_f32_ke
     const int64_t token = PAGE256
         ? (physical * 256 + (pos & 255)) : physical * block_size + pos % block_size;
     const int64_t offset = (token * kv_heads + kv_head) * 256;
+    float keys[8], values[8];
+    if constexpr (HEADS > 1) {
+#pragma unroll
+    for (int i=0;i<8;++i) {
+      keys[i]=bf16_bits_to_float(key_cache[offset+lane+32*i]);
+      values[i]=bf16_bits_to_float(value_cache[offset+lane+32*i]);
+    }
+    }
+#pragma unroll
+    for (int h=0;h<HEADS;++h) {
     float p[8];
 #pragma unroll
     for (int i = 0; i < 8; ++i) {
-      p[i] = __fmul_rn(q[i], bf16_bits_to_float(key_cache[offset + lane + 32 * i]));
+      p[i] = __fmul_rn(q[h][i], HEADS>1 ? keys[i] : bf16_bits_to_float(key_cache[offset+lane+32*i]));
       // The parent rounds through LDS. HIP's __fmul_rn alone still contracts
       // under this build profile; pin the product before the reduction adds.
       asm volatile("" : "+v"(p[i]));
@@ -613,21 +627,29 @@ __global__ __launch_bounds__(32) void qsa_sparse_attention_h256_wave_rows_f32_ke
       score += __shfl_down(score, stride);
     }
     score = __shfl(score, 0) * scale;
-    const float next_maximum = fmaxf(maximum, score);
-    const float old_scale = isinf(maximum) ? 0.0f : expf(maximum - next_maximum);
+    const float next_maximum = fmaxf(maximum[h], score);
+    const float old_scale = isinf(maximum[h]) ? 0.0f : expf(maximum[h] - next_maximum);
     const float score_scale = expf(score - next_maximum);
-    maximum = next_maximum;
-    denominator = denominator * old_scale + score_scale;
+    maximum[h] = next_maximum;
+    denominator[h] = denominator[h] * old_scale + score_scale;
 #pragma unroll
     for (int i = 0; i < 8; ++i) {
-      acc[i] = acc[i] * old_scale
-          + score_scale * bf16_bits_to_float(value_cache[offset + lane + 32 * i]);
+      if constexpr (HEADS>1) {
+        acc[h][i] = fmaf(acc[h][i],old_scale,score_scale*values[i]);
+      } else {
+        acc[h][i] = acc[h][i] * old_scale + score_scale *
+            bf16_bits_to_float(value_cache[offset+lane+32*i]);
+      }
+    }
     }
   }
-  denominator = fmaxf(denominator, 1.0e-20f);
+#pragma unroll
+  for (int h=0;h<HEADS;++h) {
+  denominator[h] = fmaxf(denominator[h], 1.0e-20f);
 #pragma unroll
   for (int i = 0; i < 8; ++i) {
-    output[out_base + lane + 32 * i] = acc[i] / denominator;
+    output[out_base + h*256 + lane + 32 * i] = acc[h][i] / denominator[h];
+  }
   }
 }
 
@@ -1475,7 +1497,8 @@ extern "C" int hipengine_qwen4_exp_qsa_sparse_attention_paged_bf16_h256_wave_row
   return static_cast<int>(hipGetLastError());
 }
 
-extern "C" int hipengine_qwen4_exp_qsa_sparse_attention_paged_bf16_h256_page256_wave_rows_f32(
+template <int HEADS>
+int launch_qsa_page256_heads(
     const void* query, const void* key_cache, const void* value_cache,
     const void* selected_positions, const void* selected_counts,
     const void* block_tables, void* output,
@@ -1485,11 +1508,12 @@ extern "C" int hipengine_qwen4_exp_qsa_sparse_attention_paged_bf16_h256_page256_
   if (!query || !key_cache || !value_cache || !selected_positions ||
       !selected_counts || !block_tables || !output || rows <= 0 ||
       selected_stride <= 0 || block_size != 256 || block_table_len <= 0 ||
-      query_heads <= 0 || kv_heads <= 0 || query_heads % kv_heads || head_dim != 256) {
+      query_heads <= 0 || kv_heads <= 0 || query_heads % kv_heads || head_dim != 256 ||
+      (query_heads/kv_heads)%HEADS) {
     return static_cast<int>(hipErrorInvalidValue);
   }
-  hipLaunchKernelGGL((qsa_sparse_attention_h256_wave_rows_f32_kernel<true>),
-      dim3(static_cast<uint32_t>(query_heads), static_cast<uint32_t>(rows)),
+  hipLaunchKernelGGL((qsa_sparse_attention_h256_wave_rows_f32_kernel<true,HEADS>),
+      dim3(static_cast<uint32_t>(query_heads/HEADS), static_cast<uint32_t>(rows)),
       dim3(32), 0, stream,
       static_cast<const float*>(query), static_cast<const uint16_t*>(key_cache),
       static_cast<const uint16_t*>(value_cache),
@@ -1499,6 +1523,16 @@ extern "C" int hipengine_qwen4_exp_qsa_sparse_attention_paged_bf16_h256_page256_
       rows, selected_stride, block_size, block_table_len, query_heads, kv_heads, scale);
   return static_cast<int>(hipGetLastError());
 }
+
+#define QSA_HEADS_ENTRY(NAME, HEADS) \
+extern "C" int NAME(const void* q,const void* k,const void* v,const void* pos, \
+    const void* counts,const void* tables,void* out,int64_t rows,int64_t stride, \
+    int64_t block,int64_t table_len,int64_t qh,int64_t kh,int64_t dim,float scale,hipStream_t s) { \
+  return launch_qsa_page256_heads<HEADS>(q,k,v,pos,counts,tables,out,rows,stride,block,table_len,qh,kh,dim,scale,s); \
+}
+QSA_HEADS_ENTRY(hipengine_qwen4_exp_qsa_sparse_attention_paged_bf16_h256_page256_wave_rows_f32,1)
+QSA_HEADS_ENTRY(hipengine_qwen4_exp_qsa_sparse_attention_paged_bf16_h256_head_pair_rows_f32,2)
+#undef QSA_HEADS_ENTRY
 
 __global__ void qsa_sparse_attention_paged_bf16_ordered_rows_scores_f32_kernel(
     const float* __restrict__ query,

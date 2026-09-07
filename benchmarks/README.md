@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-07 UTC**
 
+H256 QSA paired-head kernel candidate:synthetic2051-selected attention
+512/1024 rows2.544x/2.610x,30 pairs exact,23 tests. VGPR40->72,
+no scratch/LDS. No runtime/default change or whole-model speedup claim.
+[Evidence](results/2026-09-07-framework-qwen4exp-qsa-head-pair.json).
+
 Raw-vector square64 rejected against production128x64:actual Q512/1024
 screen0.959-0.985x,80 exact pairs,27 tests. Candidate removed,
 production unchanged;historical zbook evidence remains separate.

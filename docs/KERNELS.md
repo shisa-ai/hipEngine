@@ -788,6 +788,16 @@ Fallback requirements:
 
 ## Source-lineage audit
 
+H256 QSA exposes kernel-only `strict_h256_head_pair_rows_spans`,
+page256 with even GQA ratio;two adjacent query heads share each K/V
+load but retain independent score/online-softmax state. Explicit
+`fma(acc,old_scale,score_scale*value)` preserves parent's contraction;
+initial alternative failed strict equality.23 tests pass including
+poisoned unused KV and parent CPU-reference chain. Synthetic2051-selected
+attention512/1024 rows2.544x/2.610x,30 pairs exact.
+VGPR40->72,no scratch/LDS,half head blocks. No runtime default.
+Evidence: `2026-09-07-framework-qwen4exp-qsa-head-pair.json`.
+
 Raw-vector64x64 MMQ tested against current128x64 on Framework:
 actual Q layers3/7 at512/1024 rows0.959-0.985x,80 pairs exact,
 27 tests pass. VGPR160/scratch0 both,threads256->128,

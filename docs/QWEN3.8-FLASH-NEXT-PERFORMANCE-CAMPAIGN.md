@@ -76,6 +76,20 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Paired-head H256 QSA candidate (September7 UTC):** two adjacent heads
+per wave share selected K/V reads,with independent exact score tree and
+online-softmax accumulators. Page256/even GQA only;binding Hq24/Hkv2/D256
+meets scope. Explicit parent accumulator FMA contraction fixes initial
+strict mismatches.23 tests pass,including unused-KV poison.
+Synthetic selected2051 attention at512/1024 rows wins2.544x/2.610x,
+30 pairs exact. VGPR40->72,no LDS/scratch,half head blocks.
+The first screen label was stale:page256 wave timed,strict reference
+output separately checked;corrected label and cold-first-sample caveat
+are retained in the artifact. No model or full-QSA ratio extrapolation.
+Next: default-off production page256-parent route,full logits/state/KV,
+then staged throughput qualification.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-qsa-head-pair.json).
+
 **Framework raw-vector square64 rejected (September7 UTC):** distinct
 from historical zbook scalar-staging retile. Compared to promoted128x64,
 64x64 on actual Q layers3/7 at512/1024 rows yields0.984/0.985x and
