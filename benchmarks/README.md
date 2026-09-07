@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-07 UTC**
 
+QSA transition CPU accounting:early decode wall1.170->1.574s follows
+thread CPU1.165->1.563s;no GC or major faults. Off-CPU waiting does
+not explain this run. Instructions/cycles next;production unchanged.
+[Evidence](results/2026-09-07-framework-qwen4exp-qsa-phase-cpu.json).
+
 QSA early-transition trace:same29440 kernels,parent/candidate GPU
 busy981.8/976.1ms but wall1203.1/1569.3ms. Extra time is outside
 kernel execution;CPU/submission investigation next. Profiler changes

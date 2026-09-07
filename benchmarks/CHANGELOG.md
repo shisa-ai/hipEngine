@@ -1,5 +1,7 @@
 # hipEngine Benchmark Changelog
 
+- [2026-09-07 UTC QSA CPU accounting] First16 decode after parent/candidate prefill:wall1.170->1.574s,thread CPU1.165->1.563s,no GC/major faults. Extra on-CPU time localized;hardware counters available,next instructions/cycles. `benchmarks/results/2026-09-07-framework-qwen4exp-qsa-phase-cpu.json`.
+
 - [2026-09-07 UTC QSA transition trace] First16 decode steps after parent/candidate prefill:GPU busy981.8->976.1ms,same29440 kernels,wall1203.1->1569.3ms. Extra non-kernel/outside-API time localized;profiling queue caveat explicit,no production change. `benchmarks/results/2026-09-07-framework-qwen4exp-qsa-phase-trace.json`.
 
 - [2026-09-07 UTC QSA prefill-phase isolation] Decode flag0,code/mixed tg128 wall8.478->8.925s /8.482->8.936s after candidate prefill;exact tokens/state,zero candidate decode calls. Extra~0.45s is early-transition cost,steady tail converges;default-off retained. `benchmarks/results/2026-09-07-framework-qwen4exp-qsa-prefill-phase.json`.

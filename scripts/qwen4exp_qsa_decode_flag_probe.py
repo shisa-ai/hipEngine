@@ -1,7 +1,9 @@
 """Fixed-root decode flag isolation; not normal request throughput."""
 import argparse
+import gc
 import json
 import os
+import resource
 from pathlib import Path
 import statistics
 import sys
@@ -16,6 +18,17 @@ from hipengine.kernels.registry import KernelKey,resolve,register
 from hipengine.core.memory import memory_stats
 
 FLAG="HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR"
+
+def cpu_counters():
+    usage=resource.getrusage(resource.RUSAGE_THREAD)
+    return dict(thread_seconds=time.thread_time(),user_seconds=usage.ru_utime,
+        system_seconds=usage.ru_stime,minor_faults=usage.ru_minflt,
+        major_faults=usage.ru_majflt,voluntary_switches=usage.ru_nvcsw,
+        involuntary_switches=usage.ru_nivcsw)
+
+
+def counter_delta(before,after):
+    return {key:after[key]-value for key,value in before.items()}
 
 
 def orders(pairs):
@@ -54,6 +67,8 @@ def main():
     p.add_argument("--vary-prefill",action="store_true",
                    help="Re-prefill per arm with selected variant; decode flag always0")
     p.add_argument("--trace-markers",action="store_true")
+    p.add_argument("--cpu-accounting",action="store_true",
+                   help="Read thread CPU/fault/switch deltas and observe GC without disabling it")
     p.add_argument("--case-id",action="append",choices=("code-p4096","mixed_ja_en-p4096"))
     a=p.parse_args()
     schedule=orders(a.pairs)
@@ -86,6 +101,7 @@ def main():
     report=dict(status="running",source=gate._git_metadata(ROOT),host=gate._host_metadata(),
         model_identity=identity,fixture_sha256=digest,command=sys.argv,cases=[],
         steps=a.steps,pairs=a.pairs,vary_prefill=a.vary_prefill,trace_markers=a.trace_markers,
+        cpu_accounting=a.cpu_accounting,
         protocol="Parent prefill once per case; restore identical root before each arm,one warmup per flag,balanced measured pairs; host hashes and telemetry outside timing",
         limits="Snapshot restore and inter-arm inspection change cache/power history. This isolates flag-at-decode only,not the effects of preceding candidate prefill. No clock changes.")
     if a.vary_prefill:
@@ -93,7 +109,20 @@ def main():
             protocol="Fresh prefill per arm,flag toggles only prefill;decode flag always0,one warmup per arm,balanced pairs. No snapshot restore or host hashes between prefill and decode.",
             limits="Bounded two-case phase diagnostic with telemetry/step clocks,not full-suite throughput or thermal causal proof. No clock changes.")
     previous=os.environ.get(FLAG)
+    gc_events=[]
+    gc_start=[None]
+    active_step=[None]
+    def on_gc(phase,info):
+        if phase=="start":
+            gc_start[0]=(time.perf_counter(),active_step[0])
+        elif gc_start[0] is not None:
+            start,step=gc_start[0]
+            if step is not None:
+                gc_events.append(dict(step=step,seconds=time.perf_counter()-start,**info))
+            gc_start[0]=None
     try:
+        if a.cpu_accounting:
+            gc.callbacks.append(on_gc)
         register(key,counted,replace=True)
         for name in a.case_id or ("code-p4096","mixed_ja_en-p4096"):
             case=next(c for c in fixture["cases"] if c["id"]==name)
@@ -125,17 +154,24 @@ def main():
                     token=root.token_id
                     tokens=[]
                     step_seconds=[]
+                    cpu_steps=[]
+                    gc_events.clear()
                     runner.runtime.device_synchronize()
                     start=time.perf_counter()
                     for step in range(a.steps):
                         if marker:
                             marker.push(step_marker(name,pair-1,arm,step))
                         step_start=time.perf_counter()
+                        cpu_before=cpu_counters() if a.cpu_accounting else None
+                        active_step[0]=step
                         try:
                             token=runner.step(token,capture_logits=False,capture_target_hidden=False).token_id
                         finally:
+                            active_step[0]=None
                             if marker:
                                 marker.pop()
+                        if cpu_before is not None:
+                            cpu_steps.append(counter_delta(cpu_before,cpu_counters()))
                         step_seconds.append(time.perf_counter()-step_start)
                         tokens.append(token)
                     runner.runtime.device_synchronize()
@@ -150,6 +186,7 @@ def main():
                         rows.append(dict(pair=pair-1,flag=arm,seconds=elapsed,
                             prefill_flag=prefill_flag,decode_flag=decode_flag,
                             prefill_seconds=prefill_seconds,step_seconds=step_seconds,
+                            cpu_steps=cpu_steps,gc_events=list(gc_events),
                             state_sha256=state["state_sha256"],tokens=tokens,candidate_calls=0,
                             telemetry_before=before,telemetry_after=telemetry()))
             means=[statistics.mean(r["seconds"] for r in rows if r["flag"]==i) for i in (0,1)]
@@ -163,6 +200,8 @@ def main():
         report.update(status="failed",error=repr(error))
         raise
     finally:
+        if on_gc in gc.callbacks:
+            gc.callbacks.remove(on_gc)
         register(key,original,replace=True)
         if previous is None:
             os.environ.pop(FLAG,None)

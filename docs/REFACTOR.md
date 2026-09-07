@@ -20,6 +20,9 @@
   Trace now shows identical29440 kernel count and981.8->976.1ms GPU
   busy,while wall1203.1->1569.3ms. CPU execution/scheduling between
   submissions is next;profiling changes queue ring,so no causal clock claim.
+  Unprofiled CPU accounting now tracks wall penalty (thread1.165->1.563s),
+  with zero GC/major faults. Decode-window instructions/cycles are next;
+  hardware counter access confirmed.
   Do not assume all QSA cost shrinks by the kernel ratio.
 
 ## Qwen4Exp raw-vector square64: removed
