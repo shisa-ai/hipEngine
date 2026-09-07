@@ -2,6 +2,13 @@
 
 Last updated: **2026-09-07 UTC**
 
+Post-Q8-register chunk1024 family refresh at cleancc3d48a70:
+four-category p4096 FFN11.356->11.231s, linear4.515s, GR3.429s,
+QSA2.071s, GDN0.835s; total22.281->22.196s (-0.38% snapshot).
+All12 phases fully attributed; Vulkan profiles explicitly reused.
+Not a new external throughput comparison or single-change A/B.
+[Family evidence](results/2026-09-07-framework-qwen4exp-post-q8-register-family.json).
+
 Q8 down register reuse promoted at chunk1024: full12-case PP512/1024/4096
 181.424->182.969 (+0.851%)/191.973->193.319 (+0.701%)/
 177.663->178.812 (+0.647%).72 exact trajectories, all12 prefill/request
