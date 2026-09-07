@@ -631,9 +631,20 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
 - [ ] **BLOCKED (cross-campaign, DMS artifact re-provisioning):** Gate the trained policy against dense and no-evict controls on all
   categories/heldouts and long trajectories. Add MTP provisional-state/eviction
   rollback before combining them; rejected drafts must not evict committed KV.
-- [ ] **BLOCKED (cross-campaign, DMS artifact re-provisioning):** Evaluate DMS+INT8 only after independent codec/topology gates. Measure
+- [ ] **BLOCKED (codec qualification artifact does not exist).** Evaluate DMS+INT8 only after independent codec/topology gates. Measure
   actual compression and quality; do not multiply nominal factors into a fit
   claim. Keep scope-specific failures linked to the DMS campaign.
+  Blocker made concrete 2026-09-07 on the XTX: the gfx1151 sidecar package
+  carries no INT8 codec qualification (its `qualification.json` has no codec
+  section), none exists for the local artifact, and the in-tree quality
+  harnesses compare only the BF16 compact backend
+  (`create_dms_bf16_backend`); the INT8 gate
+  (`scripts/dms_backend_gate.py --codec int8_per_token_head`) fails closed
+  without a qualification file proving KL ≤ 0.05, top-1 ≥ 90%, and no dense
+  shadow for the exact artifact (`hipengine/kvcache/dms.py:606-626`).
+  Producing that file requires an INT8-codec quality run (INT8 compact arm
+  vs dense teacher through the same owner) that is not built yet — feature
+  work before any DMS+INT8 measurement.
 
 ### Packet 5 — Measure context and concurrency limits
 
