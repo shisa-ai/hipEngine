@@ -1,15 +1,17 @@
 # hipEngine Refactor / Dead-Path Ledger
 
-## Qwen4Exp Q5_1 per-row partial publication candidate
+## Qwen4Exp Q5_1 per-row partial publication production
 
-- Default-off `HIPENGINE_QWEN4_EXP_Q51_ROW_PUBLISH=1` selects
+- Production-bound `HIPENGINE_QWEN4_EXP_Q51_ROW_PUBLISH=1` selects
   `selected_grouped_prefill_pair2_row_publish_bf16_bf16_out`
   computes/publishes each row before the next, preserves full LDS tree and
   register-cache weights. K640 only; scratch36->0B.
 - Synthetic routing512/1024 wins1.413x/1.523x; captured mixed512 wins1.498x.
   Five chunk1024 model state/full-KV cases pass exactly;25/100 prefill
-  calls,zero decode/final owners. Both profile binders0.
-  Require canonical A/B before promotion; remove candidate if rejected.
+  calls,zero decode/final owners. Canonical72 trajectories exact,all12
+  prefill/request cases improve;PP gains4.296%/4.732%/4.323%.
+- Strict binds0. Keep register-cache parent for bisection; remove temporary
+  flag chain when profile plans own the scoped K640 selection.
 
 ## Qwen4Exp Q5_1 first-wave reduction: removed
 
