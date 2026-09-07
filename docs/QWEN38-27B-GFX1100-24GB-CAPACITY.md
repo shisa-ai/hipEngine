@@ -602,7 +602,7 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
   decode-time eviction was not exercised by these runs — recorded, not
   inferred). Artifacts: `results/2026-09-07-rx7900xtx-dms-long-16384.json`,
   `results/2026-09-07-rx7900xtx-dms-capacity-comparison.json`.
-- [ ] **PARTIAL — native C1 measured; C2/C4/C8, heterogeneous lengths, cancellation, pressure/refill still open.** DMS prefix
+- [x] **Measured through C1/C2/C4/C8, heterogeneous lengths, cancellation, pressure/refill; DMS prefix sharing stays off.** DMS prefix
   sharing remains off until snapshot/overlay semantics qualify; sharing pool
   capacity does not authorize sharing divergent evicted histories.
   Native C1 measured 2026-09-07 on the XTX (trained DMS BF16, cold session
@@ -615,9 +615,6 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
   (width-adjacent, non-monotone). Window edge covered at 8,192 (ratio 1.0,
   no eviction); ratio climbs toward the 2.0 target with context (1.778 at
   65,536). Artifact: `results/2026-09-07-rx7900xtx-dms-c1-ladder.json`.
-  Not yet measured: C2/C4/C8 concurrency, heterogeneous lengths, cancellation,
-  pressure/refill.
-  Not yet measured: heterogeneous lengths, cancellation, pressure/refill.
   C2/C4/C8 UNBLOCKED and measured 2026-09-07 (fix: per-step decode-owner
   routing). The shared runner's `_dms_decode_owner` marker is now claimed or
   cleared by each session at every decode entry (`step()` and
@@ -635,9 +632,31 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
   (6 cases); focused bundle 124 passed; single-session 768 quality suite
   identical post-fix (max KL/top-1 unchanged). Artifact:
   `results/2026-09-07-rx7900xtx-dms-concurrency-ladder.json`.
-- [ ] **BLOCKED (cross-campaign, DMS artifact re-provisioning):** Gate the trained policy against dense and no-evict controls on all
+  Heterogeneous lengths, cancellation, and pressure/refill MEASURED
+  2026-09-07 on the now-working multi-session protocol: heterogeneous
+  C4 (2,048/4,096/8,192/16,384 in one shared runner) passes with
+  width-independent window protection (ratio 1.0 at ≤8,192, 1.3331 at
+  16,384); cancelling session 0 mid-decode closes in 14 ms, reclaims its
+  compact resources (allocation drop recorded), and the three survivors
+  continue with their own live counts intact (owner-marker pop is
+  owner-guarded); three full open/prefill/decode/close refill cycles at
+  C2@16,384 each return to exactly 0.0 MiB. C4 widths doubling to 32,768
+  OOM at pack-time coexistence (ladder rescaled). Artifact:
+  `results/2026-09-07-rx7900xtx-dms-hetero-cancel-refill.json`. Remaining
+  Packet 4 items are cross-campaign feature blockers only (MTP rollback;
+  INT8 codec qualification).
+- [ ] **PARTIAL — C1-protocol scope measured through cancellation/refill; remaining gates are cross-campaign feature blockers.** Gate the trained policy against dense and no-evict controls on all
   categories/heldouts and long trajectories. Add MTP provisional-state/eviction
   rollback before combining them; rejected drafts must not evict committed KV.
+  Categories/heldouts within XTX authority: measured 2026-09-07 on the
+  same-owner suite (all four categories, dense vs no-evict vs sidecar at
+  768 and 16,384 tokens; results/2026-09-07-rx7900xtx-dms-quality-suite-*.json)
+  — but on the not-train-disjoint XTX manifest, so these are indicative
+  same-owner checks; authoritative heldout quality remains the gfx1151
+  qualification (the training-time source manifest needed to build
+  train-disjoint long manifests is absent from this host). MTP
+  provisional-state/eviction rollback is DMS+MTP feature work owned by the
+  MTP campaign; the C2 decode-owner routing fix does not touch MTP paths.
 - [ ] **BLOCKED (codec qualification artifact does not exist).** Evaluate DMS+INT8 only after independent codec/topology gates. Measure
   actual compression and quality; do not multiply nominal factors into a fit
   claim. Keep scope-specific failures linked to the DMS campaign.
