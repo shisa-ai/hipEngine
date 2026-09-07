@@ -4,6 +4,8 @@ With --engine-boundary, submits two independent service children atomically and
 checks them against independent HTTP AR output. Default horizons are D8/D24;
 --cancel-peer uses two D24 children and cancels one after paired target execution.
 The cancelled prefix comes from its terminal collector, not a public response.
+--refill-peer admits a D8 child after a native C1 survivor, requires a new packed
+pair, and checks request ownership and resident leases after all children finish.
 The original HTTP mode cannot batch unequal horizons and reproduces that failure.
 No lease swap, HTTP lifecycle, provisional-transaction rollback, EOS, full numerical
 qualification, or promotion claim.
@@ -129,7 +131,8 @@ def resolve_engine_intents(llm, prompt: str, horizons=(8, 24)):
 
 
 def submit_engine_pair(service, prompt: str, intents, *, horizons=(8, 24),
-                       paired_ready=None, cancellation=None) -> list[dict]:
+                       paired_ready=None, cancellation=None,
+                       singleton_ready=None, refill=None) -> list[dict]:
     """Admit both real children before polling either; no HTTP usage claim."""
     from hipengine.generation.registry import GenerationRequest
     if len(intents) != 2 or any(not i.eligible or not i.packed_c1_target for i in intents):
@@ -141,7 +144,11 @@ def submit_engine_pair(service, prompt: str, intents, *, horizons=(8, 24),
     handles = service.submit_speculative_children(requests)
     if len(handles) != 2:
         raise ValueError('engine did not return two independent handles')
-    if paired_ready is None:
+    if singleton_ready is not None:
+        from scripts.qwen38_packed_c1_refill import collect_refilled_pair
+        outputs, evidence = collect_refilled_pair(service, handles, requests[0], singleton_ready)
+        refill.update(evidence)
+    elif paired_ready is None:
         outputs = [handle.result() for handle in handles]
     else:
         from scripts.qwen38_packed_c1_cancel import collect_cancelled_pair
@@ -177,9 +184,13 @@ def main() -> None:
                         help='Submit unequal-horizon children atomically below HTTP batching')
     parser.add_argument('--cancel-peer', action='store_true',
                         help='Cancel one D24 engine child after a successful paired target')
+    parser.add_argument('--refill-peer', action='store_true',
+                        help='Admit a new D8 child after the D24 child becomes a native C1 survivor')
     args = parser.parse_args()
-    if args.cancel_peer and not args.engine_boundary:
-        parser.error('--cancel-peer requires --engine-boundary')
+    if (args.cancel_peer or args.refill_peer) and not args.engine_boundary:
+        parser.error('--cancel-peer and --refill-peer require --engine-boundary')
+    if args.cancel_peer and args.refill_peer:
+        parser.error('choose cancellation or refill, not both')
     horizons = (24, 24) if args.cancel_peer else (8, 24)
     from scripts import gguf_mtp_c1c8_server_bench as bench
     from hipengine.generation import qwen35_gguf_mtp2 as mtp2
@@ -189,6 +200,7 @@ def main() -> None:
     install_lifecycle_evidence(args.capacity)
     traces = []
     paired_ready = None
+    singleton_ready = None
     current = ContextVar('lifecycle_target', default=None)
     execute = mtp2.Qwen35GGUFMTP2Adapter._execute_target_frontier_batch
     verify = Qwen35GGUFResidentSession.verify_target_blocks_batch
@@ -211,6 +223,10 @@ def main() -> None:
                     and record['packed_request_ids'] == ids
                     and record['packed_group_sizes'] == [2]):
                 paired_ready.set()
+            if (singleton_ready is not None and len(ids) == 1
+                    and record['active_request_ids'] == ids and record['native_c1']):
+                validate_transition(traces[start:])
+                singleton_ready.set()
             return result
         except Exception as error:
             record['error'] = f'{type(error).__name__}: {error}'
@@ -262,12 +278,18 @@ def main() -> None:
                 start = len(traces)
                 paired_ready = threading.Event() if args.cancel_peer else None
                 cancellation = {} if args.cancel_peer else None
+                singleton_ready = threading.Event() if args.refill_peer else None
+                refill = {} if args.refill_peer else None
+                drain = None
+                if args.refill_peer:
+                    expected.append(expected[0])  # Same prompt and D8 as the first independent AR arm.
                 intent_sources = None
                 if args.engine_boundary:
                     intents, intent_sources = resolve_engine_intents(llm, prompt['rendered_prompt'], horizons)
                     actual = submit_engine_pair(llm._get_text_generator(), prompt['rendered_prompt'], intents,
                                                 horizons=horizons, paired_ready=paired_ready,
-                                                cancellation=cancellation)
+                                                cancellation=cancellation,
+                                                singleton_ready=singleton_ready, refill=refill)
                 else:
                     barrier = threading.Barrier(3)
                     with ThreadPoolExecutor(max_workers=2) as pool:
@@ -278,6 +300,16 @@ def main() -> None:
                         actual = [future.result() for future in futures]
                 trace = traces[start:]
                 transition = validate_transition(trace)
+                if args.refill_peer:
+                    from scripts.qwen38_packed_c1_refill import validate_refill_transition
+                    from scripts.qwen38_packed_c1_drain import validate_request_drain
+                    transition = validate_refill_transition(trace, refill)
+                    snapshot = llm._get_text_generator().live_loop_snapshot()
+                    validate_request_drain(snapshot, capacity=args.capacity)
+                    drain = dict(engine_service=snapshot['engine_service'],
+                                 loop={k: snapshot['loop'][k] for k in ('requests', 'physical_bucket')},
+                                 runner=dict(model_runner={k: snapshot['runner']['model_runner'][k]
+                                     for k in ('capacity', 'active_requests', 'active_request_ids', 'available_sessions')}))
                 if args.cancel_peer:
                     from scripts.qwen38_packed_c1_cancel import validate_cancel_outputs
                     validate_cancel_outputs(expected, actual, cancellation, transition)
@@ -293,6 +325,7 @@ def main() -> None:
                             usage_exact=None if args.engine_boundary else True,
                             engaged=engaged, transition=transition, trace=trace,
                             intent_sources=intent_sources, cancellation=cancellation,
+                            refill=refill, request_drain=drain,
                             responses=[{k: r[k] for k in ('generated_ids', 'usage', 'route', 'mtp')}
                                        for r in actual],
                             oracle_responses=[{k: r[k] for k in ('generated_ids', 'usage')}
@@ -307,7 +340,7 @@ def main() -> None:
             close_and_report(llm, args.output, dict(
                 diagnostic_only=True, performance_claim=False, full_profile_qualification=False,
                 passed=passed, capacity=args.capacity, budget=3, horizons=list(horizons),
-                cancellation_requested=args.cancel_peer,
+                cancellation_requested=args.cancel_peer, refill_requested=args.refill_peer,
                 boundary='engine_service' if args.engine_boundary else 'http',
                 cells=cells, all_target_traces=traces))
         finally:
