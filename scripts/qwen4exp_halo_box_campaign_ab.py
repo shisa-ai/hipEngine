@@ -91,6 +91,13 @@ def _comparison(before: Sequence[Mapping[str, Any]], after: Sequence[Mapping[str
     }
 
 
+def measurement_sequence(case_index: int, repetitions: int) -> tuple[str, ...]:
+    if repetitions not in (1,3):
+        raise ValueError("only one-pair screen or three-pair publication supported")
+    sequence=arm_sequence(case_index)
+    return sequence[:2] if repetitions==1 else sequence
+
+
 def summarize_campaign_ab(
     samples: Sequence[Mapping[str, Any]], *, repetitions_per_mode: int
 ) -> dict[str, Any]:
@@ -135,7 +142,7 @@ def summarize_campaign_ab(
             "prompt_tokens": int(rows[0]["prompt_tokens"]),
             "samples_per_mode": expected,
             **_comparison(modes["before"], modes["after"]),
-            "within_mode_deterministic": deterministic,
+            "within_mode_deterministic": deterministic if expected>1 else None,
             "cross_mode_output_exact": exact,
             "output_token_ids_sha256": {
                 mode: sorted(values) for mode, values in digests.items()
@@ -165,9 +172,9 @@ def summarize_campaign_ab(
             **_comparison(before, after),
         }
 
-    return {
+    result = {
         "correctness": {
-            "within_mode_deterministic": True,
+            "within_mode_deterministic": True if expected>1 else None,
             "cross_mode_output_exact": True,
             "mismatched_case_ids": [],
         },
@@ -183,6 +190,16 @@ def summarize_campaign_ab(
         "before": summarize_samples(by_mode["before"]),
         "after": summarize_samples(by_mode["after"]),
     }
+    if expected==1:
+        for mode in ("before","after"):
+            for case in result[mode]["cases"].values():
+                for metric in case.values():
+                    if isinstance(metric,dict):
+                        for key in ("stddev","stdev","standard_deviation","coefficient_of_variation"):
+                            if key in metric:
+                                metric[key]=None
+        result["uncertainty"]="Within-case repeatability/variance unmeasured; one sample per arm."
+    return result
 
 
 def q8_down_row4_expected_calls(prompt_tokens: int, chunk_size: int) -> int:
@@ -349,6 +366,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--prefill-chunk-size", type=int, default=512)
     parser.add_argument("--warmups-per-mode", type=int, default=1)
     parser.add_argument("--repetitions-per-mode", type=int, default=3)
+    parser.add_argument("--screen-only", action="store_true",
+                        help="Permit one pair/case; diagnostic only, no promotion evidence")
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--route-package", choices=("pf13", "q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "chunk1024", "q8-down-register", "q51-row-publish", "gdn-wave-norm"), default="pf13")
@@ -360,7 +379,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.warmups_per_mode < 1:
         raise SystemExit("--warmups-per-mode must be at least 1")
-    if args.repetitions_per_mode != 3:
+    if args.screen_only and args.repetitions_per_mode != 1:
+        raise SystemExit("screen-only requires --repetitions-per-mode 1")
+    if not args.screen_only and args.repetitions_per_mode != 3:
         raise SystemExit("publication protocol requires --repetitions-per-mode 3")
     if args.route_package == "chunk1024" and args.prefill_chunk_size != 1024:
         raise SystemExit("chunk1024 requires --prefill-chunk-size1024 for shared allocation")
@@ -457,8 +478,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             "case_counterbalance_indices": {
                 str(row["id"]): fixture_case_index(fixture["cases"], row) for row in cases
             },
-            "arm_order_even_case": list(arm_sequence(0)),
-            "arm_order_odd_case": list(arm_sequence(1)),
+            "arm_order_even_case": list(measurement_sequence(0,args.repetitions_per_mode)),
+            "arm_order_odd_case": list(measurement_sequence(1,args.repetitions_per_mode)),
+            "qualification": "screen-one-pair" if args.screen_only else "canonical-three-pair",
+            "promotion_eligible_protocol": not args.screen_only,
             "warmups_per_mode_per_case": int(args.warmups_per_mode),
             "measured_repetitions_per_mode_per_case": int(args.repetitions_per_mode),
             "decode_transitions": transitions,
@@ -672,6 +695,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "before":{"q8_down":"selected_grouped_row4_bundle_gemv_bf16_bf16_out"},
             "after":{"q8_down":"selected_grouped_row4_register_gemv_bf16_bf16_out"}}
     artifact["diagnostic_subset"] = bool(args.case_id)
+    artifact["screen_only"] = args.screen_only
     if args.route_package == "gdn-wave-norm":
         artifact["arms"] = {
             "before":{"gdn":"qwen4exp_sigmoid_register_prefill"},
@@ -772,7 +796,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                         flush=True,
                     )
             mode_counts = {"before": 0, "after": 0}
-            sequence = arm_sequence(case_index)
+            sequence = measurement_sequence(case_index,args.repetitions_per_mode)
             for slot, mode in enumerate(sequence):
                 row = sample(mode, case, mode_counts[mode])
                 mode_counts[mode] += 1

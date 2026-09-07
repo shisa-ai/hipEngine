@@ -76,6 +76,21 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Expedited qualification tooling (September7 UTC):** user requested fewer
+repeats for clear outcomes. `qwen4exp_halo_box_campaign_ab.py --screen-only
+--repetitions-per-mode 1` now runs all12 cases with one measured pair each,
+alternating first arm across cases. Warmups unchanged:48 total case-arm
+executions versus96 canonical, so roughly half runtime is expected, not
+yet measured. Outputs/engagement/ownership still checked; within-case
+variance and repeatability are null/unmeasured, not zero/perfect.
+`qwen4exp_campaign_ab_retention.py` rejects screen-only packets.
+Default remains canonical3 repeats. Automatic early promotion and
+same-residency adaptive continuation need a predeclared calibrated
+historical noise bound; they are not implemented or inferred from one pair.
+Avoid screening known tiny effects only to pay for a separate full run:
+the GDN wave-normalization candidate is already expected near noise and
+should go directly to canonical qualification.
+
 **GDN wave-normalization admission (September7 UTC):** default-off,
 existing serial-register prefix only. Five chunk1024 full-logit/state/KV
 cases exact,21/84 expected calls,zero decode. The first harness attempt
