@@ -95,6 +95,7 @@ class PackedC1Capture:
         self.slot = slot
         self.current = ContextVar("packed_c1_capture", default=None)
         self.records: list[dict[str, Any]] = []
+        self.errors: list[str] = []
         self.prompt: dict[str, Any] | None = None
         self.restores: list[tuple[Any, str, Any]] = []
 
@@ -110,6 +111,14 @@ class PackedC1Capture:
         if self.slot is not None:
             from hipengine.generation.qwen35_gguf import Qwen35GGUFResidentModelRunner
             from scripts.qwen38_packed_c1_slots import acquire_slot
+            reserve = Qwen35GGUFResidentModelRunner._reserve_sessions
+
+            def reserve_selected(owner):
+                reserve(owner)
+                # Atomic admission reads the free-list tail without _acquire_lease.
+                owner._available.append(acquire_slot(owner, self.slot))
+
+            self._patch(Qwen35GGUFResidentModelRunner, "_reserve_sessions", reserve_selected)
             self._patch(Qwen35GGUFResidentModelRunner, "_acquire_lease",
                         lambda owner: acquire_slot(owner, self.slot))
 
@@ -155,7 +164,8 @@ class PackedC1Capture:
             if self.slot is not None:
                 context["resident_session_slot"] = int(getattr(row.slot.session, "_resident_slot_index", 0) or 0)
                 if context["resident_session_slot"] != self.slot:
-                    raise ValueError("packed target did not use requested diagnostic resident session slot")
+                    raise ValueError(f"packed target resident session slot {context['resident_session_slot']} "
+                                     f"does not match requested diagnostic slot {self.slot}")
             if self.check_commit:
                 context["remaining_decode"] = int(row.request.max_tokens) - len(generated)
             token = self.current.set(context)
@@ -293,8 +303,15 @@ class PackedC1Capture:
 
             self._patch(Qwen35GGUFResidentSession, "_commit_deferred_packed_verify_states_batch_device", recorded_commit)
 
+        def recorded_target(*args, **kwargs):
+            try:
+                return target(*args, **kwargs)
+            except Exception as error:
+                self.errors.append(f"{type(error).__name__}: {error}")
+                raise
+
         self._patch(bench, "_run_arm", measured_arm)
-        self._patch(Qwen35GGUFMTP2Adapter, "_execute_target_frontier_batch", target)
+        self._patch(Qwen35GGUFMTP2Adapter, "_execute_target_frontier_batch", recorded_target)
         self._patch(Qwen35GGUFResidentSession, "verify_target_blocks_batch", packed)
         self._patch(Qwen35GGUFResidentSession, "_enqueue_target_block_rows_from_hidden", head)
 
@@ -303,7 +320,8 @@ class PackedC1Capture:
             setattr(owner, name, original)
         (self.directory / "capture.json").write_text(json.dumps({
             "kind": "packed_c1_conditional_logits", "full_profile_qualification": False,
-            "complete": bool(success and self.records), "records": self.records,
+            "complete": bool(success and self.records and not self.errors), "records": self.records,
+            "target_errors": self.errors,
             "limitation": "Actual candidate contexts, not strict-teacher-driven state/task qualification",
         }, indent=2) + "\n")
 
