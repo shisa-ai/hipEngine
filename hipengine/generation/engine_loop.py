@@ -65,6 +65,15 @@ DEFAULT_ROUND_DECODE_ROW_BUDGET = 32
 DEFAULT_RESIDENT_STREAM_QUEUE_MAX_CHUNKS = 64
 
 
+def _speculative_sampling_mode(runner, request_id, params):
+    blockers = speculative_mtp_sampling_blockers(params)
+    if blockers == ("eos_token_id",):
+        supports_eos = getattr(runner, "speculative_eos_supported", None)
+        if callable(supports_eos) and supports_eos(int(request_id)):
+            return "greedy"
+    return "processed" if blockers else "greedy"
+
+
 @dataclass(frozen=True, slots=True)
 class EngineLoopConfig:
     """CLI/env-resolved knobs for the C4 scheduler-owned engine loop."""
@@ -2455,11 +2464,7 @@ class ResidentEngineLoop:
         for request_id in work.request_ids:
             request = self.scheduler.active_batch.requests[int(request_id)]
             params = sampler_block.params_for(int(request_id))
-            sampling_mode = (
-                "greedy"
-                if not speculative_mtp_sampling_blockers(params)
-                else "processed"
-            )
+            sampling_mode = _speculative_sampling_mode(self.runner, request_id, params)
             semantics.append(
                 SpeculativeRequestSemantics(
                     request_id=int(request_id),

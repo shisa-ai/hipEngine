@@ -6406,6 +6406,11 @@ class Qwen35GGUFResidentModelRunner:
         )
         return min(max_budget, max(1, int(request.max_tokens)))
 
+    def speculative_eos_supported(self, request_id: int) -> bool:
+        adapter = self._resolved_mtp2_adapter()
+        return bool(adapter is not None and adapter.enabled
+                    and adapter._physical_c1_request(int(request_id)))
+
     def speculative_capability(self, request_semantics):
         adapter = self._resolved_mtp2_adapter()
         return None if adapter is None else adapter.capability(request_semantics)
