@@ -9,7 +9,9 @@
 - Default-off `HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM=1` replaces only the
   serial-register parent;21-layer prefix, tiled suffix unchanged.
   Five chunk1024 full-state/KV cases exact,21/84 calls,zero decode.
-  Both binders0; throughput qualification pending.
+  Both binders0; full72 trajectories exact but model timing mixed/nearzero
+  (+0.010%/+0.139%/-0.044% PP). Retain kernel saving; actual-model
+  GDN owner sub-window evidence is the remaining promotion blocker.
 
 ## Qwen4Exp Q4 paired-block pipeline: removed
 
