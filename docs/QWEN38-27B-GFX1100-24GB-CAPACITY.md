@@ -3,6 +3,57 @@
 Status: measurement and optimization plan with scoped offline DMS INT8
 integration evidence. General production-serving qualification is not established.
 
+## Requested 75K / 74K / 72K ladder — 2026-09-07 UTC
+
+| Prompt tokens / decode appends | Outcome | Sampled whole-card peak |
+| --- | --- | ---: |
+| 76,800 / 8 (75K) | OOM allocating compact eviction flags after prefill | 23.961 GiB before failure |
+| 75,776 / 8 (74K) | OOM allocating compact V payload after prefill | 23.938 GiB before failure |
+| 73,728 / 8 (72K) | Pass; eight finite decode steps and zero tracked allocations after close | 23.938 GiB |
+
+The passing point has 47.42 MiB sampled headroom; tracked peak is 23.186 GiB.
+This reaches the requested 23.9 GiB+ whole-card target. All three fresh
+processes returned GPU1 to baseline. The largest observed passing prompt is
+now 73,728; 75,776 is the smallest tested OOM. No maximum, long-output
+stability, new replay/teacher gate or general-serving qualification is claimed.
+[`Requested ladder evidence`](../benchmarks/results/2026-09-07-rx7900xtx-dms-int8-requested-backoff.json).
+The prior near-limit section below records the earlier measurements.
+
+### Historical singleton comparison
+
+The August 15/16 higher-context XTX results used the **same Qwen3.8-27B
+Q4_K_M file**, not Q4_K_S. The controls audit matches sampled file and tensor
+inventory fingerprints: four natural 114,688-token requests passed at
+23.323 GiB, and one 129,024-token request passed at 23.963 GiB, with four
+output tokens. Those used a long no-mirror INT8 C1 route, MTP/prefix off and
+an explicit unverified-long gate; their long-context quality scope was bounded.
+This model did not always have a roughly 72K context limit.
+
+The current DMS route first holds BF16 full-history prefill storage and then
+allocates the compact INT8 destination before releasing dense storage. The
+observed OOMs occur during that overlap. Historical higher execution capacity
+is real, but these different owners/protocols do not isolate a particular
+regression. Reproducing the historical no-mirror route on current source is
+the relevant next comparison, not more DMS boundary sweeps.
+
+The 35B-A3B also has intrinsically lower full-attention KV growth. Local GGUF
+metadata yields the following target-model geometry (excluding NextN):
+
+| Model | Full-attention layers | KV heads | Head dimension | BF16 KV bytes/token | INT8 + FP32 scales bytes/token |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Qwen3.8-27B | 16 | 4 | 256 | 65,536 (64 KiB) | 33,280 (32.5 KiB) |
+| Qwen3.6-35B-A3B | 10 | 2 | 256 | 20,480 (20 KiB) | 10,400 (10.15625 KiB) |
+
+At the same codec the dense model needs **3.2x** the full-attention KV payload
+per retained token. This is an attention-geometry difference, not a general
+dense-versus-MoE rule or a consequence of only 3B active experts. It excludes
+weights, recurrent state, allocator overhead and transient prefill workspaces.
+Q4_K_S does not explain the old context advantage; the matched XTX 3K
+allocation audit actually found its runtime residency higher than Q4_K_M.
+Sources: [identity and historical controls](../benchmarks/results/2026-09-06-rx7900xtx-capacity-packet0-controls.json),
+[Q4_K_S/M allocation comparison](../benchmarks/results/2026-09-06-rx7900xtx-capacity-q4ks-vs-q4km-bytes.json),
+and local metadata captured in the requested-ladder artifact.
+
 ## Near-limit DMS INT8 capacity — 2026-09-07 UTC
 
 Eager resident C1 now passes **72,960 prompt tokens plus eight decode appends**
