@@ -73,6 +73,8 @@ def main():
                    help="Count calling-thread user cycles/instructions only during decode")
     p.add_argument("--cpu-frequency",action="store_true",
                    help="Read CPUFreq feedback/reported frequency and CPU identity at step boundaries")
+    p.add_argument("--pin-cpu",type=int,
+                   help="Pin calling thread after model load; restore affinity at exit")
     p.add_argument("--case-id",action="append",choices=("code-p4096","mixed_ja_en-p4096"))
     a=p.parse_args()
     schedule=orders(a.pairs)
@@ -124,6 +126,8 @@ def main():
             protocol="Fresh prefill per arm,flag toggles only prefill;decode flag always0,one warmup per arm,balanced pairs. No snapshot restore or host hashes between prefill and decode.",
             limits="Bounded two-case phase diagnostic with telemetry/step clocks,not full-suite throughput or thermal causal proof. No clock changes.")
     previous=os.environ.get(FLAG)
+    from scripts.qwen4exp_thread_affinity import ThreadAffinity
+    affinity=ThreadAffinity(a.pin_cpu)
     gc_events=[]
     gc_start=[None]
     active_step=[None]
@@ -136,6 +140,7 @@ def main():
                 gc_events.append(dict(step=step,seconds=time.perf_counter()-start,**info))
             gc_start[0]=None
     try:
+        report["thread_affinity"]=affinity.enter()
         if a.thread_perf:
             perf=ThreadPerf()
         if a.cpu_accounting:
@@ -226,18 +231,21 @@ def main():
         report.update(status="failed",error=repr(error))
         raise
     finally:
-        if perf:
-            perf.close()
-        if on_gc in gc.callbacks:
-            gc.callbacks.remove(on_gc)
-        register(key,original,replace=True)
-        if previous is None:
-            os.environ.pop(FLAG,None)
-        else:
-            os.environ[FLAG]=previous
-        generator.close()
-        report["memory_after_close"]=memory_stats()
-        a.output.write_text(json.dumps(report,indent=2)+"\n")
+        try:
+            if perf:
+                perf.close()
+            if on_gc in gc.callbacks:
+                gc.callbacks.remove(on_gc)
+            register(key,original,replace=True)
+            if previous is None:
+                os.environ.pop(FLAG,None)
+            else:
+                os.environ[FLAG]=previous
+            generator.close()
+        finally:
+            report["restored_thread_affinity"]=affinity.close()
+            report["memory_after_close"]=memory_stats()
+            a.output.write_text(json.dumps(report,indent=2)+"\n")
 
 
 if __name__=="__main__":
