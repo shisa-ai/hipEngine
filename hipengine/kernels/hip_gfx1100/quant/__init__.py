@@ -1,5 +1,7 @@
 """gfx1100 quantized kernel wrappers."""
 
+from hipengine.kernels.hip_gfx1100.quant.gguf_iq_dense import register_gguf_iq_dense_kernels
+
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     build_gguf_k_gemv,
     gguf_q5_k_pair_wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_bf16_out,
