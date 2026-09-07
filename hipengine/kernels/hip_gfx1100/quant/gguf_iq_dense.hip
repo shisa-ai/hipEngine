@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 namespace {
+#include "gguf_iq_dense_tables.h"
 // MIT License
 //
 // Copyright (c) 2023-2026 The ggml authors
@@ -565,6 +566,23 @@ template<int Q> __device__ float weight(const uint8_t* b, int k) {
         int scale = (((b[4+g/2] >> (4*(g&1))) & 15) | (((hi >> (2*g)) & 3) << 4)) - 32;
         int code = (b[8+g*16+(j&15)] >> (4*(j>>4))) & 15;
         return (half_load(b) * float(scale)) * float(iq4_values[code]);
+    } else if constexpr (Q == 4) {
+        int g = k >> 5, j = k & 31;
+        const uint8_t* p = b+66+4*g;
+        uint32_t aux = uint32_t(p[0]) | (uint32_t(p[1])<<8)
+                     | (uint32_t(p[2])<<16) | (uint32_t(p[3])<<24);
+        int index = b[2+g*8+j/4];
+        int signs = iq_signs[(aux >> (7*(j/8))) & 127];
+        float d = (half_load(b) * (0.5f+float(aux>>28))) * 0.5f;
+        float mag = d * float(iq3_xxs_grid[index*4+(j&3)]);
+        return mag * ((signs & (1<<(j&7))) ? -1.0f : 1.0f);
+    } else if constexpr (Q == 5) {
+        int g = k >> 5, j = k & 31, slot = j >> 3;
+        int index = b[2+g*4+slot] | (((b[66+g] >> (2*slot)) & 3) << 8);
+        int scale = (b[74+g] >> (4*(j>>4))) & 15;
+        float d = (half_load(b) * (0.5f+float(scale))) * 0.25f;
+        float mag = d * float(iq2_s_grid[index*8+(j&7)]);
+        return mag * ((b[34+g*4+slot] & (1<<(j&7))) ? -1.0f : 1.0f);
     } else if constexpr (Q == 3) {
         // block_q3_K: hmask[32], qs[64], scales[12], fp16 d.
         // Same indexing as the in-tree selected Q3_K leaf. Multiply d by
@@ -586,7 +604,7 @@ template<int Q> __device__ float weight(const uint8_t* b, int k) {
 template<int Q, bool BF16> __global__ void gguf_iq_dense_strict_kernel(
     const uint16_t* x, const uint8_t* w, void* out, int64_t K, int64_t N) {
     constexpr int B = Q == 1 ? 32 : 256;
-    constexpr int S = Q == 0 ? 136 : (Q == 1 ? 18 : 110);
+    constexpr int S = Q == 0 ? 136 : (Q == 1 ? 18 : (Q == 4 ? 98 : (Q == 5 ? 82 : 110)));
     int64_t n = blockIdx.x, row = blockIdx.y;
     const uint8_t* wr = w + n * (K/B) * S;
     float acc = 0.0f;
@@ -618,6 +636,8 @@ extern "C" int hipengine_gguf_iq_dense(const void* x,const void* w,void* out,
         case 1: run<1>(x,w,out,rows,K,N,output,(hipStream_t)stream); break;
         case 2: run<2>(x,w,out,rows,K,N,output,(hipStream_t)stream); break;
         case 3: run<3>(x,w,out,rows,K,N,output,(hipStream_t)stream); break;
+        case 4: run<4>(x,w,out,rows,K,N,output,(hipStream_t)stream); break;
+        case 5: run<5>(x,w,out,rows,K,N,output,(hipStream_t)stream); break;
         default: return int(hipErrorInvalidValue);
     }
     return int(hipGetLastError());

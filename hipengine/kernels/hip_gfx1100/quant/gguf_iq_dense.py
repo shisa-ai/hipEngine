@@ -1,5 +1,6 @@
 """Raw dense IQ projections with a fixed strict F32 reduction."""
 import ctypes
+import hashlib
 from pathlib import Path
 
 from hipengine.core.build import build_hip
@@ -7,14 +8,16 @@ from hipengine.core.hip import get_hip_runtime
 from hipengine.kernels.registry import KernelKey, register
 
 SOURCE = Path(__file__).with_suffix('.hip')
-QUANTS = {'gguf_iq4_xs': 0, 'gguf_iq4_nl': 1, 'gguf_iq3_s': 2, 'gguf_q3_k': 3}
+TABLE_HASH = hashlib.sha256(SOURCE.with_name('gguf_iq_dense_tables.h').read_bytes()).hexdigest()
+QUANTS = {'gguf_iq4_xs': 0, 'gguf_iq4_nl': 1, 'gguf_iq3_s': 2, 'gguf_q3_k': 3,
+          'gguf_iq3_xxs': 4, 'gguf_iq2_s': 5}
 OUTPUTS = {'f32': 0, 'bf16': 1}
 _HANDLES = {}
 
 
 def build_gguf_iq_dense(**kwargs):
     return build_hip(sources=[SOURCE], family='gguf_iq_dense', profile='decode',
-                     extra_flags=['-ffp-contract=off'], output_name='gguf_iq_dense.so', **kwargs)
+                     extra_flags=['-ffp-contract=off', f'-DGGUF_IQ_TABLE_HASH={TABLE_HASH}'], output_name='gguf_iq_dense.so', **kwargs)
 
 
 def launch(x_ptr, qweight_ptr, out_ptr, rows, in_features, out_features, *,
