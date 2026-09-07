@@ -2,6 +2,12 @@
 
 Last updated: **2026-09-07 UTC**
 
+One-pair screening calibration:two training/two held-out Framework
+chunk1024 packets give empirical first-pair error factors1.0352 PP/
+1.0340 request. Held-outs stay within envelope but do not establish
+all-case early promotion. Diagnostic only; no confidence guarantee.
+[Evidence](results/2026-09-07-framework-qwen4exp-screen-calibration.json).
+
 Q5_1 row16 publication rejected:two-bank512/1024 screen0.429x/0.412x,
 40 exact pairs,9 tests;no spills but larger LDS. Candidate removed,
 production row8 unchanged.
