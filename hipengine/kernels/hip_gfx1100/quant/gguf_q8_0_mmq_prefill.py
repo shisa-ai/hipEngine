@@ -621,6 +621,7 @@ def gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out(
     runtime: HipRuntime | None = None,
     _prepacked: bool = False,
     _vector_activation: bool = False,
+    _token64: bool = False,
 ) -> None:
     """Launch D4x3 MMQ (F32 output) and enqueue near-boundary outputs."""
 
@@ -642,6 +643,8 @@ def gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out(
     if _vector_activation:
         symbol = ("hipengine_gguf_q8_0_mmq128_prepacked_vec4_q8_1_d4x3_guarded_f32_f32_out"
                   if _prepacked else "hipengine_gguf_q8_0_mmq128_raw_vec4_q8_1_d4x3_guarded_f32_f32_out")
+    if _token64:
+        symbol="hipengine_gguf_q8_0_mmq128_token64_q8_1_d4x3_guarded_f32_f32_out"
     fn = getattr(library, symbol)
     fn.argtypes = [
         ctypes.c_void_p,
@@ -688,6 +691,10 @@ def gguf_q8_0_mmq128_raw_vec4_q8_1_d4x3_guarded_f32_f32_out(*args, **kwargs):
     """Keep raw weight staging and vectorize identical activation-plane copies."""
     gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out(
         *args, **kwargs, _vector_activation=True)
+
+def gguf_q8_0_mmq128_token64_q8_1_d4x3_guarded_f32_f32_out(*args, **kwargs):
+    gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out(
+        *args, **kwargs, _vector_activation=True, _token64=True)
 
 
 def q8_mmq_prepacked_weight_nbytes(hidden: int, out_features: int) -> int:
@@ -881,6 +888,9 @@ def gguf_q8_0_mmq128_prefill_q8_1_d4x3_bf16_f32_out(
 
 def register_gguf_q8_0_mmq_prefill_kernels(*, replace: bool = True) -> None:
     register(
+        KernelKey("hip_gfx1100","linear","gguf_q8_0","mmq128_token64_q8_1_d4x3_guarded_f32_f32_out"),
+        gguf_q8_0_mmq128_token64_q8_1_d4x3_guarded_f32_f32_out,replace=replace)
+    register(
         KernelKey("hip_gfx1100","linear","gguf_q8_0","mmq128_raw_vec4_q8_1_d4x3_guarded_f32_f32_out"),
         gguf_q8_0_mmq128_raw_vec4_q8_1_d4x3_guarded_f32_f32_out,replace=replace)
     register(
@@ -966,6 +976,7 @@ __all__ = [
     "gguf_q8_0_mmq128_prepacked_q8_1_d4x3_guarded_f32_f32_out",
     "gguf_q8_0_mmq128_prepacked_vec4_q8_1_d4x3_guarded_f32_f32_out",
     "gguf_q8_0_mmq128_raw_vec4_q8_1_d4x3_guarded_f32_f32_out",
+    "gguf_q8_0_mmq128_token64_q8_1_d4x3_guarded_f32_f32_out",
     "gguf_q8_0_mmq_pack_weights",
     "q8_mmq_prepacked_weight_nbytes",
     "gguf_q8_0_mmq128_prefill_q8_1_d4x3_bf16_f32_out",

@@ -1,5 +1,7 @@
 # hipEngine Benchmark Changelog
 
+- [2026-09-07 UTC raw MMQ token64] Exact128-output/64-token candidate:Q1024 layers3/7 1.109x/1.138x,200 exact screen pairs,23 tests,VGPR184->160/scratch0. Mixed short-Q/long-GR excluded;raw-Q model admission pending. `benchmarks/results/2026-09-07-framework-qwen4exp-mmq-token64.json`.
+
 - [2026-09-07 UTC combined-default baselines] HE current1024 PP190.94/201.82/186.03,TG19.79/19.34/14.93 vs Vulkan342.90/393.68/420.95,25.60/25.38/24.55;108 trajectories repeat. Prior chunk512 packet168.58/166.86/155.89 spans multiple promotions,not causal A/B. Sequential screen,variance explicit. `benchmarks/results/2026-09-07-framework-qwen4exp-current-default-baselines.json`.
 
 - [2026-09-07 UTC MMQ bank-first rejected] qkv/Q512 median1.000x/0.998x,1024 1.013x/1.020x but all opposite-order means regress;80 exact pairs,22 tests,VGPR184->192/scratch0. Candidate removed,production unchanged. `benchmarks/results/2026-09-07-framework-qwen4exp-mmq-bank-first-rejected.json`.

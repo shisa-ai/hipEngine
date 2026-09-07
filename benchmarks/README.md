@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-07 UTC**
 
+Raw MMQ token64 candidate:large Q1024 layer3/7 operation-complete
+screens1.109x/1.138x,200 pairs exact,23 tests. VGPR184->160,no scratch.
+Mixed short-Q/long-GR results retained;no runtime/default change.
+[Evidence](results/2026-09-07-framework-qwen4exp-mmq-token64.json).
+
 Fresh combined-default95df2c3a9/chunk1024 versus pinned halo-box b212548e0:
 HE PP190.94/201.82/186.03,TG19.79/19.34/14.93;
 Vulkan PP342.90/393.68/420.95,TG25.60/25.38/24.55.

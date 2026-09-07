@@ -32,7 +32,10 @@ def main():
     p.add_argument("--gpu-pack",action="store_true")
     p.add_argument("--vector-activation",action="store_true")
     p.add_argument("--raw-vector",action="store_true")
+    p.add_argument("--token64",action="store_true")
     a = p.parse_args()
+    if a.token64:
+        a.raw_vector=True
     if a.pairs < 2 or a.pairs % 2 or any(r < 1 for r in a.rows):
         p.error("positive rows and even pairs>=2 required")
     os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(a.compiler_version_file)
@@ -56,6 +59,9 @@ def main():
         report.update(layout="Raw output-major GGUF Q8_0 in both arms",
                       resident_storage="Raw weights only; no packed bank allocated",
                       pack_mode="none")
+    if a.token64:
+        from tests.test_qwen4exp_mmq_token64 import CANDIDATE as TOKEN64
+        parent_name,candidate_name=RAW_VECTOR,TOKEN64
     report["parent_variant"] = parent_name
     report["candidate_variant"] = candidate_name
     report["hipengine_artifact_provenance"] = collect_artifact_provenance(

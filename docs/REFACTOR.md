@@ -1,5 +1,14 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Qwen4Exp raw MMQ token64 candidate
+
+- Kernel-only `mmq128_token64_q8_1_d4x3_guarded_f32_f32_out` reduces
+  token tile128->64;VGPR184->160,scratch0,exact output/repair set.
+- Large raw Q projection wins across two tensors;short Q and long-row GR
+  have mixed order results. No blanket replacement or prepacked claim.
+- Admit only parent raw-vector K2560/N12288 rows>=512 after model
+  state/KV and throughput gates. Remove route if rejected; no runtime flag yet.
+
 ## Qwen4Exp MMQ bank-first order: removed
 
 - Output-bank-first compute gives mixed order results despite small
