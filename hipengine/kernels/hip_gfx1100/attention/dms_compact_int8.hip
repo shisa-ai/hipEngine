@@ -73,43 +73,78 @@ __global__ void dms_int8_append_kernel(const uint16_t* k, const uint16_t* v,
     int heads, int dim, int window) {
   const int rh = blockIdx.x, row = rh/heads, base = bases[rh];
   const int p = row_positions[row], n = lives[rh], tid = threadIdx.x;
-  int kept = 0;
-  for (int t = 0; t < n; ++t)
-    kept += !flags[base+t] || p-positions[base+t] <= window;
-  if (kept+1 > capacities[rh]) {
+  // Chunked keep-scan (BF16 family's proven structure): two passes over the
+  // live prefix with log-depth prefix scans per 256-token chunk instead of a
+  // serial per-token loop with two barriers per token. Compaction moves
+  // entries strictly leftward within and across chunks, so chunk i's writes
+  // always land before chunk i+1's sources - the same ownership rule the
+  // row-by-row version preserved, now in parallel.
+  __shared__ int s_flag[Threads];
+  __shared__ int s_chunk_total;
+  int keepers = 0;
+  for (int chunk0 = 0; chunk0 < n; chunk0 += Threads) {
+    const int in_chunk = tid < (n - chunk0);
+    s_flag[tid] = 0;
+    if (in_chunk) {
+      const int src = base + chunk0 + tid;
+      if (!flags[src] || p - positions[src] <= window) s_flag[tid] = 1;
+    }
+    __syncthreads();
+    for (int off = 1; off < Threads; off <<= 1) {
+      const int delta = (tid >= off) ? s_flag[tid - off] : 0;
+      __syncthreads();
+      s_flag[tid] += delta;
+      __syncthreads();
+    }
+    s_chunk_total = s_flag[Threads - 1];
+    __syncthreads();
+    keepers += s_chunk_total;
+  }
+  const int final_live = keepers + 1;
+  if (final_live > capacities[rh]) {
     if (tid == 0) status[rh] = 1;
     return;
   }
-  __shared__ int keep;
   __shared__ float reduction[2*Threads];
-  int rank = 0;
-  // Row-by-row ordering prevents backward compaction from overwriting a
-  // source another lane has not yet read. Payload bytes and scales move
-  // without requantization. Later tuning must preserve this ownership rule.
-  for (int t = 0; t < n; ++t) {
-    const int src = base+t;
-    if (tid == 0) keep = !flags[src] || p-positions[src] <= window;
+  int chunk_rank = 0;
+  for (int chunk0 = 0; chunk0 < n; chunk0 += Threads) {
+    const int in_chunk = tid < (n - chunk0);
+    s_flag[tid] = 0;
+    if (in_chunk) {
+      const int src = base + chunk0 + tid;
+      if (!flags[src] || p - positions[src] <= window) s_flag[tid] = 1;
+    }
     __syncthreads();
-    if (keep) {
-      const int dst = base+rank++;
+    for (int off = 1; off < Threads; off <<= 1) {
+      const int delta = (tid >= off) ? s_flag[tid - off] : 0;
+      __syncthreads();
+      s_flag[tid] += delta;
+      __syncthreads();
+    }
+    if (in_chunk && s_flag[tid] > (tid > 0 ? s_flag[tid - 1] : 0)) {
+      const int dst = base + chunk_rank + s_flag[tid] - 1;
+      const int src = base + chunk0 + tid;
       if (dst != src) {
-        for (int d = tid; d < dim; d += Threads) {
+        // The owning thread moves the whole row (payload bytes and scales
+        // without requantization), matching the BF16 family's ownership rule.
+        for (int d = 0; d < dim; ++d) {
           ko[int64_t(dst)*dim+d] = ko[int64_t(src)*dim+d];
           vo[int64_t(dst)*dim+d] = vo[int64_t(src)*dim+d];
         }
-        if (tid == 0) {
-          ks[dst] = ks[src]; vs[dst] = vs[src];
-          positions[dst] = positions[src]; flags[dst] = flags[src];
-        }
+        ks[dst] = ks[src]; vs[dst] = vs[src];
+        positions[dst] = positions[src]; flags[dst] = flags[src];
       }
     }
+    s_chunk_total = s_flag[Threads - 1];
+    __syncthreads();
+    chunk_rank += s_chunk_total;
     __syncthreads();
   }
-  const int dst = base+kept;
+  const int dst = base+keepers;
   quantize_pair(k+int64_t(rh)*dim, v+int64_t(rh)*dim,
                 ko+int64_t(dst)*dim, vo+int64_t(dst)*dim, ks+dst, vs+dst, dim, reduction);
   if (tid == 0) {
-    positions[dst] = p; flags[dst] = evict[rh]; lives[rh] = kept+1; status[rh] = 0;
+    positions[dst] = p; flags[dst] = evict[rh]; lives[rh] = final_live; status[rh] = 0;
   }
 }
 
