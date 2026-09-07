@@ -2,6 +2,14 @@
 
 Last updated: **2026-09-07 UTC**
 
+Exact iu8-risk+repair MoE gate/up candidate retained (kernel-only):
+actual-weight screens on layers 0/3/10/26 are bit-identical to the exact
+pair2 parent in all 32 cases at multiplier 1-8, with 1.50-2.00x
+operation-complete speedups; the multiplier floor (below which flips
+escape) is between 0.5 and 1. No runtime route or default changed yet.
+[Screen](results/2026-09-07-framework-qwen4exp-q4-iu8-exact-screen.json)
+[Flip probe](results/2026-09-07-framework-qwen4exp-q4-iu8-flip-probe.json).
+
 Expanded F32 Q8 cache rejected on Framework gfx1151:
 UD-Q4_K_XL actual attention-gate1024 projection11.079->69.026ms
 (+523.0%),60MiB extra weight storage/~14.8ms setup;80 exact
