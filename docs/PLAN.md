@@ -848,6 +848,15 @@ recorded in `benchmarks/results/2026-09-06-framework-qwen4exp-q51-fold-pair-prod
 
 #### Fusion Planner
 
+Qwen4Exp K640 Q5_1 grouped down at rows>=512 now publishes folded
+partials one row at a time, eliminating36B private scratch while preserving
+the register weight cache and exact reduction tree. Full72 trajectories
+and state/KV gate pass; all12 prefill/request averages improve.
+PP512/1024/4096 gains4.296%/4.732%/4.323%; incidental TG changes
+-0.012%/-0.048%/-0.201% retained under prefill-first direction.
+Strict and unsupported shapes retain fallbacks.
+See `benchmarks/results/2026-09-07-framework-qwen4exp-q51-row-publish-production.json`.
+
 Dispatch converts a layer's op chain into a kernel plan. Fused composites are preferred when a registered kernel matches a contiguous sub-chain; otherwise the planner falls back to unfused primitives. Every fused kernel must have a registered strict unfused chain. Strict composites satisfy their declared exact/parent-parity contract; production composites may reassociate arithmetic only after the profile-wide semantic gate and still fall back to that strict chain.
 
 ```python

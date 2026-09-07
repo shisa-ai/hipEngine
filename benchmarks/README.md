@@ -2,9 +2,15 @@
 
 Last updated: **2026-09-07 UTC**
 
+Q5_1 per-row publication promoted:chunk1024 full12-case PP512/1024/4096
+181.824->189.634 (+4.296%)/191.750->200.824 (+4.732%)/
+177.070->184.724 (+4.323%).72 exact,all prefill/request averages improve;
+total request1.024648x,TG-0.012%/-0.048%/-0.201% explicit.
+[Production evidence](results/2026-09-07-framework-qwen4exp-q51-row-publish-production.json).
+
 Q5_1 per-row publication admission:five chunk1024 full-logit/state/KV
 cases exact,25/100 prefill calls,zero decode/final owners;16 CPU tests.
-Both binders0; no production change, throughput A/B pending.
+Historical default-off admission; production result above supersedes it.
 [State evidence](results/2026-09-07-framework-qwen4exp-q51-row-publish-state.json).
 
 Q5_1 per-row publication kernel candidate:two-bank512/1024 screen

@@ -280,7 +280,7 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert pair["strict_fallback_variant"] == (
         "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out")
     large_pair = _selection_map(production)[("moe_linear", "prefill_rows_ge512_k640_exact_grouped_q5_1_down")]
-    assert large_pair["selected_variant"] == "selected_grouped_prefill_pair2_register_cache_bf16_bf16_out"
+    assert large_pair["selected_variant"] == "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out"
     assert large_pair["strict_fallback_variant"] == pair["strict_fallback_variant"]
     assert os.environ["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] == "page256"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL"] == "1"
@@ -293,7 +293,7 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_REGISTER_CACHE"] == "1"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q51_ROW_PUBLISH"] == "0"
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q51_ROW_PUBLISH"] == "1"
     selected = _selection_map(production)
     assert selected[("moe_linear", "prefill_rows_ge2_lt64_exact_grouped_q4_gate_up")]["selected_variant"] == (
         "selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out")

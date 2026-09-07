@@ -76,7 +76,20 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
-**Q5_1 per-row publication admission (September7 UTC):** default-off
+**Q5_1 per-row publication promoted (September7 UTC):** cleanbe156c242
+full12-case chunk1024 A/B preserves72 exact trajectories and improves all
+prefill/request averages. PP512/1024/4096:181.824->189.634 (+4.296%),
+191.750->200.824 (+4.732%),177.070->184.724 (+4.323%).
+Total request1.024648x; individual request1.00963-1.03227x.
+TG-0.012%/-0.048%/-0.201% is incidental and explicitly retained under
+prefill-first direction,not a decode improvement. Max PP CV1.068%,
+TG CV4.423%; measured span28m07s excludes loading/initial warmup.
+Production binder1/strict0; parent-only K640/rows>=512 guard unchanged.
+The current family table predates this promotion; refresh before selecting
+another owner. Frozen comparator rates are not updated by this internal A/B.
+[Production evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-q51-row-publish-production.json).
+
+**Historical Q5_1 per-row publication admission (September7 UTC):** default-off
 parent-only rows>=512/K640 route passes five chunk1024 full-logit/state/
 full-KV off/on/off cases. p512 calls0/25/0,p4096 calls0/100/0,zero decode
 calls and final owners; peak86,094,241,540 bytes unchanged.16 CPU tests

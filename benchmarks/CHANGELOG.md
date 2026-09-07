@@ -1,5 +1,7 @@
 # hipEngine Benchmark Changelog
 
+- [2026-09-07 UTC Q5_1 row-publication production] Full12-case chunk1024 PP181.824->189.634 (+4.296%)/191.750->200.824 (+4.732%)/177.070->184.724 (+4.323%),72 exact,all prefill/request averages improve,total1.024648x. Spill-free exact path promoted;TG-0.012%/-0.048%/-0.201% explicit. `benchmarks/results/2026-09-07-framework-qwen4exp-q51-row-publish-production.json`.
+
 - [2026-09-07 UTC Q5_1 row-publication admission] Five chunk1024 full-logit/state/KV cases exact,25/100 prefill calls,zero decode/final owners;16 CPU tests,both binders0. Throughput delta N/A pending canonical A/B. `benchmarks/results/2026-09-07-framework-qwen4exp-q51-row-publish-state.json`.
 
 - [2026-09-07 UTC Q5_1 row publication] Exact per-row partial publication improves actual two-bank512/1024 screen1.413x/1.523x (-29.2%/-34.3%);captured mixed512 1.498x.60 exact pairs,22 tests,scratch36->0B;kernel-only admission pending. `benchmarks/results/2026-09-07-framework-qwen4exp-q51-row-publish.json`.

@@ -788,7 +788,7 @@ Fallback requirements:
 
 ## Source-lineage audit
 
-Q5_1 exposes default-off
+Q5_1 promotes
 `selected_grouped_prefill_pair2_row_publish_bf16_bf16_out`: K640
 register-cache pair2, per-row folded partial publication with identical
 original LDS tree. Actual two-bank512/1024 synthetic-routing screen
@@ -797,9 +797,11 @@ original LDS tree. Actual two-bank512/1024 synthetic-routing screen
 `HIPENGINE_QWEN4_EXP_Q51_ROW_PUBLISH=1` selects only existing
 register-cache parent at rows>=512/K640. Five chunk1024 full-logit/
 state/KV cases exact,25/100 prefill calls,zero decode calls/final owners.
-Both binders0 pending canonical A/B; no production-default change.
+Production binder1/strict0 after72 exact canonical trajectories and all12
+prefill/request averages improve;PP gains4.296%/4.732%/4.323%.
 Evidence: `2026-09-07-framework-qwen4exp-q51-row-publish.json`.
 Admission: `2026-09-07-framework-qwen4exp-q51-row-publish-state.json`.
+Production: `2026-09-07-framework-qwen4exp-q51-row-publish-production.json`.
 
 Q5_1 register-cache paired-down first-wave reduction experiment removed:
 exact stride64/32 LDS reads followed by shuffle tail is0.809x/0.798x
