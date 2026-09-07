@@ -3,6 +3,8 @@ from __future__ import annotations
 from math import prod
 from types import SimpleNamespace
 
+import pytest
+
 # Import built-ins so registry keys exist before tests override them.
 import hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_embedding  # noqa: F401
 import hipengine.kernels.hip_gfx1100.runtime.state  # noqa: F401
@@ -78,6 +80,44 @@ def test_resolve_gguf_embedding_dispatch_uses_raw_quant_or_dense_fallback() -> N
     assert resolve_gguf_embedding_dispatch(dense).key == KernelKey(
         "hip_gfx1100", "embedding", "bf16", "lookup_bf16_out"
     )
+
+
+@pytest.mark.parametrize('backend', ('hip_gfx1100', 'hip_gfx1151'))
+@pytest.mark.parametrize('rows', (1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 16, 28, 32))
+def test_q3_embedding_runtime_dispatch(backend, rows) -> None:
+    from hipengine.kernels.backends import load_backend_kernel_package
+    load_backend_kernel_package(backend)
+    weight = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key='gguf_q3_k')
+    weight.backend = backend
+    dispatch = resolve_gguf_embedding_dispatch(weight, rows=rows)
+    key = KernelKey(backend, 'embedding', 'gguf_q3_k', 'lookup_bf16_out')
+    assert dispatch.key == key and dispatch.abi == 'raw'
+    original = resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant)
+    calls = []
+    library = object()
+    register(key, lambda *args, **kwargs: calls.append((args, kwargs)), replace=True)
+    try:
+        launch_gguf_embedding(
+            weight, 100, 200, rows, 5120, 248320, stream=7,
+            libraries={'gguf_q3_k': library}, runtime='runtime-sentinel',
+        )
+    finally:
+        register(key, original, replace=True)
+    assert calls == [((100, 10, 200, rows, 5120, 248320),
+                     {'stream': 7, 'library': library, 'runtime': 'runtime-sentinel'})]
+
+
+@pytest.mark.parametrize('rows,dtype', ((0, 'bf16'), (-1, 'bf16'), (1, 'f32'), (1, 'fp16')))
+def test_q3_embedding_invalid_contract_precedes_kernel_resolution(monkeypatch, rows, dtype):
+    import hipengine.runtime.gguf_embedding as dispatch
+    def unexpected(*args, **kwargs):
+        pytest.fail('invalid embedding contract reached kernel registration')
+    monkeypatch.setattr(dispatch, '_ensure_embedding_kernel_registered', unexpected)
+    with pytest.raises(ValueError, match='embedding rows|embedding output dtype'):
+        launch_gguf_embedding(
+            _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key='gguf_q3_k'),
+            100, 200, rows, 5120, 248320, output_dtype=dtype,
+        )
 
 
 def test_launch_gguf_embedding_calls_registry_kernel_with_expected_abi() -> None:
