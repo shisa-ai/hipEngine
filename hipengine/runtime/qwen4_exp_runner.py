@@ -3064,14 +3064,6 @@ def _qwen4_exp_q8_mmq_policy(policy):
     return replace(policy, min_rows=minimums)
 
 
-def _qwen4_exp_router_shuffle_key(key: KernelKey, *, rows: int) -> KernelKey:
-    if (rows < 2 or key.variant != "f32_hidden_token_tile4_dense_exact"
-            or os.environ.get("HIPENGINE_QWEN4_EXP_ROUTER_SHUFFLE","0") != "1"):
-        return key
-    candidate = KernelKey(key.backend,key.layer,key.quant,"f32_hidden_token_tile4_shuffle_exact")
-    return candidate if is_registered(candidate) else key
-
-
 def _qwen4_exp_router_f32_tile4_enabled(rows: int) -> bool:
     """Select the exact four-token F32 router producer for multirow work."""
 
@@ -3215,11 +3207,11 @@ def run_qwen4_exp_moe(
     load_backend_kernel_package(backend)
     router_tile4 = _qwen4_exp_router_f32_tile4_enabled(rows)
     if router_tile4:
-        router_key = _qwen4_exp_router_shuffle_key(
-            KernelKey(backend,"router_logits","f32","f32_hidden_token_tile4_dense_exact"),rows=rows)
         router_logits = resolve(
-            backend=router_key.backend,layer=router_key.layer,
-            quant=router_key.quant,variant=router_key.variant,
+            backend=backend,
+            layer="router_logits",
+            quant="f32",
+            variant="f32_hidden_token_tile4_dense_exact",
         )
         router_logits(
             mixed_ptr,

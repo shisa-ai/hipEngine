@@ -63,7 +63,6 @@ def _isolate(monkeypatch: pytest.MonkeyPatch):
         "HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL",
         "HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL",
         "HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN",
-        "HIPENGINE_QWEN4_EXP_ROUTER_SHUFFLE",
         "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL",
         "HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL",
         "HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL",
@@ -285,7 +284,6 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN"] == "1"
-    assert os.environ["HIPENGINE_QWEN4_EXP_ROUTER_SHUFFLE"] == "0"
     mapped = _selection_map(production)[("linear","prefill_rows_ge512_token_major_mapped_q8_down")]
     assert mapped["selected_variant"] == "selected_grouped_row4_bundle_gemv_bf16_bf16_out"
     assert mapped["strict_fallback_variant"] == "selected_gemv_bf16_bf16_out"
@@ -376,7 +374,6 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN"] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_ROUTER_SHUFFLE"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_REGISTER_CACHE"] == "0"
