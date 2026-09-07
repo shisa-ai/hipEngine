@@ -548,9 +548,14 @@ context ceilings or a regression against unmatched historical configurations.
 Priorities are optional MTP loading, bounded shared workspaces, smaller weights
 and compact KV. FastDMS targets roughly half of eligible history, not half of
 model VRAM; protected windows, prefill peaks and pool reuse determine realized
-savings. XTX sidecar/quality/lifecycle qualification and DMS+INT8/MTP composition
-remain required. Coordinate native INT8, native C1/K4-K7 MTP and DMS integration
-with their existing campaigns; do not create another scheduler.
+savings. The bounded XTX closeout confirms offline DMS INT8 C1 at 65,536 prompt
+tokens plus eight decode appends, exact independent replay, and interleaved C2
+cancellation/drain. Compact payload/scales and resident integration are
+implemented; this is observed execution fit, not a maximum or general-serving
+qualification. Production-profile/task certification, packed/larger-C DMS INT8
+and full-session DMS+MTP rollback remain deferred. Coordinate native INT8,
+native C1/K4-K7 MTP and DMS integration with their existing campaigns; do not
+create another scheduler. See the capacity document's bounded closeout.
 
 #### Current status
 
