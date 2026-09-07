@@ -76,6 +76,21 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Same-residency staged screening (September7 UTC):**
+`--staged-screen` now runs one measured pair for all12 cases,then either
+stops diagnostically or completes the remaining two pairs without reload
+or repeated warmups. All initial samples are retained. The predeclared
+stop rule requires at least two cases with both prefill and total request
+wall >5% slower in the candidate. This is conservative operational triage,
+not a confidence bound;historical calibration alone does not prove it safe
+under unseen interference. No automatic early promotion.
+Stopped packets are `screen_only`,variance/repeatability unmeasured,
+and rejected by retention. Completed packets have72 trajectories and
+qualification `staged-one-then-three`;their cross-case ordering differs
+from canonical case-local A/B and must remain labeled. The original
+canonical protocol remains default. Prospective GPU validation/runtime
+savings are not yet measured;unit tests cover preservation and decisions.
+
 **Prepacked MMQ token64 expansion rejected (September7 UTC):** actual
 layer0 qkv/SSM,512/1024 rows,complete quantize/clear/MMQ/repair
 boundary ratios0.941/0.969 and0.931/0.952.80 pairs exact,both orders
