@@ -802,6 +802,10 @@ passes eight full-logit/state/KV cases at chunk1024,all four p4096
 categories included.24 calls per sparse p4096 arm,zero decode,dense
 short paths unchanged. Hq24/Hkv2 page256 parent only;both binders0.
 Admission: `2026-09-07-framework-qwen4exp-qsa-head-pair-state.json`.
+Staged full-model qualification preserves72 trajectories and improves
+p4096 PP3.560%,but TG drops6.526%;two long-request averages regress.
+Candidate retained default-off pending causal decode/phase investigation.
+Model evidence: `2026-09-07-framework-qwen4exp-qsa-head-pair-model.json`.
 
 Raw-vector64x64 MMQ tested against current128x64 on Framework:
 actual Q layers3/7 at512/1024 rows0.959-0.985x,80 pairs exact,
