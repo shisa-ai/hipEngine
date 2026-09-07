@@ -268,7 +268,7 @@
     "ggml/src/ggml-virtgpu/virtgpu.h": "c99aaadf795201fb0e77386833d1d4a22d983d239a8ac99507002e4d14c55268",
     "ggml/src/ggml.c": "ecc4c52d8347f0d9ea2aab4c54bafafb3ead573c8badec6042fd65dffb19d20d"
   },
-  "fixture_sha256": "fe65f79a04ea322f2920221d60dd44bd9bdd1207bb66ad25b4491212429ad136",
+  "fixture_sha256": "1d67294df84832ee5735f382cae646795d829e3c7af2a9246608c306fa2c084f",
   "formats": {
     "IQ3_S": [
       110,

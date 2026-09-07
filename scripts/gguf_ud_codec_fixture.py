@@ -49,6 +49,19 @@ def synthetic_blocks(name: str, size: int) -> np.ndarray:
         raw[:, 74:106] = np.arange(64 * 32).reshape(64, 32) % 256
     elif name == 'IQ4_NL':
         raw[:, 2:] = np.arange(64 * 16).reshape(64, 16) % 256
+    elif name == 'IQ2_XS':
+        # Exhaust both 9-bit grids and 7-bit sign selectors at unit scale.
+        index = np.arange(32 * 32, dtype=np.uint16).reshape(32, 32)
+        words = ((index % 512) | (((index // 4) % 128) << 9)).astype('<u2')
+        raw[:32, 2:66] = words.view(np.uint8).reshape(32, 64)
+    elif name == 'IQ3_XXS':
+        # Every packed sign field must see all 128 selectors, not just the
+        # union across four fields. Leave the scale-corner half randomized.
+        index = np.arange(32 * 8, dtype=np.uint32).reshape(32, 8)
+        aux = (index % 16) << 28
+        for j in range(4):
+            aux |= ((index + 17 * j) % 128) << (7 * j)
+        raw[:32, 66:98] = aux.astype('<u4').view(np.uint8).reshape(32, 32)
     return raw
 
 
