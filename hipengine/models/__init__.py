@@ -43,6 +43,15 @@ from hipengine.models.registry import (
     resolve_model,
 )
 from hipengine.models.toy import TOY_ONE_LAYER, ToyOneLayerModel
+from hipengine.models.timesfm import (
+    TIMESFM,
+    TIMESFM_ARCHITECTURE,
+    TimesFM25Model,
+    TimesFMModelSpec,
+    expected_timesfm_weight_shapes,
+    parse_timesfm_model_spec,
+    validate_timesfm_weight_index,
+)
 
 __all__ = [
     "LAGUNA_GGUF",
@@ -53,6 +62,8 @@ __all__ = [
     "QWEN35_MOE_GGUF",
     "QWEN35_PARO_MOE",
     "TOY_ONE_LAYER",
+    "TIMESFM",
+    "TIMESFM_ARCHITECTURE",
     "DuplicateModelError",
     "KVCapabilityEvidence",
     "KVCapabilityKey",
@@ -70,12 +81,16 @@ __all__ = [
     "Qwen35MoeGGUFModel",
     "Qwen35ParoMoeModel",
     "ToyOneLayerModel",
+    "TimesFM25Model",
+    "TimesFMModelSpec",
     "model_artifact_identity",
     "parse_maple_model_spec",
+    "parse_timesfm_model_spec",
     "register_model",
     "register_qwen35_dms_decision_capability",
     "registered_models",
     "resolve_kv_capability",
     "resolve_model",
     "resolve_qwen35_dms_decision_capability",
+    "validate_timesfm_weight_index",
 ]
