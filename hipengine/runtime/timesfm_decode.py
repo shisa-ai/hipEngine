@@ -1,0 +1,374 @@
+"""Torch-free HIP GPU decode path for TimesFM 2.5 200M (FP32).
+
+Orchestrates the packed-QKV fused kernels in
+``hipengine/kernels/hip_gfx1100/timesfm`` with rocBLAS SGEMM projections,
+mirroring the NumPy CPU reference decode step-for-step.  Patch-level running
+stats, revin, and the AR feedback loop stay on the host because they are
+O(batch x patches) scalar work; everything O(rows x hidden) runs on device.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import numpy as np
+
+from hipengine.core.memory import (
+    DeviceBuffer,
+    copy_device_to_host,
+    copy_host_to_device,
+    free,
+    host_array_ptr,
+    malloc,
+)
+from hipengine.core.rocblas import Rocblas
+from hipengine.kernels.cpu_reference.timesfm import revin, update_running_stats
+from hipengine.kernels.hip_gfx1100.timesfm.timesfm import (
+    timesfm_add_f32,
+    timesfm_attention_f32,
+    timesfm_bias_f32,
+    timesfm_bias_swish_f32,
+    timesfm_head_perdim_scale_f32,
+    timesfm_head_rmsnorm_f32,
+    timesfm_norm_add_f32,
+    timesfm_rmsnorm_f32,
+    timesfm_rope_f32,
+    timesfm_scatter_kv_f32,
+    timesfm_swish_f32,
+)
+from hipengine.loading.timesfm import TimesFMLoadedModel
+
+
+@dataclass(frozen=True)
+class _Buffers:
+    """Reusable device scratch for one (batch, patches) decode shape."""
+
+    tok_in: DeviceBuffer        # B*N, 64
+    hidden: DeviceBuffer        # B*N, 1280
+    hidden2: DeviceBuffer        # B*N, 1280
+    embeddings: DeviceBuffer    # B*N, 1280
+    normed: DeviceBuffer        # B*N, 1280
+    qkv: DeviceBuffer           # B*N, 3840
+    attn_out: DeviceBuffer      # B*N, 1280
+    attn_res: DeviceBuffer      # B*N, 1280
+    ff_hidden: DeviceBuffer     # B*N, 1280
+    ff_out: DeviceBuffer       # B*N, 1280
+    layer_out: DeviceBuffer     # B*N, 1280
+    point_out: DeviceBuffer     # B*N, 1280
+    quant_scratch: DeviceBuffer # B*N, 10240
+    quantile_out: DeviceBuffer  # B*N, 10240
+    pos: DeviceBuffer           # B*N f32
+    num_masked: DeviceBuffer    # B i32
+    q_offset: DeviceBuffer      # B i32
+    caches_k: tuple[DeviceBuffer, ...]
+    caches_v: tuple[DeviceBuffer, ...]
+    bytes_: int
+
+    def free(self) -> None:
+        for buffer in (
+            self.tok_in, self.hidden, self.hidden2, self.embeddings, self.normed,
+            self.qkv, self.attn_out, self.attn_res, self.ff_hidden, self.ff_out,
+            self.layer_out, self.point_out, self.quantile_out, self.pos,
+            self.quant_scratch, self.num_masked, self.q_offset, *self.caches_k, *self.caches_v,
+        ):
+            free(buffer)
+
+
+class TimesFMGPUDecoder:
+    """Resident-weights TimesFM 2.5 decoder running on the HIP device."""
+
+    def __init__(self, loaded: TimesFMLoadedModel, *, rocblas: Rocblas | None = None):
+        self.spec = loaded.spec
+        self.weights = {
+            name: alloc.buffer.ptr for name, alloc in loaded.weights.tensors.items()
+        }
+        self._loaded = loaded
+        self.rocblas = rocblas or Rocblas.load()
+        self._buffers: dict[tuple[int, int, int], _Buffers] = {}
+        self._w = {
+            "tokenizer_hidden": self.weights["tokenizer.hidden_layer.weight"],
+            "tokenizer_hidden_b": self.weights["tokenizer.hidden_layer.bias"],
+            "tokenizer_out": self.weights["tokenizer.output_layer.weight"],
+            "tokenizer_out_b": self.weights["tokenizer.output_layer.bias"],
+            "tokenizer_res": self.weights["tokenizer.residual_layer.weight"],
+            "tokenizer_res_b": self.weights["tokenizer.residual_layer.bias"],
+            "point_hidden": self.weights["output_projection_point.hidden_layer.weight"],
+            "point_out": self.weights["output_projection_point.output_layer.weight"],
+            "point_res": self.weights["output_projection_point.residual_layer.weight"],
+            "q_hidden": self.weights["output_projection_quantiles.hidden_layer.weight"],
+            "q_out": self.weights["output_projection_quantiles.output_layer.weight"],
+            "q_res": self.weights["output_projection_quantiles.residual_layer.weight"],
+        }
+        self._layers = [
+            {
+                "qkv": self.weights[f"stacked_xf.{i}.attn.qkv_proj.weight"],
+                "out": self.weights[f"stacked_xf.{i}.attn.out.weight"],
+                "q_ln": self.weights[f"stacked_xf.{i}.attn.query_ln.scale"],
+                "k_ln": self.weights[f"stacked_xf.{i}.attn.key_ln.scale"],
+                "perdim": self.weights[f"stacked_xf.{i}.attn.per_dim_scale.per_dim_scale"],
+                "ff0": self.weights[f"stacked_xf.{i}.ff0.weight"],
+                "ff1": self.weights[f"stacked_xf.{i}.ff1.weight"],
+                "pre_attn": self.weights[f"stacked_xf.{i}.pre_attn_ln.scale"],
+                "post_attn": self.weights[f"stacked_xf.{i}.post_attn_ln.scale"],
+                "pre_ff": self.weights[f"stacked_xf.{i}.pre_ff_ln.scale"],
+                "post_ff": self.weights[f"stacked_xf.{i}.post_ff_ln.scale"],
+            }
+            for i in range(self.spec.num_hidden_layers)
+        ]
+
+    def close(self) -> None:
+        for buffers in self._buffers.values():
+            buffers.free()
+        self._buffers.clear()
+
+    # -- buffer management ---------------------------------------------------
+
+    def _buffers_for(self, batch: int, patches: int, cache_size: int) -> _Buffers:
+        key = (batch, patches, cache_size)
+        if key in self._buffers:
+            return self._buffers[key]
+        h = self.spec.hidden_size
+        head_vectors = self.spec.num_attention_heads * self.spec.head_dim
+        f32 = lambda n: malloc(n * 4)  # noqa: E731
+        caches_k = tuple(f32(batch * cache_size * head_vectors) for _ in range(self.spec.num_hidden_layers))
+        caches_v = tuple(f32(batch * cache_size * head_vectors) for _ in range(self.spec.num_hidden_layers))
+        buffers = _Buffers(
+            tok_in=f32(batch * patches * self.spec.tokenizer_input_dims),
+            hidden=f32(batch * patches * h),
+            hidden2=f32(batch * patches * h),
+            embeddings=f32(batch * patches * h),
+            normed=f32(batch * patches * h),
+            qkv=f32(batch * patches * self.spec.qkv_size),
+            attn_out=f32(batch * patches * h),
+            attn_res=f32(batch * patches * h),
+            ff_hidden=f32(batch * patches * h),
+            ff_out=f32(batch * patches * h),
+            layer_out=f32(batch * patches * h),
+            point_out=f32(batch * patches * h),
+            quant_scratch=f32(batch * patches * self.spec.quantile_output_dims),
+            quantile_out=f32(batch * patches * self.spec.quantile_output_dims),
+            pos=f32(batch * patches),
+            num_masked=malloc(batch * 4),
+            q_offset=malloc(batch * 4),
+            caches_k=caches_k,
+            caches_v=caches_v,
+            bytes_=0,
+        )
+        self._buffers[key] = buffers
+        return buffers
+
+    # -- GEMM helper ---------------------------------------------------------
+
+    def _gemm(self, x_ptr: int, w_ptr: int, out_ptr: int, rows: int, fin: int, fout: int) -> None:
+        self.rocblas.sgemm_rowmajor_nt(
+            x_ptr, w_ptr, out_ptr, rows=rows, in_features=fin, out_features=fout
+        )
+
+    # -- one forward ---------------------------------------------------------
+
+    def _forward(
+        self,
+        bufs: _Buffers,
+        batch: int,
+        n: int,
+        *,
+        start: int,
+        cache_size: int,
+        num_masked_host: np.ndarray,
+        next_index_host: np.ndarray,
+    ) -> None:
+        """Run the packed tokenizer + 20 layers + both heads on device.
+
+        Host arrays are (batch,) scalars: cumulative masked-patch counts and
+        the per-batch next cache index.
+        """
+
+        h = self.spec.hidden_size
+        heads = self.spec.num_attention_heads
+        hd = self.spec.head_dim
+        rows = batch * n
+        eps = self.spec.rms_norm_eps
+        patch_stride = self.spec.qkv_size
+
+        copy_host_to_device(bufs.num_masked, host_array_ptr(num_masked_host.astype(np.int32)))
+        copy_host_to_device(bufs.q_offset, host_array_ptr(next_index_host.astype(np.int32)))
+        pos_host = (
+            np.arange(n, dtype=np.float32)[None, :] + next_index_host[:, None] - num_masked_host[:, None]
+        ).astype(np.float32)
+        copy_host_to_device(bufs.pos, host_array_ptr(np.ascontiguousarray(pos_host)))
+
+        # Tokenizer ResidualBlock (biased).
+        self._gemm(bufs.tok_in.ptr, self._w["tokenizer_hidden"], bufs.hidden.ptr, rows, self.spec.tokenizer_input_dims, h)
+        timesfm_bias_swish_f32(bufs.hidden.ptr, self._w["tokenizer_hidden_b"], rows, h)
+        self._gemm(bufs.hidden.ptr, self._w["tokenizer_out"], bufs.hidden2.ptr, rows, h, h)
+        timesfm_bias_f32(bufs.hidden2.ptr, self._w["tokenizer_out_b"], rows, h)
+        self._gemm(bufs.tok_in.ptr, self._w["tokenizer_res"], bufs.embeddings.ptr, rows, self.spec.tokenizer_input_dims, h)
+        timesfm_bias_f32(bufs.embeddings.ptr, self._w["tokenizer_res_b"], rows, h)
+        timesfm_add_f32(bufs.hidden2.ptr, bufs.embeddings.ptr, bufs.embeddings.ptr, rows * h)
+
+        # Stacked transformer layers (ping-pong between two activation buffers).
+        x = bufs.embeddings
+        alt = bufs.layer_out
+        for layer, w in enumerate(self._layers):
+            timesfm_rmsnorm_f32(x.ptr, w["pre_attn"], bufs.normed.ptr, rows, h, eps)
+            self._gemm(bufs.normed.ptr, w["qkv"], bufs.qkv.ptr, rows, h, self.spec.qkv_size)
+            timesfm_rope_f32(bufs.qkv.ptr, bufs.pos.ptr, batch, n, heads, hd, patch_stride, 0)
+            timesfm_rope_f32(bufs.qkv.ptr, bufs.pos.ptr, batch, n, heads, hd, patch_stride, h)
+            timesfm_head_rmsnorm_f32(bufs.qkv.ptr, w["q_ln"], batch, n, heads, hd, patch_stride, 0, eps)
+            timesfm_head_rmsnorm_f32(bufs.qkv.ptr, w["k_ln"], batch, n, heads, hd, patch_stride, h, eps)
+            timesfm_head_perdim_scale_f32(bufs.qkv.ptr, w["perdim"], batch, n, heads, hd, patch_stride, 0)
+            timesfm_scatter_kv_f32(
+                bufs.qkv.ptr, bufs.caches_k[layer].ptr, bufs.caches_v[layer].ptr,
+                batch, n, cache_size, heads, hd, patch_stride, start,
+            )
+            timesfm_attention_f32(
+                bufs.qkv.ptr, bufs.caches_k[layer].ptr, bufs.caches_v[layer].ptr,
+                bufs.num_masked.ptr, bufs.q_offset.ptr, bufs.attn_out.ptr,
+                batch, n, cache_size, heads, hd, patch_stride,
+            )
+            self._gemm(bufs.attn_out.ptr, w["out"], bufs.hidden.ptr, rows, h, h)
+            # attn_res = post_attn_ln(attn_out) + x
+            timesfm_norm_add_f32(bufs.hidden.ptr, x.ptr, w["post_attn"], bufs.attn_res.ptr, rows, h, eps)
+            # ff path
+            timesfm_rmsnorm_f32(bufs.attn_res.ptr, w["pre_ff"], bufs.normed.ptr, rows, h, eps)
+            self._gemm(bufs.normed.ptr, w["ff0"], bufs.ff_hidden.ptr, rows, h, h)
+            timesfm_swish_f32(bufs.ff_hidden.ptr, rows * h)
+            self._gemm(bufs.ff_hidden.ptr, w["ff1"], bufs.ff_out.ptr, rows, h, h)
+            timesfm_norm_add_f32(bufs.ff_out.ptr, bufs.attn_res.ptr, w["post_ff"], alt.ptr, rows, h, eps)
+            x, alt = alt, x
+
+        # Output heads (unbiased ResidualBlocks).
+        self._gemm(x.ptr, self._w["point_hidden"], bufs.hidden.ptr, rows, h, h)
+        timesfm_swish_f32(bufs.hidden.ptr, rows * h)
+        self._gemm(bufs.hidden.ptr, self._w["point_out"], bufs.hidden2.ptr, rows, h, h)
+        self._gemm(x.ptr, self._w["point_res"], bufs.point_out.ptr, rows, h, h)
+        timesfm_add_f32(bufs.hidden2.ptr, bufs.point_out.ptr, bufs.point_out.ptr, rows * h)
+
+        self._gemm(x.ptr, self._w["q_hidden"], bufs.hidden.ptr, rows, h, h)
+        timesfm_swish_f32(bufs.hidden.ptr, rows * h)
+        self._gemm(bufs.hidden.ptr, self._w["q_out"], bufs.quant_scratch.ptr, rows, h, self.spec.quantile_output_dims)
+        self._gemm(x.ptr, self._w["q_res"], bufs.quantile_out.ptr, rows, h, self.spec.quantile_output_dims)
+        timesfm_add_f32(bufs.quant_scratch.ptr, bufs.quantile_out.ptr, bufs.quantile_out.ptr, rows * self.spec.quantile_output_dims)
+
+    # -- decode --------------------------------------------------------------
+
+    def decode(
+        self,
+        horizon: int,
+        inputs: np.ndarray,
+        masks: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
+        """Mirror the NumPy CPU reference decode; returns host arrays."""
+
+        spec = self.spec
+        p, o = spec.patch_length, spec.horizon_length
+        m = o // p
+        batch, context = inputs.shape
+        num_decode_steps = (horizon - 1) // o
+        num_input_patches = context // p
+        cache_size = num_input_patches + num_decode_steps * m
+        # Scratch is sized for the prefill segment (the largest); AR steps
+        # reuse the same buffers with smaller row counts.
+        bufs = self._buffers_for(batch, num_input_patches, cache_size)
+
+        patched_inputs = inputs.reshape(batch, -1, p)
+        patched_masks = masks.reshape(batch, -1, p)
+
+        n_host = np.zeros(batch, dtype=np.float32)
+        mu_host = np.zeros(batch, dtype=np.float32)
+        sigma_host = np.zeros(batch, dtype=np.float32)
+        patch_mu = []
+        patch_sigma = []
+        for i in range(num_input_patches):
+            n_host, mu_host, sigma_host = update_running_stats(
+                n_host, mu_host, sigma_host, patched_inputs[:, i], patched_masks[:, i]
+            )
+            patch_mu.append(mu_host.copy())
+            patch_sigma.append(sigma_host.copy())
+        last_n, last_mu, last_sigma = n_host, mu_host, sigma_host
+        context_mu = np.stack(patch_mu, axis=1)
+        context_sigma = np.stack(patch_sigma, axis=1)
+
+        normed_inputs = revin(patched_inputs, context_mu, context_sigma, reverse=False)
+        normed_inputs = np.where(patched_masks, 0.0, normed_inputs).astype(np.float32)
+        tok_in = np.concatenate([normed_inputs, patched_masks.astype(np.float32)], axis=-1)
+        tok_in = np.ascontiguousarray(tok_in).reshape(batch * num_input_patches, self.spec.tokenizer_input_dims)
+        copy_host_to_device(bufs.tok_in, host_array_ptr(tok_in))
+
+        num_masked_seg = np.sum(patched_masks[:, :, -1], axis=1).astype(np.int32)
+        next_index = np.zeros(batch, dtype=np.int32)
+        num_masked_cum = num_masked_seg.copy()
+
+        self._forward(
+            bufs, batch, num_input_patches,
+            start=0, cache_size=cache_size,
+            num_masked_host=num_masked_cum, next_index_host=next_index,
+        )
+        next_index = next_index + num_input_patches
+
+        # D2H heads.
+        point_dev = np.empty((batch * num_input_patches, spec.horizon_length * spec.quantile_heads), dtype=np.float32)
+        quant_dev = np.empty((batch * num_input_patches, spec.quantile_output_dims), dtype=np.float32)
+        copy_device_to_host(host_array_ptr(point_dev), bufs.point_out)
+        copy_device_to_host(host_array_ptr(quant_dev), bufs.quantile_out)
+
+        renormed_outputs = revin(
+            point_dev.reshape(batch, num_input_patches, o, -1),
+            context_mu, context_sigma, reverse=True,
+        )
+        renormed_quantile_spread = revin(
+            quant_dev.reshape(batch, num_input_patches, spec.quantile_horizon_length, -1),
+            context_mu, context_sigma, reverse=True,
+        )[:, -1, ...]
+
+        ar_outputs = []
+        last_renormed_output = renormed_outputs[:, -1, :, spec.decode_index]
+
+        for step in range(num_decode_steps):
+            new_patched_input = last_renormed_output.reshape(batch, m, p).astype(np.float32)
+            new_mask = np.zeros_like(new_patched_input, dtype=bool)
+
+            n_host, mu_host, sigma_host = last_n, last_mu, last_sigma
+            new_mus, new_sigmas = [], []
+            for i in range(m):
+                n_host, mu_host, sigma_host = update_running_stats(
+                    n_host, mu_host, sigma_host, new_patched_input[:, i], new_mask[:, i]
+                )
+                new_mus.append(mu_host.copy())
+                new_sigmas.append(sigma_host.copy())
+            last_n, last_mu, last_sigma = n_host, mu_host, sigma_host
+            new_mu = np.stack(new_mus, axis=1)
+            new_sigma = np.stack(new_sigmas, axis=1)
+
+            new_normed_input = revin(new_patched_input, new_mu, new_sigma, reverse=False)
+            tok_in = np.concatenate(
+                [new_normed_input, new_mask.astype(np.float32)], axis=-1
+            ).astype(np.float32)
+            tok_in = np.ascontiguousarray(tok_in).reshape(batch * m, self.spec.tokenizer_input_dims)
+            # AR segments are smaller than prefill; reuse the prefill-sized
+            # scratch buffers with a sub-range view.
+            step_bufs = bufs
+            copy_host_to_device(step_bufs.tok_in, host_array_ptr(tok_in), batch * m * self.spec.tokenizer_input_dims * 4)
+
+            start = int(next_index[0])
+            num_masked_cum = num_masked_cum  # unchanged for AR steps (no new masked patches)
+            self._forward(
+                step_bufs, batch, m,
+                start=start, cache_size=cache_size,
+                num_masked_host=num_masked_cum, next_index_host=next_index,
+            )
+            next_index = next_index + m
+
+            point_step = np.empty((batch * m, o * spec.quantile_heads), dtype=np.float32)
+            copy_device_to_host(host_array_ptr(point_step), bufs.point_out, batch * m * o * spec.quantile_heads * 4)
+            new_renormed_output = revin(
+                point_step.reshape(batch, m, o, -1), new_mu, new_sigma, reverse=True
+            )
+            ar_outputs.append(new_renormed_output[:, -1, ...])
+            last_renormed_output = new_renormed_output[:, -1, :, spec.decode_index]
+
+        ar_renormed_outputs = np.stack(ar_outputs, axis=1) if num_decode_steps > 0 else None
+        return renormed_outputs, renormed_quantile_spread, ar_renormed_outputs
+
+
+__all__ = ["TimesFMGPUDecoder"]
