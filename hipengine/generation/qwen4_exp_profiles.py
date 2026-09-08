@@ -503,6 +503,12 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         # the pair2 row-publish parent in practice at multiplier 16 (state
         # gate + 72 exact trajectories); production-only binding.
         "HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT": "1" if production else "0",
+        # Exact iu8-risk+repair Q5_K gate/up (layer 2, the sole Q5_K MoE
+        # layer): bit-identical to the strict row4 parent (kernel screen
+        # 5.67x/6.00x/6.68x at rows 512/1024/4096, repair share 5.4%; full
+        # 12-case same-residency A/B +4.3% prefill geo-mean with every case
+        # winning and identical output digests); production-only binding.
+        "HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT": "1" if production else "0",
         # iu8-WMMA GR up (T1, three-plane fp32 staging): teacher-forced
         # logits KL <= 7.4e-8 versus the incumbent with 100% top-1 and
         # 10-100x argmax margins, bit-deterministic; full-suite A/B
