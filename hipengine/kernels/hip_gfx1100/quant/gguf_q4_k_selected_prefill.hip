@@ -1849,6 +1849,15 @@ __global__ void gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_kernel(
     int64_t num_experts,
     int64_t wmma_total_rows) {
   constexpr int IU8_ACT_PLANES = 3;  // residual quantization planes (ds4 class)
+  // Rows whose raw 32-element activation subblock amax falls below this
+  // floor are always queued: at tiny activation scales the fp32
+  // intermediates of the iu8 chain enter the subnormal range and the Kahan
+  // bound no longer dominates the true error (measured onset between
+  // 2^-100 and 2^-110; the 2^-80 floor keeps a >=2^20 margin and never
+  // fires on real activations). Nonfinite activations are queued too:
+  // fmaxf ignores them, so the staging would otherwise silently drop them.
+  constexpr float IU8_ATRISK_AMAX_FLOOR = 0x1p-80f;
+  __shared__ int lds_row_atrisk[16];
   __shared__ int8_t lds_q8a[IU8_ACT_PLANES * 16 * IU8_LDS_ROW_STRIDE];
   __shared__ float lds_da[IU8_ACT_PLANES * 16 * Q4_K_SUBBLOCKS];
   __shared__ int lds_sumq8a[IU8_ACT_PLANES * 16 * Q4_K_SUBBLOCKS];
@@ -1868,6 +1877,9 @@ __global__ void gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_kernel(
     meta[1] = valid ? expert_start_compact[expert] : 0;
     meta[2] = valid ? (expert_start_compact[expert + 1] - meta[1]) : 0;
     meta[3] = valid ? (row_tile * 16 - expert_start_wmma[expert]) : 0;
+  }
+  if (tid < 16) {
+    lds_row_atrisk[tid] = 0;
   }
   __syncthreads();
   const int64_t expert_id = meta[0];
@@ -1925,6 +1937,12 @@ __global__ void gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_kernel(
         const float v = row_valid ? scalar_to_float(row_ptr[l]) : 0.0f;
         vals[l] = v;
         amax = fmaxf(amax, fabsf(v));
+        if (!isfinite(v)) {
+          lds_row_atrisk[actrow] = 1;
+        }
+      }
+      if (row_valid && amax > 0.0f && amax < IU8_ATRISK_AMAX_FLOOR) {
+        lds_row_atrisk[actrow] = 1;
       }
       float work[32];
 #pragma unroll
@@ -2077,9 +2095,16 @@ __global__ void gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_kernel(
         const float value = sum[r];
         out[compact_row * out_features_total + global_col] =
             float_to_scalar<scalar_t>(value);
+        // Nonfinite values are always queued: the iu8 activation planes
+        // discard NaN/Inf (fmaxf ignores them), so the published value can
+        // differ from the exact parent; the sparse repair restores the
+        // parent's propagated nonfinite result.
         const float bound = risk_multiplier *
             (fabsf(kahan_err[r]) + FLT_EPSILON * abs_terms[r]);
-        if (q4_pair_bf16_rounding_boundary_distance(value) < bound) {
+        const bool at_risk = lds_row_atrisk[r] != 0 ||
+            !isfinite(value) ||
+            q4_pair_bf16_rounding_boundary_distance(value) < bound;
+        if (at_risk) {
           const int slot = atomicAdd(risk_count, 1);
           if (slot < max_risks) {
             risk_indices[slot] = static_cast<int>(
