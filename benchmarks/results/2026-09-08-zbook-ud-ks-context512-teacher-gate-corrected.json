@@ -324,7 +324,7 @@
     }
   },
   "result": {
-    "summary": "With the corrected teacher the raw IQ2_XS production default passes 4 of 5 aggregate gates and misses mean KL by 4.5% (0.001045 vs 0.001); it is strictly better than the bf16-expanded arm on mean KL and top-1 (161/162 vs 160/162). The prior promotion_qualified=False conclusion driven by catastrophic KL 22.04 is fully explained by the teacher input mismatch; the residual disagreement is a small step-local effect concentrated in general_en prompts (worst heldout_general_en_incident step 6, KL 0.0207) plus the known step-4 top-1 flip in general_ja_explain.",
+    "summary": "With the corrected teacher the raw IQ2_XS production default passes 4 of 5 aggregate gates and misses mean KL by 4.5% (0.0010448 vs 0.001). It improves top-1 (161/162 vs 160/162), p95, and maximum (0.020106 vs 0.020704) relative to the bf16-expanded arm, but is slightly worse on mean KL (0.0010448 vs 0.0010213). The prior promotion_qualified=False conclusion driven by catastrophic KL 22.04 is fully explained by the teacher input mismatch; the residual disagreement is a small step-local effect concentrated in general_en prompts (worst heldout_general_en_incident step 6, raw KL 0.020106) plus the known step-4 top-1 flip in general_ja_explain (KL 0.001189, expanded arm only; the raw arm's worst row is heldout_general_en_incident step 6).",
     "promotion_qualified": false,
     "blocking_gate": "mean_kl_max (0.001045 > 0.001); all of p95/p99/max/top-1 pass"
   },
@@ -332,5 +332,11 @@
     "Laptop clocks do not affect logits; teacher and captures are deterministic",
     "Repeat captures (fresh-process repeats) were validated previously on the same capture pipeline; the correction changes only the teacher input tokens",
     "promotion also requires the independent-repeat, task, and serving gates that remain outstanding for K_S"
+  ],
+  "correction_history": [
+    {
+      "date": "2026-09-08",
+      "what": "Prose correction: the raw arm's mean KL (0.0010448) is slightly worse than the expanded arm's (0.0010213), not better; raw improves top-1/p95/max only. The 0.020704 worst KL belongs to the expanded arm; the raw arm's worst is 0.020106 (heldout_general_en_incident step 6). Numeric per-arm fields were correct; only the summary prose misattributed."
+    }
   ]
 }
