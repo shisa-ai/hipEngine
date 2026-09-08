@@ -123,8 +123,8 @@
   "source_sha256": {
     "/tmp/ud-q56-raw-context512-M.npz": "9c161fed77527d3f62a492b96dac01b86f0614eb20ec5ba9d8e0d36e2550a58e",
     "/tmp/ud-u3-prod-M-baseline.npz": "f1d9547a7a8ef56a364180199eeb8d140c3ad0061eccf2bc54175a8f3e496cb0",
-    "/tmp/claude-1000/-home-lhl-hipEngine-ud-quants/0f04647b-dba5-488f-9153-ba04c7e5b9a5/scratchpad/ud-roles-prod-M-baseline.npz": "58c971b199c25514a4997834293743cbc1dca3b9105cf3627c17a6bab66eada7",
-    "/tmp/claude-1000/-home-lhl-hipEngine-ud-quants/0f04647b-dba5-488f-9153-ba04c7e5b9a5/scratchpad/ud-mmq-prod-M-baseline.npz": "d79170ffb2db464ec961ec39e6bcff0872a88b3fa10a07bb43b61c75c3e8fc6c",
+    "scratchpad/ud-roles-prod-M-baseline.npz": "58c971b199c25514a4997834293743cbc1dca3b9105cf3627c17a6bab66eada7",
+    "scratchpad/ud-mmq-prod-M-baseline.npz": "d79170ffb2db464ec961ec39e6bcff0872a88b3fa10a07bb43b61c75c3e8fc6c",
     "/tmp/ud-llama-context512-M.f32": "956989271083a9baee8395b97aaaf71afbb2c0c32e5815f234c7ebb384eb38b3",
     "/tmp/ud-llama-context512-M-bf16kv.f32": "04e48581977953704cd012ab347dcbab8ec970e58f3a4bf66f59568a83dc2951",
     "/tmp/ud-q56-context512-M-baseline.npz": "d8d11e5a720f19e0277bebf4effbfe62db52f1a497d0a5fcf856c9caa6973b5c",
