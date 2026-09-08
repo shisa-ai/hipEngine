@@ -25,21 +25,30 @@ seven dense IQ quants and is registered on both HIP backends under
 `dense_wmma_w4a16_prefill_bf16_bf16_out`. **No dispatch policy selects it**, and
 a test asserts that.
 
-**Why it is kept unrouted.** It reaches the strict GEMV's accuracy (1.67e-03
-against 1.66e-03, both at the bf16 output floor) where the integer MMQ sits at
-5.60e-03, but it is 1.4-2.1x slower than the integer MMQ. The standing decision
-rule is that the production winner is the faster path when both pass the gates,
-so the integer MMQ owns prefill. W4A16 is retained because it is the only route
-that reaches exact-path accuracy at GEMM speed, which makes it the natural
-owner if a profile later needs the mean KL the four-quant policy trades away.
+**Why it is kept unrouted — and why that rationale is now weak.** It was
+retained as "the only route that reaches exact-path accuracy at GEMM speed".
+**Measured end to end, it does not.** The context512 gate puts it at mean
+0.0014384, level with the integer MMQ's 0.0014707 and nowhere near the
+two-quant policy's 0.0010796, while running 150.9 tok/s against the integer
+MMQ's 171.9 — 12% slower for no mean benefit.
 
-**Removal trigger.** If the four-quant trade is rolled back for another reason,
-or if a profile adopts W4A16 as its owner, this entry closes. If neither has
-happened and no profile has asked for it, delete the kernel, wrapper,
-registration and tests rather than leaving a second unrouted prefill family in
-the tree. The intermediate option is to close the speed gap by adopting the
-integer MMQ's structure - decode once into an LDS tile reused across 128 rows -
-at which point it could take the default outright.
+The original claim came from a leaf comparison reporting GEMV 1.66e-03 and
+W4A16 1.67e-03. Both kernels write bf16, and bf16 rounding alone contributes
+exactly 1.66e-03, so that comparison was measuring the output format and could
+not resolve the two paths. Only the integer MMQ (5.60e-03) sat far enough above
+the floor to be distinguished.
+
+What survives is a different error *shape*: W4A16's p95 of 0.0037423 is the
+best of all three arms, better even than the two-quant policy, while its p99
+and max are the worst.
+
+**Removal trigger.** The case for keeping this is now thin: it is slower and
+does not deliver the accuracy it was built for. Keep it only if the p95 shape
+turns out to matter to a profile, or as the vehicle for testing whether
+accumulation order explains the residual mean regression (an f32-output variant
+compared against the GEMV in f32 rather than bf16 would settle that). If
+neither is pursued, delete the kernel, wrapper, registration and tests rather
+than leaving a second unrouted prefill family in the tree.
 
 ## 2026-09-09 Dense IQ MMQ four-quant policy — retained with a recorded trade
 
