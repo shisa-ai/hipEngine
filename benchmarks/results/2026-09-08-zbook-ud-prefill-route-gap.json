@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-08",
+  "status": "diagnostic",
+  "host": "zbook",
+  "hardware": "AMD RYZEN AI MAX+ PRO 395 / Radeon 8060S (laptop; power- and thermal-limited)",
+  "backend": "hip_gfx1151",
+  "finding": "On the same model, same GPU, same harness and the same 512-token prompt, the published UD file prefills 12x slower than the plain Q4_K_S file of the same model. Kernel traces attribute 11.2x of that to device time, so it is not host overhead. The plain file reaches the WMMA GEMM prefill family; the UD file is served entirely by GEMV-shaped kernels, including for its Q4_K tensors.",
+  "protocol": "scripts-equivalent scratchpad/ud_e2e_ab.py; Qwen35GGUFResidentSession, 512-token prompt, bulk prefill, greedy; both arms in one process against one resident model, best of 2 rounds after a warm round. Kernel censuses via rocprofv3 --kernel-trace on prebuilt .so with HIPENGINE_REQUIRE_CACHED_BUILD=1 and an explicit compiler-version file, matched 512-token prompt.",
+  "matched_comparison": {
+    "Qwen3.8-27B-Q4_K_S.gguf": {"prefill_tok_s": 160.5, "decode_tok_s": 12.56, "prefill_gpu_ms": 3320, "launches": 2029},
+    "Qwen3.8-27B-UD-Q4_K_M.gguf": {"prefill_tok_s": 13.77, "decode_tok_s": 4.22, "prefill_gpu_ms": 37299, "launches": 1576},
+    "ratio": {"prefill_wall": 11.7, "prefill_gpu_time": 11.2, "decode_wall": 2.98}
+  },
+  "harness_cross_check": {
+    "plain_decode_measured": 12.56,
+    "plain_decode_published_scoreboard": 13.1,
+    "note": "Decode agrees with the published row for this model/quant/GPU, so the harness is not the cause. The row-slab A/B also correctly reports 1.00x on the plain file, which contains no raw IQ tensors."
+  },
+  "kernel_census_512_token_prefill": {
+    "plain_Q4_K_S": [
+      {"calls": 12, "ms": 1703.3, "share_pct": 51.3, "kernel": "qk_t16_selected_direct_gemv_kernel<unsigned short, 5, false, false, true>"},
+      {"calls": 212, "ms": 687.2, "share_pct": 20.7, "kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel"},
+      {"calls": 64, "ms": 599.3, "share_pct": 18.1, "kernel": "gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel"},
+      {"calls": 192, "ms": 50.2, "share_pct": 1.5, "kernel": "rocBLAS Tensile Cijk_Alik_Bljk_HB_MT128x128x32_MI16x16x16x1"}
+    ],
+    "UD_Q4_K_M": [
+      {"calls": 131, "ms": 15641.5, "share_pct": 41.9, "kernel": "gguf_k_prefill_out_rowbatch_kernel<unsigned short, unsigned short, 5, 32>"},
+      {"calls": 117, "ms": 9250.0, "share_pct": 24.8, "kernel": "gguf_iq_dense_strict_kernel<0, true, 8, 8>"},
+      {"calls": 93, "ms": 7547.4, "share_pct": 20.2, "kernel": "gguf_q4_k_pack8_prefill_out_kernel<unsigned short, unsigned short, false>"},
+      {"calls": 5, "ms": 1731.4, "share_pct": 4.6, "kernel": "gguf_q4_k_pack8_dual_prefill_out_kernel<unsigned short, false>"}
+    ]
+  },
+  "mechanism": "The WMMA prefill family requires the T16 repacked layouts (LAYOUT_GGUF_Q4_K_T16 and siblings). UD tensors are resident as LAYOUT_RAW_GGUF or pack8, so every UD projection falls to a GEMV-shaped kernel that re-reads the weight matrix once per row block, where a GEMM reads it once. The decisive detail is that even the UD file's Q4_K tensors land on pack8_prefill_out, so this is a layout/route property of the UD path rather than a property of the IQ kernels.",
+  "second_gap": "The same harness measures the plain file at 160.5 tok/s prefill where the scoreboard publishes 396.1 for that model/quant/GPU, while decode agrees. That points to a separate route/protocol gap on Qwen35GGUFResidentSession.prefill(use_bulk=True), most likely the opt-in use_wmma_prefill (HIPENGINE_GGUF_WMMA_PREFILL / PrefillConfig.use_wmma_prefill). The 160.5 figure is therefore a floor on the plain path and the true UD headroom is larger than 12x. No claim is made about which protocol produced the published row; it has to be reconstructed before either number is quoted as a comparison.",
+  "consequence": "The raw-IQ decode queue is deprioritized. Top of queue is now: (1) reconstruct the published 396.1 protocol and re-measure both files under it; (2) determine why UD Q4_K tensors miss gguf_q4_t16_dense_wmma_prefill_* - a materialization/layout question, and the cheapest of the three since those kernels exist and are qualified; (3) a dense entry point over the existing selected-shape IQ integer-MMQ prefill kernels.",
+  "limitations": [
+    "Laptop power/clock limited. The 11.2x ratio is from kernel traces rather than wall clock so it is robust to clock variation, but absolute rates are provisional and everything here should be re-measured on the desktop gfx1151.",
+    "The published 396.1 protocol was not reconstructed in this session; the 160.5 vs 396.1 discrepancy is recorded as an open question, not as a regression claim."
+  ]
+}
