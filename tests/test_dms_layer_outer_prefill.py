@@ -136,8 +136,8 @@ def test_layer_outer_hidden_workspace_covers_full_prompt(monkeypatch) -> None:
     assert session._prefill_hidden_b.nbytes == expected
 
 
-def test_layer_outer_hidden_alias_is_off_by_default(monkeypatch) -> None:
-    """Default keeps two distinct planes; the env gate is the only opt-in."""
+def test_layer_outer_hidden_alias_is_on_by_default(monkeypatch) -> None:
+    """Adopted default aliases the planes; env 0 is the explicit rollback."""
 
     from tests.test_gguf_bulk_prefill_workspace_release import _fake_session
 
@@ -145,10 +145,32 @@ def test_layer_outer_hidden_alias_is_off_by_default(monkeypatch) -> None:
     session, _ = _fake_session(monkeypatch, capacity=8_192)
     session.__dict__["dms_prefill_mode"] = "layer_outer"
     session._allocate_bulk_prefill_workspace(SimpleNamespace())
+    assert gguf_runner._layer_outer_hidden_alias_enabled() is True
+    assert (
+        session._prefill_hidden_a.ptr == session._prefill_hidden_b.ptr
+    ), "default layer_outer route must reuse one physical hidden plane"
+    # The aliased plane is tracked exactly once in the buffer ledger.
+    plane_ids = [
+        id(buffer)
+        for buffer in session._buffers
+        if buffer.ptr == session._prefill_hidden_a.ptr
+    ]
+    assert len(plane_ids) == 1
+
+
+def test_layer_outer_hidden_alias_env_rolls_back_to_two_planes(monkeypatch) -> None:
+    """HIPENGINE_LAYER_OUTER_HIDDEN_ALIAS=0 restores the two-plane route."""
+
+    from tests.test_gguf_bulk_prefill_workspace_release import _fake_session
+
+    monkeypatch.setenv(gguf_runner._LAYER_OUTER_HIDDEN_ALIAS_ENV, "0")
+    session, _ = _fake_session(monkeypatch, capacity=8_192)
+    session.__dict__["dms_prefill_mode"] = "layer_outer"
+    session._allocate_bulk_prefill_workspace(SimpleNamespace())
     assert gguf_runner._layer_outer_hidden_alias_enabled() is False
     assert (
         session._prefill_hidden_a.ptr != session._prefill_hidden_b.ptr
-    ), "default layer_outer route must keep two distinct hidden planes"
+    ), "env-off rollback must restore two distinct hidden planes"
 
 
 def test_layer_outer_hidden_alias_env_gates_single_plane(monkeypatch) -> None:

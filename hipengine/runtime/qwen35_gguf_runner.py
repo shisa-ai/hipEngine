@@ -29292,15 +29292,20 @@ def _layer_outer_hidden_alias_enabled() -> bool:
 
     The geometry-wide liveness policy qualifies hidden aliasing at >=4096
     scratch rows, but the row-cap policy clamps this geometry's layer_outer
-    chunks to 1024 rows, so the route always allocated two full-capacity
-    BF16 hidden planes. This gate aliases the planes for the layer_outer
-    route only; ordinary (dense) prefill keeps the geometry-wide threshold
-    untouched. Off by default pending the GPU-side aliasing verification
-    (greedy-token equality, per-layer hidden equality, ownership, teardown);
-    the qualification must not lean on CPU-codec equality alone.
+    chunks to 1024 rows, so the route previously always allocated two
+    full-capacity BF16 hidden planes. This gate aliases the planes for the
+    layer_outer route only; ordinary (dense) prefill keeps the geometry-wide
+    threshold untouched.
+
+    Adopted 2026-09-08 after the GPU-side A/B at 73,728 tokens (commit
+    6c6d1ad4a, clean tree): the aliased route reproduced the control's
+    decode logits byte-for-byte on all eight steps (identical greedy
+    tokens), prefill 455.4 s vs 454.0 s control, whole-card peak
+    19.265 vs 19.972 GiB (one plane, 727.5 MiB at 73,984 positions),
+    returns-to-baseline. Env "0" rolls the route back to two planes.
     """
 
-    return _env_flag(_LAYER_OUTER_HIDDEN_ALIAS_ENV, False)
+    return _env_flag(_LAYER_OUTER_HIDDEN_ALIAS_ENV, True)
 
 
 def _gguf_verify_hidden_scratch_row_start(
