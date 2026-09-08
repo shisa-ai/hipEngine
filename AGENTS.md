@@ -142,7 +142,7 @@ type: short summary (imperative, ≤ 72 chars)
 - Correctness / perf evidence when relevant
 ```
 
-Prefixes: `feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`, `perf:`, `port:` (upstream lineage), `kernel:` (kernel edits). **No bylines** — no `Co-authored-by`, no agent attribution, no generated-by footers.
+Prefixes: `feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`, `perf:`, `port:` (upstream lineage), `kernel:` (kernel edits). **No bylines** — no `Co-authored-by`, no agent attribution, no generated-by footers. Session URLs (`claude.ai/code/session_…`) are additionally banned as leaked credentials. Local enforcement: `scripts/check_commit_msg.py`, installable as a `commit-msg` hook via `python3 scripts/install_commit_msg_hook.py`.
 
 ### Never Committed
 
