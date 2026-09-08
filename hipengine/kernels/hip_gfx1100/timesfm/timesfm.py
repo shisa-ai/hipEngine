@@ -598,3 +598,45 @@ def timesfm_rope_norm_scatter_f16(
         qt_ptr, cache_k_ptr, cache_v_ptr, stream,
     )
     _check_launch(runtime, err)
+
+
+_QKV_NORM_SCATTER = (
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32,
+    ctypes.c_int32, ctypes.c_int32,
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_void_p,
+)
+
+
+def timesfm_qkv_norm_scatter_f16(
+    qkv_ptr: int,
+    q_ln_ptr: int,
+    k_ln_ptr: int,
+    per_dim_ptr: int,
+    batch: int,
+    patches: int,
+    cache_size: int,
+    heads: int,
+    head_dim: int,
+    patch_stride: int,
+    start: int,
+    qt_ptr: int,
+    cache_k_ptr: int,
+    cache_v_ptr: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Merged post-RoPE q-norm+transpose, k-norm scatter, v scatter."""
+
+    library = library or _library()
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(library, "timesfm_qkv_norm_scatter_f16", _QKV_NORM_SCATTER, ctypes.c_int)
+    err = fn(
+        qkv_ptr, q_ln_ptr, k_ln_ptr, per_dim_ptr,
+        batch, patches, cache_size, heads, head_dim, patch_stride, start,
+        qt_ptr, cache_k_ptr, cache_v_ptr, stream,
+    )
+    _check_launch(runtime, err)
