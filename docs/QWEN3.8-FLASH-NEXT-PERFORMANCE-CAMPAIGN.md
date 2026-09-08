@@ -293,12 +293,30 @@ promotion decision.
   [scale sweep](../benchmarks/results/2026-09-08-framework-qwen4exp-q4-iu8-scale-sweep.json)
   rather than restarting it. This is partial R4 progress, not an all-input
   parent-error proof, Q5_1 admission, or a new full-model performance packet.
-- [ ] **R5 - Screen GR at its actual publication boundary.** Locate every
+- [x] **R5 - Screen GR at its actual publication boundary.** Locate every
   F32 intermediate, nonlinear operation and BF16 rounding boundary before
   adapting repair. Preserve their order and qualify the complete composite,
   not just a projection eventually consumed as BF16. Compare recoverable
   request savings against Q5_1 using R2; move GR ahead only when that evidence
   supports it. The old ~2.44 s composite is not the entire GR family.
+  **Done (September 8, 2026).** Boundary map: the fused GR up kernel
+  (4.913 s of the 18.5 s code-p4096 prefill device total - the single
+  biggest prefill kernel) publishes F32 `gate` and `mixed`; `gate` has no
+  downstream consumer, the single BF16 boundary is `gr_write_bf16_f32`
+  at the end, and the sigmoid/gated-mean epilogue contracts projection
+  drift. Candidate: dense iu8-WMMA Q8_0 projection (raw codes - no weight
+  requantization at all; fp32 three-plane in-kernel staging; retained
+  exact sigmoid + gated-mean epilogue). Operation-complete screen on real
+  weights: 2.93x rows 1024 / 3.77x rows 512 versus the fused parent
+  (earlier projection-only estimate was 1.94x); drift ~1 fp32 ulp on
+  gate/mixed. Teacher-forced full-model logits: KL vs the incumbent
+  production route <= 7.4e-8 across all 9 fixture cases (bar: 1e-3; the
+  rejected Q5_K bundle sat at 1.2e-3), top-1 agreement 100% everywhere
+  with 10-100x argmax margins, both routes bit-deterministic. Default-off
+  route `HIPENGINE_QWEN4_EXP_GR_IU8` at 7c29da886; 5 focused tests pass;
+  full-suite same-residency A/B running. The projected p4096 saving is
+  ~2.5 s device (vs Q5_1's measured ~0.24 s in situ) - the evidence now
+  supports GR ahead of the earlier ordering.
 - [ ] **R6 - Select the remaining decode owner from R2.** Split MoE into
   gate/up, down, combine and graph/API costs; examine linear and GR in the
   same window. Target the largest measured recoverable cost. Any host or
