@@ -321,8 +321,11 @@ promotion decision.
   acceptance. **Promoted to production** at e6d32d866 (first T1
   production-numerical prefill promotion; the exact fused parent stays
   the strict fallback). The GR down leg (10240->320 Q8_0, 3.76 s on the
-  F32 coltile) is wired default-off with the same kernel and is being
-  qualified next.
+  F32 coltile) screened 2.55x rows 1024 with the same ulp-level drift,
+  logits KL <= 5.5e-8 / top-1 100% / deterministic, and a full-suite A/B
+  of **+2.0%** incremental prefill geo-mean (11/12 cases) on top of the
+  promoted up leg: **promoted at 07dd97c9f**. Combined GR family effect:
+  **+11.3% prefill** over the pre-R5 default.
 - [ ] **R6 - Select the remaining decode owner from R2.** Split MoE into
   gate/up, down, combine and graph/API costs; examine linear and GR in the
   same window. Target the largest measured recoverable cost. Any host or
