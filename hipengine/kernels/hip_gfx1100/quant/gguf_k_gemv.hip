@@ -748,6 +748,205 @@ __global__ void gguf_k_prefill_out_coltile_rowbatch_kernel(
 // serial wave publication. The eight output slots are remapped to two hidden
 // columns across four branches so the publication threads can emit the exact
 // materialized sigmoid gate and branch-ordered mean.
+// Dense iu8-WMMA Q8_0 projection with in-kernel three-plane residual
+// activation staging (fp32 scales; T1 production-correctness candidate for
+// the GR up owner). The raw signed Q8_0 codes are the integer B operand
+// (weight path has no requantization at all; Q8_0 has no min-offset term).
+constexpr int GR_IU8_ACT_PLANES = 3;
+constexpr int GR_IU8_LDS_ROW_STRIDE = 256 + 16;  // bank-conflict padding
+typedef int __attribute__((vector_size(8 * sizeof(int)))) gr_iu8_int32x8;
+typedef int __attribute__((vector_size(4 * sizeof(int)))) gr_iu8_int32x4;
+
+__global__ __launch_bounds__(128, 2)
+void q8_0_iu8_wmma_prefill_f32_f32_kernel(
+    const float* __restrict__ x,
+    const uint8_t* __restrict__ qweight,
+    float* __restrict__ out,
+    int rows,
+    int in_features,
+    int out_features) {
+  __shared__ int8_t lds_q8a[GR_IU8_ACT_PLANES * 16 * GR_IU8_LDS_ROW_STRIDE];
+  __shared__ float lds_da[GR_IU8_ACT_PLANES * 16 * 8];
+  __shared__ int lds_sumq8a[GR_IU8_ACT_PLANES * 16 * 8];
+
+  const int tid = static_cast<int>(threadIdx.x);
+  const int warp = tid >> 5;
+  const int lane = tid & 31;
+  const int64_t col_base = static_cast<int64_t>(blockIdx.x) * 128;
+  const int row_tile = blockIdx.y;
+
+  const int row_base = row_tile * 16;
+  const int row_end = min(row_base + 16, rows);
+
+  const int64_t global_col = col_base + warp * 32 + lane;
+  const bool col_valid = global_col < out_features;
+  const int64_t blocks_per_row = in_features / 32;
+  const int64_t row_bytes = blocks_per_row * Q8_0_BLOCK_BYTES;
+  const uint8_t* block_base = col_valid
+      ? (qweight + global_col * row_bytes)
+      : nullptr;
+
+  float sum[16];
+#pragma unroll
+  for (int r = 0; r < 16; ++r) {
+    sum[r] = 0.0f;
+  }
+
+  // A-operand lane -> activation row (hardware permutation).
+  int a_row = -1;
+  if ((lane & 1) == 0 && lane < 16) {
+    a_row = lane >> 1;
+  } else if ((lane & 1) == 1 && lane >= 17) {
+    a_row = (lane - 17) >> 1;
+  }
+
+  const int64_t chunks = (in_features + 255) / 256;
+  for (int64_t chunk = 0; chunk < chunks; ++chunk) {
+    // Cooperative activation staging: thread -> (actrow = tid/8, sub = tid%8),
+    // one 32-element block per (actrow, sub).
+    {
+      const int actrow = tid >> 3;
+      const int sub = tid & 7;
+      const int64_t col0 = chunk * 256 + static_cast<int64_t>(sub) * 32;
+      const int local_row = actrow;
+      const bool row_valid = row_base + local_row < row_end;
+      const bool sub_valid = col0 + 32 <= in_features;
+      const int64_t row = row_valid ? (row_base + local_row) : 0;
+      const float* row_ptr = sub_valid
+          ? (x + row * in_features + col0)
+          : nullptr;
+      float vals[32];
+      float amax = 0.0f;
+#pragma unroll
+      for (int l = 0; l < 32; ++l) {
+        const float v = (row_valid && sub_valid) ? row_ptr[l] : 0.0f;
+        vals[l] = v;
+        amax = fmaxf(amax, fabsf(v));
+      }
+      float work[32];
+#pragma unroll
+      for (int l = 0; l < 32; ++l) work[l] = vals[l];
+#pragma unroll
+      for (int plane = 0; plane < GR_IU8_ACT_PLANES; ++plane) {
+        float plane_max = 0.0f;
+#pragma unroll
+        for (int l = 0; l < 32; ++l)
+          plane_max = fmaxf(plane_max, fabsf(work[l]));
+        const float da = plane_max > 0.0f ? plane_max / 127.0f : 0.0f;
+        lds_da[plane * 16 * 8 + actrow * 8 + sub] = da;
+        int8_t* dst = lds_q8a + plane * 16 * GR_IU8_LDS_ROW_STRIDE +
+                      actrow * GR_IU8_LDS_ROW_STRIDE + sub * 32;
+        int qsum = 0;
+        if (da > 0.0f) {
+          const float inv = 1.0f / da;
+#pragma unroll
+          for (int l = 0; l < 32; ++l) {
+            int q = __float2int_rn(work[l] * inv);
+            q = max(-127, min(127, q));
+            dst[l] = static_cast<int8_t>(q);
+            qsum += q;
+            work[l] = fmaf(-static_cast<float>(q), da, work[l]);
+          }
+        } else {
+#pragma unroll
+          for (int l = 0; l < 32; ++l) dst[l] = 0;
+        }
+        lds_sumq8a[plane * 16 * 8 + actrow * 8 + sub] = qsum;
+      }
+    }
+    __syncthreads();
+
+#pragma unroll 1
+    for (int sub = 0; sub < 8; ++sub) {
+      const int64_t col0 = chunk * 256 + static_cast<int64_t>(sub) * 32;
+      const bool sub_valid = col0 + 32 <= in_features;
+      const uint8_t* block_ptr = sub_valid && col_valid
+          ? (block_base + (col0 / 32) * Q8_0_BLOCK_BYTES)
+          : nullptr;
+      // Raw signed Q8_0 codes as the integer B operand.
+      int8_t wq8[32];
+      if (block_ptr != nullptr) {
+        const int8_t* qs = reinterpret_cast<const int8_t*>(block_ptr + 2);
+#pragma unroll
+        for (int l = 0; l < 32; ++l) {
+          wq8[l] = qs[l];
+        }
+      } else {
+#pragma unroll
+        for (int l = 0; l < 32; ++l) wq8[l] = 0;
+      }
+      const float dsub = block_ptr != nullptr
+          ? fp16_bytes_to_float(block_ptr) : 0.0f;
+
+#pragma unroll
+      for (int g = 0; g < 2; ++g) {
+        gr_iu8_int32x8 acc[GR_IU8_ACT_PLANES];
+#pragma unroll
+        for (int plane = 0; plane < GR_IU8_ACT_PLANES; ++plane) {
+          acc[plane] = {0, 0, 0, 0, 0, 0, 0, 0};
+        }
+#pragma unroll
+        for (int khalf = 0; khalf < 2; ++khalf) {
+          signed char bbytes[16];
+#pragma unroll
+          for (int j = 0; j < 16; ++j) bbytes[j] = wq8[khalf * 16 + j];
+          gr_iu8_int32x4 b_frag;
+          {
+            int32_t words[4];
+            memcpy(words, bbytes, 16);
+            b_frag = (gr_iu8_int32x4){words[0], words[1], words[2], words[3]};
+          }
+#pragma unroll
+          for (int plane = 0; plane < GR_IU8_ACT_PLANES; ++plane) {
+            signed char abytes[16];
+            if (a_row >= 0) {
+              const int8_t* src = lds_q8a +
+                  plane * 16 * GR_IU8_LDS_ROW_STRIDE +
+                  (g * 8 + a_row) * GR_IU8_LDS_ROW_STRIDE +
+                  sub * 32 + khalf * 16;
+#pragma unroll
+              for (int j = 0; j < 16; ++j) abytes[j] = src[j];
+            } else {
+#pragma unroll
+              for (int j = 0; j < 16; ++j) abytes[j] = 0;
+            }
+            gr_iu8_int32x4 a_frag;
+            {
+              int32_t words[4];
+              memcpy(words, abytes, 16);
+              a_frag = (gr_iu8_int32x4){words[0], words[1], words[2], words[3]};
+            }
+            acc[plane] = __builtin_amdgcn_wmma_i32_16x16x16_iu8_w32(
+                true, a_frag, true, b_frag, acc[plane], true);
+          }
+        }
+#pragma unroll
+        for (int i = 0; i < 8; ++i) {
+          const int r = g * 8 + i;
+          float main_sum = 0.0f;
+#pragma unroll
+          for (int plane = 0; plane < GR_IU8_ACT_PLANES; ++plane) {
+            const float da = lds_da[plane * 16 * 8 + r * 8 + sub];
+            const int* cr = reinterpret_cast<const int*>(&acc[plane]);
+            main_sum += da * static_cast<float>(cr[i]);
+          }
+          sum[r] += dsub * main_sum;
+        }
+      }
+    }
+    __syncthreads();
+  }
+
+  if (!col_valid) return;
+#pragma unroll
+  for (int r = 0; r < 16; ++r) {
+    const int64_t row = row_base + r;
+    if (row < row_end) {
+      out[row * out_features + global_col] = sum[r];
+    }
+  }
+}
+
 template <bool WAVE_SCALE = false>
 __launch_bounds__(128, 2)
 __global__ void q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel(
@@ -4587,7 +4786,49 @@ int launch_gguf_k_selected_silu_gemv_out(
   return static_cast<int>(hipGetLastError());
 }
 
+static int launch_q8_0_iu8_wmma_prefill_f32_f32(
+    const float* x,
+    const uint8_t* qweight,
+    float* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (x == nullptr || qweight == nullptr || out == nullptr || rows <= 0 ||
+      in_features <= 0 || (in_features % 32) != 0 || out_features <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t row_tiles = (rows + 15) / 16;
+  const dim3 block(128);
+  const dim3 grid(
+      static_cast<unsigned int>((out_features + 127) / 128),
+      static_cast<unsigned int>(row_tiles));
+  hipLaunchKernelGGL(
+      (q8_0_iu8_wmma_prefill_f32_f32_kernel),
+      grid, block, 0, stream,
+      x, qweight, out,
+      static_cast<int>(rows),
+      static_cast<int>(in_features),
+      static_cast<int>(out_features));
+  return static_cast<int>(hipGetLastError());
+}
+
 }  // namespace
+
+extern "C" int hipengine_gguf_q8_0_iu8_wmma_prefill_f32_f32(
+    const void* x,
+    const void* qweight,
+    void* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q8_0_iu8_wmma_prefill_f32_f32(
+      static_cast<const float*>(x),
+      static_cast<const uint8_t*>(qweight),
+      static_cast<float*>(out),
+      rows, in_features, out_features, stream);
+}
 
 #define HIPENGINE_GGUF_K_EXPORTS(NAME, QTYPE) \
 extern "C" int hipengine_##NAME##_gemv_f32_f32_out( \

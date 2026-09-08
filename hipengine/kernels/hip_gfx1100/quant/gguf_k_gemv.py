@@ -1813,3 +1813,49 @@ __all__ = [
     "plan_gguf_k_gemv_build",
     "register_gguf_k_gemv_kernels",
 ]
+
+
+_ARGS_Q8_0_IU8_WMMA = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
+
+
+def gguf_q8_0_iu8_wmma_prefill_f32_f32(
+    x_ptr: int,
+    qweight_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Dense iu8-WMMA Q8_0 projection (three-plane fp32 staging, T1).
+
+    Weight-exact on the Q8_0 codes; the activation-side three-plane residual
+    quantization is bounded implementation drift gated by the production
+    numerical envelope, not a bit-identity contract.
+    """
+
+    if rows <= 0 or in_features <= 0 or in_features % 32 or out_features <= 0:
+        raise ValueError("iu8 WMMA projection has invalid geometry")
+    library = library or build_gguf_k_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = _cached_fn(
+        library, "hipengine_gguf_q8_0_iu8_wmma_prefill_f32_f32",
+        list(_ARGS_Q8_0_IU8_WMMA))
+    err = fn(
+        x_ptr, qweight_ptr, out_ptr,
+        rows, in_features, out_features,
+        stream,
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
