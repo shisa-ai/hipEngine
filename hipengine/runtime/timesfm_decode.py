@@ -25,6 +25,7 @@ from hipengine.core.memory import (
     host_array_ptr,
     malloc,
 )
+from hipengine.core.hip import get_hip_runtime
 from hipengine.core.rocblas import Rocblas
 from hipengine.kernels.cpu_reference.timesfm import revin, update_running_stats
 
@@ -243,6 +244,12 @@ class TimesFMGPUDecoder:
         f16 = lambda n: malloc(n * itemsize)  # noqa: E731
         caches_k = tuple(f16(batch * cache_size * head_vectors) for _ in range(self.spec.num_hidden_layers))
         caches_v = tuple(f16(batch * cache_size * head_vectors) for _ in range(self.spec.num_hidden_layers))
+        # The batched attention GEMMs sweep the whole cache including the
+        # not-yet-written AR slots; masked weights are zero but 0 * garbage
+        # is NaN when the allocator hands back dirty pages, so zero-init.
+        runtime = get_hip_runtime()
+        for cache in (*caches_k, *caches_v):
+            runtime.memset(cache.ptr, 0, cache.nbytes)
         buffers = _Buffers(
             tok_in=f16(batch * patches * self.spec.tokenizer_input_dims),
             hidden=f16(batch * patches * h),

@@ -503,7 +503,8 @@ __global__ void mask_softmax_kernel(
   int count = 0;
   float m = -INFINITY;
   for (int kk = threadIdx.x; kk < S; kk += blockDim.x) {
-    float v = 0.0f;
+    // Masked entries are -INFINITY so expf(v - row_max) is exactly zero.
+    float v = -INFINITY;
     if ((q + off >= kk) && (kk >= nm)) {
       v = ld(sr + kk);
       m = fmaxf(m, v);
@@ -534,10 +535,14 @@ __global__ void mask_softmax_kernel(
     if (threadIdx.x < stride) partial[threadIdx.x] += partial[threadIdx.x + stride];
     __syncthreads();
   }
-  float inv = 1.0f / partial[0];
+  float sum_total = partial[0];
+  // Rows with zero allowed keys (front-masked queries) mirror the reference
+  // softmax over all-masked scores: uniform 1/S weights, never NaN.
+  float inv = (sum_total > 0.0f) ? 1.0f / sum_total : 1.0f / (float)S;
   count = 0;
   for (int kk = threadIdx.x; kk < S; kk += blockDim.x) {
-    sr[kk] = to_half<T>(vals[count++] * inv);
+    float v = vals[count++];
+    sr[kk] = to_half<T>((sum_total > 0.0f) ? v * inv : inv);
   }
 }
 
