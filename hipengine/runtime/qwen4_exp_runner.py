@@ -3315,6 +3315,29 @@ def qwen4_exp_q4_pair_prefill_selected(
     )
 
 
+def _qwen4_exp_q5_k_iu8_risk_multiplier() -> float:
+    """Kahan-bound multiplier for the exact Q5_K iu8 risk criterion.
+
+    Mirrors the Q5_1 down route's conservative default (16.0 keeps a
+    measured ~1.3x margin over the flip-escape floor at the production
+    multiplier screen); the Q5_K gate/up activations share the same
+    magnitude class.
+    """
+
+    raw = os.environ.get("HIPENGINE_QWEN4_EXP_Q5_K_IU8_RISK_MULT", "16.0")
+    try:
+        value = float(raw)
+    except ValueError:
+        raise ValueError(
+            "HIPENGINE_QWEN4_EXP_Q5_K_IU8_RISK_MULT must be a positive float"
+        )
+    if not (value > 0.0) or value != value:
+        raise ValueError(
+            "HIPENGINE_QWEN4_EXP_Q5_K_IU8_RISK_MULT must be a positive float"
+        )
+    return value
+
+
 def _qwen4_exp_q4_iu8_exact_enabled() -> bool:
     """Default-off exact iu8-risk+repair selected Q4 gate/up route."""
 
@@ -3578,20 +3601,31 @@ def run_qwen4_exp_moe(
             not in {"", "0", "false", "False"}
         )
     )
-    grouped_prefill = exact_grouped_down or exact_grouped_q4_gate or (
-        (production_grouped_moe or (
-            rows >= 16
-            and os.environ.get("HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL", "")
-            not in {"", "0", "false", "False"}
-        ))
-        and (
-            weights["expert_gate"].spec.quant_key,
-            weights["expert_up"].spec.quant_key,
+    # #15 Q5_K bundle KL-shaving variant: default-off exact iu8-risk+repair
+    # selected Q5_K gate/up route (the layer-2 Q5_K layer).
+    q5_k_iu8_exact = (
+        os.environ.get("HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT", "0")
+        not in {"", "0", "false", "False"}
+        and rows >= 2
+        and hidden % 256 == 0
+        and ffn % 128 == 0
+    )
+    grouped_prefill = (
+        exact_grouped_down or exact_grouped_q4_gate or q5_k_iu8_exact or (
+            (production_grouped_moe or (
+                rows >= 16
+                and os.environ.get("HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL", "")
+                not in {"", "0", "false", "False"}
+            ))
+            and (
+                weights["expert_gate"].spec.quant_key,
+                weights["expert_up"].spec.quant_key,
+            )
+            in {
+                ("gguf_q4_k", "gguf_q4_k"),
+                ("gguf_q5_k", "gguf_q5_k"),
+            }
         )
-        in {
-            ("gguf_q4_k", "gguf_q4_k"),
-            ("gguf_q5_k", "gguf_q5_k"),
-        }
     )
     if grouped_prefill:
         active_runtime.memset(
@@ -3939,6 +3973,79 @@ def run_qwen4_exp_moe(
                     stream=stream,
                     runtime=active_runtime,
                 )
+            silu_mul_dual_out_bf16(
+                scratch.group_gate_up.ptr,
+                scratch.expert_intermediate.ptr,
+                rows=compact,
+                features=ffn,
+                stream=stream,
+                runtime=active_runtime,
+            )
+        elif (
+            weights["expert_gate"].spec.quant_key == "gguf_q5_k"
+            and weights["expert_up"].spec.quant_key == "gguf_q5_k"
+            and q5_k_iu8_exact
+        ):
+            # #15 Q5_K KL-shaving variant: exact iu8-risk+repair gate/up for
+            # the Q5_K layer(s), mirroring the Q4_K production route. The
+            # 3-plane activation quantization, Kahan-bounded risk collection
+            # and sparse repair reproduce the strict row4 parent bit-exactly
+            # (128-thread strided k ownership + shuffle/wave tree), so the
+            # published gate/up arithmetic is unchanged; only the kernel
+            # executes through the iu8-WMMA datapath.
+            risk_count, risk_indices = scratch.ensure_group_risk_buffers(
+                compact_rows=compact, out_features_total=2 * ffn
+            )
+            active_runtime.memset(
+                risk_count.ptr, 0, DType.INT32.itemsize
+            )
+            risk_capacity = compact * 2 * ffn
+            i8_risk_gate_up = resolve(
+                backend=backend, layer="moe_linear", quant="gguf_q5_k",
+                variant="selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out",
+            )
+            sparse_repair = resolve(
+                backend=backend, layer="moe_linear", quant="gguf_q5_k",
+                variant="selected_dual_sparse_exact_repair_bf16",
+            )
+            i8_risk_gate_up(
+                scratch.expert_down.ptr,
+                scratch.group_expert_start.ptr,
+                scratch.group_wmma_expert_start.ptr,
+                scratch.group_tile_expert.ptr,
+                weights["expert_gate"].allocation("raw").tensor.ptr,
+                weights["expert_up"].allocation("raw").tensor.ptr,
+                scratch.group_gate_up.ptr,
+                risk_count.ptr,
+                risk_indices.ptr,
+                risk_capacity,
+                _qwen4_exp_q5_k_iu8_risk_multiplier(),
+                compact,
+                hidden,
+                ffn,
+                ffn,
+                experts,
+                wmma_total_rows,
+                stream=stream,
+                runtime=active_runtime,
+            )
+            sparse_repair(
+                scratch.expert_down.ptr,
+                scratch.group_expert_start.ptr,
+                weights["expert_gate"].allocation("raw").tensor.ptr,
+                weights["expert_up"].allocation("raw").tensor.ptr,
+                scratch.group_gate_up.ptr,
+                risk_count.ptr,
+                risk_indices.ptr,
+                risk_capacity,
+                compact,
+                hidden,
+                ffn,
+                ffn,
+                experts,
+                stream=stream,
+                runtime=active_runtime,
+            )
             silu_mul_dual_out_bf16(
                 scratch.group_gate_up.ptr,
                 scratch.expert_intermediate.ptr,

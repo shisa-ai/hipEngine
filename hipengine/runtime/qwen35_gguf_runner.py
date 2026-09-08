@@ -193,6 +193,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_selected_pack8_gemv import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill import (
     register_gguf_q4_k_selected_prefill_kernels,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q5_k_q8_1_selected_prefill import (
+    register_gguf_q5_k_q8_1_selected_prefill_kernels,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
     gguf_q8_1_mmq_ds4_pack_bf16,
     register_gguf_q4_k_q8_1_selected_prefill_kernels,
@@ -31620,6 +31623,7 @@ def _ensure_compact_moe_wmma_registered() -> None:
     register_paro_combine_kernels()
     register_gguf_iq_selected_prefill_kernels()
     register_gguf_q4_k_selected_prefill_kernels()
+    register_gguf_q5_k_q8_1_selected_prefill_kernels()
     register_gguf_q4_k_q8_1_selected_prefill_kernels()
     register_gguf_q4_k_t16_selected_prefill_kernels()
     register_gguf_k_selected_prefill_kernels()
