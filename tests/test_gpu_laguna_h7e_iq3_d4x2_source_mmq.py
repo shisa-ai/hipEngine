@@ -63,8 +63,14 @@ _CANDIDATE_SYMBOL = "hipengine_" + _CANDIDATE_WRAPPER
 _CANDIDATE_KERNEL = "gguf_iq3_xxs_selected_mmq_i128_j128_k256_q8_1_ds4x2_kernel"
 _SOURCE_HIP = Path(source_mmq.__file__).with_suffix(".hip")
 _PRODUCER_HIP = Path(residual_d4.__file__).with_suffix(".hip")
+# Parent-source drift guard for the H7E d4x2 candidate, which forks this
+# kernel. Re-pinned 2026-09-09: the parent gained IQ4_NL (QTYPE 1) and IQ3_S
+# (QTYPE 2) arms in iq_source_expand_group32 plus the matching block_bytes
+# selection, so the dense route can serve those quants. The d4x2 candidate is
+# unaffected -- it forks the IQ3_XXS path, whose expansion and addressing are
+# unchanged -- and the rest of this file still passes against the new parent.
 _SOURCE_KERNEL_SHA256 = (
-    "94002fb0d682c9373235343ff67dd6c88f9a2ea353b89eda1e46aa7a2756d8ad"
+    "107ffab93db90851e60f0357a8abfe3920ced1abfea02771c51f0a18a5c3cb5b"
 )
 _SOURCE_LAUNCH_SHA256 = (
     "cb1d6c90474181d01cc89f9957d261444ce450171c8bea47de5acc06ffdfe0a7"
