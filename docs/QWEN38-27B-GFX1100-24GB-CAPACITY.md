@@ -3,6 +3,63 @@
 Status: measurement and optimization plan with scoped offline DMS INT8
 integration evidence. General production-serving qualification is not established.
 
+## Merged-lane layer_outer capacity — 2026-09-08 UTC
+
+The GPU0 speed campaign (90b9aa510) was merged into the capacity lane
+(eb3242a7a; the layer_outer prefill change itself committed as 22ded5522).
+The merge is memory-neutral at 139,264 tokens (whole-card peak moved 57,344
+bytes) with identical greedy tokens across the merge; single-session
+diagnostic decode timing at that context moved 469.09 -> 47.10 ms/step
+mean (performance_claim false; no throughput claim is made).
+
+The headroom ladder on the merged tree (same fresh-process/20 ms
+protocol, GPU1 idle baseline verified per run, source clean at eb3242a7a):
+
+| Prompt tokens / decode appends | Outcome | Sampled whole-card peak | Headroom |
+| --- | --- | ---: | ---: |
+| 139,264 / 8 | Pass | 22.740 GiB | 1,274.0 MiB |
+| 168,704 / 8 | Pass | 23.670 GiB | 322.0 MiB |
+| 172,288 / 8 | Pass | 23.937 GiB | 48.2 MiB |
+| 176,128 / 8 | OOM (HIP error 2, compact layer v_slot allocation in _ensure_layer; full rollback, baseline returned) | 23.969 GiB before failure | — |
+
+The largest observed passing prompt is now **172,288** (+133.6% over the
+73,728 campaign baseline, +50.2% over the pre-merge layer_outer boundary).
+176,128 is the smallest tested OOM; intermediate sizes are unqualified;
+172,800 was cancelled by operator choice before completion and is not
+evidence of either outcome. No maximum, quality, long-output or serving
+claim is made; DMS discards history, so fitting a longer prompt does not
+establish full-context quality.
+
+The marginal slope is not constant — the compact store grows sublinearly
+because the DMS compression ratio improves with context (1.889 observed at
+139,264): 45,346 B/token (73,728-139,264), 33,899 B/token (139,264-168,704),
+80,191 B/token (168,704-172,288, the near-full tail). Slope-based forecasts
+are estimates, not capacity claims.
+
+Tracked ledger at 139,264 (bytes): weights 16,401,463,296 + compact store
+2,501,602,448 + one-layer BF16 oracle 571,473,920 + two hidden planes
+2x1,428,684,800 + token buffer 1,116,160 = 22,333,025,424, plus an
+unaudited 1,660,667,912 residual (bulk prefill scratch, split-K partials,
+decision/collector planes) = tracked peak 23,993,693,336. The
+whole-card-minus-tracked delta (423,340,904 B) is recorded without
+attribution.
+
+Identified but not validated: the geometry's liveness policy requires
+>=4,096 scratch rows for single-plane hidden aliasing while the row-cap
+policy clamps scratch rows to 1,024, so the layer_outer route always
+allocates two full-capacity BF16 hidden planes. One plane is
+1,428,684,800 B (1.3306 GiB) at 139,520 positions and also removes
+10,240 B/token from the marginal slope. The threshold is geometry-wide,
+not DMS-scoped: any enablement must be route-scoped to layer_outer and
+verified with GPU-side evidence (greedy-token equality, per-layer
+hidden/logit equality, allocation ownership, partial/tail chunks,
+teardown) — CPU-codec equality alone cannot establish GPU hidden-buffer
+liveness. Linear-model ceiling band 215,000-240,000 tokens; estimate only.
+
+[`Merged-lane capacity evidence`](../benchmarks/results/2026-09-08-rx7900xtx-dms-int8-merged-lane-capacity.json)
+[`Point-check wrapper (byte-identical to the campaign's monitors' sha256)`](../scripts/xtx_dms_capacity_point_check.py)
+[`Artifact consolidator`](../scripts/publish_merged_lane_capacity.py)
+
 ## Post-memory-cut ladder — 2026-09-07 UTC
 
 Four GPU-side memory cuts landed on the C1 DMS INT8 route (private-C1
