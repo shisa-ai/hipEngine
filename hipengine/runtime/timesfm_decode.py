@@ -27,8 +27,31 @@ from hipengine.core.memory import (
 )
 from hipengine.core.rocblas import Rocblas
 from hipengine.kernels.cpu_reference.timesfm import revin, update_running_stats
+
+
+def _patch_running_stats(
+    patched_inputs: np.ndarray, patched_masks: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Vectorized per-patch running (mu, sigma) mirroring update_running_stats.
+
+    Returns (B, N) arrays of the running mean/std after each patch, computed
+    with cumulative sums instead of the per-patch Python loop.
+    """
+
+    is_legit = (~patched_masks).astype(np.float64)
+    values = patched_inputs.astype(np.float64) * is_legit
+    count = is_legit.sum(axis=-1)                      # (B, N)
+    total_n = np.cumsum(count, axis=1)                  # (B, N)
+    sum_v = np.cumsum(values.sum(axis=-1), axis=1)      # (B, N)
+    sum_v2 = np.cumsum((values * values).sum(axis=-1), axis=1)  # (B, N)
+    n_safe = np.where(total_n == 0, 1.0, total_n)
+    running_mu = sum_v / n_safe
+    running_var = sum_v2 / n_safe - running_mu**2
+    running_var = np.where(total_n == 0, 0.0, np.clip(running_var, 0.0, None))
+    return running_mu.astype(np.float32), np.sqrt(running_var).astype(np.float32)
 from hipengine.kernels.hip_gfx1100.timesfm.timesfm import (
     timesfm_add_f32,
+    timesfm_rope_norm_scatter_f16,
     timesfm_k_norm_scatter_f16,
     timesfm_mask_softmax_f16,
     timesfm_q_norm_transpose_f16,
@@ -296,10 +319,10 @@ class TimesFMGPUDecoder:
         for layer, w in enumerate(self._layers):
             timesfm_rmsnorm_f32(x.ptr, w["pre_attn"], bufs.normed.ptr, rows, h, eps, dtype=dt)
             self._gemm(bufs.normed.ptr, w["qkv"], bufs.qkv.ptr, rows, h, self.spec.qkv_size)
-            timesfm_rope_f32(bufs.qkv.ptr, bufs.pos.ptr, batch, n, heads, hd, patch_stride, 0, dtype=dt)
-            timesfm_rope_f32(bufs.qkv.ptr, bufs.pos.ptr, batch, n, heads, hd, patch_stride, h, dtype=dt)
             if dt == "f16":
                 # Batched-GEMM attention (head-major caches).
+                timesfm_rope_f32(bufs.qkv.ptr, bufs.pos.ptr, batch, n, heads, hd, patch_stride, 0, dtype=dt)
+                timesfm_rope_f32(bufs.qkv.ptr, bufs.pos.ptr, batch, n, heads, hd, patch_stride, h, dtype=dt)
                 timesfm_q_norm_transpose_f16(
                     bufs.qkv.ptr, w["q_ln"], w["perdim"], batch, n, heads, hd,
                     patch_stride, bufs.qt.ptr,
@@ -338,6 +361,8 @@ class TimesFMGPUDecoder:
                     bufs.attn_o.ptr, bufs.attn_out.ptr, batch, n, heads, hd
                 )
             else:
+                timesfm_rope_f32(bufs.qkv.ptr, bufs.pos.ptr, batch, n, heads, hd, patch_stride, 0, dtype=dt)
+                timesfm_rope_f32(bufs.qkv.ptr, bufs.pos.ptr, batch, n, heads, hd, patch_stride, h, dtype=dt)
                 timesfm_head_rmsnorm_f32(bufs.qkv.ptr, w["q_ln"], batch, n, heads, hd, patch_stride, 0, eps, dtype=dt)
                 timesfm_head_rmsnorm_f32(bufs.qkv.ptr, w["k_ln"], batch, n, heads, hd, patch_stride, h, eps, dtype=dt)
                 timesfm_head_perdim_scale_f32(bufs.qkv.ptr, w["perdim"], batch, n, heads, hd, patch_stride, 0, dtype=dt)
@@ -400,20 +425,16 @@ class TimesFMGPUDecoder:
         patched_inputs = inputs.reshape(batch, -1, p)
         patched_masks = masks.reshape(batch, -1, p)
 
-        n_host = np.zeros(batch, dtype=np.float32)
-        mu_host = np.zeros(batch, dtype=np.float32)
-        sigma_host = np.zeros(batch, dtype=np.float32)
-        patch_mu = []
-        patch_sigma = []
-        for i in range(num_input_patches):
-            n_host, mu_host, sigma_host = update_running_stats(
-                n_host, mu_host, sigma_host, patched_inputs[:, i], patched_masks[:, i]
-            )
-            patch_mu.append(mu_host.copy())
-            patch_sigma.append(sigma_host.copy())
-        last_n, last_mu, last_sigma = n_host, mu_host, sigma_host
-        context_mu = np.stack(patch_mu, axis=1)
-        context_sigma = np.stack(patch_sigma, axis=1)
+        context_mu, context_sigma = _patch_running_stats(patched_inputs, patched_masks)
+        is_legit = (~patched_masks).astype(np.float64)
+        total_legit = is_legit.sum(axis=(1, 2))
+        total_sum = (patched_inputs.astype(np.float64) * is_legit).sum(axis=(1, 2))
+        total_sum2 = ((patched_inputs.astype(np.float64) * is_legit) ** 2).sum(axis=(1, 2))
+        n_safe = np.where(total_legit == 0, 1.0, total_legit)
+        last_mu = (total_sum / n_safe).astype(np.float32)
+        last_var = np.where(total_legit == 0, 0.0, np.clip(total_sum2 / n_safe - last_mu.astype(np.float64) ** 2, 0.0, None))
+        last_sigma = np.sqrt(last_var).astype(np.float32)
+        last_n = total_legit.astype(np.float32)
 
         normed_inputs = revin(patched_inputs, context_mu, context_sigma, reverse=False)
         normed_inputs = np.where(patched_masks, 0.0, normed_inputs).astype(host_dt)
@@ -432,20 +453,29 @@ class TimesFMGPUDecoder:
         )
         next_index = next_index + num_input_patches
 
-        # D2H heads.
+        # D2H heads: full point backcast, but only the last quantile patch.
         point_dev = np.empty((batch * num_input_patches, spec.horizon_length * spec.quantile_heads), dtype=host_dt)
-        quant_dev = np.empty((batch * num_input_patches, spec.quantile_output_dims), dtype=host_dt)
         copy_device_to_host(host_array_ptr(point_dev), bufs.point_out)
-        copy_device_to_host(host_array_ptr(quant_dev), bufs.quantile_out)
-
         renormed_outputs = revin(
             point_dev.astype(np.float32).reshape(batch, num_input_patches, o, -1),
             context_mu, context_sigma, reverse=True,
         )
+        quant_last = np.empty((batch, spec.quantile_output_dims), dtype=host_dt)
+        qrow = spec.quantile_output_dims * itemsize
+        for b in range(batch):
+            copy_device_to_host(
+                host_array_ptr(quant_last[b : b + 1]),
+                _fake_buffer(
+                    bufs.quantile_out.ptr + (b * num_input_patches + num_input_patches - 1) * qrow,
+                    qrow,
+                ),
+            )
         renormed_quantile_spread = revin(
-            quant_dev.astype(np.float32).reshape(batch, num_input_patches, spec.quantile_horizon_length, -1),
-            context_mu, context_sigma, reverse=True,
-        )[:, -1, ...]
+            quant_last.astype(np.float32).reshape(
+                batch, spec.quantile_horizon_length, -1
+            ),
+            context_mu[:, -1], context_sigma[:, -1], reverse=True,
+        )
 
         ar_outputs = []
         last_renormed_output = renormed_outputs[:, -1, :, spec.decode_index]
