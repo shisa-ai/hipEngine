@@ -2007,16 +2007,26 @@ GGUF_T16_TARGET_VERIFIER_TRUE_ROWTILE_VARIANTS = {
 # strict per-row GEMV stays the registered fallback and the rows=1 decode owner;
 # this route is inert unless an execution owner binds its workspace.
 #
-# min_rows is a crossover, not a capability: the GEMV re-reads the weight column
-# once per 8-row slab, so the MMQ only wins once a prompt spans several slabs.
+# min_rows is a measured crossover, not a capability. The GEMV re-reads the
+# weight column once per 8-row slab so it grows with rows, while the MMQ pads to
+# 128 rows so a short prompt pays for work it does not use. Swept over the six
+# distinct IQ4_XS dense shapes in the published UD file
+# (scripts/gguf_iq_dense_mmq_crossover.py, 2026-09-08, gfx1151), min-of-5
+# interleaved, worst case over shapes:
+#
+#   rows=2  0.59x   rows=4  0.68x   rows=8  1.58x   rows=16  2.62x   rows=32  4.34x
+#
+# so 8 is the first row count where the MMQ wins on every measured shape; 4
+# still loses on attn_gate (6144x5120). Agreement held across all 96
+# (shape, rows) cells at max relative error 0.0025-0.0099.
 GGUF_IQ_DENSE_MMQ_PREFILL_POLICY = {
     "gguf_iq4_xs": {
-        "min_rows": 32,
+        "min_rows": 8,
         "max_rows": 131072,
         "variant": "dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out",
     },
     "gguf_iq3_xxs": {
-        "min_rows": 32,
+        "min_rows": 8,
         "max_rows": 131072,
         "variant": "dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out",
     },
