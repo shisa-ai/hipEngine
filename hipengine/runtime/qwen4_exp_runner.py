@@ -3249,11 +3249,16 @@ def _qwen4_exp_q51_iu8_exact_enabled() -> bool:
 def _qwen4_exp_q51_iu8_risk_multiplier() -> float:
     """Kahan-bound multiplier for the exact Q5_1 iu8 risk criterion.
 
-    Screened on actual weights: zero flip escapes at 4.0 with ~0.44% of
-    outputs queued; the default matches the Q4 gate/up route.
+    Screened on captured actual down-input activations across four cases
+    and five layers: flip escapes at 4.0 (up to 7 per chunk-layer) are gone
+    by 12.0; the default 16.0 keeps a ~1.3x margin over the measured floor
+    at ~1.3x operation-complete speedup. Under the production-correctness
+    contract a rare escape is bounded drift, not a contract violation;
+    16.0 is chosen so the route stays bit-identical to the strict parent
+    in practice, keeping every existing gate green.
     """
 
-    raw = os.environ.get("HIPENGINE_QWEN4_EXP_Q51_IU8_RISK_MULT", "4.0")
+    raw = os.environ.get("HIPENGINE_QWEN4_EXP_Q51_IU8_RISK_MULT", "16.0")
     try:
         value = float(raw)
     except ValueError:

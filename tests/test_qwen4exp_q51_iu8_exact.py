@@ -34,7 +34,7 @@ from tests.test_qwen4_exp_pf3_moe_schedules import (
 )
 
 PARENT = "qwen4_exp_q5_1_selected_grouped_prefill_pair2_row_publish_bf16_bf16_out"
-PRODUCTION_MULT = 4.0
+PRODUCTION_MULT = 16.0
 
 
 def hip_available() -> bool:

@@ -198,7 +198,7 @@ def main() -> None:
 
             run_parent()
             run_mmq()
-            run_iu8(4.0)
+            run_iu8(16.0)
             ref = _download(out_parent, (compact, out_features), np.uint16, runtime)
             cand = _download(out_mmq, (compact, out_features), np.uint16, runtime)
             iu8 = _download(out_iu8, (compact, out_features), np.uint16, runtime)
@@ -214,9 +214,9 @@ def main() -> None:
             for pair in range(a.pairs):
                 if pair % 2 == 0:
                     order = (("pair2", run_parent), ("mmq", run_mmq),
-                             ("iu8", lambda: run_iu8(4.0)))
+                             ("iu8", lambda: run_iu8(16.0)))
                 else:
-                    order = (("iu8", lambda: run_iu8(4.0)), ("mmq", run_mmq),
+                    order = (("iu8", lambda: run_iu8(16.0)), ("mmq", run_mmq),
                              ("pair2", run_parent))
                 for label, fn in order:
                     start = time.perf_counter()
