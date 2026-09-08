@@ -499,6 +499,10 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         # Exact iu8-risk+repair gate/up: bit-identical to the pair2 owner
         # (state gate + 72 exact trajectories); production-only binding.
         "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT": "1" if production else "0",
+        # Weight-exact iu8-WMMA Q5_1 down with risk+repair: bit-identical to
+        # the pair2 row-publish parent in practice at multiplier 16 (state
+        # gate + 72 exact trajectories); production-only binding.
+        "HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK": "1" if production else "0",
