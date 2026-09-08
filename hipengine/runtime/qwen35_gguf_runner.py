@@ -217,6 +217,11 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import 
     q6_dense_integer_mmq_session,
     register_gguf_q4_k_q8_1_selected_prefill_kernels,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_iq_source_mmq_prefill import (
+    build_gguf_iq_source_mmq_prefill,
+    iq_dense_mmq_nbytes,
+    iq_dense_mmq_session,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_t16_selected_prefill import (
     register_gguf_q4_k_t16_selected_prefill_kernels,
 )
@@ -14578,7 +14583,10 @@ class Qwen35GGUFResidentSession:
     _prefill_hidden_b: object | None = field(default=None, init=False)
     _bulk_prefill_scratch: object | None = field(default=None, init=False)
     _prefill_f16_staging_buf: object | None = field(default=None, init=False)
+    _iq_dense_mmq_buf: object | None = field(default=None, init=False)
     _q6_integer_mmq_library: object | None = field(default=None, init=False)
+    _iq_dense_mmq_library: object | None = field(default=None, init=False)
+    _iq_dense_mmq_producer_library: object | None = field(default=None, init=False)
     _q6_f16_rocblas_prefill_library: object | None = field(default=None, init=False)
     _q6_f16_rocblas: Rocblas | None = field(default=None, init=False)
     _q8_mmq_prefill_library: object | None = field(default=None, init=False)
@@ -18057,6 +18065,72 @@ class Qwen35GGUFResidentSession:
             workspace_nbytes=int(buffer.nbytes),
         )
 
+    def _ensure_iq_dense_mmq_buffer(self):
+        """Return this session's bounded dense raw-IQ integer-MMQ workspace.
+
+        Deliberately not the F16 staging allocation: the planar-Q6 integer route
+        already aliases that buffer and both contexts are entered together, so a
+        shared buffer would couple two independent owners for no saving worth
+        having (this one is ~10 MB against a 15 GB model).
+        """
+
+        if self.runner is None or self.runner.weights is None:
+            raise RuntimeError("GGUF resident session is closed")
+        config = self.runner.weights.config
+        max_in_features = max(
+            int(config.hidden_size),
+            int(config.feed_forward_length),
+            int(config.ssm_inner_size),
+        )
+        required_nbytes = iq_dense_mmq_nbytes(
+            int(PREFILL_F16_STAGING_MAX_ROWS), max_in_features
+        )
+        buffer = self._iq_dense_mmq_buf
+        if buffer is None:
+            runtime = self.runtime or get_hip_runtime()
+            buffer = malloc(required_nbytes, runtime=runtime)
+            self._iq_dense_mmq_buf = buffer
+            self._buffers = (*self._buffers, buffer)
+        if int(buffer.nbytes) < required_nbytes:
+            raise RuntimeError("resident dense IQ MMQ workspace is undersized")
+        return buffer
+
+    def _iq_dense_mmq_context(self):
+        """Bind the dense raw-IQ integer-MMQ prefill workspace (UD item 3).
+
+        Binding is what admits the route; the backend policy then decides which
+        quants and row counts take it. Without this context every raw-IQ
+        projection keeps the strict per-row GEMV owner.
+        """
+
+        if not bool(getattr(self, "use_iq_dense_mmq", True)):
+            return iq_dense_mmq_session(False)
+        policy = backend_package_capability(
+            self.backend, "GGUF_IQ_DENSE_MMQ_PREFILL_POLICY", {}
+        )
+        if not policy:
+            return iq_dense_mmq_session(False)
+        buffer = self._ensure_iq_dense_mmq_buffer()
+        if self._iq_dense_mmq_library is None:
+            self._iq_dense_mmq_library = build_gguf_iq_source_mmq_prefill(
+                load=True,
+                compiler_version=getattr(self, "compiler_version", None),
+                require_cached=bool(getattr(self, "require_cached_build", False)),
+            )
+        if self._iq_dense_mmq_producer_library is None:
+            self._iq_dense_mmq_producer_library = build_gguf_k_mmq_prefill(
+                load=True,
+                compiler_version=getattr(self, "compiler_version", None),
+                require_cached=bool(getattr(self, "require_cached_build", False)),
+            )
+        return iq_dense_mmq_session(
+            True,
+            workspace_ptr=int(buffer.ptr),
+            workspace_nbytes=int(buffer.nbytes),
+            library=self._iq_dense_mmq_library,
+            producer_library=self._iq_dense_mmq_producer_library,
+        )
+
     def _q6_integer_mmq_context(self):
         """Alias the resident staging allocation for the bounded B5 route."""
 
@@ -18314,6 +18388,7 @@ class Qwen35GGUFResidentSession:
                 ),
                 self._prefill_f16_staging_context(),
                 self._q6_integer_mmq_context(),
+                self._iq_dense_mmq_context(),
                 self._q8_mmq_prefill_context(),
                 self._q6_f16_rocblas_prefill_context(request_rows=len(token_ids)),
             ):
@@ -19299,6 +19374,7 @@ class Qwen35GGUFResidentSession:
                 request_count=len(job_list),
             ),
             self._q6_integer_mmq_context(),
+            self._iq_dense_mmq_context(),
         ):
             for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
                 layer_start = time.perf_counter()
@@ -21292,6 +21368,7 @@ class Qwen35GGUFResidentSession:
                 ),
                 self._prefill_f16_staging_context(),
                 self._q6_integer_mmq_context(),
+                self._iq_dense_mmq_context(),
             ):
                 return self._prefill_batch_native_impl(
                     prompt_token_ids,
@@ -27775,6 +27852,7 @@ class Qwen35GGUFResidentSession:
                 free(buffer, runtime=runtime)
         self._buffers = ()
         self._prefill_f16_staging_buf = None
+        self._iq_dense_mmq_buf = None
         self._q6_integer_mmq_library = None
         self._verify_linear_state_src_conv_table_buf = None
         self._verify_linear_state_src_recurrent_table_buf = None
@@ -27891,6 +27969,7 @@ class Qwen35GGUFResidentSession:
                 free(buffer, runtime=runtime)
         self._buffers = ()
         self._prefill_f16_staging_buf = None
+        self._iq_dense_mmq_buf = None
         self._q6_integer_mmq_library = None
         self._native_spec_selected_hidden_bf16 = None
         for buffer in reversed(self._linear_state_snapshot_backups):

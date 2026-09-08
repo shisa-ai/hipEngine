@@ -59,6 +59,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
     q6_dense_integer_mmq_workspace,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_iq_source_mmq_prefill import (
+    iq_dense_mmq_workspace,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
     register_gguf_k_t16_selected_prefill_kernels,
 )
@@ -3128,6 +3131,11 @@ def launch_gguf_linear(
             is None
             else id(q6_integer_workspace)
         ),
+        (
+            None
+            if (iq_mmq_workspace := iq_dense_mmq_workspace()) is None
+            else id(iq_mmq_workspace)
+        ),
         raw_weight_ptr,
         has_raw_weight_sidecar,
     )
@@ -3265,6 +3273,12 @@ def launch_gguf_linear(
             out_features=out_features,
             row_batch=raw_k_rowbatch,
             variant=raw_k_variant,
+        )
+        dispatch = _iq_dense_mmq_prefill_dispatch(
+            dispatch,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
         )
         dispatch = _q4_pack8_wmma_dispatch(
             dispatch,
@@ -7305,6 +7319,58 @@ def _native_batch_decode_dispatch(
         f"pack8_gemv_{variant[len('prefill_') :]}",
     )
     return GGUFLinearDispatch(rewritten_key, dispatch.abi)
+
+
+_IQ_DENSE_MMQ_K_ALIGN = 256
+_IQ_DENSE_MMQ_N_ALIGN = 128
+_IQ_DENSE_MMQ_OUTPUT_VARIANTS = frozenset({"prefill_bf16_bf16_out"})
+
+
+def _iq_dense_mmq_prefill_dispatch(
+    dispatch: GGUFLinearDispatch,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> GGUFLinearDispatch:
+    """Select the dense raw-IQ integer-MMQ prefill owner inside its workspace.
+
+    Inert unless an execution owner bound a workspace, the backend declares the
+    route for this quant, and the shape meets the kernel's K256/N128 alignment.
+    The strict per-row GEMV remains the registered owner everywhere else, so
+    rows=1 decode is untouched.
+    """
+
+    if iq_dense_mmq_workspace() is None or dispatch.abi != "raw":
+        return dispatch
+    if dispatch.key.variant not in _IQ_DENSE_MMQ_OUTPUT_VARIANTS:
+        return dispatch
+    if int(in_features) % _IQ_DENSE_MMQ_K_ALIGN or int(out_features) % _IQ_DENSE_MMQ_N_ALIGN:
+        return dispatch
+    policy = backend_package_capability(
+        dispatch.key.backend,
+        "GGUF_IQ_DENSE_MMQ_PREFILL_POLICY",
+        {},
+    )
+    if not isinstance(policy, Mapping):
+        return dispatch
+    entry = policy.get(dispatch.key.quant)
+    if not isinstance(entry, Mapping):
+        return dispatch
+    try:
+        admitted = int(entry["min_rows"]) <= int(rows) <= int(entry["max_rows"])
+        variant = str(entry["variant"])
+    except (KeyError, TypeError, ValueError):
+        return dispatch
+    if not admitted:
+        return dispatch
+    key = KernelKey(
+        dispatch.key.backend,
+        dispatch.key.layer,
+        dispatch.key.quant,
+        variant,
+    )
+    return GGUFLinearDispatch(key, dispatch.abi) if is_registered(key) else dispatch
 
 
 def _q6_integer_mmq_prefill_dispatch(
