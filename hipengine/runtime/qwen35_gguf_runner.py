@@ -15320,6 +15320,10 @@ class Qwen35GGUFResidentSession:
                 rows=prefill_rows,
                 nbytes=alloc_capacity * hidden_bytes,
                 runtime=runtime,
+                single_plane=(
+                    self.dms_prefill_mode == "layer_outer"
+                    and _layer_outer_hidden_alias_enabled()
+                ),
             )
             bulk_prefill_scratch = _GGUFFullAttentionPrefillScratch.allocate(
                 self.runner,
@@ -29272,11 +29276,31 @@ def _allocate_prefill_hidden_buffers(
     rows: int,
     nbytes: int,
     runtime: HipRuntime,
+    single_plane: bool = False,
 ) -> tuple[DeviceBuffer, DeviceBuffer]:
     hidden_a = malloc(int(nbytes), runtime=runtime)
-    if _gguf_prefill_hidden_buffer_count(runner, rows=int(rows)) == 1:
+    if single_plane or _gguf_prefill_hidden_buffer_count(runner, rows=int(rows)) == 1:
         return hidden_a, hidden_a
     return hidden_a, malloc(int(nbytes), runtime=runtime)
+
+
+_LAYER_OUTER_HIDDEN_ALIAS_ENV = "HIPENGINE_LAYER_OUTER_HIDDEN_ALIAS"
+
+
+def _layer_outer_hidden_alias_enabled() -> bool:
+    """Route-scoped single-plane hidden stream for layer_outer DMS prefill.
+
+    The geometry-wide liveness policy qualifies hidden aliasing at >=4096
+    scratch rows, but the row-cap policy clamps this geometry's layer_outer
+    chunks to 1024 rows, so the route always allocated two full-capacity
+    BF16 hidden planes. This gate aliases the planes for the layer_outer
+    route only; ordinary (dense) prefill keeps the geometry-wide threshold
+    untouched. Off by default pending the GPU-side aliasing verification
+    (greedy-token equality, per-layer hidden equality, ownership, teardown);
+    the qualification must not lean on CPU-codec equality alone.
+    """
+
+    return _env_flag(_LAYER_OUTER_HIDDEN_ALIAS_ENV, False)
 
 
 def _gguf_verify_hidden_scratch_row_start(
