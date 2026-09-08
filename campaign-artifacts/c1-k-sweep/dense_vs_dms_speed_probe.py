@@ -15,6 +15,12 @@ Arms:
 
 Diagnostics, not a retained benchmark: single session, one prompt per arm,
 no correctness gate beyond finiteness. Same-host same-workload A/B only.
+
+Fails closed: any nonfinite decode logit aborts the arm (nonzero exit),
+the full greedy trajectory and its sha256 are recorded for equality
+checks, the decode seeding is recorded explicitly (the last prompt token
+is re-fed rather than the prefill prediction — constant across arms),
+and the orchestrator exits nonzero when any arm fails.
 """
 from __future__ import annotations
 
@@ -50,6 +56,53 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1 << 20), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _check_finite(arm: str, finite_flags: list[bool]) -> None:
+    """Fail the arm closed on any nonfinite decode logit."""
+
+    bad = [index for index, ok in enumerate(finite_flags) if not ok]
+    if bad:
+        raise RuntimeError(
+            f"arm {arm!r} produced nonfinite logits at decode steps {bad}"
+        )
+
+
+def _arm_row(
+    arm: str,
+    *,
+    loaded_at: float,
+    prompt: list[int],
+    prefill_seconds: float,
+    step_walls: list[float],
+    tokens: list[int],
+    observability,
+) -> dict:
+    step_arr = np.asarray(step_walls)
+    token_ids = np.asarray(tokens, dtype=np.int64)
+    return {
+        "arm": arm,
+        "load_seconds": round(loaded_at, 3),
+        "prompt_tokens": len(prompt),
+        "decode_steps": len(tokens),
+        "prefill_seconds": round(prefill_seconds, 4),
+        "prefill_tok_s": round(len(prompt) / prefill_seconds, 1),
+        "decode_step_ms_mean": round(float(step_arr.mean()) * 1000, 2),
+        "decode_step_ms_median": round(float(np.median(step_arr)) * 1000, 2),
+        "decode_tok_s": round(len(tokens) / float(step_arr.sum()), 2),
+        "finite_logits_all_steps": True,
+        "first_output_tokens": tokens[:4],
+        "output_tokens": tokens,
+        "output_tokens_sha256": hashlib.sha256(token_ids.tobytes()).hexdigest(),
+        "decode_seed": {
+            "kind": "last_prompt_token",
+            "token": int(prompt[-1]),
+            "note": "decode re-feeds the final prompt token instead of the "
+            "prefill prediction; constant across arms, so A/B comparisons "
+            "stand but absolute continuations differ from serving",
+        },
+        "dms_observability": observability,
+    }
 
 
 def run_arm(
@@ -113,14 +166,15 @@ def run_arm(
         current = int(prompt[-1])
         step_walls: list[float] = []
         tokens: list[int] = []
-        finite = True
+        finite_flags: list[bool] = []
         for _ in range(steps):
             step_started = time.perf_counter()
             result = session.step(current, return_logits=True)
             step_walls.append(time.perf_counter() - step_started)
             current = int(result.token_id)
             tokens.append(current)
-            finite = finite and bool(np.isfinite(result.logits).all())
+            finite_flags.append(bool(np.isfinite(result.logits).all()))
+        _check_finite(arm, finite_flags)
 
         observability = None
         backend_obj = getattr(session, "_dms_backend", None)
@@ -129,21 +183,15 @@ def run_arm(
     finally:
         session.__exit__(None, None, None)
 
-    step_arr = np.asarray(step_walls)
-    return {
-        "arm": arm,
-        "load_seconds": round(loaded_at, 3),
-        "prompt_tokens": len(prompt),
-        "decode_steps": steps,
-        "prefill_seconds": round(prefill_seconds, 4),
-        "prefill_tok_s": round(len(prompt) / prefill_seconds, 1),
-        "decode_step_ms_mean": round(float(step_arr.mean()) * 1000, 2),
-        "decode_step_ms_median": round(float(np.median(step_arr)) * 1000, 2),
-        "decode_tok_s": round(steps / float(step_arr.sum()), 2),
-        "finite_logits_all_steps": finite,
-        "first_output_tokens": tokens[:4],
-        "dms_observability": observability,
-    }
+    return _arm_row(
+        arm,
+        loaded_at=loaded_at,
+        prompt=prompt,
+        prefill_seconds=prefill_seconds,
+        step_walls=step_walls,
+        tokens=tokens,
+        observability=observability,
+    )
 
 
 def main() -> int:
@@ -200,6 +248,7 @@ def main() -> int:
     # the same reason.
     arms = [arm.strip() for arm in args.arms.split(",") if arm.strip()]
     results = []
+    failed_arms: list[str] = []
     for arm in arms:
         part = args.output.with_suffix(f".{arm}.part.json")
         print(f"[ab] arm={arm} starting (fresh subprocess)", flush=True)
@@ -219,6 +268,7 @@ def main() -> int:
         )
         if completed.returncode != 0:
             print(f"[ab] arm={arm} FAILED rc={completed.returncode}", flush=True)
+            failed_arms.append(arm)
             results.append({"arm": arm, "status": "failed", "rc": completed.returncode})
             continue
         results.append(json.loads(part.read_text(encoding="utf-8")))
@@ -226,7 +276,7 @@ def main() -> int:
     out = {
         "schema_version": 1,
         "kind": "dense_vs_dms_speed_probe",
-        "status": "diagnostic_not_a_benchmark",
+        "status": ("arm_failed" if failed_arms else "diagnostic_not_a_benchmark"),
         "host": socket_host(),
         "backend": args.backend,
         "gpu_note": "run with HIP_VISIBLE_DEVICES=0 (W7900) for the GPU0 lane",
@@ -242,6 +292,9 @@ def main() -> int:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
     print(f"[ab] wrote {args.output}", flush=True)
+    if failed_arms:
+        print(f"[ab] FAILED arms: {', '.join(failed_arms)}", flush=True)
+        return 1
     return 0
 
 
