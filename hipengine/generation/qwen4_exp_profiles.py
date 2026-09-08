@@ -503,6 +503,12 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         # the pair2 row-publish parent in practice at multiplier 16 (state
         # gate + 72 exact trajectories); production-only binding.
         "HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT": "1" if production else "0",
+        # iu8-WMMA GR up (T1, three-plane fp32 staging): teacher-forced
+        # logits KL <= 7.4e-8 versus the incumbent with 100% top-1 and
+        # 10-100x argmax margins, bit-deterministic; full-suite A/B
+        # +9.2% prefill geo-mean with all 12 cases winning; production-only
+        # binding, exact fused parent stays the strict fallback.
+        "HIPENGINE_QWEN4_EXP_GR_IU8": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK": "1" if production else "0",
