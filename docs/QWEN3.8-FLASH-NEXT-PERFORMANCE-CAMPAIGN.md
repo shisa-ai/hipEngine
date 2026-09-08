@@ -313,10 +313,16 @@ promotion decision.
   production route <= 7.4e-8 across all 9 fixture cases (bar: 1e-3; the
   rejected Q5_K bundle sat at 1.2e-3), top-1 agreement 100% everywhere
   with 10-100x argmax margins, both routes bit-deterministic. Default-off
-  route `HIPENGINE_QWEN4_EXP_GR_IU8` at 7c29da886; 5 focused tests pass;
-  full-suite same-residency A/B running. The projected p4096 saving is
-  ~2.5 s device (vs Q5_1's measured ~0.24 s in situ) - the evidence now
-  supports GR ahead of the earlier ordering.
+  route `HIPENGINE_QWEN4_EXP_GR_IU8`; 6 focused tests pass. Full-suite
+  same-residency A/B (72 samples): prefill geo-mean **+9.2%**, every case
+  winning (1.077-1.103), decode neutral; cross-mode digests differ on
+  10/12 cases (expected T1 free-running decode divergence) with the
+  teacher-forced logits packet as the declared production numerical
+  acceptance. **Promoted to production** at e6d32d866 (first T1
+  production-numerical prefill promotion; the exact fused parent stays
+  the strict fallback). The GR down leg (10240->320 Q8_0, 3.76 s on the
+  F32 coltile) is wired default-off with the same kernel and is being
+  qualified next.
 - [ ] **R6 - Select the remaining decode owner from R2.** Split MoE into
   gate/up, down, combine and graph/API costs; examine linear and GR in the
   same window. Target the largest measured recoverable cost. Any host or
