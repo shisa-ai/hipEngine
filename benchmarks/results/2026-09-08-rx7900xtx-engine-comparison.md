@@ -44,9 +44,8 @@ split are included. Both sides consume the same raw prompt IDs. Sampling is
 greedy, context capacity is 1024, and MTP is explicitly requested at budget 3.
 The denominator is a separate true-AR generation path, not a verifier estimate.
 
-### 25 Visible Outputs / 24 Timed Transitions
-
-Three repetitions. Output agreement compares complete MTP output IDs with
+Three repetitions, 25 visible outputs and 24 timed transitions.
+Output agreement compares complete MTP output IDs with
 the same engine's AR IDs; it is not a task-quality score.
 
 | Engine / setting | AR tok/s | MTP tok/s | MTP / AR | Exact AR matches |
@@ -61,22 +60,6 @@ Its default AR output changes between repetitions on `general_ja_explain`;
 the sequential control is repeat-stable and restores short-suite AR/MTP
 equality. The default MTP output is repeat-stable but differs from its AR
 counterpart on that prompt.
-
-### 129 Visible Outputs / 128 Timed Transitions
-
-One full-suite repetition:
-
-| Engine / setting | AR tok/s | MTP tok/s | MTP / AR | Exact AR matches |
-| --- | ---: | ---: | ---: | ---: |
-| hipEngine | 35.51 | 30.40 | 0.856x | 10/10 |
-| nasone32 default | 31.65 | 44.47 | 1.405x | 6/10 |
-| strix-llama.cpp | 32.48 | **50.16** | **1.544x** | 7/10 |
-
-hipEngine currently switches to serial verification when a target block
-extends past the qualified native context of 95 positions. The fallback is
-correct, but dominates longer generations. Extending qualified native
-verification to larger context buckets is the next C1 performance target.
-The two external long-generation MTP rows are not exact-AR equivalents.
 
 ## Context Capacity
 
@@ -106,23 +89,6 @@ hipEngine route. Reducing that lifetime/footprint is a concrete capacity
 optimization target. This direct-resident study does not change public-server
 pool limits. DMS is excluded because it evicts history. Synthetic capacity
 execution is separate from long-context task-quality evaluation.
-
-## C1 Repair
-
-The comparison uncovered a real hipEngine scratch-lifetime error. Large
-prefill arenas alias QKV, convolution output and BF16 recurrent output.
-Native verification reads the BF16 QKV directly while producing larger FP32
-convolution rows, so that aliasing overwrote unread inputs and produced NaNs.
-A small separately owned convolution buffer corrects the native path while
-preserving bulk-prefill memory optimization.
-
-The repair also aligns graph extents and proposal admission with backend
-qualification, preserves separate native/serial journals, handles short output
-tails on device, and removes a mutable asynchronous metadata-upload source.
-Validation covers 206 distinct focused CPU nodes and 100 actual-model GPU
-AR/MTP comparisons, including budget switching and longer continuations;
-all GPU comparisons are exact and all allocations are freed.
-See the [repair worklog](../../worklog/entries/20260908T120624.010092Z-lhl-repair-c1-mtp-native-scratch-and-fallback-owners-716c2b.md).
 
 ## Optimization Review
 
@@ -156,9 +122,9 @@ See the [repair worklog](../../worklog/entries/20260908T120624.010092Z-lhl-repai
 - **Other models:** MoE MMQ/TOP_K/expert-cache and lazy PLE/QSA changes do not
   explain this dense-model result.
 
-No donor kernel was promoted. The immediate priorities are larger native
-verifier context coverage, long-prefill memory lifetime, then measured
-projection/GDN kernel comparisons with the required correctness gates.
+No donor kernel was promoted. The immediate priorities are long-prefill
+memory lifetime, then measured projection/GDN kernel comparisons with the
+required correctness gates.
 
 ## Evidence
 

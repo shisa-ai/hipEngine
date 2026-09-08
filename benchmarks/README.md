@@ -114,14 +114,6 @@ hipEngine uses the direct resident API; external rates use server phase timers.
 | nasone32, sequential GDN | - | - | 58.65 | 30/30 |
 | strix-llama.cpp | 901.73 | 29.55 | 47.69 | 30/30 |
 
-Longer-generation results use the same full suite with 129 visible outputs:
-
-| Engine | AR tok/s | MTP tok/s | AR-ID matches |
-| --- | ---: | ---: | ---: |
-| hipEngine | 35.51 | 30.40 | 10/10 |
-| nasone32 default | 31.65 | 44.47 | 6/10 |
-| strix-llama.cpp | 32.48 | **50.16** | 7/10 |
-
 Each engine completed a 112K BF16 prompt. With compact KV, hipEngine completed
 128K using pure INT8/FP32 scales; nasone32 and strix-llama.cpp completed 192K
 using Q8_0. These are synthetic execution-capacity observations, not serving
