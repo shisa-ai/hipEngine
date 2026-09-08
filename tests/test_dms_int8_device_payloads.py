@@ -116,3 +116,83 @@ def test_int8_pack_append_attention_and_restore(tokens, dim, heads, q_heads, mon
                 np.testing.assert_array_equal(getattr(restored, name)[sl], getattr(view, name)[sl])
     finally:
         store.close()
+
+
+@pytest.mark.parametrize("tokens,dim,heads,q_heads", [(1025, 256, 4, 24)])
+def test_device_pointer_pack_route_skips_host_pack_staging(tokens, dim, heads, q_heads):
+    """Review target 6a: pack staging is lazy — the device-pointer route
+    (pack_layer_device / streaming pack) never stages through host memory,
+    so constructing the store must not allocate the max_pack_rows trio."""
+    from hipengine import kvcache
+    retrofit = SimpleNamespace(num_layers=1, num_kv_heads=heads,
+                              num_q_heads=q_heads, head_dim=dim, window_size=8192)
+    slots = (tokens + 8) * heads + 11
+    small = DMSDevicePayloadStore(retrofit=retrofit, slots_per_layer=slots,
+                                  max_pack_rows=256, codec="int8_per_token_head")
+    large = DMSDevicePayloadStore(retrofit=retrofit, slots_per_layer=slots,
+                                  max_pack_rows=tokens, codec="int8_per_token_head")
+    try:
+        # Same fixed staging regardless of max_pack_rows before any host pack.
+        assert small.resident_bytes == large.resident_bytes
+        fixed = small.resident_bytes
+        # Touching a layer allocates its payload planes but not the trio.
+        small._ensure_layer(0)
+        large._ensure_layer(0)
+        assert small.resident_bytes == large.resident_bytes
+        assert small.resident_bytes > fixed
+        # First host-composition pack allocates the trio at max_pack_rows.
+        k = _bf16_bits(np.ones((3, heads, dim), dtype=np.float32))
+        v = _bf16_bits(np.ones((3, heads, dim), dtype=np.float32))
+        evict = np.zeros((3, heads), dtype=np.uint8)
+        base = np.array([h * (tokens + 7) for h in range(heads)], dtype=np.int32)
+        cap = np.full(heads, tokens + 3, dtype=np.int32)
+        small.pack_layer(0, k, v, evict, base, cap)
+        staging = 256 * (2 * heads * dim * 2 + heads)
+        assert small.resident_bytes - (large.resident_bytes) == staging
+    finally:
+        small.close()
+        large.close()
+    assert small.resident_bytes == 0 and large.resident_bytes == 0
+
+
+@pytest.mark.parametrize("tokens,dim,heads,q_heads", [(1025, 256, 4, 24)])
+def test_midpack_allocation_failure_rolls_back_and_store_is_reusable(
+    tokens, dim, heads, q_heads, monkeypatch
+):
+    """Review target 6c: a failed _ensure_layer leaves the layer fully
+    unallocated (registry returns to its pre-attempt level) and the store
+    remains usable afterwards; close drains every tracked byte."""
+    from hipengine.kvcache import dms_device as dms_device_module
+
+    retrofit = SimpleNamespace(num_layers=2, num_kv_heads=heads,
+                              num_q_heads=q_heads, head_dim=dim, window_size=8192)
+    slots = (tokens + 8) * heads + 11
+    store = DMSDevicePayloadStore(retrofit=retrofit, slots_per_layer=slots,
+                                  max_pack_rows=256, codec="int8_per_token_head")
+    real_malloc = dms_device_module.malloc
+    state = {"calls": 0}
+
+    def failing_malloc(nbytes, runtime=None):
+        state["calls"] += 1
+        if state["calls"] > 1:
+            raise MemoryError("simulated mid-pack OOM")
+        return real_malloc(nbytes, runtime=runtime)
+
+    try:
+        store._ensure_layer(0)
+        baseline = store.resident_bytes
+        assert store._k_slot[0] is not None
+        monkeypatch.setattr(dms_device_module, "malloc", failing_malloc)
+        with pytest.raises(MemoryError):
+            store._ensure_layer(1)
+        monkeypatch.undo()
+        # Rollback: layer 1 fully unallocated, registry unchanged.
+        assert store._k_slot[1] is None and store._v_slot[1] is None
+        assert store.resident_bytes == baseline
+        # Reusable: the retry after the failure succeeds.
+        store._ensure_layer(1)
+        assert store._k_slot[1] is not None
+        assert store.resident_bytes > baseline
+    finally:
+        store.close()
+    assert store.resident_bytes == 0

@@ -14405,17 +14405,28 @@ class _ExternalDMSDevicePrefillCollector:
             source.config.num_layers * self.token_count * self.num_kv_heads
         )
         self._decisions = malloc(decision_bytes, runtime=runtime)
-        self._logits = (
-            malloc(
-                source.config.num_layers
-                * self.token_count
-                * self.num_kv_heads
-                * DType.FP32.itemsize,
+        # Logits sizing (review target 6b): the exact-budget selection reads
+        # every layer's logits at finalize (its eviction budget is global
+        # across layers), so it needs the full [layers, tokens, heads] plane.
+        # Other sidecar selections never read logits back (write-only kernel
+        # scratch) and captures are stream-ordered per layer, so one layer's
+        # worth is shared across layers.
+        self._exact_budget = (
+            str(getattr(source.config, "prefill_selection_mode", ""))
+            == "exact_budget"
+        )
+        if self.decision_mode == "sidecar":
+            logits_rows = (
+                self.token_count * source.config.num_layers
+                if self._exact_budget
+                else self.token_count
+            )
+            self._logits = malloc(
+                logits_rows * self.num_kv_heads * DType.FP32.itemsize,
                 runtime=runtime,
             )
-            if self.decision_mode == "sidecar"
-            else None
-        )
+        else:
+            self._logits = None
         if self.decision_mode == "no_evict":
             runtime.memset(self._decisions.ptr, 0, decision_bytes)
         self._next = np.zeros(source.config.num_layers, dtype=np.int32)
@@ -14441,7 +14452,11 @@ class _ExternalDMSDevicePrefillCollector:
         if self.decision_mode == "sidecar":
             if self._projector is None or self._logits is None:
                 raise RuntimeError("external DMS sidecar collector is incomplete")
-            offset = (layer * self.token_count + int(start)) * self.num_kv_heads
+            offset = (
+                (layer * self.token_count + int(start)) * self.num_kv_heads
+                if self._exact_budget
+                else int(start) * self.num_kv_heads
+            )
             self._projector.project(
                 hidden_ptr=int(hidden_ptr),
                 compact_layer_index=layer,

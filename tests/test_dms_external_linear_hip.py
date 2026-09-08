@@ -286,3 +286,34 @@ def test_external_linear_device_projector_matches_bf16_cpu_decisions_production_
 
     np.testing.assert_allclose(logits, expected_logits, rtol=3e-4, atol=3e-4)
     np.testing.assert_array_equal(decisions.astype(np.bool_), expected_decisions)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
+def test_collector_logits_sized_by_selection_mode() -> None:
+    """Review target 6b: exact-budget selections read every layer's logits at
+    finalize (global cross-layer budget) so they need the full plane; other
+    sidecar selections never read logits back and share one layer's worth."""
+    from hipengine.core.hip import get_hip_runtime
+
+    tokens = 33
+    exact = _ExternalDMSDevicePrefillCollector(
+        _source(prefill_selection_mode="exact_budget"),
+        token_count=tokens,
+        backend="hip_gfx1151",
+        runtime=get_hip_runtime(),
+    )
+    threshold = _ExternalDMSDevicePrefillCollector(
+        _source(prefill_selection_mode="threshold"),
+        token_count=tokens,
+        backend="hip_gfx1151",
+        runtime=get_hip_runtime(),
+    )
+    try:
+        heads = exact.num_kv_heads
+        per_layer = tokens * heads * 4
+        assert exact._logits is not None and threshold._logits is not None
+        assert exact._logits.nbytes == per_layer * exact.source.config.num_layers
+        assert threshold._logits.nbytes == per_layer
+    finally:
+        exact.close()
+        threshold.close()

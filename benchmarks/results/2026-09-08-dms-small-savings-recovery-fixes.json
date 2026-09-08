@@ -1,0 +1,34 @@
+{
+ "date": "2026-09-08",
+ "date_timezone": "UTC",
+ "kind": "dms_small_savings_and_recovery_fixes",
+ "status": "completed",
+ "review_target": "6a/6b/6c",
+ "changes": [
+  {
+   "item": "6a",
+   "change": "DMSDevicePayloadStore host-pack staging trio (pack_k/pack_v/pack_evict) is now lazy: allocated on first host-composition pack_layer call, sized at the constructor's max_pack_rows (the copy-size guard is preserved). The device-pointer path (pack_layer_device / device_streaming_pack_layer, used by the layer_outer DMS route) never stages through host memory and now allocates none of it.",
+   "saving_bytes": 16793600,
+   "saving_note": "at the layer_outer route's max_pack_rows=min(tokens,4096): 4096 x (2x4x256x2 + 4) = 16.01 MiB of device memory no longer allocated on the device-pointer route",
+   "test": "tests/test_dms_int8_device_payloads.py::test_device_pointer_pack_route_skips_host_pack_staging (RED pre-fix: resident_bytes differed by max_pack_rows at construction; GREEN post-fix; tracked bytes zero after close)"
+  },
+  {
+   "item": "6b",
+   "change": "_ExternalDMSDevicePrefillCollector logits plane is sized by selection mode: exact_budget keeps the full [layers, tokens, heads] FP32 plane (finalize runs the cross-layer global budget over it); every other sidecar selection gets one layer's worth shared across layers (logits are write-only kernel scratch there; captures are stream-ordered per layer). Decisions remain full-size in all modes.",
+   "saving_bytes_exact_budget_route": 0,
+   "saving_bytes_threshold_route": 62914560,
+   "saving_note": "at 256K tokens x 16 layers x 4 heads x FP32: exact_budget requires the full 64 MiB (kept); threshold routes drop from 64 MiB to 4 MiB (60 MiB saved). The audit's route (exact_budget) sees no change - the plane is genuinely read by the global eviction budget.",
+   "test": "tests/test_dms_external_linear_hip.py::test_collector_logits_sized_by_selection_mode (RED pre-fix: threshold-mode logits were full-size; GREEN post-fix)"
+  },
+  {
+   "item": "6c",
+   "change": "No new runtime code: the mid-pack teardown landed with the layerwise campaign (_ensure_layer per-buffer rollback; the layer_outer pack pass closes the partially built backend on BaseException). This unit adds the missing proof: a simulated mid-pack allocation failure rolls the partial layer back to zero, the registry returns to its pre-attempt level, the store remains usable (retry succeeds), and close drains every tracked byte.",
+   "test": "tests/test_dms_int8_device_payloads.py::test_midpack_allocation_failure_rolls_back_and_store_is_reusable (simulated MemoryError on the second per-layer allocation; rollback + reuse + zero-after-close asserted)"
+  }
+ ],
+ "measurement_note": "Device-side spot measurements ran on GPU0 (W7900, same gfx1100 arch and kernel package) because GPU1 was occupied by an external benchmark during this unit; the quantities are allocator-visible bytes asserted in the tests (arch-independent within gfx1100).",
+ "validation": {
+  "suites": "tests/test_dms_int8_device_payloads.py + tests/test_dms_external_linear_hip.py (13 passed); layerwise/streaming/append/decode/pipeline/codec/kvcache/backend-integration bundles (51 passed); capture/layer_outer/external-runtime/wiring bundles (27 passed, 1 skipped)",
+  "tracked_bytes_zero_after_close_or_exception": true
+ }
+}
