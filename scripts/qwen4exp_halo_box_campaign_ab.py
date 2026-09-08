@@ -548,6 +548,27 @@ def main(argv: Sequence[str] | None = None) -> int:
     _write_json(args.output, artifact)
 
     generator = resolved.construct_generator(factory)
+    if args.route_package == "q8-iu8-dense":
+        # Registered after construction: profile construction re-registers
+        # the base families and would otherwise clobber the counting hook.
+        from hipengine.kernels.registry import KernelKey, register, resolve
+        row4_key = KernelKey("hip_gfx1100", "linear", "gguf_q8_0",
+                             "iu8_wmma_prefill_f32_f32_out")
+        original_row4 = resolve(
+            backend=row4_key.backend, layer=row4_key.layer,
+            quant=row4_key.quant, variant=row4_key.variant)
+
+        def counted_row4(*call_args, **call_kwargs):
+            row4_calls[0] += 1
+            return original_row4(*call_args, **call_kwargs)
+
+        register(row4_key, counted_row4, replace=True)
+        artifact["arms"] = {
+            "before": {"q8_dense":
+                "coltile8_rowbatch4_wave_scale_f32_f32_out (exact)"},
+            "after": {"q8_dense":
+                "iu8_wmma_prefill_f32_f32_out (T1 3-plane)"},
+        }
     observed_chunks = []
     original_chunk = None
     if args.route_package == "chunk1024":
@@ -570,25 +591,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     register_mapped_calls = [0]
     original_row4 = None
     gr_iu8_module = None
-    if args.route_package == "q8-iu8-dense":
-        from hipengine.kernels.registry import KernelKey, register, resolve
-        row4_key = KernelKey("hip_gfx1100", "linear", "gguf_q8_0",
-                             "iu8_wmma_prefill_f32_f32_out")
-        original_row4 = resolve(
-            backend=row4_key.backend, layer=row4_key.layer,
-            quant=row4_key.quant, variant=row4_key.variant)
-
-        def counted_row4(*call_args, **call_kwargs):
-            row4_calls[0] += 1
-            return original_row4(*call_args, **call_kwargs)
-
-        register(row4_key, counted_row4, replace=True)
-        artifact["arms"] = {
-            "before": {"q8_dense":
-                "coltile8_rowbatch4_wave_scale_f32_f32_out (exact)"},
-            "after": {"q8_dense":
-                "iu8_wmma_prefill_f32_f32_out (T1 3-plane)"},
-        }
     if args.route_package in {"gr-iu8", "gr-iu8-down"}:
         import hipengine.runtime.qwen4_exp_runner as _gr_runner_module
         gr_iu8_module = _gr_runner_module
