@@ -293,8 +293,13 @@ class TimesFMGPUDecoder:
         cache_size: int,
         num_masked_host: np.ndarray,
         next_index_host: np.ndarray,
+        skip_quantile: bool = False,
     ) -> None:
-        """Run the packed tokenizer + 20 layers + both heads on device."""
+        """Run the packed tokenizer + 20 layers + output heads on device.
+
+        With ``skip_quantile`` the quantile ResidualBlock head is omitted
+        (AR feedback only consumes the point head).
+        """
 
         h = self.spec.hidden_size
         heads = self.spec.num_attention_heads
@@ -400,11 +405,45 @@ class TimesFMGPUDecoder:
         self._gemm(x.ptr, self._w["point_res"], bufs.point_out.ptr, rows, h, h)
         timesfm_add_f32(bufs.hidden2.ptr, bufs.point_out.ptr, bufs.point_out.ptr, rows * h, dtype=dt)
 
-        self._gemm(x.ptr, self._w["q_hidden"], bufs.hidden.ptr, rows, h, h)
-        timesfm_swish_f32(bufs.hidden.ptr, rows * h, dtype=dt)
-        self._gemm(bufs.hidden.ptr, self._w["q_out"], bufs.quant_scratch.ptr, rows, h, self.spec.quantile_output_dims)
-        self._gemm(x.ptr, self._w["q_res"], bufs.quantile_out.ptr, rows, h, self.spec.quantile_output_dims)
-        timesfm_add_f32(bufs.quant_scratch.ptr, bufs.quantile_out.ptr, bufs.quantile_out.ptr, rows * self.spec.quantile_output_dims, dtype=dt)
+        if not skip_quantile:
+            qdim = self.spec.quantile_output_dims
+            if dt == "f16":
+                # Only the last patch's quantiles are consumed downstream;
+                # run the quantile head on the B strided last-patch rows via
+                # single-column batched GEMMs instead of all `rows` rows.
+                x_last = x.ptr + (n - 1) * h * 2  # byte offset for the pointer
+                row_stride = n * h  # rocBLAS strides are in elements
+                rb = self.rocblas.gemm_ex_strided_batched_f16_f32acc
+                # hidden = swish(W_qh @ x_last)
+                rb(
+                    self._w["q_hidden"], x_last, bufs.hidden.ptr,
+                    m=h, n=1, k=h, lda=h, ldb=h, ldc=h,
+                    stride_a=0, stride_b=row_stride, stride_c=h,
+                    batch=batch, trans_a=True, trans_b=False,
+                )
+                timesfm_swish_f32(bufs.hidden.ptr, batch * h, dtype=dt)
+                rb(
+                    self._w["q_out"], bufs.hidden.ptr, bufs.quant_scratch.ptr,
+                    m=qdim, n=1, k=h, lda=h, ldb=h, ldc=qdim,
+                    stride_a=0, stride_b=h, stride_c=qdim,
+                    batch=batch, trans_a=True, trans_b=False,
+                )
+                rb(
+                    self._w["q_res"], x_last, bufs.quantile_out.ptr,
+                    m=qdim, n=1, k=h, lda=h, ldb=h, ldc=qdim,
+                    stride_a=0, stride_b=row_stride, stride_c=qdim,
+                    batch=batch, trans_a=True, trans_b=False,
+                )
+                timesfm_add_f32(
+                    bufs.quant_scratch.ptr, bufs.quantile_out.ptr,
+                    bufs.quantile_out.ptr, batch * qdim, dtype=dt,
+                )
+            else:
+                self._gemm(x.ptr, self._w["q_hidden"], bufs.hidden.ptr, rows, h, h)
+                timesfm_swish_f32(bufs.hidden.ptr, rows * h, dtype=dt)
+                self._gemm(bufs.hidden.ptr, self._w["q_out"], bufs.quant_scratch.ptr, rows, h, qdim)
+                self._gemm(x.ptr, self._w["q_res"], bufs.quantile_out.ptr, rows, h, qdim)
+                timesfm_add_f32(bufs.quant_scratch.ptr, bufs.quantile_out.ptr, bufs.quantile_out.ptr, rows * qdim, dtype=dt)
 
     # -- decode --------------------------------------------------------------
 
@@ -469,14 +508,17 @@ class TimesFMGPUDecoder:
         )
         quant_last = np.empty((batch, spec.quantile_output_dims), dtype=host_dt)
         qrow = spec.quantile_output_dims * itemsize
-        for b in range(batch):
-            copy_device_to_host(
-                host_array_ptr(quant_last[b : b + 1]),
-                _fake_buffer(
-                    bufs.quantile_out.ptr + (b * num_input_patches + num_input_patches - 1) * qrow,
-                    qrow,
-                ),
-            )
+        if self.precision == "fp16":
+            copy_device_to_host(host_array_ptr(quant_last), bufs.quantile_out, batch * qrow)
+        else:
+            for b in range(batch):
+                copy_device_to_host(
+                    host_array_ptr(quant_last[b : b + 1]),
+                    _fake_buffer(
+                        bufs.quantile_out.ptr + (b * num_input_patches + num_input_patches - 1) * qrow,
+                        qrow,
+                    ),
+                )
         renormed_quantile_spread = revin(
             quant_last.astype(np.float32).reshape(
                 batch, spec.quantile_horizon_length, -1
@@ -515,6 +557,7 @@ class TimesFMGPUDecoder:
                 bufs, batch, m,
                 start=start, cache_size=cache_size,
                 num_masked_host=num_masked_cum, next_index_host=next_index,
+                skip_quantile=True,
             )
             next_index = next_index + m
 
