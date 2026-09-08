@@ -170,6 +170,22 @@ class Qwen4ExpGRIu8KernelTests(unittest.TestCase):
             else:
                 os.environ["HIPENGINE_QWEN4_EXP_GR_IU8"] = saved
 
+    def test_down_route_is_default_off(self):
+        from hipengine.runtime.qwen4_exp_runner import (
+            _qwen4_exp_gr_iu8_down_enabled,
+        )
+        saved = os.environ.pop("HIPENGINE_QWEN4_EXP_GR_IU8_DOWN", None)
+        try:
+            self.assertFalse(_qwen4_exp_gr_iu8_down_enabled(1024))
+            os.environ["HIPENGINE_QWEN4_EXP_GR_IU8_DOWN"] = "1"
+            self.assertTrue(_qwen4_exp_gr_iu8_down_enabled(1024))
+            self.assertFalse(_qwen4_exp_gr_iu8_down_enabled(256))
+        finally:
+            if saved is None:
+                os.environ.pop("HIPENGINE_QWEN4_EXP_GR_IU8_DOWN", None)
+            else:
+                os.environ["HIPENGINE_QWEN4_EXP_GR_IU8_DOWN"] = saved
+
 
 if __name__ == "__main__":
     unittest.main()

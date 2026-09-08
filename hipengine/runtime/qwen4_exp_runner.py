@@ -2936,13 +2936,32 @@ def run_qwen4_exp_gr_read(
         stream=stream,
         runtime=active_runtime,
     )
-    launch_gguf_linear(
-        down_weight,
-        scratch.normalized.ptr,
-        scratch.low_rank.ptr,
-        rows,
-        residual_width,
-        low_rank,
+    if (
+        _qwen4_exp_gr_iu8_down_enabled(rows)
+        and down_weight.spec.quant_key == "gguf_q8_0"
+        and residual_width % 32 == 0
+    ):
+        # T1 candidate for the GR down leg (10240->320, Q8_0, F32 in/out):
+        # same dense iu8-WMMA three-plane chain as the up route; the exact
+        # coltile parent stays the fallback.
+        gguf_q8_0_iu8_wmma_prefill_f32_f32(
+            scratch.normalized.ptr,
+            down_weight.allocation("raw").tensor.ptr,
+            scratch.low_rank.ptr,
+            rows,
+            residual_width,
+            low_rank,
+            stream=stream,
+            runtime=active_runtime,
+        )
+    else:
+        launch_gguf_linear(
+            down_weight,
+            scratch.normalized.ptr,
+            scratch.low_rank.ptr,
+            rows,
+            residual_width,
+            low_rank,
         activation_dtype=GGUF_ACTIVATION_F32,
         output_dtype=GGUF_OUTPUT_F32,
         stream=stream,
@@ -3178,6 +3197,22 @@ def _qwen4_exp_gr_wave_scale_key(key: KernelKey, *, rows: int, branches: int) ->
     candidate = KernelKey(key.backend, key.layer, key.quant,
                           "coltile2_branch4_rowbatch4_wave_scale_f32_exact")
     return candidate if is_registered(candidate) else key
+
+
+def _qwen4_exp_gr_iu8_down_enabled(rows: int) -> bool:
+    """Default-off iu8-WMMA GR down route (T1 production candidate).
+
+    Same three-plane fp32 staging chain as the up route, applied to the
+    10240->320 Q8_0 down projection (F32 in/out, no BF16 boundary inside
+    the composite). Screened separately from the up so each leg carries its
+    own A/B attribution.
+    """
+
+    return (
+        os.environ.get("HIPENGINE_QWEN4_EXP_GR_IU8_DOWN", "0")
+        not in {"", "0", "false", "False"}
+        and rows > 256
+    )
 
 
 def _qwen4_exp_gr_up_sigmoid_mean_enabled(rows: int) -> bool:
