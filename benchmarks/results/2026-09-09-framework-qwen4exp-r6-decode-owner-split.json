@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_r6_decode_owner_split",
+  "date": "2026-09-09",
+  "source_tree": "3e6be5848 (six promotions)",
+  "case": "code-p4096 decode (fixed-live4097, avg of 3 reps)",
+  "wall_ms_per_token": 54.6,
+  "device_ms_per_token": 49.3,
+  "host_launch_overhead_bucket_ms": 5.3,
+  "launch_structure": "~1700 hipLaunchKernel calls carry 31.2ms of device work per transition; the MoE block (18.1ms) is hipGraphLaunch'd already",
+  "moe_subowners_ms": {
+    "expert_gate_up_q4k_dp4a_dual": 5.68,
+    "expert_down_combine_q51_wsum": 5.6,
+    "shared_expert_block": 6.19,
+    "router_select": 0.33,
+    "misc_quantize_cast": 0.29
+  },
+  "linear_subowners_ms": {
+    "attn_qkv": 5.05,
+    "lm_head": 3.25,
+    "attn_gate": 3.12,
+    "ssm_out": 3.1,
+    "attn_q": 1.98,
+    "gr_down_legs": 3.63,
+    "gr_up_legs": 2.08,
+    "attn_output": 1.03,
+    "other": 1.49
+  },
+  "other_owners_ms": {
+    "gdn_core": 2.44,
+    "qsa_decode": 2.69,
+    "gr_epilogue": 0.86,
+    "boundary": 0.49
+  },
+  "vulkan_gaps_ms": {
+    "moe": 5.6,
+    "linear_plus_gr": 3.2,
+    "qsa": -0.4,
+    "gdn": -0.3
+  },
+  "recoverable_cost_estimate": {
+    "decode_graph_expansion": "3-5 ms/token of the 5.3ms measured host/launch bucket by graph-capturing the ~1700 individually-launched non-MoE kernels; no arithmetic change",
+    "moe_expert_gemv_pair": "~5.6 ms/token at Vulkan parity (11.3ms today)"
+  },
+  "selected_next_decode_target": "decode graph expansion beyond the MoE block: the exclusive measured overhead bucket exists (5.3ms/token wall-minus-device), the launch structure is quantified, and the change carries no numerical risk; the MoE expert GEMV pair is the second target"
+}
