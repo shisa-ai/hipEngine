@@ -317,9 +317,6 @@ class DMSDevicePayloadStore:
 
         h, d = self._heads, self._dim
         self._stg = {
-            "pack_k": self._alloc(int(max_pack_rows) * h * d * 2),
-            "pack_v": self._alloc(int(max_pack_rows) * h * d * 2),
-            "pack_evict": self._alloc(int(max_pack_rows) * h),
             "append_k": self._alloc(h * d * 2),
             "append_v": self._alloc(h * d * 2),
             "append_evict": self._alloc(h),
@@ -333,6 +330,11 @@ class DMSDevicePayloadStore:
             "q": self._alloc(self._q_heads * d * 4),
             "out": self._alloc(self._q_heads * d * 4),
         }
+        # Host-composition pack staging is lazy (review target 6a): the
+        # device-pointer pack path (pack_layer_device / streaming pack, used
+        # by the layer_outer DMS route) never stages through host memory, so
+        # the max_pack_rows-sized trio is allocated on first host pack only.
+        self._pack_rows = int(max_pack_rows)
         self._split_chunk = 256
         self._split_capacity = 0
         # Last row_position uploaded into the shared staging buffer. The
@@ -414,6 +416,23 @@ class DMSDevicePayloadStore:
             return {}
         return {"k_scale_ptr": self._k_scales[layer].ptr,
                 "v_scale_ptr": self._v_scales[layer].ptr}
+
+    def _ensure_pack_staging(self) -> None:
+        """Allocate the host-composition pack staging trio on first use.
+
+        Review target 6a: a store that only packs from device pointers (the
+        layer_outer DMS route) never uploads host K/V, so the
+        max_pack_rows-sized staging planes stay unallocated on that path.
+        """
+
+        self._check_closed()
+        if "pack_k" in self._stg:
+            return
+        h, d = self._heads, self._dim
+        rows = self._pack_rows
+        self._stg["pack_k"] = self._alloc(rows * h * d * 2)
+        self._stg["pack_v"] = self._alloc(rows * h * d * 2)
+        self._stg["pack_evict"] = self._alloc(rows * h)
 
     def _upload(self, name: str, array: np.ndarray) -> None:
         array = np.ascontiguousarray(array)
@@ -724,6 +743,7 @@ class DMSDevicePayloadStore:
         """
         self._check_closed()
         self._ensure_layer(layer)
+        self._ensure_pack_staging()
         tokens = int(k_bits.shape[0])
         if k_bits.shape != (tokens, self._heads, self._dim) or v_bits.shape != k_bits.shape:
             raise ValueError("DMS device pack expects K/V [tokens,heads,dim]")
