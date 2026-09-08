@@ -2217,6 +2217,10 @@ def _q8_iu8_wmma_dispatch(
         dispatch.key.quant,
         "iu8_wmma_prefill_f32_f32_out",
     )
+    if not is_registered(key):
+        # Populate the raw families before deciding so the very first
+        # launch of a process cannot silently fall back past this route.
+        _ensure_linear_kernel_registered(key)
     return GGUFLinearDispatch(key, "raw") if is_registered(key) else dispatch
 
 
@@ -2531,6 +2535,8 @@ def launch_gguf_linear(
         raw_k_variant,
         bool(use_q4_pack8_wmma),
         os.environ.get("HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK", "1") != "0",
+        os.environ.get("HIPENGINE_QWEN4_EXP_Q8_IU8_WMM", "0") not in
+        {"", "0", "false", "False"},
         registered_variant,
         bool(_native_batch_decode_session_enabled),
         None if mmq_session is None else id(mmq_session),
