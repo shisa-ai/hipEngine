@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-08",
+  "status": "retained_perf",
+  "host": "zbook",
+  "hardware": "AMD RYZEN AI MAX+ PRO 395 / Radeon 8060S (laptop; power- and thermal-limited, gross numbers). Provisional pending the desktop gfx1151 host.",
+  "backend": "hip_gfx1151",
+  "change": "Stage the small IQ codebook grids in LDS once per workgroup and read them with ds_read in the decode inner loop, instead of indexing __device__ __constant__ arrays. Under a lane-varying index a __constant__ grid is plain global memory and compiles to one global byte load per decoded element. Staged: iq3_grid (2048 B, IQ3_S), iq3_xxs_grid (1024 B, IQ3_XXS), IQ2_XS_GRID_PACKED (1024 B, IQ2_XS). Values are unchanged, so the kernel stays bit-exact.",
+  "method": "Interleaved A/B (scratchpad/ab_leaf.py): each candidate built into its own cache entry, launches alternated inside one process, min-of-7 rounds x 30 reps, rows=1, f32 out, largest rank-2 tensor per family from Qwen3.8-27B-UD-Q4_K_S.",
+  "leaf_bandwidth_gb_s": {
+    "run_1": {
+      "IQ3_S": {"head": 61.6, "staged": 68.1, "delta_pct": 10.5},
+      "IQ3_XXS": {"head": 78.2, "staged": 84.4, "delta_pct": 7.9},
+      "IQ2_XS": {"head": 45.9, "staged": 48.2, "delta_pct": 5.0},
+      "controls_unstaged": {"IQ4_XS": 1.1, "IQ2_S": -2.7, "Q3_K": -4.5}
+    },
+    "run_2": {
+      "IQ3_S": {"head": 63.7, "staged": 70.4, "delta_pct": 10.4},
+      "IQ3_XXS": {"head": 75.9, "staged": 82.0, "delta_pct": 8.0},
+      "IQ2_XS": {"head": 45.3, "staged": 49.9, "delta_pct": 10.1},
+      "controls_unstaged": {"IQ4_XS": 0.7, "Q3_K": 0.9, "IQ2_S": -2.3}
+    },
+    "note": "Controls are quants whose ISA is unchanged by this edit; they read the noise floor directly (+/-5% in run 1, +/-1% in run 2). IQ3_S and IQ3_XXS clear it in both runs."
+  },
+  "instruction_counts": {
+    "tool": "device ISA, gfx1151, bf16-out, T=8, R=1, per inner body",
+    "IQ3_S": {"global_loads": "66 -> 55", "valu": "463 -> 429"},
+    "IQ3_XXS": {"global_loads": "34 -> 19", "valu": "429 -> 376"},
+    "IQ2_XS": {"global_loads": "34 -> 19", "valu": "562 -> 518"},
+    "note": "VALU falls as well as loads, because LDS addressing is cheaper than 64-bit global addressing. This is why the change does not repeat the rejected IQ4 codebook trade, which removed loads by adding VALU."
+  },
+  "rejected": {
+    "iq2_s_grid_staging": {
+      "size_bytes": 8192,
+      "occupancy_waves_per_simd": "16 -> 12",
+      "measured_delta_pct": -10.6,
+      "reason": "The LDS footprint costs more occupancy than the 16 removed loads per body return. Excluded by measurement; the exclusion and its number are recorded in the kernel source."
+    }
+  },
+  "correctness": {
+    "exact_parity": "tests/test_gguf_ud_dense.py 84/84 bit-exact vs the 128-strided-accumulator reference plus the CPU outer KL/top-1 gate",
+    "row_slab_parity": "tests/test_gguf_ud_dense_rowbatch.py 195/195",
+    "suites": "test_gguf_iq_dequant.py, test_gguf_iq_dequant_oracle.py, test_gguf_ud_codecs.py green"
+  },
+  "limitations": [
+    "Laptop power/clock limited; ratios provisional pending the desktop gfx1151 host.",
+    "IQ2_XS read +5.0% and +10.1% in two runs, so its magnitude is unsettled even though its direction is consistent.",
+    "Staging helps decode (rows=1). Its effect at prefill row slabs was not separately measured."
+  ]
+}
