@@ -5206,3 +5206,4 @@ Examples:
 - 2026-09-09: `e0-comparators/2026-09-09-e0-summary.json` — E0 qualification: halo-box 5f851647f (VK+HIP) and Myhacsint 2dff8596 under our exact payload; Myhacsint ~60 TG headline not reproduced (24-25 measured) and nondeterministic; halo-box pins need greedy cross-check before freeze.
 - 2026-09-09: `2026-09-09-framework-qwen4exp-tg-sag-probe.json` — R3-followup: third-rep TG sag not reproducible on the current tree (flat 18.7 over 6 reps); residual variance attributed to transient noise.
 - 2026-09-09: `2026-09-09-framework-qwen4exp-r6-decode-owner-split.json` — R6 decode subowner split: host/launch bucket 5.3ms/token, MoE expert GEMV pair 11.3ms; next decode target = graph expansion beyond MoE.
+- 2026-09-09: `2026-09-09-framework-qwen4exp-r8-iu4-bound.json` — R8 closed: iu4 wmma at 1.892x iu8 rate; precision-matched split 0.945x (rejected); residual-2-plane ceiling 1.06x (rejected per stop rules).

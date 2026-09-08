@@ -339,7 +339,7 @@ promotion decision.
   values-pass tuning is lower priority until fresh complete-owner savings
   justify it. A ~40 us floor or "3x headroom" needs a measured mechanism and
   resource/latency evidence, not a serial-chain estimate alone.
-- [ ] **R8 - Bound direct-Q4 IU4 grouped-prefill feasibility.** Preserve
+- [x] **R8 - Bound direct-Q4 IU4 grouped-prefill feasibility.** Preserve
   UD-Q4_K_XL weights and their scale/min groups; compare against the current
   repaired IU8 chain, not an older scalar or F16 baseline. Use the experiment,
   precision accounting and stop criteria below. No sidecar or default
@@ -352,6 +352,16 @@ lifecycle coverage required by the affected profile, and update the benchmark
 rollups, catalog, refactor ledger and immutable worklog before committing.
 Do not rerun unrelated broad tests when existing evidence plus a focused gate
 is sufficient.
+  **Done (September 9, 2026).** The instruction-level control closes the
+  screen: `v_wmma_i32_16x16x16_iu4` exists on gfx1151 and runs at
+  **1.892x** the iu8 rate (timed microbenchmark, identical instruction
+  counts). The precision-matched integer split therefore nets
+  **0.945x** (loses ~5% on arithmetic alone before recombination
+  overhead), and the residual 2-plane IU4 hypothesis is bounded at a
+  **1.06x** arithmetic ceiling - unable to fund its numerical risk or
+  qualification cost. Rejected per the stop rules without a kernel
+  build; the old dense-prefill IU4 gains remain non-transferable.
+  Artifact: `benchmarks/results/2026-09-09-framework-qwen4exp-r8-iu4-bound.json`.
 
 ### Ranked targets and IU4 experiments (September 8, 2026)
 
