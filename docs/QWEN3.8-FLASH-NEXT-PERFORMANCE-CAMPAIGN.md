@@ -168,7 +168,18 @@ narrows the diagnosis; the canonical-sequence drift mechanism remains open.
   memory pressure, synchronization and launch gaps with their timing windows.
   A repeated screen measures variability; it does not by itself explain it.
   Do not classify unmatched wall-minus-device residual as host overhead.
-- [ ] **R4 - Qualify repair, then screen Q5_1 down.** Start with durable
+- [x] **R4a - Qualify repair (completed September8 UTC).** Durable
+  production-multiplier-4 test suite plus calibration sweep; two criterion
+  holes found and fixed in `62dffb872`: nonfinite activations were silently
+  dropped by the staging (fmaxf ignores NaN) producing finite outputs that
+  were never queued, and activation scales below ~2^-100 broke the Kahan
+  bound (measured onset 2^-100..2^-110, ~100% garbage by 2^-115). Both are
+  now row-level at-risk guards (queue + exact repair). Full-state gate
+  12/12 cases bit-identical (logits, four decode steps, state, full KV);
+  canonical 12-case chunk1024 A/B: 72/72 trajectories exact, prefill
+  +7.0-8.8% on every case (promotion range preserved), decode neutral.
+- [ ] **R4b - Screen Q5_1 down.** For Q5_1, capture actual layer/category
+  inputs and routing; establish its own exact bound/fallback before admission. Start with durable
   production-multiplier-4 tests and a conservative parent-error criterion for
   iu8 repair. Cover cancellation, rounding ties, extreme finite scales,
   nonfinite handling, risk-queue capacity/overflow, deterministic repair,
