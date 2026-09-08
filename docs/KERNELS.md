@@ -97,6 +97,7 @@ CPU oracles favor clarity and deterministic boundaries over speed. They are the 
 | Maple | `cpu_reference/maple.py` | ternary and affine4 pack/dequant, BF16 boundaries, projections, attention/KV spans, routing/MoE, complete model semantics |
 | Moonshine decoder | `cpu_reference/moonshine.py` | projection, LayerNorm, partial RoPE, self/cross attention, fixed cache, MLP, residual, tied head/argmax |
 | Moonshine encoder | `cpu_reference/moonshine_encoder.py` | convolution, group norm, encoder attention/RoPE, GELU, layout transformations |
+| TimesFM 2.5 | `cpu_reference/timesfm.py` | multiplicative-scale RMSNorm, ResidualBlock heads, fused-QKV RoPE (pre-norm), QK norm, per-dim softplus scaling, unscaled masked attention, patch running stats/revin, AR patch decode; oracle fixture from the vendored torch reference |
 | Fixtures | `cpu_reference/fixtures.py` | fixture load/save/run and tolerance contracts |
 
 `register_cpu_reference_kernels()` registers the primitive subset exposed through the four-axis registry. Additional plain NumPy functions remain direct test oracles even when they do not have a registry key.
@@ -208,6 +209,21 @@ The Maple path uses ternary projection weights, affine4 embedding/head weights, 
 | Self/cross attention | `attention/moonshine_attention.{hip,py}` | `moonshine_self_attention`, `moonshine_cross_attention` | Logical-dim-52 self/cross attention, cache buckets, and parallel-token variants. |
 
 Encoder kernels are currently CUDA-only; see the CUDA catalog below.
+
+### TimesFM path
+
+| Functional family | Source / wrapper | Principal registry layers | Notes |
+| --- | --- | --- | --- |
+| Fused norm/elementwise | `timesfm/timesfm.{hip,py}` | rmsnorm (multiplicative scale, eps inside rsqrt), norm+add post-norm residual, bias, bias+swish, swish, add | Templated `<T>` `_f16`/`_f32` variants; FP16 storage with FP32 math. |
+| RoPE + QK norm + scatter | `timesfm/timesfm.{hip,py}` | `timesfm_rope` (timescale table), `timesfm_qkv_norm_scatter` | One block per (b, n, h) head vector: in-kernel non-interleaved RoPE, query/key RMSNorm, per-dim softplus query scaling, head-major `[B, H, S, D]` k/v cache scatter, `[B, H, Q, D]` q transpose. |
+| Masked softmax | `timesfm/timesfm.{hip,py}` | `timesfm_mask_softmax` | Register-resident two-pass row softmax; masked keys are `-INFINITY`, all-masked rows emit uniform 1/S (reference parity). |
+| Attention | `timesfm/timesfm.{hip,py}` + rocBLAS `gemm_strided_batched` | `timesfm_attention` (strict FP32 fallback), batched QK^T/AV GEMMs (FP16 production) | Naive block-per-row kernel for the strict path; production path runs QK^T and AV as strided-batched GEMMs over head-major caches. |
+| Head transpose | `timesfm/timesfm.{hip,py}` | `timesfm_transpose_heads` | `[B, H, Q, D]` back to row-major `[B*Q, H*D]` for the out projection. |
+
+Model contract, loader, NumPy oracle, and GPU orchestration live in
+`models/timesfm.py`, `loading/timesfm.py`, `kernels/cpu_reference/timesfm.py`,
+and `runtime/timesfm_decode.py` respectively. The TimesFM RMSNorm is a
+different contract from the Qwen family (multiplicative `scale`, no +1).
 
 ### Speculative decoding path
 

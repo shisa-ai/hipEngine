@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-06**
+Last updated: **2026-09-08**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -39,6 +39,12 @@ row, not across them.
 | Laguna S 2.1 | GGUF `Q4_K_M` | **654.2** | **23.2** | — | — |
 | Qwen3.8-27B Dense | GGUF `Q4_K_S` | **396.1** | **13.1** | **23.9** | — |
 | Qwen3.8-27B Dense | GGUF `Q4_K_M` | — | — | **15.6** | — |
+
+**Time-series forecasting (TimesFM 2.5 200M).** hipEngine decodes batch=8,
+context 8192, horizon 512 forecasts in **0.099 s** on this GPU — 7.2x the
+official torch reference on the same hardware and 93x the NumPy CPU
+reference. The FP16 production path is within 0.86% max error of the FP32
+oracle (gate: 2%); a strict FP32 parity path is one flag away.
 
 #### NVIDIA RTX PRO 6000 Blackwell — 96 GB (`sm_120a`)
 
@@ -94,6 +100,10 @@ Earlier published C2/K2 and C8/K3 speedups are withdrawn
 ([artifact](results/2026-09-06-gfx1100-qwen38-mtp-ck-matrix.json)).
 
 Strix Halo `Q4_K_M`: strict C1/K3 automatic at **18.191 tok/s (1.6445x AR)**; production explicit/K0. Production C8/K3 is **52.103 vs 52.025 AR tok/s**. Detailed gfx1151 evidence remains in result artifacts.
+
+TimesFM 2.5 200M GPU decode (batch 8, context 8192, horizon 512): **0.099 s**
+with the double correctness gate described above
+([artifact](results/gfx1151-timesfm-gpu-decode-2026-09-08.json)).
 
 ### W7900 Qwen3.8 `Q4_K_M` C1-C8
 
