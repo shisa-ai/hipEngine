@@ -193,6 +193,12 @@ screens1.109x/1.138x,200 pairs exact,23 tests. VGPR184->160,no scratch.
 Mixed short-Q/long-GR results retained;no runtime/default change.
 [Evidence](results/2026-09-07-framework-qwen4exp-mmq-token64.json).
 
+Weight-exact iu8 Q5_1 down promoted: the largest MoE kernel owner
+(3.2s at p4096) replaced by an iu8-WMMA chain with risk+repair at
+multiplier 16 — bit-identical to the pair2 parent in practice (12/12 state
+gate, 72/72 trajectories) with prefill +1.9-3.0% on every case.
+[Evidence](results/2026-09-08-framework-qwen4exp-q51-iu8-ab.json).
+
 R2/R3 refresh at clean 20a63e689, both promotions: HE PP204.24/221.26/210.74,
 TG19.15/18.58/16.39 — p4096 TG +18.2% versus the pre-ordered-v2 packet,
 Vulkan TG lead1.500x at p4096. Protocol matched on both engines (1 warmup

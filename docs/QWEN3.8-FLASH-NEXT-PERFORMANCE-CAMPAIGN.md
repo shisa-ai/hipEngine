@@ -127,6 +127,36 @@ all five captured layers/cases) so the route remains bit-identical to the
 strict parent in practice and every existing gate stays green, at ~1.3x
 in-situ owner speedup versus ~1.6x at multiplier 4.
 
+### Retained promotion snapshots
+
+**Weight-exact iu8 Q5_1 down promoted (September8 UTC):** the largest MoE
+kernel owner (pair2 expertgrid64 m1 row-publish, 3.15-3.22s across the
+three p4096 cases) is replaced by an iu8-WMMA chain with in-kernel
+three-plane fp32 staging, raw 5-bit codes as the integer operand, the
+m-offset from staged plane sums, the Kahan risk criterion with the R4a
+guards, and a sparse exact repair reproducing the pair2 row-publish
+arithmetic. Screen path: MMQ ds4 rejected (0.75x, 18% flips, latent
+single-plane-pack wiring inconsistency in the default-off route); the new
+WMMA-class kernel reached 1.62-1.75x operation-complete after a
+launch-bounds occupancy fix (the unbounded build ran at 0.46x). Captured
+five real down-input snapshots; the flip-escape floor is 12.0 (worst:
+code-p4096); default multiplier 16 keeps a ~1.3x margin with zero flips on
+all captures. A control-flow bug that ran the parent after the chain was
+found via in-situ rocprof and fixed before promotion. Qualification at
+`aff70fdce`/`a57a3e418`: 20/20 focused tests; full 12-case state gate
+bit-identical (full logits, four decode steps, state, full KV) before and
+after the production-default flip; canonical 12-case chunk1024 A/B: 72/72
+trajectories exact, prefill +1.9-3.0% on every case, decode
+neutral-to-positive (to +3.6%). Promoted:
+`HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT=1` production / strict 0.
+Under the production-correctness contract the route would also have been
+admissible at multiplier 4 (teacher-forced logits bit-identical at every
+size; only free-running decode divergence at p4096, which is diagnostic);
+16 was chosen to keep practical bit-identity and every existing gate green.
+[State gate](../benchmarks/results/2026-09-08-framework-qwen4exp-q51-iu8-state-gate.json),
+[A/B](../benchmarks/results/2026-09-08-framework-qwen4exp-q51-iu8-ab.json),
+[post-promotion gate](../benchmarks/results/2026-09-08-framework-qwen4exp-q51-iu8-state-gate-postpromo.json).
+
 ## Current-host owner refresh
 
 ### Review conclusions (September 8, 2026)
@@ -221,7 +251,7 @@ narrows the diagnosis; the canonical-sequence drift mechanism remains open.
   12/12 cases bit-identical (logits, four decode steps, state, full KV);
   canonical 12-case chunk1024 A/B: 72/72 trajectories exact, prefill
   +7.0-8.8% on every case (promotion range preserved), decode neutral.
-- [ ] **R4b - Screen Q5_1 down (candidate built, qualifying).** The
+- [x] **R4b - Screen Q5_1 down (completed; promoted September8 UTC).** The
   fresh post-promotion p4096 kernel ranking puts the Q5_1 down exact parent
   (pair2 expertgrid64 m1 row-publish) at 3.15-3.22s across all three cases —
   the largest single MoE kernel owner (of the 18.7s device total). The
