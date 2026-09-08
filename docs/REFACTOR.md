@@ -18,6 +18,41 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
+## 2026-09-08 IQ4_NL dense MMQ — held out of the default policy
+
+**State.** Kernel support is complete and correct: `iq4_nl_expand_group32` in
+`gguf_iq_source_mmq_prefill.hip` (a K256 span is eight consecutive 18-byte
+blocks, each K32 group carrying its own FP16 scale, reusing the IQ4_XS nibble
+packer unchanged), the dense wrapper, registration on both HIP backends, and
+tests. Leaf agreement against the strict GEMV is 0.0052-0.0072 max relative
+error at correlation 0.999983 across every row count, and its GEMV/MMQ
+crossover is 1 row (up to 16.8x at 512).
+
+**Why it is not the default.** Enabling it measured prefill 127.2 -> 155.2
+tok/s (+22%) but moved the context512 teacher gate:
+
+| arm | mean | p95 | max | top-1 |
+| --- | --- | --- | --- | --- |
+| dense MMQ (default) | 0.0010796 | 0.0051188 | 0.0354152 | 162/162 |
+| + IQ4_NL | 0.0013457 | 0.0071143 | 0.0412277 | 161/162 |
+
+The outer gate still passes, but that mean is the worst of any default
+measured. The cost is **concentrated, not diffuse**: median per-position delta
+is exactly 0.000000 and p90 is +0.000925, while a few positions diverge
+100-300x (prompt 4 steps 2/3: 0.00022 -> 0.0223 and 0.00006 -> 0.0200; prompt
+10 step 1: 0.000028 -> 0.0085). That is a small number of sensitive tensors,
+not general precision loss.
+
+**Removal trigger.** Identify the sensitive tensors by role or layer, then
+either exclude them from the route or give them a finer activation
+quantization. When the gate holds, add `gguf_iq4_nl` back to
+`GGUF_IQ_DENSE_MMQ_PREFILL_POLICY` in `hipengine/kernels/hip_gfx1151/__init__.py`
+and delete `_GGUF_IQ_DENSE_MMQ_IQ4_NL_HELD_OUT`. If the sensitivity turns out
+to be intrinsic, delete the expansion, its QTYPE arm, the wrapper and the
+registration instead — do not leave the support sitting unrouted indefinitely.
+
+**Owner evidence.** `benchmarks/results/2026-09-08-zbook-ud-iq4-nl-mmq-heldout.json`.
+
 ## 2026-09-07 UD cleanup — reduce authorization surface
 
 - Removed generic profile qualifiers, custom-factory rollback and the cancelled

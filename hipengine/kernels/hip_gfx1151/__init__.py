@@ -2031,6 +2031,28 @@ GGUF_IQ_DENSE_MMQ_PREFILL_POLICY = {
         "variant": "dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out",
     },
 }
+# IQ4_NL is deliberately absent. Its kernel support is complete and correct
+# (expansion, registration and tests; leaf agreement 0.0052-0.0072 max relative
+# error against the strict GEMV, crossover 1 row, up to 16.8x), and enabling it
+# measured prefill 127.2 -> 155.2 tok/s. It is held out because of a
+# *concentrated* numerics cost, not a diffuse one:
+#
+#   arm         mean       p95        max      top-1
+#   dense MMQ   0.0010796  0.0051188  0.0354   162/162
+#   + IQ4_NL    0.0013457  0.0071143  0.0412   161/162
+#
+# The median per-position delta is exactly 0.000000 and p90 is +0.000925, but a
+# few positions diverge 100-300x (prompt 4 steps 2/3: 0.00022 -> 0.0223,
+# 0.00006 -> 0.0200). That is the signature of a small number of sensitive
+# tensors rather than general precision loss, so the blocker is to identify
+# them - by role or layer - and either exclude them or give them a finer
+# activation quantization. Until then the strict GEMV keeps these 7 tensors.
+# See docs/REFACTOR.md "IQ4_NL dense MMQ".
+_GGUF_IQ_DENSE_MMQ_IQ4_NL_HELD_OUT = {
+    "min_rows": 8,
+    "max_rows": 131072,
+    "variant": "dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out",
+}
 
 GGUF_Q6_DENSE_INTEGER_MMQ_PREFILL_POLICY = {
     "gguf_q6_k_t16_qmicro_planar_v1": {

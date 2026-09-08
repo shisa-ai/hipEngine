@@ -49,6 +49,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_mmq_prefill import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_iq_source_mmq_prefill import (
     gguf_iq3_xxs_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out,
+    gguf_iq4_nl_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out,
     gguf_iq4_xs_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out,
     iq_dense_mmq_activation_nbytes,
     iq_dense_mmq_nbytes,
@@ -322,6 +323,7 @@ __all__ = [
     "plan_paro_marlin_k_build",
     "plan_w8a16_linear_build",
     "gguf_iq3_xxs_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out",
+    "gguf_iq4_nl_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out",
     "gguf_iq4_xs_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out",
     "iq_dense_mmq_activation_nbytes",
     "iq_dense_mmq_nbytes",
