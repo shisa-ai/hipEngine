@@ -25,6 +25,11 @@ from scripts.gguf_mtp_category_bench import load_prompt_rows  # noqa: E402
 from scripts.llamacpp_mtp_bench import _terminate  # noqa: E402
 
 
+def require_idle_memory(used_bytes: int, limit_mib: int) -> None:
+    if used_bytes > limit_mib * (1 << 20):
+        raise RuntimeError(f"GPU not idle: {used_bytes / (1 << 20):.1f} MiB exceeds {limit_mib} MiB")
+
+
 def completion_row(response: dict, prompt: list[int], outputs: int) -> dict:
     ids = response.get("tokens", [])
     timings = response["timings"]
@@ -61,6 +66,7 @@ def main() -> int:
     parser.add_argument("--ubatch", type=int, default=1024)
     parser.add_argument("--port", type=int, default=18791)
     parser.add_argument("--pci", default="0000:10:00.0")
+    parser.add_argument("--idle-limit-mib", type=int, default=128)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if args.outputs < 2 or args.repetitions < 1:
@@ -101,7 +107,9 @@ def main() -> int:
         "mode": args.mode, "kv": args.kv, "rows": [],
         "correctness_scope": "complete prompt/output accounting; AR/MTP ID comparison performed separately",
     }
-    sampler = VramSampler(card=select_card(pci_id=args.pci), interval_ms=20)
+    card = select_card(pci_id=args.pci)
+    require_idle_memory(int(card.vram_used_path.read_text()), args.idle_limit_mib)
+    sampler = VramSampler(card=card, interval_ms=20)
     process = None
     base = f"http://127.0.0.1:{args.port}"
     sampler.start()
