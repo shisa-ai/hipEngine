@@ -82,6 +82,9 @@ def run_check() -> int:
                 if actual is not expected:
                     failures.append(f"fp32 {name}: presence mismatch")
                 continue
+            if not bool(np.isfinite(actual).all()):
+                failures.append(f"fp32 {name}: non-finite output")
+                continue
             bad = ~np.isclose(actual, expected, atol=5.0e-4, rtol=1.0e-2)
             if bad.any():
                 failures.append(f"fp32 {name}: {int(bad.sum())} strict mismatches")
@@ -105,6 +108,9 @@ def run_check() -> int:
                 failures.append(f"fp16 {name}: shape {actual.shape} != {expected.shape}")
                 continue
             error = np.abs(actual.astype(np.float64) - expected.astype(np.float64))
+            if not bool(np.isfinite(error).all()):
+                failures.append(f"fp16 {name}: non-finite output")
+                continue
             for b in range(expected.shape[0]):
                 scale = float(np.std(inputs[b][~masks[b]]))
                 series_error = error[b]
