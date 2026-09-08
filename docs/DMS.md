@@ -932,6 +932,30 @@ rejected on every model/sidecar/config mismatch without importing PyTorch.
 
 ### P1 — Public selection and strict fallback
 
+Scope note (2026-09-08, task: DMS-as-default): the enduser surface is
+`hipengine.LLM(...)` and `hipengine.server.ServerConfig`; both construct
+dense-only today (no DMS kwargs; verified against `LLM.__init__` and
+`ServerConfig`). DMS is reachable only through the probe-level
+`Qwen35GGUFResidentSession(dms_metadata_path=...,
+dms_backend_factory=..., dms_prefill_mode=...)` construction. Proposed
+two-phase default strategy:
+
+- Phase 1 (opt-in, no quality dependency): `dms` option on `LLM` and
+  `ServerConfig` — `"off"` (default) | `"auto"` | explicit metadata path.
+  `auto` discovers the sidecar package next to the model by convention and
+  falls back to dense with one log line when absent; an explicit path fails
+  closed on absent/malformed/untrained/fingerprint-mismatched metadata.
+  Session defaults inside: `int8_evaluation` codec, `layer_outer` prefill,
+  single-plane hidden alias (all adopted and verified on gfx1100). Estimated
+  2-3 days including tests and the README quickstart.
+- Phase 2 (default flip, gated): default `auto` only for the qualified pair
+  (Qwen3.8-27B `Q4_K_M` + `gfx1100` + artifacts present), and only after the
+  Gate 1/Gate 2 quality ladder passes
+  ([`DMS-ANALYSIS.md`](DMS-ANALYSIS.md)), the P5/P7 lifecycle/soak items close,
+  and the MTP/speculative interaction is checked (speculative stays off per
+  the item below). No silent default without artifacts; no
+  eviction-during-prefill variant without new quality gates.
+
 - [ ] Add a model/plugin registration for the exact artifact and sidecar package;
       do not add backend/quant branches to dispatch or engine code.
 - [ ] Add explicit API/CLI/config selection for `dense` versus external DMS.
