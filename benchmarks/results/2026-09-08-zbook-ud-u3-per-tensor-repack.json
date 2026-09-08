@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-08",
+  "status": "retained_default_change",
+  "host": "zbook",
+  "hardware": "AMD RYZEN AI MAX+ PRO 395 / Radeon 8060S (laptop; gross numbers; plain-file zbook floor is 294.8 tok/s vs the desktop-published 396.1)",
+  "backend": "hip_gfx1151",
+  "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+  "change": "UD-U3 per-tensor repack eligibility becomes the default: decode-repack is vetoed only for a tensor whose own GGML type is raw-IQ (IQ2_XS/IQ3_XXS/IQ4_XS), instead of the model-wide veto that stripped T16/x8/planar layouts from every tensor in any file carrying a raw-IQ tensor. Rollback: HIPENGINE_UD_REPACK_ELIGIBILITY=model-wide or plan-level repack_veto=True.",
+  "perf_gross": {
+    "protocol": "published README sweep protocol (512/128, forced bulk attention, WMMA prefill, GEMV decode, graph replay), same as item-0 baseline",
+    "before_ud_u3": {
+      "prefill_tok_s": 22.1,
+      "decode_tok_s": 6.21
+    },
+    "after_ud_u3": {
+      "prefill_tok_s": 29.93,
+      "decode_tok_s": 7.24
+    },
+    "delta": "prefill +35%, decode +17%",
+    "resident_weights_bytes": {
+      "before": 16550209536,
+      "after": 15568398336,
+      "delta": "-0.92 GB"
+    },
+    "gap_to_plain_same_host": {
+      "prefill": "9.9x (was 13.3x)",
+      "decode": "1.73x (was 2.0x)"
+    },
+    "planned_optimized_bytes_static": "44.2% of K_M weight bytes (audit)"
+  },
+  "numerics": {
+    "serial_prefill_capture": "bit-identical logits to the pre-UD-U3 raw-layout default (the T16 decode owners are exact vs the raw/pack8 decode path); mean 0.0011282, top-1 161/162",
+    "production_prefill_capture": {
+      "mean": 0.0012376,
+      "p95": 0.0053786,
+      "p99": 0.0211052,
+      "max": 0.0332762,
+      "top1": "162/162",
+      "note": "bulk+WMMA prefill (the production/sweep config). Mean better than the old expanded-BF16 default (0.0013153) and slightly worse than the serial-prefill raw default (0.0011282); the delta is the WMMA prefill approximation, the same kernel family the plain published path uses. Top-1 and max are the best measured of any default."
+    },
+    "consumed_tokens": "verified equal to the teacher input binary for all 18 prompts in both captures",
+    "gates": "max and top-1 pass; mean/p95/p99 remain above the strict thresholds (by 24%/8%/6%), consistent with the pre-existing campaign state and the measured F16-vs-BF16 teacher KV floor (mean 0.000415)"
+  },
+  "correctness_suites": "tests/test_gguf_ud_repack_eligibility.py (new, RED-first, 4), test_qwen35_gguf_materialize_helpers.py (updated defaults + rollback test), test_loading_qwen35_gguf_policy.py, test_qwen35_gguf_materialize.py, test_gguf_ud_admission.py (one synthetic-fixture test pinned to the model-wide rollback: it tests F32-contraction admission, not layout selection), test_gguf_ud_km.py, test_gguf_ud_ks.py, test_gguf_ud_km_raw_q56.py, test_qwen35_gguf_resident_prerequisites.py, test_gguf_selected_call_intents.py, test_gguf_quant_layout.py, tests/test_gguf_e2e_acceptance.py",
+  "limitations": [
+    "laptop clocks: gross numbers",
+    "task/repeat/serving gates remain outstanding (pre-existing campaign state)"
+  ]
+}

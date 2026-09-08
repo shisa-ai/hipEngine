@@ -32,6 +32,8 @@ from hipengine.loading.qwen35_gguf_policy import (
     resolve_gguf_dense_flags,
     gguf_ar_f32_linear_contraction,
     gguf_ar_decode_repack_veto,
+    gguf_tensor_repack_eligible,
+    resolve_ud_repack_eligibility,
 )
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard, annotations only
@@ -431,10 +433,23 @@ def plan_qwen35_gguf_materialization(
         if contract_f32_linear is None
         else bool(contract_f32_linear)
     )
-    # Raw-IQ models' selected kernels consume compressed rank-3 GGUF layouts.
-    # Keep one compatible resident plan instead of silently mixing it with the
-    # Q4-oriented T16 decode residents.
-    use_decode_repack = requested_decode_repack and not ar_repack_veto
+    # UD-U3 layout selection. Per-tensor mode (default) vetoes repack only
+    # for a tensor whose own type is raw-IQ (applied inside _spec_for_tensor);
+    # a dense model carrying raw-IQ tensors keeps its Q4/Q5/Q6/Q8 tensors on
+    # the T16/x8/planar layouts. 'model-wide' (or repack_veto=True) restores
+    # the historical behaviour where any raw-IQ tensor strips every tensor's
+    # repack: raw-IQ models' selected kernels consume compressed rank-3 GGUF
+    # layouts, so one compatible resident plan was kept instead of silently
+    # mixing it with the Q4-oriented T16 decode residents.
+    repack_eligibility = resolve_ud_repack_eligibility()
+    # The model-wide veto applies only when explicitly forced (repack_veto=True)
+    # or when the eligibility mode is 'model-wide' and the policy predicate
+    # fires. Per-tensor mode leaves the decision to each tensor's own type.
+    model_wide_veto = bool(repack_veto) if repack_veto is not None else (
+        repack_eligibility == "model-wide" and ar_repack_veto
+    )
+    use_decode_repack = requested_decode_repack and not model_wide_veto
+    per_tensor_veto = repack_veto is None and repack_eligibility == "per-tensor"
     allowed_slots = (
         None if slot_filter is None else frozenset(str(slot) for slot in slot_filter)
     )
@@ -443,6 +458,7 @@ def plan_qwen35_gguf_materialization(
             f"root.{slot}",
             tensor,
             decode_repack=use_decode_repack,
+            per_tensor_repack_veto=per_tensor_veto,
             contract_f32_linear=contract_q3_f32_linear,
             dense_q4_t16=bool(dense_q4_t16),
             dense_q4_qmicro_t16_gate_up=bool(dense_q4_qmicro_t16_gate_up),
@@ -463,6 +479,7 @@ def plan_qwen35_gguf_materialization(
         _plan_layer(
             layer,
             decode_repack=use_decode_repack,
+            per_tensor_repack_veto=per_tensor_veto,
             contract_f32_linear=contract_q3_f32_linear,
             dense_q4_t16=bool(dense_q4_t16),
             dense_q4_qmicro_t16_gate_up=bool(dense_q4_qmicro_t16_gate_up),
@@ -1045,6 +1062,7 @@ def _plan_layer(
     layer: Qwen35GGUFLayerMap,
     *,
     decode_repack: bool,
+    per_tensor_repack_veto: bool = False,
     contract_f32_linear: bool = False,
     dense_q4_t16: bool = False,
     dense_q4_qmicro_t16_gate_up: bool = False,
@@ -1067,6 +1085,7 @@ def _plan_layer(
             f"layers.{layer.layer_id}.{slot}",
             tensor,
             decode_repack=decode_repack,
+            per_tensor_repack_veto=per_tensor_repack_veto,
             contract_f32_linear=contract_f32_linear,
             dense_q4_t16=dense_q4_t16,
             dense_q4_qmicro_t16_gate_up=dense_q4_qmicro_t16_gate_up,
@@ -1262,6 +1281,7 @@ def _spec_for_tensor(
     tensor: GGUFTensorInfo,
     *,
     decode_repack: bool,
+    per_tensor_repack_veto: bool = False,
     contract_f32_linear: bool = False,
     dense_q4_t16: bool = False,
     dense_q4_qmicro_t16_gate_up: bool = False,
@@ -1275,6 +1295,11 @@ def _spec_for_tensor(
     dense_q6_qmicro_planar: bool = False,
     dense_q6_qmicro_planar_excluded_slots: frozenset[str] = frozenset(),
 ) -> Qwen35GGUFWeightSpec:
+    if per_tensor_repack_veto and not gguf_tensor_repack_eligible(tensor.ggml_type):
+        # UD-U3 per-tensor eligibility: raw-IQ tensors keep their compressed
+        # raw layouts (their dense leaves consume raw rows); every other type
+        # repacks under the same request.
+        decode_repack = False
     qtype = GGMLQuantizationType(tensor.ggml_type)
     if qtype == GGMLQuantizationType.F32:
         bf16_linear_weight = contract_f32_linear and slot_path.endswith(

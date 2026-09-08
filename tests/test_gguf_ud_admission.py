@@ -1532,6 +1532,10 @@ def test_step_rows_native_admits_contracted_bf16_owner_and_reaches_device_entry(
     )
     path = tmp_path / "raw-iq-contracted.gguf"
     write_qwen35_gguf(path, tensors, fixture_metadata(1))
+    # This test exercises the F32-contraction owner admission, not layout
+    # selection; pin the model-wide repack rollback so the tiny synthetic
+    # geometry keeps its historical pack8/raw residents.
+    monkeypatch.setenv("HIPENGINE_UD_REPACK_ELIGIBILITY", "model-wide")
     resident = _materialize_fixture_on_cpu(path, monkeypatch,
         requested_operations=(QWEN35_GGUF_OP_AR_DECODE_NATIVE_ROWS,))
     assert qwen35_gguf_native_row_binding_errors(resident) == ()

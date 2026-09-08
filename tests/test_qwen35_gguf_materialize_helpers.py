@@ -303,19 +303,31 @@ def _raw_iq_map() -> Qwen35GGUFMaterializationPlan:
     )
 
 
-def test_raw_iq_planner_defaults_veto_repack_and_contract_f32():
+def test_raw_iq_planner_defaults_per_tensor_repack_and_contract_f32():
     plan = plan_qwen35_gguf_materialization(
         _raw_iq_map(), decode_repack=True, dense_q4_t16=True
     )
 
-    # The raw-IQ veto keeps the policy-shaped Q4_K FFN slots on pack8 even
-    # though the backend declares the dense Q4 T16 capability.
-    assert plan.layer_specs[0]["ffn_up"].layout == LAYOUT_Q4_K_PACK8
+    # UD-U3 per-tensor eligibility is the default: the Q4_K FFN slot repacks
+    # to T16 while the model-wide F32 alpha/beta contraction stays bound to
+    # its own raw-IQ knob.
+    assert plan.layer_specs[0]["ffn_up"].layout == LAYOUT_GGUF_Q4_K_T16
     assert plan.layer_specs[0]["ssm_alpha"].layout == LAYOUT_DENSE_BF16
     assert plan.layer_specs[0]["ssm_alpha"].quant_key == "bf16"
     # Unrelated F32 slots keep their F32 residents.
     assert plan.layer_specs[0]["ssm_a"].layout == LAYOUT_DENSE_F32
     assert plan.layer_specs[0]["attn_norm"].layout == LAYOUT_DENSE_F32
+
+
+def test_raw_iq_modelwide_repack_rollback_strips_repack():
+    plan = plan_qwen35_gguf_materialization(
+        _raw_iq_map(), decode_repack=True, dense_q4_t16=True, repack_veto=True
+    )
+
+    # Explicit model-wide veto restores the historical behaviour: the
+    # policy-shaped Q4_K FFN slots stay on pack8.
+    assert plan.layer_specs[0]["ffn_up"].layout == LAYOUT_Q4_K_PACK8
+    assert plan.layer_specs[0]["ssm_alpha"].layout == LAYOUT_DENSE_BF16
 
 
 def test_repack_eligibility_can_proceed_without_moving_f32_contraction():
@@ -340,9 +352,11 @@ def test_f32_contraction_can_be_disabled_without_granting_repack():
         decode_repack=True,
         dense_q4_t16=True,
         contract_f32_linear=False,
+        repack_veto=True,
     )
 
-    # Repack stays vetoed by the raw-IQ predicate...
+    # Under the explicit model-wide rollback, disabling the contraction does
+    # not grant repack: the raw-IQ predicate still vetoes it...
     assert plan.layer_specs[0]["ffn_up"].layout == LAYOUT_Q4_K_PACK8
     # ...while the F32 alpha/beta slots keep their F32 residents.
     assert plan.layer_specs[0]["ssm_alpha"].layout == LAYOUT_DENSE_F32
