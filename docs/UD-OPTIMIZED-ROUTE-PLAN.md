@@ -8,7 +8,9 @@ prefill route-gap measurement; updated as items land._
 | 0. Reconstruct the published protocol | **done** (`d8f5e951c`) | the published row uses `qwen35_readme_sweep.py --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode`; zbook floor for the plain file is 294.8 tok/s against the desktop-published 396.1 |
 | 1. Per-tensor repack eligibility (UD-U3) | **done** (`d8f5e951c`) | optimized bytes 0.0% -> 44.2% (K_M); prefill 22.1 -> 29.9 tok/s, decode 6.21 -> 7.24, resident -0.92 GB |
 | 2. Close the remaining non-IQ fallbacks | **partly done** | Q5/Q6/Q4 dense role coverage landed: optimized bytes 44.2% -> 61.3% (K_M), 34.4% -> 44.4% (K_S); prefill 30.4 -> 41.5 tok/s. Q3_K still has no T16 layout. |
-| 3. IQ4_XS dense GEMM entry | open | 4.76 GB (K_M) / 6.29 GB (K_S), the largest single remaining block |
+| 3. IQ4_XS dense GEMM entry | **done, gfx1151** (`this unit`) | dense = the degenerate single-expert case of the existing MMQ kernel; no repack. Prefill 41.5 -> **127.2 tok/s**; IQ4_XS kernel 9,280 -> 791 ms. gfx1100 is a follow-up. |
+
+**Where this leaves it.** On the published protocol, UD `Q4_K_M` prefill has gone **22.1 -> 127.2 tok/s (5.75x)** and the gap to the plain `Q4_K_S` file on the same host **13.3x -> 2.32x**. The residual is IQ4_NL / Q3_K / IQ3_S, which have no MMQ kernel, plus Q3_K's missing T16 layout.
 
 The kernel work is largely done. The published UD files do not reach it. This
 document says exactly why, what it is worth, and in what order to fix it.
