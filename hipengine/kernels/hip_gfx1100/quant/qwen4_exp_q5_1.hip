@@ -1,6 +1,7 @@
 // hipEngine-native raw GGUF Q5_1 selected-expert GEMV for Qwen4Exp.
 
 #include <hip/hip_runtime.h>
+#include <cfloat>
 #include <stdint.h>
 
 namespace {
@@ -907,6 +908,466 @@ __global__ void q5_1_selected_gemv_bf16_bf16_kernel(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Weight-exact iu8-WMMA selected Q5_1 down prefill with risk collection.
+//
+// Mirrors the promoted Q4_K iu8-risk structure: three residual activation
+// planes staged per 32-element block in shared memory (fp32 scales, no fp16
+// rounding), the raw 5-bit Q5_1 codes as the integer B operand, the m-offset
+// term reconstructed per 32-block from the staged plane-0-extended q8 sums
+// (ds-trick), and a Kahan-compensated accumulation-error probe with the
+// row-level at-risk guards (nonfinite values; subblock amax below 2^-80).
+// The m-offset sign is PLUS for Q5_1 (w = d*q5 + m) versus the Q4_K minus.
+// ---------------------------------------------------------------------------
+
+constexpr int Q51_IU8_ACT_PLANES = 3;
+constexpr int Q51_IU8_LDS_ROW_STRIDE = 256 + 16;  // bank-conflict padding
+constexpr float Q51_IU8_ATRISK_AMAX_FLOOR = 0x1p-80f;
+typedef int __attribute__((vector_size(8 * sizeof(int)))) q51_iu8_int32x8;
+typedef int __attribute__((vector_size(4 * sizeof(int)))) q51_iu8_int32x4;
+
+__device__ inline float q51_bf16_rounding_boundary_distance(float value) {
+  if (!isfinite(value)) return INFINITY;
+  const uint16_t center_bits = float_to_bf16_bits(value);
+  uint16_t lower_bits;
+  uint16_t upper_bits;
+  if ((center_bits & 0x7FFFU) == 0) {
+    lower_bits = 0x8001U;
+    upper_bits = 0x0001U;
+  } else if ((center_bits & 0x8000U) != 0) {
+    lower_bits = static_cast<uint16_t>(center_bits + 1U);
+    upper_bits = static_cast<uint16_t>(center_bits - 1U);
+  } else {
+    lower_bits = static_cast<uint16_t>(center_bits - 1U);
+    upper_bits = static_cast<uint16_t>(center_bits + 1U);
+  }
+  const float center = bf16_bits_to_float(center_bits);
+  const float lower_boundary =
+      0.5f * (bf16_bits_to_float(lower_bits) + center);
+  const float upper_boundary =
+      0.5f * (center + bf16_bits_to_float(upper_bits));
+  return fmaxf(0.0f, fminf(value - lower_boundary, upper_boundary - value));
+}
+
+__global__ __launch_bounds__(128, 2)
+void q5_1_selected_wmma_iu8_risk_prefill_kernel(
+    const uint16_t* __restrict__ x,
+    const int64_t* __restrict__ expert_start_compact,
+    const int64_t* __restrict__ expert_start_wmma,
+    const int64_t* __restrict__ tile_expert,
+    const uint8_t* __restrict__ qweight,
+    uint16_t* __restrict__ out,
+    int* __restrict__ risk_count,
+    int* __restrict__ risk_indices,
+    int64_t max_risks,
+    float risk_multiplier,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    int64_t wmma_total_rows) {
+  __shared__ int lds_row_atrisk[16];
+  __shared__ int8_t lds_q8a[Q51_IU8_ACT_PLANES * 16 * Q51_IU8_LDS_ROW_STRIDE];
+  __shared__ float lds_da[Q51_IU8_ACT_PLANES * 16 * 8];
+  __shared__ int lds_sumq8a[Q51_IU8_ACT_PLANES * 16 * 8];
+  __shared__ int64_t meta[4];
+
+  const int tid = static_cast<int>(threadIdx.x);
+  const int warp = tid >> 5;
+  const int lane = tid & 31;
+  const int64_t col_base = static_cast<int64_t>(blockIdx.x) * 128;
+  const int64_t row_tile = blockIdx.y;
+
+  if (tid == 0) {
+    const int64_t expert = tile_expert[row_tile];
+    const bool valid = expert >= 0 && expert < num_experts;
+    meta[0] = valid ? expert : -1;
+    meta[1] = valid ? expert_start_compact[expert] : 0;
+    meta[2] = valid ? (expert_start_compact[expert + 1] - meta[1]) : 0;
+    meta[3] = valid ? (row_tile * 16 - expert_start_wmma[expert]) : 0;
+  }
+  if (tid < 16) {
+    lds_row_atrisk[tid] = 0;
+  }
+  __syncthreads();
+  const int64_t expert_id = meta[0];
+  if (expert_id < 0) return;
+  const int64_t compact_base = meta[1];
+  const int64_t expert_count = meta[2];
+  const int64_t tile_row_in_expert = meta[3];
+
+  const int64_t global_col = col_base + warp * 32 + lane;
+  const bool col_valid = global_col < out_features;
+  const int64_t blocks_per_row = in_features / 32;
+  const int64_t row_bytes = blocks_per_row * 24;
+  const bool wcol_valid = col_valid;
+  const uint8_t* block_base = wcol_valid
+      ? (qweight + expert_id * (out_features * row_bytes) +
+         global_col * row_bytes)
+      : nullptr;
+
+  float sum[16];
+  float kahan_err[16];
+  float abs_terms[16];
+#pragma unroll
+  for (int r = 0; r < 16; ++r) {
+    sum[r] = 0.0f;
+    kahan_err[r] = 0.0f;
+    abs_terms[r] = 0.0f;
+  }
+
+  // A-operand lane -> activation row (hardware permutation).
+  int a_row = -1;
+  if ((lane & 1) == 0 && lane < 16) {
+    a_row = lane >> 1;
+  } else if ((lane & 1) == 1 && lane >= 17) {
+    a_row = (lane - 17) >> 1;
+  }
+
+  const int64_t chunks = (in_features + 255) / 256;
+  for (int64_t chunk = 0; chunk < chunks; ++chunk) {
+    // Cooperative activation staging: thread -> (actrow = tid/8, sub = tid%8),
+    // one 32-element Q5_1 block per (actrow, sub).
+    {
+      const int actrow = tid >> 3;
+      const int sub = tid & 7;
+      const int64_t col0 = chunk * 256 + static_cast<int64_t>(sub) * 32;
+      const int64_t local_row = tile_row_in_expert + actrow;
+      const bool row_valid = local_row < expert_count;
+      const bool sub_valid = col0 + 32 <= in_features;
+      const int64_t compact_row = row_valid ? (compact_base + local_row) : 0;
+      const uint16_t* row_ptr = sub_valid
+          ? (x + compact_row * in_features + col0)
+          : nullptr;
+      float vals[32];
+      float amax = 0.0f;
+#pragma unroll
+      for (int l = 0; l < 32; ++l) {
+        const float v = (row_valid && sub_valid)
+            ? bf16_bits_to_float(row_ptr[l]) : 0.0f;
+        vals[l] = v;
+        amax = fmaxf(amax, fabsf(v));
+        if (!isfinite(v)) {
+          lds_row_atrisk[actrow] = 1;
+        }
+      }
+      if (row_valid && sub_valid && amax > 0.0f &&
+          amax < Q51_IU8_ATRISK_AMAX_FLOOR) {
+        lds_row_atrisk[actrow] = 1;
+      }
+      float work[32];
+#pragma unroll
+      for (int l = 0; l < 32; ++l) work[l] = vals[l];
+#pragma unroll
+      for (int plane = 0; plane < Q51_IU8_ACT_PLANES; ++plane) {
+        float plane_max = 0.0f;
+#pragma unroll
+        for (int l = 0; l < 32; ++l)
+          plane_max = fmaxf(plane_max, fabsf(work[l]));
+        const float da = plane_max > 0.0f ? plane_max / 127.0f : 0.0f;
+        lds_da[plane * 16 * 8 + actrow * 8 + sub] = da;
+        int8_t* dst = lds_q8a + plane * 16 * Q51_IU8_LDS_ROW_STRIDE +
+                      actrow * Q51_IU8_LDS_ROW_STRIDE + sub * 32;
+        int qsum = 0;
+        if (da > 0.0f) {
+          const float inv = 1.0f / da;
+#pragma unroll
+          for (int l = 0; l < 32; ++l) {
+            int q = __float2int_rn(work[l] * inv);
+            q = max(-127, min(127, q));
+            dst[l] = static_cast<int8_t>(q);
+            qsum += q;
+            work[l] = fmaf(-static_cast<float>(q), da, work[l]);
+          }
+        } else {
+#pragma unroll
+          for (int l = 0; l < 32; ++l) dst[l] = 0;
+        }
+        lds_sumq8a[plane * 16 * 8 + actrow * 8 + sub] = qsum;
+      }
+    }
+    __syncthreads();
+
+#pragma unroll 1
+    for (int sub = 0; sub < 8; ++sub) {
+      const int64_t col0 = chunk * 256 + static_cast<int64_t>(sub) * 32;
+      const bool sub_valid = col0 + 32 <= in_features;
+      const uint8_t* block_ptr = sub_valid && wcol_valid
+          ? (block_base + (col0 / 32) * 24)
+          : nullptr;
+      // Raw 5-bit Q5_1 codes (0..31) as the integer B operand; the weight
+      // path has no requantization error at all.
+      int8_t wq8[32];
+      if (block_ptr != nullptr) {
+        const uint32_t qh = *reinterpret_cast<const uint32_t*>(block_ptr + 4);
+        const uint8_t* qs = block_ptr + 8;
+#pragma unroll
+        for (int l = 0; l < 32; ++l) {
+          const uint8_t packed = qs[l & 15];
+          const uint8_t low = l < 16 ? (packed & 0x0fU) : (packed >> 4);
+          const uint8_t high = static_cast<uint8_t>((qh >> l) & 1U);
+          wq8[l] = static_cast<int8_t>(low | (high << 4));
+        }
+      } else {
+#pragma unroll
+        for (int l = 0; l < 32; ++l) wq8[l] = 0;
+      }
+      const float dsub = sub_valid && block_ptr != nullptr
+          ? load_fp16(block_ptr) : 0.0f;
+      const float msub = sub_valid && block_ptr != nullptr
+          ? load_fp16(block_ptr + 2) : 0.0f;
+
+#pragma unroll
+      for (int g = 0; g < 2; ++g) {
+        q51_iu8_int32x8 acc[Q51_IU8_ACT_PLANES];
+#pragma unroll
+        for (int plane = 0; plane < Q51_IU8_ACT_PLANES; ++plane) {
+          acc[plane] = {0, 0, 0, 0, 0, 0, 0, 0};
+        }
+#pragma unroll
+        for (int khalf = 0; khalf < 2; ++khalf) {
+          signed char bbytes[16];
+#pragma unroll
+          for (int j = 0; j < 16; ++j) bbytes[j] = wq8[khalf * 16 + j];
+          q51_iu8_int32x4 b_frag;
+          {
+            int32_t words[4];
+            memcpy(words, bbytes, 16);
+            b_frag = (q51_iu8_int32x4){words[0], words[1], words[2], words[3]};
+          }
+#pragma unroll
+          for (int plane = 0; plane < Q51_IU8_ACT_PLANES; ++plane) {
+            signed char abytes[16];
+            if (a_row >= 0) {
+              const int8_t* src = lds_q8a +
+                  plane * 16 * Q51_IU8_LDS_ROW_STRIDE +
+                  (g * 8 + a_row) * Q51_IU8_LDS_ROW_STRIDE +
+                  sub * 32 + khalf * 16;
+#pragma unroll
+              for (int j = 0; j < 16; ++j) abytes[j] = src[j];
+            } else {
+#pragma unroll
+              for (int j = 0; j < 16; ++j) abytes[j] = 0;
+            }
+            q51_iu8_int32x4 a_frag;
+            {
+              int32_t words[4];
+              memcpy(words, abytes, 16);
+              a_frag = (q51_iu8_int32x4){words[0], words[1], words[2], words[3]};
+            }
+            acc[plane] = __builtin_amdgcn_wmma_i32_16x16x16_iu8_w32(
+                true, a_frag, true, b_frag, acc[plane], true);
+          }
+        }
+#pragma unroll
+        for (int i = 0; i < 8; ++i) {
+          const int r = g * 8 + i;
+          float main_sum = 0.0f;
+          float act_sum = 0.0f;
+#pragma unroll
+          for (int plane = 0; plane < Q51_IU8_ACT_PLANES; ++plane) {
+            const float da = lds_da[plane * 16 * 8 + r * 8 + sub];
+            const int asumb = lds_sumq8a[plane * 16 * 8 + r * 8 + sub];
+            const int* cr = reinterpret_cast<const int*>(&acc[plane]);
+            main_sum += da * static_cast<float>(cr[i]);
+            act_sum += da * static_cast<float>(asumb);
+          }
+          const float term = dsub * main_sum + msub * act_sum;
+          const float updated = sum[r] + term;
+          kahan_err[r] += (sum[r] - updated) + term;
+          sum[r] = updated;
+          abs_terms[r] += fabsf(term);
+        }
+      }
+    }
+    __syncthreads();
+  }
+
+  if (!col_valid) return;
+#pragma unroll
+  for (int r = 0; r < 16; ++r) {
+    const int64_t local_row = tile_row_in_expert + r;
+    if (local_row < expert_count) {
+      const int64_t compact_row = compact_base + local_row;
+      if (compact_row < compact_rows) {
+        const float value = sum[r];
+        out[compact_row * out_features + global_col] =
+            float_to_bf16_bits(value);
+        const float bound = risk_multiplier *
+            (fabsf(kahan_err[r]) + FLT_EPSILON * abs_terms[r]);
+        const bool at_risk = lds_row_atrisk[r] != 0 ||
+            !isfinite(value) ||
+            q51_bf16_rounding_boundary_distance(value) < bound;
+        if (at_risk) {
+          const int slot = atomicAdd(risk_count, 1);
+          if (slot < max_risks) {
+            risk_indices[slot] = static_cast<int>(
+                compact_row * out_features + global_col);
+          }
+        }
+      }
+    }
+  }
+}
+
+// Sparse exact repair for the iu8-WMMA Q5_1 down: reproduces the production
+// pair2 row-publish arithmetic (q5_1_selected_grouped_prefill_pair2_row_
+// publish: 128 logical lanes; per lane the even-stream accumulator covers
+// columns lane + i*128 for even i, the odd stream covers odd i, and the
+// published value is even + odd after the 128-entry halving tree).
+__launch_bounds__(128, 2)
+__global__ void q5_1_selected_sparse_exact_repair_row_publish_kernel(
+    const uint16_t* __restrict__ input,
+    const int64_t* __restrict__ expert_start,
+    const uint8_t* __restrict__ qweight,
+    uint16_t* __restrict__ out,
+    const int* __restrict__ risk_count,
+    const int* __restrict__ risk_indices,
+    int64_t max_risks,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts) {
+  __shared__ float partial[128];
+  const int count = static_cast<int>(
+      max(static_cast<int64_t>(*risk_count), static_cast<int64_t>(0)));
+  const int bounded = static_cast<int>(
+      min(static_cast<int64_t>(count), max_risks));
+  const int64_t blocks_per_row = in_features / 32;
+  const int64_t row_bytes = blocks_per_row * 24;
+  const int lanes = static_cast<int>(in_features / 128);
+  for (int slot = static_cast<int>(blockIdx.x); slot < bounded;
+       slot += static_cast<int>(gridDim.x)) {
+    const int64_t idx = risk_indices[slot];
+    if (idx < 0 || idx >= compact_rows * out_features) continue;
+    const int64_t compact_row = idx / out_features;
+    const int64_t out_col = idx - compact_row * out_features;
+    // Locate the owning expert with a binary search over group starts.
+    int64_t lo = 0;
+    int64_t hi = num_experts;
+    while (lo < hi) {
+      const int64_t mid = (lo + hi) >> 1;
+      if (expert_start[mid] <= compact_row) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
+      }
+    }
+    const int64_t expert = lo - 1;
+    if (expert < 0 || expert >= num_experts) continue;
+    if (compact_row < expert_start[expert] ||
+        compact_row >= expert_start[expert + 1]) {
+      continue;
+    }
+    const uint8_t* weight_row =
+        qweight + (expert * out_features + out_col) * row_bytes;
+    const uint16_t* x_row = input + compact_row * in_features;
+    const int thread = static_cast<int>(threadIdx.x);
+    float acc_even = 0.0f;
+    float acc_odd = 0.0f;
+    for (int i = 0; i < lanes; ++i) {
+      const int64_t column = thread + static_cast<int64_t>(i) * 128;
+      const int64_t block = column / 32;
+      const int within = static_cast<int>(column & 31);
+      const uint8_t* blk = weight_row + block * 24;
+      const uint8_t packed = blk[8 + (within & 15)];
+      const uint8_t low = within < 16 ? (packed & 0x0fU) : (packed >> 4);
+      const uint8_t high = static_cast<uint8_t>(
+          (*reinterpret_cast<const uint32_t*>(blk + 4) >> within) & 1U);
+      const float weight = load_fp16(blk) *
+          static_cast<float>(low | (high << 4)) + load_fp16(blk + 2);
+      const float xv = bf16_bits_to_float(x_row[column]);
+      if ((i & 1) == 0) {
+        acc_even += xv * weight;
+      } else {
+        acc_odd += xv * weight;
+      }
+    }
+    partial[threadIdx.x] = acc_even + acc_odd;
+    __syncthreads();
+    for (int stride = 64; stride > 0; stride >>= 1) {
+      if (threadIdx.x < stride) {
+        partial[threadIdx.x] += partial[threadIdx.x + stride];
+      }
+      __syncthreads();
+    }
+    if (threadIdx.x == 0) {
+      out[compact_row * out_features + out_col] =
+          float_to_bf16_bits(partial[0]);
+    }
+    __syncthreads();
+  }
+}
+
+static int launch_q5_1_wmma_iu8_risk(
+    const uint16_t* x,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_wmma,
+    const int64_t* tile_expert,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int* risk_count,
+    int* risk_indices,
+    int64_t max_risks,
+    float risk_multiplier,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    int64_t wmma_total_rows,
+    hipStream_t stream) {
+  if (x == nullptr || expert_start_compact == nullptr ||
+      expert_start_wmma == nullptr || tile_expert == nullptr ||
+      qweight == nullptr || out == nullptr || risk_count == nullptr ||
+      risk_indices == nullptr || compact_rows <= 0 || num_experts <= 0 ||
+      in_features <= 0 || (in_features % 32) != 0 || out_features <= 0 ||
+      wmma_total_rows < compact_rows || wmma_total_rows % 16 != 0 ||
+      max_risks < 0 || max_risks > INT32_MAX || risk_multiplier < 0.0f) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t row_tiles = wmma_total_rows / 16;
+  const dim3 block(128);
+  const dim3 grid(
+      static_cast<unsigned int>((out_features + 127) / 128),
+      static_cast<unsigned int>(row_tiles));
+  hipLaunchKernelGGL(
+      (q5_1_selected_wmma_iu8_risk_prefill_kernel),
+      grid, block, 0, stream,
+      x, expert_start_compact, expert_start_wmma, tile_expert, qweight,
+      out, risk_count, risk_indices, max_risks, risk_multiplier,
+      compact_rows, in_features, out_features, num_experts,
+      wmma_total_rows);
+  return static_cast<int>(hipGetLastError());
+}
+
+static int launch_q5_1_sparse_exact_repair(
+    const uint16_t* input,
+    const int64_t* expert_start,
+    const uint8_t* qweight,
+    uint16_t* out,
+    const int* risk_count,
+    const int* risk_indices,
+    int64_t max_risks,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    int64_t grid_blocks,
+    hipStream_t stream) {
+  if (input == nullptr || expert_start == nullptr || qweight == nullptr ||
+      out == nullptr || risk_count == nullptr || risk_indices == nullptr ||
+      max_risks < 0 || compact_rows <= 0 || num_experts <= 0 ||
+      in_features <= 0 || (in_features % 128) != 0 || out_features <= 0 ||
+      grid_blocks <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (q5_1_selected_sparse_exact_repair_row_publish_kernel),
+      dim3(static_cast<unsigned int>(grid_blocks)), dim3(128), 0, stream,
+      input, expert_start, qweight, out, risk_count, risk_indices, max_risks,
+      compact_rows, in_features, out_features, num_experts);
+  return static_cast<int>(hipGetLastError());
+}
 }  // namespace
 
 extern "C" int hipengine_qwen4_exp_gather_bf16_lanes(
@@ -1280,4 +1741,70 @@ extern "C" int hipengine_qwen4_exp_q5_1_selected_gemv_bf16_bf16_out(
       static_cast<const uint8_t*>(weights), static_cast<uint16_t*>(output),
       x_rows, rows, num_experts, in_features, out_features, row_bytes);
   return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen4_exp_q5_1_selected_wmma_iu8_risk_prefill_bf16_bf16_out(
+    const void* x,
+    const void* expert_start_compact,
+    const void* expert_start_wmma,
+    const void* tile_expert,
+    const void* qweight,
+    void* output,
+    void* risk_count,
+    void* risk_indices,
+    int64_t max_risks,
+    double risk_multiplier,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    int64_t wmma_total_rows,
+    hipStream_t stream) {
+  return launch_q5_1_wmma_iu8_risk(
+      static_cast<const uint16_t*>(x),
+      static_cast<const int64_t*>(expert_start_compact),
+      static_cast<const int64_t*>(expert_start_wmma),
+      static_cast<const int64_t*>(tile_expert),
+      static_cast<const uint8_t*>(qweight),
+      static_cast<uint16_t*>(output),
+      static_cast<int*>(risk_count),
+      static_cast<int*>(risk_indices),
+      max_risks,
+      static_cast<float>(risk_multiplier),
+      compact_rows,
+      in_features,
+      out_features,
+      num_experts,
+      wmma_total_rows,
+      stream);
+}
+
+extern "C" int hipengine_qwen4_exp_q5_1_selected_sparse_exact_repair_row_publish_bf16(
+    const void* input,
+    const void* expert_start,
+    const void* qweight,
+    void* output,
+    const void* risk_count,
+    const void* risk_indices,
+    int64_t max_risks,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    int64_t grid_blocks,
+    hipStream_t stream) {
+  return launch_q5_1_sparse_exact_repair(
+      static_cast<const uint16_t*>(input),
+      static_cast<const int64_t*>(expert_start),
+      static_cast<const uint8_t*>(qweight),
+      static_cast<uint16_t*>(output),
+      static_cast<const int*>(risk_count),
+      static_cast<const int*>(risk_indices),
+      max_risks,
+      compact_rows,
+      in_features,
+      out_features,
+      num_experts,
+      grid_blocks,
+      stream);
 }

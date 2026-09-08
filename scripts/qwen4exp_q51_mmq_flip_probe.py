@@ -29,6 +29,10 @@ from hipengine.core.memory import free
 from hipengine.loading.gguf import GGUFReader, discover_gguf_files
 from hipengine.kernels.hip_gfx1100.quant import gguf_q5_1_mmq_selected_prefill as q51mmq
 from hipengine.kernels.hip_gfx1100.quant import qwen4_exp_q5_1 as q51
+from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1 import (
+    qwen4_exp_q5_1_selected_wmma_iu8_risk_prefill_bf16_bf16_out,
+    qwen4_exp_q5_1_selected_sparse_exact_repair_row_publish_bf16,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
     gguf_q8_1_mmq_ds4_pack_bf16_d4x3,
 )
@@ -48,6 +52,23 @@ def hip_available() -> bool:
 
 def _expert_starts(counts: np.ndarray) -> np.ndarray:
     return np.concatenate(([0], np.cumsum(counts))).astype(np.int64)
+
+
+def _tile_map(counts: np.ndarray):
+    """Host-side compact tile map: padded 16-row tiles per active expert."""
+    experts = counts.shape[0]
+    tiles_per = (counts + 15) // 16
+    total_tiles = int(tiles_per.sum())
+    tile_expert = np.full(total_tiles, -1, dtype=np.int64)
+    wmma_start = np.zeros(experts + 1, dtype=np.int64)
+    tile = 0
+    for e in range(experts):
+        wmma_start[e] = tile * 16
+        if counts[e] > 0:
+            tile_expert[tile:tile + tiles_per[e]] = e
+            tile += int(tiles_per[e])
+    wmma_start[experts] = tile * 16
+    return wmma_start, tile * 16, tile_expert
 
 
 def main() -> None:
@@ -120,12 +141,21 @@ def main() -> None:
             selected = np.argsort(scores, axis=1)[:, :10]
             counts = np.bincount(selected.reshape(-1), minlength=experts)
             starts = _expert_starts(counts)
+            wmma_start, wmma_total_rows, tile_expert = _tile_map(counts)
             compact = rows * 10
             x, _ = _make_activation(compact, in_features, 4321 + rows)
             dx = _upload(x, runtime, allocations)
             ds = _upload(starts, runtime, allocations)
+            dws = _upload(wmma_start, runtime, allocations)
+            dte = _upload(tile_expert, runtime, allocations)
             out_parent = _alloc((compact, out_features), np.uint16, runtime, allocations)
             out_mmq = _alloc((compact, out_features), np.uint16, runtime, allocations)
+            out_iu8 = _alloc((compact, out_features), np.uint16, runtime, allocations)
+            risk_capacity = compact * out_features
+            d_risk_count = _alloc(1, np.int32, runtime, allocations)
+            d_risk_indices = _alloc(risk_capacity, np.int32, runtime, allocations)
+            zero = np.zeros(1, dtype=np.int32)
+            from hipengine.core.memory import copy_host_to_device, host_array_ptr
             ds4_blocks = in_features // 128
             workspace_bytes = compact * planes * ds4_blocks * 144
             d_ws = _alloc(1, np.uint8, runtime, allocations)
@@ -150,22 +180,44 @@ def main() -> None:
                     library=mmq_library, runtime=runtime)
                 runtime.device_synchronize()
 
+            def run_iu8(mult: float) -> None:
+                copy_host_to_device(
+                    d_risk_count, host_array_ptr(zero), runtime=runtime)
+                qwen4_exp_q5_1_selected_wmma_iu8_risk_prefill_bf16_bf16_out(
+                    dx.ptr, ds.ptr, dws.ptr, dte.ptr, wd.ptr,
+                    out_iu8.ptr, d_risk_count.ptr, d_risk_indices.ptr,
+                    risk_capacity, mult, compact, in_features, out_features,
+                    experts, wmma_total_rows,
+                    library=parent_library, runtime=runtime)
+                qwen4_exp_q5_1_selected_sparse_exact_repair_row_publish_bf16(
+                    dx.ptr, ds.ptr, wd.ptr, out_iu8.ptr, d_risk_count.ptr,
+                    d_risk_indices.ptr, risk_capacity, compact, in_features,
+                    out_features, experts,
+                    library=parent_library, runtime=runtime)
+                runtime.device_synchronize()
+
             run_parent()
             run_mmq()
+            run_iu8(4.0)
             ref = _download(out_parent, (compact, out_features), np.uint16, runtime)
             cand = _download(out_mmq, (compact, out_features), np.uint16, runtime)
+            iu8 = _download(out_iu8, (compact, out_features), np.uint16, runtime)
+            risks = int(_download(d_risk_count, (1,), np.int32, runtime)[0])
             flips = int(np.count_nonzero(cand != ref))
+            flips_iu8 = int(np.count_nonzero(iu8 != ref))
             diff = cand.astype(np.int32) - ref.astype(np.int32)
             ulp = {str(int(v)): int(c) for v, c in
                    zip(*np.unique(diff[diff != 0], return_counts=True))} \
                 if np.any(diff != 0) else {}
 
-            times = {"pair2": [], "mmq": []}
+            times = {"pair2": [], "mmq": [], "iu8": []}
             for pair in range(a.pairs):
                 if pair % 2 == 0:
-                    order = (("pair2", run_parent), ("mmq", run_mmq))
+                    order = (("pair2", run_parent), ("mmq", run_mmq),
+                             ("iu8", lambda: run_iu8(4.0)))
                 else:
-                    order = (("mmq", run_mmq), ("pair2", run_parent))
+                    order = (("iu8", lambda: run_iu8(4.0)), ("mmq", run_mmq),
+                             ("pair2", run_parent))
                 for label, fn in order:
                     start = time.perf_counter()
                     fn()
@@ -181,11 +233,18 @@ def main() -> None:
                 "total_outputs": int(cand.size),
                 "flip_fraction": flips / int(cand.size),
                 "flip_ulp_distribution": ulp,
+                "iu8_flips": flips_iu8,
+                "iu8_flip_fraction": flips_iu8 / int(cand.size),
+                "iu8_queued_risks": risks,
+                "iu8_risk_fraction": risks / int(cand.size),
                 "seconds": times,
                 "pair2_median_ms": statistics.median(times["pair2"]) * 1e3,
                 "mmq_median_ms": statistics.median(times["mmq"]) * 1e3,
+                "iu8_median_ms": statistics.median(times["iu8"]) * 1e3,
                 "speedup": (statistics.median(times["pair2"]) /
                             statistics.median(times["mmq"])),
+                "iu8_speedup": (statistics.median(times["pair2"]) /
+                                statistics.median(times["iu8"])),
             }
             report["cases"].append(case)
             print(json.dumps(case))
