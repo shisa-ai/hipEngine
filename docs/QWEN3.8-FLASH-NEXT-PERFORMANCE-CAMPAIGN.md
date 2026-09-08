@@ -355,13 +355,23 @@ and reused pinned halo-box Vulkan `b212548e0` profiles. The logger-off
 128 decode transitions, with repeating trajectories within each engine and
 clean ownership/teardown. Neither packet establishes statistical closure.
 
+Post-Q5_1-promotion refresh (clean `4dbdeb7d6`, three promotions active):
+code-p4096 prefill MoE 8.402s (was 8.643), linear 4.448s, GR 3.418s, QSA
+1.333s, GDN 0.807s, device total 18.526s; absolute Vulkan gaps: MoE 3.86s,
+linear 3.43s, GR 1.71s. Combined-default 12-case screen: HE PP
+210.71/226.11/214.05 (+3.2/+2.2/+1.6% cross-packet versus the two-promotion
+packet), TG 19.41/18.68/16.78 (+1.4/+0.5/+2.4%); Vulkan lead PP
+1.614/1.738/1.937x, TG 1.301/1.332/1.436x.
+[Family](../benchmarks/results/2026-09-08-framework-qwen4exp-post-q51-family.json),
+[baselines](../benchmarks/results/2026-09-08-framework-qwen4exp-current-default-baselines-v3.json).
+
 | Owner | Code-p4096 prefill HE / Vulkan (s) | Fixed-live4097 decode HE / Vulkan (ms) |
 | --- | ---: | ---: |
-| MoE | 8.643 / 4.542 | 17.280 / 12.446 |
-| Non-GR linear | 4.442 / 1.019 | 17.177 / 16.356 |
-| Gated residual | 3.383 / 1.709 | 6.625 / 6.106 |
-| QSA | 1.330 / 0.646 | 2.617 / 3.081 |
-| GDN | 0.801 / 1.390 | 2.346 / 2.770 |
+| MoE | 8.402 / 4.542 | 17.280 / 12.446 |
+| Non-GR linear | 4.448 / 1.019 | 17.177 / 16.356 |
+| Gated residual | 3.418 / 1.709 | 6.625 / 6.106 |
+| QSA | 1.333 / 0.646 | 2.617 / 3.081 |
+| GDN | 0.807 / 1.390 | 2.346 / 2.770 |
 
 These are device-owner costs, not unprofiled request walls. The decode window
 is not TG128. Comparator differences are targeting clues, not proven removable

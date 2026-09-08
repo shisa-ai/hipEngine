@@ -193,6 +193,12 @@ screens1.109x/1.138x,200 pairs exact,23 tests. VGPR184->160,no scratch.
 Mixed short-Q/long-GR results retained;no runtime/default change.
 [Evidence](results/2026-09-07-framework-qwen4exp-mmq-token64.json).
 
+Three-promotion combined default: HE PP 210.71/226.11/214.05,
+TG 19.41/18.68/16.78 — Vulkan lead PP 1.61/1.74/1.94x, TG 1.30/1.33/1.44x.
+Family ledger: MoE 8.40s / linear 4.45s / GR 3.42s / QSA 1.33s / GDN 0.81s
+at code-p4096 (device total 18.53s, 1.85x).
+[Evidence](results/2026-09-08-framework-qwen4exp-current-default-baselines-v3.json).
+
 Weight-exact iu8 Q5_1 down promoted: the largest MoE kernel owner
 (3.2s at p4096) replaced by an iu8-WMMA chain with risk+repair at
 multiplier 16 — bit-identical to the pair2 parent in practice (12/12 state
