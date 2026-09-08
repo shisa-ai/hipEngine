@@ -318,7 +318,7 @@ def _apply_mode(
         if mode not in {"before","after"}:
             raise ValueError("invalid chunk mode")
         return
-    if route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "q8-down-register", "q51-row-publish", "gdn-wave-norm", "mmq-token64", "qsa-head-pair", "qsa-head-quad", "q4-iu8-exact", "q51-iu8-exact", "qsa-ordered-v2", "gr-iu8", "gr-iu8-down"}:
+    if route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "q8-down-register", "q51-row-publish", "gdn-wave-norm", "mmq-token64", "qsa-head-pair", "qsa-head-quad", "q4-iu8-exact", "q51-iu8-exact", "qsa-ordered-v2", "gr-iu8", "gr-iu8-down", "q8-iu8-dense"}:
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
         flag = ROW4_ENV if route_package == "q5k-row4" else QSA_H256_ENV
@@ -346,6 +346,8 @@ def _apply_mode(
             flag = "HIPENGINE_QWEN4_EXP_GR_IU8"
         if route_package == "gr-iu8-down":
             flag = "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN"
+        if route_package == "q8-iu8-dense":
+            flag = "HIPENGINE_QWEN4_EXP_Q8_IU8_WMM"
         if route_package == "q8-wave-scale":
             flag = "HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE"
         if route_package == "gr-wave-scale":
@@ -416,7 +418,7 @@ def build_parser() -> argparse.ArgumentParser:
                         help="One full-suite pair, then stop for multiple clear losses or finish remaining pairs in-residency")
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
-    parser.add_argument("--route-package", choices=("pf13", "q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "chunk1024", "q8-down-register", "q51-row-publish", "gdn-wave-norm", "mmq-token64", "qsa-head-pair", "qsa-head-quad", "q4-iu8-exact", "q51-iu8-exact", "qsa-ordered-v2", "gr-iu8", "gr-iu8-down"), default="pf13")
+    parser.add_argument("--route-package", choices=("pf13", "q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "chunk1024", "q8-down-register", "q51-row-publish", "gdn-wave-norm", "mmq-token64", "qsa-head-pair", "qsa-head-quad", "q4-iu8-exact", "q51-iu8-exact", "qsa-ordered-v2", "gr-iu8", "gr-iu8-down", "q8-iu8-dense"), default="pf13")
     parser.add_argument("--case-id", action="append", help="Diagnostic subset; omitted for full gate")
     return parser
 
@@ -568,6 +570,25 @@ def main(argv: Sequence[str] | None = None) -> int:
     register_mapped_calls = [0]
     original_row4 = None
     gr_iu8_module = None
+    if args.route_package == "q8-iu8-dense":
+        from hipengine.kernels.registry import KernelKey, register, resolve
+        row4_key = KernelKey("hip_gfx1101", "linear", "gguf_q8_0",
+                             "iu8_wmma_prefill_f32_f32_out")
+        original_row4 = resolve(
+            backend=row4_key.backend, layer=row4_key.layer,
+            quant=row4_key.quant, variant=row4_key.variant)
+
+        def counted_row4(*call_args, **call_kwargs):
+            row4_calls[0] += 1
+            return original_row4(*call_args, **call_kwargs)
+
+        register(row4_key, counted_row4, replace=True)
+        artifact["arms"] = {
+            "before": {"q8_dense":
+                "coltile8_rowbatch4_wave_scale_f32_f32_out (exact)"},
+            "after": {"q8_dense":
+                "iu8_wmma_prefill_f32_f32_out (T1 3-plane)"},
+        }
     if args.route_package in {"gr-iu8", "gr-iu8-down"}:
         import hipengine.runtime.qwen4_exp_runner as _gr_runner_module
         gr_iu8_module = _gr_runner_module
@@ -917,6 +938,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                 if calls != expected:
                     raise AssertionError(
                         f"GR iu8 calls {calls} != {expected}")
+            elif args.route_package == "q8-iu8-dense":
+                # attn_gate (36/chunk) + shared-expert down (48/chunk) plus
+                # any other coltile-family dense Q8_0 projections.
+                prompt_tokens = int(case["prompt_tokens"])
+                full_chunks, tail = divmod(prompt_tokens, args.prefill_chunk_size)
+                routed_chunks = full_chunks + (1 if tail > 256 else 0)
+                expected = (84 * routed_chunks) if mode == "after" else 0
+                if calls < expected:
+                    raise AssertionError(
+                        f"Q8 dense iu8 calls {calls} < {expected}")
             else:
                 validate_row4_engagement(mode, calls)
             row["candidate_calls"] = calls
@@ -1011,6 +1042,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     finally:
         if args.route_package == "gr-iu8":
             os.environ["HIPENGINE_QWEN4_EXP_GR_IU8"] = "0"
+        elif args.route_package == "q8-iu8-dense":
+            os.environ["HIPENGINE_QWEN4_EXP_Q8_IU8_WMM"] = "0"
         else:
             _apply_mode("after", route_package=args.route_package)
         if original_chunk is not None:
