@@ -192,6 +192,12 @@ row, not across them.
 | Qwen3.8-27B Dense | GGUF `Q4_K_S` | **396.1** | **13.1** | **23.9** | — |
 | Qwen3.8-27B Dense | GGUF `Q4_K_M` | — | — | **15.6** | — |
 
+**Time-series forecasting (TimesFM 2.5 200M).** hipEngine decodes batch=8,
+context 8192, horizon 512 forecasts in **0.099 s** on this GPU — 7.2x the
+official torch reference on the same hardware and 93x the NumPy CPU
+reference. The FP16 production path is within 0.86% max error of the FP32
+oracle (gate: 2%); a strict FP32 parity path is one flag away.
+
 #### NVIDIA RTX PRO 6000 Blackwell — 96 GB (`sm_120a`)
 
 | Model | Quant | Prompt processing | Text generation | With MTP | Max context |
