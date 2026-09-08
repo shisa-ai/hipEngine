@@ -627,15 +627,15 @@ Use the logger-off baseline table for throughput and parity factors.
 
 | Owner | Framework arrival (ms) | Current (ms) | Device share | Device zero-cost ceiling | Wall zero-cost ceiling |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| MoE/FFN (routed + shared) | 19,773.694 | 10,310.604 | 50.55% | 2.022x | 1.959x |
-| Non-FFN, non-GR linear | 5,828.219 | 4,455.164 | 21.84% | 1.279x | 1.268x |
-| GR projections + read/mix | 4,351.404 | 3,388.731 | 16.61% | 1.199x | 1.192x |
-| QSA | 8,982.811 | 1,329.903 | 6.52% | 1.070x | 1.067x |
-| GDN | 3,906.453 | 800.907 | 3.93% | 1.041x | 1.040x |
-| Boundary / residual combine | 76.563 | 96.436 | 0.47% | 1.005x | 1.005x |
-| PLE | 14.224 | 15.552 | 0.08% | 1.001x | 1.001x |
+| MoE/FFN (routed + shared) | 19,773.694 | 8,642.781 | 46.18% | 1.858x | 1.793x |
+| Non-FFN, non-GR linear | 5,828.219 | 4,442.167 | 23.74% | 1.311x | 1.294x |
+| GR projections + read/mix | 4,351.404 | 3,383.491 | 18.08% | 1.221x | 1.209x |
+| QSA | 8,982.811 | 1,329.609 | 7.10% | 1.076x | 1.073x |
+| GDN | 3,906.453 | 801.378 | 4.28% | 1.045x | 1.043x |
+| Boundary / residual combine | 76.563 | 99.247 | 0.53% | 1.005x | 1.005x |
+| PLE | 14.224 | 15.656 | 0.08% | 1.001x | 1.001x |
 
-Current kernel sum 20,397.297 ms; profiled wall 21,060.985 ms.
+Current kernel sum 18,714.329 ms; profiled wall 19,547.873 ms.
 Ceilings are sensitivity bounds, not expected realizable speedups. Snapshot deltas
 are historical attribution, not replacements for each retained A/B.
 
@@ -643,27 +643,27 @@ are historical attribution, not replacements for each retained A/B.
 
 | Owner | hipEngine | halo-box Vulkan | HE / Vulkan | Difference |
 | --- | ---: | ---: | ---: | ---: |
-| MoE/FFN (routed + shared) | 10,213.784 | 4,372.034 | 2.336x | +5,841.750 |
-| Non-FFN, non-GR linear | 4,451.517 | 1,019.237 | 4.367x | +3,432.280 |
-| GR projections + read/mix | 3,394.814 | 1,707.311 | 1.988x | +1,687.503 |
-| QSA | 1,330.604 | 645.424 | 2.062x | +685.180 |
-| PLE | 15.884 | 75.456 | 0.211x | -59.572 |
-| Boundary / residual combine | 97.150 | 506.861 | 0.192x | -409.711 |
-| GDN | 801.091 | 1,390.400 | 0.576x | -589.309 |
-| **Total device time** | **20,304.844** | **9,716.723** | | |
+| MoE/FFN (routed + shared) | 8,566.902 | 4,372.034 | 1.959x | +4,194.868 |
+| Non-FFN, non-GR linear | 4,446.115 | 1,019.237 | 4.362x | +3,426.878 |
+| GR projections + read/mix | 3,383.816 | 1,707.311 | 1.982x | +1,676.505 |
+| QSA | 1,330.054 | 645.424 | 2.061x | +684.630 |
+| PLE | 15.632 | 75.456 | 0.207x | -59.824 |
+| Boundary / residual combine | 98.164 | 506.861 | 0.194x | -408.697 |
+| GDN | 798.719 | 1,390.400 | 0.574x | -591.682 |
+| **Total device time** | **18,639.402** | **9,716.723** | | |
 
 **Decode, four-category p4096 mean (ms):**
 
 | Owner | hipEngine | halo-box Vulkan | HE / Vulkan | Difference |
 | --- | ---: | ---: | ---: | ---: |
-| QSA | 16.955 | 3.161 | 5.365x | +13.794 |
-| MoE/FFN (routed + shared) | 17.295 | 12.469 | 1.387x | +4.826 |
-| Non-FFN, non-GR linear | 17.079 | 16.394 | 1.042x | +0.685 |
-| GR projections + read/mix | 6.604 | 6.115 | 1.080x | +0.489 |
-| PLE | 0.031 | 0.115 | 0.271x | -0.084 |
-| GDN | 2.340 | 2.777 | 0.843x | -0.437 |
-| Boundary / residual combine | 0.458 | 1.386 | 0.331x | -0.927 |
-| **Total device time** | **60.762** | **42.416** | | |
+| MoE/FFN (routed + shared) | 17.309 | 12.469 | 1.388x | +4.840 |
+| Non-FFN, non-GR linear | 17.161 | 16.394 | 1.047x | +0.767 |
+| GR projections + read/mix | 6.624 | 6.115 | 1.083x | +0.510 |
+| PLE | 0.032 | 0.115 | 0.276x | -0.083 |
+| GDN | 2.344 | 2.777 | 0.844x | -0.432 |
+| QSA | 2.607 | 3.161 | 0.825x | -0.553 |
+| Boundary / residual combine | 0.456 | 1.386 | 0.329x | -0.930 |
+| **Total device time** | **46.534** | **42.416** | | |
 
 Decode is a fixed-live4097 diagnostic, averaged over three restored HIP repetitions
 and one Vulkan appended-root query per category, not a tg128 trajectory average.
