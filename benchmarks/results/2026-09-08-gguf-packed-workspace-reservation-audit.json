@@ -1,0 +1,60 @@
+{
+ "date": "2026-09-08",
+ "date_timezone": "UTC",
+ "kind": "gguf_packed_workspace_reservation_audit",
+ "status": "audit_complete_bound_not_implemented",
+ "scope": "static code audit + deterministic reservation arithmetic + unchanged-green admission/rollback suites; no runtime change",
+ "reservation_semantics": {
+  "lease_site": "hipengine/generation/qwen35_gguf.py global-pool branch (create_global_pool + lease_workspace)",
+  "lease_key": "qwen35_gguf_packed_execution",
+  "lease_formula": "workspace_slots(=serving capacity) x max(max_pages_per_request, 1024/256) pages",
+  "max_pages_per_request": "factory session scratch.max_positions rounded to 256-token pages = the full configured context",
+  "page_bytes": 8388608,
+  "page_bytes_note": "uniform INT8 KV, 256 tokens/block, this geometry (16 layers x 2 x 4 kv-heads x 256 dim x 1B)",
+  "guarantees": [
+   "Admission accounting always sees the pinned workspace pages: no request can be admitted against them, so no admitted request can lack rollback capacity",
+   "_GGUFPackedTargetState.allocate can always draw lease_pages[:total_pages] without mid-request allocation failure (the workspace never grows beyond the lease by construction)",
+   "Union geometry is genuine-growth-only (never shrinks); growth invalidates live packed decode graphs and flushes deferred state before reallocating, so no graph binds freed buffers",
+   "An over-need allocation fails closed with 'packed workspace lease holds X pages but the workspace needs Y'"
+  ],
+  "consumers": [
+   {
+    "path": "verify_target_blocks_batch (MTP target verify)",
+    "context_bound": "hard NotImplementedError at layout.max_live_count >= 1024",
+    "max_pages_per_slot": 4
+   },
+   {
+    "path": "packed AR prefill (the serving prefill slab, incl. c1 direct-int8 slot-local route)",
+    "context_bound": "requests slot_capacity = max(1024, max_live_count) unconditionally; rejects >= 1024 only for non-slot-local scattered layouts",
+    "max_pages_per_slot": "full request context",
+    "note": "the layout is rebound to workspace pages (_rebind_packed_verify_layout_pages); the workspace planes back the packed slab at full context on the serving route"
+   },
+   {
+    "path": "prime_hidden_sequence_kv + packed AR decode (NextN/MTP)",
+    "context_bound": "slot capacity from live positions with a 1024 floor; MTP is not enabled for this model family in the default policy",
+    "max_pages_per_slot": 4
+   }
+  ],
+  "audit_conclusion": "The full-context lease is honest for the dense serving route: the packed AR prefill path draws workspace pages at full request context unconditionally, including the c1 direct-int8 slot-local route. The C1/256K figure (8 GiB workspace on top of 8 GiB request KV) is the real cost of the packed slab backing, not accounting waste. A naive bound to the 1024-token floor would break long-context serving prefill."
+ },
+ "reservation_by_context": {
+  "note": "deterministic arithmetic from the lease formula and page size; C = serving capacity (workspace_slots); request KV shown for comparison",
+  "rows": [
+   {"context": 16384, "pages_per_request": 64, "c1_workspace_gib": 0.5, "c1_request_kv_gib": 0.5, "c1_total_gib": 1.0, "c8_workspace_gib": 4.0},
+   {"context": 65536, "pages_per_request": 256, "c1_workspace_gib": 2.0, "c1_request_kv_gib": 2.0, "c1_total_gib": 4.0, "c8_workspace_gib": 16.0},
+   {"context": 131072, "pages_per_request": 512, "c1_workspace_gib": 4.0, "c1_request_kv_gib": 4.0, "c1_total_gib": 8.0, "c8_workspace_gib": 32.0},
+   {"context": 262144, "pages_per_request": 1024, "c1_workspace_gib": 8.0, "c1_request_kv_gib": 8.0, "c1_total_gib": 16.0, "c8_workspace_gib": 64.0}
+  ],
+  "bounded_floor_if_applicable": "4 pages/slot = 32 MiB (the 1024-token union floor); at C1/256K the hypothetical saving would be 1,020 pages = 7.97 GiB, but only if the serving prefill path's workspace usage is proven scratch-only"
+ },
+ "bound_proposal": {
+  "implemented": false,
+  "proposal": "Bound the lease to the 1024-token floor only for engines with no speculative serving configured AND only after an instrumented GPU experiment proves the c1 direct-int8 slot-local prefill's workspace planes are scratch-only (KV written through the scheduler page table). Alternative that needs no proof: route long-context slot-local prefill to per-session paths under capacity pressure.",
+  "blocker": "The packed AR prefill binds its layout to workspace pages at full context by construction; determining whether the c1 route actually reads/writes those planes (versus writing through scheduler pages) requires a page-usage trace experiment that was not run (GPU1 occupied by an external benchmark during this audit)."
+ },
+ "dms_note": "The DMS route measured by the capacity campaign does not use this server pool (private-C1 session construction); the 232,448-token capacity result is unaffected by this reservation.",
+ "validation": {
+  "tests": "tests/test_server_api.py (575 passed), tests/test_dms_concurrency_runner_wiring.py + tests/test_gguf_packed_workspace_stability.py green, unchanged tree",
+  "no_code_change": true
+ }
+}
