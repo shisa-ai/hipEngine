@@ -177,6 +177,9 @@ from hipengine.kernels.cpu_reference.qwen4_exp import (
     qsa_select_positions,
 )
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
+from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
+    gguf_q8_0_iu8_wmma_prefill_f32_f32,
+)
 from hipengine.kvcache import KVLiveSpans
 from hipengine.loading.qwen4_exp_materialize import Qwen4ExpResidentWeights
 from hipengine.runtime.gguf_weight import GGUFDeviceWeight
@@ -2964,7 +2967,38 @@ def run_qwen4_exp_gr_read(
         and branches == 4
         and is_registered(fused_up_key)
     )
-    if fused_up:
+    gr_iu8 = fused_up and _qwen4_exp_gr_iu8_enabled(rows)
+    if gr_iu8:
+        # T1 candidate: iu8-WMMA projection + separate sigmoid/gated-mean
+        # epilogue (the unfused epilogue kernels are the retained exact ones).
+        gguf_q8_0_iu8_wmma_prefill_f32_f32(
+            scratch.low_rank.ptr,
+            up_weight.allocation("raw").tensor.ptr,
+            scratch.gate.ptr,
+            rows,
+            low_rank,
+            residual_width,
+            stream=stream,
+            runtime=active_runtime,
+        )
+        qwen4_exp_sigmoid_f32(
+            scratch.gate.ptr,
+            scratch.gate.ptr,
+            rows * residual_width,
+            stream=stream,
+            runtime=active_runtime,
+        )
+        qwen4_exp_gated_mean_f32(
+            scratch.normalized.ptr,
+            scratch.gate.ptr,
+            scratch.mixed.ptr,
+            rows,
+            branches,
+            hidden,
+            stream=stream,
+            runtime=active_runtime,
+        )
+    elif fused_up:
         fused_up_key = _qwen4_exp_gr_wave_scale_key(fused_up_key, rows=rows, branches=branches)
         resolve(
             backend=fused_up_key.backend,
@@ -3148,6 +3182,22 @@ def _qwen4_exp_gr_wave_scale_key(key: KernelKey, *, rows: int, branches: int) ->
 
 def _qwen4_exp_gr_up_sigmoid_mean_enabled(rows: int) -> bool:
     return rows > 256
+
+
+def _qwen4_exp_gr_iu8_enabled(rows: int) -> bool:
+    """Default-off iu8-WMMA GR up route (T1 production candidate).
+
+    Three-plane fp32 in-kernel staging; raw Q8_0 codes keep the weight path
+    exact. Qualified by the production numerical envelope, not bit-identity:
+    screened drift is ~1 fp32 ulp on gate/mixed versus the fused parent.
+    Prefill-sized rows only; the exact fused parent stays the fallback.
+    """
+
+    return (
+        os.environ.get("HIPENGINE_QWEN4_EXP_GR_IU8", "0")
+        not in {"", "0", "false", "False"}
+        and rows > 256
+    )
 
 
 def _qwen4_exp_gr_sigmoid_mean_fused(rows: int) -> bool:
