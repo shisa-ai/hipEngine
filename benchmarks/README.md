@@ -263,8 +263,9 @@ any raw-IQ tensor was present, so 0% of their weight bytes were in a layout the
 optimized families can consume, against 94.8% for the plain `Q4_K_S` file of the
 same model. Making that veto per-tensor, widening the dense T16 role coverage,
 and routing raw IQ prefill through the integer-MMQ kernel took `UD-Q4_K_M`
-prefill from 22.1 to 171.9 tok/s on the published sweep protocol (512/128,
-zbook / Radeon 8060S).
+prefill from 22.1 to 150.3 tok/s on the published sweep protocol (512/128,
+zbook / Radeon 8060S), choosing the route that is admissible under the
+production envelope over a faster one that is not.
 
 | Stage | Optimized weight bytes | Prefill | Decode |
 | --- | ---: | ---: | ---: |
@@ -272,10 +273,11 @@ zbook / Radeon 8060S).
 | Per-tensor repack eligibility | 44.2% | 29.9 | 7.24 |
 | Dense T16 role coverage | 61.3% | 41.5 | 7.62 |
 | Dense IQ integer MMQ | 61.3% | 127.2 | 7.63 |
-| Four-quant MMQ (current) | 61.3% | **171.9** | 7.71 |
+| Four-quant integer MMQ | 61.3% | 171.9 | 7.71 |
+| Four-quant W4A16 (current) | 61.3% | **150.3** | 7.69 |
 
 The same host and protocol run the plain `Qwen3.8-27B-Q4_K_S` file at 294.8
-tok/s, so the gap between the two files narrowed from 13.3x to 1.72x.
+tok/s, so the gap between the two files narrowed from 13.3x to 1.96x.
 
 **Accuracy is ranked against hipEngine strict, not against an external engine.**
 `docs/EXECUTION-PROFILES.md` section 6 defines the production gate as strict
@@ -289,10 +291,10 @@ bytes. Scored that way, over 162 teacher-forced rows:
 | Four-quant MMQ (current) | 0.002110 | 0.006797 | 0.024044 | **0.170390** | **1** |
 | Four-quant W4A16 | **0.000827** | 0.004547 | 0.012475 | **0.023513** | 0 |
 
-The current four-quant integer-MMQ default **exceeds the binding 5e-2 absolute
-maximum-row ceiling at one position**, so it is not admissible under that
-envelope as it stands. The W4A16 route passes every threshold at 150.9 tok/s,
-12% below the integer MMQ. The default is under review; see
+The integer-MMQ route **exceeds the binding 5e-2 absolute maximum-row ceiling
+at one position**, so it is not admissible under that envelope. **W4A16 is
+therefore the default**, passing every threshold at a 12% throughput cost; the
+integer route stays registered. See
 [`gate reference`](results/2026-09-09-zbook-ud-production-gate-reference.json).
 
 Every rate here is gross, from a power- and thermal-limited laptop whose

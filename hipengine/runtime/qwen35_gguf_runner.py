@@ -18106,10 +18106,20 @@ class Qwen35GGUFResidentSession:
         if not bool(getattr(self, "use_iq_dense_mmq", True)):
             return iq_dense_mmq_session(False)
         policy = backend_package_capability(
-            self.backend, "GGUF_IQ_DENSE_MMQ_PREFILL_POLICY", {}
+            self.backend, "GGUF_IQ_DENSE_PREFILL_POLICY", {}
         )
         if not policy:
             return iq_dense_mmq_session(False)
+        # Only the integer-MMQ route consumes an activation plane. When the
+        # backend routes dense IQ prefill through W4A16, open the session
+        # without one: it still marks this prefill as the execution owner, but
+        # allocates nothing.
+        if not any(
+            str(entry.get("variant", "")).startswith("dense_mmq_")
+            for entry in policy.values()
+            if isinstance(entry, Mapping)
+        ):
+            return iq_dense_mmq_session(True)
         buffer = self._ensure_iq_dense_mmq_buffer()
         if self._iq_dense_mmq_library is None:
             self._iq_dense_mmq_library = build_gguf_iq_source_mmq_prefill(
