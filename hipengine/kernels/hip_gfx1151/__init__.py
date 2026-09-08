@@ -2030,43 +2030,36 @@ GGUF_IQ_DENSE_MMQ_PREFILL_POLICY = {
         "max_rows": 131072,
         "variant": "dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out",
     },
+    # IQ3_S: one 4-bit scale per K32 group and grid magnitudes 1..15, so the
+    # signed residual fits int8 with wide margin. Leaf agreement 0.0047-0.0097
+    # max relative error, crossover 4 rows, up to 12.3x at 512.
+    "gguf_iq3_s": {
+        "min_rows": 8,
+        "max_rows": 131072,
+        "variant": "dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out",
+    },
+    "gguf_iq4_nl": {
+        "min_rows": 8,
+        "max_rows": 131072,
+        "variant": "dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out",
+    },
 }
-# IQ4_NL is deliberately absent. Its kernel support is complete and correct
-# (expansion, registration and tests; leaf agreement 0.0052-0.0072 max relative
-# error against the strict GEMV, crossover 1 row, up to 16.8x), and enabling it
-# measured prefill 127.2 -> 155.2 tok/s. It is held out because of a
-# *concentrated* numerics cost, not a diffuse one:
+# All four expressible quants are routed. IQ4_NL and IQ3_S were each held out
+# briefly on a mean/p95 regression before the combined arm was measured; the
+# retained trade at 512/128 is:
 #
-#   arm         mean       p95        max      top-1
-#   dense MMQ   0.0010796  0.0051188  0.0354   162/162
-#   + IQ4_NL    0.0013457  0.0071143  0.0412   161/162
+#   arm                      prefill      mean       p95        max     top-1
+#   IQ4_XS+IQ3_XXS           127.2   0.0010796  0.0051188  0.0354152  162/162
+#   + IQ3_S                  137.7   0.0012985  0.0044588  0.0403417  161/162
+#   + IQ4_NL                 155.2   0.0013457  0.0071143  0.0412277  161/162
+#   all four (retained)      171.9   0.0014707  0.0077991  0.0297407  161/162
 #
-# A localization attempt (2026-09-08) *failed to find a shippable subset*, and
-# the negative result is the useful part. The seven IQ4_NL tensors sit at
-# layers 1/2/3 (ffn_down), 21 (attn_qkv) and 27/27/50 (ffn_gate/up); a
-# single-prompt probe attributed 71% of the divergence-from-default to the
-# three early ffn_down tensors, so routing only the other four looked
-# promising. Measured, that subset gives prefill 140.3 tok/s (+10% instead of
-# +22%) and teacher mean **0.0013632** - no better than routing all seven
-# (0.0013457), and worse than not routing IQ4_NL at all (0.0010796). It only
-# recovers top-1 to 162/162.
-#
-# The lesson: that probe bisected on divergence from *our own default*, which
-# is not the gate objective. Against the teacher the cost is essentially
-# binary - routing any IQ4_NL through the MMQ costs ~+0.00027 mean - so it is
-# not attributable to specific tensors and no subset fixes it. Even the best
-# remaining subset (attn_qkv alone, 29.5 MB of 330) could not be worth the
-# dispatch complexity. See docs/REFACTOR.md "IQ4_NL dense MMQ".
-_GGUF_IQ_DENSE_MMQ_IQ4_NL_HELD_OUT = {
-    "min_rows": 8,
-    "max_rows": 131072,
-    "variant": "dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out",
-    # The subset that was measured and rejected: attn_qkv L21 plus ffn_gate/up
-    # L27/L50, excluding the early ffn_down tensors. Kept here so the attempt
-    # is not repeated. The dispatch honours an optional "shapes" allowlist, so
-    # re-testing it is a one-line change.
-    "shapes": frozenset({(5_120, 10_240), (5_120, 17_408)}),
-}
+# Mean and p95 regress against the two-quant policy while the **maximum
+# improves** (0.0354 -> 0.0297, the best of the four) and both binding gates
+# pass comfortably. A per-tensor localization of the IQ4_NL cost was attempted
+# and failed - against the teacher the cost is not attributable to particular
+# tensors - so this is a systematic mean/tail-shape trade, not a defect to fix.
+# Rolling back is per-quant: delete an entry above. See docs/REFACTOR.md.
 
 GGUF_Q6_DENSE_INTEGER_MMQ_PREFILL_POLICY = {
     "gguf_q6_k_t16_qmicro_planar_v1": {
