@@ -1,0 +1,427 @@
+// TimesFM 2.5 200M fused elementwise / norm / RoPE / attention kernels (FP32).
+//
+// Semantics mirror google-research/timesfm src/timesfm/torch/{transformer,
+// normalization, util}.py: RMSNorm uses a multiplicative `scale` (no +1) with
+// epsilon inside the rsqrt; RoPE is non-interleaved halves; attention is
+// unscaled dot-product with the make_attn_mask causal+front-mask semantics.
+//
+// The QKV projection output stays packed [rows, 3*model_dims]; the q/k/v
+// pieces are addressed through (patch_stride, base) so no repacking copy is
+// needed between the GEMM and the fused kernels.
+//
+// Wrappers follow the hipEngine C ABI (return hipGetLastError).
+
+#include <hip/hip_runtime.h>
+#include <stdint.h>
+#include <math.h>
+
+namespace {
+
+constexpr int kThreads = 256;
+
+__device__ __forceinline__ float softplus_(float x) {
+  return log1pf(expf(-fabsf(x))) + fmaxf(x, 0.0f);
+}
+
+// out[rows, features] = rmsnorm(x) * scale   (in-place when out == x)
+__global__ void rmsnorm_kernel(
+    const float* __restrict__ x,
+    const float* __restrict__ scale,
+    float* __restrict__ out,
+    int64_t rows,
+    int features,
+    float eps) {
+  int64_t row = blockIdx.x * (int64_t)blockDim.x + threadIdx.x;
+  if (row >= rows) return;
+  const float* xr = x + row * features;
+  float* orow = out + row * features;
+  float sum = 0.0f;
+  for (int j = 0; j < features; ++j) sum += xr[j] * xr[j];
+  float inv = rsqrtf(sum / (float)features + eps);
+  for (int j = 0; j < features; ++j) orow[j] = xr[j] * inv * scale[j];
+}
+
+// out = rmsnorm(x) * scale + other    (TimesFM post-norm residual)
+__global__ void norm_add_kernel(
+    const float* __restrict__ x,
+    const float* __restrict__ other,
+    const float* __restrict__ scale,
+    float* __restrict__ out,
+    int64_t rows,
+    int features,
+    float eps) {
+  int64_t row = blockIdx.x * (int64_t)blockDim.x + threadIdx.x;
+  if (row >= rows) return;
+  const float* xr = x + row * features;
+  const float* orow = other + row * features;
+  float* dst = out + row * features;
+  float sum = 0.0f;
+  for (int j = 0; j < features; ++j) sum += xr[j] * xr[j];
+  float inv = rsqrtf(sum / (float)features + eps);
+  for (int j = 0; j < features; ++j) dst[j] = xr[j] * inv * scale[j] + orow[j];
+}
+
+// x = x + bias, in place.
+__global__ void bias_kernel(
+    float* __restrict__ x,
+    const float* __restrict__ bias,
+    int64_t rows,
+    int features) {
+  int64_t row = blockIdx.x * (int64_t)blockDim.x + threadIdx.x;
+  if (row >= rows) return;
+  float* xr = x + row * features;
+  for (int j = 0; j < features; ++j) xr[j] += bias[j];
+}
+
+// x = swish(x + bias), in place.
+__global__ void bias_swish_kernel(
+    float* __restrict__ x,
+    const float* __restrict__ bias,
+    int64_t rows,
+    int features) {
+  int64_t row = blockIdx.x * (int64_t)blockDim.x + threadIdx.x;
+  if (row >= rows) return;
+  float* xr = x + row * features;
+  for (int j = 0; j < features; ++j) {
+    float v = xr[j] + bias[j];
+    xr[j] = v / (1.0f + expf(-v));
+  }
+}
+
+// x = swish(x), in place.
+__global__ void swish_kernel(float* __restrict__ x, int64_t count) {
+  int64_t i = blockIdx.x * (int64_t)blockDim.x + threadIdx.x;
+  if (i >= count) return;
+  float v = x[i];
+  x[i] = v / (1.0f + expf(-v));
+}
+
+// out = a + b, elementwise.
+__global__ void add_kernel(
+    const float* __restrict__ a,
+    const float* __restrict__ b,
+    float* __restrict__ out,
+    int64_t count) {
+  int64_t i = blockIdx.x * (int64_t)blockDim.x + threadIdx.x;
+  if (i >= count) return;
+  out[i] = a[i] + b[i];
+}
+
+// RoPE (non-interleaved halves) on a packed-heads view:
+// x[b, n, base + h*D + j], patch stride `patch_stride`.
+__global__ void rope_kernel(
+    float* __restrict__ x,
+    const float* __restrict__ pos,
+    int B,
+    int N,
+    int H,
+    int D,
+    int patch_stride,
+    int base) {
+  int64_t idx = blockIdx.x * (int64_t)blockDim.x + threadIdx.x;
+  int64_t total = (int64_t)B * N * H * (D / 2);
+  if (idx >= total) return;
+  int half = D / 2;
+  int j = idx % half;
+  int h = (idx / half) % H;
+  int n = (idx / ((int64_t)half * H)) % N;
+  int b = idx / ((int64_t)half * H * N);
+  float p = pos[(int64_t)b * N + n];
+  float fraction = 2.0f * (float)j / (float)D;
+  float timescale = powf(10000.0f, fraction);
+  float angle = p / timescale;
+  float sin_a = sinf(angle);
+  float cos_a = cosf(angle);
+  int64_t off = (int64_t)b * N * patch_stride + (int64_t)n * patch_stride + base + h * D;
+  float x1 = x[off + j];
+  float x2 = x[off + j + half];
+  x[off + j] = x1 * cos_a - x2 * sin_a;
+  x[off + j + half] = x2 * cos_a + x1 * sin_a;
+}
+
+// Per-head RMSNorm on a packed-heads view (q or k inside the QKV buffer).
+__global__ void head_rmsnorm_kernel(
+    float* __restrict__ x,
+    const float* __restrict__ scale,
+    int B,
+    int N,
+    int H,
+    int D,
+    int patch_stride,
+    int base,
+    float eps) {
+  int64_t idx = blockIdx.x * (int64_t)blockDim.x + threadIdx.x;
+  int64_t total = (int64_t)B * N * H;
+  if (idx >= total) return;
+  int d = 0;  // one thread per (b, n, h) row of D elements
+  int h = idx % H;
+  int n = (idx / H) % N;
+  int b = idx / ((int64_t)H * N);
+  float* xr = x + (int64_t)b * N * patch_stride + (int64_t)n * patch_stride + base + h * D;
+  float sum = 0.0f;
+  for (int j = 0; j < D; ++j) sum += xr[j] * xr[j];
+  float inv = rsqrtf(sum / (float)D + eps);
+  for (int j = 0; j < D; ++j) xr[j] = xr[j] * inv * scale[j];
+}
+
+// Per-dim query scaling (softplus factors) on a packed-heads view.
+__global__ void head_perdim_scale_kernel(
+    float* __restrict__ x,
+    const float* __restrict__ scale,
+    int B,
+    int N,
+    int H,
+    int D,
+    int patch_stride,
+    int base) {
+  int64_t idx = blockIdx.x * (int64_t)blockDim.x + threadIdx.x;
+  int64_t total = (int64_t)B * N * H;
+  if (idx >= total) return;
+  int h = idx % H;
+  int n = (idx / H) % N;
+  int b = idx / ((int64_t)H * N);
+  float* xr = x + (int64_t)b * N * patch_stride + (int64_t)n * patch_stride + base + h * D;
+  float factor = 1.442695041f / sqrtf((float)D);
+  for (int j = 0; j < D; ++j) xr[j] *= factor * softplus_(scale[j]);
+}
+
+// Scatter packed k/v into the contiguous decode cache at `start`.
+__global__ void scatter_kv_kernel(
+    const float* __restrict__ qkv,
+    float* __restrict__ cache_k,
+    float* __restrict__ cache_v,
+    int B,
+    int N,
+    int S,
+    int H,
+    int D,
+    int patch_stride,
+    int start) {
+  int64_t idx = blockIdx.x * (int64_t)blockDim.x + threadIdx.x;
+  int64_t total = (int64_t)B * N * H * D;
+  if (idx >= total) return;
+  int d = idx % D;
+  int h = (idx / D) % H;
+  int n = (idx / ((int64_t)D * H)) % N;
+  int b = idx / ((int64_t)D * H * N);
+  int64_t src = (int64_t)b * N * patch_stride + (int64_t)n * patch_stride + h * D + d;
+  int64_t dst = (((int64_t)b * S + (start + n)) * H + h) * D + d;
+  cache_k[dst] = qkv[src + H * D];
+  cache_v[dst] = qkv[src + 2 * H * D];
+}
+
+// Unscaled masked dot-product attention; one block per (b, h, q) row.
+// q is read from the packed QKV buffer (patch_stride, base 0); k/v from the
+// contiguous cache.  mask: (qi + q_offset[b] >= ki) && (ki >= num_masked[b]).
+__global__ void attention_kernel(
+    const float* __restrict__ q_packed,
+    const float* __restrict__ k,
+    const float* __restrict__ v,
+    const int* __restrict__ num_masked,
+    const int* __restrict__ q_offset,
+    float* __restrict__ out,
+    int B,
+    int Q,
+    int S,
+    int H,
+    int D,
+    int q_patch_stride) {
+  extern __shared__ float smem[];
+  float* scores = smem;          // S floats
+  float* q_row = smem + S;       // D floats
+
+  int q_idx = blockIdx.x % Q;
+  int h = (blockIdx.x / Q) % H;
+  int b = blockIdx.x / (Q * H);
+  if (b >= B) return;
+
+  const float* qv = q_packed + (int64_t)b * Q * q_patch_stride
+      + (int64_t)q_idx * q_patch_stride + h * D;
+  for (int j = threadIdx.x; j < D; j += blockDim.x) q_row[j] = qv[j];
+  __syncthreads();
+
+  int nm = num_masked[b];
+  int off = q_offset[b];
+
+  for (int kk = threadIdx.x; kk < S; kk += blockDim.x) {
+    float s = 0.0f;
+    bool allowed = (q_idx + off >= kk) && (kk >= nm);
+    if (allowed) {
+      const float* kv = k + (((int64_t)b * S + kk) * H + h) * D;
+      for (int j = 0; j < D; ++j) s += q_row[j] * kv[j];
+    } else {
+      s = -3.402823466e38f / 2.0f;
+    }
+    scores[kk] = s;
+  }
+  __syncthreads();
+
+  float m = -INFINITY;
+  for (int kk = threadIdx.x; kk < S; kk += blockDim.x) m = fmaxf(m, scores[kk]);
+  for (int w = 16; w > 0; w >>= 1) {
+    m = fmaxf(m, __shfl_xor(m, w));
+  }
+  __shared__ float warp_max[kThreads / 32];
+  if ((threadIdx.x & 31) == 0) warp_max[threadIdx.x >> 5] = m;
+  __syncthreads();
+  if (threadIdx.x == 0) {
+    float mm = warp_max[0];
+    for (int w = 1; w < kThreads / 32; ++w) mm = fmaxf(mm, warp_max[w]);
+    warp_max[0] = mm;
+  }
+  __syncthreads();
+  float row_max = warp_max[0];
+
+  float sum = 0.0f;
+  for (int kk = threadIdx.x; kk < S; kk += blockDim.x) {
+    float e = expf(scores[kk] - row_max);
+    scores[kk] = e;
+    sum += e;
+  }
+  for (int w = 16; w > 0; w >>= 1) sum += __shfl_xor(sum, w);
+  __shared__ float warp_sum[kThreads / 32];
+  if ((threadIdx.x & 31) == 0) warp_sum[threadIdx.x >> 5] = sum;
+  __syncthreads();
+  if (threadIdx.x == 0) {
+    float ss = warp_sum[0];
+    for (int w = 1; w < kThreads / 32; ++w) ss += warp_sum[w];
+    warp_sum[0] = ss;
+  }
+  __syncthreads();
+  float inv_sum = 1.0f / warp_sum[0];
+
+  if (threadIdx.x < D) {
+    int d = threadIdx.x;
+    float acc = 0.0f;
+    const float* vb = v + (int64_t)b * S * H * D + (int64_t)h * D + d;
+    for (int kk = 0; kk < S; ++kk) {
+      acc += scores[kk] * vb[(int64_t)kk * H * D];
+    }
+    out[(((int64_t)b * Q + q_idx) * H + h) * D + d] = acc * inv_sum;
+  }
+}
+
+inline unsigned grid_for(int64_t count, int threads) {
+  return (unsigned)((count + threads - 1) / threads);
+}
+
+}  // namespace
+
+extern "C" int timesfm_rmsnorm_f32(
+    const float* x, const float* scale, float* out,
+    int64_t rows, int features, float eps, hipStream_t stream) {
+  if (rows <= 0 || features <= 0) return (int)hipErrorInvalidValue;
+  hipLaunchKernelGGL(rmsnorm_kernel, dim3(grid_for(rows, kThreads)),
+                     dim3(kThreads), 0, stream,
+                     x, scale, out, rows, features, eps);
+  return (int)hipGetLastError();
+}
+
+extern "C" int timesfm_norm_add_f32(
+    const float* x, const float* other, const float* scale, float* out,
+    int64_t rows, int features, float eps, hipStream_t stream) {
+  if (rows <= 0 || features <= 0) return (int)hipErrorInvalidValue;
+  hipLaunchKernelGGL(norm_add_kernel, dim3(grid_for(rows, kThreads)),
+                     dim3(kThreads), 0, stream,
+                     x, other, scale, out, rows, features, eps);
+  return (int)hipGetLastError();
+}
+
+extern "C" int timesfm_bias_f32(
+    float* x, const float* bias, int64_t rows, int features,
+    hipStream_t stream) {
+  if (rows <= 0 || features <= 0) return (int)hipErrorInvalidValue;
+  hipLaunchKernelGGL(bias_kernel, dim3(grid_for(rows, kThreads)),
+                     dim3(kThreads), 0, stream, x, bias, rows, features);
+  return (int)hipGetLastError();
+}
+
+extern "C" int timesfm_bias_swish_f32(
+    float* x, const float* bias, int64_t rows, int features,
+    hipStream_t stream) {
+  if (rows <= 0 || features <= 0) return (int)hipErrorInvalidValue;
+  hipLaunchKernelGGL(bias_swish_kernel, dim3(grid_for(rows, kThreads)),
+                     dim3(kThreads), 0, stream,
+                     x, bias, rows, features);
+  return (int)hipGetLastError();
+}
+
+extern "C" int timesfm_swish_f32(float* x, int64_t count, hipStream_t stream) {
+  if (count <= 0) return (int)hipErrorInvalidValue;
+  hipLaunchKernelGGL(swish_kernel, dim3(grid_for(count, kThreads)),
+                     dim3(kThreads), 0, stream, x, count);
+  return (int)hipGetLastError();
+}
+
+extern "C" int timesfm_add_f32(
+    const float* a, const float* b, float* out, int64_t count,
+    hipStream_t stream) {
+  if (count <= 0) return (int)hipErrorInvalidValue;
+  hipLaunchKernelGGL(add_kernel, dim3(grid_for(count, kThreads)),
+                     dim3(kThreads), 0, stream, a, b, out, count);
+  return (int)hipGetLastError();
+}
+
+extern "C" int timesfm_rope_f32(
+    float* x, const float* pos,
+    int B, int N, int H, int D, int patch_stride, int base,
+    hipStream_t stream) {
+  if (B <= 0 || N <= 0 || H <= 0 || D <= 0) return (int)hipErrorInvalidValue;
+  int64_t total = (int64_t)B * N * H * (D / 2);
+  hipLaunchKernelGGL(rope_kernel, dim3(grid_for(total, kThreads)),
+                     dim3(kThreads), 0, stream,
+                     x, pos, B, N, H, D, patch_stride, base);
+  return (int)hipGetLastError();
+}
+
+extern "C" int timesfm_head_rmsnorm_f32(
+    float* x, const float* scale,
+    int B, int N, int H, int D, int patch_stride, int base, float eps,
+    hipStream_t stream) {
+  if (B <= 0 || N <= 0 || H <= 0 || D <= 0) return (int)hipErrorInvalidValue;
+  int64_t total = (int64_t)B * N * H;
+  hipLaunchKernelGGL(head_rmsnorm_kernel, dim3(grid_for(total, kThreads)),
+                     dim3(kThreads), 0, stream,
+                     x, scale, B, N, H, D, patch_stride, base, eps);
+  return (int)hipGetLastError();
+}
+
+extern "C" int timesfm_head_perdim_scale_f32(
+    float* x, const float* scale,
+    int B, int N, int H, int D, int patch_stride, int base,
+    hipStream_t stream) {
+  if (B <= 0 || N <= 0 || H <= 0 || D <= 0) return (int)hipErrorInvalidValue;
+  int64_t total = (int64_t)B * N * H;
+  hipLaunchKernelGGL(head_perdim_scale_kernel, dim3(grid_for(total, kThreads)),
+                     dim3(kThreads), 0, stream,
+                     x, scale, B, N, H, D, patch_stride, base);
+  return (int)hipGetLastError();
+}
+
+extern "C" int timesfm_scatter_kv_f32(
+    const float* qkv, float* cache_k, float* cache_v,
+    int B, int N, int S, int H, int D, int patch_stride, int start,
+    hipStream_t stream) {
+  if (B <= 0 || N <= 0 || S <= 0 || H <= 0 || D <= 0) return (int)hipErrorInvalidValue;
+  int64_t total = (int64_t)B * N * H * D;
+  hipLaunchKernelGGL(scatter_kv_kernel, dim3(grid_for(total, kThreads)),
+                     dim3(kThreads), 0, stream,
+                     qkv, cache_k, cache_v, B, N, S, H, D, patch_stride, start);
+  return (int)hipGetLastError();
+}
+
+extern "C" int timesfm_attention_f32(
+    const float* q_packed, const float* k, const float* v,
+    const int* num_masked, const int* q_offset, float* out,
+    int B, int Q, int S, int H, int D, int q_patch_stride,
+    hipStream_t stream) {
+  if (B <= 0 || Q <= 0 || S <= 0 || H <= 0 || D <= 0) return (int)hipErrorInvalidValue;
+  if (S > 8192) return (int)hipErrorInvalidValue;
+  unsigned grid = (unsigned)((int64_t)B * Q * H);
+  size_t shared = (size_t)(S + D) * sizeof(float);
+  hipLaunchKernelGGL(attention_kernel, dim3(grid), dim3(kThreads),
+                     shared, stream,
+                     q_packed, k, v, num_masked, q_offset, out,
+                     B, Q, S, H, D, q_patch_stride);
+  return (int)hipGetLastError();
+}
