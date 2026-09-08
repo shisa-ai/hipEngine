@@ -336,6 +336,160 @@ __global__ void attention_kernel(
   }
 }
 
+
+// ---- Batched-GEMM attention path (FP16 production) ----
+
+// Read packed q (post-RoPE), apply query_ln RMSNorm + per-dim softplus
+// scaling, and write the transposed [B, H, Q, D] layout for the QK^T batched
+// GEMM.
+template <typename T>
+__global__ void q_norm_transpose_kernel(
+    const T* __restrict__ qkv,
+    const float* __restrict__ q_ln,
+    const float* __restrict__ per_dim,
+    int B,
+    int Q,
+    int H,
+    int D,
+    int patch_stride,
+    T* __restrict__ qt) {
+  int64_t idx = blockIdx.x * (int64_t)blockDim.x + threadIdx.x;
+  int64_t total = (int64_t)B * H * Q * D;
+  if (idx >= total) return;
+  int d = idx % D;
+  int q = (idx / D) % Q;
+  int h = (idx / ((int64_t)D * Q)) % H;
+  int b = idx / ((int64_t)D * Q * H);
+  const T* src = qkv + (int64_t)b * Q * patch_stride + (int64_t)q * patch_stride + h * D;
+  // One thread per element: norm stats need the whole head; compute serially
+  // (D <= 128, cheap relative to the transpose traffic).
+  float sum = 0.0f;
+  for (int j = 0; j < D; ++j) {
+    float v = ld(src + j);
+    sum += v * v;
+  }
+  float inv = rsqrtf(sum / (float)D + 1.0e-6f);
+  float factor = 1.442695041f / sqrtf((float)D);
+  float v = ld(src + d) * inv * q_ln[d];
+  v *= factor * softplus_(per_dim[d]);
+  qt[idx] = to_half<T>(v);
+}
+
+// Read packed k (post-RoPE), apply key_ln RMSNorm, and write the head-major
+// cache [B, H, S, D] at `start` (for the QK^T batched GEMM).
+template <typename T>
+__global__ void k_norm_scatter_kernel(
+    const T* __restrict__ qkv,
+    const float* __restrict__ k_ln,
+    int B,
+    int N,
+    int S,
+    int H,
+    int D,
+    int patch_stride,
+    int start,
+    T* __restrict__ cache_k) {
+  int64_t idx = blockIdx.x * (int64_t)blockDim.x + threadIdx.x;
+  int64_t total = (int64_t)B * H * N * D;
+  if (idx >= total) return;
+  int d = idx % D;
+  int n = (idx / D) % N;
+  int h = (idx / ((int64_t)D * N)) % H;
+  int b = idx / ((int64_t)D * N * H);
+  const T* src = qkv + (int64_t)b * N * patch_stride + (int64_t)n * patch_stride
+      + (int64_t)H * D + h * D;
+  float sum = 0.0f;
+  for (int j = 0; j < D; ++j) {
+    float v = ld(src + j);
+    sum += v * v;
+  }
+  float inv = rsqrtf(sum / (float)D + 1.0e-6f);
+  int64_t dst = (((int64_t)b * H + h) * S + (start + n)) * D + d;
+  cache_k[dst] = to_half<T>(ld(src + d) * inv * k_ln[d]);
+}
+
+// Scatter packed v into the head-major cache [B, H, S, D] at `start`.
+template <typename T>
+__global__ void v_scatter_kernel(
+    const T* __restrict__ qkv,
+    int B,
+    int N,
+    int S,
+    int H,
+    int D,
+    int patch_stride,
+    int start,
+    T* __restrict__ cache_v) {
+  int64_t idx = blockIdx.x * (int64_t)blockDim.x + threadIdx.x;
+  int64_t total = (int64_t)B * H * N * D;
+  if (idx >= total) return;
+  int d = idx % D;
+  int n = (idx / D) % N;
+  int h = (idx / ((int64_t)D * N)) % H;
+  int b = idx / ((int64_t)D * N * H);
+  const T* src = qkv + (int64_t)b * N * patch_stride + (int64_t)n * patch_stride
+      + 2 * (int64_t)H * D + h * D;
+  int64_t dst = (((int64_t)b * H + h) * S + (start + n)) * D + d;
+  cache_v[dst] = src[d];
+}
+
+// In-place masked softmax over each row of scores [B, H, Q, S].
+// mask: (q + q_offset[b] >= kv) && (kv >= num_masked[b]).
+template <typename T>
+__global__ void mask_softmax_kernel(
+    T* __restrict__ scores,
+    const int* __restrict__ num_masked,
+    const int* __restrict__ q_offset,
+    int B,
+    int Q,
+    int S,
+    int H) {
+  int64_t row = blockIdx.x * (int64_t)blockDim.x + threadIdx.x;
+  int64_t total = (int64_t)B * H * Q;
+  if (row >= total) return;
+  int q = row % Q;
+  int b = row / ((int64_t)Q * H);
+  int nm = num_masked[b];
+  int off = q_offset[b];
+  T* sr = scores + row * S;
+  float m = -INFINITY;
+  for (int kk = 0; kk < S; ++kk) {
+    if ((q + off >= kk) && (kk >= nm)) m = fmaxf(m, ld(sr + kk));
+  }
+  if (m == -INFINITY) m = 0.0f;
+  float sum = 0.0f;
+  for (int kk = 0; kk < S; ++kk) {
+    float e = ((q + off >= kk) && (kk >= nm)) ? expf(ld(sr + kk) - m) : 0.0f;
+    sr[kk] = to_half<T>(e);
+    sum += e;
+  }
+  float inv = 1.0f / sum;
+  for (int kk = 0; kk < S; ++kk) {
+    sr[kk] = to_half<T>(ld(sr + kk) * inv);
+  }
+}
+
+// Transpose [B, H, Q, D] -> [B, Q, H * D] rows for the out-proj GEMM.
+template <typename T>
+__global__ void transpose_heads_kernel(
+    const T* __restrict__ src,
+    T* __restrict__ dst,
+    int B,
+    int Q,
+    int H,
+    int D) {
+  int64_t idx = blockIdx.x * (int64_t)blockDim.x + threadIdx.x;
+  int64_t total = (int64_t)B * H * Q * D;
+  if (idx >= total) return;
+  int d = idx % D;
+  int q = (idx / D) % Q;
+  int h = (idx / ((int64_t)D * Q)) % H;
+  int b = idx / ((int64_t)D * Q * H);
+  int64_t s = (((int64_t)b * H + h) * Q + q) * D + d;
+  int64_t dd = ((int64_t)b * Q + q) * (H * D) + h * D + d;
+  dst[dd] = src[s];
+}
+
 inline unsigned grid_for(int64_t count, int threads) {
   return (unsigned)((count + threads - 1) / threads);
 }
@@ -577,5 +731,62 @@ extern "C" int timesfm_attention_f32(
                      shared, stream,
                      q_packed, k, v, num_masked, q_offset, out,
                      B, Q, S, H, D, q_patch_stride);
+  return (int)hipGetLastError();
+}
+
+extern "C" int timesfm_q_norm_transpose_f16(
+    const half_t* qkv, const float* q_ln, const float* per_dim,
+    int B, int Q, int H, int D, int patch_stride, half_t* qt,
+    hipStream_t stream) {
+  if (B <= 0 || Q <= 0 || H <= 0 || D <= 0) return (int)hipErrorInvalidValue;
+  int64_t total = (int64_t)B * H * Q * D;
+  hipLaunchKernelGGL(q_norm_transpose_kernel<half_t>, dim3(grid_for(total, kThreads)),
+                     dim3(kThreads), 0, stream,
+                     qkv, q_ln, per_dim, B, Q, H, D, patch_stride, qt);
+  return (int)hipGetLastError();
+}
+
+extern "C" int timesfm_k_norm_scatter_f16(
+    const half_t* qkv, const float* k_ln,
+    int B, int N, int S, int H, int D, int patch_stride, int start,
+    half_t* cache_k, hipStream_t stream) {
+  if (B <= 0 || N <= 0 || S <= 0 || H <= 0 || D <= 0) return (int)hipErrorInvalidValue;
+  int64_t total = (int64_t)B * H * N * D;
+  hipLaunchKernelGGL(k_norm_scatter_kernel<half_t>, dim3(grid_for(total, kThreads)),
+                     dim3(kThreads), 0, stream,
+                     qkv, k_ln, B, N, S, H, D, patch_stride, start, cache_k);
+  return (int)hipGetLastError();
+}
+
+extern "C" int timesfm_v_scatter_f16(
+    const half_t* qkv,
+    int B, int N, int S, int H, int D, int patch_stride, int start,
+    half_t* cache_v, hipStream_t stream) {
+  if (B <= 0 || N <= 0 || S <= 0 || H <= 0 || D <= 0) return (int)hipErrorInvalidValue;
+  int64_t total = (int64_t)B * H * N * D;
+  hipLaunchKernelGGL(v_scatter_kernel<half_t>, dim3(grid_for(total, kThreads)),
+                     dim3(kThreads), 0, stream,
+                     qkv, B, N, S, H, D, patch_stride, start, cache_v);
+  return (int)hipGetLastError();
+}
+
+extern "C" int timesfm_mask_softmax_f16(
+    half_t* scores, const int* num_masked, const int* q_offset,
+    int B, int Q, int S, int H, hipStream_t stream) {
+  if (B <= 0 || Q <= 0 || S <= 0 || H <= 0) return (int)hipErrorInvalidValue;
+  int64_t total = (int64_t)B * H * Q;
+  hipLaunchKernelGGL(mask_softmax_kernel<half_t>, dim3(grid_for(total, kThreads)),
+                     dim3(kThreads), 0, stream,
+                     scores, num_masked, q_offset, B, Q, S, H);
+  return (int)hipGetLastError();
+}
+
+extern "C" int timesfm_transpose_heads_f16(
+    const half_t* src, half_t* dst, int B, int Q, int H, int D,
+    hipStream_t stream) {
+  if (B <= 0 || Q <= 0 || H <= 0 || D <= 0) return (int)hipErrorInvalidValue;
+  int64_t total = (int64_t)B * H * Q * D;
+  hipLaunchKernelGGL(transpose_heads_kernel<half_t>, dim3(grid_for(total, kThreads)),
+                     dim3(kThreads), 0, stream, src, dst, B, Q, H, D);
   return (int)hipGetLastError();
 }

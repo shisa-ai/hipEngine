@@ -29,6 +29,11 @@ from hipengine.core.rocblas import Rocblas
 from hipengine.kernels.cpu_reference.timesfm import revin, update_running_stats
 from hipengine.kernels.hip_gfx1100.timesfm.timesfm import (
     timesfm_add_f32,
+    timesfm_k_norm_scatter_f16,
+    timesfm_mask_softmax_f16,
+    timesfm_q_norm_transpose_f16,
+    timesfm_transpose_heads_f16,
+    timesfm_v_scatter_f16,
     timesfm_attention_f32,
     timesfm_bias_f32,
     timesfm_bias_swish_f32,
@@ -65,6 +70,9 @@ class _Buffers:
     point_out: DeviceBuffer      # B*N, 1280      F16
     quant_scratch: DeviceBuffer  # B*N, 10240     F16
     quantile_out: DeviceBuffer   # B*N, 10240     F16
+    qt: DeviceBuffer              # B*H*Q*D       F16 (batched-GEMM attn)
+    scores: DeviceBuffer          # B*H*Q*S       F16
+    attn_o: DeviceBuffer          # B*H*Q*D       F16
     pos: DeviceBuffer            # B*N            F32
     num_masked: DeviceBuffer     # B              I32
     q_offset: DeviceBuffer       # B              I32
@@ -76,6 +84,7 @@ class _Buffers:
             self.tok_in, self.hidden, self.hidden2, self.embeddings, self.normed,
             self.qkv, self.attn_out, self.attn_res, self.ff_hidden, self.ff_out,
             self.layer_out, self.point_out, self.quant_scratch, self.quantile_out,
+            self.qt, self.scores, self.attn_o,
             self.pos, self.num_masked, self.q_offset, *self.caches_k, *self.caches_v,
         ):
             free(buffer)
@@ -218,6 +227,9 @@ class TimesFMGPUDecoder:
             point_out=f16(batch * patches * h),
             quant_scratch=f16(batch * patches * self.spec.quantile_output_dims),
             quantile_out=f16(batch * patches * self.spec.quantile_output_dims),
+            qt=f16(batch * self.spec.num_attention_heads * patches * (h // self.spec.num_attention_heads)),
+            scores=f16(batch * self.spec.num_attention_heads * patches * cache_size),
+            attn_o=f16(batch * self.spec.num_attention_heads * patches * (h // self.spec.num_attention_heads)),
             pos=malloc(batch * patches * 4),
             num_masked=malloc(batch * 4),
             q_offset=malloc(batch * 4),
@@ -286,18 +298,58 @@ class TimesFMGPUDecoder:
             self._gemm(bufs.normed.ptr, w["qkv"], bufs.qkv.ptr, rows, h, self.spec.qkv_size)
             timesfm_rope_f32(bufs.qkv.ptr, bufs.pos.ptr, batch, n, heads, hd, patch_stride, 0, dtype=dt)
             timesfm_rope_f32(bufs.qkv.ptr, bufs.pos.ptr, batch, n, heads, hd, patch_stride, h, dtype=dt)
-            timesfm_head_rmsnorm_f32(bufs.qkv.ptr, w["q_ln"], batch, n, heads, hd, patch_stride, 0, eps, dtype=dt)
-            timesfm_head_rmsnorm_f32(bufs.qkv.ptr, w["k_ln"], batch, n, heads, hd, patch_stride, h, eps, dtype=dt)
-            timesfm_head_perdim_scale_f32(bufs.qkv.ptr, w["perdim"], batch, n, heads, hd, patch_stride, 0, dtype=dt)
-            timesfm_scatter_kv_f32(
-                bufs.qkv.ptr, bufs.caches_k[layer].ptr, bufs.caches_v[layer].ptr,
-                batch, n, cache_size, heads, hd, patch_stride, start, dtype=dt,
-            )
-            timesfm_attention_f32(
-                bufs.qkv.ptr, bufs.caches_k[layer].ptr, bufs.caches_v[layer].ptr,
-                bufs.num_masked.ptr, bufs.q_offset.ptr, bufs.attn_out.ptr,
-                batch, n, cache_size, heads, hd, patch_stride, dtype=dt,
-            )
+            if dt == "f16":
+                # Batched-GEMM attention (head-major caches).
+                timesfm_q_norm_transpose_f16(
+                    bufs.qkv.ptr, w["q_ln"], w["perdim"], batch, n, heads, hd,
+                    patch_stride, bufs.qt.ptr,
+                )
+                timesfm_k_norm_scatter_f16(
+                    bufs.qkv.ptr, w["k_ln"], batch, n, cache_size, heads, hd,
+                    patch_stride, start, bufs.caches_k[layer].ptr,
+                )
+                timesfm_v_scatter_f16(
+                    bufs.qkv.ptr, batch, n, cache_size, heads, hd,
+                    patch_stride, start, bufs.caches_v[layer].ptr,
+                )
+                # scores[bh][q,s] = sum_d Q[bh][q,d] K[bh][s,d]
+                self.rocblas.gemm_ex_strided_batched_f16_f32acc(
+                    bufs.caches_k[layer].ptr, bufs.qt.ptr, bufs.scores.ptr,
+                    m=cache_size, n=n, k=hd,
+                    lda=hd, ldb=hd, ldc=cache_size,
+                    stride_a=cache_size * hd, stride_b=n * hd, stride_c=n * cache_size,
+                    batch=batch * heads,
+                    trans_a=True, trans_b=False,
+                )
+                timesfm_mask_softmax_f16(
+                    bufs.scores.ptr, bufs.num_masked.ptr, bufs.q_offset.ptr,
+                    batch, n, cache_size, heads,
+                )
+                # attn[bh][q,d] = sum_s P[bh][q,s] V[bh][s,d]
+                self.rocblas.gemm_ex_strided_batched_f16_f32acc(
+                    bufs.caches_v[layer].ptr, bufs.scores.ptr, bufs.attn_o.ptr,
+                    m=hd, n=n, k=cache_size,
+                    lda=hd, ldb=cache_size, ldc=hd,
+                    stride_a=cache_size * hd, stride_b=n * cache_size, stride_c=n * hd,
+                    batch=batch * heads,
+                    trans_a=False, trans_b=False,
+                )
+                timesfm_transpose_heads_f16(
+                    bufs.attn_o.ptr, bufs.attn_out.ptr, batch, n, heads, hd
+                )
+            else:
+                timesfm_head_rmsnorm_f32(bufs.qkv.ptr, w["q_ln"], batch, n, heads, hd, patch_stride, 0, eps, dtype=dt)
+                timesfm_head_rmsnorm_f32(bufs.qkv.ptr, w["k_ln"], batch, n, heads, hd, patch_stride, h, eps, dtype=dt)
+                timesfm_head_perdim_scale_f32(bufs.qkv.ptr, w["perdim"], batch, n, heads, hd, patch_stride, 0, dtype=dt)
+                timesfm_scatter_kv_f32(
+                    bufs.qkv.ptr, bufs.caches_k[layer].ptr, bufs.caches_v[layer].ptr,
+                    batch, n, cache_size, heads, hd, patch_stride, start, dtype=dt,
+                )
+                timesfm_attention_f32(
+                    bufs.qkv.ptr, bufs.caches_k[layer].ptr, bufs.caches_v[layer].ptr,
+                    bufs.num_masked.ptr, bufs.q_offset.ptr, bufs.attn_out.ptr,
+                    batch, n, cache_size, heads, hd, patch_stride, dtype=dt,
+                )
             self._gemm(bufs.attn_out.ptr, w["out"], bufs.hidden.ptr, rows, h, h)
             # attn_res = post_attn_ln(attn_out) + x
             timesfm_norm_add_f32(bufs.hidden.ptr, x.ptr, w["post_attn"], bufs.attn_res.ptr, rows, h, eps, dtype=dt)
