@@ -20,6 +20,7 @@
 namespace {
 
 constexpr int kThreads = 256;
+constexpr int kThreadsHead = 128;  // D=80 head vectors waste 256-thread blocks
 
 __device__ __forceinline__ float softplus_(float x) {
   return log1pf(expf(-fabsf(x))) + fmaxf(x, 0.0f);
@@ -156,6 +157,7 @@ template <typename T>
 __global__ void rope_kernel(
     T* __restrict__ x,
     const float* __restrict__ pos,
+    const float* __restrict__ timescale,
     int B,
     int N,
     int H,
@@ -171,9 +173,7 @@ __global__ void rope_kernel(
   int n = (idx / ((int64_t)half * H)) % N;
   int b = idx / ((int64_t)half * H * N);
   float p = pos[(int64_t)b * N + n];
-  float fraction = 2.0f * (float)j / (float)D;
-  float timescale = powf(10000.0f, fraction);
-  float angle = p / timescale;
+  float angle = p / timescale[j];
   float sin_a = sinf(angle);
   float cos_a = cosf(angle);
   int64_t off = (int64_t)b * N * patch_stride + (int64_t)n * patch_stride + base + h * D;
@@ -713,14 +713,14 @@ extern "C" int timesfm_add_f16(
 }
 
 extern "C" int timesfm_rope_f16(
-    half_t* x, const float* pos,
+    half_t* x, const float* pos, const float* timescale,
     int B, int N, int H, int D, int patch_stride, int base,
     hipStream_t stream) {
   if (B <= 0 || N <= 0 || H <= 0 || D <= 0) return (int)hipErrorInvalidValue;
   int64_t total = (int64_t)B * N * H * (D / 2);
   hipLaunchKernelGGL(rope_kernel<half_t>, dim3(grid_for(total, kThreads)),
                      dim3(kThreads), 0, stream,
-                     x, pos, B, N, H, D, patch_stride, base);
+                     x, pos, timescale, B, N, H, D, patch_stride, base);
   return (int)hipGetLastError();
 }
 
@@ -832,14 +832,14 @@ extern "C" int timesfm_add_f32(
 }
 
 extern "C" int timesfm_rope_f32(
-    float* x, const float* pos,
+    float* x, const float* pos, const float* timescale,
     int B, int N, int H, int D, int patch_stride, int base,
     hipStream_t stream) {
   if (B <= 0 || N <= 0 || H <= 0 || D <= 0) return (int)hipErrorInvalidValue;
   int64_t total = (int64_t)B * N * H * (D / 2);
   hipLaunchKernelGGL(rope_kernel<float>, dim3(grid_for(total, kThreads)),
                      dim3(kThreads), 0, stream,
-                     x, pos, B, N, H, D, patch_stride, base);
+                     x, pos, timescale, B, N, H, D, patch_stride, base);
   return (int)hipGetLastError();
 }
 
@@ -902,7 +902,7 @@ extern "C" int timesfm_q_norm_transpose_f16(
   if (B <= 0 || Q <= 0 || H <= 0 || D <= 0) return (int)hipErrorInvalidValue;
   int64_t total = (int64_t)B * H * Q;
   hipLaunchKernelGGL(q_norm_transpose_kernel<half_t>, dim3((unsigned)total),
-                     dim3(kThreads), 0, stream,
+                     dim3(kThreadsHead), 0, stream,
                      qkv, q_ln, per_dim, B, Q, H, D, patch_stride, qt);
   return (int)hipGetLastError();
 }
@@ -914,7 +914,7 @@ extern "C" int timesfm_k_norm_scatter_f16(
   if (B <= 0 || N <= 0 || S <= 0 || H <= 0 || D <= 0) return (int)hipErrorInvalidValue;
   int64_t total = (int64_t)B * H * N;
   hipLaunchKernelGGL(k_norm_scatter_kernel<half_t>, dim3((unsigned)total),
-                     dim3(kThreads), 0, stream,
+                     dim3(kThreadsHead), 0, stream,
                      qkv, k_ln, B, N, S, H, D, patch_stride, start, cache_k);
   return (int)hipGetLastError();
 }
@@ -926,7 +926,7 @@ extern "C" int timesfm_v_scatter_f16(
   if (B <= 0 || N <= 0 || S <= 0 || H <= 0 || D <= 0) return (int)hipErrorInvalidValue;
   int64_t total = (int64_t)B * H * N;
   hipLaunchKernelGGL(v_scatter_kernel<half_t>, dim3((unsigned)total),
-                     dim3(kThreads), 0, stream,
+                     dim3(kThreadsHead), 0, stream,
                      qkv, B, N, S, H, D, patch_stride, start, cache_v);
   return (int)hipGetLastError();
 }

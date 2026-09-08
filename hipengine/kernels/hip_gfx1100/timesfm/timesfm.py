@@ -39,7 +39,7 @@ _ADD = (
     ctypes.c_void_p,
 )
 _ROPE = (
-    ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
     ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32,
     ctypes.c_int32, ctypes.c_int32, ctypes.c_void_p,
 )
@@ -245,6 +245,7 @@ def timesfm_add_f32(
 def timesfm_rope_f32(
     x_ptr: int,
     pos_ptr: int,
+    timescale_ptr: int,
     batch: int,
     patches: int,
     heads: int,
@@ -262,7 +263,7 @@ def timesfm_rope_f32(
     library = library or _library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, _symbol("timesfm_rope", dtype), _ROPE, ctypes.c_int)
-    err = fn(x_ptr, pos_ptr, batch, patches, heads, head_dim, patch_stride, base, stream)
+    err = fn(x_ptr, pos_ptr, timescale_ptr, batch, patches, heads, head_dim, patch_stride, base, stream)
     _check_launch(runtime, err)
 
 
