@@ -1550,6 +1550,12 @@ def _check_launch(runtime: HipRuntime, err: int) -> None:
         runtime.check(int(err))
 
 
+gguf_q8_0_iu8_wmma_prefill_f32_f32_t = _make_wrapper(
+    "gguf_q8_0",
+    "hipengine_gguf_q8_0_iu8_wmma_prefill_f32_f32_t",
+)
+
+
 _WRAPPERS = {
     "gguf_q8_0": {
         "gemv_f32_f32_out": gguf_q8_0_gemv_f32_f32_out,
@@ -1589,6 +1595,7 @@ _WRAPPERS = {
         "rowbatch32_f32_f32_out": gguf_q8_0_gemv_rowbatch32_f32_f32_out,
         "coltile4_rowbatch8_f32_f32_out": gguf_q8_0_gemv_coltile4_rowbatch8_f32_f32_out,
         "coltile8_rowbatch4_f32_f32_out": gguf_q8_0_gemv_coltile8_rowbatch4_f32_f32_out,
+        "iu8_wmma_prefill_f32_f32_out": gguf_q8_0_iu8_wmma_prefill_f32_f32_t,
         "coltile8_rowbatch4_wave_scale_f32_f32_out": gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_f32_f32_out,
         "coltile8_rowbatch8_f32_f32_out": gguf_q8_0_gemv_coltile8_rowbatch8_f32_f32_out,
         "coltile16_rowbatch2_f32_f32_out": gguf_q8_0_gemv_coltile16_rowbatch2_f32_f32_out,
