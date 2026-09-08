@@ -412,6 +412,7 @@ def _native_target_graph_context_limit(session: Any, *, rows: int) -> int | None
     )
     if end > graph_context_limit:
         return None
+    capacity = min(capacity, graph_context_limit)
     if end < 1024:
         return min(_NATIVE_TARGET_SHORT_CONTEXT_LIMIT, capacity)
     start = int(getattr(session, "position", 0))
@@ -778,6 +779,7 @@ def _native_target_binding_signature(session: Any) -> tuple[int, ...]:
         "_prefill_hidden_a",
         "_prefill_hidden_b",
         "_verify_lm_out_indices_i32",
+        "_verify_conv_out_f32",
         "_lm_out_index",
     ):
         add(getattr(session, name, None))
@@ -2427,9 +2429,20 @@ def verify_qwen35_gguf_native_b2_target(
     cache_suffix = "_n2" if device_accept_commit else ""
     cache_name = f"_native_spec_b{rows - 1}_target_graph{cache_suffix}"
     cache_key = (rows - 1, bool(device_accept_commit), int(context_limit))
+    short_alias_limit = _NATIVE_TARGET_SHORT_CONTEXT_LIMIT
+    backend = getattr(session, "backend", None)
+    if backend is not None:
+        short_alias_limit = min(
+            short_alias_limit,
+            int(backend_package_capability(
+                str(backend),
+                "GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT",
+                short_alias_limit,
+            )),
+        )
     cache = _native_target_graph_cache(session)
     graph = cache.get(cache_key)
-    if graph is None and int(context_limit) == _NATIVE_TARGET_SHORT_CONTEXT_LIMIT:
+    if graph is None and int(context_limit) == short_alias_limit:
         graph = getattr(session, cache_name, None)
     if graph is not None and not graph.compatible_with(
         session,
@@ -2467,7 +2480,7 @@ def verify_qwen35_gguf_native_b2_target(
                 device_accept_commit=device_accept_commit,
             )
             _cache_native_target_graph(session, cache_key, graph)
-            if int(context_limit) == _NATIVE_TARGET_SHORT_CONTEXT_LIMIT:
+            if int(context_limit) == short_alias_limit:
                 setattr(session, cache_name, graph)
     except NativeSpecTargetGraphUnsupportedError as exc:
         session.last_native_spec_target_fallback_reason = str(exc)

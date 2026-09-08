@@ -688,6 +688,60 @@ def test_nextn_proposal_graph_keeps_split_attention_context_on_eager_path() -> N
     assert executor._proposal_graph_last_status == "eager_long_context"
 
 
+def test_nextn_graph_launch_metadata_survives_delayed_host_upload(monkeypatch) -> None:
+    executor = object.__new__(Qwen35GGUFNextNExecutor)
+    executor.hidden_size = 8
+    executor._proposal_target_hidden = DeviceBuffer(0x4000, 16)
+    executor._proposal_results = DeviceBuffer(0x5000, 56)
+    executor._proposal_results_host = np.zeros((1, 7), dtype=nextn_mod._NEXTN_TOP1_RESULT_DTYPE)
+    executor._proposal_history_hidden = DeviceBuffer(0x6000, 112)
+    executor._final_hidden_buf = DeviceBuffer(0x7000, 16)
+    executor._token_buf = DeviceBuffer(0x1000, 8)
+    executor._token_host = np.zeros((1,), dtype=np.int64)
+    executor._slot = lambda _rid: 0
+    executor._set_batch_session_position = lambda *_a: None
+    executor._proposal_graph_runtime_library = object()
+    executor._proposal_graph_replays = 0
+    executor._proposal_graphs = {
+        (0, 3): SimpleNamespace(stream=9, graph_exec=10, completion_event=11),
+    }
+    scratch = SimpleNamespace(
+        position_host=np.zeros((1,), dtype=np.int64),
+        context_host=np.zeros((1,), dtype=np.int64),
+        position_buf=DeviceBuffer(0x2000, 8),
+        context_buf=DeviceBuffer(0x3000, 8),
+    )
+    executor.scratch = SimpleNamespace(
+        max_positions=1024, for_slot=lambda *_a, **_kw: scratch,
+    )
+    delayed_copies = []
+    device_values = {}
+
+    def copy(dst, src, nbytes, kind, stream):
+        assert kind == HipMemcpyKind.HOST_TO_DEVICE
+        delayed_copies.append((dst, src, nbytes))
+
+    def set_position(position_ptr, context_ptr, position, **kwargs):
+        assert kwargs["stream"] == 9
+        device_values[position_ptr] = position
+        device_values[context_ptr] = position + 1
+
+    monkeypatch.setattr(nextn_mod, "set_decode_position_i64", set_position)
+    executor.runtime = SimpleNamespace(
+        memcpy_async=copy, graph_launch=lambda *_a: None, event_record=lambda *_a: None,
+    )
+    hidden = Tensor.from_handle(0x4000, (1, 8), DType.BF16, Device("hip", 0))
+    proposal = executor._launch_graph_chain_device(
+        0, 7, 25, hidden, candidate_budget=3, cached_only=True,
+    )
+    assert proposal is not None
+    assert scratch.position_host.tolist() == [27]
+    assert scratch.context_host.tolist() == [28]
+    for dst, src, nbytes in delayed_copies:
+        device_values[dst] = int.from_bytes(ctypes.string_at(src, nbytes), "little", signed=True)
+    assert device_values == {0x1000: 7, 0x2000: 25, 0x3000: 26}
+
+
 def test_nextn_proposal_graph_capture_failure_is_cached_as_eager_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

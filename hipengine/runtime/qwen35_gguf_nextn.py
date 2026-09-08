@@ -1887,19 +1887,13 @@ class Qwen35GGUFNextNExecutor:
             HipMemcpyKind.HOST_TO_DEVICE,
             stream,
         )
-        runtime.memcpy_async(
+        set_decode_position_i64(
             slot_scratch.position_buf.ptr,
-            host_array_ptr(slot_scratch.position_host),
-            slot_scratch.position_host.nbytes,
-            HipMemcpyKind.HOST_TO_DEVICE,
-            stream,
-        )
-        runtime.memcpy_async(
             slot_scratch.context_buf.ptr,
-            host_array_ptr(slot_scratch.context_host),
-            slot_scratch.context_host.nbytes,
-            HipMemcpyKind.HOST_TO_DEVICE,
-            stream,
+            int(position),
+            stream=stream,
+            library=self._proposal_graph_runtime_library,
+            runtime=runtime,
         )
         runtime.graph_launch(graph.graph_exec, stream)
         runtime.event_record(graph.completion_event, stream)

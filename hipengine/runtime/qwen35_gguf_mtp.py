@@ -375,7 +375,7 @@ def _initial_state_only_journal_applies(
     *,
     max_candidate_budget: int,
 ) -> bool:
-    """Return whether every possible target row uses native session journals."""
+    """Return whether the native row ladder can use a compact primary journal."""
 
     return (
         _effective_target_verify_mode(
@@ -944,6 +944,8 @@ class Qwen35GGUFTransactionalVerifier:
                 max_candidate_budget=self.max_candidate_budget,
             ),
         )
+        self._primary_journal = self.journal
+        self._serial_journal: _StateJournal | None = None
         self._buckets: dict[object, Qwen35GGUFVerifyGraphBucket] = {}
         self._prepared: Qwen35GGUFPreparedVerify | None = None
         self._accept_kernel = resolve(
@@ -959,6 +961,21 @@ class Qwen35GGUFTransactionalVerifier:
         )
         self.last_device_proposal_fallback_reason: str | None = None
         self.closed = False
+
+    def _select_journal(self, effective_verify_mode: str) -> None:
+        journal = self._primary_journal
+        if effective_verify_mode == "serial_exact" and journal.initial_state_only:
+            if self._serial_journal is None:
+                # Native graphs retain the producer-owned initial snapshot.
+                # A separate consumer journal keeps those captured pointers live.
+                self._serial_journal = _StateJournal.allocate(
+                    self.target,
+                    max_rows=self.max_candidate_budget + 1,
+                    producer_capture_initial_state=False,
+                    initial_state_only=False,
+                )
+            journal = self._serial_journal
+        self.journal = journal
 
     def graph_bucket(self, key: object, batch: TargetVerifyBatch) -> Qwen35GGUFVerifyGraphBucket:
         cached = self._buckets.get(key)
@@ -1002,6 +1019,14 @@ class Qwen35GGUFTransactionalVerifier:
             return False
         if budget not in _GGUF_MTP_CANDIDATE_BUDGETS:
             self.last_device_proposal_fallback_reason = "target_graph_budget_miss"
+            return False
+        if _effective_target_verify_mode(
+            self.target_verify_mode,
+            rows=budget + 1,
+            backend=self.backend,
+            end_position=int(self.target.position) + budget + 1,
+        ) != "native":
+            self.last_device_proposal_fallback_reason = "target_graph_native_policy_miss"
             return False
         graph = getattr(
             self.target,
@@ -1092,6 +1117,7 @@ class Qwen35GGUFTransactionalVerifier:
             backend=self.backend,
             end_position=initial_position + int(batch.rows),
         )
+        self._select_journal(effective_verify_mode)
         self.journal.capture_initial(
             stream=stream,
             force_consumer_state=(effective_verify_mode == "serial_exact"),
@@ -1124,7 +1150,7 @@ class Qwen35GGUFTransactionalVerifier:
                     bool(allow_graph)
                     and not stream
                     and not return_logits
-                    and budgets[0] >= batch.rows
+                    and budgets[0] >= 1
                 ):
                     from hipengine.runtime.gguf_native_spec_cycle import (
                         NativeSpecTargetGraphUnsupportedError,
@@ -1517,7 +1543,9 @@ class Qwen35GGUFTransactionalVerifier:
         if self._prepared is not None:
             self.rollback(self._prepared)
         self.closed = True
-        self.journal.close()
+        if self._serial_journal is not None:
+            self._serial_journal.close()
+        self._primary_journal.close()
         self.workspace.free()
         self._buckets.clear()
 
