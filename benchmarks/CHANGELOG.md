@@ -5200,3 +5200,5 @@ Examples:
 - [maple invalid historical] deepgrove/maple-preview-2bit-mlx / gfx1151 M6 helper: 223.2/275.6/321.1 tok/s rows were later invalidated because the artifact mislabeled Radeon 8060S/gfx1151 as W7900/gfx1151, gated only c=1, and overstated server integration; superseded by `benchmarks/results/2026-08-07-gfx1151-maple-m6-batch-decode-recertified.json`.
 - 2026-09-08: `2026-09-08-framework-qwen4exp-gr-iu8-campaign-ab.json` — R5 GR up iu8-WMMA full-suite A/B (+9.2% prefill geo-mean, all 12 cases; T1 production-numerical promotion packet).
 - 2026-09-08: `2026-09-08-framework-qwen4exp-gr-iu8-down-campaign-ab.json` — GR down iu8-WMMA full-suite A/B (+2.0% incremental prefill; second T1 promotion packet).
+- 2026-09-09: `2026-09-08-framework-qwen4exp-post-gr-family.json` — post-GR five-promotion family join (device 16.498s, GR now faster than Vulkan).
+- 2026-09-09: `2026-09-08-framework-qwen4exp-current-default-baselines-v4.json` — combined-default v4: HE PP +13.8/+12.5/+11.2% cross-packet; Vulkan lead 1.39/1.54/1.73x PP.

@@ -389,8 +389,18 @@ linear 3.43s, GR 1.71s. Combined-default 12-case screen: HE PP
 210.71/226.11/214.05 (+3.2/+2.2/+1.6% cross-packet versus the two-promotion
 packet), TG 19.41/18.68/16.78 (+1.4/+0.5/+2.4%); Vulkan lead PP
 1.614/1.738/1.937x, TG 1.301/1.332/1.436x.
-[Family](../benchmarks/results/2026-09-08-framework-qwen4exp-post-q51-family.json),
-[baselines](../benchmarks/results/2026-09-08-framework-qwen4exp-current-default-baselines-v3.json).
+
+Post-GR-promotion refresh (clean `3fcceff86`, five promotions active):
+code-p4096 prefill MoE 8.301s, linear 4.439s, **GR 1.483s (was 3.418s;
+now 0.226s faster than Vulkan's 1.709s)**, QSA 1.331s, GDN 0.820s, device
+total **16.498s (-10.9%)**; absolute Vulkan gaps: MoE 3.76s, linear 3.42s,
+QSA 0.69s. Combined-default 12-case screen: HE PP
+**239.72/254.46/237.94** (+13.8/+12.5/+11.2% cross-packet versus the
+three-promotion packet, matching the GR legs' +11.3% combined A/B), TG
+**19.65/19.24/18.31**; Vulkan lead PP **1.393/1.539/1.734x**, TG
+**1.290/1.298/1.321x**; halo-box-hip PP 283.01/361.30/351.69.
+[Family](../benchmarks/results/2026-09-08-framework-qwen4exp-post-gr-family.json),
+[baselines](../benchmarks/results/2026-09-08-framework-qwen4exp-current-default-baselines-v4.json).
 
 | Owner | Code-p4096 prefill HE / Vulkan (s) | Fixed-live4097 decode HE / Vulkan (ms) |
 | --- | ---: | ---: |
