@@ -178,7 +178,7 @@ narrows the diagnosis; the canonical-sequence drift mechanism remains open.
   12/12 cases bit-identical (logits, four decode steps, state, full KV);
   canonical 12-case chunk1024 A/B: 72/72 trajectories exact, prefill
   +7.0-8.8% on every case (promotion range preserved), decode neutral.
-- [ ] **R4b - Screen Q5_1 down (in progress, first screen complete).** The
+- [ ] **R4b - Screen Q5_1 down (candidate built, qualifying).** The
   fresh post-promotion p4096 kernel ranking puts the Q5_1 down exact parent
   (pair2 expertgrid64 m1 row-publish) at 3.15-3.22s across all three cases —
   the largest single MoE kernel owner (of the 18.7s device total). The
@@ -201,6 +201,20 @@ narrows the diagnosis; the canonical-sequence drift mechanism remains open.
   inputs and routing; establish its own exact bound/fallback before admission.
   Time the complete map/quantize/compute/repair/publication chain. The old
   ~1.6 s owner is a targeting clue, not a current measured saving.
+
+**Candidate admitted (default-off) at `270710155`:** the weight-exact
+iu8-WMMA Q5_1 down chain (`HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT=1`, multiplier
+default 4.0). Evidence: 20/20 focused exactness tests (bit-identical to the
+pair2 row-publish parent at multiplier 4.0 across skewed/empty experts,
+tile tails, cancellation/tie/wide-scale/tiny/subtiny/huge adversarial
+activations, nonfinite rows, queue-overflow boundedness, determinism);
+flip probe on actual blk.0 down weights at production geometry:
+**1.62-1.70x operation-complete** (uniform and skewed routing, 512/1024
+rows), **zero flip escapes at multiplier 4.0 with 0.44% of outputs queued**
+(repair cost negligible). A launch-bounds occupancy fix ((128,2)) was worth
+3.2x alone - the unbounded build ran at 0.46x. Remaining: full 12-case
+state gate and canonical chunk1024 A/B at the committed source, then the
+promotion decision.
   Commit `62dffb872` adds default-4/adversarial tests and nonfinite/tiny-scale
   row repair; use that work and its
   [scale sweep](../benchmarks/results/2026-09-08-framework-qwen4exp-q4-iu8-scale-sweep.json)
