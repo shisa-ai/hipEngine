@@ -486,7 +486,10 @@ __global__ void mask_softmax_kernel(
     int Q,
     int S,
     int H) {
+  // One block per row; each thread keeps its slice in registers so the row
+  // is read once and written once (S <= 8 * kThreads).
   __shared__ float partial[kThreads];
+  constexpr int kMaxPerThread = 8;
   int64_t row = blockIdx.x;
   int64_t total = (int64_t)B * H * Q;
   if (row >= total) return;
@@ -495,9 +498,17 @@ __global__ void mask_softmax_kernel(
   int nm = num_masked[b];
   int off = q_offset[b];
   T* sr = scores + row * S;
+
+  float vals[kMaxPerThread];
+  int count = 0;
   float m = -INFINITY;
   for (int kk = threadIdx.x; kk < S; kk += blockDim.x) {
-    if ((q + off >= kk) && (kk >= nm)) m = fmaxf(m, ld(sr + kk));
+    float v = 0.0f;
+    if ((q + off >= kk) && (kk >= nm)) {
+      v = ld(sr + kk);
+      m = fmaxf(m, v);
+    }
+    vals[count++] = v;
   }
   partial[threadIdx.x] = m;
   __syncthreads();
@@ -509,10 +520,12 @@ __global__ void mask_softmax_kernel(
   }
   float row_max = partial[0];
   if (row_max == -INFINITY) row_max = 0.0f;
+
   float sum = 0.0f;
+  count = 0;
   for (int kk = threadIdx.x; kk < S; kk += blockDim.x) {
-    float e = ((q + off >= kk) && (kk >= nm)) ? expf(ld(sr + kk) - row_max) : 0.0f;
-    sr[kk] = to_half<T>(e);
+    float e = expf(vals[count++] - row_max);
+    vals[count - 1] = e;
     sum += e;
   }
   partial[threadIdx.x] = sum;
@@ -522,8 +535,9 @@ __global__ void mask_softmax_kernel(
     __syncthreads();
   }
   float inv = 1.0f / partial[0];
+  count = 0;
   for (int kk = threadIdx.x; kk < S; kk += blockDim.x) {
-    sr[kk] = to_half<T>(ld(sr + kk) * inv);
+    sr[kk] = to_half<T>(vals[count++] * inv);
   }
 }
 
@@ -546,6 +560,95 @@ __global__ void transpose_heads_kernel(
   int64_t s = (((int64_t)b * H + h) * Q + q) * D + d;
   int64_t dd = ((int64_t)b * Q + q) * (H * D) + h * D + d;
   dst[dd] = src[s];
+}
+
+
+// Fused RoPE + QK-norm + scatter (FP16 production path).
+// One block per (b, n, h): reads packed q/k/v, applies RoPE to q and k,
+// query_ln RMSNorm + per-dim scaling to q (writing the [B, H, Q, D]
+// transpose), key_ln RMSNorm to k, and copies v; k/v go to the head-major
+// caches at `start`.
+template <typename T>
+__global__ void rope_norm_scatter_kernel(
+    const T* __restrict__ qkv,
+    const float* __restrict__ pos,
+    const float* __restrict__ q_ln,
+    const float* __restrict__ k_ln,
+    const float* __restrict__ per_dim,
+    int B,
+    int N,
+    int S,
+    int H,
+    int D,
+    int patch_stride,
+    int start,
+    T* __restrict__ qt,
+    T* __restrict__ cache_k,
+    T* __restrict__ cache_v) {
+  __shared__ float partial[kThreads];
+  int64_t idx = blockIdx.x;  // b * H * N + h * N + n
+  int n = idx % N;
+  int h = (idx / N) % H;
+  int b = idx / ((int64_t)N * H);
+  const T* row = qkv + (int64_t)b * N * patch_stride + (int64_t)n * patch_stride + h * D;
+  const T* q = row;
+  const T* k = row + (int64_t)H * D;
+  const T* v = row + 2 * (int64_t)H * D;
+
+  float p = pos[(int64_t)b * N + n];
+
+  // RoPE q and k in registers (non-interleaved halves).
+  float qf[128], kf[128];
+  int half = D / 2;
+  for (int j = threadIdx.x; j < half; j += blockDim.x) {
+    float fraction = 2.0f * (float)j / (float)D;
+    float angle = p / powf(10000.0f, fraction);
+    float sin_a = sinf(angle);
+    float cos_a = cosf(angle);
+    float q1 = ld(q + j), q2 = ld(q + j + half);
+    float k1 = ld(k + j), k2 = ld(k + j + half);
+    qf[j] = q1 * cos_a - q2 * sin_a;
+    qf[j + half] = q2 * cos_a + q1 * sin_a;
+    kf[j] = k1 * cos_a - k2 * sin_a;
+    kf[j + half] = k2 * cos_a + k1 * sin_a;
+  }
+  __syncthreads();
+
+  // query RMSNorm + per-dim scale, write transposed.
+  float qsum = 0.0f;
+  for (int j = threadIdx.x; j < D; j += blockDim.x) qsum += qf[j] * qf[j];
+  partial[threadIdx.x] = qsum;
+  __syncthreads();
+  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (threadIdx.x < stride) partial[threadIdx.x] += partial[threadIdx.x + stride];
+    __syncthreads();
+  }
+  float qinv = rsqrtf(partial[0] / (float)D + 1.0e-6f);
+  float factor = 1.442695041f / sqrtf((float)D);
+  __shared__ float qout[128];
+  for (int j = threadIdx.x; j < D; j += blockDim.x) {
+    qout[j] = qf[j] * qinv * q_ln[j] * factor * softplus_(per_dim[j]);
+  }
+  __syncthreads();
+
+  // key RMSNorm, write scattered; v copy.
+  float ksum = 0.0f;
+  for (int j = threadIdx.x; j < D; j += blockDim.x) ksum += kf[j] * kf[j];
+  partial[threadIdx.x] = ksum;
+  __syncthreads();
+  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (threadIdx.x < stride) partial[threadIdx.x] += partial[threadIdx.x + stride];
+    __syncthreads();
+  }
+  float kinv = rsqrtf(partial[0] / (float)D + 1.0e-6f);
+
+  int64_t qt_dst = (((int64_t)b * H + h) * N + n) * D;
+  int64_t kv_dst = (((int64_t)b * H + h) * S + (start + n)) * D;
+  for (int j = threadIdx.x; j < D; j += blockDim.x) {
+    qt[qt_dst + j] = to_half<T>(qout[j]);
+    cache_k[kv_dst + j] = to_half<T>(kf[j] * kinv * k_ln[j]);
+    cache_v[kv_dst + j] = v[j];
+  }
 }
 
 inline unsigned grid_for(int64_t count, int threads) {
@@ -832,6 +935,7 @@ extern "C" int timesfm_mask_softmax_f16(
     half_t* scores, const int* num_masked, const int* q_offset,
     int B, int Q, int S, int H, hipStream_t stream) {
   if (B <= 0 || Q <= 0 || S <= 0 || H <= 0) return (int)hipErrorInvalidValue;
+  if (S > 8 * kThreads) return (int)hipErrorInvalidValue;
   int64_t total = (int64_t)B * H * Q;
   hipLaunchKernelGGL(mask_softmax_kernel<half_t>, dim3((unsigned)total),
                      dim3(kThreads), 0, stream,
@@ -846,5 +950,20 @@ extern "C" int timesfm_transpose_heads_f16(
   int64_t total = (int64_t)B * H * Q * D;
   hipLaunchKernelGGL(transpose_heads_kernel<half_t>, dim3(grid_for(total, kThreads)),
                      dim3(kThreads), 0, stream, src, dst, B, Q, H, D);
+  return (int)hipGetLastError();
+}
+
+extern "C" int timesfm_rope_norm_scatter_f16(
+    const half_t* qkv, const float* pos,
+    const float* q_ln, const float* k_ln, const float* per_dim,
+    int B, int N, int S, int H, int D, int patch_stride, int start,
+    half_t* qt, half_t* cache_k, half_t* cache_v,
+    hipStream_t stream) {
+  if (B <= 0 || N <= 0 || S <= 0 || H <= 0 || D <= 0 || D > 128) return (int)hipErrorInvalidValue;
+  int64_t total = (int64_t)B * H * N;
+  hipLaunchKernelGGL(rope_norm_scatter_kernel<half_t>, dim3((unsigned)total),
+                     dim3(kThreads), 0, stream,
+                     qkv, pos, q_ln, k_ln, per_dim, B, N, S, H, D, patch_stride, start,
+                     qt, cache_k, cache_v);
   return (int)hipGetLastError();
 }
