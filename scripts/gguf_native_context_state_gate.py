@@ -65,7 +65,9 @@ def run(args, rows):
     from hipengine.core.memory import memory_stats, reset_memory_stats
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
     from hipengine.runtime.qwen35_gguf_mtp import Qwen35GGUFTransactionalVerifier, _StateJournal
-    from hipengine.runtime.gguf_native_spec_cycle import build_native_b2_target_batch
+    from hipengine.runtime.gguf_native_spec_cycle import (
+        build_native_b2_target_batch, _native_target_graph_context_limit,
+    )
     from hipengine.speculative import TargetCommitPlan
     from scripts.qwen36_dense_gguf_suite import (
         Qwen35GGUFTokenizer, load_gguf_index, load_prompt_rows, build_chat_prompt,
@@ -117,7 +119,7 @@ def run(args, rows):
                 roots = []
                 for session, journal in zip((target, reference), checkpoints):
                     session.reset()
-                    roots.append(int(session.prefill(prompt, use_bulk=False).token_id))
+                    roots.append(int(session.prefill(prompt, use_bulk=args.bulk_prefill).token_id))
                     journal.capture_initial(force_consumer_state=True)
                     session.runtime.device_synchronize()
                 if roots[0] != roots[1]:
@@ -145,24 +147,43 @@ def run(args, rows):
                             oracle_logits.append(result.logits.copy())
                             oracle_states.append(state_fingerprint(reference))
                         restore(reference, checkpoints[1], length)
+                        following_logits = None
+                        following_state = None
+                        next_token = int(np.argmax(oracle_logits[accepted]))
+                        if args.following_step:
+                            for token in inputs[:accepted + 1]:
+                                reference.step(token)
+                            following_logits = reference.step(next_token, return_logits=True).logits.copy()
+                            following_state = state_fingerprint(reference)
+                            restore(reference, checkpoints[1], length)
 
-                        for transport in ("eager", "graph"):
-                            for diagnostic_logits in (True, False):
+                        transports = ("graph", "eager") if args.graph_first else ("eager", "graph")
+                        logit_modes = (False, True) if args.n2_first else (True, False)
+                        for transport in transports:
+                            for diagnostic_logits in logit_modes:
                                 for repetition in range(args.repetitions):
                                     restore(target, checkpoints[0], length)
                                     batch = build_native_b2_target_batch(inputs, start_position=length, request_id=0)
                                     bucket = verifier.graph_bucket(("state-gate", budget), batch)
+                                    expected_graph_extent = _native_target_graph_context_limit(target, rows=budget + 1)
                                     transaction += 1
                                     prepared = verifier.prepare(
                                         batch, transaction_id=transaction, graph_bucket=bucket,
                                         remaining_decode=(budget + 1,), return_logits=diagnostic_logits,
                                         allow_graph=transport == "graph",
                                     )
-                                    if length + budget + 1 <= args.native_context_limit:
+                                    required_native = args.native_context_limit or args.require_native_through
+                                    if length + budget + 1 <= required_native:
                                         if prepared.target_verify_mode != "native":
                                             raise AssertionError("native coverage silently fell back")
-                                        if transport == "graph" and not prepared.native_graph_submitted:
+                                        graph_required = (
+                                            not args.allow_graph_transition_fallback
+                                            or expected_graph_extent is not None
+                                        )
+                                        if transport == "graph" and graph_required and not prepared.native_graph_submitted:
                                             raise AssertionError("graph coverage silently fell back")
+                                    if transport == "eager" and prepared.native_graph_submitted:
+                                        raise AssertionError("eager verification reported a stale graph submission")
                                     if prepared.summary.accepted_counts != (accepted,):
                                         raise AssertionError("acceptance differs from forced scalar chain")
                                     if not prepared.gpu_accept_match_cpu:
@@ -183,6 +204,10 @@ def run(args, rows):
                                     verifier.commit(prepared, plan)
                                     committed = state_fingerprint(target)
                                     compare_state(committed, oracle_states[accepted])
+                                    if args.following_step:
+                                        following = target.step(next_token, return_logits=True)
+                                        np.testing.assert_array_equal(following.logits, following_logits)
+                                        compare_state(state_fingerprint(target), following_state)
                                     # Exercise rollback even after a successful selected-state commit.
                                     verifier.rollback(prepared)
                                     compare_state(state_fingerprint(target), initial)
@@ -190,8 +215,10 @@ def run(args, rows):
                                         prompt_id=prompt_id, prompt_ids=prompt, context=length, budget=budget,
                                         accepted=accepted, transport=transport, logits=diagnostic_logits,
                                         repetition=repetition, graph=prepared.native_graph_submitted,
+                                        expected_graph_extent=expected_graph_extent,
                                         mode=prepared.target_verify_mode, logit_sha256=logit_hash,
                                         initial=initial, committed=committed, passed=True,
+                                        following_step=args.following_step,
                                     ))
                         print(f"PASS {prompt_id} p{length} B{budget} accepted={accepted}", flush=True)
     return memory_stats()
@@ -204,7 +231,13 @@ def main():
     parser.add_argument("--backend", default="hip_gfx1100")
     parser.add_argument("--contexts", default="95,96,121,128,252,253,256")
     parser.add_argument("--budgets", default="1,2,3")
-    parser.add_argument("--native-context-limit", type=int, default=256)
+    parser.add_argument("--native-context-limit", type=int)
+    parser.add_argument("--require-native-through", type=int, default=0)
+    parser.add_argument("--allow-graph-transition-fallback", action="store_true")
+    parser.add_argument("--bulk-prefill", action="store_true")
+    parser.add_argument("--graph-first", action="store_true")
+    parser.add_argument("--n2-first", action="store_true")
+    parser.add_argument("--following-step", action="store_true")
     parser.add_argument("--capacity", type=int, default=1024)
     parser.add_argument("--repetitions", type=int, default=2)
     parser.add_argument("--prompt-limit", type=int, default=1)

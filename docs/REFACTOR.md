@@ -18,6 +18,29 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
+## 2026-09-08 Native C1 Context Admission
+
+- Remove the obsolete gfx1100 dense H5120 Q4_K_M p95 native-context workaround
+  after the scratch lifetime and scalarized initial-state snapshot repairs. A provisional
+  geometry-scoped 256 cap was tested but is not retained: untested context
+  lengths are not presumed broken.
+- The backend cache-capacity policy is geometry/quant keyed and applies to BF16
+  KV with FP32 recurrent state. Other routes keep their existing dispatch:
+  the MoE control already fails strict full-logit equality at p8 under the old
+  policy. Resolve that model-route discrepancy separately before consolidating
+  the generic cap and cache-capacity policy.
+- Native graph admission owns allocated capacity, supported rows, kernel-family
+  transitions and split-workspace boundaries. Its private metadata producer is
+  independent of the bulk-prefill device-metadata threshold.
+- `strict_long_rows` in the native verifier currently scalarizes attention and
+  dense FFN beyond the split-K crossover to preserve exact scalar arithmetic.
+  This is an explicit execution path, not a disabled-context policy. Replace it
+  only when a faster row-batched path passes its declared exact/profile gates.
+- Public serving evidence still independently owns request/context/horizon
+  admission. Do not equate removal of a backend workaround with new automatic
+  serving keys. Keep eager/serial verification for legitimate unsupported
+  graph configurations and as the correctness oracle.
+
 ## 2026-09-07 DMS codec evaluation bootstrap — open
 
 - `create_dms_int8_evaluation_backend` permits offline model measurement without

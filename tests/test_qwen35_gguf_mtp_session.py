@@ -104,8 +104,9 @@ def test_device_proposal_ready_checks_live_cycle_end_and_output_room(
      (3, 91, True), (3, 92, False)],
 )
 def test_device_proposal_admission_respects_native_policy_before_launch(
-    budget, position, expected,
+    monkeypatch, budget, position, expected,
 ) -> None:
+    monkeypatch.setattr(mtp_module, "backend_package_capability", lambda *_a: 95)
     calls = []
 
     class Graph:
@@ -160,7 +161,8 @@ def test_ineligible_cached_target_graph_never_launches_device_proposal() -> None
     assert calls == [("ready", 3, 4)]
 
 
-def test_native_target_rows_follow_implementation_ladder_and_context_limit() -> None:
+def test_native_target_rows_follow_implementation_ladder_and_context_limit(monkeypatch) -> None:
+    monkeypatch.setattr(mtp_module, "backend_package_capability", lambda *_a: 95)
     assert mtp_module._effective_target_verify_mode("native", rows=4) == "native"
     assert (
         mtp_module._effective_target_verify_mode(
@@ -294,6 +296,7 @@ def test_failed_serial_journal_allocation_keeps_native_owner(monkeypatch) -> Non
 
 
 def test_prepare_selects_serial_journal_before_context_fallback_mutation(monkeypatch) -> None:
+    monkeypatch.setattr(mtp_module, "backend_package_capability", lambda *_a: 95)
     captures = []
 
     def capture_serial(**kwargs):
@@ -393,6 +396,59 @@ def test_verifier_closes_both_journals_once() -> None:
     verifier.close()
     verifier.close()
     assert closed == ["serial", "native", "workspace"]
+
+
+def test_eager_verify_does_not_inherit_previous_graph_telemetry(monkeypatch):
+    from hipengine.runtime.gguf_native_spec_cycle import build_native_b2_target_batch
+    from hipengine.speculative import TargetAcceptSummary
+
+    batch = build_native_b2_target_batch([7, 8], start_position=25, request_id=0)
+    summary = TargetAcceptSummary.from_accept_result(
+        batch, batch.accept_from_top1([9, 10], transaction_id=1, remaining_decode=(2,)),
+    )
+    monkeypatch.setattr(TargetAcceptSummary, "from_gpu_payload", lambda *_a: summary)
+    ptr = SimpleNamespace(ptr=1)
+    names = ("token_ids", "positions", "parent_rows", "draft_depths", "active_mask",
+             "target_top1", "accepted_counts", "commit_rows", "commit_tokens",
+             "commit_positions", "next_tokens", "full_accept")
+    buffers = SimpleNamespace(**dict.fromkeys(names, ptr),
+                              committed_output_ids=None, committed_output_lengths=None)
+    bucket = SimpleNamespace(
+        owner=SimpleNamespace(spec=SimpleNamespace(mode="verify_chain", max_rows=2),
+                              bind=lambda *_a, **_kw: buffers),
+        remaining_decode=ptr, replay_count=0,
+    )
+    journal = SimpleNamespace(
+        initial_state_only=True, producer_capture_initial_state=False,
+        capture_initial=lambda **_kw: None, capture_hidden_rows=lambda *_a, **_kw: None,
+    )
+    verifier = mtp_module.Qwen35GGUFTransactionalVerifier.__new__(mtp_module.Qwen35GGUFTransactionalVerifier)
+    verifier.target = SimpleNamespace(
+        position=25, runtime=object(),
+        verify_target_block=lambda *_a, **_kw: SimpleNamespace(
+            start_position=25, token_ids=[9, 10], pre_output_norm_hidden=object(),
+        ),
+        last_native_spec_target_submitted=True, last_native_spec_target_capture_ms=12,
+        last_native_spec_target_submit_ms=3, last_native_spec_target_readback_ms=4,
+        last_native_spec_target_fallback_reason="stale",
+    )
+    verifier.backend = "hip_gfx1100"
+    verifier.target_verify_mode = "native"
+    verifier.max_candidate_budget = 3
+    verifier.closed = False
+    verifier._prepared = None
+    verifier.journal = verifier._primary_journal = journal
+    verifier._serial_journal = None
+    verifier._accept_kernel = lambda *_a, **_kw: None
+    verifier._accept_library = object()
+    verifier._write_verify_inputs = lambda *_a: None
+    verifier._read_accept_payload = lambda *_a, **_kw: {}
+    prepared = verifier.prepare(
+        batch, transaction_id=1, graph_bucket=bucket, remaining_decode=(2,), allow_graph=False,
+    )
+    assert not prepared.native_graph_submitted
+    assert prepared.native_graph_capture_ms == prepared.native_graph_submit_ms == prepared.native_graph_readback_ms == 0
+    assert prepared.native_graph_fallback_reason == "native target graph disabled by caller"
 
 
 def test_mtp_prompt_admission_streams_shifted_draft_without_full_hidden_slab(

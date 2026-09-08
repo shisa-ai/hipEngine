@@ -196,17 +196,21 @@ def _target_verify_mode_for_context(
     *,
     backend: str,
     end_position: int,
+    target: Any | None = None,
 ) -> str:
     selected = str(requested)
     if selected != "native":
         return selected
-    native_context_limit = int(
-        backend_package_capability(
-            str(backend),
-            "GGUF_SPECDEC2_NATIVE_TARGET_MAX_CONTEXT",
-            int(end_position),
+    if target is None:
+        native_context_limit = int(
+            backend_package_capability(
+                str(backend), "GGUF_SPECDEC2_NATIVE_TARGET_MAX_CONTEXT", int(end_position),
+            )
         )
-    )
+    else:
+        from hipengine.runtime.gguf_native_spec_cycle import native_target_context_limit
+
+        native_context_limit = native_target_context_limit(str(backend), target, default=int(end_position))
     return "native" if int(end_position) <= native_context_limit else "serial_exact"
 
 
@@ -1440,6 +1444,7 @@ class Qwen35GGUFMTP2Adapter:
                         target_verify_mode=_target_verify_mode_for_context(
                             self.target_verify_mode,
                             backend=self.generator.backend,
+                            target=target,
                             end_position=(
                                 len(row.prompt_ids) + self.candidate_budget + 1
                             ),
@@ -2271,6 +2276,7 @@ class Qwen35GGUFMTP2Adapter:
             target_verify_mode=_target_verify_mode_for_context(
                 self.target_verify_mode,
                 backend=self.generator.backend,
+                target=target,
                 end_position=(
                     int(target.position) + self.candidate_budget + 1
                 ),
@@ -5140,6 +5146,7 @@ class Qwen35GGUFMTP2Adapter:
                 target_verify_mode=_target_verify_mode_for_context(
                     self.target_verify_mode,
                     backend=self.generator.backend,
+                    target=target,
                     end_position=len(row.prompt_ids) + self.candidate_budget + 1,
                 ),
             )

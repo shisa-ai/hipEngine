@@ -658,11 +658,13 @@ GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES = {
     (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "production"): (1, 2, 8),
     (QWEN35_MOE_H2048_E256_GEOMETRY, "MOSTLY_Q4_K_M", "production"): (1, 2),
 }
-# W7900 P2 p128 found deterministic native target-graph NaN/sentinel output;
-# eager/serial target verification remains exact above the locally-qualified
-# natural25 context envelope.  This is graph admission, not model policy.
+# Preserve unrelated routes while removing the obsolete p95 workaround for
+# the dense Q4_K_M verifier. Its cache and graph topology supply the bounds.
 GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT = 95
 GGUF_SPECDEC2_NATIVE_TARGET_MAX_CONTEXT = 95
+GGUF_SPECDEC2_NATIVE_TARGET_CACHE_CAPACITY_POLICIES = frozenset({
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"),
+})
 # Packed-PARO S7 starts with the independently-qualified singleton K1/R2
 # frontier only. C2/C4 remains absent until physical multi-request kernels pass.
 PARO_SPECDEC2_MTP2_C1 = True
@@ -1217,6 +1219,7 @@ __all__ = [
     "GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES",
     "GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT",
     "GGUF_SPECDEC2_NATIVE_TARGET_MAX_CONTEXT",
+    "GGUF_SPECDEC2_NATIVE_TARGET_CACHE_CAPACITY_POLICIES",
     "PARO_SPECDEC2_MTP2_C1",
     "PARO_SPECDEC2_MTP2_C4",
     "GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS",

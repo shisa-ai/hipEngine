@@ -420,11 +420,13 @@ first use remains P4. No product cell promotes; both automatic policies remain K
       qualified streaming capability; keep it only as the documented oracle fallback.
 - [x] Prove O(hidden), not O(prompt×hidden), transient ownership: every retained
       request carries one 10,240-byte row.
-- [ ] Run p128/p512/p4K/p16K activation and full category bridge exactness,
-      state/KV/following generation, wall, and drain gates.  W7900 native target
-      graph/arithmetic is now fail-closed above 95 live tokens after deterministic p128
-      NaN/sentinel; streaming activation continues through eager/serial fallback
-      while p4K/p16K stay pre-mutation K0 above the 1023 capability cap.
+- [ ] Complete streaming activation and full category bridge exactness,
+      state/KV/following generation, wall, and drain gates. The historical
+      W7900 p128 NaN/sentinel no longer reproduces on the repaired dense
+      Q4_K_M route on RX 7900 XTX. Native target execution now uses allocated
+      cache capacity rather than the p95 workaround; exact target-state,
+      rollback and full-logit checks pass at 4K/8K/16K. Public streaming
+      activation remains a separate provider gate, not a native context limit.
 
 ### Packed PARO
 

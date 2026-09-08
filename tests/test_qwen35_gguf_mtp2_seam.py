@@ -88,6 +88,13 @@ class _AdapterDouble:
 
 
 def test_gfx1100_target_mode_resolves_before_verifier_construction() -> None:
+    from hipengine.kernels.policy import QWEN35_DENSE_H5120_GEOMETRY
+
+    target = SimpleNamespace(
+        runner=SimpleNamespace(weights=SimpleNamespace(
+            geometry=QWEN35_DENSE_H5120_GEOMETRY, file_type_name="MOSTLY_Q4_K_M",
+        )),
+    )
     assert _target_verify_mode_for_context(
         "native", backend="hip_gfx1100", end_position=95
     ) == "native"
@@ -95,8 +102,14 @@ def test_gfx1100_target_mode_resolves_before_verifier_construction() -> None:
         "native", backend="hip_gfx1100", end_position=96
     ) == "serial_exact"
     assert _target_verify_mode_for_context(
+        "native", backend="hip_gfx1100", end_position=16384, target=target,
+    ) == "native"
+    assert _target_verify_mode_for_context(
         "native", backend="hip_gfx1151", end_position=96
     ) == "native"
+    assert _target_verify_mode_for_context(
+        "native", backend="hip_gfx1151", end_position=65545
+    ) == "serial_exact"
 
 
 def test_backend_packages_expose_independently_qualified_adapter_scopes() -> None:

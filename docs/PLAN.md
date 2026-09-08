@@ -4169,6 +4169,15 @@ These are deliberately deferred. Each has a `rocprofv3` or benchmarking prerequi
 
 ## Evidence Policy
 
+Native C1 context support is distinct from public serving admission. On
+gfx1100, dense H5120 Q4_K_M with BF16 KV and FP32 recurrent state uses actual
+cache capacity rather than the historical 95-position workaround. Native
+verification preserves initial Conv/GDN snapshots on scalarized long-context
+rows; graph admission checks actual capacity and topology, independently of
+bulk-prefill metadata thresholds. Exact target checks cover 4K, 8K and 16K on
+RX 7900 XTX. These measured points are regression coverage, not numeric
+ceilings; unrelated model/quant/state dispatch and serving keys are unchanged.
+
 Every performance claim in hipEngine must include:
 - **Model**: exact checkpoint name, immutable revision, and content fingerprint
 - **Quantization**: FP16, W8A16, W4, etc.

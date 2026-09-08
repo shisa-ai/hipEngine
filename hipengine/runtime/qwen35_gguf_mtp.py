@@ -348,6 +348,7 @@ def _effective_target_verify_mode(
     rows: int,
     backend: str | None = None,
     end_position: int | None = None,
+    target: Any | None = None,
 ) -> str:
     """Select only locally qualified native target rows before mutation."""
 
@@ -358,13 +359,18 @@ def _effective_target_verify_mode(
     if selected == "native" and int(rows) > native_max_rows:
         return "serial_exact"
     if selected == "native" and backend is not None and end_position is not None:
-        native_context_limit = int(
-            backend_package_capability(
-                str(backend),
-                "GGUF_SPECDEC2_NATIVE_TARGET_MAX_CONTEXT",
-                int(end_position),
+        if target is None:
+            native_context_limit = int(
+                backend_package_capability(
+                    str(backend), "GGUF_SPECDEC2_NATIVE_TARGET_MAX_CONTEXT", int(end_position),
+                )
             )
-        )
+        else:
+            from hipengine.runtime.gguf_native_spec_cycle import native_target_context_limit
+
+            native_context_limit = native_target_context_limit(
+                str(backend), target, default=int(end_position),
+            )
         if int(end_position) > native_context_limit:
             return "serial_exact"
     return selected
@@ -1025,6 +1031,7 @@ class Qwen35GGUFTransactionalVerifier:
             rows=budget + 1,
             backend=self.backend,
             end_position=int(self.target.position) + budget + 1,
+            target=self.target,
         ) != "native":
             self.last_device_proposal_fallback_reason = "target_graph_native_policy_miss"
             return False
@@ -1116,6 +1123,7 @@ class Qwen35GGUFTransactionalVerifier:
             rows=batch.rows,
             backend=self.backend,
             end_position=initial_position + int(batch.rows),
+            target=self.target,
         )
         self._select_journal(effective_verify_mode)
         self.journal.capture_initial(
@@ -1307,7 +1315,7 @@ class Qwen35GGUFTransactionalVerifier:
                             request_id=int(batch.request_ids[0]),
                             **native_kwargs,
                         )
-                    if not stream:
+                    if not stream and bool(allow_graph):
                         native_graph_submitted = bool(
                             self.target.last_native_spec_target_submitted
                         )

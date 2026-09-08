@@ -15,6 +15,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import threading
 import traceback
 from unittest.mock import patch
 
@@ -31,15 +32,25 @@ def native_context_override(package, limit):
         "GGUF_SPECDEC2_NATIVE_TARGET_MAX_CONTEXT",
         "GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT",
     )
-    prior = {name: getattr(package, name) for name in names}
+    prior = {name: getattr(package, name, None) for name in names}
+    policy_name = "GGUF_SPECDEC2_NATIVE_TARGET_CACHE_CAPACITY_POLICIES"
+    prior_policy = getattr(package, policy_name, None)
     try:
         if limit is not None:
             for name in names:
                 setattr(package, name, limit)
+            if prior_policy is not None:
+                setattr(package, policy_name, frozenset())
         yield prior
     finally:
         for name, value in prior.items():
-            setattr(package, name, value)
+            if value is None:
+                if hasattr(package, name):
+                    delattr(package, name)
+            else:
+                setattr(package, name, value)
+        if prior_policy is not None:
+            setattr(package, policy_name, prior_policy)
 
 
 def fixed_prompt(tokens, length):
@@ -53,9 +64,22 @@ def fixed_prompt(tokens, length):
     return (tokens * ((length + len(tokens) - 1) // len(tokens)))[:length]
 
 
+def foreign_gpu_allocations(root, gpu_id, own_pid):
+    foreign = {}
+    for path in Path(root).glob(f"*/vram_{gpu_id}"):
+        try:
+            pid, nbytes = int(path.parent.name), int(path.read_text())
+            if pid != own_pid and nbytes > 1 << 20:
+                foreign[pid] = nbytes
+        except (OSError, ValueError):
+            continue
+    return foreign
+
+
 def main():
     from scripts import qwen36_dense_gguf_suite as suite
     from hipengine.runtime.qwen35_gguf_mtp import Qwen35GGUFTransactionalVerifier
+    from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
     from hipengine.util.amdgpu_vram import VramSampler, select_card
 
     parser = suite.build_parser()
@@ -63,13 +87,17 @@ def main():
     parser.add_argument("--native-context-limit", type=int)
     parser.add_argument("--fixed-prompt-length", type=int)
     parser.add_argument("--native-eager", action="store_true")
+    parser.add_argument("--bulk-prefill", action="store_true")
     parser.add_argument("--backend", choices=("hip_gfx1100", "hip_gfx1151"), default="hip_gfx1100")
     parser.add_argument("--pci", default="0000:10:00.0")
+    parser.add_argument("--kfd-gpu-id", type=int, default=33912)
     args = parser.parse_args()
     if args.native_context_limit is not None and args.native_context_limit <= 0:
         parser.error("native context limit must be positive")
     if args.fixed_prompt_length is not None and args.fixed_prompt_length <= 0:
         parser.error("fixed prompt length must be positive")
+    if args.bulk_prefill and args.draft_hidden_variant != "pre_output_norm":
+        parser.error("bulk diagnostic requires pre_output_norm draft hidden")
     if args.output.exists():
         parser.error("output already exists; preserve previous attempts")
     ctypes.CDLL("libamdhip64.so")
@@ -79,6 +107,7 @@ def main():
     package = importlib.import_module(f"hipengine.kernels.{args.backend}")
     original_prompt = suite.build_chat_prompt
     original_prepare = Qwen35GGUFTransactionalVerifier.prepare
+    original_prefill = Qwen35GGUFResidentSession.prefill
     prompts = {}
     actual_modes = {}
     graph_submissions = 0
@@ -121,9 +150,26 @@ def main():
             return False
         return original_ready(self, *positional, **keywords)
 
+    def prefill(self, *positional, **keywords):
+        if args.bulk_prefill:
+            keywords["use_bulk"] = True
+        return original_prefill(self, *positional, **keywords)
+
     payload = {}
     sampler = VramSampler(card=card, interval_ms=20)
+    stop_watch = threading.Event()
+    foreign = {}
+
+    def watch():
+        while not stop_watch.wait(0.2):
+            for pid, nbytes in foreign_gpu_allocations(
+                "/sys/class/kfd/kfd/proc", args.kfd_gpu_id, os.getpid(),
+            ).items():
+                foreign[pid] = max(foreign.get(pid, 0), nbytes)
+
+    watcher = threading.Thread(target=watch, daemon=True)
     sampler.start()
+    watcher.start()
     error = None
     prior = {}
     try:
@@ -132,12 +178,15 @@ def main():
             patch.object(suite, "build_chat_prompt", prompt),
             patch.object(Qwen35GGUFTransactionalVerifier, "prepare", prepare),
             patch.object(Qwen35GGUFTransactionalVerifier, "device_proposal_ready", ready),
+            patch.object(Qwen35GGUFResidentSession, "prefill", prefill),
         ):
             payload = suite.run(args)
     except Exception:
         error = traceback.format_exc()
         payload = {"status": "failed", "error": error}
     finally:
+        stop_watch.set()
+        watcher.join()
         sampler.stop()
         payload["performance_claim"] = False
         payload["speed_claim_eligible"] = False
@@ -147,12 +196,17 @@ def main():
             "environment": {k: v for k, v in os.environ.items()
                             if k.startswith(("HIP", "ROCR", "GPU_MAX", "HSA"))},
             "native_context_limit": args.native_context_limit, "prior_limits": prior,
-            "backend": args.backend, "fixed_prompt_length": args.fixed_prompt_length,
+            "backend": args.backend, "pci": args.pci,
+            "fixed_prompt_length": args.fixed_prompt_length,
             "native_eager": args.native_eager, "prompt_ids": prompts,
+            "bulk_prefill": args.bulk_prefill,
             "actual_verify_modes": actual_modes, "graph_submissions": graph_submissions,
             "graph_context_extents": sorted(graph_extents),
             "memory": sampler.result().to_dict(), "identity": device_metadata,
+            "kfd_gpu_id": args.kfd_gpu_id, "foreign_gpu_allocations": foreign,
         }
+        if foreign:
+            payload["status"] = "invalid_gpu_interference"
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(payload, indent=2, allow_nan=False) + "\n")
     print(json.dumps({"status": payload["status"], "modes": actual_modes,
