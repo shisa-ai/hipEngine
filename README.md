@@ -51,6 +51,18 @@ not yet run every GGUF model. See the [GGUF](docs/GGUF.md),
 [Laguna](docs/LAGUNA.md), and [Maple](docs/MAPLE.md) guides for model-specific
 limits.
 
+### Long context with DMS
+
+On `gfx1100` cards, Qwen3.8-27B `Q4_K_M` can run with
+[Dynamic Memory Sparsification](https://arxiv.org/abs/2506.05345) (DMS): a
+trained eviction policy compacts the KV cache so a **single 24 GB RX 7900
+XTX holds 232K tokens of context** (dense INT8 tops out near 129K), while
+decoding at or below dense latency from 16K context up. See
+[DMS analysis](docs/DMS-ANALYSIS.md) for the quality bar and evidence plan,
+and the [FastDMS reference implementation](https://github.com/shisa-ai/FastDMS)
+for the method's lineage. DMS is opt-in and currently requires the model's
+eviction sidecar artifacts.
+
 ### GGUF or ParoQuant for Qwen?
 
 For Qwen3.6 35B-A3B on W7900, the optimized ParoQuant W4 checkpoint currently
@@ -317,6 +329,7 @@ performance. hipEngine will not silently use PyTorch when a GPU is unsupported.
 | --- | --- |
 | [Architecture and roadmap](docs/PLAN.md) | Engine design and planned work |
 | [Kernel catalog](docs/KERNELS.md) | Kernel implementations and source history |
+| [DMS analysis](docs/DMS-ANALYSIS.md) | DMS quality bar, paper-matched tests, and the 8K–232K evidence ladder |
 | [Testing](docs/TESTING.md) | Correctness tests and release checks |
 | [Benchmark methods](docs/BENCHMARK.md) | Rules used for performance claims |
 | [Benchmark results](benchmarks/README.md) | Full result tables and evidence |
