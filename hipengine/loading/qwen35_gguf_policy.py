@@ -77,16 +77,49 @@ def gguf_ar_raw_iq_contract(ggml_type_ids: Iterable[int]) -> bool:
 
 
 def gguf_ar_decode_repack_veto(ggml_type_ids: Iterable[int]) -> bool:
-    """Return the per-tensor decode-repack veto for one AR type scope.
+    """Return the model-wide decode-repack veto for one AR type scope.
 
     UD-U1 policy knob, separated from the F32 linear contraction so a future
     per-tensor repack-eligibility change (UD-U3 layout selection) cannot
-    silently move the model-wide F32 contraction, and vice versa. Today both
-    knobs derive from the same raw-IQ predicate, so every unchanged manifest
-    plans identically.
+    silently move the model-wide F32 contraction, and vice versa.
     """
 
     return gguf_ar_raw_iq_contract(ggml_type_ids)
+
+
+HIPENGINE_UD_REPACK_ELIGIBILITY_ENV = "HIPENGINE_UD_REPACK_ELIGIBILITY"
+
+
+def resolve_ud_repack_eligibility(environ: Any = None) -> str:
+    """Return the repack-eligibility mode: 'per-tensor' or 'model-wide'.
+
+    UD-U3 layout selection. The default 'per-tensor' mode vetoes repack only
+    for a tensor whose own GGML type is raw-IQ (and rank-3 selected experts
+    keep their compressed layouts through their own branches), so a dense
+    model carrying raw-IQ tensors no longer loses the T16/x8/planar layouts
+    for its Q4/Q5/Q6/Q8 tensors. 'model-wide' restores the historical
+    behaviour where any raw-IQ tensor strips every tensor's repack.
+    """
+
+    import os
+
+    env = os.environ if environ is None else environ
+    raw = str(env.get(HIPENGINE_UD_REPACK_ELIGIBILITY_ENV, "per-tensor"))
+    value = raw.strip().lower()
+    if value not in ("per-tensor", "model-wide"):
+        return "per-tensor"
+    return value
+
+
+def gguf_tensor_repack_eligible(ggml_type_id: int) -> bool:
+    """Return per-tensor repack eligibility under the UD-U3 mode.
+
+    False only for the raw-IQ types whose dense leaves consume compressed
+    rows (their optimized-layout kernels do not exist yet). Every other type
+    may repack into the T16/x8/planar layouts.
+    """
+
+    return int(ggml_type_id) not in _AR_RAW_IQ_GGML_TYPE_IDS
 
 
 def gguf_ar_f32_linear_contraction(ggml_type_ids: Iterable[int]) -> bool:
