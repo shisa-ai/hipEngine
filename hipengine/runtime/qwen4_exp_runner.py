@@ -129,6 +129,8 @@ from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1 import (
     qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_bf16_bf16_out,
     qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out,
     qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out,
+    qwen4_exp_q5_1_selected_sparse_exact_repair_row_publish_bf16,
+    qwen4_exp_q5_1_selected_wmma_iu8_risk_prefill_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn import (
     qwen4_exp_gdn_decode_f32,
@@ -3236,6 +3238,35 @@ def _qwen4_exp_q4_iu8_exact_enabled() -> bool:
     ) not in {"", "0", "false", "False"}
 
 
+def _qwen4_exp_q51_iu8_exact_enabled() -> bool:
+    """Default-off exact iu8-risk+repair selected Q5_1 down route."""
+
+    return os.environ.get(
+        "HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT", "0"
+    ) not in {"", "0", "false", "False"}
+
+
+def _qwen4_exp_q51_iu8_risk_multiplier() -> float:
+    """Kahan-bound multiplier for the exact Q5_1 iu8 risk criterion.
+
+    Screened on actual weights: zero flip escapes at 4.0 with ~0.44% of
+    outputs queued; the default matches the Q4 gate/up route.
+    """
+
+    raw = os.environ.get("HIPENGINE_QWEN4_EXP_Q51_IU8_RISK_MULT", "4.0")
+    try:
+        value = float(raw)
+    except ValueError:
+        raise ValueError(
+            "HIPENGINE_QWEN4_EXP_Q51_IU8_RISK_MULT must be a positive float"
+        )
+    if not (value > 0.0) or value != value:
+        raise ValueError(
+            "HIPENGINE_QWEN4_EXP_Q51_IU8_RISK_MULT must be a positive float"
+        )
+    return value
+
+
 def _qwen4_exp_q4_iu8_risk_multiplier() -> float:
     """Kahan-bound multiplier for the exact iu8 risk criterion.
 
@@ -3904,7 +3935,92 @@ def run_qwen4_exp_moe(
                 # prefill, bit-exact vs the strict owner. Production selects
                 # M1 after the one-process/one-residency canonical gate;
                 # strict selects the preceding expertgrid64 owner.
-                if os.environ.get(
+                q51_iu8_exact = (
+                    _qwen4_exp_q51_iu8_exact_enabled()
+                    and rows >= 2
+                    and ffn % 128 == 0
+                )
+                if q51_iu8_exact:
+                    # Default-off exact iu8-risk+repair Q5_1 down route:
+                    # weight-exact iu8-WMMA with the Kahan risk criterion,
+                    # then the sparse exact repair reproducing the pair2
+                    # row-publish arithmetic.
+                    tile_capacity = (
+                        scratch.group_tile_expert.nbytes // DType.INT64.itemsize
+                    )
+                    active = min(compact, experts)
+                    static_tiles = active + (compact - active) // 16
+                    if static_tiles > tile_capacity:
+                        raise RuntimeError(
+                            "Qwen4Exp grouped MoE tile capacity is invalid"
+                        )
+                    qwen35_moe_wmma_tile_map(
+                        scratch.group_expert_start.ptr,
+                        scratch.group_wmma_expert_start.ptr,
+                        scratch.group_tile_expert.ptr,
+                        scratch.group_wmma_total.ptr,
+                        experts,
+                        tile_capacity=static_tiles,
+                        stream=stream,
+                        runtime=active_runtime,
+                    )
+                    risk_count, risk_indices = scratch.ensure_group_risk_buffers(
+                        compact_rows=compact, out_features_total=hidden
+                    )
+                    active_runtime.memset(
+                        risk_count.ptr, 0, DType.INT32.itemsize
+                    )
+                    risk_capacity = compact * hidden
+                    down_input_ptr = (
+                        scratch.expert_intermediate.ptr
+                        if exact_grouped_q4_gate
+                        else scratch.expert_gate.ptr
+                    )
+                    q51_iu8_risk_down = resolve(
+                        backend=backend, layer="moe_linear",
+                        quant="gguf_q5_1",
+                        variant="selected_wmma_iu8_risk_prefill_bf16_bf16_out",
+                    )
+                    q51_sparse_repair = resolve(
+                        backend=backend, layer="moe_linear",
+                        quant="gguf_q5_1",
+                        variant="selected_sparse_exact_repair_row_publish_bf16",
+                    )
+                    q51_iu8_risk_down(
+                        down_input_ptr,
+                        scratch.group_expert_start.ptr,
+                        scratch.group_wmma_expert_start.ptr,
+                        scratch.group_tile_expert.ptr,
+                        weights["expert_down"].allocation("raw").tensor.ptr,
+                        scratch.expert_down.ptr,
+                        risk_count.ptr,
+                        risk_indices.ptr,
+                        risk_capacity,
+                        _qwen4_exp_q51_iu8_risk_multiplier(),
+                        compact,
+                        ffn,
+                        hidden,
+                        experts,
+                        static_tiles * 16,
+                        stream=stream,
+                        runtime=active_runtime,
+                    )
+                    q51_sparse_repair(
+                        down_input_ptr,
+                        scratch.group_expert_start.ptr,
+                        weights["expert_down"].allocation("raw").tensor.ptr,
+                        scratch.expert_down.ptr,
+                        risk_count.ptr,
+                        risk_indices.ptr,
+                        risk_capacity,
+                        compact,
+                        ffn,
+                        hidden,
+                        experts,
+                        stream=stream,
+                        runtime=active_runtime,
+                    )
+                elif os.environ.get(
                     "HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID", "64"
                 ) in {"64", "q5"}:
                     grouped_q5_variant = (

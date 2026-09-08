@@ -602,7 +602,189 @@ def qwen4_exp_q5_1_selected_gemv_bf16_bf16_out(
         runtime.check(int(error))
 
 
+_ARGS_IU8_RISK = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_double,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
+
+_ARGS_SPARSE_REPAIR = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
+
+
+def qwen4_exp_q5_1_selected_wmma_iu8_risk_prefill_bf16_bf16_out(
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_wmma_ptr: int,
+    tile_expert_ptr: int,
+    qweight_ptr: int,
+    output_ptr: int,
+    risk_count_ptr: int,
+    risk_indices_ptr: int,
+    max_risks: int,
+    risk_multiplier: float,
+    compact_rows: int,
+    in_features: int,
+    out_features: int,
+    num_experts: int,
+    wmma_total_rows: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the risk-collecting weight-exact iu8-WMMA Q5_1 down prefill.
+
+    Identical published arithmetic to a three-plane residual iu8 chain; the
+    outputs whose BF16 rounding boundary distance falls below the Kahan
+    bound (times the multiplier) are queued for the sparse exact repair,
+    together with rows flagged at risk (nonfinite activations or a raw
+    32-element subblock amax below 2^-80).
+    """
+
+    if compact_rows <= 0 or num_experts <= 0 or wmma_total_rows <= 0:
+        raise ValueError("compact_rows, num_experts, and wmma_total_rows must be positive")
+    if wmma_total_rows % 16:
+        raise ValueError("wmma_total_rows must be divisible by 16")
+    if in_features <= 0 or in_features % 32 or out_features <= 0:
+        raise ValueError("Q5_1 iu8 risk projection has invalid feature geometry")
+    if max_risks < 0:
+        raise ValueError("max_risks must be non-negative")
+    if not (risk_multiplier > 0.0) or risk_multiplier != risk_multiplier:
+        raise ValueError("risk_multiplier must be a positive float")
+    if int(risk_count_ptr) <= 0 or int(risk_indices_ptr) <= 0:
+        raise ValueError("iu8 risk prefill requires risk counter and queue")
+    if int(x_ptr) <= 0 or int(expert_start_compact_ptr) <= 0 or \
+            int(expert_start_wmma_ptr) <= 0 or int(tile_expert_ptr) <= 0 or \
+            int(qweight_ptr) <= 0 or int(output_ptr) <= 0:
+        raise ValueError("iu8 risk prefill requires non-null operands")
+    library = library or build_qwen4_exp_q5_1(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_qwen4_exp_q5_1_selected_wmma_iu8_risk_prefill_bf16_bf16_out",
+        _ARGS_IU8_RISK,
+        ctypes.c_int,
+    )
+    error = fn(
+        x_ptr,
+        expert_start_compact_ptr,
+        expert_start_wmma_ptr,
+        tile_expert_ptr,
+        qweight_ptr,
+        output_ptr,
+        risk_count_ptr,
+        risk_indices_ptr,
+        max_risks,
+        risk_multiplier,
+        compact_rows,
+        in_features,
+        out_features,
+        num_experts,
+        wmma_total_rows,
+        stream,
+    )
+    if int(error) != HIP_SUCCESS:
+        runtime.check(int(error))
+
+
+def qwen4_exp_q5_1_selected_sparse_exact_repair_row_publish_bf16(
+    input_ptr: int,
+    expert_start_ptr: int,
+    qweight_ptr: int,
+    output_ptr: int,
+    risk_count_ptr: int,
+    risk_indices_ptr: int,
+    max_risks: int,
+    compact_rows: int,
+    in_features: int,
+    out_features: int,
+    num_experts: int,
+    grid_blocks: int = 1024,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Repair queued at-risk iu8 Q5_1 down outputs exactly.
+
+    Recomputes each queued output with the exact arithmetic of the
+    production pair2 row-publish parent: 128 logical lanes, the even/odd
+    stream split over columns lane + i*128, and the 128-entry halving tree.
+    """
+
+    if compact_rows <= 0 or num_experts <= 0:
+        raise ValueError("compact_rows and num_experts must be positive")
+    if in_features <= 0 or in_features % 128 or out_features <= 0:
+        raise ValueError("Q5_1 sparse repair requires in_features divisible by 128")
+    if max_risks < 0 or grid_blocks <= 0:
+        raise ValueError("max_risks must be non-negative and grid_blocks positive")
+    library = library or build_qwen4_exp_q5_1(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_qwen4_exp_q5_1_selected_sparse_exact_repair_row_publish_bf16",
+        _ARGS_SPARSE_REPAIR,
+        ctypes.c_int,
+    )
+    error = fn(
+        input_ptr,
+        expert_start_ptr,
+        qweight_ptr,
+        output_ptr,
+        risk_count_ptr,
+        risk_indices_ptr,
+        max_risks,
+        compact_rows,
+        in_features,
+        out_features,
+        num_experts,
+        grid_blocks,
+        stream,
+    )
+    if int(error) != HIP_SUCCESS:
+        runtime.check(int(error))
+
+
 def register_qwen4_exp_q5_1_kernels(*, replace: bool = True) -> None:
+    register(
+        KernelKey("hip_gfx1100", "moe_linear", "gguf_q5_1",
+                  "selected_wmma_iu8_risk_prefill_bf16_bf16_out"),
+        qwen4_exp_q5_1_selected_wmma_iu8_risk_prefill_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "moe_linear", "gguf_q5_1",
+                  "selected_sparse_exact_repair_row_publish_bf16"),
+        qwen4_exp_q5_1_selected_sparse_exact_repair_row_publish_bf16,
+        replace=replace,
+    )
     register(
         KernelKey("hip_gfx1100", "moe_linear", "gguf_q5_1",
                   "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out"),
@@ -761,3 +943,4 @@ __all__ = [
     "qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out",
     "register_qwen4_exp_q5_1_kernels",
 ]
+
