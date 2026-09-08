@@ -514,6 +514,12 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         # prefill geo-mean on top of the promoted up leg; production-only
         # binding, exact coltile parent stays the fallback.
         "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN": "1" if production else "0",
+        # iu8-WMMA dense Q8_0 F32/F32 linears (attn-gate 2560->6144 and
+        # shared-expert down 640->2560; T1): logits KL <= 5.1e-8 vs
+        # incumbent, top-1 100%, deterministic; full-suite A/B +7.9%
+        # prefill geo-mean with every case winning; production-only
+        # binding, the exact wave-scale coltile stays the fallback.
+        "HIPENGINE_QWEN4_EXP_Q8_IU8_WMM": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK": "1" if production else "0",
