@@ -400,3 +400,156 @@ __all__ = [
     "timesfm_scatter_kv_f32",
     "timesfm_swish_f32",
 ]
+
+
+_Q_NORM_TRANSPOSE = (
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+)
+_K_NORM_SCATTER = (
+    ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32,
+    ctypes.c_int32, ctypes.c_int32,
+    ctypes.c_void_p, ctypes.c_void_p,
+)
+_V_SCATTER = (
+    ctypes.c_void_p,
+    ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32,
+    ctypes.c_int32, ctypes.c_int32,
+    ctypes.c_void_p, ctypes.c_void_p,
+)
+_MASK_SOFTMAX = (
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_void_p,
+)
+_TRANSPOSE_HEADS = (
+    ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_void_p,
+)
+
+
+def timesfm_q_norm_transpose_f16(
+    qkv_ptr: int,
+    q_ln_ptr: int,
+    per_dim_ptr: int,
+    batch: int,
+    queries: int,
+    heads: int,
+    head_dim: int,
+    patch_stride: int,
+    qt_ptr: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """query_ln RMSNorm + per-dim scaling + transpose to [B, H, Q, D]."""
+
+    library = library or _library()
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(library, "timesfm_q_norm_transpose_f16", _Q_NORM_TRANSPOSE, ctypes.c_int)
+    err = fn(
+        qkv_ptr, q_ln_ptr, per_dim_ptr, batch, queries, heads, head_dim, patch_stride,
+        qt_ptr, stream,
+    )
+    _check_launch(runtime, err)
+
+
+def timesfm_k_norm_scatter_f16(
+    qkv_ptr: int,
+    k_ln_ptr: int,
+    batch: int,
+    patches: int,
+    cache_size: int,
+    heads: int,
+    head_dim: int,
+    patch_stride: int,
+    start: int,
+    cache_k_ptr: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """key_ln RMSNorm + scatter to the head-major cache [B, H, S, D] at start."""
+
+    library = library or _library()
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(library, "timesfm_k_norm_scatter_f16", _K_NORM_SCATTER, ctypes.c_int)
+    err = fn(
+        qkv_ptr, k_ln_ptr, batch, patches, cache_size, heads, head_dim, patch_stride,
+        start, cache_k_ptr, stream,
+    )
+    _check_launch(runtime, err)
+
+
+def timesfm_v_scatter_f16(
+    qkv_ptr: int,
+    batch: int,
+    patches: int,
+    cache_size: int,
+    heads: int,
+    head_dim: int,
+    patch_stride: int,
+    start: int,
+    cache_v_ptr: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Scatter packed v to the head-major cache [B, H, S, D] at start."""
+
+    library = library or _library()
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(library, "timesfm_v_scatter_f16", _V_SCATTER, ctypes.c_int)
+    err = fn(
+        qkv_ptr, batch, patches, cache_size, heads, head_dim, patch_stride,
+        start, cache_v_ptr, stream,
+    )
+    _check_launch(runtime, err)
+
+
+def timesfm_mask_softmax_f16(
+    scores_ptr: int,
+    num_masked_ptr: int,
+    q_offset_ptr: int,
+    batch: int,
+    queries: int,
+    cache_size: int,
+    heads: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """In-place masked softmax over [B, H, Q, S] score rows."""
+
+    library = library or _library()
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(library, "timesfm_mask_softmax_f16", _MASK_SOFTMAX, ctypes.c_int)
+    err = fn(scores_ptr, num_masked_ptr, q_offset_ptr, batch, queries, cache_size, heads, stream)
+    _check_launch(runtime, err)
+
+
+def timesfm_transpose_heads_f16(
+    src_ptr: int,
+    dst_ptr: int,
+    batch: int,
+    queries: int,
+    heads: int,
+    head_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """[B, H, Q, D] -> [B, Q, H*D] row layout for the out projection."""
+
+    library = library or _library()
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(library, "timesfm_transpose_heads_f16", _TRANSPOSE_HEADS, ctypes.c_int)
+    err = fn(src_ptr, dst_ptr, batch, queries, heads, head_dim, stream)
+    _check_launch(runtime, err)

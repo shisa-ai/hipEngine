@@ -227,6 +227,71 @@ class Rocblas:
             stream=stream,
         )
 
+    def gemm_ex_strided_batched_f16_f32acc(
+        self,
+        a_ptr: int,
+        b_ptr: int,
+        c_ptr: int,
+        *,
+        m: int,
+        n: int,
+        k: int,
+        lda: int,
+        ldb: int,
+        ldc: int,
+        stride_a: int,
+        stride_b: int,
+        stride_c: int,
+        batch: int,
+        trans_a: bool,
+        trans_b: bool,
+        stream: int = 0,
+    ) -> None:
+        """rocBLAS ``gemm_strided_batched_ex`` (FP16 storage / FP32 accumulate).
+
+        Column-major semantics of rocBLAS apply; callers express their desired
+        layout through the transpose flags and leading dimensions.
+        """
+
+        if m <= 0 or n <= 0 or k <= 0 or batch <= 0:
+            raise ValueError("gemm_strided_batched_ex dimensions must be positive")
+        self.set_stream(stream)
+        alpha = ctypes.c_float(1.0)
+        beta = ctypes.c_float(0.0)
+        _check(
+            self.library.rocblas_gemm_strided_batched_ex(
+                ctypes.c_void_p(self.handle),
+                ctypes.c_int(ROCBLAS_OPERATION_TRANSPOSE if trans_a else ROCBLAS_OPERATION_NONE),
+                ctypes.c_int(ROCBLAS_OPERATION_TRANSPOSE if trans_b else ROCBLAS_OPERATION_NONE),
+                ctypes.c_int(m),
+                ctypes.c_int(n),
+                ctypes.c_int(k),
+                ctypes.byref(alpha),
+                ctypes.c_void_p(a_ptr),
+                ctypes.c_int(ROCBLAS_DATATYPE_F16_R),
+                ctypes.c_int(lda),
+                ctypes.c_longlong(stride_a),
+                ctypes.c_void_p(b_ptr),
+                ctypes.c_int(ROCBLAS_DATATYPE_F16_R),
+                ctypes.c_int(ldb),
+                ctypes.c_longlong(stride_b),
+                ctypes.byref(beta),
+                ctypes.c_void_p(c_ptr),
+                ctypes.c_int(ROCBLAS_DATATYPE_F16_R),
+                ctypes.c_int(ldc),
+                ctypes.c_longlong(stride_c),
+                ctypes.c_void_p(c_ptr),
+                ctypes.c_int(ROCBLAS_DATATYPE_F16_R),
+                ctypes.c_int(ldc),
+                ctypes.c_longlong(stride_c),
+                ctypes.c_int(batch),
+                ctypes.c_int(ROCBLAS_DATATYPE_F32_R),
+                ctypes.c_int(ROCBLAS_GEMM_ALGO_STANDARD),
+                ctypes.c_uint32(0),
+            ),
+            "rocblas_gemm_strided_batched_ex",
+        )
+
     def gemm_ex_rowmajor_nt_fp16_f32_out(
         self,
         x_ptr: int,
@@ -502,6 +567,37 @@ def _configure(library: ctypes.CDLL) -> None:
         ctypes.c_int,
     ]
     library.rocblas_sgemm.restype = ctypes.c_int
+    library.rocblas_gemm_strided_batched_ex.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.POINTER(ctypes.c_float),
+        ctypes.c_void_p,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_longlong,
+        ctypes.c_void_p,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_longlong,
+        ctypes.POINTER(ctypes.c_float),
+        ctypes.c_void_p,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_longlong,
+        ctypes.c_void_p,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_longlong,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_uint32,
+    ]
+    library.rocblas_gemm_strided_batched_ex.restype = ctypes.c_int
     library.rocblas_gemm_ex.argtypes = [
         ctypes.c_void_p,
         ctypes.c_int,
