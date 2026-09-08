@@ -97,7 +97,7 @@ production gates. Re-review of prior strict/exactness-based discards:
   Stands; correctness was never the reason.
 - **Expanded F32 Q8 cache** — performance rejection (0.161x) plus
   footprint/setup costs. Stands.
-- **Q5_K bundle (5% prefill win)** — production-envelope rejection
+- **Q5_K bundle (5% prefill win)** — production-envelope rejection **Resolved (September 9, 2026):** the reopened #15 target is closed by promotion, not a shave - the production iu8-WMMA risk+repair chain was adapted to Q5_K weights for layer 2 (the sole Q5_K MoE layer). Bit-exact versus the strict row4 parent (state gate 12/12, identical A/B digests), actual-weight screen 5.67x/6.00x/6.68x at rows 512/1024/4096, full 12-case A/B +4.29% prefill geo-mean with every case winning. The T2 f16 drift class cannot recur by construction. Production-only binding `HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT`.
   (prefill-last mean KL 0.001179 > 0.001). Stands rejected under the
   binding bars (bars move only via explicit policy decision); flagged as
   the highest-value near-miss for a KL-shaving variant.
