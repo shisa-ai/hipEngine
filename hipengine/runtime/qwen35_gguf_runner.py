@@ -14610,6 +14610,7 @@ class Qwen35GGUFResidentSession:
     _verify_lm_rows_capacity: int = field(default=0, init=False)
     _verify_hidden_f32_a: object | None = field(default=None, init=False)
     _verify_hidden_f32_b: object | None = field(default=None, init=False)
+    _verify_conv_out_f32: object | None = field(default=None, init=False)
     _verify_linear_conv_state_rows: tuple[object | None, ...] = field(default=(), init=False)
     _verify_linear_recurrent_state_rows: tuple[object | None, ...] = field(default=(), init=False)
     _verify_linear_state_rows_capacity: int = field(default=0, init=False)
@@ -16027,6 +16028,7 @@ class Qwen35GGUFResidentSession:
         view._verify_hidden_seed_buf = None
         view._verify_hidden_f32_a = None
         view._verify_hidden_f32_b = None
+        view._verify_conv_out_f32 = None
         view._verify_token_ids_i64 = None
         view._verify_token_counter_i64 = None
         view._verify_block_rows_capacity = 0
@@ -20327,6 +20329,12 @@ class Qwen35GGUFResidentSession:
                                 stream=stream,
                             )
                         )
+                        if bulk_attention_mode == "native" and self._verify_conv_out_f32 is not None:
+                            # Prefill may alias QKV -> conv -> BF16 output. The
+                            # native chain consumes these rows concurrently.
+                            bulk_scratch = replace(
+                                bulk_scratch, conv_out=self._verify_conv_out_f32,
+                            )
                         src_chunk_ptr = src.ptr + scratch_row_start * row_nbytes
                         dst_chunk_ptr = dst.ptr + scratch_row_start * row_nbytes
                         src_f32_chunk_ptr = None if src_f32 is None else int(src_f32.ptr)
@@ -24406,6 +24414,7 @@ class Qwen35GGUFResidentSession:
             self._verify_hidden_seed_buf,
             self._verify_hidden_f32_a,
             self._verify_hidden_f32_b,
+            self._verify_conv_out_f32,
         ):
             if buffer is not None:
                 free(buffer, runtime=runtime)
@@ -24422,6 +24431,11 @@ class Qwen35GGUFResidentSession:
         self._verify_hidden_f32_b = malloc(
             rows * self.runner.hidden_size * DType.FP32.itemsize,
             runtime=runtime,
+        )
+        qkv_width = int(getattr(self.runner, "linear_qkv_width", 0))
+        self._verify_conv_out_f32 = (
+            malloc(rows * qkv_width * DType.FP32.itemsize, runtime=runtime)
+            if qkv_width > 0 else None
         )
         self._verify_token_ids_i64 = malloc(rows * DType.INT64.itemsize, runtime=runtime)
         self._verify_token_counter_i64 = malloc(DType.INT64.itemsize, runtime=runtime)
@@ -28297,12 +28311,14 @@ class Qwen35GGUFResidentSession:
             self._verify_hidden_seed_buf,
             self._verify_hidden_f32_a,
             self._verify_hidden_f32_b,
+            self._verify_conv_out_f32,
         ):
             if buffer is not None:
                 free(buffer, runtime=runtime)
         self._verify_hidden_seed_buf = None
         self._verify_hidden_f32_a = None
         self._verify_hidden_f32_b = None
+        self._verify_conv_out_f32 = None
         self._verify_token_ids_i64 = None
         self._verify_token_counter_i64 = None
         self._verify_block_rows_capacity = 0
@@ -28412,12 +28428,14 @@ class Qwen35GGUFResidentSession:
             self._verify_hidden_seed_buf,
             self._verify_hidden_f32_a,
             self._verify_hidden_f32_b,
+            self._verify_conv_out_f32,
         ):
             if buffer is not None:
                 free(buffer, runtime=runtime)
         self._verify_hidden_seed_buf = None
         self._verify_hidden_f32_a = None
         self._verify_hidden_f32_b = None
+        self._verify_conv_out_f32 = None
         self._verify_token_ids_i64 = None
         self._verify_token_counter_i64 = None
         self._verify_block_rows_capacity = 0

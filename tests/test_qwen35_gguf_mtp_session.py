@@ -86,6 +86,7 @@ def test_device_proposal_ready_checks_live_cycle_end_and_output_room(
         mtp_module.Qwen35GGUFTransactionalVerifier
     )
     verifier.closed = False
+    verifier.backend = "hip_gfx1151"
     verifier.target_verify_mode = "native"
     verifier.target = target
     verifier.last_device_proposal_fallback_reason = "stale"
@@ -95,6 +96,37 @@ def test_device_proposal_ready_checks_live_cycle_end_and_output_room(
         remaining_decode=remaining_decode,
     ) is expected
     assert verifier.last_device_proposal_fallback_reason == expected_reason
+
+
+@pytest.mark.parametrize(
+    "budget,position,expected",
+    [(1, 93, True), (1, 94, False), (2, 92, True), (2, 93, False),
+     (3, 91, True), (3, 92, False)],
+)
+def test_device_proposal_admission_respects_native_policy_before_launch(
+    budget, position, expected,
+) -> None:
+    calls = []
+
+    class Graph:
+        context_limit = 1023
+
+        def launch_ineligibility_reason(self, _target, **kwargs):
+            calls.append(kwargs)
+            return None
+
+    verifier = mtp_module.Qwen35GGUFTransactionalVerifier.__new__(
+        mtp_module.Qwen35GGUFTransactionalVerifier
+    )
+    verifier.closed = False
+    verifier.backend = "hip_gfx1100"
+    verifier.target_verify_mode = "native"
+    verifier.target = SimpleNamespace(position=position)
+    setattr(verifier.target, f"_native_spec_b{budget}_target_graph_n2", Graph())
+    assert verifier.device_proposal_ready(budget, remaining_decode=4) is expected
+    assert bool(calls) is expected
+    if not expected:
+        assert verifier.last_device_proposal_fallback_reason == "target_graph_native_policy_miss"
 
 
 def test_ineligible_cached_target_graph_never_launches_device_proposal() -> None:
@@ -186,6 +218,181 @@ def test_serial_fallback_forces_consumer_owned_initial_state_snapshot() -> None:
     assert copies == [(0x1000, 0x2000, 8, 9)]
     assert state_copies == [(False, 9)]
     assert journal.initial_state_captured
+
+
+def test_native_verifier_lazily_owns_a_separate_serial_fallback_journal(monkeypatch) -> None:
+    primary = SimpleNamespace(initial_state_only=True)
+    serial = SimpleNamespace(initial_state_only=False)
+    allocations = []
+    verifier = mtp_module.Qwen35GGUFTransactionalVerifier.__new__(
+        mtp_module.Qwen35GGUFTransactionalVerifier
+    )
+    verifier.target = object()
+    verifier.max_candidate_budget = 3
+    verifier.journal = primary
+    verifier._primary_journal = primary
+    verifier._serial_journal = None
+
+    def allocate(target, **kwargs):
+        allocations.append((target, kwargs))
+        return serial
+
+    monkeypatch.setattr(mtp_module._StateJournal, "allocate", allocate)
+    verifier._select_journal("native")
+    assert verifier.journal is primary
+    assert not allocations
+    verifier._select_journal("serial_exact")
+    assert verifier.journal is serial
+    assert allocations == [
+        (verifier.target, {
+            "max_rows": 4,
+            "producer_capture_initial_state": False,
+            "initial_state_only": False,
+        }),
+    ]
+    verifier._select_journal("native")
+    assert verifier.journal is primary
+    verifier._select_journal("serial_exact")
+    assert verifier.journal is serial
+    assert len(allocations) == 1
+
+
+def test_serial_only_verifier_reuses_its_primary_journal(monkeypatch) -> None:
+    primary = SimpleNamespace(initial_state_only=False)
+    verifier = mtp_module.Qwen35GGUFTransactionalVerifier.__new__(
+        mtp_module.Qwen35GGUFTransactionalVerifier
+    )
+    verifier.journal = verifier._primary_journal = primary
+    verifier._serial_journal = None
+    monkeypatch.setattr(
+        mtp_module._StateJournal, "allocate",
+        lambda *_a, **_kw: pytest.fail("serial primary already has row storage"),
+    )
+    verifier._select_journal("serial_exact")
+    assert verifier.journal is primary
+
+
+def test_failed_serial_journal_allocation_keeps_native_owner(monkeypatch) -> None:
+    primary = SimpleNamespace(initial_state_only=True)
+    verifier = mtp_module.Qwen35GGUFTransactionalVerifier.__new__(
+        mtp_module.Qwen35GGUFTransactionalVerifier
+    )
+    verifier.target = object()
+    verifier.max_candidate_budget = 3
+    verifier.journal = verifier._primary_journal = primary
+    verifier._serial_journal = None
+
+    def fail(*_args, **_kwargs):
+        raise MemoryError("allocation failed")
+
+    monkeypatch.setattr(mtp_module._StateJournal, "allocate", fail)
+    with pytest.raises(MemoryError, match="allocation failed"):
+        verifier._select_journal("serial_exact")
+    assert verifier.journal is primary
+    assert verifier._primary_journal is primary
+    assert verifier._serial_journal is None
+
+
+def test_prepare_selects_serial_journal_before_context_fallback_mutation(monkeypatch) -> None:
+    captures = []
+
+    def capture_serial(**kwargs):
+        captures.append(kwargs)
+        raise RuntimeError("stop after serial snapshot")
+
+    primary = SimpleNamespace(initial_state_only=True)
+    serial = SimpleNamespace(capture_initial=capture_serial)
+    verifier = mtp_module.Qwen35GGUFTransactionalVerifier.__new__(
+        mtp_module.Qwen35GGUFTransactionalVerifier
+    )
+    verifier.target = SimpleNamespace(position=93)
+    verifier.backend = "hip_gfx1100"
+    verifier.target_verify_mode = "native"
+    verifier.max_candidate_budget = 3
+    verifier.closed = False
+    verifier._prepared = None
+    verifier.journal = verifier._primary_journal = primary
+    verifier._serial_journal = None
+    verifier._validate_chain = lambda _batch: None
+    monkeypatch.setattr(mtp_module._StateJournal, "allocate", lambda *_a, **_kw: serial)
+    batch = SimpleNamespace(
+        mode="verify_chain", rows=3, request_ids=(0,), positions=(93, 94, 95),
+        root_rows=(0,),
+    )
+    bucket = SimpleNamespace(owner=SimpleNamespace(
+        spec=SimpleNamespace(mode="verify_chain", max_rows=3),
+    ))
+    with pytest.raises(RuntimeError, match="stop after serial snapshot"):
+        verifier.prepare(batch, transaction_id=1, graph_bucket=bucket, remaining_decode=(2,))
+    assert captures == [{"stream": 0, "force_consumer_state": True}]
+    assert verifier.journal is serial
+    assert verifier.target.position == 93
+    assert verifier._prepared is None
+
+
+@pytest.mark.parametrize("budget,remaining", [(1, 1), (2, 1), (2, 2), (3, 1), (3, 2), (3, 3)])
+def test_device_proposal_tail_stays_on_device_accept_commit(budget, remaining) -> None:
+    calls = []
+
+    def device_target(proposal, **kwargs):
+        calls.append((proposal, kwargs["remaining_decode"]))
+        raise RuntimeError("device handoff reached")
+
+    primary = SimpleNamespace(
+        initial_state_only=True, capture_initial=lambda **_kw: None,
+        restore_initial=lambda **_kw: None,
+    )
+    verifier = mtp_module.Qwen35GGUFTransactionalVerifier.__new__(
+        mtp_module.Qwen35GGUFTransactionalVerifier
+    )
+    verifier.target = SimpleNamespace(
+        position=25,
+        verify_target_from_device_proposal=device_target,
+        verify_target_block_native_cycle=lambda *_a, **_kw: pytest.fail("host fallback consumed placeholders"),
+    )
+    verifier.backend = "hip_gfx1100"
+    verifier.target_verify_mode = "native"
+    verifier.max_candidate_budget = 3
+    verifier.closed = False
+    verifier._prepared = None
+    verifier.journal = verifier._primary_journal = primary
+    verifier._serial_journal = None
+    verifier._validate_chain = lambda _batch: None
+    verifier._publish_position = lambda *_a, **_kw: None
+    verifier._synchronize = lambda _stream: None
+    proposal = SimpleNamespace(budget=budget, request_id=0)
+    batch = SimpleNamespace(
+        mode="verify_chain", rows=budget + 1, request_ids=(0,),
+        positions=tuple(range(25, 26 + budget)), root_rows=(0,),
+        tokens=(7, *(2147483647 for _ in range(budget))),
+    )
+    bucket = SimpleNamespace(
+        replay_count=0,
+        owner=SimpleNamespace(spec=SimpleNamespace(mode="verify_chain", max_rows=budget + 1)),
+    )
+    with pytest.raises(RuntimeError, match="device handoff reached"):
+        verifier.prepare(
+            batch, transaction_id=1, graph_bucket=bucket,
+            remaining_decode=(remaining,), device_proposal=proposal,
+        )
+    assert calls == [(proposal, remaining)]
+
+
+def test_verifier_closes_both_journals_once() -> None:
+    closed = []
+    verifier = mtp_module.Qwen35GGUFTransactionalVerifier.__new__(
+        mtp_module.Qwen35GGUFTransactionalVerifier
+    )
+    verifier.closed = False
+    verifier._prepared = None
+    verifier._primary_journal = SimpleNamespace(close=lambda: closed.append("native"))
+    verifier._serial_journal = SimpleNamespace(close=lambda: closed.append("serial"))
+    verifier.journal = verifier._serial_journal
+    verifier.workspace = SimpleNamespace(free=lambda: closed.append("workspace"))
+    verifier._buckets = {}
+    verifier.close()
+    verifier.close()
+    assert closed == ["serial", "native", "workspace"]
 
 
 def test_mtp_prompt_admission_streams_shifted_draft_without_full_hidden_slab(

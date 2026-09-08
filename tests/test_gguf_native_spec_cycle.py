@@ -32,6 +32,105 @@ from hipengine.speculative.mtp_resident_draft import (
 )
 
 
+@pytest.mark.parametrize("capacity", [256, 1024, 4096])
+def test_native_graph_extent_never_exceeds_backend_qualification(capacity) -> None:
+    session = SimpleNamespace(
+        position=25, backend="hip_gfx1100",
+        scratch=SimpleNamespace(max_positions=capacity),
+    )
+    assert native_cycle_mod._native_target_graph_context_limit(session, rows=4) == 95
+    session.position = 93
+    assert native_cycle_mod._native_target_graph_context_limit(session, rows=3) is None
+
+
+def test_split_graph_extent_respects_non_aligned_backend_limit(monkeypatch) -> None:
+    from hipengine.runtime import qwen35_gguf_runner as runner_module
+
+    session = SimpleNamespace(
+        position=1024, backend="test_backend",
+        scratch=SimpleNamespace(max_positions=4096, block_size=256),
+    )
+    monkeypatch.setattr(native_cycle_mod, "backend_package_capability", lambda *_a: 1030)
+    monkeypatch.setattr(runner_module, "_gguf_prefill_device_metadata_enabled", lambda **_kw: True)
+    assert native_cycle_mod._native_target_graph_context_limit(session, rows=4) == 1030
+
+
+@pytest.mark.parametrize(
+    "backend,capacity,extent,has_alias",
+    [("hip_gfx1100", 1024, 95, True),
+     ("hip_gfx1151", 256, 256, False),
+     ("hip_gfx1151", 1024, 1023, True)],
+)
+def test_qualified_short_graph_is_exposed_to_cached_device_handoff(
+    monkeypatch, backend, capacity, extent, has_alias,
+) -> None:
+    session = SimpleNamespace(
+        position=25, backend=backend,
+        scratch=SimpleNamespace(max_positions=capacity),
+    )
+    captures = []
+
+    class Graph:
+        def launch(self, *_args, **_kwargs):
+            return "result"
+
+    graph = Graph()
+
+    def capture(_session, _tokens, **kwargs):
+        captures.append(kwargs["context_limit"])
+        return graph
+
+    monkeypatch.setattr(native_cycle_mod, "capture_qwen35_gguf_native_b2_target_graph", capture)
+    assert verify_qwen35_gguf_native_b2_target(
+        session, (7, 8), device_accept_commit=True, remaining_decode=2,
+    ) == "result"
+    assert captures == [extent]
+    assert hasattr(session, "_native_spec_b1_target_graph_n2") is has_alias
+    if has_alias:
+        assert session._native_spec_b1_target_graph_n2 is graph
+
+
+def test_native_verify_owns_conv_handoff_outside_prefill_aliases(monkeypatch) -> None:
+    from hipengine.runtime import qwen35_gguf_runner as runner_module
+
+    session = runner_module.Qwen35GGUFResidentSession.__new__(
+        runner_module.Qwen35GGUFResidentSession
+    )
+    session.runner = SimpleNamespace(hidden_size=16, linear_qkv_width=40)
+    session._verify_block_rows_capacity = 0
+    for name in (
+        "_verify_token_counter_i64", "_verify_token_ids_i64", "_verify_hidden_seed_buf",
+        "_verify_hidden_f32_a", "_verify_hidden_f32_b", "_verify_conv_out_f32",
+    ):
+        setattr(session, name, None)
+    allocations = []
+    freed = []
+
+    def allocate(nbytes, **_kwargs):
+        buffer = DeviceBuffer(0x10000 + len(allocations) * 0x10000, nbytes)
+        allocations.append(buffer)
+        return buffer
+
+    monkeypatch.setattr(runner_module, "malloc", allocate)
+    monkeypatch.setattr(runner_module, "free", lambda buffer, **_kw: freed.append(buffer.ptr))
+    session._ensure_verify_block_buffers(4, runtime=object())
+    conv = session._verify_conv_out_f32
+    assert conv is not None
+    assert conv.nbytes == 4 * 40 * DType.FP32.itemsize
+    session._ensure_verify_block_buffers(2, runtime=object())
+    assert session._verify_conv_out_f32 is conv
+    session._ensure_verify_block_buffers(8, runtime=object())
+    assert session._verify_conv_out_f32.nbytes == 8 * 40 * DType.FP32.itemsize
+    assert freed.count(conv.ptr) == 1
+
+
+def test_native_graph_binding_tracks_conv_handoff_reallocation() -> None:
+    session = SimpleNamespace(_verify_conv_out_f32=DeviceBuffer(0x1000, 640))
+    initial = native_cycle_mod._native_target_binding_signature(session)
+    session._verify_conv_out_f32 = DeviceBuffer(0x2000, 1280)
+    assert native_cycle_mod._native_target_binding_signature(session) != initial
+
+
 def test_native_target_graph_snapshots_mutable_linear_commit_tables(
     monkeypatch,
 ) -> None:
@@ -924,7 +1023,7 @@ def test_gfx1100_target_graph_fails_closed_above_p95() -> None:
         scratch=SimpleNamespace(max_positions=1024, block_size=256),
     )
 
-    assert native_cycle_mod._native_target_graph_context_limit(session, rows=3) == 1023
+    assert native_cycle_mod._native_target_graph_context_limit(session, rows=3) == 95
     assert native_cycle_mod._native_target_graph_context_limit(session, rows=4) is None
 
 
