@@ -83,7 +83,7 @@ def test_route_is_inert_without_a_bound_workspace():
 @pytest.mark.parametrize(
     "kwargs,reason",
     [
-        (dict(rows=8, in_features=5120, out_features=17408), "below min_rows"),
+        (dict(rows=4, in_features=5120, out_features=17408), "below min_rows"),
         (dict(rows=512, in_features=5121, out_features=17408), "K not 256-aligned"),
         (dict(rows=512, in_features=5120, out_features=17400), "N not 128-aligned"),
         (dict(rows=512, in_features=5120, out_features=17408,
@@ -97,11 +97,33 @@ def test_route_declines_outside_its_policy(kwargs, reason):
     assert out.key.variant == kwargs.get("variant", "prefill_bf16_bf16_out"), reason
 
 
-def test_route_is_selected_inside_its_policy():
+@pytest.mark.parametrize("rows", (8, 16, 32, 512))
+def test_route_is_selected_inside_its_policy(rows):
     with iq_mmq.iq_dense_mmq_session(True, workspace_ptr=1 << 20, workspace_nbytes=1 << 24):
-        out = _dispatch("gguf_iq4_xs", rows=512, in_features=5120, out_features=17408)
+        out = _dispatch("gguf_iq4_xs", rows=rows, in_features=5120, out_features=17408)
     assert out.key.variant == _DENSE_VARIANT
     assert out.abi == "raw"
+
+
+@pytest.mark.parametrize("rows", (1, 2, 4))
+def test_route_declines_below_the_measured_crossover(rows):
+    """Below 8 rows the GEMV still wins on at least one real shape.
+
+    Swept in scripts/gguf_iq_dense_mmq_crossover.py: worst case over the six
+    distinct IQ4_XS dense shapes is 0.59x at 2 rows and 0.68x at 4, against
+    1.58x at 8. The policy floor must not drop under that.
+    """
+    with iq_mmq.iq_dense_mmq_session(True, workspace_ptr=1 << 20, workspace_nbytes=1 << 24):
+        out = _dispatch("gguf_iq4_xs", rows=rows, in_features=5120, out_features=17408)
+    assert out.key.variant == "prefill_bf16_bf16_out"
+
+
+def test_policy_floor_matches_the_measured_crossover():
+    policy = backend_package_capability(
+        "hip_gfx1151", "GGUF_IQ_DENSE_MMQ_PREFILL_POLICY", {})
+    for quant, entry in policy.items():
+        assert entry["min_rows"] == 8, (
+            f"{quant} min_rows drifted from the swept crossover")
 
 
 def test_unsupported_quants_keep_the_strict_owner():
