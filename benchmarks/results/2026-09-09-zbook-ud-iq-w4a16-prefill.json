@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "date": "2026-09-09",
-  "status": "retained_exact_path_not_default",
+  "status": "blocked",
   "host": "zbook",
   "hardware": "AMD RYZEN AI MAX+ PRO 395 / Radeon 8060S (laptop; gross numbers; provisional pending the desktop gfx1151)",
   "backend": "hip_gfx1151",
@@ -10,20 +10,63 @@
   "leaf_measurements": {
     "protocol": "scratchpad/w4a16_bench.py: largest aligned tensor per quant from Qwen3.8-27B-UD-Q4_K_M, min-of-5 x 3 reps, accuracy against an f64 host reference computed from the CPU dequantizer so all three GPU paths are judged against the same truth",
     "rows_512": {
-      "IQ4_XS": {"gemv_ms": 87.88, "mmq_ms": 8.17, "w4a16_ms": 11.36, "gemv_err": 1.66e-03, "mmq_err": 5.60e-03, "w4a16_err": 1.67e-03},
-      "IQ4_NL": {"gemv_ms": 118.57, "mmq_ms": 8.45, "w4a16_ms": 15.48, "gemv_err": 1.66e-03, "mmq_err": 5.60e-03, "w4a16_err": 1.67e-03},
-      "IQ3_S": {"gemv_ms": 92.42, "mmq_ms": 7.88, "w4a16_ms": 14.53, "gemv_err": 1.66e-03, "mmq_err": 5.59e-03, "w4a16_err": 1.67e-03}
+      "IQ4_XS": {
+        "gemv_ms": 87.88,
+        "mmq_ms": 8.17,
+        "w4a16_ms": 11.36,
+        "gemv_err": 0.00166,
+        "mmq_err": 0.0056,
+        "w4a16_err": 0.00167
+      },
+      "IQ4_NL": {
+        "gemv_ms": 118.57,
+        "mmq_ms": 8.45,
+        "w4a16_ms": 15.48,
+        "gemv_err": 0.00166,
+        "mmq_err": 0.0056,
+        "w4a16_err": 0.00167
+      },
+      "IQ3_S": {
+        "gemv_ms": 92.42,
+        "mmq_ms": 7.88,
+        "w4a16_ms": 14.53,
+        "gemv_err": 0.00166,
+        "mmq_err": 0.00559,
+        "w4a16_err": 0.00167
+      }
     },
     "rows_64": {
-      "IQ4_XS": {"gemv_ms": 10.91, "mmq_ms": 1.06, "w4a16_ms": 2.19},
-      "IQ4_NL": {"gemv_ms": 14.58, "mmq_ms": 1.14, "w4a16_ms": 1.95},
-      "IQ3_S": {"gemv_ms": 11.08, "mmq_ms": 1.33, "w4a16_ms": 2.38}
+      "IQ4_XS": {
+        "gemv_ms": 10.91,
+        "mmq_ms": 1.06,
+        "w4a16_ms": 2.19
+      },
+      "IQ4_NL": {
+        "gemv_ms": 14.58,
+        "mmq_ms": 1.14,
+        "w4a16_ms": 1.95
+      },
+      "IQ3_S": {
+        "gemv_ms": 11.08,
+        "mmq_ms": 1.33,
+        "w4a16_ms": 2.38
+      }
     },
     "reading": "W4A16 lands at 1.67e-03 against the strict GEMV's 1.66e-03 - both are at the bf16 OUTPUT floor, not either kernel's arithmetic, so W4A16 is accuracy-equivalent to the exact path. The integer MMQ sits 3.35x above that floor. On speed W4A16 is 0.48-0.72x of the integer MMQ (1.4-2.1x slower) but 5-8x faster than the GEMV."
   },
   "tile_sweep": {
     "shape": "IQ4_XS 512x(5120->17408), TILE_M x TILE_N milliseconds",
-    "results": {"64x16": 33.3, "64x32": 24.7, "32x32": 20.8, "32x64": 17.2, "16x64": 12.0, "16x96": 12.6, "16x128": 11.4, "32x128": 15.1, "128x16": 42.2},
+    "results": {
+      "64x16": 33.3,
+      "64x32": 24.7,
+      "32x32": 20.8,
+      "32x64": 17.2,
+      "16x64": 12.0,
+      "16x96": 12.6,
+      "16x128": 11.4,
+      "32x128": 15.1,
+      "128x16": 42.2
+    },
     "retained": "16x128",
     "reading": "Row reuse dominates: each decoded weight fragment is shared across TILE_N activation rows, so cost falls steeply as TILE_N grows and rises with TILE_M. The first shape tried (64x16) was 2.9x off the best and made IQ3_S look pathological at 259 ms; at 16x128 IQ3_S is 14.5 ms. Past 16x128 the curve is flat."
   },
@@ -34,5 +77,39 @@
     "The kernel decodes each weight per element with no scale hoisting and no LDS staging; the integer MMQ decodes once into a shared tile reused across 128 rows. Closing the remaining 1.4-2.1x would mean adopting that structure.",
     "Only bf16 in / bf16 out is implemented.",
     "Laptop power/thermal limited; provisional pending the desktop gfx1151."
-  ]
+  ],
+  "CORRECTION_2026_09_09": {
+    "supersedes": "the leaf_measurements 'reading' field below, which claimed W4A16 is accuracy-equivalent to the strict GEMV",
+    "what_was_wrong": "The leaf comparison reported GEMV 1.66e-03 and W4A16 1.67e-03 against an f64 reference. Both kernels write bf16, and rounding a random f32 vector to bf16 alone gives a relative norm error of 1.66e-03 - exactly those numbers. The comparison was measuring the output format and had no resolving power below that floor; only the integer MMQ at 5.60e-03 was far enough above it to be distinguished.",
+    "model_level_truth": {
+      "protocol": "published sweep protocol 512/128 plus the context512 teacher gate, policy temporarily routed to W4A16 then restored",
+      "two_quant_mmq": {
+        "prefill_tok_s": 127.2,
+        "mean": 0.0010796,
+        "p95": 0.0051188,
+        "p99": 0.0217009,
+        "max": 0.0354152,
+        "top1": "162/162"
+      },
+      "four_quant_mmq_production": {
+        "prefill_tok_s": 171.86,
+        "mean": 0.0014707,
+        "p95": 0.0077991,
+        "p99": 0.0253607,
+        "max": 0.0297407,
+        "top1": "161/162"
+      },
+      "four_quant_w4a16": {
+        "prefill_tok_s": 150.85,
+        "mean": 0.0014384,
+        "p95": 0.0037423,
+        "p99": 0.0325024,
+        "max": 0.0408521,
+        "top1": "161/162"
+      }
+    },
+    "conclusion": "W4A16 lands with the integer MMQ on mean (0.0014384 vs 0.0014707), not with the strict GEMV (0.0010796). It is dominated: 12% slower end to end with no model-level mean benefit. Its error shape does differ - p95 0.0037423 is the best of all three arms, while p99 and max are the worst - but that is not the claimed win.",
+    "implication_for_the_mean_regression": "Routing IQ3_S and IQ4_NL off the strict GEMV costs about +0.00036 mean regardless of activation format: an int8 path and a path with 25x more accurate activations land within 0.00003 of each other. So the regression is not an activation-precision effect, consistent with the earlier finding that it is not per-tensor either. The remaining untested explanation is accumulation order.",
+    "methodological_lesson": "A leaf comparison cannot validate a change whose expected effect is smaller than the output dtype's rounding. Compare in the accumulation dtype, or go straight to the model-level gate."
+  }
 }
