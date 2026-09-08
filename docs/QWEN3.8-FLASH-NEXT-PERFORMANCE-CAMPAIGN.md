@@ -178,8 +178,22 @@ narrows the diagnosis; the canonical-sequence drift mechanism remains open.
   12/12 cases bit-identical (logits, four decode steps, state, full KV);
   canonical 12-case chunk1024 A/B: 72/72 trajectories exact, prefill
   +7.0-8.8% on every case (promotion range preserved), decode neutral.
-- [ ] **R4b - Screen Q5_1 down.** For Q5_1, capture actual layer/category
-  inputs and routing; establish its own exact bound/fallback before admission. Start with durable
+- [ ] **R4b - Screen Q5_1 down (in progress, first screen complete).** The
+  fresh post-promotion p4096 kernel ranking puts the Q5_1 down exact parent
+  (pair2 expertgrid64 m1 row-publish) at 3.15-3.22s across all three cases —
+  the largest single MoE kernel owner (of the 18.7s device total). The
+  default-off MMQ ds4 chain is NOT the promotion vehicle: as wired in the
+  runner it pairs the single-plane ds4 pack with the three-plane consumer
+  (latent inconsistency in a default-off route; single-plane accuracy
+  ~1.3% median relative error), and even with the correct three-plane
+  residual pack it runs at 0.75-0.78x of pair2 with an 18% BF16 flip
+  fraction (fp16-rounded ds4 scales contribute). The viable candidate is a
+  new weight-exact iu8-WMMA-class Q5_1 kernel: in-kernel three-plane fp32
+  staging (no fp16 scale rounding), raw 5-bit codes as the integer operand,
+  m-offset from staged plane sums (ds-trick), Kahan risk criterion with the
+  R4a guards, and a sparse exact repair reproducing the pair2 row-publish
+  arithmetic. For Q5_1, capture actual layer/category inputs and routing;
+  establish its own exact bound/fallback before admission. Start with durable
   production-multiplier-4 tests and a conservative parent-error criterion for
   iu8 repair. Cover cancellation, rounding ties, extreme finite scales,
   nonfinite handling, risk-queue capacity/overflow, deterministic repair,
