@@ -1,5 +1,13 @@
 # Qwen3.8-Flash-Next halo-box Follow-up Campaign
 
+**September 8, 2026 review takes precedence:** follow the main campaign's
+[review conclusions](QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md#review-conclusions-september-8-2026)
+and [active punchlist](QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md#active-review-punchlist-september-8-2026).
+The snapshots and older PF priorities below retain their source dates; they
+are not a post-ordered-v2 combined-default measurement or the current work
+order. Promotions remain retained; family closure and Vulkan parity remain
+unestablished.
+
 **September 7 source update:** `/home/lhl/strix-llama.cpp` at clean
 `7baf0a98c7ed0bd7c9f6fd3b7f8c3d8747c3889a` has a non-KDA H48 tiled
 GDN default and a Q8_0 single-query D64/128/256 support predicate without
@@ -8,10 +16,11 @@ all `b212548e0` timing rows remain historical, not measurements of this
 checkout. See the [source-pinned follow-up queue](QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md#current-strix-fork-follow-ups-september-7-2026).
 No new comparator benchmark or BF16-KV policy change is implied.
 
-Status: **Current Framework Desktop combined-default screen completed
+Historical status: **Framework Desktop combined-default screen completed
 2026-09-07 at hipEngine `95df2c3a9`/chunk1024 and halo-box `b212548e0`.**
 Upstream llama.cpp `4d9176092` retains its September5 measurement.
-Section 0 is the current c=1 overview. The original HB/PF
+Section 0 retains the earlier c=1 overview; the main campaign records newer
+screens with their source boundaries. The original HB/PF
 campaign evidence below remains tied to the power- and heat-limited `zbook` and
 its pinned historical revisions; do not rewrite it as a cross-host delta. The
 retained PF-1/PF-3/PF-5 T0 package is production. PF-0 is complete; D1 remains
@@ -1021,7 +1030,22 @@ runs is not evidence that Python or graph capture owns the remaining gap.
 
 ## 6. Punchlist
 
-### Start here (2026-09-05): ordered coder work
+### Start here (2026-09-08): review gates
+
+Execute the main campaign's
+[R1-R7 punchlist](QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md#active-review-punchlist-september-8-2026)
+as the single authoritative queue: committed-source QSA qualification,
+combined-default family/throughput refresh and p4096 drift investigation,
+repair qualification and conditional Q5_1/GR screens, then the measured
+decode bottleneck. Exact linear scheduling remains eligible; BF16 consumers
+do not guarantee repair transfer. Do not substitute projected QSA leaf costs
+for a complete-family capture or blend paired and cross-packet speedups.
+
+The following September 5 order and lever tables preserve historical intent
+and binding-shape corrections. Their "next", "done" and "closed" labels do not
+override R1-R7 or establish whole-family closure.
+
+### Historical ordered coder work (2026-09-05)
 
 This order supersedes the 2026-09-03 queue. PF numbers remain historical unit
 identifiers, not priority numbers. This review authorizes planning; use the

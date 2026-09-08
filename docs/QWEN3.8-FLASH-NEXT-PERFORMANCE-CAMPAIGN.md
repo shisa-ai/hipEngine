@@ -1,5 +1,13 @@
 # Qwen3.8-Flash-Next gfx1151 Performance Campaign
 
+**September 8, 2026 review:** use the
+[review conclusions](#review-conclusions-september-8-2026) and
+[active punchlist](#active-review-punchlist-september-8-2026) before older
+"next" instructions below or the halo-box PF queue. The QSA ordered-v2 and
+iu8-risk+repair promotions remain in production; this review changes neither
+runtime defaults nor numerical gates. Whole-family closure, refreshed Vulkan
+parity, and a host-bound decode diagnosis are not established.
+
 **Tool-calling correctness followup:** the embedded XML-parameter protocol and
 greedy grammar masks are implemented. JSON compatibility remains for other
 models. Local development sanity scored93/100 on15 short scenarios and83/100
@@ -7,7 +15,7 @@ on six structured-output scenarios; remaining misses involve model tool choices,
 not the former empty-message transport defect. These are not a frozen full69-case
 qualification or a comparator-speed result. See [contract/evidence](QWEN4EXP-TOOLS-GRAMMAR.md).
 
-**Owner priority, 2026-09-06:** resume prefill tuning after the validated
+**Historical owner priority, 2026-09-06:** resume prefill tuning after the validated
 context-capacity and tool-protocol detours. Capture actual expert routing before
 the next FFN scheduling screen; retain exact prefill wins and tackle decode later.
 The following records the completed
@@ -71,12 +79,129 @@ decision, and does not block T0 work.
 
 GDN Hv48 tile-16 was promoted in `22dc56268` after engagement-verified
 one-residency validation. The remaining GDN target is the serial prefix,
-not repeating the completed suffix admission. The next portfolio is routed
-MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
+not repeating the completed suffix admission. The September 5 portfolio was
+routed MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner
+cost; the active review queue below now controls execution.
 
 ## Current-host owner refresh
 
-**Exact ordered-v2 QSA sparse decode promoted (September8 UTC):** the
+### Review conclusions (September 8, 2026)
+
+Reviewed source: `5b8b6a19d`, including admission `f4e60b712` and promotion
+`28522ba21`. Binding lane: Framework `gfx1151`, machine ID
+`55ea6c509d0b49eea8de7094a1023668`, Ryzen AI Max+ 395 / Radeon 8060S,
+UD-Q4_K_XL, BF16 K/V, c1, chunk1024; comparator remains halo-box Vulkan
+`b212548e0`. The review found no reproducible QSA kernel regression in the
+focused tests. It did not rerun the full-model campaign.
+
+**Measured results, with their estimators and source boundaries:**
+
+| Evidence | Retainable result | Limit |
+| --- | --- | --- |
+| [QSA v2 same-residency A/B](../benchmarks/results/2026-09-08-framework-qwen4exp-qsa-ordered-v2-production.json), clean `f4e60b712`, 12 cases / 72 trajectories | p4096 token/time-weighted TG **12.348 -> 14.164 tok/s (+14.705%)**; p4096 total request wall **-4.535%**; all generated trajectories exact | **+16.516%** is the ratio of arithmetic-mean rates, not the weighted result. Per-case **+7.1/+11.0/+11.4/+24.8%** are median-rate gains. English after-arm TG CV is **18.738%**; magnitude needs the paired drift re-check. |
+| [iu8 same-residency A/B](../benchmarks/results/2026-09-07-framework-qwen4exp-q4-iu8-exact-production.json), clean `73dc4acf2`, 12 cases / 72 trajectories | Weighted PP gains at p512/p1024/p4096 **+7.602/+8.842/+8.361%** | The later **+7.9/+9.6/+13.1%** figures compare separate combined-default packets; they are not this promotion's paired effect. |
+| [Combined-default comparator screen](../benchmarks/results/2026-09-08-framework-qwen4exp-current-default-baselines-post.json), clean `dbb33a527` | HE PP/TG **205.95/19.53**, **221.15/18.88**, **210.42/13.87**; Vulkan **347.14/25.77**, **396.31/25.34**, **421.93/24.46** | This is **before QSA v2**, not a measurement at `5b8b6a19d`. Do not replace its TG4096 cell with a projection or extrapolate another packet's gain onto it. |
+
+The leaf's `12 * 0.179 ms ~= 2.15 ms` estimates only the replacement attention
+calls, not the complete QSA owner. It mixes synchronized leaf wall with the
+older family device ledger if used as a direct replacement for 16.955 ms.
+The projected 0.67x QSA/Vulkan and 1.08x total-decode ratios therefore cannot
+establish either a Vulkan win or "largely host-bound" decode. Measure complete
+owners and matched wall/device windows first. FFN's projected ~8.7-8.8 s and
+total prefill ~18.8 s likewise remain projections, not refreshed captures.
+Neither promotion by itself closes the parent family.
+
+The non-GR linear discriminator rejects a particular MMQ replacement, not
+all exact headroom. It uses one actual weight tensor with synthetic inputs,
+two row counts, and one alternative chain. Error versus float64 truth does
+not separately isolate activation quantization from accumulation order.
+Preserve the existing numerical bars and rejected candidates, but leave exact
+staging, reuse, fusion, scheduling, and three-plane-chain optimization eligible
+when a new measured mechanism justifies them.
+
+The iu8 risk multiplier is empirically calibrated; BF16 publication alone is
+not an exactness proof or a guarantee of Q5_1/GR transfer. The detector must
+cover discrepancy from the parent, including within-subblock cancellation,
+activation quantization, and both accumulation orders. Current parameterized
+repair tests exercise multipliers 32 and 1e30 rather than production's 4.
+The review's additional multiplier-4 screens found no mismatch, but do not
+certify all admitted inputs. Add durable default-4/adversarial coverage and a
+conservative error argument before widening or transferring the mechanism.
+
+The QSA state and leaf artifacts identify a dirty pre-admission tree; their
+full-state result is not source-bound by the later clean generated-ID A/B.
+Close that provenance gap with committed-source state evidence, a compact
+named v2 trace summary, and current catalog/refactor entries. No evidence is
+retroactively relabeled clean. The
+[review decision](../worklog/entries/20260908T031054.395922Z-lhl-qwen4exp-campaign-review-6df7cb.md)
+records validation and supersedes the broader closure interpretations.
+
+### Active review punchlist (September 8, 2026)
+
+This is the execution queue; historical phase numbers and older "next" notes
+are not priorities. Refresh first, then rank candidates by recoverable
+complete-request milliseconds, not leaf speedup. These are open gates, not
+permission to change the admitted numerical policy.
+
+- [ ] **R1 - Freeze and close QSA provenance.** Pin a clean source commit,
+  model/compiler identity, resolved production/strict manifests, and active
+  variant calls. Re-run the six-case off/on/off full-logit, four-step,
+  recurrent-state and full-KV gate on committed source; retain exact
+  engagement assertions. Preserve c1 dense/sparse boundaries and fallback
+  coverage. Retain named v2 kernel durations with cache-only profiling and
+  update `docs/KERNELS.md` and the selector removal criteria in
+  `docs/REFACTOR.md`. Do not rewrite immutable source artifacts.
+- [ ] **R2 - Refresh complete owners and throughput.** Run the shared-taxonomy
+  family capture and full logger-off 12-case combined-default protocol at
+  explicit chunk1024 with both promotions active. Use
+  `scripts/qwen4exp_framework_family_refresh.py` and its existing protocols.
+  Keep fixed-live4097 one-step device diagnostics separate from TG128, record
+  overlapping buckets once, and identify whether comparator evidence is
+  freshly captured or reused. Report weighted rates, per-case medians, every
+  repetition and CV separately; use section 6 for any match/beat claim.
+- [ ] **R3 - Explain p4096 timing drift during that refresh.** Counterbalance
+  v2 off/on with identical preceding prefill and preserve every repetition,
+  including slow thirds. Collect clocks, temperature/power, CPU frequency,
+  memory pressure, synchronization and launch gaps with their timing windows.
+  A repeated screen measures variability; it does not by itself explain it.
+  Do not classify unmatched wall-minus-device residual as host overhead.
+- [ ] **R4 - Qualify repair, then screen Q5_1 down.** Start with durable
+  production-multiplier-4 tests and a conservative parent-error criterion for
+  iu8 repair. Cover cancellation, rounding ties, extreme finite scales,
+  nonfinite handling, risk-queue capacity/overflow, deterministic repair,
+  skewed/empty experts and tile tails. For Q5_1, capture actual layer/category
+  inputs and routing; establish its own exact bound/fallback before admission.
+  Time the complete map/quantize/compute/repair/publication chain. The old
+  ~1.6 s owner is a targeting clue, not a current measured saving.
+- [ ] **R5 - Screen GR at its actual publication boundary.** Locate every
+  F32 intermediate, nonlinear operation and BF16 rounding boundary before
+  adapting repair. Preserve their order and qualify the complete composite,
+  not just a projection eventually consumed as BF16. Compare recoverable
+  request savings against Q5_1 using R2; move GR ahead only when that evidence
+  supports it. The old ~2.44 s composite is not the entire GR family.
+- [ ] **R6 - Select the remaining decode owner from R2.** Split MoE into
+  gate/up, down, combine and graph/API costs; examine linear and GR in the
+  same window. Target the largest measured recoverable cost. Any host or
+  launch optimization first needs an exclusive measured overhead bucket;
+  old 1.39x MoE and projected near-parity totals do not establish the ranking.
+- [ ] **R7 - Keep bounded secondary screens open.** Exact linear reuse and
+  scheduling, including the existing three-plane chain, remain eligible
+  without relaxing gates; do not repeat rejected settings unchanged. QSA
+  values-pass tuning is lower priority until fresh complete-owner savings
+  justify it. A ~40 us floor or "3x headroom" needs a measured mechanism and
+  resource/latency evidence, not a serial-chain estimate alone.
+
+For each new candidate: focused RED/oracle -> operation-complete screen ->
+full-state admission -> full-suite same-residency A/B -> promotion or recorded
+rejection. Keep registered strict fallbacks, validate category/heldout and
+lifecycle coverage required by the affected profile, and update the benchmark
+rollups, catalog, refactor ledger and immutable worklog before committing.
+Do not rerun unrelated broad tests when existing evidence plus a focused gate
+is sufficient.
+
+### Retained promotion snapshots
+
+**Exact ordered-v2 QSA sparse decode promoted (September8 JST):** the
 largest decode owner (fixed-live4097 QSA,16.955ms versus Vulkan3.161ms,
 5.365x and75% of the total decode device gap) is rewritten while preserving
 the exact ordered arithmetic and parent operand order. Leaf probe at c1
@@ -94,20 +219,24 @@ extreme scales), six-case off/on/off state gate at chunk1024 with full
 logits/4 decode steps/state/full KV bit-identical and exact call accounting
 (48 sparse decode calls per enabled p4096 arm,zero prefill/short-context),
 full12-case chunk1024 A/B at clean f4e60b712:72 exact trajectories,p4096
-decode per-case+7.1/+11.0/+11.4/+24.8% (aggregate+16.5%,request wall
--4.5%),prefill and p512/p1024 decode neutral. Promoted: production binds
+decode per-case median-rate gains+7.1/+11.0/+11.4/+24.8%
+(weighted aggregate+14.705%; arithmetic-mean-rate ratio+16.516%;
+p4096 request wall-4.535%),prefill and p512/p1024 decode neutral.
+This is a leaf/paired-workload win, not measured whole-family closure.
+Promoted: production binds
 HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2=1,strict0.
 [Leaf](../benchmarks/results/2026-09-08-framework-qwen4exp-qsa-ordered-v2-leaf.json),
 [state](../benchmarks/results/2026-09-08-framework-qwen4exp-qsa-ordered-v2-state.json),
 [A/B](../benchmarks/results/2026-09-08-framework-qwen4exp-qsa-ordered-v2-production.json).
 
 **Combined-default refresh after the iu8-risk+repair promotion (September8
-UTC):** clean dbb33a527, hipEngine chunk1024, UD-Q4_K_XL/BF16 KV, full
+JST):** clean dbb33a527, hipEngine chunk1024, UD-Q4_K_XL/BF16 KV, full
 12-case logger-off protocol, first default screen with the exact
 iu8-risk+repair MoE gate/up route active. HE PP/TG512:205.95/19.53,
 1024:221.15/18.88,4096:210.42/13.87 (prior 95df2c3a9 packet
 190.94/19.79,201.82/19.34,186.03/14.93: PP +7.9/+9.6/+13.1% cross-packet,
-matching the paired A/B direction and magnitude). Pinned Vulkan b212548e0:
+matching the paired A/B direction, not its causal magnitude). Pinned Vulkan
+b212548e0:
 347.14/25.77,396.31/25.34,421.93/24.46 - within1.2% of the prior packet,
 so the Vulkan prefill lead narrows to 1.687/1.791/2.006x (from
 1.796/1.951/2.263x); TG lead 1.320/1.342/1.764x. Decode moved down in this
@@ -124,25 +253,26 @@ within each engine, HE ownership0, servers exit0. Total serial stage
 7baf0a98c fork measurement.
 [Evidence](../benchmarks/results/2026-09-08-framework-qwen4exp-current-default-baselines-post.json).
 
-**Non-GR linear structural floor measured (September7 UTC):** a
+**Non-GR linear replacement discriminator (September7 UTC; scope corrected
+by September8 review):** a
 discriminator probe on actual blk.0.attn_gate weights (Q8_0, K2560->N6144,
-F32 in/out, rows512/1024) closes the linear-family half of the FFN/linear
-structural study. The exact wave-scale coltile runs 5.47/10.99 ms versus
+F32 in/out, rows512/1024, synthetic inputs) screens one MMQ replacement.
+The exact wave-scale coltile runs 5.47/10.99 ms versus
 2.83/5.91 ms for the 3-plane quantize+MMQ chain (1.94x/1.86x), but 91.2%
 of F32 outputs differ between the chains, so the exact iu8-risk+repair
-scheme does not transfer to this owner (F32 consumer, no rounding boundary).
+scheme is not established for this owner (F32 consumer, no BF16 publication
+boundary at this projection).
 Against float64 truth the parent coltile itself deviates ~1 ulp (median
 5.7e-8) and the 3-plane MMQ ~2 ulp (median 1.2e-7): the chain's error is
-f32-accumulation-order dominated, so a 4th residual plane cannot move the
-T2 bars that rejected the (2560,6144) MMQ policy row (p95 5.26e-3 vs 5e-3,
-top-1 98.67% vs 99%). Combined with the 2-plane rejection (KL mean 2.8e-3
-vs 1e-3), the whole non-GR linear family (4.45 s: exact coltile ~1.9 s +
-3-plane MMQ ~2.7 s + tails) is at its structural floor under the current
-numerics policy; the residual Vulkan gap there is the deliberate price of
-3-plane MMQ plus exact fallbacks versus Vulkan's single-plane MMQ.
-Future structural effort should go to owners where a rounding boundary
-exists: the Q5_1 exact down (1.6 s, scheme transfers) and the GR composite
-(2.44 s, BF16 consumers).
+consistent with a significant accumulation-order contribution, but this probe
+does not independently isolate it or test a fourth plane. The rejected
+(2560,6144) policy row (p95 5.26e-3 vs 5e-3, top-1 98.67% vs 99%) and
+2-plane rejection (KL mean 2.8e-3 vs 1e-3) remain binding failures; no gate
+is relaxed. The measured family total is 4.45 s; informal subowner estimates
+are not an additive exclusive ledger. This is not a proof that all exact
+linear scheduling or three-plane-chain optimization is exhausted.
+Q5_1 down (~1.6 s) and GR (~2.44 s composite) are conditional repair
+feasibility targets under R4/R5, not proven transfers.
 [Discriminator](../benchmarks/results/2026-09-07-framework-qwen4exp-gate-mmq-discriminator.json).
 
 **Exact iu8-risk+repair MoE gate/up promoted (September7 UTC):** clean
@@ -156,7 +286,8 @@ Japanese p4096); total request wall 629.839 -> 602.595 s
 HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT=1 (strict0) with multiplier default4;
 the strict fallback chain (pair2 -> expertgrid64) is unchanged. This
 replaces the early-layer exact grouped pair2 owner (3.397s of code-p4096
-device time) with a bit-identical chain: iu8-WMMA + Kahan-risk collection
+device time) with a chain observed bit-identical on the retained gates:
+iu8-WMMA + Kahan-risk collection
 + sparse pair2-exact repair, projected ~1.5s off the p4096 FFN owner.
 [Production evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-q4-iu8-exact-production.json)
 [State evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-q4-iu8-exact-state.json)
@@ -174,10 +305,11 @@ weight screens: 32 cases across layers 0/3/10/26, uniform/skewed routing,
 margin, 1.50-1.82x). Full five-case off/on/off state gate at chunk1024
 passes with bit-identical full logits, four decode steps, state and full
 KV; engagement 26/104 calls at p512/p4096, zero decode, zero final
-allocations. This is the exact-trajectory route around the T2 KL blocks
-that stopped f16-WMMA/iu8 scope extension at layers 27/35: no
-production-numerics packet is required because the output is bit-identical
-to the incumbent.
+allocations. Admission used the exact-trajectory route rather than relaxing
+the T2 KL blocks that stopped f16-WMMA/iu8 scope extension at layers 27/35.
+The retained gates observed incumbent equality; R4 requires a conservative
+repair criterion before that observation can support broader exactness or
+transfer claims.
 
 **Expanded F32 Q8 cache rejected (September7 UTC):** exact host
 dequantization plus resident F32 weights keeps the same coltile8/row4
@@ -753,8 +885,8 @@ is retained; snapshots do not establish single-change causality.
 Fixed-live4097 decode QSA16.961vs3.161ms remains open.
 [Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-post-q51-row-publish-family.json).
 
-**Next priority:** FFN and non-GR linear retain the largest absolute
-excess over the reused Vulkan family intervals (5.909s and3.503s).
+**Historical next priority at this snapshot:** FFN and non-GR linear retain
+the largest absolute excess over the reused Vulkan family intervals (5.909s and3.503s).
 The new fork's GDN source comparison stays queued, but the entire
 current GDN owner is only0.826s; do not prioritize geometry copying over
 multi-second owners without an operation-complete measured case.
@@ -2753,8 +2885,9 @@ and all production numerical/control gates remain unchanged.
 ## 5. Plan
 
 Phase numbers preserve evidence lineage; they are not the execution queue. The
-impact queue in section 2.2 controls what runs next. After every retained unit,
-collect a fresh role/launch/copy census, recompute overlapping Amdahl rows, and
+[active review punchlist](#active-review-punchlist-september-8-2026) controls
+what runs next; section 2.2 retains historical impact evidence. After every
+retained unit, collect a fresh role/launch/copy census, recompute overlapping Amdahl rows, and
 re-rank the remaining work. If a phase is blocked, record the concrete blocker
 and continue the highest-gap-coverage independent phase; a blocker is not
 campaign closure.
@@ -4135,9 +4268,10 @@ Do not obtain or substitute a new weight quant. Treat Q8 K/V and MTP as separate
 product configurations with their own gates.
 
 Do not declare success after a microbenchmark, a single prompt, HIP-only parity,
-or one accepted optimization. Execute section 2.2's impact queue, not phase
-number order. Before coding, record W/C/O/s, overlap exclusions, zero-cost
-ceiling, projected wall saving, and target-gap coverage. Re-profile after every
+or one accepted optimization. Execute the September 8 active review punchlist,
+not historical phase-number order or older "next" notes. Before coding, record
+W/C/O/s, overlap exclusions, zero-cost ceiling, projected wall saving, and
+target-gap coverage. Re-profile after every
 retained unit and re-rank the remaining work. The short-AR objective is complete
 only when named hipEngine production matches or beats the final refreshed best
 same-host HIP and Vulkan comparators on exact-matched p512, p1024, p4096, and
@@ -4148,11 +4282,16 @@ long-context rung and the device-resident MTP milestone; MTP must beat true AR
 on the full category+heldout suite and reach the section 6 target without
 benchmark gaming.
 
-The exact ordered live-4097 QSA decode route is already retained. Follow the
-2026-09-05 halo campaign section-6 work order for the next prefill units,
-including its binding-shape corrections. Use its section 5.5 for residual
-short-decode selected projections/Q8 and long-decode ordered QSA. P8 is not rank 2: do not
-integrate it until a same-session named-production arm supplies `O` and `s`.
+The QSA ordered-v2 and iu8-risk+repair promotions are retained, not proof of
+whole-family closure. First freeze committed-source state/trace evidence and
+refresh the combined-default family and logger-off ledgers, including paired
+p4096 variance diagnostics. Then qualify the repair criterion and screen
+Q5_1 down and GR at their actual publication boundaries; transfer is conditional.
+Choose the remaining decode owner from the refreshed exclusive costs.
+Keep exact linear and three-plane scheduling eligible; one rejected replacement
+does not prove a family-wide floor. Leaf projections cannot establish Vulkan
+parity or a host-bound diagnosis. P8 is not rank 2: do not integrate it until
+a same-session named-production arm supplies `O` and `s`.
 
 Settle the P0 measurement gaps before the closure freeze: GPU clock policy must
 be declared and identical across both arms of every paired row, and the Vulkan
