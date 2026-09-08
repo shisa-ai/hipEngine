@@ -156,6 +156,12 @@ class TimesFMGPUDecoder:
         self.rocblas = rocblas or Rocblas.load()
         self._loaded = loaded
         self._buffers: dict[tuple[int, int, int], _Buffers] = {}
+        half_dim = self.spec.head_dim // 2
+        timescale = (
+            1.0 * (10_000.0 / 1.0) ** (2.0 * np.arange(half_dim, dtype=np.float32) / self.spec.head_dim)
+        ).astype(np.float32)
+        self._timescale = malloc(timescale.nbytes)
+        copy_host_to_device(self._timescale, host_array_ptr(timescale))
         self._fp16_weights: dict[str, DeviceBuffer] = {}
         raw = {name: alloc.buffer.ptr for name, alloc in loaded.weights.tensors.items()}
         info = {name: alloc for name, alloc in loaded.weights.tensors.items()}
@@ -219,6 +225,7 @@ class TimesFMGPUDecoder:
         for buffers in self._buffers.values():
             buffers.free()
         self._buffers.clear()
+        free(self._timescale)
         for buffer in self._fp16_weights.values():
             free(buffer)
         self._fp16_weights.clear()
@@ -321,8 +328,8 @@ class TimesFMGPUDecoder:
             self._gemm(bufs.normed.ptr, w["qkv"], bufs.qkv.ptr, rows, h, self.spec.qkv_size)
             if dt == "f16":
                 # Batched-GEMM attention (head-major caches).
-                timesfm_rope_f32(bufs.qkv.ptr, bufs.pos.ptr, batch, n, heads, hd, patch_stride, 0, dtype=dt)
-                timesfm_rope_f32(bufs.qkv.ptr, bufs.pos.ptr, batch, n, heads, hd, patch_stride, h, dtype=dt)
+                timesfm_rope_f32(bufs.qkv.ptr, bufs.pos.ptr, self._timescale.ptr, batch, n, heads, hd, patch_stride, 0, dtype=dt)
+                timesfm_rope_f32(bufs.qkv.ptr, bufs.pos.ptr, self._timescale.ptr, batch, n, heads, hd, patch_stride, h, dtype=dt)
                 timesfm_q_norm_transpose_f16(
                     bufs.qkv.ptr, w["q_ln"], w["perdim"], batch, n, heads, hd,
                     patch_stride, bufs.qt.ptr,
@@ -361,8 +368,8 @@ class TimesFMGPUDecoder:
                     bufs.attn_o.ptr, bufs.attn_out.ptr, batch, n, heads, hd
                 )
             else:
-                timesfm_rope_f32(bufs.qkv.ptr, bufs.pos.ptr, batch, n, heads, hd, patch_stride, 0, dtype=dt)
-                timesfm_rope_f32(bufs.qkv.ptr, bufs.pos.ptr, batch, n, heads, hd, patch_stride, h, dtype=dt)
+                timesfm_rope_f32(bufs.qkv.ptr, bufs.pos.ptr, self._timescale.ptr, batch, n, heads, hd, patch_stride, 0, dtype=dt)
+                timesfm_rope_f32(bufs.qkv.ptr, bufs.pos.ptr, self._timescale.ptr, batch, n, heads, hd, patch_stride, h, dtype=dt)
                 timesfm_head_rmsnorm_f32(bufs.qkv.ptr, w["q_ln"], batch, n, heads, hd, patch_stride, 0, eps, dtype=dt)
                 timesfm_head_rmsnorm_f32(bufs.qkv.ptr, w["k_ln"], batch, n, heads, hd, patch_stride, h, eps, dtype=dt)
                 timesfm_head_perdim_scale_f32(bufs.qkv.ptr, w["perdim"], batch, n, heads, hd, patch_stride, 0, dtype=dt)
