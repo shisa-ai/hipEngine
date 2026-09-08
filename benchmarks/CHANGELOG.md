@@ -1,5 +1,7 @@
 # hipEngine Benchmark Changelog
 
+- **2026-09-08** - Remove the separate 129-output timing section from the RX 7900 XTX comparison and scoreboard, and remove the comparison's C1 repair narrative. Keep regression checks and implementation history separate from the shared C1 comparison protocol; historical raw evidence is unchanged. [Comparison](results/2026-09-08-rx7900xtx-engine-comparison.md).
+
 - **2026-09-08** - RX 7900 XTX Qwen3.8-27B `Q4_K_M`: replace the native C1 p95 workaround with allocated-capacity admission, repair scalarized Conv/GDN rollback snapshots, and decouple graph metadata from the 4K prefill threshold. 4K/8K/16K target checks pass 192 exact cases; 8K/33-output B3 passes 10/10 AR matches with 94 native graphs and no serial fallback. Correctness coverage, not a speed or maximum-context delta. [Artifact](results/2026-09-08-rx7900xtx-native-context-correctness.json).
 
 - **2026-09-08** - RX 7900 XTX Qwen3.8-27B `Q4_K_M`: repair C1 verifier scratch/handoff ownership and publish clean same-model comparisons with nasone32 and strix-llama.cpp HEAD. Short-suite true AR -> explicit B3 is **35.876 -> 63.480 tok/s (+76.94%, 30/30 exact)**; the 129-output result is **30.401 versus 35.508 AR tok/s**. BF16 completes 112K on all three; compact KV completes 128K on hipEngine and 192K on both external engines. No donor kernel promotion. [Artifact](results/2026-09-08-rx7900xtx-engine-comparison.json), [report](results/2026-09-08-rx7900xtx-engine-comparison.md).
