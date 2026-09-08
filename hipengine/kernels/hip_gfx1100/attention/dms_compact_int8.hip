@@ -73,43 +73,263 @@ __global__ void dms_int8_append_kernel(const uint16_t* k, const uint16_t* v,
     int heads, int dim, int window) {
   const int rh = blockIdx.x, row = rh/heads, base = bases[rh];
   const int p = row_positions[row], n = lives[rh], tid = threadIdx.x;
-  int kept = 0;
-  for (int t = 0; t < n; ++t)
-    kept += !flags[base+t] || p-positions[base+t] <= window;
-  if (kept+1 > capacities[rh]) {
+  // Chunked keep-scan (BF16 family's proven structure): two passes over the
+  // live prefix with log-depth prefix scans per 256-token chunk instead of a
+  // serial per-token loop with two barriers per token. Compaction moves
+  // entries strictly leftward within and across chunks, so chunk i's writes
+  // always land before chunk i+1's sources - the same ownership rule the
+  // row-by-row version preserved, now in parallel.
+  __shared__ int s_flag[Threads];
+  __shared__ int s_chunk_total;
+  int keepers = 0;
+  for (int chunk0 = 0; chunk0 < n; chunk0 += Threads) {
+    const int in_chunk = tid < (n - chunk0);
+    s_flag[tid] = 0;
+    if (in_chunk) {
+      const int src = base + chunk0 + tid;
+      if (!flags[src] || p - positions[src] <= window) s_flag[tid] = 1;
+    }
+    __syncthreads();
+    for (int off = 1; off < Threads; off <<= 1) {
+      const int delta = (tid >= off) ? s_flag[tid - off] : 0;
+      __syncthreads();
+      s_flag[tid] += delta;
+      __syncthreads();
+    }
+    s_chunk_total = s_flag[Threads - 1];
+    __syncthreads();
+    keepers += s_chunk_total;
+  }
+  const int final_live = keepers + 1;
+  if (final_live > capacities[rh]) {
     if (tid == 0) status[rh] = 1;
     return;
   }
-  __shared__ int keep;
   __shared__ float reduction[2*Threads];
-  int rank = 0;
-  // Row-by-row ordering prevents backward compaction from overwriting a
-  // source another lane has not yet read. Payload bytes and scales move
-  // without requantization. Later tuning must preserve this ownership rule.
-  for (int t = 0; t < n; ++t) {
-    const int src = base+t;
-    if (tid == 0) keep = !flags[src] || p-positions[src] <= window;
+  int chunk_rank = 0;
+  for (int chunk0 = 0; chunk0 < n; chunk0 += Threads) {
+    const int in_chunk = tid < (n - chunk0);
+    s_flag[tid] = 0;
+    if (in_chunk) {
+      const int src = base + chunk0 + tid;
+      if (!flags[src] || p - positions[src] <= window) s_flag[tid] = 1;
+    }
     __syncthreads();
-    if (keep) {
-      const int dst = base+rank++;
+    for (int off = 1; off < Threads; off <<= 1) {
+      const int delta = (tid >= off) ? s_flag[tid - off] : 0;
+      __syncthreads();
+      s_flag[tid] += delta;
+      __syncthreads();
+    }
+    if (in_chunk && s_flag[tid] > (tid > 0 ? s_flag[tid - 1] : 0)) {
+      const int dst = base + chunk_rank + s_flag[tid] - 1;
+      const int src = base + chunk0 + tid;
       if (dst != src) {
-        for (int d = tid; d < dim; d += Threads) {
+        // The owning thread moves the whole row (payload bytes and scales
+        // without requantization), matching the BF16 family's ownership rule.
+        for (int d = 0; d < dim; ++d) {
           ko[int64_t(dst)*dim+d] = ko[int64_t(src)*dim+d];
           vo[int64_t(dst)*dim+d] = vo[int64_t(src)*dim+d];
         }
-        if (tid == 0) {
-          ks[dst] = ks[src]; vs[dst] = vs[src];
-          positions[dst] = positions[src]; flags[dst] = flags[src];
-        }
+        ks[dst] = ks[src]; vs[dst] = vs[src];
+        positions[dst] = positions[src]; flags[dst] = flags[src];
       }
     }
+    s_chunk_total = s_flag[Threads - 1];
+    __syncthreads();
+    chunk_rank += s_chunk_total;
     __syncthreads();
   }
-  const int dst = base+kept;
+  const int dst = base+keepers;
   quantize_pair(k+int64_t(rh)*dim, v+int64_t(rh)*dim,
                 ko+int64_t(dst)*dim, vo+int64_t(dst)*dim, ks+dst, vs+dst, dim, reduction);
   if (tid == 0) {
-    positions[dst] = p; flags[dst] = evict[rh]; lives[rh] = kept+1; status[rh] = 0;
+    positions[dst] = p; flags[dst] = evict[rh]; lives[rh] = final_live; status[rh] = 0;
+  }
+}
+
+// Wave-grouped GQA producer for the 24q/4kv/256d geometry: one block per
+// (kv-head, split), the 6 q-heads of the group share one K/V pass through
+// shared Q staging, 4-wide int8 loads with the per-token scale dequantized in
+// registers, and warp-shuffle reductions (the BF16 wave6 treatment).
+__global__ void dms_int8_attn_split_wave_kernel(
+    const float* __restrict__ q, const int8_t* __restrict__ k,
+    const int8_t* __restrict__ v, const int32_t* __restrict__ bases,
+    const int32_t* __restrict__ lives, float* __restrict__ po,
+    float* __restrict__ pm, float* __restrict__ pl,
+    const float* __restrict__ ks, const float* __restrict__ vs,
+    const int32_t rows, const int32_t qheads, const int32_t heads,
+    const int32_t dim, const float scale, const int32_t chunk,
+    const int32_t splits) {
+  constexpr int32_t QPerKv = 6;
+  constexpr int32_t kHeadDim = 256;
+  constexpr int32_t kWaveSize = 32;
+  constexpr int32_t kNumWaves = Threads / kWaveSize;
+  const int32_t gid = static_cast<int32_t>(blockIdx.x);
+  const int32_t split = gid % splits;
+  const int32_t rowh = gid / splits;
+  const int32_t r = rowh / heads;
+  const int32_t h = rowh - r * heads;
+  const int32_t tid = static_cast<int32_t>(threadIdx.x);
+  const int32_t lane = tid & (kWaveSize - 1);
+  const int32_t wave = tid / kWaveSize;
+  const int32_t rowq_base = r * qheads + h * QPerKv;
+  const int32_t live = lives[rowh];
+  const int32_t begin = split * chunk;
+  const int32_t count = max(0, min(chunk, live - begin));
+  const int32_t base = bases[rowh] + begin;
+  __shared__ float scores[QPerKv][Threads];
+  __shared__ float wave_partials[QPerKv][kNumWaves];
+  __shared__ float block_max[QPerKv];
+  __shared__ float q_shared[QPerKv][kHeadDim];
+
+  if (count <= 0) {
+#pragma unroll
+    for (int32_t j = 0; j < QPerKv; ++j) {
+      const int64_t stat = static_cast<int64_t>(rowq_base + j) * splits + split;
+      float* part = po + stat * kHeadDim;
+      for (int32_t d = tid; d < kHeadDim; d += Threads) part[d] = 0.0f;
+      if (tid == 0) {
+        pm[stat] = -3.4028234663852886e38f;
+        pl[stat] = 0.0f;
+      }
+    }
+    return;
+  }
+
+#pragma unroll
+  for (int32_t j = 0; j < QPerKv; ++j) {
+    q_shared[j][tid] = q[static_cast<int64_t>(rowq_base + j) * kHeadDim + tid];
+  }
+  __syncthreads();
+
+  float local_max[QPerKv];
+#pragma unroll
+  for (int32_t j = 0; j < QPerKv; ++j) {
+    local_max[j] = -3.4028234663852886e38f;
+  }
+  for (int32_t t = wave; t < count; t += kNumWaves) {
+    const int64_t token = static_cast<int64_t>(base) + t;
+    const int8_t* krow = k + token * kHeadDim;
+    const float ks_row = ks[token];
+    float dots[QPerKv] = {};
+    for (int32_t d = lane * 4; d < kHeadDim; d += kWaveSize * 4) {
+      const float k0 = static_cast<float>(krow[d + 0]) * ks_row;
+      const float k1 = static_cast<float>(krow[d + 1]) * ks_row;
+      const float k2 = static_cast<float>(krow[d + 2]) * ks_row;
+      const float k3 = static_cast<float>(krow[d + 3]) * ks_row;
+#pragma unroll
+      for (int32_t j = 0; j < QPerKv; ++j) {
+        dots[j] += q_shared[j][d + 0] * k0;
+        dots[j] += q_shared[j][d + 1] * k1;
+        dots[j] += q_shared[j][d + 2] * k2;
+        dots[j] += q_shared[j][d + 3] * k3;
+      }
+    }
+    for (int32_t offset = kWaveSize / 2; offset > 0; offset >>= 1) {
+#pragma unroll
+      for (int32_t j = 0; j < QPerKv; ++j) {
+        dots[j] += __shfl_down(dots[j], offset);
+      }
+    }
+    if (lane == 0) {
+#pragma unroll
+      for (int32_t j = 0; j < QPerKv; ++j) {
+        const float score = dots[j] * scale;
+        scores[j][t] = score;
+        local_max[j] = fmaxf(local_max[j], score);
+      }
+    }
+  }
+  if (lane == 0) {
+#pragma unroll
+    for (int32_t j = 0; j < QPerKv; ++j) {
+      wave_partials[j][wave] = local_max[j];
+    }
+  }
+  __syncthreads();
+
+  if (tid < kWaveSize) {
+#pragma unroll
+    for (int32_t j = 0; j < QPerKv; ++j) {
+      float value = tid < kNumWaves ? wave_partials[j][tid]
+                                    : -3.4028234663852886e38f;
+      for (int32_t offset = kWaveSize / 2; offset > 0; offset >>= 1) {
+        value = fmaxf(value, __shfl_down(value, offset));
+      }
+      if (tid == 0) {
+        wave_partials[j][0] = value;
+        block_max[j] = value;
+      }
+    }
+  }
+  __syncthreads();
+
+  float local_sum[QPerKv] = {};
+#pragma unroll
+  for (int32_t j = 0; j < QPerKv; ++j) {
+    const float maximum = block_max[j];
+    for (int32_t t = tid; t < count; t += Threads) {
+      const float value = expf(scores[j][t] - maximum);
+      scores[j][t] = value;
+      local_sum[j] += value;
+    }
+  }
+  for (int32_t offset = kWaveSize / 2; offset > 0; offset >>= 1) {
+#pragma unroll
+    for (int32_t j = 0; j < QPerKv; ++j) {
+      local_sum[j] += __shfl_down(local_sum[j], offset);
+    }
+  }
+  if (lane == 0) {
+#pragma unroll
+    for (int32_t j = 0; j < QPerKv; ++j) {
+      wave_partials[j][wave] = local_sum[j];
+    }
+  }
+  __syncthreads();
+
+  if (tid < kWaveSize) {
+#pragma unroll
+    for (int32_t j = 0; j < QPerKv; ++j) {
+      float value = tid < kNumWaves ? wave_partials[j][tid] : 0.0f;
+      for (int32_t offset = kWaveSize / 2; offset > 0; offset >>= 1) {
+        value += __shfl_down(value, offset);
+      }
+      if (tid == 0) {
+        wave_partials[j][0] = value;
+      }
+    }
+  }
+  __syncthreads();
+
+  if (tid < kHeadDim) {
+    float values[QPerKv] = {};
+    const int8_t* vrow = v + static_cast<int64_t>(base) * kHeadDim;
+    for (int32_t t = 0; t < count; ++t) {
+      const float value =
+          static_cast<float>(vrow[static_cast<int64_t>(t) * kHeadDim + tid]) *
+          vs[static_cast<int64_t>(base) + t];
+#pragma unroll
+      for (int32_t j = 0; j < QPerKv; ++j) {
+        values[j] += scores[j][t] * value;
+      }
+    }
+#pragma unroll
+    for (int32_t j = 0; j < QPerKv; ++j) {
+      const int64_t stat =
+          static_cast<int64_t>(rowq_base + j) * splits + split;
+      po[stat * kHeadDim + tid] = values[j];
+    }
+  }
+  if (tid == 0) {
+#pragma unroll
+    for (int32_t j = 0; j < QPerKv; ++j) {
+      const int64_t stat =
+          static_cast<int64_t>(rowq_base + j) * splits + split;
+      pm[stat] = block_max[j];
+      pl[stat] = wave_partials[j][0];
+    }
   }
 }
 
@@ -188,8 +408,13 @@ extern "C" int hipengine_dms_compact_attn_decode_splitk_int8(
     int rows, int qheads, int heads, int dim, float scale, int chunk, int splits, hipStream_t stream) {
   if (rows <= 0 || heads <= 0 || qheads <= 0 || qheads%heads || dim <= 0 ||
       chunk <= 0 || chunk > Threads || splits <= 0) return hipErrorInvalidValue;
-  hipLaunchKernelGGL(dms_int8_attn_split_kernel, dim3(rows*qheads*splits), dim3(Threads), 0, stream,
-                    q,k,v,base,live,po,pm,pl,ks,vs,qheads,heads,dim,scale,chunk,splits);
+  if (qheads == 24 && heads == 4 && dim == 256 && rows == 1) {
+    hipLaunchKernelGGL(dms_int8_attn_split_wave_kernel, dim3(rows*heads*splits), dim3(Threads), 0, stream,
+                      q,k,v,base,live,po,pm,pl,ks,vs,rows,qheads,heads,dim,scale,chunk,splits);
+  } else {
+    hipLaunchKernelGGL(dms_int8_attn_split_kernel, dim3(rows*qheads*splits), dim3(Threads), 0, stream,
+                      q,k,v,base,live,po,pm,pl,ks,vs,qheads,heads,dim,scale,chunk,splits);
+  }
   const auto error = hipGetLastError();
   if (error != hipSuccess) return error;
   return hipengine_dms_compact_attn_decode_splitk_reduce_bf16(po,pm,pl,out,rows,qheads,dim,splits,stream);

@@ -1,0 +1,76 @@
+{
+  "kind": "packed_route_c1_stage_timing_diagnostic",
+  "date": "2026-09-07",
+  "status": "diagnostic_not_a_benchmark",
+  "hardware": "AMD Radeon Pro W7900 (gfx1100), GPU0",
+  "model": "Qwen3.8-27B GGUF Q4_K_M, production profile, K3, D24 greedy, 20 ms window",
+  "method": "campaign-artifacts/c1-k-sweep/stage_timing_compare.py: one model load, two identical explicit-MTP K3 requests (suite prompt code_merge_intervals, max_tokens 24) through the product HTTP route; legacy leg on the default evidence (legacy singleton verifier), packed leg after injecting the one-request packed_c1_target evidence row with the legacy verifier replaced by a guard; per-request adapter stage totals read from the resident runner rows (8 cycles each; both legs engaged, acceptance 0.652)",
+  "per_request_stage_ms": {
+    "legacy": {
+      "mtp2_cycles": 8,
+      "mtp2_proposal_ms": 10.9492726624012,
+      "mtp2_target_ms": 385.568349,
+      "mtp2_provider_update_ms": 5.261623300611973,
+      "mtp2_accept_ms": 0.0,
+      "mtp2_selected_commit_ms": 0.0,
+      "mtp2_candidate_readback_ms": 0.0,
+      "mtp2_target_readback_ms": 0.0,
+      "mtp2_accept_upload_ms": 0.0,
+      "mtp2_accept_tail_ms": 0.0,
+      "mtp2_accept_enqueue_ms": 0.0,
+      "mtp2_target_batch_calls": 0,
+      "mtp2_proposal_batch_calls": 0,
+      "mtp2_selected_commit_batch_calls": 0,
+      "mtp2_candidate_device_handoffs": 6,
+      "mtp2_candidate_d2h_after_target": 0,
+      "mtp2_execution_routes": [
+        "graph",
+        "graph",
+        "graph",
+        "graph"
+      ]
+    },
+    "packed": {
+      "mtp2_cycles": 8,
+      "mtp2_proposal_ms": 32.277301885187626,
+      "mtp2_target_ms": 252.617597,
+      "mtp2_provider_update_ms": 3.970789723098278,
+      "mtp2_accept_ms": 459.2593442648649,
+      "mtp2_selected_commit_ms": 3.272748552262783,
+      "mtp2_candidate_readback_ms": 0.0,
+      "mtp2_target_readback_ms": 453.2083021476865,
+      "mtp2_accept_upload_ms": 0.6310977041721344,
+      "mtp2_accept_tail_ms": 0.35588815808296204,
+      "mtp2_accept_enqueue_ms": 2.761402167379856,
+      "mtp2_target_batch_calls": 8,
+      "mtp2_proposal_batch_calls": 23,
+      "mtp2_selected_commit_batch_calls": 8,
+      "mtp2_candidate_device_handoffs": 8,
+      "mtp2_candidate_d2h_after_target": 0,
+      "mtp2_execution_routes": [
+        "eager",
+        "eager",
+        "eager",
+        "eager"
+      ]
+    }
+  },
+  "finding": "Cycle structure is identical (8 vs 8 cycles, 2.95 tokens/cycle, acceptance 0.78/0.80 on the economics runs); the entire packed-vs-legacy throughput gap is per-cycle wall cost (+44 ms/cycle). The packed route's accept stage totals 459.3 ms per request (of which target_readback D2H 453.2 ms, ~56.7 ms/cycle) where the legacy graph route reports 0.0 - acceptance decisions round-trip through the host instead of staying on device. The packed target also runs eager (execution routes 'eager' x8) where the legacy singleton runs graph-captured ('graph' x8); the eager target itself is faster per cycle (252.6 vs 385.6 ms) so the graph gap is not the target cost - the host accept round-trip is the dominant, and the proposal path adds +21.3 ms per request (23 batch calls vs 0).",
+  "optimization_targets": [
+    "device-side acceptance for the packed one-row frontier (eliminate the ~56.7 ms/cycle target readback; the legacy route already accepts on device)",
+    "graph-capture the packed one-row target pass (legacy proves graph works for the same verify shapes)",
+    "proposal batch-call overhead (+21.3 ms per request, 23 calls)"
+  ],
+  "economics_context": {
+    "packed": {
+      "K2": 0.9908,
+      "K3": 1.114
+    },
+    "legacy": {
+      "K2": 1.5844,
+      "K3": 1.6329
+    },
+    "source": "2026-09-07-w7900-packed-route-c1-k0-k3-economics.json"
+  },
+  "raw": "/tmp/he-bettermtp-raw/stage-compare.json"
+}

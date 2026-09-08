@@ -2368,6 +2368,34 @@ def _resolve_realized_generation_route(
                 else {}
             )
             artifacts = precomputed_decision.get("evidence_artifacts")
+            # The request-time plan grants evidence-backed static intent for
+            # explicit width misses so the resident owner's fail-closed
+            # physical admission (listed cell or explicit-only screening) can
+            # re-admit this request. Dropping it turns every deferred C1
+            # explicit request into pre-mutation K0 and makes the screening
+            # path unreachable. Automatic routes never enter this branch.
+            static_payload = precomputed_decision.get("static_eligibility")
+            static_mapping = (
+                static_payload if isinstance(static_payload, Mapping) else None
+            )
+            eligibility = (
+                SpeculativeMTPStaticEligibility.from_mapping(static_mapping)
+                if static_mapping is not None
+                else None
+            )
+            # The realized re-resolution (_realized_model_serving_plan) returns
+            # the raw decision payload without the plan layer's
+            # static_intent_allowed key; derive it from the evidence-backed
+            # payload. This branch only fires for explicit batch-route width
+            # misses, where the plan layer grants intent exactly when the
+            # override is eligible; an explicit plan-layer False stays
+            # authoritative.
+            declared_intent = precomputed_decision.get("static_intent_allowed")
+            static_intent_allowed = (
+                bool(declared_intent)
+                if declared_intent is not None
+                else bool(eligibility is not None and eligibility.eligible)
+            )
             return route, {
                 "requested_route": route,
                 "selected_route": route,
@@ -2388,6 +2416,16 @@ def _resolve_realized_generation_route(
                     else "model_plugin_speculative_mtp_serving_plan"
                 ),
                 "deferred_key_rows": int(key.get("realized_group_rows", 0) or 0),
+                "k0_class": "not_k0",
+                "static_eligibility": (
+                    deepcopy(dict(static_mapping))
+                    if static_mapping is not None
+                    else None
+                ),
+                "static_eligibility_fingerprint": (
+                    eligibility.fingerprint if eligibility is not None else None
+                ),
+                "static_intent_allowed": static_intent_allowed,
             }
         return _serving_plan_route_decision(
             precomputed_decision,
