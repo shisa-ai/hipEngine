@@ -18,6 +18,29 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
+## 2026-09-09 W4A16 IQ prefill — registered, unrouted
+
+**State.** `gguf_iq_wmma_prefill.hip` implements a W4A16 prefill route for all
+seven dense IQ quants and is registered on both HIP backends under
+`dense_wmma_w4a16_prefill_bf16_bf16_out`. **No dispatch policy selects it**, and
+a test asserts that.
+
+**Why it is kept unrouted.** It reaches the strict GEMV's accuracy (1.67e-03
+against 1.66e-03, both at the bf16 output floor) where the integer MMQ sits at
+5.60e-03, but it is 1.4-2.1x slower than the integer MMQ. The standing decision
+rule is that the production winner is the faster path when both pass the gates,
+so the integer MMQ owns prefill. W4A16 is retained because it is the only route
+that reaches exact-path accuracy at GEMM speed, which makes it the natural
+owner if a profile later needs the mean KL the four-quant policy trades away.
+
+**Removal trigger.** If the four-quant trade is rolled back for another reason,
+or if a profile adopts W4A16 as its owner, this entry closes. If neither has
+happened and no profile has asked for it, delete the kernel, wrapper,
+registration and tests rather than leaving a second unrouted prefill family in
+the tree. The intermediate option is to close the speed gap by adopting the
+integer MMQ's structure - decode once into an LDS tile reused across 128 rows -
+at which point it could take the default outright.
+
 ## 2026-09-09 Dense IQ MMQ four-quant policy — retained with a recorded trade
 
 **State.** `GGUF_IQ_DENSE_MMQ_PREFILL_POLICY` routes all four quants whose K32
