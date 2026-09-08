@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-08**
+Last updated: **2026-09-09**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -49,13 +49,7 @@ row, not across them.
 Blank cells are shapes we have not measured yet, not failures. Max context is
 published only where a dedicated ceiling run exists.
 
-- **Qwen3.8-27B `Q4_K_M` fits long contexts on the RX 7900 XTX.** One-request
-  measurements reach **40,960 tokens with BF16 KV** and **54,272 with INT8 KV**
-  (FP32 scales, 54,255 prompt + 16 output tokens, **23.972 GiB peak**).
-  These are observed passes, not operational reserve recommendations.
-  Runs used the same card/protocol at different revisions, without a fresh
-  matched quality comparison or a proven INT8 maximum.
-  [Results and qualification scope](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-07-rx7900xtx-int8-repair-capacity-audit.json)
+- **Qwen3.8-27B `Q4_K_M` fits long contexts on the RX 7900 XTX.** Observed one-request passes reach 40,960 tokens with BF16 KV, 54,272 with INT8 KV on the serving route, and **155,648 prompt tokens** on the direct-resident INT8 route after a byte-identical hidden-plane alias. [Serving-route audit](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-07-rx7900xtx-int8-repair-capacity-audit.json), [INT8 alias artifact](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-09-rx7900xtx-int8-layer-outer-hidden-alias-capacity.json)
 
 ### Serving several requests at once
 
