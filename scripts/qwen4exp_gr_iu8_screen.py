@@ -28,6 +28,7 @@ from hipengine.core.memory import free
 from hipengine.loading.gguf import GGUFReader, discover_gguf_files
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     build_gguf_k_gemv,
+    gguf_q8_0_gemv_coltile8_rowbatch4_f32_f32_out,
     gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32,
     gguf_q8_0_iu8_wmma_prefill_f32_f32,
 )
@@ -54,7 +55,8 @@ def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--model-root", type=Path, required=True)
     p.add_argument("--layer", type=int, default=0)
-    p.add_argument("--which", choices=("attn", "ffn"), default="attn")
+    p.add_argument("--which", choices=("attn", "ffn", "attn-down", "ffn-down"),
+                   default="attn")
     p.add_argument("--rows", type=int, nargs="+", default=[512, 1024])
     p.add_argument("--pairs", type=int, default=10)
     p.add_argument("--compiler-version-file", type=Path, required=True)
@@ -72,14 +74,19 @@ def main() -> None:
     gemv_lib = build_gguf_k_gemv(load=True)
     gr_lib = build_qwen4_exp_gr(load=True)
 
-    name = f"blk.{a.layer}.hc_{a.which}_up.weight"
+    name = (f"blk.{a.layer}.hc_{a.which}_down.weight" if a.which.endswith("-down")
+            else f"blk.{a.layer}.hc_{a.which}_up.weight")
     readers = [GGUFReader(path) for path in discover_gguf_files(a.model_root)]
     reader = next(r for r in readers if any(t.name == name for t in r.info.tensors))
     info = reader.tensor_info(name)
-    out_features, in_features = info.shape  # (10240, 320)
+    out_features, in_features = info.shape
     raw = reader.tensor_data(name)
-    branches, hidden = 4, out_features // 4
-    assert (branches, hidden, in_features) == (4, 2560, 320), info
+    if a.which.endswith("-down"):
+        # (320, 10240): in = residual width, out = low rank.
+        assert (in_features, out_features, in_features % 32) == (10240, 320, 0), info
+        branches, hidden = 4, 2560
+    else:
+        assert (branches, hidden, in_features) == (4, 2560, 320), info
 
     report = {
         "schema": 1,
@@ -110,6 +117,8 @@ def main() -> None:
             rng = np.random.default_rng(6100 + rows)
             # low_rank activations after scaled SiLU: roughly N(0, 0.1)
             x = rng.normal(0.0, 0.1, size=(rows, in_features)).astype(np.float32)
+            if a.which.endswith("-down"):
+                x = rng.normal(0.0, 1.0, size=(rows, in_features)).astype(np.float32)
             normalized = rng.normal(0.0, 1.0, size=(rows, branches * hidden)).astype(np.float32)
             dx = _upload(x, runtime, allocations)
             dn = _upload(normalized, runtime, allocations)
@@ -118,23 +127,32 @@ def main() -> None:
             gate_c = _alloc(rows * branches * hidden, np.float32, runtime, allocations)
             mixed_c = _alloc(rows * hidden, np.float32, runtime, allocations)
 
+            is_down = a.which.endswith("-down")
+
             def run_parent() -> None:
-                gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32(
-                    dx.ptr, dw.ptr, dn.ptr, gate_p.ptr, mixed_p.ptr,
-                    rows, in_features, branches, hidden,
-                    library=gemv_lib, runtime=runtime)
+                if is_down:
+                    gguf_q8_0_gemv_coltile8_rowbatch4_f32_f32_out(
+                        dx.ptr, dw.ptr, gate_p.ptr,
+                        rows, in_features, out_features,
+                        library=gemv_lib, runtime=runtime)
+                else:
+                    gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32(
+                        dx.ptr, dw.ptr, dn.ptr, gate_p.ptr, mixed_p.ptr,
+                        rows, in_features, branches, hidden,
+                        library=gemv_lib, runtime=runtime)
                 runtime.device_synchronize()
 
             def run_candidate() -> None:
                 gguf_q8_0_iu8_wmma_prefill_f32_f32(
                     dx.ptr, dw.ptr, gate_c.ptr, rows, in_features,
-                    branches * hidden, library=gemv_lib, runtime=runtime)
-                qwen4_exp_sigmoid_f32(
-                    gate_c.ptr, gate_c.ptr, rows * branches * hidden,
-                    library=gr_lib, runtime=runtime)
-                qwen4_exp_gated_mean_f32(
-                    dn.ptr, gate_c.ptr, mixed_c.ptr, rows, branches, hidden,
-                    library=gr_lib, runtime=runtime)
+                    out_features, library=gemv_lib, runtime=runtime)
+                if not is_down:
+                    qwen4_exp_sigmoid_f32(
+                        gate_c.ptr, gate_c.ptr, rows * branches * hidden,
+                        library=gr_lib, runtime=runtime)
+                    qwen4_exp_gated_mean_f32(
+                        dn.ptr, gate_c.ptr, mixed_c.ptr, rows, branches, hidden,
+                        library=gr_lib, runtime=runtime)
                 runtime.device_synchronize()
 
             run_parent()
@@ -167,6 +185,21 @@ def main() -> None:
                     fn()
                     times[label].append(time.perf_counter() - start)
 
+            if is_down:
+                case = {
+                    "rows": rows,
+                    "projection_drift": rel_stats(gc, gp),
+                    "parent_median_ms": statistics.median(times["parent"]) * 1e3,
+                    "candidate_median_ms": statistics.median(times["candidate"]) * 1e3,
+                    "speedup": (statistics.median(times["parent"]) /
+                                statistics.median(times["candidate"])),
+                }
+                report["cases"].append(case)
+                print(json.dumps(case))
+                for ptr in reversed(allocations[mark:]):
+                    free(ptr, runtime=runtime)
+                del allocations[mark:]
+                continue
             case = {
                 "rows": rows,
                 "gate_drift": rel_stats(gc, gp),
