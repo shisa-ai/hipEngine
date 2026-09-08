@@ -8,9 +8,10 @@ prefill route-gap measurement; updated as items land._
 | 0. Reconstruct the published protocol | **done** (`d8f5e951c`) | the published row uses `qwen35_readme_sweep.py --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode`; zbook floor for the plain file is 294.8 tok/s against the desktop-published 396.1 |
 | 1. Per-tensor repack eligibility (UD-U3) | **done** (`d8f5e951c`) | optimized bytes 0.0% -> 44.2% (K_M); prefill 22.1 -> 29.9 tok/s, decode 6.21 -> 7.24, resident -0.92 GB |
 | 2. Close the remaining non-IQ fallbacks | **partly done** | Q5/Q6/Q4 dense role coverage landed: optimized bytes 44.2% -> 61.3% (K_M), 34.4% -> 44.4% (K_S); prefill 30.4 -> 41.5 tok/s. Q3_K still has no T16 layout. |
-| 3. IQ4_XS dense GEMM entry | **done, gfx1151** (`this unit`) | dense = the degenerate single-expert case of the existing MMQ kernel; no repack. Prefill 41.5 -> **127.2 tok/s**; IQ4_XS kernel 9,280 -> 791 ms. gfx1100 is a follow-up. |
+| 3. IQ4_XS dense GEMM entry | **done, gfx1151** | dense = the degenerate single-expert case of the existing MMQ kernel; no repack. Prefill 41.5 -> **127.2 tok/s**; IQ4_XS kernel 9,280 -> 791 ms. gfx1100 is a follow-up. |
+| 4. Extend the MMQ route to every expressible quant | **done, gfx1151** | IQ3_S and IQ4_NL added; prefill 127.2 -> **171.9 tok/s**. Q3_K/IQ2_S/IQ2_XS need a per-16-scale contract. |
 
-**Where this leaves it.** On the published protocol, UD `Q4_K_M` prefill has gone **22.1 -> 127.2 tok/s (5.75x)** and the gap to the plain `Q4_K_S` file on the same host **13.3x -> 2.32x**. The residual is IQ4_NL / Q3_K / IQ3_S, which have no MMQ kernel, plus Q3_K's missing T16 layout.
+**Where this leaves it.** On the published protocol, UD `Q4_K_M` prefill has gone **22.1 -> 171.9 tok/s (7.78x)** and the gap to the plain `Q4_K_S` file on the same host **13.3x -> 1.72x**. The residual is Q3_K, IQ2_S and IQ2_XS, which carry a scale per 16 elements and need a per-16-scale MMQ contract, plus Q3_K's missing T16 layout.
 
 The kernel work is largely done. The published UD files do not reach it. This
 document says exactly why, what it is worth, and in what order to fix it.
