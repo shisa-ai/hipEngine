@@ -1,0 +1,107 @@
+{
+ "schema": 1,
+ "kind": "rx7900xtx_int8_layer_outer_hidden_alias_retained",
+ "date": "2026-09-09",
+ "status": "retained_default_on",
+ "performance_claim": false,
+ "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+ "model_sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+ "hardware": {
+  "host": "epyc",
+  "gpu": "AMD Radeon RX 7900 XTX",
+  "arch": "gfx1100",
+  "physical_gpu_index": 1,
+  "vram_gib": 23.984375
+ },
+ "question": "Reduce the full-sequence prefill hidden-buffer footprint on the pure-INT8 direct-resident route (2026-09-08 engine comparison doc priority: two full-capacity BF16 hidden planes, 2.69 GB at 128K; the route passed 131,072 prompt tokens and OOMed at 139,264, versus nasone32/strix-llama.cpp 196,608 on Q8_0).",
+ "change": "HIPENGINE_INT8_LAYER_OUTER_HIDDEN_ALIAS (route-scoped, default ON after adoption): the non-DMS pure-INT8 layer_outer route reuses one physical full-capacity hidden plane for the source and destination roles, mirroring the adopted DMS layer_outer alias gate (HIPENGINE_LAYER_OUTER_HIDDEN_ALIAS, 2026-09-08). Env 0 is the rollback. The geometry-wide hidden_inplace_min_rows policy and every non-INT8 route are untouched.",
+ "ab_synthetic_73728": {
+  "protocol": "Comparison capacity protocol, fresh process per arm, GPU1: scripts/qwen35_gguf_bench.py --prompt-length 73728 --decode-tokens 8 --persistent-session --force-bulk-prefill --kv-storage int8_per_token_head --kv-scale-dtype fp32, env HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1, HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS=none; control env unset (two planes) vs candidate alias=1.",
+  "control": {
+   "prefill_tok_s": 422.5564045630129,
+   "decode_tok_s": 25.8821517001101,
+   "tracked_peak_gib": 20.5514809563756,
+   "hip_sampled_peak_gib": 20.3623046875,
+   "finite_final_logits": true,
+   "generated_preview_token_ids": [
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707
+   ],
+   "lifetime_mode": "layer_outer_shared_oracle",
+   "required_hidden_capacity": 73984
+  },
+  "candidate": {
+   "prefill_tok_s": 422.2057719178194,
+   "decode_tok_s": 25.882069114292218,
+   "tracked_peak_gib": 19.8459145501256,
+   "hip_sampled_peak_gib": 19.6552734375,
+   "finite_final_logits": true,
+   "generated_preview_token_ids": [
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707
+   ],
+   "lifetime_mode": "layer_outer_shared_oracle",
+   "required_hidden_capacity": 73984
+  },
+  "peak_delta_gib": -0.70556640625
+ },
+ "ab_realprompt_8192": {
+  "protocol": "scripts/qwen38_int8_alias_realprompt_ab.py: one resident session, composed real mtpbench multi-domain prompt (model's own GGUF tokenizer), identical token IDs both arms, 32 greedy outputs; arm 2 runs after workspace release + re-acquire with the alias env on.",
+  "prompt_tokens": 8192,
+  "generated_ids_equal": true,
+  "control_wall_s": 51.522321906872094,
+  "candidate_wall_s": 51.76449282839894
+ },
+ "capacity_ladder_alias_on": {
+  "protocol": "Same capacity protocol, alias=1, fresh process per point; a pass requires the entire synthetic repeated-token prompt plus eight timed decode transitions with finite final logits.",
+  "points": [
+   {
+    "prompt_tokens": 139264,
+    "passed": true,
+    "tracked_peak_gib": 22.9738
+   },
+   {
+    "prompt_tokens": 147456,
+    "passed": true,
+    "tracked_peak_gib": 23.1415
+   },
+   {
+    "prompt_tokens": 155648,
+    "passed": true,
+    "tracked_peak_gib": 23.5103
+   },
+   {
+    "prompt_tokens": 163840,
+    "passed": false,
+    "failure": "HIP error 2 out of memory"
+   }
+  ],
+  "before": {
+   "largest_passing_prompt": 131072,
+   "smallest_tested_oom": 139264,
+   "source": "benchmarks/results/2026-09-08-rx7900xtx-engine-comparison.json"
+  },
+  "after": {
+   "largest_passing_prompt": 155648,
+   "smallest_tested_oom": 163840,
+   "improvement_pct": 18.75
+  },
+  "note": "Observed no-eviction execution bounds for the recorded settings, not operational reserves or exhaustive maxima; intermediate sizes unqualified; proven maximum false."
+ },
+ "verdict": "Retained and promoted to default ON: one full-capacity hidden plane recovered on the INT8 capacity route with identical generated tokens (real-prompt byte-identical greedy IDs), identical decode rate, and the capacity bound moved from 131,072 to 155,648 prompt tokens (+18.75%). The remaining gap to the external engines' 196,608 is the shared BF16 oracle pair and the single remaining plane plus INT8 KV itself.",
+ "created_utc": "2026-09-08T21:39:32.827883+00:00"
+}

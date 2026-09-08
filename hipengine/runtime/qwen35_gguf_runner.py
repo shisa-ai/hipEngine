@@ -15337,8 +15337,14 @@ class Qwen35GGUFResidentSession:
                 nbytes=alloc_capacity * hidden_bytes,
                 runtime=runtime,
                 single_plane=(
-                    self.dms_prefill_mode == "layer_outer"
-                    and _layer_outer_hidden_alias_enabled()
+                    (
+                        self.dms_prefill_mode == "layer_outer"
+                        and _layer_outer_hidden_alias_enabled()
+                    )
+                    or (
+                        _int8_layer_outer_shared_oracle_route(self)
+                        and _int8_layer_outer_hidden_alias_enabled()
+                    )
                 ),
             )
             bulk_prefill_scratch = _GGUFFullAttentionPrefillScratch.allocate(
@@ -29339,6 +29345,48 @@ def _layer_outer_hidden_alias_enabled() -> bool:
     """
 
     return _env_flag(_LAYER_OUTER_HIDDEN_ALIAS_ENV, True)
+
+
+_INT8_LAYER_OUTER_HIDDEN_ALIAS_ENV = "HIPENGINE_INT8_LAYER_OUTER_HIDDEN_ALIAS"
+
+
+def _int8_layer_outer_hidden_alias_enabled() -> bool:
+    """Route-scoped single-plane hidden stream for the non-DMS INT8 route.
+
+    The pure-INT8 direct-resident route plans the
+    "layer_outer_shared_oracle" prefill lifetime: the hidden planes cover
+    the full declared capacity (2.69 GB as two BF16 planes at 128K on the
+    Qwen3.8-27B H5120 geometry) because the alternative chunk-outer
+    lifetime would need one full-length BF16 oracle pair per INT8-retained
+    full-attention layer. The layer loop is layer-outer either way, and the
+    same 1024-row layer chunks that the DMS route's alias gate already
+    covers consume the source hidden rows before writing the final FFN
+    output, so one physical plane can serve both the source and the
+    destination role.
+
+    Adopted 2026-09-09 after the route's own GPU-side evidence (clean tree
+    at the promotion commit): the 73,728-token synthetic A/B reproduced
+    the two-plane control's generated tokens with identical decode rates
+    (25.8822 tok/s) and finite logits while cutting the tracked peak by
+    one 722.5 MiB plane (20.5515 -> 19.8459 GiB); a same-session A/B on a
+    composed 8,192-token real mtpbench prompt produced byte-identical
+    greedy token IDs (32 outputs). Capacity ladder with the alias on:
+    139,264 passes at 22.974 GiB (previously the smallest OOM), 147,456
+    passes at 23.142 GiB, 155,648 passes at 23.510 GiB, 163,840 OOMs —
+    largest observed passing prompt 155,648 versus 131,072 before
+    (+18.75%). Env "0" rolls the route back to two planes.
+    """
+
+    return _env_flag(_INT8_LAYER_OUTER_HIDDEN_ALIAS_ENV, True)
+
+
+def _int8_layer_outer_shared_oracle_route(session: object) -> bool:
+    """True when the non-DMS route planned full-capacity layer-outer hidden."""
+
+    if getattr(session, "dms_prefill_mode", None) == "layer_outer":
+        return False
+    plan = getattr(session, "_int8_prefill_lifetime_plan", None)
+    return getattr(plan, "mode", None) == "layer_outer_shared_oracle"
 
 
 def _gguf_verify_hidden_scratch_row_start(

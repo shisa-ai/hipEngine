@@ -5517,3 +5517,19 @@ device-side acceptance and re-measured at parity-or-better on the C1
 balanced-pair protocol, delete the singleton verifier dispatch branch and
 its graph-bucket preparation so one target route serves C1-C8. Until then
 this is a documented duplicate dispatch route, not dead code.
+
+## 2026-09-09 INT8 layer_outer hidden-plane alias — route-scoped gate pending promotion
+
+`HIPENGINE_INT8_LAYER_OUTER_HIDDEN_ALIAS` aliases the two full-capacity
+BF16 prefill hidden planes into one physical plane on the non-DMS
+pure-INT8 route whose lifetime plan resolved to
+`layer_outer_shared_oracle` (the direct-resident capacity route from the
+2026-09-08 engine comparison; two planes are 2.69 GB at 128K there).
+Promoted to default-ON 2026-09-09 with the route's own GPU evidence
+(synthetic 73,728 A/B: one-plane peak reduction with identical decode
+rate and tokens; real-prompt 8,192-token same-session A/B: byte-identical
+greedy IDs; capacity ladder 139,264/147,456/155,648 pass, 163,840 OOM).
+Env "0" is the explicit rollback. Fold this gate into the DMS
+`HIPENGINE_LAYER_OUTER_HIDDEN_ALIAS` decision (or remove whichever env
+becomes redundant) once both routes have carried their adopted evidence
+through a same-suite release cycle without a rollback invocation.
