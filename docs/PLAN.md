@@ -1086,16 +1086,19 @@ Phase-0 targets (driven by the current research focus):
 | **Llama 3** | full_attention + dense_mlp | Phase 3 |
 | **sansho** (custom) | (your arch; see `/home/lhl/amd-gpu-tuning/reference/sansho/`) | Phase 3+ |
 
-Qwen3.8-Flash-Next gap-closure priority (review 2026-09-08): first bind
-QSA ordered-v2 state/trace evidence to committed source and refresh the
-combined-default family/throughput ledgers with the p4096 drift re-check.
-Then qualify repair and conditionally screen Q5_1 down/GR before selecting
-the remaining decode owner from fresh costs. Exact linear/three-plane
-scheduling remains eligible; rejected replacements do not prove a family
-floor. Existing promotions stay retained, but leaf projections establish
-neither whole-family closure nor Vulkan parity. See the
+Qwen3.8-Flash-Next gap-closure priority (review 2026-09-08): R1-R3 committed-source
+QSA provenance and combined-default owner/throughput refresh are retained;
+the canonical-sequence drift mechanism remains open. Qualify repair, building
+on `62dffb872`, then conditionally screen Q5_1 down and GR. Add a bounded
+direct-Q4 IU4 grouped-prefill screen against the current repaired IU8 route,
+preserving weights and charging activation precision, corrections and repair.
+Next target MoE decode, exact linear/three-plane scheduling, measured
+submission/drift costs and secondary QSA/GDN work, reranked after each win.
+Existing promotions stay retained; no sidecar, numerical-policy change,
+whole-family closure or Vulkan parity is admitted by this plan. See the
 [active campaign punchlist](QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md#active-review-punchlist-september-8-2026),
-which supersedes the September 5 halo queue without relaxing profile gates.
+and [ranked experiments](QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md#ranked-targets-and-iu4-experiments-september-8-2026),
+which supersede the September 5 halo queue without relaxing profile gates.
 September6 owner detour enables admission-aware native context through the public
 Qwen4Exp factory and `prepare()`. The immutable QSA2051 dense-equivalence constant
 is not runner capacity. Auto resolves artifact/plugin native262144 within memory
