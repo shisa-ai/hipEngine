@@ -136,6 +136,52 @@ def test_layer_outer_hidden_workspace_covers_full_prompt(monkeypatch) -> None:
     assert session._prefill_hidden_b.nbytes == expected
 
 
+def test_layer_outer_hidden_alias_is_off_by_default(monkeypatch) -> None:
+    """Default keeps two distinct planes; the env gate is the only opt-in."""
+
+    from tests.test_gguf_bulk_prefill_workspace_release import _fake_session
+
+    monkeypatch.delenv(gguf_runner._LAYER_OUTER_HIDDEN_ALIAS_ENV, raising=False)
+    session, _ = _fake_session(monkeypatch, capacity=8_192)
+    session.__dict__["dms_prefill_mode"] = "layer_outer"
+    session._allocate_bulk_prefill_workspace(SimpleNamespace())
+    assert gguf_runner._layer_outer_hidden_alias_enabled() is False
+    assert (
+        session._prefill_hidden_a.ptr != session._prefill_hidden_b.ptr
+    ), "default layer_outer route must keep two distinct hidden planes"
+
+
+def test_layer_outer_hidden_alias_env_gates_single_plane(monkeypatch) -> None:
+    """Env-on aliases the two hidden planes for the layer_outer route only."""
+
+    from tests.test_gguf_bulk_prefill_workspace_release import _fake_session
+
+    monkeypatch.setenv(gguf_runner._LAYER_OUTER_HIDDEN_ALIAS_ENV, "1")
+    session, _ = _fake_session(monkeypatch, capacity=8_192)
+    session.__dict__["dms_prefill_mode"] = "layer_outer"
+    session._allocate_bulk_prefill_workspace(SimpleNamespace())
+    assert gguf_runner._layer_outer_hidden_alias_enabled() is True
+    assert (
+        session._prefill_hidden_a.ptr == session._prefill_hidden_b.ptr
+    ), "alias-enabled layer_outer route must reuse one physical plane"
+    expected = 8_192 * 5120 * DType.BF16.itemsize
+    assert session._prefill_hidden_a.nbytes == expected
+
+
+def test_layer_outer_hidden_alias_env_does_not_touch_dense_route(monkeypatch) -> None:
+    """Ordinary (dense-pool) prefill ignores the route-scoped alias gate."""
+
+    from tests.test_gguf_bulk_prefill_workspace_release import _fake_session
+
+    monkeypatch.setenv(gguf_runner._LAYER_OUTER_HIDDEN_ALIAS_ENV, "1")
+    session, _ = _fake_session(monkeypatch, capacity=8_192)
+    session.__dict__["dms_prefill_mode"] = "dense_pool"
+    session._allocate_bulk_prefill_workspace(SimpleNamespace())
+    assert (
+        session._prefill_hidden_a.ptr != session._prefill_hidden_b.ptr
+    ), "the alias gate must not affect the ordinary prefill route"
+
+
 def test_probe_threads_prefill_mode(monkeypatch, tmp_path):
     from scripts import qwen38_dms_concurrency_probe as probe
     from tests.test_dms_concurrency_runner_wiring import _install, _args
