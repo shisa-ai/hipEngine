@@ -11,10 +11,13 @@
 #include "gguf_iq_gemv.hip"
 
 namespace {
+#include "gguf_iq3_s_grid.h"
 
 using source_i32x4_t = int __attribute__((ext_vector_type(4)));
 using source_i32x8_t = int __attribute__((ext_vector_type(8)));
 
+// IQ3_S packs 256 elements into 110 bytes with one 4-bit scale per K32 group.
+constexpr int IQ3_S_BLOCK_BYTES = 110;
 // One K256 span of IQ4_NL is eight 18-byte blocks laid contiguously.
 constexpr int IQ4_NL_BLOCK_BYTES = 18;
 constexpr int IQ4_NL_K256_BYTES = 8 * IQ4_NL_BLOCK_BYTES;
@@ -144,16 +147,51 @@ __device__ inline void iq4_nl_expand_group32(
   scale = fp16_bytes_to_float(sub);
 }
 
+// IQ3_S: one 4-bit scale per K32 group, and each group's 32 values are eight
+// grid lookups of four values with a per-value sign bit. The grid entries are
+// odd magnitudes 1..15, so the signed residual fits int8 with wide margin.
+// words[w] byte b carries element j = 4*w + b, so the grid slot is exactly w.
+__device__ inline void iq3_s_expand_group32(
+    const uint8_t* __restrict__ block,
+    int group32,
+    uint32_t* __restrict__ words,
+    float& scale) {
+  const uint8_t* __restrict__ index_low = block + 2 + group32 * 8;
+  const uint8_t index_high = block[66 + group32];
+  const uint8_t* __restrict__ signs = block + 74 + group32 * 4;
+  const int quant_scale =
+      1 + 2 * ((block[106 + (group32 >> 1)] >> (4 * (group32 & 1))) & 0x0FU);
+  scale = fp16_bytes_to_float(block) * static_cast<float>(quant_scale);
+#pragma unroll
+  for (int word = 0; word < 8; ++word) {
+    const int grid_index =
+        index_low[word] | (((index_high >> word) & 1) << 8);
+    uint32_t packed = 0;
+#pragma unroll
+    for (int byte = 0; byte < 4; ++byte) {
+      const int element = word * 4 + byte;
+      int value = static_cast<int>(iq3_grid[grid_index * 4 + byte]);
+      if (signs[element >> 3] & (1U << (element & 7))) value = -value;
+      packed |= static_cast<uint32_t>(
+                    static_cast<uint8_t>(static_cast<int8_t>(value)))
+                << (8 * byte);
+    }
+    words[word] = packed;
+  }
+}
+
 template <int QTYPE>
 __device__ inline void iq_source_expand_group32(
     const uint8_t* __restrict__ block,
     int group32,
     uint32_t* __restrict__ words,
     float& scale) {
-  static_assert(QTYPE == 1 || QTYPE == 3 || QTYPE == 4,
-                "source IQ MMQ supports IQ4_NL/IQ3_XXS/IQ4_XS");
+  static_assert(QTYPE == 1 || QTYPE == 2 || QTYPE == 3 || QTYPE == 4,
+                "source IQ MMQ supports IQ4_NL/IQ3_S/IQ3_XXS/IQ4_XS");
   if constexpr (QTYPE == 1) {
     iq4_nl_expand_group32(block, group32, words, scale);
+  } else if constexpr (QTYPE == 2) {
+    iq3_s_expand_group32(block, group32, words, scale);
   } else if constexpr (QTYPE == 3) {
     iq3_xxs_expand_group32(block, group32, words, scale);
   } else {
@@ -205,7 +243,9 @@ __global__ void gguf_iq_selected_mmq_i128_j128_k256_q8_1_ds4_kernel(
   const int64_t blocks_per_weight_row = in_features / QK_K;
   const int block_bytes =
       QTYPE == 1 ? IQ4_NL_K256_BYTES
-                 : (QTYPE == 3 ? IQ3_XXS_BLOCK_BYTES : IQ4_XS_BLOCK_BYTES);
+                 : (QTYPE == 2 ? IQ3_S_BLOCK_BYTES
+                               : (QTYPE == 3 ? IQ3_XXS_BLOCK_BYTES
+                                             : IQ4_XS_BLOCK_BYTES));
   const int64_t weight_row_bytes = blocks_per_weight_row * block_bytes;
   const int64_t expert_bytes = out_features * weight_row_bytes;
 
@@ -694,6 +734,35 @@ hipengine_gguf_iq3_xxs_selected_mmq_i128_j128_k256_q8_1_ds4x2_prefill_compact_bf
     int64_t mmq_total_rows,
     hipStream_t stream) {
   return launch_iq3_source_mmq_d4x2(
+      xq,
+      expert_start_compact,
+      expert_start_mmq,
+      tile_expert,
+      qweight,
+      out,
+      compact_rows,
+      in_features,
+      out_features,
+      num_experts,
+      mmq_total_rows,
+      stream);
+}
+
+extern "C" int
+hipengine_gguf_iq3_s_selected_mmq_i128_j128_k256_q8_1_ds4_prefill_compact_bf16_bf16_out(
+    const void* xq,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_mmq,
+    const int64_t* tile_expert,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    int64_t mmq_total_rows,
+    hipStream_t stream) {
+  return launch_iq_source_mmq<2>(
       xq,
       expert_start_compact,
       expert_start_mmq,

@@ -30,7 +30,10 @@ from scripts.gguf_mtp_category_bench import load_prompt_rows
 
 MODEL = '/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf'
 PROMPT_INDEX = int(sys.argv[1]) if len(sys.argv) > 1 else 4
-BASE_POLICY = dict(be.GGUF_IQ_DENSE_MMQ_PREFILL_POLICY)
+# IQ4_NL is routed by default now, so the "off" arm removes it and the "on"
+# arm restores it; the probe still reports divergence between the two.
+BASE_POLICY = {k: v for k, v in be.GGUF_IQ_DENSE_MMQ_PREFILL_POLICY.items()
+               if k != 'gguf_iq4_nl'}
 
 rows = []
 for filename in ('mtpbench-code-general-ja.jsonl', 'gdn-prefill-category-heldouts.jsonl'):
@@ -43,7 +46,11 @@ print(f'prompt {PROMPT_INDEX} = {row["id"]}, {len(ids)} tokens', flush=True)
 
 
 def run(session, enable_iq4_nl, layers, shapes=None):
-    entry = dict(be._GGUF_IQ_DENSE_MMQ_IQ4_NL_HELD_OUT)
+    entry = {
+        "min_rows": 8,
+        "max_rows": 131072,
+        "variant": "dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out",
+    }
     if shapes is not None:
         entry['shapes'] = frozenset(shapes)
     be.GGUF_IQ_DENSE_MMQ_PREFILL_POLICY = (

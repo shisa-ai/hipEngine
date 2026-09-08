@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-09",
+  "status": "retained_default_change",
+  "host": "zbook",
+  "hardware": "AMD RYZEN AI MAX+ PRO 395 / Radeon 8060S (laptop; gross numbers; provisional pending the desktop gfx1151)",
+  "backend": "hip_gfx1151",
+  "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+  "change": "IQ3_S joins the dense raw-IQ integer-MMQ route, and IQ4_NL is un-held. GGUF_IQ_DENSE_MMQ_PREFILL_POLICY now routes all four quants whose K32 groups are expressible as scale*int8: IQ4_XS, IQ3_XXS, IQ3_S, IQ4_NL.",
+  "iq3_s_implementation": {
+    "expansion": "iq3_s_expand_group32: one 4-bit scale per K32 group, eight grid lookups of four values each with a per-value sign bit. Grid magnitudes are odd 1..15 so the signed residual fits int8 with wide margin. words[w] byte b carries element 4*w+b, so the grid slot is exactly w.",
+    "table": "The 2 KB IQ3_S grid was extracted from gguf_iq_dense.hip into gguf_iq3_s_grid.h and is now included by both kernels, so there is one copy rather than two. gguf_iq_dense.py's TABLE_HASH covers the new header; the dense 84-case exact-parity gate passed unchanged after the extraction, confirming it is bit-exact.",
+    "block_bytes": 110,
+    "leaf_correctness": "max relative error 0.0047-0.0097 at correlation 0.999983 against the strict GEMV across every measured shape and row count",
+    "crossover_rows": 4
+  },
+  "retained_trade": {
+    "protocol": "published README sweep protocol, 512/128, and context512 teacher gate with 18 prompts x 9 forced steps in the production config",
+    "arms": [
+      {"arm": "IQ4_XS + IQ3_XXS (previous default)", "prefill_tok_s": 127.20, "mean": 0.0010796, "p95": 0.0051188, "p99": 0.0217009, "max": 0.0354152, "top1": "162/162"},
+      {"arm": "+ IQ3_S", "prefill_tok_s": 137.72, "mean": 0.0012985, "p95": 0.0044588, "p99": 0.0296710, "max": 0.0403417, "top1": "161/162"},
+      {"arm": "+ IQ4_NL", "prefill_tok_s": 155.24, "mean": 0.0013457, "p95": 0.0071143, "p99": 0.0209050, "max": 0.0412277, "top1": "161/162"},
+      {"arm": "all four (RETAINED)", "prefill_tok_s": 171.86, "mean": 0.0014707, "p95": 0.0077991, "p99": 0.0253607, "max": 0.0297407, "top1": "161/162"}
+    ],
+    "delta": "prefill 127.20 -> 171.86 tok/s (+35.1%); decode unchanged (rows=1 is below min_rows)",
+    "outer_gate": "PASS with margin - max 0.0297 <= 0.05, top-1 100% >= 90%",
+    "honest_reading": "Mean regresses 36% and p95 52% against the two-quant policy. The maximum improves to 0.0297407, the best of the four arms and better than the previous default's 0.0354152. Both binding gates pass; the strict mean/p95/p99 thresholds were already failing before this change, the pre-existing campaign state. This is retained as a production-profile trade under the standing instruction to take production-correct wins, and is rolled back per quant by deleting a policy entry."
+  },
+  "why_not_a_localizable_defect": "IQ4_NL and IQ3_S were each held out briefly on the mean regression. A per-tensor localization of the IQ4_NL cost was attempted and failed: excluding the three early ffn_down tensors, which a single-prompt probe blamed for 71% of the divergence-from-default, measured no better against the teacher (mean 0.0013632 against 0.0013457 for all seven). Against the teacher the cost is not attributable to particular tensors, so it is a systematic mean/tail-shape property of the shared Q8_1 DS4 activation plane rather than a defect to localize.",
+  "still_on_the_strict_gemv": "Q3_K, IQ2_S and IQ2_XS carry a scale per 16 elements; under the per-32 contract their residual integers reach +/-128 and +/-1333 and do not fit int8. Routing them needs a per-16-scale MMQ contract, i.e. a kernel redesign rather than an expansion function.",
+  "campaign_cumulative": {
+    "prefill_tok_s": "22.1 (start) -> 29.9 (per-tensor repack veto) -> 41.5 (dense T16 role coverage) -> 127.2 (dense IQ MMQ) -> 171.9 (four-quant) = 7.78x",
+    "gap_to_plain_same_host_same_protocol": "13.3x -> 1.72x (plain Qwen3.8-27B-Q4_K_S is 294.8 tok/s on this laptop)"
+  },
+  "correctness_suites": "tests/test_gguf_iq_dense_mmq_route.py (32 cases), test_gguf_iq_source_mmq_prefill.py, test_gguf_ud_dense.py (84-case exact parity, unchanged by the table extraction), test_gfx1151_backend.py, test_gguf_e2e_acceptance.py, test_gguf_ud_km.py, test_gguf_ud_ks.py all green",
+  "limitations": [
+    "The mean/p95 regression is real and recorded; if a task or repeat/serving gate later shows it matters, roll back per quant (IQ4_NL buys +22%, IQ3_S +8.3%).",
+    "The open improvement is a finer activation quantization than the shared DS4 plane, which would likely recover the mean.",
+    "Gated on K_M only. K_S carries 15 IQ3_S tensors against K_M's 4, so its gain should be larger and its numerics were not separately gated.",
+    "gfx1100 declares no dense MMQ policy and is unaffected.",
+    "Laptop power/thermal limited; provisional pending the desktop gfx1151."
+  ]
+}
