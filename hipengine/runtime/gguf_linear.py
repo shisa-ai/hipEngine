@@ -519,9 +519,11 @@ _raw_k_prefill_rowbatch: ContextVar[int | None] = ContextVar(
     "raw_k_prefill_rowbatch",
     default=None,
 )
-_raw_k_prefill_variant: ContextVar[str] = ContextVar(
+# Default None means no execution owner selected a geometry yet; the
+# accessor keeps the historical "rowbatch" for unset owners.
+_raw_k_prefill_variant: ContextVar[str | None] = ContextVar(
     "raw_k_prefill_variant",
-    default="rowbatch",
+    default=None,
 )
 
 # Quants currently shipping a batched ``wmma_prefill_*`` family. Values are
@@ -1800,7 +1802,8 @@ def raw_k_prefill_rowbatch_session(row_batch: int) -> Iterator[None]:
 def raw_k_prefill_variant() -> str:
     """Return the execution owner's exact raw-Q5/Q6 prefill geometry."""
 
-    return str(_raw_k_prefill_variant.get())
+    value = _raw_k_prefill_variant.get()
+    return "rowbatch" if value is None else str(value)
 
 
 @contextlib.contextmanager
@@ -3064,6 +3067,17 @@ def launch_gguf_linear(
             if int(package_rowbatch) in _RAW_K_PREFILL_ROWBATCHES - {0}:
                 raw_k_rowbatch = int(package_rowbatch)
     raw_k_variant = raw_k_prefill_variant()
+    if _raw_k_prefill_variant.get() is None:
+        # Same fallback as the row-slab size: when no execution owner picked a
+        # raw-Q5/Q6 prefill geometry, use the backend package's declared
+        # variant (gfx1100-family declares "coltile") instead of the plain
+        # rowbatch default, so non-Laguna owners reach the same qualified
+        # coltile4_rowbatch8 route.
+        package_variant = backend_package_capability(
+            resolved_backend, "GGUF_RAW_K_PREFILL_VARIANT", None
+        )
+        if str(package_variant) in _RAW_K_PREFILL_VARIANTS:
+            raw_k_variant = str(package_variant)
     mmq_session = _q8_mmq_prefill_session.get()
     q5_raw_mmq_session = _q5_raw_mmq_target_session.get()
     q5_f32_ordered_session = _q5_f32_ordered_prefill_session.get()
