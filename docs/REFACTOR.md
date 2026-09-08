@@ -18,57 +18,40 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
-## 2026-09-08 IQ4_NL dense MMQ — held out of the default policy
+## 2026-09-09 Dense IQ MMQ four-quant policy — retained with a recorded trade
 
-**State.** Kernel support is complete and correct: `iq4_nl_expand_group32` in
-`gguf_iq_source_mmq_prefill.hip` (a K256 span is eight consecutive 18-byte
-blocks, each K32 group carrying its own FP16 scale, reusing the IQ4_XS nibble
-packer unchanged), the dense wrapper, registration on both HIP backends, and
-tests. Leaf agreement against the strict GEMV is 0.0052-0.0072 max relative
-error at correlation 0.999983 across every row count, and its GEMV/MMQ
-crossover is 1 row (up to 16.8x at 512).
+**State.** `GGUF_IQ_DENSE_MMQ_PREFILL_POLICY` routes all four quants whose K32
+groups are expressible as `scale * int8`: IQ4_XS, IQ3_XXS, IQ3_S, IQ4_NL.
+Q3_K, IQ2_S and IQ2_XS carry a scale per 16 elements and stay on the strict
+GEMV; that needs a per-16-scale MMQ contract, i.e. a kernel redesign.
 
-**Why it is not the default.** Enabling it measured prefill 127.2 -> 155.2
-tok/s (+22%) but moved the context512 teacher gate:
+**The trade, measured at 512/128 on the published protocol.**
 
-| arm | mean | p95 | max | top-1 |
-| --- | --- | --- | --- | --- |
-| dense MMQ (default) | 0.0010796 | 0.0051188 | 0.0354152 | 162/162 |
-| + IQ4_NL | 0.0013457 | 0.0071143 | 0.0412277 | 161/162 |
+| arm | prefill | mean | p95 | max | top-1 |
+| --- | --- | --- | --- | --- | --- |
+| IQ4_XS + IQ3_XXS | 127.2 | 0.0010796 | 0.0051188 | 0.0354152 | 162/162 |
+| + IQ3_S | 137.7 | 0.0012985 | 0.0044588 | 0.0403417 | 161/162 |
+| + IQ4_NL | 155.2 | 0.0013457 | 0.0071143 | 0.0412277 | 161/162 |
+| **all four (retained)** | **171.9** | 0.0014707 | 0.0077991 | **0.0297407** | 161/162 |
 
-The outer gate still passes, but that mean is the worst of any default
-measured. The cost is **concentrated, not diffuse**: median per-position delta
-is exactly 0.000000 and p90 is +0.000925, while a few positions diverge
-100-300x (prompt 4 steps 2/3: 0.00022 -> 0.0223 and 0.00006 -> 0.0200; prompt
-10 step 1: 0.000028 -> 0.0085). That is a small number of sensitive tensors,
-not general precision loss.
+Mean regresses 36% and p95 52% against the two-quant policy, while the
+**maximum improves** to the best of the four and both binding gates pass with
+margin (max 0.0297 against 0.05, top-1 100%). IQ4_NL and IQ3_S were each held
+out briefly on the mean regression before the combined arm was measured.
 
-**Localization attempted and failed (2026-09-08).** The seven IQ4_NL tensors
-sit at layers 1/2/3 (`ffn_down`), 21 (`attn_qkv`) and 27/27/50
-(`ffn_gate`/`ffn_up`). A per-layer probe on the worst prompt showed divergence
-seeded at layer 1 and amplified ~500x through 62 downstream layers, and a
-shape bisect attributed 71% of the divergence-from-default to the three early
-`ffn_down` tensors. Routing only the other four measured prefill 140.3 tok/s
-(+10% rather than +22%) and teacher mean **0.0013632** — no better than routing
-all seven (0.0013457) and worse than not routing IQ4_NL at all (0.0010796). It
-recovers only top-1 (162/162).
+**Why it is not a defect to chase.** A per-tensor localization of the IQ4_NL
+cost was attempted and failed: excluding the three early `ffn_down` tensors -
+which a single-prompt probe blamed for 71% of the divergence - measured no
+better against the teacher (mean 0.0013632 vs 0.0013457 for all seven). Against
+the teacher the cost is not attributable to particular tensors. It is a
+systematic mean/tail-shape trade of the Q8_1 activation plane.
 
-**Why that probe misled.** It bisected on divergence from *our own default*,
-which is not the gate objective; moving away from the current default says
-nothing about agreement with the teacher. Against the teacher the cost is
-essentially binary — routing any IQ4_NL costs ~+0.00027 mean — so it is not
-attributable to particular tensors and no subset fixes it. Bisect on the gate
-metric, not on distance from the incumbent.
-
-**Removal trigger.** The remaining hypotheses are that the cost is intrinsic to
-Q8_1 activations on these tensors, or that IQ4_NL wants a finer activation
-quantization than the shared DS4 plane. If neither pans out, delete the
-expansion, its QTYPE arm, the wrapper and the registration rather than leaving
-support unrouted indefinitely. Re-testing a subset is a one-line change: the
-dispatch honours an optional `shapes` allowlist and the rejected subset is
-recorded in `_GGUF_IQ_DENSE_MMQ_IQ4_NL_HELD_OUT`.
-
-**Owner evidence.** `benchmarks/results/2026-09-08-zbook-ud-iq4-nl-mmq-heldout.json`.
+**Removal trigger.** If a task or repeat/serving gate later shows the mean
+regression matters, roll back per quant by deleting its entry - IQ3_S and
+IQ4_NL are the two to drop first, in that order of cost-effectiveness
+(IQ4_NL buys +22%, IQ3_S +8.3%). If instead the trade proves harmless, delete
+this ledger entry. The open improvement is a finer activation quantization for
+these quants than the shared DS4 plane, which would likely recover the mean.
 
 ## 2026-09-07 UD cleanup — reduce authorization surface
 

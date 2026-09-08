@@ -136,7 +136,7 @@ def test_unsupported_quants_keep_the_strict_owner():
     ported into this translation unit, so it is not wired yet.
     """
     with iq_mmq.iq_dense_mmq_session(True, workspace_ptr=1 << 20, workspace_nbytes=1 << 24):
-        for quant in ("gguf_iq2_xs", "gguf_iq3_s", "gguf_q3_k", "gguf_iq2_s"):
+        for quant in ("gguf_iq2_xs", "gguf_q3_k", "gguf_iq2_s"):
             out = _dispatch(quant, rows=512, in_features=5120, out_features=17408)
             assert out.key.variant == "prefill_bf16_bf16_out", quant
 
@@ -146,33 +146,29 @@ def test_every_policy_quant_has_a_registered_owner():
     load_backend_kernel_package("hip_gfx1151")
     policy = backend_package_capability(
         "hip_gfx1151", "GGUF_IQ_DENSE_MMQ_PREFILL_POLICY", {})
-    assert set(policy) == {"gguf_iq4_xs", "gguf_iq3_xxs"}
+    assert set(policy) == {"gguf_iq4_xs", "gguf_iq3_xxs", "gguf_iq3_s", "gguf_iq4_nl"}
     for quant, entry in policy.items():
         assert is_registered(
             KernelKey("hip_gfx1151", "linear", quant, entry["variant"]))
 
 
-def test_iq4_nl_has_kernel_support_but_is_held_out_of_the_default():
-    """IQ4_NL is implemented and correct, but not routed by default.
+@pytest.mark.parametrize("quant", ("gguf_iq4_xs", "gguf_iq3_xxs", "gguf_iq3_s", "gguf_iq4_nl"))
+def test_all_expressible_iq_quants_are_routed(quant):
+    """Every quant whose K32 groups fit `scale * int8` takes the MMQ route.
 
-    Enabling it measured prefill 127.2 -> 155.2 tok/s and moved the teacher
-    gate mean 0.0010796 -> 0.0013457, p95 +39%, top-1 162/162 -> 161/162. The
-    median per-position delta is 0.000000 while a few positions diverge
-    100-300x, so a small number of sensitive tensors have to be identified
-    before it can be the default.
+    Retained on the production outer gate (max KL 0.0297 <= 0.05, top-1 100%)
+    for prefill 127.2 -> 171.9 tok/s. The mean and p95 regress against the
+    two-quant policy (0.0010796 -> 0.0014707, 0.0051188 -> 0.0077991) while the
+    maximum improves (0.0354152 -> 0.0297407); that trade is recorded in
+    docs/REFACTOR.md and the retention artifact.
     """
     load_backend_kernel_package("hip_gfx1151")
-    assert is_registered(
-        KernelKey("hip_gfx1151", "linear", "gguf_iq4_nl", _DENSE_VARIANT))
     policy = backend_package_capability(
         "hip_gfx1151", "GGUF_IQ_DENSE_MMQ_PREFILL_POLICY", {})
-    assert "gguf_iq4_nl" not in policy
+    assert quant in policy
     with iq_mmq.iq_dense_mmq_session(True, workspace_ptr=1 << 20, workspace_nbytes=1 << 24):
-        out = _dispatch("gguf_iq4_nl", rows=512, in_features=5120, out_features=17408)
-    assert out.key.variant == "prefill_bf16_bf16_out"
-
-
-# ------------------------------------------------------------------- workspace
+        out = _dispatch(quant, rows=512, in_features=5120, out_features=17408)
+    assert out.key.variant == _DENSE_VARIANT
 
 
 def test_workspace_sizing_covers_activations_plus_metadata():
