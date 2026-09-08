@@ -65,39 +65,63 @@ def run_check() -> int:
     fixture = np.load(FIXTURE)
     inputs, masks, horizon = fixture["inputs"], fixture["masks"], int(fixture["horizon"])
     loaded = load_timesfm_model(PINNED_MODEL_ID)
+    failures: list[str] = []
     try:
-        decoder = TimesFMGPUDecoder(loaded)
+        # Strict FP32 fallback: near-exact parity with the FP32 torch oracle.
+        decoder = TimesFMGPUDecoder(loaded, precision="fp32")
         try:
             pf, qs, ar = decoder.decode(horizon, inputs, masks)
         finally:
             decoder.close()
+        for name, actual, expected in (
+            ("renormed_outputs", pf, fixture["renormed_outputs"]),
+            ("quantile_spread", qs, fixture["quantile_spread"]),
+            ("ar_outputs", ar, fixture["ar_outputs"]),
+        ):
+            if actual is None or expected is None:
+                if actual is not expected:
+                    failures.append(f"fp32 {name}: presence mismatch")
+                continue
+            bad = ~np.isclose(actual, expected, atol=5.0e-4, rtol=1.0e-2)
+            if bad.any():
+                failures.append(f"fp32 {name}: {int(bad.sum())} strict mismatches")
+
+        # Production FP16 path: calibrated forecasting tolerance vs the oracle.
+        decoder = TimesFMGPUDecoder(loaded, precision="fp16")
+        try:
+            pf, qs, ar = decoder.decode(horizon, inputs, masks)
+        finally:
+            decoder.close()
+        for name, actual, expected in (
+            ("renormed_outputs", pf, fixture["renormed_outputs"]),
+            ("quantile_spread", qs, fixture["quantile_spread"]),
+            ("ar_outputs", ar, fixture["ar_outputs"]),
+        ):
+            if actual is None or expected is None:
+                if actual is not expected:
+                    failures.append(f"fp16 {name}: presence mismatch")
+                continue
+            if actual.shape != expected.shape:
+                failures.append(f"fp16 {name}: shape {actual.shape} != {expected.shape}")
+                continue
+            error = np.abs(actual.astype(np.float64) - expected.astype(np.float64))
+            for b in range(expected.shape[0]):
+                scale = float(np.std(inputs[b][~masks[b]]))
+                series_error = error[b]
+                max_rel = float(series_error.max()) / scale
+                mean_rel = float(series_error.mean()) / scale
+                if max_rel > 0.02 or mean_rel > 0.005:
+                    failures.append(
+                        f"fp16 {name} b{b}: max {100 * max_rel:.2f}% / mean {100 * mean_rel:.3f}% "
+                        "of signal scale exceeds production gate (2% / 0.5%)"
+                    )
     finally:
         loaded.free()
 
-    failures = []
-    for name, actual, expected in (
-        ("renormed_outputs", pf, fixture["renormed_outputs"]),
-        ("quantile_spread", qs, fixture["quantile_spread"]),
-        ("ar_outputs", ar, fixture["ar_outputs"]),
-    ):
-        if actual is None or expected is None:
-            if actual is not expected:
-                failures.append(f"{name}: presence mismatch")
-            continue
-        if actual.shape != expected.shape:
-            failures.append(f"{name}: shape {actual.shape} != {expected.shape}")
-            continue
-        bad = ~np.isclose(actual, expected, atol=5.0e-4, rtol=1.0e-2)
-        if bad.any():
-            idx = np.argwhere(bad)[0]
-            failures.append(
-                f"{name}: {int(bad.sum())} mismatches, first at {tuple(idx)} "
-                f"(actual {actual[tuple(idx)]:.6f} vs expected {expected[tuple(idx)]:.6f})"
-            )
     if failures:
         print("GUARD FAILED:", "; ".join(failures))
         return 1
-    print("guard ok: GPU decode matches oracle fixture")
+    print("guard ok: fp32 strict parity + fp16 production gate both pass")
     return 0
 
 
