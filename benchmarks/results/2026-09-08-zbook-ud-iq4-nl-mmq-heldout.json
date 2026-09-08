@@ -26,20 +26,62 @@
   },
   "perf_if_enabled": {
     "protocol": "published README sweep protocol, 512/128",
-    "prefill_tok_s": {"without_iq4_nl": 127.20, "with_iq4_nl": 155.24, "delta_pct": 22.0},
-    "decode_tok_s": {"without": 7.63, "with": 7.63}
+    "prefill_tok_s": {
+      "without_iq4_nl": 127.2,
+      "with_iq4_nl": 155.24,
+      "delta_pct": 22.0
+    },
+    "decode_tok_s": {
+      "without": 7.63,
+      "with": 7.63
+    }
   },
   "numerics_blocker": {
     "protocol": "context512, 18 prompts x 9 forced steps, production config, independent tokenwise llama.cpp teacher",
-    "without_iq4_nl": {"mean": 0.0010796, "p95": 0.0051188, "p99": 0.0217009, "max": 0.0354152, "top1": "162/162"},
-    "with_iq4_nl": {"mean": 0.0013457, "p95": 0.0071143, "p99": 0.0209050, "max": 0.0412277, "top1": "161/162"},
+    "without_iq4_nl": {
+      "mean": 0.0010796,
+      "p95": 0.0051188,
+      "p99": 0.0217009,
+      "max": 0.0354152,
+      "top1": "162/162"
+    },
+    "with_iq4_nl": {
+      "mean": 0.0013457,
+      "p95": 0.0071143,
+      "p99": 0.020905,
+      "max": 0.0412277,
+      "top1": "161/162"
+    },
     "outer_gate": "still passes (max 0.0412 <= 0.05, top-1 100%)",
     "why_held_out": "That mean is the worst of any default measured, and the cost is concentrated rather than diffuse: median per-position delta is exactly 0.000000 and p90 is +0.000925, while a few positions diverge 100-300x (prompt 4 step 2: 0.000225 -> 0.022335; step 3: 0.000061 -> 0.019991; prompt 10 step 1: 0.000028 -> 0.008484). 89 of 162 positions worsen at all. This is the signature of a small number of sensitive tensors, not general precision loss, so the route is held until they are identified.",
-    "removal_trigger": "See docs/REFACTOR.md 'IQ4_NL dense MMQ'."
+    "removal_trigger": "See docs/REFACTOR.md 'IQ4_NL dense MMQ'. Localization by tensor is ruled out; remaining hypotheses are that the cost is intrinsic to Q8_1 activations on these tensors, or that IQ4_NL needs a finer activation quantization than the shared DS4 plane."
   },
   "limitations": [
     "The sensitive tensors were not localized in this unit; only 7 IQ4_NL tensors exist in K_M (0.33 GB) across attn_qkv/ffn_down/ffn_gate/ffn_up, so a role- or layer-level exclusion is likely tractable.",
     "gfx1100 declares no dense MMQ policy at all and is unaffected.",
     "Laptop power/thermal limited; provisional pending the desktop gfx1151."
-  ]
+  ],
+  "localization_attempt": {
+    "date": "2026-09-08",
+    "question": "The IQ4_NL cost looked concentrated (median per-position delta 0.000000, a few positions 100-300x), so a per-tensor exclusion looked likely to recover the gate.",
+    "tensor_inventory": "7 rank-2 IQ4_NL tensors in K_M: ffn_down at layers 1/2/3 (5120x17408), attn_qkv at layer 21 (10240x5120), ffn_gate+ffn_up at 27 and ffn_gate at 50 (17408x5120). Shape maps one-to-one onto those groups in this file, so the dispatch can discriminate them.",
+    "layer_probe": "scripts/gguf_iq4_nl_mmq_layer_probe.py on the worst prompt: divergence is seeded at layer 1 (4.9e-04) and amplified to 3.5e-01 by layer 63 with no single dominant injection - the jumps at layers 6 and 50 include non-IQ4_NL sites, so most of the growth is amplification of an early seed.",
+    "shape_bisect_on_divergence_from_default": {
+      "all_iq4_nl": 0.15479,
+      "only_ffn_down_L1_2_3": 0.11024,
+      "only_attn_qkv_and_ffn_gate_up": 0.022582,
+      "reading": "71% of the divergence-from-default came from the three early ffn_down tensors."
+    },
+    "subset_measured_against_the_teacher": {
+      "prefill_tok_s": 140.26,
+      "mean": 0.0013632,
+      "p95": 0.0059887,
+      "p99": 0.0225543,
+      "max": 0.0412934,
+      "top1": "162/162",
+      "verdict": "REJECTED - no better than routing all seven (mean 0.0013457) and worse than not routing IQ4_NL at all (0.0010796). It recovers only top-1."
+    },
+    "conclusion": "The cost is not attributable to particular tensors. Against the teacher it is essentially binary: routing any IQ4_NL through the MMQ costs about +0.00027 mean. No subset fixes it, and the best remaining one (attn_qkv alone, 29.5 MB of 330) cannot be worth the dispatch complexity.",
+    "methodological_lesson": "The shape bisect optimized divergence from our own default, which is not the gate objective; moving away from the incumbent says nothing about teacher agreement. Bisect retention decisions on the gate metric itself."
+  }
 }
