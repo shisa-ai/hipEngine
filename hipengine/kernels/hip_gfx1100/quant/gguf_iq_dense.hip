@@ -679,6 +679,24 @@ __launch_bounds__(128, R == 1 ? 16 : 2) __global__ void gguf_iq_dense_strict_ker
     __shared__ float s_d[RB][T*16];               // d or d*scale per (column, group)
     __shared__ uint32_t s_aux[RB][T*8];           // IQ3_XXS per-group sign/khigh word
     __shared__ uint8_t s_qs[RB][T*8];             // IQ2_S per-group index high bits
+    // Codebook grid staged in LDS. Under a lane-varying index a __constant__
+    // grid is a global byte load per decoded element -- 64 per inner body for
+    // IQ3_S. Staging swaps each for a ds_read, which issues on a different
+    // pipe and adds no arithmetic, so it does not repeat the rejected IQ4
+    // codebook trade. iq2_s_grid (8192 B) is excluded by measurement, not by
+    // guess: staging it drops IQ2_S from 16 to 12 waves/SIMD and measured
+    // -10.6% (2026-09-08 interleaved A/B, gfx1151), so the occupancy loss
+    // outweighs the 16 loads it removes.
+    constexpr int GRID_BYTES = Q == 2 ? 2048 : (Q == 4 ? 1024 : (Q == 6 ? 1024 : 0));
+    __shared__ uint8_t s_grid[GRID_BYTES ? GRID_BYTES : 1];
+    if constexpr (GRID_BYTES) {
+        const uint8_t* src;
+        if constexpr (Q == 2) src = iq3_grid;
+        else if constexpr (Q == 4) src = iq3_xxs_grid;
+        else src = reinterpret_cast<const uint8_t*>(IQ2_XS_GRID_PACKED);
+        for (int i = tid; i < GRID_BYTES; i += 128) s_grid[i] = src[i];
+        __syncthreads();
+    }
     if constexpr (Q == 1) {
         for (int64_t k = tid; k < K; k += 128) {
             float xv[R];
@@ -761,13 +779,13 @@ __launch_bounds__(128, R == 1 ? 16 : 2) __global__ void gguf_iq_dense_strict_ker
                             const uint32_t aux = s_aux[bi][t*8+g];
                             int index = b[2+g*8+j/4];
                             int signs = iq_sign_bits((aux >> (7*(j/8))) & 127);
-                            float mag = s_d[bi][t*16+g] * float(iq3_xxs_grid[index*4+(j&3)]);
+                            float mag = s_d[bi][t*16+g] * float(s_grid[index*4+(j&3)]);
                             wv = mag * ((signs & (1<<(j&7))) ? -1.0f : 1.0f);
                         } else if constexpr (Q == 6) {
                             const int slot = j >> 3;
                             const uint8_t* p = b + 2 + 2*(g*4+slot);
                             int word = int(p[0]) | (int(p[1]) << 8);
-                            int code = (IQ2_XS_GRID_PACKED[word & 511] >> (2*(j&7))) & 3;
+                            int code = (reinterpret_cast<const uint16_t*>(s_grid)[word & 511] >> (2*(j&7))) & 3;
                             float mag = s_d[bi][t*16+((j>>4)?8:0)+g] * iq2_xs_magnitude(code);
                             wv = mag * ((iq_sign_bits(word >> 9) & (1<<(j&7))) ? -1.0f : 1.0f);
                         } else if constexpr (Q == 5) {
@@ -778,7 +796,7 @@ __launch_bounds__(128, R == 1 ? 16 : 2) __global__ void gguf_iq_dense_strict_ker
                         } else if constexpr (Q == 2) {
                             const int grid_slot = j >> 2;
                             int index = b[2+g*8+grid_slot] | (((b[66+g] >> grid_slot)&1) << 8);
-                            float mag = s_d[bi][t*16+g] * float(iq3_grid[index*4+(j&3)]);
+                            float mag = s_d[bi][t*16+g] * float(s_grid[index*4+(j&3)]);
                             wv = mag * ((b[74+g*4+j/8] & (1<<(j&7))) ? -1.0f : 1.0f);
                         } else { // Q == 3: payload indexing is block-local.
                             const int kk = k & 255;
