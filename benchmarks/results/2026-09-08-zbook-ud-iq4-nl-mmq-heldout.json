@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-08",
+  "status": "blocked",
+  "host": "zbook",
+  "hardware": "AMD RYZEN AI MAX+ PRO 395 / Radeon 8060S (laptop; gross numbers; provisional pending the desktop gfx1151)",
+  "backend": "hip_gfx1151",
+  "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+  "change": "IQ4_NL added to the dense raw-IQ integer-MMQ route. Kernel support landed and is correct; the quant is held out of the default policy on numerics.",
+  "feasibility_determination": {
+    "method": "The MMQ expansion contract is one float scale plus 32 signed int8 per K32 group. Tested per quant by recovering the group scale as a real GCD of the dequantized magnitudes (an earlier probe that guessed the scale as min|nonzero| was wrong: IQ4_XS's codebook has no +/-1, so it reported a false negative on a quant that demonstrably works).",
+    "results": {
+      "IQ4_XS": "per-32 scale, integers in [-127,127] - shipped",
+      "IQ3_XXS": "per-32 scale, integers in [-31,31] - shipped",
+      "IQ3_S": "per-32 scale, integers in [-15,15] - expressible, needs its 2 KB grid table ported into the MMQ translation unit; not yet wired",
+      "IQ4_NL": "per-32 scale, integers in [-127,127] - expressible with no new table (one K256 span is eight consecutive 18-byte blocks); implemented, held out on numerics",
+      "Q3_K": "scale per 16 elements; under a per-32 scale the residual integers reach +/-128 and do not fit int8 - blocked",
+      "IQ2_S": "scale per 16 elements; residual integers reach +/-1333 - blocked",
+      "IQ2_XS": "scale per 16 elements; residual integers reach +/-1333 - blocked"
+    }
+  },
+  "kernel_correctness": {
+    "leaf": "scripts/gguf_iq_dense_mmq_crossover.py with CROSSOVER_QUANT=IQ4_NL: max relative error 0.0052-0.0072, correlation 0.999983 against the strict GEMV across all measured shapes and row counts",
+    "crossover_rows": 1,
+    "leaf_speedup_at_512_rows": "up to 16.8x"
+  },
+  "perf_if_enabled": {
+    "protocol": "published README sweep protocol, 512/128",
+    "prefill_tok_s": {"without_iq4_nl": 127.20, "with_iq4_nl": 155.24, "delta_pct": 22.0},
+    "decode_tok_s": {"without": 7.63, "with": 7.63}
+  },
+  "numerics_blocker": {
+    "protocol": "context512, 18 prompts x 9 forced steps, production config, independent tokenwise llama.cpp teacher",
+    "without_iq4_nl": {"mean": 0.0010796, "p95": 0.0051188, "p99": 0.0217009, "max": 0.0354152, "top1": "162/162"},
+    "with_iq4_nl": {"mean": 0.0013457, "p95": 0.0071143, "p99": 0.0209050, "max": 0.0412277, "top1": "161/162"},
+    "outer_gate": "still passes (max 0.0412 <= 0.05, top-1 100%)",
+    "why_held_out": "That mean is the worst of any default measured, and the cost is concentrated rather than diffuse: median per-position delta is exactly 0.000000 and p90 is +0.000925, while a few positions diverge 100-300x (prompt 4 step 2: 0.000225 -> 0.022335; step 3: 0.000061 -> 0.019991; prompt 10 step 1: 0.000028 -> 0.008484). 89 of 162 positions worsen at all. This is the signature of a small number of sensitive tensors, not general precision loss, so the route is held until they are identified.",
+    "removal_trigger": "See docs/REFACTOR.md 'IQ4_NL dense MMQ'."
+  },
+  "limitations": [
+    "The sensitive tensors were not localized in this unit; only 7 IQ4_NL tensors exist in K_M (0.33 GB) across attn_qkv/ffn_down/ffn_gate/ffn_up, so a role- or layer-level exclusion is likely tractable.",
+    "gfx1100 declares no dense MMQ policy at all and is unaffected.",
+    "Laptop power/thermal limited; provisional pending the desktop gfx1151."
+  ]
+}
