@@ -572,7 +572,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     gr_iu8_module = None
     if args.route_package == "q8-iu8-dense":
         from hipengine.kernels.registry import KernelKey, register, resolve
-        row4_key = KernelKey("hip_gfx1101", "linear", "gguf_q8_0",
+        row4_key = KernelKey("hip_gfx1100", "linear", "gguf_q8_0",
                              "iu8_wmma_prefill_f32_f32_out")
         original_row4 = resolve(
             backend=row4_key.backend, layer=row4_key.layer,
