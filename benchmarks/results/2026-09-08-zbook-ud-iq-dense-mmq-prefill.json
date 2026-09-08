@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-08",
+  "status": "retained_default_change",
+  "host": "zbook",
+  "hardware": "AMD RYZEN AI MAX+ PRO 395 / Radeon 8060S (laptop; gross numbers; provisional pending the desktop gfx1151)",
+  "backend": "hip_gfx1151",
+  "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+  "change": "Item 3 of docs/UD-OPTIMIZED-ROUTE-PLAN.md. Raw dense IQ4_XS/IQ3_XXS prefill routes to the existing source-shaped integer-MMQ kernel instead of the strict per-row GEMV. The kernel addresses weights as qweight + expert*expert_bytes + out_row*weight_row_bytes, so at expert 0 it consumes the dense raw GGUF layout unchanged: the dense route is the degenerate single-expert case. No repack, no weight sidecar, no new kernel.",
+  "scope": "gfx1151 only by design. The dense kernel keys are registered on both HIP backends through the normal gfx1151 alias path, but only gfx1151 declares GGUF_IQ_DENSE_MMQ_PREFILL_POLICY, so the route is inert on gfx1100 pending its own qualification. The selected/MoE keys remain gfx1100-only and are asserted so by test.",
+  "mechanism": {
+    "admission": "An execution owner binds a bounded workspace (iq_dense_mmq_session); the backend policy then selects quant and row range. Without a bound workspace every raw-IQ projection keeps the strict GEMV owner.",
+    "constraints": "in_features % 256, out_features % 128, bf16 output, rows >= 32. min_rows is a crossover not a capability: the GEMV re-reads the weight column once per 8-row slab, so the MMQ only wins once a prompt spans several slabs.",
+    "workspace": "Q8_1 K-major DS4 activation plane plus a small per-rows metadata tail (expert_start_compact, expert_start_mmq, tile_expert). Metadata is uploaded once per distinct row count, not per projection. Sized for 1024 rows x max(hidden, ffn, ssm_inner); ~10 MB for this model, allocated separately from the F16 staging buffer so the planar-Q6 integer route and this one do not share an owner.",
+    "decode": "rows=1 is below min_rows, so decode is untouched by construction."
+  },
+  "kernel_census_512_token_prefill": {
+    "tool": "rocprofv3 --kernel-trace, prebuilt .so, HIPENGINE_REQUIRE_CACHED_BUILD=1, production config (bulk + WMMA prefill)",
+    "before": {"total_gpu_ms": 12477, "launches": 1571,
+               "top": "gguf_iq_dense_strict_kernel<0,true,8,8> 117 calls / 9280.1 ms / 74.4%"},
+    "after": {"total_gpu_ms": 4051, "launches": 1689,
+              "top": "gguf_iq_selected_mmq_i128_j128_k256_q8_1_ds4_kernel<4> 117 calls / 790.6 ms / 19.5%"},
+    "delta": "the IQ4_XS kernel 9280.1 -> 790.6 ms (11.7x); total prefill GPU 12477 -> 4051 ms (3.08x)",
+    "residual_gemv": "IQ4_NL 791 ms, Q3_K 624 ms, IQ3_S 360 ms - these quants have no MMQ kernel and are expected to remain on the strict GEMV"
+  },
+  "perf_gross": {
+    "protocol": "published README sweep protocol, identical to items 0-2: scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf --quant gguf_ud_q4_k_m --backend hip_gfx1151 --workloads 512/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode",
+    "before": {"prefill_tok_s": 41.54, "decode_tok_s": 7.62},
+    "after": {"prefill_tok_s": 127.20, "decode_tok_s": 7.63, "runs_prefill": [126.9, 127.2, 126.5, 126.5]},
+    "delta": "prefill +206% (3.06x); decode unchanged, as designed",
+    "campaign_cumulative": {
+      "prefill_tok_s": "22.1 (start) -> 29.9 (per-tensor veto) -> 41.5 (role coverage) -> 127.2 (dense MMQ) = 5.75x",
+      "gap_to_plain_same_host_same_protocol": "13.3x -> 2.32x (plain Qwen3.8-27B-Q4_K_S is 294.8 tok/s on this laptop)"
+    }
+  },
+  "numerics": {
+    "protocol": "context512, 18 category/heldout prompts x 9 forced steps, production config, independent tokenwise llama.cpp teacher; consumed tokens verified equal to the teacher input binary",
+    "arms": {
+      "UD-U3": {"mean": 0.0012376, "p95": 0.0053786, "p99": 0.0211052, "max": 0.0332762, "top1": "162/162"},
+      "role_coverage": {"mean": 0.0012709, "p95": 0.0048322, "p99": 0.0239101, "max": 0.0387342, "top1": "161/162"},
+      "dense_mmq": {"mean": 0.0010796, "p95": 0.0051188, "p99": 0.0217009, "max": 0.0354152, "top1": "162/162"}
+    },
+    "outer_gate": "PASS - max 0.0354 <= 0.05, top-1 100% >= 90%",
+    "reading": "The MMQ arm has the best mean of any default measured (0.0010796 against 0.0012376 and 0.0012709) and recovers the top-1 position the role-coverage step lost. This is agreement with a llama.cpp teacher while adopting llama.cpp's own MMQ dataflow, so part of the improvement is convergence toward the reference implementation rather than evidence of higher absolute quality. It should not be quoted as a quality win without a BF16-teacher or task gate.",
+    "vs_previous_default": "KL mean 1.038e-03, max 4.973e-02, top-1 agreement 161/162",
+    "strict_thresholds": "mean/p95/p99 remain above the strict thresholds, the pre-existing campaign state"
+  },
+  "correctness_suites": "tests/test_gguf_iq_dense_mmq_route.py (new, 18 cases: both-backend registration, the selected/MoE keys staying gfx1100-only, gfx1151-only policy, inert without a workspace, five decline paths incl. rows=1 and unsupported quants, workspace sizing and session validation); test_gguf_iq_source_mmq_prefill.py, test_gguf_ud_dense_t16_roles.py, test_gguf_ud_repack_eligibility.py, test_qwen35_gguf_materialize_helpers.py, test_loading_qwen35_gguf_policy.py green; test_gguf_e2e_acceptance.py, test_gguf_ud_km.py, test_gguf_ud_ks.py, test_gguf_ud_admission.py, test_qwen35_gguf_consumer_surface_parity.py, test_gfx1151_backend.py, test_gguf_ud_dense.py green",
+  "limitations": [
+    "gfx1100 does not declare the policy and is therefore unchanged; that is a separate follow-up.",
+    "Laptop power/thermal limited; absolute rates provisional pending the desktop gfx1151.",
+    "IQ4_NL, Q3_K, IQ3_S, IQ2_S and IQ2_XS have no MMQ kernel and remain on the strict GEMV: together 1.77 GB and about 44% of the residual prefill GPU time in K_M.",
+    "min_rows=32 is an unswept first choice, not a measured crossover. The GEMV wins at small row counts and the exact boundary was not located.",
+    "Task and repeat/serving gates remain outstanding for this default, as for every default in this campaign."
+  ]
+}
