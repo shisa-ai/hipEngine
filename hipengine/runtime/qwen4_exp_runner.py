@@ -4020,63 +4020,64 @@ def run_qwen4_exp_moe(
                         stream=stream,
                         runtime=active_runtime,
                     )
-                elif os.environ.get(
-                    "HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID", "64"
-                ) in {"64", "q5"}:
-                    grouped_q5_variant = (
-                        "selected_grouped_prefill_compact_rowbatch8_out8_"
-                        "expertgrid64_m1_bf16_bf16_out"
-                        if os.environ.get(
-                            "HIPENGINE_QWEN4_EXP_PROFILE_Q5_1_DOWN_M1", "0"
-                        )
-                        not in {"", "0", "false", "False"}
-                        else "selected_grouped_prefill_compact_rowbatch8_out8_"
-                        "expertgrid64_bf16_bf16_out"
-                    )
-                elif os.environ.get(
-                    "HIPENGINE_QWEN4_EXP_Q5_1_OUT8", "1"
-                ) not in {"", "0", "false", "False"}:
-                    grouped_q5_variant = (
-                        "selected_grouped_prefill_compact_rowbatch8_"
-                        "out8_bf16_bf16_out"
-                    )
                 else:
-                    grouped_q5_variant = (
-                        "selected_grouped_prefill_compact_rowbatch8_"
-                        "bf16_bf16_out"
+                    if os.environ.get(
+                        "HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID", "64"
+                    ) in {"64", "q5"}:
+                        grouped_q5_variant = (
+                            "selected_grouped_prefill_compact_rowbatch8_out8_"
+                            "expertgrid64_m1_bf16_bf16_out"
+                            if os.environ.get(
+                                "HIPENGINE_QWEN4_EXP_PROFILE_Q5_1_DOWN_M1", "0"
+                            )
+                            not in {"", "0", "false", "False"}
+                            else "selected_grouped_prefill_compact_rowbatch8_out8_"
+                            "expertgrid64_bf16_bf16_out"
+                        )
+                    elif os.environ.get(
+                        "HIPENGINE_QWEN4_EXP_Q5_1_OUT8", "1"
+                    ) not in {"", "0", "false", "False"}:
+                        grouped_q5_variant = (
+                            "selected_grouped_prefill_compact_rowbatch8_"
+                            "out8_bf16_bf16_out"
+                        )
+                    else:
+                        grouped_q5_variant = (
+                            "selected_grouped_prefill_compact_rowbatch8_"
+                            "bf16_bf16_out"
+                        )
+                    if qwen4_exp_q51_pair_prefill_selected(
+                        backend, weights["expert_down"].spec.quant_key,
+                        rows=rows, in_features=ffn,
+                    ):
+                        grouped_q5_variant = "selected_grouped_prefill_pair2_bf16_bf16_out"
+                    grouped_q5_key = _qwen4_exp_q51_fold128_key(
+                        KernelKey(backend, "moe_linear", weights["expert_down"].spec.quant_key,
+                                  grouped_q5_variant), rows=rows)
+                    grouped_q5_key = _qwen4_exp_q51_fold_pair_key(grouped_q5_key, rows=rows)
+                    grouped_q5_key = _qwen4_exp_q51_register_cache_key(
+                        grouped_q5_key, rows=rows, in_features=ffn)
+                    grouped_q5_key = _qwen4_exp_q51_row_publish_key(
+                        grouped_q5_key, rows=rows, in_features=ffn)
+                    grouped_q5_down = resolve(
+                        backend=grouped_q5_key.backend, layer=grouped_q5_key.layer,
+                        quant=grouped_q5_key.quant, variant=grouped_q5_key.variant)
+                    grouped_q5_down(
+                        (
+                            scratch.expert_intermediate.ptr
+                            if exact_grouped_q4_gate
+                            else scratch.expert_gate.ptr
+                        ),
+                        scratch.group_expert_start.ptr,
+                        weights["expert_down"].allocation("raw").tensor.ptr,
+                        scratch.expert_down.ptr,
+                        compact,
+                        experts,
+                        ffn,
+                        hidden,
+                        stream=stream,
+                        runtime=active_runtime,
                     )
-                if qwen4_exp_q51_pair_prefill_selected(
-                    backend, weights["expert_down"].spec.quant_key,
-                    rows=rows, in_features=ffn,
-                ):
-                    grouped_q5_variant = "selected_grouped_prefill_pair2_bf16_bf16_out"
-                grouped_q5_key = _qwen4_exp_q51_fold128_key(
-                    KernelKey(backend, "moe_linear", weights["expert_down"].spec.quant_key,
-                              grouped_q5_variant), rows=rows)
-                grouped_q5_key = _qwen4_exp_q51_fold_pair_key(grouped_q5_key, rows=rows)
-                grouped_q5_key = _qwen4_exp_q51_register_cache_key(
-                    grouped_q5_key, rows=rows, in_features=ffn)
-                grouped_q5_key = _qwen4_exp_q51_row_publish_key(
-                    grouped_q5_key, rows=rows, in_features=ffn)
-                grouped_q5_down = resolve(
-                    backend=grouped_q5_key.backend, layer=grouped_q5_key.layer,
-                    quant=grouped_q5_key.quant, variant=grouped_q5_key.variant)
-                grouped_q5_down(
-                    (
-                        scratch.expert_intermediate.ptr
-                        if exact_grouped_q4_gate
-                        else scratch.expert_gate.ptr
-                    ),
-                    scratch.group_expert_start.ptr,
-                    weights["expert_down"].allocation("raw").tensor.ptr,
-                    scratch.expert_down.ptr,
-                    compact,
-                    experts,
-                    ffn,
-                    hidden,
-                    stream=stream,
-                    runtime=active_runtime,
-                )
             elif q5_wmma:
                 qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out(
                     scratch.expert_intermediate.ptr,
