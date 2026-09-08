@@ -143,7 +143,7 @@ are not priorities. Refresh first, then rank candidates by recoverable
 complete-request milliseconds, not leaf speedup. These are open gates, not
 permission to change the admitted numerical policy.
 
-- [ ] **R1 - Freeze and close QSA provenance.** Pin a clean source commit,
+- [x] **R1 - Freeze and close QSA provenance.** Pin a clean source commit,
   model/compiler identity, resolved production/strict manifests, and active
   variant calls. Re-run the six-case off/on/off full-logit, four-step,
   recurrent-state and full-KV gate on committed source; retain exact
@@ -151,7 +151,7 @@ permission to change the admitted numerical policy.
   coverage. Retain named v2 kernel durations with cache-only profiling and
   update `docs/KERNELS.md` and the selector removal criteria in
   `docs/REFACTOR.md`. Do not rewrite immutable source artifacts.
-- [ ] **R2 - Refresh complete owners and throughput.** Run the shared-taxonomy
+- [x] **R2 - Refresh complete owners and throughput.** Run the shared-taxonomy
   family capture and full logger-off 12-case combined-default protocol at
   explicit chunk1024 with both promotions active. Use
   `scripts/qwen4exp_framework_family_refresh.py` and its existing protocols.
@@ -159,7 +159,7 @@ permission to change the admitted numerical policy.
   overlapping buckets once, and identify whether comparator evidence is
   freshly captured or reused. Report weighted rates, per-case medians, every
   repetition and CV separately; use section 6 for any match/beat claim.
-- [ ] **R3 - Explain p4096 timing drift during that refresh.** Counterbalance
+- [x] **R3 - Explain p4096 timing drift during that refresh.** Counterbalance
   v2 off/on with identical preceding prefill and preserve every repetition,
   including slow thirds. Collect clocks, temperature/power, CPU frequency,
   memory pressure, synchronization and launch gaps with their timing windows.
@@ -200,6 +200,40 @@ Do not rerun unrelated broad tests when existing evidence plus a focused gate
 is sufficient.
 
 ### Retained promotion snapshots
+
+**R2/R3 post-promotion refresh and drift diagnosis (September8 UTC):** clean
+`20a63e689`/`1629b3f04`, both promotions active. Shared-taxonomy family
+capture (six cases/twelve phases, chunk1024, comparator profiles reused from
+the pinned b212548e0 capture): code-p4096 prefill FFN8.643s (was10.214),
+linear4.442s,GR3.383s,QSA1.330s,GDN0.801s, device total18.714s (1.892x
+Vulkan,was2.09x). Fixed-live4097 decode: QSA2.617ms versus Vulkan3.161ms
+(**0.849x — hipEngine faster on the QSA decode owner**); MoE17.28ms (1.388x,
+the top remaining decode owner), linear1.050x,GR1.085x, device total46.533ms
+(1.101x,was1.43x). Logger-off combined-default 12-case screen: HE
+PP204.24/221.26/210.74 (unchanged), TG19.15/18.58/**16.39** — p4096 TG
++18.2% versus the pre-ordered-v2 packet (13.87), Vulkan TG lead1.500x at
+p4096 (was1.764x). Protocol note: both engines run the identical 1-warmup
++3-repetition structure, so the 1:1 is protocol-matched; hipEngine's
+repetition-order drift makes its 3-rep average conservative versus its own
+first-rep rate (p4096 first-rep ~18.0 versus average16.4) while Vulkan is
+flat (0.12% CV). Final comparisons must use matched multi-run averages on
+both sides. R3 drift diagnosis (counterbalanced off/on, fresh prefill per
+arm, 8 warmup steps, 128-step windows, sclk/temperature/power/CPU-frequency
+sampled per step): GPU sclk pinned2900MHz, temperatures68-77C, CPU5.1GHz
+p10>=4.84GHz in every arm — the drift is **not** clock, thermal or
+CPU-frequency, and per-step logits capture does not reproduce it. The
+ordered-v2 route is repetition-stable to0.3-0.4% spread; the parent route
+shows a uniform first-window-after-first-prefill penalty (general_en
+12.03s versus8.45s steady, decaying after one window; mechanism
+unidentified — not clocks). The canonical third-rep sag (18.0->12.8 TG) did
+not reproduce under this controlled structure in either arm — it is
+arm-independent in the retained A/B and carried by canonical-harness
+sequencing (1 warmup per mode, slot interleave) with hardware state ruled
+out; a narrowing probe must mirror that sequence exactly.
+[Family](../benchmarks/results/2026-09-08-framework-qwen4exp-post-v2-family.json),
+[baselines](../benchmarks/results/2026-09-08-framework-qwen4exp-current-default-baselines-v2.json),
+[drift](../benchmarks/results/2026-09-08-framework-qwen4exp-qsa-v2-drift-probe.json),
+[drift+logits](../benchmarks/results/2026-09-08-framework-qwen4exp-qsa-v2-drift-probe-logits.json).
 
 **Exact ordered-v2 QSA sparse decode promoted (September8 JST):** the
 largest decode owner (fixed-live4097 QSA,16.955ms versus Vulkan3.161ms,

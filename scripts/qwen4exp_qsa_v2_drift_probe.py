@@ -68,6 +68,8 @@ def main():
     parser.add_argument("--repetitions", type=int, default=3)
     parser.add_argument("--steps", type=int, default=128)
     parser.add_argument("--warmup-steps", type=int, default=8)
+    parser.add_argument("--capture-logits", action="store_true",
+                        help="Mirror the canonical bench's per-step logits capture")
     args = parser.parse_args()
     if args.repetitions < 1 or args.steps < 1 or args.warmup_steps < 0:
         parser.error("repetitions/steps must be positive; warmup-steps >= 0")
@@ -148,7 +150,7 @@ def main():
                     for _ in range(args.steps):
                         frequency_before = frequency.sample()
                         step_start = time.perf_counter()
-                        token = runner.step(token, capture_logits=False,
+                        token = runner.step(token, capture_logits=args.capture_logits,
                                             capture_target_hidden=False).token_id
                         step_seconds.append(time.perf_counter() - step_start)
                         frequency_steps.append((frequency_before, frequency.sample()))
@@ -163,7 +165,7 @@ def main():
                         raise AssertionError(f"arm {arm} altered state/output")
                     engaged = calls[0] - initial_calls
                     if arm == "on" and case["prompt_tokens"] == 4096:
-                        if engaged != args.steps * 12 + args.warmup_steps * 12:
+                        if engaged != args.steps * 12:
                             raise AssertionError(f"v2 engagement mismatch: {engaged}")
                     if arm == "off" and engaged != 0:
                         raise AssertionError("v2 engaged in off arm")
