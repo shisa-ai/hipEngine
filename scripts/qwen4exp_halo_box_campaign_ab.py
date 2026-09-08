@@ -455,6 +455,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         register_qwen4_exp_gfx1151_profiles,
     )
     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q5_k_q8_1_selected_prefill import (
+        register_gguf_q5_k_q8_1_selected_prefill_kernels,
+    )
     from hipengine.loading.gguf import discover_gguf_files, load_gguf_index
     from hipengine.models import resolve_model
 
@@ -468,6 +471,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     model_root = args.model_root.resolve()
     max_sequence_length = max(int(row["prompt_tokens"]) for row in cases) + transitions + 8
 
+    register_gguf_q5_k_q8_1_selected_prefill_kernels(replace=True)
     register_gfx1151_kernels(replace=True)
     register_qwen4_exp_gfx1151_profiles()
     index = load_gguf_index(discover_gguf_files(model_root)[0])
