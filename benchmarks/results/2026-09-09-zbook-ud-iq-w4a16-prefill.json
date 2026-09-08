@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-09",
+  "status": "retained_exact_path_not_default",
+  "host": "zbook",
+  "hardware": "AMD RYZEN AI MAX+ PRO 395 / Radeon 8060S (laptop; gross numbers; provisional pending the desktop gfx1151)",
+  "backend": "hip_gfx1151",
+  "change": "Adds a W4A16 prefill route for raw dense GGUF IQ weights: raw IQ blocks expand into fp16 WMMA operands and activations are read straight from the caller's bf16 buffer, so there is no quantized activation plane and no workspace. Registered on both HIP backends and covered by tests, but NOT routed by any dispatch policy: it matches the strict GEMV's accuracy and is 1.4-2.1x slower than the integer MMQ, which remains the production owner.",
+  "why_fp16_not_bf16": "A host simulation on real tensors and bf16-scale activations, before any kernel was written, measured relative error against an f32 reference: int8 activations (today's MMQ) 5.3e-03, fp16 both operands 2.1e-04, bf16 both operands 1.6e-03, bf16 weights with exact activations 1.6e-03. bf16 would have been mostly wasted: its 8-bit mantissa puts ~0.4% error back onto the weights, which the integer path keeps exact, so it recovers only 3.2x where fp16 recovers 25x. fp16 is also the WMMA format hipEngine already uses everywhere (49 in-tree uses of wmma_f32_16x16x16_f16_w32 against zero bf16 WMMA).",
+  "leaf_measurements": {
+    "protocol": "scratchpad/w4a16_bench.py: largest aligned tensor per quant from Qwen3.8-27B-UD-Q4_K_M, min-of-5 x 3 reps, accuracy against an f64 host reference computed from the CPU dequantizer so all three GPU paths are judged against the same truth",
+    "rows_512": {
+      "IQ4_XS": {"gemv_ms": 87.88, "mmq_ms": 8.17, "w4a16_ms": 11.36, "gemv_err": 1.66e-03, "mmq_err": 5.60e-03, "w4a16_err": 1.67e-03},
+      "IQ4_NL": {"gemv_ms": 118.57, "mmq_ms": 8.45, "w4a16_ms": 15.48, "gemv_err": 1.66e-03, "mmq_err": 5.60e-03, "w4a16_err": 1.67e-03},
+      "IQ3_S": {"gemv_ms": 92.42, "mmq_ms": 7.88, "w4a16_ms": 14.53, "gemv_err": 1.66e-03, "mmq_err": 5.59e-03, "w4a16_err": 1.67e-03}
+    },
+    "rows_64": {
+      "IQ4_XS": {"gemv_ms": 10.91, "mmq_ms": 1.06, "w4a16_ms": 2.19},
+      "IQ4_NL": {"gemv_ms": 14.58, "mmq_ms": 1.14, "w4a16_ms": 1.95},
+      "IQ3_S": {"gemv_ms": 11.08, "mmq_ms": 1.33, "w4a16_ms": 2.38}
+    },
+    "reading": "W4A16 lands at 1.67e-03 against the strict GEMV's 1.66e-03 - both are at the bf16 OUTPUT floor, not either kernel's arithmetic, so W4A16 is accuracy-equivalent to the exact path. The integer MMQ sits 3.35x above that floor. On speed W4A16 is 0.48-0.72x of the integer MMQ (1.4-2.1x slower) but 5-8x faster than the GEMV."
+  },
+  "tile_sweep": {
+    "shape": "IQ4_XS 512x(5120->17408), TILE_M x TILE_N milliseconds",
+    "results": {"64x16": 33.3, "64x32": 24.7, "32x32": 20.8, "32x64": 17.2, "16x64": 12.0, "16x96": 12.6, "16x128": 11.4, "32x128": 15.1, "128x16": 42.2},
+    "retained": "16x128",
+    "reading": "Row reuse dominates: each decoded weight fragment is shared across TILE_N activation rows, so cost falls steeply as TILE_N grows and rises with TILE_M. The first shape tried (64x16) was 2.9x off the best and made IQ3_S look pathological at 259 ms; at 16x128 IQ3_S is 14.5 ms. Past 16x128 the curve is flat."
+  },
+  "decision": "The integer MMQ remains the production default. W4A16 is retained as a registered, unrouted exact-family path: it is the only route that reaches strict-GEMV accuracy at GEMM speed, so it is the natural owner if a profile later needs the mean KL the integer route trades away.",
+  "correctness": "tests/test_gguf_iq_wmma_prefill.py (30 cases): registration on both HIP backends for all seven quants, an assertion that no dispatch policy selects it, argument validation including the bf16-only output contract and IQ4_NL's 32-element block alignment, and a numerics comparison against the strict dense GEMV on real fixture rows for IQ4_XS/IQ4_NL/IQ3_S/Q3_K.",
+  "limitations": [
+    "Not gated at model level: no context512 teacher run, because it is not a default. Enabling it would need one.",
+    "The kernel decodes each weight per element with no scale hoisting and no LDS staging; the integer MMQ decodes once into a shared tile reused across 128 rows. Closing the remaining 1.4-2.1x would mean adopting that structure.",
+    "Only bf16 in / bf16 out is implemented.",
+    "Laptop power/thermal limited; provisional pending the desktop gfx1151."
+  ]
+}
