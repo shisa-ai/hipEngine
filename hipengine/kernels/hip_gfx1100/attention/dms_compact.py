@@ -50,7 +50,7 @@ def _dms_compile_flags(target_arch: str | None) -> tuple[str, ...]:
         )
     if (
         resolved is not None
-        and resolved.strip().lower().split(":", 1)[0] == "gfx1151"
+        and resolved.strip().lower().split(":", 1)[0] in {"gfx1100", "gfx1151"}
     ):
         return (_WAVE_GROUP6_DEFINE,)
     return ()

@@ -1,0 +1,55 @@
+{
+  "kind": "mixed_cohort_isolation_probe",
+  "date": "2026-09-07",
+  "status": "diagnostic_not_a_benchmark",
+  "hardware": "AMD Radeon Pro W7900 (gfx1100), GPU0",
+  "model": "Qwen3.8-27B GGUF Q4_K_M, production profile, K3, D24 greedy, 20 ms window",
+  "method": "campaign-artifacts/c1-k-sweep/isolation_probe.py: one product server per capacity (8 then 2), concurrent request cohorts from threads, canonical suite prompts, AR outputs compared token-exact against the same-probe control cohort at the same prompt index; makespan = max request wall (diagnostic context only - single-shot cohorts carry first-run effects and are not comparable to retained economics)",
+  "scenarios": {
+    "control8": {
+      "total_wall": 1.9788517653942108,
+      "mtp_engaged": 0,
+      "rows": 8
+    },
+    "mixed1x7": {
+      "total_wall": 2.3820007173344493,
+      "mtp_engaged": 1,
+      "rows": 8
+    },
+    "control2": {
+      "total_wall": 1.12750721629709,
+      "mtp_engaged": 0,
+      "rows": 2
+    },
+    "mixed1x1_c2": {
+      "total_wall": 1.6125261262059212,
+      "mtp_engaged": 1,
+      "rows": 2
+    },
+    "mixed2x0_c2": {
+      "total_wall": 1.3683423167094588,
+      "mtp_engaged": 2,
+      "rows": 2
+    }
+  },
+  "functional_gates": [
+    "mixed1x7: route_flags_match=True mtp_engaged=1/1",
+    "mixed1x1_c2: route_flags_match=True mtp_engaged=1/1",
+    "mixed2x0_c2: route_flags_match=True mtp_engaged=2/2",
+    "mixed1x7: ar_token_exact=true",
+    "mixed1x1_c2: ar_token_exact=true",
+    "mixed2x0_c2: ar_token_exact=true"
+  ],
+  "makespan_ratios_diagnostic": [
+    "mixed1x7: total_wall_ratio=1.204 (vs control8)",
+    "mixed1x1_c2: total_wall_ratio=1.430 (vs control2)",
+    "mixed2x0_c2: total_wall_ratio=1.214 (vs control2)"
+  ],
+  "notes": [
+    "mixed1x7 (capacity 8): the C1 MTP request runs the legacy singleton route (default evidence, packed_c1_target=false); AR cohort token-exact; makespan 1.204x of the pure-AR control.",
+    "At capacity 8 a 2-row MTP group correctly refuses to AR: the only registered C2 evidence row requires resident_capacity=2 (resident_capacity_not_qualified) - evidence policy working as designed; the qualified C2 configuration is capacity 2.",
+    "Capacity-2 mixed cohorts: 1 MTP + 1 AR (1.430x) and 2 MTP (1.214x) makespans vs the 2-AR control are diagnostic context with first-run effects; the retained C2/K3 economics cell (1.067x per-request) is the authoritative C2 performance number.",
+    "No cross-request token corruption in any scenario: every AR output matched its control exactly with MTP cycles running in the same server."
+  ],
+  "raw": "/tmp/he-bettermtp-raw/isolation-probe.json"
+}

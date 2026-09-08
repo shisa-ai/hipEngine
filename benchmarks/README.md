@@ -113,8 +113,12 @@ W7900 Qwen3.6 enables automatic MTP only for its qualified single-request and
 capacity-2/two-request keys. **Qwen3.8-27B `Q4_K_M` uses ordinary AR by default
 at every width.** Explicit MTP is available with production/BF16 KV, context
 4-95 and 24 generated tokens: two active requests at resident capacity 2 with
-K2/K3, or eight at capacity 8 with K3. K denotes
-maximum draft candidates per request; other keys fall back to AR.
+K2/K3, or eight at capacity 8 with K3. A single active request at capacity 8
+with K2/K3 currently engages through the legacy singleton target route (exact
+against AR, but not the qualified packed target); the packed single-request
+route remains a diagnostic-only test path until its serving evidence is
+registered. K denotes maximum draft candidates per request; other keys fall
+back to AR.
 
 The 2026-09-06 `epyc`/W7900 snapshots use all ten category/heldout prompts,
 greedy sampling, a 20 ms batch window and same-process true AR. All rows engage
@@ -127,12 +131,56 @@ or supply repeated-pair confidence estimates.
 | 8 / 8 | K3 | 92.67 | 97.35 | 1.051x |
 
 A separate explicit C2/K3 run measured 44.69 versus 41.87 AR tok/s (1.067x).
-The 56-cell screen mixes capacities and does not establish N=1 support.
-C1 public admission is withdrawn: its measurements used a legacy verifier;
-the repaired packed target is diagnostic-only. Automatic promotion needs
-repeated performance, numerical and lifecycle gates.
-[Measurements](results/2026-09-06-w7900-q4km-mtp-packet6-grid-and-c2k3.json);
+The 56-cell screen mixes capacities and does not establish N=1 support by
+itself. The single-request (C1) explicit route engages the legacy singleton
+target verifier today: the backend physical policy admits packed C1 only at
+K2/K3, and the measured packed route is far slower than the legacy route
+(below), so the legacy route remains the only viable single-request path and
+its rates are what a single-request user gets. Deeper single-request depths
+(K1, K4-K7) refuse before mutation on both routes: the physical policy lists
+no packed cell for them and every retained evidence row qualifies at most
+K3. [Measurements](results/2026-09-06-w7900-q4km-mtp-packet6-grid-and-c2k3.json);
 [qualification work](../docs/QWEN38-27B-GFX1100-CONCURRENCY2-BETTER-MTP.md).
+
+**Single-request (C1) explicit MTP, legacy target route.** Three independent
+runs per depth on one `epyc`/W7900 host; each run pairs every one of the ten
+canonical/heldout prompts against same-process true AR with alternating arm
+order, greedy, 24 generated tokens, 20 ms batch window, and a 10/10
+token-exact gate against the AR output. Automatic selection stays AR.
+
+| Requested depth | AR tok/s | MTP tok/s | MTP / AR (median, range) |
+| --- | ---: | ---: | ---: |
+| K0 (control, AR) | 24.42 | — | 0.9995x [0.9993, 0.9996] |
+| K2 (legacy route) | 24.37 | 38.59 | 1.5844x [1.5831, 1.5862] |
+| K3 (legacy route) | 24.36 | 39.70 | 1.6329x [1.6296, 1.6334] |
+
+The K1 screening cell measured 1.3916x on the same legacy route
+([1.3911, 1.3928]). These rates do not describe the packed target route
+(measured below); a K7 refusal probe confirms a requested K7 runs AR
+(engaged 0/10).
+
+**Single-request (C1) packed target route — measured, not viable.** Under the
+fail-closed diagnostic harness (injected one-request `packed_c1_target`
+evidence row, legacy verifier forbidden process-wide, packed frontier calls
+counted per run), the repaired packed target is exact but carries heavy
+per-cycle overhead at one active request: three balanced pairs per depth
+measured **K2 0.9908x** [0.9872, 0.9922] (a net loss against AR) and **K3
+1.1140x** [1.1120, 1.1174] against the same-run K0 control 0.9986x — versus
+1.5844x/1.6329x on the legacy route. The backend physical policy admits
+packed C1 only at K2/K3; K1 and K4-K7 have no packed cell (a K1 harness
+attempt is refused at the adapter and the legacy-forbidden guard converts
+that into a hard 500; the subsequent shutdown-command timeout is teardown
+noise after the aborted first request, not an idle hang). The packed
+single-request route also survives K0↔MTP switching: a 40-leg sequence
+(alternating explicit-MTP and automatic-K0 requests on one resident owner,
+both switch directions, 130 packed frontier calls, legacy verifier never
+invoked) kept every leg token-exact, engaged only the MTP legs, and exited
+cleanly
+([economics](results/2026-09-07-w7900-packed-route-c1-k0-k3-economics.json),
+[switch proof](results/2026-09-07-w7900-packed-route-c1-k0-mtp-switch-proof.json)).
+Reducing the packed one-row frontier overhead gates any packed-route
+product registration. Until then the legacy route is the only
+measured single-request MTP path.
 
 Strix Halo `Q4_K_M`: strict C1/K3 automatic at **18.191 tok/s (1.6445x AR)**; production explicit/K0. Production C8/K3 is **52.103 vs 52.025 AR tok/s**. Detailed gfx1151 evidence remains in result artifacts.
 
@@ -157,6 +205,12 @@ standardized complete-wall server protocol.
 | llama.cpp current HIP | 30.658 | 39.435 | 45.065 | 48.014 | 59.269 | 68.046 | 73.500 | 92.345 |
 | llama.cpp Laurent HIP | 31.446 | 39.172 | 45.457 | 45.946 | 60.427 | 74.465 | 77.420 | **95.830** |
 | hipEngine K3 / published AR | 1.5599x | 1.4771x | 1.2405x | 1.0660x | 0.9687x | 1.0152x | 1.0248x | 1.0953x |
+
+The C1 column of the K3 table and the single-request legacy-route
+re-measurement (three balanced pairs: K3 39.70 vs 24.36 AR tok/s,
+1.6329x median) both describe the legacy singleton target route. The
+packed single-request target route is measured separately and is much
+slower (below); the C2-C8 columns are unaffected.
 
 **Prefill**
 
