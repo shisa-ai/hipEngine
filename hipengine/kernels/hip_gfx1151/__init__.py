@@ -2019,47 +2019,40 @@ GGUF_T16_TARGET_VERIFIER_TRUE_ROWTILE_VARIANTS = {
 # so 8 is the first row count where the MMQ wins on every measured shape; 4
 # still loses on attn_gate (6144x5120). Agreement held across all 96
 # (shape, rows) cells at max relative error 0.0025-0.0099.
-GGUF_IQ_DENSE_MMQ_PREFILL_POLICY = {
-    "gguf_iq4_xs": {
+# Dense raw-IQ prefill route selection. Scored the way
+# EXECUTION-PROFILES.md section 6 specifies - candidate production against
+# hipEngine strict, not against an external engine - over 162 teacher-forced
+# rows:
+#
+#   route                     prefill      mean       p95       p99       max  >5e-2
+#   two-quant integer MMQ      127.2   0.001038  0.003479  0.014385  0.049730    0
+#   four-quant integer MMQ     171.9   0.002110  0.006797  0.024044  0.170390    1
+#   four-quant W4A16 (below)   150.9   0.000827  0.004547  0.012475  0.023513    0
+#
+# The integer-MMQ route breaches the binding 5e-2 absolute maximum-row ceiling
+# by 3.4x at one position; W4A16 passes every threshold in the calibrated
+# envelope. W4A16 is therefore the default at a 12% throughput cost, and the
+# integer-MMQ variant name is kept below so a route swap is a one-word edit.
+#
+# Both routes serve the same four quants - those whose K32 groups are
+# expressible as scale*int8 or, for W4A16, at all. Q3_K, IQ2_S and IQ2_XS carry
+# a scale per 16 elements and stay on the strict GEMV.
+_IQ_DENSE_W4A16_VARIANT = "dense_wmma_w4a16_prefill_bf16_bf16_out"
+_IQ_DENSE_INTEGER_MMQ_VARIANT = (
+    "dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out"
+)
+# min_rows is a measured crossover for the integer-MMQ route (worst case over
+# shapes: 0.59x at 2 rows, 0.68x at 4, 1.58x at 8). W4A16 has no 128-row
+# padding so it does not need a floor, but the shared value is kept because it
+# is safe for both and keeps a route swap free of a second variable.
+GGUF_IQ_DENSE_PREFILL_POLICY = {
+    quant: {
         "min_rows": 8,
         "max_rows": 131072,
-        "variant": "dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out",
-    },
-    "gguf_iq3_xxs": {
-        "min_rows": 8,
-        "max_rows": 131072,
-        "variant": "dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out",
-    },
-    # IQ3_S: one 4-bit scale per K32 group and grid magnitudes 1..15, so the
-    # signed residual fits int8 with wide margin. Leaf agreement 0.0047-0.0097
-    # max relative error, crossover 4 rows, up to 12.3x at 512.
-    "gguf_iq3_s": {
-        "min_rows": 8,
-        "max_rows": 131072,
-        "variant": "dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out",
-    },
-    "gguf_iq4_nl": {
-        "min_rows": 8,
-        "max_rows": 131072,
-        "variant": "dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out",
-    },
+        "variant": _IQ_DENSE_W4A16_VARIANT,
+    }
+    for quant in ("gguf_iq4_xs", "gguf_iq3_xxs", "gguf_iq3_s", "gguf_iq4_nl")
 }
-# All four expressible quants are routed. IQ4_NL and IQ3_S were each held out
-# briefly on a mean/p95 regression before the combined arm was measured; the
-# retained trade at 512/128 is:
-#
-#   arm                      prefill      mean       p95        max     top-1
-#   IQ4_XS+IQ3_XXS           127.2   0.0010796  0.0051188  0.0354152  162/162
-#   + IQ3_S                  137.7   0.0012985  0.0044588  0.0403417  161/162
-#   + IQ4_NL                 155.2   0.0013457  0.0071143  0.0412277  161/162
-#   all four (retained)      171.9   0.0014707  0.0077991  0.0297407  161/162
-#
-# Mean and p95 regress against the two-quant policy while the **maximum
-# improves** (0.0354 -> 0.0297, the best of the four) and both binding gates
-# pass comfortably. A per-tensor localization of the IQ4_NL cost was attempted
-# and failed - against the teacher the cost is not attributable to particular
-# tensors - so this is a systematic mean/tail-shape trade, not a defect to fix.
-# Rolling back is per-quant: delete an entry above. See docs/REFACTOR.md.
 
 GGUF_Q6_DENSE_INTEGER_MMQ_PREFILL_POLICY = {
     "gguf_q6_k_t16_qmicro_planar_v1": {
@@ -3554,7 +3547,7 @@ __all__ = [
     "GGUF_Q6_STANDARD_PREFILL_SHARED3R1_SHAPES",
     "GGUF_Q6_STANDARD_PREFILL_SHARED6R1_MIN_ROWS",
     "GGUF_Q6_STANDARD_PREFILL_SHARED6R1_MAX_ROWS",
-    "GGUF_IQ_DENSE_MMQ_PREFILL_POLICY",
+    "GGUF_IQ_DENSE_PREFILL_POLICY",
     "GGUF_Q6_DENSE_INTEGER_MMQ_PREFILL_POLICY",
     "GGUF_Q6_PLANAR_PREFILL_SHARED3R1_SHAPES",
     "GGUF_Q6_STANDARD_PREFILL_SHARED4_MIN_ROWS",

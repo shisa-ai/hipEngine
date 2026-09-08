@@ -60,6 +60,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import 
     q6_dense_integer_mmq_workspace,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_iq_source_mmq_prefill import (
+    iq_dense_mmq_has_workspace,
     iq_dense_mmq_workspace,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
@@ -3274,7 +3275,7 @@ def launch_gguf_linear(
             row_batch=raw_k_rowbatch,
             variant=raw_k_variant,
         )
-        dispatch = _iq_dense_mmq_prefill_dispatch(
+        dispatch = _iq_dense_prefill_dispatch(
             dispatch,
             rows=rows,
             in_features=in_features,
@@ -7326,21 +7327,33 @@ _IQ_DENSE_MMQ_N_ALIGN = 128
 _IQ_DENSE_MMQ_OUTPUT_VARIANTS = frozenset({"prefill_bf16_bf16_out"})
 
 
-def _iq_dense_mmq_prefill_dispatch(
+# The integer-MMQ route consumes a caller-owned Q8_1 activation plane; the
+# W4A16 route reads activations straight from the caller's buffer and needs
+# none. So the workspace is required per route, not for the family.
+_IQ_DENSE_INTEGER_MMQ_VARIANT = (
+    "dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out"
+)
+
+
+def _iq_dense_prefill_dispatch(
     dispatch: GGUFLinearDispatch,
     *,
     rows: int,
     in_features: int,
     out_features: int,
 ) -> GGUFLinearDispatch:
-    """Select the dense raw-IQ integer-MMQ prefill owner inside its workspace.
+    """Select the backend-declared dense raw-IQ prefill owner.
 
-    Inert unless an execution owner bound a workspace, the backend declares the
-    route for this quant, and the shape meets the kernel's K256/N128 alignment.
-    The strict per-row GEMV remains the registered owner everywhere else, so
-    rows=1 decode is untouched.
+    Inert unless the backend declares a route for this quant and the shape meets
+    the K256/N128 alignment both routes require. The integer-MMQ variant
+    additionally needs an execution owner to have bound its activation
+    workspace; W4A16 does not. The strict per-row GEMV remains the registered
+    owner everywhere else, so rows=1 decode is untouched.
     """
 
+    # Both routes are approximate relative to the strict GEMV, so both require
+    # an execution owner to have opened a dense-IQ prefill session. Without
+    # one, an ad-hoc launch_gguf_linear caller keeps the strict owner.
     if iq_dense_mmq_workspace() is None or dispatch.abi != "raw":
         return dispatch
     if dispatch.key.variant not in _IQ_DENSE_MMQ_OUTPUT_VARIANTS:
@@ -7349,7 +7362,7 @@ def _iq_dense_mmq_prefill_dispatch(
         return dispatch
     policy = backend_package_capability(
         dispatch.key.backend,
-        "GGUF_IQ_DENSE_MMQ_PREFILL_POLICY",
+        "GGUF_IQ_DENSE_PREFILL_POLICY",
         {},
     )
     if not isinstance(policy, Mapping):
@@ -7369,6 +7382,8 @@ def _iq_dense_mmq_prefill_dispatch(
     if shapes is not None and (int(in_features), int(out_features)) not in shapes:
         return dispatch
     if not admitted:
+        return dispatch
+    if variant == _IQ_DENSE_INTEGER_MMQ_VARIANT and not iq_dense_mmq_has_workspace():
         return dispatch
     key = KernelKey(
         dispatch.key.backend,

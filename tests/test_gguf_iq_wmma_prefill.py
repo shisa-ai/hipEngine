@@ -62,17 +62,21 @@ def test_registered_on_both_hip_backends(backend, quant):
     assert is_registered(KernelKey(backend, "linear", quant, w4a16._VARIANT))
 
 
-def test_not_routed_by_any_dispatch_policy():
-    """Registered but inert: the integer MMQ is the production owner.
+def test_is_the_gfx1151_dense_iq_prefill_default():
+    """W4A16 owns dense raw-IQ prefill on gfx1151.
 
-    W4A16 is retained as the exact-family path. It matches the strict GEMV's
-    accuracy but is 1.4-2.1x slower than the integer MMQ, so nothing selects it
-    until a profile explicitly asks for it.
+    Scored against hipEngine strict, as EXECUTION-PROFILES.md section 6
+    specifies, it passes every threshold in the calibrated envelope
+    (mean 0.000827, p95 0.004547, p99 0.012475, max 0.023513, top-1 100%)
+    while the integer-MMQ alternative breaches the 5e-2 absolute maximum-row
+    ceiling at 0.170390. It costs 12% throughput: 150.9 against 171.9 tok/s.
     """
     load_backend_kernel_package("hip_gfx1151")
     policy = backend_package_capability(
-        "hip_gfx1151", "GGUF_IQ_DENSE_MMQ_PREFILL_POLICY", {})
-    assert w4a16._VARIANT not in str(policy)
+        "hip_gfx1151", "GGUF_IQ_DENSE_PREFILL_POLICY", {})
+    assert set(policy) == {"gguf_iq4_xs", "gguf_iq3_xxs", "gguf_iq3_s", "gguf_iq4_nl"}
+    for quant, entry in policy.items():
+        assert entry["variant"] == w4a16._VARIANT, quant
 
 
 # ------------------------------------------------------------------ validation
