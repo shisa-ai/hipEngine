@@ -134,14 +134,23 @@ These families implement Qwen3.5/Qwen3.6 PARO W4A16, shared W8A16, full-attentio
 | Runtime state | `runtime/state.{hip,py}` | token embedding, positions/metadata, graph record/commit, scalar state, profiling wall-clock marker | Device-side graph/verify bookkeeping, indexed row state, token publication, and profiling-only steady-clock boundaries. |
 | Sampling | `sampling/sampler.{hip,py}` | `sampler`, `mtp_draft_topk` | Greedy/temperature/top-k helpers and bounded draft top-k. |
 
-**Compact DMS attention** — `attention/dms_compact.{hip,py}` registers `dms_extract_decision`, `dms_decision_source`, `dms_streaming_pack`, `dms_append_decode`, and `dms_compact_attn_decode` (grouped GQA fallback plus bounded-LDS split-K) for the compact-KV path. The CPU-reference oracles in `cpu_reference/dms.py` are the registered strict fallbacks for every key; the kernels are wired into `DMSCompactBackend` behind explicit device-payload selection, and no model package defaults to DMS.
+**Compact DMS attention** — `attention/dms_compact.{hip,py}` registers `dms_extract_decision`, `dms_decision_source`, `dms_streaming_pack`, `dms_append_decode`, and `dms_compact_attn_decode` (grouped GQA fallback plus bounded-LDS split-K) for the compact-KV path. The split-K family includes the `dms_compact_attn_splitk_group6_wave_producer_kernel` for the Qwen3.8 24Q/4KV/D256 geometry (one compact token scored per wave, Q shared across the GQA group), compiled for gfx1151 and gfx1100; the grouped and scalar split-K producers remain registered fallbacks. The CPU-reference oracles in `cpu_reference/dms.py` are the registered strict fallbacks for every key; the kernels are wired into `DMSCompactBackend` behind explicit device-payload selection, and no model package defaults to DMS.
 
 The explicit gfx1100 `attention/dms_compact_int8.{hip,py}` family adds compact
-INT8 pack/append and bounded split-K attention with FP32 per-token/head scales.
-Device fixtures cover exact codec bytes/scales and ownership, above-window
-retention, fail-closed overflow, attention numerics, and snapshot restoration.
-BF16 kernels remain unchanged fallbacks; model-serving INT8 DMS qualification
-is separate and is not established by these device fixtures.
+INT8 pack/append and bounded split-K attention with FP32 per-token/head scales:
+the append path is the chunked keep-scan (`dms_int8_append_kernel`, one launch per
+chunk rather than a serial per-token loop), and the attention path registers the
+wave-grouped GQA producer `dms_int8_attn_split_wave_kernel` (in-register int8
+loads with scale dequant, Q shared across the GQA group) with the generic
+`dms_int8_attn_split_kernel` as fallback. Device fixtures cover exact codec
+bytes/scales and ownership, above-window retention, fail-closed overflow,
+attention numerics, and snapshot restoration. BF16 kernels remain unchanged
+fallbacks; model-serving INT8 DMS qualification is separate and is not
+established by these device fixtures. Speed and correctness evidence for the
+wave6 producer, chunked keep-scan, and wave-grouped INT8 producer lives in
+`benchmarks/results/2026-09-08-w7900-dense-vs-dms-speed-probe-final.json` and
+the capacity lane's XTX verification
+(`benchmarks/results/2026-09-08-rx7900xtx-dms-int8-merged-lane-capacity.json`).
 
 ### GGUF / Qwen / Laguna path
 
