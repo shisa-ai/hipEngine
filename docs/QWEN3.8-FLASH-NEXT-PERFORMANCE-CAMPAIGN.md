@@ -84,6 +84,49 @@ not repeating the completed suffix admission. The September 5 portfolio was
 routed MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner
 cost; the active review queue below now controls execution.
 
+## Production-correctness re-review (September8 UTC)
+
+**Contract correction (user directive, recorded in AGENTS.md):** there is
+no exactness contract; the binding contract is production correctness
+(docs/EXECUTION-PROFILES.md): exact control/ownership in every profile plus
+the calibrated production numerical envelope. A candidate is not discarded
+for failing bit-identity with the strict parent; it is reviewed against the
+production gates. Re-review of prior strict/exactness-based discards:
+
+- **Q8 early wave publication** — performance rejection (0.65-0.91x).
+  Stands; correctness was never the reason.
+- **Expanded F32 Q8 cache** — performance rejection (0.161x) plus
+  footprint/setup costs. Stands.
+- **Q5_K bundle (5% prefill win)** — production-envelope rejection
+  (prefill-last mean KL 0.001179 > 0.001). Stands rejected under the
+  binding bars (bars move only via explicit policy decision); flagged as
+  the highest-value near-miss for a KL-shaving variant.
+- **Q8 MMQ attention-gate (K2560/N6144)** — rejected for nondeterminism
+  (repeat 1 differs from repeats 2-3), binding in every profile. REOPENED
+  as a target: localize and fix the MMQ warmup/correction state and the
+  candidate re-qualifies (it passed numerical scopes and won p508).
+- **GDN gate 3-plane MMQ (linear family)** — the "scheme does not
+  transfer" conclusion applied to the exact risk+repair scheme only. The
+  specific (2560,6144) 3-plane candidate failed the production envelope
+  narrowly (p95 5.26e-3 vs 5e-3, top-1 98.67% vs 99%) and stays rejected,
+  but modified variants (fourth plane, fp32-scale in-kernel staging like
+  the Q5_1 iu8 kernel) remain production-eligible; the discriminator's
+  float64 evidence (1-2 ulp chains) suggests the envelope gap is closable.
+  The "structural floor" phrasing is softened accordingly: it bounds the
+  exact route, not the family.
+- **2-plane MMQ** — KL mean 2.8e-3 vs 1e-3. Stands.
+- **Q5_1 MMQ ds4 chain** — speed rejection (0.75x). Stands.
+
+**Effect on R4b (Q5_1 iu8 down):** flip escapes at multiplier 4 (up to 7
+per chunk-layer on captured activations) are bounded drift, not contract
+violations; the state-gate evidence at multiplier 4 showed teacher-forced
+prefill logits bit-identical at every size with only free-running decode
+divergence at p4096 (diagnostic under the contract). The default multiplier
+is nonetheless raised to the screened floor margin 16 (zero flips across
+all five captured layers/cases) so the route remains bit-identical to the
+strict parent in practice and every existing gate stays green, at ~1.3x
+in-situ owner speedup versus ~1.6x at multiplier 4.
+
 ## Current-host owner refresh
 
 ### Review conclusions (September 8, 2026)
