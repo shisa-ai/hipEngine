@@ -47,6 +47,10 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_mmq_prefill import (
     q8_1_d8s8_f32_nbytes,
     register_gguf_k_mmq_prefill_kernels,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_iq_wmma_prefill import (
+    build_gguf_iq_wmma_prefill,
+    register_gguf_iq_wmma_prefill_kernels,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_iq_source_mmq_prefill import (
     gguf_iq3_xxs_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out,
     gguf_iq3_s_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out,
@@ -332,7 +336,9 @@ __all__ = [
     "iq_dense_mmq_session",
     "iq_dense_mmq_workspace",
     "register_gguf_iq_gemv_kernels",
+    "build_gguf_iq_wmma_prefill",
     "register_gguf_iq_source_mmq_prefill_kernels",
+    "register_gguf_iq_wmma_prefill_kernels",
     "register_gguf_iq_selected_prefill_kernels",
     "register_gguf_k_gemv_kernels",
     "register_gguf_k_mmq_prefill_kernels",
