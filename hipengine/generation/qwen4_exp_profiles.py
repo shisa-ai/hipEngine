@@ -509,6 +509,11 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         # +9.2% prefill geo-mean with all 12 cases winning; production-only
         # binding, exact fused parent stays the strict fallback.
         "HIPENGINE_QWEN4_EXP_GR_IU8": "1" if production else "0",
+        # iu8-WMMA GR down (10240->320, T1, same chain): KL <= 5.5e-8 vs
+        # incumbent, top-1 100%, deterministic; full-suite A/B +2.0%
+        # prefill geo-mean on top of the promoted up leg; production-only
+        # binding, exact coltile parent stays the fallback.
+        "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK": "1" if production else "0",
