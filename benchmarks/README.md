@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-08**
+Last updated: **2026-09-09**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -257,23 +257,48 @@ claimed. [Tokenwise protocol and category results](results/2026-09-07-zbook-ud-t
 
 ### Raw IQ dense prefill (gfx1151)
 
-The raw IQ/Q3_K dense projection kernel now tiles prompt rows, decoding each
-weight once per block instead of once per row. Measured on zbook / Radeon
-8060S against the same kernel restricted to one row per block, alternating the
-arms inside one process:
+The published UD files reached none of hipEngine's optimized kernels: a
+model-wide veto stripped the repacked layouts from every rank-2 tensor whenever
+any raw-IQ tensor was present, so 0% of their weight bytes were in a layout the
+optimized families can consume, against 94.8% for the plain `Q4_K_S` file of the
+same model. Making that veto per-tensor, widening the dense T16 role coverage,
+and routing raw IQ prefill through the integer-MMQ kernel took `UD-Q4_K_M`
+prefill from 22.1 to 171.9 tok/s on the published sweep protocol (512/128,
+zbook / Radeon 8060S).
 
-| Shape | Per-launch, one row per block | Per-launch, shipped row tile | Ratio |
+| Stage | Optimized weight bytes | Prefill | Decode |
 | --- | ---: | ---: | ---: |
-| IQ4_XS, N=5120 K=17408, 512 rows | 348.7 ms | 86.1 ms | 4.05x |
-| IQ3_S, N=17408 K=5120, 512 rows | 317.7 ms | 97.4 ms | 3.26x |
-| IQ2_XS, N=17408 K=5120, 512 rows | 290.2 ms | 87.1 ms | 3.33x |
+| Start | 0.0% | 22.1 tok/s | 6.21 tok/s |
+| Per-tensor repack eligibility | 44.2% | 29.9 | 7.24 |
+| Dense T16 role coverage | 61.3% | 41.5 | 7.62 |
+| Dense IQ integer MMQ | 61.3% | 127.2 | 7.63 |
+| Four-quant MMQ (current) | 61.3% | **171.9** | 7.71 |
 
-End-to-end on the public `UD-Q4_K_M` path, same session and same prompt,
-prefill runs 7.60 → 13.17 tok/s (+73%); decode is unchanged, because the
-shipped policy keeps one row per block at rows=1. Outputs are bit-identical
-between every row-tile width and the one-row-per-block baseline. These are
-gross numbers from a power-limited laptop with a measured ±5% floor, so the
-ratios are provisional. [Artifact](results/2026-09-08-zbook-ud-iq-dense-rowbatch.json).
+The same host and protocol run the plain `Qwen3.8-27B-Q4_K_S` file at 294.8
+tok/s, so the gap between the two files narrowed from 13.3x to 1.72x.
+
+**Accuracy is ranked against hipEngine strict, not against an external engine.**
+`docs/EXECUTION-PROFILES.md` section 6 defines the production gate as strict
+versus candidate production on the same artifact, and section 7.1 is explicit
+that another engine is a comparison oracle rather than the definition of strict
+bytes. Scored that way, over 162 teacher-forced rows:
+
+| Route | Mean | p95 | p99 | Max | Rows over the 5e-2 ceiling |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Two-quant MMQ | 0.001038 | 0.003479 | 0.014385 | 0.049730 | 0 |
+| Four-quant MMQ (current) | 0.002110 | 0.006797 | 0.024044 | **0.170390** | **1** |
+| Four-quant W4A16 | **0.000827** | 0.004547 | 0.012475 | **0.023513** | 0 |
+
+The current four-quant integer-MMQ default **exceeds the binding 5e-2 absolute
+maximum-row ceiling at one position**, so it is not admissible under that
+envelope as it stands. The W4A16 route passes every threshold at 150.9 tok/s,
+12% below the integer MMQ. The default is under review; see
+[`gate reference`](results/2026-09-09-zbook-ud-production-gate-reference.json).
+
+Every rate here is gross, from a power- and thermal-limited laptop whose
+plain-file result is 294.8 tok/s against a published 396.1 for the same
+model/quant on a desktop part. Treat the absolute numbers as provisional
+pending that re-measure; the ratios and the accuracy ranking are same-host.
 
 A separate K_S raw IQ2_XS candidate reduces counted weight buffers from
 21,125,912,576 to 20,973,418,496 bytes (−0.72%), with 162/162 baseline top-1
