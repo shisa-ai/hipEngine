@@ -472,6 +472,12 @@ def gguf_iq3_xxs_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out(
     _launch_iq_dense_mmq("gguf_iq3_xxs", *args, **kwargs)
 
 
+def gguf_iq4_nl_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out(
+    *args, **kwargs
+) -> None:
+    _launch_iq_dense_mmq("gguf_iq4_nl", *args, **kwargs)
+
+
 def register_gguf_iq_source_mmq_prefill_kernels(*, replace: bool = True) -> None:
     for quant, function in (
         (
@@ -496,6 +502,7 @@ def register_gguf_iq_source_mmq_prefill_kernels(*, replace: bool = True) -> None
     for quant, function in (
         ("gguf_iq4_xs", gguf_iq4_xs_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out),
         ("gguf_iq3_xxs", gguf_iq3_xxs_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out),
+        ("gguf_iq4_nl", gguf_iq4_nl_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out),
     ):
         register(
             KernelKey("hip_gfx1100", "linear", quant, _DENSE_VARIANT),
@@ -516,6 +523,7 @@ __all__ = [
     "gguf_iq3_xxs_selected_mmq_i128_j128_k256_q8_1_ds4x2_prefill_compact_bf16_bf16_out",
     "gguf_iq4_xs_selected_mmq_i128_j128_k256_q8_1_ds4_prefill_compact_bf16_bf16_out",
     "gguf_iq3_xxs_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out",
+    "gguf_iq4_nl_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out",
     "gguf_iq4_xs_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out",
     "iq_dense_mmq_activation_nbytes",
     "iq_dense_mmq_nbytes",

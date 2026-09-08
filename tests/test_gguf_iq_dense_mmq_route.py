@@ -35,7 +35,7 @@ def _hip_available() -> bool:
 
 
 @pytest.mark.parametrize("backend", ("hip_gfx1100", "hip_gfx1151"))
-@pytest.mark.parametrize("quant", ("gguf_iq4_xs", "gguf_iq3_xxs"))
+@pytest.mark.parametrize("quant", ("gguf_iq4_xs", "gguf_iq3_xxs", "gguf_iq4_nl"))
 def test_dense_route_is_registered_on_both_hip_backends(backend, quant):
     load_backend_kernel_package(backend)
     assert is_registered(KernelKey(backend, "linear", quant, _DENSE_VARIANT))
@@ -127,11 +127,49 @@ def test_policy_floor_matches_the_measured_crossover():
 
 
 def test_unsupported_quants_keep_the_strict_owner():
-    """IQ2_XS/IQ3_S/Q3_K have no MMQ kernel and must not be routed."""
+    """Quants whose 32-element groups need finer scales must not be routed.
+
+    The MMQ expansion returns one float scale plus 32 signed int8 per K32
+    group. Q3_K, IQ2_S and IQ2_XS carry a scale per 16 elements, so under a
+    per-32 scale their residual integers reach +/-128 and +/-1333 respectively
+    and do not fit int8. IQ3_S does fit (+/-15) but needs its 2 KB grid table
+    ported into this translation unit, so it is not wired yet.
+    """
     with iq_mmq.iq_dense_mmq_session(True, workspace_ptr=1 << 20, workspace_nbytes=1 << 24):
-        for quant in ("gguf_iq2_xs", "gguf_iq3_s", "gguf_q3_k", "gguf_iq2_s", "gguf_iq4_nl"):
+        for quant in ("gguf_iq2_xs", "gguf_iq3_s", "gguf_q3_k", "gguf_iq2_s"):
             out = _dispatch(quant, rows=512, in_features=5120, out_features=17408)
             assert out.key.variant == "prefill_bf16_bf16_out", quant
+
+
+def test_every_policy_quant_has_a_registered_owner():
+    """A policy entry without a registered kernel would silently do nothing."""
+    load_backend_kernel_package("hip_gfx1151")
+    policy = backend_package_capability(
+        "hip_gfx1151", "GGUF_IQ_DENSE_MMQ_PREFILL_POLICY", {})
+    assert set(policy) == {"gguf_iq4_xs", "gguf_iq3_xxs"}
+    for quant, entry in policy.items():
+        assert is_registered(
+            KernelKey("hip_gfx1151", "linear", quant, entry["variant"]))
+
+
+def test_iq4_nl_has_kernel_support_but_is_held_out_of_the_default():
+    """IQ4_NL is implemented and correct, but not routed by default.
+
+    Enabling it measured prefill 127.2 -> 155.2 tok/s and moved the teacher
+    gate mean 0.0010796 -> 0.0013457, p95 +39%, top-1 162/162 -> 161/162. The
+    median per-position delta is 0.000000 while a few positions diverge
+    100-300x, so a small number of sensitive tensors have to be identified
+    before it can be the default.
+    """
+    load_backend_kernel_package("hip_gfx1151")
+    assert is_registered(
+        KernelKey("hip_gfx1151", "linear", "gguf_iq4_nl", _DENSE_VARIANT))
+    policy = backend_package_capability(
+        "hip_gfx1151", "GGUF_IQ_DENSE_MMQ_PREFILL_POLICY", {})
+    assert "gguf_iq4_nl" not in policy
+    with iq_mmq.iq_dense_mmq_session(True, workspace_ptr=1 << 20, workspace_nbytes=1 << 24):
+        out = _dispatch("gguf_iq4_nl", rows=512, in_features=5120, out_features=17408)
+    assert out.key.variant == "prefill_bf16_bf16_out"
 
 
 # ------------------------------------------------------------------- workspace

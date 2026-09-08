@@ -15,6 +15,9 @@ namespace {
 using source_i32x4_t = int __attribute__((ext_vector_type(4)));
 using source_i32x8_t = int __attribute__((ext_vector_type(8)));
 
+// One K256 span of IQ4_NL is eight 18-byte blocks laid contiguously.
+constexpr int IQ4_NL_BLOCK_BYTES = 18;
+constexpr int IQ4_NL_K256_BYTES = 8 * IQ4_NL_BLOCK_BYTES;
 constexpr int IQ_SOURCE_MMQ_I = 128;
 constexpr int IQ_SOURCE_MMQ_J = 128;
 constexpr int IQ_SOURCE_MMQ_K = 256;
@@ -122,15 +125,36 @@ __device__ inline void iq4_xs_expand_group32(
   scale = fp16_bytes_to_float(block) * static_cast<float>(quant_scale);
 }
 
+// IQ4_NL stores 32 elements per 18-byte block, so one K256 span is eight
+// consecutive blocks (144 bytes) and each K32 group is exactly one of them,
+// carrying its own FP16 scale. The payload nibble order is identical to
+// IQ4_XS, so the same packer applies unchanged.
+__device__ inline void iq4_nl_expand_group32(
+    const uint8_t* __restrict__ block,
+    int group32,
+    uint32_t* __restrict__ words,
+    float& scale) {
+  const uint8_t* __restrict__ sub = block + group32 * IQ4_NL_BLOCK_BYTES;
+  const uint8_t* __restrict__ qs = sub + 2;
+#pragma unroll
+  for (int word = 0; word < 4; ++word) {
+    words[word] = iq4_xs_pack_table4(qs, 4 * word, false);
+    words[word + 4] = iq4_xs_pack_table4(qs, 4 * word, true);
+  }
+  scale = fp16_bytes_to_float(sub);
+}
+
 template <int QTYPE>
 __device__ inline void iq_source_expand_group32(
     const uint8_t* __restrict__ block,
     int group32,
     uint32_t* __restrict__ words,
     float& scale) {
-  static_assert(QTYPE == 3 || QTYPE == 4,
-                "source IQ MMQ supports IQ3_XXS/IQ4_XS");
-  if constexpr (QTYPE == 3) {
+  static_assert(QTYPE == 1 || QTYPE == 3 || QTYPE == 4,
+                "source IQ MMQ supports IQ4_NL/IQ3_XXS/IQ4_XS");
+  if constexpr (QTYPE == 1) {
+    iq4_nl_expand_group32(block, group32, words, scale);
+  } else if constexpr (QTYPE == 3) {
     iq3_xxs_expand_group32(block, group32, words, scale);
   } else {
     iq4_xs_expand_group32(block, group32, words, scale);
@@ -180,7 +204,8 @@ __global__ void gguf_iq_selected_mmq_i128_j128_k256_q8_1_ds4_kernel(
   const int weight_input_local = wave * 16 + lane16;
   const int64_t blocks_per_weight_row = in_features / QK_K;
   const int block_bytes =
-      QTYPE == 3 ? IQ3_XXS_BLOCK_BYTES : IQ4_XS_BLOCK_BYTES;
+      QTYPE == 1 ? IQ4_NL_K256_BYTES
+                 : (QTYPE == 3 ? IQ3_XXS_BLOCK_BYTES : IQ4_XS_BLOCK_BYTES);
   const int64_t weight_row_bytes = blocks_per_weight_row * block_bytes;
   const int64_t expert_bytes = out_features * weight_row_bytes;
 
@@ -669,6 +694,35 @@ hipengine_gguf_iq3_xxs_selected_mmq_i128_j128_k256_q8_1_ds4x2_prefill_compact_bf
     int64_t mmq_total_rows,
     hipStream_t stream) {
   return launch_iq3_source_mmq_d4x2(
+      xq,
+      expert_start_compact,
+      expert_start_mmq,
+      tile_expert,
+      qweight,
+      out,
+      compact_rows,
+      in_features,
+      out_features,
+      num_experts,
+      mmq_total_rows,
+      stream);
+}
+
+extern "C" int
+hipengine_gguf_iq4_nl_selected_mmq_i128_j128_k256_q8_1_ds4_prefill_compact_bf16_bf16_out(
+    const void* xq,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_mmq,
+    const int64_t* tile_expert,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    int64_t mmq_total_rows,
+    hipStream_t stream) {
+  return launch_iq_source_mmq<1>(
       xq,
       expert_start_compact,
       expert_start_mmq,

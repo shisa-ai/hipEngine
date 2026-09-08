@@ -25,7 +25,9 @@ from hipengine.kernels.hip_gfx1100.quant import gguf_k_mmq_prefill as q8_mmq
 from hipengine.kernels.hip_gfx1100.quant.gguf_iq_dense import build_gguf_iq_dense, launch
 from hipengine.loading.gguf import GGUFReader
 
-MODEL = '/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf'
+import os
+MODEL = os.environ.get('CROSSOVER_MODEL', '/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf')
+QUANT = os.environ.get('CROSSOVER_QUANT', 'IQ4_XS')
 ROWS = (1, 2, 4, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192, 256, 384, 512)
 ROUNDS = 5
 
@@ -63,13 +65,13 @@ def sweep(tensor, raw, cv, reps):
 
             def run_gemv():
                 launch(x_b.ptr, w_b.ptr, ref_b.ptr, rows, k, n,
-                       quant='gguf_iq4_xs', output='bf16', library=dense_lib)
+                       quant='gguf_' + QUANT.lower(), output='bf16', library=dense_lib)
 
             def run_mmq():
                 with iq_mmq.iq_dense_mmq_session(
                         True, workspace_ptr=int(ws_b.ptr), workspace_nbytes=ws_nbytes,
                         library=mmq_lib, producer_library=prod_lib):
-                    iq_mmq.gguf_iq4_xs_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out(
+                    getattr(iq_mmq, f'gguf_{QUANT.lower()}_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out')(
                         x_b.ptr, w_b.ptr, cand_b.ptr, rows, k, n)
 
             for fn in (run_gemv, run_mmq):
@@ -111,7 +113,7 @@ def main():
     reader = GGUFReader(MODEL)
     seen, picks = set(), []
     for t in reader.info.tensors:
-        if (t.ggml_type_name != 'IQ4_XS' or not t.name.startswith('blk.')
+        if (t.ggml_type_name != QUANT or not t.name.startswith('blk.')
                 or len(t.shape) != 2):
             continue
         shape = (int(t.shape[0]), int(t.shape[1]))
