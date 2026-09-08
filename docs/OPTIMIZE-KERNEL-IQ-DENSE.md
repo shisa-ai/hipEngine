@@ -44,7 +44,20 @@ is deprioritized under:
    three because those kernels already exist and are qualified.
 3. A5: a dense entry point over the existing IQ integer-MMQ prefill kernels.
 
-Full evidence: `worklog/entries/20260908T042726.067135Z-lhl-ud-prefill-route-gap-9240cf.md`.
+**Root cause found, statically.** `plan_qwen35_gguf_materialization` computes
+one model-wide boolean — `use_decode_repack = requested and not
+gguf_ar_decode_repack_veto(...)`, where the veto is `any(type in {IQ2_XS,
+IQ3_XXS, IQ4_XS})` over all AR layer tensors. The UD files' IQ4_XS tensors trip
+it, which strips the T16/x8/planar layouts from **all 554 rank-2 tensors**. So
+the UD files plan **0.0%** of their weight bytes into an optimized layout, against
+94.8% for the plain file. Lifting it to a per-tensor predicate would put 44.2%
+(K_M) / 34.4% (K_S) onto already-qualified kernels *and* save ~1 GB of VRAM,
+because the `q4_k_pack8` fallback expands to ~6 bpw.
+
+The plan, the ordered queue, and the queued GPU validation are in
+[`UD-OPTIMIZED-ROUTE-PLAN.md`](UD-OPTIMIZED-ROUTE-PLAN.md). Full evidence:
+`worklog/entries/20260908T042726.067135Z-lhl-ud-prefill-route-gap-9240cf.md`
+and `…T060056.351273Z-lhl-ud-repack-veto-root-cause-c022cc.md`.
 
 ## Measurement protocol (read before adding a row)
 
