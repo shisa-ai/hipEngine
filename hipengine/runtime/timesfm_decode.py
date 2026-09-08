@@ -334,10 +334,9 @@ class TimesFMGPUDecoder:
             self._gemm(bufs.normed.ptr, w["qkv"], bufs.qkv.ptr, rows, h, self.spec.qkv_size)
             if dt == "f16":
                 # Batched-GEMM attention (head-major caches).
-                timesfm_rope_f32(bufs.qkv.ptr, bufs.pos.ptr, self._timescale.ptr, batch, n, heads, hd, patch_stride, 0, dtype=dt)
-                timesfm_rope_f32(bufs.qkv.ptr, bufs.pos.ptr, self._timescale.ptr, batch, n, heads, hd, patch_stride, h, dtype=dt)
                 timesfm_qkv_norm_scatter_f16(
-                    bufs.qkv.ptr, w["q_ln"], w["k_ln"], w["perdim"],
+                    bufs.qkv.ptr, bufs.pos.ptr, self._timescale.ptr,
+                    w["q_ln"], w["k_ln"], w["perdim"],
                     batch, n, cache_size, heads, hd, patch_stride, start,
                     bufs.qt.ptr, bufs.caches_k[layer].ptr, bufs.caches_v[layer].ptr,
                 )
