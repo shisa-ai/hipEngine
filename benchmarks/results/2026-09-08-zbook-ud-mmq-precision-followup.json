@@ -1,0 +1,139 @@
+{
+  "diagnostic_only": true,
+  "promotion_qualified": false,
+  "model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+  "capture_host": "zbook",
+  "hardware": "Radeon 8060S / gfx1151",
+  "mmq_commit": "eee156698",
+  "input_tokens_equal": true,
+  "arms": {
+    "original_scalar_raw": {
+      "f16kv": {
+        "mean": 0.0011282077788629464,
+        "p95": 0.0033651677915791903,
+        "p99": 0.02457056423979625,
+        "maximum": 0.040433296979119904,
+        "top1_matches": 161,
+        "positions": 162,
+        "rate_limiter_step1_kl": 0.001270231771039106,
+        "rate_limiter_step1_top1": true,
+        "control_step2_kl": 0.0007078103040190544,
+        "worst_prompt_index": 17,
+        "worst_step": 3
+      },
+      "bf16kv": {
+        "mean": 0.00120341358964269,
+        "p95": 0.005043597641752106,
+        "p99": 0.013490984115116563,
+        "maximum": 0.030410558805488666,
+        "top1_matches": 162,
+        "positions": 162,
+        "rate_limiter_step1_kl": 0.030410558805488666,
+        "rate_limiter_step1_top1": true,
+        "control_step2_kl": 0.00043614879474706473,
+        "worst_prompt_index": 10,
+        "worst_step": 1
+      }
+    },
+    "u3_bulk": {
+      "f16kv": {
+        "mean": 0.0012375950108719292,
+        "p95": 0.005378582852669449,
+        "p99": 0.021105249578223483,
+        "maximum": 0.03327619824808778,
+        "top1_matches": 162,
+        "positions": 162,
+        "rate_limiter_step1_kl": 0.011203584141330984,
+        "rate_limiter_step1_top1": true,
+        "control_step2_kl": 0.007483872287478008,
+        "worst_prompt_index": 4,
+        "worst_step": 6
+      },
+      "bf16kv": {
+        "mean": 0.0010864304856961972,
+        "p95": 0.006197680852293147,
+        "p99": 0.010605635095587802,
+        "maximum": 0.01614682617758106,
+        "top1_matches": 161,
+        "positions": 162,
+        "rate_limiter_step1_kl": 0.0003019182735772303,
+        "rate_limiter_step1_top1": true,
+        "control_step2_kl": 0.0031148423879527607,
+        "worst_prompt_index": 13,
+        "worst_step": 3
+      }
+    },
+    "role_coverage_bulk": {
+      "f16kv": {
+        "mean": 0.0012708514519468408,
+        "p95": 0.0048322185213741,
+        "p99": 0.02391006758092404,
+        "maximum": 0.03873417962904139,
+        "top1_matches": 161,
+        "positions": 162,
+        "rate_limiter_step1_kl": 0.03873417962904139,
+        "rate_limiter_step1_top1": true,
+        "control_step2_kl": 7.770085857189456e-05,
+        "worst_prompt_index": 10,
+        "worst_step": 1
+      },
+      "bf16kv": {
+        "mean": 0.0012688285146554847,
+        "p95": 0.006893776323126815,
+        "p99": 0.014497026621675776,
+        "maximum": 0.01616306150651704,
+        "top1_matches": 162,
+        "positions": 162,
+        "rate_limiter_step1_kl": 0.00670601910841908,
+        "rate_limiter_step1_top1": true,
+        "control_step2_kl": 0.0021055803962933906,
+        "worst_prompt_index": 7,
+        "worst_step": 8
+      }
+    },
+    "dense_mmq_bulk": {
+      "f16kv": {
+        "mean": 0.0010796273991348971,
+        "p95": 0.005118821081621581,
+        "p99": 0.021700867444165682,
+        "maximum": 0.03541523517386978,
+        "top1_matches": 162,
+        "positions": 162,
+        "rate_limiter_step1_kl": 2.7721564896236424e-05,
+        "rate_limiter_step1_top1": true,
+        "control_step2_kl": 0.00022468174801682623,
+        "worst_prompt_index": 4,
+        "worst_step": 6
+      },
+      "bf16kv": {
+        "mean": 0.0010393048742264649,
+        "p95": 0.0057511461807433365,
+        "p99": 0.012939302061263229,
+        "maximum": 0.016772152408977184,
+        "top1_matches": 161,
+        "positions": 162,
+        "rate_limiter_step1_kl": 0.016772152408977184,
+        "rate_limiter_step1_top1": true,
+        "control_step2_kl": 0.0007164541543766278,
+        "worst_prompt_index": 10,
+        "worst_step": 1
+      }
+    }
+  },
+  "source_sha256": {
+    "/tmp/ud-q56-raw-context512-M.npz": "9c161fed77527d3f62a492b96dac01b86f0614eb20ec5ba9d8e0d36e2550a58e",
+    "/tmp/ud-u3-prod-M-baseline.npz": "f1d9547a7a8ef56a364180199eeb8d140c3ad0061eccf2bc54175a8f3e496cb0",
+    "/tmp/claude-1000/-home-lhl-hipEngine-ud-quants/0f04647b-dba5-488f-9153-ba04c7e5b9a5/scratchpad/ud-roles-prod-M-baseline.npz": "58c971b199c25514a4997834293743cbc1dca3b9105cf3627c17a6bab66eada7",
+    "/tmp/claude-1000/-home-lhl-hipEngine-ud-quants/0f04647b-dba5-488f-9153-ba04c7e5b9a5/scratchpad/ud-mmq-prod-M-baseline.npz": "d79170ffb2db464ec961ec39e6bcff0872a88b3fa10a07bb43b61c75c3e8fc6c",
+    "/tmp/ud-llama-context512-M.f32": "956989271083a9baee8395b97aaaf71afbb2c0c32e5815f234c7ebb384eb38b3",
+    "/tmp/ud-llama-context512-M-bf16kv.f32": "04e48581977953704cd012ab347dcbab8ec970e58f3a4bf66f59568a83dc2951",
+    "/tmp/ud-q56-context512-M-baseline.npz": "d8d11e5a720f19e0277bebf4effbfe62db52f1a497d0a5fcf856c9caa6973b5c",
+    "/tmp/ud-context512-teacher-compare.py": "e577a7ef72f5bfd9ddb06e0b2760a1363bfb2b3c7dac2d265de6a4cbe055ed0e"
+  },
+  "limitations": [
+    "Saved-capture CPU comparison; no new GPU work.",
+    "Original spike used scalar prefill; newer production arms use bulk/WMMA prefill and GEMV decode. The MMQ-only route does not execute on the scalar reproduction.",
+    "The two teachers have different KV precision; neither has been changed or selected to relax the gate.",
+    "No new recurrent-state capture or state intervention for the MMQ arm; mechanism repair is not established."
+  ]
+}
