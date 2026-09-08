@@ -1,6 +1,6 @@
 import pytest
 
-from scripts.llamacpp_raw_suite_bench import completion_row
+from scripts.llamacpp_raw_suite_bench import completion_row, require_idle_memory
 
 
 def response():
@@ -25,3 +25,9 @@ def test_rejects_incomplete_or_invalid_response(key, value):
     payload[key] = value
     with pytest.raises(ValueError):
         completion_row(payload, [1, 2], 3)
+
+
+def test_busy_card_fails_admission():
+    require_idle_memory(28_000_256, 128)
+    with pytest.raises(RuntimeError, match="not idle"):
+        require_idle_memory(2 << 30, 128)
