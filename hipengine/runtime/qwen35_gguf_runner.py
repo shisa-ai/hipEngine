@@ -14350,6 +14350,16 @@ class Qwen35GGUFPrefixStateSnapshot:
         self.closed = True
 
 
+def _normalize_external_dms_prefill_mode(value: str) -> str:
+    mode = str(value).strip().lower()
+    if mode not in {"dense_pool", "layer_outer"}:
+        raise ValueError(
+            "dms_prefill_mode must be one of dense_pool, layer_outer; "
+            f"got {value!r}"
+        )
+    return mode
+
+
 def _normalize_external_dms_decision_mode(value: str) -> str:
     mode = str(value).strip().lower().replace("-", "_")
     if mode not in {"sidecar", "no_evict"}:
@@ -14561,6 +14571,14 @@ class Qwen35GGUFResidentSession:
     dms_metadata_path: str | Path | None = None
     dms_max_new_tokens: int = 256
     dms_decision_mode: str = "sidecar"
+    # "dense_pool" (default): the pre-existing route — a full dense BF16 KV
+    # pool backs prefill and a finalize-time layerwise pack moves it to the
+    # compact store. "layer_outer": the 2026-09-07 review target-4 route —
+    # no dense pool; a single shared BF16 oracle pair carries one layer's K/V
+    # at a time over a full-capacity hidden plane, decisions are captured in
+    # a first pass, the compact store is sized exactly from them, and a
+    # second pass packs each completed layer before its oracle is reused.
+    dms_prefill_mode: str = "dense_pool"
     dms_backend_factory: Callable | None = None
     runner: Qwen35GGUFFullStackRunner | None = field(default=None, init=False)
     scratch: object | None = field(default=None, init=False)
@@ -14826,6 +14844,8 @@ class Qwen35GGUFResidentSession:
     _dms_source: object | None = field(default=None, init=False, repr=False)
     _dms_backend: object | None = field(default=None, init=False, repr=False)
     _dms_dense_prefill_pool: DeviceChunkedKVPool | None = field(default=None, init=False, repr=False)
+    _dms_prefill_oracle_pair: tuple[DeviceBuffer, DeviceBuffer] | None = field(default=None, init=False, repr=False)
+    _dms_layer_outer_pack: tuple[object, _ExternalDMSDevicePrefillCollector, int] | None = field(default=None, init=False, repr=False)
     _dms_decode_projector: object | None = field(default=None, init=False, repr=False)
     _dms_decode_decisions: DeviceBuffer | None = field(default=None, init=False, repr=False)
     _dms_decode_logits: DeviceBuffer | None = field(default=None, init=False, repr=False)
@@ -14836,6 +14856,13 @@ class Qwen35GGUFResidentSession:
         self.dms_decision_mode = _normalize_external_dms_decision_mode(
             self.dms_decision_mode
         )
+        self.dms_prefill_mode = _normalize_external_dms_prefill_mode(
+            getattr(self, "dms_prefill_mode", "dense_pool")
+        )
+        if self.dms_prefill_mode == "layer_outer" and self.dms_metadata_path is None:
+            raise ValueError(
+                "dms_prefill_mode=layer_outer requires external DMS metadata"
+            )
         if self.dms_metadata_path is not None:
             if self.max_batch_size != 1:
                 raise ValueError("external DMS serving currently requires max_batch_size=1")
@@ -15277,7 +15304,10 @@ class Qwen35GGUFResidentSession:
             )
         alloc_capacity = (
             prefill_capacity
-            if self.use_expert_sidecar
+            if (
+                self.use_expert_sidecar
+                or self.dms_prefill_mode == "layer_outer"
+            )
             else int(self._int8_prefill_lifetime_plan.required_hidden_capacity)
         )
         hidden_bytes = self.runner.hidden_size * 2
@@ -15439,6 +15469,12 @@ class Qwen35GGUFResidentSession:
         self._dms_decode_decisions_host = np.empty(
             (config.num_layers, config.num_kv_heads), dtype=np.uint8
         )
+        if self.dms_prefill_mode == "layer_outer":
+            # Review target 4: no dense BF16 pool. A single shared oracle pair
+            # carries one full-attention layer's K/V at a time; the compact
+            # store is sized from the first pass's decisions and packed per
+            # completed layer during the second pass.
+            return
         pages = (int(self.scratch.max_positions) + 255) // 256
         pool = self.create_device_kv_pool(
             initial_pages=pages,
@@ -15556,6 +15592,47 @@ class Qwen35GGUFResidentSession:
         pool.close()
         self._dms_dense_prefill_pool = None
 
+    def _dms_layer_outer_oracle_pair(self) -> tuple[DeviceBuffer, DeviceBuffer]:
+        """Return the shared BF16 K/V oracle pair for layer-outer DMS prefill.
+
+        One full-capacity pair carries a single full-attention layer's K/V at
+        a time; after a layer is packed into the compact store the pair is
+        reused for the next layer. Allocated on first use during the prefill
+        and released after the final layer's pack (and at close).
+        """
+
+        if self.scratch is None or self.runner is None or self.runner.weights is None:
+            raise RuntimeError("GGUF resident session is closed")
+        if self.dms_prefill_mode != "layer_outer":
+            raise RuntimeError("the DMS prefill oracle requires layer_outer mode")
+        if self._dms_prefill_oracle_pair is not None:
+            return self._dms_prefill_oracle_pair
+        cfg = self.runner.weights.config
+        nbytes = (
+            int(self.scratch.max_positions)
+            * int(cfg.head_count_kv)
+            * int(cfg.key_length)
+            * DType.BF16.itemsize
+        )
+        runtime = self.runtime or get_hip_runtime()
+        key_cache = malloc(nbytes, runtime=runtime)
+        try:
+            value_cache = malloc(nbytes, runtime=runtime)
+        except BaseException:
+            free(key_cache, runtime=runtime)
+            raise
+        self._dms_prefill_oracle_pair = (key_cache, value_cache)
+        return self._dms_prefill_oracle_pair
+
+    def _release_dms_prefill_oracle(self) -> None:
+        if self._dms_prefill_oracle_pair is None:
+            return
+        runtime = self.runtime or get_hip_runtime()
+        key_cache, value_cache = self._dms_prefill_oracle_pair
+        free(value_cache, runtime=runtime)
+        free(key_cache, runtime=runtime)
+        self._dms_prefill_oracle_pair = None
+
     def _release_dense_prefill_layer(self, physical_layer: int, *, runtime: HipRuntime) -> None:
         """Release one dense BF16 prefill layer's planes after its compact pack.
 
@@ -15582,6 +15659,143 @@ class Qwen35GGUFResidentSession:
             full_v_scale_caches=backing.full_v_scale_caches,
             full_kv_scale_metadata=backing.full_kv_scale_metadata,
         )
+
+    def pack_dms_prefill_layer(self, physical_layer: int, *, stream: int) -> None:
+        """Layer-outer DMS pack sink: pack one completed layer's oracle K/V.
+
+        Invoked by the bulk prefill layer loop after a full-attention layer's
+        ranges retire. The shared oracle pair holds that layer's complete K/V;
+        pack it into the compact store with the first pass's decisions.
+        """
+
+        pack_state = self._dms_layer_outer_pack
+        if pack_state is None:
+            raise RuntimeError("DMS layer-outer pack sink invoked without an active pack pass")
+        backend, collector, tokens = pack_state
+        source = self._dms_source
+        if source is None:
+            raise RuntimeError("external DMS prefill owner is unavailable")
+        compact_layer = source.compact_layer_index(int(physical_layer))
+        key_cache, value_cache = self._dms_layer_outer_oracle_pair()
+        runtime = self.runtime or get_hip_runtime()
+        if stream:
+            runtime.stream_synchronize(int(stream))
+        else:
+            runtime.device_synchronize()
+        backend.device_streaming_pack_layer(
+            0,
+            compact_layer,
+            k_ptr=key_cache.ptr,
+            v_ptr=value_cache.ptr,
+            evict_ptr=collector.decision_ptr(compact_layer),
+            tokens=int(tokens),
+            stream=int(stream),
+        )
+
+    def _prefill_layer_outer_dms(
+        self,
+        dms_capture: _ExternalDMSDevicePrefillCollector,
+        token_ids: list[int] | tuple[int, ...],
+        *,
+        bulk_attention_mode: str,
+        return_logits: bool,
+        record_gpu_stage_timings: bool,
+    ) -> Qwen35GGUFNextTokenProbeResult | None:
+        """Two-pass layer-outer DMS prefill without a dense BF16 pool.
+
+        Pass 1 runs the deterministic layer-outer prefill with the shared BF16
+        oracle pair as each full-attention layer's transient K/V source and
+        captures the eviction decisions. The compact store is then sized
+        exactly from those decisions (the same rule as the dense-pool
+        finalize). Pass 2 re-runs the identical prefill and packs each
+        completed layer into the compact store before its oracle is reused.
+        The dense pool is never allocated; the trade is a second prefill
+        pass. Review target 4 (2026-09-07).
+        """
+
+        from hipengine.kvcache.dms import build_dms_live_mask, create_dms_bf16_backend
+
+        source = self._dms_source
+        if source is None or self.scratch is None:
+            raise RuntimeError("external DMS prefill owner is unavailable")
+        tokens = int(len(token_ids))
+        runtime = self.runtime or get_hip_runtime()
+        try:
+            result = self._run_bulk_prefill_and_sample(
+                token_ids,
+                bulk_attention_mode=bulk_attention_mode,
+                return_logits=return_logits,
+                dms_capture=dms_capture,
+                record_gpu_stage_timings=record_gpu_stage_timings,
+            )
+            decisions = dms_capture.finalize(stream=0)
+            positions = np.arange(tokens, dtype=np.int32)
+            max_live = 1
+            for layer in range(source.config.num_layers):
+                for head in range(source.config.num_kv_heads):
+                    keep = build_dms_live_mask(
+                        decisions[:, layer, head][None, :],
+                        current_position=tokens - 1,
+                        window_size=source.config.window_size,
+                        positions=positions,
+                    )[0]
+                    max_live = max(max_live, int(np.count_nonzero(keep)))
+            per_head = max_live + int(self.dms_max_new_tokens)
+            backend_factory = self.dms_backend_factory or create_dms_bf16_backend
+            backend = backend_factory(
+                retrofit=source.config,
+                slots_per_layer=source.config.num_kv_heads * per_head,
+                max_request_rows=1,
+                max_pack_rows=max(1, min(tokens, 4096)),
+                device_payloads=True,
+                device_backend=self.backend,
+            )
+            request = SimpleNamespace(
+                request_id=0,
+                prompt_tokens=(),
+                max_new_tokens=int(self.dms_max_new_tokens),
+            )
+            claims = backend.estimate(
+                request,
+                None,
+                {
+                    "kind": "admission",
+                    "tokens": 0,
+                    "max_new_tokens": int(self.dms_max_new_tokens),
+                    "per_head_slots": per_head,
+                    "logical_prompt_tokens": tokens,
+                },
+            )
+            backend.reserve(claims)
+            try:
+                self._dms_layer_outer_pack = (backend, dms_capture, tokens)
+                try:
+                    result = self._run_bulk_prefill_and_sample(
+                        token_ids,
+                        bulk_attention_mode=bulk_attention_mode,
+                        return_logits=return_logits,
+                        dms_pack_sink=self,
+                        record_gpu_stage_timings=record_gpu_stage_timings,
+                    )
+                finally:
+                    self._dms_layer_outer_pack = None
+                backend.finalize_device_streaming_pack(
+                    0, eviction=decisions, tokens=tokens
+                )
+            except BaseException:
+                # Partial compact-store construction must not leak the
+                # partially built backend; the dense route is not involved.
+                try:
+                    backend.close()
+                except Exception:  # noqa: BLE001 - cleanup best effort
+                    pass
+                raise
+            self._dms_backend = backend
+            self.runner.__dict__["_dms_decode_owner"] = self
+            return result
+        finally:
+            dms_capture.close()
+            self._release_dms_prefill_oracle()
 
     def _run_external_dms_full_attention(
         self,
@@ -17980,6 +18194,21 @@ class Qwen35GGUFResidentSession:
     def _full_attention_prefill_scratch_for_layer(self, bulk_scratch, layer_id: int):
         if self.scratch is None:
             raise RuntimeError("GGUF resident session is closed")
+        if self.dms_prefill_mode == "layer_outer":
+            # Review target 4: the layer-outer DMS route has no dense pool.
+            # The shared BF16 oracle pair is this layer's transient K/V source;
+            # the layer-outer pack sink packs it into the compact store when
+            # the layer's pass retires.
+            oracle_key_cache, oracle_value_cache = self._dms_layer_outer_oracle_pair()
+            return replace(
+                bulk_scratch,
+                key_cache=oracle_key_cache,
+                value_cache=oracle_value_cache,
+                retained_key_cache=None,
+                retained_value_cache=None,
+                retained_append_spans=None,
+                int8_kv_value_bf16=False,
+            )
         metadata = None
         if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD:
             metadata = self.scratch.full_scale_metadata(layer_id)
@@ -18594,6 +18823,20 @@ class Qwen35GGUFResidentSession:
                     bulk_kwargs["dms_capture"] = dms_capture
                 if record_gpu_stage_timings:
                     bulk_kwargs["record_gpu_stage_timings"] = True
+                if (
+                    internal_dms_capture
+                    and self.dms_prefill_mode == "layer_outer"
+                ):
+                    assert isinstance(dms_capture, _ExternalDMSDevicePrefillCollector)
+                    # The layer-outer route owns its own two-pass orchestration
+                    # (decision sweep + per-layer pack); no dense pool exists.
+                    return self._prefill_layer_outer_dms(
+                        dms_capture,
+                        token_ids,
+                        bulk_attention_mode=selected_bulk_attention_mode,
+                        return_logits=return_logits,
+                        record_gpu_stage_timings=record_gpu_stage_timings,
+                    )
                 result = self._run_bulk_prefill_and_sample(
                     token_ids,
                     bulk_attention_mode=selected_bulk_attention_mode,
@@ -18685,10 +18928,13 @@ class Qwen35GGUFResidentSession:
         target_hidden_request_id: int | None = None,
         dflash2_capture: DFlash2HiddenCaptureTargets | None = None,
         dms_capture: DMSCaptureSink | None = None,
+        dms_pack_sink: object | None = None,
         record_gpu_stage_timings: bool = False,
     ) -> Qwen35GGUFNextTokenProbeResult | None:
         if self.runner is None or self.runner.weights is None or self.scratch is None:
             raise RuntimeError("GGUF resident session is closed")
+        if dms_pack_sink is not None and dms_capture is not None:
+            raise ValueError("DMS layer-outer pack pass cannot also capture decisions")
         if self._prefill_token_buf is None or self._prefill_hidden_a is None or self._prefill_hidden_b is None:
             raise RuntimeError("GGUF resident bulk prefill buffers are closed")
         if self._bulk_prefill_scratch is None:
@@ -18813,6 +19059,10 @@ class Qwen35GGUFResidentSession:
         ):
             raise RuntimeError(
                 "shared INT8 prefill oracle requires full-capacity layer-outer hidden ownership"
+            )
+        if dms_pack_sink is not None and chunk_outer:
+            raise RuntimeError(
+                "DMS layer-outer pack requires full-capacity layer-outer hidden ownership"
             )
         if hidden_seed_buf is not None and chunk_outer:
             raise ValueError("capture_hidden_seed_fp32 is not supported with chunked outer GGUF prefill")
@@ -19138,6 +19388,13 @@ class Qwen35GGUFResidentSession:
                     finally:
                         if expert_sidecar is not None:
                             expert_sidecar.free(runtime=runtime)
+                    if layer_type == FULL_ATTENTION and dms_pack_sink is not None:
+                        # Layer-outer DMS pack: this layer's K/V is complete in
+                        # the shared oracle pair; pack it into the compact store
+                        # before the pair is reused for the next layer.
+                        dms_pack_sink.pack_dms_prefill_layer(
+                            int(layer_id), stream=stream
+                        )
                     src, dst = dst, src
                     self._capture_dflash2_prefill_taps(
                         layer_id=layer_id,
@@ -28171,6 +28428,8 @@ class Qwen35GGUFResidentSession:
         self._free_verify_linear_state_row_buffers(runtime=runtime)
         self._free_verify_linear_initial_snapshot_buffers(runtime=runtime)
         self._free_packed_verify_workspace(runtime=runtime)
+        self._dms_layer_outer_pack = None
+        self._release_dms_prefill_oracle()
         # Demand-driven split-K partials grown after construction are not in
         # the flattened _buffers tuple; free them through the live scratch.
         bulk_scratch = self._bulk_prefill_scratch
