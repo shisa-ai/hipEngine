@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-09",
+  "status": "blocked",
+  "host": "zbook",
+  "hardware": "AMD RYZEN AI MAX+ PRO 395 / Radeon 8060S (laptop; provisional pending the desktop gfx1151)",
+  "backend": "hip_gfx1151",
+  "candidate": "Add Q3_K, IQ2_S and IQ2_XS to GGUF_IQ_DENSE_PREFILL_POLICY. These are W4A16-serviceable but were never expressible under the integer-MMQ contract (a scale per 16 elements puts their residuals at +/-128 and +/-1333, which do not fit int8 under a per-32 scale). W4A16 expands per element and has no such constraint, so switching the default to it made them reachable for the first time.",
+  "leaf_measurements": {
+    "protocol": "largest aligned tensor per quant, 512 rows, min-of-5 x 3 reps, against the strict dense GEMV",
+    "Q3_K": {"gemv_ms": 86.74, "w4a16_ms": 14.75, "speedup": 5.88},
+    "IQ2_S": {"gemv_ms": 82.26, "w4a16_ms": 14.93, "speedup": 5.51},
+    "IQ2_XS": {"gemv_ms": 80.79, "w4a16_ms": 13.31, "speedup": 6.07}
+  },
+  "end_to_end": {
+    "protocol": "published sweep protocol 512/128, UD-Q4_K_M",
+    "shipped_four_quant_w4a16": 150.27,
+    "candidate_seven_quant_w4a16": 176.54,
+    "delta": "+17.5%, and faster than the integer-MMQ route ever was (171.86)"
+  },
+  "why_blocked": {
+    "reference": "candidate production against hipEngine strict, EXECUTION-PROFILES.md section 6",
+    "shipped_four_quant": {"mean": 0.000827, "p95": 0.004547, "p99": 0.012475, "max": 0.023513, "top1": "100.0%", "rows_over_5e-2": 0, "verdict": "PASS"},
+    "candidate_seven_quant": {"mean": 0.001061, "p95": 0.003980, "p99": 0.016612, "max": 0.032730, "top1": "100.0%", "rows_over_5e-2": 0, "verdict": "FAIL on mean only, 6.1% over the 1e-3 limit"},
+    "note": "Every tail passes with margin and no row breaches the 5e-2 ceiling. This is qualitatively unlike the integer-MMQ route's failure, which was a 3.4x breach of that absolute ceiling. Section 6.1 binds all limits together, so the shipped default is the set that provably passes.",
+    "attribution": "Qwen3.8-27B-UD-Q4_K_M carries no IQ2_S or IQ2_XS tensors, so the entire mean delta is Q3_K alone: +0.000234 mean for +26 tok/s."
+  },
+  "unblock_paths": [
+    "Re-calibrate the envelope for this scope. The 1e-3 mean limit was frozen on a 2026-08-16 Qwen3.5 cluster8 calibration; a UD-scope floor has never been established, and hipEngine strict itself sits at mean 0.001271 against the llama.cpp teacher.",
+    "A task gate showing the mean overage does not affect output quality.",
+    "Reduce the per-quant mean cost at source. Each routed quant adds mean roughly independently of format (an int8 path and a 25x more accurate fp16 path landed within 0.00003 of each other), which points at accumulation order rather than operand precision - untested."
+  ],
+  "how_to_enable": "One-line edit: add \"gguf_q3_k\", \"gguf_iq2_s\", \"gguf_iq2_xs\" to the quant tuple in GGUF_IQ_DENSE_PREFILL_POLICY. The kernels are already registered on both HIP backends and covered by tests.",
+  "limitations": [
+    "Q3_K is 18.4% of the remaining prefill GPU time on K_M, so it is the largest single block still on the strict GEMV.",
+    "IQ2_S and IQ2_XS appear only in K_S, which has no strict-referenced gate run.",
+    "Laptop power/thermal limited; provisional pending the desktop gfx1151."
+  ]
+}

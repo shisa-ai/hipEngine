@@ -2034,9 +2034,15 @@ GGUF_T16_TARGET_VERIFIER_TRUE_ROWTILE_VARIANTS = {
 # envelope. W4A16 is therefore the default at a 12% throughput cost, and the
 # integer-MMQ variant name is kept below so a route swap is a one-word edit.
 #
-# Both routes serve the same four quants - those whose K32 groups are
-# expressible as scale*int8 or, for W4A16, at all. Q3_K, IQ2_S and IQ2_XS carry
-# a scale per 16 elements and stay on the strict GEMV.
+# Route coverage differs. The integer-MMQ route needs each K32 group to be
+# expressible as scale*int8, which excludes Q3_K, IQ2_S and IQ2_XS: they carry
+# a scale per 16 elements, so under a per-32 scale their residuals reach +/-128
+# and +/-1333. W4A16 expands per element and has no such contract, so it serves
+# every dense IQ/Q3_K quant. Measured against the strict GEMV at 512 rows:
+# Q3_K 86.7 -> 14.8 ms (5.9x), IQ2_S 82.3 -> 14.9 (5.5x), IQ2_XS 80.8 -> 13.3
+# (6.1x). Swapping the policy back to the integer variant must therefore also
+# drop these three, or they will find no registered owner and fall through to
+# the strict GEMV - correct, but silently slower.
 _IQ_DENSE_W4A16_VARIANT = "dense_wmma_w4a16_prefill_bf16_bf16_out"
 _IQ_DENSE_INTEGER_MMQ_VARIANT = (
     "dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out"
@@ -2053,6 +2059,21 @@ GGUF_IQ_DENSE_PREFILL_POLICY = {
     }
     for quant in ("gguf_iq4_xs", "gguf_iq3_xxs", "gguf_iq3_s", "gguf_iq4_nl")
 }
+# Q3_K, IQ2_S and IQ2_XS are W4A16-serviceable and deliberately NOT routed.
+# The integer-MMQ contract could never express them (per-16 scales put their
+# residuals at +/-128 and +/-1333), but W4A16 expands per element and has no
+# such constraint, and at the leaf they are 5.5-6.1x faster than the strict
+# GEMV at 512 rows: Q3_K 86.7 -> 14.8 ms, IQ2_S 82.3 -> 14.9, IQ2_XS 80.8 ->
+# 13.3. Adding all three measured 176.5 tok/s - faster than the integer-MMQ
+# route ever was - but moved the strict-referenced mean 0.000827 -> 0.001061,
+# 6% over the calibrated 1e-3 limit, with every tail still passing
+# (p95 0.003980, p99 0.016612, max 0.032730, no row over the 5e-2 ceiling).
+#
+# K_M carries no IQ2_S or IQ2_XS, so that entire mean delta is Q3_K alone:
+# +0.000234 mean for +26 tok/s. Section 6.1 binds all limits together, so the
+# shipped default is the set that provably passes. Adding the three quants back
+# is a one-line edit if the envelope is re-calibrated for this scope or a task
+# gate justifies the mean.
 
 GGUF_Q6_DENSE_INTEGER_MMQ_PREFILL_POLICY = {
     "gguf_q6_k_t16_qmicro_planar_v1": {
