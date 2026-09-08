@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-07**
+Last updated: **2026-09-08**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -254,6 +254,26 @@ not establish batch invariance. Weight-buffer sums exclude load peak, scratch
 and KV. No speed, BF16-model quality, long-context or serving qualification is
 claimed. [Tokenwise protocol and category results](results/2026-09-07-zbook-ud-tokenwise-teacher.json);
 [batched-teacher protocol and memory results](results/2026-09-07-zbook-ud-c1-residency-logits-diagnostic.json).
+
+### Raw IQ dense prefill (gfx1151)
+
+The raw IQ/Q3_K dense projection kernel now tiles prompt rows, decoding each
+weight once per block instead of once per row. Measured on zbook / Radeon
+8060S against the same kernel restricted to one row per block, alternating the
+arms inside one process:
+
+| Shape | Per-launch, one row per block | Per-launch, shipped row tile | Ratio |
+| --- | ---: | ---: | ---: |
+| IQ4_XS, N=5120 K=17408, 512 rows | 348.7 ms | 86.1 ms | 4.05x |
+| IQ3_S, N=17408 K=5120, 512 rows | 317.7 ms | 97.4 ms | 3.26x |
+| IQ2_XS, N=17408 K=5120, 512 rows | 290.2 ms | 87.1 ms | 3.33x |
+
+End-to-end on the public `UD-Q4_K_M` path, same session and same prompt,
+prefill runs 7.60 → 13.17 tok/s (+73%); decode is unchanged, because the
+shipped policy keeps one row per block at rows=1. Outputs are bit-identical
+between every row-tile width and the one-row-per-block baseline. These are
+gross numbers from a power-limited laptop with a measured ±5% floor, so the
+ratios are provisional. [Artifact](results/2026-09-08-zbook-ud-iq-dense-rowbatch.json).
 
 A separate K_S raw IQ2_XS candidate reduces counted weight buffers from
 21,125,912,576 to 20,973,418,496 bytes (−0.72%), with 162/162 baseline top-1
