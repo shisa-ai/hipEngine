@@ -1682,6 +1682,9 @@ _DENSE_Q4_T16_SIDECAR_POLICY = (
     ("attn_qkv", (10_240, 5_120), Q4_T16_DECODE_TILES_R3PLUS),
     ("attn_v", (1_024, 5_120), Q4_T16_DECODE_TILES_R3PLUS),
     ("ffn_down", (5_120, 17_408), Q4_T16_DECODE_TILES),
+    # Same (5120, 6144) geometry as attn_output; present at Q4_K in the UD
+    # files, absent from the plain Q4_K_S file the policy was measured on.
+    ("ssm_out", (5_120, 6_144), Q4_T16_DECODE_TILES),
     ("ffn_gate", (17_408, 5_120), Q4_T16_DECODE_TILES),
     ("ffn_up", (17_408, 5_120), Q4_T16_DECODE_TILES),
 )
@@ -1744,21 +1747,38 @@ def _is_dense_q5_t16_qkv_tensor(
     )
 
 
+# Dense-H5120 Q5 roles with operation-complete T16 consumers. The first three
+# are the original scope: the plain Qwen3.8-27B Q4_K_S file carries Q5 only at
+# those roles, so the rest were never exercised. The published UD files carry
+# Q5_K at the remaining dense roles too, and every one of those (role, shape)
+# pairs is already admitted for Q4_K by _DENSE_Q4_T16_SIDECAR_POLICY on the
+# identical geometry, so they resolve to the same T16 family instead of
+# falling to the raw GEMV layout. Shapes are (out_features, in_features).
+_DENSE_H5120_Q5_T16_ROLE_SHAPES = (
+    ("ffn_down", (5_120, 17_408)),
+    ("attn_qkv", (10_240, 5_120)),
+    ("attn_v", (1_024, 5_120)),
+    ("attn_gate", (6_144, 5_120)),
+    ("attn_k", (1_024, 5_120)),
+    ("attn_output", (5_120, 6_144)),
+    ("attn_q", (12_288, 5_120)),
+    ("ffn_gate", (17_408, 5_120)),
+    ("ffn_up", (17_408, 5_120)),
+)
+
+
 def _is_dense_h5120_q5_t16_tensor(
     slot_path: str,
     tensor: GGUFTensorInfo,
 ) -> bool:
-    """Select Q4_K_S Q5 roles with operation-complete dense-H5120 consumers."""
+    """Select Q5 roles with operation-complete dense-H5120 consumers."""
 
     shape = tuple(map(int, tensor.shape))
-    return (
-        len(shape) == 2
-        and slot_path.startswith("layers.")
-        and (
-            (slot_path.endswith(".ffn_down") and shape == (5_120, 17_408))
-            or (slot_path.endswith(".attn_qkv") and shape == (10_240, 5_120))
-            or (slot_path.endswith(".attn_v") and shape == (1_024, 5_120))
-        )
+    if len(shape) != 2 or not slot_path.startswith("layers."):
+        return False
+    return any(
+        shape == expected and slot_path.endswith(f".{role}")
+        for role, expected in _DENSE_H5120_Q5_T16_ROLE_SHAPES
     )
 
 
@@ -1794,12 +1814,21 @@ def _is_wide_rank2_q6_t16_tensor(
     slot_path: str,
     tensor: GGUFTensorInfo,
 ) -> bool:
-    """Select measured wide dense projections without regressing narrow V."""
+    """Select measured wide dense projections without regressing narrow V.
+
+    ``ffn_up``, ``attn_output`` and ``ssm_out`` join the original
+    ``ffn_down``/``attn_qkv`` pair for the published UD files, which carry Q6_K
+    at those roles where the plain Q4_K_S file does not. All are >= 5120 wide,
+    so they keep the wide-path measurement that this predicate encodes; the
+    narrow exclusion below is unchanged.
+    """
 
     return (
         len(tensor.shape) == 2
         and int(tensor.shape[0]) >= 5_120
-        and slot_path.endswith((".ffn_down", ".attn_qkv"))
+        and slot_path.endswith(
+            (".ffn_down", ".attn_qkv", ".ffn_up", ".attn_output", ".ssm_out")
+        )
     )
 
 
@@ -1807,13 +1836,18 @@ def _is_narrow_q6_attn_v_tensor(
     slot_path: str,
     tensor: GGUFTensorInfo,
 ) -> bool:
-    """Select the measured dense-H5120 full-attention V projection."""
+    """Select the narrow dense-H5120 attention projections.
+
+    ``attn_k`` carries the identical (1024, 5120) geometry as ``attn_v`` and
+    appears at Q6_K in the published UD files. Narrow projections stay off the
+    wide T16 path above and take the planar route ``attn_v`` established.
+    """
 
     return (
         len(tensor.shape) == 2
         and tuple(map(int, tensor.shape)) == (1_024, 5_120)
         and slot_path.startswith("layers.")
-        and slot_path.endswith(".attn_v")
+        and slot_path.endswith((".attn_v", ".attn_k"))
     )
 
 
