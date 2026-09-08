@@ -1,7 +1,14 @@
 # Getting UD files onto the optimized kernels
 
-_Status: plan, no code changed. Written 2026-09-08 from static analysis plus the
-2026-09-08 prefill route-gap measurement. GPU validation is queued, not run._
+_Status: in progress. Written 2026-09-08 from static analysis plus the
+prefill route-gap measurement; updated as items land._
+
+| Item | State | Result |
+| --- | --- | --- |
+| 0. Reconstruct the published protocol | **done** (`d8f5e951c`) | the published row uses `qwen35_readme_sweep.py --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode`; zbook floor for the plain file is 294.8 tok/s against the desktop-published 396.1 |
+| 1. Per-tensor repack eligibility (UD-U3) | **done** (`d8f5e951c`) | optimized bytes 0.0% -> 44.2% (K_M); prefill 22.1 -> 29.9 tok/s, decode 6.21 -> 7.24, resident -0.92 GB |
+| 2. Close the remaining non-IQ fallbacks | **partly done** | Q5/Q6/Q4 dense role coverage landed: optimized bytes 44.2% -> 61.3% (K_M), 34.4% -> 44.4% (K_S); prefill 30.4 -> 41.5 tok/s. Q3_K still has no T16 layout. |
+| 3. IQ4_XS dense GEMM entry | open | 4.76 GB (K_M) / 6.29 GB (K_S), the largest single remaining block |
 
 The kernel work is largely done. The published UD files do not reach it. This
 document says exactly why, what it is worth, and in what order to fix it.
@@ -125,10 +132,36 @@ decode both on, and names "enable resident T16 decode repack" as the remedy.
 So this change moves toward the configuration that docstring calls safe, not
 away from it — but confirm that on the UD files rather than assuming it.
 
-### 2. Close the remaining non-IQ fallbacks
+### 2. Close the remaining non-IQ fallbacks — partly done
 
-After item 1, `UD-Q4_K_M` still leaves 8.99 GB on GEMV. The non-IQ part is
-existing-layout work:
+After item 1, `UD-Q4_K_M` still left 8.99 GB on GEMV. The Q5/Q6/Q4 role gaps
+are now closed; Q3_K remains.
+
+**Landed.** Every one of these was a *measurement-scoped* allowlist, not a
+kernel limit: each predicate reads "select only the measured …" and was written
+against the plain `Q4_K_S` file, which carries no tensor at the missing roles.
+Every remaining tensor was verified T16-alignable first, and every missing
+(role, shape) pair was already admitted for Q4_K on the identical geometry.
+
+- Q5_K: `_is_dense_h5120_q5_t16_tensor` grew from 3 roles to the full 9-role
+  dense set, matching `_DENSE_Q4_T16_SIDECAR_POLICY`. 2.32 GB (K_M) / 1.19 GB
+  (K_S) off the raw path.
+- Q6_K: the wide predicate gained `ffn_up`, `attn_output`, `ssm_out` (all
+  >= 5120 wide, so they keep the wide-path measurement); narrow `attn_k`
+  follows `attn_v` at the identical (1024, 5120) geometry.
+- Q4_K: `ssm_out` (5120, 6144) joined the sidecar policy — the same geometry as
+  `attn_output`.
+
+**Still open.** Q3_K (0.27 GB K_M / 1.01 GB K_S) has no T16 layout constant at
+all, so it needs a new layout plus a kernel rather than an allowlist entry.
+
+**Not a routing gap after all.** `GGUF_DENSE_Q4_QMICRO_T16_GATE_UP_FILE_TYPES`
+excludes `MOSTLY_Q4_K_M`, but K_M's 28 Q4_K `ffn_gate`/`ffn_up` tensors already
+resolve to `gguf_q4_k_t16_v1`. Adding the stamp would swap one optimized
+variant for another, so it is a tuning question with its own measurement, not
+part of this item.
+
+The original table, for reference:
 
 | Bytes (K_M / K_S) | Group | Why it stays raw |
 | ---: | --- | --- |

@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-08",
+  "status": "retained_default_change",
+  "host": "zbook",
+  "hardware": "AMD RYZEN AI MAX+ PRO 395 / Radeon 8060S (laptop; gross numbers; provisional pending the desktop gfx1151)",
+  "backend": "hip_gfx1151",
+  "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+  "change": "Item 2 of docs/UD-OPTIMIZED-ROUTE-PLAN.md. Three dense T16 role/shape allowlists were written against the plain Qwen3.8-27B Q4_K_S file, which carries no tensor at the roles the UD files use, so those UD tensors fell to the raw/pack8 GEMV layouts. Q5_K's _is_dense_h5120_q5_t16_tensor grows from 3 roles to the full 9-role dense set (matching _DENSE_Q4_T16_SIDECAR_POLICY); Q6_K's wide predicate gains ffn_up/attn_output/ssm_out and its narrow predicate gains attn_k beside attn_v; Q4_K's sidecar policy gains ssm_out (5120, 6144), the same geometry as attn_output.",
+  "why_this_is_safe_to_widen": "Every predicate reads 'select only the measured ...' - measurement scope, not kernel capability. Each remaining tensor was verified T16-alignable through the planner's own _planned_t16_nbytes before the change, and every newly admitted (role, shape) pair was already admitted for Q4_K on the identical H5120 geometry.",
+  "static_layout_audit": {
+    "tool": "scripts/gguf_resident_layout_audit.py",
+    "optimized_weight_byte_share": {
+      "UD-Q4_K_M": {"before_item_1": "0.0%", "after_item_1": "44.2%", "after_item_2": "61.3%"},
+      "UD-Q4_K_S": {"before_item_1": "0.0%", "after_item_1": "34.4%", "after_item_2": "44.4%"},
+      "plain_Q4_K_S_control": "94.8% before and after (the extension is a no-op there, asserted by test)"
+    },
+    "bytes_moved_off_gemv_km": {"Q5_K": "2.32 GB", "Q6_K": "0.34 GB", "Q4_K_ssm_out": "0.09 GB"}
+  },
+  "perf_gross": {
+    "protocol": "published README sweep protocol, identical to the item-0/item-1 baseline: scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf --quant gguf_ud_q4_k_m --backend hip_gfx1151 --workloads 512/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode",
+    "method": "both arms measured in this session by swapping only qwen35_gguf_materialize.py between HEAD and the candidate, so laptop clock drift cannot explain the delta",
+    "before": {"prefill_tok_s": 30.38, "decode_tok_s": 7.28, "runs_prefill": [30.4, 30.2, 30.1, 30.1], "runs_decode": [7.28, 7.26, 7.27, 7.27]},
+    "after": {"prefill_tok_s": 41.54, "decode_tok_s": 7.62, "runs_prefill": [41.5, 41.2, 40.8, 41.0], "runs_decode": [7.62, 7.61, 7.60, 7.59]},
+    "delta": "prefill +36.7%, decode +4.7%",
+    "note": "The before arm reproduces the item-1 recorded 29.93 tok/s on the same host and command."
+  },
+  "resident_weights": {
+    "planner_bytes": {
+      "UD-Q4_K_M": {"before": 16283559936, "after": 16309200896, "delta": "+25.6 MB (+0.16%)"},
+      "UD-Q4_K_S": {"before": 15143417856, "after": 15111059456, "delta": "-32.4 MB (-0.21%)"}
+    },
+    "runtime_weight_buffer_bytes_km": {"before": 15568398336, "after": 15594039296, "delta": "+25.6 MB"},
+    "note": "Runtime and planner deltas agree exactly. Essentially memory-neutral: unlike item 1, this one does not also save VRAM."
+  },
+  "numerics": {
+    "protocol": "context512, 18 category/heldout prompts x 9 forced steps, production config (bulk + WMMA prefill, GEMV decode), independent tokenwise llama.cpp teacher /tmp/ud-llama-context512-M.f32; consumed tokens verified equal to the teacher input binary",
+    "prior_default_ud_u3": {"mean": 0.0012376, "p95": 0.0053786, "p99": 0.0211052, "max": 0.0332762, "top1": "162/162"},
+    "role_extension": {"mean": 0.0012709, "p95": 0.0048322, "p99": 0.0239101, "max": 0.0387342, "top1": "161/162"},
+    "outer_gate": "PASS - max 0.0387 <= 0.05 and top-1 100% >= 90%",
+    "movement": "mean +2.7%, p95 -10.2% (better), p99 +13.3%, max +16.4%, one top-1 position lost",
+    "top1_flip_analysis": "The single flip is position 26 (prompt 2, step 8), where the teacher's own distribution is nearly tied: p(token 1445)=0.475540 against p(token 1005)=0.473468, a gap of 2.07e-03. The prior arm's margin there was 4.9e-03 and it happened to fall on the teacher's side; the new arm's is 3.03e-02 on the other. At a 0.2% teacher gap, which side an arm lands on is close to arbitrary, so the 162/162 -> 161/162 move is not read as a quality regression - but the prior default's 'best top-1 measured' distinction is given up and that is recorded rather than glossed.",
+    "strict_thresholds": "mean/p95/p99 remain above the strict thresholds, the pre-existing campaign state; the measured hipEngine-BF16-KV vs teacher-F16-KV floor (mean 0.000415) accounts for a substantial part of the mean excess"
+  },
+  "correctness_suites": "tests/test_gguf_ud_dense_t16_roles.py (new, RED-first, 38 cases incl. a plain-file no-op control and a guard against the filter silently skipping); test_gguf_ud_repack_eligibility.py, test_qwen35_gguf_materialize_helpers.py, test_loading_qwen35_gguf_policy.py, test_gguf_ud_admission.py (162 total) green; test_gguf_e2e_acceptance.py, test_gguf_ud_km.py, test_gguf_ud_ks.py, test_qwen35_gguf_consumer_surface_parity.py, test_gguf_ud_dense.py green",
+  "not_a_routing_gap": "GGUF_DENSE_Q4_QMICRO_T16_GATE_UP_FILE_TYPES excludes MOSTLY_Q4_K_M, but K_M's 28 Q4_K ffn_gate/ffn_up tensors already resolve to gguf_q4_k_t16_v1. Adding the stamp swaps one optimized variant for another, so it is a tuning question with its own measurement, not part of this item.",
+  "limitations": [
+    "Laptop power/thermal limited; absolute rates provisional pending the desktop gfx1151.",
+    "Q3_K (0.27 GB K_M / 1.01 GB K_S) still has no T16 layout constant, so it needs a new layout plus kernel rather than an allowlist entry.",
+    "IQ4_XS (4.76 GB K_M / 6.29 GB K_S) is untouched and remains the largest single block on the GEMV path.",
+    "Task and repeat/serving gates remain outstanding for this default, as for every default in this campaign."
+  ]
+}
