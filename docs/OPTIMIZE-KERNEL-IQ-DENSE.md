@@ -10,6 +10,42 @@ See [`KERNELS.md`](KERNELS.md) for the catalog, [`ROOFLINE.md`](ROOFLINE.md)
 for the RDNA3 model, and [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md) for
 the strict/production contracts.
 
+## Campaign reprioritized: read this before picking up the queue
+
+On the **same model, same GPU, same harness, same 512-token shape**, the plain
+`Qwen3.8-27B-Q4_K_S.gguf` prefills at **160.5 tok/s** while
+`Qwen3.8-27B-UD-Q4_K_M.gguf` prefills at **13.77** — 11.2x more GPU time by
+kernel trace (3,320 ms vs 37,299 ms), so the gap is device work, not host.
+
+The cause is a route property, not a kernel-quality property. The plain file
+reaches the WMMA GEMM prefill family (`gguf_q4_t16_dense_wmma_prefill_*`, plus
+rocBLAS Tensile); the UD file is served entirely by GEMV-shaped kernels — and
+**even its Q4_K tensors** land on `gguf_q4_k_pack8_prefill_out` rather than the
+WMMA prefill kernels, because those require the T16 repacked layouts while UD
+tensors are resident as `LAYOUT_RAW_GGUF` or pack8. A GEMV-shaped prefill
+re-reads the weight matrix once per row block; a GEMM reads it once.
+
+Separately, the same harness measures the plain file at 160.5 where the
+scoreboard publishes **396.1** for that model/quant/GPU, so there is a second
+route/protocol gap on `Qwen35GGUFResidentSession.prefill(use_bulk=True)` —
+likely the opt-in `use_wmma_prefill`. The true UD headroom is therefore larger
+than 12x.
+
+**Consequence for this campaign.** Everything below optimizes inside the slow
+regime. The row tile bought 1.79x by cutting the number of weight passes 8x;
+routing UD prefill onto the GEMM family changes the exponent rather than the
+constant. The decode queue (B4, further LDS work) is worth tens of percent and
+is deprioritized under:
+
+1. Reconstruct the published 396.1 protocol and re-measure both files under it.
+2. Find why UD Q4_K tensors miss `gguf_q4_t16_dense_wmma_prefill_*` — a
+   materialization/layout question in `qwen35_gguf_materialize.py` and
+   `qwen35_gguf_consumer_surface.py`, not a kernel one, and the cheapest of the
+   three because those kernels already exist and are qualified.
+3. A5: a dense entry point over the existing IQ integer-MMQ prefill kernels.
+
+Full evidence: `worklog/entries/20260908T042726.067135Z-lhl-ud-prefill-route-gap-9240cf.md`.
+
 ## Measurement protocol (read before adding a row)
 
 Every wall-clock number in this campaign so far comes from **zbook**, a
@@ -53,8 +89,9 @@ Because occupancy is maximal, VMEM latency is well hidden and the limiter is
 | --- | --- | --- | --- |
 | B2 | `iq_signs[128]` -> `i \| ((popc(i)&1)<<7)` | loads 50->34 on IQ3_XXS/IQ2_XS; wall clock inside the floor | `0d20ab81b` |
 | B5 | IQ2_XS magnitude ternary -> one packed immediate | IQ2_XS VALU 569->562 | `0d20ab81b` |
-| A1 | `R` rows-per-block tile: decode each weight once, reuse across R activations | kernel 2.97-4.05x at rows>=8; end-to-end prefill 1.73x | this unit |
-| A7 | memoize the loaded CDLL in `launch()` | 10.7 us/call removed from every projection | this unit |
+| A1 | `R` rows-per-block tile: decode each weight once, reuse across R activations | kernel 2.97-4.05x at rows>=8; end-to-end prefill 1.73x | `0de4d22da` |
+| A7 | memoize the loaded CDLL in `launch()` | 10.7 us/call removed from every projection | `0de4d22da` |
+| B3 | stage `iq3_grid`, `iq3_xxs_grid`, `IQ2_XS_GRID_PACKED` in LDS | IQ3_S +10.5/+10.4%, IQ3_XXS +7.9/+8.0% across two runs; loads and VALU both fall | `b3a5dbbf7` |
 
 All four are **bit-exact**. The row tile is exact because `R` only changes
 which rows share a workgroup: per-`(row, column)` k ownership, FMA order,
@@ -66,6 +103,7 @@ wave32 shuffle tree and serial wave-0..3 sum are untouched.
 | --- | --- | --- |
 | B1 | `iq4_values[16]` -> packed immediates + `v_perm_b32` gather | removes 16 `global_load_i8` per body but adds ~112 VALU; measured **-5.0%** on the IQ4_XS leaf. The kernel is VALU bound at full occupancy, so an L1-resident byte load is the cheaper operand. |
 | R=16 | 16 rows per block | hits the 256-VGPR cap and spills 48 B/lane. R=8 is the retained maximum. |
+| B3 (IQ2_S) | stage the 8 KB `iq2_s_grid` | occupancy 16 -> 12 waves/SIMD, measured **-10.6%**. The footprint costs more than the 16 loads it removes. |
 
 The B1 rejection is recorded in the kernel source itself so it is not
 re-derived. Note it also overturned this campaign's own initial prediction,
@@ -75,7 +113,6 @@ which had ranked B1 as the best value-per-line item available.
 
 | Item | Change | Note |
 | --- | --- | --- |
-| B3 | stage grid tables (`iq3_grid`, `iq3_xxs_grid`, `iq2_s_grid`, `IQ2_XS_GRID_PACKED`) in LDS | the remaining `global_load_u8` mass: IQ3_S 64 per body, IQ3_XXS/IQ2_S 48. LDS use is 2176-3200 B/block against 64 KB. **Subject to the B1 lesson**: only pays if it adds no VALU. |
 | B4 | payload byte loads -> dword loads | changes the k->lane mapping, so it breaks the declared strict contract. Authorized as a **production-profile** variant this phase, with the strict tile as the registered fallback. |
 | A5 | dense entry point over the existing selected-shape IQ integer-MMQ prefill kernels | `gguf_iq_source_mmq_prefill.hip` (IQ4_XS/IQ3_XXS) and `gguf_iq2_xs_mmq_prefill.hip` already exist and are correctness-tested in MoE shape. |
 | A6 | host trace of the prefill loop | the ~12 s host vs ~1.2 s GPU dense-era figure predates the row tile; with prefill now 1.73x faster on device, the host share is proportionally larger. |
