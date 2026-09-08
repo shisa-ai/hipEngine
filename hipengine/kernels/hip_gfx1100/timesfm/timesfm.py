@@ -108,6 +108,12 @@ def _library() -> ctypes.CDLL:
     return build_timesfm(load=True)
 
 
+def _symbol(base: str, dtype: str) -> str:
+    if dtype not in ("f16", "f32"):
+        raise ValueError("dtype must be 'f16' or 'f32'")
+    return f"{base}_{dtype}"
+
+
 def _check_launch(runtime: HipRuntime, err: int) -> None:
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
@@ -121,6 +127,7 @@ def timesfm_rmsnorm_f32(
     features: int,
     eps: float = 1e-6,
     *,
+    dtype: str = "f16",
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -129,7 +136,7 @@ def timesfm_rmsnorm_f32(
 
     library = library or _library()
     runtime = runtime or get_hip_runtime()
-    fn = signed_kernel_fn(library, "timesfm_rmsnorm_f32", _ROWS_FEAT_EPS, ctypes.c_int)
+    fn = signed_kernel_fn(library, _symbol("timesfm_rmsnorm", dtype), _ROWS_FEAT_EPS, ctypes.c_int)
     err = fn(x_ptr, scale_ptr, out_ptr, rows, features, float(eps), stream)
     _check_launch(runtime, err)
 
@@ -143,6 +150,7 @@ def timesfm_norm_add_f32(
     features: int,
     eps: float = 1e-6,
     *,
+    dtype: str = "f16",
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -151,7 +159,7 @@ def timesfm_norm_add_f32(
 
     library = library or _library()
     runtime = runtime or get_hip_runtime()
-    fn = signed_kernel_fn(library, "timesfm_norm_add_f32", _NORM_ADD, ctypes.c_int)
+    fn = signed_kernel_fn(library, _symbol("timesfm_norm_add", dtype), _NORM_ADD, ctypes.c_int)
     err = fn(x_ptr, other_ptr, scale_ptr, out_ptr, rows, features, float(eps), stream)
     _check_launch(runtime, err)
 
@@ -162,6 +170,7 @@ def timesfm_bias_f32(
     rows: int,
     features: int,
     *,
+    dtype: str = "f16",
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -170,7 +179,7 @@ def timesfm_bias_f32(
 
     library = library or _library()
     runtime = runtime or get_hip_runtime()
-    fn = signed_kernel_fn(library, "timesfm_bias_f32", _ROWS_FEAT, ctypes.c_int)
+    fn = signed_kernel_fn(library, _symbol("timesfm_bias", dtype), _ROWS_FEAT, ctypes.c_int)
     err = fn(x_ptr, bias_ptr, rows, features, stream)
     _check_launch(runtime, err)
 
@@ -181,6 +190,7 @@ def timesfm_bias_swish_f32(
     rows: int,
     features: int,
     *,
+    dtype: str = "f16",
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -189,7 +199,7 @@ def timesfm_bias_swish_f32(
 
     library = library or _library()
     runtime = runtime or get_hip_runtime()
-    fn = signed_kernel_fn(library, "timesfm_bias_swish_f32", _ROWS_FEAT, ctypes.c_int)
+    fn = signed_kernel_fn(library, _symbol("timesfm_bias_swish", dtype), _ROWS_FEAT, ctypes.c_int)
     err = fn(x_ptr, bias_ptr, rows, features, stream)
     _check_launch(runtime, err)
 
@@ -198,6 +208,7 @@ def timesfm_swish_f32(
     x_ptr: int,
     count: int,
     *,
+    dtype: str = "f16",
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -206,7 +217,7 @@ def timesfm_swish_f32(
 
     library = library or _library()
     runtime = runtime or get_hip_runtime()
-    fn = signed_kernel_fn(library, "timesfm_swish_f32", _1PTR_COUNT, ctypes.c_int)
+    fn = signed_kernel_fn(library, _symbol("timesfm_swish", dtype), _1PTR_COUNT, ctypes.c_int)
     err = fn(x_ptr, count, stream)
     _check_launch(runtime, err)
 
@@ -217,6 +228,7 @@ def timesfm_add_f32(
     out_ptr: int,
     count: int,
     *,
+    dtype: str = "f16",
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -225,7 +237,7 @@ def timesfm_add_f32(
 
     library = library or _library()
     runtime = runtime or get_hip_runtime()
-    fn = signed_kernel_fn(library, "timesfm_add_f32", _ADD, ctypes.c_int)
+    fn = signed_kernel_fn(library, _symbol("timesfm_add", dtype), _ADD, ctypes.c_int)
     err = fn(a_ptr, b_ptr, out_ptr, count, stream)
     _check_launch(runtime, err)
 
@@ -240,6 +252,7 @@ def timesfm_rope_f32(
     patch_stride: int,
     base: int,
     *,
+    dtype: str = "f16",
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -248,7 +261,7 @@ def timesfm_rope_f32(
 
     library = library or _library()
     runtime = runtime or get_hip_runtime()
-    fn = signed_kernel_fn(library, "timesfm_rope_f32", _ROPE, ctypes.c_int)
+    fn = signed_kernel_fn(library, _symbol("timesfm_rope", dtype), _ROPE, ctypes.c_int)
     err = fn(x_ptr, pos_ptr, batch, patches, heads, head_dim, patch_stride, base, stream)
     _check_launch(runtime, err)
 
@@ -264,6 +277,7 @@ def timesfm_head_rmsnorm_f32(
     base: int,
     eps: float = 1e-6,
     *,
+    dtype: str = "f16",
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -272,7 +286,7 @@ def timesfm_head_rmsnorm_f32(
 
     library = library or _library()
     runtime = runtime or get_hip_runtime()
-    fn = signed_kernel_fn(library, "timesfm_head_rmsnorm_f32", _HEAD_RMSNORM, ctypes.c_int)
+    fn = signed_kernel_fn(library, _symbol("timesfm_head_rmsnorm", dtype), _HEAD_RMSNORM, ctypes.c_int)
     err = fn(
         x_ptr, scale_ptr, batch, patches, heads, head_dim, patch_stride, base,
         float(eps), stream,
@@ -290,6 +304,7 @@ def timesfm_head_perdim_scale_f32(
     patch_stride: int,
     base: int,
     *,
+    dtype: str = "f16",
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -298,7 +313,7 @@ def timesfm_head_perdim_scale_f32(
 
     library = library or _library()
     runtime = runtime or get_hip_runtime()
-    fn = signed_kernel_fn(library, "timesfm_head_perdim_scale_f32", _HEAD_PERDIM, ctypes.c_int)
+    fn = signed_kernel_fn(library, _symbol("timesfm_head_perdim_scale", dtype), _HEAD_PERDIM, ctypes.c_int)
     err = fn(
         x_ptr, scale_ptr, batch, patches, heads, head_dim, patch_stride, base, stream
     )
@@ -317,6 +332,7 @@ def timesfm_scatter_kv_f32(
     patch_stride: int,
     start: int,
     *,
+    dtype: str = "f16",
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -325,7 +341,7 @@ def timesfm_scatter_kv_f32(
 
     library = library or _library()
     runtime = runtime or get_hip_runtime()
-    fn = signed_kernel_fn(library, "timesfm_scatter_kv_f32", _SCATTER, ctypes.c_int)
+    fn = signed_kernel_fn(library, _symbol("timesfm_scatter_kv", dtype), _SCATTER, ctypes.c_int)
     err = fn(
         qkv_ptr, cache_k_ptr, cache_v_ptr,
         batch, patches, cache_size, heads, head_dim, patch_stride, start,
@@ -348,6 +364,7 @@ def timesfm_attention_f32(
     head_dim: int,
     q_patch_stride: int,
     *,
+    dtype: str = "f16",
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -360,7 +377,7 @@ def timesfm_attention_f32(
 
     library = library or _library()
     runtime = runtime or get_hip_runtime()
-    fn = signed_kernel_fn(library, "timesfm_attention_f32", _ATTENTION, ctypes.c_int)
+    fn = signed_kernel_fn(library, _symbol("timesfm_attention", dtype), _ATTENTION, ctypes.c_int)
     err = fn(
         q_ptr, k_ptr, v_ptr, num_masked_ptr, q_offset_ptr, out_ptr,
         batch, queries, cache_size, heads, head_dim, q_patch_stride, stream,
