@@ -5203,3 +5203,4 @@ Examples:
 - 2026-09-09: `2026-09-08-framework-qwen4exp-post-gr-family.json` — post-GR five-promotion family join (device 16.498s, GR now faster than Vulkan).
 - 2026-09-09: `2026-09-08-framework-qwen4exp-current-default-baselines-v4.json` — combined-default v4: HE PP +13.8/+12.5/+11.2% cross-packet; Vulkan lead 1.39/1.54/1.73x PP.
 - 2026-09-09: `2026-09-09-framework-qwen4exp-q8-iu8-dense-campaign-ab.json` — dense iu8-WMMA full-suite A/B (+7.9% prefill, all 12 cases; third T1 promotion packet).
+- 2026-09-09: `e0-comparators/2026-09-09-e0-summary.json` — E0 qualification: halo-box 5f851647f (VK+HIP) and Myhacsint 2dff8596 under our exact payload; Myhacsint ~60 TG headline not reproduced (24-25 measured) and nondeterministic; halo-box pins need greedy cross-check before freeze.
