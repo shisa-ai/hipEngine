@@ -1,8 +1,9 @@
 # Qwen3.8-Flash-Next gfx1151 Performance Campaign
 
 **September 8, 2026 review:** use the
-[review conclusions](#review-conclusions-september-8-2026) and
-[active punchlist](#active-review-punchlist-september-8-2026) before older
+[review conclusions](#review-conclusions-september-8-2026),
+[active punchlist](#active-review-punchlist-september-8-2026) and
+[ranked experiments](#ranked-targets-and-iu4-experiments-september-8-2026) before older
 "next" instructions below or the halo-box PF queue. The QSA ordered-v2 and
 iu8-risk+repair promotions remain in production; this review changes neither
 runtime defaults nor numerical gates. Whole-family closure, refreshed Vulkan
@@ -138,10 +139,12 @@ records validation and supersedes the broader closure interpretations.
 
 ### Active review punchlist (September 8, 2026)
 
-This is the execution queue; historical phase numbers and older "next" notes
-are not priorities. Refresh first, then rank candidates by recoverable
-complete-request milliseconds, not leaf speedup. These are open gates, not
-permission to change the admitted numerical policy.
+This is the gate checklist; the ranked experiments below set execution order
+after the retained R1-R3 refresh. Historical phase numbers and older "next"
+notes are not priorities. Re-rank after each retained change by recoverable
+complete-request milliseconds, not leaf speedup. These are gates, not
+permission to change the admitted numerical policy. R3's completed probe
+narrows the diagnosis; the canonical-sequence drift mechanism remains open.
 
 - [x] **R1 - Freeze and close QSA provenance.** Pin a clean source commit,
   model/compiler identity, resolved production/strict manifests, and active
@@ -173,6 +176,11 @@ permission to change the admitted numerical policy.
   inputs and routing; establish its own exact bound/fallback before admission.
   Time the complete map/quantize/compute/repair/publication chain. The old
   ~1.6 s owner is a targeting clue, not a current measured saving.
+  Commit `62dffb872` adds default-4/adversarial tests and nonfinite/tiny-scale
+  row repair; use that work and its
+  [scale sweep](../benchmarks/results/2026-09-08-framework-qwen4exp-q4-iu8-scale-sweep.json)
+  rather than restarting it. This is partial R4 progress, not an all-input
+  parent-error proof, Q5_1 admission, or a new full-model performance packet.
 - [ ] **R5 - Screen GR at its actual publication boundary.** Locate every
   F32 intermediate, nonlinear operation and BF16 rounding boundary before
   adapting repair. Preserve their order and qualify the complete composite,
@@ -184,12 +192,19 @@ permission to change the admitted numerical policy.
   same window. Target the largest measured recoverable cost. Any host or
   launch optimization first needs an exclusive measured overhead bucket;
   old 1.39x MoE and projected near-parity totals do not establish the ranking.
+  R2 now measures MoE as the largest remaining decode comparator gap;
+  subowner attribution and a recoverable-cost estimate are still required.
 - [ ] **R7 - Keep bounded secondary screens open.** Exact linear reuse and
   scheduling, including the existing three-plane chain, remain eligible
   without relaxing gates; do not repeat rejected settings unchanged. QSA
   values-pass tuning is lower priority until fresh complete-owner savings
   justify it. A ~40 us floor or "3x headroom" needs a measured mechanism and
   resource/latency evidence, not a serial-chain estimate alone.
+- [ ] **R8 - Bound direct-Q4 IU4 grouped-prefill feasibility.** Preserve
+  UD-Q4_K_XL weights and their scale/min groups; compare against the current
+  repaired IU8 chain, not an older scalar or F16 baseline. Use the experiment,
+  precision accounting and stop criteria below. No sidecar or default
+  admission is authorized by the old dense-model IU4 speed screens.
 
 For each new candidate: focused RED/oracle -> operation-complete screen ->
 full-state admission -> full-suite same-residency A/B -> promotion or recorded
@@ -199,6 +214,114 @@ rollups, catalog, refactor ledger and immutable worklog before committing.
 Do not rerun unrelated broad tests when existing evidence plus a focused gate
 is sufficient.
 
+### Ranked targets and IU4 experiments (September 8, 2026)
+
+**Decision:** retain the prefill-first workload priority. Execute repair
+qualification -> Q5_1 down -> GR, with a bounded direct-Q4 IU4 feasibility
+screen alongside that queue only when it does not contend for the physical
+GPU or shared files. Serialize measurements on Framework. If the owner
+changes the objective to inter-token latency, move MoE decode to rank 1.
+This is an experiment plan, not a new benchmark or promotion packet.
+
+#### Measured basis
+
+Use the [post-v2 owner ledger](../benchmarks/results/2026-09-08-framework-qwen4exp-post-v2-family.json)
+and [combined-default screen](../benchmarks/results/2026-09-08-framework-qwen4exp-current-default-baselines-v2.json),
+including their exact commands, source/compiler/model identities and gates.
+They bind Framework `gfx1151`, machine ID
+`55ea6c509d0b49eea8de7094a1023668`, Ryzen AI Max+ 395 / Radeon 8060S,
+UD-Q4_K_XL, BF16 KV, c1, chunk1024. The family capture uses clean `20a63e689`
+and reused pinned halo-box Vulkan `b212548e0` profiles. The logger-off
+12-case screen uses one warmup and three repetitions at p512/p1024/p4096,
+128 decode transitions, with repeating trajectories within each engine and
+clean ownership/teardown. Neither packet establishes statistical closure.
+
+| Owner | Code-p4096 prefill HE / Vulkan (s) | Fixed-live4097 decode HE / Vulkan (ms) |
+| --- | ---: | ---: |
+| MoE | 8.643 / 4.542 | 17.280 / 12.446 |
+| Non-GR linear | 4.442 / 1.019 | 17.177 / 16.356 |
+| Gated residual | 3.383 / 1.709 | 6.625 / 6.106 |
+| QSA | 1.330 / 0.646 | 2.617 / 3.081 |
+| GDN | 0.801 / 1.390 | 2.346 / 2.770 |
+
+These are device-owner costs, not unprofiled request walls. The decode window
+is not TG128. Comparator differences are targeting clues, not proven removable
+costs or permission to change arithmetic. QSA's 3.081 ms comparator cell is
+from this refreshed join, not the older 3.161 ms snapshot.
+
+#### Experiment order
+
+| Rank / gate | Target and mechanism | First discriminator / stop condition |
+| --- | --- | --- |
+| 1 / R4 | Qualify current repair, then Q5_1 exact grouped down. Attempt faster integer projection with sparse parent-order repair at its actual publication boundary. | Close remaining error-bound/queue coverage; capture actual layer/category activations and routing. Establish Q5_1's own bound and strict fallback. Time map + quantize + compute + repair + publication. Stop if repair removes the complete-chain gain or misses any binding exactness case. |
+| 2 / R5 | GR composite. Reduce expensive projection/reuse costs while preserving nonlinear and rounding boundaries. | Enumerate F32 intermediates and BF16 publications first. Qualify the full composite; eventual BF16 consumption does not permit earlier reassociation. Compare measured request savings with Q5_1 before reordering. |
+| 3 / R8 | Direct-Q4 IU4 grouped gate/up prefill, without requantizing weights. | Run the bounded feasibility screen below against today's repaired IU8 route. Stop if extra activation planes, metadata/corrections, tile underfill or repair consume the gain. |
+| 4 / R6 | MoE decode bandwidth and scheduling. Investigate weight traversal, coalescing, register pressure, repeated work and combine boundaries before changing arithmetic lanes. | Attribute gate/up, down, combine and graph/API costs in one matched window. Record bytes, effective bandwidth, VGPR/scratch and grid sufficiency. A matrix-instruction roof alone is not a c1 mechanism. |
+| 5 / R7 | Exact linear and the admitted three-plane chain. Share activation packing where inputs/contracts match; improve staging, reuse and scheduling without reducing required precision. | Use actual rotating weights and complete producer/consumer chains. Keep rejected fewer-plane/MMQ settings rejected; a new exact mechanism remains eligible. Sparse BF16 repair is not automatically useful for F32-output owners. |
+| 6 / R3 followup, R6 | Canonical-sequence drift and exposed submission overhead. Mirror the warmup/slot sequence, then evaluate graph/PM4 changes only for measured gaps. | Preserve every repetition; collect aligned wall, kernel union, launch/sync gaps and telemetry in the reproducing sequence. Existing controlled probes did not reproduce the canonical sag, so its cause remains open. Do not add overlapping API and device times or label unmatched residual as host cost. |
+| 7 / R7 | QSA prefill/values scheduling and the remaining serial GDN prefix. | Require new complete-owner evidence and a concrete latency/resource mechanism. QSA decode and GDN are no longer the leading comparator deficits; do not repeat the completed suffix admission. |
+
+#### IU4 history and bounded screen
+
+The earlier IU4 campaign is on a separate Git ref, not this checkout:
+`origin/mtp-iu4:MTP-IU4.md`, pinned for this review at `3a8ab17d3`.
+Read it without switching or merging the shared worktree:
+
+```bash
+git show 3a8ab17d3:MTP-IU4.md
+git show 80d2bb187 --stat
+git show 9d969cdaa --stat
+```
+
+The pinned document's instruction diagnostic and R6-R8 artifact links carry
+the old host, model, commands, quality verdicts and source limitations. Its
+gfx1151 instruction screen establishes a faster IU4 lane, not a product win;
+it is disclosed dirty-tree/register-only evidence. Rebuilt dense
+Qwen3.8-27B prefill kernels and the Kairic full-FFN sidecar won speed screens,
+but the full-model sidecar failed binding distribution gates against both
+tested authorities. Tiny-M verifier work offered little incremental
+representation value after correcting the exact baseline's scheduling deficit.
+Do not summarize that history as "IU4 never helped"; equally, do not transfer
+its dense-prefill gains or quality-traded product to Flash-Next MoE.
+
+The new hypothesis is **native IU4 over existing Q4_K nibbles**, retaining
+subblock scales/minima and the current publication contract. It avoids the
+old requantized-weight sidecar, but still has to pay for activation precision:
+
+- The current gate/up route uses three INT8 residual activation planes.
+  An exact integer split `q8 = low4 + 16 * high4` (unsigned low nibble,
+  signed high nibble) needs two IU4 products per IU8 product. At twice the
+  instruction throughput, that cancels the nominal arithmetic gain before
+  recombination/correction overhead. It is a control, not a speed prediction;
+  reconstruct the I32 dot before applying scales to preserve that stage.
+- Fewer INT4 residual planes are a separate numerical hypothesis. Measure
+  residual error and parent-order discrepancy, then qualify a conservative
+  repair criterion or the applicable production-profile gate. Never assume
+  BF16 publication or the current IU8 multiplier certifies an IU4 route.
+- Prompt rows are not expert rows. Refresh chunk1024 per-expert histograms
+  and capture actual activation/routing pairs across layers and categories.
+  The [earlier routing capture](../benchmarks/results/2026-09-06-framework-qwen4exp-real-routing.json)
+  retained counts with synthetic-activation replay, not a complete activation
+  oracle. Include skewed/empty experts and tails; select routes by validated
+  geometry/profile capability, never prompt or token identity.
+- First compare precision-matched integer-split IU4 and bounded residual-IU4
+  candidates against the current repaired IU8 chain on rotating actual weights.
+  Charge map, activation packing, metadata, compute, corrections, risk
+  collection/repair, SiLU/publication and scratch/peak bytes. Record useful
+  versus padded work, plane count, repair fraction, VGPR/LDS/scratch and named
+  cache-only traces. Inspect `docs/KERNELS.md` and run the lineage check before
+  adapting code from the old branch or a read-only reference.
+- Advance only a complete-chain win with its declared correctness contract.
+  Require full-state admission and same-residency category/heldout/model gates
+  before promotion. If the bounded screen loses, record the limiting mechanism
+  and return to the ranked queue; do not replace UD-Q4_K_XL with a sidecar,
+  extend into tiny-M MTP, or relax numerical thresholds to rescue it.
+
+Already rejected cache, larger-row/tile, cooperative-staging, fewer-plane and
+CPU-wait settings remain rejected unless a new measured mechanism changes the
+experiment. MTP, alternate KV storage and alternative weight products retain
+their separate capacity, quality and true-AR economics gates.
+
 ### Retained promotion snapshots
 
 **R2/R3 post-promotion refresh and drift diagnosis (September8 UTC):** clean
@@ -206,7 +329,7 @@ is sufficient.
 capture (six cases/twelve phases, chunk1024, comparator profiles reused from
 the pinned b212548e0 capture): code-p4096 prefill FFN8.643s (was10.214),
 linear4.442s,GR3.383s,QSA1.330s,GDN0.801s, device total18.714s (1.892x
-Vulkan,was2.09x). Fixed-live4097 decode: QSA2.617ms versus Vulkan3.161ms
+Vulkan,was2.09x). Fixed-live4097 decode: QSA2.617ms versus Vulkan3.081ms
 (**0.849x — hipEngine faster on the QSA decode owner**); MoE17.28ms (1.388x,
 the top remaining decode owner), linear1.050x,GR1.085x, device total46.533ms
 (1.101x,was1.43x). Logger-off combined-default 12-case screen: HE
@@ -4317,15 +4440,21 @@ on the full category+heldout suite and reach the section 6 target without
 benchmark gaming.
 
 The QSA ordered-v2 and iu8-risk+repair promotions are retained, not proof of
-whole-family closure. First freeze committed-source state/trace evidence and
-refresh the combined-default family and logger-off ledgers, including paired
-p4096 variance diagnostics. Then qualify the repair criterion and screen
-Q5_1 down and GR at their actual publication boundaries; transfer is conditional.
-Choose the remaining decode owner from the refreshed exclusive costs.
-Keep exact linear and three-plane scheduling eligible; one rejected replacement
-does not prove a family-wide floor. Leaf projections cannot establish Vulkan
-parity or a host-bound diagnosis. P8 is not rank 2: do not integrate it until
-a same-session named-production arm supplies `O` and `s`.
+whole-family closure. R1-R3 provenance and refresh evidence is retained; use
+the September 8 ranked-target section instead of repeating completed gates.
+Qualify the repair criterion, building on 62dffb872, then screen Q5_1 down
+and GR at their actual publication boundaries; transfer is conditional.
+Keep a bounded direct-Q4 IU4 grouped-prefill screen at rank 3: preserve the
+binding weights, charge activation precision/correction/repair, and compare
+against the current repaired IU8 chain. Old dense-model sidecar results do not
+authorize a Flash-Next product or predict its speedup.
+Next attribute and optimize MoE decode, then exact linear/three-plane
+scheduling, canonical-sequence drift/exposed submission costs, and secondary
+QSA/GDN work. Re-rank from refreshed recoverable costs after each retained
+unit. The canonical drift mechanism remains open despite the completed
+controlled probe. Leaf projections cannot establish Vulkan parity or a
+host-bound diagnosis. P8 is not rank 2: do not integrate it until a same-session
+named-production arm supplies `O` and `s`.
 
 Settle the P0 measurement gaps before the closure freeze: GPU clock policy must
 be declared and identical across both arms of every paired row, and the Vulkan
