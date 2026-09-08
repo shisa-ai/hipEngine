@@ -255,6 +255,13 @@ is sufficient.
 
 ### Ranked targets and IU4 experiments (September 8, 2026)
 
+**External source refresh:** the
+[three-fork review](QWEN4EXP-EXTERNAL-FORKS-REVIEW.md) pins Halogen
+`0208581a5`, Myhacsint's requested production branch `2dff8596d`, and
+halo-box master `7449a0fe9`. It adds E0-E7 as bounded experiments within
+this queue, not a new performance baseline or numerical policy. Continue
+current R4 admission; do not restart it from the earlier ranking snapshot.
+
 **Decision:** retain the prefill-first workload priority. Execute repair
 qualification -> Q5_1 down -> GR, with a bounded direct-Q4 IU4 feasibility
 screen alongside that queue only when it does not contend for the physical
@@ -299,6 +306,38 @@ from this refreshed join, not the older 3.161 ms snapshot.
 | 5 / R7 | Exact linear and the admitted three-plane chain. Share activation packing where inputs/contracts match; improve staging, reuse and scheduling without reducing required precision. | Use actual rotating weights and complete producer/consumer chains. Keep rejected fewer-plane/MMQ settings rejected; a new exact mechanism remains eligible. Sparse BF16 repair is not automatically useful for F32-output owners. |
 | 6 / R3 followup, R6 | Canonical-sequence drift and exposed submission overhead. Mirror the warmup/slot sequence, then evaluate graph/PM4 changes only for measured gaps. | Preserve every repetition; collect aligned wall, kernel union, launch/sync gaps and telemetry in the reproducing sequence. Existing controlled probes did not reproduce the canonical sag, so its cause remains open. Do not add overlapping API and device times or label unmatched residual as host cost. |
 | 7 / R7 | QSA prefill/values scheduling and the remaining serial GDN prefix. | Require new complete-owner evidence and a concrete latency/resource mechanism. QSA decode and GDN are no longer the leading comparator deficits; do not repeat the completed suffix admission. |
+
+#### External experiment attachments
+
+Use the [source review's E0-E7 table](QWEN4EXP-EXTERNAL-FORKS-REVIEW.md#campaign-experiments)
+for pinned files/commits, test gaps and stop criteria:
+
+- **E0:** qualify refreshed halo-box HIP/Vulkan and Myhacsint comparators
+  under our exact payload/fixture. Halo-box's published ~800 PP row is HIP
+  UD-IQ4_XS, not our UD-Q4_K_XL; Halogen's ~50 TG includes MTP and different
+  weights. Myhacsint's supplied ~60 TG headline lacks a reproduced protocol.
+- **E1:** attach representation-preserving MMQ next-K register staging and
+  expert-row-aware tile selection to the prefill R4/R8/R7 screens. Measure
+  against current admitted kernels; rejected scalar prefetch/cache settings
+  are not reopened unchanged.
+- **E2/E3:** attach surviving fused quantize/shared-input matvec and ordered
+  F32 prefetch to R6, and alias-safe rounded HC mix/combine to R5. Preserve
+  our activation planes and publication order; the fork removed some early
+  decode HC and mixed-F32 experiments for correctness.
+- **E4:** keep fixed shape-specific GEMM plans and larger bounded chunks as
+  conditional long-prefill screens, not a reversal of chunk1024 admission.
+- **E5:** extend existing UMA lifetime/drift diagnostics; the newly merged
+  input ring is not PM4 and is not evidence of a hipEngine race or speedup.
+- **E6/E7:** retain duplicate-replay/dirty-restore/shared-MTP-fit checks under
+  P11, and page-cache/pinning/in-place-prefix checks as separate serving
+  followups. No new weights, proprietary kernel import, global runtime
+  replacement or numerical-policy relaxation is authorized.
+
+The source review records conflicting external logit-exactness evidence,
+cache-sensitive benchmark tooling and quant/layout-specific route guards.
+Reproduce rather than credit headline rates or undefined "% theory" labels.
+Rerank these mechanisms by fresh recoverable request cost after the current
+admission unit; no external microbenchmark supersedes the campaign gates.
 
 #### IU4 history and bounded screen
 
@@ -4494,6 +4533,14 @@ unit. The canonical drift mechanism remains open despite the completed
 controlled probe. Leaf projections cannot establish Vulkan parity or a
 host-bound diagnosis. P8 is not rank 2: do not integrate it until a same-session
 named-production arm supplies `O` and `s`.
+
+Consult docs/QWEN4EXP-EXTERNAL-FORKS-REVIEW.md for the September 8 gh-pinned
+Halogen/Myhacsint/halo-box review and E0-E7 experiments attached to this queue.
+Qualify the new comparator binaries separately; do not transfer IQ4_XS,
+custom-checkpoint, cache-hit or speculative rates onto UD-Q4_K_XL true AR.
+Prefer source-backed representation-preserving staging/fusion experiments
+where their measured recoverable cost beats an IU4 precision redesign.
+Preserve the review's final-source corrections and test limitations.
 
 Settle the P0 measurement gaps before the closure freeze: GPU clock policy must
 be declared and identical across both arms of every paired row, and the Vulkan
