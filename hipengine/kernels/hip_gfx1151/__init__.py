@@ -2000,6 +2000,28 @@ GGUF_T16_TARGET_VERIFIER_TRUE_ROWTILE_VARIANTS = {
 # B5 changed-arithmetic candidate. Generic dispatch reads this backend-owned
 # map only while a caller-owned integer-MMQ workspace context is active.
 # Standard Q6 QKV and all Q4/Q5 shapes remain on their current owners.
+# UD item 3: dense raw-IQ integer-MMQ prefill. The selected/MoE kernel reads
+# weights as qweight + expert*expert_bytes + out_row*weight_row_bytes, so at
+# expert 0 it consumes the dense raw GGUF layout unchanged - the dense route is
+# the degenerate single-expert case, with no repack and no weight sidecar. The
+# strict per-row GEMV stays the registered fallback and the rows=1 decode owner;
+# this route is inert unless an execution owner binds its workspace.
+#
+# min_rows is a crossover, not a capability: the GEMV re-reads the weight column
+# once per 8-row slab, so the MMQ only wins once a prompt spans several slabs.
+GGUF_IQ_DENSE_MMQ_PREFILL_POLICY = {
+    "gguf_iq4_xs": {
+        "min_rows": 32,
+        "max_rows": 131072,
+        "variant": "dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out",
+    },
+    "gguf_iq3_xxs": {
+        "min_rows": 32,
+        "max_rows": 131072,
+        "variant": "dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out",
+    },
+}
+
 GGUF_Q6_DENSE_INTEGER_MMQ_PREFILL_POLICY = {
     "gguf_q6_k_t16_qmicro_planar_v1": {
         "min_rows": 17,
@@ -3493,6 +3515,7 @@ __all__ = [
     "GGUF_Q6_STANDARD_PREFILL_SHARED3R1_SHAPES",
     "GGUF_Q6_STANDARD_PREFILL_SHARED6R1_MIN_ROWS",
     "GGUF_Q6_STANDARD_PREFILL_SHARED6R1_MAX_ROWS",
+    "GGUF_IQ_DENSE_MMQ_PREFILL_POLICY",
     "GGUF_Q6_DENSE_INTEGER_MMQ_PREFILL_POLICY",
     "GGUF_Q6_PLANAR_PREFILL_SHARED3R1_SHAPES",
     "GGUF_Q6_STANDARD_PREFILL_SHARED4_MIN_ROWS",

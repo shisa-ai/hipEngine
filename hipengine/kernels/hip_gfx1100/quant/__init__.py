@@ -47,6 +47,15 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_mmq_prefill import (
     q8_1_d8s8_f32_nbytes,
     register_gguf_k_mmq_prefill_kernels,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_iq_source_mmq_prefill import (
+    gguf_iq3_xxs_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out,
+    gguf_iq4_xs_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out,
+    iq_dense_mmq_activation_nbytes,
+    iq_dense_mmq_nbytes,
+    iq_dense_mmq_session,
+    iq_dense_mmq_workspace,
+    register_gguf_iq_source_mmq_prefill_kernels,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_iq_gemv import (
     build_gguf_iq_gemv,
     gguf_iq2_xs_selected_dual_silu_gemv_tile2_grid64_local64_reduce_bf16_bf16_out,
@@ -312,7 +321,14 @@ __all__ = [
     "plan_paro_awq_gemv_build",
     "plan_paro_marlin_k_build",
     "plan_w8a16_linear_build",
+    "gguf_iq3_xxs_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out",
+    "gguf_iq4_xs_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out",
+    "iq_dense_mmq_activation_nbytes",
+    "iq_dense_mmq_nbytes",
+    "iq_dense_mmq_session",
+    "iq_dense_mmq_workspace",
     "register_gguf_iq_gemv_kernels",
+    "register_gguf_iq_source_mmq_prefill_kernels",
     "register_gguf_iq_selected_prefill_kernels",
     "register_gguf_k_gemv_kernels",
     "register_gguf_k_mmq_prefill_kernels",
