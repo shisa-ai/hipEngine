@@ -167,3 +167,8 @@ contains commands, source identities, category/heldout metrics, complete output
 ID rows, memory audits, samples and process-group ownership records.
 All timing cells and the final hipEngine 128K row use clean measurements;
 setup failures and superseded attempts are not used in these tables.
+
+The [session script archive and rerun notes](../../scripts/experiments/2026-09-08-engine-comparison/README.md)
+preserve the orchestration, monitoring, publishers, validator and debugging
+probes. Historical publishers require their original raw inputs; the committed
+benchmark drivers support new runs.
