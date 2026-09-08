@@ -7362,6 +7362,12 @@ def _iq_dense_mmq_prefill_dispatch(
         variant = str(entry["variant"])
     except (KeyError, TypeError, ValueError):
         return dispatch
+    # Optional (in_features, out_features) allowlist, matching the shape of the
+    # planar-Q6 integer policy. Absent means every aligned shape is admitted;
+    # present, it restricts the route to the measured shapes.
+    shapes = entry.get("shapes")
+    if shapes is not None and (int(in_features), int(out_features)) not in shapes:
+        return dispatch
     if not admitted:
         return dispatch
     key = KernelKey(

@@ -2041,17 +2041,31 @@ GGUF_IQ_DENSE_MMQ_PREFILL_POLICY = {
 #   dense MMQ   0.0010796  0.0051188  0.0354   162/162
 #   + IQ4_NL    0.0013457  0.0071143  0.0412   161/162
 #
-# The median per-position delta is exactly 0.000000 and p90 is +0.000925, but a
-# few positions diverge 100-300x (prompt 4 steps 2/3: 0.00022 -> 0.0223,
-# 0.00006 -> 0.0200). That is the signature of a small number of sensitive
-# tensors rather than general precision loss, so the blocker is to identify
-# them - by role or layer - and either exclude them or give them a finer
-# activation quantization. Until then the strict GEMV keeps these 7 tensors.
-# See docs/REFACTOR.md "IQ4_NL dense MMQ".
+# A localization attempt (2026-09-08) *failed to find a shippable subset*, and
+# the negative result is the useful part. The seven IQ4_NL tensors sit at
+# layers 1/2/3 (ffn_down), 21 (attn_qkv) and 27/27/50 (ffn_gate/up); a
+# single-prompt probe attributed 71% of the divergence-from-default to the
+# three early ffn_down tensors, so routing only the other four looked
+# promising. Measured, that subset gives prefill 140.3 tok/s (+10% instead of
+# +22%) and teacher mean **0.0013632** - no better than routing all seven
+# (0.0013457), and worse than not routing IQ4_NL at all (0.0010796). It only
+# recovers top-1 to 162/162.
+#
+# The lesson: that probe bisected on divergence from *our own default*, which
+# is not the gate objective. Against the teacher the cost is essentially
+# binary - routing any IQ4_NL through the MMQ costs ~+0.00027 mean - so it is
+# not attributable to specific tensors and no subset fixes it. Even the best
+# remaining subset (attn_qkv alone, 29.5 MB of 330) could not be worth the
+# dispatch complexity. See docs/REFACTOR.md "IQ4_NL dense MMQ".
 _GGUF_IQ_DENSE_MMQ_IQ4_NL_HELD_OUT = {
     "min_rows": 8,
     "max_rows": 131072,
     "variant": "dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out",
+    # The subset that was measured and rejected: attn_qkv L21 plus ffn_gate/up
+    # L27/L50, excluding the early ffn_down tensors. Kept here so the attempt
+    # is not repeated. The dispatch honours an optional "shapes" allowlist, so
+    # re-testing it is a one-line change.
+    "shapes": frozenset({(5_120, 10_240), (5_120, 17_408)}),
 }
 
 GGUF_Q6_DENSE_INTEGER_MMQ_PREFILL_POLICY = {
