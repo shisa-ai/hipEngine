@@ -568,38 +568,37 @@ def main(argv: Sequence[str] | None = None) -> int:
     register_mapped_calls = [0]
     original_row4 = None
     gr_iu8_module = None
-    if args.route_package == "gr-iu8-down":
+    if args.route_package in {"gr-iu8", "gr-iu8-down"}:
         import hipengine.runtime.qwen4_exp_runner as _gr_runner_module
         gr_iu8_module = _gr_runner_module
+        # The up (320->10240) and down (10240->320) legs share one kernel
+        # entry; the production profile may already bind the other leg, so
+        # each package counts only its own geometry.
+        down_leg = args.route_package == "gr-iu8-down"
 
         def counted_gr_iu8(*call_args, **call_kwargs):
-            row4_calls[0] += 1
+            in_features = call_args[4]
+            out_features = call_args[5]
+            if (in_features > out_features) == down_leg:
+                row4_calls[0] += 1
             return original_row4(*call_args, **call_kwargs)
 
         original_row4 = _gr_runner_module.gguf_q8_0_iu8_wmma_prefill_f32_f32
         _gr_runner_module.gguf_q8_0_iu8_wmma_prefill_f32_f32 = counted_gr_iu8
-        artifact["arms"] = {
-            "before": {"gr_down":
-                "gguf_k_prefill_out_coltile_rowbatch f32 (exact coltile)"},
-            "after": {"gr_down":
-                "q8_0_iu8_wmma_prefill_f32_f32 (T1 3-plane)"},
-        }
-    if args.route_package == "gr-iu8":
-        import hipengine.runtime.qwen4_exp_runner as _gr_runner_module
-        gr_iu8_module = _gr_runner_module
-
-        def counted_gr_iu8(*call_args, **call_kwargs):
-            row4_calls[0] += 1
-            return original_row4(*call_args, **call_kwargs)
-
-        original_row4 = _gr_runner_module.gguf_q8_0_iu8_wmma_prefill_f32_f32
-        _gr_runner_module.gguf_q8_0_iu8_wmma_prefill_f32_f32 = counted_gr_iu8
-        artifact["arms"] = {
-            "before": {"gr_up":
-                "q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32 (fused exact)"},
-            "after": {"gr_up":
-                "q8_0_iu8_wmma_prefill_f32_f32 + sigmoid + gated_mean (T1 3-plane)"},
-        }
+        if down_leg:
+            artifact["arms"] = {
+                "before": {"gr_down":
+                    "gguf_k_prefill_out_coltile_rowbatch f32 (exact coltile)"},
+                "after": {"gr_down":
+                    "q8_0_iu8_wmma_prefill_f32_f32 (T1 3-plane)"},
+            }
+        else:
+            artifact["arms"] = {
+                "before": {"gr_up":
+                    "q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32 (fused exact)"},
+                "after": {"gr_up":
+                    "q8_0_iu8_wmma_prefill_f32_f32 + sigmoid + gated_mean (T1 3-plane)"},
+            }
     if args.route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "q8-down-register", "q51-row-publish", "gdn-wave-norm", "mmq-token64", "qsa-head-pair", "qsa-head-quad", "q4-iu8-exact", "q51-iu8-exact", "qsa-ordered-v2"}:
         from hipengine.kernels.registry import KernelKey, register, resolve
         row4_key = (KernelKey(
