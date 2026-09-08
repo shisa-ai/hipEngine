@@ -193,6 +193,18 @@ screens1.109x/1.138x,200 pairs exact,23 tests. VGPR184->160,no scratch.
 Mixed short-Q/long-GR results retained;no runtime/default change.
 [Evidence](results/2026-09-07-framework-qwen4exp-mmq-token64.json).
 
+R2/R3 refresh at clean 20a63e689, both promotions: HE PP204.24/221.26/210.74,
+TG19.15/18.58/16.39 — p4096 TG +18.2% versus the pre-ordered-v2 packet,
+Vulkan TG lead1.500x at p4096. Protocol matched on both engines (1 warmup
++3 reps); HE's repetition-order drift makes its 3-rep average conservative
+versus its first-rep rate (~18.0 at p4096) while Vulkan is flat (0.12% CV).
+Family ledger: decode QSA 2.617 vs 3.161ms (0.849x, hipEngine faster);
+device decode total 46.5ms (1.101x); MoE 1.388x is the top decode owner.
+R3: drift is not clock/thermal/CPU-frequency; v2 repetition-stable to0.4%;
+canonical third-rep sag not reproduced under controlled fresh-prefill
+structure (harness-sequenced; hardware ruled out).
+[Evidence](results/2026-09-08-framework-qwen4exp-current-default-baselines-v2.json).
+
 Exact ordered-v2 QSA decode promoted:production three-pass 1.154ms/layer
 (scores401/coeff177/values533us) -> v2 0.179ms/layer (32/14/110us), 6.45x
 bit-exact; p4096 A/B TG +7.1..+24.8% per case (aggregate+16.5%), 72 exact,
