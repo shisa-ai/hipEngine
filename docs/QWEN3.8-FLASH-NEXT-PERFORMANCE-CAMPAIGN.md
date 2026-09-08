@@ -216,8 +216,11 @@ This is the gate checklist; the ranked experiments below set execution order
 after the retained R1-R3 refresh. Historical phase numbers and older "next"
 notes are not priorities. Re-rank after each retained change by recoverable
 complete-request milliseconds, not leaf speedup. These are gates, not
-permission to change the admitted numerical policy. R3's completed probe
-narrows the diagnosis; the canonical-sequence drift mechanism remains open.
+permission to change the admitted numerical policy. R3 and its followup
+probe are complete: the canonical third-rep sag did not reproduce on the
+current tree even on the previously strongest case, so the residual ~5%
+p4096 TG variance is treated as transient system-state noise; reopen only
+if a fresh canonical packet reproduces a >=10% dip under a dedicated probe.
 
 - [x] **R1 - Freeze and close QSA provenance.** Pin a clean source commit,
   model/compiler identity, resolved production/strict manifests, and active
@@ -326,13 +329,28 @@ promotion decision.
   of **+2.0%** incremental prefill geo-mean (11/12 cases) on top of the
   promoted up leg: **promoted at 07dd97c9f**. Combined GR family effect:
   **+11.3% prefill** over the pre-R5 default.
-- [ ] **R6 - Select the remaining decode owner from R2.** Split MoE into
+- [x] **R6 - Select the remaining decode owner from R2.** Split MoE into
   gate/up, down, combine and graph/API costs; examine linear and GR in the
   same window. Target the largest measured recoverable cost. Any host or
   launch optimization first needs an exclusive measured overhead bucket;
   old 1.39x MoE and projected near-parity totals do not establish the ranking.
-  R2 now measures MoE as the largest remaining decode comparator gap;
-  subowner attribution and a recoverable-cost estimate are still required.
+  **Done (September 9, 2026).** Code-p4096 fixed-live4097 split (three
+  repetitions, six promotions active at `3e6be5848`): per-transition wall
+  54.6 ms / device 49.3 ms gives the exclusive host/launch overhead bucket
+  **5.3 ms/token (9.7% of wall)**; ~1700 individually hipLaunchKernel'd
+  kernels carry 31.2 ms of device work while the 18.1 ms MoE block is
+  already hipGraphLaunch'd. MoE subowners (18.09 ms): expert gate/up Q4_K
+  dp4a dual 5.68 ms, expert down/combine Q5_1 weighted sum 5.60 ms,
+  shared-expert block 6.19 ms, router 0.33 ms, quantize/cast 0.29 ms;
+  linear family 24.73 ms (attn_qkv 5.05, lm_head 3.25, attn_gate 3.12,
+  ssm_out 3.10, attn_q 1.98, GR down 3.63, GR up 2.08); GDN 2.44, QSA
+  2.69, GR epilogue 0.86 ms. Comparator gaps: MoE +5.6 ms, linear+GR
+  +3.2 ms; QSA and GDN faster than Vulkan. **Selected next decode target:
+  decode graph expansion beyond the MoE block** - no arithmetic
+  reordering, estimated recoverable 3-5 ms/token (+6-9% TG). Second
+  target: the MoE expert GEMV pair (11.3 ms today, ~5.6 ms at Vulkan
+  parity).
+  [Split](../benchmarks/results/2026-09-09-framework-qwen4exp-r6-decode-owner-split.json).
 - [ ] **R7 - Keep bounded secondary screens open.** Exact linear reuse and
   scheduling, including the existing three-plane chain, remain eligible
   without relaxing gates; do not repeat rejected settings unchanged. QSA
@@ -412,6 +430,20 @@ three-promotion packet, matching the GR legs' +11.3% combined A/B), TG
 [Family](../benchmarks/results/2026-09-08-framework-qwen4exp-post-gr-family.json),
 [baselines](../benchmarks/results/2026-09-08-framework-qwen4exp-current-default-baselines-v4.json).
 
+Post-GR state update (September9 UTC): the dense Q8_0 iu8-WMMA route is
+promoted (+7.9% paired prefill geo-mean, every case winning) but has no
+post-promotion family/combined-default packet yet, so the rows above
+remain the five-promotion basis. E0 also qualified refreshed comparators
+under this fixture: halo-box master `5f851647f` is substantially faster
+than the pinned `b212548e0` these Vulkan leads reference (HIP PP
+466.4/614.3/709.5; Vulkan PP 404.6/411.0/546.6), so the 1.39-1.73x PP
+and 1.29-1.32x TG leads here overstate the position against the
+refreshed comparator frontier - at p4096 the v4 HE PP 237.94 is **0.335x**
+halo-box-HIP `5f851647f` (post-dense ~257 is an estimate, refresh
+pending) while HE TG 18.31 is at HIP parity (**0.994x**). `b212548e0`
+remains the pinned baseline pending the greedy-mode logits cross-check.
+[E0](../benchmarks/results/e0-comparators/2026-09-09-e0-summary.json).
+
 | Owner | Code-p4096 prefill HE / Vulkan (s) | Fixed-live4097 decode HE / Vulkan (ms) |
 | --- | ---: | ---: |
 | MoE | 8.402 / 4.542 | 17.280 / 12.446 |
@@ -446,6 +478,24 @@ for pinned files/commits, test gaps and stop criteria:
   under our exact payload/fixture. Halo-box's published ~800 PP row is HIP
   UD-IQ4_XS, not our UD-Q4_K_XL; Halogen's ~50 TG includes MTP and different
   weights. Myhacsint's supplied ~60 TG headline lacks a reproduced protocol.
+  **Done (September 9, 2026).** Under our exact payload, logger-off
+  protocol, same host and identical server args (1 warmup + 3 reps):
+  halo-box master `5f851647f` PP **404.6/411.0/546.6** (Vulkan) and
+  **466.4/614.3/709.5** (HIP), TG **26.30/26.03/24.55** (Vulkan) and
+  **20.06/19.94/18.42** (HIP), deterministic within engine; Myhacsint
+  `2dff8596` Vulkan PP **489.4/577.6/573.5**, TG **25.21/24.74/24.01** -
+  its ~60 TG headline is not reproduced (our protocol excludes MTP and an
+  unpublished deployment preset) and it is nondeterministic across
+  repeated identical requests, consistent with the source review's stale
+  union-count selection. The refreshed pins are substantially faster than
+  the pinned `b212548e0` baselines (HIP 283/361/352; Vulkan 334/392/413),
+  so the measured frontier is halo-box-HIP `5f851647f` at PP 709 /
+  TG 18.4 on p4096. Cross-backend digests disagree on every request
+  (seeded sampling semantics amplify numeric differences), so a greedy-mode
+  logits cross-check is required before freezing `5f851647f` as the
+  campaign comparison target; `b212548e0` remains the pinned baseline per
+  the standing rule.
+  [Summary](../benchmarks/results/e0-comparators/2026-09-09-e0-summary.json).
 - **E1:** attach representation-preserving MMQ next-K register staging and
   expert-row-aware tile selection to the prefill R4/R8/R7 screens. Measure
   against current admitted kernels; rejected scalar prefetch/cache settings
@@ -532,6 +582,50 @@ their separate capacity, quality and true-AR economics gates.
 
 ### Retained promotion snapshots
 
+**Dense Q8_0 linear iu8-WMMA promoted (September9 UTC):** the reopened
+#13 lane resolved by subsumption rather than revival of the old
+prepacked-MMQ attention-gate candidate (its determinism blocker was
+already fixed by the later state work; perf sat at ~1.01x with a CI
+through 1.0). The R5 iu8-WMMA kernel was registered as a generic
+`linear` variant with a dispatch rule rewriting the retained F32 coltile
+family (`prefill_f32_f32_out` /
+`coltile8_rowbatch4[_wave_scale]_f32_f32_out`) for prefill-sized rows,
+capturing the attention-gate (2560->6144) and shared-expert down
+(640->2560) projections - 84 calls per routed chunk. Raw MMQ keeps the
+shapes where its 128-row tiles win (verified: the 16-row kernel loses on
+2560->10240, so the dispatch ordering is correct); the exact wave-scale
+coltile stays the fallback and sub-256-row path. Operation-complete
+screens on real weights: 2.47-2.64x (attn-gate) and 3.23-3.45x
+(shared-expert down) versus the wave-scale coltile parent, drift ~1e-6
+absolute (rel p50 ~2e-7). Teacher-forced full-model logits (9 fixture
+cases, double-run): KL <= 5.1e-8, top-1 agreement 100% with argmax gaps
+15-30, bit-deterministic. Full-suite same-residency A/B (72 samples,
+chunk1024, both arms carrying the five promoted routes): prefill
+geo-mean **+7.9%**, every case winning (1.068-1.087), decode neutral;
+the p4096 TG wiggle on two cases matches the known variance signature.
+Two dispatch bugs found and fixed in qualification: the linear resolve
+cache did not key on the route flag (arms silently reused the first
+arm's kernel, exposed by impossible zero-drift-with-nondeterminism
+cells) and the first launch could fall past the lazily-registered
+variant. Promoted at `219c54865`; production binds
+`HIPENGINE_QWEN4_EXP_Q8_IU8_WMM=1` (route default-off outside the
+profile; strict fallback retained). Post-promotion
+family/combined-default refresh pending.
+[A/B](../benchmarks/results/2026-09-09-framework-qwen4exp-q8-iu8-dense-campaign-ab.json).
+
+**Q5_K selected dual gate/up iu8 screen (September9 UTC):** T0-exact
+candidate extending the iu8-risk+repair mechanism to the Q5_K selected
+gate/up owner. Boundary: grouped Q5_K gate/up plus identical BF16 SiLU
+(tile map + iu8-risk + sparse exact repair) versus the row4 parent; no
+routing/down/combine. Actual-weight screens (layer 2, uniform routing,
+10 pairs in both orders per case, multiplier 16): SiLU outputs bit-exact
+in all pairs with operation-complete speedups **5.67x / 6.00x / 6.68x**
+at rows 512/1024/4096 (parent 115.6 -> candidate 20.4 ms median at rows
+512; repair share ~5.4%). The `q5k-iu8-exact` A/B route package is wired
+into the campaign A/B harness; runtime default unchanged. Full-state
+admission and the full-suite same-residency A/B are the next gates.
+[Screen](../benchmarks/results/2026-09-09-framework-qwen4exp-q5k-iu8-screen.json).
+
 **R2/R3 post-promotion refresh and drift diagnosis (September8 UTC):** clean
 `20a63e689`/`1629b3f04`, both promotions active. Shared-taxonomy family
 capture (six cases/twelve phases, chunk1024, comparator profiles reused from
@@ -560,7 +654,19 @@ unidentified — not clocks). The canonical third-rep sag (18.0->12.8 TG) did
 not reproduce under this controlled structure in either arm — it is
 arm-independent in the retained A/B and carried by canonical-harness
 sequencing (1 warmup per mode, slot interleave) with hardware state ruled
-out; a narrowing probe must mirror that sequence exactly.
+out; a narrowing probe must mirror that sequence exactly. **R3-followup
+(September9 UTC):** the dedicated six-repetition canonical-structure
+probe on the previously strongest case (mixed_ja_en-p4096, 1 warmup + 6
+reps, production default, chunk1024, six promotions through the dense
+iu8 route) is flat at 18.7/18.7/18.7/18.8/18.7/18.7 TG with PP flat at
+258-259: the deep 12.8 sag does not reproduce at all on the current
+tree, and the mild v4 wiggle (16.8/17.9 on ja/mixed rep-2) does not
+reproduce minutes later on the same host. The canonical sag is not
+reproducible; residual p4096 TG variation is bounded (~5%),
+case-dependent (ja/mixed) and consistent with transient system-state
+noise rather than a structural host or launch cost. Reopen only on a
+fresh canonical-packet reproduction (>=10% dip) under a dedicated probe.
+[Probe](../benchmarks/results/2026-09-09-framework-qwen4exp-tg-sag-probe.json)
 [Family](../benchmarks/results/2026-09-08-framework-qwen4exp-post-v2-family.json),
 [baselines](../benchmarks/results/2026-09-08-framework-qwen4exp-current-default-baselines-v2.json),
 [drift](../benchmarks/results/2026-09-08-framework-qwen4exp-qsa-v2-drift-probe.json),
