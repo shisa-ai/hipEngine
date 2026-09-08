@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-07**
+Last updated: **2026-09-08**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -88,6 +88,37 @@ decoding runs automatically in production it is scoped to a qualified shape:
 Qwen3.6-35B-A3B GGUF reaches **93.644 tok/s public** — 1.1565x its own AR — at
 two concurrent requests on the W7900.
 <!-- END TOPLINE:README_HIGHLIGHTS -->
+
+## RX 7900 XTX Same-Model Comparison
+
+Same Qwen3.8-27B `Q4_K_M` file on one RX 7900 XTX, HIP and BF16 KV.
+PP/TG use 8192 prompt tokens and 128 decode transitions. C1 MTP uses the
+full ten-prompt category suite, 25 visible outputs, explicit B3 and three
+repetitions. Rates are tok/s; output agreement is against each engine's AR.
+hipEngine uses the direct resident API; external rates use server phase timers.
+
+| Engine | PP8192 | TG128 at 8192 | C1 MTP, 25 outputs | AR-ID matches |
+| --- | ---: | ---: | ---: | ---: |
+| hipEngine | 777.23 | 29.82 | **63.48** | 30/30 |
+| nasone32 default | **943.14** | **35.70** | 58.56 | 27/30 |
+| nasone32, sequential GDN | - | - | 58.65 | 30/30 |
+| strix-llama.cpp | 901.73 | 29.55 | 47.69 | 30/30 |
+
+Longer-generation results use the same full suite with 129 visible outputs:
+
+| Engine | AR tok/s | MTP tok/s | AR-ID matches |
+| --- | ---: | ---: | ---: |
+| hipEngine | 35.51 | 30.40 | 10/10 |
+| nasone32 default | 31.65 | 44.47 | 6/10 |
+| strix-llama.cpp | 32.48 | **50.16** | 7/10 |
+
+Each engine completed a 112K BF16 prompt. With compact KV, hipEngine completed
+128K using pure INT8/FP32 scales; nasone32 and strix-llama.cpp completed 192K
+using Q8_0. These are synthetic execution-capacity observations, not serving
+reserve recommendations.
+
+[Full comparison and source review](results/2026-09-08-rx7900xtx-engine-comparison.md)
+and [commands, samples and checks](results/2026-09-08-rx7900xtx-engine-comparison.json).
 
 ### DMS INT8 offline evaluation — RX 7900 XTX
 
