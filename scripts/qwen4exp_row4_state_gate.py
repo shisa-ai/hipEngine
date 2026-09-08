@@ -57,6 +57,10 @@ def main():
         p.error("--decode-steps must be in 1..128")
     os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file)
     os.environ["HIPENGINE_REQUIRE_CACHED_BUILD"] = "1"
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q5_k_q8_1_selected_prefill import (
+        register_gguf_q5_k_q8_1_selected_prefill_kernels,
+    )
+    register_gguf_q5_k_q8_1_selected_prefill_kernels(replace=True)
     register_gfx1151_kernels(replace=True)
     register_qwen4_exp_gfx1151_profiles()
     resolved = resolve_runtime_profile(
