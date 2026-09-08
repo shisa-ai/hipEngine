@@ -651,6 +651,66 @@ __global__ void rope_norm_scatter_kernel(
   }
 }
 
+
+// Merged q-norm-transpose + k-norm-scatter + v-scatter (post-RoPE), one
+// block of 128 threads per (b, n, h) head-vector: q gets query_ln RMSNorm +
+// per-dim softplus scaling into the [B, H, Q, D] transpose, k gets key_ln
+// RMSNorm into the head-major cache, v is copied straight through.
+template <typename T>
+__global__ void qkv_norm_scatter_kernel(
+    const T* __restrict__ qkv,
+    const float* __restrict__ q_ln,
+    const float* __restrict__ k_ln,
+    const float* __restrict__ per_dim,
+    int B,
+    int N,
+    int S,
+    int H,
+    int D,
+    int patch_stride,
+    int start,
+    T* __restrict__ qt,
+    T* __restrict__ cache_k,
+    T* __restrict__ cache_v) {
+  __shared__ float partial[2 * kThreadsHead];
+  int64_t idx = blockIdx.x;  // b * H * N + h * N + n
+  int n = idx % N;
+  int h = (idx / N) % H;
+  int b = idx / ((int64_t)N * H);
+  const T* row = qkv + (int64_t)b * N * patch_stride + (int64_t)n * patch_stride + h * D;
+  const T* q = row;
+  const T* k = row + (int64_t)H * D;
+  const T* v = row + 2 * (int64_t)H * D;
+
+  float qv = 0.0f, kv = 0.0f;
+  if (threadIdx.x < D) {
+    qv = ld(q + threadIdx.x);
+    kv = ld(k + threadIdx.x);
+  }
+  partial[threadIdx.x] = qv * qv;
+  partial[threadIdx.x + kThreadsHead] = kv * kv;
+  __syncthreads();
+  for (int stride = kThreadsHead / 2; stride > 0; stride >>= 1) {
+    if (threadIdx.x < stride) {
+      partial[threadIdx.x] += partial[threadIdx.x + stride];
+      partial[threadIdx.x + kThreadsHead] += partial[threadIdx.x + kThreadsHead + stride];
+    }
+    __syncthreads();
+  }
+  float qinv = rsqrtf(partial[0] / (float)D + 1.0e-6f);
+  float kinv = rsqrtf(partial[kThreadsHead] / (float)D + 1.0e-6f);
+  float factor = 1.442695041f / sqrtf((float)D);
+
+  int64_t qt_dst = (((int64_t)b * H + h) * N + n) * D;
+  int64_t kv_dst = (((int64_t)b * H + h) * S + (start + n)) * D;
+  if (threadIdx.x < D) {
+    int j = threadIdx.x;
+    qt[qt_dst + j] = to_half<T>(qv * qinv * q_ln[j] * factor * softplus_(per_dim[j]));
+    cache_k[kv_dst + j] = to_half<T>(kv * kinv * k_ln[j]);
+    cache_v[kv_dst + j] = v[j];
+  }
+}
+
 inline unsigned grid_for(int64_t count, int threads) {
   return (unsigned)((count + threads - 1) / threads);
 }
@@ -964,6 +1024,21 @@ extern "C" int timesfm_rope_norm_scatter_f16(
   hipLaunchKernelGGL(rope_norm_scatter_kernel<half_t>, dim3((unsigned)total),
                      dim3(kThreads), 0, stream,
                      qkv, pos, q_ln, k_ln, per_dim, B, N, S, H, D, patch_stride, start,
+                     qt, cache_k, cache_v);
+  return (int)hipGetLastError();
+}
+
+extern "C" int timesfm_qkv_norm_scatter_f16(
+    const half_t* qkv,
+    const float* q_ln, const float* k_ln, const float* per_dim,
+    int B, int N, int S, int H, int D, int patch_stride, int start,
+    half_t* qt, half_t* cache_k, half_t* cache_v,
+    hipStream_t stream) {
+  if (B <= 0 || N <= 0 || S <= 0 || H <= 0 || D <= 0 || D > kThreadsHead) return (int)hipErrorInvalidValue;
+  int64_t total = (int64_t)B * H * N;
+  hipLaunchKernelGGL(qkv_norm_scatter_kernel<half_t>, dim3((unsigned)total),
+                     dim3(kThreadsHead), 0, stream,
+                     qkv, q_ln, k_ln, per_dim, B, N, S, H, D, patch_stride, start,
                      qt, cache_k, cache_v);
   return (int)hipGetLastError();
 }

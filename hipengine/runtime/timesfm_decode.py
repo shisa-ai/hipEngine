@@ -51,6 +51,7 @@ def _patch_running_stats(
     return running_mu.astype(np.float32), np.sqrt(running_var).astype(np.float32)
 from hipengine.kernels.hip_gfx1100.timesfm.timesfm import (
     timesfm_add_f32,
+    timesfm_qkv_norm_scatter_f16,
     timesfm_rope_norm_scatter_f16,
     timesfm_k_norm_scatter_f16,
     timesfm_mask_softmax_f16,
@@ -335,17 +336,10 @@ class TimesFMGPUDecoder:
                 # Batched-GEMM attention (head-major caches).
                 timesfm_rope_f32(bufs.qkv.ptr, bufs.pos.ptr, self._timescale.ptr, batch, n, heads, hd, patch_stride, 0, dtype=dt)
                 timesfm_rope_f32(bufs.qkv.ptr, bufs.pos.ptr, self._timescale.ptr, batch, n, heads, hd, patch_stride, h, dtype=dt)
-                timesfm_q_norm_transpose_f16(
-                    bufs.qkv.ptr, w["q_ln"], w["perdim"], batch, n, heads, hd,
-                    patch_stride, bufs.qt.ptr,
-                )
-                timesfm_k_norm_scatter_f16(
-                    bufs.qkv.ptr, w["k_ln"], batch, n, cache_size, heads, hd,
-                    patch_stride, start, bufs.caches_k[layer].ptr,
-                )
-                timesfm_v_scatter_f16(
-                    bufs.qkv.ptr, batch, n, cache_size, heads, hd,
-                    patch_stride, start, bufs.caches_v[layer].ptr,
+                timesfm_qkv_norm_scatter_f16(
+                    bufs.qkv.ptr, w["q_ln"], w["k_ln"], w["perdim"],
+                    batch, n, cache_size, heads, hd, patch_stride, start,
+                    bufs.qt.ptr, bufs.caches_k[layer].ptr, bufs.caches_v[layer].ptr,
                 )
                 # scores[bh][q,s] = sum_d Q[bh][q,d] K[bh][s,d]
                 self.rocblas.gemm_ex_strided_batched_f16_f32acc(
