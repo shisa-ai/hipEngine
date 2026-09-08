@@ -106,6 +106,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--decode-steps", type=int, default=4)
     parser.add_argument("--codec", choices=("bf16", "int8_evaluation"), default="bf16")
+    parser.add_argument(
+        "--dms-prefill-mode",
+        choices=("dense_pool", "layer_outer"),
+        default="dense_pool",
+        help="dense_pool: full BF16 KV pool + finalize-time layerwise pack; "
+        "layer_outer: no dense pool, shared-oracle two-pass prefill with "
+        "per-layer compact pack (review target 4)",
+    )
     parser.add_argument("--verify-c1", action="store_true",
                         help="Require byte-exact logits against independent single-session replays.")
     parser.add_argument("--backend", default="hip_gfx1100")
@@ -168,6 +176,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "backend": str(args.backend),
         "sessions": n,
         "codec": getattr(args, "codec", "bf16"),
+        "dms_prefill_mode": getattr(args, "dms_prefill_mode", "dense_pool"),
         "verify_c1": getattr(args, "verify_c1", False),
         "heterogeneous_widths": widths,
         "cancel_after_steps": args.cancel_after_steps,
@@ -245,6 +254,7 @@ def _run_cycle(
                 dms_max_new_tokens=steps + 1,
                 use_wmma_prefill=True,
                 use_gemv_decode=True,
+                dms_prefill_mode=str(getattr(args, "dms_prefill_mode", "dense_pool")),
             )
             session.__enter__()
             sessions.append(session)
@@ -254,6 +264,9 @@ def _run_cycle(
                 # resolved to (e.g. mapped_host_private_c1_auto versus
                 # shared_runner_device_fallback).
                 runner_wiring = {
+                    "dms_prefill_mode": str(
+                        getattr(args, "dms_prefill_mode", "dense_pool")
+                    ),
                     "sessions": n,
                     "shared_runner": runner is not None,
                     "session_owns_runner": bool(
@@ -356,6 +369,7 @@ def _run_cycle(
                     max_sequence_length=len(prompt) + steps,
                     dms_metadata_path=args.metadata, dms_backend_factory=backend_factory,
                     dms_max_new_tokens=steps + 1, use_wmma_prefill=True, use_gemv_decode=True,
+                    dms_prefill_mode=str(getattr(args, "dms_prefill_mode", "dense_pool")),
                 ) as reference:
                     reference.prefill(prompt, use_bulk=True, bulk_attention_mode="bulk", return_logits=False)
                     current = int(prompt[-1])
