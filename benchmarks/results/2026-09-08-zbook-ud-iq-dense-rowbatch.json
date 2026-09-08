@@ -1,0 +1,150 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-08",
+  "status": "retained_perf",
+  "host": "zbook",
+  "hardware": "AMD RYZEN AI MAX+ PRO 395 / Radeon 8060S (laptop; power- and thermal-limited, gross numbers). Clock-sensitive rows are provisional pending re-measurement on the desktop gfx1151 host.",
+  "backend": "hip_gfx1151",
+  "change": "gguf_iq_dense_strict_kernel gains an R rows-per-block tile alongside its T=8 column tile. Each decoded weight is reused across R prompt-row activations instead of being re-decoded once per row. Before this change the dense IQ 'prefill_*' and 'gemv_*' registry variants resolved to the same launcher with grid.y = rows, so weight bytes were re-read once per prompt row. R only changes which rows share a workgroup: per-(row, column) k ownership, FMA order, wave32 shuffle tree and serial wave-0..3 sum are unchanged, so every R is bit-identical to R=1 and the change is strict, not production-profile.",
+  "method": "Same-session A/B. All arms run in one process against one resident model or one device weight buffer, alternating, so they share clock and thermal state; min-of-N (kernel) and max-of-N (end-to-end) are reported. Sequential single-variant runs were rejected as a protocol: two runs of byte-identical machine code differed by 10% on this host.",
+  "noise_floor": "+/-5%, established in the same interleaved table by quants whose ISA is unchanged across arms (IQ3_S, Q3_K).",
+  "row_slab_sweep": {
+    "protocol": "scratchpad/rowbatch_bench.py, largest rank-2 tensor per family from Qwen3.8-27B-UD-Q4_K_S, f32 out, explicit row_batch, min-of-5 rounds",
+    "note": "ms per launch; speedup is R=1 (previous behaviour) over the best slab",
+    "IQ4_XS_N5120_K17408_47MB": {
+      "rows_8": {
+        "R1": 4.807,
+        "R8": 1.468,
+        "speedup": 3.27
+      },
+      "rows_32": {
+        "R1": 20.916,
+        "R8": 5.719,
+        "speedup": 3.66
+      },
+      "rows_128": {
+        "R1": 86.056,
+        "R8": 22.404,
+        "speedup": 3.84
+      },
+      "rows_512": {
+        "R1": 348.668,
+        "R8": 86.069,
+        "speedup": 4.05
+      }
+    },
+    "IQ3_S_N17408_K5120_38MB": {
+      "rows_8": {
+        "R1": 4.583,
+        "R8": 1.544,
+        "speedup": 2.97
+      },
+      "rows_512": {
+        "R1": 317.747,
+        "R8": 97.401,
+        "speedup": 3.26
+      }
+    },
+    "IQ2_XS_N17408_K5120_26MB": {
+      "rows_8": {
+        "R1": 4.391,
+        "R8": 1.478,
+        "speedup": 2.97
+      },
+      "rows_512": {
+        "R1": 290.214,
+        "R8": 87.104,
+        "speedup": 3.33
+      }
+    },
+    "rows_1": "R=1 remains fastest at rows=1 for every family (IQ4_XS 0.552 ms vs 1.039 ms at R=8), which is what the shipped default selects; decode is unaffected."
+  },
+  "e2e_gross": {
+    "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+    "protocol": "scratchpad/ud_e2e_ab.py; Qwen35GGUFResidentSession, 97-token prompt, bulk prefill, 63 decode steps, greedy; arms alternated in one resident session; best of 2 rounds after a warm round for each arm",
+    "prefill_tok_s": {
+      "row_slab_forced_1": 7.6,
+      "shipped_default": 13.17,
+      "ratio": 1.73
+    },
+    "decode_tok_s": {
+      "row_slab_forced_1": 4.23,
+      "shipped_default": 4.23,
+      "ratio": 1.0
+    },
+    "note": "Decode is identical by construction: the default selects R=1 at rows=1. These absolute rates use a different harness from the 2026-09-08 raw-Q5/Q6 row (5.52/6.39 tok/s) and are not comparable to it; only the within-session ratio is claimed."
+  },
+  "resource_usage": {
+    "tool": "hipcc --offload-arch=gfx1151 -O3 -ffp-contract=off -Rpass-analysis=kernel-resource-usage, IQ4_XS bf16-out instantiation",
+    "R1": {
+      "vgprs": 43,
+      "scratch": 0,
+      "occupancy_waves_per_simd": 16
+    },
+    "R2": {
+      "vgprs": 53,
+      "scratch": 0,
+      "occupancy_waves_per_simd": 16
+    },
+    "R4": {
+      "vgprs": 74,
+      "scratch": 0,
+      "occupancy_waves_per_simd": 16
+    },
+    "R8": {
+      "vgprs": 132,
+      "scratch": 0,
+      "occupancy_waves_per_simd": 10
+    },
+    "R16_rejected": {
+      "vgprs": 256,
+      "scratch_bytes_per_lane": 48,
+      "reason": "hits the VGPR cap and spills; R=8 is the retained maximum"
+    },
+    "note": "R=1 codegen is unchanged from before this commit (43 VGPRs, 16 waves/SIMD), so the decode path is untouched."
+  },
+  "profiling": {
+    "tool": "rocprofv3 --kernel-trace, prebuilt .so with HIPENGINE_REQUIRE_CACHED_BUILD=1 and an explicit compiler-version file",
+    "confirms": "gguf_iq_dense_strict_kernel<0, true, 8, 8> is the production prefill route (117 calls, 1748.57 ms); Q=1/2/3 instantiations also run at R=8",
+    "prefill_share": "raw IQ dense fell from 50.2% of prefill device time to 25.2%; gguf_k_prefill_out_rowbatch_kernel<*,*,5,32> (raw Q5_K) is now the largest prefill consumer at 41.5%"
+  },
+  "host_side": {
+    "change": "gguf_iq_dense.launch() memoizes the loaded CDLL. It previously called build_gguf_iq_dense() on every invocation when no library was passed, which re-reads and SHA-256s the kernel sources to recompute the build cache key.",
+    "measured_per_call_cost_us": 10.7,
+    "note": "Paid once per projection per layer on the hot path. No separate throughput claim is made for this; it is included in the end-to-end rows above."
+  },
+  "correctness": {
+    "row_slab_parity": "tests/test_gguf_ud_dense_rowbatch.py 195/195 - every R in (2,4,8) bit-identical to R=1 across all seven quants, both output dtypes, and 13 row counts including ragged tails (3,5,7,9,15,17,33); output canaries assert padding rows never store",
+    "exact_parity": "tests/test_gguf_ud_dense.py 84/84 bit-exact vs the 128-strided-accumulator reference plus its CPU outer KL/top-1 gate, with the new default slab selection active",
+    "suites": "test_gguf_ud_admission.py, test_qwen35_gguf_consumer_surface_parity.py, test_gfx1151_backend.py, test_gguf_iq_dense_tables_closed_form.py, test_gguf_e2e_acceptance.py, test_gguf_ud_km.py, test_gguf_ud_ks.py all green"
+  },
+  "limitations": [
+    "Laptop power/clock limited: absolute rates are gross and provisional; the desktop gfx1151 host is the confirmation target.",
+    "The row tile helps prefill only. Decode (rows=1) is unchanged by construction and remains the open target.",
+    "tests/test_qwen35_gguf_iq_dispatch.py fails to collect on a pre-existing circular import in hipengine/generation/registry.py, reproduced at HEAD with these changes reverted; unrelated to this unit and not addressed here."
+  ],
+  "revisit_on_desktop_gfx1151": {
+    "why": "Every wall-clock row here comes from a power- and thermal-limited laptop with a measured +/-5% floor. Direction is safe where ISA or a >3x ratio backs it; magnitude is not. Re-measurement is cheap once a desktop gfx1151 is free.",
+    "confident_direction_uncertain_magnitude": [
+      "Row-slab speedups (2.97-4.05x kernel, 1.73x end-to-end prefill) are far outside the noise floor, so the win is real; the exact ratios are not final.",
+      "R=8 over R=4 is only 10-13% at rows>=128 and ~10% at rows=8. R=8 costs occupancy (10 vs 16 waves/SIMD). The crossover may move on a host with different clock behaviour - re-sweep before treating R=8 as final."
+    ],
+    "inconclusive_here": [
+      "B2/B5 sign and magnitude arithmetic: retained on instruction-count evidence (loads 50->34 on IQ3_XXS and IQ2_XS). Wall clock read +4.9% (IQ2_XS) and +1.1% (IQ3_XXS), both inside the floor. Confirm sign and size.",
+      "B1 IQ4 codebook immediates rejected at -5.0%, which is exactly the floor. The +112 VALU in the ISA supports the direction and the VALU-bound model, but one confirmation pass would settle it. If the desktop shows it neutral-or-positive, the VALU-bound model for this kernel needs revisiting.",
+      "The end-to-end harness used here reports decode 4.23 tok/s where the 2026-09-08 raw-Q5/Q6 row reports 6.39 from a different harness. Protocols should be reconciled so future UD rows are comparable rather than only self-consistent."
+    ],
+    "not_yet_swept": [
+      "T x R jointly. T=8 was tuned at R=1; the best column tile may differ once R=8 consumes registers for row accumulators.",
+      "Per-role slab selection. The shipped policy is one global function of rows; the raw-K family instead qualifies specific (quant, output, K, N) shapes. Whether IQ needs that is unmeasured.",
+      "R=8 at rows between 2 and 8, where the slab is partly padding."
+    ],
+    "queue_not_started": [
+      "B3 LDS grid staging - the remaining global_load_u8 mass (IQ3_S 64, IQ3_XXS/IQ2_S 48 per body) is grid-table lookups; LDS use is only 2176-3200 B/block against 64 KB. Note the B1 lesson: this only pays if it does not add VALU.",
+      "B4 payload dword loads - authorized as a production-profile variant this phase.",
+      "A5 dense entry point over the existing selected-shape IQ integer-MMQ prefill kernels.",
+      "A6 host trace: the ~12 s host vs ~1.2 s GPU dense-era figure has not been re-measured since the row tile landed, and prefill is now 1.73x faster on the device side, so the host share is proportionally larger.",
+      "Decode (rows=1) is untouched by this unit and remains the open target: IQ2_XS 41-45 GB/s against Q5_K/Q6_K at 125-147 GB/s on the same host."
+    ]
+  }
+}
