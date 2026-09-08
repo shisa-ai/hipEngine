@@ -324,9 +324,21 @@ def iq_dense_mmq_nbytes(rows: int, hidden: int) -> int:
 
 
 def iq_dense_mmq_workspace() -> IQDenseMMQWorkspace | None:
-    """Return the active caller-owned dense IQ MMQ workspace."""
+    """Return the active dense IQ prefill session, if an owner opened one.
+
+    A session with ``nbytes == 0`` marks the owner without providing an
+    activation plane; that is valid for W4A16 and rejected by the integer-MMQ
+    launcher, which checks its own sizing.
+    """
 
     return _iq_dense_mmq_workspace.get()
+
+
+def iq_dense_mmq_has_workspace() -> bool:
+    """True when the active session carries a usable activation plane."""
+
+    workspace = _iq_dense_mmq_workspace.get()
+    return workspace is not None and int(workspace.nbytes) > _METADATA_NBYTES
 
 
 @contextlib.contextmanager
@@ -342,10 +354,15 @@ def iq_dense_mmq_session(
 
     workspace = None
     if enabled:
-        if int(workspace_ptr) <= 0 or int(workspace_nbytes) <= _METADATA_NBYTES:
-            raise ValueError(
-                "dense IQ MMQ requires a positive workspace larger than its metadata tail"
-            )
+        if int(workspace_ptr) or int(workspace_nbytes):
+            if int(workspace_ptr) <= 0 or int(workspace_nbytes) <= _METADATA_NBYTES:
+                raise ValueError(
+                    "dense IQ MMQ requires a positive workspace larger than its metadata tail"
+                )
+        # A workspace-free session still marks the execution owner: the W4A16
+        # route needs no activation plane but must not engage for ad-hoc
+        # callers, who would silently get approximate results where they had
+        # the strict owner.
         workspace = IQDenseMMQWorkspace(
             ptr=int(workspace_ptr),
             nbytes=int(workspace_nbytes),

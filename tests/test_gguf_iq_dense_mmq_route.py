@@ -21,6 +21,10 @@ from hipengine.kernels.hip_gfx1100.quant import gguf_iq_source_mmq_prefill as iq
 from hipengine.kernels.registry import KernelKey, is_registered
 
 _DENSE_VARIANT = iq_mmq._DENSE_VARIANT
+# The route the backend currently selects. W4A16 is the default because the
+# integer-MMQ variant breaches the calibrated envelope's absolute maximum-row
+# ceiling when scored against strict; both stay registered.
+_POLICY_VARIANT = "dense_wmma_w4a16_prefill_bf16_bf16_out"
 
 
 def _hip_available() -> bool:
@@ -55,11 +59,11 @@ def test_selected_moe_keys_stay_gfx1100_only(quant):
 def test_gfx1151_declares_the_policy_and_gfx1100_does_not_yet():
     """gfx1151 is this unit's target; gfx1100 is a separate follow-up."""
     assert isinstance(
-        backend_package_capability("hip_gfx1151", "GGUF_IQ_DENSE_MMQ_PREFILL_POLICY", None),
+        backend_package_capability("hip_gfx1151", "GGUF_IQ_DENSE_PREFILL_POLICY", None),
         dict,
     )
     assert backend_package_capability(
-        "hip_gfx1100", "GGUF_IQ_DENSE_MMQ_PREFILL_POLICY", None
+        "hip_gfx1100", "GGUF_IQ_DENSE_PREFILL_POLICY", None
     ) is None
 
 
@@ -68,16 +72,52 @@ def test_gfx1151_declares_the_policy_and_gfx1100_does_not_yet():
 
 def _dispatch(quant, *, rows, in_features, out_features, variant="prefill_bf16_bf16_out"):
     from hipengine.runtime.gguf_linear import (
-        GGUFLinearDispatch, _iq_dense_mmq_prefill_dispatch)
+        GGUFLinearDispatch, _iq_dense_prefill_dispatch)
     load_backend_kernel_package("hip_gfx1151")
     base = GGUFLinearDispatch(KernelKey("hip_gfx1151", "linear", quant, variant), "raw")
-    return _iq_dense_mmq_prefill_dispatch(
+    return _iq_dense_prefill_dispatch(
         base, rows=rows, in_features=in_features, out_features=out_features)
 
 
-def test_route_is_inert_without_a_bound_workspace():
+def test_no_route_engages_without_an_execution_owner():
+    """Both routes are approximate, so both require an opened session.
+
+    Without one an ad-hoc launch_gguf_linear caller keeps the strict GEMV
+    owner. This matters because W4A16 needs no activation plane: before the
+    session became the opt-in, it would have engaged for every caller and
+    silently replaced exact results with approximate ones.
+    """
     out = _dispatch("gguf_iq4_xs", rows=512, in_features=5120, out_features=17408)
     assert out.key.variant == "prefill_bf16_bf16_out"
+
+
+def test_w4a16_needs_the_session_but_not_a_plane():
+    """A workspace-free session is enough for W4A16 and marks the owner."""
+    with iq_mmq.iq_dense_mmq_session(True):
+        out = _dispatch("gguf_iq4_xs", rows=512, in_features=5120, out_features=17408)
+    assert out.key.variant == _POLICY_VARIANT
+    assert not iq_mmq.iq_dense_mmq_has_workspace()
+
+
+def test_integer_mmq_variant_still_requires_its_workspace():
+    """Swapping the policy back to integer MMQ must re-impose the workspace gate."""
+    import hipengine.kernels.hip_gfx1151 as be
+    from hipengine.runtime.gguf_linear import _IQ_DENSE_INTEGER_MMQ_VARIANT
+    base = dict(be.GGUF_IQ_DENSE_PREFILL_POLICY)
+    swapped = {q: {**e, "variant": _IQ_DENSE_INTEGER_MMQ_VARIANT}
+               for q, e in base.items()}
+    be.GGUF_IQ_DENSE_PREFILL_POLICY = swapped
+    try:
+        with iq_mmq.iq_dense_mmq_session(True):
+            out = _dispatch("gguf_iq4_xs", rows=512, in_features=5120,
+                            out_features=17408)
+        assert out.key.variant == "prefill_bf16_bf16_out", "no plane, must decline"
+        with iq_mmq.iq_dense_mmq_session(True, workspace_ptr=1 << 20,
+                                         workspace_nbytes=1 << 24):
+            out = _dispatch("gguf_iq4_xs", rows=512, in_features=5120, out_features=17408)
+        assert out.key.variant == _IQ_DENSE_INTEGER_MMQ_VARIANT
+    finally:
+        be.GGUF_IQ_DENSE_PREFILL_POLICY = base
 
 
 @pytest.mark.parametrize(
@@ -101,7 +141,7 @@ def test_route_declines_outside_its_policy(kwargs, reason):
 def test_route_is_selected_inside_its_policy(rows):
     with iq_mmq.iq_dense_mmq_session(True, workspace_ptr=1 << 20, workspace_nbytes=1 << 24):
         out = _dispatch("gguf_iq4_xs", rows=rows, in_features=5120, out_features=17408)
-    assert out.key.variant == _DENSE_VARIANT
+    assert out.key.variant == _POLICY_VARIANT
     assert out.abi == "raw"
 
 
@@ -120,7 +160,7 @@ def test_route_declines_below_the_measured_crossover(rows):
 
 def test_policy_floor_matches_the_measured_crossover():
     policy = backend_package_capability(
-        "hip_gfx1151", "GGUF_IQ_DENSE_MMQ_PREFILL_POLICY", {})
+        "hip_gfx1151", "GGUF_IQ_DENSE_PREFILL_POLICY", {})
     for quant, entry in policy.items():
         assert entry["min_rows"] == 8, (
             f"{quant} min_rows drifted from the swept crossover")
@@ -145,7 +185,7 @@ def test_every_policy_quant_has_a_registered_owner():
     """A policy entry without a registered kernel would silently do nothing."""
     load_backend_kernel_package("hip_gfx1151")
     policy = backend_package_capability(
-        "hip_gfx1151", "GGUF_IQ_DENSE_MMQ_PREFILL_POLICY", {})
+        "hip_gfx1151", "GGUF_IQ_DENSE_PREFILL_POLICY", {})
     assert set(policy) == {"gguf_iq4_xs", "gguf_iq3_xxs", "gguf_iq3_s", "gguf_iq4_nl"}
     for quant, entry in policy.items():
         assert is_registered(
@@ -164,11 +204,11 @@ def test_all_expressible_iq_quants_are_routed(quant):
     """
     load_backend_kernel_package("hip_gfx1151")
     policy = backend_package_capability(
-        "hip_gfx1151", "GGUF_IQ_DENSE_MMQ_PREFILL_POLICY", {})
+        "hip_gfx1151", "GGUF_IQ_DENSE_PREFILL_POLICY", {})
     assert quant in policy
     with iq_mmq.iq_dense_mmq_session(True, workspace_ptr=1 << 20, workspace_nbytes=1 << 24):
         out = _dispatch(quant, rows=512, in_features=5120, out_features=17408)
-    assert out.key.variant == _DENSE_VARIANT
+    assert out.key.variant == _POLICY_VARIANT
 
 
 def test_workspace_sizing_covers_activations_plus_metadata():
