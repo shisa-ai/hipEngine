@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "date": "2026-09-09",
-  "status": "retained_default_change",
+  "status": "retained_default_change_under_review",
   "host": "zbook",
   "hardware": "AMD RYZEN AI MAX+ PRO 395 / Radeon 8060S (laptop; gross numbers; provisional pending the desktop gfx1151)",
   "backend": "hip_gfx1151",
@@ -17,10 +17,42 @@
   "retained_trade": {
     "protocol": "published README sweep protocol, 512/128, and context512 teacher gate with 18 prompts x 9 forced steps in the production config",
     "arms": [
-      {"arm": "IQ4_XS + IQ3_XXS (previous default)", "prefill_tok_s": 127.20, "mean": 0.0010796, "p95": 0.0051188, "p99": 0.0217009, "max": 0.0354152, "top1": "162/162"},
-      {"arm": "+ IQ3_S", "prefill_tok_s": 137.72, "mean": 0.0012985, "p95": 0.0044588, "p99": 0.0296710, "max": 0.0403417, "top1": "161/162"},
-      {"arm": "+ IQ4_NL", "prefill_tok_s": 155.24, "mean": 0.0013457, "p95": 0.0071143, "p99": 0.0209050, "max": 0.0412277, "top1": "161/162"},
-      {"arm": "all four (RETAINED)", "prefill_tok_s": 171.86, "mean": 0.0014707, "p95": 0.0077991, "p99": 0.0253607, "max": 0.0297407, "top1": "161/162"}
+      {
+        "arm": "IQ4_XS + IQ3_XXS (previous default)",
+        "prefill_tok_s": 127.2,
+        "mean": 0.0010796,
+        "p95": 0.0051188,
+        "p99": 0.0217009,
+        "max": 0.0354152,
+        "top1": "162/162"
+      },
+      {
+        "arm": "+ IQ3_S",
+        "prefill_tok_s": 137.72,
+        "mean": 0.0012985,
+        "p95": 0.0044588,
+        "p99": 0.029671,
+        "max": 0.0403417,
+        "top1": "161/162"
+      },
+      {
+        "arm": "+ IQ4_NL",
+        "prefill_tok_s": 155.24,
+        "mean": 0.0013457,
+        "p95": 0.0071143,
+        "p99": 0.020905,
+        "max": 0.0412277,
+        "top1": "161/162"
+      },
+      {
+        "arm": "all four (RETAINED)",
+        "prefill_tok_s": 171.86,
+        "mean": 0.0014707,
+        "p95": 0.0077991,
+        "p99": 0.0253607,
+        "max": 0.0297407,
+        "top1": "161/162"
+      }
     ],
     "delta": "prefill 127.20 -> 171.86 tok/s (+35.1%); decode unchanged (rows=1 is below min_rows)",
     "outer_gate": "PASS with margin - max 0.0297 <= 0.05, top-1 100% >= 90%",
@@ -39,5 +71,30 @@
     "Gated on K_M only. K_S carries 15 IQ3_S tensors against K_M's 4, so its gain should be larger and its numerics were not separately gated.",
     "gfx1100 declares no dense MMQ policy and is unaffected.",
     "Laptop power/thermal limited; provisional pending the desktop gfx1151."
-  ]
+  ],
+  "DECISION_REFERENCE_CORRECTION_2026_09_09": {
+    "what_changed": "The retained_trade block below scores every arm against an independent llama.cpp teacher. That is a quality diagnostic, not the admission gate: docs/EXECUTION-PROFILES.md section 6 compares hipEngine strict against candidate production, and section 7.1 says an external engine is a comparison oracle rather than the definition of strict bytes.",
+    "correct_scoring_vs_strict": {
+      "two_quant_mmq": {
+        "mean": 0.001038,
+        "p95": 0.003479,
+        "p99": 0.014385,
+        "max": 0.04973
+      },
+      "four_quant_mmq_this_artifact": {
+        "mean": 0.00211,
+        "p95": 0.006797,
+        "p99": 0.024044,
+        "max": 0.17039
+      },
+      "four_quant_w4a16": {
+        "mean": 0.000827,
+        "p95": 0.004547,
+        "p99": 0.012475,
+        "max": 0.023513
+      }
+    },
+    "verdict": "The four-quant integer-MMQ policy this artifact retains EXCEEDS the binding 5e-2 absolute maximum-row ceiling (0.170390 at one row) when scored against strict. The 'maximum improves to 0.0297407, the best of the four arms' claim below is an artifact of the teacher reference and does not hold against strict, where it is the worst by 7x. The retention decision needs re-taking on this data.",
+    "artifact": "benchmarks/results/2026-09-09-zbook-ud-production-gate-reference.json"
+  }
 }

@@ -42,13 +42,21 @@ What survives is a different error *shape*: W4A16's p95 of 0.0037423 is the
 best of all three arms, better even than the two-quant policy, while its p99
 and max are the worst.
 
-**Removal trigger.** The case for keeping this is now thin: it is slower and
-does not deliver the accuracy it was built for. Keep it only if the p95 shape
-turns out to matter to a profile, or as the vehicle for testing whether
-accumulation order explains the residual mean regression (an f32-output variant
-compared against the GEMV in f32 rather than bf16 would settle that). If
-neither is pursued, delete the kernel, wrapper, registration and tests rather
-than leaving a second unrouted prefill family in the tree.
+**Second correction (2026-09-09): keep it, and consider promoting it.** The
+"dominated" reading above was itself scored against the llama.cpp teacher.
+Against hipEngine strict - the reference `EXECUTION-PROFILES.md` section 6
+actually specifies - W4A16 **passes every threshold in the calibrated
+envelope** (mean 0.000827, p95 0.004547, p99 0.012475, max 0.023513, top-1
+100%), while the shipped four-quant integer MMQ **breaches the 5e-2 absolute
+maximum-row ceiling** at 0.170390. W4A16 is not dominated; on the correct
+reference it is the only measured arm that is admissible, at 150.9 tok/s
+against 171.9.
+
+**Removal trigger.** Only if the default is re-taken on strict-referenced data
+and the integer MMQ is made admissible some other way, or a desktop
+re-measure overturns the ranking. Until then this is a promotion candidate, not
+a deletion candidate. See
+`benchmarks/results/2026-09-09-zbook-ud-production-gate-reference.json`.
 
 ## 2026-09-09 Dense IQ MMQ four-quant policy — retained with a recorded trade
 

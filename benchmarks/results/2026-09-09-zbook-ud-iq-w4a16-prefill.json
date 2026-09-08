@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "date": "2026-09-09",
-  "status": "blocked",
+  "status": "retained_exact_path_candidate_for_default",
   "host": "zbook",
   "hardware": "AMD RYZEN AI MAX+ PRO 395 / Radeon 8060S (laptop; gross numbers; provisional pending the desktop gfx1151)",
   "backend": "hip_gfx1151",
@@ -110,6 +110,10 @@
     },
     "conclusion": "W4A16 lands with the integer MMQ on mean (0.0014384 vs 0.0014707), not with the strict GEMV (0.0010796). It is dominated: 12% slower end to end with no model-level mean benefit. Its error shape does differ - p95 0.0037423 is the best of all three arms, while p99 and max are the worst - but that is not the claimed win.",
     "implication_for_the_mean_regression": "Routing IQ3_S and IQ4_NL off the strict GEMV costs about +0.00036 mean regardless of activation format: an int8 path and a path with 25x more accurate activations land within 0.00003 of each other. So the regression is not an activation-precision effect, consistent with the earlier finding that it is not per-tensor either. The remaining untested explanation is accumulation order.",
-    "methodological_lesson": "A leaf comparison cannot validate a change whose expected effect is smaller than the output dtype's rounding. Compare in the accumulation dtype, or go straight to the model-level gate."
+    "methodological_lesson": "A leaf comparison cannot validate a change whose expected effect is smaller than the output dtype's rounding. Compare in the accumulation dtype, or go straight to the model-level gate.",
+    "SUPERSEDED_BY_GATE_REFERENCE": {
+      "note": "The 'dominated: 12% slower with no model-level mean benefit' conclusion was itself scored against the llama.cpp teacher. Against hipEngine strict - the reference the production gate actually specifies - W4A16 passes every threshold in the calibrated envelope (mean 0.000827, p95 0.004547, p99 0.012475, max 0.023513) while the shipped four-quant integer MMQ breaches the 5e-2 absolute maximum-row ceiling at 0.170390. W4A16 is not dominated; it is the only measured arm that is admissible, at a 12% throughput cost.",
+      "artifact": "benchmarks/results/2026-09-09-zbook-ud-production-gate-reference.json"
+    }
   }
 }
