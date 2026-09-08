@@ -4830,6 +4830,23 @@ extern "C" int hipengine_gguf_q8_0_iu8_wmma_prefill_f32_f32(
       rows, in_features, out_features, stream);
 }
 
+extern "C" int hipengine_gguf_q8_0_iu8_wmma_prefill_f32_f32_t(
+    const void* x,
+    const void* qweight,
+    void* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  (void)threads;  // fixed 128-thread launch; accepted for ABI compatibility
+  return launch_q8_0_iu8_wmma_prefill_f32_f32(
+      static_cast<const float*>(x),
+      static_cast<const uint8_t*>(qweight),
+      static_cast<float*>(out),
+      rows, in_features, out_features, stream);
+}
+
 #define HIPENGINE_GGUF_K_EXPORTS(NAME, QTYPE) \
 extern "C" int hipengine_##NAME##_gemv_f32_f32_out( \
     const float* x, const uint8_t* qweight, float* out, int64_t rows, \

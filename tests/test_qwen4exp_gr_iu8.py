@@ -187,5 +187,60 @@ class Qwen4ExpGRIu8KernelTests(unittest.TestCase):
                 os.environ["HIPENGINE_QWEN4_EXP_GR_IU8_DOWN"] = saved
 
 
+@unittest.skipUnless(HIP_AVAILABLE, "HIP runtime unavailable")
+class Qwen4ExpQ8Iu8DenseDispatchTests(unittest.TestCase):
+    FLAG = "HIPENGINE_QWEN4_EXP_Q8_IU8_WMM"
+
+    def test_dense_dispatch_default_off_and_gated(self):
+        import hipengine.runtime.gguf_linear as gl
+        saved = os.environ.pop(self.FLAG, None)
+        try:
+            registered = gl.is_registered(
+                gl.KernelKey(
+                    "hip_gfx1100", "linear", "gguf_q8_0",
+                    "iu8_wmma_prefill_f32_f32_out"))
+            if not registered:
+                self.skipTest("iu8 dense variant not registered")
+
+            class Spec:
+                layout = gl.LAYOUT_RAW_GGUF
+                quant_key = "gguf_q8_0"
+
+            class Weight:
+                spec = Spec()
+
+            for flag in ("0", "1"):
+                os.environ[self.FLAG] = flag
+                d = gl._q8_iu8_wmma_dispatch(
+                    gl.GGUFLinearDispatch(
+                        gl.KernelKey(
+                            "hip_gfx1100", "linear", "gguf_q8_0",
+                            "coltile8_rowbatch4_wave_scale_f32_f32_out"),
+                        "raw"),
+                    rows=512, in_features=2560, out_features=6144)
+                expected = ("iu8_wmma_prefill_f32_f32_out"
+                            if flag == "1"
+                            else "coltile8_rowbatch4_wave_scale_f32_f32_out")
+                self.assertEqual(d.key.variant, expected)
+            os.environ[self.FLAG] = "1"
+            # sub-256 rows and odd geometry keep the parent
+            for rows, in_f in ((256, 2560), (16, 2560), (512, 33)):
+                d = gl._q8_iu8_wmma_dispatch(
+                    gl.GGUFLinearDispatch(
+                        gl.KernelKey(
+                            "hip_gfx1100", "linear", "gguf_q8_0",
+                            "coltile8_rowbatch4_wave_scale_f32_f32_out"),
+                        "raw"),
+                    rows=rows, in_features=in_f, out_features=6144)
+                self.assertEqual(
+                    d.key.variant,
+                    "coltile8_rowbatch4_wave_scale_f32_f32_out")
+        finally:
+            if saved is None:
+                os.environ.pop(self.FLAG, None)
+            else:
+                os.environ[self.FLAG] = saved
+
+
 if __name__ == "__main__":
     unittest.main()
