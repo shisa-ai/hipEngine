@@ -275,6 +275,28 @@
   Remove rollback selector after the next qualified Q5_1 change or release
   window;keep original folded-pair/M1 and all smaller-row fallbacks.
 
+## Qwen4Exp QSA ordered-v2 decode rollback
+
+- Production `HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2` selects
+  `strict_ordered_three_pass_v2_spans` for c1 H256 indexed-sparse decode
+  (head_dim256, selected_count<=4096, block256, Hq24/Hkv2). Production1/
+  strict0;it rewrites the retained ordered three-pass while preserving the
+  exact arithmetic and parent operand order: warp-tree scores, exact fmaxf
+  max-scan coefficients with pointwise expf, staged-tile values with clamped
+  unconditional loads. VGPR32/40/96, scratch0.
+- Named kernel durations at clean source, cache-only build: scores
+  399.7->33.5us, coefficients176.1->14.3us, values533.0->100.7us
+  (kernel-duration evidence:
+  `2026-09-08-framework-qwen4exp-qsa-ordered-v2-kernels.json`).
+- Six full-model off/on/off logits/4-step/state/full-KV cases pass at
+  committed source with exact engagement accounting (48 sparse decode calls
+  per enabled p4096 arm, zero prefill/short-context). Canonical 12-case
+  chunk1024 A/B: 72 exact trajectories, p4096 weighted TG +14.705%
+  (arithmetic-mean-rate ratio +16.516%, per-case median +7.1..+24.8%),
+  request wall -4.535%; short-context and prefill neutral.
+- Remove the rollback selector after the next qualified QSA decode change or
+  release window; the ordered parent and serialized strict fallback remain.
+
 ## Qwen4Exp MMQ vector activation staging rollback
 
 - Production `mmq128_prepacked_vec4_q8_1_d4x3_guarded_f32_f32_out`
