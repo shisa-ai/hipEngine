@@ -544,6 +544,23 @@ __device__ __constant__ uint8_t iq3_grid[2048] = {
 };
 __device__ __constant__ int8_t iq4_values[16] = {
     -127,-104,-83,-65,-49,-35,-22,-10,1,13,25,38,53,69,89,113};
+// The IQ4 codebook stays a __constant__ table. Replacing it with packed
+// immediates removes 16 global_load_i8 per inner body but costs ~110 VALU
+// there, and measured -5.0% on the IQ4_XS leaf (2026-09-08 interleaved A/B,
+// gfx1151): at 16 waves/SIMD this kernel hides VMEM latency and is VALU
+// bound, so an L1-resident byte load is the cheaper operand. The candidate
+// was measured and dropped, not deferred; do not re-derive it.
+// IQ3_XXS / IQ2_XS sign masks. The published iq_signs[128] table is exactly
+// `i` carrying its own odd-parity flag in bit 7, so the lookup is a popcount.
+// Asserted entry-for-entry in tests/test_gguf_iq_dense_tables_closed_form.py.
+__device__ inline int iq_sign_bits(int i) {
+    return i | ((__popc(i) & 1) << 7);
+}
+// IQ2_XS magnitudes: code 0/1/2/3 select 8/25/43/43. One packed immediate
+// replaces a two-deep compare/select chain per decoded element.
+__device__ inline float iq2_xs_magnitude(int code) {
+    return float((0x2B2B1908u >> (8 * code)) & 0xffu);
+}
 __device__ float half_load(const uint8_t* p) {
     union { uint16_t u; _Float16 h; } v;
     v.u = uint16_t(p[0]) | (uint16_t(p[1]) << 8);
@@ -573,7 +590,7 @@ template<int Q> __device__ float weight(const uint8_t* b, int k) {
         uint32_t aux = uint32_t(p[0]) | (uint32_t(p[1])<<8)
                      | (uint32_t(p[2])<<16) | (uint32_t(p[3])<<24);
         int index = b[2+g*8+j/4];
-        int signs = iq_signs[(aux >> (7*(j/8))) & 127];
+        int signs = iq_sign_bits((aux >> (7*(j/8))) & 127);
         float d = (half_load(b) * (0.5f+float(aux>>28))) * 0.5f;
         float mag = d * float(iq3_xxs_grid[index*4+(j&3)]);
         return mag * ((signs & (1<<(j&7))) ? -1.0f : 1.0f);
@@ -584,8 +601,8 @@ template<int Q> __device__ float weight(const uint8_t* b, int k) {
         int code = (IQ2_XS_GRID_PACKED[word & 511] >> (2*(j&7))) & 3;
         int scale = (b[66+g] >> (4*(j>>4))) & 15;
         float d = (half_load(b) * (0.5f+float(scale))) * 0.25f;
-        float mag = d * float(code == 0 ? 8 : (code == 1 ? 25 : 43));
-        return mag * ((iq_signs[word >> 9] & (1<<(j&7))) ? -1.0f : 1.0f);
+        float mag = d * iq2_xs_magnitude(code);
+        return mag * ((iq_sign_bits(word >> 9) & (1<<(j&7))) ? -1.0f : 1.0f);
     } else if constexpr (Q == 5) {
         int g = k >> 5, j = k & 31, slot = j >> 3;
         int index = b[2+g*4+slot] | (((b[66+g] >> (2*slot)) & 3) << 8);
@@ -722,7 +739,7 @@ template<int Q, bool BF16, int T> __launch_bounds__(128, 16) __global__ void ggu
                         } else if constexpr (Q == 4) {
                             const uint32_t aux = s_aux[bi][t*8+g];
                             int index = b[2+g*8+j/4];
-                            int signs = iq_signs[(aux >> (7*(j/8))) & 127];
+                            int signs = iq_sign_bits((aux >> (7*(j/8))) & 127);
                             float mag = s_d[bi][t*16+g] * float(iq3_xxs_grid[index*4+(j&3)]);
                             wv = mag * ((signs & (1<<(j&7))) ? -1.0f : 1.0f);
                         } else if constexpr (Q == 6) {
@@ -730,8 +747,8 @@ template<int Q, bool BF16, int T> __launch_bounds__(128, 16) __global__ void ggu
                             const uint8_t* p = b + 2 + 2*(g*4+slot);
                             int word = int(p[0]) | (int(p[1]) << 8);
                             int code = (IQ2_XS_GRID_PACKED[word & 511] >> (2*(j&7))) & 3;
-                            float mag = s_d[bi][t*16+((j>>4)?8:0)+g] * float(code == 0 ? 8 : (code == 1 ? 25 : 43));
-                            wv = mag * ((iq_signs[word >> 9] & (1<<(j&7))) ? -1.0f : 1.0f);
+                            float mag = s_d[bi][t*16+((j>>4)?8:0)+g] * iq2_xs_magnitude(code);
+                            wv = mag * ((iq_sign_bits(word >> 9) & (1<<(j&7))) ? -1.0f : 1.0f);
                         } else if constexpr (Q == 5) {
                             const int slot = j >> 3;
                             int index = b[2+g*4+slot] | (((s_qs[bi][t*8+g] >> (2*slot)) & 3) << 8);
