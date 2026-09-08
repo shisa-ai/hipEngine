@@ -74,7 +74,8 @@ def main() -> None:
     gemv_lib = build_gguf_k_gemv(load=True)
     gr_lib = build_qwen4_exp_gr(load=True)
 
-    name = (f"blk.{a.layer}.hc_{a.which}_down.weight" if a.which.endswith("-down")
+    name = (f"blk.{a.layer}.hc_{a.which[:-len('-down')]}_down.weight"
+            if a.which.endswith("-down")
             else f"blk.{a.layer}.hc_{a.which}_up.weight")
     readers = [GGUFReader(path) for path in discover_gguf_files(a.model_root)]
     reader = next(r for r in readers if any(t.name == name for t in r.info.tensors))
