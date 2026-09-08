@@ -43,13 +43,30 @@ is exactly 0.000000 and p90 is +0.000925, while a few positions diverge
 10 step 1: 0.000028 -> 0.0085). That is a small number of sensitive tensors,
 not general precision loss.
 
-**Removal trigger.** Identify the sensitive tensors by role or layer, then
-either exclude them from the route or give them a finer activation
-quantization. When the gate holds, add `gguf_iq4_nl` back to
-`GGUF_IQ_DENSE_MMQ_PREFILL_POLICY` in `hipengine/kernels/hip_gfx1151/__init__.py`
-and delete `_GGUF_IQ_DENSE_MMQ_IQ4_NL_HELD_OUT`. If the sensitivity turns out
-to be intrinsic, delete the expansion, its QTYPE arm, the wrapper and the
-registration instead — do not leave the support sitting unrouted indefinitely.
+**Localization attempted and failed (2026-09-08).** The seven IQ4_NL tensors
+sit at layers 1/2/3 (`ffn_down`), 21 (`attn_qkv`) and 27/27/50
+(`ffn_gate`/`ffn_up`). A per-layer probe on the worst prompt showed divergence
+seeded at layer 1 and amplified ~500x through 62 downstream layers, and a
+shape bisect attributed 71% of the divergence-from-default to the three early
+`ffn_down` tensors. Routing only the other four measured prefill 140.3 tok/s
+(+10% rather than +22%) and teacher mean **0.0013632** — no better than routing
+all seven (0.0013457) and worse than not routing IQ4_NL at all (0.0010796). It
+recovers only top-1 (162/162).
+
+**Why that probe misled.** It bisected on divergence from *our own default*,
+which is not the gate objective; moving away from the current default says
+nothing about agreement with the teacher. Against the teacher the cost is
+essentially binary — routing any IQ4_NL costs ~+0.00027 mean — so it is not
+attributable to particular tensors and no subset fixes it. Bisect on the gate
+metric, not on distance from the incumbent.
+
+**Removal trigger.** The remaining hypotheses are that the cost is intrinsic to
+Q8_1 activations on these tensors, or that IQ4_NL wants a finer activation
+quantization than the shared DS4 plane. If neither pans out, delete the
+expansion, its QTYPE arm, the wrapper and the registration rather than leaving
+support unrouted indefinitely. Re-testing a subset is a one-line change: the
+dispatch honours an optional `shapes` allowlist and the rejected subset is
+recorded in `_GGUF_IQ_DENSE_MMQ_IQ4_NL_HELD_OUT`.
 
 **Owner evidence.** `benchmarks/results/2026-09-08-zbook-ud-iq4-nl-mmq-heldout.json`.
 
