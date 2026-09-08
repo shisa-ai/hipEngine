@@ -1,6 +1,6 @@
 import pytest
 
-from scripts.llamacpp_raw_suite_bench import completion_row, require_idle_memory
+from scripts.llamacpp_raw_suite_bench import completion_row, require_idle_memory, speculation_args
 
 
 def response():
@@ -31,3 +31,17 @@ def test_busy_card_fails_admission():
     require_idle_memory(28_000_256, 128)
     with pytest.raises(RuntimeError, match="not idle"):
         require_idle_memory(2 << 30, 128)
+
+
+def test_adaptive_floor_is_explicit_without_changing_fork_default():
+    assert speculation_args("ar", None) == []
+    assert speculation_args("mtp", None) == ["--spec-type", "draft-mtp", "--spec-draft-n-max", "3"]
+    default = speculation_args("adaptive", None)
+    assert "--spec-draft-n-min-adaptive" not in default
+    assert speculation_args("adaptive", 1) == default + ["--spec-draft-n-min-adaptive", "1"]
+
+
+@pytest.mark.parametrize("mode,floor", [("mtp", 1), ("ar", 1), ("adaptive", 0), ("adaptive", 4)])
+def test_invalid_adaptive_floor_rejected(mode, floor):
+    with pytest.raises(ValueError):
+        speculation_args(mode, floor)

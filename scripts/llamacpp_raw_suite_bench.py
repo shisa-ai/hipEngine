@@ -30,6 +30,18 @@ def require_idle_memory(used_bytes: int, limit_mib: int) -> None:
         raise RuntimeError(f"GPU not idle: {used_bytes / (1 << 20):.1f} MiB exceeds {limit_mib} MiB")
 
 
+def speculation_args(mode: str, adaptive_min: int | None) -> list[str]:
+    if adaptive_min is not None and (mode != "adaptive" or not 1 <= adaptive_min <= 3):
+        raise ValueError("adaptive minimum requires adaptive mode and a depth in [1, 3]")
+    if mode == "ar":
+        return []
+    args = ["--spec-type", "draft-mtp-adaptive" if mode == "adaptive" else "draft-mtp",
+            "--spec-draft-n-max", "3"]
+    if adaptive_min is not None:
+        args += ["--spec-draft-n-min-adaptive", str(adaptive_min)]
+    return args
+
+
 def completion_row(response: dict, prompt: list[int], outputs: int) -> dict:
     ids = response.get("tokens", [])
     timings = response["timings"]
@@ -57,6 +69,7 @@ def main() -> int:
     parser.add_argument("--model", type=Path, required=True)
     parser.add_argument("--prompts", type=Path, default=ROOT / "benchmarks/prompts/mtpbench-code-general-ja.jsonl")
     parser.add_argument("--mode", choices=("ar", "mtp", "adaptive"), default="ar")
+    parser.add_argument("--adaptive-min", type=int, default=None)
     parser.add_argument("--outputs", type=int, default=25)
     parser.add_argument("--context", type=int, default=1024)
     parser.add_argument("--repeat-lengths", default="")
@@ -71,6 +84,10 @@ def main() -> int:
     args = parser.parse_args()
     if args.outputs < 2 or args.repetitions < 1:
         parser.error("outputs >= 2 and repetitions >= 1 required")
+    try:
+        spec_args = speculation_args(args.mode, args.adaptive_min)
+    except ValueError as exc:
+        parser.error(str(exc))
     lengths = [int(x) for x in args.repeat_lengths.split(",") if x]
     if lengths:
         prompts = [{"id": f"repeat-{n}", "category": "synthetic", "tokens": [9707] * n} for n in lengths]
@@ -92,9 +109,7 @@ def main() -> int:
         "-b", str(args.batch), "-ub", str(args.ubatch), "--host", "127.0.0.1",
         "--port", str(args.port), "--no-cache-prompt", "--fit", "off",
     ]
-    if args.mode != "ar":
-        command += ["--spec-type", "draft-mtp-adaptive" if args.mode == "adaptive" else "draft-mtp",
-                    "--spec-draft-n-max", "3"]
+    command += spec_args
     args.output.parent.mkdir(parents=True, exist_ok=True)
     log_path = args.output.with_suffix(".log")
     payload = {
