@@ -3,6 +3,48 @@
 Status: measurement and optimization plan with scoped offline DMS INT8
 integration evidence. General production-serving qualification is not established.
 
+## Hidden-plane alias adoption and the 232,448-token ladder — 2026-09-08 UTC
+
+The route-scoped single-plane hidden stream for layer_outer prefill was
+adopted (307e7633f, default on, `HIPENGINE_LAYER_OUTER_HIDDEN_ALIAS=0` rolls
+back) after a GPU-side A/B at 73,728 tokens on a clean tree: byte-identical
+decode logits on all eight steps, prefill 455.4 s vs 454.0 s, whole-card
+peak 19.265 vs 19.972 GiB (-723 MiB = exactly one BF16 hidden plane at
+73,984 positions).
+
+The alias-era ladder (fresh process per point, GPU1, source clean at the
+adoption commit or its docs-only descendant):
+
+| Prompt tokens / decode appends | Outcome | Sampled whole-card peak | Headroom |
+| --- | --- | ---: | ---: |
+| 200,704 / 8 | Pass | 23.318 GiB | 682.0 MiB |
+| 216,064 / 8 | Pass | 23.752 GiB | 238.0 MiB |
+| 220,672 / 8 | Pass | 23.883 GiB | 104.0 MiB |
+| 224,256 / 8 | Pass | 23.681 GiB | 310.0 MiB |
+| **232,448 / 8** | Pass | 23.924 GiB | 62.0 MiB |
+| 234,496 / 8 | Timeout at the wrapper's 2700 s bound, 116.1 MiB headroom at kill; unqualified, may fit | 23.871 GiB | — |
+
+The largest observed passing prompt is **232,448** (+199.0% over the
+73,728 campaign baseline, +35.1% over the two-plane 172,288). No alias-era
+OOM is established; the 176,128 OOM was measured on the pre-alias two-plane
+route and does not bound this route. Intermediate sizes are unqualified.
+No maximum, quality, long-output or serving claim is made; DMS discards
+history, so fitting a longer prompt does not establish full-context quality
+(the quality bar and ladder are defined in
+[`DMS-ANALYSIS.md`](DMS-ANALYSIS.md)).
+
+Route-equality evidence: at 72K the eager dense_pool and layer_outer routes
+produce identical decode outputs and identical packed stores, verified
+pre-merge same-card (GPU1) and post-merge cross-card (dense_pool on the
+W7900 vs layer_outer on the XTX), the latter also establishing cross-card
+gfx1100 determinism at that width. Known follow-up: the layer_outer route
+fails closed on the 48 GB W7900 (device-memory-class layer chunks exceed the
+row-capped bulk-scratch buffers; `for_chunk` positions copy rejects the
+oversized upload), which blocks the W7900 no-evict reference arm of the
+quality ladder until fixed.
+
+[`Hidden-alias ladder evidence`](../benchmarks/results/2026-09-08-rx7900xtx-dms-int8-hidden-alias-ladder.json)
+
 ## Merged-lane layer_outer capacity — 2026-09-08 UTC
 
 The GPU0 speed campaign (90b9aa510) was merged into the capacity lane

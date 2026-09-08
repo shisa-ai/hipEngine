@@ -1,0 +1,141 @@
+{
+ "adoption_ab": {
+  "adoption_commit": "307e7633f300453f440e26ef0d6ce99c6b26490e",
+  "control": {
+   "decode_seconds": 0.33,
+   "peak_gib": 19.97187042236328,
+   "prefill_seconds": 453.99,
+   "tracked_peak_bytes": 21023135896
+  },
+  "gate_commit": "6c6d1ad4a5d34fe70485facbda0b96eef974944d",
+  "greedy_tokens_identical": true,
+  "logits_byte_identical": true,
+  "note": "aliasing is an allocation change; arithmetic must be bit-exact, and was: all eight decode logits_sha256 matched the two-plane control",
+  "prompt_tokens": 73728,
+  "returns_to_baseline_both_arms": true,
+  "treatment": {
+   "decode_seconds": 0.33,
+   "peak_gib": 19.264984130859375,
+   "prefill_seconds": 455.4,
+   "tracked_peak_bytes": 20265539736
+  },
+  "whole_card_peak_saved_bytes": 759013376
+ },
+ "boundary": {
+  "capacity_increase_percent_over_campaign_baseline": 215.28,
+  "capacity_increase_percent_over_prior": 34.92,
+  "highest_observed_passing_prompt_tokens": 232448,
+  "intermediate_sizes_unqualified": true,
+  "model_context_bound": 262144,
+  "model_context_bound_note": "the model file's declared context bounds prompt+decode at 262,144 positions; the earlier 262,144-token probe failed validation (not OOM) against this bound",
+  "no_alias_era_oom_note": "the alias-era ladder recorded no OOM; the 176,128 OOM was measured on the pre-alias two-plane route (commit eb3242a7a) and does not bound the alias route; 234,496 hit the wrapper's 2700-second bound with 116.1 MiB headroom remaining (status timeout, unqualified, clean teardown) \u2014 it may fit; no smaller alias-era OOM is known",
+  "peak_variance_note": "whole-card peaks carry roughly +/-0.2 GiB content/allocator variance at these scales (the 220,672 point peaked 216 MiB above the later 224,256 point); the store itself is monotone (~16.8 KiB/token, kept fraction ~0.5185)",
+  "prior_highest_observed_passing_prompt_tokens": 172288,
+  "proven_maximum": false,
+  "smallest_observed_oom_prompt_tokens": null
+ },
+ "date": "2026-09-08",
+ "date_timezone": "UTC",
+ "hardware": {
+  "backend": "hip_gfx1100",
+  "cpu": "AMD Ryzen 9 5950X",
+  "gpu": "RX 7900 XTX",
+  "host": "epyc",
+  "other_workloads": "GPU0 not used; GPU1 idle baseline verified per run",
+  "pci": "0000:10:00.0",
+  "physical_gpu_index": 1,
+  "unique_id": "cc4d02090dc9c3ff",
+  "vram_total_bytes": 25753026560
+ },
+ "kind": "xtx_dms_int8_hidden_alias_adoption_and_ladder",
+ "ladder": [
+  {
+   "elapsed_seconds": 2208.963249027729,
+   "prompt_tokens": 200704,
+   "raw_sha256": "1820c379fc2b0578b52b41bce630e76a8b532a1b2c25d82d803db52166e8ab3f",
+   "sampled_headroom_mib": 682.078125,
+   "source_commit": "307e7633f300453f440e26ef0d6ce99c6b26490e",
+   "source_note": null,
+   "status": "execution_fit",
+   "store_compression_ratio": 1.9214796519141848,
+   "store_device_resident_gib": 3.293870583176613,
+   "tracked_peak_bytes": 24637349976,
+   "whole_card_peak_gib": 23.318283081054688
+  },
+  {
+   "elapsed_seconds": 2474.9361084215343,
+   "prompt_tokens": 216064,
+   "raw_sha256": "d38006b258fb9ce921cd8c6981efce12f6907665d8ffbb657b1d5711a466f929",
+   "sampled_headroom_mib": 238.1875,
+   "source_commit": "307e7633f300453f440e26ef0d6ce99c6b26490e",
+   "source_note": null,
+   "status": "execution_fit",
+   "store_compression_ratio": 1.9268573263062148,
+   "store_device_resident_gib": 3.53488852083683,
+   "tracked_peak_bytes": 25155435336,
+   "whole_card_peak_gib": 23.75177001953125
+  },
+  {
+   "elapsed_seconds": 2555.3676301278174,
+   "prompt_tokens": 220672,
+   "raw_sha256": "4e4811b597fd3a734a248f7af969e222a7c63f80cff3df3eb9bf208499cb1710",
+   "sampled_headroom_mib": 104.171875,
+   "source_commit": "307e7633f300453f440e26ef0d6ce99c6b26490e",
+   "source_note": null,
+   "status": "execution_fit",
+   "store_compression_ratio": 1.9283298817731407,
+   "store_device_resident_gib": 3.6071939021348953,
+   "tracked_peak_bytes": 25310860944,
+   "whole_card_peak_gib": 23.882644653320312
+  },
+  {
+   "elapsed_seconds": 2342.4054718324915,
+   "prompt_tokens": 224256,
+   "raw_sha256": "12ce21d58da619a3f12912db0615d05d08fe4ea258bca8ae3cd1c77b51860897",
+   "sampled_headroom_mib": 310.19921875,
+   "source_commit": "307e7633f300453f440e26ef0d6ce99c6b26490e",
+   "source_note": null,
+   "status": "execution_fit",
+   "store_compression_ratio": 1.9294348420844338,
+   "store_device_resident_gib": 3.6634314209222794,
+   "tracked_peak_bytes": 25084202952,
+   "whole_card_peak_gib": 23.681446075439453
+  },
+  {
+   "elapsed_seconds": 2489.7709599565715,
+   "prompt_tokens": 232448,
+   "raw_sha256": "f880fab0c5c6532daebaee8909ffa872e3693ffef1403472fab22a9c4a2ce67b",
+   "sampled_headroom_mib": 62.1875,
+   "source_commit": "307e7633f300453f440e26ef0d6ce99c6b26490e",
+   "source_note": null,
+   "status": "execution_fit",
+   "store_compression_ratio": 1.9318368805524853,
+   "store_device_resident_gib": 3.7919743210077286,
+   "tracked_peak_bytes": 25347833928,
+   "whole_card_peak_gib": 23.92364501953125
+  },
+  {
+   "elapsed_seconds": 2700.2488162359223,
+   "prompt_tokens": 234496,
+   "raw_sha256": null,
+   "sampled_headroom_mib": 116.09375,
+   "source_commit": "4f5e594f3636dc95db0d08e20d16eac1bc10c562",
+   "source_note": "docs-only descendant of the adoption commit; runner code identical, porcelain-dirty from the untracked publisher script",
+   "status": "timeout",
+   "store_compression_ratio": null,
+   "store_device_resident_gib": null,
+   "tracked_peak_bytes": null,
+   "whole_card_peak_gib": 23.871002197265625
+  }
+ ],
+ "route": {
+  "codec": "int8_evaluation",
+  "decode_steps": 8,
+  "dms_prefill_mode": "layer_outer",
+  "hidden_plane_alias": "single plane (adopted default, HIPENGINE_LAYER_OUTER_HIDDEN_ALIAS=0 rolls back)",
+  "model": "Qwen3.8-27B-Q4_K_M.gguf",
+  "refill_cycles": 1,
+  "sessions": 1
+ },
+ "scope": "capacity/finiteness/ownership only; no numerical, throughput, quality, long-output or serving qualification; DMS discards history, so fitting a longer prompt does not establish full-context quality; decode horizons remain eight steps; performance_claim false"
+}
