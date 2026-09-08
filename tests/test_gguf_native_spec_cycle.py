@@ -32,8 +32,68 @@ from hipengine.speculative.mtp_resident_draft import (
 )
 
 
+def _capacity_bound_session(position, capacity, backend="hip_gfx1100", file_type="MOSTLY_Q4_K_M"):
+    from hipengine.kernels.policy import QWEN35_DENSE_H5120_GEOMETRY
+
+    return SimpleNamespace(
+        position=position, backend=backend, kv_storage_dtype=DType.BF16,
+        scratch=SimpleNamespace(max_positions=capacity, block_size=256),
+        runner=SimpleNamespace(weights=SimpleNamespace(
+            geometry=QWEN35_DENSE_H5120_GEOMETRY, file_type_name=file_type,
+        )),
+    )
+
+
+@pytest.mark.parametrize(
+    "start,extent",
+    [(95, 1023), (128, 1023), (512, 1023), (1020, None), (1024, 1280),
+     (1278, None), (1280, 1536), (4096, 4352), (8192, 8448)],
+)
+def test_gfx1100_context_uses_capacity_and_graph_topology_not_p95(monkeypatch, start, extent):
+    from hipengine.runtime import qwen35_gguf_runner as runner
+
+    monkeypatch.setattr(runner, "_gguf_prefill_device_metadata_enabled", lambda **_kw: True)
+    session = _capacity_bound_session(start, 16384)
+    assert native_cycle_mod._native_target_graph_context_limit(session, rows=4) == extent
+    session.position = 16384
+    assert native_cycle_mod._native_target_graph_context_limit(session, rows=4) is None
+
+
+@pytest.mark.parametrize("position", [4096, 8192, 16384, 32768])
+def test_native_graph_metadata_is_independent_of_bulk_prefill_policy(monkeypatch, position):
+    from hipengine.runtime import qwen35_gguf_runner as runner_module
+
+    monkeypatch.setattr(runner_module, "_gguf_prefill_device_metadata_enabled", lambda **_kw: False)
+    session = _capacity_bound_session(position, 65536)
+    assert native_cycle_mod._native_target_graph_context_limit(session, rows=4) == position + 256
+
+
+def test_capacity_policy_preserves_unrelated_quant_state_and_model_routes():
+    from hipengine.kernels.policy import QWEN35_MOE_H2048_E256_GEOMETRY
+
+    session = _capacity_bound_session(128, 65536)
+    resolve = lambda: native_cycle_mod.native_target_context_limit(
+        session.backend, session, default=session.scratch.max_positions,
+    )
+    assert resolve() == 65536
+    session.runner.fp16_recurrent_state = True
+    assert resolve() == 95
+    session.runner.fp16_recurrent_state = False
+    session.kv_storage_dtype = DType.INT8_PER_TOKEN_HEAD
+    assert resolve() == 95
+    session.kv_storage_dtype = DType.BF16
+    session.runner.weights.file_type_name = "MOSTLY_Q4_K_S"
+    assert resolve() == 95
+    session.runner.weights.file_type_name = "MOSTLY_Q4_K_M"
+    session.runner.weights.geometry = QWEN35_MOE_H2048_E256_GEOMETRY
+    assert resolve() == 95
+    session.backend = "hip_gfx1151"
+    assert resolve() == 65544
+
+
 @pytest.mark.parametrize("capacity", [256, 1024, 4096])
-def test_native_graph_extent_never_exceeds_backend_qualification(capacity) -> None:
+def test_native_graph_extent_never_exceeds_backend_qualification(monkeypatch, capacity) -> None:
+    monkeypatch.setattr(native_cycle_mod, "backend_package_capability", lambda *_a: 95)
     session = SimpleNamespace(
         position=25, backend="hip_gfx1100",
         scratch=SimpleNamespace(max_positions=capacity),
@@ -1016,7 +1076,7 @@ def test_rf2_context_bucket_selection_is_power_of_two_and_capability_bounded(
     assert native_cycle_mod._native_target_graph_context_limit(session, rows=4) is None
 
 
-def test_gfx1100_target_graph_fails_closed_above_p95() -> None:
+def test_unknown_model_keeps_existing_context_policy() -> None:
     session = SimpleNamespace(
         position=92,
         backend="hip_gfx1100",
@@ -1314,6 +1374,49 @@ def test_native_linear_chain_scheduler_stages_all_rows_once(monkeypatch) -> None
         decode_scratch=decode_scratch,
     )
     assert [call[0] for call in calls] == ["scalar", "ffn"]
+
+
+@pytest.mark.parametrize("is_moe,start", [(False, 1020), (True, 128)])
+def test_scalarized_native_attention_captures_initial_state_before_mutation(
+    monkeypatch, is_moe, start,
+):
+    from hipengine.loading.qwen35_gguf import LINEAR_ATTENTION
+    from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFFullStackRunner
+
+    runner = object.__new__(Qwen35GGUFFullStackRunner)
+    runner.weights = SimpleNamespace(config=SimpleNamespace(hidden_size=16, is_moe=is_moe))
+    calls = []
+    state = {0x1000: 11, 0x2000: 22}
+
+    def copy(dst, src, nbytes, kind, stream):
+        assert kind == HipMemcpyKind.DEVICE_TO_DEVICE
+        state[dst] = state[src]
+        calls.append(("copy", dst, src, nbytes, stream))
+
+    def mutate(*_args, **_kwargs):
+        state[0x1000] += 1
+        state[0x2000] += 1
+        calls.append(("mutate",))
+
+    runner.runtime = SimpleNamespace(memcpy_async=copy)
+    monkeypatch.setattr(runner, "_run_linear_attention_attn_only", mutate)
+    monkeypatch.setattr(runner, "_run_post_attention_ffn_rows", lambda *_a, **_kw: None)
+    owner = SimpleNamespace(
+        layer_conv_states=(DeviceBuffer(0x1000, 64),),
+        layer_recurrent_states=(DeviceBuffer(0x2000, 512),),
+    )
+    runner._run_native_attention_bulk_ffn_layer_rows(
+        0, LINEAR_ATTENTION, 0x7000, 0x8000,
+        SimpleNamespace(attn_out=SimpleNamespace(ptr=0x9000)),
+        rows=4, decode_scratch=owner, start_position=start,
+        initial_state_snapshot=(DeviceBuffer(0x3000, 64), DeviceBuffer(0x4000, 512)),
+        commit_final_linear_state=False, stream=9,
+    )
+    assert calls[:2] == [
+        ("copy", 0x3000, 0x1000, 64, 9),
+        ("copy", 0x4000, 0x2000, 512, 9),
+    ]
+    assert state == {0x1000: 15, 0x2000: 26, 0x3000: 11, 0x4000: 22}
 
 
 def test_native_long_context_serializes_dense_ffn_rows(monkeypatch) -> None:

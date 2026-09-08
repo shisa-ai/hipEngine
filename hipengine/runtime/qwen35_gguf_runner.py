@@ -7260,6 +7260,21 @@ class Qwen35GGUFFullStackRunner:
                 stream=stream,
             )
         else:
+            if layer_type == LINEAR_ATTENTION and initial_state_snapshot is not None:
+                # Scalarized rows do not call the fused snapshot producers.
+                # Preserve the pre-transaction state before the first row mutates it.
+                for live, snapshot in zip(
+                    (decode_scratch.layer_conv_states[layer_id],
+                     decode_scratch.layer_recurrent_states[layer_id]),
+                    initial_state_snapshot,
+                    strict=True,
+                ):
+                    if live is None or snapshot.nbytes < live.nbytes:
+                        raise ValueError("native initial-state snapshot does not cover live state")
+                    runtime.memcpy_async(
+                        snapshot.ptr, live.ptr, live.nbytes,
+                        HipMemcpyKind.DEVICE_TO_DEVICE, stream,
+                    )
             for row in range(rows):
                 position = start_position + row
                 row_decode_scratch = (

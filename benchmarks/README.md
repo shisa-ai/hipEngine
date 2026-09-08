@@ -91,6 +91,16 @@ two concurrent requests on the W7900.
 
 ## RX 7900 XTX Same-Model Comparison
 
+Native C1 verification for dense `Q4_K_M` now uses allocated cache capacity,
+not the historical 95-position workaround. Longer-context correctness checks:
+
+| Model / hardware | Workload | Result |
+| --- | --- | --- |
+| Qwen3.8-27B `Q4_K_M` / RX 7900 XTX | 4K/8K/16K target verification, B1-B3; 8K prompt + 33 outputs, C1 B3, all ten category prompts | 192 exact state/logit/rollback cases; 10/10 end-to-end AR matches, 94 native graph calls, zero serial fallback |
+
+[Reproduction commands and context diagnostics](results/2026-09-08-rx7900xtx-native-context-correctness.json).
+These tested lengths are regression coverage, not a context ceiling.
+
 Same Qwen3.8-27B `Q4_K_M` file on one RX 7900 XTX, HIP and BF16 KV.
 PP/TG use 8192 prompt tokens and 128 decode transitions. C1 MTP uses the
 full ten-prompt category suite, 25 visible outputs, explicit B3 and three

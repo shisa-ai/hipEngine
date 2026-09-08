@@ -1,0 +1,3377 @@
+{
+  "schema": 1,
+  "performance_claim": false,
+  "attempts": [
+    {
+      "source_name": "native-context-p121-limit256.json",
+      "source_sha256": "ba45a79f569563c9fdd7d350b71799e115ec73ccb7f0b877b10bfd5416155a10",
+      "status": "complete_exact",
+      "performance_claim": false,
+      "command": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_native_context_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --max-new-tokens 25 --candidate-budgets 3 --runs 1 --limit 10 --warmup --max-sequence-length 1024 --native-context-limit 256 --fixed-prompt-length 121 --compiler-version-file /tmp/hipengine-hipcc-version.txt --output /tmp/native-context-p121-limit256.json",
+      "memory_after_close": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 19762685815,
+        "total_allocated_bytes": 19762788215,
+        "total_freed_bytes": 19762788215,
+        "active_allocations": 0,
+        "peak_allocations": 556
+      },
+      "provenance": {
+        "kind": "hipengine_artifact_provenance",
+        "schema_version": 2,
+        "collected_at": "2026-09-08T17:55:13.323546+00:00",
+        "host_name": "epyc",
+        "repo_root": "/home/lhl/hipEngine-main",
+        "hipengine_commit": "7e94f9ed7443af1548883c582fc2264fdd425e82",
+        "git_branch": "main",
+        "staged_dirty": false,
+        "unstaged_dirty": false,
+        "untracked_dirty": true,
+        "untracked_count": 2,
+        "dirty": true,
+        "configured_backend": "auto",
+        "resolved_backend": "hip_gfx1100",
+        "target_arch": "gfx1100",
+        "device_name": "AMD Radeon RX 7900 XTX",
+        "model_path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "model_revision": null,
+        "model_fingerprint": {
+          "algorithm": "sha256-sampled-v1",
+          "value": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+          "size_bytes": 17106773984,
+          "sampled_bytes": 3145728,
+          "sample_offsets": [
+            0,
+            8552862704,
+            17105725408
+          ],
+          "exists": true,
+          "path_type": "file"
+        },
+        "quant": "gguf_q4_k_m",
+        "kv_dtype": "bf16",
+        "command": [
+          "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+          "scripts/gguf_native_context_gate.py",
+          "--model",
+          "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+          "--max-new-tokens",
+          "25",
+          "--candidate-budgets",
+          "3",
+          "--runs",
+          "1",
+          "--limit",
+          "10",
+          "--warmup",
+          "--max-sequence-length",
+          "1024",
+          "--native-context-limit",
+          "256",
+          "--fixed-prompt-length",
+          "121",
+          "--compiler-version-file",
+          "/tmp/hipengine-hipcc-version.txt",
+          "--output",
+          "/tmp/native-context-p121-limit256.json"
+        ],
+        "environment": {
+          "HIP_VISIBLE_DEVICES": "1",
+          "HIPENGINE_HIP_ARCH": "gfx1100",
+          "HIPENGINE_GGUF_DECODE_REPACK": "1",
+          "HIPENGINE_REQUIRE_CACHED_BUILD": null
+        },
+        "rocm_version": "HIP version: 7.2.53211-3d9ef42",
+        "hipcc_version": "HIP version: 7.2.53211-3d9ef42\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin\n",
+        "build_profile": "qwen36_dense_gguf_ar_mtp_suite",
+        "timing_protocol": "natural25 first-output-from-prefill; 24 transition-normalized decode steps",
+        "warmups": 1,
+        "repetitions": 1,
+        "profiler": {
+          "enabled": false,
+          "kind": "roctx marker leaf"
+        }
+      },
+      "model": {
+        "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "size_bytes": 17106773984,
+        "architecture": "qwen35",
+        "file_type": "MOSTLY_Q4_K_M",
+        "tensor_count": 866,
+        "gguf_inventory": {
+          "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+          "version": 3,
+          "alignment": 32,
+          "architecture": "qwen35",
+          "file_type": 15,
+          "file_type_name": "MOSTLY_Q4_K_M",
+          "tensor_count": 866,
+          "total_tensor_nbytes": 17095778304,
+          "tensor_data_offset": 10995680,
+          "tensor_inventory_hash_algorithm": "sha256",
+          "tensor_inventory_hash": "0f4915bdd5a7e465ce03e6a3cf76d5dddf35ae28dbd1fa75f5af2c909b8461f3"
+        }
+      },
+      "workload": {
+        "prompt_file": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+        "prompt_count": 10,
+        "prompt_ids": [
+          "code_merge_intervals",
+          "code_topological_sort",
+          "code_lru_cache",
+          "code_markdown_table",
+          "general_en_plan",
+          "general_en_explain",
+          "general_ja_plan",
+          "general_ja_explain",
+          "mixed_ja_en_translate",
+          "mixed_ja_en_review"
+        ],
+        "categories": [
+          "code",
+          "general_en",
+          "general_ja",
+          "mixed_ja_en"
+        ],
+        "heldout_ids": [
+          "code_markdown_table",
+          "general_en_explain",
+          "general_ja_explain",
+          "mixed_ja_en_review"
+        ],
+        "train_ids": [
+          "code_merge_intervals",
+          "code_topological_sort",
+          "code_lru_cache",
+          "general_en_plan",
+          "general_ja_plan",
+          "mixed_ja_en_translate"
+        ],
+        "prompt_render": "Qwen chat template; reasoning off",
+        "max_new_tokens_visible": 25,
+        "timed_decode_transitions": 24,
+        "candidate_budgets": [
+          3
+        ],
+        "budget_policies": {
+          "sequence": null,
+          "adaptive": null
+        },
+        "target_verify_mode": "native",
+        "draft_hidden_variant": "pre_output_norm",
+        "draft_hidden_manifest": {
+          "target_hidden_variant": "pre_output_norm",
+          "prompt_target_hidden": "pre_output_norm",
+          "proposal_target_hidden": "pre_output_norm",
+          "target_commit_hidden": "pre_output_norm",
+          "draft_chain_hidden": "nextn_post_output_norm"
+        },
+        "runs": 1,
+        "warmup": true,
+        "max_sequence_length": 1024,
+        "sampling": {
+          "temperature": 0.0,
+          "top_k": 1,
+          "top_p": 1.0,
+          "min_p": 0.0,
+          "seed": 12345
+        }
+      },
+      "correctness": {
+        "all_exact_greedy": true,
+        "all_gpu_accept_match_cpu": true
+      },
+      "timing_contract": {
+        "first_visible_output": "target prefill sample; excluded from decode wall",
+        "decode_numerator": "max_new_tokens - 1 timed transitions",
+        "prefill": "excluded from AR and MTP decode wall",
+        "mtp_complete_wall": "proposal + target_verify + target_commit_finish + scheduler_accept_replay_host_residual",
+        "profile_markers": false,
+        "roctx_marker_prefix": "qwen36_dense_mtp_"
+      },
+      "context_gate": {
+        "schema": 1,
+        "timestamp": "2026-09-08T17:55:13.516671+00:00",
+        "command": [
+          "/home/lhl/mambaforge/envs/therock/bin/python3",
+          "scripts/gguf_native_context_gate.py",
+          "--model",
+          "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+          "--max-new-tokens",
+          "25",
+          "--candidate-budgets",
+          "3",
+          "--runs",
+          "1",
+          "--limit",
+          "10",
+          "--warmup",
+          "--max-sequence-length",
+          "1024",
+          "--native-context-limit",
+          "256",
+          "--fixed-prompt-length",
+          "121",
+          "--compiler-version-file",
+          "/tmp/hipengine-hipcc-version.txt",
+          "--output",
+          "/tmp/native-context-p121-limit256.json"
+        ],
+        "environment": {
+          "HIP_LIB_PATH": "/opt/rocm/lib",
+          "HIP_INCLUDE_PATH": "/opt/rocm/include",
+          "HIP_PATH": "/opt/rocm",
+          "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+          "HIP_VISIBLE_DEVICES": "1",
+          "HIPENGINE_HIP_ARCH": "gfx1100",
+          "HIPENGINE_GGUF_DECODE_REPACK": "1",
+          "HSA_SCRATCH_SINGLE_LIMIT": "8388608"
+        },
+        "native_context_limit": 256,
+        "prior_limits": {
+          "GGUF_SPECDEC2_NATIVE_TARGET_MAX_CONTEXT": 95,
+          "GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT": 95
+        },
+        "backend": "hip_gfx1100",
+        "fixed_prompt_length": 121,
+        "native_eager": false,
+        "actual_verify_modes": {
+          "native": 72
+        },
+        "graph_submissions": 72,
+        "graph_context_extents": [
+          256
+        ],
+        "memory": {
+          "card": {
+            "card_name": "card0",
+            "pci_id": "0000:10:00.0",
+            "sysfs_path": "/sys/class/drm/card0/device",
+            "vram_total_bytes": 25753026560,
+            "vram_total_gib": 23.984375
+          },
+          "memory_domain": "vram",
+          "memory_total_bytes": 25753026560,
+          "memory_total_gib": 23.984375,
+          "baseline_bytes": 28000256,
+          "baseline_gib": 0.0260772705078125,
+          "peak_bytes": 20107173888,
+          "peak_gib": 18.72626495361328,
+          "peak_delta_bytes": 20079173632,
+          "peak_delta_gib": 18.70018768310547,
+          "final_bytes": 276492288,
+          "final_gib": 0.2575035095214844,
+          "samples_count": 9098,
+          "interval_seconds": 0.02,
+          "elapsed_seconds": 183.69965200405568
+        },
+        "identity": {
+          "kind": "hipengine_artifact_provenance",
+          "schema_version": 2,
+          "collected_at": "2026-09-08T17:53:58.898005+00:00",
+          "host_name": "epyc",
+          "repo_root": "/home/lhl/hipEngine-main",
+          "hipengine_commit": "7e94f9ed7443af1548883c582fc2264fdd425e82",
+          "git_branch": "main",
+          "staged_dirty": false,
+          "unstaged_dirty": false,
+          "untracked_dirty": true,
+          "untracked_count": 2,
+          "dirty": true,
+          "configured_backend": "hip_gfx1100",
+          "resolved_backend": "hip_gfx1100",
+          "target_arch": "gfx1100",
+          "device_name": "AMD Radeon RX 7900 XTX",
+          "model_path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+          "model_revision": null,
+          "model_fingerprint": {
+            "algorithm": "sha256-sampled-v1",
+            "value": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+            "size_bytes": 17106773984,
+            "sampled_bytes": 3145728,
+            "sample_offsets": [
+              0,
+              8552862704,
+              17105725408
+            ],
+            "exists": true,
+            "path_type": "file"
+          },
+          "quant": "gguf_q4_k_m",
+          "kv_dtype": "bf16",
+          "command": [
+            "scripts/gguf_native_context_gate.py",
+            "--model",
+            "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+            "--max-new-tokens",
+            "25",
+            "--candidate-budgets",
+            "3",
+            "--runs",
+            "1",
+            "--limit",
+            "10",
+            "--warmup",
+            "--max-sequence-length",
+            "1024",
+            "--native-context-limit",
+            "256",
+            "--fixed-prompt-length",
+            "121",
+            "--compiler-version-file",
+            "/tmp/hipengine-hipcc-version.txt",
+            "--output",
+            "/tmp/native-context-p121-limit256.json"
+          ],
+          "environment": {
+            "HIPENGINE_BACKEND": null,
+            "HIPENGINE_HIP_ARCH": "gfx1100",
+            "GPU_MAX_HW_QUEUES": null,
+            "HIPENGINE_BUILD_CACHE_ROOT": null,
+            "HIPENGINE_REQUIRE_CACHED_BUILD": null,
+            "HIP_VISIBLE_DEVICES": "1",
+            "ROCR_VISIBLE_DEVICES": null,
+            "CUDA_VISIBLE_DEVICES": null,
+            "GPU_DEVICE_ORDINAL": null
+          },
+          "rocm_version": "HIP version: 7.2.53211-3d9ef42",
+          "hipcc_version": "HIP version: 7.2.53211-3d9ef42\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+          "build_profile": null,
+          "timing_protocol": "context qualification",
+          "warmups": 1,
+          "repetitions": 1,
+          "profiler": null
+        },
+        "prompt_fingerprints": {
+          "Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code.": {
+            "tokens": 121,
+            "sha256": "ac6513af1ddb18ba6ee2793c0b73b923a18f60bc974b04dd1a0c21569b4a36f2"
+          },
+          "Write a Python function topo_sort(nodes, edges) that returns a valid topological ordering or raises ValueError on a cycle. Include tests for a DAG and a cyclic graph. Return only code.": {
+            "tokens": 121,
+            "sha256": "eb22efd86f65730e9e16690ad505cd1f8f75b538ad73099354cc324cdff33a77"
+          },
+          "Implement a small LRUCache class in Python with get(key) and put(key, value), using O(1) operations. Include three focused tests. Return only code.": {
+            "tokens": 121,
+            "sha256": "f9ae3e0256ee1cf97495e6fb45579124d260ee565b698832d005387c3cd36867"
+          },
+          "Write a Python function markdown_table(rows) where rows is a list of dictionaries. It should produce a GitHub-flavored markdown table with stable column order from first appearance. Include tests. Return only code.": {
+            "tokens": 121,
+            "sha256": "8cd2e72cf3f2054443d3b658a147227d4aee10021511f50aba991103ca70f81e"
+          },
+          "Create a concise but practical migration plan for moving a small Flask application from SQLite to PostgreSQL. Include risks, sequencing, and validation steps.": {
+            "tokens": 121,
+            "sha256": "aa0d7ee04cb3d62fbfc7226438b94d017a6f09210d59b964cee05436362b18f7"
+          },
+          "Explain why transformer inference is usually memory-bandwidth limited on local GPUs. Keep it technical and concrete, with examples of what changes throughput.": {
+            "tokens": 121,
+            "sha256": "e6d726e7af4428d0cca587d4ba3cda523fa81211f68ef91c97173a8b50b01849"
+          },
+          "\u5c0f\u898f\u6a21\u306a\u793e\u5185Python\u30c4\u30fc\u30eb\u3092\u904b\u7528\u74b0\u5883\u3078\u79fb\u884c\u3059\u308b\u305f\u3081\u306e\u5b9f\u8df5\u7684\u306a\u8a08\u753b\u3092\u65e5\u672c\u8a9e\u3067\u4f5c\u6210\u3057\u3066\u304f\u3060\u3055\u3044\u3002\u30ea\u30b9\u30af\u3001\u624b\u9806\u3001\u691c\u8a3c\u65b9\u6cd5\u3092\u542b\u3081\u3066\u304f\u3060\u3055\u3044\u3002": {
+            "tokens": 121,
+            "sha256": "8dfaaf7828422339075abffae40e857fa1f0bed80aa56affc9276ba7a2729378"
+          },
+          "\u30ed\u30fc\u30ab\u30ebGPU\u3067LLM\u306e\u63a8\u8ad6\u901f\u5ea6\u304c\u30e1\u30e2\u30ea\u5e2f\u57df\u306b\u5236\u7d04\u3055\u308c\u3084\u3059\u3044\u7406\u7531\u3092\u3001\u65e5\u672c\u8a9e\u3067\u6280\u8853\u7684\u304b\u3064\u5177\u4f53\u7684\u306b\u8aac\u660e\u3057\u3066\u304f\u3060\u3055\u3044\u3002": {
+            "tokens": 121,
+            "sha256": "04d29f544d23fc5fc4aac6b30e80cca2a5eae21e2262984495c63de6a35e4177"
+          },
+          "Summarize the following Japanese note in English, then provide a short Japanese reply:\n\n\u6765\u9031\u306e\u30ea\u30ea\u30fc\u30b9\u3067\u306f\u3001\u30ed\u30b0\u51fa\u529b\u306e\u5f62\u5f0f\u5909\u66f4\u3001\u30ad\u30e3\u30c3\u30b7\u30e5\u306e\u7121\u52b9\u5316\u30aa\u30d7\u30b7\u30e7\u30f3\u3001\u305d\u3057\u3066API\u30ec\u30b9\u30dd\u30f3\u30b9\u306e\u5f8c\u65b9\u4e92\u63db\u6027\u3092\u91cd\u70b9\u7684\u306b\u78ba\u8a8d\u3057\u305f\u3044\u3067\u3059\u3002": {
+            "tokens": 121,
+            "sha256": "81e4ff0bbfb0622eee8bf5ff3d7f2fcbfd45aa7caae046e5ffa2ba5a5b5ccb65"
+          },
+          "Review this bilingual release note for clarity. Respond with English bullets, but keep Japanese product terms unchanged:\n\n\u65b0\u3057\u3044\u63a8\u8ad6\u30e2\u30fc\u30c9\u3067\u306f MTP \u3092\u6709\u52b9\u306b\u3059\u308b\u3068\u751f\u6210\u901f\u5ea6\u304c\u5411\u4e0a\u3057\u307e\u3059\u3002\u305f\u3060\u3057\u3001\u9577\u3044\u30b3\u30f3\u30c6\u30ad\u30b9\u30c8\u3067\u306f KV cache \u306e\u4f7f\u7528\u91cf\u304c\u5897\u3048\u308b\u305f\u3081\u3001\u30e1\u30e2\u30ea\u76e3\u8996\u3092\u63a8\u5968\u3057\u307e\u3059\u3002": {
+            "tokens": 121,
+            "sha256": "c3d180bbf52d4dd618a66777ba0a29c58d1880d5c01071c00781cb94a3f4d517"
+          },
+          "Write a Python function add(a, b). Return only code.": {
+            "tokens": 121,
+            "sha256": "bf33fb590b16456e3b795a242d9281d074bb01cd7f6c35e8af6ed939864e8f76"
+          }
+        }
+      },
+      "summary": {
+        "true_ar": {
+          "full": {
+            "prompt_count": 10,
+            "request_count": 10,
+            "prompt_ids": [
+              "code_merge_intervals",
+              "code_topological_sort",
+              "code_lru_cache",
+              "code_markdown_table",
+              "general_en_plan",
+              "general_en_explain",
+              "general_ja_plan",
+              "general_ja_explain",
+              "mixed_ja_en_translate",
+              "mixed_ja_en_review"
+            ],
+            "categories": [
+              "code",
+              "general_en",
+              "general_ja",
+              "mixed_ja_en"
+            ],
+            "visible_outputs": 250,
+            "timed_transitions": 240,
+            "decode_seconds": 6.765078513883054,
+            "decode_tok_s_weighted": 35.47630666923976,
+            "request_wall_seconds": 38.820253879763186,
+            "client_transition_tok_s": 6.182339784364751,
+            "accepted_draft_tokens": 0,
+            "proposed_draft_tokens": 0,
+            "draft_acceptance": null,
+            "accepted_per_output": 0.0,
+            "accepted_per_transition": 0.0,
+            "cycles": 0,
+            "target_passes": 0,
+            "visible_transitions_per_cycle": null,
+            "target_forward_rows": 240,
+            "stage_seconds": {
+              "autoregressive_step": 6.765078513883054
+            },
+            "stage_reconciliation_error_seconds": 0.0,
+            "stage_reconciled": true
+          },
+          "train": {
+            "prompt_count": 6,
+            "request_count": 6,
+            "prompt_ids": [
+              "code_merge_intervals",
+              "code_topological_sort",
+              "code_lru_cache",
+              "general_en_plan",
+              "general_ja_plan",
+              "mixed_ja_en_translate"
+            ],
+            "categories": [
+              "code",
+              "general_en",
+              "general_ja",
+              "mixed_ja_en"
+            ],
+            "visible_outputs": 150,
+            "timed_transitions": 144,
+            "decode_seconds": 4.057707113213837,
+            "decode_tok_s_weighted": 35.48802217170063,
+            "request_wall_seconds": 23.276639088988304,
+            "client_transition_tok_s": 6.1864601435575555,
+            "accepted_draft_tokens": 0,
+            "proposed_draft_tokens": 0,
+            "draft_acceptance": null,
+            "accepted_per_output": 0.0,
+            "accepted_per_transition": 0.0,
+            "cycles": 0,
+            "target_passes": 0,
+            "visible_transitions_per_cycle": null,
+            "target_forward_rows": 144,
+            "stage_seconds": {
+              "autoregressive_step": 4.057707113213837
+            },
+            "stage_reconciliation_error_seconds": 0.0,
+            "stage_reconciled": true
+          },
+          "heldout": {
+            "prompt_count": 4,
+            "request_count": 4,
+            "prompt_ids": [
+              "code_markdown_table",
+              "general_en_explain",
+              "general_ja_explain",
+              "mixed_ja_en_review"
+            ],
+            "categories": [
+              "code",
+              "general_en",
+              "general_ja",
+              "mixed_ja_en"
+            ],
+            "visible_outputs": 100,
+            "timed_transitions": 96,
+            "decode_seconds": 2.707371400669217,
+            "decode_tok_s_weighted": 35.45874791181971,
+            "request_wall_seconds": 15.543614790774882,
+            "client_transition_tok_s": 6.176169526343119,
+            "accepted_draft_tokens": 0,
+            "proposed_draft_tokens": 0,
+            "draft_acceptance": null,
+            "accepted_per_output": 0.0,
+            "accepted_per_transition": 0.0,
+            "cycles": 0,
+            "target_passes": 0,
+            "visible_transitions_per_cycle": null,
+            "target_forward_rows": 96,
+            "stage_seconds": {
+              "autoregressive_step": 2.707371400669217
+            },
+            "stage_reconciliation_error_seconds": 0.0,
+            "stage_reconciled": true
+          },
+          "categories": {
+            "code": {
+              "prompt_count": 4,
+              "request_count": 4,
+              "prompt_ids": [
+                "code_merge_intervals",
+                "code_topological_sort",
+                "code_lru_cache",
+                "code_markdown_table"
+              ],
+              "categories": [
+                "code"
+              ],
+              "visible_outputs": 100,
+              "timed_transitions": 96,
+              "decode_seconds": 2.7027915893122554,
+              "decode_tok_s_weighted": 35.51883185504062,
+              "request_wall_seconds": 15.496431920677423,
+              "client_transition_tok_s": 6.194974461953651,
+              "accepted_draft_tokens": 0,
+              "proposed_draft_tokens": 0,
+              "draft_acceptance": null,
+              "accepted_per_output": 0.0,
+              "accepted_per_transition": 0.0,
+              "cycles": 0,
+              "target_passes": 0,
+              "visible_transitions_per_cycle": null,
+              "target_forward_rows": 96,
+              "stage_seconds": {
+                "autoregressive_step": 2.7027915893122554
+              },
+              "stage_reconciliation_error_seconds": 0.0,
+              "stage_reconciled": true
+            },
+            "general_en": {
+              "prompt_count": 2,
+              "request_count": 2,
+              "prompt_ids": [
+                "general_en_plan",
+                "general_en_explain"
+              ],
+              "categories": [
+                "general_en"
+              ],
+              "visible_outputs": 50,
+              "timed_transitions": 48,
+              "decode_seconds": 1.354615437798202,
+              "decode_tok_s_weighted": 35.43441087458697,
+              "request_wall_seconds": 7.773230115883052,
+              "client_transition_tok_s": 6.175039113009343,
+              "accepted_draft_tokens": 0,
+              "proposed_draft_tokens": 0,
+              "draft_acceptance": null,
+              "accepted_per_output": 0.0,
+              "accepted_per_transition": 0.0,
+              "cycles": 0,
+              "target_passes": 0,
+              "visible_transitions_per_cycle": null,
+              "target_forward_rows": 48,
+              "stage_seconds": {
+                "autoregressive_step": 1.354615437798202
+              },
+              "stage_reconciliation_error_seconds": 0.0,
+              "stage_reconciled": true
+            },
+            "general_ja": {
+              "prompt_count": 2,
+              "request_count": 2,
+              "prompt_ids": [
+                "general_ja_plan",
+                "general_ja_explain"
+              ],
+              "categories": [
+                "general_ja"
+              ],
+              "visible_outputs": 50,
+              "timed_transitions": 48,
+              "decode_seconds": 1.3512491043657064,
+              "decode_tok_s_weighted": 35.5226877449305,
+              "request_wall_seconds": 7.7709340285509825,
+              "client_transition_tok_s": 6.176863659329043,
+              "accepted_draft_tokens": 0,
+              "proposed_draft_tokens": 0,
+              "draft_acceptance": null,
+              "accepted_per_output": 0.0,
+              "accepted_per_transition": 0.0,
+              "cycles": 0,
+              "target_passes": 0,
+              "visible_transitions_per_cycle": null,
+              "target_forward_rows": 48,
+              "stage_seconds": {
+                "autoregressive_step": 1.3512491043657064
+              },
+              "stage_reconciliation_error_seconds": 0.0,
+              "stage_reconciled": true
+            },
+            "mixed_ja_en": {
+              "prompt_count": 2,
+              "request_count": 2,
+              "prompt_ids": [
+                "mixed_ja_en_translate",
+                "mixed_ja_en_review"
+              ],
+              "categories": [
+                "mixed_ja_en"
+              ],
+              "visible_outputs": 50,
+              "timed_transitions": 48,
+              "decode_seconds": 1.3564223824068904,
+              "decode_tok_s_weighted": 35.38720727597172,
+              "request_wall_seconds": 7.779657814651728,
+              "client_transition_tok_s": 6.169937180218873,
+              "accepted_draft_tokens": 0,
+              "proposed_draft_tokens": 0,
+              "draft_acceptance": null,
+              "accepted_per_output": 0.0,
+              "accepted_per_transition": 0.0,
+              "cycles": 0,
+              "target_passes": 0,
+              "visible_transitions_per_cycle": null,
+              "target_forward_rows": 48,
+              "stage_seconds": {
+                "autoregressive_step": 1.3564223824068904
+              },
+              "stage_reconciliation_error_seconds": 0.0,
+              "stage_reconciled": true
+            }
+          }
+        },
+        "mtp": {
+          "3": {
+            "full": {
+              "prompt_count": 10,
+              "request_count": 10,
+              "prompt_ids": [
+                "code_merge_intervals",
+                "code_topological_sort",
+                "code_lru_cache",
+                "code_markdown_table",
+                "general_en_plan",
+                "general_en_explain",
+                "general_ja_plan",
+                "general_ja_explain",
+                "mixed_ja_en_translate",
+                "mixed_ja_en_review"
+              ],
+              "categories": [
+                "code",
+                "general_en",
+                "general_ja",
+                "mixed_ja_en"
+              ],
+              "visible_outputs": 250,
+              "timed_transitions": 240,
+              "decode_seconds": 3.068182478658855,
+              "decode_tok_s_weighted": 78.22220538359483,
+              "request_wall_seconds": 35.386668275110424,
+              "client_transition_tok_s": 6.78221521546312,
+              "accepted_draft_tokens": 169,
+              "proposed_draft_tokens": 211,
+              "draft_acceptance": 0.8009478672985783,
+              "accepted_per_output": 0.676,
+              "accepted_per_transition": 0.7041666666666667,
+              "cycles": 71,
+              "target_passes": 71,
+              "visible_transitions_per_cycle": 3.380281690140845,
+              "target_forward_rows": 282,
+              "stage_seconds": {
+                "proposal": 0.056657763198018074,
+                "scheduler_accept_replay_host_residual": 0.023522624745965004,
+                "target_commit_finish": 0.0002290438860654831,
+                "target_verify": 2.9877730468288064
+              },
+              "stage_reconciliation_error_seconds": 0.0,
+              "stage_reconciled": true,
+              "mtp_vs_true_ar": 2.204914003954603
+            },
+            "train": {
+              "prompt_count": 6,
+              "request_count": 6,
+              "prompt_ids": [
+                "code_merge_intervals",
+                "code_topological_sort",
+                "code_lru_cache",
+                "general_en_plan",
+                "general_ja_plan",
+                "mixed_ja_en_translate"
+              ],
+              "categories": [
+                "code",
+                "general_en",
+                "general_ja",
+                "mixed_ja_en"
+              ],
+              "visible_outputs": 150,
+              "timed_transitions": 144,
+              "decode_seconds": 1.7460644682869315,
+              "decode_tok_s_weighted": 82.4711816862517,
+              "request_wall_seconds": 21.127148155122995,
+              "client_transition_tok_s": 6.815874955895659,
+              "accepted_draft_tokens": 104,
+              "proposed_draft_tokens": 119,
+              "draft_acceptance": 0.8739495798319328,
+              "accepted_per_output": 0.6933333333333334,
+              "accepted_per_transition": 0.7222222222222222,
+              "cycles": 40,
+              "target_passes": 40,
+              "visible_transitions_per_cycle": 3.6,
+              "target_forward_rows": 159,
+              "stage_seconds": {
+                "proposal": 0.039404275827109814,
+                "scheduler_accept_replay_host_residual": 0.013588622212409973,
+                "target_commit_finish": 0.00012904219329357147,
+                "target_verify": 1.6929425280541182
+              },
+              "stage_reconciliation_error_seconds": 0.0,
+              "stage_reconciled": true,
+              "mtp_vs_true_ar": 2.323915976135099
+            },
+            "heldout": {
+              "prompt_count": 4,
+              "request_count": 4,
+              "prompt_ids": [
+                "code_markdown_table",
+                "general_en_explain",
+                "general_ja_explain",
+                "mixed_ja_en_review"
+              ],
+              "categories": [
+                "code",
+                "general_en",
+                "general_ja",
+                "mixed_ja_en"
+              ],
+              "visible_outputs": 100,
+              "timed_transitions": 96,
+              "decode_seconds": 1.3221180103719234,
+              "decode_tok_s_weighted": 72.61076488398669,
+              "request_wall_seconds": 14.259520119987428,
+              "client_transition_tok_s": 6.732344370091231,
+              "accepted_draft_tokens": 65,
+              "proposed_draft_tokens": 92,
+              "draft_acceptance": 0.7065217391304348,
+              "accepted_per_output": 0.65,
+              "accepted_per_transition": 0.6770833333333334,
+              "cycles": 31,
+              "target_passes": 31,
+              "visible_transitions_per_cycle": 3.096774193548387,
+              "target_forward_rows": 123,
+              "stage_seconds": {
+                "proposal": 0.01725348737090826,
+                "scheduler_accept_replay_host_residual": 0.00993400253355503,
+                "target_commit_finish": 0.00010000169277191162,
+                "target_verify": 1.2948305187746882
+              },
+              "stage_reconciliation_error_seconds": 0.0,
+              "stage_reconciled": true,
+              "mtp_vs_true_ar": 2.0477532107043985
+            },
+            "categories": {
+              "code": {
+                "prompt_count": 4,
+                "request_count": 4,
+                "prompt_ids": [
+                  "code_merge_intervals",
+                  "code_topological_sort",
+                  "code_lru_cache",
+                  "code_markdown_table"
+                ],
+                "categories": [
+                  "code"
+                ],
+                "visible_outputs": 100,
+                "timed_transitions": 96,
+                "decode_seconds": 1.0703758914023638,
+                "decode_tok_s_weighted": 89.68811869839915,
+                "request_wall_seconds": 13.986275457777083,
+                "client_transition_tok_s": 6.863871678332997,
+                "accepted_draft_tokens": 71,
+                "proposed_draft_tokens": 75,
+                "draft_acceptance": 0.9466666666666667,
+                "accepted_per_output": 0.71,
+                "accepted_per_transition": 0.7395833333333334,
+                "cycles": 25,
+                "target_passes": 25,
+                "visible_transitions_per_cycle": 3.84,
+                "target_forward_rows": 100,
+                "stage_seconds": {
+                  "proposal": 0.01902886852622032,
+                  "scheduler_accept_replay_host_residual": 0.008730130270123482,
+                  "target_commit_finish": 8.225254714488983e-05,
+                  "target_verify": 1.042534640058875
+                },
+                "stage_reconciliation_error_seconds": 0.0,
+                "stage_reconciled": true,
+                "mtp_vs_true_ar": 2.525086384159088
+              },
+              "general_en": {
+                "prompt_count": 2,
+                "request_count": 2,
+                "prompt_ids": [
+                  "general_en_plan",
+                  "general_en_explain"
+                ],
+                "categories": [
+                  "general_en"
+                ],
+                "visible_outputs": 50,
+                "timed_transitions": 48,
+                "decode_seconds": 0.6406903872266412,
+                "decode_tok_s_weighted": 74.91918242722163,
+                "request_wall_seconds": 7.108610653318465,
+                "client_transition_tok_s": 6.752374316293787,
+                "accepted_draft_tokens": 33,
+                "proposed_draft_tokens": 45,
+                "draft_acceptance": 0.7333333333333333,
+                "accepted_per_output": 0.66,
+                "accepted_per_transition": 0.6875,
+                "cycles": 15,
+                "target_passes": 15,
+                "visible_transitions_per_cycle": 3.2,
+                "target_forward_rows": 60,
+                "stage_seconds": {
+                  "proposal": 0.008349156007170677,
+                  "scheduler_accept_replay_host_residual": 0.0048059215769171715,
+                  "target_commit_finish": 4.724878817796707e-05,
+                  "target_verify": 0.6274880608543754
+                },
+                "stage_reconciliation_error_seconds": 0.0,
+                "stage_reconciled": true,
+                "mtp_vs_true_ar": 2.1143058563152954
+              },
+              "general_ja": {
+                "prompt_count": 2,
+                "request_count": 2,
+                "prompt_ids": [
+                  "general_ja_plan",
+                  "general_ja_explain"
+                ],
+                "categories": [
+                  "general_ja"
+                ],
+                "visible_outputs": 50,
+                "timed_transitions": 48,
+                "decode_seconds": 0.8030515126883984,
+                "decode_tok_s_weighted": 59.77200620581491,
+                "request_wall_seconds": 7.26042109914124,
+                "client_transition_tok_s": 6.611186781669926,
+                "accepted_draft_tokens": 30,
+                "proposed_draft_tokens": 53,
+                "draft_acceptance": 0.5660377358490566,
+                "accepted_per_output": 0.6,
+                "accepted_per_transition": 0.625,
+                "cycles": 18,
+                "target_passes": 18,
+                "visible_transitions_per_cycle": 2.6666666666666665,
+                "target_forward_rows": 71,
+                "stage_seconds": {
+                  "proposal": 0.019596489146351814,
+                  "scheduler_accept_replay_host_residual": 0.005466134287416935,
+                  "target_commit_finish": 5.695223808288574e-05,
+                  "target_verify": 0.7779319370165467
+                },
+                "stage_reconciliation_error_seconds": 0.0,
+                "stage_reconciled": true,
+                "mtp_vs_true_ar": 1.6826431219114344
+              },
+              "mixed_ja_en": {
+                "prompt_count": 2,
+                "request_count": 2,
+                "prompt_ids": [
+                  "mixed_ja_en_translate",
+                  "mixed_ja_en_review"
+                ],
+                "categories": [
+                  "mixed_ja_en"
+                ],
+                "visible_outputs": 50,
+                "timed_transitions": 48,
+                "decode_seconds": 0.5540646873414516,
+                "decode_tok_s_weighted": 86.6324837092879,
+                "request_wall_seconds": 7.031361064873636,
+                "client_transition_tok_s": 6.826558835072799,
+                "accepted_draft_tokens": 35,
+                "proposed_draft_tokens": 38,
+                "draft_acceptance": 0.9210526315789473,
+                "accepted_per_output": 0.7,
+                "accepted_per_transition": 0.7291666666666666,
+                "cycles": 13,
+                "target_passes": 13,
+                "visible_transitions_per_cycle": 3.6923076923076925,
+                "target_forward_rows": 51,
+                "stage_seconds": {
+                  "proposal": 0.009683249518275261,
+                  "scheduler_accept_replay_host_residual": 0.004520438611507416,
+                  "target_commit_finish": 4.259031265974045e-05,
+                  "target_verify": 0.5398184088990092
+                },
+                "stage_reconciliation_error_seconds": 0.0,
+                "stage_reconciled": true,
+                "mtp_vs_true_ar": 2.4481299988912166
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "source_name": "native-context-p128-limit256.json",
+      "source_sha256": "8d4f47e1994a8565167006c06ea15a6b83abaf5061d2e0a6aea1c0270aad3620",
+      "status": "complete_exact",
+      "performance_claim": false,
+      "command": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_native_context_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --max-new-tokens 25 --candidate-budgets 3 --runs 1 --limit 10 --warmup --max-sequence-length 1024 --native-context-limit 256 --fixed-prompt-length 128 --compiler-version-file /tmp/hipengine-hipcc-version.txt --output /tmp/native-context-p128-limit256.json",
+      "memory_after_close": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 19762872164,
+        "total_allocated_bytes": 19762974564,
+        "total_freed_bytes": 19762974564,
+        "active_allocations": 0,
+        "peak_allocations": 617
+      },
+      "provenance": {
+        "kind": "hipengine_artifact_provenance",
+        "schema_version": 2,
+        "collected_at": "2026-09-08T17:59:20.824116+00:00",
+        "host_name": "epyc",
+        "repo_root": "/home/lhl/hipEngine-main",
+        "hipengine_commit": "7e94f9ed7443af1548883c582fc2264fdd425e82",
+        "git_branch": "main",
+        "staged_dirty": false,
+        "unstaged_dirty": false,
+        "untracked_dirty": true,
+        "untracked_count": 4,
+        "dirty": true,
+        "configured_backend": "auto",
+        "resolved_backend": "hip_gfx1100",
+        "target_arch": "gfx1100",
+        "device_name": "AMD Radeon RX 7900 XTX",
+        "model_path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "model_revision": null,
+        "model_fingerprint": {
+          "algorithm": "sha256-sampled-v1",
+          "value": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+          "size_bytes": 17106773984,
+          "sampled_bytes": 3145728,
+          "sample_offsets": [
+            0,
+            8552862704,
+            17105725408
+          ],
+          "exists": true,
+          "path_type": "file"
+        },
+        "quant": "gguf_q4_k_m",
+        "kv_dtype": "bf16",
+        "command": [
+          "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+          "scripts/gguf_native_context_gate.py",
+          "--model",
+          "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+          "--max-new-tokens",
+          "25",
+          "--candidate-budgets",
+          "3",
+          "--runs",
+          "1",
+          "--limit",
+          "10",
+          "--warmup",
+          "--max-sequence-length",
+          "1024",
+          "--native-context-limit",
+          "256",
+          "--fixed-prompt-length",
+          "128",
+          "--compiler-version-file",
+          "/tmp/hipengine-hipcc-version.txt",
+          "--output",
+          "/tmp/native-context-p128-limit256.json"
+        ],
+        "environment": {
+          "HIP_VISIBLE_DEVICES": "1",
+          "HIPENGINE_HIP_ARCH": "gfx1100",
+          "HIPENGINE_GGUF_DECODE_REPACK": "1",
+          "HIPENGINE_REQUIRE_CACHED_BUILD": null
+        },
+        "rocm_version": "HIP version: 7.2.53211-3d9ef42",
+        "hipcc_version": "HIP version: 7.2.53211-3d9ef42\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin\n",
+        "build_profile": "qwen36_dense_gguf_ar_mtp_suite",
+        "timing_protocol": "natural25 first-output-from-prefill; 24 transition-normalized decode steps",
+        "warmups": 1,
+        "repetitions": 1,
+        "profiler": {
+          "enabled": false,
+          "kind": "roctx marker leaf"
+        }
+      },
+      "model": {
+        "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "size_bytes": 17106773984,
+        "architecture": "qwen35",
+        "file_type": "MOSTLY_Q4_K_M",
+        "tensor_count": 866,
+        "gguf_inventory": {
+          "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+          "version": 3,
+          "alignment": 32,
+          "architecture": "qwen35",
+          "file_type": 15,
+          "file_type_name": "MOSTLY_Q4_K_M",
+          "tensor_count": 866,
+          "total_tensor_nbytes": 17095778304,
+          "tensor_data_offset": 10995680,
+          "tensor_inventory_hash_algorithm": "sha256",
+          "tensor_inventory_hash": "0f4915bdd5a7e465ce03e6a3cf76d5dddf35ae28dbd1fa75f5af2c909b8461f3"
+        }
+      },
+      "workload": {
+        "prompt_file": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+        "prompt_count": 10,
+        "prompt_ids": [
+          "code_merge_intervals",
+          "code_topological_sort",
+          "code_lru_cache",
+          "code_markdown_table",
+          "general_en_plan",
+          "general_en_explain",
+          "general_ja_plan",
+          "general_ja_explain",
+          "mixed_ja_en_translate",
+          "mixed_ja_en_review"
+        ],
+        "categories": [
+          "code",
+          "general_en",
+          "general_ja",
+          "mixed_ja_en"
+        ],
+        "heldout_ids": [
+          "code_markdown_table",
+          "general_en_explain",
+          "general_ja_explain",
+          "mixed_ja_en_review"
+        ],
+        "train_ids": [
+          "code_merge_intervals",
+          "code_topological_sort",
+          "code_lru_cache",
+          "general_en_plan",
+          "general_ja_plan",
+          "mixed_ja_en_translate"
+        ],
+        "prompt_render": "Qwen chat template; reasoning off",
+        "max_new_tokens_visible": 25,
+        "timed_decode_transitions": 24,
+        "candidate_budgets": [
+          3
+        ],
+        "budget_policies": {
+          "sequence": null,
+          "adaptive": null
+        },
+        "target_verify_mode": "native",
+        "draft_hidden_variant": "pre_output_norm",
+        "draft_hidden_manifest": {
+          "target_hidden_variant": "pre_output_norm",
+          "prompt_target_hidden": "pre_output_norm",
+          "proposal_target_hidden": "pre_output_norm",
+          "target_commit_hidden": "pre_output_norm",
+          "draft_chain_hidden": "nextn_post_output_norm"
+        },
+        "runs": 1,
+        "warmup": true,
+        "max_sequence_length": 1024,
+        "sampling": {
+          "temperature": 0.0,
+          "top_k": 1,
+          "top_p": 1.0,
+          "min_p": 0.0,
+          "seed": 12345
+        }
+      },
+      "correctness": {
+        "all_exact_greedy": true,
+        "all_gpu_accept_match_cpu": true
+      },
+      "timing_contract": {
+        "first_visible_output": "target prefill sample; excluded from decode wall",
+        "decode_numerator": "max_new_tokens - 1 timed transitions",
+        "prefill": "excluded from AR and MTP decode wall",
+        "mtp_complete_wall": "proposal + target_verify + target_commit_finish + scheduler_accept_replay_host_residual",
+        "profile_markers": false,
+        "roctx_marker_prefix": "qwen36_dense_mtp_"
+      },
+      "context_gate": {
+        "schema": 1,
+        "timestamp": "2026-09-08T17:59:20.860538+00:00",
+        "command": [
+          "/home/lhl/mambaforge/envs/therock/bin/python3",
+          "scripts/gguf_native_context_gate.py",
+          "--model",
+          "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+          "--max-new-tokens",
+          "25",
+          "--candidate-budgets",
+          "3",
+          "--runs",
+          "1",
+          "--limit",
+          "10",
+          "--warmup",
+          "--max-sequence-length",
+          "1024",
+          "--native-context-limit",
+          "256",
+          "--fixed-prompt-length",
+          "128",
+          "--compiler-version-file",
+          "/tmp/hipengine-hipcc-version.txt",
+          "--output",
+          "/tmp/native-context-p128-limit256.json"
+        ],
+        "environment": {
+          "HIP_LIB_PATH": "/opt/rocm/lib",
+          "HIP_INCLUDE_PATH": "/opt/rocm/include",
+          "HIP_PATH": "/opt/rocm",
+          "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+          "HIP_VISIBLE_DEVICES": "1",
+          "HIPENGINE_HIP_ARCH": "gfx1100",
+          "HIPENGINE_GGUF_DECODE_REPACK": "1",
+          "HSA_SCRATCH_SINGLE_LIMIT": "8388608"
+        },
+        "native_context_limit": 256,
+        "prior_limits": {
+          "GGUF_SPECDEC2_NATIVE_TARGET_MAX_CONTEXT": 95,
+          "GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT": 95
+        },
+        "backend": "hip_gfx1100",
+        "fixed_prompt_length": 128,
+        "native_eager": false,
+        "actual_verify_modes": {
+          "native": 74
+        },
+        "graph_submissions": 74,
+        "graph_context_extents": [
+          256
+        ],
+        "memory": {
+          "card": {
+            "card_name": "card0",
+            "pci_id": "0000:10:00.0",
+            "sysfs_path": "/sys/class/drm/card0/device",
+            "vram_total_bytes": 25753026560,
+            "vram_total_gib": 23.984375
+          },
+          "memory_domain": "vram",
+          "memory_total_bytes": 25753026560,
+          "memory_total_gib": 23.984375,
+          "baseline_bytes": 28000256,
+          "baseline_gib": 0.0260772705078125,
+          "peak_bytes": 20107124736,
+          "peak_gib": 18.726219177246094,
+          "peak_delta_bytes": 20079124480,
+          "peak_delta_gib": 18.70014190673828,
+          "final_bytes": 276439040,
+          "final_gib": 0.25745391845703125,
+          "samples_count": 8681,
+          "interval_seconds": 0.02,
+          "elapsed_seconds": 175.13055692333728
+        },
+        "identity": {
+          "kind": "hipengine_artifact_provenance",
+          "schema_version": 2,
+          "collected_at": "2026-09-08T17:58:02.284488+00:00",
+          "host_name": "epyc",
+          "repo_root": "/home/lhl/hipEngine-main",
+          "hipengine_commit": "7e94f9ed7443af1548883c582fc2264fdd425e82",
+          "git_branch": "main",
+          "staged_dirty": false,
+          "unstaged_dirty": false,
+          "untracked_dirty": true,
+          "untracked_count": 3,
+          "dirty": true,
+          "configured_backend": "hip_gfx1100",
+          "resolved_backend": "hip_gfx1100",
+          "target_arch": "gfx1100",
+          "device_name": "AMD Radeon RX 7900 XTX",
+          "model_path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+          "model_revision": null,
+          "model_fingerprint": {
+            "algorithm": "sha256-sampled-v1",
+            "value": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+            "size_bytes": 17106773984,
+            "sampled_bytes": 3145728,
+            "sample_offsets": [
+              0,
+              8552862704,
+              17105725408
+            ],
+            "exists": true,
+            "path_type": "file"
+          },
+          "quant": "gguf_q4_k_m",
+          "kv_dtype": "bf16",
+          "command": [
+            "scripts/gguf_native_context_gate.py",
+            "--model",
+            "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+            "--max-new-tokens",
+            "25",
+            "--candidate-budgets",
+            "3",
+            "--runs",
+            "1",
+            "--limit",
+            "10",
+            "--warmup",
+            "--max-sequence-length",
+            "1024",
+            "--native-context-limit",
+            "256",
+            "--fixed-prompt-length",
+            "128",
+            "--compiler-version-file",
+            "/tmp/hipengine-hipcc-version.txt",
+            "--output",
+            "/tmp/native-context-p128-limit256.json"
+          ],
+          "environment": {
+            "HIPENGINE_BACKEND": null,
+            "HIPENGINE_HIP_ARCH": "gfx1100",
+            "GPU_MAX_HW_QUEUES": null,
+            "HIPENGINE_BUILD_CACHE_ROOT": null,
+            "HIPENGINE_REQUIRE_CACHED_BUILD": null,
+            "HIP_VISIBLE_DEVICES": "1",
+            "ROCR_VISIBLE_DEVICES": null,
+            "CUDA_VISIBLE_DEVICES": null,
+            "GPU_DEVICE_ORDINAL": null
+          },
+          "rocm_version": "HIP version: 7.2.53211-3d9ef42",
+          "hipcc_version": "HIP version: 7.2.53211-3d9ef42\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+          "build_profile": null,
+          "timing_protocol": "context qualification",
+          "warmups": 1,
+          "repetitions": 1,
+          "profiler": null
+        },
+        "prompt_fingerprints": {
+          "Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code.": {
+            "tokens": 128,
+            "sha256": "27d4609d6b4c24afdce001bca7398be200e7434acbcee93a974e8f25e53b9327"
+          },
+          "Write a Python function topo_sort(nodes, edges) that returns a valid topological ordering or raises ValueError on a cycle. Include tests for a DAG and a cyclic graph. Return only code.": {
+            "tokens": 128,
+            "sha256": "38aaf010e8fb89b28ac2f39c999b3ca5f424f19956a63f9fdca0039479bb5606"
+          },
+          "Implement a small LRUCache class in Python with get(key) and put(key, value), using O(1) operations. Include three focused tests. Return only code.": {
+            "tokens": 128,
+            "sha256": "66fecd9cc63ab04de7536ba504530014aacaa7f7181fa67e2c4aabd44e4b5f18"
+          },
+          "Write a Python function markdown_table(rows) where rows is a list of dictionaries. It should produce a GitHub-flavored markdown table with stable column order from first appearance. Include tests. Return only code.": {
+            "tokens": 128,
+            "sha256": "641810aeed8fce584c32241f33c5ff452411e12dab98851289572bfb7aa78776"
+          },
+          "Create a concise but practical migration plan for moving a small Flask application from SQLite to PostgreSQL. Include risks, sequencing, and validation steps.": {
+            "tokens": 128,
+            "sha256": "b8c1e5f06f53d412cefe40d1abe84d2fd01ca28bb174c26419057b1d29facf12"
+          },
+          "Explain why transformer inference is usually memory-bandwidth limited on local GPUs. Keep it technical and concrete, with examples of what changes throughput.": {
+            "tokens": 128,
+            "sha256": "07b0884dac8fc24b42fdacd576d83aa5210c61879cce30dc9ffafde9cbcae4b9"
+          },
+          "\u5c0f\u898f\u6a21\u306a\u793e\u5185Python\u30c4\u30fc\u30eb\u3092\u904b\u7528\u74b0\u5883\u3078\u79fb\u884c\u3059\u308b\u305f\u3081\u306e\u5b9f\u8df5\u7684\u306a\u8a08\u753b\u3092\u65e5\u672c\u8a9e\u3067\u4f5c\u6210\u3057\u3066\u304f\u3060\u3055\u3044\u3002\u30ea\u30b9\u30af\u3001\u624b\u9806\u3001\u691c\u8a3c\u65b9\u6cd5\u3092\u542b\u3081\u3066\u304f\u3060\u3055\u3044\u3002": {
+            "tokens": 128,
+            "sha256": "55580c0d0461b379bbafd1a99c5f79f8fc0c3290391dc59046972c4c7e7e9e3a"
+          },
+          "\u30ed\u30fc\u30ab\u30ebGPU\u3067LLM\u306e\u63a8\u8ad6\u901f\u5ea6\u304c\u30e1\u30e2\u30ea\u5e2f\u57df\u306b\u5236\u7d04\u3055\u308c\u3084\u3059\u3044\u7406\u7531\u3092\u3001\u65e5\u672c\u8a9e\u3067\u6280\u8853\u7684\u304b\u3064\u5177\u4f53\u7684\u306b\u8aac\u660e\u3057\u3066\u304f\u3060\u3055\u3044\u3002": {
+            "tokens": 128,
+            "sha256": "a47718c6b0a83c249d209ccf2c0500d3efae820470cc9e11f368e0e78d358515"
+          },
+          "Summarize the following Japanese note in English, then provide a short Japanese reply:\n\n\u6765\u9031\u306e\u30ea\u30ea\u30fc\u30b9\u3067\u306f\u3001\u30ed\u30b0\u51fa\u529b\u306e\u5f62\u5f0f\u5909\u66f4\u3001\u30ad\u30e3\u30c3\u30b7\u30e5\u306e\u7121\u52b9\u5316\u30aa\u30d7\u30b7\u30e7\u30f3\u3001\u305d\u3057\u3066API\u30ec\u30b9\u30dd\u30f3\u30b9\u306e\u5f8c\u65b9\u4e92\u63db\u6027\u3092\u91cd\u70b9\u7684\u306b\u78ba\u8a8d\u3057\u305f\u3044\u3067\u3059\u3002": {
+            "tokens": 128,
+            "sha256": "049daad3ac7a532784dd182383149633beb82500efa6ae1660b78873600ace44"
+          },
+          "Review this bilingual release note for clarity. Respond with English bullets, but keep Japanese product terms unchanged:\n\n\u65b0\u3057\u3044\u63a8\u8ad6\u30e2\u30fc\u30c9\u3067\u306f MTP \u3092\u6709\u52b9\u306b\u3059\u308b\u3068\u751f\u6210\u901f\u5ea6\u304c\u5411\u4e0a\u3057\u307e\u3059\u3002\u305f\u3060\u3057\u3001\u9577\u3044\u30b3\u30f3\u30c6\u30ad\u30b9\u30c8\u3067\u306f KV cache \u306e\u4f7f\u7528\u91cf\u304c\u5897\u3048\u308b\u305f\u3081\u3001\u30e1\u30e2\u30ea\u76e3\u8996\u3092\u63a8\u5968\u3057\u307e\u3059\u3002": {
+            "tokens": 128,
+            "sha256": "64e6186aedda9096c4a093318c2b9de047606309d638a275a485788bece60ddd"
+          },
+          "Write a Python function add(a, b). Return only code.": {
+            "tokens": 128,
+            "sha256": "370adccd6ff4712a150074a3194b149a82517f7fdf42ce31039a4ac87825d69d"
+          }
+        }
+      },
+      "summary": {
+        "true_ar": {
+          "full": {
+            "prompt_count": 10,
+            "request_count": 10,
+            "prompt_ids": [
+              "code_merge_intervals",
+              "code_topological_sort",
+              "code_lru_cache",
+              "code_markdown_table",
+              "general_en_plan",
+              "general_en_explain",
+              "general_ja_plan",
+              "general_ja_explain",
+              "mixed_ja_en_translate",
+              "mixed_ja_en_review"
+            ],
+            "categories": [
+              "code",
+              "general_en",
+              "general_ja",
+              "mixed_ja_en"
+            ],
+            "visible_outputs": 250,
+            "timed_transitions": 240,
+            "decode_seconds": 6.789041702635586,
+            "decode_tok_s_weighted": 35.35108642900649,
+            "request_wall_seconds": 40.83836515806615,
+            "client_transition_tok_s": 5.876826828671338,
+            "accepted_draft_tokens": 0,
+            "proposed_draft_tokens": 0,
+            "draft_acceptance": null,
+            "accepted_per_output": 0.0,
+            "accepted_per_transition": 0.0,
+            "cycles": 0,
+            "target_passes": 0,
+            "visible_transitions_per_cycle": null,
+            "target_forward_rows": 240,
+            "stage_seconds": {
+              "autoregressive_step": 6.789041702635586
+            },
+            "stage_reconciliation_error_seconds": 0.0,
+            "stage_reconciled": true
+          },
+          "train": {
+            "prompt_count": 6,
+            "request_count": 6,
+            "prompt_ids": [
+              "code_merge_intervals",
+              "code_topological_sort",
+              "code_lru_cache",
+              "general_en_plan",
+              "general_ja_plan",
+              "mixed_ja_en_translate"
+            ],
+            "categories": [
+              "code",
+              "general_en",
+              "general_ja",
+              "mixed_ja_en"
+            ],
+            "visible_outputs": 150,
+            "timed_transitions": 144,
+            "decode_seconds": 4.074520858936012,
+            "decode_tok_s_weighted": 35.34157879795541,
+            "request_wall_seconds": 24.5039347903803,
+            "client_transition_tok_s": 5.87660721561058,
+            "accepted_draft_tokens": 0,
+            "proposed_draft_tokens": 0,
+            "draft_acceptance": null,
+            "accepted_per_output": 0.0,
+            "accepted_per_transition": 0.0,
+            "cycles": 0,
+            "target_passes": 0,
+            "visible_transitions_per_cycle": null,
+            "target_forward_rows": 144,
+            "stage_seconds": {
+              "autoregressive_step": 4.074520858936012
+            },
+            "stage_reconciliation_error_seconds": 0.0,
+            "stage_reconciled": true
+          },
+          "heldout": {
+            "prompt_count": 4,
+            "request_count": 4,
+            "prompt_ids": [
+              "code_markdown_table",
+              "general_en_explain",
+              "general_ja_explain",
+              "mixed_ja_en_review"
+            ],
+            "categories": [
+              "code",
+              "general_en",
+              "general_ja",
+              "mixed_ja_en"
+            ],
+            "visible_outputs": 100,
+            "timed_transitions": 96,
+            "decode_seconds": 2.7145208436995745,
+            "decode_tok_s_weighted": 35.365357471030954,
+            "request_wall_seconds": 16.334430367685854,
+            "client_transition_tok_s": 5.877156279040822,
+            "accepted_draft_tokens": 0,
+            "proposed_draft_tokens": 0,
+            "draft_acceptance": null,
+            "accepted_per_output": 0.0,
+            "accepted_per_transition": 0.0,
+            "cycles": 0,
+            "target_passes": 0,
+            "visible_transitions_per_cycle": null,
+            "target_forward_rows": 96,
+            "stage_seconds": {
+              "autoregressive_step": 2.7145208436995745
+            },
+            "stage_reconciliation_error_seconds": 0.0,
+            "stage_reconciled": true
+          },
+          "categories": {
+            "code": {
+              "prompt_count": 4,
+              "request_count": 4,
+              "prompt_ids": [
+                "code_merge_intervals",
+                "code_topological_sort",
+                "code_lru_cache",
+                "code_markdown_table"
+              ],
+              "categories": [
+                "code"
+              ],
+              "visible_outputs": 100,
+              "timed_transitions": 96,
+              "decode_seconds": 2.717664890922606,
+              "decode_tok_s_weighted": 35.32444353998681,
+              "request_wall_seconds": 16.328907913528383,
+              "client_transition_tok_s": 5.879143939593455,
+              "accepted_draft_tokens": 0,
+              "proposed_draft_tokens": 0,
+              "draft_acceptance": null,
+              "accepted_per_output": 0.0,
+              "accepted_per_transition": 0.0,
+              "cycles": 0,
+              "target_passes": 0,
+              "visible_transitions_per_cycle": null,
+              "target_forward_rows": 96,
+              "stage_seconds": {
+                "autoregressive_step": 2.717664890922606
+              },
+              "stage_reconciliation_error_seconds": 0.0,
+              "stage_reconciled": true
+            },
+            "general_en": {
+              "prompt_count": 2,
+              "request_count": 2,
+              "prompt_ids": [
+                "general_en_plan",
+                "general_en_explain"
+              ],
+              "categories": [
+                "general_en"
+              ],
+              "visible_outputs": 50,
+              "timed_transitions": 48,
+              "decode_seconds": 1.359501070342958,
+              "decode_tok_s_weighted": 35.307070400386785,
+              "request_wall_seconds": 8.17593379598111,
+              "client_transition_tok_s": 5.870889025984343,
+              "accepted_draft_tokens": 0,
+              "proposed_draft_tokens": 0,
+              "draft_acceptance": null,
+              "accepted_per_output": 0.0,
+              "accepted_per_transition": 0.0,
+              "cycles": 0,
+              "target_passes": 0,
+              "visible_transitions_per_cycle": null,
+              "target_forward_rows": 48,
+              "stage_seconds": {
+                "autoregressive_step": 1.359501070342958
+              },
+              "stage_reconciliation_error_seconds": 0.0,
+              "stage_reconciled": true
+            },
+            "general_ja": {
+              "prompt_count": 2,
+              "request_count": 2,
+              "prompt_ids": [
+                "general_ja_plan",
+                "general_ja_explain"
+              ],
+              "categories": [
+                "general_ja"
+              ],
+              "visible_outputs": 50,
+              "timed_transitions": 48,
+              "decode_seconds": 1.359477698802948,
+              "decode_tok_s_weighted": 35.30767738394321,
+              "request_wall_seconds": 8.17349265422672,
+              "client_transition_tok_s": 5.872642459056714,
+              "accepted_draft_tokens": 0,
+              "proposed_draft_tokens": 0,
+              "draft_acceptance": null,
+              "accepted_per_output": 0.0,
+              "accepted_per_transition": 0.0,
+              "cycles": 0,
+              "target_passes": 0,
+              "visible_transitions_per_cycle": null,
+              "target_forward_rows": 48,
+              "stage_seconds": {
+                "autoregressive_step": 1.359477698802948
+              },
+              "stage_reconciliation_error_seconds": 0.0,
+              "stage_reconciled": true
+            },
+            "mixed_ja_en": {
+              "prompt_count": 2,
+              "request_count": 2,
+              "prompt_ids": [
+                "mixed_ja_en_translate",
+                "mixed_ja_en_review"
+              ],
+              "categories": [
+                "mixed_ja_en"
+              ],
+              "visible_outputs": 50,
+              "timed_transitions": 48,
+              "decode_seconds": 1.3523980425670743,
+              "decode_tok_s_weighted": 35.49250922375493,
+              "request_wall_seconds": 8.160030794329941,
+              "client_transition_tok_s": 5.8823307423488105,
+              "accepted_draft_tokens": 0,
+              "proposed_draft_tokens": 0,
+              "draft_acceptance": null,
+              "accepted_per_output": 0.0,
+              "accepted_per_transition": 0.0,
+              "cycles": 0,
+              "target_passes": 0,
+              "visible_transitions_per_cycle": null,
+              "target_forward_rows": 48,
+              "stage_seconds": {
+                "autoregressive_step": 1.3523980425670743
+              },
+              "stage_reconciliation_error_seconds": 0.0,
+              "stage_reconciled": true
+            }
+          }
+        },
+        "mtp": {
+          "3": {
+            "full": {
+              "prompt_count": 10,
+              "request_count": 10,
+              "prompt_ids": [
+                "code_merge_intervals",
+                "code_topological_sort",
+                "code_lru_cache",
+                "code_markdown_table",
+                "general_en_plan",
+                "general_en_explain",
+                "general_ja_plan",
+                "general_ja_explain",
+                "mixed_ja_en_translate",
+                "mixed_ja_en_review"
+              ],
+              "categories": [
+                "code",
+                "general_en",
+                "general_ja",
+                "mixed_ja_en"
+              ],
+              "visible_outputs": 250,
+              "timed_transitions": 240,
+              "decode_seconds": 3.178194615058601,
+              "decode_tok_s_weighted": 75.51457008417805,
+              "request_wall_seconds": 37.48706551268697,
+              "client_transition_tok_s": 6.402208247502739,
+              "accepted_draft_tokens": 167,
+              "proposed_draft_tokens": 214,
+              "draft_acceptance": 0.780373831775701,
+              "accepted_per_output": 0.668,
+              "accepted_per_transition": 0.6958333333333333,
+              "cycles": 73,
+              "target_passes": 73,
+              "visible_transitions_per_cycle": 3.287671232876712,
+              "target_forward_rows": 287,
+              "stage_seconds": {
+                "proposal": 0.06036465708166361,
+                "scheduler_accept_replay_host_residual": 0.02396414801478386,
+                "target_commit_finish": 0.00022608600556850433,
+                "target_verify": 3.093639723956585
+              },
+              "stage_reconciliation_error_seconds": 0.0,
+              "stage_reconciled": true,
+              "mtp_vs_true_ar": 2.13613152274201
+            },
+            "train": {
+              "prompt_count": 6,
+              "request_count": 6,
+              "prompt_ids": [
+                "code_merge_intervals",
+                "code_topological_sort",
+                "code_lru_cache",
+                "general_en_plan",
+                "general_ja_plan",
+                "mixed_ja_en_translate"
+              ],
+              "categories": [
+                "code",
+                "general_en",
+                "general_ja",
+                "mixed_ja_en"
+              ],
+              "visible_outputs": 150,
+              "timed_transitions": 144,
+              "decode_seconds": 1.8985052667558193,
+              "decode_tok_s_weighted": 75.84914433556897,
+              "request_wall_seconds": 22.483699155971408,
+              "client_transition_tok_s": 6.404640046153405,
+              "accepted_draft_tokens": 101,
+              "proposed_draft_tokens": 126,
+              "draft_acceptance": 0.8015873015873016,
+              "accepted_per_output": 0.6733333333333333,
+              "accepted_per_transition": 0.7013888888888888,
+              "cycles": 43,
+              "target_passes": 43,
+              "visible_transitions_per_cycle": 3.3488372093023258,
+              "target_forward_rows": 169,
+              "stage_seconds": {
+                "proposal": 0.04244802240282297,
+                "scheduler_accept_replay_host_residual": 0.014333433471620083,
+                "target_commit_finish": 0.00013375934213399887,
+                "target_verify": 1.8415900515392423
+              },
+              "stage_reconciliation_error_seconds": 0.0,
+              "stage_reconciled": true,
+              "mtp_vs_true_ar": 2.146173060609194
+            },
+            "heldout": {
+              "prompt_count": 4,
+              "request_count": 4,
+              "prompt_ids": [
+                "code_markdown_table",
+                "general_en_explain",
+                "general_ja_explain",
+                "mixed_ja_en_review"
+              ],
+              "categories": [
+                "code",
+                "general_en",
+                "general_ja",
+                "mixed_ja_en"
+              ],
+              "visible_outputs": 100,
+              "timed_transitions": 96,
+              "decode_seconds": 1.2796893483027816,
+              "decode_tok_s_weighted": 75.01820666658067,
+              "request_wall_seconds": 15.00336635671556,
+              "client_transition_tok_s": 6.3985640100716505,
+              "accepted_draft_tokens": 66,
+              "proposed_draft_tokens": 88,
+              "draft_acceptance": 0.75,
+              "accepted_per_output": 0.66,
+              "accepted_per_transition": 0.6875,
+              "cycles": 30,
+              "target_passes": 30,
+              "visible_transitions_per_cycle": 3.2,
+              "target_forward_rows": 118,
+              "stage_seconds": {
+                "proposal": 0.017916634678840637,
+                "scheduler_accept_replay_host_residual": 0.009630714543163776,
+                "target_commit_finish": 9.232666343450546e-05,
+                "target_verify": 1.2520496724173427
+              },
+              "stage_reconciliation_error_seconds": 0.0,
+              "stage_reconciled": true,
+              "mtp_vs_true_ar": 2.1212342255562042
+            },
+            "categories": {
+              "code": {
+                "prompt_count": 4,
+                "request_count": 4,
+                "prompt_ids": [
+                  "code_merge_intervals",
+                  "code_topological_sort",
+                  "code_lru_cache",
+                  "code_markdown_table"
+                ],
+                "categories": [
+                  "code"
+                ],
+                "visible_outputs": 100,
+                "timed_transitions": 96,
+                "decode_seconds": 1.2106299279257655,
+                "decode_tok_s_weighted": 79.29756053898464,
+                "request_wall_seconds": 14.924704855307937,
+                "client_transition_tok_s": 6.432288003729456,
+                "accepted_draft_tokens": 69,
+                "proposed_draft_tokens": 78,
+                "draft_acceptance": 0.8846153846153846,
+                "accepted_per_output": 0.69,
+                "accepted_per_transition": 0.71875,
+                "cycles": 27,
+                "target_passes": 27,
+                "visible_transitions_per_cycle": 3.5555555555555554,
+                "target_forward_rows": 105,
+                "stage_seconds": {
+                  "proposal": 0.034299599938094616,
+                  "scheduler_accept_replay_host_residual": 0.00926656648516655,
+                  "target_commit_finish": 8.403509855270386e-05,
+                  "target_verify": 1.1669797264039516
+                },
+                "stage_reconciliation_error_seconds": 0.0,
+                "stage_reconciled": true,
+                "mtp_vs_true_ar": 2.244835377214671
+              },
+              "general_en": {
+                "prompt_count": 2,
+                "request_count": 2,
+                "prompt_ids": [
+                  "general_en_plan",
+                  "general_en_explain"
+                ],
+                "categories": [
+                  "general_en"
+                ],
+                "visible_outputs": 50,
+                "timed_transitions": 48,
+                "decode_seconds": 0.5500944061204791,
+                "decode_tok_s_weighted": 87.25774969885308,
+                "request_wall_seconds": 7.409300304017961,
+                "client_transition_tok_s": 6.4783445170889165,
+                "accepted_draft_tokens": 35,
+                "proposed_draft_tokens": 37,
+                "draft_acceptance": 0.9459459459459459,
+                "accepted_per_output": 0.7,
+                "accepted_per_transition": 0.7291666666666666,
+                "cycles": 13,
+                "target_passes": 13,
+                "visible_transitions_per_cycle": 3.6923076923076925,
+                "target_forward_rows": 50,
+                "stage_seconds": {
+                  "proposal": 0.009759209118783474,
+                  "scheduler_accept_replay_host_residual": 0.004629691131412983,
+                  "target_commit_finish": 4.184897989034653e-05,
+                  "target_verify": 0.5356636568903923
+                },
+                "stage_reconciliation_error_seconds": 0.0,
+                "stage_reconciled": true,
+                "mtp_vs_true_ar": 2.471395918985597
+              },
+              "general_ja": {
+                "prompt_count": 2,
+                "request_count": 2,
+                "prompt_ids": [
+                  "general_ja_plan",
+                  "general_ja_explain"
+                ],
+                "categories": [
+                  "general_ja"
+                ],
+                "visible_outputs": 50,
+                "timed_transitions": 48,
+                "decode_seconds": 0.773647771216929,
+                "decode_tok_s_weighted": 62.04373848902476,
+                "request_wall_seconds": 7.64088608045131,
+                "client_transition_tok_s": 6.281993932981772,
+                "accepted_draft_tokens": 30,
+                "proposed_draft_tokens": 54,
+                "draft_acceptance": 0.5555555555555556,
+                "accepted_per_output": 0.6,
+                "accepted_per_transition": 0.625,
+                "cycles": 18,
+                "target_passes": 18,
+                "visible_transitions_per_cycle": 2.6666666666666665,
+                "target_forward_rows": 72,
+                "stage_seconds": {
+                  "proposal": 0.007928191684186459,
+                  "scheduler_accept_replay_host_residual": 0.005259878933429718,
+                  "target_commit_finish": 5.4280273616313934e-05,
+                  "target_verify": 0.7604054203256965
+                },
+                "stage_reconciliation_error_seconds": 0.0,
+                "stage_reconciled": true,
+                "mtp_vs_true_ar": 1.7572308088789848
+              },
+              "mixed_ja_en": {
+                "prompt_count": 2,
+                "request_count": 2,
+                "prompt_ids": [
+                  "mixed_ja_en_translate",
+                  "mixed_ja_en_review"
+                ],
+                "categories": [
+                  "mixed_ja_en"
+                ],
+                "visible_outputs": 50,
+                "timed_transitions": 48,
+                "decode_seconds": 0.6438225097954273,
+                "decode_tok_s_weighted": 74.55470920898969,
+                "request_wall_seconds": 7.5121742729097605,
+                "client_transition_tok_s": 6.389628123124959,
+                "accepted_draft_tokens": 33,
+                "proposed_draft_tokens": 45,
+                "draft_acceptance": 0.7333333333333333,
+                "accepted_per_output": 0.66,
+                "accepted_per_transition": 0.6875,
+                "cycles": 15,
+                "target_passes": 15,
+                "visible_transitions_per_cycle": 3.2,
+                "target_forward_rows": 60,
+                "stage_seconds": {
+                  "proposal": 0.00837765634059906,
+                  "scheduler_accept_replay_host_residual": 0.004808011464774609,
+                  "target_commit_finish": 4.5921653509140015e-05,
+                  "target_verify": 0.6305909203365445
+                },
+                "stage_reconciliation_error_seconds": 0.0,
+                "stage_reconciled": true,
+                "mtp_vs_true_ar": 2.1005758916332313
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "source_name": "native-context-state-broad16384.json",
+      "source_sha256": "e58df6938d7cf9898a9514f27ee2b460faa0220400d0408f6444dfc782fd94db",
+      "status": "failed",
+      "performance_claim": false,
+      "command": [
+        "/home/lhl/mambaforge/envs/therock/bin/python3",
+        "scripts/gguf_native_context_state_gate.py",
+        "--model",
+        "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "--contexts",
+        "256,512,1020,1021,1022,1023,1024,1278,1279,1280,4096,8192",
+        "--budgets",
+        "3",
+        "--native-context-limit",
+        "16384",
+        "--capacity",
+        "16384",
+        "--repetitions",
+        "1",
+        "--prompt-limit",
+        "1",
+        "--bulk-prefill",
+        "--allow-graph-transition-fallback",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--output",
+        "/tmp/native-context-state-broad16384.json"
+      ],
+      "memory_after_close": null,
+      "cases": 24,
+      "passed": 24,
+      "following_step_cases": 0,
+      "coverage": [
+        {
+          "context": 256,
+          "budget": 3,
+          "transport": "eager",
+          "graph": false,
+          "mode": "native",
+          "cases": 6
+        },
+        {
+          "context": 256,
+          "budget": 3,
+          "transport": "graph",
+          "graph": true,
+          "mode": "native",
+          "cases": 6
+        },
+        {
+          "context": 512,
+          "budget": 3,
+          "transport": "eager",
+          "graph": false,
+          "mode": "native",
+          "cases": 6
+        },
+        {
+          "context": 512,
+          "budget": 3,
+          "transport": "graph",
+          "graph": true,
+          "mode": "native",
+          "cases": 6
+        }
+      ],
+      "error": "Traceback (most recent call last):\n  File \"/home/lhl/hipEngine-main/scripts/gguf_native_context_state_gate.py\", line 245, in main\n    payload[\"memory_after_close\"] = run(args, payload[\"rows\"])\n                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lhl/hipEngine-main/scripts/gguf_native_context_state_gate.py\", line 198, in run\n    compare_state(state_fingerprint(target), initial)\n  File \"/home/lhl/hipEngine-main/scripts/gguf_native_context_state_gate.py\", line 54, in compare_state\n    raise AssertionError(f\"state mismatch: {changed[:12]}\")\nAssertionError: state mismatch: ['layer_conv_states/0', 'layer_conv_states/1', 'layer_conv_states/2', 'layer_conv_states/4', 'layer_conv_states/5', 'layer_conv_states/6', 'layer_conv_states/8', 'layer_conv_states/9', 'layer_conv_states/10', 'layer_conv_states/12', 'layer_conv_states/13', 'layer_conv_states/14']\n"
+    },
+    {
+      "source_name": "native-context-state-broad16384-snapshot-fixed.json",
+      "source_sha256": "c90dc22f56beffc26cf9ee0c0d8097ffef73649bcab988524bde69cabea0fc05",
+      "status": "complete_exact",
+      "performance_claim": false,
+      "command": [
+        "/home/lhl/mambaforge/envs/therock/bin/python3",
+        "scripts/gguf_native_context_state_gate.py",
+        "--model",
+        "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "--contexts",
+        "1020,1021,1022,1023,1024,1278,1279,1280,4096,8192",
+        "--budgets",
+        "3",
+        "--native-context-limit",
+        "16384",
+        "--capacity",
+        "16384",
+        "--repetitions",
+        "1",
+        "--prompt-limit",
+        "1",
+        "--bulk-prefill",
+        "--allow-graph-transition-fallback",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--output",
+        "/tmp/native-context-state-broad16384-snapshot-fixed.json"
+      ],
+      "memory_after_close": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 21409814163,
+        "total_allocated_bytes": 21410513194,
+        "total_freed_bytes": 21410513194,
+        "active_allocations": 0,
+        "peak_allocations": 822
+      },
+      "cases": 240,
+      "passed": 240,
+      "following_step_cases": 0,
+      "coverage": [
+        {
+          "context": 1020,
+          "budget": 3,
+          "transport": "eager",
+          "graph": false,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 1020,
+          "budget": 3,
+          "transport": "graph",
+          "graph": false,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 1021,
+          "budget": 3,
+          "transport": "eager",
+          "graph": false,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 1021,
+          "budget": 3,
+          "transport": "graph",
+          "graph": false,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 1022,
+          "budget": 3,
+          "transport": "eager",
+          "graph": false,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 1022,
+          "budget": 3,
+          "transport": "graph",
+          "graph": false,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 1023,
+          "budget": 3,
+          "transport": "eager",
+          "graph": false,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 1023,
+          "budget": 3,
+          "transport": "graph",
+          "graph": false,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 1024,
+          "budget": 3,
+          "transport": "eager",
+          "graph": false,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 1024,
+          "budget": 3,
+          "transport": "graph",
+          "graph": true,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 1278,
+          "budget": 3,
+          "transport": "eager",
+          "graph": false,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 1278,
+          "budget": 3,
+          "transport": "graph",
+          "graph": false,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 1279,
+          "budget": 3,
+          "transport": "eager",
+          "graph": false,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 1279,
+          "budget": 3,
+          "transport": "graph",
+          "graph": false,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 1280,
+          "budget": 3,
+          "transport": "eager",
+          "graph": false,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 1280,
+          "budget": 3,
+          "transport": "graph",
+          "graph": true,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 4096,
+          "budget": 3,
+          "transport": "eager",
+          "graph": false,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 4096,
+          "budget": 3,
+          "transport": "graph",
+          "graph": false,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 8192,
+          "budget": 3,
+          "transport": "eager",
+          "graph": false,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 8192,
+          "budget": 3,
+          "transport": "graph",
+          "graph": false,
+          "mode": "native",
+          "cases": 12
+        }
+      ]
+    },
+    {
+      "source_name": "native-context-state-default-4k-16k.json",
+      "source_sha256": "a66f53523c654862c2d76cf9dfcee0d53c9b0a9c4b7b81eda15bbc0ce72b3432",
+      "status": "complete_exact",
+      "performance_claim": false,
+      "command": [
+        "/home/lhl/mambaforge/envs/therock/bin/python3",
+        "scripts/gguf_native_context_state_gate.py",
+        "--model",
+        "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "--contexts",
+        "4096,8192,16384",
+        "--budgets",
+        "1,2,3",
+        "--capacity",
+        "18432",
+        "--repetitions",
+        "1",
+        "--prompt-limit",
+        "1",
+        "--bulk-prefill",
+        "--require-native-through",
+        "18432",
+        "--graph-first",
+        "--n2-first",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--output",
+        "/tmp/native-context-state-default-4k-16k.json"
+      ],
+      "memory_after_close": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 21631601691,
+        "total_allocated_bytes": 21653455016,
+        "total_freed_bytes": 21653455016,
+        "active_allocations": 0,
+        "peak_allocations": 1027
+      },
+      "cases": 192,
+      "passed": 192,
+      "following_step_cases": 0,
+      "coverage": [
+        {
+          "context": 4096,
+          "budget": 1,
+          "transport": "eager",
+          "graph": false,
+          "mode": "native",
+          "cases": 8
+        },
+        {
+          "context": 4096,
+          "budget": 1,
+          "transport": "graph",
+          "graph": true,
+          "mode": "native",
+          "cases": 8
+        },
+        {
+          "context": 4096,
+          "budget": 2,
+          "transport": "eager",
+          "graph": false,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 4096,
+          "budget": 2,
+          "transport": "graph",
+          "graph": true,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 4096,
+          "budget": 3,
+          "transport": "eager",
+          "graph": false,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 4096,
+          "budget": 3,
+          "transport": "graph",
+          "graph": true,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 8192,
+          "budget": 1,
+          "transport": "eager",
+          "graph": false,
+          "mode": "native",
+          "cases": 8
+        },
+        {
+          "context": 8192,
+          "budget": 1,
+          "transport": "graph",
+          "graph": true,
+          "mode": "native",
+          "cases": 8
+        },
+        {
+          "context": 8192,
+          "budget": 2,
+          "transport": "eager",
+          "graph": false,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 8192,
+          "budget": 2,
+          "transport": "graph",
+          "graph": true,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 8192,
+          "budget": 3,
+          "transport": "eager",
+          "graph": false,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 8192,
+          "budget": 3,
+          "transport": "graph",
+          "graph": true,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 16384,
+          "budget": 1,
+          "transport": "eager",
+          "graph": false,
+          "mode": "native",
+          "cases": 8
+        },
+        {
+          "context": 16384,
+          "budget": 1,
+          "transport": "graph",
+          "graph": true,
+          "mode": "native",
+          "cases": 8
+        },
+        {
+          "context": 16384,
+          "budget": 2,
+          "transport": "eager",
+          "graph": false,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 16384,
+          "budget": 2,
+          "transport": "graph",
+          "graph": true,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 16384,
+          "budget": 3,
+          "transport": "eager",
+          "graph": false,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 16384,
+          "budget": 3,
+          "transport": "graph",
+          "graph": true,
+          "mode": "native",
+          "cases": 12
+        }
+      ]
+    },
+    {
+      "source_name": "native-context-e2e-8k.json",
+      "source_sha256": "9bc6251acc3f66544481a7e513f561e42e23355d2a51e6c3be031539dbd5837d",
+      "status": "complete_exact",
+      "performance_claim": false,
+      "command": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_native_context_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --fixed-prompt-length 8192 --bulk-prefill --max-new-tokens 33 --candidate-budgets 3 --runs 1 --limit 10 --no-warmup --max-sequence-length 12288 --compiler-version-file /tmp/hipengine-hipcc-version.txt --output /tmp/native-context-e2e-8k.json",
+      "memory_after_close": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 23040059668,
+        "total_allocated_bytes": 23040151828,
+        "total_freed_bytes": 23040151828,
+        "active_allocations": 0,
+        "peak_allocations": 617
+      },
+      "provenance": {
+        "kind": "hipengine_artifact_provenance",
+        "schema_version": 2,
+        "collected_at": "2026-09-08T19:15:03.714023+00:00",
+        "host_name": "epyc",
+        "repo_root": "/home/lhl/hipEngine-main",
+        "hipengine_commit": "fea8425e613ac7c9f648e13f7c5daada0203d1fe",
+        "git_branch": "main",
+        "staged_dirty": false,
+        "unstaged_dirty": true,
+        "untracked_dirty": true,
+        "untracked_count": 3,
+        "dirty": true,
+        "configured_backend": "auto",
+        "resolved_backend": "hip_gfx1100",
+        "target_arch": "gfx1100",
+        "device_name": "AMD Radeon RX 7900 XTX",
+        "model_path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "model_revision": null,
+        "model_fingerprint": {
+          "algorithm": "sha256-sampled-v1",
+          "value": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+          "size_bytes": 17106773984,
+          "sampled_bytes": 3145728,
+          "sample_offsets": [
+            0,
+            8552862704,
+            17105725408
+          ],
+          "exists": true,
+          "path_type": "file"
+        },
+        "quant": "gguf_q4_k_m",
+        "kv_dtype": "bf16",
+        "command": [
+          "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+          "scripts/gguf_native_context_gate.py",
+          "--model",
+          "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+          "--fixed-prompt-length",
+          "8192",
+          "--bulk-prefill",
+          "--max-new-tokens",
+          "33",
+          "--candidate-budgets",
+          "3",
+          "--runs",
+          "1",
+          "--limit",
+          "10",
+          "--no-warmup",
+          "--max-sequence-length",
+          "12288",
+          "--compiler-version-file",
+          "/tmp/hipengine-hipcc-version.txt",
+          "--output",
+          "/tmp/native-context-e2e-8k.json"
+        ],
+        "environment": {
+          "HIP_VISIBLE_DEVICES": "1",
+          "HIPENGINE_HIP_ARCH": "gfx1100",
+          "HIPENGINE_GGUF_DECODE_REPACK": "1",
+          "HIPENGINE_REQUIRE_CACHED_BUILD": null
+        },
+        "rocm_version": "HIP version: 7.2.53211-3d9ef42",
+        "hipcc_version": "HIP version: 7.2.53211-3d9ef42\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin\n",
+        "build_profile": "qwen36_dense_gguf_ar_mtp_suite",
+        "timing_protocol": "natural25 first-output-from-prefill; 24 transition-normalized decode steps",
+        "warmups": 0,
+        "repetitions": 1,
+        "profiler": {
+          "enabled": false,
+          "kind": "roctx marker leaf"
+        }
+      },
+      "model": {
+        "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "size_bytes": 17106773984,
+        "architecture": "qwen35",
+        "file_type": "MOSTLY_Q4_K_M",
+        "tensor_count": 866,
+        "gguf_inventory": {
+          "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+          "version": 3,
+          "alignment": 32,
+          "architecture": "qwen35",
+          "file_type": 15,
+          "file_type_name": "MOSTLY_Q4_K_M",
+          "tensor_count": 866,
+          "total_tensor_nbytes": 17095778304,
+          "tensor_data_offset": 10995680,
+          "tensor_inventory_hash_algorithm": "sha256",
+          "tensor_inventory_hash": "0f4915bdd5a7e465ce03e6a3cf76d5dddf35ae28dbd1fa75f5af2c909b8461f3"
+        }
+      },
+      "workload": {
+        "prompt_file": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+        "prompt_count": 10,
+        "prompt_ids": [
+          "code_merge_intervals",
+          "code_topological_sort",
+          "code_lru_cache",
+          "code_markdown_table",
+          "general_en_plan",
+          "general_en_explain",
+          "general_ja_plan",
+          "general_ja_explain",
+          "mixed_ja_en_translate",
+          "mixed_ja_en_review"
+        ],
+        "categories": [
+          "code",
+          "general_en",
+          "general_ja",
+          "mixed_ja_en"
+        ],
+        "heldout_ids": [
+          "code_markdown_table",
+          "general_en_explain",
+          "general_ja_explain",
+          "mixed_ja_en_review"
+        ],
+        "train_ids": [
+          "code_merge_intervals",
+          "code_topological_sort",
+          "code_lru_cache",
+          "general_en_plan",
+          "general_ja_plan",
+          "mixed_ja_en_translate"
+        ],
+        "prompt_render": "Qwen chat template; reasoning off",
+        "max_new_tokens_visible": 33,
+        "timed_decode_transitions": 32,
+        "candidate_budgets": [
+          3
+        ],
+        "budget_policies": {
+          "sequence": null,
+          "adaptive": null
+        },
+        "target_verify_mode": "native",
+        "draft_hidden_variant": "pre_output_norm",
+        "draft_hidden_manifest": {
+          "target_hidden_variant": "pre_output_norm",
+          "prompt_target_hidden": "pre_output_norm",
+          "proposal_target_hidden": "pre_output_norm",
+          "target_commit_hidden": "pre_output_norm",
+          "draft_chain_hidden": "nextn_post_output_norm"
+        },
+        "runs": 1,
+        "warmup": false,
+        "max_sequence_length": 12288,
+        "sampling": {
+          "temperature": 0.0,
+          "top_k": 1,
+          "top_p": 1.0,
+          "min_p": 0.0,
+          "seed": 12345
+        }
+      },
+      "correctness": {
+        "all_exact_greedy": true,
+        "all_gpu_accept_match_cpu": true
+      },
+      "timing_contract": {
+        "first_visible_output": "target prefill sample; excluded from decode wall",
+        "decode_numerator": "max_new_tokens - 1 timed transitions",
+        "prefill": "excluded from AR and MTP decode wall",
+        "mtp_complete_wall": "proposal + target_verify + target_commit_finish + scheduler_accept_replay_host_residual",
+        "profile_markers": false,
+        "roctx_marker_prefix": "qwen36_dense_mtp_"
+      },
+      "context_gate": {
+        "schema": 1,
+        "timestamp": "2026-09-08T19:15:03.749346+00:00",
+        "command": [
+          "/home/lhl/mambaforge/envs/therock/bin/python3",
+          "scripts/gguf_native_context_gate.py",
+          "--model",
+          "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+          "--fixed-prompt-length",
+          "8192",
+          "--bulk-prefill",
+          "--max-new-tokens",
+          "33",
+          "--candidate-budgets",
+          "3",
+          "--runs",
+          "1",
+          "--limit",
+          "10",
+          "--no-warmup",
+          "--max-sequence-length",
+          "12288",
+          "--compiler-version-file",
+          "/tmp/hipengine-hipcc-version.txt",
+          "--output",
+          "/tmp/native-context-e2e-8k.json"
+        ],
+        "environment": {
+          "HIP_LIB_PATH": "/opt/rocm/lib",
+          "HIP_INCLUDE_PATH": "/opt/rocm/include",
+          "HIP_PATH": "/opt/rocm",
+          "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+          "HIP_VISIBLE_DEVICES": "1",
+          "HIPENGINE_HIP_ARCH": "gfx1100",
+          "HIPENGINE_GGUF_DECODE_REPACK": "1",
+          "HSA_SCRATCH_SINGLE_LIMIT": "8388608"
+        },
+        "native_context_limit": null,
+        "prior_limits": {
+          "GGUF_SPECDEC2_NATIVE_TARGET_MAX_CONTEXT": 95,
+          "GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT": 95
+        },
+        "backend": "hip_gfx1100",
+        "fixed_prompt_length": 8192,
+        "native_eager": false,
+        "bulk_prefill": true,
+        "actual_verify_modes": {
+          "native": 94
+        },
+        "graph_submissions": 94,
+        "graph_context_extents": [
+          8448
+        ],
+        "memory": {
+          "card": {
+            "card_name": "card0",
+            "pci_id": "0000:10:00.0",
+            "sysfs_path": "/sys/class/drm/card0/device",
+            "vram_total_bytes": 25753026560,
+            "vram_total_gib": 23.984375
+          },
+          "memory_domain": "vram",
+          "memory_total_bytes": 25753026560,
+          "memory_total_gib": 23.984375,
+          "baseline_bytes": 28000256,
+          "baseline_gib": 0.0260772705078125,
+          "peak_bytes": 23535493120,
+          "peak_gib": 21.91913604736328,
+          "peak_delta_bytes": 23507492864,
+          "peak_delta_gib": 21.89305877685547,
+          "final_bytes": 424865792,
+          "final_gib": 0.3956871032714844,
+          "samples_count": 16888,
+          "interval_seconds": 0.02,
+          "elapsed_seconds": 339.03369644097984
+        },
+        "identity": {
+          "kind": "hipengine_artifact_provenance",
+          "schema_version": 2,
+          "collected_at": "2026-09-08T19:11:20.922644+00:00",
+          "host_name": "epyc",
+          "repo_root": "/home/lhl/hipEngine-main",
+          "hipengine_commit": "fea8425e613ac7c9f648e13f7c5daada0203d1fe",
+          "git_branch": "main",
+          "staged_dirty": false,
+          "unstaged_dirty": true,
+          "untracked_dirty": true,
+          "untracked_count": 1,
+          "dirty": true,
+          "configured_backend": "hip_gfx1100",
+          "resolved_backend": "hip_gfx1100",
+          "target_arch": "gfx1100",
+          "device_name": "AMD Radeon RX 7900 XTX",
+          "model_path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+          "model_revision": null,
+          "model_fingerprint": {
+            "algorithm": "sha256-sampled-v1",
+            "value": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+            "size_bytes": 17106773984,
+            "sampled_bytes": 3145728,
+            "sample_offsets": [
+              0,
+              8552862704,
+              17105725408
+            ],
+            "exists": true,
+            "path_type": "file"
+          },
+          "quant": "gguf_q4_k_m",
+          "kv_dtype": "bf16",
+          "command": [
+            "scripts/gguf_native_context_gate.py",
+            "--model",
+            "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+            "--fixed-prompt-length",
+            "8192",
+            "--bulk-prefill",
+            "--max-new-tokens",
+            "33",
+            "--candidate-budgets",
+            "3",
+            "--runs",
+            "1",
+            "--limit",
+            "10",
+            "--no-warmup",
+            "--max-sequence-length",
+            "12288",
+            "--compiler-version-file",
+            "/tmp/hipengine-hipcc-version.txt",
+            "--output",
+            "/tmp/native-context-e2e-8k.json"
+          ],
+          "environment": {
+            "HIPENGINE_BACKEND": null,
+            "HIPENGINE_HIP_ARCH": "gfx1100",
+            "GPU_MAX_HW_QUEUES": null,
+            "HIPENGINE_BUILD_CACHE_ROOT": null,
+            "HIPENGINE_REQUIRE_CACHED_BUILD": null,
+            "HIP_VISIBLE_DEVICES": "1",
+            "ROCR_VISIBLE_DEVICES": null,
+            "CUDA_VISIBLE_DEVICES": null,
+            "GPU_DEVICE_ORDINAL": null
+          },
+          "rocm_version": "HIP version: 7.2.53211-3d9ef42",
+          "hipcc_version": "HIP version: 7.2.53211-3d9ef42\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+          "build_profile": null,
+          "timing_protocol": "context qualification",
+          "warmups": 0,
+          "repetitions": 1,
+          "profiler": null
+        },
+        "kfd_gpu_id": 33912,
+        "foreign_gpu_allocations": {},
+        "prompt_fingerprints": {
+          "Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code.": {
+            "tokens": 8192,
+            "sha256": "b2bdf2e2c55afc0008bb0903c2659c5a4d5e96850d9798d27b3b96abdcd4a25f"
+          },
+          "Write a Python function topo_sort(nodes, edges) that returns a valid topological ordering or raises ValueError on a cycle. Include tests for a DAG and a cyclic graph. Return only code.": {
+            "tokens": 8192,
+            "sha256": "4ca82b6fbc627c2f9f88099df7b22589b938cc617ea0813a13d112d5aa66db84"
+          },
+          "Implement a small LRUCache class in Python with get(key) and put(key, value), using O(1) operations. Include three focused tests. Return only code.": {
+            "tokens": 8192,
+            "sha256": "fc3202388f4a8fcdd87bdcabff12ace8969215aaabc4117b51f2217d9e8e5fc6"
+          },
+          "Write a Python function markdown_table(rows) where rows is a list of dictionaries. It should produce a GitHub-flavored markdown table with stable column order from first appearance. Include tests. Return only code.": {
+            "tokens": 8192,
+            "sha256": "eae3019349fa74ffef02f2a14aa2aa329414fe6812ee2e8e67a6dc0b43001bac"
+          },
+          "Create a concise but practical migration plan for moving a small Flask application from SQLite to PostgreSQL. Include risks, sequencing, and validation steps.": {
+            "tokens": 8192,
+            "sha256": "9c3b2e259dcd8c7e1810696f03c6105b06fa34c08b8c73f41af3198749a8740a"
+          },
+          "Explain why transformer inference is usually memory-bandwidth limited on local GPUs. Keep it technical and concrete, with examples of what changes throughput.": {
+            "tokens": 8192,
+            "sha256": "98e7143492b78917792b8a3d40fc68eb6953218540155faf746fb84e2feaa2b5"
+          },
+          "\u5c0f\u898f\u6a21\u306a\u793e\u5185Python\u30c4\u30fc\u30eb\u3092\u904b\u7528\u74b0\u5883\u3078\u79fb\u884c\u3059\u308b\u305f\u3081\u306e\u5b9f\u8df5\u7684\u306a\u8a08\u753b\u3092\u65e5\u672c\u8a9e\u3067\u4f5c\u6210\u3057\u3066\u304f\u3060\u3055\u3044\u3002\u30ea\u30b9\u30af\u3001\u624b\u9806\u3001\u691c\u8a3c\u65b9\u6cd5\u3092\u542b\u3081\u3066\u304f\u3060\u3055\u3044\u3002": {
+            "tokens": 8192,
+            "sha256": "4febb3a5e50774ad40dfb3d87458a2a8327c82baabb1655ef0a0197ebfd8c0a1"
+          },
+          "\u30ed\u30fc\u30ab\u30ebGPU\u3067LLM\u306e\u63a8\u8ad6\u901f\u5ea6\u304c\u30e1\u30e2\u30ea\u5e2f\u57df\u306b\u5236\u7d04\u3055\u308c\u3084\u3059\u3044\u7406\u7531\u3092\u3001\u65e5\u672c\u8a9e\u3067\u6280\u8853\u7684\u304b\u3064\u5177\u4f53\u7684\u306b\u8aac\u660e\u3057\u3066\u304f\u3060\u3055\u3044\u3002": {
+            "tokens": 8192,
+            "sha256": "661da06f84012cc7776f167e73f7f41730bb4455bb0443149e7b6ea66eb23e5f"
+          },
+          "Summarize the following Japanese note in English, then provide a short Japanese reply:\n\n\u6765\u9031\u306e\u30ea\u30ea\u30fc\u30b9\u3067\u306f\u3001\u30ed\u30b0\u51fa\u529b\u306e\u5f62\u5f0f\u5909\u66f4\u3001\u30ad\u30e3\u30c3\u30b7\u30e5\u306e\u7121\u52b9\u5316\u30aa\u30d7\u30b7\u30e7\u30f3\u3001\u305d\u3057\u3066API\u30ec\u30b9\u30dd\u30f3\u30b9\u306e\u5f8c\u65b9\u4e92\u63db\u6027\u3092\u91cd\u70b9\u7684\u306b\u78ba\u8a8d\u3057\u305f\u3044\u3067\u3059\u3002": {
+            "tokens": 8192,
+            "sha256": "74a5f817866c4cda006e91f7901018f33965d88609c350775a3ff19c86883709"
+          },
+          "Review this bilingual release note for clarity. Respond with English bullets, but keep Japanese product terms unchanged:\n\n\u65b0\u3057\u3044\u63a8\u8ad6\u30e2\u30fc\u30c9\u3067\u306f MTP \u3092\u6709\u52b9\u306b\u3059\u308b\u3068\u751f\u6210\u901f\u5ea6\u304c\u5411\u4e0a\u3057\u307e\u3059\u3002\u305f\u3060\u3057\u3001\u9577\u3044\u30b3\u30f3\u30c6\u30ad\u30b9\u30c8\u3067\u306f KV cache \u306e\u4f7f\u7528\u91cf\u304c\u5897\u3048\u308b\u305f\u3081\u3001\u30e1\u30e2\u30ea\u76e3\u8996\u3092\u63a8\u5968\u3057\u307e\u3059\u3002": {
+            "tokens": 8192,
+            "sha256": "1906520fff9e00d74d6f159991bfa046bb0cff5429c3805cf62a74899a4c8d63"
+          }
+        }
+      },
+      "summary": {
+        "true_ar": {
+          "full": {
+            "prompt_count": 10,
+            "request_count": 10,
+            "prompt_ids": [
+              "code_merge_intervals",
+              "code_topological_sort",
+              "code_lru_cache",
+              "code_markdown_table",
+              "general_en_plan",
+              "general_en_explain",
+              "general_ja_plan",
+              "general_ja_explain",
+              "mixed_ja_en_translate",
+              "mixed_ja_en_review"
+            ],
+            "categories": [
+              "code",
+              "general_en",
+              "general_ja",
+              "mixed_ja_en"
+            ],
+            "visible_outputs": 330,
+            "timed_transitions": 320,
+            "decode_seconds": 10.983620095066726,
+            "decode_tok_s_weighted": 29.134292449146837,
+            "request_wall_seconds": 117.3972990475595,
+            "client_transition_tok_s": 2.7257867310078656,
+            "accepted_draft_tokens": 0,
+            "proposed_draft_tokens": 0,
+            "draft_acceptance": null,
+            "accepted_per_output": 0.0,
+            "accepted_per_transition": 0.0,
+            "cycles": 0,
+            "target_passes": 0,
+            "visible_transitions_per_cycle": null,
+            "target_forward_rows": 320,
+            "stage_seconds": {
+              "autoregressive_step": 10.983620095066726
+            },
+            "stage_reconciliation_error_seconds": 0.0,
+            "stage_reconciled": true
+          },
+          "train": {
+            "prompt_count": 6,
+            "request_count": 6,
+            "prompt_ids": [
+              "code_merge_intervals",
+              "code_topological_sort",
+              "code_lru_cache",
+              "general_en_plan",
+              "general_ja_plan",
+              "mixed_ja_en_translate"
+            ],
+            "categories": [
+              "code",
+              "general_en",
+              "general_ja",
+              "mixed_ja_en"
+            ],
+            "visible_outputs": 198,
+            "timed_transitions": 192,
+            "decode_seconds": 6.592201234772801,
+            "decode_tok_s_weighted": 29.12532447996746,
+            "request_wall_seconds": 70.38274376094341,
+            "client_transition_tok_s": 2.727941392170393,
+            "accepted_draft_tokens": 0,
+            "proposed_draft_tokens": 0,
+            "draft_acceptance": null,
+            "accepted_per_output": 0.0,
+            "accepted_per_transition": 0.0,
+            "cycles": 0,
+            "target_passes": 0,
+            "visible_transitions_per_cycle": null,
+            "target_forward_rows": 192,
+            "stage_seconds": {
+              "autoregressive_step": 6.592201234772801
+            },
+            "stage_reconciliation_error_seconds": 0.0,
+            "stage_reconciled": true
+          },
+          "heldout": {
+            "prompt_count": 4,
+            "request_count": 4,
+            "prompt_ids": [
+              "code_markdown_table",
+              "general_en_explain",
+              "general_ja_explain",
+              "mixed_ja_en_review"
+            ],
+            "categories": [
+              "code",
+              "general_en",
+              "general_ja",
+              "mixed_ja_en"
+            ],
+            "visible_outputs": 132,
+            "timed_transitions": 128,
+            "decode_seconds": 4.391418860293925,
+            "decode_tok_s_weighted": 29.14775476266747,
+            "request_wall_seconds": 47.01455528661609,
+            "client_transition_tok_s": 2.722561113673631,
+            "accepted_draft_tokens": 0,
+            "proposed_draft_tokens": 0,
+            "draft_acceptance": null,
+            "accepted_per_output": 0.0,
+            "accepted_per_transition": 0.0,
+            "cycles": 0,
+            "target_passes": 0,
+            "visible_transitions_per_cycle": null,
+            "target_forward_rows": 128,
+            "stage_seconds": {
+              "autoregressive_step": 4.391418860293925
+            },
+            "stage_reconciliation_error_seconds": 0.0,
+            "stage_reconciled": true
+          },
+          "categories": {
+            "code": {
+              "prompt_count": 4,
+              "request_count": 4,
+              "prompt_ids": [
+                "code_merge_intervals",
+                "code_topological_sort",
+                "code_lru_cache",
+                "code_markdown_table"
+              ],
+              "categories": [
+                "code"
+              ],
+              "visible_outputs": 132,
+              "timed_transitions": 128,
+              "decode_seconds": 4.392485245130956,
+              "decode_tok_s_weighted": 29.140678421603635,
+              "request_wall_seconds": 46.83474670257419,
+              "client_transition_tok_s": 2.7330136066042754,
+              "accepted_draft_tokens": 0,
+              "proposed_draft_tokens": 0,
+              "draft_acceptance": null,
+              "accepted_per_output": 0.0,
+              "accepted_per_transition": 0.0,
+              "cycles": 0,
+              "target_passes": 0,
+              "visible_transitions_per_cycle": null,
+              "target_forward_rows": 128,
+              "stage_seconds": {
+                "autoregressive_step": 4.392485245130956
+              },
+              "stage_reconciliation_error_seconds": 0.0,
+              "stage_reconciled": true
+            },
+            "general_en": {
+              "prompt_count": 2,
+              "request_count": 2,
+              "prompt_ids": [
+                "general_en_plan",
+                "general_en_explain"
+              ],
+              "categories": [
+                "general_en"
+              ],
+              "visible_outputs": 66,
+              "timed_transitions": 64,
+              "decode_seconds": 2.1954106902703643,
+              "decode_tok_s_weighted": 29.151721034991596,
+              "request_wall_seconds": 23.502164587378502,
+              "client_transition_tok_s": 2.723153425381519,
+              "accepted_draft_tokens": 0,
+              "proposed_draft_tokens": 0,
+              "draft_acceptance": null,
+              "accepted_per_output": 0.0,
+              "accepted_per_transition": 0.0,
+              "cycles": 0,
+              "target_passes": 0,
+              "visible_transitions_per_cycle": null,
+              "target_forward_rows": 64,
+              "stage_seconds": {
+                "autoregressive_step": 2.1954106902703643
+              },
+              "stage_reconciliation_error_seconds": 0.0,
+              "stage_reconciled": true
+            },
+            "general_ja": {
+              "prompt_count": 2,
+              "request_count": 2,
+              "prompt_ids": [
+                "general_ja_plan",
+                "general_ja_explain"
+              ],
+              "categories": [
+                "general_ja"
+              ],
+              "visible_outputs": 66,
+              "timed_transitions": 64,
+              "decode_seconds": 2.197588131763041,
+              "decode_tok_s_weighted": 29.122836565674042,
+              "request_wall_seconds": 23.517870664596558,
+              "client_transition_tok_s": 2.7213348058905953,
+              "accepted_draft_tokens": 0,
+              "proposed_draft_tokens": 0,
+              "draft_acceptance": null,
+              "accepted_per_output": 0.0,
+              "accepted_per_transition": 0.0,
+              "cycles": 0,
+              "target_passes": 0,
+              "visible_transitions_per_cycle": null,
+              "target_forward_rows": 64,
+              "stage_seconds": {
+                "autoregressive_step": 2.197588131763041
+              },
+              "stage_reconciliation_error_seconds": 0.0,
+              "stage_reconciled": true
+            },
+            "mixed_ja_en": {
+              "prompt_count": 2,
+              "request_count": 2,
+              "prompt_ids": [
+                "mixed_ja_en_translate",
+                "mixed_ja_en_review"
+              ],
+              "categories": [
+                "mixed_ja_en"
+              ],
+              "visible_outputs": 66,
+              "timed_transitions": 64,
+              "decode_seconds": 2.1981360279023647,
+              "decode_tok_s_weighted": 29.1155775564417,
+              "request_wall_seconds": 23.542517093010247,
+              "client_transition_tok_s": 2.718485867384229,
+              "accepted_draft_tokens": 0,
+              "proposed_draft_tokens": 0,
+              "draft_acceptance": null,
+              "accepted_per_output": 0.0,
+              "accepted_per_transition": 0.0,
+              "cycles": 0,
+              "target_passes": 0,
+              "visible_transitions_per_cycle": null,
+              "target_forward_rows": 64,
+              "stage_seconds": {
+                "autoregressive_step": 2.1981360279023647
+              },
+              "stage_reconciliation_error_seconds": 0.0,
+              "stage_reconciled": true
+            }
+          }
+        },
+        "mtp": {
+          "3": {
+            "full": {
+              "prompt_count": 10,
+              "request_count": 10,
+              "prompt_ids": [
+                "code_merge_intervals",
+                "code_topological_sort",
+                "code_lru_cache",
+                "code_markdown_table",
+                "general_en_plan",
+                "general_en_explain",
+                "general_ja_plan",
+                "general_ja_explain",
+                "mixed_ja_en_translate",
+                "mixed_ja_en_review"
+              ],
+              "categories": [
+                "code",
+                "general_en",
+                "general_ja",
+                "mixed_ja_en"
+              ],
+              "visible_outputs": 330,
+              "timed_transitions": 320,
+              "decode_seconds": 13.117579829879105,
+              "decode_tok_s_weighted": 24.394743859008724,
+              "request_wall_seconds": 128.62531822361052,
+              "client_transition_tok_s": 2.4878461287356464,
+              "accepted_draft_tokens": 226,
+              "proposed_draft_tokens": 275,
+              "draft_acceptance": 0.8218181818181818,
+              "accepted_per_output": 0.6848484848484848,
+              "accepted_per_transition": 0.70625,
+              "cycles": 94,
+              "target_passes": 94,
+              "visible_transitions_per_cycle": 3.404255319148936,
+              "target_forward_rows": 369,
+              "stage_seconds": {
+                "proposal": 0.7703139111399651,
+                "scheduler_accept_replay_host_residual": 0.02926311083137989,
+                "target_commit_finish": 0.0003203386440873146,
+                "target_verify": 12.317682469263673
+              },
+              "stage_reconciliation_error_seconds": 0.0,
+              "stage_reconciled": true,
+              "mtp_vs_true_ar": 0.8373206214494182
+            },
+            "train": {
+              "prompt_count": 6,
+              "request_count": 6,
+              "prompt_ids": [
+                "code_merge_intervals",
+                "code_topological_sort",
+                "code_lru_cache",
+                "general_en_plan",
+                "general_ja_plan",
+                "mixed_ja_en_translate"
+              ],
+              "categories": [
+                "code",
+                "general_en",
+                "general_ja",
+                "mixed_ja_en"
+              ],
+              "visible_outputs": 198,
+              "timed_transitions": 192,
+              "decode_seconds": 7.886367409490049,
+              "decode_tok_s_weighted": 24.34580967771766,
+              "request_wall_seconds": 77.1296784831211,
+              "client_transition_tok_s": 2.4893141495723583,
+              "accepted_draft_tokens": 136,
+              "proposed_draft_tokens": 162,
+              "draft_acceptance": 0.8395061728395061,
+              "accepted_per_output": 0.6868686868686869,
+              "accepted_per_transition": 0.7083333333333334,
+              "cycles": 56,
+              "target_passes": 56,
+              "visible_transitions_per_cycle": 3.4285714285714284,
+              "target_forward_rows": 218,
+              "stage_seconds": {
+                "proposal": 0.4636582341045141,
+                "scheduler_accept_replay_host_residual": 0.017839692533016205,
+                "target_commit_finish": 0.00019327551126480103,
+                "target_verify": 7.404676207341254
+              },
+              "stage_reconciliation_error_seconds": 0.0,
+              "stage_reconciled": true,
+              "mtp_vs_true_ar": 0.835898315723927
+            },
+            "heldout": {
+              "prompt_count": 4,
+              "request_count": 4,
+              "prompt_ids": [
+                "code_markdown_table",
+                "general_en_explain",
+                "general_ja_explain",
+                "mixed_ja_en_review"
+              ],
+              "categories": [
+                "code",
+                "general_en",
+                "general_ja",
+                "mixed_ja_en"
+              ],
+              "visible_outputs": 132,
+              "timed_transitions": 128,
+              "decode_seconds": 5.231212420389056,
+              "decode_tok_s_weighted": 24.468515080960977,
+              "request_wall_seconds": 51.49563974048942,
+              "client_transition_tok_s": 2.4856473411157096,
+              "accepted_draft_tokens": 90,
+              "proposed_draft_tokens": 113,
+              "draft_acceptance": 0.7964601769911505,
+              "accepted_per_output": 0.6818181818181818,
+              "accepted_per_transition": 0.703125,
+              "cycles": 38,
+              "target_passes": 38,
+              "visible_transitions_per_cycle": 3.3684210526315788,
+              "target_forward_rows": 151,
+              "stage_seconds": {
+                "proposal": 0.30665567703545094,
+                "scheduler_accept_replay_host_residual": 0.011423418298363686,
+                "target_commit_finish": 0.00012706313282251358,
+                "target_verify": 4.913006261922419
+              },
+              "stage_reconciliation_error_seconds": 0.0,
+              "stage_reconciled": true,
+              "mtp_vs_true_ar": 0.8394648328899872
+            },
+            "categories": {
+              "code": {
+                "prompt_count": 4,
+                "request_count": 4,
+                "prompt_ids": [
+                  "code_merge_intervals",
+                  "code_topological_sort",
+                  "code_lru_cache",
+                  "code_markdown_table"
+                ],
+                "categories": [
+                  "code"
+                ],
+                "visible_outputs": 132,
+                "timed_transitions": 128,
+                "decode_seconds": 5.216656135395169,
+                "decode_tok_s_weighted": 24.536790748294898,
+                "request_wall_seconds": 51.30765781458467,
+                "client_transition_tok_s": 2.494754300860228,
+                "accepted_draft_tokens": 92,
+                "proposed_draft_tokens": 105,
+                "draft_acceptance": 0.8761904761904762,
+                "accepted_per_output": 0.696969696969697,
+                "accepted_per_transition": 0.71875,
+                "cycles": 36,
+                "target_passes": 36,
+                "visible_transitions_per_cycle": 3.5555555555555554,
+                "target_forward_rows": 141,
+                "stage_seconds": {
+                  "proposal": 0.3104066699743271,
+                  "scheduler_accept_replay_host_residual": 0.011877328157424927,
+                  "target_commit_finish": 0.00012608151882886887,
+                  "target_verify": 4.894246055744588
+                },
+                "stage_reconciliation_error_seconds": 0.0,
+                "stage_reconciled": true,
+                "mtp_vs_true_ar": 0.8420116509746178
+              },
+              "general_en": {
+                "prompt_count": 2,
+                "request_count": 2,
+                "prompt_ids": [
+                  "general_en_plan",
+                  "general_en_explain"
+                ],
+                "categories": [
+                  "general_en"
+                ],
+                "visible_outputs": 66,
+                "timed_transitions": 64,
+                "decode_seconds": 2.630789731629193,
+                "decode_tok_s_weighted": 24.327295804201786,
+                "request_wall_seconds": 25.752289060503244,
+                "client_transition_tok_s": 2.485215968554732,
+                "accepted_draft_tokens": 45,
+                "proposed_draft_tokens": 57,
+                "draft_acceptance": 0.7894736842105263,
+                "accepted_per_output": 0.6818181818181818,
+                "accepted_per_transition": 0.703125,
+                "cycles": 19,
+                "target_passes": 19,
+                "visible_transitions_per_cycle": 3.3684210526315788,
+                "target_forward_rows": 76,
+                "stage_seconds": {
+                  "proposal": 0.15425767842680216,
+                  "scheduler_accept_replay_host_residual": 0.005693466402590275,
+                  "target_commit_finish": 6.301607936620712e-05,
+                  "target_verify": 2.470775570720434
+                },
+                "stage_reconciliation_error_seconds": 0.0,
+                "stage_reconciled": true,
+                "mtp_vs_true_ar": 0.8345063324049059
+              },
+              "general_ja": {
+                "prompt_count": 2,
+                "request_count": 2,
+                "prompt_ids": [
+                  "general_ja_plan",
+                  "general_ja_explain"
+                ],
+                "categories": [
+                  "general_ja"
+                ],
+                "visible_outputs": 66,
+                "timed_transitions": 64,
+                "decode_seconds": 2.841719220392406,
+                "decode_tok_s_weighted": 22.521577621297293,
+                "request_wall_seconds": 25.98039506468922,
+                "client_transition_tok_s": 2.4633959507022447,
+                "accepted_draft_tokens": 43,
+                "proposed_draft_tokens": 61,
+                "draft_acceptance": 0.7049180327868853,
+                "accepted_per_output": 0.6515151515151515,
+                "accepted_per_transition": 0.671875,
+                "cycles": 21,
+                "target_passes": 21,
+                "visible_transitions_per_cycle": 3.0476190476190474,
+                "target_forward_rows": 82,
+                "stage_seconds": {
+                  "proposal": 0.16389759443700314,
+                  "scheduler_accept_replay_host_residual": 0.0060630906373262405,
+                  "target_commit_finish": 6.852764636278152e-05,
+                  "target_verify": 2.671690007671714
+                },
+                "stage_reconciliation_error_seconds": 0.0,
+                "stage_reconciled": true,
+                "mtp_vs_true_ar": 0.7733304951428599
+              },
+              "mixed_ja_en": {
+                "prompt_count": 2,
+                "request_count": 2,
+                "prompt_ids": [
+                  "mixed_ja_en_translate",
+                  "mixed_ja_en_review"
+                ],
+                "categories": [
+                  "mixed_ja_en"
+                ],
+                "visible_outputs": 66,
+                "timed_transitions": 64,
+                "decode_seconds": 2.428414742462337,
+                "decode_tok_s_weighted": 26.354641520214948,
+                "request_wall_seconds": 25.584976283833385,
+                "client_transition_tok_s": 2.5014680213106266,
+                "accepted_draft_tokens": 46,
+                "proposed_draft_tokens": 52,
+                "draft_acceptance": 0.8846153846153846,
+                "accepted_per_output": 0.696969696969697,
+                "accepted_per_transition": 0.71875,
+                "cycles": 18,
+                "target_passes": 18,
+                "visible_transitions_per_cycle": 3.5555555555555554,
+                "target_forward_rows": 70,
+                "stage_seconds": {
+                  "proposal": 0.14175196830183268,
+                  "scheduler_accept_replay_host_residual": 0.005629225634038448,
+                  "target_commit_finish": 6.271339952945709e-05,
+                  "target_verify": 2.2809708351269364
+                },
+                "stage_reconciliation_error_seconds": 0.0,
+                "stage_reconciled": true,
+                "mtp_vs_true_ar": 0.9051732348130629
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "source_name": "native-context-state-final-following.json",
+      "source_sha256": "3e659ad1dfc21ffbaea40c30156e1363591480103e7019bb9a5e57e596a90e8b",
+      "status": "complete_exact",
+      "performance_claim": false,
+      "command": [
+        "/home/lhl/mambaforge/envs/therock/bin/python3",
+        "scripts/gguf_native_context_state_gate.py",
+        "--model",
+        "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "--contexts",
+        "1024,8192",
+        "--budgets",
+        "3,4,7",
+        "--capacity",
+        "10240",
+        "--repetitions",
+        "1",
+        "--prompt-limit",
+        "1",
+        "--bulk-prefill",
+        "--require-native-through",
+        "10240",
+        "--graph-first",
+        "--n2-first",
+        "--following-step",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--output",
+        "/tmp/native-context-state-final-following.json"
+      ],
+      "memory_after_close": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 21196124809,
+        "total_allocated_bytes": 21230095040,
+        "total_freed_bytes": 21230095040,
+        "active_allocations": 0,
+        "peak_allocations": 1027
+      },
+      "cases": 144,
+      "passed": 144,
+      "following_step_cases": 144,
+      "coverage": [
+        {
+          "context": 1024,
+          "budget": 3,
+          "transport": "eager",
+          "graph": false,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 1024,
+          "budget": 3,
+          "transport": "graph",
+          "graph": true,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 1024,
+          "budget": 4,
+          "transport": "eager",
+          "graph": false,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 1024,
+          "budget": 4,
+          "transport": "graph",
+          "graph": true,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 1024,
+          "budget": 7,
+          "transport": "eager",
+          "graph": false,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 1024,
+          "budget": 7,
+          "transport": "graph",
+          "graph": true,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 8192,
+          "budget": 3,
+          "transport": "eager",
+          "graph": false,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 8192,
+          "budget": 3,
+          "transport": "graph",
+          "graph": true,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 8192,
+          "budget": 4,
+          "transport": "eager",
+          "graph": false,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 8192,
+          "budget": 4,
+          "transport": "graph",
+          "graph": true,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 8192,
+          "budget": 7,
+          "transport": "eager",
+          "graph": false,
+          "mode": "native",
+          "cases": 12
+        },
+        {
+          "context": 8192,
+          "budget": 7,
+          "transport": "graph",
+          "graph": true,
+          "mode": "native",
+          "cases": 12
+        }
+      ]
+    },
+    {
+      "source_name": "native-context-state-moe-short-control.json",
+      "source_sha256": "209d3a86dadc976278e752a3055e3edf682f3d86003cafd03b4baab3c5039773",
+      "status": "failed",
+      "performance_claim": false,
+      "command": [
+        "/home/lhl/mambaforge/envs/therock/bin/python3",
+        "scripts/gguf_native_context_state_gate.py",
+        "--model",
+        "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "--contexts",
+        "8",
+        "--budgets",
+        "1",
+        "--native-context-limit",
+        "95",
+        "--capacity",
+        "2048",
+        "--repetitions",
+        "1",
+        "--prompt-limit",
+        "0",
+        "--bulk-prefill",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--output",
+        "/tmp/native-context-state-moe-short-control.json"
+      ],
+      "memory_after_close": null,
+      "cases": 0,
+      "passed": 0,
+      "following_step_cases": 0,
+      "coverage": [],
+      "error": "Traceback (most recent call last):\n  File \"/home/lhl/hipEngine-main/scripts/gguf_native_context_state_gate.py\", line 264, in main\n    payload[\"memory_after_close\"] = run(args, payload[\"rows\"])\n                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lhl/hipEngine-main/scripts/gguf_native_context_state_gate.py\", line 194, in run\n    np.testing.assert_array_equal(prepared.target_logits, expected)\n  File \"/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/numpy/_utils/__init__.py\", line 85, in wrapper\n    return fun(*args, **kwargs)\n           ^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/numpy/testing/_private/utils.py\", line 1025, in assert_array_equal\n    assert_array_compare(operator.__eq__, actual, desired, err_msg=err_msg,\n  File \"/home/lhl/mambaforge/envs/therock/lib/python3.12/contextlib.py\", line 81, in inner\n    return func(*args, **kwds)\n           ^^^^^^^^^^^^^^^^^^^\n  File \"/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/numpy/testing/_private/utils.py\", line 889, in assert_array_compare\n    raise AssertionError(msg)\nAssertionError: \nArrays are not equal\n\nMismatched elements: 496637 / 496640 (100%)\nMax absolute difference among violations: 0.32628697\nMax relative difference among violations: 7525.2456\n ACTUAL: array([[ 7.18183 ,  8.156997,  7.980636, ..., -5.321009, -5.321009,\n        -5.321009],\n       [ 8.417002,  8.770809,  5.59    , ..., -5.061705, -5.061705,\n        -5.061705]], dtype=float32)\n DESIRED: array([[ 7.212057,  8.15724 ,  7.98912 , ..., -5.306102, -5.306102,\n        -5.306102],\n       [ 8.397239,  8.800318,  5.513538, ..., -5.02808 , -5.02808 ,\n        -5.02808 ]], dtype=float32)\n"
+    }
+  ]
+}
