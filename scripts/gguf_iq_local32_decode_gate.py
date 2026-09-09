@@ -49,10 +49,13 @@ def main() -> None:
     compiler_version = (Path(args.compiler_version_file).read_text()
                         if args.compiler_version_file else None)
 
+    # The shipped policy is empty by decision; the candidate is explicit so
+    # this probe stays meaningful regardless of the shipped default.
     base_policy = dict(be.GGUF_IQ_DENSE_DECODE_POLICY)
+    candidate_policy = {"gguf_iq4_xs": {"variant": "local32_gemv_bf16_bf16_out"}}
 
     def run(local32: bool, forced_tokens=None):
-        be.GGUF_IQ_DENSE_DECODE_POLICY = base_policy if local32 else {}
+        be.GGUF_IQ_DENSE_DECODE_POLICY = candidate_policy if local32 else base_policy
         logits_rows = []
         tokens = []
         first = session.prefill(prompt, use_bulk=True, bulk_attention_mode="bulk",
@@ -73,7 +76,7 @@ def main() -> None:
             compiler_version=compiler_version,
             require_cached_build=args.require_cached_build,
             max_sequence_length=len(prompt) + n + 2,
-            use_wmma_prefill=None,
+            use_wmma_prefill=True,
             use_gemv_decode=True,
         ) as session:
             # Incumbent: local32 disabled, eager -> fixes the trajectory.

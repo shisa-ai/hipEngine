@@ -1,0 +1,101 @@
+"""Teacher-forced probe for routing Q3_K over W4A16 (the mean-gate candidate).
+
+Incumbent = the shipped four-quant W4A16 policy; candidate = the same policy
+plus gguf_q3_k (K_M carries no IQ2_S/IQ2_XS, so the delta is Q3_K alone).
+The zbook measured the candidate at mean 0.001061 (6.1% over the calibrated
+1e-3); this probe re-establishes the pair on this host with the same
+teacher-forced method as the local32 decode probe.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+from pathlib import Path
+
+import numpy as np
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--model", type=Path,
+                     default=Path("/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf"))
+    ap.add_argument("--compiler-version-file", type=Path, default=None)
+    ap.add_argument("--require-cached-build", action="store_true")
+    ap.add_argument("--prompt-tokens", type=int, default=512)
+    ap.add_argument("--decode-tokens", type=int, default=64)
+    ap.add_argument("--seed", type=int, default=7)
+    ap.add_argument("--json", type=Path, default=None)
+    args = ap.parse_args()
+    if args.compiler_version_file is not None:
+        os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file)
+
+    from hipengine.benchmark.correctness import evaluate_logits
+    from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+    import hipengine.kernels.hip_gfx1100 as be
+
+    rng = np.random.default_rng(args.seed)
+    prompt = [int(t) for t in rng.integers(0, 150000, size=int(args.prompt_tokens))]
+    n = int(args.decode_tokens)
+    compiler_version = (Path(args.compiler_version_file).read_text()
+                        if args.compiler_version_file else None)
+
+    base_policy = dict(be.GGUF_IQ_DENSE_PREFILL_POLICY)
+    cand_policy = {**base_policy, "gguf_q3_k": dict(base_policy["gguf_iq4_xs"])}
+
+    def run(policy, forced_tokens=None):
+        be.GGUF_IQ_DENSE_PREFILL_POLICY = policy
+        logits_rows = []
+        tokens = []
+        first = session.prefill(prompt, use_bulk=True, bulk_attention_mode="bulk",
+                                 return_logits=True)
+        logits_rows.append(np.asarray(first.logits, dtype=np.float32).reshape(-1))
+        tokens.append(int(first.token_id))
+        cur = first
+        for i in range(n):
+            feed = int(cur.token_id) if forced_tokens is None else int(forced_tokens[i])
+            cur = session.step(feed, return_logits=True)
+            logits_rows.append(np.asarray(cur.logits, dtype=np.float32).reshape(-1))
+            tokens.append(int(cur.token_id))
+        return np.vstack(logits_rows), tokens
+
+    try:
+        with Qwen35GGUFResidentSession(
+            args.model,
+            compiler_version=compiler_version,
+            require_cached_build=args.require_cached_build,
+            max_sequence_length=len(prompt) + n + 2,
+            use_wmma_prefill=True,
+            use_gemv_decode=True,
+        ) as session:
+            ref_logits, ref_tokens = run(base_policy)
+            session.reset()
+            cand_logits, _ = run(cand_policy, forced_tokens=ref_tokens[:-1])
+    finally:
+        be.GGUF_IQ_DENSE_PREFILL_POLICY = base_policy
+
+    # All positions count: the route changes prefill AND every decode position's
+    # teacher-forced context through the changed prefill hidden states.
+    metrics = evaluate_logits(ref_logits, cand_logits)
+    top1 = float(np.mean(np.argmax(ref_logits, -1) == np.argmax(cand_logits, -1)))
+    finite = bool(np.all(np.isfinite(cand_logits)))
+    print(f"positions: {ref_logits.shape[0]}  (prompt={len(prompt)})")
+    print(f"KL vs 4-quant incumbent:  mean={metrics.kl_mean:.4e}  max={metrics.kl_max:.4e}")
+    print(f"top1 agreement: {top1:.4f}  finite: {finite}")
+    # The zbook's recorded 7-quant arm delta was +0.000234 mean (0.000827 ->
+    # 0.001061); this probe measures the same pair on this host.
+    if args.json is not None:
+        args.json.write_text(json.dumps({
+            "positions": int(ref_logits.shape[0]),
+            "kl_mean": metrics.kl_mean, "kl_max": metrics.kl_max,
+            "top1_agreement": top1, "candidate_finite": finite,
+        }, indent=2) + "\n")
+
+
+if __name__ == "__main__":
+    main()
