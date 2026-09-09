@@ -98,6 +98,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     gguf_q4_k_quantize_bf16_q8_1,
+    gguf_q4_k_selected_dual_q8_1_dp4a_silu_warp256_gemv_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill import (
     gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out,
@@ -132,6 +133,7 @@ from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1 import (
     qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out,
     qwen4_exp_q5_1_selected_sparse_exact_repair_row_publish_bf16,
     qwen4_exp_q5_1_selected_wmma_iu8_risk_prefill_bf16_bf16_out,
+    qwen4_exp_q5_1_selected_weighted_sum_warp256_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn import (
     qwen4_exp_gdn_decode_f32,
@@ -3347,6 +3349,30 @@ def _qwen4_exp_q4_iu8_exact_enabled() -> bool:
     ) not in {"", "0", "false", "False"}
 
 
+def _qwen4_exp_moe_decode_warp_enabled() -> bool:
+    """Default-off warp256 MoE decode GEMV pair (#22 R11).
+
+    Replaces the rows==1 dp4a dual (gate/up) and the Q5_1
+    logical256_t64 weighted-sum (down) with the warp-per-expert
+    warp256 kernels: down bit-exact, gate/up within one bf16 ulp
+    (reduction order only; compounding through the decode chain
+    measured at teacher-forced KL ~1e-2, envelope-review required
+    before any production binding of the dual leg).
+    """
+
+    return os.environ.get(
+        "HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP", "0"
+    ) not in {"", "0", "false", "False"}
+
+
+def _qwen4_exp_moe_decode_warp_down_enabled() -> bool:
+    """Default-off warp256 Q5_1 selected weighted-sum (down leg only)."""
+
+    return os.environ.get(
+        "HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_DOWN", "0"
+    ) not in {"", "0", "false", "False"}
+
+
 def _qwen4_exp_q51_iu8_exact_enabled() -> bool:
     """Default-off exact iu8-risk+repair selected Q5_1 down route."""
 
@@ -4560,25 +4586,44 @@ def run_qwen4_exp_moe(
                 stream=stream,
                 runtime=active_runtime,
             )
-            resolve(
-                backend=dp4a_key.backend,
-                layer=dp4a_key.layer,
-                quant=dp4a_key.quant,
-                variant=dp4a_key.variant,
-            )(
-                scratch.group_gate_up.ptr,
-                scratch.selected.ptr,
-                gate_weight.allocation("raw").tensor.ptr,
-                up_weight.allocation("raw").tensor.ptr,
-                scratch.expert_intermediate.ptr,
-                rows,
-                compact,
-                experts,
-                hidden,
-                ffn,
-                stream=stream,
-                runtime=active_runtime,
-            )
+            if (
+                _qwen4_exp_moe_decode_warp_enabled()
+                and compact <= 12
+            ):
+                gguf_q4_k_selected_dual_q8_1_dp4a_silu_warp256_gemv_bf16_bf16_out(
+                    scratch.group_gate_up.ptr,
+                    scratch.selected.ptr,
+                    gate_weight.allocation("raw").tensor.ptr,
+                    up_weight.allocation("raw").tensor.ptr,
+                    scratch.expert_intermediate.ptr,
+                    rows,
+                    compact,
+                    experts,
+                    hidden,
+                    ffn,
+                    stream=stream,
+                    runtime=active_runtime,
+                )
+            else:
+                resolve(
+                    backend=dp4a_key.backend,
+                    layer=dp4a_key.layer,
+                    quant=dp4a_key.quant,
+                    variant=dp4a_key.variant,
+                )(
+                    scratch.group_gate_up.ptr,
+                    scratch.selected.ptr,
+                    gate_weight.allocation("raw").tensor.ptr,
+                    up_weight.allocation("raw").tensor.ptr,
+                    scratch.expert_intermediate.ptr,
+                    rows,
+                    compact,
+                    experts,
+                    hidden,
+                    ffn,
+                    stream=stream,
+                    runtime=active_runtime,
+                )
         elif fused_silu:
             resolve(
                 backend=fused_key.backend,
@@ -4688,7 +4733,24 @@ def run_qwen4_exp_moe(
             "selected_weighted_sum_logical256_t64_bf16_bf16_out",
         )
         fused_down = bool(rows == 1 and is_registered(fused_down_key))
-        if fused_down:
+        if fused_down and (
+            _qwen4_exp_moe_decode_warp_enabled()
+            or _qwen4_exp_moe_decode_warp_down_enabled()
+        ) and compact <= 12:
+            qwen4_exp_q5_1_selected_weighted_sum_warp256_bf16_bf16_out(
+                scratch.expert_intermediate.ptr,
+                scratch.selected.ptr,
+                down_weight.allocation("raw").tensor.ptr,
+                scratch.routing.ptr,
+                scratch.routed.ptr,
+                compact,
+                experts,
+                ffn,
+                hidden,
+                stream=stream,
+                runtime=active_runtime,
+            )
+        elif fused_down:
             resolve(
                 backend=fused_down_key.backend,
                 layer=fused_down_key.layer,
@@ -6628,6 +6690,12 @@ class Qwen4ExpGGUFResidentModelRunner:
                         os.environ.get(
                             "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS", ""
                         ),
+                        os.environ.get(
+                            "HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP", ""
+                        ),
+                        os.environ.get(
+                            "HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_DOWN", ""
+                        ),
                     ),
                     layer_graph_cache=self.layer_graph_cache,
                     layer_graph_key=(
@@ -6668,6 +6736,12 @@ class Qwen4ExpGGUFResidentModelRunner:
                         os.environ.get("HIPENGINE_QWEN4_EXP_Q4_DP4A64", ""),
                         os.environ.get(
                             "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS", ""
+                        ),
+                        os.environ.get(
+                            "HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP", ""
+                        ),
+                        os.environ.get(
+                            "HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_DOWN", ""
                         ),
                     ),
                 ).ptr
