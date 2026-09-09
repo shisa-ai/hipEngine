@@ -749,14 +749,14 @@ __global__ void q5_1_selected_weighted_sum_logical256_t64_bf16_bf16_kernel(
 
 // #22 R11 candidate: warp-per-expert weighted-sum combine.
 //
-// One block per output column, 256 threads = 8 warps; warp w serves expert
-// row w (the decode top-k rows). Each lane owns 16 consecutive k elements
-// (half a Q5_1 block: the low- or high-nibble half of the 16-byte qs
-// region plus its 16 high bits), so the warp covers the full k axis at
-// rows==top_k<=8 with vectorized loads (uint4 qs, 2x uint4 activations)
-// and a single block-wide barrier instead of the incumbent's serial
-// per-row loop with ~6 barriers per expert.
-__launch_bounds__(256, 2)
+// One block per output column with 32*rows threads; warp w serves expert
+// row w (rows <= 12). Each lane iterates 16-element half-blocks strided by
+// the warp (k0 = lane*16 + i*512) with ternary-indexed register u32s (the
+// original pointer-to-register cast pattern lost partial at the
+// divergent-branch merge on gfx1151 hipcc 7.15). Same per-row bf16
+// rounding + routing-weight fma semantics as the logical256_t64
+// incumbent; the intra-dot reduction order differs (T1).
+__launch_bounds__(384, 2)
 __global__ void q5_1_selected_weighted_sum_warp256_bf16_bf16_kernel(
     const uint16_t* __restrict__ input,
     const int64_t* __restrict__ selected,
@@ -768,7 +768,7 @@ __global__ void q5_1_selected_weighted_sum_warp256_bf16_bf16_kernel(
     int64_t in_features,
     int64_t out_features,
     int64_t row_bytes) {
-  __shared__ float warp_sums[8];
+  __shared__ float warp_sums[12];
   const int64_t out = blockIdx.x;
   if (out >= out_features) return;
   const int warp = threadIdx.x >> 5;
@@ -783,28 +783,42 @@ __global__ void q5_1_selected_weighted_sum_warp256_bf16_bf16_kernel(
           weights + (expert * out_features + out) * row_bytes;
       const uint16_t* x_row = input + warp * in_features;
       float partial = 0.0f;
-      const int64_t k0 = static_cast<int64_t>(lane) * 16;
-      if (k0 < in_features) {
-        const int64_t block = k0 >> 5;
-        const int half = (k0 >> 4) & 1;
+      const int64_t half_blocks = in_features >> 4;
+      for (int64_t hb = lane; hb < half_blocks; hb += 32) {
+        const int64_t block = hb >> 1;
+        const int half = hb & 1;
         const uint8_t* wb = weight_row + block * 24;
         const float d = load_fp16(wb);
         const float m = load_fp16(wb + 2);
         const uint32_t qh = *reinterpret_cast<const uint32_t*>(wb + 4);
         const uint16_t qh16 = static_cast<uint16_t>(qh >> (16 * half));
         const uint4 qs4 = *reinterpret_cast<const uint4*>(wb + 8);
-        const uint4 xa = *reinterpret_cast<const uint4*>(x_row + k0);
-        const uint4 xb = *reinterpret_cast<const uint4*>(x_row + k0 + 8);
-        const uint16_t* xh = reinterpret_cast<const uint16_t*>(&xa);
-        const uint16_t* xg = reinterpret_cast<const uint16_t*>(&xb);
-        const uint8_t* qsb = reinterpret_cast<const uint8_t*>(&qs4);
+        const uint4 xa = *reinterpret_cast<const uint4*>(x_row + hb * 16);
+        const uint4 xb = *reinterpret_cast<const uint4*>(x_row + hb * 16 + 8);
+        const uint32_t* qsw = reinterpret_cast<const uint32_t*>(&qs4);
+        const uint32_t* xwa = reinterpret_cast<const uint32_t*>(&xa);
+        const uint32_t* xwb = reinterpret_cast<const uint32_t*>(&xb);
+        const uint32_t nib_mask = half ? 0xF0F0F0F0u : 0x0F0F0F0Fu;
+        const int nib_shift = half ? 4 : 0;
+        // qs u32 j covers the nibbles of elements 4j..4j+3 of the half;
+        // the x bf16s live in 8 u32s (xa: elements 0..7, xb: 8..15).
 #pragma unroll
-        for (int j = 0; j < 16; ++j) {
-          const int nib = (qsb[j] >> (half ? 4 : 0)) & 0x0F;
-          const int bit = (qh16 >> j) & 1;
-          const float v =
-              fmaf(d, static_cast<float>(nib | (bit << 4)), m);
-          partial = fmaf(bf16_bits_to_float(xh[j]), v, partial);
+        for (int j = 0; j < 4; ++j) {
+          const uint32_t nib = (qsw[j] & nib_mask) >> nib_shift;
+#pragma unroll
+          for (int r = 0; r < 4; ++r) {
+            const int q = static_cast<int>((nib >> (8 * r)) & 0xFFu);
+            const int xw_idx = 2 * j + (r >> 1);
+            const uint32_t xpack =
+                (xw_idx < 4) ? xwa[xw_idx] : xwb[xw_idx - 4];
+            const uint16_t xbits = static_cast<uint16_t>(
+                (r & 1) ? (xpack >> 16) : (xpack & 0xFFFFu));
+            const float v = fmaf(
+                d,
+                static_cast<float>(q | (((qh16 >> (4 * j + r)) & 1) << 4)),
+                m);
+            partial = fmaf(bf16_bits_to_float(xbits), v, partial);
+          }
         }
       }
 #pragma unroll
@@ -820,8 +834,8 @@ __global__ void q5_1_selected_weighted_sum_warp256_bf16_bf16_kernel(
   __syncthreads();
   if (threadIdx.x == 0) {
     float combined = 0.0f;
-    for (int w = 0; w < 8; ++w) {
-      if (w < rows) combined += warp_sums[w];
+    for (int w = 0; w < rows && w < 12; ++w) {
+      combined += warp_sums[w];
     }
     output[out] = float_to_bf16_bits(combined);
   }
@@ -1721,14 +1735,15 @@ extern "C" int hipengine_qwen4_exp_q5_1_selected_weighted_sum_warp256_bf16_bf16_
     int64_t out_features,
     hipStream_t stream) {
   if (!input || !selected || !weights || !routing_weights || !output ||
-      rows <= 0 || rows > 8 || num_experts <= 0 || in_features <= 0 ||
+      rows <= 0 || rows > 12 || num_experts <= 0 || in_features <= 0 ||
       (in_features % 32) || out_features <= 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
   const int64_t row_bytes = (in_features / 32) * 24;
+  const uint32_t warps = static_cast<uint32_t>(rows);
   hipLaunchKernelGGL(
       q5_1_selected_weighted_sum_warp256_bf16_bf16_kernel,
-      dim3(static_cast<uint32_t>(out_features)), dim3(256),
+      dim3(static_cast<uint32_t>(out_features)), dim3(warps * 32),
       0, stream,
       static_cast<const uint16_t*>(input),
       static_cast<const int64_t*>(selected),

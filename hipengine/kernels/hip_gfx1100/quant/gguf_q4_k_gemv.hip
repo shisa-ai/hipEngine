@@ -785,7 +785,7 @@ __global__ void gguf_q4_k_selected_dual_q8_1_dp4a_silu_logical128_t64_kernel(
 // (vs the incumbent's 128 logicals over two 64-thread slots), giving
 // each lane ~20 groups of memory-level parallel work with the same
 // per-group DP4A arithmetic; warp shuffle reductions, no barriers.
-__launch_bounds__(256, 2)
+__launch_bounds__(384, 2)
 __global__ void gguf_q4_k_selected_dual_q8_1_dp4a_silu_warp256_gemv_bf16_bf16_kernel(
     const gguf_q8_1_block* __restrict__ xq,
     const int64_t* __restrict__ selected,
@@ -2431,14 +2431,15 @@ extern "C" int hipengine_gguf_q4_k_selected_dual_q8_1_dp4a_silu_warp256_gemv_bf1
     int64_t out_features,
     hipStream_t stream) {
   if (!xq || !selected || !qweight_a || !qweight_b || !out ||
-      x_rows <= 0 || rows <= 0 || rows > 8 || num_experts <= 0 ||
+      x_rows <= 0 || rows <= 0 || rows > 12 || num_experts <= 0 ||
       in_features <= 0 || (in_features % QK_K) || out_features <= 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
   const int q8_blocks_per_row = (in_features + 31) / 32;
+  const uint32_t warps = static_cast<uint32_t>(rows);
   hipLaunchKernelGGL(
       (gguf_q4_k_selected_dual_q8_1_dp4a_silu_warp256_gemv_bf16_bf16_kernel),
-      dim3(static_cast<uint32_t>(out_features)), dim3(256), 0, stream,
+      dim3(static_cast<uint32_t>(out_features)), dim3(warps * 32), 0, stream,
       reinterpret_cast<const gguf_q8_1_block*>(xq), selected, qweight_a,
       qweight_b, static_cast<uint16_t*>(out),
       static_cast<int>(x_rows), static_cast<int>(rows),
