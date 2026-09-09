@@ -169,8 +169,12 @@ impact order:
    page is non-GEMM — kernel-launch count, Python/ctypes dispatch, and the
    GDN recurrence. Candidates: fused multi-op kernels, batched launches,
    moving per-layer host logic into fewer dispatches.
-2. **Vision full-f16 stream** (the timesfm design) to cut the fp16 cast
-   traffic around each vision GEMM.
+2. ~~**Vision full-f16 stream**~~ — evaluated 2026-09-09 and rejected:
+   instrumenting the cast kernels in a full document-page encode gives
+   **4.97 ms total cast overhead (2.1% of the 233 ms page)** — f32→f16
+   2.51 ms + f16→f32 2.46 ms across every GEMM in the model. The vision
+   share bounds the full-f16 campaign at ~3-4 ms/page, not the ~20-30 ms
+   estimated before the launch-bound profile was known.
 3. **cluster8 GDN recurrence** (0.25 vs 1.02 ms/layer, not numerically
    equivalent) behind the full production-profile gate
    (`docs/EXECUTION-PROFILES.md`).
