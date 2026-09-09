@@ -89,7 +89,7 @@ PRO 395, gfx1151).
 
 | Path | Precision | Doc (8 pages) | Query (8) | MaxSim | Total |
 | --- | --- | ---: | ---: | ---: | ---: |
-| **hipEngine GPU (current)** | fp16 (production) | 2358 ms | 727 ms | 0.4 ms | **3086 ms** |
+| **hipEngine GPU (current)** | fp16 (production) | 2266 ms | 724 ms | 0.5 ms | **2990 ms** |
 | hipEngine GPU | fp32 (strict) | 12589 ms | 2101 ms | 1.2 ms | 14692 ms |
 | Torch reference, same GPU | bf16 (deployment) | — | — | — | 1356 ms |
 | Torch reference, same GPU | fp32 | — | — | — | 4148 ms |
@@ -97,7 +97,7 @@ PRO 395, gfx1151).
 Torch rows are doc + query + maxsim totals (best of 3). Reproduce with
 `python3 scripts/evie_hip_bench.py --precision fp16 --pages 8 --queries 8`.
 
-hipEngine beats the torch fp32 baseline and is 2.3× from the torch bf16
+hipEngine beats the torch fp32 baseline and is 2.2× from the torch bf16
 deployment baseline. Remaining per-page cost (~295 ms): vision tower
 ~77 ms (attention GEMMs still fp32 SGEMM), GDN layers ~5.4 ms × 24 (the
 in_proj_qkv must keep the f32-output epilogue — see precision notes),
@@ -115,6 +115,7 @@ Same workload/host throughout; each step is cumulative.
 | 4 | GDN k2 recurrence (exact, 3.2× faster than naive) | 4.08 | −10% |
 | 5 | GDN projections fp16-in/f32-out (drift isolated to f16 output rounding of qkv) | 3.47 | −15% |
 | 6 | GDN f16-out narrowed to in_proj_qkv only | 3.09 | −11% |
+| 7 | f16 vision attention (per-head planes + f16 softmax) | 2.99 | −3% |
 
 ## Remaining work
 
