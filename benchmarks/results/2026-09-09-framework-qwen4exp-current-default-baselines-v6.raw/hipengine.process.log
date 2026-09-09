@@ -1,0 +1,53 @@
+[warmup] hipengine code-p512 pp=71.195 tg=13.212
+[warmup] hipengine general_en-p512 pp=157.093 tg=15.550
+[warmup] hipengine general_ja-p512 pp=184.639 tg=16.947
+[warmup] hipengine mixed_ja_en-p512 pp=168.023 tg=18.464
+[warmup] hipengine code-p1024 pp=309.419 tg=18.275
+[warmup] hipengine general_en-p1024 pp=313.008 tg=18.085
+[warmup] hipengine general_ja-p1024 pp=312.919 tg=17.878
+[warmup] hipengine mixed_ja_en-p1024 pp=311.978 tg=18.410
+[warmup] hipengine code-p4096 pp=289.558 tg=18.234
+[warmup] hipengine general_en-p4096 pp=293.749 tg=18.360
+[warmup] hipengine general_ja-p4096 pp=293.071 tg=18.070
+[warmup] hipengine mixed_ja_en-p4096 pp=289.713 tg=18.514
+[measure 0] hipengine code-p512 pp=297.651 tg=19.947
+[measure 0] hipengine general_en-p512 pp=297.566 tg=19.946
+[measure 0] hipengine general_ja-p512 pp=299.495 tg=19.955
+[measure 0] hipengine mixed_ja_en-p512 pp=292.817 tg=19.957
+[measure 0] hipengine code-p1024 pp=310.418 tg=19.255
+[measure 0] hipengine general_en-p1024 pp=315.338 tg=19.262
+[measure 0] hipengine general_ja-p1024 pp=315.463 tg=19.272
+[measure 0] hipengine mixed_ja_en-p1024 pp=312.021 tg=19.259
+[measure 0] hipengine code-p4096 pp=289.600 tg=18.886
+[measure 0] hipengine general_en-p4096 pp=293.248 tg=18.815
+[measure 0] hipengine general_ja-p4096 pp=292.806 tg=18.761
+[measure 0] hipengine mixed_ja_en-p4096 pp=289.908 tg=18.661
+[measure 1] hipengine general_ja-p4096 pp=292.272 tg=18.741
+[measure 1] hipengine general_en-p4096 pp=291.970 tg=18.694
+[measure 1] hipengine code-p4096 pp=288.193 tg=18.670
+[measure 1] hipengine mixed_ja_en-p1024 pp=310.349 tg=19.248
+[measure 1] hipengine general_ja-p1024 pp=314.347 tg=19.254
+[measure 1] hipengine general_en-p1024 pp=313.427 tg=19.247
+[measure 1] hipengine code-p1024 pp=311.270 tg=19.251
+[measure 1] hipengine mixed_ja_en-p512 pp=298.272 tg=19.939
+[measure 1] hipengine general_ja-p512 pp=299.337 tg=19.945
+[measure 1] hipengine general_en-p512 pp=297.366 tg=19.943
+[measure 1] hipengine code-p512 pp=296.555 tg=19.941
+[measure 1] hipengine mixed_ja_en-p4096 pp=290.599 tg=18.871
+[measure 2] hipengine general_ja-p512 pp=302.014 tg=19.934
+[measure 2] hipengine mixed_ja_en-p512 pp=295.742 tg=19.939
+[measure 2] hipengine code-p1024 pp=312.178 tg=19.262
+[measure 2] hipengine general_en-p1024 pp=314.687 tg=19.259
+[measure 2] hipengine general_ja-p1024 pp=316.895 tg=19.255
+[measure 2] hipengine mixed_ja_en-p1024 pp=310.352 tg=19.255
+[measure 2] hipengine code-p4096 pp=287.607 tg=18.556
+[measure 2] hipengine general_en-p4096 pp=284.555 tg=18.229
+[measure 2] hipengine general_ja-p4096 pp=282.442 tg=17.787
+[measure 2] hipengine mixed_ja_en-p4096 pp=280.026 tg=17.224
+[measure 2] hipengine code-p512 pp=276.530 tg=18.439
+[measure 2] hipengine general_en-p512 pp=280.928 tg=18.637
+{
+  "kind": "qwen4exp_canonical_ar_engine_run",
+  "status": "completed",
+  "output": "/home/lhl/hipEngine/benchmarks/results/2026-09-09-framework-qwen4exp-current-default-baselines-v6.raw/hipengine.json"
+}

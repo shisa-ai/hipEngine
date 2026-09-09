@@ -1,0 +1,252 @@
+{
+  "schema": 1,
+  "date": "2026-09-01",
+  "kind": "gfx1151_qwen38_w1_q4_target_window_launch_attribution",
+  "status": "diagnostic_complete",
+  "performance_claim": false,
+  "source": "/tmp/wy-w0-rowcurve-trace raw.json + w0-trace_kernel_trace.csv",
+  "classification": "kernel name contains q4, dispatch wholly contained in recorded target-pass [start,end]",
+  "widths": {
+    "2": {
+      "passes": [
+        {
+          "launches": 48,
+          "ms": 12.754331
+        },
+        {
+          "launches": 55,
+          "ms": 14.595589
+        },
+        {
+          "launches": 47,
+          "ms": 12.624289
+        },
+        {
+          "launches": 57,
+          "ms": 14.845617
+        },
+        {
+          "launches": 47,
+          "ms": 12.510874
+        },
+        {
+          "launches": 47,
+          "ms": 12.564139
+        },
+        {
+          "launches": 54,
+          "ms": 14.020471
+        },
+        {
+          "launches": 77,
+          "ms": 26.132596
+        }
+      ],
+      "launches_median": 51.0,
+      "ms_median": 13.387401,
+      "launches_mean": 54,
+      "ms_mean": 15.00598825
+    },
+    "3": {
+      "passes": [
+        {
+          "launches": 67,
+          "ms": 17.991279
+        },
+        {
+          "launches": 71,
+          "ms": 18.399399
+        },
+        {
+          "launches": 62,
+          "ms": 16.74655
+        },
+        {
+          "launches": 61,
+          "ms": 15.704225
+        },
+        {
+          "launches": 66,
+          "ms": 17.506292
+        },
+        {
+          "launches": 69,
+          "ms": 18.327987
+        },
+        {
+          "launches": 75,
+          "ms": 19.970362
+        },
+        {
+          "launches": 54,
+          "ms": 13.45902
+        }
+      ],
+      "launches_median": 66.5,
+      "ms_median": 17.748785499999997,
+      "launches_mean": 65.625,
+      "ms_mean": 17.26313925
+    },
+    "4": {
+      "passes": [
+        {
+          "launches": 57,
+          "ms": 18.259703
+        },
+        {
+          "launches": 59,
+          "ms": 18.714923
+        },
+        {
+          "launches": 69,
+          "ms": 21.998482
+        },
+        {
+          "launches": 70,
+          "ms": 22.251993
+        },
+        {
+          "launches": 69,
+          "ms": 21.961733
+        },
+        {
+          "launches": 85,
+          "ms": 27.09356
+        },
+        {
+          "launches": 72,
+          "ms": 22.891678
+        },
+        {
+          "launches": 59,
+          "ms": 15.518485
+        }
+      ],
+      "launches_median": 69.0,
+      "ms_median": 21.9801075,
+      "launches_mean": 67.5,
+      "ms_mean": 21.086319624999998
+    },
+    "5": {
+      "passes": [
+        {
+          "launches": 15,
+          "ms": 5.773993
+        },
+        {
+          "launches": 15,
+          "ms": 5.79339
+        },
+        {
+          "launches": 15,
+          "ms": 5.7536
+        },
+        {
+          "launches": 15,
+          "ms": 5.789745
+        },
+        {
+          "launches": 15,
+          "ms": 5.734681
+        },
+        {
+          "launches": 15,
+          "ms": 5.731916
+        },
+        {
+          "launches": 15,
+          "ms": 5.777161
+        },
+        {
+          "launches": 24,
+          "ms": 7.448377
+        }
+      ],
+      "launches_median": 15.0,
+      "ms_median": 5.775577,
+      "launches_mean": 16.125,
+      "ms_mean": 5.975357875
+    },
+    "6": {
+      "passes": [
+        {
+          "launches": 10,
+          "ms": 3.865614
+        },
+        {
+          "launches": 15,
+          "ms": 5.778803
+        },
+        {
+          "launches": 10,
+          "ms": 3.87956
+        },
+        {
+          "launches": 15,
+          "ms": 5.801446
+        },
+        {
+          "launches": 15,
+          "ms": 5.784655
+        },
+        {
+          "launches": 10,
+          "ms": 3.874673
+        },
+        {
+          "launches": 10,
+          "ms": 3.890821
+        },
+        {
+          "launches": 71,
+          "ms": 18.331648
+        }
+      ],
+      "launches_median": 12.5,
+      "ms_median": 4.834811999999999,
+      "launches_mean": 19.5,
+      "ms_mean": 6.4009025
+    },
+    "8": {
+      "passes": [
+        {
+          "launches": 10,
+          "ms": 3.868659
+        },
+        {
+          "launches": 8,
+          "ms": 2.911141
+        },
+        {
+          "launches": 7,
+          "ms": 2.583527
+        },
+        {
+          "launches": 10,
+          "ms": 3.898395
+        },
+        {
+          "launches": 10,
+          "ms": 3.88553
+        },
+        {
+          "launches": 10,
+          "ms": 3.898876
+        },
+        {
+          "launches": 8,
+          "ms": 2.911584
+        },
+        {
+          "launches": 89,
+          "ms": 28.27197
+        }
+      ],
+      "launches_median": 10.0,
+      "ms_median": 3.8770945,
+      "launches_mean": 19,
+      "ms_mean": 6.52871025
+    }
+  },
+  "finding": "Target-window Q4 does not scale as W0 aggregate family curve implied: width2 median 54 launches/13.99 ms versus width8 median 19 launches/7.60 ms. Existing actual-weight Q4 parents are also flat at R20-R32. The 2.27x W0 aggregate family row is therefore operation/window composition outside one target pass, not an isolated Q4 leaf row-scaling kernel wall."
+}

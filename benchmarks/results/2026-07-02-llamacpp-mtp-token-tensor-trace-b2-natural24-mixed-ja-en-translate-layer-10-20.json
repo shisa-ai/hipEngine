@@ -1,0 +1,973 @@
+{
+  "schema": 1,
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "kind": "llamacpp_mtp_external_comparison",
+  "timestamp": "2026-07-02T15:15:04Z",
+  "config": {
+    "server_bin": "/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server",
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "alias": "qwen36-35b",
+    "host": "127.0.0.1",
+    "port": 8032,
+    "ctx_size": 8192,
+    "gpu_layers": 99,
+    "flash_attn": "on",
+    "cache_type_k": "f16",
+    "cache_type_v": "f16",
+    "draft_max": 2,
+    "protocol": "natural",
+    "prompts": "/tmp/hipengine-mixed-ja-en-translate.jsonl",
+    "max_tokens": 24,
+    "seed": 12345,
+    "temperature": 0.0,
+    "top_k": 1,
+    "top_p": 1.0,
+    "min_p": 0.0,
+    "token_id": 9707,
+    "shapes": [
+      "512/128",
+      "4096/128"
+    ],
+    "server_extra_arg": [
+      "--reasoning",
+      "off"
+    ],
+    "stage_timings_jsonl": "benchmarks/results/2026-07-02-llamacpp-mtp-token-tensor-trace-b2-natural24-mixed-ja-en-translate-layer-10-20.jsonl",
+    "stage_token_trace": true
+  },
+  "software": {
+    "script": "scripts/llamacpp_mtp_bench.py",
+    "hipengine_commit": "0724a082fe439db4ad39d98e8c7069f3773661cd",
+    "hipengine_dirty": true,
+    "llama_cpp_commit": "1ebf790cda38d827559548f67b0469189690cc8c",
+    "llama_cpp_dirty": true
+  },
+  "runs": {
+    "mtp": {
+      "server_command": [
+        "/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server",
+        "-m",
+        "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "-ngl",
+        "99",
+        "-fa",
+        "on",
+        "-ctk",
+        "f16",
+        "-ctv",
+        "f16",
+        "-c",
+        "8192",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8032",
+        "--alias",
+        "qwen36-35b",
+        "--no-cache-prompt",
+        "--spec-type",
+        "draft-mtp",
+        "--spec-draft-n-max",
+        "2",
+        "--reasoning",
+        "off"
+      ],
+      "server_log": "/tmp/llamacpp-mtp-token-tensor-trace-b2-natural24-mixed-ja-en-translate-layer-10-20-logs/server-mtp.log",
+      "stage_timings_jsonl": "benchmarks/results/2026-07-02-llamacpp-mtp-token-tensor-trace-b2-natural24-mixed-ja-en-translate-layer-10-20.jsonl",
+      "protocols": {
+        "natural": {
+          "prompt_file": "/tmp/hipengine-mixed-ja-en-translate.jsonl",
+          "request_count": 1,
+          "rows": [
+            {
+              "id": "mixed_ja_en_translate",
+              "category": "mixed_ja_en",
+              "wall_s": 4.091639199061319,
+              "content_sha256": "ef3e654bc14cb9c173ec019223b23117a4146a75302e67c2caf1cbc51f762f79",
+              "content_chars": 110,
+              "timings": {
+                "cache_n": 0,
+                "prompt_n": 64,
+                "prompt_ms": 2011.744,
+                "prompt_per_token_ms": 31.4335,
+                "prompt_per_second": 31.81319293110853,
+                "predicted_n": 24,
+                "predicted_ms": 2045.157,
+                "predicted_per_token_ms": 85.21487499999999,
+                "predicted_per_second": 11.735040390542144,
+                "draft_n": 16,
+                "draft_n_accepted": 14
+              },
+              "draft_acceptance": 0.875,
+              "accepted_per_output": 0.5833333333333334
+            }
+          ],
+          "summary": {
+            "requests": 1,
+            "predicted_per_second_median": 11.735040390542144,
+            "predicted_per_second_weighted": 11.735040390542144,
+            "draft_n": 16,
+            "draft_n_accepted": 14,
+            "draft_acceptance": 0.875,
+            "accepted_per_output": 0.5833333333333334,
+            "denominators": {
+              "draft_acceptance": "draft_n_accepted / draft_n",
+              "accepted_per_output": "draft_n_accepted / predicted_n"
+            }
+          },
+          "category_summary": {
+            "mixed_ja_en": {
+              "requests": 1,
+              "predicted_per_second_median": 11.735040390542144,
+              "predicted_per_second_weighted": 11.735040390542144,
+              "draft_n": 16,
+              "draft_n_accepted": 14,
+              "draft_acceptance": 0.875,
+              "accepted_per_output": 0.5833333333333334,
+              "denominators": {
+                "draft_acceptance": "draft_n_accepted / draft_n",
+                "accepted_per_output": "draft_n_accepted / predicted_n"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "summary": {},
+  "stage_timing_summary": {
+    "available": true,
+    "path": "benchmarks/results/2026-07-02-llamacpp-mtp-token-tensor-trace-b2-natural24-mixed-ja-en-translate-layer-10-20.jsonl",
+    "rows_total": 14,
+    "rows_measured": 8,
+    "warmup_task_id_excluded": 0,
+    "all": {
+      "cycles": 14,
+      "total_output_tokens": 40,
+      "total_accepted": 26,
+      "total_drafts": 28,
+      "accepted_per_output": 0.65,
+      "draft_acceptance": 0.9285714285714286,
+      "cycle_wall_ms_total": 3123.253,
+      "cycle_wall_ms_per_output": 78.081325,
+      "target_verify_layer_passes_per_output": 0.35,
+      "target_verify_rows_per_output": 1.05,
+      "target_verify_discarded_rows_per_output": 0.05,
+      "cycle_histograms": {
+        "generated_draft_tokens": {
+          "2": 14
+        },
+        "accepted_draft_tokens": {
+          "2": 12,
+          "1": 2
+        },
+        "visible_output_tokens": {
+          "3": 12,
+          "2": 2
+        },
+        "target_verify_layer_passes": {
+          "1": 14
+        },
+        "target_verify_rows_evaluated": {
+          "3": 14
+        },
+        "target_verify_block_rows": {
+          "3": 14
+        },
+        "target_verify_discarded_rows": {
+          "0": 12,
+          "1": 2
+        },
+        "target_verify_rows_minus_visible_output": {
+          "0": 12,
+          "1": 2
+        }
+      },
+      "token_trace_rows": 14,
+      "proposal_trace_sample": [
+        {
+          "task_id": 0,
+          "cycle": 0,
+          "checkpoint_restore": false,
+          "generated_draft_tokens": 2,
+          "accepted_draft_tokens": 2,
+          "visible_output_tokens": 3,
+          "draft_token_ids": [
+            12305,
+            198
+          ],
+          "sampled_token_ids": [
+            12305,
+            198,
+            727
+          ],
+          "accepted_token_ids": [
+            12305,
+            198
+          ],
+          "output_token_ids": [
+            12305,
+            198,
+            727
+          ],
+          "bonus_token_id": 727,
+          "rejected_draft_token_id": null
+        },
+        {
+          "task_id": 0,
+          "cycle": 1,
+          "checkpoint_restore": false,
+          "generated_draft_tokens": 2,
+          "accepted_draft_tokens": 2,
+          "visible_output_tokens": 3,
+          "draft_token_ids": [
+            884,
+            2784
+          ],
+          "sampled_token_ids": [
+            884,
+            2784,
+            11
+          ],
+          "accepted_token_ids": [
+            884,
+            2784
+          ],
+          "output_token_ids": [
+            884,
+            2784,
+            11
+          ],
+          "bonus_token_id": 11,
+          "rejected_draft_token_id": null
+        },
+        {
+          "task_id": 0,
+          "cycle": 2,
+          "checkpoint_restore": false,
+          "generated_draft_tokens": 2,
+          "accepted_draft_tokens": 2,
+          "visible_output_tokens": 3,
+          "draft_token_ids": [
+            292,
+            1590
+          ],
+          "sampled_token_ids": [
+            292,
+            1590,
+            198
+          ],
+          "accepted_token_ids": [
+            292,
+            1590
+          ],
+          "output_token_ids": [
+            292,
+            1590,
+            198
+          ],
+          "bonus_token_id": 198,
+          "rejected_draft_token_id": null
+        },
+        {
+          "task_id": 0,
+          "cycle": 3,
+          "checkpoint_restore": false,
+          "generated_draft_tokens": 2,
+          "accepted_draft_tokens": 2,
+          "visible_output_tokens": 3,
+          "draft_token_ids": [
+            262,
+            460
+          ],
+          "sampled_token_ids": [
+            262,
+            460,
+            264
+          ],
+          "accepted_token_ids": [
+            262,
+            460
+          ],
+          "output_token_ids": [
+            262,
+            460,
+            264
+          ],
+          "bonus_token_id": 264,
+          "rejected_draft_token_id": null
+        },
+        {
+          "task_id": 0,
+          "cycle": 4,
+          "checkpoint_restore": false,
+          "generated_draft_tokens": 2,
+          "accepted_draft_tokens": 2,
+          "visible_output_tokens": 3,
+          "draft_token_ids": [
+            478,
+            292
+          ],
+          "sampled_token_ids": [
+            478,
+            292,
+            198
+          ],
+          "accepted_token_ids": [
+            478,
+            292
+          ],
+          "output_token_ids": [
+            478,
+            292,
+            198
+          ],
+          "bonus_token_id": 198,
+          "rejected_draft_token_id": null
+        },
+        {
+          "task_id": 0,
+          "cycle": 5,
+          "checkpoint_restore": false,
+          "generated_draft_tokens": 2,
+          "accepted_draft_tokens": 2,
+          "visible_output_tokens": 3,
+          "draft_token_ids": [
+            71093,
+            248046
+          ],
+          "sampled_token_ids": [
+            71093,
+            248046,
+            198
+          ],
+          "accepted_token_ids": [
+            71093,
+            248046
+          ],
+          "output_token_ids": [
+            71093,
+            248046,
+            198
+          ],
+          "bonus_token_id": 198,
+          "rejected_draft_token_id": null
+        },
+        {
+          "task_id": 9,
+          "cycle": 0,
+          "checkpoint_restore": false,
+          "generated_draft_tokens": 2,
+          "accepted_draft_tokens": 2,
+          "visible_output_tokens": 3,
+          "draft_token_ids": [
+            21874,
+            20858
+          ],
+          "sampled_token_ids": [
+            21874,
+            20858,
+            64700
+          ],
+          "accepted_token_ids": [
+            21874,
+            20858
+          ],
+          "output_token_ids": [
+            21874,
+            20858,
+            64700
+          ],
+          "bonus_token_id": 64700,
+          "rejected_draft_token_id": null
+        },
+        {
+          "task_id": 9,
+          "cycle": 1,
+          "checkpoint_restore": false,
+          "generated_draft_tokens": 2,
+          "accepted_draft_tokens": 2,
+          "visible_output_tokens": 3,
+          "draft_token_ids": [
+            198,
+            2381
+          ],
+          "sampled_token_ids": [
+            198,
+            2381,
+            1727
+          ],
+          "accepted_token_ids": [
+            198,
+            2381
+          ],
+          "output_token_ids": [
+            198,
+            2381,
+            1727
+          ],
+          "bonus_token_id": 1727,
+          "rejected_draft_token_id": null
+        },
+        {
+          "task_id": 9,
+          "cycle": 2,
+          "checkpoint_restore": false,
+          "generated_draft_tokens": 2,
+          "accepted_draft_tokens": 2,
+          "visible_output_tokens": 3,
+          "draft_token_ids": [
+            1936,
+            725
+          ],
+          "sampled_token_ids": [
+            1936,
+            725,
+            4722
+          ],
+          "accepted_token_ids": [
+            1936,
+            725
+          ],
+          "output_token_ids": [
+            1936,
+            725,
+            4722
+          ],
+          "bonus_token_id": 4722,
+          "rejected_draft_token_id": null
+        },
+        {
+          "task_id": 9,
+          "cycle": 3,
+          "checkpoint_restore": false,
+          "generated_draft_tokens": 2,
+          "accepted_draft_tokens": 2,
+          "visible_output_tokens": 3,
+          "draft_token_ids": [
+            11,
+            567
+          ],
+          "sampled_token_ids": [
+            11,
+            567,
+            668
+          ],
+          "accepted_token_ids": [
+            11,
+            567
+          ],
+          "output_token_ids": [
+            11,
+            567,
+            668
+          ],
+          "bonus_token_id": 668,
+          "rejected_draft_token_id": null
+        },
+        {
+          "task_id": 9,
+          "cycle": 4,
+          "checkpoint_restore": false,
+          "generated_draft_tokens": 2,
+          "accepted_draft_tokens": 2,
+          "visible_output_tokens": 3,
+          "draft_token_ids": [
+            5077,
+            383
+          ],
+          "sampled_token_ids": [
+            5077,
+            383,
+            66532
+          ],
+          "accepted_token_ids": [
+            5077,
+            383
+          ],
+          "output_token_ids": [
+            5077,
+            383,
+            66532
+          ],
+          "bonus_token_id": 66532,
+          "rejected_draft_token_id": null
+        },
+        {
+          "task_id": 9,
+          "cycle": 5,
+          "checkpoint_restore": false,
+          "generated_draft_tokens": 2,
+          "accepted_draft_tokens": 1,
+          "visible_output_tokens": 2,
+          "draft_token_ids": [
+            279,
+            3443
+          ],
+          "sampled_token_ids": [
+            279,
+            4203
+          ],
+          "accepted_token_ids": [
+            279
+          ],
+          "output_token_ids": [
+            279,
+            4203
+          ],
+          "bonus_token_id": 4203,
+          "rejected_draft_token_id": 3443
+        },
+        {
+          "task_id": 9,
+          "cycle": 6,
+          "checkpoint_restore": false,
+          "generated_draft_tokens": 2,
+          "accepted_draft_tokens": 1,
+          "visible_output_tokens": 2,
+          "draft_token_ids": [
+            310,
+            1433
+          ],
+          "sampled_token_ids": [
+            310,
+            279
+          ],
+          "accepted_token_ids": [
+            310
+          ],
+          "output_token_ids": [
+            310,
+            279
+          ],
+          "bonus_token_id": 279,
+          "rejected_draft_token_id": 1433
+        },
+        {
+          "task_id": 9,
+          "cycle": 7,
+          "checkpoint_restore": false,
+          "generated_draft_tokens": 2,
+          "accepted_draft_tokens": 2,
+          "visible_output_tokens": 3,
+          "draft_token_ids": [
+            1433,
+            2468
+          ],
+          "sampled_token_ids": [
+            1433,
+            2468,
+            3443
+          ],
+          "accepted_token_ids": [
+            1433,
+            2468
+          ],
+          "output_token_ids": [
+            1433,
+            2468,
+            3443
+          ],
+          "bonus_token_id": 3443,
+          "rejected_draft_token_id": null
+        }
+      ],
+      "stage_timing_totals_ms": {
+        "accept_policy_and_seed": 0.17100000000000004,
+        "draft_initial": 437.64500000000004,
+        "llama_accept_update_pending_h": 0.008,
+        "llama_draft_decode_initial": 226.27099999999996,
+        "llama_draft_decode_next": 201.608,
+        "llama_draft_finalize": 0.002,
+        "llama_draft_prepare_initial_batch": 0.255,
+        "llama_draft_prepare_next_batch": 0.010000000000000002,
+        "llama_draft_sample_topk": 7.904999999999999,
+        "llama_process_build_draft_batch": 0.4550000000000002,
+        "llama_process_copy_verify_h": 0.40000000000000013,
+        "llama_process_decode_ctx_dft": 492.956,
+        "llama_process_scan_batch": 0.006,
+        "mtp_context_replay_append": 501.03999999999996,
+        "target_block_acceptance_accounting": 644.0329999999999,
+        "target_block_forward": 1535.0149999999999,
+        "target_block_replay_or_commit": 0.24299999999999997,
+        "target_block_snapshot": 0.07400000000000001,
+        "target_block_verify_total": 2680.4049999999997
+      },
+      "stage_timing_per_output_ms": {
+        "accept_policy_and_seed": 0.004275000000000001,
+        "draft_initial": 10.941125000000001,
+        "llama_accept_update_pending_h": 0.0002,
+        "llama_draft_decode_initial": 5.656774999999999,
+        "llama_draft_decode_next": 5.0402000000000005,
+        "llama_draft_finalize": 5e-05,
+        "llama_draft_prepare_initial_batch": 0.0063750000000000005,
+        "llama_draft_prepare_next_batch": 0.00025000000000000006,
+        "llama_draft_sample_topk": 0.197625,
+        "llama_process_build_draft_batch": 0.011375000000000005,
+        "llama_process_copy_verify_h": 0.010000000000000004,
+        "llama_process_decode_ctx_dft": 12.3239,
+        "llama_process_scan_batch": 0.00015000000000000001,
+        "mtp_context_replay_append": 12.526,
+        "target_block_acceptance_accounting": 16.100824999999997,
+        "target_block_forward": 38.375375,
+        "target_block_replay_or_commit": 0.006074999999999999,
+        "target_block_snapshot": 0.0018500000000000003,
+        "target_block_verify_total": 67.01012499999999
+      },
+      "stage_timing_per_cycle_ms": {
+        "accept_policy_and_seed": 0.012214285714285717,
+        "draft_initial": 31.260357142857146,
+        "llama_accept_update_pending_h": 0.0005714285714285715,
+        "llama_draft_decode_initial": 16.16221428571428,
+        "llama_draft_decode_next": 14.400571428571428,
+        "llama_draft_finalize": 0.00014285714285714287,
+        "llama_draft_prepare_initial_batch": 0.018214285714285714,
+        "llama_draft_prepare_next_batch": 0.0007142857142857144,
+        "llama_draft_sample_topk": 0.5646428571428571,
+        "llama_process_build_draft_batch": 0.032500000000000015,
+        "llama_process_copy_verify_h": 0.02857142857142858,
+        "llama_process_decode_ctx_dft": 35.21114285714286,
+        "llama_process_scan_batch": 0.0004285714285714286,
+        "mtp_context_replay_append": 35.78857142857142,
+        "target_block_acceptance_accounting": 46.002357142857136,
+        "target_block_forward": 109.64392857142856,
+        "target_block_replay_or_commit": 0.017357142857142856,
+        "target_block_snapshot": 0.005285714285714287,
+        "target_block_verify_total": 191.45749999999998
+      }
+    },
+    "measured_excluding_first_task": {
+      "cycles": 8,
+      "total_output_tokens": 22,
+      "total_accepted": 14,
+      "total_drafts": 16,
+      "accepted_per_output": 0.6363636363636364,
+      "draft_acceptance": 0.875,
+      "cycle_wall_ms_total": 1788.718,
+      "cycle_wall_ms_per_output": 81.30536363636364,
+      "target_verify_layer_passes_per_output": 0.36363636363636365,
+      "target_verify_rows_per_output": 1.0909090909090908,
+      "target_verify_discarded_rows_per_output": 0.09090909090909091,
+      "cycle_histograms": {
+        "generated_draft_tokens": {
+          "2": 8
+        },
+        "accepted_draft_tokens": {
+          "2": 6,
+          "1": 2
+        },
+        "visible_output_tokens": {
+          "3": 6,
+          "2": 2
+        },
+        "target_verify_layer_passes": {
+          "1": 8
+        },
+        "target_verify_rows_evaluated": {
+          "3": 8
+        },
+        "target_verify_block_rows": {
+          "3": 8
+        },
+        "target_verify_discarded_rows": {
+          "0": 6,
+          "1": 2
+        },
+        "target_verify_rows_minus_visible_output": {
+          "0": 6,
+          "1": 2
+        }
+      },
+      "token_trace_rows": 8,
+      "proposal_trace_sample": [
+        {
+          "task_id": 9,
+          "cycle": 0,
+          "checkpoint_restore": false,
+          "generated_draft_tokens": 2,
+          "accepted_draft_tokens": 2,
+          "visible_output_tokens": 3,
+          "draft_token_ids": [
+            21874,
+            20858
+          ],
+          "sampled_token_ids": [
+            21874,
+            20858,
+            64700
+          ],
+          "accepted_token_ids": [
+            21874,
+            20858
+          ],
+          "output_token_ids": [
+            21874,
+            20858,
+            64700
+          ],
+          "bonus_token_id": 64700,
+          "rejected_draft_token_id": null
+        },
+        {
+          "task_id": 9,
+          "cycle": 1,
+          "checkpoint_restore": false,
+          "generated_draft_tokens": 2,
+          "accepted_draft_tokens": 2,
+          "visible_output_tokens": 3,
+          "draft_token_ids": [
+            198,
+            2381
+          ],
+          "sampled_token_ids": [
+            198,
+            2381,
+            1727
+          ],
+          "accepted_token_ids": [
+            198,
+            2381
+          ],
+          "output_token_ids": [
+            198,
+            2381,
+            1727
+          ],
+          "bonus_token_id": 1727,
+          "rejected_draft_token_id": null
+        },
+        {
+          "task_id": 9,
+          "cycle": 2,
+          "checkpoint_restore": false,
+          "generated_draft_tokens": 2,
+          "accepted_draft_tokens": 2,
+          "visible_output_tokens": 3,
+          "draft_token_ids": [
+            1936,
+            725
+          ],
+          "sampled_token_ids": [
+            1936,
+            725,
+            4722
+          ],
+          "accepted_token_ids": [
+            1936,
+            725
+          ],
+          "output_token_ids": [
+            1936,
+            725,
+            4722
+          ],
+          "bonus_token_id": 4722,
+          "rejected_draft_token_id": null
+        },
+        {
+          "task_id": 9,
+          "cycle": 3,
+          "checkpoint_restore": false,
+          "generated_draft_tokens": 2,
+          "accepted_draft_tokens": 2,
+          "visible_output_tokens": 3,
+          "draft_token_ids": [
+            11,
+            567
+          ],
+          "sampled_token_ids": [
+            11,
+            567,
+            668
+          ],
+          "accepted_token_ids": [
+            11,
+            567
+          ],
+          "output_token_ids": [
+            11,
+            567,
+            668
+          ],
+          "bonus_token_id": 668,
+          "rejected_draft_token_id": null
+        },
+        {
+          "task_id": 9,
+          "cycle": 4,
+          "checkpoint_restore": false,
+          "generated_draft_tokens": 2,
+          "accepted_draft_tokens": 2,
+          "visible_output_tokens": 3,
+          "draft_token_ids": [
+            5077,
+            383
+          ],
+          "sampled_token_ids": [
+            5077,
+            383,
+            66532
+          ],
+          "accepted_token_ids": [
+            5077,
+            383
+          ],
+          "output_token_ids": [
+            5077,
+            383,
+            66532
+          ],
+          "bonus_token_id": 66532,
+          "rejected_draft_token_id": null
+        },
+        {
+          "task_id": 9,
+          "cycle": 5,
+          "checkpoint_restore": false,
+          "generated_draft_tokens": 2,
+          "accepted_draft_tokens": 1,
+          "visible_output_tokens": 2,
+          "draft_token_ids": [
+            279,
+            3443
+          ],
+          "sampled_token_ids": [
+            279,
+            4203
+          ],
+          "accepted_token_ids": [
+            279
+          ],
+          "output_token_ids": [
+            279,
+            4203
+          ],
+          "bonus_token_id": 4203,
+          "rejected_draft_token_id": 3443
+        },
+        {
+          "task_id": 9,
+          "cycle": 6,
+          "checkpoint_restore": false,
+          "generated_draft_tokens": 2,
+          "accepted_draft_tokens": 1,
+          "visible_output_tokens": 2,
+          "draft_token_ids": [
+            310,
+            1433
+          ],
+          "sampled_token_ids": [
+            310,
+            279
+          ],
+          "accepted_token_ids": [
+            310
+          ],
+          "output_token_ids": [
+            310,
+            279
+          ],
+          "bonus_token_id": 279,
+          "rejected_draft_token_id": 1433
+        },
+        {
+          "task_id": 9,
+          "cycle": 7,
+          "checkpoint_restore": false,
+          "generated_draft_tokens": 2,
+          "accepted_draft_tokens": 2,
+          "visible_output_tokens": 3,
+          "draft_token_ids": [
+            1433,
+            2468
+          ],
+          "sampled_token_ids": [
+            1433,
+            2468,
+            3443
+          ],
+          "accepted_token_ids": [
+            1433,
+            2468
+          ],
+          "output_token_ids": [
+            1433,
+            2468,
+            3443
+          ],
+          "bonus_token_id": 3443,
+          "rejected_draft_token_id": null
+        }
+      ],
+      "stage_timing_totals_ms": {
+        "accept_policy_and_seed": 0.057999999999999996,
+        "draft_initial": 251.28799999999998,
+        "llama_accept_update_pending_h": 0.004,
+        "llama_draft_decode_initial": 129.844,
+        "llama_draft_decode_next": 115.683,
+        "llama_draft_finalize": 0.002,
+        "llama_draft_prepare_initial_batch": 0.139,
+        "llama_draft_prepare_next_batch": 0.008,
+        "llama_draft_sample_topk": 4.532,
+        "llama_process_build_draft_batch": 0.263,
+        "llama_process_copy_verify_h": 0.233,
+        "llama_process_decode_ctx_dft": 281.97900000000004,
+        "llama_process_scan_batch": 0.004,
+        "mtp_context_replay_append": 286.701,
+        "target_block_acceptance_accounting": 368.259,
+        "target_block_forward": 879.0699999999999,
+        "target_block_replay_or_commit": 0.148,
+        "target_block_snapshot": 0.04699999999999999,
+        "target_block_verify_total": 1534.2250000000001
+      },
+      "stage_timing_per_output_ms": {
+        "accept_policy_and_seed": 0.0026363636363636363,
+        "draft_initial": 11.422181818181818,
+        "llama_accept_update_pending_h": 0.00018181818181818183,
+        "llama_draft_decode_initial": 5.902,
+        "llama_draft_decode_next": 5.258318181818182,
+        "llama_draft_finalize": 9.090909090909092e-05,
+        "llama_draft_prepare_initial_batch": 0.006318181818181819,
+        "llama_draft_prepare_next_batch": 0.00036363636363636367,
+        "llama_draft_sample_topk": 0.206,
+        "llama_process_build_draft_batch": 0.011954545454545456,
+        "llama_process_copy_verify_h": 0.010590909090909092,
+        "llama_process_decode_ctx_dft": 12.817227272727274,
+        "llama_process_scan_batch": 0.00018181818181818183,
+        "mtp_context_replay_append": 13.031863636363637,
+        "target_block_acceptance_accounting": 16.739045454545455,
+        "target_block_forward": 39.95772727272727,
+        "target_block_replay_or_commit": 0.006727272727272727,
+        "target_block_snapshot": 0.002136363636363636,
+        "target_block_verify_total": 69.73750000000001
+      },
+      "stage_timing_per_cycle_ms": {
+        "accept_policy_and_seed": 0.0072499999999999995,
+        "draft_initial": 31.410999999999998,
+        "llama_accept_update_pending_h": 0.0005,
+        "llama_draft_decode_initial": 16.2305,
+        "llama_draft_decode_next": 14.460375,
+        "llama_draft_finalize": 0.00025,
+        "llama_draft_prepare_initial_batch": 0.017375,
+        "llama_draft_prepare_next_batch": 0.001,
+        "llama_draft_sample_topk": 0.5665,
+        "llama_process_build_draft_batch": 0.032875,
+        "llama_process_copy_verify_h": 0.029125,
+        "llama_process_decode_ctx_dft": 35.247375000000005,
+        "llama_process_scan_batch": 0.0005,
+        "mtp_context_replay_append": 35.837625,
+        "target_block_acceptance_accounting": 46.032375,
+        "target_block_forward": 109.88374999999999,
+        "target_block_replay_or_commit": 0.0185,
+        "target_block_snapshot": 0.005874999999999999,
+        "target_block_verify_total": 191.77812500000002
+      }
+    }
+  },
+  "notes": [
+    "External comparison diagnostic; no hipEngine correctness gate is implied.",
+    "Natural prompt MTP can produce different output hashes from base even at temperature=0.",
+    "Token-repeat prompts are artificial and can overstate MTP acceptance versus natural prompts."
+  ]
+}
