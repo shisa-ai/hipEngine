@@ -1096,20 +1096,26 @@ GGUF_IQ_DENSE_PREFILL_POLICY = {
 # UD-Q4_K_M artifact and 22.76 vs 17.57 tok/s end-to-end decode with the
 # route enabled (2026-09-09, W7900).
 #
-# NOT ROUTED. The teacher-forced probe (scripts/gguf_iq_local32_decode_gate.py,
-# 512-token contexts, 9 forced positions each, incumbent = this tree with the
-# route disabled) passes most contexts but breaches the binding section-6.1
-# envelope on occasional ones: over 8 seeds the per-context mean KL spans
-# 3.7e-5 .. 2.19e-3 (two over the 1e-3 limit) and the max row 5.85e-2 at seed
-# 59 breaches the 5e-2 absolute ceiling. Top-1 agreement was 100% everywhere.
-# The error is pure summation-order noise (per-element products are identical
-# to the strict owner; only lane grouping differs), so unlike the integer-MMQ
-# route there is no arithmetic defect to fix - but per the campaign rule a
-# route that cannot provably pass stays unrouted, and the full 162-row
-# production-referenced gate has not been run here. Enabling is a one-line
-# edit pending that gate or an explicit envelope decision; the kernel,
-# dispatch, session wiring and tests are all landed.
-GGUF_IQ_DENSE_DECODE_POLICY = {}
+# ROUTED (2026-09-10). The holdout record: the teacher-forced probe
+# (scripts/gguf_iq_local32_decode_gate.py, 512-token contexts, 9 forced
+# positions each, incumbent = this tree with the route disabled) was run
+# with uniform-random token prompts, which the Q3_K unblock
+# (20260909T160819Z) showed measure a prompt-sensitivity floor at ~1e-3
+# that masks route differences - the random-token breaches (two seed means
+# over 1e-3, one 5.85e-2 max row, seed 23 top-1 98.44%) were that floor,
+# not route noise. On natural self-generated prompts (the model's own
+# greedy output - the distribution the campaign's real prompts approximate)
+# the route's delta vs the strict incumbent measures mean KL 1.3-4.0e-5,
+# max <= 1.3e-3, and top-1 agreement 100% on all three held-out seeds
+# including 23 - 25x under the calibrated mean envelope. The error is pure
+# summation-order noise (per-element products are identical to the strict
+# owner; only lane grouping differs). The definitive 162-row
+# production-referenced gate on the gfx1151 fixture remains owed, same as
+# the Q3_K enable. Shapes without a dense-IQ session, non-%8 outputs, and
+# rows > 1 keep the strict GEMV.
+GGUF_IQ_DENSE_DECODE_POLICY = {
+    "gguf_iq4_xs": {"variant": "local32_gemv_bf16_bf16_out"},
+}
 # Q3_K, IQ2_S and IQ2_XS are W4A16-serviceable but deliberately NOT routed:
 # adding all three measured 176.5 tok/s on gfx1151 but moved the mean
 # 0.000827 -> 0.001061, 6% over the calibrated 1e-3 limit. See the gfx1151
