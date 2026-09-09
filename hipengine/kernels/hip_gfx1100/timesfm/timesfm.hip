@@ -723,7 +723,7 @@ __global__ void flash_short_kernel(
     if (dt >= d_tiles) break;
   }
 
-  __shared__ half_t p_stage[4][16][17];
+  __shared__ half_t p_stage[4][2][16][17];
   extern __shared__ float merge_dyn[];  // [4][16][D+2]: O then (m, l) per row
 
   const int q_hi = min(q0 + 15, Q - 1);
@@ -734,13 +734,16 @@ __global__ void flash_short_kernel(
 #pragma unroll
   for (int j = 0; j < 8; ++j) unif[j] = (q0 + half_id + 2 * j + off) < nm;
 
-  // Four tiles per iteration (one per wave); the loop bound is uniform so
+  // Eight tiles per iteration (two per wave); the loop bound is uniform so
   // the __syncthreads stay convergent, and waves past s_end skip only their
-  // own compute.
-  for (int base = 0; base <= s_end; base += 64) {
-    const int s0 = base + wave * 16;
+  // own compute.  Each wave's two tiles share one reduction/staging round.
+  for (int base = 0; base <= s_end; base += 128) {
+    const int s0 = base + wave * 32;
     const bool mine = s0 <= s_end;
-    float8_t sc = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+    const int s1 = s0 + 16;
+    const bool mine1 = s1 <= s_end;
+    float8_t sc0 = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+    float8_t sc1 = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
     if (mine) {
       const int k_row = s0 + col;
       for (int dt = 0; dt < d_tiles; ++dt) {
@@ -753,8 +756,26 @@ __global__ void flash_short_kernel(
 #pragma unroll
           for (int i = 0; i < 16; ++i) b_frag[i] = (T)0;
         }
-        sc = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(q_frag[dt], b_frag, sc);
+        sc0 = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(q_frag[dt], b_frag, sc0);
       }
+    }
+    if (mine1) {
+      const int k_row = s1 + col;
+      for (int dt = 0; dt < d_tiles; ++dt) {
+        half16_t b_frag;
+        if (k_row < S) {
+          const T* src = k_base + (int64_t)k_row * D + dt * 16;
+#pragma unroll
+          for (int i = 0; i < 16; ++i) b_frag[i] = src[i];
+        } else {
+#pragma unroll
+          for (int i = 0; i < 16; ++i) b_frag[i] = (T)0;
+        }
+        sc1 = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(q_frag[dt], b_frag, sc1);
+      }
+    } else if (mine) {
+#pragma unroll
+      for (int j = 0; j < 8; ++j) sc1[j] = -INFINITY;
     }
     float tile_max[8], alpha[8], m_new[8], tile_sum[8];
 #pragma unroll
@@ -765,10 +786,13 @@ __global__ void flash_short_kernel(
 #pragma unroll
       for (int j = 0; j < 8; ++j) {
         const int r = half_id + 2 * j;
-        const int s = s0 + col;
-        const bool allowed = (q0 + r < Q) && (q0 + r + off >= s) && (s >= nm) && (s < S);
-        if (!allowed) sc[j] = -INFINITY;
-        tile_max[j] = fmaxf(tile_max[j], allowed ? sc[j] : -INFINITY);
+        const bool row_ok = (q0 + r < Q);
+        const bool allowed0 = row_ok && (q0 + r + off >= s0 + col) && (s0 + col >= nm) && (s0 + col < S);
+        if (!allowed0) sc0[j] = -INFINITY;
+        tile_max[j] = fmaxf(tile_max[j], allowed0 ? sc0[j] : -INFINITY);
+        const bool allowed1 = row_ok && mine1 && (q0 + r + off >= s1 + col) && (s1 + col >= nm) && (s1 + col < S);
+        if (!allowed1) sc1[j] = -INFINITY;
+        tile_max[j] = fmaxf(tile_max[j], allowed1 ? sc1[j] : -INFINITY);
       }
 #pragma unroll
       for (int w = 8; w > 0; w >>= 1) {
@@ -780,16 +804,21 @@ __global__ void flash_short_kernel(
 #pragma unroll
       for (int j = 0; j < 8; ++j) {
         m_new[j] = fmaxf(m_run[j], tile_max[j]);
-        alpha[j] = (m_run[j] == -INFINITY) ? 1.0f : expf(m_run[j] - m_new[j]);
+        alpha[j] = (m_run[j] == -INFINITY) ? 1.0f : __expf(m_run[j] - m_new[j]);
         m_run[j] = m_new[j];
       }
 #pragma unroll
       for (int j = 0; j < 8; ++j) {
         const bool unif_now = unif[j] && (s0 + col < S);
         float e = unif_now ? 1.0f
-                           : (sc[j] == -INFINITY ? 0.0f : expf(sc[j] - m_new[j]));
-        sc[j] = e;
+                           : (sc0[j] == -INFINITY ? 0.0f : __expf(sc0[j] - m_new[j]));
+        sc0[j] = e;
         tile_sum[j] += e;
+        const bool unif_now1 = unif[j] && (s1 + col < S);
+        float e1 = unif_now1 ? 1.0f
+                             : (sc1[j] == -INFINITY ? 0.0f : __expf(sc1[j] - m_new[j]));
+        sc1[j] = e1;
+        tile_sum[j] += e1;
       }
 #pragma unroll
       for (int w = 8; w > 0; w >>= 1) {
@@ -810,20 +839,26 @@ __global__ void flash_short_kernel(
     if (mine) {
 #pragma unroll
       for (int j = 0; j < 8; ++j) {
-        p_stage[wave][half_id + 2 * j][col] = (half_t)sc[j];
+        p_stage[wave][0][half_id + 2 * j][col] = (half_t)sc0[j];
+        p_stage[wave][1][half_id + 2 * j][col] = (half_t)sc1[j];
       }
     }
     __syncthreads();
     if (mine) {
-      half16_t p_frag;
 #pragma unroll
-      for (int i = 0; i < 16; ++i) p_frag[i] = p_stage[wave][lane & 15][i];
-      for (int dt = 0; dt < d_tiles; ++dt) {
-        half16_t b_frag;
-        const T* vcol = v_base + (int64_t)s0 * D + dt * 16 + col;
+      for (int t = 0; t < 2; ++t) {
+        if (t == 1 && !mine1) break;
+        const int st = s0 + t * 16;
+        half16_t p_frag;
 #pragma unroll
-        for (int i = 0; i < 16; ++i) b_frag[i] = (s0 + i < S) ? vcol[(int64_t)i * D] : (T)0;
-        acc_o[dt] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(p_frag, b_frag, acc_o[dt]);
+        for (int i = 0; i < 16; ++i) p_frag[i] = p_stage[wave][t][lane & 15][i];
+        for (int dt = 0; dt < d_tiles; ++dt) {
+          half16_t b_frag;
+          const T* vcol = v_base + (int64_t)st * D + dt * 16 + col;
+#pragma unroll
+          for (int i = 0; i < 16; ++i) b_frag[i] = (st + i < S) ? vcol[(int64_t)i * D] : (T)0;
+          acc_o[dt] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(p_frag, b_frag, acc_o[dt]);
+        }
       }
     }
   }
