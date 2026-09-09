@@ -492,7 +492,15 @@ and 1.29-1.32x TG leads here overstate the position against the
 refreshed comparator frontier - at p4096 the v4 HE PP 237.94 is **0.335x**
 halo-box-HIP `5f851647f` (post-dense ~257 is an estimate, refresh
 pending) while HE TG 18.31 is at HIP parity (**0.994x**). `b212548e0`
-remains the pinned baseline pending the greedy-mode logits cross-check.
+remains the pinned baseline: the E1 greedy-mode cross-check (September
+10) is NEGATIVE - within-engine deterministic everywhere, but
+cross-version greedy trajectories differ (full-digest agreement only
+2/12 cases vs the pinned Vulkan baseline; median token-prefix 64.5/128;
+several cases diverge within the first 5-16 tokens). The 5f851647f
+rocmfpx Vulkan-stack line is not numerics-equivalent to `b212548e0`;
+adopting the faster comparator would be a policy decision accepting a
+new reference trajectory set, not a like-for-like re-pin.
+[E1](../benchmarks/results/2026-09-10-qwen4exp-e1-greedy-crosscheck.json).
 [E0](../benchmarks/results/e0-comparators/2026-09-09-e0-summary.json).
 
 | Owner | Code-p4096 prefill HE / Vulkan (s) | Fixed-live4097 decode HE / Vulkan (ms) |
