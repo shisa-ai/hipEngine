@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-09**
+Last updated: **2026-09-10**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -114,7 +114,11 @@ using Q8_0. These are synthetic execution-capacity observations, not serving
 reserve recommendations.
 
 Single-request capacity ladder on this card, Qwen3.8-27B `Q4_K_M`: BF16 KV
-server 40,960; INT8 KV server 54,272; DMS BF16 73,728; INT8 KV direct engine
+server 40,960; INT8 KV server 54,272 — **unqualified**: measured before a
+long-prompt prefill correctness repair on that route (2026-09-10), and the
+repaired route transiently holds one BF16 oracle pair per INT8 layer when a
+prompt spans multiple prefill chunks, so the old number is optimistic and a
+fresh ceiling is required; DMS BF16 73,728; INT8 KV direct engine
 131,072; single hidden plane 155,648; DMS INT8 merged lane 172,288; direct
 INT8 prefill or DMS INT8 + single hidden plane 232,448. Default-route prefill
 at 8,192 tokens: 766.0 tok/s, decode 33.9; direct-INT8 wmma prefill 735.6

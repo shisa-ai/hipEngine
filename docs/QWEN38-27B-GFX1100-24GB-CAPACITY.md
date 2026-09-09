@@ -80,6 +80,20 @@ slabs), and `_int8_prefill_oracle_capacity_positions` sizes the oracle by
 
 [`Defect evidence`](../benchmarks/results/2026-09-10-w7900-int8-packed-shared-oracle-defect.json)
 
+Follow-up (same day): host-policy regression tests now pin the fix
+(`tests/test_gguf_int8_prefill_oracle_per_layer.py` — 15 tests, 8 of them
+failing on the pre-fix code when the runner hunk of the fix commit is
+reverse-applied): shared-plan keying with and without the per-layer override,
+ownership set on every session before the first slab (including tail-chunk
+plans), the `finally` clearing the flag and releasing the buffers when a slab
+raises, multi-chunk → single-chunk reuse, and the pool-backed oracle capacity
+invariant (`backing_pages * block_size`, the reason the oracle cannot simply be
+shrunk to the prompt length). The published **INT8 KV server ceiling of
+54,272 is marked unqualified** in the root README long-context table and the
+benchmark rollup ladder: it was measured on the pre-fix route, and the fixed
+route's transient per-layer oracle cost makes it optimistic. A fresh
+server-route ceiling is required (probe first, ladder only to confirm).
+
 ## Hidden-plane alias adoption and the 232,448-token ladder — 2026-09-08 UTC
 
 The route-scoped single-plane hidden stream for layer_outer prefill was
