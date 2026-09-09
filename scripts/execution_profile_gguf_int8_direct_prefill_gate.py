@@ -53,7 +53,7 @@ from scripts.gguf_gdn_semantic_gate import (
     _load_suites,
     _run_teacher_forced_candidate,
 )
-from scripts.gguf_gdn_trajectory_gate import _run_logits_trajectory
+from scripts.gguf_gdn_trajectory_gate import _gdn_mode, _run_logits_trajectory
 from scripts.gguf_mtp_bench import build_chat_prompt
 from scripts.gguf_mtp_category_bench import prompt_sha256
 
@@ -69,7 +69,8 @@ PURE_INT8_ENV = {
 }
 DIRECT_ENV = "HIPENGINE_GGUF_INT8_PREFILL_DIRECT"
 KERNEL_ENV = "HIPENGINE_GGUF_INT8_PREFILL_KERNEL"
-ROUTE_ENV_KEYS = (*PURE_INT8_ENV, DIRECT_ENV, KERNEL_ENV)
+SLOT_LOCAL_AOTRITON_ENV = "HIPENGINE_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON"
+ROUTE_ENV_KEYS = (*PURE_INT8_ENV, DIRECT_ENV, KERNEL_ENV, SLOT_LOCAL_AOTRITON_ENV)
 
 
 class GateError(RuntimeError):
@@ -105,6 +106,104 @@ def _candidate(kernel: str) -> Candidate:
         strict_fallback="pure-INT8 oracle-bridge prefill (BF16 oracle + AOTriton)",
         environment=base,
     )
+
+
+def _slot_local_aotriton_candidate() -> Candidate:
+    """AOTriton admission on the slot-local transient-BF16-oracle prefill route.
+
+    Strict is the shipped default: oracle-owning layers fall back to the native
+    split-K paged kernel (16 query rows per batch). The candidate admits AOTriton
+    on those layers, which is what the scalar bulk parent and this gate's own
+    strict INT8 arithmetic already do. Both arms keep the BF16 oracle pair, so
+    the INT8-read arithmetic the ``int8_direct`` candidate changes is untouched;
+    only the attention reduction order over the oracle moves.
+
+    This candidate is only meaningful through ``--prefill-entry
+    packed_slot_local``: the flag has no effect on ``session.prefill``.
+    """
+
+    base = dict(PURE_INT8_ENV)
+    base[SLOT_LOCAL_AOTRITON_ENV] = "1"
+    return Candidate(
+        name="int8_slot_local_aotriton",
+        classification="T2",
+        mechanism=(
+            "slot-local full-attention prefill reads the transient BF16 oracle "
+            "pair through AOTriton instead of the native split-K paged kernel; "
+            "the retained INT8 write-through store and its scales are unchanged"
+        ),
+        strict_fallback=(
+            "native split-K paged attention over the same BF16 oracle "
+            f"({SLOT_LOCAL_AOTRITON_ENV}=0)"
+        ),
+        environment=base,
+    )
+
+
+def _packed_slot_local_prefill(session: Any, prompt_ids: Sequence[int]) -> Any:
+    """Prefill through the entry point every server request is forced onto.
+
+    ``_gguf_single_row_block_table_prefill_required`` routes every
+    ``int8_direct`` session here unconditionally, so a gate over the slot-local
+    attention flag must drive this path and not ``session.prefill``.
+    """
+
+    tokens = [int(token) for token in prompt_ids]
+    results = session.prefill_batch_native(
+        [tokens],
+        sessions=[session],
+        full_prompt_lengths=[len(tokens)],
+        return_logits=True,
+    )
+    if results is None or len(results) != 1 or results[0] is None:
+        raise GateError("packed slot-local prefill returned no result row")
+    return results[0]
+
+
+def _packed_trajectory(
+    session: Any,
+    *,
+    prompt_ids: Sequence[int],
+    mode: str,
+    forced_input_ids: Sequence[int] | None = None,
+    decode_steps: int = 0,
+) -> list[dict[str, Any]]:
+    """Packed-entry twin of ``_run_logits_trajectory`` / the teacher-forced runner.
+
+    Passing ``forced_input_ids`` teacher-forces the candidate onto the strict
+    trajectory; otherwise ``decode_steps`` free-running steps are taken.
+    """
+
+    session.reset()
+    with _gdn_mode(mode):
+        result = _packed_slot_local_prefill(session, prompt_ids)
+    trajectory = [
+        {
+            "token_id": int(result.token_id),
+            "logits": np.ascontiguousarray(result.logits, dtype=np.float32),
+        }
+    ]
+    if forced_input_ids is None:
+        current = int(result.token_id)
+        for _ in range(int(decode_steps)):
+            result = session.step(current, return_logits=True)
+            current = int(result.token_id)
+            trajectory.append(
+                {
+                    "token_id": current,
+                    "logits": np.ascontiguousarray(result.logits, dtype=np.float32),
+                }
+            )
+        return trajectory
+    for token_id in forced_input_ids:
+        result = session.step(int(token_id), return_logits=True)
+        trajectory.append(
+            {
+                "token_id": int(result.token_id),
+                "logits": np.ascontiguousarray(result.logits, dtype=np.float32),
+            }
+        )
+    return trajectory
 
 
 @contextmanager
@@ -227,6 +326,8 @@ def _capture(
     )
     from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
 
+    prefill_entry = str(getattr(args, "prefill_entry", "scalar_bulk"))
+
     compiler_version = (
         None
         if args.compiler_version_file is None
@@ -237,6 +338,23 @@ def _capture(
         str(row["id"]): build_chat_prompt(tokenizer, str(row["prompt"]))
         for row in prompt_rows
     }
+    # Optional deterministic left padding. AOTriton only engages at or above
+    # ``attn_aotriton_min_tokens`` rows, and the category/heldout suite is
+    # 39-71 tokens per prompt, so exercising the long-prompt attention regime
+    # needs a longer context behind the same final row. Padding goes on the
+    # LEFT so the evaluated final-row logits still belong to the real prompt's
+    # last token, and both arms consume byte-identical inputs. This makes the
+    # run a numerical-envelope gate over the padded shape; it is not a
+    # task-quality claim about the padded prompts.
+    min_prompt_rows = int(getattr(args, "min_prompt_rows", 0) or 0)
+    prompt_pad_rows: dict[str, int] = {pid: 0 for pid in prompt_tokens}
+    if min_prompt_rows > 0:
+        filler = int(getattr(args, "pad_token_id", 9707))
+        for prompt_id, tokens in list(prompt_tokens.items()):
+            deficit = min_prompt_rows - len(tokens)
+            if deficit > 0:
+                prompt_tokens[prompt_id] = [filler] * deficit + list(tokens)
+                prompt_pad_rows[prompt_id] = deficit
     # The direct route is only planned when no short-context BF16 mirror
     # exists (max_positions above the 8,192 mirror threshold), so the gate
     # session must exceed that threshold even for short suite prompts or
@@ -246,6 +364,23 @@ def _capture(
         _DIRECT_ROUTE_MIN_MAX_POSITIONS,
         max(len(tokens) for tokens in prompt_tokens.values()) + int(args.decode_steps) + 2,
     )
+    # Fail closed on the second way this gate can measure nothing. The
+    # slot-local candidate only diverges from strict where AOTriton actually
+    # engages, which needs a chunk of at least ``attn_aotriton_min_tokens``
+    # rows. The category suite is 39-71 tokens per prompt, so at the production
+    # 512 threshold both arms would run the identical native kernel and the gate
+    # would report a trivially identical pass.
+    if str(getattr(args, "candidate", "")) == "slot_local_aotriton":
+        threshold = int(args.attn_aotriton_min_tokens)
+        lengths = {pid: len(tokens) for pid, tokens in prompt_tokens.items()}
+        if not any(length >= threshold for length in lengths.values()):
+            raise GateError(
+                f"no suite prompt reaches the AOTriton threshold ({threshold} "
+                f"rows; longest prompt is {max(lengths.values())}, shortest "
+                f"{min(lengths.values())}), so both arms would run the native "
+                "kernel and the gate would measure nothing. Lower "
+                "--attn-aotriton-min-tokens or supply a long-context suite."
+            )
     captures: list[PromptCalibrationCapture] = []
     prompt_manifest: list[dict[str, Any]] = []
     strict_states: list[dict[str, Any]] = []
@@ -282,7 +417,14 @@ def _capture(
             with route_environment(PURE_INT8_ENV):
                 _rearm_bulk_workspace(session)
                 strict = tuple(
-                    _run_logits_trajectory(
+                    _packed_trajectory(
+                        session,
+                        prompt_ids=tokens,
+                        mode=str(args.baseline_gdn_mode),
+                        decode_steps=int(args.decode_steps),
+                    )
+                    if prefill_entry == "packed_slot_local"
+                    else _run_logits_trajectory(
                         session,
                         prompt_ids=tokens,
                         mode=str(args.baseline_gdn_mode),
@@ -299,7 +441,14 @@ def _capture(
                 with route_environment(candidate.environment):
                     _rearm_bulk_workspace(session)
                     run = tuple(
-                        _run_teacher_forced_candidate(
+                        _packed_trajectory(
+                            session,
+                            prompt_ids=tokens,
+                            mode=str(args.baseline_gdn_mode),
+                            forced_input_ids=forced,
+                        )
+                        if prefill_entry == "packed_slot_local"
+                        else _run_teacher_forced_candidate(
                             session,
                             prompt_ids=tokens,
                             forced_input_ids=forced,
@@ -328,6 +477,7 @@ def _capture(
                     "suite": str(row["suite"]),
                     "prompt_sha256": prompt_sha256(str(row["prompt"])),
                     "prompt_tokens": len(tokens),
+                    "left_pad_rows": int(prompt_pad_rows.get(prompt_id, 0)),
                     "prompt_token_ids_sha256": hashlib.sha256(
                         np.asarray(tokens, dtype="<i8").tobytes()
                     ).hexdigest(),
@@ -353,7 +503,17 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         raise GateError(f"model does not exist: {args.model}")
     if int(args.decode_steps) <= 0 or int(args.repeat_runs) < 3:
         raise GateError("decode steps must be positive and repeat runs must be at least three")
-    candidate = _candidate(str(args.kernel))
+    prefill_entry = str(getattr(args, "prefill_entry", "scalar_bulk"))
+    if str(args.candidate) == "slot_local_aotriton":
+        if prefill_entry != "packed_slot_local":
+            raise GateError(
+                "the slot_local_aotriton candidate has no effect on "
+                "session.prefill; rerun with --prefill-entry packed_slot_local "
+                "or the gate would measure nothing"
+            )
+        candidate = _slot_local_aotriton_candidate()
+    else:
+        candidate = _candidate(str(args.kernel))
     prompt_rows = _load_suites(args.prompts)
     if args.limit is not None:
         prompt_rows = prompt_rows[: max(0, int(args.limit))]
@@ -427,6 +587,21 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "complete_prompt_and_heldout_suite": complete_suite,
             "prompt_count": len(prompt_rows),
             "baseline_gdn_mode": str(args.baseline_gdn_mode),
+            "prefill_entry": prefill_entry,
+            "attn_aotriton_min_tokens": int(args.attn_aotriton_min_tokens),
+            "min_prompt_rows": int(getattr(args, "min_prompt_rows", 0) or 0),
+            "prompts_left_padded": bool(
+                any(int(entry.get("left_pad_rows", 0)) > 0 for entry in prompt_manifest)
+            ),
+            "aotriton_engaging_prompts": (
+                None
+                if str(args.candidate) != "slot_local_aotriton"
+                else sorted(
+                    str(entry["id"])
+                    for entry in prompt_manifest
+                    if int(entry["prompt_tokens"]) >= int(args.attn_aotriton_min_tokens)
+                )
+            ),
             "decode_steps": int(args.decode_steps),
             "teacher_forced_rows": sum(len(capture.strict) for capture in captures),
             "candidate_repeat_runs": int(args.repeat_runs),
@@ -445,6 +620,27 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model", type=Path, default=Path(DEFAULT_MODEL))
     parser.add_argument("--backend", default="auto")
     parser.add_argument("--kernel", choices=("flash", "sequential"), default="flash")
+    parser.add_argument(
+        "--candidate",
+        choices=("int8_direct_prefill", "slot_local_aotriton"),
+        default="int8_direct_prefill",
+        help=(
+            "int8_direct_prefill: the retained INT8-read candidate (default). "
+            "slot_local_aotriton: admit AOTriton on slot-local oracle layers; "
+            "requires --prefill-entry packed_slot_local."
+        ),
+    )
+    parser.add_argument(
+        "--prefill-entry",
+        choices=("scalar_bulk", "packed_slot_local"),
+        default="scalar_bulk",
+        help=(
+            "Which prefill entry point both arms drive. scalar_bulk is "
+            "session.prefill (default, the historical gate shape); "
+            "packed_slot_local is prefill_batch_native, the entry every "
+            "int8_direct server request is forced onto."
+        ),
+    )
     parser.add_argument("--prompts", action="append", type=Path, default=None)
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--baseline-gdn-mode", default="chain_lds32_direct_nonvolatile")
@@ -461,6 +657,24 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=512,
     )
+    parser.add_argument(
+        "--min-prompt-rows",
+        type=int,
+        default=0,
+        help=(
+            "Deterministically left-pad every suite prompt to at least this many "
+            "rows. Needed to reach the long-prompt attention regime with the "
+            "39-71-token category suite; padding is left-side so the evaluated "
+            "final row is still the real prompt's last token. Numerical-envelope "
+            "gate over the padded shape, not a task-quality claim."
+        ),
+    )
+    parser.add_argument(
+        "--pad-token-id",
+        type=int,
+        default=9707,
+        help="Filler token id used by --min-prompt-rows.",
+    )
     parser.add_argument("--use-wmma-prefill", action="store_true")
     parser.add_argument("--use-gemv-decode", action="store_true")
     parser.add_argument("--compiler-version-file", type=Path)
@@ -472,7 +686,18 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    prompt_paths = list(args.prompts) if args.prompts else [Path(DEFAULT_PROMPTS)]
+    # DEFAULT_PROMPTS is the (category, heldout) suite pair, so the no-``--prompts``
+    # default has to expand it rather than hand the tuple to Path().
+    default_prompts = (
+        DEFAULT_PROMPTS
+        if isinstance(DEFAULT_PROMPTS, (list, tuple))
+        else (DEFAULT_PROMPTS,)
+    )
+    prompt_paths = (
+        list(args.prompts)
+        if args.prompts
+        else [Path(entry) for entry in default_prompts]
+    )
     args.prompts = prompt_paths
     command = ["python3", str(Path(__file__).resolve()), *(sys.argv[1:] if argv is None else list(argv))]
     artifact = run(args, command=command)
