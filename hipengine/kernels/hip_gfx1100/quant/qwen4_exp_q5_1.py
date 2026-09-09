@@ -452,15 +452,15 @@ def qwen4_exp_q5_1_selected_weighted_sum_warp256_bf16_bf16_out(
 ) -> None:
     """Run the #22 R11 warp-per-expert selected Q5_1 weighted sum.
 
-    One 256-thread block per output column; warp w serves expert row w
-    (rows <= 8), lanes own 16-element half-block chunks with vectorized
+    One block per output column with 32*rows threads; warp w serves
+    expert row w (rows <= 12), lanes own 16-element half-block chunks with vectorized
     loads. Same per-row bf16 rounding + routing-weight fma semantics as
     the logical256_t64 incumbent; the intra-dot reduction order differs
     (T1 vs the incumbent).
     """
 
-    if rows <= 0 or rows > 8 or num_experts <= 0 or in_features <= 0 or out_features <= 0:
-        raise ValueError("rows (<=8), experts, and features must be positive")
+    if rows <= 0 or rows > 12 or num_experts <= 0 or in_features <= 0 or out_features <= 0:
+        raise ValueError("rows (<=12), experts, and features must be positive")
     if in_features % 32:
         raise ValueError("Q5_1 in_features must be divisible by 32")
     library = library or build_qwen4_exp_q5_1(load=True)

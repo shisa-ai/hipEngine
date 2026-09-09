@@ -1069,15 +1069,15 @@ def gguf_q4_k_selected_dual_q8_1_dp4a_silu_warp256_gemv_bf16_bf16_out(
 ) -> None:
     """Run the #22 R11 warp-per-expert Q8_1 DP4A Q4 dual+SiLU.
 
-    One 256-thread block per output column; warp w serves expert row w
-    (rows <= 8); lanes stride the 4-element groups by 32 with the same
+    One block per output column with 32*rows threads; warp w serves
+    expert row w (rows <= 12); lanes stride the 4-element groups by 32 with the same
     per-group DP4A arithmetic as the logical128/t64 incumbent. Warp
     shuffle reductions, no barriers. T1 versus the incumbent (reduction
     order differs; per-group expression preserved).
     """
 
-    if rows > 8:
-        raise ValueError("warp256 dual+SiLU requires rows <= 8")
+    if rows > 12:
+        raise ValueError("warp256 dual+SiLU requires rows <= 12")
     _validate_selected(x_rows, rows, num_experts, in_features, out_features, 256)
     library = library or build_gguf_q4_k_gemv(load=True)
     runtime = runtime or get_hip_runtime()

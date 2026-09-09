@@ -78,10 +78,12 @@ def main() -> None:
 
     gate_raw, _ = tensor("blk.4.ffn_gate_exps.weight")
     up_raw, _ = tensor("blk.4.ffn_up_exps.weight")
-    down_raw, _ = tensor("blk.4.ffn_down_exps.weight")
+    # blk.4's down is Q8_0; the Q5_1 down incumbent/kernels target the
+    # 43 Q5_1-down layers, so use blk.0's Q5_1 slab for the down leg.
+    down_raw, _ = tensor("blk.0.ffn_down_exps.weight")
 
-    hidden, ffn, experts = 2560, 512, 128
-    top_k = 8
+    hidden, ffn, experts = 2560, 640, 512
+    top_k = 10
     # qwen4exp ffn_*_exps layout: [experts, out, in] raw Q4_K/Q5_1 slabs.
     report = {
         "schema": 1,
