@@ -18,12 +18,15 @@ _SOURCE = Path(__file__).with_name("gguf_iq_wmma_prefill.hip")
 _OUTPUT_NAME = "gguf_iq_wmma_prefill.so"
 _SYMBOL = "hipengine_gguf_iq_wmma_prefill_bf16_bf16_out"
 _VARIANT = "dense_wmma_w4a16_prefill_bf16_bf16_out"
+_COOP_SYMBOL = "hipengine_gguf_iq_wmma_prefill_coop_bf16_bf16_out"
+_COOP_VARIANT = "dense_wmma_w4a16_prefill_coop_bf16_bf16_out"
 _TABLES = ("gguf_iq_dense_tables.h", "gguf_iq2_xs_dense_table.h", "gguf_iq3_s_grid.h")
 QUANTS = {"gguf_iq4_xs": 0, "gguf_iq4_nl": 1, "gguf_iq3_s": 2, "gguf_q3_k": 3,
           "gguf_iq3_xxs": 4, "gguf_iq2_s": 5, "gguf_iq2_xs": 6}
 # IQ4_NL blocks hold 32 elements; every other supported quant holds 256.
 _BLOCK_ELEMENTS = {"gguf_iq4_nl": 32}
 _HANDLES: dict[int, object] = {}
+_COOP_HANDLES: dict[int, object] = {}
 _LIBRARY = None
 
 
@@ -158,11 +161,54 @@ def launch(x_ptr: int, qweight_ptr: int, out_ptr: int, rows: int,
         (runtime or get_hip_runtime()).check(int(error))
 
 
+def launch_coop(x_ptr: int, qweight_ptr: int, out_ptr: int, rows: int,
+                in_features: int, out_features: int, *, quant: str,
+                output: str = "bf16", stream: int = 0,
+                library: ctypes.CDLL | None = None,
+                runtime: HipRuntime | None = None, **_ignored) -> None:
+    """Cooperative 8-wave shared-LDS W4A16 prefill (bit-exact sibling)."""
+
+    if output != "bf16":
+        raise ValueError("W4A16 prefill writes bf16 only")
+    if quant not in QUANTS:
+        raise ValueError(f"unsupported dense IQ quant for W4A16 prefill: {quant!r}")
+    block = _BLOCK_ELEMENTS.get(quant, 256)
+    if (rows <= 0 or in_features <= 0 or in_features % block
+            or out_features <= 0):
+        raise ValueError(
+            "W4A16 prefill requires positive dimensions and K divisible by "
+            f"{block}")
+    if not all((x_ptr, qweight_ptr, out_ptr)):
+        raise ValueError("W4A16 prefill pointers must be nonzero")
+    if in_features % 256:
+        # The cooperative kernel slabs K in 256-wide blocks; the one-wave
+        # owner handles any block-aligned K. Same ABI, bit-exact sibling.
+        return launch(x_ptr, qweight_ptr, out_ptr, rows, in_features,
+                      out_features, quant=quant, output=output, stream=stream,
+                      library=library, runtime=runtime)
+    library = library if isinstance(library, ctypes.CDLL) else _library_for_rows(rows)
+    if id(library) not in _COOP_HANDLES:
+        fn = getattr(library, _COOP_SYMBOL)
+        fn.argtypes = [ctypes.c_void_p] * 3 + [ctypes.c_int64] * 3 + \
+                      [ctypes.c_int, ctypes.c_void_p]
+        fn.restype = ctypes.c_int
+        _COOP_HANDLES[id(library)] = fn
+    fn = _COOP_HANDLES[id(library)]
+    error = fn(ctypes.c_void_p(x_ptr), ctypes.c_void_p(qweight_ptr),
+               ctypes.c_void_p(out_ptr), ctypes.c_int64(rows),
+               ctypes.c_int64(in_features), ctypes.c_int64(out_features),
+               ctypes.c_int(QUANTS[quant]), ctypes.c_void_p(stream))
+    if int(error) != HIP_SUCCESS:
+        (runtime or get_hip_runtime()).check(int(error))
+
+
 def register_gguf_iq_wmma_prefill_kernels(*, replace: bool = True) -> None:
     from functools import partial
     for quant in QUANTS:
         register(KernelKey("hip_gfx1100", "linear", quant, _VARIANT),
                  partial(launch, quant=quant), replace=replace)
+        register(KernelKey("hip_gfx1100", "linear", quant, _COOP_VARIANT),
+                 partial(launch_coop, quant=quant), replace=replace)
 
 
 register_gguf_iq_wmma_prefill_kernels()

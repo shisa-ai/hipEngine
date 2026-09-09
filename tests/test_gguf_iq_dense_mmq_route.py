@@ -24,7 +24,11 @@ _DENSE_VARIANT = iq_mmq._DENSE_VARIANT
 # The route the backend currently selects. W4A16 is the default because the
 # integer-MMQ variant breaches the calibrated envelope's absolute maximum-row
 # ceiling when scored against strict; both stay registered.
-_POLICY_VARIANT = "dense_wmma_w4a16_prefill_bf16_bf16_out"
+# The policy routes IQ4_XS to the cooperative shared-LDS owner (bit-exact
+# sibling of the one-wave kernel); the other W4A16 quants keep the one-wave
+# variant.
+_POLICY_VARIANT = "dense_wmma_w4a16_prefill_coop_bf16_bf16_out"
+_ONE_WAVE_VARIANT = "dense_wmma_w4a16_prefill_bf16_bf16_out"
 
 
 def _hip_available() -> bool:
@@ -94,7 +98,9 @@ def test_w4a16_needs_the_session_but_not_a_plane():
     """A workspace-free session is enough for W4A16 and marks the owner."""
     with iq_mmq.iq_dense_mmq_session(True):
         out = _dispatch("gguf_iq4_xs", rows=512, in_features=5120, out_features=17408)
-    assert out.key.variant == _POLICY_VARIANT
+    # The default backend (gfx1100) routes IQ4_XS to the cooperative
+    # shared-LDS owner; both W4A16 owners mark the session identically.
+    assert out.key.variant in (_POLICY_VARIANT, _ONE_WAVE_VARIANT)
     assert not iq_mmq.iq_dense_mmq_has_workspace()
 
 
@@ -142,7 +148,12 @@ def test_route_is_selected_inside_its_policy(backend, rows):
     with iq_mmq.iq_dense_mmq_session(True, workspace_ptr=1 << 20, workspace_nbytes=1 << 24):
         out = _dispatch("gguf_iq4_xs", rows=rows, in_features=5120,
                        out_features=17408, backend=backend)
-    assert out.key.variant == _POLICY_VARIANT
+    # gfx1100 routes IQ4_XS to the cooperative shared-LDS owner; gfx1151
+    # keeps the one-wave variant. Assert against the dispatching backend's
+    # own policy entry.
+    policy = backend_package_capability(
+        backend, "GGUF_IQ_DENSE_PREFILL_POLICY", {})
+    assert out.key.variant == policy["gguf_iq4_xs"]["variant"]
     assert out.abi == "raw"
 
 
@@ -179,7 +190,7 @@ def test_integer_mmq_inexpressible_quants_take_w4a16():
     with iq_mmq.iq_dense_mmq_session(True, workspace_ptr=1 << 20, workspace_nbytes=1 << 24):
         for quant in ("gguf_iq2_xs", "gguf_q3_k", "gguf_iq2_s"):
             out = _dispatch(quant, rows=512, in_features=5120, out_features=17408)
-            assert out.key.variant == _POLICY_VARIANT, quant
+            assert out.key.variant == _ONE_WAVE_VARIANT, quant
 
 
 def test_every_policy_quant_has_a_registered_owner():
@@ -212,7 +223,10 @@ def test_all_expressible_iq_quants_are_routed(quant):
     assert quant in policy
     with iq_mmq.iq_dense_mmq_session(True, workspace_ptr=1 << 20, workspace_nbytes=1 << 24):
         out = _dispatch(quant, rows=512, in_features=5120, out_features=17408)
-    assert out.key.variant == _POLICY_VARIANT
+    # The variant is quant-conditional on gfx1100 (IQ4_XS routes to the
+    # cooperative shared-LDS owner); assert against the dispatching
+    # backend's own policy entry.
+    assert out.key.variant == policy[quant]["variant"]
 
 
 def test_workspace_sizing_covers_activations_plus_metadata():

@@ -84,7 +84,13 @@ def test_is_the_dense_iq_prefill_default_on_both_hip_backends(backend):
     assert set(policy) == {"gguf_iq4_xs", "gguf_iq3_xxs", "gguf_iq3_s", "gguf_iq4_nl",
                            "gguf_q3_k", "gguf_iq2_s", "gguf_iq2_xs"}
     for quant, entry in policy.items():
-        assert entry["variant"] == w4a16._VARIANT, quant
+        # IQ4_XS routes to the cooperative shared-LDS owner on gfx1100
+        # (bit-exact sibling, same registered family); the one-wave variant
+        # remains the default for the other six quants and on gfx1151.
+        if backend == "hip_gfx1100" and quant == "gguf_iq4_xs":
+            assert entry["variant"] == w4a16._COOP_VARIANT, quant
+        else:
+            assert entry["variant"] == w4a16._VARIANT, quant
 
 
 # ------------------------------------------------------------------ validation
