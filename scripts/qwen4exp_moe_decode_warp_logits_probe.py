@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+import hashlib
 import json
 import os
 import sys
@@ -100,6 +101,9 @@ def main() -> None:
     p.add_argument("--model-root", type=Path, required=True)
     p.add_argument("--compiler-version-file", type=Path, required=True)
     p.add_argument("--case-id", action="append")
+    p.add_argument("--fixture", type=Path, default=None,
+                   help="alternate fixture in the canonical schema with relaxed "
+                        "matrix validation (e.g. the 18-prompt admission suite)")
     p.add_argument("--decode-steps", type=int, default=4)
     p.add_argument("--packet", choices=sorted(PACKETS), default="dual")
     p.add_argument("--emit-teacher", type=Path,
@@ -128,7 +132,14 @@ def main() -> None:
     resolved = resolve_runtime_profile(
         model=QWEN4_EXP_MODEL, backend=QWEN4_EXP_BACKEND,
         quant=QWEN4_EXP_QUANTS[1], profile=profile)
-    fixture, digest = load_fixture(DEFAULT_FIXTURE)
+    if a.fixture is None:
+        fixture, digest = load_fixture(DEFAULT_FIXTURE)
+    else:
+        payload = json.loads(a.fixture.read_text())
+        if int(payload.get("schema", -1)) != 1:
+            p.error("unsupported fixture schema")
+        fixture = payload
+        digest = hashlib.sha256(a.fixture.read_bytes()).hexdigest()
     index = load_gguf_index(discover_gguf_files(a.model_root)[0])
     generator = resolved.construct_generator(lambda: Qwen4ExpGGUFTextGenerator(
         model_path=a.model_root, weight_index=index,
