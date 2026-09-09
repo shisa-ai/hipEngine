@@ -141,6 +141,7 @@ def test_gfx1100_qwen38_dense_prefill_scratch_row_cap_bounds_declared_context() 
         "_manual_prefill_chunk_size",
         "_linear_prefill_layer_chunk_size",
         "_full_attention_prefill_layer_chunk_size",
+        "_dense_prefill_scratch_row_cap",
         "_prefill_scratch_rows",
     ):
         setattr(

@@ -70,6 +70,7 @@ from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
     qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans,
     qwen35_paged_full_attn_decode_split_k_warp_gate_bf16_spans,
     qwen35_paged_attn_prefill_int8_gqa_gate_bf16_out_spans,
+    qwen35_paged_attn_prefill_int8_gqa_gate_bf16_out_flash_spans,
     qwen35_paged_attn_prefill_int8_gqa_gate_fp16_spans,
     qwen35_paged_attn_prefill_int8_hadamard_group32_gqa_gate_fp16_spans,
     qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans,
@@ -4442,28 +4443,56 @@ class Qwen35GGUFFullStackRunner:
                 runtime=runtime,
             )
         elif direct_per_token_int8:
-            qwen35_paged_attn_prefill_int8_gqa_gate_bf16_out_spans(
-                scratch.full_query.ptr,
-                scratch.key_cache.ptr,
-                scratch.value_cache.ptr,
-                append_metadata.k_scale.ptr,
-                append_metadata.v_scale.ptr,
-                scratch.full_gate.ptr,
-                scratch.full_gated.ptr,
-                scratch.prefill_spans,
-                rows,
-                end,
-                scratch.block_size,
-                cfg.head_count,
-                cfg.head_count_kv,
-                cfg.key_length,
-                cfg.key_length,
-                1,
-                cfg.key_length ** -0.5,
-                stream=stream,
-                library=paged_attn_library,
-                runtime=runtime,
-            )
+            # GQA-grouped flash kernel by default (cooperative LDS tile
+            # staging, online softmax in registers); the sequential
+            # online-softmax kernel stays selectable for A/B and as the
+            # numerics reference.
+            if _gguf_int8_prefill_kernel() == "sequential":
+                qwen35_paged_attn_prefill_int8_gqa_gate_bf16_out_spans(
+                    scratch.full_query.ptr,
+                    scratch.key_cache.ptr,
+                    scratch.value_cache.ptr,
+                    append_metadata.k_scale.ptr,
+                    append_metadata.v_scale.ptr,
+                    scratch.full_gate.ptr,
+                    scratch.full_gated.ptr,
+                    scratch.prefill_spans,
+                    rows,
+                    end,
+                    scratch.block_size,
+                    cfg.head_count,
+                    cfg.head_count_kv,
+                    cfg.key_length,
+                    cfg.key_length,
+                    1,
+                    cfg.key_length ** -0.5,
+                    stream=stream,
+                    library=paged_attn_library,
+                    runtime=runtime,
+                )
+            else:
+                qwen35_paged_attn_prefill_int8_gqa_gate_bf16_out_flash_spans(
+                    scratch.full_query.ptr,
+                    scratch.key_cache.ptr,
+                    scratch.value_cache.ptr,
+                    append_metadata.k_scale.ptr,
+                    append_metadata.v_scale.ptr,
+                    scratch.full_gate.ptr,
+                    scratch.full_gated.ptr,
+                    scratch.prefill_spans,
+                    rows,
+                    end,
+                    scratch.block_size,
+                    cfg.head_count,
+                    cfg.head_count_kv,
+                    cfg.key_length,
+                    cfg.key_length,
+                    1,
+                    cfg.key_length ** -0.5,
+                    stream=stream,
+                    library=paged_attn_library,
+                    runtime=runtime,
+                )
         elif use_aotriton:
             aotriton_library = self._aotriton_prefill_library()
 
@@ -18128,32 +18157,57 @@ class Qwen35GGUFResidentSession:
     def _manual_prefill_chunk_size(self) -> int:
         return max(0, int(self.prefill_chunk_size or 0))
 
+    def _dense_prefill_scratch_row_cap(self, tokens: int) -> int | None:
+        """Geometry-qualified scratch-row ceiling for prefill chunk rows.
+
+        The dense scratch row-cap policy pins the bulk prefill scratch at
+        a fixed row count (1,024 for the H5120 MOSTLY_Q4_K_M geometry on
+        gfx1100 at capacities above 1K). Chunk resolution must clamp to it,
+        or ``for_chunk`` overflows the metadata buffers sized at allocation
+        (the 2026-09-09 pure-INT8 comparison-protocol crash: a 4,096-row
+        auto query chunk against a 1,024-row positions buffer).
+        """
+
+        runner = getattr(self, "runner", None)
+        if runner is None:
+            return None
+        cap = _gguf_dense_prefill_scratch_row_cap(runner, capacity=int(tokens))
+        return None if cap is None else int(cap)
+
     def _linear_prefill_layer_chunk_size(self, tokens: int) -> int:
         tokens = int(tokens)
         min_rows = int(getattr(self.runner.weights.config, "ssm_conv_kernel", 1)) if self.runner and self.runner.weights else 1
         manual = self._manual_prefill_chunk_size()
         if manual > 0:
-            return min(tokens, max(manual, min_rows)) if tokens >= min_rows else tokens
-        config = self.prefill_config or PrefillConfig()
-        size = self._smallest_positive_or_total(tokens, config.linear_chunk_size, config.moe_chunk_size)
+            size = manual
+        else:
+            config = self.prefill_config or PrefillConfig()
+            size = self._smallest_positive_or_total(tokens, config.linear_chunk_size, config.moe_chunk_size)
+        cap = self._dense_prefill_scratch_row_cap(tokens)
+        if cap is not None:
+            size = min(size, max(cap, min_rows))
         return min(tokens, max(size, min_rows)) if tokens >= min_rows else tokens
 
     def _full_attention_prefill_layer_chunk_size(self, tokens: int) -> int:
         tokens = int(tokens)
         manual = self._manual_prefill_chunk_size()
         if manual > 0:
-            return min(tokens, max(manual, 2)) if tokens > 1 else tokens
-        config = self.prefill_config or PrefillConfig()
-        if int(config.full_attn_query_chunk_size) > 0:
-            size = min(tokens, int(config.full_attn_query_chunk_size))
+            size = manual
         else:
-            size = self._smallest_positive_or_total(
-                tokens,
-                config.full_attn_post_chunk_size,
-                config.full_attn_rope_chunk_size,
-                config.moe_chunk_size,
-            )
-        return 2 if tokens > 1 and size == 1 else size
+            config = self.prefill_config or PrefillConfig()
+            if int(config.full_attn_query_chunk_size) > 0:
+                size = min(tokens, int(config.full_attn_query_chunk_size))
+            else:
+                size = self._smallest_positive_or_total(
+                    tokens,
+                    config.full_attn_post_chunk_size,
+                    config.full_attn_rope_chunk_size,
+                    config.moe_chunk_size,
+                )
+        cap = self._dense_prefill_scratch_row_cap(tokens)
+        if cap is not None:
+            size = min(size, max(cap, 2))
+        return min(tokens, max(size, 2)) if tokens > 1 else tokens
 
     def _ensure_prefill_aotriton_bridge(self) -> AotritonPrefillStreamBridge:
         runtime = self.runtime or get_hip_runtime()
@@ -29495,6 +29549,18 @@ def _gguf_int8_prefill_direct_enabled() -> bool:
     """
 
     return _env_flag(_GGUF_INT8_PREFILL_DIRECT_ENV, False)
+
+
+def _gguf_int8_prefill_kernel() -> str:
+    """Select the direct INT8 prefill attention kernel implementation."""
+
+    raw = (_env_value("HIPENGINE_GGUF_INT8_PREFILL_KERNEL") or "flash").strip().lower()
+    if raw not in ("flash", "sequential"):
+        raise ValueError(
+            "HIPENGINE_GGUF_INT8_PREFILL_KERNEL must be flash or sequential; "
+            f"got {raw!r}"
+        )
+    return raw
 
 
 def _gguf_verify_hidden_scratch_row_start(
