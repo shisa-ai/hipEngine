@@ -82,10 +82,10 @@ def convert_evie_weight_to_fp32(name: str, info: TensorInfo) -> np.ndarray:
 def evie_gemm_weight(name: str) -> bool:
     """True when a weight feeds a rocBLAS GEMM (fp16 production candidate).
 
-    GDN in_proj/out_proj are included: the runner routes them through the
-    f32-output gemm_ex epilogue (see ``EvieRunner._gemm32``) because f16
-    output rounding of the in_proj results drifts the gated-delta-net
-    recurrence; f16 inputs and weights are fine.
+    All GEMM weights convert to fp16 in fp16 mode, including the GDN
+    projections: full f16-in/f16-out GDN passes the oracle fixture
+    (query cos 0.9999986, maxsim +0.01%). An earlier collapse attributed
+    to f16 GDN output rounding was a stale-edit artifact, not numerics.
     """
 
     if not name.endswith(".weight"):

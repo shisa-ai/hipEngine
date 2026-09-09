@@ -1251,3 +1251,79 @@ extern "C" int hipengine_evie_scatter_heads_f16(
       head_stride);
   return static_cast<int>(hipGetLastError());
 }
+
+__global__ void evie_cast_f16_to_f32_strided_kernel(
+    const __half* __restrict__ x,
+    float* __restrict__ out,
+    int64_t rows,
+    int64_t cols,
+    int64_t out_stride) {
+  const int64_t total = rows * cols;
+  for (int64_t idx = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+       idx < total;
+       idx += (int64_t)gridDim.x * blockDim.x) {
+    const int64_t r = idx / cols;
+    const int64_t c = idx % cols;
+    out[r * out_stride + c] = __half2float(x[idx]);
+  }
+}
+
+extern "C" int hipengine_evie_cast_f16_to_f32_strided(
+    const void* x,
+    float* out,
+    int64_t rows,
+    int64_t cols,
+    int64_t out_stride,
+    hipStream_t stream) {
+  if (rows <= 0 || cols <= 0 || out_stride <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t total = rows * cols;
+  const int64_t blocks = (total + 255) / 256;
+  hipLaunchKernelGGL(
+      evie_cast_f16_to_f32_strided_kernel,
+      dim3(static_cast<unsigned int>(blocks)),
+      dim3(256),
+      0,
+      stream,
+      static_cast<const __half*>(x), out, rows, cols, out_stride);
+  return static_cast<int>(hipGetLastError());
+}
+
+__global__ void evie_copy_f32_strided_kernel(
+    const float* __restrict__ x,
+    float* __restrict__ out,
+    int64_t rows,
+    int64_t cols,
+    int64_t out_stride) {
+  const int64_t total = rows * cols;
+  for (int64_t idx = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+       idx < total;
+       idx += (int64_t)gridDim.x * blockDim.x) {
+    const int64_t r = idx / cols;
+    const int64_t c = idx % cols;
+    out[r * out_stride + c] = x[idx];
+  }
+}
+
+extern "C" int hipengine_evie_cast_f32_to_f32_strided(
+    const float* x,
+    float* out,
+    int64_t rows,
+    int64_t cols,
+    int64_t out_stride,
+    hipStream_t stream) {
+  if (rows <= 0 || cols <= 0 || out_stride <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t total = rows * cols;
+  const int64_t blocks = (total + 255) / 256;
+  hipLaunchKernelGGL(
+      evie_copy_f32_strided_kernel,
+      dim3(static_cast<unsigned int>(blocks)),
+      dim3(256),
+      0,
+      stream,
+      x, out, rows, cols, out_stride);
+  return static_cast<int>(hipGetLastError());
+}
