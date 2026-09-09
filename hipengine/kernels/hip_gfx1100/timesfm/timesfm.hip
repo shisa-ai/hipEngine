@@ -557,16 +557,20 @@ __global__ void transpose_heads_kernel(
     int Q,
     int H,
     int D) {
-  int64_t idx = blockIdx.x * (int64_t)blockDim.x + threadIdx.x;
-  int64_t total = (int64_t)B * H * Q * D;
-  if (idx >= total) return;
-  int d = idx % D;
-  int q = (idx / D) % Q;
-  int h = (idx / ((int64_t)D * Q)) % H;
-  int b = idx / ((int64_t)D * Q * H);
-  int64_t s = (((int64_t)b * H + h) * Q + q) * D + d;
-  int64_t dd = ((int64_t)b * Q + q) * (H * D) + h * D + d;
-  dst[dd] = src[s];
+  // One block per output row (b, q); D/4 half4 columns per row.
+  // Reads/writes are unit-stride in d within each head (80-element runs).
+  const int row = blockIdx.y;
+  if (row >= B * Q) return;
+  const int col = threadIdx.x;  // half4 index within the row: H * (D/4)
+  const int h = col / (D / 4);
+  const int d4 = col % (D / 4);
+  const int q = row % Q;
+  const int b = row / Q;
+  const int64_t s_off =
+      (((int64_t)b * H + h) * Q + q) * D + d4 * 4;
+  const int64_t d_off = (int64_t)row * (H * D) + h * D + d4 * 4;
+  uint2 v = *reinterpret_cast<const uint2*>(src + s_off);
+  *reinterpret_cast<uint2*>(dst + d_off) = v;
 }
 
 
@@ -649,6 +653,7 @@ __global__ void qkv_norm_scatter_kernel(
     cache_v[kv_dst + j + half] = v[j + half];
   }
 }
+
 
 
 // Flash-attention-style fused causal attention (FP16 production path).
@@ -986,6 +991,7 @@ extern "C" int timesfm_flash_attention_f16(
   return (int)hipGetLastError();
 }
 
+
 extern "C" int timesfm_attention_f16(
     const half_t* q_packed, const half_t* k, const half_t* v,
     const int* num_masked, const int* q_offset, half_t* out,
@@ -1173,9 +1179,13 @@ extern "C" int timesfm_transpose_heads_f16(
     const half_t* src, half_t* dst, int B, int Q, int H, int D,
     hipStream_t stream) {
   if (B <= 0 || Q <= 0 || H <= 0 || D <= 0) return (int)hipErrorInvalidValue;
-  int64_t total = (int64_t)B * H * Q * D;
-  hipLaunchKernelGGL(transpose_heads_kernel<half_t>, dim3(grid_for(total, kThreads)),
-                     dim3(kThreads), 0, stream, src, dst, B, Q, H, D);
+  if (D % 4 != 0) return (int)hipErrorInvalidValue;
+  // One block per output row; H*(D/4) threads, each moving one half4.
+  unsigned threads = (unsigned)(H * (D / 4));
+  if (threads > 1024) return (int)hipErrorInvalidValue;
+  dim3 grid(1, (unsigned)(B * Q));
+  hipLaunchKernelGGL(transpose_heads_kernel<half_t>, grid, dim3(threads), 0,
+                     stream, src, dst, B, Q, H, D);
   return (int)hipGetLastError();
 }
 

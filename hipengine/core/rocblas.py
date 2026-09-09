@@ -212,6 +212,7 @@ class Rocblas:
         in_features: int,
         out_features: int,
         stream: int = 0,
+        solution_index: int | None = None,
     ) -> None:
         """FP16 row-major NT GEMM with FP32 accumulation and FP16 output."""
 
@@ -225,7 +226,82 @@ class Rocblas:
             output_datatype=ROCBLAS_DATATYPE_F16_R,
             compute_datatype=ROCBLAS_DATATYPE_F32_R,
             stream=stream,
+            solution_index=solution_index,
         )
+
+    def gemm_ex_rowmajor_nt_fp16_solutions_f32(
+        self,
+        *,
+        rows: int,
+        in_features: int,
+        out_features: int,
+        max_solutions: int = 64,
+    ) -> list[int]:
+        """Enumerate rocBLAS solution indices for a row-major NT FP16/F32 GEMM.
+
+        Mirrors the argument order of ``_gemm_ex_rowmajor_nt_fp16`` (column-
+        major NT with m=out_features, n=rows, k=in_features).  Returns the
+        raw solution indices usable as ``solution_index``.
+        """
+
+        fn = getattr(self.library, "rocblas_gemm_ex_get_solutions", None)
+        if fn is None:
+            return []
+        if not hasattr(self, "_get_solutions_ffi"):
+            fn.restype = ctypes.c_int
+            fn.argtypes = [
+                ctypes.c_void_p, ctypes.c_int, ctypes.c_int,
+                ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                ctypes.c_void_p,
+                ctypes.c_void_p, ctypes.c_int, ctypes.c_int,
+                ctypes.c_void_p, ctypes.c_int, ctypes.c_int,
+                ctypes.c_void_p,
+                ctypes.c_void_p, ctypes.c_int, ctypes.c_int,
+                ctypes.c_void_p, ctypes.c_int, ctypes.c_int,
+                ctypes.c_int, ctypes.c_int, ctypes.c_uint32,
+                ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int),
+            ]
+            self._get_solutions_ffi = fn
+        fn = self._get_solutions_ffi
+        alpha = ctypes.c_float(1.0)
+        beta = ctypes.c_float(0.0)
+        count = ctypes.c_int(0)
+        status = fn(
+            ctypes.c_void_p(self.handle),
+            ROCBLAS_OPERATION_TRANSPOSE,
+            ROCBLAS_OPERATION_NONE,
+            out_features, rows, in_features,
+            ctypes.byref(alpha),
+            None, ROCBLAS_DATATYPE_F16_R, in_features,
+            None, ROCBLAS_DATATYPE_F16_R, in_features,
+            ctypes.byref(beta),
+            None, ROCBLAS_DATATYPE_F16_R, out_features,
+            None, ROCBLAS_DATATYPE_F16_R, out_features,
+            ROCBLAS_DATATYPE_F32_R,
+            ROCBLAS_GEMM_ALGO_SOLUTION_INDEX, 0,
+            None, ctypes.byref(count),
+        )
+        n = min(count.value, int(max_solutions))
+        if status != 0 or n <= 0:
+            return []
+        sols = (ctypes.c_int * n)()
+        size = ctypes.c_int(n)
+        fn(
+            ctypes.c_void_p(self.handle),
+            ROCBLAS_OPERATION_TRANSPOSE,
+            ROCBLAS_OPERATION_NONE,
+            out_features, rows, in_features,
+            ctypes.byref(alpha),
+            None, ROCBLAS_DATATYPE_F16_R, in_features,
+            None, ROCBLAS_DATATYPE_F16_R, in_features,
+            ctypes.byref(beta),
+            None, ROCBLAS_DATATYPE_F16_R, out_features,
+            None, ROCBLAS_DATATYPE_F16_R, out_features,
+            ROCBLAS_DATATYPE_F32_R,
+            ROCBLAS_GEMM_ALGO_SOLUTION_INDEX, 0,
+            sols, ctypes.byref(size),
+        )
+        return list(sols[: size.value])
 
     def gemm_ex_strided_batched_f16_f32acc(
         self,

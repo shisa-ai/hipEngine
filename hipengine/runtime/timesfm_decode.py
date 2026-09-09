@@ -13,6 +13,7 @@ runs on device.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 
 import numpy as np
@@ -150,6 +151,7 @@ class TimesFMGPUDecoder:
         *,
         rocblas: Rocblas | None = None,
         precision: str = "fp16",
+        autotune_gemm: bool = True,
     ):
         if precision not in ("fp16", "fp32"):
             raise ValueError("precision must be 'fp16' or 'fp32'")
@@ -164,6 +166,8 @@ class TimesFMGPUDecoder:
         ).astype(np.float32)
         self._timescale = malloc(timescale.nbytes)
         copy_host_to_device(self._timescale, host_array_ptr(timescale))
+        self._gemm_solutions: dict[tuple[int, int, int], int] = {}
+        self._autotune_gemm = autotune_gemm
         self._fp16_weights: dict[str, DeviceBuffer] = {}
         raw = {name: alloc.buffer.ptr for name, alloc in loaded.weights.tensors.items()}
         info = {name: alloc for name, alloc in loaded.weights.tensors.items()}
