@@ -131,12 +131,23 @@ output-format floor.
 
 ### C. Decode — the untouched 1.63× gap
 
-7. Decode is 7.71 tok/s against the plain file's 12.56 on the same host.
-   rows=1 is below `min_rows` everywhere, so every IQ quant decodes on the
-   strict GEMV by design. Start with a decode kernel census to find what
-   dominates, then assign decode-side owners;
-   [`GFX1100-SHAPE-AWARE-GEMV-CAMPAIGN.md`](GFX1100-SHAPE-AWARE-GEMV-CAMPAIGN.md)
-   may hold transferable GEMV tuning.
+7. ~~Decode is 7.71 tok/s against the plain file's 12.56 on the same host.~~
+   **Censused and attacked on gfx1100, 2026-09-09** (W7900): the strict
+   IQ4_XS GEMV owns 45% of decode (117 launches/token, ~230 µs each) and
+   is compute/latency-bound, not memory-bound (the payload is L2-resident).
+   Two results: the strict kernel's codebook load was fused into a
+   byte-indexed LDS LUT (bit-exact, +18% leaf, decode 16.5 → 17.45 tok/s
+   shipped), and a local32 decode owner was built (2.5-2.9x per launch,
+   22.76 tok/s with the route on) but is **unrouted**: the teacher-forced
+   probe breaches the §6.1 absolute max-row ceiling on occasional contexts
+   (5.85e-2 at one seed of eight; top-1 100% everywhere; the error is pure
+   summation-order noise, so a compensated-summation variant is the
+   error-reduction lever). Enabling is a one-line policy edit pending the
+   full 162-row gate. The W4A16 crossover was also measured: it wins only
+   from 12 rows and loses 4x at rows=1, so decode cannot route through it.
+   Artifact:
+   `benchmarks/results/2026-09-09-w7900-ud-iq-decode-local32.json`.
+   On the zbook the 1.63x gap stands as recorded.
 
 ### D. Desktop gfx1151 re-measure (the move)
 

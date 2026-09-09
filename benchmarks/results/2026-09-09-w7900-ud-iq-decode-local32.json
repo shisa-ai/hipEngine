@@ -1,0 +1,127 @@
+{
+ "schema": 1,
+ "date": "2026-09-09",
+ "status": "retained_candidate_unrouted",
+ "host": "w7900-desktop",
+ "hardware": "AMD Radeon Pro W7900 (gfx1100), GPU0, quiet host",
+ "backend": "hip_gfx1100",
+ "purpose": "UD route-plan item C, decode side: census the strict IQ4_XS decode GEMV (45% of decode), land a local32-style decode owner, and gate it.",
+ "changes": {
+  "hipengine/kernels/hip_gfx1100/quant/gguf_iq_dense.hip": [
+   "strict kernel Q0 phase B: byte-indexed fused codebook LDS LUT replaces the extract + __constant__ load chain (bit-exact; mutation bisection showed the codebook load alone cost 24% of the kernel)",
+   "new gguf_iq4_xs_local32_gemv_kernel<WAVES>: one wave per 8 output columns, lane-owned contiguous K, 2 u32 payload loads per column-block, fused LUT, split-K across the block waves for narrow-N shapes"
+  ],
+  "hipengine/kernels/hip_gfx1100/quant/gguf_iq_dense.py": [
+   "launch_local32 wrapper + local32_gemv_bf16_bf16_out registration on both backends"
+  ],
+  "hipengine/runtime/gguf_linear.py": [
+   "_iq_dense_decode_dispatch hook (rows=1, session-gated, policy-declared)"
+  ],
+  "hipengine/runtime/qwen35_gguf_runner.py": [
+   "_iq_dense_mmq_context admits a decode-only policy; the dense-IQ session is now open during step/step_rows/step_async_top1 decode"
+  ],
+  "hipengine/runtime/gguf_decode_graph.py": [
+   "decode graph capture opens the dense-IQ session so a captured graph does not bake in the strict owner"
+  ],
+  "hipengine/kernels/hip_gfx1100/__init__.py": [
+   "GGUF_IQ_DENSE_DECODE_POLICY declared EMPTY (candidate unrouted, see below)"
+  ],
+  "tests/test_gguf_iq_local32_decode.py": "new: 17 tests",
+  "scripts/gguf_iq_local32_decode_gate.py": "teacher-forced probe gate",
+  "scripts/gguf_iq_w4a16_crossover.py": "W4A16-vs-GEMV crossover (task-6 data)"
+ },
+ "measurements": {
+  "strict_gemv_leaf_rows1": {
+   "blk.0.ffn_gate N=17408 K=5120": "baseline 0.229 ms; with fused LUT 0.188 ms (+18%, bit-exact)",
+   "roofline": "pure-read pattern 755 GB/s; the 47.3 MB payload is L2-resident (96 MB L2), so the kernel is compute/latency-bound, not DRAM-bound",
+   "mutation_bisection": "FMA skeleton 0.026 ms; +payload loads 0.079; +codebook load 0.174; full 0.229"
+  },
+  "local32_leaf_rows1_vs_strict": {
+   "blk.0.ffn_gate (17408x5120) w2": "0.080 ms (2.47x), max_rel 8e-5",
+   "blk.0.ffn_down (5120x17408) w4": "0.079 ms (2.52x), max_rel 1e-5",
+   "blk.11.attn_q (12288x5120) w2": "0.053 ms (2.45x), max_rel 9e-5",
+   "blk.36.attn_qkv (10240x5120) w2": "0.043 ms (2.88x), max_rel 2.3e-4",
+   "note": "waves: 2 for N>=8192, 4 below; split-K wave count swept per shape"
+  },
+  "end_to_end_published_protocol": {
+   "before_this_session": {
+    "prefill": 413.3,
+    "decode": 16.5
+   },
+   "shipped_after (route off, strict + fused LUT)": {
+    "prefill": 409.32,
+    "decode": 17.45,
+    "note": "the fused-LUT strict change is bit-exact and ships"
+   },
+   "candidate (route on, local32 decode)": {
+    "prefill": 412.5,
+    "decode": 22.76
+   },
+   "decode_census_after": "IQ4_XS decode GPU time 0.208 -> 0.083 s (2.5x); remaining owners are shared MoE/Q4-T16/attention paths at plain parity"
+  },
+  "gate_probe": {
+   "script": "scripts/gguf_iq_local32_decode_gate.py",
+   "method": "incumbent (route off) fixes the trajectory eagerly; candidate teacher-forced on the same tokens; per-position logit KL via evaluate_logits; 512-token random-token contexts, 64 positions each",
+   "per_seed": {
+    "seed_7": {
+     "kl_mean": 0.0011736770687292434,
+     "kl_max": 0.037685589734430605,
+     "top1": 1.0,
+     "probe_gate_pass": false
+    },
+    "seed_11": {
+     "kl_mean": 0.0008866804733304058,
+     "kl_max": 0.01756590776800146,
+     "top1": 1.0,
+     "probe_gate_pass": true
+    },
+    "seed_23": {
+     "kl_mean": 0.00030808883264907575,
+     "kl_max": 0.007356921091984839,
+     "top1": 1.0,
+     "probe_gate_pass": true
+    },
+    "seed_31": {
+     "kl_mean": 3.740130588107346e-05,
+     "kl_max": 0.00018387226615183285,
+     "top1": 1.0,
+     "probe_gate_pass": true
+    },
+    "seed_47": {
+     "kl_mean": 9.663543290743622e-05,
+     "kl_max": 0.0018017372799416782,
+     "top1": 1.0,
+     "probe_gate_pass": true
+    },
+    "seed_59": {
+     "kl_mean": 0.0021885333127884994,
+     "kl_max": 0.05846689659729917,
+     "top1": 1.0,
+     "probe_gate_pass": false
+    },
+    "seed_71": {
+     "kl_mean": 8.075292101026633e-05,
+     "kl_max": 0.0006952065161418797,
+     "top1": 1.0,
+     "probe_gate_pass": true
+    },
+    "seed_83": {
+     "kl_mean": 5.0176692090577185e-05,
+     "kl_max": 0.00031664066712507434,
+     "top1": 1.0,
+     "probe_gate_pass": true
+    }
+   },
+   "verdict": "NOT ROUTED. 6/8 contexts pass the section-6.1 mean (1e-3) but seed 59 breaches both the mean (2.19e-3) and the absolute max-row ceiling (5.85e-2 > 5e-2). Top-1 agreement 100% everywhere; prefill-position sanity KL exactly 0. The error is pure summation-order noise (per-element products identical to the strict owner), so unlike the integer-MMQ route there is no arithmetic defect, but a route that cannot provably pass stays unrouted. Enabling is a one-line policy edit pending the full 162-row production-referenced gate or an envelope decision."
+  },
+  "w4a16_crossover_task6_data": {
+   "script": "scripts/gguf_iq_w4a16_crossover.py",
+   "finding": "W4A16 beats the strict GEMV only from 12 rows (large shapes; 24 for the narrowest) and is 4x SLOWER at rows=1, so decode cannot route through W4A16 and the shared min_rows=8 is wrong for W4A16 on gfx1100 (0.68x at 8 rows)"
+  }
+ },
+ "limitations": [
+  "The gate probe uses random-token 512-token contexts, not the campaign 18-prompt category fixture (not present in this tree); the full production-referenced gate remains owed.",
+  "Leaf max_rel numbers are against the strict owner on real tensors, single seed.",
+  "tests/test_gguf_linear_dispatch.py segfaults on the clean tree at HEAD (Q6 raw-WMMA fake-escape, documented pre-existing); all other touched suites green (833 + 17 + 6)."
+ ]
+}

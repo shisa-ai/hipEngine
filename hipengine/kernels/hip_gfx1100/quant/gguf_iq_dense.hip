@@ -162,7 +162,7 @@ __launch_bounds__(128, R == 1 ? 16 : 2) __global__ void gguf_iq_dense_strict_ker
     for (int r=0;r<R;++r)
         #pragma unroll
         for (int t=0;t<T;++t) acc[r][t] = 0.0f;
-    constexpr int RB = 4;                        // quant blocks per barrier round
+    constexpr int RB = 4;
     __shared__ float s_d[RB][T*16];               // d or d*scale per (column, group)
     __shared__ uint32_t s_aux[RB][T*8];           // IQ3_XXS per-group sign/khigh word
     __shared__ uint8_t s_qs[RB][T*8];             // IQ2_S per-group index high bits
@@ -182,6 +182,26 @@ __launch_bounds__(128, R == 1 ? 16 : 2) __global__ void gguf_iq_dense_strict_ker
         else if constexpr (Q == 4) src = iq3_xxs_grid;
         else src = reinterpret_cast<const uint8_t*>(IQ2_XS_GRID_PACKED);
         for (int i = tid; i < GRID_BYTES; i += 128) s_grid[i] = src[i];
+        __syncthreads();
+    }
+    // IQ4_XS fused codebook LUT. The strict phase-B dequant is a dependent
+    // load chain per element: payload byte -> nibble extract -> __constant__
+    // iq4_values[code]. Measured on the W7900 (2026-09-09 mutation bisection,
+    // blk.0.ffn_gate 5120->17408 at rows=1) the codebook load alone costs
+    // 24% of the kernel. The nibble half is thread-invariant (j = tid & 31
+    // for both h phases), so a 512-entry byte-indexed LDS table fuses the
+    // extract and the codebook into one ds_read: s_cb[byte] is the low
+    // nibble's codebook value, s_cb[256+byte] the high one. Values are
+    // entry-for-entry iq4_values, and the multiply order is unchanged, so the
+    // FP sequence per element is identical.
+    constexpr int CB_FLOATS = Q == 0 ? 512 : 0;
+    __shared__ float s_cb[CB_FLOATS ? CB_FLOATS : 1];
+    if constexpr (CB_FLOATS) {
+        for (int i = tid; i < CB_FLOATS; i += 128) {
+            const int byte = i & 255;
+            const int nib = i >= 256 ? (byte >> 4) : (byte & 15);
+            s_cb[i] = float(iq4_values[nib]);
+        }
         __syncthreads();
     }
     if constexpr (Q == 1) {
@@ -260,8 +280,8 @@ __launch_bounds__(128, R == 1 ? 16 : 2) __global__ void gguf_iq_dense_strict_ker
                         const int g = (k & 255) >> 5;  // group within the quant block
                         float wv;
                         if constexpr (Q == 0) {
-                            int code = (b[8+g*16+(j&15)] >> (4*(j>>4))) & 15;
-                            wv = s_d[bi][t*16+g] * float(iq4_values[code]);
+                            const int bytev = b[8+g*16+(j&15)];
+                            wv = s_d[bi][t*16+g] * s_cb[bytev + ((j>>4) ? 256 : 0)];
                         } else if constexpr (Q == 4) {
                             const uint32_t aux = s_aux[bi][t*8+g];
                             int index = b[2+g*8+j/4];
@@ -348,6 +368,108 @@ template<int Q> void run(const void* x, const void* w, void* out,
         default: run_rows<Q,1>(x,w,out,rows,K,N,output,stream); return;
     }
 }
+
+// Local32 IQ4_XS decode GEMV: one wave per 8 output columns, each lane owns
+// 8 contiguous K values, and the whole 8-column payload for one 256-element
+// block is read as two u32 loads per column. This is the raw-layout analogue
+// of the retained pack8/T16 local32 decode owner: the IQ4_XS in-block
+// geometry gives every lane a lane-constant nibble half and a consecutive
+// 8-byte payload window (element k lives in byte 8+g*16+(k&15) at nibble
+// (k&31)>>4; a lane's k = tid*8..tid*8+7 spans exactly one 32-group, one
+// nibble half and one 8-byte window), and the byte-indexed fused codebook
+// LUT from the strict kernel is reused so each element costs one BFE, one
+// ds_read, one mul and one FMA. No phase-A/B split, no per-round barriers,
+// and 4x fewer L1 requests per block than the strict owner (64 u32 vs 256 u8
+// per column-block; each payload u32 is shared by two lanes as an L1 hit).
+// The accumulation order differs from the strict contract (lane-grouped
+// contiguous k, wave32 shuffle tree, cross-wave serial sum), so this is a
+// gated approximate owner, not a strict replacement: routes admitting it owe
+// the production-referenced accuracy gate.
+//
+// WAVES > 1 is split-K across the block's waves for the narrow-N shapes
+// (ffn_down at N=5120 leaves only N/8 = 640 single-wave blocks on a 96-CU
+// part, which starves the machine). Each wave strides the K block range;
+// per-column partials cross-wave reduce through LDS in a fixed wave order,
+// so the owner stays deterministic. The K-range partition changes the sum
+// order again, which the gate already covers.
+template<int WAVES>
+__global__ __launch_bounds__(32 * WAVES, 16 / WAVES > 0 ? 16 / WAVES : 1)
+void gguf_iq4_xs_local32_gemv_kernel(
+    const uint16_t* __restrict__ x, const uint8_t* __restrict__ w,
+    uint16_t* __restrict__ out, int64_t K, int64_t N) {
+    constexpr int COLS = 8;
+    const int tid = threadIdx.x;
+    const int wave = tid >> 5;
+    const int lane = tid & 31;
+    const int64_t n0 = int64_t(blockIdx.x) * COLS;
+    const int64_t blocks_per_row = K / 256;
+    const int64_t col_bytes = blocks_per_row * 136;
+
+    // Lane-constant in-block geometry (see the header comment).
+    const int g = lane >> 2;                // this lane's 32-element group
+    const int nib = (lane >> 1) & 1;         // its nibble half
+    const int byteoff = 8 + g * 16 + (lane & 1) * 8;  // payload window base
+
+    // Fused byte-indexed codebook LUT: [v] is iq4_values[v&15] and [256+v] is
+    // iq4_values[v>>4], so one ds_read replaces the extract-and-codebook-load
+    // pair. Built once; the leading barrier of this kernel guards it.
+    __shared__ float s_cb[512];
+    for (int i = tid; i < 512; i += 32 * WAVES)
+        s_cb[i] = float(iq4_values[i >= 256 ? ((i & 255) >> 4) : (i & 15)]);
+    __syncthreads();
+
+    float acc[COLS];
+#pragma unroll
+    for (int t = 0; t < COLS; ++t) acc[t] = 0.0f;
+
+    for (int64_t blk = wave; blk < blocks_per_row; blk += WAVES) {
+        // This lane's 8 activation values (contiguous k window).
+        const uint16_t* xp = x + blk * 256 + lane * 8;
+        float xv[8];
+#pragma unroll
+        for (int j = 0; j < 8; ++j) xv[j] = bf16_load(xp[j]);
+#pragma unroll
+        for (int t = 0; t < COLS; ++t) {
+            if (n0 + t >= N) break;
+            const uint8_t* b = w + (n0 + t) * col_bytes + blk * 136;
+            // Header: d (f16) and hi (u16) share one u32; the scale nibbles
+            // for all 8 groups share the next one.
+            const uint32_t hdr = *reinterpret_cast<const uint32_t*>(b);
+            const uint32_t scl = *reinterpret_cast<const uint32_t*>(b + 4);
+            const int scale = (((scl >> (8 * (g >> 1) + 4 * (g & 1))) & 15) |
+                               (((hdr >> (16 + 2 * g)) & 3) << 4)) - 32;
+            const float s_d = half_load(b) * float(scale);
+            const uint32_t p0 = *reinterpret_cast<const uint32_t*>(b + byteoff);
+            const uint32_t p1 = *reinterpret_cast<const uint32_t*>(b + byteoff + 4);
+            const uint32_t p[2] = {p0, p1};
+#pragma unroll
+            for (int j = 0; j < 8; ++j) {
+                const int code_byte = int((p[j >> 2] >> (8 * (j & 3))) & 0xffu);
+                const float wv = s_d * s_cb[code_byte + (nib << 8)];
+                acc[t] += xv[j] * wv;
+            }
+        }
+    }
+#pragma unroll
+    for (int t = 0; t < COLS; ++t)
+        for (int delta = 16; delta; delta >>= 1)
+            acc[t] += __shfl_down(acc[t], delta);
+    __shared__ float xwave[WAVES > 1 ? WAVES : 1][COLS];
+    if (lane == 0) {
+#pragma unroll
+        for (int t = 0; t < COLS; ++t) xwave[wave][t] = acc[t];
+    }
+    __syncthreads();
+    if (tid < COLS) {
+        const int t = tid;
+        if (n0 + t < N) {
+            float total = 0.0f;
+#pragma unroll
+            for (int wv2 = 0; wv2 < WAVES; ++wv2) total += xwave[wv2][t];
+            out[n0 + t] = bf16_store(total);
+        }
+    }
+}
 }
 extern "C" int hipengine_gguf_q3_k_embedding(const void* ids, const void* w,
     void* out, int64_t rows, int64_t K, int64_t vocab, void* stream) {
@@ -356,6 +478,39 @@ extern "C" int hipengine_gguf_q3_k_embedding(const void* ids, const void* w,
     gguf_q3_k_embedding_kernel<<<dim3((K+255)/256,rows),256,0,(hipStream_t)stream>>>(
         (const int64_t*)ids,(const uint8_t*)w,(uint16_t*)out,K,vocab);
     return int(hipGetLastError());
+}
+
+extern "C" int hipengine_gguf_iq4_xs_local32_gemv(const void* x,
+    const void* w, void* out, int64_t rows, int64_t K, int64_t N,
+    int waves, void* stream) {
+    if (!x || !w || !out || rows != 1 || K <= 0 || K % 256 || N <= 0 || N % 8)
+        return int(hipErrorInvalidValue);
+    const dim3 grid(unsigned(N / 8));
+    const hipStream_t s = (hipStream_t)stream;
+    int err;
+    switch (waves) {
+        case 1:
+            err = (gguf_iq4_xs_local32_gemv_kernel<1><<<grid, 32, 0, s>>>(
+                (const uint16_t*)x, (const uint8_t*)w, (uint16_t*)out, K, N),
+                int(hipGetLastError()));
+            return err;
+        case 2:
+            err = (gguf_iq4_xs_local32_gemv_kernel<2><<<grid, 64, 0, s>>>(
+                (const uint16_t*)x, (const uint8_t*)w, (uint16_t*)out, K, N),
+                int(hipGetLastError()));
+            return err;
+        case 4:
+            err = (gguf_iq4_xs_local32_gemv_kernel<4><<<grid, 128, 0, s>>>(
+                (const uint16_t*)x, (const uint8_t*)w, (uint16_t*)out, K, N),
+                int(hipGetLastError()));
+            return err;
+        case 8:
+            err = (gguf_iq4_xs_local32_gemv_kernel<8><<<grid, 256, 0, s>>>(
+                (const uint16_t*)x, (const uint8_t*)w, (uint16_t*)out, K, N),
+                int(hipGetLastError()));
+            return err;
+        default: return int(hipErrorInvalidValue);
+    }
 }
 
 extern "C" int hipengine_gguf_iq_dense(const void* x,const void* w,void* out,

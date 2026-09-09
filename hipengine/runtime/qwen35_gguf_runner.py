@@ -19391,11 +19391,14 @@ class Qwen35GGUFResidentSession:
         return buffer
 
     def _iq_dense_mmq_context(self):
-        """Bind the dense raw-IQ integer-MMQ prefill workspace (UD item 3).
+        """Bind the dense raw-IQ execution-owner session (UD items 3 and C).
 
-        Binding is what admits the route; the backend policy then decides which
-        quants and row counts take it. Without this context every raw-IQ
-        projection keeps the strict per-row GEMV owner.
+        Binding is what admits the approximate dense-IQ routes; the backend
+        policies then decide which quants and row counts take them. Without
+        this context every raw-IQ projection keeps the strict per-row GEMV
+        owner. The prefill policy (W4A16 / integer MMQ) and the decode policy
+        (local32) are gated independently; either one is reason to open the
+        session, so a decode-only backend is not silently unrouted.
         """
 
         if not bool(getattr(self, "use_iq_dense_mmq", True)):
@@ -19404,7 +19407,14 @@ class Qwen35GGUFResidentSession:
             self.backend, "GGUF_IQ_DENSE_PREFILL_POLICY", {}
         )
         if not policy:
-            return iq_dense_mmq_session(False)
+            decode_policy = backend_package_capability(
+                self.backend, "GGUF_IQ_DENSE_DECODE_POLICY", {}
+            )
+            if not decode_policy:
+                return iq_dense_mmq_session(False)
+            # Decode-only owners read the caller's buffer like W4A16; a
+            # workspace-less session is enough and allocates nothing.
+            return iq_dense_mmq_session(True)
         # Only the integer-MMQ route consumes an activation plane. When the
         # backend routes dense IQ prefill through W4A16, open the session
         # without one: it still marks this prefill as the execution owner, but
@@ -22340,7 +22350,7 @@ class Qwen35GGUFResidentSession:
         src = self._hidden_a
         dst = self._hidden_b
         captures: dict[int, np.ndarray] = {}
-        with gemv_decode_session(self.use_gemv_decode):
+        with gemv_decode_session(self.use_gemv_decode), self._iq_dense_mmq_context():
             for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
                 for slot in slots:
                     scratch = slot_scratch[slot]
@@ -22539,7 +22549,7 @@ class Qwen35GGUFResidentSession:
         gpu_stage_recorder.start()
         try:
             self._refresh_dms_decode_owner_marker()
-            with gemv_decode_session(self.use_gemv_decode):
+            with gemv_decode_session(self.use_gemv_decode), self._iq_dense_mmq_context():
                 hidden_ptr = self._run_token_to_final_hidden(
                     int(token_id),
                     position=self._position,
@@ -22569,7 +22579,7 @@ class Qwen35GGUFResidentSession:
         if position is not None and int(position) != self._position:
             raise ValueError(f"position {position} does not match session cursor {self._position}")
         self._refresh_dms_decode_owner_marker()
-        with gemv_decode_session(self.use_gemv_decode):
+        with gemv_decode_session(self.use_gemv_decode), self._iq_dense_mmq_context():
             hidden_ptr = self._run_token_to_final_hidden(
                 int(token_id),
                 position=self._position,
