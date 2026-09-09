@@ -14944,6 +14944,10 @@ class Qwen35GGUFResidentSession:
     kv_storage_layout: str = field(default="uniform", init=False)
     int8_kv_value_bf16: bool = field(default=False, init=False)
     int8_kv_no_mirror_qualified: bool = field(default=False, init=False)
+    # Set per prefill call by the chunk-outer packed executor when the prompt
+    # spans more than one chunk, so the BF16 oracle is keyed per INT8 layer
+    # instead of shared. See ``_int8_prefill_oracle_cache_for_layer``.
+    _int8_prefill_oracle_per_layer: bool = field(default=False, init=False)
     int8_bf16_prefix_full_attention_layers: int = field(default=0, init=False)
     int8_bf16_full_attention_layer_indices: tuple[int, ...] = field(default=(), init=False)
     _decode_graphs: list[object] = field(default_factory=list, init=False)
@@ -18520,10 +18524,18 @@ class Qwen35GGUFResidentSession:
             raise RuntimeError("GGUF resident session is closed")
         layer = int(layer_id)
         lifetime_plan = getattr(self, "_int8_prefill_lifetime_plan", None)
+        # A shared pair is only sound under a layer-outer executor, where a
+        # layer's whole pass completes before the next layer reuses the pair.
+        # The packed slot-local executor is chunk-outer (chunks outside, layers
+        # inside), so from the second chunk on every layer would attend over the
+        # previous chunk's last layer's K/V. ``_prefill_batch_native_impl`` sets
+        # the flag below for exactly those multi-chunk calls, which then pay one
+        # pair per INT8 layer as this function's contract requires.
         cache_key = (
             -1
             if lifetime_plan is not None
             and lifetime_plan.mode == "layer_outer_shared_oracle"
+            and not bool(getattr(self, "_int8_prefill_oracle_per_layer", False))
             else layer
         )
         cached = self._int8_prefill_oracle_buffers.get(cache_key)
@@ -22047,6 +22059,9 @@ class Qwen35GGUFResidentSession:
                 )
                 if callable(release):
                     release()
+                # Never let a multi-chunk call's per-layer keying leak into a
+                # later single-chunk call, which would read an unwritten pair.
+                session._int8_prefill_oracle_per_layer = False
 
     def _prefill_batch_native_impl(
         self,
@@ -22141,6 +22156,15 @@ class Qwen35GGUFResidentSession:
             prompt_tuple,
             row_capacity=row_capacity,
         )
+        # This executor runs chunk-outer/layer-inner. A shared BF16 oracle pair
+        # is only sound layer-outer, so any multi-chunk call must own one pair
+        # per INT8 layer (see ``_int8_prefill_oracle_cache_for_layer``). Decide
+        # once, before the first slab: switching keys mid-call would leave the
+        # per-layer prefix unwritten. ``prefill_batch_native``'s finally clears
+        # it alongside the oracle release.
+        oracle_per_layer = len(chunks) > 1
+        for session in session_tuple:
+            session._int8_prefill_oracle_per_layer = oracle_per_layer
         backend = str(getattr(self, "backend", "") or "")
         final_output_mask_enabled = bool(
             backend not in {"", "auto"}
