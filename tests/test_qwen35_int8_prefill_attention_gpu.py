@@ -216,3 +216,115 @@ def test_qwen35_int8_prefill_attention_matches_numpy_reference(_runtime, _attent
         _free(_runtime, bufs)
 
     np.testing.assert_allclose(actual.astype(np.float32), expected.astype(np.float32), rtol=2.0e-2, atol=2.0e-3)
+
+
+def test_qwen35_int8_prefill_attention_bf16_out_matches_numpy_reference(
+    _runtime, _attention_lib
+) -> None:
+    """BF16-output sibling: identical arithmetic, BF16-rounded gated output.
+
+    The GGUF resident route consumes ``full_gated`` as BF16 (the attn_output
+    projection's activation dtype), so the direct INT8 prefill attention must
+    store BF16 bits; the fp16-output symbols remain the PARO fp16-pipeline
+    contract.
+    """
+
+    from hipengine.core.device import Device
+    from hipengine.core.dtype import DType
+    from hipengine.core.tensor import Tensor
+    from hipengine.kernels.hip_gfx1100.attention import (
+        qwen35_paged_attn_prefill_int8_gqa_gate_bf16_out_spans,
+    )
+    from hipengine.kvcache import KVLiveSpans, KVScaleMetadata
+
+    rng = np.random.default_rng(0x8836)
+    rows = 6
+    block_size = 4
+    blocks = 3
+    num_q_heads = 4
+    num_kv_heads = 2
+    head_dim = 16
+    scale = head_dim ** -0.5
+
+    query = (rng.standard_normal((rows, num_q_heads, head_dim)) * 0.15).astype(np.float32)
+    key_cache = rng.integers(-12, 13, size=(blocks, block_size, num_kv_heads, head_dim), dtype=np.int8)
+    value_cache = rng.integers(-10, 11, size=(blocks, block_size, num_kv_heads, head_dim), dtype=np.int8)
+    k_scale = rng.uniform(0.008, 0.025, size=(blocks, block_size, num_kv_heads)).astype(np.float32)
+    v_scale = rng.uniform(0.006, 0.02, size=(blocks, block_size, num_kv_heads)).astype(np.float32)
+    gate = (rng.standard_normal((rows, num_q_heads, head_dim)) * 0.25).astype(np.float16)
+    block_table = np.tile(np.arange(blocks, dtype=np.int32), (rows, 1))
+    context_counts = np.full((rows,), rows, dtype=np.int64)
+    row_positions = np.arange(rows, dtype=np.int64)
+    expected = _reference_int8_prefill(
+        query,
+        key_cache,
+        value_cache,
+        k_scale,
+        v_scale,
+        gate,
+        block_table,
+        context_counts,
+        row_positions,
+        scale=scale,
+    )
+    # The bf16-out variant rounds the same gated value to BF16 bits.
+    expected_bf16 = _f32_to_bf16_f32(expected.astype(np.float32))
+
+    bufs = []
+    try:
+        query_dev = _upload(_runtime, bufs, query)
+        key_dev = _upload(_runtime, bufs, key_cache)
+        value_dev = _upload(_runtime, bufs, value_cache)
+        k_scale_dev = _upload(_runtime, bufs, k_scale)
+        v_scale_dev = _upload(_runtime, bufs, v_scale)
+        gate_dev = _upload(_runtime, bufs, gate)
+        table_dev = _upload(_runtime, bufs, block_table)
+        counts_dev = _upload(_runtime, bufs, context_counts)
+        positions_dev = _upload(_runtime, bufs, row_positions)
+        out_dev = _alloc(_runtime, bufs, expected.nbytes)
+
+        device = Device("hip", 0)
+        metadata = KVScaleMetadata(
+            k_scale=Tensor.from_handle(k_scale_dev.ptr, k_scale.shape, DType.FP32, device),
+            v_scale=Tensor.from_handle(v_scale_dev.ptr, v_scale.shape, DType.FP32, device),
+            scale_dtype=DType.FP32,
+        )
+        spans = KVLiveSpans.paged_uniform(
+            block_table=Tensor.from_handle(table_dev.ptr, block_table.shape, DType.INT32, device),
+            live_counts=Tensor.from_handle(counts_dev.ptr, context_counts.shape, DType.INT64, device),
+            max_live_count=rows,
+            storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+            row_positions=Tensor.from_handle(positions_dev.ptr, row_positions.shape, DType.INT64, device),
+            span_role="prefill",
+            scale_metadata=metadata,
+        )
+
+        qwen35_paged_attn_prefill_int8_gqa_gate_bf16_out_spans(
+            query_dev.ptr,
+            key_dev.ptr,
+            value_dev.ptr,
+            k_scale_dev.ptr,
+            v_scale_dev.ptr,
+            gate_dev.ptr,
+            out_dev.ptr,
+            spans,
+            rows,
+            rows,
+            block_size,
+            num_q_heads,
+            num_kv_heads,
+            head_dim,
+            head_dim,
+            1,
+            scale,
+            library=_attention_lib,
+            runtime=_runtime,
+        )
+        actual = _download(_runtime, out_dev, expected.shape, np.uint16)
+    finally:
+        _free(_runtime, bufs)
+
+    actual_bf16 = (actual.astype(np.uint32) << 16).view(np.float32)
+    np.testing.assert_allclose(
+        actual_bf16, expected_bf16.astype(np.float32), rtol=2.0e-2, atol=2.0e-3
+    )

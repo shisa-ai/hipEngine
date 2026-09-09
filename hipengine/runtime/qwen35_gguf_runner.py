@@ -69,6 +69,8 @@ from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
     qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_parallel_reduce_spans,
     qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans,
     qwen35_paged_full_attn_decode_split_k_warp_gate_bf16_spans,
+    qwen35_paged_attn_prefill_int8_gqa_gate_bf16_out_spans,
+    qwen35_paged_attn_prefill_int8_gqa_gate_fp16_spans,
     qwen35_paged_attn_prefill_int8_hadamard_group32_gqa_gate_fp16_spans,
     qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans,
 )
@@ -4291,12 +4293,19 @@ class Qwen35GGUFFullStackRunner:
             and append_metadata is not None
             and append_metadata.granularity == "hadamard_group32"
         )
-        if direct_hadamard_int8:
+        direct_per_token_int8 = (
+            scratch.append_spans.storage_dtype == DType.INT8_PER_TOKEN_HEAD
+            and append_metadata is not None
+            and append_metadata.granularity == "per_token_head"
+            and scratch.prefill_spans.storage_dtype == DType.INT8_PER_TOKEN_HEAD
+        )
+        direct_int8_prefill = direct_hadamard_int8 or direct_per_token_int8
+        if direct_int8_prefill:
             if (
                 scratch.prefill_spans.storage_dtype != DType.INT8_PER_TOKEN_HEAD
                 or scratch.prefill_spans.scale_metadata is not append_metadata
             ):
-                raise RuntimeError("GGUF direct Hadamard INT8 prefill requires matching append/attention metadata")
+                raise RuntimeError("GGUF direct INT8 prefill requires matching append/attention metadata")
             bf16_to_f32(
                 scratch.full_v.ptr,
                 scratch.full_key_raw.ptr,
@@ -4396,7 +4405,7 @@ class Qwen35GGUFFullStackRunner:
             raise ValueError("aotriton_min_tokens must be non-negative")
         use_aotriton = bool(
             allow_aotriton
-            and not direct_hadamard_int8
+            and not direct_int8_prefill
             and threshold > 0
             and rows >= threshold
             and _gguf_aotriton_prefill_allowed(self.backend)
@@ -4411,6 +4420,29 @@ class Qwen35GGUFFullStackRunner:
 
         if direct_hadamard_int8:
             qwen35_paged_attn_prefill_int8_hadamard_group32_gqa_gate_fp16_spans(
+                scratch.full_query.ptr,
+                scratch.key_cache.ptr,
+                scratch.value_cache.ptr,
+                append_metadata.k_scale.ptr,
+                append_metadata.v_scale.ptr,
+                scratch.full_gate.ptr,
+                scratch.full_gated.ptr,
+                scratch.prefill_spans,
+                rows,
+                end,
+                scratch.block_size,
+                cfg.head_count,
+                cfg.head_count_kv,
+                cfg.key_length,
+                cfg.key_length,
+                1,
+                cfg.key_length ** -0.5,
+                stream=stream,
+                library=paged_attn_library,
+                runtime=runtime,
+            )
+        elif direct_per_token_int8:
+            qwen35_paged_attn_prefill_int8_gqa_gate_bf16_out_spans(
                 scratch.full_query.ptr,
                 scratch.key_cache.ptr,
                 scratch.value_cache.ptr,
@@ -10709,6 +10741,7 @@ def _plan_gguf_int8_prefill_lifetime(
     bf16_full_attention_layers: int,
     has_bf16_mirror: bool,
     hidden_buffer_count: int,
+    direct_int8_prefill: bool = False,
 ) -> _GGUFInt8PrefillLifetimePlan:
     """Return the lower-peak exact-prefill lifetime without model-name gates."""
 
@@ -10783,6 +10816,32 @@ def _plan_gguf_int8_prefill_lifetime(
             required_hidden_capacity=chunk_rows,
             oracle_buffer_count=0,
         )
+    if direct_int8_prefill:
+        # Direct (oracle-free) INT8 prefill attention: the retained INT8
+        # store is written through and read back directly (the PARO route's
+        # "streaming_direct" structure), so no BF16 oracle pair exists at
+        # any capacity and chunk-sized hidden storage is strictly cheaper
+        # than the full-capacity layer_outer planes.
+        direct_saving = (
+            layer_outer_hidden_bytes
+            + layer_outer_token_bytes
+            - chunk_hidden_bytes
+            - chunk_token_bytes
+        )
+        return _GGUFInt8PrefillLifetimePlan(
+            mode="chunk_outer_direct_int8",
+            int8_full_attention_layers=int8_layers,
+            oracle_pair_bytes=0,
+            layer_local_oracle_bytes=0,
+            chunk_hidden_bytes=chunk_hidden_bytes,
+            layer_outer_hidden_bytes=layer_outer_hidden_bytes,
+            chunk_token_bytes=chunk_token_bytes,
+            layer_outer_token_bytes=layer_outer_token_bytes,
+            projected_peak_delta_bytes=direct_saving,
+            projected_peak_saving_bytes=direct_saving,
+            required_hidden_capacity=chunk_rows,
+            oracle_buffer_count=0,
+        )
 
     projected_delta = (
         layer_outer_hidden_bytes
@@ -10854,6 +10913,9 @@ def _plan_gguf_int8_prefill_lifetime_for_session(
         hidden_buffer_count=_gguf_prefill_hidden_buffer_count(
             runner,
             rows=int(scratch_rows),
+        ),
+        direct_int8_prefill=(
+            not has_bf16_mirror and _gguf_int8_prefill_direct_enabled()
         ),
     )
 # B2: opt-in fused selected-expert MoE FFN megakernel for rows==1 raw-Q4_K decode.
@@ -18254,15 +18316,39 @@ class Qwen35GGUFResidentSession:
         full_bf16_mirror_cache = getattr(self.scratch, "full_bf16_mirror_cache", None)
         if full_bf16_mirror_cache is not None:
             bf16_mirror_cache = full_bf16_mirror_cache(layer_id)
-        if bf16_mirror_cache is None:
-            oracle_key_cache, oracle_value_cache = self._int8_prefill_oracle_cache_for_layer(layer_id)
-        else:
-            oracle_key_cache, oracle_value_cache = bf16_mirror_cache
         retained_key_cache, retained_value_cache = self.scratch.full_cache(layer_id)
         retained_append_spans = self._int8_retained_prefill_spans(
             bulk_scratch.append_spans,
             metadata,
         )
+        lifetime_plan = getattr(self, "_int8_prefill_lifetime_plan", None)
+        if (
+            bf16_mirror_cache is None
+            and getattr(lifetime_plan, "mode", None) == "chunk_outer_direct_int8"
+        ):
+            # Direct (oracle-free) INT8 prefill: the attention K/V source is
+            # the retained INT8 store itself, written through with INT8
+            # append spans and read back through the same retained physical
+            # page table (no BF16 oracle, no retained double-write).
+            direct_prefill_spans = self._int8_retained_prefill_spans(
+                bulk_scratch.prefill_spans,
+                metadata,
+            )
+            return replace(
+                bulk_scratch,
+                key_cache=retained_key_cache,
+                value_cache=retained_value_cache,
+                append_spans=retained_append_spans,
+                prefill_spans=direct_prefill_spans,
+                retained_key_cache=None,
+                retained_value_cache=None,
+                retained_append_spans=None,
+                int8_kv_value_bf16=False,
+            )
+        if bf16_mirror_cache is None:
+            oracle_key_cache, oracle_value_cache = self._int8_prefill_oracle_cache_for_layer(layer_id)
+        else:
+            oracle_key_cache, oracle_value_cache = bf16_mirror_cache
         return replace(
             bulk_scratch,
             key_cache=oracle_key_cache,
@@ -29387,6 +29473,28 @@ def _int8_layer_outer_shared_oracle_route(session: object) -> bool:
         return False
     plan = getattr(session, "_int8_prefill_lifetime_plan", None)
     return getattr(plan, "mode", None) == "layer_outer_shared_oracle"
+
+
+_GGUF_INT8_PREFILL_DIRECT_ENV = "HIPENGINE_GGUF_INT8_PREFILL_DIRECT"
+
+
+def _gguf_int8_prefill_direct_enabled() -> bool:
+    """Oracle-free direct INT8 prefill attention on the GGUF resident route.
+
+    Ports the PARO route's ``streaming_direct`` structure to the GGUF
+    INT8 layers: prefill attention reads the retained INT8 store (with
+    per-token/head scales) directly instead of a temporary BF16 oracle
+    pair, and the INT8 prefill lifetime plan models zero oracle cost so
+    the route plans chunk-sized hidden storage instead of full-capacity
+    layer_outer planes. Prefill numerics change (attention reads
+    dequantized INT8 K/V), so the gate is default OFF pending the
+    production-profile numerics campaign; the PARO route treats the
+    direct path as the memory-pressure/long-context option for the same
+    reason (it is also slower than the AOTriton BF16 oracle bridge).
+    Env "1" opts in; env "0" is the explicit rollback if promoted.
+    """
+
+    return _env_flag(_GGUF_INT8_PREFILL_DIRECT_ENV, False)
 
 
 def _gguf_verify_hidden_scratch_row_start(

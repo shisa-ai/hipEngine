@@ -5533,3 +5533,26 @@ Env "0" is the explicit rollback. Fold this gate into the DMS
 `HIPENGINE_LAYER_OUTER_HIDDEN_ALIAS` decision (or remove whichever env
 becomes redundant) once both routes have carried their adopted evidence
 through a same-suite release cycle without a rollback invocation.
+
+
+## 2026-09-09 GGUF direct-INT8 prefill attention — default-off gate plus a slow kernel
+
+`HIPENGINE_GGUF_INT8_PREFILL_DIRECT` ports the PARO route's
+`streaming_direct` structure to the GGUF resident INT8 layers: prefill
+attention reads the retained INT8 store directly (new BF16-output kernel
+sibling `qwen35_paged_attn_prefill_int8_gqa_gate_bf16_out_spans`), the
+BF16 oracle pair is never allocated, and the lifetime plan resolves to
+`chunk_outer_direct_int8` with chunk-sized hidden planes. Measured at
+8,192 tokens on the RX 7900 XTX: 32/32 real-prompt greedy tokens match
+the oracle route, but prefill is **4.6x slower** (761.6 -> 164.2 tok/s) -
+the groupwise INT8 prefill kernel is a sequential online-softmax loop,
+unlike the AOTriton BF16 bridge. The gate stays default OFF until (a) the
+direct prefill attention kernel is tiled/optimized to near-AOTriton
+speed, and (b) the production-profile numerics campaign covers the
+INT8-read prefill arithmetic. Remove the gate (and route) if that
+campaign rejects it; otherwise fold the promotion into the same
+auto-memory-pressure selection the PARO route uses. Related latent bug
+found and documented: the pre-existing `direct_hadamard_int8` GGUF
+branch is dead code whose fp16 output dtype also mismatches the BF16
+`full_gated` consumer - it now shares the fixed out type but remains
+unexercised; do not enable it without its own e2e gate.

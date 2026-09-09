@@ -87,6 +87,9 @@ _SYMBOL_PREFILL_GQA_GATE_BF16_DECODE_ORDER = (
     "hipengine_qwen35_paged_full_attn_prefill_gqa_gate_bf16_decode_order_spans"
 )
 _SYMBOL_PREFILL_GQA_GATE_INT8_F32 = "hipengine_qwen35_paged_full_attn_prefill_gqa_gate_int8_scale_f32_spans"
+_SYMBOL_PREFILL_GQA_GATE_INT8_F32_BF16OUT = (
+    "hipengine_qwen35_paged_full_attn_prefill_gqa_gate_int8_scale_f32_bf16out_spans"
+)
 _SYMBOL_PREFILL_GQA_GATE_INT8_FP16 = "hipengine_qwen35_paged_full_attn_prefill_gqa_gate_int8_scale_fp16_spans"
 _SYMBOL_PREFILL_GQA_GATE_INT8_HADAMARD_GROUP32_F32 = "hipengine_qwen35_paged_full_attn_prefill_gqa_gate_int8_hadamard_group32_scale_f32_spans"
 _SYMBOL_PREFILL_GQA_GATE_INT8_HADAMARD_GROUP32_FP16 = "hipengine_qwen35_paged_full_attn_prefill_gqa_gate_int8_hadamard_group32_scale_fp16_spans"
@@ -1747,6 +1750,105 @@ def qwen35_paged_attn_prefill_int8_gqa_gate_fp16_spans(
         ctypes.c_void_p(stream),
     )
     _check_launch(runtime, err)
+
+
+def qwen35_paged_attn_prefill_int8_gqa_gate_bf16_out_spans(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    k_scale_ptr: int,
+    v_scale_ptr: int,
+    gate_ptr: int,
+    out_ptr: int,
+    spans: KVLiveSpans,
+    rows: int,
+    max_context_len: int,
+    block_size: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    gate_stride1: int,
+    gate_stride2: int,
+    scale: float,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run streaming causal GQA prefill over INT8 per-token/head K/V (BF16 out).
+
+    Identical arithmetic to ``qwen35_paged_attn_prefill_int8_gqa_gate_fp16_spans``
+    except the gated output is stored as BF16 bits for the GGUF resident
+    (BF16-pipeline) route, matching every other owner of the ``full_gated``
+    scratch buffer that feeds the attn_output projection.
+    """
+
+    block_table_len = _check_int8_prefill_gqa_shape(
+        spans,
+        rows,
+        max_context_len,
+        block_size,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        k_scale_ptr=k_scale_ptr,
+        v_scale_ptr=v_scale_ptr,
+    )
+    _check_positive(gate_stride1, "gate_stride1")
+    _check_positive(gate_stride2, "gate_stride2")
+    library = library or build_qwen35_paged_attn_decode(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _int8_prefill_gqa_bf16out_symbol(spans))
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_float,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    row_positions_ptr = 0 if spans.row_positions is None else spans.row_positions.ptr
+    err = fn(
+        ctypes.c_void_p(query_ptr),
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(k_scale_ptr),
+        ctypes.c_void_p(v_scale_ptr),
+        ctypes.c_void_p(gate_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_void_p(row_positions_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(max_context_len),
+        ctypes.c_int64(block_size),
+        ctypes.c_int64(block_table_len),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_int64(gate_stride1),
+        ctypes.c_int64(gate_stride2),
+        ctypes.c_float(scale),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
 
 
 def qwen35_paged_attn_prefill_int8_hadamard_group32_gqa_gate_fp16_spans(
@@ -4306,6 +4408,14 @@ def _int8_prefill_gqa_symbol(spans: KVLiveSpans) -> str:
     return _SYMBOL_PREFILL_GQA_GATE_INT8_F32
 
 
+def _int8_prefill_gqa_bf16out_symbol(spans: KVLiveSpans) -> str:
+    metadata = spans.scale_metadata
+    scale_dtype = metadata.scale_dtype if metadata is not None else None
+    if scale_dtype == DType.FP16:
+        raise ValueError("GGUF bf16-out INT8 prefill requires fp32 scales")
+    return _SYMBOL_PREFILL_GQA_GATE_INT8_F32_BF16OUT
+
+
 def _int8_hadamard_group32_prefill_gqa_symbol(spans: KVLiveSpans) -> str:
     metadata = spans.scale_metadata
     scale_dtype = metadata.scale_dtype if metadata is not None else None
@@ -4460,6 +4570,16 @@ def register_qwen35_paged_attn_decode_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "paged_attn_prefill", "int8_per_token_head", "per_token_head_gqa_gate_fp16_spans"),
         qwen35_paged_attn_prefill_int8_gqa_gate_fp16_spans,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "paged_attn_prefill",
+            "int8_per_token_head",
+            "per_token_head_gqa_gate_bf16_out_spans",
+        ),
+        qwen35_paged_attn_prefill_int8_gqa_gate_bf16_out_spans,
         replace=replace,
     )
     register(
