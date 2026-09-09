@@ -188,20 +188,39 @@ def main() -> None:
                 assert prefill_events == 0, (
                     "MoE graph ran during prefill", prefill_events)
                 decode_events = graph_events
+                # only the qsa/gdn MoE decode keys embed the warp flags at a
+                # fixed position; other MoeGraphCache users (different key
+                # layouts) are out of scope for this gate and recorded.
+                def _warp_fields(ev):
+                    key = ev["key"]
+                    if len(key) > KEY_WARP_DOWN_INDEX and key[0] in {"qsa", "gdn"}:
+                        return key[KEY_WARP_INDEX], key[KEY_WARP_DOWN_INDEX]
+                    return None
+                out_of_scope = [
+                    tuple(ev["key"][:2]) for ev in decode_events
+                    if _warp_fields(ev) is None
+                ]
                 if enabled == "1":
                     for ev in decode_events:
-                        assert ev["key"][KEY_WARP_INDEX] == "1", (
+                        fields = _warp_fields(ev)
+                        if fields is None:
+                            continue
+                        assert fields[0] == "1", (
                             "candidate arm replayed a non-warp graph", ev)
-                        assert ev["key"][KEY_WARP_DOWN_INDEX] == "fast", (
+                        assert fields[1] == "fast", (
                             "candidate arm replayed a non-fast-down graph", ev)
                 else:
                     for ev in decode_events:
-                        assert ev["key"][KEY_WARP_INDEX] == "0", (
+                        fields = _warp_fields(ev)
+                        if fields is None:
+                            continue
+                        assert fields[0] == "0", (
                             "incumbent arm replayed a warp graph", ev)
-                        assert ev["key"][KEY_WARP_DOWN_INDEX] == "0", (
+                        assert fields[1] == "0", (
                             "incumbent arm replayed a fast-down graph", ev)
                 modes = {}
                 layers = set()
+                oos_layers = sorted(set(out_of_scope))
                 for ev in decode_events:
                     modes[ev["mode"]] = modes.get(ev["mode"], 0) + 1
                     layers.add((ev["key"][0], ev["key"][1]))
@@ -225,6 +244,7 @@ def main() -> None:
                     "layout_sha256": state["layout_sha256"],
                     "graph_modes": modes,
                     "graph_layers": len(layers),
+                    "out_of_scope_graph_layers": oos_layers,
                     "step_seconds": step_seconds,
                     "state_buffers": {
                         str(name): np.ascontiguousarray(raw)
