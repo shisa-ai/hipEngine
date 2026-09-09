@@ -190,37 +190,7 @@ class EvieRunner:
     def _k(self, symbol: str, argtypes: list) -> "ctypes._FuncPtr":
         return _fn(self.library, symbol, argtypes)
 
-    def _gemm32(self, x_ptr: int, w_ptr: int, out_ptr: int, rows: int, fin: int, fout: int) -> None:
-        """GDN in_proj_qkv GEMM (the recurrence-critical projection).
-
-        In fp16 mode this runs FP16 inputs with an FP32 output: the f32-out
-        epilogue is required because f16 rounding of the qkv outputs (k/v
-        feed the persistent delta-rule state) drifts the recurrence
-        (f16-out collapses query cosine to 0.015). The other GDN
-        projections (z/b/a, out_proj) use the fast f16-out path — verified
-        insensitive. In fp32 mode this is the plain strict SGEMM.
-        """
-
-        if self.precision != "fp16":
-            self.rocblas.sgemm_rowmajor_nt(
-                x_ptr, w_ptr, out_ptr, rows=rows, in_features=fin, out_features=fout
-            )
-            return
-        n = rows * fin
-        if self._cast16_scratch is None or self._cast16_scratch.nbytes < n * 2 + _GEMM_PAD_BYTES:
-            if self._cast16_scratch is not None:
-                hip_free(self._cast16_scratch)
-            self._cast16_scratch = _malloc_committed(n * 2 + _GEMM_PAD_BYTES)
-        err = self._k("hipengine_evie_cast_f32_to_f16", [_P, _P, _I, _S])(
-            _P(x_ptr), _P(self._cast16_scratch.ptr), _I(n), _S(0)
-        )
-        self._check(err, "cast f32->f16")
-        self.rocblas.gemm_ex_rowmajor_nt_fp16_f32_out(
-            self._cast16_scratch.ptr, w_ptr, out_ptr,
-            rows=rows, in_features=fin, out_features=fout,
-        )
-
-    def _gemm(self, x_ptr: int, w_ptr: int, out_ptr: int, rows: int, fin: int, fout: int) -> None:
+    def _gemm(self, x_ptr: int, w_ptr: int, out_ptr: int, rows: int, fin: int, fout: int, out_stride: int | None = None) -> None:
         """Row-major NT GEMM; fp16 production path casts x and keeps fp32 out."""
 
         if self.precision != "fp16":
@@ -253,10 +223,19 @@ class EvieRunner:
             in_features=fin,
             out_features=fout,
         )
-        err = self._k("hipengine_evie_cast_f16_to_f32", [_P, _P, _I, _S])(
-            _P(self._gemm16_out.ptr), _P(out_ptr), _I(n_out), _S(0)
-        )
-        self._check(err, "cast f16->f32")
+        if out_stride is None or out_stride == fout:
+            err = self._k("hipengine_evie_cast_f16_to_f32", [_P, _P, _I, _S])(
+                _P(self._gemm16_out.ptr), _P(out_ptr), _I(n_out), _S(0)
+            )
+            self._check(err, "cast f16->f32")
+        else:
+            err = self._k(
+                "hipengine_evie_cast_f16_to_f32_strided", [_P, _P, _I, _I, _I, _S]
+            )(
+                _P(self._gemm16_out.ptr), _P(out_ptr), _I(rows), _I(fout),
+                _I(out_stride), _S(0),
+            )
+            self._check(err, "cast f16->f32 strided")
 
     def _to_dev(self, host: np.ndarray) -> DeviceBuffer:
         host = np.ascontiguousarray(host, dtype=np.float32)
@@ -893,7 +872,10 @@ class EvieRunner:
         gdn_out = scratch.buffers["gdn_out"].ptr
         gdn_normed = scratch.buffers["gdn_normed"].ptr
 
-        self._gemm32(norm_ptr, self._w[p + "in_proj_qkv.weight"], qkv_ptr, tokens, h, self.GDN_QKV_DIM)
+        # qkv split: q [0:2048) and k [2048:4096) tolerate the fast f16-out
+        # epilogue; v [4096:8192) feeds the persistent delta-rule state and
+        # keeps f32-out. Weight slices are (8192, h) row-major fp16.
+        self._gemm(norm_ptr, self._w[p + "in_proj_qkv.weight"], qkv_ptr, tokens, h, self.GDN_QKV_DIM)
         self._gemm(norm_ptr, self._w[p + "in_proj_z.weight"], z_ptr, tokens, h, self.GDN_Z_DIM)
         self._gemm(norm_ptr, self._w[p + "in_proj_b.weight"], b_ptr, tokens, h, self.GDN_HEADS)
         self._gemm(norm_ptr, self._w[p + "in_proj_a.weight"], a_ptr, tokens, h, self.GDN_HEADS)
