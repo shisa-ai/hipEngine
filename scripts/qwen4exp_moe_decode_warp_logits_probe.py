@@ -247,6 +247,17 @@ def main() -> None:
                 bool(ref[i].argmax() == cand[i].argmax())
                 for i in range(ref.shape[0])
             ]
+            # contract 6.1 diagnosis support: top-k set overlap per row
+            # (required evidence for rows with KL above 2e-2)
+            step_top5_overlap = []
+            step_top10_overlap = []
+            for i in range(ref.shape[0]):
+                r5 = set(np.argsort(-ref[i])[:5].tolist())
+                c5 = set(np.argsort(-cand[i])[:5].tolist())
+                r10 = set(np.argsort(-ref[i])[:10].tolist())
+                c10 = set(np.argsort(-cand[i])[:10].tolist())
+                step_top5_overlap.append(len(r5 & c5))
+                step_top10_overlap.append(len(r10 & c10))
             step_margins = []
             for i in range(ref.shape[0]):
                 order = np.argsort(-ref[i])
@@ -256,6 +267,14 @@ def main() -> None:
                 "id": case["id"],
                 "category": case.get("category", "unknown"),
                 "step_kls": step_kls,
+                "step_top5_overlap": step_top5_overlap,
+                "step_top10_overlap": step_top10_overlap,
+                "min_top5_overlap": int(min(step_top5_overlap)),
+                "min_top10_overlap": int(min(step_top10_overlap)),
+                "worst_row_top5_overlap": int(
+                    step_top5_overlap[int(np.argmax(step_kls))]),
+                "worst_row_top10_overlap": int(
+                    step_top10_overlap[int(np.argmax(step_kls))]),
                 "incumbent_step_kls": inc_step_kls,
                 "incumbent_step_top1": inc_step_top1,
                 "step_top1": step_top1,
