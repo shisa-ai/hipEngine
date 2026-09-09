@@ -750,12 +750,14 @@ __global__ void q5_1_selected_weighted_sum_logical256_t64_bf16_bf16_kernel(
 // #22 R11 candidate: warp-per-expert weighted-sum combine.
 //
 // One block per output column with 32*rows threads; warp w serves expert
-// row w (rows <= 12). Each lane iterates 16-element half-blocks strided by
-// the warp (k0 = lane*16 + i*512) with ternary-indexed register u32s (the
-// original pointer-to-register cast pattern lost partial at the
-// divergent-branch merge on gfx1151 hipcc 7.15). Same per-row bf16
-// rounding + routing-weight fma semantics as the logical256_t64
-// incumbent; the intra-dot reduction order differs (T1).
+// row w (rows <= 12). BIT-EXACT versus the logical256_t64 incumbent: each
+// lane computes the incumbent's logical partials L_{lane+32*m} (fma chain
+// over columns {l, l+256, l+512} ascending, fmaf element arithmetic),
+// then reproduces the incumbent's exact reduction tree -
+// S_t = (L_t + L_{t+128}) + (L_{t+64} + L_{t+192}),
+// T_t = S_t + S_{t+32}, then the same shfl_down tree 16..1 - followed by
+// the incumbent's per-row bf16 rounding and sequential
+// combined = fmaf(rounded, routing, combined) fold on thread 0.
 __launch_bounds__(384, 2)
 __global__ void q5_1_selected_weighted_sum_warp256_bf16_bf16_kernel(
     const uint16_t* __restrict__ input,
@@ -782,52 +784,42 @@ __global__ void q5_1_selected_weighted_sum_warp256_bf16_bf16_kernel(
       const uint8_t* weight_row =
           weights + (expert * out_features + out) * row_bytes;
       const uint16_t* x_row = input + warp * in_features;
-      float partial = 0.0f;
-      const int64_t half_blocks = in_features >> 4;
-      for (int64_t hb = lane; hb < half_blocks; hb += 32) {
-        const int64_t block = hb >> 1;
-        const int half = hb & 1;
-        const uint8_t* wb = weight_row + block * 24;
-        const float d = load_fp16(wb);
-        const float m = load_fp16(wb + 2);
-        const uint32_t qh = *reinterpret_cast<const uint32_t*>(wb + 4);
-        const uint16_t qh16 = static_cast<uint16_t>(qh >> (16 * half));
-        const uint4 qs4 = *reinterpret_cast<const uint4*>(wb + 8);
-        const uint4 xa = *reinterpret_cast<const uint4*>(x_row + hb * 16);
-        const uint4 xb = *reinterpret_cast<const uint4*>(x_row + hb * 16 + 8);
-        const uint32_t* qsw = reinterpret_cast<const uint32_t*>(&qs4);
-        const uint32_t* xwa = reinterpret_cast<const uint32_t*>(&xa);
-        const uint32_t* xwb = reinterpret_cast<const uint32_t*>(&xb);
-        const uint32_t nib_mask = half ? 0xF0F0F0F0u : 0x0F0F0F0Fu;
-        const int nib_shift = half ? 4 : 0;
-        // qs u32 j covers the nibbles of elements 4j..4j+3 of the half;
-        // the x bf16s live in 8 u32s (xa: elements 0..7, xb: 8..15).
-#pragma unroll
-        for (int j = 0; j < 4; ++j) {
-          const uint32_t nib = (qsw[j] & nib_mask) >> nib_shift;
-#pragma unroll
-          for (int r = 0; r < 4; ++r) {
-            const int q = static_cast<int>((nib >> (8 * r)) & 0xFFu);
-            const int xw_idx = 2 * j + (r >> 1);
-            const uint32_t xpack =
-                (xw_idx < 4) ? xwa[xw_idx] : xwb[xw_idx - 4];
-            const uint16_t xbits = static_cast<uint16_t>(
-                (r & 1) ? (xpack >> 16) : (xpack & 0xFFFFu));
-            const float v = fmaf(
-                d,
-                static_cast<float>(q | (((qh16 >> (4 * j + r)) & 1) << 4)),
-                m);
-            partial = fmaf(bf16_bits_to_float(xbits), v, partial);
-          }
+      // Logical partials L_{lane + 32*m}, m = 0..7 (256 logicals).
+      float logical[8] = {};
+      for (int m = 0; m < 8; ++m) {
+        const int64_t l = static_cast<int64_t>(lane) + 32 * m;
+        float value = 0.0f;
+        for (int64_t column = l; column < in_features; column += 256) {
+          const int64_t block_index = column >> 5;
+          const int within = static_cast<int>(column & 31);
+          const uint8_t* wb = weight_row + block_index * 24;
+          const float d = load_fp16(wb);
+          const float mmin = load_fp16(wb + 2);
+          const uint32_t qh = *reinterpret_cast<const uint32_t*>(wb + 4);
+          const uint8_t packed = wb[8 + (within & 15)];
+          const uint8_t low =
+              within < 16 ? (packed & 0x0Fu) : (packed >> 4);
+          const uint8_t high = static_cast<uint8_t>((qh >> within) & 1u);
+          const float v =
+              fmaf(d, static_cast<float>(low | (high << 4)), mmin);
+          value = fmaf(
+              bf16_bits_to_float(x_row[column]), v, value);
         }
+        logical[m] = value;
       }
+      // Incumbent tree: S_t = (L_t + L_{t+128}) + (L_{t+64} + L_{t+192});
+      // T_t = S_t + S_{t+32}; then shfl_down 16..1.
+      const float s0 =
+          (logical[0] + logical[4]) + (logical[2] + logical[6]);
+      const float s32 =
+          (logical[1] + logical[5]) + (logical[3] + logical[7]);
+      float total = s0 + s32;
 #pragma unroll
       for (int offset = 16; offset > 0; offset >>= 1) {
-        partial += __shfl_down(partial, offset, 32);
+        total += __shfl_down(total, offset, 32);
       }
       if (lane == 0) {
-        const float rounded = bf16_bits_to_float(float_to_bf16_bits(partial));
-        warp_sums[warp] = fmaf(rounded, routing_weights[warp], 0.0f);
+        warp_sums[warp] = total;
       }
     }
   }
@@ -835,12 +827,13 @@ __global__ void q5_1_selected_weighted_sum_warp256_bf16_bf16_kernel(
   if (threadIdx.x == 0) {
     float combined = 0.0f;
     for (int w = 0; w < rows && w < 12; ++w) {
-      combined += warp_sums[w];
+      const float rounded =
+          bf16_bits_to_float(float_to_bf16_bits(warp_sums[w]));
+      combined = fmaf(rounded, routing_weights[w], combined);
     }
     output[out] = float_to_bf16_bits(combined);
   }
 }
-
 __launch_bounds__(64, 4)
 __global__ void q5_1_selected_gemv_logical256_t64_bf16_bf16_kernel(
     const uint16_t* __restrict__ input,
