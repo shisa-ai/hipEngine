@@ -188,6 +188,11 @@ def test_gfx1100_routes_physical_r6_q4_shapes_to_c1_rowtile(
         "gguf_q4_k_t16_wmma_prefill_shared_b_row64_bf16_bf16_out",
         lambda *args, **kwargs: calls.append("shared_b_row64"),
     )
+    monkeypatch.setattr(
+        t16_prefill,
+        "gguf_q4_k_t16_wmma_prefill_shared_b_w64_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("shared_b_w64"),
+    )
     for in_features, out_features in shape_policy:
         selector(1, 2, 3, 6, in_features, out_features)
     selector(1, 2, 3, 6, 5_120, 17_408)
@@ -218,7 +223,10 @@ def test_gfx1100_routes_physical_r6_q4_shapes_to_c1_rowtile(
         "shared_b",
         "single_wave",
         "single_wave",
-        "shared_b",
+        # 129 rows on a single-wave shape takes the 64-column shared-B
+        # owner (as does 193 on the row64 shape); 113 on the 12288-out
+        # shape stays on shared-B, under the 129-row boundary.
+        "shared_b_w64",
         "shared_b_row64",
         "rowtile",
         "single_wave",
@@ -229,7 +237,7 @@ def test_gfx1100_routes_physical_r6_q4_shapes_to_c1_rowtile(
         "single_wave",
         "shared_b_row64",
         "shared_b_row64",
-        "shared_b",
+        "shared_b_w64",
     ]
 
     # Bisection switch: forcing the band to 0 must return every non-row-6 call to
@@ -252,7 +260,10 @@ def test_gfx1100_routes_physical_r6_q4_shapes_to_c1_rowtile(
     selector(1, 2, 3, 35, 17_408, 5_120)
     selector(1, 2, 3, 192, 17_408, 5_120)
     selector(1, 2, 3, 6, 17_408, 5_120)
-    assert calls == ["shared_b", "shared_b", "rowtile"]
+    # 192 rows is above the 129-row wide-N boundary, so with the row-64 band
+    # forced to zero it takes the 64-column shared-B owner, not the strict
+    # 48-column sibling.
+    assert calls == ["shared_b", "shared_b_w64", "rowtile"]
     monkeypatch.delenv(t16_prefill._ENV_SHARED_B_ROW64_MAX_ROWS)
     monkeypatch.setattr(t16_prefill, "_SHARED_B_ROW64_MAX_ROWS_RESOLVED", None)
 

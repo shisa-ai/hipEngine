@@ -682,6 +682,13 @@ def gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out(
             and 2 <= int(rows) <= _single_wave_max_rows(shape)
         ):
             fn = gguf_q4_k_t16_wmma_prefill_bf16_bf16_out
+        elif int(rows) >= 129:
+            # 64-column blocks since the 2026-09-10 wide-N sweep: halves the
+            # redundant activation traffic and amortizes each a-fragment
+            # load over more WMMA work - bit-exact with the 48-column
+            # shared-B owner, measured 1.1-1.8x across the real Q4 shapes
+            # at 512 rows (up to 65 TFLOPS vs 45).
+            fn = gguf_q4_k_t16_wmma_prefill_shared_b_w64_bf16_bf16_out
         else:
             fn = gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out
     elif shape in GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_SHAPES:
@@ -793,6 +800,35 @@ def gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out(
     del tile_m, tile_n
     _launch_dense_t16(
         _Q4_DENSE_WMMA_SHARED_B_BF16,
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q4_k_t16_wmma_prefill_shared_b_w64_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+    **kwargs,
+) -> None:
+    """Launch the 64-column eight-wave shared-B Q4T16 owner (sweep candidate)."""
+
+    _launch_dense_t16(
+        "hipengine_gguf_q4_k_t16_wmma_prefill_shared_b_w64_bf16_bf16_out",
         x_ptr,
         tiles_ptr,
         out_ptr,
@@ -1773,6 +1809,37 @@ def gguf_q5_k_t16_wmma_prefill_shared8r2_bf16_bf16_out(
     )
 
 
+def gguf_q5_k_t16_wmma_prefill_shared8r2w64_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+    tile_m: int | None = None,
+    tile_n: int | None = None,
+) -> None:
+    """Launch the 64-column eight-wave two-row-tile shared Q5T16 owner."""
+
+    del tile_m, tile_n
+    _launch_dense_t16(
+        "hipengine_gguf_q5_k_t16_wmma_prefill_shared8r2w64_bf16_bf16_out",
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def gguf_q5_k_t16_wmma_prefill_shared8r4_bf16_bf16_out(
     x_ptr: int,
     tiles_ptr: int,
@@ -1827,7 +1894,12 @@ def gguf_q5_k_t16_wmma_prefill_gfx1100_bf16_bf16_out(
     """
 
     if int(rows) >= 129:
-        return gguf_q5_k_t16_wmma_prefill_shared8r2_bf16_bf16_out(
+        # 64-column blocks since the 2026-09-10 wide-N sweep: halves the
+        # redundant activation traffic (each column block re-reads the same
+        # x rows) and amortizes each a-fragment load over twice the WMMA
+        # work - bit-exact with the 32-column owner, 1.0-1.6x its time
+        # across the real Q5 shapes at 512 rows.
+        return gguf_q5_k_t16_wmma_prefill_shared8r2w64_bf16_bf16_out(
             x_ptr,
             tiles_ptr,
             out_ptr,

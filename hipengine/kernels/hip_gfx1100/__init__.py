@@ -1093,6 +1093,15 @@ _IQ_DENSE_W4A16_VARIANT = "dense_wmma_w4a16_prefill_bf16_bf16_out"
 # fast decode paths (Q3_K/IQ2_S/IQ2_XS would also need the split path
 # ported to the cooperative epilogue).
 _IQ_DENSE_W4A16_COOP_VARIANT = "dense_wmma_w4a16_prefill_coop_bf16_bf16_out"
+# 64-column cooperative owner (2026-09-10 sweep): doubling the columns per
+# block halves the redundant activation traffic (every column-block re-reads
+# the same x rows) and amortizes each a-fragment load over twice the WMMA
+# work. Bit-exact with the one-wave owner and the 32-column cooperative
+# owner; measured 1.4-1.6x the 32-column cooperative owner at 512-1024 rows
+# (63-69 TFLOPS vs 44) and >= it at every measured row count down to 8
+# (worst 0.97x, within noise). IQ4_XS routes here; the split quants cannot
+# (two 34.8 KB slabs exceed the 64 KB LDS budget at 64 columns).
+_IQ_DENSE_W4A16_COOP64_VARIANT = "dense_wmma_w4a16_prefill_coop64_bf16_bf16_out"
 GGUF_IQ_DENSE_PREFILL_POLICY = {
     quant: {
         "min_rows": 8,
@@ -1102,7 +1111,7 @@ GGUF_IQ_DENSE_PREFILL_POLICY = {
     for quant in ("gguf_iq4_xs", "gguf_iq3_xxs", "gguf_iq3_s", "gguf_iq4_nl",
                  "gguf_q3_k", "gguf_iq2_s", "gguf_iq2_xs")
 }
-GGUF_IQ_DENSE_PREFILL_POLICY["gguf_iq4_xs"]["variant"] = _IQ_DENSE_W4A16_COOP_VARIANT
+GGUF_IQ_DENSE_PREFILL_POLICY["gguf_iq4_xs"]["variant"] = _IQ_DENSE_W4A16_COOP64_VARIANT
 # Dense raw-IQ decode owner (rows=1): the local32 IQ4_XS GEMV candidate.
 # One wave per 8 output columns, each lane owning 8 contiguous K, two u32
 # payload loads per column-block and a byte-indexed fused codebook LUT -

@@ -331,7 +331,14 @@ __global__ void gguf_iq_prefill_wmma_coop_kernel(
   constexpr int OUT_COLS = TM * 16;
   constexpr int ROWS_PER_WAVE = TN * 16;
   constexpr int ROWS_PER_BLOCK = WAVES_PER_BLOCK * ROWS_PER_WAVE;
-  static_assert(OUT_COLS == 32, "the decode mapping assumes 32 columns");
+  constexpr int THREADS = WAVES_PER_BLOCK * 32;
+  // Column-owner decode mapping: OUT_COLS columns share THREADS threads,
+  // each owning SEG consecutive K of one column (SEG must be a multiple of
+  // 32 so a thread's elements stay on 32-element scale-group boundaries).
+  static_assert(THREADS % OUT_COLS == 0, "columns must divide the threads");
+  constexpr int THREADS_PER_COL = THREADS / OUT_COLS;
+  constexpr int SEG = QK_K / THREADS_PER_COL;
+  static_assert(SEG % 32 == 0, "segment must span whole scale groups");
 
   // +16 halves of padding makes the column stride 272 halves = 544 B:
   // 17 x 32 B, so every row stays 32 B aligned for the half16 vector
@@ -348,7 +355,7 @@ __global__ void gguf_iq_prefill_wmma_coop_kernel(
   // entry-for-entry iq4_values.
   __shared__ float s_cb[512];
   if constexpr (Q == 0) {
-    for (int i = threadIdx.x; i < 512; i += WAVES_PER_BLOCK * 32) {
+    for (int i = threadIdx.x; i < 512; i += THREADS) {
       const int byte = i & 255;
       const int nib = i >= 256 ? (byte >> 4) : (byte & 15);
       s_cb[i] = float(iq4_values[nib]);
@@ -386,10 +393,8 @@ __global__ void gguf_iq_prefill_wmma_coop_kernel(
     for (int tn = 0; tn < TN; ++tn)
       acc[tm][tn] = float8_t{0, 0, 0, 0, 0, 0, 0, 0};
 
-  // Decode mapping: 256 threads, one column each (col = tid >> 3), each
-  // owning 32 contiguous K values of the 256-wide slab.
-  const int dec_col = tid >> 3;
-  const int dec_k0 = (tid & 7) * 32;
+  const int dec_col = tid / THREADS_PER_COL;
+  const int dec_k0 = (tid % THREADS_PER_COL) * SEG;
   const uint8_t* dec_row =
       qweight + int64_t(out_start + dec_col < out_features
                              ? out_start + dec_col
@@ -400,29 +405,33 @@ __global__ void gguf_iq_prefill_wmma_coop_kernel(
     const bool wave_active = row_start + wave * ROWS_PER_WAVE < rows;
     if constexpr (Q == 0) {
       // IQ4_XS column-owner fast path: dec_k0 is 32-aligned and k_blk is
-      // 256-aligned, so this thread's 32 elements span exactly one scale
-      // group g of one 136-byte block. The generic iq_weight path cannot
-      // prove that invariant (dec_k0 is a runtime value), so its per-element
-      // form re-loads d, the hi word and the scale byte 32 times.
+      // 256-aligned, so this thread's SEG elements span whole scale groups
+      // of one 136-byte block (BLOCK_ELEMS == QK_K for IQ4_XS). The generic
+      // iq_weight path cannot prove that invariant (dec_k0 is a runtime
+      // value), so its per-element form re-loads d, the hi word and the
+      // scale byte per element.
       static_assert(BLOCK_BYTES == 136 && BLOCK_ELEMS == 256);
-      const int g = dec_k0 >> 5;
-      const uint8_t* block =
-          dec_row + ((k_blk + dec_k0) >> 8) * BLOCK_BYTES;
+      const uint8_t* block = dec_row + (k_blk >> 8) * BLOCK_BYTES;
       const float d = fp16_bytes_to_float(block);
       const int hi_word = int(block[2]) | (int(block[3]) << 8);
-      const int scale =
-          (((block[4 + g / 2] >> (4 * (g & 1))) & 15) |
-           (((hi_word >> (2 * g)) & 3) << 4)) - 32;
-      const float ds = d * float(scale);
-      const uint8_t* codes = block + 8 + g * 16;
+      const int g0 = dec_k0 >> 5;
 #pragma unroll
-      for (int kk = 0; kk < 32; ++kk) {
-        slab_hi[dec_col][dec_k0 + kk] = static_cast<half_t>(
-            ds * s_cb[((kk >> 4) << 8) + codes[kk & 15]]);
+      for (int s = 0; s < SEG / 32; ++s) {
+        const int g = g0 + s;
+        const int scale =
+            (((block[4 + g / 2] >> (4 * (g & 1))) & 15) |
+             (((hi_word >> (2 * g)) & 3) << 4)) - 32;
+        const float ds = d * float(scale);
+        const uint8_t* codes = block + 8 + g * 16;
+#pragma unroll
+        for (int kk = 0; kk < 32; ++kk) {
+          slab_hi[dec_col][dec_k0 + s * 32 + kk] = static_cast<half_t>(
+              ds * s_cb[((kk >> 4) << 8) + codes[kk & 15]]);
+        }
       }
     } else {
 #pragma unroll
-      for (int kk = 0; kk < 32; ++kk) {
+      for (int kk = 0; kk < SEG; ++kk) {
         const int k = dec_k0 + kk;
         const uint8_t* block =
             dec_row + int64_t((k_blk + k) / BLOCK_ELEMS) * BLOCK_BYTES;
@@ -497,18 +506,20 @@ __global__ void gguf_iq_prefill_wmma_coop_kernel(
   }
 }
 
-template <int Q>
+template <int Q, int OUT_TILES, int WAVES>
 int launch_iq_wmma_prefill_coop(const void* x, const void* w, void* out,
-                                int rows, int in_features, int out_features,
-                                hipStream_t stream) {
+                                 int rows, int in_features, int out_features,
+                                 hipStream_t stream) {
   if (!x || !w || !out || rows <= 0 || in_features <= 0 || out_features <= 0)
     return int(hipErrorInvalidValue);
   if (in_features % iq_block_elements<Q>()) return int(hipErrorInvalidValue);
   if (in_features % QK_K) return int(hipErrorInvalidValue);
-  dim3 grid((out_features + 31) / 32, (rows + 255) / 256);
+  dim3 grid((out_features + OUT_TILES * 16 - 1) / (OUT_TILES * 16),
+            (rows + WAVES * 32 - 1) / (WAVES * 32));
   hipLaunchKernelGGL(
-      (gguf_iq_prefill_wmma_coop_kernel<Q, uint16_t, uint16_t, 2, 2, 8>),
-      grid, dim3(256), 0, stream,
+      (gguf_iq_prefill_wmma_coop_kernel<Q, uint16_t, uint16_t, OUT_TILES, 2,
+                                        WAVES>),
+      grid, dim3(WAVES * 32), 0, stream,
       static_cast<const uint16_t*>(x), static_cast<const uint8_t*>(w),
       static_cast<uint16_t*>(out), rows, in_features, out_features);
   return int(hipGetLastError());
@@ -539,13 +550,29 @@ extern "C" int hipengine_gguf_iq_wmma_prefill_coop_bf16_bf16_out(
     int quant, void* stream) {
   const int r = int(rows), k = int(in_features), n = int(out_features);
   switch (quant) {
-    case 0: return launch_iq_wmma_prefill_coop<0>(x, w, out, r, k, n, (hipStream_t)stream);
-    case 1: return launch_iq_wmma_prefill_coop<1>(x, w, out, r, k, n, (hipStream_t)stream);
-    case 2: return launch_iq_wmma_prefill_coop<2>(x, w, out, r, k, n, (hipStream_t)stream);
-    case 3: return launch_iq_wmma_prefill_coop<3>(x, w, out, r, k, n, (hipStream_t)stream);
-    case 4: return launch_iq_wmma_prefill_coop<4>(x, w, out, r, k, n, (hipStream_t)stream);
-    case 5: return launch_iq_wmma_prefill_coop<5>(x, w, out, r, k, n, (hipStream_t)stream);
-    case 6: return launch_iq_wmma_prefill_coop<6>(x, w, out, r, k, n, (hipStream_t)stream);
+    case 0: return launch_iq_wmma_prefill_coop<0, 2, 8>(x, w, out, r, k, n, (hipStream_t)stream);
+    case 1: return launch_iq_wmma_prefill_coop<1, 2, 8>(x, w, out, r, k, n, (hipStream_t)stream);
+    case 2: return launch_iq_wmma_prefill_coop<2, 2, 8>(x, w, out, r, k, n, (hipStream_t)stream);
+    case 3: return launch_iq_wmma_prefill_coop<3, 2, 8>(x, w, out, r, k, n, (hipStream_t)stream);
+    case 4: return launch_iq_wmma_prefill_coop<4, 2, 8>(x, w, out, r, k, n, (hipStream_t)stream);
+    case 5: return launch_iq_wmma_prefill_coop<5, 2, 8>(x, w, out, r, k, n, (hipStream_t)stream);
+    case 6: return launch_iq_wmma_prefill_coop<6, 2, 8>(x, w, out, r, k, n, (hipStream_t)stream);
+    default: return int(hipErrorInvalidValue);
+  }
+}
+
+// 64-column variant: only the single-slab quants (the hi+lo split path
+// needs two 34.8 KB slabs, over the 64 KB LDS budget at this width).
+extern "C" int hipengine_gguf_iq_wmma_prefill_coop64_bf16_bf16_out(
+    const void* x, const void* w, void* out,
+    int64_t rows, int64_t in_features, int64_t out_features,
+    int quant, void* stream) {
+  const int r = int(rows), k = int(in_features), n = int(out_features);
+  switch (quant) {
+    case 0: return launch_iq_wmma_prefill_coop<0, 4, 8>(x, w, out, r, k, n, (hipStream_t)stream);
+    case 1: return launch_iq_wmma_prefill_coop<1, 4, 8>(x, w, out, r, k, n, (hipStream_t)stream);
+    case 2: return launch_iq_wmma_prefill_coop<2, 4, 8>(x, w, out, r, k, n, (hipStream_t)stream);
+    case 4: return launch_iq_wmma_prefill_coop<4, 4, 8>(x, w, out, r, k, n, (hipStream_t)stream);
     default: return int(hipErrorInvalidValue);
   }
 }
