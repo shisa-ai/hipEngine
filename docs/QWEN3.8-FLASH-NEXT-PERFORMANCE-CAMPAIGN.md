@@ -454,7 +454,12 @@ consistent with the q8-wmma-down A/B +8.44%), TG **19.94/19.26/18.69**
 22.17/21.16/19.48. The TG gap is untouched by all seven promotions
 (prefill-only wins), confirming R10's conclusion: decode progress requires
 kernel efficiency (#22 R11 GEMV pair: down+gate/up validated at the true
-geometry, down bit-exact, projected TG +11%) or wrapper host work.
+geometry - correction: the fast down is the T1 vectorized variant at
+68.6us (+72%), not the slower bit-exact tree (134.5us, -14%); the
+996-row packet envelope is 991/996 agreements (99.50%), five flips -
+incremental-drift evidence pending production-contract qualification;
+projected TG +11% is a projection, not an achieved win) or wrapper
+host work.
 [Family](../benchmarks/results/2026-09-09-framework-qwen4exp-r2e-family.json),
 [baselines](../benchmarks/results/2026-09-09-framework-qwen4exp-current-default-baselines-v6.json).
 

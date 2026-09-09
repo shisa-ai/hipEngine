@@ -40,7 +40,17 @@ from scripts.qwen4exp_canonical_ar_bench import (
 )
 
 FLAG = "HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP"
+FLAG_DOWN = "HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_DOWN"
 DECODE_STEPS = 4
+# Arm configurations: both flags are set explicitly in EVERY arm so an
+# externally-set DOWN env cannot leak into the incumbent. The packet
+# selects what the candidate arms enable; incumbent arms are always
+# both-off (production incumbent).
+PACKETS = {
+    "dual": ("1", "0"),          # warp256 gate/up only
+    "fast-down": ("0", "fast"),  # warp256 T1 vectorized down only
+    "pair": ("1", "fast"),       # combined packet
+}
 
 
 def hip_available() -> bool:
@@ -91,6 +101,7 @@ def main() -> None:
     p.add_argument("--compiler-version-file", type=Path, required=True)
     p.add_argument("--case-id", action="append")
     p.add_argument("--decode-steps", type=int, default=4)
+    p.add_argument("--packet", choices=sorted(PACKETS), default="dual")
     p.add_argument("--output", type=Path, required=True)
     a = p.parse_args()
     if not hip_available():
@@ -119,6 +130,11 @@ def main() -> None:
         "command": sys.argv,
         "arithmetic_class": "down bit-exact T0 / gate-up T1 (1 bf16 ulp, reduction order)",
         "flag": FLAG,
+        "flag_down": FLAG_DOWN,
+        "packet": a.packet,
+        "arm_flags": {"incumbent": {"dual": "0", "down": "0"},
+                      "candidate": {"dual": dual_v, "down": down_v}},
+        "comparison": "production incumbent (both flags off)",
         "decode_steps": a.decode_steps,
         "runtime_default_changed": False,
         "fixture_sha256": digest,
@@ -132,11 +148,13 @@ def main() -> None:
                     continue
             rows = {}
             forced_chain = None
+            dual_v, down_v = PACKETS[a.packet]
             for label, enabled in (
                 ("incumbent_a", "0"), ("incumbent_b", "0"),
                 ("candidate_a", "1"), ("candidate_b", "1"),
             ):
-                os.environ[FLAG] = enabled
+                os.environ[FLAG] = dual_v if enabled == "1" else "0"
+                os.environ[FLAG_DOWN] = down_v if enabled == "1" else "0"
                 rows[label], chain = _forced_logits(
                     generator, case["prompt_token_ids"], a.decode_steps,
                     forced=forced_chain)
@@ -225,6 +243,7 @@ def main() -> None:
         }
     finally:
         os.environ[FLAG] = "0"
+        os.environ[FLAG_DOWN] = "0"
     a.output.write_text(json.dumps(report, indent=1) + "\n")
     print(f"wrote {a.output}")
 
