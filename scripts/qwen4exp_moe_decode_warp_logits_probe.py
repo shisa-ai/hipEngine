@@ -115,6 +115,7 @@ def main() -> None:
     a = p.parse_args()
     if not hip_available():
         p.error("HIP runtime unavailable")
+    dual_v, down_v = PACKETS[a.packet]
     os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(a.compiler_version_file)
     os.environ["HIPENGINE_REQUIRE_CACHED_BUILD"] = "1"
 
@@ -199,7 +200,6 @@ def main() -> None:
             if teacher_data is not None:
                 forced_chain = teacher_data[f"{case['id']}__chain"].tolist()
                 ref_strict = teacher_data[f"{case['id']}__logits"]
-            dual_v, down_v = PACKETS[a.packet]
             for label, enabled in (
                 ("incumbent_a", "0"), ("incumbent_b", "0"),
                 ("candidate_a", "1"), ("candidate_b", "1"),
