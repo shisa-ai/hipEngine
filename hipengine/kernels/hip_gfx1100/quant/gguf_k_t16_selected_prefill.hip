@@ -851,7 +851,12 @@ __global__ void gguf_q4_t16_dense_unequal_dual_wmma_prefill_bf16_kernel(
   constexpr int WAVES_PER_BLOCK = 4;
   constexpr int OUT_COLS_PER_BLOCK = OUT_TILES_PER_BLOCK * T16_COLS;
   constexpr int ROWS_PER_WAVE = ROW_TILES_PER_WAVE * 16;
-  __shared__ half_t weights[MATRICES][QK_K * OUT_COLS_PER_BLOCK];
+  // Padded slab stride (272 halves = 17 x 32 B) keeps every column row
+  // 32 B aligned for the vectorized b-fragment loads and breaks the
+  // 256-half stride's 16-way LDS bank conflict.
+  constexpr int SLAB_STRIDE = QK_K + 16;
+  __shared__ __align__(1024) half_t
+      weights[MATRICES][SLAB_STRIDE * OUT_COLS_PER_BLOCK];
 
   const int wave = threadIdx.x >> 5;
   const int lane16 = threadIdx.x & 15;
@@ -915,9 +920,9 @@ __global__ void gguf_q4_t16_dense_unequal_dual_wmma_prefill_bf16_kernel(
             (sb * Q4_SUBBLOCK + lane32) * (T16_COLS / 2) + tile_pair];
         const int k = sb * Q4_SUBBLOCK + lane32;
         const int col0 = tm * T16_COLS + tile_col0;
-        weights[matrix][col0 * QK_K + k] = static_cast<half_t>(
+        weights[matrix][col0 * SLAB_STRIDE + k] = static_cast<half_t>(
             scale0 * static_cast<float>(packed & 0x0Fu) - min0);
-        weights[matrix][(col0 + 1) * QK_K + k] = static_cast<half_t>(
+        weights[matrix][(col0 + 1) * SLAB_STRIDE + k] = static_cast<half_t>(
             scale1 * static_cast<float>(packed >> 4) - min1);
       }
     }
@@ -940,15 +945,12 @@ __global__ void gguf_q4_t16_dense_unequal_dual_wmma_prefill_bf16_kernel(
         }
 #pragma unroll
         for (int tm = 0; tm < OUT_TILES_PER_BLOCK; ++tm) {
-          half16_t b_a;
-          half16_t b_b;
-#pragma unroll
-          for (int kk = 0; kk < 16; ++kk) {
-            const int index =
-                (tm * T16_COLS + lane16) * QK_K + k_off + kk;
-            b_a[kk] = weights[0][index];
-            b_b[kk] = weights[1][index];
-          }
+          const int index =
+              (tm * T16_COLS + lane16) * SLAB_STRIDE + k_off;
+          const half16_t b_a =
+              *reinterpret_cast<const half16_t*>(&weights[0][index]);
+          const half16_t b_b =
+              *reinterpret_cast<const half16_t*>(&weights[1][index]);
 #pragma unroll
           for (int tn = 0; tn < ROW_TILES_PER_WAVE; ++tn) {
             acc_a[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
@@ -1170,8 +1172,12 @@ __global__ void gguf_q4_t16_dense_dual_wmma_smallm_silu_bf16_kernel(
   constexpr int MATRICES = 2;
   constexpr int ROWS_PER_BLOCK = 16;
   constexpr int OUT_COLS_PER_BLOCK = T16_COLS;
+  // Padded slab stride (272 halves = 17 x 32 B) keeps every column row
+  // 32 B aligned for the vectorized b-fragment loads and breaks the
+  // 256-half stride's 16-way LDS bank conflict.
+  constexpr int SLAB_STRIDE = QK_K + 16;
   union SharedStorage {
-    half_t weights[MATRICES][QK_K * OUT_COLS_PER_BLOCK];
+    half_t weights[MATRICES][SLAB_STRIDE * OUT_COLS_PER_BLOCK];
     uint16_t rounded[MATRICES][ROWS_PER_BLOCK * OUT_COLS_PER_BLOCK];
   };
   __shared__ SharedStorage shared;
@@ -1318,8 +1324,12 @@ __global__ void gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel(
   constexpr int OUT_COLS_PER_BLOCK = OUT_TILES_PER_BLOCK * T16_COLS;
   constexpr int ROWS_PER_WAVE = ROW_TILES_PER_WAVE * 16;
   constexpr int ROWS_PER_BLOCK = WAVES_PER_BLOCK * ROWS_PER_WAVE;
+  // Padded slab stride (272 halves = 17 x 32 B) keeps every column row
+  // 32 B aligned for the vectorized b-fragment loads and breaks the
+  // 256-half stride's 16-way LDS bank conflict.
+  constexpr int SLAB_STRIDE = QK_K + 16;
   union SharedStorage {
-    half_t weights[MATRICES][QK_K * OUT_COLS_PER_BLOCK];
+    half_t weights[MATRICES][SLAB_STRIDE * OUT_COLS_PER_BLOCK];
     uint16_t rounded[MATRICES][ROWS_PER_BLOCK * OUT_COLS_PER_BLOCK];
   };
   __shared__ SharedStorage shared;
@@ -1409,9 +1419,9 @@ __global__ void gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel(
               (sb * Q4_SUBBLOCK + lane32) * (T16_COLS / 2) + tile_pair];
           const int k = sb * Q4_SUBBLOCK + lane32;
           const int col0 = tm * T16_COLS + tile_col0;
-          shared.weights[matrix][col0 * QK_K + k] = static_cast<half_t>(
+          shared.weights[matrix][col0 * SLAB_STRIDE + k] = static_cast<half_t>(
               scale0 * static_cast<float>(packed & 0x0Fu) - min0);
-          shared.weights[matrix][(col0 + 1) * QK_K + k] =
+          shared.weights[matrix][(col0 + 1) * SLAB_STRIDE + k] =
               static_cast<half_t>(
                   scale1 * static_cast<float>(packed >> 4) - min1);
         }
@@ -1437,15 +1447,12 @@ __global__ void gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel(
           }
 #pragma unroll
           for (int tm = 0; tm < OUT_TILES_PER_BLOCK; ++tm) {
-            half16_t b_a;
-            half16_t b_b;
-#pragma unroll
-            for (int kk = 0; kk < 16; ++kk) {
-              const int index =
-                  (tm * T16_COLS + lane16) * QK_K + k_off + kk;
-              b_a[kk] = shared.weights[0][index];
-              b_b[kk] = shared.weights[1][index];
-            }
+            const int index =
+                (tm * T16_COLS + lane16) * SLAB_STRIDE + k_off;
+            const half16_t b_a =
+                *reinterpret_cast<const half16_t*>(&shared.weights[0][index]);
+            const half16_t b_b =
+                *reinterpret_cast<const half16_t*>(&shared.weights[1][index]);
 #pragma unroll
             for (int tn = 0; tn < ROW_TILES_PER_WAVE; ++tn) {
               acc_a[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
@@ -1680,8 +1687,12 @@ __global__ void gguf_q5_k_t16_dense_dual_wmma_prefill_silu_bf16_kernel(
   constexpr int OUT_COLS_PER_BLOCK = OUT_TILES_PER_BLOCK * T16_COLS;
   constexpr int ROWS_PER_WAVE = ROW_TILES_PER_WAVE * 16;
   constexpr int ROWS_PER_BLOCK = WAVES_PER_BLOCK * ROWS_PER_WAVE;
+  // Padded slab stride (272 halves = 17 x 32 B) keeps every column row
+  // 32 B aligned for the vectorized b-fragment loads and breaks the
+  // 256-half stride's 16-way LDS bank conflict.
+  constexpr int SLAB_STRIDE = QK_K + 16;
   union SharedStorage {
-    half_t weights[MATRICES][QK_K * OUT_COLS_PER_BLOCK];
+    half_t weights[MATRICES][SLAB_STRIDE * OUT_COLS_PER_BLOCK];
     uint16_t rounded[MATRICES][ROWS_PER_BLOCK * OUT_COLS_PER_BLOCK];
   };
   __shared__ SharedStorage shared;
@@ -1749,9 +1760,9 @@ __global__ void gguf_q5_k_t16_dense_dual_wmma_prefill_silu_bf16_kernel(
               q5_t16_quant(tile, sb, lane32, tile_col0);
           const uint8_t q1 =
               q5_t16_quant(tile, sb, lane32, tile_col0 + 1);
-          shared.weights[matrix][col0 * QK_K + k] = static_cast<half_t>(
+          shared.weights[matrix][col0 * SLAB_STRIDE + k] = static_cast<half_t>(
               scale0 * static_cast<float>(q0) - min0);
-          shared.weights[matrix][(col0 + 1) * QK_K + k] =
+          shared.weights[matrix][(col0 + 1) * SLAB_STRIDE + k] =
               static_cast<half_t>(
                   scale1 * static_cast<float>(q1) - min1);
         }
@@ -1777,15 +1788,12 @@ __global__ void gguf_q5_k_t16_dense_dual_wmma_prefill_silu_bf16_kernel(
           }
 #pragma unroll
           for (int tm = 0; tm < OUT_TILES_PER_BLOCK; ++tm) {
-            half16_t b_a;
-            half16_t b_b;
-#pragma unroll
-            for (int kk = 0; kk < 16; ++kk) {
-              const int index =
-                  (tm * T16_COLS + lane16) * QK_K + k_off + kk;
-              b_a[kk] = shared.weights[0][index];
-              b_b[kk] = shared.weights[1][index];
-            }
+            const int index =
+                (tm * T16_COLS + lane16) * SLAB_STRIDE + k_off;
+            const half16_t b_a =
+                *reinterpret_cast<const half16_t*>(&shared.weights[0][index]);
+            const half16_t b_b =
+                *reinterpret_cast<const half16_t*>(&shared.weights[1][index]);
 #pragma unroll
             for (int tn = 0; tn < ROW_TILES_PER_WAVE; ++tn) {
               acc_a[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
