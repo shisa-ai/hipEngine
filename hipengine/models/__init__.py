@@ -43,6 +43,16 @@ from hipengine.models.registry import (
     resolve_model,
 )
 from hipengine.models.toy import TOY_ONE_LAYER, ToyOneLayerModel
+from hipengine.models.evie import (
+    EVIE,
+    EVIE_ARCHITECTURE,
+    EVIE_DEFAULT_HEAD,
+    EvieModel,
+    EvieModelSpec,
+    expected_evie_weight_shapes,
+    parse_evie_model_spec,
+    validate_evie_weight_index,
+)
 from hipengine.models.timesfm import (
     TIMESFM,
     TIMESFM_ARCHITECTURE,
@@ -62,6 +72,14 @@ __all__ = [
     "QWEN35_MOE_GGUF",
     "QWEN35_PARO_MOE",
     "TOY_ONE_LAYER",
+    "EVIE",
+    "EVIE_ARCHITECTURE",
+    "EVIE_DEFAULT_HEAD",
+    "EvieModel",
+    "EvieModelSpec",
+    "expected_evie_weight_shapes",
+    "parse_evie_model_spec",
+    "validate_evie_weight_index",
     "TIMESFM",
     "TIMESFM_ARCHITECTURE",
     "DuplicateModelError",
