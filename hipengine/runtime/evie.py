@@ -155,6 +155,8 @@ class EvieRunner:
         self._rope_cache: dict[bytes, tuple[DeviceBuffer, DeviceBuffer]] = {}
         self._zero_conv_state: DeviceBuffer | None = None
         self._zero_gdn_state: DeviceBuffer | None = None
+        self._gdn_state_zero: DeviceBuffer | None = None
+        self._pos_embed_table: np.ndarray | None = None
 
     def close(self) -> None:
         for scratch in self._scratch.values():
@@ -164,6 +166,9 @@ class EvieRunner:
             hip_free(buf)
         self._misc_buffers.clear()
         self._zero_conv_state = None
+        if self._gdn_state_zero is not None:
+            hip_free(self._gdn_state_zero)
+            self._gdn_state_zero = None
         if self._cast16_scratch is not None:
             hip_free(self._cast16_scratch)
             self._cast16_scratch = None
@@ -486,7 +491,11 @@ class EvieRunner:
     def _vision_pos_embed_host(self, grid_thw: np.ndarray) -> np.ndarray:
         from hipengine.kernels.cpu_reference.evie import _bilinear_interp_indices
 
-        table = self._to_host(self._w["visual.pos_embed.weight"], 2304 * 1024).reshape(2304, 1024)
+        if self._pos_embed_table is None:
+            self._pos_embed_table = self._to_host(
+                self._w["visual.pos_embed.weight"], 2304 * 1024
+            ).reshape(2304, 1024)
+        table = self._pos_embed_table
         indices, weights = _bilinear_interp_indices(
             grid_thw, 48, self.spec.vision_spatial_merge_size
         )
@@ -1005,9 +1014,18 @@ class EvieRunner:
         )
         self._check(err, "gdn v expand")
         v_ptr = v_dense
-        # zero the recurrent state before the layer
-        zeros = np.zeros(self.GDN_HEADS * self.GDN_HEAD_DIM * self.GDN_HEAD_DIM, dtype=np.float32)
-        state_zero = self._to_dev(zeros)
+        # zero the recurrent state before the layer: persistent buffer,
+        # re-zeroed each time because the recurrence mutates it in place
+        n_state = self.GDN_HEADS * self.GDN_HEAD_DIM * self.GDN_HEAD_DIM
+        if self._gdn_state_zero is None:
+            self._gdn_state_zero = _malloc_committed(n_state * 4 + _GEMM_PAD_BYTES)
+        # GPU-side re-zero (x * 0.0) avoids the 2 MB host upload per layer
+        err = self._k("hipengine_evie_scale_f32", [_P, _P, _F, _I, _S])(
+            _P(self._gdn_state_zero.ptr), _P(self._gdn_state_zero.ptr),
+            _F(0.0), _I(n_state), _S(0),
+        )
+        self._check(err, "zero gdn state")
+        state_zero = self._gdn_state_zero
         qwen35_gdn_prefill_recurrent_k2_f32(
             q_ptr,
             k_ptr,
