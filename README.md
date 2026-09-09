@@ -4,8 +4,8 @@ hipEngine is a ROCm-native local inference engine built primarily for AMD
 Radeon GPUs. It pairs a small Python host with custom HIP kernels for torch-free
 model loading, generation, and OpenAI-compatible serving on supported hardware.
 
-**Current release: v0.5.0.** Besides the Qwen 3.6 PARO and GGUF models,
-the latest version of hipEngine now supports GGUF inference for more model
+**Current release: v0.5.0.** Besides the Qwen 3.6 PARO and GGUF MoE models,
+the latest version of hipEngine now supports inference for more model
 families. These include [Laguna S 2.1](https://poolside.ai/blog/introducing-laguna-s-2-1),
 [Maple ternary](https://github.com/deepgrove-ai/mlx-lm-deepgrove), and [Moonshine ASR](https://github.com/moonshine-ai/moonshine).
 
@@ -35,7 +35,7 @@ combination is not supported. The Qwen rows group closely related model
 versions, with size-specific format coverage shown explicitly. Features such as
 batching, sampling, tools, and long context can differ by model.
 
-| Model family | Tested models and formats | RX 7900 XTX / W7900 (`gfx1100`) | Radeon 8060S (`gfx1151`) | NVIDIA Blackwell (`sm_120a`) |
+| Model family | Tested models and formats | AMD Radeon (`gfx1100`) | Radeon 8060S (`gfx1151`) | NVIDIA Blackwell (`sm_120a`) |
 | --- | --- | :---: | :---: | :---: |
 | Qwen3.x Dense | **0.8B:** [GGUF](docs/GGUF.md) `Q4_K_M`, `Q8_0`, `Q4_1`, `UD-Q4_K_XL`<br>**27B:** [GGUF](docs/GGUF.md) `Q4_K_M`; Qwen3.8-27B `Q4_K_S` on `gfx1151` | Yes | Yes | — |
 | Qwen3.x MoE | **35B-A3B:** [GGUF](docs/GGUF.md) `Q4_K_M`, `Q4_K_S`, `UD-Q3_K_M`, `UD-Q4_K_M`<br>[ParoQuant W4](https://huggingface.co/shisa-ai/Qwen3.6-35B-A3B-PARO-packed) | Yes | Yes | — |
@@ -55,15 +55,53 @@ limits.
 
 On `gfx1100` cards, Qwen3.8-27B `Q4_K_M` can run with
 [Dynamic Memory Sparsification](https://arxiv.org/abs/2506.05345) (DMS): a
-trained eviction policy compacts the KV cache so a **single 24 GB RX 7900
-XTX holds 232K tokens of context** (dense INT8 tops out near 129K; the
-opt-in direct-INT8 KV route also reaches 232,448 but carries a measured
-quality cost — see the capacity note under Performance highlights), while
+trained eviction policy compacts the KV cache so a **single 24 GB card
+holds 232K tokens of context** (dense INT8 tops out near 129K), while
 decoding at or below dense latency from 16K context up. See
 [DMS analysis](docs/DMS-ANALYSIS.md) for the quality bar and evidence plan,
 and the [FastDMS reference implementation](https://github.com/shisa-ai/FastDMS)
 for the method's lineage. DMS is opt-in and currently requires the model's
 eviction sidecar artifacts.
+
+How much context fits on a 24 GB card depends on the KV format and the
+route. Measured one-request ceilings for Qwen3.8-27B `Q4_K_M` (the model
+itself weighs 16.25 GiB):
+
+| Configuration | Max context |
+| --- | ---: |
+| BF16 KV, server | 40,960 |
+| INT8 KV, server | 54,272 |
+| DMS, BF16 KV | 73,728 |
+| INT8 KV, direct engine | 131,072 |
+| INT8 KV, direct engine, single hidden plane | 155,648 |
+| DMS, INT8 KV | 172,288 |
+| DMS, INT8 KV, single hidden plane | 232,448 |
+| INT8 KV, direct prefill (opt-in) | 232,448 |
+
+What the rows differ in:
+
+- **KV format.** BF16 stores each K and V value in 2 bytes. INT8 stores
+  1 byte per value plus one FP32 scale per token per KV head.
+- **Route.** The server adds per-request buffers (logits, sampler,
+  workspace) on top of the engine's allocations. The direct engine runs
+  one resident session through the Python API with no server buffers.
+  Direct-engine prefill keeps two full-capacity BF16 hidden planes; the
+  single-hidden-plane rows alias them into one, because the layer loop
+  consumes each 1024-row chunk before writing output, so the second plane
+  held no unique data.
+- **DMS.** Beyond the fixed 8,192-token full-attention window, the
+  eviction policy drops about 48% of older history instead of storing it.
+- **Direct prefill (opt-in).** Prefill reads the INT8 cache directly
+  instead of a BF16 copy (`HIPENGINE_GGUF_INT8_PREFILL_DIRECT=1`, default
+  off). The server rows include the server's per-request buffers and a
+  BF16 copy of the cache that prefill reads for quality; the direct
+  prefill route carries neither. Measured cost of dropping the copy:
+  mean row-KL 0.19–0.22 vs 0.003 for the BF16 route at 4,096 tokens.
+  196,608 tokens are certified with a full prompt, 232,448 by allocation
+  probe, and 235,520 OOMs.
+
+The model's full 262,144-token context needs a predicted 24.8 GiB on the
+232,448-token routes and does not fit.
 
 ### GGUF or ParoQuant for Qwen?
 
@@ -193,27 +231,8 @@ row, not across them.
 | Qwen3.6-35B-A3B | ParoQuant W4 | **2852.1** | **115.8** | **115.8** | — |
 | Qwen3.6-35B-A3B | GGUF `Q4_K_M` | **2763.6** | **94.6** | 122.7 (opt-in) | — |
 | Qwen3.6-27B Dense | GGUF `Q4_K_M` | **875.4** | **28.7** | **32.1** | — |
-| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **678.8** | **29.6** | — | — |
+| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **680.4** | **29.7** | — | — |
 | Laguna S 2.1 | GGUF `UD-Q2_K_XL` | **440.9** (4K) | — | — | — |
-
-#### AMD Radeon RX 7900 XTX — 24 GB (`gfx1100`)
-
-| Model | Quant | Prompt processing | Text generation | With MTP | Max context |
-| --- | --- | ---: | ---: | ---: | ---: |
-| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **766.0** (8K) | **33.9** | — | **232,448** (DMS / opt-in direct INT8) |
-
-Measured one-request context ceilings, Qwen3.8-27B `Q4_K_M` on the 24 GB card:
-
-| KV policy and route | Max context |
-| --- | ---: |
-| BF16 KV, serving route | 40,960 |
-| INT8 KV, serving route | 54,272 |
-| INT8 KV, dense (before alias and direct routes) | 131,072 |
-| DMS, BF16 KV | 73,728 |
-| Direct-resident INT8, hidden-plane alias | 155,648 |
-| DMS, INT8 KV merged lane | 172,288 |
-| Opt-in direct INT8 KV (no BF16 mirror) | 232,448 |
-| DMS, INT8 KV with hidden-plane alias | 232,448 |
 
 #### Strix Halo / Radeon 8060S — 120 GB (`gfx1151`)
 
@@ -234,7 +253,7 @@ Measured one-request context ceilings, Qwen3.8-27B `Q4_K_M` on the 24 GB card:
 Blank cells are shapes we have not measured yet, not failures. Max context is
 published only where a dedicated ceiling run exists.
 
-- **Qwen3.8-27B `Q4_K_M` holds 232,448 tokens of context on one 24 GB RX 7900 XTX** (per-route table above; the model's full 262,144 context needs a predicted 24.8 GiB and does not fit). The opt-in direct-INT8 route prefills at 96% of the 766.0 tok/s default with a measured quality cost. [Capacity evidence](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-capacity.json)
+- **Qwen3.8-27B `Q4_K_M` holds 232,448 tokens of context on a 24 GB `gfx1100` card.** The ceiling depends on the KV format and route — eight measured configurations, 40,960 to 232,448; see Long context with DMS for what each applies to. The model's full 262,144 context needs a predicted 24.8 GiB and does not fit. [Capacity evidence](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-capacity.json)
 
 ### Serving several requests at once
 
@@ -321,7 +340,7 @@ Important limits:
 ## Hardware detection
 
 `backend="auto"` recognizes `gfx1100` and `gfx1151`. These cover the tested
-Radeon RX 7900 XTX / Pro W7900 and Ryzen AI MAX+ 395 / Radeon 8060S systems.
+Radeon Pro W7900 and Ryzen AI MAX+ 395 / Radeon 8060S systems.
 Other AMD architecture numbers are not automatically treated as compatible.
 
 You can force a nearby backend, but do so only after checking output quality and
