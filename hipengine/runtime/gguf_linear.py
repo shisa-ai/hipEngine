@@ -3717,6 +3717,24 @@ def _target_verifier_production_q4_rowtile_scope_enabled(
         return False
 
 
+_Q5_T16_DENSE_DUAL_SILU_ROW_VARIANTS = (
+    (257, "dense_dual_wmma_prefill_bf16_bf16_out"),
+    (129, "dense_dual_wmma_prefill_row128_bf16_bf16_out"),
+    (65, "dense_dual_wmma_prefill_row64_bf16_bf16_out"),
+    (33, "dense_dual_wmma_prefill_row48_bf16_bf16_out"),
+    (2, "dense_dual_wmma_prefill_row32_bf16_bf16_out"),
+)
+
+
+def _q5_t16_dense_pair_silu_variant(rows: int) -> str | None:
+    """Row-qualified Q5T16 gate/up dual fused-SiLU owner, if any."""
+
+    for min_rows, variant in _Q5_T16_DENSE_DUAL_SILU_ROW_VARIANTS:
+        if rows >= min_rows:
+            return variant
+    return None
+
+
 def _target_verifier_production_q4_pair_key(
     dispatch_a: GGUFLinearDispatch,
     dispatch_b: GGUFLinearDispatch,
@@ -5394,7 +5412,8 @@ def launch_gguf_linear_pair_silu(
         dense_pair_quant = (
             dispatch_a.key.quant
             if dispatch_a.key.quant == dispatch_b.key.quant
-            and dispatch_a.key.quant in _Q4_T16_DENSE_QUANTS
+            and dispatch_a.key.quant
+            in _Q4_T16_DENSE_QUANTS | {"gguf_q5_k_t16_v1"}
             else None
         )
         production_q4_pair_key = _target_verifier_production_q4_pair_key(
@@ -5430,6 +5449,43 @@ def launch_gguf_linear_pair_silu(
                 **kwargs,
             )
             return True
+        q5_pair_variant = (
+            _q5_t16_dense_pair_silu_variant(int(rows))
+            if dense_pair_quant == "gguf_q5_k_t16_v1"
+            else None
+        )
+        if q5_pair_variant is not None:
+            q5_pair_key = KernelKey(
+                resolved_backend,
+                "linear_pair_silu",
+                dense_pair_quant,
+                q5_pair_variant,
+            )
+            _ensure_linear_kernel_registered(q5_pair_key)
+            if is_registered(q5_pair_key):
+                fn = resolve(
+                    backend=q5_pair_key.backend,
+                    layer=q5_pair_key.layer,
+                    quant=q5_pair_key.quant,
+                    variant=q5_pair_key.variant,
+                )
+                kwargs = {"stream": stream, "runtime": runtime}
+                library = (
+                    None if libraries is None else libraries.get(dense_pair_quant)
+                )
+                if library is not None:
+                    kwargs["library"] = library
+                fn(
+                    x_ptr,
+                    weight_a.allocation("tiles").tensor.ptr,
+                    weight_b.allocation("tiles").tensor.ptr,
+                    out_ptr,
+                    rows,
+                    in_features,
+                    out_features,
+                    **kwargs,
+                )
+                return True
         production_q4_chunk_groups = (
             _rowtile8_row_chunks(rows)
             if rows > _ROWTILE_MAX_ROWS
