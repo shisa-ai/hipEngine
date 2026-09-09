@@ -1,0 +1,53 @@
+[warmup] halo-box-vulkan code-p512 pp=266.798 tg=24.022
+[warmup] halo-box-vulkan general_en-p512 pp=308.533 tg=24.151
+[warmup] halo-box-vulkan general_ja-p512 pp=312.929 tg=24.131
+[warmup] halo-box-vulkan mixed_ja_en-p512 pp=279.362 tg=24.549
+[warmup] halo-box-vulkan code-p1024 pp=382.038 tg=24.373
+[warmup] halo-box-vulkan general_en-p1024 pp=393.186 tg=24.240
+[warmup] halo-box-vulkan general_ja-p1024 pp=397.476 tg=23.990
+[warmup] halo-box-vulkan mixed_ja_en-p1024 pp=381.570 tg=24.238
+[warmup] halo-box-vulkan code-p4096 pp=403.464 tg=23.583
+[warmup] halo-box-vulkan general_en-p4096 pp=414.899 tg=23.297
+[warmup] halo-box-vulkan general_ja-p4096 pp=416.631 tg=23.572
+[warmup] halo-box-vulkan mixed_ja_en-p4096 pp=406.309 tg=23.940
+[measure 0] halo-box-vulkan code-p512 pp=339.640 tg=25.547
+[measure 0] halo-box-vulkan general_en-p512 pp=344.567 tg=25.570
+[measure 0] halo-box-vulkan general_ja-p512 pp=353.214 tg=25.593
+[measure 0] halo-box-vulkan mixed_ja_en-p512 pp=335.922 tg=25.590
+[measure 0] halo-box-vulkan code-p1024 pp=383.319 tg=25.135
+[measure 0] halo-box-vulkan general_en-p1024 pp=395.790 tg=25.077
+[measure 0] halo-box-vulkan general_ja-p1024 pp=398.849 tg=25.140
+[measure 0] halo-box-vulkan mixed_ja_en-p1024 pp=382.385 tg=25.121
+[measure 0] halo-box-vulkan code-p4096 pp=403.897 tg=24.273
+[measure 0] halo-box-vulkan general_en-p4096 pp=415.188 tg=24.225
+[measure 0] halo-box-vulkan general_ja-p4096 pp=416.786 tg=24.191
+[measure 0] halo-box-vulkan mixed_ja_en-p4096 pp=406.868 tg=24.212
+[measure 1] halo-box-vulkan general_ja-p4096 pp=416.465 tg=24.241
+[measure 1] halo-box-vulkan general_en-p4096 pp=415.112 tg=24.243
+[measure 1] halo-box-vulkan code-p4096 pp=403.931 tg=24.222
+[measure 1] halo-box-vulkan mixed_ja_en-p1024 pp=383.298 tg=25.114
+[measure 1] halo-box-vulkan general_ja-p1024 pp=398.487 tg=25.155
+[measure 1] halo-box-vulkan general_en-p1024 pp=394.301 tg=25.110
+[measure 1] halo-box-vulkan code-p1024 pp=384.111 tg=25.129
+[measure 1] halo-box-vulkan mixed_ja_en-p512 pp=336.220 tg=25.578
+[measure 1] halo-box-vulkan general_ja-p512 pp=353.095 tg=25.565
+[measure 1] halo-box-vulkan general_en-p512 pp=343.389 tg=25.603
+[measure 1] halo-box-vulkan code-p512 pp=338.955 tg=25.502
+[measure 1] halo-box-vulkan mixed_ja_en-p4096 pp=407.067 tg=24.232
+[measure 2] halo-box-vulkan general_ja-p512 pp=353.043 tg=25.570
+[measure 2] halo-box-vulkan mixed_ja_en-p512 pp=337.377 tg=25.555
+[measure 2] halo-box-vulkan code-p1024 pp=384.237 tg=25.089
+[measure 2] halo-box-vulkan general_en-p1024 pp=394.279 tg=25.148
+[measure 2] halo-box-vulkan general_ja-p1024 pp=400.074 tg=25.150
+[measure 2] halo-box-vulkan mixed_ja_en-p1024 pp=382.949 tg=25.106
+[measure 2] halo-box-vulkan code-p4096 pp=403.761 tg=24.198
+[measure 2] halo-box-vulkan general_en-p4096 pp=415.017 tg=24.158
+[measure 2] halo-box-vulkan general_ja-p4096 pp=416.260 tg=24.237
+[measure 2] halo-box-vulkan mixed_ja_en-p4096 pp=406.586 tg=24.256
+[measure 2] halo-box-vulkan code-p512 pp=340.001 tg=25.582
+[measure 2] halo-box-vulkan general_en-p512 pp=342.133 tg=25.579
+{
+  "kind": "qwen4exp_canonical_ar_engine_run",
+  "status": "completed",
+  "output": "/home/lhl/hipEngine/benchmarks/results/2026-09-09-framework-qwen4exp-current-default-baselines-v5.raw/halo-box-vulkan.json"
+}

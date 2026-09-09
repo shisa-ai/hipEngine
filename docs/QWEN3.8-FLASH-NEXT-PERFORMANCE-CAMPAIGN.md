@@ -418,6 +418,17 @@ linear 3.43s, GR 1.71s. Combined-default 12-case screen: HE PP
 packet), TG 19.41/18.68/16.78 (+1.4/+0.5/+2.4%); Vulkan lead PP
 1.614/1.738/1.937x, TG 1.301/1.332/1.436x.
 
+Post-Q5_K-promotion refresh (clean `771337563`, six promotions active):
+code-p4096 prefill MoE 7.496s, linear 3.458s (dense iu8 took attn_gate +
+shared_down), GR 1.463s, QSA 1.335s, GDN 0.826s, device total **14.697s
+(-10.9% versus the five-promotion packet)**; absolute Vulkan gaps: MoE
+2.954s, linear 2.439s, QSA 0.690s. Layer-2 gate/up confirmed on the iu8
+route in situ (66.4ms risk + 60.4ms repair; was 765ms row4); layer-2
+Q8_0 down (246ms) is that layer's dominant remaining cost. Combined
+default: HE PP 268.4/286.2/263.1 (+11.9/+12.5/+10.6% cross-packet), TG
+19.50/19.00/18.38; Vulkan lead PP 1.278/1.363/1.560x, TG
+1.311/1.322/1.318x.
+
 Post-GR-promotion refresh (clean `3fcceff86`, five promotions active):
 code-p4096 prefill MoE 8.301s, linear 4.439s, **GR 1.483s (was 3.418s;
 now 0.226s faster than Vulkan's 1.709s)**, QSA 1.331s, GDN 0.820s, device
