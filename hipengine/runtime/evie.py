@@ -46,7 +46,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
 )
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     build_qwen35_linear_attn_gdn,
-    qwen35_gdn_prefill_recurrent_f32,
+    qwen35_gdn_prefill_recurrent_k2_f32,
 )
 from hipengine.loading.evie import EvieLoadedModel
 from hipengine.models.evie import EvieModelSpec
@@ -837,7 +837,7 @@ class EvieRunner:
         # zero the recurrent state before the layer
         zeros = np.zeros(self.GDN_HEADS * self.GDN_HEAD_DIM * self.GDN_HEAD_DIM, dtype=np.float32)
         state_zero = self._to_dev(zeros)
-        qwen35_gdn_prefill_recurrent_f32(
+        qwen35_gdn_prefill_recurrent_k2_f32(
             q_ptr,
             k_ptr,
             v_ptr,
