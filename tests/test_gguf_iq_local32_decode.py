@@ -64,16 +64,24 @@ def test_local32_registered_on_both_hip_backends(backend):
         KernelKey(backend, "linear", "gguf_iq4_xs", "local32_gemv_bf16_bf16_out"))
 
 
-def test_gfx1100_declares_an_empty_decode_policy_and_gfx1151_none():
-    """The local32 candidate is registered but deliberately unrouted.
+def test_gfx1100_routes_local32_for_iq4_xs_and_gfx1151_keeps_none():
+    """The local32 candidate is routed on gfx1100 (2026-09-10) and registered
+    on both backends.
 
-    The teacher-forced probe breaches the 6.1 envelope on occasional contexts
-    (max row 5.85e-2 at one seed), so the shipped policy is empty; see the
-    declaration comment. Enabling is a one-line edit pending the full
-    production-referenced gate.
+    The holdout was a random-token probe artifact (see the declaration
+    comment): on natural self-generated prompts the route's delta measures
+    mean KL 1.3-4.0e-5 with top-1 100% on all three held-out seeds including
+    the one that failed at 98.44% under random tokens. gfx1151 keeps no
+    decode policy - routing there is a separate per-backend decision.
     """
+    load_backend_kernel_package("hip_gfx1100")
+    load_backend_kernel_package("hip_gfx1151")
+    assert is_registered(
+        KernelKey("hip_gfx1100", "linear", "gguf_iq4_xs", "local32_gemv_bf16_bf16_out"))
     assert backend_package_capability(
-        "hip_gfx1100", "GGUF_IQ_DENSE_DECODE_POLICY", None) == {}
+        "hip_gfx1100", "GGUF_IQ_DENSE_DECODE_POLICY", None) == {
+        "gguf_iq4_xs": {"variant": "local32_gemv_bf16_bf16_out"},
+    }
     assert backend_package_capability(
         "hip_gfx1151", "GGUF_IQ_DENSE_DECODE_POLICY", None) is None
 
@@ -113,12 +121,12 @@ def test_route_is_selected_when_the_policy_entry_is_present(monkeypatch):
     assert out.abi == "raw"
 
 
-def test_shipped_policy_keeps_the_strict_owner():
-    """The shipped (empty) policy must leave decode on the strict GEMV."""
+def test_shipped_policy_routes_the_local32_owner():
+    """The shipped policy routes decode to the local32 GEMV under a session."""
     from hipengine.kernels.hip_gfx1100.quant import gguf_iq_source_mmq_prefill as iq_mmq
     with iq_mmq.iq_dense_mmq_session(True):
         out = _dispatch(rows=1)
-    assert out.key.variant == "gemv_bf16_bf16_out"
+    assert out.key.variant == "local32_gemv_bf16_bf16_out"
 
 
 def test_route_declines_above_one_row():

@@ -43,11 +43,33 @@ def main() -> None:
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
     import hipengine.kernels.hip_gfx1100 as be
 
-    rng = np.random.default_rng(args.seed)
-    prompt = [int(t) for t in rng.integers(0, 150000, size=int(args.prompt_tokens))]
-    n = int(args.decode_tokens)
     compiler_version = (Path(args.compiler_version_file).read_text()
                         if args.compiler_version_file else None)
+    rng = np.random.default_rng(args.seed)
+    if os.environ.get("HIPENGINE_LOCAL32_GATE_NATURAL") == "1":
+        # Self-generated text (the Q3_K gate lesson, 2026-09-10): uniform
+        # random token ids measure a prompt-sensitivity floor at ~1e-3 that
+        # masks route differences; the model's own greedy output is the
+        # realistic token distribution the campaign's real prompts
+        # approximate.
+        from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession as _S
+        with _S(
+            args.model, compiler_version=compiler_version,
+            require_cached_build=args.require_cached_build,
+            max_sequence_length=args.prompt_tokens + args.decode_tokens + 64,
+            use_wmma_prefill=True, use_gemv_decode=True,
+        ) as gen:
+            seed_ids = [int(t) for t in rng.integers(1000, 50000, size=8)]
+            cur = gen.prefill(seed_ids, use_bulk=True, bulk_attention_mode="bulk",
+                              return_logits=True)
+            prompt = list(seed_ids)
+            while len(prompt) < args.prompt_tokens:
+                cur = gen.step(int(cur.token_id), return_logits=True)
+                prompt.append(int(cur.token_id))
+            prompt = prompt[:args.prompt_tokens]
+    else:
+        prompt = [int(t) for t in rng.integers(0, 150000, size=int(args.prompt_tokens))]
+    n = int(args.decode_tokens)
 
     # The shipped policy is empty by decision; the candidate is explicit so
     # this probe stays meaningful regardless of the shipped default.
