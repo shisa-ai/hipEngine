@@ -439,6 +439,25 @@ arms - its opt-out arm de-groups layer 2, an interaction recorded in the
 worklog). Combined with the six prior promotions the expected device total
 at code-p4096 is ~13.5 s (R2e refresh pending).
 
+R2e refresh (seven promotions, clean `b13f0f0af`): the q8-wmma-down
+promotion landed as predicted — code-p4096 prefill device total
+**13.486 s (was 14.697 s at R2d, -8.2%)**, MoE **6.302 s** (was 7.496 s;
+Vulkan gap now +1.760 s), linear 3.473 s (gap +2.454 s), GR read 1.447 s
+(0.262 s faster than Vulkan), QSA 1.335 s (gap +0.689 s), GDN 0.811 s
+(0.579 s faster), boundary 0.102 s. Vulkan device 9.888 s. Logger-off
+combined-default 12-case screen (1 warmup + 3 repetitions, matched
+protocol): HE PP weighted **297.3/312.9/290.6** at p512/1024/p4096
+(+10.8/+9.3/+10.4% cross-packet versus the R2d six-promotion packet,
+consistent with the q8-wmma-down A/B +8.44%), TG **19.94/19.26/18.69**
+(decode neutral as measured). Vulkan lead: PP **1.160/1.256/1.415x**, TG
+**1.290/1.313/1.310x**; halo-box-hip: PP 316.8/387.5/354.5, TG
+22.17/21.16/19.48. The TG gap is untouched by all seven promotions
+(prefill-only wins), confirming R10's conclusion: decode progress requires
+kernel efficiency (#22 R11 GEMV pair: down+gate/up validated at the true
+geometry, down bit-exact, projected TG +11%) or wrapper host work.
+[Family](../benchmarks/results/2026-09-09-framework-qwen4exp-r2e-family.json),
+[baselines](../benchmarks/results/2026-09-09-framework-qwen4exp-current-default-baselines-v6.json).
+
 Post-Q5_K-promotion refresh (clean `771337563`, six promotions active):
 code-p4096 prefill MoE 7.496s, linear 3.458s (dense iu8 took attn_gate +
 shared_down), GR 1.463s, QSA 1.335s, GDN 0.826s, device total **14.697s
