@@ -22659,7 +22659,13 @@ class Qwen35GGUFResidentSession:
                                 max_positions=int(session.scratch.max_positions),
                                 stream=stream,
                                 expert_sidecar=None,
-                                allow_aotriton=not transient_direct_oracle,
+                                allow_aotriton=(
+                                    _gguf_slot_local_prefill_allow_aotriton(
+                                        transient_direct_oracle=(
+                                            transient_direct_oracle
+                                        ),
+                                    )
+                                ),
                                 aotriton_min_tokens=(
                                     1 if slot_index in force_aotriton_slots else None
                                 ),
@@ -29574,6 +29580,44 @@ def _gguf_int8_prefill_direct_enabled() -> bool:
     """
 
     return _env_flag(_GGUF_INT8_PREFILL_DIRECT_ENV, False)
+
+
+_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON_ENV = (
+    "HIPENGINE_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON"
+)
+
+
+def _gguf_int8_prefill_slot_local_aotriton_enabled() -> bool:
+    """Admit AOTriton on slot-local prefill layers owning a transient BF16 oracle.
+
+    The ``int8_direct`` route forces slot-local full-attention prefill and has
+    hard-disabled AOTriton for oracle-owning layers since the compact-serial-c4
+    qualification, which leaves it on the native split-K paged kernel (16 query
+    rows per batch). That is the route every server INT8 request takes above the
+    8,192-position mirror threshold, and it is the only place in the engine that
+    reads a dense BF16 oracle without AOTriton: the scalar bulk parent and the
+    strict arithmetic declared by
+    ``scripts/execution_profile_gguf_int8_direct_prefill_gate.py`` both read the
+    same oracle pair *through* AOTriton.
+
+    Enabling it changes the attention reduction order, so this is default OFF
+    pending the production-profile numerics gate; env "1" opts in and "0" is the
+    explicit rollback once promoted. See ``docs/REFACTOR.md``.
+    """
+
+    return _env_flag(_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON_ENV, False)
+
+
+def _gguf_slot_local_prefill_allow_aotriton(*, transient_direct_oracle: bool) -> bool:
+    """Resolve AOTriton admission for one slot-local full-attention prefill layer.
+
+    Layers with no transient oracle keep the engine-wide default; oracle-owning
+    layers follow the opt-in gate above. The flag only ever widens admission.
+    """
+
+    if not transient_direct_oracle:
+        return True
+    return _gguf_int8_prefill_slot_local_aotriton_enabled()
 
 
 def _gguf_int8_prefill_kernel() -> str:
