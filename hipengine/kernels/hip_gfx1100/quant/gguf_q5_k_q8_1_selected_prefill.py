@@ -360,25 +360,32 @@ def gguf_q5_k_selected_dual_sparse_exact_repair_bf16(
 
 
 def register_gguf_q5_k_q8_1_selected_prefill_kernels(*, replace: bool = True) -> None:
-    """Register the Q5_K iu8-WMMA risk+repair selected dual kernels."""
+    """Register the Q5_K iu8-WMMA risk+repair selected dual kernels.
 
-    register(
-        KernelKey(
-            "hip_gfx1100",
-            "moe_linear",
-            "gguf_q5_k",
-            "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out",
-        ),
-        gguf_q5_k_selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out,
-        replace=replace,
-    )
-    register(
-        KernelKey(
-            "hip_gfx1100",
-            "moe_linear",
-            "gguf_q5_k",
-            "selected_dual_sparse_exact_repair_bf16",
-        ),
-        gguf_q5_k_selected_dual_sparse_exact_repair_bf16,
-        replace=replace,
-    )
+    Registers under both the hip_gfx1100 source backend and the hip_gfx1151
+    alias so resolution works regardless of when the gfx1151 alias pass
+    runs relative to this registration (the production runner resolves
+    gfx1151 keys lazily inside run_qwen4_exp_moe).
+    """
+
+    for backend in ("hip_gfx1100", "hip_gfx1151"):
+        register(
+            KernelKey(
+                backend,
+                "moe_linear",
+                "gguf_q5_k",
+                "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out",
+            ),
+            gguf_q5_k_selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out,
+            replace=replace,
+        )
+        register(
+            KernelKey(
+                backend,
+                "moe_linear",
+                "gguf_q5_k",
+                "selected_dual_sparse_exact_repair_bf16",
+            ),
+            gguf_q5_k_selected_dual_sparse_exact_repair_bf16,
+            replace=replace,
+        )
