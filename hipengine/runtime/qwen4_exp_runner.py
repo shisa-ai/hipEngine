@@ -3992,7 +3992,14 @@ def run_qwen4_exp_moe(
             # and sparse repair reproduce the strict row4 parent bit-exactly
             # (128-thread strided k ownership + shuffle/wave tree), so the
             # published gate/up arithmetic is unchanged; only the kernel
-            # executes through the iu8-WMMA datapath.
+            # executes through the iu8-WMMA datapath. The lazy registration
+            # is idempotent and keeps the route resolvable on every path
+            # (the gfx1151 alias pass may run before any harness-side
+            # registration).
+            from hipengine.kernels.hip_gfx1100.quant.gguf_q5_k_q8_1_selected_prefill import (
+                register_gguf_q5_k_q8_1_selected_prefill_kernels as _register_q5k_iu8,
+            )
+            _register_q5k_iu8(replace=False)
             risk_count, risk_indices = scratch.ensure_group_risk_buffers(
                 compact_rows=compact, out_features_total=2 * ffn
             )
