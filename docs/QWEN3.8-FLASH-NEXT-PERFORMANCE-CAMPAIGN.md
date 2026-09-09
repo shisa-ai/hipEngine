@@ -534,11 +534,19 @@ now) plus the shared-expert block (6.19 ms/token) plus wrapper work
 but every bucket needs its own measured mechanism and gates; R11 alone
 moves 53.5 to ~47.8, still above target.
 
-**Execution order (prefill-first, GPU serialized):** finish R11
-qualification -> newer-halo-box HIP prefill attribution capture -> dense
-Q8 three-plane MMQ -> MoE expert-row utilization/pipelining -> bounded QSA
-D256 sweep. No IU4, resident-PLE/offload, GDN, or MTP detours for this
-serial-AR gap.
+**Execution order (prefill-first, GPU serialized):** R11 qualification
+is CLOSED (not promoted, evidence recorded). The newer-engine windowed
+attribution (2026-09-10-halobox5f-hip-prefill-attribution-windowed.json)
+RE-RANKS the remaining queue: at code-p4096 the external advantage is
+**~63% the MoE routed-expert path** (1.00 s external routed+reduce versus
+hipEngine's 6.01 s whole-MoE block; 6x) while dense linear is nearly at
+parity (~3.0 s external MMQ+GEMM versus 3.84 s; the old-pin-based
+"+2.45 s linear excess" overstated dense for the newer engine). Order:
+**MoE expert-row utilization/pipelining first** (the
+mul_mat_q_routed_compact row-count-selected 48/32/16 tile geometries,
+plus map/padding/quantize/repair costs) -> dense Q8 three-plane MMQ
+(0.5-0.8 s) -> bounded QSA D256 sweep. No IU4, resident-PLE/offload,
+GDN, or MTP detours for this serial-AR gap.
 
 Post-Q5_K-promotion refresh (clean `771337563`, six promotions active):
 code-p4096 prefill MoE 7.496s, linear 3.458s (dense iu8 took attn_gate +
