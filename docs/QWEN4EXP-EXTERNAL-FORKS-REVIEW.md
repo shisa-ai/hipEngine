@@ -219,6 +219,48 @@ High-value inspected commit mechanisms:
 | `10579a736` (block 01) | Adaptive MTP draft depth (runtime n-max from acceptance). | W7900 MTP lane feature candidate; separate campaign economics gates. |
 | `7c5bb5cb9` / `e06dcf630` / `22ed83e9a` | Internal HIP allreduce + P2P, Q8_0 wire compression + fused allreduce+residual, DFlash2 tensor-split fix. | Multi-GPU lane only; out of Framework scope, recorded for future dual-GPU work. |
 
+### mlx-serve: Different Silicon, Shared Architecture, One Adoptable Mechanism
+
+Reviewed September 9, 2026 at `1ec580a` (v26.9.2) via a read-only blob-less
+clone. [mlx-serve](https://github.com/ddalcu/mlx-serve) is a Zig-based
+Apple-Silicon/MLX server (MIT/Apache-2.0 dual-licensed, referenceable) whose
+Qwen 3.8 Flash-Next support lives in `src/qwen4_exp.zig` plus
+`tests/convert_qwen38_flash_next.py`. Its reported long-context behavior -
+prefill ~1700-1800 tok/s falling to ~1000 at 1M, decode 100+ tok/s to 16K,
+80+ to 256K, 60/40 at 500K/1M - is on an M5 Max with a 4-bit MLX pack under
+llmprobe; it is not a comparator row for this campaign. The repo's own M5
+plan records M4 Max decode 62-63 base / 73-88 MTP and M5 Max 91.2 base /
+1633 prefill - same class, different protocol.
+
+Most of the long-context flatness is the architecture, which we already
+share: O(1) selected-attention window (their top-512 of kv/4 blocks; our
+fixed 2048-token budget = 512 blocks), O(ctx/4) pooled-block scoring, GDN
+recurrent state, few full-attention layers, and fixed PLE I/O. Our p512->p4096
+combined-default prefill is already flat (239.7 -> 237.9). The actionable
+findings:
+
+- **QSA raw-indexer-key ring (`e0a4264`, #381).** They showed the raw
+  indexer keys (3,072 B/token bf16, 12 indexers) were retained for the whole
+  context but read only at block close, authority check and rollback:
+  18% of per-token cache cost, 3.2 GB at 1M, 80% of their history file.
+  Their fix keeps a 32-row ring (verify width plus one block) with the pooled
+  block bank as the history; checkpoints carry only a small leftover.
+  **We retain the same payload in FP32 - our
+  `fp32_raw_index_bytes_per_token` is 6,144 B/token (12 QSA layers x 128
+  dims x 4 B), double their pre-fix cost: ~1.6 GB at 256K, ~6.4 GB at 1M,
+  plus full-history `Qwen4ExpHostQSAIndexSnapshot.raw_keys[:count].copy()`
+  host copies.** Our device consumers match theirs (block-close pooling via
+  `prepare_complete_blocks`, restore/rollback) - the ring is adoptable in
+  principle, gated on snapshot/restore redesign and our exactness/state
+  contracts.
+- **Launch economy validates R6.** Their decode is a compiled fused graph
+  with few launches per token; our R6 split measured 5.3 ms/token of
+  host/launch overhead across ~1700 individually launched kernels. Same
+  conclusion from opposite evidence.
+- **Not applicable here:** their Ngram/PLE mmap `pread` pool and page-cache
+  warm (our PLE is resident with constant 3.1 MB H2D), their MTP adaptive
+depth (already noted for the W7900 lane), and all Metal/NAX specifics.
+
 ## Campaign Experiments
 
 Do not restart completed R4 work or interrupt current Q5_1 admission.
@@ -237,6 +279,7 @@ external headline ratios do not supply current recoverable milliseconds.
 | E6 / P11 MTP | Count duplicate target replay forwards at each rejection depth; test full/partial restore into dirty destinations and shared target/draft allocation accounting. | Complete true-AR category/heldout economics and exact state/control remain binding. Capacity beyond1K and batch-invariant verification precede budget/confidence tuning. No headline-driven MTP default. |
 | E7 / separate serving-memory followup | Measure PLE page-cache pressure, pinned resident bytes, startup fragmentation, and ownership-preserving in-place prefix snapshots. | First compare with existing PLE/prefix ownership. Charge all retained KV/state and additional buffers; preserve cache-hit/cold policy and isolation. No host sysctl/THP change, Halogen installation or new weight format is authorized by this review. |
 | E8 / R7 QSA prefill + E1 MoE prefill | Screen the nasone32 RDNA3.5 mechanisms on our owners after the R2d re-rank: (a) D=256 QSA prefill tile-config/occupancy sweep (reference `ed11a0d2f`); (b) expert-row-aware tile J from typical expert width on the retained MoE grouped chains (references `47ff3777a`/`9a764c613`/`7dfa528e3`, strengthening E1). | Author rows are gfx1100/`UD_Q3_XXL`/PP8192 with RAM offload and are not transferable rates. Representation-preserving only: no arithmetic change in (a); charge tile-map and padding overhead against actual routing histograms in (b). The fork's multi-GPU machinery, expert cache and lazy-PLE staging stay out of this campaign's scope. |
+| E9 / P10 long-context lane | First measure our own current-path context-scaling curve (16K/64K/256K prefill and decode, production default, chunk1024) - the existing P10 rows are pre-campaign, chunk512 and instrumented. Then, if deep-context memory or snapshot costs bind, screen the mlx-serve QSA raw-key ring (`e0a4264`): retain only an open-block-plus-verify-width ring of raw index keys with the pooled bank as history, redesigning snapshot/restore to carry block-close leftovers. | mlx-serve rows are M5 Max/4-bit MLX/llmprobe and are not comparator evidence; the flatness mechanism is the shared hybrid architecture, not a transferable rate. The ring changes state/snapshot semantics: full logits/state/KV gates, rollback and restore exactness, and the native-capacity memory ledger (262144 admission, 106.87 GB tracked) must be re-admitted. No protocol change without a measured baseline first. |
 
 Already covered mechanisms include radix QSA selection, gathered decode,
 incremental pooled keys, host PLE gathering, grouped experts/weighted down,
