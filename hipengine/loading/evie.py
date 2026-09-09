@@ -82,15 +82,13 @@ def convert_evie_weight_to_fp32(name: str, info: TensorInfo) -> np.ndarray:
 def evie_gemm_weight(name: str) -> bool:
     """True when a weight feeds a rocBLAS GEMM (fp16 production candidate).
 
-    GDN in_proj/out_proj stay FP32 even in fp16 mode: the gated-delta-net
-    recurrence amplifies fp16 input rounding into systematic activation-scale
-    drift (measured: fp16 text-stack hidden states diverge to rel ~1.0),
-    so only the non-recurrent projections run the fp16 path.
+    GDN in_proj/out_proj are included: the runner routes them through the
+    f32-output gemm_ex epilogue (see ``EvieRunner._gemm32``) because f16
+    output rounding of the in_proj results drifts the gated-delta-net
+    recurrence; f16 inputs and weights are fine.
     """
 
     if not name.endswith(".weight"):
-        return False
-    if "in_proj" in name or "out_proj" in name:
         return False
     return not any(
         marker in name
