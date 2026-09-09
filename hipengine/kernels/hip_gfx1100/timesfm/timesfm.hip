@@ -656,6 +656,216 @@ __global__ void qkv_norm_scatter_kernel(
 
 
 
+
+// Short-query (AR) flash attention: one 128-thread block per (batch*head,
+// q tile); the four wave32s each process a quarter of the kv tiles and the
+// block merges the partial online-softmax accumulators through LDS.  The
+// merge weight is (m == -inf) ? 1 : exp(m - M), which handles causally-empty
+// chunks (l = 0) and uniform-fallback rows (all chunks m = -inf, weight 1,
+// preserving the 1/S mean-of-V reference behaviour).
+template <typename T>
+__global__ void flash_short_kernel(
+    const T* __restrict__ qt,        // [B, H, Q, D]
+    const T* __restrict__ cache_k,   // [B, H, S, D]
+    const T* __restrict__ cache_v,   // [B, H, S, D]
+    const int* __restrict__ num_masked,
+    const int* __restrict__ q_offset,
+    T* __restrict__ out,            // [B, H, Q, D]
+    int B,
+    int Q,
+    int S,
+    int H,
+    int D) {
+  const int q0 = blockIdx.x * 16;
+  const int bh = blockIdx.y;
+  const int b = bh / H;
+  const int lane = threadIdx.x & 31;
+  const int wave = threadIdx.x >> 5;   // kv chunk id (0..3)
+  const int col = lane & 15;
+  const int half_id = lane >> 4;
+  const int d_tiles = D / 16;
+  const int nm = num_masked[b];
+  const int off = q_offset[b];
+
+  if (q0 >= Q) return;
+
+  const T* q_base = qt + ((int64_t)bh * Q) * D;
+  const T* k_base = cache_k + ((int64_t)bh * S) * D;
+  const T* v_base = cache_v + ((int64_t)bh * S) * D;
+
+  half16_t q_frag[5];
+  const int q_row = q0 + (lane & 15);
+  const bool q_valid = q_row < Q;
+#pragma unroll
+  for (int dt = 0; dt < 5; ++dt) {
+    if (dt < d_tiles) {
+      const T* src = q_base + (int64_t)(q_valid ? q_row : 0) * D + dt * 16;
+#pragma unroll
+      for (int i = 0; i < 16; ++i) q_frag[dt][i] = q_valid ? src[i] : (T)0;
+    }
+  }
+
+  float m_run[8], l_run[8];
+  float8_t acc_o[5];
+#pragma unroll
+  for (int j = 0; j < 8; ++j) {
+    m_run[j] = -INFINITY;
+    l_run[j] = 0.0f;
+  }
+#pragma unroll
+  for (int dt = 0; dt < 5; ++dt) {
+    acc_o[dt] = (float8_t){0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+    if (dt >= d_tiles) break;
+  }
+
+  __shared__ half_t p_stage[4][16][17];
+  extern __shared__ float merge_dyn[];  // [4][16][D+2]: O then (m, l) per row
+
+  const int q_hi = min(q0 + 15, Q - 1);
+  const int s_limit = min(S - 1, q_hi + off);
+  const bool has_unif = (q0 == 0) && (off < nm);
+  const int s_end = has_unif ? (S - 1) : s_limit;
+  bool unif[8];
+#pragma unroll
+  for (int j = 0; j < 8; ++j) unif[j] = (q0 + half_id + 2 * j + off) < nm;
+
+  // Four tiles per iteration (one per wave); the loop bound is uniform so
+  // the __syncthreads stay convergent, and waves past s_end skip only their
+  // own compute.
+  for (int base = 0; base <= s_end; base += 64) {
+    const int s0 = base + wave * 16;
+    const bool mine = s0 <= s_end;
+    float8_t sc = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+    if (mine) {
+      const int k_row = s0 + col;
+      for (int dt = 0; dt < d_tiles; ++dt) {
+        half16_t b_frag;
+        if (k_row < S) {
+          const T* src = k_base + (int64_t)k_row * D + dt * 16;
+#pragma unroll
+          for (int i = 0; i < 16; ++i) b_frag[i] = src[i];
+        } else {
+#pragma unroll
+          for (int i = 0; i < 16; ++i) b_frag[i] = (T)0;
+        }
+        sc = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(q_frag[dt], b_frag, sc);
+      }
+    }
+    float tile_max[8], alpha[8], m_new[8], tile_sum[8];
+#pragma unroll
+    for (int j = 0; j < 8; ++j) tile_max[j] = -INFINITY;
+#pragma unroll
+    for (int j = 0; j < 8; ++j) tile_sum[j] = 0.0f;
+    if (mine) {
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        const int r = half_id + 2 * j;
+        const int s = s0 + col;
+        const bool allowed = (q0 + r < Q) && (q0 + r + off >= s) && (s >= nm) && (s < S);
+        if (!allowed) sc[j] = -INFINITY;
+        tile_max[j] = fmaxf(tile_max[j], allowed ? sc[j] : -INFINITY);
+      }
+#pragma unroll
+      for (int w = 8; w > 0; w >>= 1) {
+#pragma unroll
+        for (int j = 0; j < 8; ++j) {
+          tile_max[j] = fmaxf(tile_max[j], __shfl_xor(tile_max[j], w, 16));
+        }
+      }
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        m_new[j] = fmaxf(m_run[j], tile_max[j]);
+        alpha[j] = (m_run[j] == -INFINITY) ? 1.0f : expf(m_run[j] - m_new[j]);
+        m_run[j] = m_new[j];
+      }
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        const bool unif_now = unif[j] && (s0 + col < S);
+        float e = unif_now ? 1.0f
+                           : (sc[j] == -INFINITY ? 0.0f : expf(sc[j] - m_new[j]));
+        sc[j] = e;
+        tile_sum[j] += e;
+      }
+#pragma unroll
+      for (int w = 8; w > 0; w >>= 1) {
+#pragma unroll
+        for (int j = 0; j < 8; ++j) {
+          tile_sum[j] += __shfl_xor(tile_sum[j], w, 16);
+        }
+      }
+#pragma unroll
+      for (int j = 0; j < 8; ++j) l_run[j] = l_run[j] * alpha[j] + tile_sum[j];
+#pragma unroll
+      for (int dt = 0; dt < d_tiles; ++dt) {
+#pragma unroll
+        for (int j = 0; j < 8; ++j) acc_o[dt][j] *= alpha[j];
+      }
+    }
+    __syncthreads();
+    if (mine) {
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        p_stage[wave][half_id + 2 * j][col] = (half_t)sc[j];
+      }
+    }
+    __syncthreads();
+    if (mine) {
+      half16_t p_frag;
+#pragma unroll
+      for (int i = 0; i < 16; ++i) p_frag[i] = p_stage[wave][lane & 15][i];
+      for (int dt = 0; dt < d_tiles; ++dt) {
+        half16_t b_frag;
+        const T* vcol = v_base + (int64_t)s0 * D + dt * 16 + col;
+#pragma unroll
+        for (int i = 0; i < 16; ++i) b_frag[i] = (s0 + i < S) ? vcol[(int64_t)i * D] : (T)0;
+        acc_o[dt] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(p_frag, b_frag, acc_o[dt]);
+      }
+    }
+  }
+
+  // Stage this wave's partial accumulators and (m, l) through LDS.
+#pragma unroll
+  for (int j = 0; j < 8; ++j) {
+    const int r = half_id + 2 * j;
+    if (q0 + r < Q) {
+      for (int dt = 0; dt < d_tiles; ++dt) {
+#pragma unroll
+        for (int c2 = 0; c2 < 16; ++c2) {}  // placeholder, replaced below
+        merge_dyn[(wave * 16 + r) * (D + 2) + dt * 16 + col] = acc_o[dt][j];
+      }
+      if (col == 0) {
+        merge_dyn[(wave * 16 + r) * (D + 2) + D + 0] = m_run[j];
+        merge_dyn[(wave * 16 + r) * (D + 2) + D + 1] = l_run[j];
+      }
+    }
+  }
+  __syncthreads();
+
+  // Merge: rows assigned across the 128 threads (4 rows in typical AR use).
+  T* out_base = out + ((int64_t)bh * Q) * D;
+  for (int r = 0; r < 16; ++r) {
+    if (q0 + r >= Q) break;
+    // 128 threads stride over D.
+    if (threadIdx.x < D) {
+      const int d = threadIdx.x;
+      float m_max = -INFINITY;
+#pragma unroll
+      for (int w = 0; w < 4; ++w)
+        m_max = fmaxf(m_max, merge_dyn[(w * 16 + r) * (D + 2) + D]);
+      if (m_max == -INFINITY) m_max = 0.0f;
+      float acc = 0.0f, l = 0.0f;
+#pragma unroll
+      for (int w = 0; w < 4; ++w) {
+        const float m_w = merge_dyn[(w * 16 + r) * (D + 2) + D];
+        const float wgt = (m_w == -INFINITY) ? 1.0f : expf(m_w - m_max);
+        acc += wgt * merge_dyn[(w * 16 + r) * (D + 2) + d];
+        l += wgt * merge_dyn[(w * 16 + r) * (D + 2) + D + 1];
+      }
+      out_base[(int64_t)(q0 + r) * D + d] = (T)(l > 0.0f ? acc / l : 0.0f);
+    }
+  }
+}
+
 // Flash-attention-style fused causal attention (FP16 production path).
 //
 // One wave32 block per (batch*head, 16-row q tile).  Uses the RDNA
@@ -983,8 +1193,10 @@ extern "C" int timesfm_flash_attention_f16(
                        stream, qt, k, v, num_masked, q_offset, out,
                        B, Q, S, H, D);
   } else {
+    // Short-query path: four wave32s per block split the kv tiles.
     dim3 grid((unsigned)((Q + 15) / 16), (unsigned)((int64_t)B * H));
-    hipLaunchKernelGGL((flash_attention_kernel<half_t, 32>), grid, dim3(32), 0,
+    size_t shared = (size_t)4 * 16 * (D + 2) * sizeof(float);
+    hipLaunchKernelGGL(flash_short_kernel<half_t>, grid, dim3(128), shared,
                        stream, qt, k, v, num_masked, q_offset, out,
                        B, Q, S, H, D);
   }
