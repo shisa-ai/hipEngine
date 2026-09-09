@@ -167,19 +167,19 @@ def test_policy_floor_matches_the_measured_crossover():
             f"{quant} min_rows drifted from the swept crossover")
 
 
-def test_unsupported_quants_keep_the_strict_owner():
-    """Quants whose 32-element groups need finer scales must not be routed.
+def test_integer_mmq_inexpressible_quants_take_w4a16():
+    """The per-16-scale quants route through W4A16, not the integer MMQ.
 
     The MMQ expansion returns one float scale plus 32 signed int8 per K32
     group. Q3_K, IQ2_S and IQ2_XS carry a scale per 16 elements, so under a
     per-32 scale their residual integers reach +/-128 and +/-1333 respectively
-    and do not fit int8. IQ3_S does fit (+/-15) but needs its 2 KB grid table
-    ported into this translation unit, so it is not wired yet.
+    and do not fit int8. They are served by the W4A16 hi+lo split path
+    (2026-09-10 unblock) instead of staying on the strict GEMV.
     """
     with iq_mmq.iq_dense_mmq_session(True, workspace_ptr=1 << 20, workspace_nbytes=1 << 24):
         for quant in ("gguf_iq2_xs", "gguf_q3_k", "gguf_iq2_s"):
             out = _dispatch(quant, rows=512, in_features=5120, out_features=17408)
-            assert out.key.variant == "prefill_bf16_bf16_out", quant
+            assert out.key.variant == _POLICY_VARIANT, quant
 
 
 def test_every_policy_quant_has_a_registered_owner():
@@ -188,13 +188,15 @@ def test_every_policy_quant_has_a_registered_owner():
         load_backend_kernel_package(backend)
         policy = backend_package_capability(
             backend, "GGUF_IQ_DENSE_PREFILL_POLICY", {})
-        assert set(policy) == {"gguf_iq4_xs", "gguf_iq3_xxs", "gguf_iq3_s", "gguf_iq4_nl"}
+        assert set(policy) == {"gguf_iq4_xs", "gguf_iq3_xxs", "gguf_iq3_s", "gguf_iq4_nl",
+                               "gguf_q3_k", "gguf_iq2_s", "gguf_iq2_xs"}
         for quant, entry in policy.items():
             assert is_registered(
                 KernelKey(backend, "linear", quant, entry["variant"])), backend
 
 
-@pytest.mark.parametrize("quant", ("gguf_iq4_xs", "gguf_iq3_xxs", "gguf_iq3_s", "gguf_iq4_nl"))
+@pytest.mark.parametrize("quant", ("gguf_iq4_xs", "gguf_iq3_xxs", "gguf_iq3_s", "gguf_iq4_nl",
+                                    "gguf_q3_k", "gguf_iq2_s", "gguf_iq2_xs"))
 def test_all_expressible_iq_quants_are_routed(quant):
     """Every quant whose K32 groups fit `scale * int8` takes the MMQ route.
 

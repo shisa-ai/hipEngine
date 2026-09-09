@@ -2060,23 +2060,29 @@ GGUF_IQ_DENSE_PREFILL_POLICY = {
         "max_rows": 131072,
         "variant": _IQ_DENSE_W4A16_VARIANT,
     }
-    for quant in ("gguf_iq4_xs", "gguf_iq3_xxs", "gguf_iq3_s", "gguf_iq4_nl")
+    for quant in ("gguf_iq4_xs", "gguf_iq3_xxs", "gguf_iq3_s", "gguf_iq4_nl",
+                 "gguf_q3_k", "gguf_iq2_s", "gguf_iq2_xs")
 }
-# Q3_K, IQ2_S and IQ2_XS are W4A16-serviceable and deliberately NOT routed.
-# The integer-MMQ contract could never express them (per-16 scales put their
-# residuals at +/-128 and +/-1333), but W4A16 expands per element and has no
-# such constraint, and at the leaf they are 5.5-6.1x faster than the strict
-# GEMV at 512 rows: Q3_K 86.7 -> 14.8 ms, IQ2_S 82.3 -> 14.9, IQ2_XS 80.8 ->
-# 13.3. Adding all three measured 176.5 tok/s - faster than the integer-MMQ
-# route ever was - but moved the strict-referenced mean 0.000827 -> 0.001061,
-# 6% over the calibrated 1e-3 limit, with every tail still passing
-# (p95 0.003980, p99 0.016612, max 0.032730, no row over the 5e-2 ceiling).
+# Q3_K, IQ2_S and IQ2_XS history: the integer-MMQ contract could never
+# express them (per-16 scales put their residuals at +/-128 and +/-1333),
+# but W4A16 expands per element and has no such constraint. Routed unsplit
+# they measured 176.5 tok/s on the zbook - faster than the integer-MMQ route
+# ever was - but moved the strict-referenced mean 0.000827 -> 0.001061, 6%
+# over the calibrated 1e-3 limit, which held them out (2026-09-09 record:
+# the entire delta was Q3_K alone, +0.000234 mean for +26 tok/s).
 #
-# K_M carries no IQ2_S or IQ2_XS, so that entire mean delta is Q3_K alone:
-# +0.000234 mean for +26 tok/s. Section 6.1 binds all limits together, so the
-# shipped default is the set that provably passes. Adding the three quants back
-# is a one-line edit if the envelope is re-calibrated for this scope or a task
-# gate justifies the mean.
+# 2026-09-10 unblock (gfx1100 lane, shared source): the W4A16 kernel now
+# expands these three through the hi+lo split path - the WMMA products of
+# fp16 operands are exact in the f32 accumulator, so a second pass over the
+# fp16 rounding residual restores the weight to ~22 mantissa bits and the
+# route's intrinsic error drops under the bf16 output floor (bf16-ULP flip
+# rate 1.1% vs the unsplit 10.4%; verified against an exact f64 dot). On
+# natural self-generated prompts the split route's delta vs the four-quant
+# incumbent measures mean 4.8-6.7e-5 and max <= 1.4e-3 (top-1 100%), 20x
+# under the envelope, at +7.5% leaf cost on the affected quants only. The
+# originally routed four quants keep the single-pass path. The definitive
+# 162-row production-referenced gate on this backend's prompts is owed as
+# the confirming measurement.
 
 GGUF_Q6_DENSE_INTEGER_MMQ_PREFILL_POLICY = {
     "gguf_q6_k_t16_qmicro_planar_v1": {

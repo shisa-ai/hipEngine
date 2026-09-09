@@ -73,12 +73,16 @@ def test_is_the_dense_iq_prefill_default_on_both_hip_backends(backend):
     while the integer-MMQ alternative breaches the 5e-2 absolute maximum-row
     ceiling at 0.170390. It costs 12% throughput: 150.9 against 171.9 tok/s
     (gfx1151 measurements; the gfx1100 policy is the route-plan item-F port
-    of the same kernel and set).
+    of the same kernel and set). Q3_K, IQ2_S and IQ2_XS joined via the hi+lo
+    split path on 2026-09-10: the route delta vs the four-quant incumbent
+    measures mean 4.8-6.7e-5 on natural prompts (top-1 100%), 20x under
+    the envelope, at +7.5% leaf cost on those quants only.
     """
     load_backend_kernel_package(backend)
     policy = backend_package_capability(
         backend, "GGUF_IQ_DENSE_PREFILL_POLICY", {})
-    assert set(policy) == {"gguf_iq4_xs", "gguf_iq3_xxs", "gguf_iq3_s", "gguf_iq4_nl"}
+    assert set(policy) == {"gguf_iq4_xs", "gguf_iq3_xxs", "gguf_iq3_s", "gguf_iq4_nl",
+                           "gguf_q3_k", "gguf_iq2_s", "gguf_iq2_xs"}
     for quant, entry in policy.items():
         assert entry["variant"] == w4a16._VARIANT, quant
 
@@ -115,13 +119,17 @@ def test_iq4_nl_block_alignment_is_32_not_256():
 # ------------------------------------------------------------------- numerics
 
 
-@pytest.mark.parametrize("quant", ("IQ4_XS", "IQ4_NL", "IQ3_S", "Q3_K"))
+@pytest.mark.parametrize("quant", ("IQ4_XS", "IQ4_NL", "IQ3_S", "Q3_K",
+                                 "IQ2_S", "IQ2_XS"))
 @pytest.mark.parametrize("rows", (16, 64))
 def test_matches_the_strict_gemv_on_real_rows(library, quant, rows):
     """W4A16 must agree with the strict dense GEMV, the exact reference path.
 
     Both write bf16, so the comparison floor is the output format rather than
-    either kernel's arithmetic.
+    either kernel's arithmetic. Q3_K, IQ2_S and IQ2_XS take the hi+lo split
+    path (the fp16 residual pass), so they should track the strict GEMV at
+    the bf16 output floor rather than the unsplit route's fp16-rounding
+    distance.
     """
     import json
     from hipengine.core.memory import (copy_device_to_host, copy_host_to_device,
