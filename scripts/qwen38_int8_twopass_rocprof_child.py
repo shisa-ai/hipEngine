@@ -5,7 +5,7 @@ Builds a synthetic 8,192-token INT8 paged KV store with fp32 per-token/head
 scales, then launches the two-pass tiled prefill kernel once per
 full-attention layer (16) at the worst-case chunk (rows 7168..8191 attend
 over all 8,192 tokens). Run under ``rocprofv3 --kernel-trace`` to read the
-per-launch duration of ``qwen35_paged_full_attn_prefill_gqa_gate_int8_twopass_kernel``.
+per-launch duration of the direct INT8 prefill kernels.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ from hipengine.core.tensor import Tensor
 from hipengine.kernels.hip_gfx1100.attention import (
     build_qwen35_paged_attn_decode,
     qwen35_paged_attn_prefill_int8_gqa_gate_bf16_out_flash_spans,
-    qwen35_paged_attn_prefill_int8_gqa_gate_bf16_out_twopass_spans,
+    qwen35_paged_attn_prefill_int8_gqa_gate_bf16_out_wmma_spans,
 )
 from hipengine.kvcache import KVLiveSpans, KVScaleMetadata
 
@@ -103,6 +103,7 @@ def main() -> int:
     runtime.device_synchronize()
     for kernel_name, launcher in (
         ("flash", qwen35_paged_attn_prefill_int8_gqa_gate_bf16_out_flash_spans),
+        ("wmma", qwen35_paged_attn_prefill_int8_gqa_gate_bf16_out_wmma_spans),
     ):
         # GPU-side per-launch timing via HIP events
         events = []
