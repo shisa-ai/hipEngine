@@ -125,7 +125,7 @@ def main() -> None:
         except subprocess.TimeoutExpired:
             process.kill()
 
-    kernel_csvs = sorted((trace_root / "trace").glob("*kernel_trace*.csv"))
+    kernel_csvs = sorted((trace_root / "trace").rglob("*kernel_trace*.csv"))
     if not kernel_csvs:
         raise RuntimeError("no kernel trace csv produced")
     roles: dict[str, float] = defaultdict(float)
