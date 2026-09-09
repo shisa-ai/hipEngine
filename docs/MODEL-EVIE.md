@@ -121,6 +121,40 @@ Same workload/host throughout; each step is cumulative.
 | 9 | text GQA attention f16 (repeat-fused gather) | 2.66 | −1% |
 | 10 | query-path fixed costs (persistent state-zero, pos-table cache) | 2.46 | −8% |
 
+## INT8/FP8 quantization evaluation (2026-09-09): not applicable
+
+Evaluated and rejected for this stack, on two independent grounds:
+
+1. **No library path exists.** rocBLAS `gemm_ex` returns NOT_SUPPORTED
+   (status 11) for every INT8 and FP8 datatype/compute combination at our
+   shapes (NT, m=out_features, k=in_features). hipBLASLt on gfx1151
+   rejects INT8 compute descriptors outright (INVALID_VALUE), rejects
+   INT8 operands with F32 compute, and accepts the FP8 datatypes
+   (E4M3/E5M2) but returns **zero heuristic algorithms** — there are no
+   gfx1151 FP8 matmul kernels in this ROCm build.
+2. **The runtime is launch-bound, not GEMM-bound.** Instrumenting one
+   document page (231 ms total): dense projection GEMMs including their
+   fp16 casts total **16.3 ms**, batched attention GEMMs 2.3 ms — the
+   remaining **212 ms** is kernel launches, elementwise/norm kernels, the
+   GDN recurrence, and host dispatch. A hypothetical 2× INT8 GEMM speedup
+   would save under 10 ms/page (~4% end-to-end) and would not close the
+   torch-bf16 gap. Closing that gap requires launch-count reduction and
+   dispatch-overhead work, not lower-precision GEMMs.
+
+A custom WMMA-INT8 kernel campaign (like the gfx1100 timesfm flash
+kernels) would remove blocker 1 but not blocker 2; it is not worth the
+effort at the current profile.
+
+**Accuracy-gate design for any future quant path** (recorded for reuse):
+the metric is retrieval, not distributional KL. Gate on (a) per-token
+embedding cosine vs the strict fp32 teacher, (b) MaxSim delta on the
+oracle fixture, and (c) ranking preservation: encode N pages × M queries
+under both precisions, compare the MaxSim matrices by top-1 agreement,
+recall@k, and Kendall tau. (a) and (b) run today from the committed
+fixture; (c) needs a real multi-page corpus with per-page queries (e.g.
+ViDoRe), which is not in-tree — synthetic bench pages make rankings
+degenerate and are not a valid (c).
+
 ## Remaining work
 
 1. **Close the torch-bf16 gap (2.3×):** fp16 batched attention GEMMs (needs
