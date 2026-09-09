@@ -33,6 +33,12 @@ from scripts.qwen4exp_halo_box_campaign_ab import (
 
 
 def apply_state_gate_mode(runner, package, enabled, flag, *, environment=os.environ):
+    if package == "q5k-iu8-exact":
+        # The q5k opt-out arm de-groups layer 2 entirely (its only grouped
+        # entry is the q5k flag), which also changes that layer's Q8_0 down
+        # route selection. Pin the #19 q8-wmma-down T1 route off in BOTH arms
+        # so this gate keeps isolating the q5k gate/up arithmetic alone.
+        environment["HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN"] = "0"
     if package == "chunk1024":
         apply_chunk_mode(runner,"after" if enabled=="1" else "before",
                          allocated_chunk_size=1024)
