@@ -5209,3 +5209,4 @@ Examples:
 - 2026-09-09: `2026-09-09-framework-qwen4exp-r8-iu4-bound.json` — R8 closed: iu4 wmma at 1.892x iu8 rate; precision-matched split 0.945x (rejected); residual-2-plane ceiling 1.06x (rejected per stop rules).
 - 2026-09-09: `2026-09-09-framework-qwen4exp-q5k-iu8-screen.json` — Q5_K selected dual gate/up iu8-risk+repair screen: bit-exact vs row4 parent (both orders), 5.67/6.00/6.68x at rows 512/1024/4096 at multiplier 16; `q5k-iu8-exact` A/B route package wired, full-suite A/B pending.
 - 2026-09-09: `2026-09-09-framework-qwen4exp-q5k-iu8-*.json` — #15 promoted: Q5_K iu8-WMMA risk+repair for layer-2 gate/up, bit-exact vs row4 parent, +4.29% prefill geo-mean (12/12 cases win), state gate 12/12 exact.
+- 2026-09-09: `2026-09-09-framework-qwen4exp-post-q5k-family.json` + `...-baselines-v5.json` — R2d six-promotion refresh: device 14.697s (-10.9%), HE PP 268/286/263, Vulkan lead 1.28/1.36/1.56x PP.
