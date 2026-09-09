@@ -99,9 +99,11 @@ def main() -> None:
         for case in cases:
             for rep in range(args.repetitions):
                 payload = json.dumps({
-                    "prompt": " ".join(str(t) for t in case["prompt_token_ids"]),
+                    "prompt": [int(t) for t in case["prompt_token_ids"]],
                     "n_predict": 1, "temperature": 0.0, "top_k": 1,
-                    "cache_prompt": False, "n_probs": 0,
+                    "top_p": 1.0, "min_p": 0.0, "seed": 12345,
+                    "ignore_eos": True, "cache_prompt": False,
+                    "stream": False, "return_tokens": True,
                 }).encode()
                 req = urllib.request.Request(
                     base + "/completion", data=payload,
