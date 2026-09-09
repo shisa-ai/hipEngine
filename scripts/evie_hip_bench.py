@@ -84,6 +84,7 @@ def main() -> None:
     parser.add_argument("--queries", type=int, default=8)
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--page-size", default="448x336")
+    parser.add_argument("--precision", choices=["fp32", "fp16"], default="fp32")
     args = parser.parse_args()
 
     snapshot = resolve_model_path("tencent/EVIE-4.5B")
@@ -104,9 +105,9 @@ def main() -> None:
     images = [_make_page(rng, h, w) for _ in range(args.pages)]
     queries = [f"What is the value shown in figure {i}?" for i in range(args.queries)]
 
-    print(f"loading {snapshot} (hipEngine fp32)...")
-    loaded = load_evie_model(snapshot, runtime=None)
-    runner = EvieRunner(loaded)
+    print(f"loading {snapshot} (hipEngine {args.precision})...")
+    loaded = load_evie_model(snapshot, runtime=None, precision=args.precision)
+    runner = EvieRunner(loaded, precision=args.precision)
     from hipengine.core.hip import get_hip_runtime
 
     get_hip_runtime().device_synchronize()
@@ -148,7 +149,7 @@ def main() -> None:
             best = (doc_s, q_s, score_s, total)
     doc_s, q_s, score_s, total = best
     print(
-        f"BEST hipengine-fp32: doc {doc_s*1e3:.1f} ms ({args.pages} pages, {h}x{w}) | "
+        f"BEST hipengine-{args.precision}: doc {doc_s*1e3:.1f} ms ({args.pages} pages, {h}x{w}) | "
         f"query {q_s*1e3:.1f} ms ({args.queries} queries) | maxsim {score_s*1e3:.1f} ms | "
         f"total {total*1e3:.1f} ms"
     )

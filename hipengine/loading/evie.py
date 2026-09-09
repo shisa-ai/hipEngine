@@ -79,26 +79,75 @@ def convert_evie_weight_to_fp32(name: str, info: TensorInfo) -> np.ndarray:
     return np.ascontiguousarray(host)
 
 
+def evie_gemm_weight(name: str) -> bool:
+    """True when a weight feeds a rocBLAS GEMM (fp16 production candidate).
+
+    GDN in_proj/out_proj stay FP32 even in fp16 mode: the gated-delta-net
+    recurrence amplifies fp16 input rounding into systematic activation-scale
+    drift (measured: fp16 text-stack hidden states diverge to rel ~1.0),
+    so only the non-recurrent projections run the fp16 path.
+    """
+
+    if not name.endswith(".weight"):
+        return False
+    if "in_proj" in name or "out_proj" in name:
+        return False
+    return not any(
+        marker in name
+        for marker in ("norm", "embed_tokens", "pos_embed", "conv1d")
+    )
+
+
 def materialize_evie_weights(
     index: WeightIndex,
     spec: EvieModelSpec,
     *,
     device: Device | None = None,
     runtime: HipRuntime | None,
+    precision: str = "fp32",
 ) -> DeviceWeightMap:
-    """Upload fixed-address FP32 weights converted from BF16 storage."""
+    """Upload weights converted from BF16 storage.
 
+    ``precision="fp32"`` (strict) uploads FP32 tensors. ``precision="fp16"``
+    uploads GEMM weights (see :func:`evie_gemm_weight`) as FP16 with FP32
+    tails; everything norm/embed/pos-related stays FP32 because the fp32
+    kernels read those buffers directly.
+    """
+
+    if precision not in ("fp32", "fp16"):
+        raise ValueError("precision must be 'fp32' or 'fp16'")
     validate_evie_weight_index(index, spec)
     target_device = device or Device("hip", 0)
     expected = expected_evie_weight_shapes(spec)
     allocations: dict[str, DeviceTensorAllocation] = {}
-    # rocBLAS SGEMM tiles can over-read past operand ends; keep every
-    # weight's tail inside mapped memory so heap layout cannot fault.
+    # rocBLAS tiles can over-read past operand ends; keep every weight's
+    # tail inside mapped memory so heap layout cannot fault.
     weight_pad = 1 << 20
     try:
         for name in sorted(expected):
             info = index.tensors[name]
             host = convert_evie_weight_to_fp32(name, info)
+            if precision == "fp16" and evie_gemm_weight(name):
+                host16 = np.ascontiguousarray(
+                    host.reshape(-1).astype(np.float16)
+                )
+                padded16 = np.zeros(
+                    host16.nbytes + weight_pad, dtype=np.float16
+                )
+                padded16[: host16.size] = host16
+                prepared = load_host_array_to_device(
+                    name,
+                    padded16,
+                    device=target_device,
+                    runtime=runtime,
+                )
+                allocations[name] = DeviceTensorAllocation(
+                    name=name,
+                    source=info,
+                    buffer=prepared.buffer,
+                    tensor=prepared.tensor,
+                )
+                continue
             padded = np.empty(host.nbytes + weight_pad, dtype=np.float32)
             padded[: host.size] = host.reshape(-1)
             prepared = load_host_array_to_device(
@@ -124,6 +173,7 @@ def load_evie_model(
     *,
     device: Device | None = None,
     runtime: HipRuntime | None,
+    precision: str = "fp32",
 ) -> EvieLoadedModel:
     """Validate the pinned snapshot and take ownership of all resident FP32 weights.
 
@@ -140,6 +190,7 @@ def load_evie_model(
         spec,
         device=device,
         runtime=runtime,
+        precision=precision,
     )
     return EvieLoadedModel(
         spec=spec,
