@@ -1,0 +1,310 @@
+{
+ "status": "passed",
+ "kind": "qwen4exp_moe_decode_warp_state_gate",
+ "source": {
+  "path": "/home/lhl/hipEngine",
+  "head": "1a7659f24bfa962b2ebe3b25d72264425cd275aa",
+  "tracked_clean": true
+ },
+ "host": {
+  "hostname": "gfx1151",
+  "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+  "kernel": "7.1.6-1-cachyos",
+  "tuned_active": "Current active profile: accelerator-performance",
+  "cpu_governors": {
+   "performance": 32
+  },
+  "gpu_clock_policies": {
+   "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+  },
+  "rocm_platform": "10.0.0",
+  "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+ },
+ "command": [
+  "scripts/qwen4exp_moe_decode_warp_state_gate.py",
+  "--model-root",
+  "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "--compiler-version-file",
+  "/tmp/hipengine-hipcc-version.txt",
+  "--all-cases",
+  "--decode-steps",
+  "8",
+  "--output",
+  "/tmp/r11-state-gate.json"
+ ],
+ "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+ "manifest_sha256": "2de9d9196f376580487a1f71b28e117eae3e4d8f371b4f1017e0b19ef80274d4",
+ "route_package": "moe-decode-warp-pair",
+ "decode_steps": 8,
+ "scope": "graph-key engagement + isolation + same-arm determinism + state drift recording",
+ "cases": [
+  {
+   "id": "code-p512",
+   "graph_run_calls_per_step": 156,
+   "incumbent_deterministic": true,
+   "candidate_deterministic": true,
+   "candidate_graph_modes": {
+    "eager": 864,
+    "capture": 48,
+    "replay": 336
+   },
+   "incumbent_graph_modes": {
+    "eager": 864,
+    "capture": 48,
+    "replay": 336
+   },
+   "state_drift_max_abs": {
+    "gdn_conv": NaN,
+    "gdn_matrix": NaN,
+    "ple_conv": NaN,
+    "residual": 0.031005859375
+   },
+   "state_drift_overall_max": NaN,
+   "median_step_ms": 76.6125617083162
+  },
+  {
+   "id": "code-p1024",
+   "graph_run_calls_per_step": 156,
+   "incumbent_deterministic": true,
+   "candidate_deterministic": true,
+   "candidate_graph_modes": {
+    "eager": 864,
+    "replay": 384
+   },
+   "incumbent_graph_modes": {
+    "eager": 864,
+    "replay": 384
+   },
+   "state_drift_max_abs": {
+    "gdn_conv": NaN,
+    "gdn_matrix": NaN,
+    "ple_conv": NaN,
+    "residual": 0.0
+   },
+   "state_drift_overall_max": NaN,
+   "median_step_ms": 48.70751057751477
+  },
+  {
+   "id": "code-p4096",
+   "graph_run_calls_per_step": 156,
+   "incumbent_deterministic": true,
+   "candidate_deterministic": true,
+   "candidate_graph_modes": {
+    "eager": 864,
+    "replay": 384
+   },
+   "incumbent_graph_modes": {
+    "eager": 864,
+    "replay": 384
+   },
+   "state_drift_max_abs": {
+    "gdn_conv": NaN,
+    "gdn_matrix": NaN,
+    "ple_conv": NaN,
+    "residual": 0.0
+   },
+   "state_drift_overall_max": NaN,
+   "median_step_ms": 81.93526673130691
+  },
+  {
+   "id": "general_en-p512",
+   "graph_run_calls_per_step": 156,
+   "incumbent_deterministic": true,
+   "candidate_deterministic": true,
+   "candidate_graph_modes": {
+    "eager": 864,
+    "replay": 384
+   },
+   "incumbent_graph_modes": {
+    "eager": 864,
+    "replay": 384
+   },
+   "state_drift_max_abs": {
+    "gdn_conv": NaN,
+    "gdn_matrix": NaN,
+    "ple_conv": NaN,
+    "residual": 0.0
+   },
+   "state_drift_overall_max": NaN,
+   "median_step_ms": 46.85959359630942
+  },
+  {
+   "id": "general_en-p1024",
+   "graph_run_calls_per_step": 156,
+   "incumbent_deterministic": true,
+   "candidate_deterministic": true,
+   "candidate_graph_modes": {
+    "eager": 864,
+    "replay": 384
+   },
+   "incumbent_graph_modes": {
+    "eager": 864,
+    "replay": 384
+   },
+   "state_drift_max_abs": {
+    "gdn_conv": NaN,
+    "gdn_matrix": NaN,
+    "ple_conv": NaN,
+    "residual": 0.02996826171875
+   },
+   "state_drift_overall_max": NaN,
+   "median_step_ms": 48.55628754012287
+  },
+  {
+   "id": "general_en-p4096",
+   "graph_run_calls_per_step": 156,
+   "incumbent_deterministic": true,
+   "candidate_deterministic": true,
+   "candidate_graph_modes": {
+    "eager": 864,
+    "replay": 384
+   },
+   "incumbent_graph_modes": {
+    "eager": 864,
+    "replay": 384
+   },
+   "state_drift_max_abs": {
+    "gdn_conv": NaN,
+    "gdn_matrix": NaN,
+    "ple_conv": NaN,
+    "residual": 0.0
+   },
+   "state_drift_overall_max": NaN,
+   "median_step_ms": 81.18275855667889
+  },
+  {
+   "id": "general_ja-p512",
+   "graph_run_calls_per_step": 156,
+   "incumbent_deterministic": true,
+   "candidate_deterministic": true,
+   "candidate_graph_modes": {
+    "eager": 864,
+    "replay": 384
+   },
+   "incumbent_graph_modes": {
+    "eager": 864,
+    "replay": 384
+   },
+   "state_drift_max_abs": {
+    "gdn_conv": NaN,
+    "gdn_matrix": NaN,
+    "ple_conv": NaN,
+    "residual": 0.0
+   },
+   "state_drift_overall_max": NaN,
+   "median_step_ms": 46.732249204069376
+  },
+  {
+   "id": "general_ja-p1024",
+   "graph_run_calls_per_step": 156,
+   "incumbent_deterministic": true,
+   "candidate_deterministic": true,
+   "candidate_graph_modes": {
+    "eager": 864,
+    "replay": 384
+   },
+   "incumbent_graph_modes": {
+    "eager": 864,
+    "replay": 384
+   },
+   "state_drift_max_abs": {
+    "gdn_conv": NaN,
+    "gdn_matrix": NaN,
+    "ple_conv": NaN,
+    "residual": 0.0
+   },
+   "state_drift_overall_max": NaN,
+   "median_step_ms": 48.65008778870106
+  },
+  {
+   "id": "general_ja-p4096",
+   "graph_run_calls_per_step": 156,
+   "incumbent_deterministic": true,
+   "candidate_deterministic": true,
+   "candidate_graph_modes": {
+    "eager": 864,
+    "replay": 384
+   },
+   "incumbent_graph_modes": {
+    "eager": 864,
+    "replay": 384
+   },
+   "state_drift_max_abs": {
+    "gdn_conv": NaN,
+    "gdn_matrix": NaN,
+    "ple_conv": NaN,
+    "residual": 0.0
+   },
+   "state_drift_overall_max": NaN,
+   "median_step_ms": 80.89002594351768
+  },
+  {
+   "id": "mixed_ja_en-p512",
+   "graph_run_calls_per_step": 156,
+   "incumbent_deterministic": true,
+   "candidate_deterministic": true,
+   "candidate_graph_modes": {
+    "eager": 864,
+    "replay": 384
+   },
+   "incumbent_graph_modes": {
+    "eager": 864,
+    "replay": 384
+   },
+   "state_drift_max_abs": {
+    "gdn_conv": NaN,
+    "gdn_matrix": NaN,
+    "ple_conv": NaN,
+    "residual": 0.0
+   },
+   "state_drift_overall_max": NaN,
+   "median_step_ms": 46.720825834199786
+  },
+  {
+   "id": "mixed_ja_en-p1024",
+   "graph_run_calls_per_step": 156,
+   "incumbent_deterministic": true,
+   "candidate_deterministic": true,
+   "candidate_graph_modes": {
+    "eager": 864,
+    "replay": 384
+   },
+   "incumbent_graph_modes": {
+    "eager": 864,
+    "replay": 384
+   },
+   "state_drift_max_abs": {
+    "gdn_conv": NaN,
+    "gdn_matrix": NaN,
+    "ple_conv": NaN,
+    "residual": 0.0
+   },
+   "state_drift_overall_max": NaN,
+   "median_step_ms": 48.58763935044408
+  },
+  {
+   "id": "mixed_ja_en-p4096",
+   "graph_run_calls_per_step": 156,
+   "incumbent_deterministic": true,
+   "candidate_deterministic": true,
+   "candidate_graph_modes": {
+    "eager": 864,
+    "replay": 384
+   },
+   "incumbent_graph_modes": {
+    "eager": 864,
+    "replay": 384
+   },
+   "state_drift_max_abs": {
+    "gdn_conv": NaN,
+    "gdn_matrix": NaN,
+    "ple_conv": NaN,
+    "residual": 0.0
+   },
+   "state_drift_overall_max": NaN,
+   "median_step_ms": 82.0519516710192
+  }
+ ],
+ "down_exact_wrapper_calls": 0,
+ "moe_run_calls_per_step": 156
+}
