@@ -261,6 +261,21 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
     trails Laurent 9.66%; their measured operation-complete/dataflow blockers
     remain binding.
     [`matrix`](../benchmarks/results/2026-08-30-gfx1151-qwen38-final-six-engine-c1c8.json)
+- [ ] P3.2 GFX1151 TODO — screen the nasone32 RDNA3.5-guarded donors from the
+  2026-09-08 RX 7900 XTX engine comparison
+  (`benchmarks/results/2026-09-08-rx7900xtx-engine-comparison.md`,
+  "Optimization Review") on gfx1151 hardware. The comparison dismissed nasone32's
+  dequant-float matvec and D=256 tile override for gfx1100 because both guard
+  specifically to RDNA3.5; on gfx1151 those guards select, so both are testable
+  here as shaped leaf candidates against the retained gfx1151 decode/attention
+  owners under the strict/production gates. Priors keep this a low-priority
+  confirmation screen, not an expected win: the 2026-09-09 gfx1100 VDR
+  load-reuse screen rejected the same fork's GEMV amortization against our T16
+  rows=1 owners (1.11-1.44x slower; artifact
+  `benchmarks/results/2026-09-09-gfx1100-qwen38-q4km-vdr-load-reuse-rejected.json`),
+  and P1.2 already audited strix-llama.cpp's Q4_K_M-active deltas as Vulkan
+  coopmat tuning with no HIP port required. C1 AR decode (1.26% behind the
+  leading comparator in the 2026-08-30 refresh) is the live target cell.
 
 ### P4 — MTP K3 C1-C8 parity via the acceptance campaign
 
