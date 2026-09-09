@@ -67,8 +67,33 @@ def main() -> None:
         prompt = [int(t) for t in rng.integers(0, 150000, size=int(args.prompt_tokens))]
     n = int(args.decode_tokens)
 
-    base_policy = dict(be.GGUF_IQ_DENSE_PREFILL_POLICY)
+    # The incumbent is pinned explicitly to the original four-quant W4A16 set
+    # (the pre-enable shipped default): the shipped policy now routes Q3_K,
+    # so copying the module default would make the candidate arm a no-op and
+    # falsely certify regressions on rerun. The owner assertion below fails
+    # loudly if the arms ever resolve to the same owner set again.
+    base_policy = {
+        quant: {"min_rows": 8, "max_rows": 131072,
+                "variant": "dense_wmma_w4a16_prefill_bf16_bf16_out"}
+        for quant in ("gguf_iq4_xs", "gguf_iq3_xxs", "gguf_iq3_s", "gguf_iq4_nl")
+    }
     cand_policy = {**base_policy, "gguf_q3_k": dict(base_policy["gguf_iq4_xs"])}
+
+    def _assert_owners_differ():
+        from hipengine.kernels.registry import KernelKey, is_registered
+        for quant in ("gguf_q3_k",):
+            key = KernelKey(
+                "hip_gfx1100", "linear", quant,
+                "dense_wmma_w4a16_prefill_bf16_bf16_out")
+            if not is_registered(key):
+                raise RuntimeError(f"candidate owner {key} is not registered")
+        if set(base_policy) == set(cand_policy):
+            raise RuntimeError(
+                "gate arms route the same quant set; the incumbent pin has "
+                "gone stale"
+            )
+
+    _assert_owners_differ()
     # Optional third arm: the all-strict reference, to measure the incumbent's
     # own noise level on the same prompts (HIPENGINE_Q3K_GATE_STRICT_ARM=1).
     import os as _os
@@ -115,13 +140,25 @@ def main() -> None:
     label = "all-strict ref" if strict_arm else "4-quant incumbent"
     print(f"KL vs {label}:  mean={metrics.kl_mean:.4e}  max={metrics.kl_max:.4e}")
     print(f"top1 agreement: {top1:.4f}  finite: {finite}")
-    # The zbook's recorded 7-quant arm delta was +0.000234 mean (0.000827 ->
-    # 0.001061); this probe measures the same pair on this host.
+    # Complete section-6.1 screen: calibrated mean, absolute per-position
+    # ceiling, top-1, and finite candidate logits all bind. (The zbook's
+    # recorded 7-quant arm delta was +0.000234 mean, 0.000827 -> 0.001061.)
+    gate = (
+        metrics.kl_mean <= 1e-3
+        and metrics.kl_max <= 5e-2
+        and top1 >= 0.99
+        and finite
+    )
+    print(
+        "PROBE GATE (mean<=1e-3 & max<=5e-2 & top1>=0.99 & finite): "
+        f"{'PASS' if gate else 'FAIL'}"
+    )
     if args.json is not None:
         args.json.write_text(json.dumps({
             "positions": int(ref_logits.shape[0]),
             "kl_mean": metrics.kl_mean, "kl_max": metrics.kl_max,
             "top1_agreement": top1, "candidate_finite": finite,
+            "probe_gate_pass": gate,
         }, indent=2) + "\n")
 
 

@@ -1815,16 +1815,18 @@ def gguf_q5_k_t16_wmma_prefill_gfx1100_bf16_bf16_out(
 ):
     """Measured row-qualified Q5T16 dense owner for gfx1100 (2026-09-10).
 
-    Bulk prefill (rows >= 257) takes the eight-wave two-row-tile shared-LDS
+    Bulk prefill (rows >= 129) takes the eight-wave two-row-tile shared-LDS
     owner - bit-exact with the plain single (verified on the 17408x5120,
-    10240x5120 and 5120x6144 shapes at rows 257/384/512) and measured
-    0.71-0.78x its time on the XTX at the 512-row shape: the 256-row block
-    removes both the plain owner's per-64-row-block decode redundancy and
-    the 384-row shared8r3 block's tail waste. Smaller row counts keep the
+    10240x5120 and 5120x6144 shapes at rows 129/192/256/257/384/512) and
+    measured 0.51-0.89x its time on the XTX across that whole band (the
+    256-row block removes both the plain owner's per-64-row-block decode
+    redundancy and the 384-row shared8r3 block's tail waste; the boundary
+    was lowered from 257 to 129 after the 129/192-row cells measured the
+    same win, 2026-09-10 review follow-up). Smaller row counts keep the
     plain single, preserving the low-M owners below.
     """
 
-    if int(rows) >= 257:
+    if int(rows) >= 129:
         return gguf_q5_k_t16_wmma_prefill_shared8r2_bf16_bf16_out(
             x_ptr,
             tiles_ptr,
