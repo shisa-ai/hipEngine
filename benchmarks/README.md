@@ -27,27 +27,8 @@ row, not across them.
 | Qwen3.6-35B-A3B | ParoQuant W4 | **2852.1** | **115.8** | **115.8** | — |
 | Qwen3.6-35B-A3B | GGUF `Q4_K_M` | **2763.6** | **94.6** | 122.7 (opt-in) | — |
 | Qwen3.6-27B Dense | GGUF `Q4_K_M` | **875.4** | **28.7** | **32.1** | — |
-| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **678.8** | **29.6** | — | — |
+| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **680.4** | **29.7** | — | — |
 | Laguna S 2.1 | GGUF `UD-Q2_K_XL` | **440.9** (4K) | — | — | — |
-
-#### AMD Radeon RX 7900 XTX — 24 GB (`gfx1100`)
-
-| Model | Quant | Prompt processing | Text generation | With MTP | Max context |
-| --- | --- | ---: | ---: | ---: | ---: |
-| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **766.0** (8K) | **33.9** | — | **232,448** (DMS / opt-in direct INT8) |
-
-Measured one-request context ceilings, Qwen3.8-27B `Q4_K_M` on the 24 GB card:
-
-| KV policy and route | Max context |
-| --- | ---: |
-| BF16 KV, serving route | 40,960 |
-| INT8 KV, serving route | 54,272 |
-| INT8 KV, dense (before alias and direct routes) | 131,072 |
-| DMS, BF16 KV | 73,728 |
-| Direct-resident INT8, hidden-plane alias | 155,648 |
-| DMS, INT8 KV merged lane | 172,288 |
-| Opt-in direct INT8 KV (no BF16 mirror) | 232,448 |
-| DMS, INT8 KV with hidden-plane alias | 232,448 |
 
 #### Strix Halo / Radeon 8060S — 120 GB (`gfx1151`)
 
@@ -68,7 +49,7 @@ Measured one-request context ceilings, Qwen3.8-27B `Q4_K_M` on the 24 GB card:
 Blank cells are shapes we have not measured yet, not failures. Max context is
 published only where a dedicated ceiling run exists.
 
-- **Qwen3.8-27B `Q4_K_M` holds 232,448 tokens of context on one 24 GB RX 7900 XTX** (per-route table above; the model's full 262,144 context needs a predicted 24.8 GiB and does not fit). The opt-in direct-INT8 route prefills at 96% of the 766.0 tok/s default with a measured quality cost. [Capacity evidence](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-capacity.json)
+- **Qwen3.8-27B `Q4_K_M` holds 232,448 tokens of context on a 24 GB `gfx1100` card.** The ceiling depends on the KV format and route — eight measured configurations, 40,960 to 232,448; see Long context with DMS for what each applies to. The model's full 262,144 context needs a predicted 24.8 GiB and does not fit. [Capacity evidence](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-capacity.json)
 
 ### Serving several requests at once
 
@@ -131,6 +112,15 @@ Each engine completed a 112K BF16 prompt. With compact KV, hipEngine completed
 128K using pure INT8/FP32 scales; nasone32 and strix-llama.cpp completed 192K
 using Q8_0. These are synthetic execution-capacity observations, not serving
 reserve recommendations.
+
+Single-request capacity ladder on this card, Qwen3.8-27B `Q4_K_M`: BF16 KV
+server 40,960; INT8 KV server 54,272; DMS BF16 73,728; INT8 KV direct engine
+131,072; single hidden plane 155,648; DMS INT8 merged lane 172,288; direct
+INT8 prefill or DMS INT8 + single hidden plane 232,448. Default-route prefill
+at 8,192 tokens: 766.0 tok/s, decode 33.9; direct-INT8 wmma prefill 735.6
+(96%). [Direct-route capacity](results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-capacity.json),
+[DMS alias ladder](results/2026-09-08-rx7900xtx-dms-int8-hidden-alias-ladder.json),
+[speed evidence](results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-wmma-oracle-control-8192.json).
 
 [Full comparison and source review](results/2026-09-08-rx7900xtx-engine-comparison.md)
 and [commands, samples and checks](results/2026-09-08-rx7900xtx-engine-comparison.json).
@@ -307,7 +297,11 @@ Aggregate prefill drops from c1 to c2 and then stays flat because one request
 prefills its 512 rows in a single slab while wider groups split into slot-fair
 bounded rounds against the 256-row prefill scratch. Tracked peak grows about
 0.85 GiB per added request, so the c8 shape does not fit a 24 GB card.
-No long-context setting is qualified for a 24 GB RX 7900 XTX. The 2026-09-06
+c1 re-measured 2026-09-09 on current `main`: 680.4 / 29.7 tok/s, stdev
+0.3% ([refresh artifact](results/2026-09-09-w7900-qwen38-q4km-c1-refresh.json)).
+Single-request long-context ceilings on a 24 GB RX 7900 XTX are measured in
+the root README's long-context section; no concurrent-request long-context
+setting is qualified. The 2026-09-06
 startup probe served one request at 3,072 context tokens and failed to start at
 4,096, with no measured BF16-versus-INT8 difference, but it sampled memory
 outside the prefill and decode peaks and never checked the live context length,
