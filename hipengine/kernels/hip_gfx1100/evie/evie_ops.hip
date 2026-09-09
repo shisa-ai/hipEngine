@@ -676,12 +676,16 @@ extern "C" int hipengine_evie_scatter_head_f32(
 __global__ void evie_softmax_rows_kernel(
     float* __restrict__ scores,
     int64_t rows,
-    int64_t cols) {
+    int64_t cols,
+    int64_t tokens,
+    int64_t head_stride) {
   const int64_t row = blockIdx.x;
   if (row >= rows) {
     return;
   }
-  float* sr = scores + row * cols;
+  float* sr =
+      scores + (row / tokens) * head_stride + (row % tokens) * cols;
+  // pass 1: parallel max
   float m = -INFINITY;
   for (int64_t i = threadIdx.x; i < cols; i += blockDim.x) {
     m = fmaxf(m, sr[i]);
@@ -695,18 +699,26 @@ __global__ void evie_softmax_rows_kernel(
     }
     __syncthreads();
   }
-  if (threadIdx.x == 0) {
-    float mx = sm[0];
-    float denom = 0.0f;
-    for (int64_t i = 0; i < cols; ++i) {
-      const float e = expf(sr[i] - mx);
-      sr[i] = e;
-      denom += e;
+  const float mx = sm[0];
+  // pass 2: parallel sum of exponentials (write normalized exponentials)
+  float denom = 0.0f;
+  for (int64_t i = threadIdx.x; i < cols; i += blockDim.x) {
+    const float e = expf(sr[i] - mx);
+    sr[i] = e;
+    denom += e;
+  }
+  sm[threadIdx.x] = denom;
+  __syncthreads();
+  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if ((int)threadIdx.x < stride) {
+      sm[threadIdx.x] += sm[threadIdx.x + stride];
     }
-    const float inv = 1.0f / denom;
-    for (int64_t i = 0; i < cols; ++i) {
-      sr[i] *= inv;
-    }
+    __syncthreads();
+  }
+  const float inv = 1.0f / sm[0];
+  // pass 3: parallel normalize
+  for (int64_t i = threadIdx.x; i < cols; i += blockDim.x) {
+    sr[i] *= inv;
   }
 }
 
@@ -714,8 +726,10 @@ extern "C" int hipengine_evie_softmax_rows_f32(
     float* scores,
     int64_t rows,
     int64_t cols,
+    int64_t tokens,
+    int64_t head_stride,
     hipStream_t stream) {
-  if (rows <= 0 || cols <= 0) {
+  if (rows <= 0 || cols <= 0 || tokens <= 0 || head_stride <= 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
   hipLaunchKernelGGL(
@@ -724,7 +738,7 @@ extern "C" int hipengine_evie_softmax_rows_f32(
       dim3(256),
       0,
       stream,
-      scores, rows, cols);
+      scores, rows, cols, tokens, head_stride);
   return static_cast<int>(hipGetLastError());
 }
 

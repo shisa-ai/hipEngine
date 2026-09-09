@@ -273,12 +273,18 @@ def _evie_softmax_rows_f32(
     scores_ptr: int,
     rows: int,
     cols: int,
+    tokens: int,
+    head_stride: int,
     *,
     stream: int,
     runtime: HipRuntime | None,
 ) -> None:
-    fn = _fn(library, "hipengine_evie_softmax_rows_f32", [_P, _I, _I, _S])
-    err = fn(_P(scores_ptr), _I(rows), _I(cols), _S(stream))
+    fn = _fn(
+        library, "hipengine_evie_softmax_rows_f32", [_P, _I, _I, _I, _I, _S]
+    )
+    err = fn(
+        _P(scores_ptr), _I(rows), _I(cols), _I(tokens), _I(head_stride), _S(stream)
+    )
     _check_launch(runtime or get_hip_runtime(), err)
 
 

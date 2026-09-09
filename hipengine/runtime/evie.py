@@ -209,13 +209,37 @@ class EvieRunner:
         )
         self._check(err, "add")
 
-    def _scores_scratch(self, rows: int) -> DeviceBuffer:
-        key = ("scores", rows)
+    def _dev_ptr_array(self, ptrs: list[int]) -> int:
+        """Upload a host pointer list for rocBLAS batched GEMMs (device arrays).
+
+        Buffers are cached per unique pointer list, so the A/B/C arrays of
+        one call never alias.
+        """
+
+        if not hasattr(self, "_ptr_array_bufs"):
+            self._ptr_array_bufs: dict[tuple, DeviceBuffer] = {}
+        key = tuple(ptrs)
+        nbytes = len(ptrs) * 8
+        buf = self._ptr_array_bufs.get(key)
+        if buf is None:
+            buf = _malloc_committed(nbytes + _GEMM_PAD_BYTES)
+            self._ptr_array_bufs[key] = buf
+        host = np.array(ptrs, dtype=np.uint64)
+        copy_host_to_device(buf, host_array_ptr(host), nbytes)
+        return buf.ptr
+
+    def _scores_scratch(self, rows: int, heads: int = 1) -> tuple[DeviceBuffer, int]:
+        """Scores buffer plus the per-head element stride (16-byte aligned)."""
+
+        stride = (rows * rows + 3) & ~3
+        key = ("scores", rows, heads)
         if not hasattr(self, "_scores_bufs"):
             self._scores_bufs: dict[Any, DeviceBuffer] = {}
         if key not in self._scores_bufs:
-            self._scores_bufs[key] = _malloc_committed(rows * rows * 4 + _GEMM_PAD_BYTES)
-        return self._scores_bufs[key]
+            self._scores_bufs[key] = _malloc_committed(
+                heads * stride * 4 + _GEMM_PAD_BYTES
+            )
+        return self._scores_bufs[key], stride
 
     # -- attention (shared by vision and text) ----------------------------------
 
@@ -230,78 +254,80 @@ class EvieRunner:
         head_dim: int,
         scratch: _Scratch,
         scale: float,
+        kv_heads: int | None = None,
     ) -> None:
-        """Bidirectional attention over contiguous (tokens, heads, dim) tensors."""
+        """Bidirectional attention over contiguous (tokens, heads, dim) planes.
 
-        plane_bytes = tokens * head_dim * 4
-        if "attn_qh" not in scratch.buffers or scratch.buffers["attn_qh"].nbytes < plane_bytes:
-            for name in ("attn_qh", "attn_kh", "attn_vh", "attn_oh"):
-                if name in scratch.buffers:
-                    hip_free(scratch.buffers[name])
-                scratch.buffers[name] = _malloc_committed(plane_bytes + _GEMM_PAD_BYTES)
-        scores = self._scores_scratch(tokens)
-        for head in range(heads):
-            # gather contiguous head planes
-            err = self._k(
-                "hipengine_evie_expand_heads_f32",
-                [_P, _P, _I, _I, _I, _I, _I, _I, _S],
-            )(
-                _P(q_ptr), _P(scratch.buffers["attn_qh"].ptr), _I(tokens),
-                _I(head * head_dim), _I(heads * head_dim), _I(1),
-                _I(head_dim), _I(1), _S(0),
-            )
-            self._check(err, "expand q")
-            err = self._k(
-                "hipengine_evie_expand_heads_f32",
-                [_P, _P, _I, _I, _I, _I, _I, _I, _S],
-            )(
-                _P(k_ptr), _P(scratch.buffers["attn_kh"].ptr), _I(tokens),
-                _I(head * head_dim), _I(heads * head_dim), _I(1),
-                _I(head_dim), _I(1), _S(0),
-            )
-            self._check(err, "expand k")
-            err = self._k(
-                "hipengine_evie_gather_head_tp_f32",
-                [_P, _P, _I, _I, _I, _I, _S],
-            )(
-                _P(v_ptr), _P(scratch.buffers["attn_vh"].ptr), _I(tokens),
-                _I(head * head_dim), _I(heads * head_dim), _I(head_dim), _S(0),
-            )
-            self._check(err, "expand v")
-            # scores = qh @ kh^T
-            self._gemm(
-                scratch.buffers["attn_qh"].ptr,
-                scratch.buffers["attn_kh"].ptr,
-                scores.ptr,
-                tokens,
-                head_dim,
-                tokens,
-            )
-            err = self._k("hipengine_evie_scale_f32", [_P, _P, _F, _I, _S])(
-                _P(scores.ptr), _P(scores.ptr), _F(scale), _I(tokens * tokens), _S(0)
-            )
-            self._check(err, "scale")
-            err = self._k("hipengine_evie_softmax_rows_f32", [_P, _I, _I, _S])(
-                _P(scores.ptr), _I(tokens), _I(tokens), _S(0)
-            )
-            self._check(err, "softmax")
-            self._gemm(
-                scores.ptr,
-                scratch.buffers["attn_vh"].ptr,
-                scratch.buffers["attn_oh"].ptr,
-                tokens,
-                tokens,
-                head_dim,
-            )
-            # scatter the head plane back
-            err = self._k(
-                "hipengine_evie_scatter_head_f32",
-                [_P, _P, _I, _I, _I, _I, _S],
-            )(
-                _P(scratch.buffers["attn_oh"].ptr), _P(out_ptr), _I(tokens),
-                _I(heads * head_dim), _I(head), _I(head_dim), _S(0),
-            )
-            self._check(err, "scatter")
+        Both GEMMs are rocBLAS pointer-array batched SGEMMs; GQA head groups
+        map each query head to its key/value head (heads must be a multiple
+        of kv_heads), so no repeat expansion is materialized and the AV
+        product writes straight into the packed output.
+        """
+
+        if kv_heads is None:
+            kv_heads = heads
+        if heads % kv_heads != 0:
+            raise EvieRuntimeError("heads must be a multiple of kv_heads")
+        repeat = heads // kv_heads
+        q_row = heads * head_dim
+        kv_row = kv_heads * head_dim
+        scores, head_stride = self._scores_scratch(tokens, heads)
+        # scores[h] = q_h @ k_{h//repeat}^T  -> row-major (tokens, tokens) per head
+        a_dev = self._dev_ptr_array(
+            [k_ptr + (h // repeat) * head_dim * 4 for h in range(heads)]
+        )
+        b_dev = self._dev_ptr_array(
+            [q_ptr + h * head_dim * 4 for h in range(heads)]
+        )
+        c_dev = self._dev_ptr_array(
+            [scores.ptr + h * head_stride * 4 for h in range(heads)]
+        )
+        self.rocblas.sgemm_batched(
+            a_dev,
+            b_dev,
+            c_dev,
+            batch=heads,
+            m=tokens,
+            n=tokens,
+            k=head_dim,
+            lda=kv_row,
+            ldb=q_row,
+            ldc=tokens,
+            trans_a=True,
+            trans_b=False,
+        )
+        err = self._k("hipengine_evie_scale_f32", [_P, _P, _F, _I, _S])(
+            _P(scores.ptr), _P(scores.ptr), _F(scale), _I(heads * head_stride), _S(0)
+        )
+        self._check(err, "scale")
+        err = self._k(
+            "hipengine_evie_softmax_rows_f32", [_P, _I, _I, _I, _I, _S]
+        )(
+            _P(scores.ptr), _I(heads * tokens), _I(tokens), _I(tokens),
+            _I(head_stride), _S(0),
+        )
+        self._check(err, "softmax")
+        # out[:, h*hd:(h+1)*hd] = scores[h] @ v_{h//repeat}  (direct packed write)
+        self.rocblas.sgemm_batched(
+            self._dev_ptr_array(
+                [v_ptr + (h // repeat) * head_dim * 4 for h in range(heads)]
+            ),
+            self._dev_ptr_array(
+                [scores.ptr + h * head_stride * 4 for h in range(heads)]
+            ),
+            self._dev_ptr_array(
+                [out_ptr + h * head_dim * 4 for h in range(heads)]
+            ),
+            batch=heads,
+            m=head_dim,
+            n=tokens,
+            k=tokens,
+            lda=kv_row,
+            ldb=tokens,
+            ldc=q_row,
+            trans_a=False,
+            trans_b=False,
+        )
 
     # -- vision tower -------------------------------------------------------------
 
@@ -485,66 +511,62 @@ class EvieRunner:
         scratch: _Scratch,
         scale: float,
     ) -> None:
-        """Attention over head planes embedded in packed (tokens, stride) rows."""
+        """Batched attention over head planes embedded in packed rows.
 
-        plane_bytes = tokens * head_dim * 4
-        for name in ("attn_qh", "attn_kh", "attn_vh", "attn_oh"):
-            if name not in scratch.buffers or scratch.buffers[name].nbytes < plane_bytes:
-                if name in scratch.buffers:
-                    hip_free(scratch.buffers[name])
-                scratch.buffers[name] = _malloc_committed(plane_bytes + _GEMM_PAD_BYTES)
-        scores = self._scores_scratch(tokens)
-        for head in range(heads):
-            for name, src in (("attn_qh", q_ptr), ("attn_kh", k_ptr)):
-                err = self._k(
-                    "hipengine_evie_expand_heads_f32",
-                    [_P, _P, _I, _I, _I, _I, _I, _I, _S],
-                )(
-                    _P(src), _P(scratch.buffers[name].ptr), _I(tokens),
-                    _I(head * head_dim), _I(row_stride), _I(1),
-                    _I(head_dim), _I(1), _S(0),
-                )
-                self._check(err, f"expand {name}")
-            err = self._k(
-                "hipengine_evie_gather_head_tp_f32",
-                [_P, _P, _I, _I, _I, _I, _S],
-            )(
-                _P(v_ptr), _P(scratch.buffers["attn_vh"].ptr), _I(tokens),
-                _I(head * head_dim), _I(row_stride), _I(head_dim), _S(0),
-            )
-            self._check(err, "expand v")
-            self._gemm(
-                scratch.buffers["attn_qh"].ptr,
-                scratch.buffers["attn_kh"].ptr,
-                scores.ptr,
-                tokens,
-                head_dim,
-                tokens,
-            )
-            err = self._k("hipengine_evie_scale_f32", [_P, _P, _F, _I, _S])(
-                _P(scores.ptr), _P(scores.ptr), _F(scale), _I(tokens * tokens), _S(0)
-            )
-            self._check(err, "scale")
-            err = self._k("hipengine_evie_softmax_rows_f32", [_P, _I, _I, _S])(
-                _P(scores.ptr), _I(tokens), _I(tokens), _S(0)
-            )
-            self._check(err, "softmax")
-            self._gemm(
-                scores.ptr,
-                scratch.buffers["attn_vh"].ptr,
-                scratch.buffers["attn_oh"].ptr,
-                tokens,
-                tokens,
-                head_dim,
-            )
-            err = self._k(
-                "hipengine_evie_scatter_head_f32",
-                [_P, _P, _I, _I, _I, _I, _S],
-            )(
-                _P(scratch.buffers["attn_oh"].ptr), _P(out_ptr), _I(tokens),
-                _I(heads * head_dim), _I(head), _I(head_dim), _S(0),
-            )
-            self._check(err, "scatter")
+        Both GEMMs are rocBLAS strided-batched SGEMMs over the packed qkv
+        layout (row stride 3*hidden, per-head stride head_dim); the AV
+        product writes straight into the packed (tokens, heads*head_dim)
+        output, so no per-head gathers or scatters are needed.
+        """
+
+        scores, head_stride = self._scores_scratch(tokens, heads)
+        # scores[h] = q_h @ k_h^T  -> row-major (tokens, tokens) per head
+        self.rocblas.sgemm_strided_batched(
+            k_ptr,
+            q_ptr,
+            scores.ptr,
+            m=tokens,
+            n=tokens,
+            k=head_dim,
+            lda=row_stride,
+            ldb=row_stride,
+            ldc=tokens,
+            stride_a=head_dim,
+            stride_b=head_dim,
+            stride_c=head_stride,
+            batch=heads,
+            trans_a=True,
+            trans_b=False,
+        )
+        err = self._k("hipengine_evie_scale_f32", [_P, _P, _F, _I, _S])(
+            _P(scores.ptr), _P(scores.ptr), _F(scale), _I(heads * head_stride), _S(0)
+        )
+        self._check(err, "scale")
+        err = self._k(
+            "hipengine_evie_softmax_rows_f32", [_P, _I, _I, _I, _I, _S]
+        )(
+            _P(scores.ptr), _I(heads * tokens), _I(tokens), _I(tokens),
+            _I(head_stride), _S(0),
+        )
+        self._check(err, "softmax")
+        # out[:, h*hd:(h+1)*hd] = scores[h] @ v_h  (direct packed write)
+        self.rocblas.sgemm_strided_batched(
+            v_ptr,
+            scores.ptr,
+            out_ptr,
+            m=head_dim,
+            n=tokens,
+            k=tokens,
+            lda=row_stride,
+            ldb=tokens,
+            ldc=heads * head_dim,
+            stride_a=head_dim,
+            stride_b=head_stride,
+            stride_c=head_dim,
+            batch=heads,
+            trans_a=False,
+            trans_b=False,
+        )
 
     # -- text stack ----------------------------------------------------------------
 
@@ -670,19 +692,9 @@ class EvieRunner:
             _I(hd), _I(self.ROTARY_DIM), _I(nk * hd), _S(0),
         )
         self._check(err, "rope k")
-        # kv repeat 4x
-        for name, src in (("k_rep", k_ptr), ("v_rep", v_ptr)):
-            err = self._k(
-                "hipengine_evie_expand_heads_f32",
-                [_P, _P, _I, _I, _I, _I, _I, _I, _S],
-            )(
-                _P(src), _P(scratch.buffers[name].ptr), _I(tokens),
-                _I(0), _I(nk * hd), _I(nk), _I(hd), _I(nq // nk), _S(0),
-            )
-            self._check(err, f"expand {name}")
         self._attention(
-            q_ptr, k_rep, v_rep, heads_out, tokens, nq, hd, scratch,
-            1.0 / math.sqrt(hd),
+            q_ptr, k_ptr, v_ptr, heads_out, tokens, nq, hd, scratch,
+            1.0 / math.sqrt(hd), kv_heads=nk,
         )
         # sigmoid gate
         err = self._k("hipengine_evie_sigmoid_mul_f32", [_P, _P, _I, _S])(
