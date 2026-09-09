@@ -5211,3 +5211,4 @@ Examples:
 - 2026-09-09: `2026-09-09-framework-qwen4exp-q5k-iu8-*.json` — #15 promoted: Q5_K iu8-WMMA risk+repair for layer-2 gate/up, bit-exact vs row4 parent, +4.29% prefill geo-mean (12/12 cases win), state gate 12/12 exact.
 - 2026-09-09: `2026-09-09-framework-qwen4exp-post-q5k-family.json` + `...-baselines-v5.json` — R2d six-promotion refresh: device 14.697s (-10.9%), HE PP 268/286/263, Vulkan lead 1.28/1.36/1.56x PP.
 - 2026-09-09: R10 layer-graph A/B (code-p4096) — bit-exact, TG -0.5%; rejected as the measured path.
+- 2026-09-09: q8-wmma-down promotion A/B (12-case, campaign harness) — PP +8.44% geo-mean all-win, TG neutral; T1 gates per worklog 20260909T220000.
