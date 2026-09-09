@@ -129,7 +129,11 @@ class EvieRunner:
         library: ctypes.CDLL | None = None,
         conv_library: ctypes.CDLL | None = None,
         gdn_library: ctypes.CDLL | None = None,
+        precision: str = "fp32",
     ):
+        if precision not in ("fp32", "fp16"):
+            raise ValueError("precision must be 'fp32' or 'fp16'")
+        self.precision = precision
         self.loaded = loaded
         self.spec: EvieModelSpec = loaded.spec
         self.runtime = runtime or get_hip_runtime()
@@ -142,6 +146,10 @@ class EvieRunner:
         self.conv_library = conv_library or build_qwen35_linear_attn_conv(load=True)
         self.gdn_library = gdn_library or build_qwen35_linear_attn_gdn(load=True)
         self._w = {name: a.buffer.ptr for name, a in loaded.weights.tensors.items()}
+        # fp16 GEMM path: activations are cast to a per-scratch fp16 staging
+        # buffer; weights were uploaded as fp16 by the loader.
+        self._cast16_scratch: DeviceBuffer | None = None
+        self._gemm16_out: DeviceBuffer | None = None
         self._scratch: dict[int, _Scratch] = {}
         self._misc_buffers: list[DeviceBuffer] = []
         self._rope_cache: dict[bytes, tuple[DeviceBuffer, DeviceBuffer]] = {}
@@ -156,6 +164,12 @@ class EvieRunner:
             hip_free(buf)
         self._misc_buffers.clear()
         self._zero_conv_state = None
+        if self._cast16_scratch is not None:
+            hip_free(self._cast16_scratch)
+            self._cast16_scratch = None
+        if self._gemm16_out is not None:
+            hip_free(self._gemm16_out)
+            self._gemm16_out = None
         self._rope_cache.clear()
 
     def _release_call_buffers(self) -> None:
@@ -176,10 +190,48 @@ class EvieRunner:
     def _k(self, symbol: str, argtypes: list) -> "ctypes._FuncPtr":
         return _fn(self.library, symbol, argtypes)
 
-    def _gemm(self, x_ptr: int, w_ptr: int, out_ptr: int, rows: int, fin: int, fout: int) -> None:
+    def _gemm32(self, x_ptr: int, w_ptr: int, out_ptr: int, rows: int, fin: int, fout: int) -> None:
         self.rocblas.sgemm_rowmajor_nt(
             x_ptr, w_ptr, out_ptr, rows=rows, in_features=fin, out_features=fout
         )
+
+    def _gemm(self, x_ptr: int, w_ptr: int, out_ptr: int, rows: int, fin: int, fout: int) -> None:
+        """Row-major NT GEMM; fp16 production path casts x and keeps fp32 out."""
+
+        if self.precision != "fp16":
+            self.rocblas.sgemm_rowmajor_nt(
+                x_ptr, w_ptr, out_ptr, rows=rows, in_features=fin, out_features=fout
+            )
+            return
+        n = rows * fin
+        if self._cast16_scratch is None or self._cast16_scratch.nbytes < n * 2 + _GEMM_PAD_BYTES:
+            if self._cast16_scratch is not None:
+                hip_free(self._cast16_scratch)
+            self._cast16_scratch = _malloc_committed(n * 2 + _GEMM_PAD_BYTES)
+        err = self._k("hipengine_evie_cast_f32_to_f16", [_P, _P, _I, _S])(
+            _P(x_ptr), _P(self._cast16_scratch.ptr), _I(n), _S(0)
+        )
+        self._check(err, "cast f32->f16")
+        n_out = rows * fout
+        if self._gemm16_out is None or self._gemm16_out.nbytes < n_out * 2 + _GEMM_PAD_BYTES:
+            if self._gemm16_out is not None:
+                hip_free(self._gemm16_out)
+            self._gemm16_out = _malloc_committed(n_out * 2 + _GEMM_PAD_BYTES)
+        # f16 output runs on the matrix cores (~4-6x faster than the f32-out
+        # gemm_ex variant on this APU); cast back to fp32 for downstream
+        # kernels and the residual stream.
+        self.rocblas.gemm_ex_rowmajor_nt_fp16_compute_f32(
+            self._cast16_scratch.ptr,
+            w_ptr,
+            self._gemm16_out.ptr,
+            rows=rows,
+            in_features=fin,
+            out_features=fout,
+        )
+        err = self._k("hipengine_evie_cast_f16_to_f32", [_P, _P, _I, _S])(
+            _P(self._gemm16_out.ptr), _P(out_ptr), _I(n_out), _S(0)
+        )
+        self._check(err, "cast f16->f32")
 
     def _to_dev(self, host: np.ndarray) -> DeviceBuffer:
         host = np.ascontiguousarray(host, dtype=np.float32)
@@ -725,10 +777,10 @@ class EvieRunner:
         gdn_out = scratch.buffers["gdn_out"].ptr
         gdn_normed = scratch.buffers["gdn_normed"].ptr
 
-        self._gemm(norm_ptr, self._w[p + "in_proj_qkv.weight"], qkv_ptr, tokens, h, self.GDN_QKV_DIM)
-        self._gemm(norm_ptr, self._w[p + "in_proj_z.weight"], z_ptr, tokens, h, self.GDN_Z_DIM)
-        self._gemm(norm_ptr, self._w[p + "in_proj_b.weight"], b_ptr, tokens, h, self.GDN_HEADS)
-        self._gemm(norm_ptr, self._w[p + "in_proj_a.weight"], a_ptr, tokens, h, self.GDN_HEADS)
+        self._gemm32(norm_ptr, self._w[p + "in_proj_qkv.weight"], qkv_ptr, tokens, h, self.GDN_QKV_DIM)
+        self._gemm32(norm_ptr, self._w[p + "in_proj_z.weight"], z_ptr, tokens, h, self.GDN_Z_DIM)
+        self._gemm32(norm_ptr, self._w[p + "in_proj_b.weight"], b_ptr, tokens, h, self.GDN_HEADS)
+        self._gemm32(norm_ptr, self._w[p + "in_proj_a.weight"], a_ptr, tokens, h, self.GDN_HEADS)
 
         if self._zero_conv_state is None:
             # conv-state layout is (channels, kernel_size) with slot 0 unused
@@ -810,7 +862,7 @@ class EvieRunner:
             _F(1e-6), _S(0),
         )
         self._check(err, "gdn rmsnorm gate")
-        self._gemm(gdn_normed, self._w[p + "out_proj.weight"], out_ptr, tokens, self.GDN_Z_DIM, h)
+        self._gemm32(gdn_normed, self._w[p + "out_proj.weight"], out_ptr, tokens, self.GDN_Z_DIM, h)
 
     # -- head ----------------------------------------------------------------------
 

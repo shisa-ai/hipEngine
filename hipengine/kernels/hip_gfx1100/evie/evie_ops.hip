@@ -13,6 +13,7 @@
 #include <hip/hip_runtime.h>
 #include <stdint.h>
 #include <math.h>
+#include <hip/amd_detail/amd_hip_fp16.h>
 
 namespace {
 
@@ -1019,5 +1020,65 @@ extern "C" int hipengine_evie_gdn_rmsnorm_gate_f32(
       0,
       stream,
       x, z, w, out, rows, head_dim, eps);
+  return static_cast<int>(hipGetLastError());
+}
+
+// ---- fp16 production-path helpers -------------------------------------------
+
+__global__ void evie_cast_f32_to_f16_kernel(
+    const float* __restrict__ x,
+    __half* __restrict__ out,
+    int64_t n) {
+  const int64_t i = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (i < n) {
+    out[i] = __float2half(x[i]);
+  }
+}
+
+extern "C" int hipengine_evie_cast_f32_to_f16(
+    const float* x,
+    void* out,
+    int64_t n,
+    hipStream_t stream) {
+  if (n <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t blocks = (n + 255) / 256;
+  hipLaunchKernelGGL(
+      evie_cast_f32_to_f16_kernel,
+      dim3(static_cast<unsigned int>(blocks)),
+      dim3(256),
+      0,
+      stream,
+      x, static_cast<__half*>(out), n);
+  return static_cast<int>(hipGetLastError());
+}
+
+__global__ void evie_cast_f16_to_f32_kernel(
+    const __half* __restrict__ x,
+    float* __restrict__ out,
+    int64_t n) {
+  const int64_t i = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (i < n) {
+    out[i] = __half2float(x[i]);
+  }
+}
+
+extern "C" int hipengine_evie_cast_f16_to_f32(
+    const void* x,
+    float* out,
+    int64_t n,
+    hipStream_t stream) {
+  if (n <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t blocks = (n + 255) / 256;
+  hipLaunchKernelGGL(
+      evie_cast_f16_to_f32_kernel,
+      dim3(static_cast<unsigned int>(blocks)),
+      dim3(256),
+      0,
+      stream,
+      static_cast<const __half*>(x), out, n);
   return static_cast<int>(hipGetLastError());
 }
