@@ -191,13 +191,14 @@ class EvieRunner:
         return _fn(self.library, symbol, argtypes)
 
     def _gemm32(self, x_ptr: int, w_ptr: int, out_ptr: int, rows: int, fin: int, fout: int) -> None:
-        """GDN projection GEMM.
+        """GDN in_proj_qkv GEMM (the recurrence-critical projection).
 
         In fp16 mode this runs FP16 inputs with an FP32 output: the f32-out
-        epilogue is required because f16 rounding of the in_proj outputs
-        drifts the gated-delta-net recurrence (verified: f16-out collapses
-        query cosine to 0.015; f32-out keeps 0.9999995). In fp32 mode this
-        is the plain strict SGEMM.
+        epilogue is required because f16 rounding of the qkv outputs (k/v
+        feed the persistent delta-rule state) drifts the recurrence
+        (f16-out collapses query cosine to 0.015). The other GDN
+        projections (z/b/a, out_proj) use the fast f16-out path — verified
+        insensitive. In fp32 mode this is the plain strict SGEMM.
         """
 
         if self.precision != "fp16":
@@ -802,9 +803,9 @@ class EvieRunner:
         gdn_normed = scratch.buffers["gdn_normed"].ptr
 
         self._gemm32(norm_ptr, self._w[p + "in_proj_qkv.weight"], qkv_ptr, tokens, h, self.GDN_QKV_DIM)
-        self._gemm32(norm_ptr, self._w[p + "in_proj_z.weight"], z_ptr, tokens, h, self.GDN_Z_DIM)
-        self._gemm32(norm_ptr, self._w[p + "in_proj_b.weight"], b_ptr, tokens, h, self.GDN_HEADS)
-        self._gemm32(norm_ptr, self._w[p + "in_proj_a.weight"], a_ptr, tokens, h, self.GDN_HEADS)
+        self._gemm(norm_ptr, self._w[p + "in_proj_z.weight"], z_ptr, tokens, h, self.GDN_Z_DIM)
+        self._gemm(norm_ptr, self._w[p + "in_proj_b.weight"], b_ptr, tokens, h, self.GDN_HEADS)
+        self._gemm(norm_ptr, self._w[p + "in_proj_a.weight"], a_ptr, tokens, h, self.GDN_HEADS)
 
         if self._zero_conv_state is None:
             # conv-state layout is (channels, kernel_size) with slot 0 unused
@@ -886,7 +887,7 @@ class EvieRunner:
             _F(1e-6), _S(0),
         )
         self._check(err, "gdn rmsnorm gate")
-        self._gemm32(gdn_normed, self._w[p + "out_proj.weight"], out_ptr, tokens, self.GDN_Z_DIM, h)
+        self._gemm(gdn_normed, self._w[p + "out_proj.weight"], out_ptr, tokens, self.GDN_Z_DIM, h)
 
     # -- head ----------------------------------------------------------------------
 
