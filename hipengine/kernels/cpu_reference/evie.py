@@ -286,7 +286,7 @@ def lm_rope_positions(
     input_ids: (seq,) for one sequence (no batch); attention_mask: (seq,).
     Returns (3, n_valid) positions in valid-token order.
     """
-    merge = spec.vision_merge
+    merge = getattr(spec, "vision_merge", None) or spec.vision_spatial_merge_size
     valid = attention_mask.astype(bool)
     ids = input_ids[valid]
     is_img = ids == spec.image_token_id
