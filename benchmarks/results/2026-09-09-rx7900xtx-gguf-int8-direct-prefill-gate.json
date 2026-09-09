@@ -1,0 +1,84 @@
+{
+  "schema": 1,
+  "kind": "rx7900xtx_gguf_int8_direct_prefill_numerics",
+  "date": "2026-09-09",
+  "status": "rejected_default_off_numerics",
+  "performance_claim": false,
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "model_sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+  "hardware": {
+    "host": "epyc",
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "physical_gpu_index": 0
+  },
+  "question": "Qualify the oracle-free direct INT8 prefill route (HIPENGINE_GGUF_INT8_PREFILL_DIRECT, now with the GQA-grouped flash kernel) for default-on promotion: speed was the recorded blocker, and the production-profile numerics campaign for the INT8-read prefill arithmetic was the recorded precondition.",
+  "change_under_test": "Direct route prefill attention reads the retained INT8 K/V store with per-token/head scales instead of the write-through BF16 oracle pair; kernel selection HIPENGINE_GGUF_INT8_PREFILL_KERNEL=flash (new GQA-grouped flash kernel, commit 2082f1353) or sequential (41f19ea95).",
+  "protocol": "scripts/qwen35_native_mixed_kv_suite.py, ten-prompt mtpbench category corpus plus mixed_v1 control, teacher-forced full-vocabulary rows vs the BF16-KV reference policy, pure-INT8 env (HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1, HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS=none). The short-context BF16 mirror policy means the direct route is only planned above 8,192 max positions, so the 4,096-token rows run with --max-sequence-length 16384 (no mirror) to exercise the route; the 512-token rows are the mirror route (both arms bit-identical to BF16, recorded as the engagement control).",
+  "engagement_control_512": {
+    "direct_off": "11/11 rows KL 0.0, bit-identical logits to the direct-on arm: the mirror route is engaged below the 8,192-position threshold and the direct env is inert there (the 4,096 no-mirror arms are the real comparison)."
+  },
+  "ab_4096_no_mirror": {
+    "oracle_route_direct_off": {
+      "suite_status": "accepted",
+      "row_mean_kl_mean": 0.0029821179973136924,
+      "row_mean_kl_max": 0.03209055151918074,
+      "row_max_kl_max": 0.5342943259698351,
+      "top1_min": 1.0,
+      "failed_rows": []
+    },
+    "direct_route_flash": {
+      "suite_status": "rejected_correctness",
+      "row_mean_kl_mean": 0.21479003821350925,
+      "row_mean_kl_max": 0.45884713275266203,
+      "row_max_kl_max": 6.410191345981055,
+      "top1_min": 0.7058823529411765,
+      "failed_rows": [
+        "code_topological_sort",
+        "code_markdown_table",
+        "general_en_plan",
+        "general_en_explain",
+        "general_ja_plan",
+        "general_ja_explain",
+        "mixed_ja_en_translate",
+        "mixed_ja_en_review",
+        "mixed_v1"
+      ]
+    },
+    "direct_route_sequential": {
+      "suite_status": "rejected_correctness",
+      "row_mean_kl_mean": 0.21602978345321347,
+      "row_mean_kl_max": 0.4520990868354189,
+      "row_max_kl_max": 6.283428952610842,
+      "top1_min": 0.7647058823529411,
+      "failed_rows": [
+        "code_topological_sort",
+        "code_markdown_table",
+        "general_en_plan",
+        "general_en_explain",
+        "general_ja_plan",
+        "general_ja_explain",
+        "mixed_ja_en_translate",
+        "mixed_ja_en_review",
+        "mixed_v1"
+      ]
+    }
+  },
+  "verdict": "REJECTED for default-on promotion. The speed blocker is fixed (8,192-token harness A/B: oracle 767.4 vs direct+flash 552.5 tok/s, 72%; sequential 164), and the flash kernel is route-level numerically equivalent to the sequential kernel (identical failure profile, mean row-KL 0.215 vs 0.216), so the restructure is behavior-preserving. But the INT8-read prefill arithmetic itself - the route design, not the kernel - fails the broad project smoke ceiling (mean row-KL 0.215 vs 0.05, max 6.4, top-1 as low as 0.71) where the pure-INT8 oracle route measures 0.003. The BF16 oracle pair is what preserves prefill quality on the pure-INT8 route; removing it trades ~72x mean KL for the oracle pair's memory. The gate stays default OFF; the route remains an opt-in capacity lever with this quality cost measured and recorded.",
+  "speed_context": {
+    "harness_protocol": "--public-ar-profile, isolated GPU, warmup 1 + 3 measured runs",
+    "tokens_8192": {"oracle_route_tok_s": 767.4, "direct_flash_tok_s": 552.5, "direct_sequential_tok_s": 164.2},
+    "tokens_16384": {"oracle_route_tok_s": 697.8, "direct_flash_tok_s": 404.2},
+    "tokens_32768": {"oracle_route_tok_s": 586.5, "direct_flash_tok_s": 258.9},
+    "worst_chunk_probe_ms_per_layer_chunk": {"sequential": 2846.0, "flash": 78.1}
+  },
+  "capacity_ladder": "see the companion capacity artifact for the direct-flash ladder measured after this gate",
+  "evidence": [
+    "results/2026-09-09-int8-direct-prefill-mkv_off_512.json",
+    "results/2026-09-09-int8-direct-prefill-mkv_flash_512.json",
+    "results/2026-09-09-int8-direct-prefill-mkv_nomirror_off_4096.json",
+    "results/2026-09-09-int8-direct-prefill-mkv_nomirror_flash_4096.json",
+    "results/2026-09-09-int8-direct-prefill-mkv_nomirror_seq_4096.json"
+  ],
+  "created_utc": "2026-09-09T06:50:00+00:00"
+}

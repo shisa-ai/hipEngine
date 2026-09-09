@@ -59,6 +59,9 @@ from scripts.gguf_mtp_category_bench import prompt_sha256
 
 KIND = "hipengine_execution_profile_gguf_int8_direct_prefill_gate"
 SCHEMA_VERSION = 1
+# Above the short-context BF16 mirror threshold so the direct route is
+# actually planned (the mirror route is bit-identical to the reference).
+_DIRECT_ROUTE_MIN_MAX_POSITIONS = 16_384
 
 PURE_INT8_ENV = {
     "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG": "1",
@@ -234,7 +237,15 @@ def _capture(
         str(row["id"]): build_chat_prompt(tokenizer, str(row["prompt"]))
         for row in prompt_rows
     }
-    max_sequence_length = max(len(tokens) for tokens in prompt_tokens.values()) + int(args.decode_steps) + 2
+    # The direct route is only planned when no short-context BF16 mirror
+    # exists (max_positions above the 8,192 mirror threshold), so the gate
+    # session must exceed that threshold even for short suite prompts or
+    # the candidate would silently run the mirror (bit-identical to the
+    # reference and the gate would measure nothing).
+    max_sequence_length = max(
+        _DIRECT_ROUTE_MIN_MAX_POSITIONS,
+        max(len(tokens) for tokens in prompt_tokens.values()) + int(args.decode_steps) + 2,
+    )
     captures: list[PromptCalibrationCapture] = []
     prompt_manifest: list[dict[str, Any]] = []
     strict_states: list[dict[str, Any]] = []

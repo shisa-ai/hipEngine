@@ -53,6 +53,7 @@ Do not drift these casually. They define what hipEngine is.
 | `worklog/entries/` | Immutable per-unit current decisions, results, blockers, and handoffs. |
 | `worklog/README.md` / `scripts/worklog.py` | Worklog schema, commands, validator, renderer, and optional pre-commit hook. |
 | `benchmarks/README.md` | Canonical topline scoreboard, platform freshness, protocols, artifacts, and root README exports. |
+| `benchmarks/HARNESSES.md` | Harness catalog **and the two-tier capacity-testing protocol** - never run full-prompt ladder points to answer a does-it-fit question; use `scripts/gguf_capacity_probe.py` first. |
 | `benchmarks/HISTORY.md` | Archived experiment rollup, superseded diagnostics, source-lineage targets, and external baselines. |
 | `benchmarks/CHANGELOG.md` | Reverse-chronological one-line history of benchmark rollup updates. |
 | `benchmarks/results/` | Compact JSON artifacts for accepted/blocked/rejected benchmark attempts. |
@@ -105,6 +106,7 @@ Run the narrowest tier for your change; escalate at milestone boundaries.
 | Code / registry / dispatch | The narrowest relevant `pytest` + applicable CPU deterministic bundle (see `docs/TESTING.md`). |
 | New or ported kernel | Strict exact/parent-parity or production-profile numerical RED gate + CPU-reference outer gate + `rocprofv3 --kernel-trace` smoke (see `docs/KERNELS.md`, `docs/TESTING.md`, and `docs/EXECUTION-PROFILES.md`). |
 | Perf claim | Re-run the exact benchmark command from `docs/BENCHMARK.md` on stated hardware; record both runs in the unit's worklog entry. |
+| Capacity / does-it-fit | Tier-1 allocation probe (`scripts/gguf_capacity_probe.py`, ~3 min) at the target context; escalate to a full-prompt harness point ONLY to confirm a found bound or to certify completion at depth. See `benchmarks/HARNESSES.md` "Capacity testing". Never bracket bounds with full prompts. |
 | Milestone closure | One full `uv run pytest -v` + the phase's named perf target vs prior baseline. If that completed run has isolated failures, apply the focused-repair rule above rather than automatically repeating the full suite. |
 
 ## Git Discipline

@@ -5535,24 +5535,45 @@ becomes redundant) once both routes have carried their adopted evidence
 through a same-suite release cycle without a rollback invocation.
 
 
-## 2026-09-09 GGUF direct-INT8 prefill attention — default-off gate plus a slow kernel
+## 2026-09-09 GGUF direct-INT8 prefill attention — speed fixed, numerics rejected, opt-in capacity lever
 
 `HIPENGINE_GGUF_INT8_PREFILL_DIRECT` ports the PARO route's
 `streaming_direct` structure to the GGUF resident INT8 layers: prefill
-attention reads the retained INT8 store directly (new BF16-output kernel
-sibling `qwen35_paged_attn_prefill_int8_gqa_gate_bf16_out_spans`), the
-BF16 oracle pair is never allocated, and the lifetime plan resolves to
-`chunk_outer_direct_int8` with chunk-sized hidden planes. Measured at
-8,192 tokens on the RX 7900 XTX: 32/32 real-prompt greedy tokens match
-the oracle route, but prefill is **4.6x slower** (761.6 -> 164.2 tok/s) -
-the groupwise INT8 prefill kernel is a sequential online-softmax loop,
-unlike the AOTriton BF16 bridge. The gate stays default OFF until (a) the
-direct prefill attention kernel is tiled/optimized to near-AOTriton
-speed, and (b) the production-profile numerics campaign covers the
-INT8-read prefill arithmetic. Remove the gate (and route) if that
-campaign rejects it; otherwise fold the promotion into the same
-auto-memory-pressure selection the PARO route uses. Related latent bug
-found and documented: the pre-existing `direct_hadamard_int8` GGUF
-branch is dead code whose fp16 output dtype also mismatches the BF16
-`full_gated` consumer - it now shares the fixed out type but remains
-unexercised; do not enable it without its own e2e gate.
+attention reads the retained INT8 store directly (BF16-output kernel
+family), the BF16 oracle pair is never allocated, and the lifetime plan
+resolves to `chunk_outer_direct_int8` with chunk-sized hidden planes.
+
+Follow-ups to the original screen (which was speed-blocked at 164.2 tok/s
+and mis-baselined: the 761.6 oracle control requires the
+`--public-ar-profile` WMMA projection path):
+
+- **Speed**: the sequential kernel is superseded by the GQA-grouped flash
+  kernel `qwen35_paged_attn_prefill_int8_gqa_gate_bf16_out_flash_spans`
+  (one block per (kv head, query row), one warp per q head of the
+  six-head group, 32-token K/V tiles cooperatively staged into LDS with
+  16-byte vector loads, online softmax in registers; no score workspace
+  or split-K partials at any context length; 24/4/256 geometry).
+  `HIPENGINE_GGUF_INT8_PREFILL_KERNEL` selects flash (default) or
+  sequential. Harness A/B at 8,192 tokens: oracle 767.4 / direct+flash
+  552.5 tok/s (72%); the remaining 1.39x needs a WMMA score GEMM
+  (bf16 fragments are exact for int8 K and the already-BF16-rounded Q).
+- **Numerics**: the campaign REJECTED the route for default-on. Against
+  the BF16 reference at 4,096 tokens (no-mirror configuration): the
+  oracle route measures 0.003 mean row-KL; the direct route measures
+  0.215 (max 6.4, top-1 to 0.71) — 70x the smoke ceiling — identically
+  for the flash and sequential kernels, so the drift is the INT8-read
+  prefill arithmetic itself, not the kernel. The BF16 oracle pair is
+  what preserves prefill quality on the pure-INT8 route. The gate stays
+  default OFF permanently unless the read precision changes.
+- **Capacity**: the route remains an opt-in capacity lever with the
+  quality cost measured above; the flash kernel makes the ladder
+  practical (163,840 tokens completes; see the gate artifact).
+
+Related latent bug found and documented: the pre-existing
+`direct_hadamard_int8` GGUF branch is dead code whose fp16 output dtype
+also mismatches the BF16 `full_gated` consumer - it shares the fixed out
+type but remains unexercised; do not enable it without its own e2e gate.
+A second latent route bug fixed alongside: dense H5120 Q4_K_M auto
+full-attention chunks (4,096 rows below the 52K threshold) overflowed
+the 1,024-row scratch cap (positions-buffer copy error at 8K/16K
+prompts); both chunk resolutions now clamp to the row cap.
