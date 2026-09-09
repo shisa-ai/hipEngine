@@ -1,6 +1,6 @@
 # Qwen3.8-27B on Strix Halo: external implementation survey
 
-Updated: 2026-09-03
+Updated: 2026-09-09
 
 Many public Qwen3.8-27B implementations report impressive performance on
 Strix Halo, but the numbers use different models, quantizations, prompts, and
@@ -485,6 +485,51 @@ MTP reached 4.89 tok/s per request.
 The loss is caused by saturation, not failed drafting. Acceptance alone is not
 enough to decide whether MTP should run.
 
+## nasone32 RDNA3 fork
+
+**Verdict: two genuine correctness defects; gfx1151 performance test
+deferred.**
+
+Unlike the other sources in this survey, this fork was measured on the RX
+7900 XTX (`gfx1100`) host during the [2026-09-08 engine comparison][L18],
+with the same model file and protocol. The two defects below are recorded
+here because they are architecture-independent correctness findings. A
+Strix Halo (`gfx1151`) performance pass over the fork's RDNA3.5-guarded
+paths (dequant-float matvec, D=256 tile override) is deferred to a later
+point; it is tracked as P3.2 in the gfx1151 parity campaign and row A3 of
+the gfx1100-to-gfx1151 transfer audit. The gfx1100-side projection-kernel
+ideas were screened and rejected for our stack on 2026-09-09 (see
+`docs/NASONE32-FINDINGS.md` for the excluded non-defects).
+
+### Chunked GDN default is non-deterministic under greedy sampling
+
+With the fork's default configuration, greedy autoregressive output is not
+repeat-stable on one prompt of the ten-prompt suite (`general_ja_explain`:
+the run-0 output differs from runs 1 and 2), and the MTP output disagrees
+with the same server's own AR output on that prompt — 27/30 suite-exact
+versus 30/30 for every other arm. Setting `GGML_CUDA_GDN_CHUNKED=0` with
+an otherwise identical server command restores repeat stability and full
+AR/MTP agreement, so the instability is specific to the chunked GDN path
+(donor `4169fbbf5`, `gated_delta_net_chunked*.cu`: chunk-64
+Gram/triangular work and a state scan including gfx11 BF16 WMMA). Nine
+of ten prompts are exact and repeat-stable under the default, which points
+at a race or non-deterministic reduction order rather than a systematic
+arithmetic error.
+
+### Adaptive speculative depth is silently disabled by default
+
+`common/common.h:329` initializes `n_min_adaptive` to 3, and the README's
+adaptive example also sets the maximum to 3, so the documented example runs
+a fixed depth of 3 and cannot demonstrate adaptation. We confirmed the
+effect externally: the fork's "adaptive" survey rows were aggregate-identical
+to fixed B3 in proposal and acceptance counts. With an explicit floor of 1
+the path adapts, but it measured slower than fixed B3 on both tested
+horizons despite higher acceptance.
+
+Ready-to-file upstream drafts with reproduction commands and per-run output
+ID rows are in [`docs/NASONE32-FINDINGS.md`](NASONE32-FINDINGS.md); the
+complete evidence is the [comparison artifact][L18].
+
 ## Cross-route findings
 
 ### Source protocols are not one leaderboard
@@ -583,6 +628,7 @@ cycle. Acceptance alone is not enough.
 - [hipEngine ngram experiment][L5]
 - [Strict C1 result][L7]
 - [C3 K3 quality test][L8]
+- [2026-09-08 RX 7900 XTX engine comparison (nasone32 evidence)][L18]
 
 The compact artifacts contain commands, model identities, hashes, rates, and
 correctness results. Raw server logs are not tracked in Git.
@@ -595,6 +641,9 @@ correctness results. Raw server logs are not tracked in Git.
 - [S4] KyaniteLabs MTP+ngram report.
 - [S5] Laurent adaptive DFlash2 implementation.
 - [S6] PieBru Q5/Q6/Q8 recipes.
+- [S7] nasone32 `llama.cpp-RDNA3-7900xtx-opt` fork, commit
+  `7dc2f0cb28326816f67f6b979008383344e2038b` (local checkout; source
+  identity, build and server commands are recorded in [L18]).
 
 Pinned commits are encoded in the links below.
 
@@ -607,6 +656,7 @@ Pinned commits are encoded in the links below.
 [L15]: ../benchmarks/results/2026-09-03-gfx1151-qwen38-current-head-mtp-c1c8-refresh.json
 [L16]: ../benchmarks/results/2026-09-03-gfx1151-qwen38-current-head-prefill-c1c8-refresh.json
 [L17]: ../benchmarks/results/2026-09-03-gfx1151-qwen38-c1-singleton-target-retained.json
+[L18]: ../benchmarks/results/2026-09-08-rx7900xtx-engine-comparison.json
 [S1]: https://github.com/hogeheer499-commits/strix-halo-guide/blob/029320fb/QWEN38_STRIX_HALO.md
 [S2]: https://github.com/MikeVeerman/qwen38-27-Strix-Halo-bench/blob/cc52706409b0c550636ff068b06894d27079d734/README.md
 [S3]: https://github.com/julianmb/q38rocm/blob/5d0977403b0dac778598b1af499bf178b46c0b35/README.md
