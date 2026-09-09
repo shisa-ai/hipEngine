@@ -1,14 +1,10 @@
-"""Teacher-forced decode gate for the local32 IQ4_XS decode owner.
+"""Teacher-forced probe for routing Q3_K over W4A16 (the mean-gate candidate).
 
-Runs the incumbent (local32 route disabled) eagerly to fix a token trajectory,
-then teacher-forces the candidate (route enabled) onto the same tokens so
-every position shares an identical context, and evaluates per-position
-logit-KL / top-1 with the campaign's evaluate_logits. Modeled on
-scripts/gguf_fused_moe_ffn_teacher_forced_kl.py.
-
-The campaign's production-referenced gate scores candidate production against
-the incumbent production default under the calibrated section-6.1 envelope;
-this probe measures exactly that arm pair at the actual owner change.
+Incumbent = the shipped four-quant W4A16 policy; candidate = the same policy
+plus gguf_q3_k (K_M carries no IQ2_S/IQ2_XS, so the delta is Q3_K alone).
+The zbook measured the candidate at mean 0.001061 (6.1% over the calibrated
+1e-3); this probe re-establishes the pair on this host with the same
+teacher-forced method as the local32 decode probe.
 """
 from __future__ import annotations
 
@@ -49,13 +45,11 @@ def main() -> None:
     compiler_version = (Path(args.compiler_version_file).read_text()
                         if args.compiler_version_file else None)
 
-    # The shipped policy is empty by decision; the candidate is explicit so
-    # this probe stays meaningful regardless of the shipped default.
-    base_policy = dict(be.GGUF_IQ_DENSE_DECODE_POLICY)
-    candidate_policy = {"gguf_iq4_xs": {"variant": "local32_gemv_bf16_bf16_out"}}
+    base_policy = dict(be.GGUF_IQ_DENSE_PREFILL_POLICY)
+    cand_policy = {**base_policy, "gguf_q3_k": dict(base_policy["gguf_iq4_xs"])}
 
-    def run(local32: bool, forced_tokens=None):
-        be.GGUF_IQ_DENSE_DECODE_POLICY = candidate_policy if local32 else base_policy
+    def run(policy, forced_tokens=None):
+        be.GGUF_IQ_DENSE_PREFILL_POLICY = policy
         logits_rows = []
         tokens = []
         first = session.prefill(prompt, use_bulk=True, bulk_attention_mode="bulk",
@@ -79,35 +73,27 @@ def main() -> None:
             use_wmma_prefill=True,
             use_gemv_decode=True,
         ) as session:
-            # Incumbent: local32 disabled, eager -> fixes the trajectory.
-            ref_logits, ref_tokens = run(local32=False)
+            ref_logits, ref_tokens = run(base_policy)
             session.reset()
-            # Candidate: local32 enabled, teacher-forced on the same tokens.
-            cand_logits, _ = run(local32=True, forced_tokens=ref_tokens[:-1])
+            cand_logits, _ = run(cand_policy, forced_tokens=ref_tokens[:-1])
     finally:
-        be.GGUF_IQ_DENSE_DECODE_POLICY = base_policy
+        be.GGUF_IQ_DENSE_PREFILL_POLICY = base_policy
 
-    ref_dec, cand_dec = ref_logits[1:], cand_logits[1:]
-    metrics = evaluate_logits(ref_dec, cand_dec)
-    top1 = float(np.mean(np.argmax(ref_dec, -1) == np.argmax(cand_dec, -1)))
+    # All positions count: the route changes prefill AND every decode position's
+    # teacher-forced context through the changed prefill hidden states.
+    metrics = evaluate_logits(ref_logits, cand_logits)
+    top1 = float(np.mean(np.argmax(ref_logits, -1) == np.argmax(cand_logits, -1)))
     finite = bool(np.all(np.isfinite(cand_logits)))
-    pre = evaluate_logits(ref_logits[:1], cand_logits[:1])
-    print(f"teacher-forced decode positions: {ref_dec.shape[0]}  (prompt={len(prompt)})")
-    print(f"prefill position KL (route-independent sanity): {pre.kl_mean:.3e}")
-    print(f"DECODE per-position KL:  mean={metrics.kl_mean:.4e}  max={metrics.kl_max:.4e}")
-    print(f"DECODE per-position top1 agreement: {top1:.4f}")
-    print(f"candidate logits finite: {finite}")
-    # Section 6.1 envelope (mean/p95/p99/max/top-1) is the binding gate for the
-    # production run; this probe's single-context screen uses its mean and top-1.
-    gate = metrics.kl_mean <= 1e-3 and top1 >= 0.99
-    print(f"PROBE GATE (mean KL<=1e-3 & top1>=0.99): {'PASS' if gate else 'FAIL'}")
+    print(f"positions: {ref_logits.shape[0]}  (prompt={len(prompt)})")
+    print(f"KL vs 4-quant incumbent:  mean={metrics.kl_mean:.4e}  max={metrics.kl_max:.4e}")
+    print(f"top1 agreement: {top1:.4f}  finite: {finite}")
+    # The zbook's recorded 7-quant arm delta was +0.000234 mean (0.000827 ->
+    # 0.001061); this probe measures the same pair on this host.
     if args.json is not None:
         args.json.write_text(json.dumps({
-            "decode_positions": int(ref_dec.shape[0]),
-            "prompt_tokens": len(prompt),
+            "positions": int(ref_logits.shape[0]),
             "kl_mean": metrics.kl_mean, "kl_max": metrics.kl_max,
             "top1_agreement": top1, "candidate_finite": finite,
-            "prefill_kl_sanity": pre.kl_mean, "probe_gate_pass": gate,
         }, indent=2) + "\n")
 
 
