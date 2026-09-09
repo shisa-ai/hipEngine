@@ -583,9 +583,8 @@ __global__ void qkv_norm_scatter_kernel(
     const T* __restrict__ qkv,
     const float* __restrict__ pos,
     const float* __restrict__ timescale,
-    const float* __restrict__ q_ln,
+    const float* __restrict__ qscale,   // q_ln * log2(e)/sqrt(D) * softplus(per_dim)
     const float* __restrict__ k_ln,
-    const float* __restrict__ per_dim,
     int B,
     int N,
     int S,
@@ -641,7 +640,6 @@ __global__ void qkv_norm_scatter_kernel(
   }
   const float qinv = rsqrtf(qsq / (float)D + 1.0e-6f);
   const float kinv = rsqrtf(ksq / (float)D + 1.0e-6f);
-  const float factor = 1.442695041f / sqrtf((float)D);
 
   const int64_t qt_dst = (((int64_t)b * H + h) * N + n) * D;
   const int64_t kv_dst = (((int64_t)b * H + h) * S + (start + n)) * D;
@@ -649,8 +647,8 @@ __global__ void qkv_norm_scatter_kernel(
   for (int rep = 0; rep < 2; ++rep) {
     const int j = lane + rep * 32;
     if (j < half) {
-      qt[qt_dst + j] = to_half<T>(rope[rep][0] * qinv * q_ln[j] * factor * softplus_(per_dim[j]));
-      qt[qt_dst + j + half] = to_half<T>(rope[rep][1] * qinv * q_ln[j + half] * factor * softplus_(per_dim[j + half]));
+      qt[qt_dst + j] = to_half<T>(rope[rep][0] * qinv * qscale[j]);
+      qt[qt_dst + j + half] = to_half<T>(rope[rep][1] * qinv * qscale[j + half]);
       cache_k[kv_dst + j] = to_half<T>(rope[rep][2] * kinv * k_ln[j]);
       cache_k[kv_dst + j + half] = to_half<T>(rope[rep][3] * kinv * k_ln[j + half]);
       cache_v[kv_dst + j] = v[j];
@@ -1479,7 +1477,7 @@ extern "C" int timesfm_transpose_heads_f16(
 
 extern "C" int timesfm_qkv_norm_scatter_f16(
     const half_t* qkv, const float* pos, const float* timescale,
-    const float* q_ln, const float* k_ln, const float* per_dim,
+    const float* qscale, const float* k_ln,
     int B, int N, int S, int H, int D, int patch_stride, int start,
     half_t* qt, half_t* cache_k, half_t* cache_v,
     hipStream_t stream) {
@@ -1488,7 +1486,7 @@ extern "C" int timesfm_qkv_norm_scatter_f16(
   hipLaunchKernelGGL(qkv_norm_scatter_kernel<half_t>,
                      dim3((unsigned)((total + 7) / 8)),
                      dim3(256), 0, stream,
-                     qkv, pos, timescale, q_ln, k_ln, per_dim,
+                     qkv, pos, timescale, qscale, k_ln,
                      B, N, S, H, D, patch_stride, start,
                      qt, cache_k, cache_v);
   return (int)hipGetLastError();

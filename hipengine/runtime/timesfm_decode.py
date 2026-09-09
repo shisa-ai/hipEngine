@@ -210,10 +210,29 @@ class TimesFMGPUDecoder:
             "q_out": gemm_ptr["output_projection_quantiles.output_layer.weight"],
             "q_res": gemm_ptr["output_projection_quantiles.residual_layer.weight"],
         }
-        self._layers = [
-            {
+        hd = self.spec.head_dim
+        qscale_factor = 1.442695041 / np.sqrt(float(hd))
+
+        def _read_f32(ptr: int, n: int) -> np.ndarray:
+            host = np.empty(n, dtype=np.float32)
+            copy_device_to_host(host_array_ptr(host), _fake_buffer(ptr, n * 4))
+            return host
+
+        self._layers = []
+        for i in range(self.spec.num_hidden_layers):
+            q_ln_h = _read_f32(raw[f"stacked_xf.{i}.attn.query_ln.scale"], hd)
+            per_dim_h = _read_f32(raw[f"stacked_xf.{i}.attn.per_dim_scale.per_dim_scale"], hd)
+            qscale_h = (
+                q_ln_h * qscale_factor
+                * (np.log1p(np.exp(-np.abs(per_dim_h))) + np.maximum(per_dim_h, 0.0))
+            ).astype(np.float32)
+            qscale_buf = malloc(qscale_h.nbytes)
+            copy_host_to_device(qscale_buf, host_array_ptr(qscale_h))
+            self._fp16_weights[f"__qscale.{i}"] = qscale_buf
+            self._layers.append({
                 "qkv": gemm_ptr[f"stacked_xf.{i}.attn.qkv_proj.weight"],
                 "out": gemm_ptr[f"stacked_xf.{i}.attn.out.weight"],
+                "qscale": qscale_buf.ptr,
                 "q_ln": raw[f"stacked_xf.{i}.attn.query_ln.scale"],
                 "k_ln": raw[f"stacked_xf.{i}.attn.key_ln.scale"],
                 "perdim": raw[f"stacked_xf.{i}.attn.per_dim_scale.per_dim_scale"],
@@ -223,9 +242,7 @@ class TimesFMGPUDecoder:
                 "post_attn": raw[f"stacked_xf.{i}.post_attn_ln.scale"],
                 "pre_ff": raw[f"stacked_xf.{i}.pre_ff_ln.scale"],
                 "post_ff": raw[f"stacked_xf.{i}.post_ff_ln.scale"],
-            }
-            for i in range(self.spec.num_hidden_layers)
-        ]
+            })
 
     def close(self) -> None:
         for buffers in self._buffers.values():
@@ -347,7 +364,7 @@ class TimesFMGPUDecoder:
                 # Batched-GEMM attention (head-major caches).
                 timesfm_qkv_norm_scatter_f16(
                     bufs.qkv.ptr, bufs.pos.ptr, self._timescale.ptr,
-                    w["q_ln"], w["k_ln"], w["perdim"],
+                    w["qscale"], w["k_ln"],
                     batch, n, cache_size, heads, hd, patch_stride, start,
                     bufs.qt.ptr, bufs.caches_k[layer].ptr, bufs.caches_v[layer].ptr,
                 )
