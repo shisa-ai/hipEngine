@@ -71,6 +71,7 @@ from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
     qwen35_paged_full_attn_decode_split_k_warp_gate_bf16_spans,
     qwen35_paged_attn_prefill_int8_gqa_gate_bf16_out_spans,
     qwen35_paged_attn_prefill_int8_gqa_gate_bf16_out_flash_spans,
+    qwen35_paged_attn_prefill_int8_gqa_gate_bf16_out_wmma_spans,
     qwen35_paged_attn_prefill_int8_gqa_gate_fp16_spans,
     qwen35_paged_attn_prefill_int8_hadamard_group32_gqa_gate_fp16_spans,
     qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans,
@@ -4447,8 +4448,32 @@ class Qwen35GGUFFullStackRunner:
             # staging, online softmax in registers); the sequential
             # online-softmax kernel stays selectable for A/B and as the
             # numerics reference.
-            if _gguf_int8_prefill_kernel() == "sequential":
+            kernel_choice = _gguf_int8_prefill_kernel()
+            if kernel_choice == "sequential":
                 qwen35_paged_attn_prefill_int8_gqa_gate_bf16_out_spans(
+                    scratch.full_query.ptr,
+                    scratch.key_cache.ptr,
+                    scratch.value_cache.ptr,
+                    append_metadata.k_scale.ptr,
+                    append_metadata.v_scale.ptr,
+                    scratch.full_gate.ptr,
+                    scratch.full_gated.ptr,
+                    scratch.prefill_spans,
+                    rows,
+                    end,
+                    scratch.block_size,
+                    cfg.head_count,
+                    cfg.head_count_kv,
+                    cfg.key_length,
+                    cfg.key_length,
+                    1,
+                    cfg.key_length ** -0.5,
+                    stream=stream,
+                    library=paged_attn_library,
+                    runtime=runtime,
+                )
+            elif kernel_choice == "wmma":
+                qwen35_paged_attn_prefill_int8_gqa_gate_bf16_out_wmma_spans(
                     scratch.full_query.ptr,
                     scratch.key_cache.ptr,
                     scratch.value_cache.ptr,
@@ -29555,9 +29580,9 @@ def _gguf_int8_prefill_kernel() -> str:
     """Select the direct INT8 prefill attention kernel implementation."""
 
     raw = (_env_value("HIPENGINE_GGUF_INT8_PREFILL_KERNEL") or "flash").strip().lower()
-    if raw not in ("flash", "sequential"):
+    if raw not in ("flash", "wmma", "sequential"):
         raise ValueError(
-            "HIPENGINE_GGUF_INT8_PREFILL_KERNEL must be flash or sequential; "
+            "HIPENGINE_GGUF_INT8_PREFILL_KERNEL must be flash, wmma, or sequential; "
             f"got {raw!r}"
         )
     return raw

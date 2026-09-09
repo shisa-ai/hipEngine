@@ -93,6 +93,9 @@ _SYMBOL_PREFILL_GQA_GATE_INT8_F32_BF16OUT = (
 _SYMBOL_PREFILL_GQA_GATE_INT8_F32_BF16OUT_FLASH = (
     "hipengine_qwen35_paged_full_attn_prefill_gqa_gate_int8_scale_f32_bf16out_flash_spans"
 )
+_SYMBOL_PREFILL_GQA_GATE_INT8_F32_BF16OUT_WMMA = (
+    "hipengine_qwen35_paged_full_attn_prefill_gqa_gate_int8_scale_f32_bf16out_wmma_spans"
+)
 _SYMBOL_PREFILL_GQA_GATE_INT8_FP16 = "hipengine_qwen35_paged_full_attn_prefill_gqa_gate_int8_scale_fp16_spans"
 _SYMBOL_PREFILL_GQA_GATE_INT8_HADAMARD_GROUP32_F32 = "hipengine_qwen35_paged_full_attn_prefill_gqa_gate_int8_hadamard_group32_scale_f32_spans"
 _SYMBOL_PREFILL_GQA_GATE_INT8_HADAMARD_GROUP32_FP16 = "hipengine_qwen35_paged_full_attn_prefill_gqa_gate_int8_hadamard_group32_scale_fp16_spans"
@@ -1852,6 +1855,113 @@ def qwen35_paged_attn_prefill_int8_gqa_gate_bf16_out_spans(
     )
     _check_launch(runtime, err)
 
+
+
+def qwen35_paged_attn_prefill_int8_gqa_gate_bf16_out_wmma_spans(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    k_scale_ptr: int,
+    v_scale_ptr: int,
+    gate_ptr: int,
+    out_ptr: int,
+    spans: KVLiveSpans,
+    rows: int,
+    max_context_len: int,
+    block_size: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    gate_stride1: int,
+    gate_stride2: int,
+    scale: float,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run the WMMA flash INT8 causal prefill with a BF16 output.
+
+    Same INT8 store/scale contract and BF16 output bits as the sequential
+    and flash kernels, with the score tiles computed by RDNA3 wave32 WMMA
+    (fp16 operands, fp32 accumulate) after the Laguna/llama.cpp
+    fattn-mma-f16 structure: one block per (kv head, eight query rows),
+    K/V dequantized to fp16 in a reused LDS tile. Probabilities and the
+    PV accumulation use the f16-accumulate structure of that lineage.
+    Shipped for the 24/4/256 geometry with fp32 per-token/head scales;
+    other shapes raise.
+    """
+
+    block_table_len = _check_int8_prefill_gqa_shape(
+        spans,
+        rows,
+        max_context_len,
+        block_size,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        k_scale_ptr=k_scale_ptr,
+        v_scale_ptr=v_scale_ptr,
+    )
+    _check_positive(gate_stride1, "gate_stride1")
+    _check_positive(gate_stride2, "gate_stride2")
+    if num_q_heads != 24 or num_kv_heads != 4 or head_dim != 256:
+        raise ValueError(
+            "WMMA INT8 prefill requires the 24/4 GQA geometry with head_dim 256; "
+            f"got {num_q_heads}/{num_kv_heads}/{head_dim}"
+        )
+    library = library or build_qwen35_paged_attn_decode(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_PREFILL_GQA_GATE_INT8_F32_BF16OUT_WMMA)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_float,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    row_positions_ptr = 0 if spans.row_positions is None else spans.row_positions.ptr
+    err = fn(
+        ctypes.c_void_p(query_ptr),
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(k_scale_ptr),
+        ctypes.c_void_p(v_scale_ptr),
+        ctypes.c_void_p(gate_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_void_p(row_positions_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(max_context_len),
+        ctypes.c_int64(block_size),
+        ctypes.c_int64(block_table_len),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_int64(gate_stride1),
+        ctypes.c_int64(gate_stride2),
+        ctypes.c_float(scale),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
 
 
 def qwen35_paged_attn_prefill_int8_gqa_gate_bf16_out_flash_spans(

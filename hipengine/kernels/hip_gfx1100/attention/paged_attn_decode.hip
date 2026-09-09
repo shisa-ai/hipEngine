@@ -2209,7 +2209,401 @@ __global__ void qwen35_paged_full_attn_prefill_gqa_gate_int8_flash_kernel(
   }
 }
 
-// Tree-aware variant of qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel.// Tree-aware variant of qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel.
+// WMMA flash prefill for the direct INT8 route, adapted from the in-tree
+// Laguna F16-WMMA flash-attention structure (llama.cpp fattn-mma-f16
+// lineage): one block per (kv head, eight query rows), three waves of
+// sixteen (query row, q head) columns, and K48 token batches whose K/V
+// halves are dequantized into a reused LDS tile. The score tiles are
+// computed with RDNA3 wave32 WMMA (fp16 operands, fp32 accumulate);
+// Q is pre-scaled by 1/sqrt(256) (exact power of two) and K by its
+// per-token/head scale during staging, so the WMMA dot reproduces the
+// reference dequantize-then-dot contract. Probabilities and the PV
+// accumulation follow the Laguna f16-accumulate structure. Shipped for
+// the 24 q head / 4 kv head / 256 dim geometry with fp32 per-token/head
+// scales, paged-uniform spans, the fp16 sigmoid gate, and a BF16 output.
+namespace {
+
+using half2_t = half_t __attribute__((ext_vector_type(2)));
+using half8_t = half_t __attribute__((ext_vector_type(8)));
+using half16_t = half_t __attribute__((ext_vector_type(16)));
+using float8_t = float __attribute__((ext_vector_type(8)));
+
+constexpr int INT8_WMMA_QUERY_ROWS = 8;
+constexpr int INT8_WMMA_GQA_HEADS = 6;
+constexpr int INT8_WMMA_Q_HEADS = 24;
+constexpr int INT8_WMMA_KV_HEADS = 4;
+constexpr int INT8_WMMA_HEAD_DIM = 256;
+constexpr int INT8_WMMA_K_BATCH = 48;
+constexpr int INT8_WMMA_COLUMNS =
+    INT8_WMMA_QUERY_ROWS * INT8_WMMA_GQA_HEADS;  // 48
+constexpr int INT8_WMMA_WAVES = 3;
+constexpr int INT8_WMMA_STRIDE = INT8_WMMA_HEAD_DIM + 8;  // halves per row
+
+__device__ __forceinline__ float int8_wmma_lane_xor16(float value) {
+  return __shfl_xor(value, 16, 32);
+}
+
+__global__ void __launch_bounds__(32 * INT8_WMMA_WAVES, 1)
+qwen35_paged_full_attn_prefill_gqa_gate_int8_wmma_kernel(
+    const float* __restrict__ query,       // [rows, 24, 256]
+    const int8_t* __restrict__ key_cache,  // [tokens, 4, 256]
+    const int8_t* __restrict__ value_cache,
+    const float* __restrict__ k_scale,     // [tokens, 4]
+    const float* __restrict__ v_scale,
+    const half_t* __restrict__ gate,       // [rows, 24, 256] fp16
+    uint16_t* __restrict__ out,            // [rows, 24 * 256] bf16 bits
+    const int32_t* __restrict__ block_tables,
+    const int64_t* __restrict__ context_counts,
+    const int64_t* __restrict__ row_positions,
+    int64_t rows,
+    int64_t max_context_len,
+    int64_t block_table_len,
+    int64_t gate_stride1,
+    int64_t gate_stride2,
+    float scale) {
+  const int lane = static_cast<int>(threadIdx.x);
+  const int wave = static_cast<int>(threadIdx.y);
+  const int linear_tid = wave * 32 + lane;
+  const int64_t kv_head = blockIdx.x;
+  const int query_tile = static_cast<int>(blockIdx.y);
+  if (query_tile * INT8_WMMA_QUERY_ROWS >= static_cast<int>(rows)) {
+    return;
+  }
+  const int jc = wave * 16 + (lane & 15);
+  const int query_local = jc / INT8_WMMA_GQA_HEADS;
+  const int gqa_local = jc - query_local * INT8_WMMA_GQA_HEADS;
+  const int query_row = query_tile * INT8_WMMA_QUERY_ROWS + query_local;
+  const bool valid_query = query_row < static_cast<int>(rows);
+  const int q_head =
+      static_cast<int>(kv_head) * INT8_WMMA_GQA_HEADS + gqa_local;
+
+  extern __shared__ half_t wmma_shared[];
+  // q_tile persists in LDS: at head_dim 256 the Laguna register-fragment
+  // layout would need 128 registers per thread, so the B operand is
+  // re-read from LDS per dim tile instead.
+  half_t* q_tile = wmma_shared;  // [COLUMNS][STRIDE]
+  half_t* kv_tile = q_tile + INT8_WMMA_COLUMNS * INT8_WMMA_STRIDE;
+  float* ks_staged =
+      reinterpret_cast<float*>(kv_tile + INT8_WMMA_K_BATCH * INT8_WMMA_STRIDE);
+  float* vs_staged = ks_staged + INT8_WMMA_K_BATCH;
+  int* plane_staged = reinterpret_cast<int*>(vs_staged + INT8_WMMA_K_BATCH);
+
+  // Stage the (query row, q head) columns of Q as pre-scaled fp16. The
+  // query is BF16-rounded first (the route's reference contract) and the
+  // 1/sqrt(256) pre-scale is an exact power of two in fp16.
+  for (int pack = linear_tid;
+       pack < INT8_WMMA_COLUMNS * (INT8_WMMA_HEAD_DIM / 2);
+       pack += 32 * INT8_WMMA_WAVES) {
+    const int tile_jc = pack / (INT8_WMMA_HEAD_DIM / 2);
+    const int dim = (pack - tile_jc * (INT8_WMMA_HEAD_DIM / 2)) * 2;
+    const int tile_query_local = tile_jc / INT8_WMMA_GQA_HEADS;
+    const int tile_gqa_local =
+        tile_jc - tile_query_local * INT8_WMMA_GQA_HEADS;
+    const int tile_row =
+        query_tile * INT8_WMMA_QUERY_ROWS + tile_query_local;
+    const int tile_head =
+        static_cast<int>(kv_head) * INT8_WMMA_GQA_HEADS + tile_gqa_local;
+    float v0 = 0.0f;
+    float v1 = 0.0f;
+    if (tile_row < static_cast<int>(rows)) {
+      const float* src = query +
+          (static_cast<int64_t>(tile_row) * INT8_WMMA_Q_HEADS + tile_head) *
+              INT8_WMMA_HEAD_DIM +
+          dim;
+      v0 = bf16_bits_to_float(float_to_bf16_bits(src[0]));
+      v1 = bf16_bits_to_float(float_to_bf16_bits(src[1]));
+    }
+    q_tile[tile_jc * INT8_WMMA_STRIDE + dim] = static_cast<half_t>(v0 * scale);
+    q_tile[tile_jc * INT8_WMMA_STRIDE + dim + 1] =
+        static_cast<half_t>(v1 * scale);
+  }
+  __syncthreads();
+
+  half2_t output_acc[INT8_WMMA_HEAD_DIM / 32][8];
+#pragma unroll
+  for (int tile = 0; tile < INT8_WMMA_HEAD_DIM / 32; ++tile) {
+#pragma unroll
+    for (int element = 0; element < 8; ++element) {
+      output_acc[tile][element] = half2_t{static_cast<half_t>(0.0f),
+                                          static_cast<half_t>(0.0f)};
+    }
+  }
+  float running_max = -INFINITY;
+  float running_sum = 0.0f;
+
+  int64_t visible_bound = 0;
+  for (int r = 0; r < INT8_WMMA_QUERY_ROWS; ++r) {
+    const int64_t row = query_tile * INT8_WMMA_QUERY_ROWS + r;
+    if (row >= rows) {
+      break;
+    }
+    const int64_t count = context_counts[row];
+    if (count <= 0) {
+      continue;
+    }
+    const int64_t position =
+        row_positions ? row_positions[row] : (count - 1);
+    const int64_t causal = position + 1;
+    const int64_t visible = count < causal ? count : causal;
+    if (visible > visible_bound) {
+      visible_bound = visible;
+    }
+  }
+  if (visible_bound <= 0 || visible_bound > max_context_len) {
+    if (visible_bound <= 0) {
+      return;
+    }
+    visible_bound = max_context_len;
+  }
+  const int32_t* row_table_lo =
+      block_tables +
+      (query_tile * INT8_WMMA_QUERY_ROWS) * block_table_len;
+
+  const int k_batches = static_cast<int>(
+      (visible_bound + INT8_WMMA_K_BATCH - 1) / INT8_WMMA_K_BATCH);
+  for (int batch = 0; batch < k_batches; ++batch) {
+    const int k_base = batch * INT8_WMMA_K_BATCH;
+    if (linear_tid < INT8_WMMA_K_BATCH) {
+      const int token = k_base + linear_tid;
+      int plane = -1;
+      float k_s = 0.0f;
+      float v_s = 0.0f;
+      if (token < static_cast<int>(visible_bound)) {
+        const int logical_block = token >> 8;
+        if (logical_block < static_cast<int>(block_table_len)) {
+          const int physical_block =
+              static_cast<int>(row_table_lo[logical_block]);
+          if (physical_block >= 0) {
+            const int token_offset = (physical_block << 8) | (token & 255);
+            const int scale_index =
+                token_offset * INT8_WMMA_KV_HEADS + static_cast<int>(kv_head);
+            plane = (token_offset * INT8_WMMA_KV_HEADS +
+                     static_cast<int>(kv_head)) * INT8_WMMA_HEAD_DIM;
+            k_s = k_scale[scale_index];
+            v_s = v_scale[scale_index];
+          }
+        }
+      }
+      plane_staged[linear_tid] = plane;
+      ks_staged[linear_tid] = k_s;
+      vs_staged[linear_tid] = v_s;
+    }
+    __syncthreads();
+
+    // Stage K dequantized to fp16 (int8 x per-token/head scale); the
+    // zero rows keep unmapped tokens out of the WMMA dot.
+    for (int pack = linear_tid;
+         pack < INT8_WMMA_K_BATCH * (INT8_WMMA_HEAD_DIM / 8);
+         pack += 32 * INT8_WMMA_WAVES) {
+      const int key_local = pack / (INT8_WMMA_HEAD_DIM / 8);
+      const int dim = (pack - key_local * (INT8_WMMA_HEAD_DIM / 8)) * 8;
+      const int plane = plane_staged[key_local];
+      half_t values[8];
+      if (plane >= 0) {
+        const float k_s = ks_staged[key_local];
+        const int8_t* kptr = key_cache + plane + dim;
+#pragma unroll
+        for (int element = 0; element < 8; ++element) {
+          values[element] =
+              static_cast<half_t>(static_cast<float>(kptr[element]) * k_s);
+        }
+      } else {
+#pragma unroll
+        for (int element = 0; element < 8; ++element) {
+          values[element] = static_cast<half_t>(0.0f);
+        }
+      }
+      *reinterpret_cast<half8_t*>(
+          &kv_tile[key_local * INT8_WMMA_STRIDE + dim]) =
+          *reinterpret_cast<const half8_t*>(values);
+    }
+    __syncthreads();
+
+    // Score tiles: A = K fragment, B = Q fragment, fp32 accumulate.
+    float8_t scores[INT8_WMMA_K_BATCH / 16];
+#pragma unroll
+    for (int key_tile = 0; key_tile < INT8_WMMA_K_BATCH / 16; ++key_tile) {
+      scores[key_tile] = float8_t{0.0f, 0.0f, 0.0f, 0.0f,
+                                  0.0f, 0.0f, 0.0f, 0.0f};
+#pragma unroll
+      for (int dim_tile = 0; dim_tile < INT8_WMMA_HEAD_DIM / 16; ++dim_tile) {
+        half16_t key_fragment;
+        const int key_local = key_tile * 16 + (lane & 15);
+#pragma unroll
+        for (int k = 0; k < 16; ++k) {
+          key_fragment[k] =
+              kv_tile[key_local * INT8_WMMA_STRIDE + dim_tile * 16 + k];
+        }
+        half16_t query_fragment;
+#pragma unroll
+        for (int k = 0; k < 16; ++k) {
+          query_fragment[k] =
+              q_tile[jc * INT8_WMMA_STRIDE + dim_tile * 16 + k];
+        }
+        scores[key_tile] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
+            key_fragment, query_fragment, scores[key_tile]);
+      }
+    }
+    __syncthreads();
+
+    // Visibility: mask scores of tokens beyond this column's causal
+    // position (per query row) or of unmapped blocks.
+    const int64_t query_position =
+        valid_query
+            ? (row_positions ? row_positions[query_row]
+                             : (context_counts[query_row] - 1))
+            : INT64_MIN;
+    float local_max = -INFINITY;
+#pragma unroll
+    for (int key_tile = 0; key_tile < INT8_WMMA_K_BATCH / 16; ++key_tile) {
+#pragma unroll
+      for (int element = 0; element < 8; ++element) {
+        const int key_local = key_tile * 16 + 2 * element + (lane >> 4);
+        const int token = k_base + key_local;
+        const bool visible =
+            valid_query && token < static_cast<int>(visible_bound) &&
+            static_cast<int64_t>(token) <= query_position &&
+            plane_staged[key_local] >= 0;
+        if (!visible) {
+          scores[key_tile][element] = -INFINITY;
+        }
+        local_max = fmaxf(local_max, scores[key_tile][element]);
+      }
+    }
+    const float batch_max = fmaxf(local_max, int8_wmma_lane_xor16(local_max));
+    const bool has_data = isfinite(batch_max);
+    const float next_max = has_data ? fmaxf(running_max, batch_max) : 0.0f;
+    const float previous_scale =
+        !has_data ? 1.0f
+                  : isfinite(running_max) ? expf(running_max - next_max) : 0.0f;
+#pragma unroll
+    for (int tile = 0; tile < INT8_WMMA_HEAD_DIM / 32; ++tile) {
+#pragma unroll
+      for (int element = 0; element < 8; ++element) {
+        output_acc[tile][element][0] = static_cast<half_t>(
+            static_cast<float>(output_acc[tile][element][0]) * previous_scale);
+        output_acc[tile][element][1] = static_cast<half_t>(
+            static_cast<float>(output_acc[tile][element][1]) * previous_scale);
+      }
+    }
+
+    float local_sum = 0.0f;
+#pragma unroll
+    for (int key_tile = 0; key_tile < INT8_WMMA_K_BATCH / 16; ++key_tile) {
+#pragma unroll
+      for (int element = 0; element < 8; ++element) {
+        const float score = scores[key_tile][element];
+        const float probability =
+            has_data && isfinite(score) ? expf(score - next_max) : 0.0f;
+        scores[key_tile][element] = probability;
+        local_sum += probability;
+      }
+    }
+    const float batch_sum = local_sum + int8_wmma_lane_xor16(local_sum);
+    running_sum = previous_scale * running_sum + batch_sum;
+    running_max = has_data ? next_max : running_max;
+
+    // Stage V dequantized to fp16 into the same reused tile.
+    for (int pack = linear_tid;
+         pack < INT8_WMMA_K_BATCH * (INT8_WMMA_HEAD_DIM / 8);
+         pack += 32 * INT8_WMMA_WAVES) {
+      const int key_local = pack / (INT8_WMMA_HEAD_DIM / 8);
+      const int dim = (pack - key_local * (INT8_WMMA_HEAD_DIM / 8)) * 8;
+      const int plane = plane_staged[key_local];
+      half_t values[8];
+      if (plane >= 0) {
+        const float v_s = vs_staged[key_local];
+        const int8_t* vptr = value_cache + plane + dim;
+#pragma unroll
+        for (int element = 0; element < 8; ++element) {
+          values[element] =
+              static_cast<half_t>(static_cast<float>(vptr[element]) * v_s);
+        }
+      } else {
+#pragma unroll
+        for (int element = 0; element < 8; ++element) {
+          values[element] = static_cast<half_t>(0.0f);
+        }
+      }
+      *reinterpret_cast<half8_t*>(
+          &kv_tile[key_local * INT8_WMMA_STRIDE + dim]) =
+          *reinterpret_cast<const half8_t*>(values);
+    }
+    __syncthreads();
+
+#pragma unroll
+    for (int key_tile = 0; key_tile < INT8_WMMA_K_BATCH / 16; ++key_tile) {
+      half2_t probability_pairs[8];
+#pragma unroll
+      for (int element = 0; element < 8; ++element) {
+        const float own = scores[key_tile][element];
+        const float partner = int8_wmma_lane_xor16(own);
+        probability_pairs[element][lane >> 4] = static_cast<half_t>(own);
+        probability_pairs[element][(lane >> 4) ^ 1] =
+            static_cast<half_t>(partner);
+      }
+      const half16_t probability_fragment =
+          *reinterpret_cast<const half16_t*>(probability_pairs);
+#pragma unroll
+      for (int dim_tile = 0; dim_tile < INT8_WMMA_HEAD_DIM / 32; ++dim_tile) {
+        half2_t value_pairs[16];
+        const int dim0 = dim_tile * 32 + 2 * (lane & 15);
+        const int dim1 = dim0 + 1;
+#pragma unroll
+        for (int element = 0; element < 8; ++element) {
+          const int key_row = key_tile * 16 + 2 * element;
+          value_pairs[element] =
+              half2_t{kv_tile[key_row * INT8_WMMA_STRIDE + dim0],
+                      kv_tile[(key_row + 1) * INT8_WMMA_STRIDE + dim0]};
+          value_pairs[element + 8] =
+              half2_t{kv_tile[key_row * INT8_WMMA_STRIDE + dim1],
+                      kv_tile[(key_row + 1) * INT8_WMMA_STRIDE + dim1]};
+        }
+        const half16_t* value_fragments =
+            reinterpret_cast<const half16_t*>(value_pairs);
+        half16_t accumulator =
+            *reinterpret_cast<const half16_t*>(output_acc[dim_tile]);
+        accumulator = __builtin_amdgcn_wmma_f16_16x16x16_f16_w32(
+            value_fragments[0], probability_fragment, accumulator, 0);
+        accumulator = __builtin_amdgcn_wmma_f16_16x16x16_f16_w32(
+            value_fragments[1], probability_fragment, accumulator, 1);
+        *reinterpret_cast<half16_t*>(output_acc[dim_tile]) = accumulator;
+      }
+    }
+    __syncthreads();
+  }
+
+  if (valid_query && running_sum != 0.0f) {
+    const float inverse_sum = 1.0f / running_sum;
+    const int64_t gate_base =
+        (static_cast<int64_t>(query_row) * INT8_WMMA_Q_HEADS + q_head) *
+        gate_stride1;
+    const int64_t out_base =
+        (static_cast<int64_t>(query_row) * INT8_WMMA_Q_HEADS + q_head) *
+            INT8_WMMA_HEAD_DIM;
+#pragma unroll
+    for (int dim_tile = 0; dim_tile < INT8_WMMA_HEAD_DIM / 32; ++dim_tile) {
+#pragma unroll
+      for (int element = 0; element < 8; ++element) {
+        const int dim = dim_tile * 32 + 4 * element + 2 * (lane >> 4);
+        const float g0 =
+            static_cast<float>(gate[gate_base + dim * gate_stride2]);
+        const float g1 = static_cast<float>(
+            gate[gate_base + (dim + 1) * gate_stride2]);
+        const float o0 =
+            static_cast<float>(output_acc[dim_tile][element][0]) * inverse_sum;
+        const float o1 =
+            static_cast<float>(output_acc[dim_tile][element][1]) * inverse_sum;
+        out[out_base + dim] = float_to_bf16_bits(o0 * sigmoid_f32(g0));
+        out[out_base + dim + 1] = float_to_bf16_bits(o1 * sigmoid_f32(g1));
+      }
+    }
+  }
+}
+
+}  // namespace
+
+// Tree-aware variant of qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel.// Tree-aware variant of qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel.// Tree-aware variant of qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel.
 // Identical to the chain kernel except for the per-row ancestor mask applied
 // to verifier rows whose K/V live at global positions [tree_committed_count,
 // tree_committed_count + rows).  Positions strictly below tree_committed_count
@@ -5215,6 +5609,65 @@ int launch_qwen35_paged_full_attn_prefill_gqa_gate_int8_flash(
       block_size,
       block_table_len,
       head_dim,
+      gate_stride1,
+      gate_stride2,
+      scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_int8_scale_f32_bf16out_wmma_spans(
+    const float* query,
+    const int8_t* key_cache,
+    const int8_t* value_cache,
+    const float* k_scale,
+    const float* v_scale,
+    const half_t* gate,
+    uint16_t* out,
+    const int32_t* block_tables,
+    const int64_t* context_counts,
+    const int64_t* row_positions,
+    int64_t rows,
+    int64_t max_context_len,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t gate_stride1,
+    int64_t gate_stride2,
+    float scale,
+    hipStream_t stream) {
+  if (rows <= 0 || max_context_len <= 0 || block_size != 256 ||
+      block_table_len <= 0 || num_q_heads != 24 || num_kv_heads != 4 ||
+      head_dim != 256 || gate_stride1 <= 0 || gate_stride2 <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int query_rows = 8;
+  const int64_t tiles = (rows + query_rows - 1) / query_rows;
+  // LDS: persistent Q tile + reused K/V tile (48 x 264 halves each) plus
+  // the staged scales and plane offsets.
+  const size_t shared =
+      static_cast<size_t>(2 * 48 * 264) * sizeof(half_t) +
+      static_cast<size_t>(3 * 48) * sizeof(float);
+  hipLaunchKernelGGL(
+      HIP_KERNEL_NAME(qwen35_paged_full_attn_prefill_gqa_gate_int8_wmma_kernel),
+      dim3(4, static_cast<unsigned int>(tiles)),
+      dim3(32, 3),
+      shared,
+      stream,
+      query,
+      key_cache,
+      value_cache,
+      k_scale,
+      v_scale,
+      gate,
+      out,
+      block_tables,
+      context_counts,
+      row_positions,
+      rows,
+      max_context_len,
+      block_table_len,
       gate_stride1,
       gate_stride2,
       scale);
