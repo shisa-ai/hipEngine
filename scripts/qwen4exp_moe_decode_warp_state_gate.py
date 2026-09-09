@@ -105,6 +105,7 @@ def main() -> None:
         prefill_chunk_size=1024))
 
     counters = {"dual": 0, "down_fast": 0, "down_exact": 0}
+    call_log: dict[str, list] = {"dual": [], "down_fast": [], "down_exact": []}
     originals = {}
 
     for key, wrapper_name in (
@@ -115,7 +116,7 @@ def main() -> None:
         original = getattr(runner_module, wrapper_name)
         originals[key] = original
         setattr(runner_module, wrapper_name,
-                _make_counter(counters, key, original))
+                _make_counter(counters, key, original, call_log))
 
     report = {
         "status": "running",
@@ -143,6 +144,8 @@ def main() -> None:
                 os.environ[FLAG_DOWN] = "fast" if enabled == "1" else "0"
                 for k in counters:
                     counters[k] = 0
+                for k in call_log:
+                    call_log[k] = []
                 first = generator.runner.prefill(case["prompt_token_ids"])
                 prefill_counts = dict(counters)
                 logits = first.logits.copy()
@@ -168,16 +171,34 @@ def main() -> None:
                         "warp pair ran during prefill", prefill_counts)
                     assert decode_counts["down_exact"] == 0, (
                         "exact-tree down engaged in fast pair mode")
-                    assert decode_counts["dual"] > 0, "dual not engaged"
-                    assert decode_counts["dual"] == decode_counts["down_fast"], (
-                        "dual/down call mismatch", decode_counts)
+                    # The MoE decode block runs through MoeGraphCache: each
+                    # new graph key captures via TWO eager invocations of
+                    # the full MoE (reference + capture stream), then replays
+                    # without calling the Python wrappers. Wrapper counts
+                    # therefore measure CAPTURES, not per-step launches.
+                    # Per-step engagement is proven by the candidate arm's
+                    # logits differing from the incumbent arm (asserted
+                    # below) plus same-arm determinism. Eligibility sets
+                    # differ by design: dual covers dp4a-eligible Q4_K
+                    # gate/up layers (42 on this model), fast down covers
+                    # Q5_1-down layers (43; the five Q8_0-down layers
+                    # 2/4/30/46/47 stay on the promoted wmma route).
+                    for k in ("dual", "down_fast"):
+                        assert decode_counts[k] > 0, (k, "not captured")
+                        assert decode_counts[k] % 2 == 0, (
+                            "capture counts must be even (2 eager calls "
+                            "per captured key)", decode_counts)
                     if moe_layers is None:
-                        assert decode_counts["dual"] % args.decode_steps == 0
-                        moe_layers = decode_counts["dual"] // args.decode_steps
-                        assert moe_layers > 0
-                    assert decode_counts["dual"] == (
-                        moe_layers * args.decode_steps), (
-                        "unexpected call count", decode_counts, moe_layers)
+                        moe_layers = {
+                            "dual_layers": decode_counts["dual"] // 2,
+                            "down_fast_layers": decode_counts["down_fast"] // 2,
+                        }
+                    else:
+                        assert moe_layers == {
+                            "dual_layers": decode_counts["dual"] // 2,
+                            "down_fast_layers": decode_counts["down_fast"] // 2,
+                        }, ("capture counts changed across cases",
+                            moe_layers, decode_counts)
                 else:
                     assert total_counts == {"dual": 0, "down_fast": 0,
                                             "down_exact": 0}, (
@@ -185,6 +206,7 @@ def main() -> None:
                 assert state["finite"], ("non-finite state", case["id"])
                 captures.append({
                     "enabled": enabled,
+                    "call_log": {k: list(v) for k, v in call_log.items()},
                     "prefill_logits_sha256": _sha(logits),
                     "step_logits_sha256": _sha(next_logits),
                     "state_sha256": state["state_sha256"],
@@ -209,7 +231,7 @@ def main() -> None:
                                   captures[1]["state_buffers"])
             entry = {
                 "id": case["id"],
-                "moe_layers": moe_layers,
+                "captured_layers": moe_layers,
                 "incumbent_deterministic": True,
                 "candidate_deterministic": True,
                 "decode_counts_candidate": captures[1]["decode_counts"],
@@ -250,9 +272,15 @@ def _wrapper_name(key: str) -> str:
             "down_exact": DOWN_EXACT_WRAPPER}[key]
 
 
-def _make_counter(counters: dict, key: str, original):
+def _make_counter(counters: dict, key: str, original, call_log=None):
     def counted(*a, **kw):
         counters[key] += 1
+        if call_log is not None:
+            # positional arg 6 is `compact` (selected-expert count) at both
+            # call sites; 7 is num_experts, 8/9 feature dims.
+            call_log[key].append(
+                {"compact": a[6] if len(a) > 6 else None,
+                 "experts": a[7] if len(a) > 7 else None})
         return original(*a, **kw)
     return counted
 
