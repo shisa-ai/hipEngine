@@ -29,6 +29,31 @@ gh api 'repos/halo-box/strix-llama.cpp/contents/ggml/src/ggml-cuda/mmq.cuh?ref=7
 
 ## Headline Audit
 
+### Reading any external throughput row: protocol confounds
+
+Every headline in this review was checked against the checklist below before
+being treated as evidence. These are not Halogen-specific quirks; they apply
+to any externally reported PP/TG number (fork READMEs, PR result tables,
+cross-machine competitor ratios) and each one has already produced at least
+one inflated claim in the sources reviewed here. Our E0 protocol (exact
+payload, cold-cache verification, decode-only TG, serial AR separated from
+MTP, same host) exists to control all of them simultaneously.
+
+| # | Confound | Why it inflates or distorts | Control we require |
+| --- | --- | --- | --- |
+| C1 | **TG measured as completion tokens over the entire HTTP request wall, prefill included, then arithmetic-meaned across requests.** | Mixes prefill cost into a decode number and lets slow requests with cheap prefill dominate the mean; request throughput is reported as if it were decode-only TG. | Decode-only TG from the token-generation window; preserve raw token/time totals, never mean-of-rates. |
+| C2 | **Server prompt/prefix caching left enabled or unverified between repeated requests.** | Cached prefixes turn the "prefill" measurement into a warm cache hit; PP numbers can double or more with no kernel change. | Cache disabled or verified cold via processed-token counts (cache0; exact resumed comparisons need cache1). |
+| C3 | **Single filler sentence or otherwise degenerate prompt content, repeated across sizes.** | MoE routing, PLE locality and attention working sets are content-dependent; a repeated filler is a best case that does not transfer to real text. | Real-text fixtures from the category/heldout suite; no adoption of "content-independent" claims without our own content spread. |
+| C4 | **MTP/speculative-decode rates reported alongside or instead of serial AR decode.** | Speculation multiplies effective decode rate; comparing an MTP number to a serial number is a category error. | Serial AR and MTP measured and reported separately on the full suite. |
+| C5 | **Different quant/model payload (or a non-GGUF proprietary format).** | Bytes-per-token, kernel path selection and tile tuning are quant-specific; an IQ4_XS/Q3/`.hgn` row is not a UD-Q4_K_XL comparator. | Exact payload pinned and identical across engines (E0); a different quant cannot close a comparator lane. |
+| C6 | **Cross-machine or cross-config competitor ratios copied from someone else's README.** | The denominator machine, stack and protocol are unauditable; ratios do not survive a host change. | Same-host, same-args reproduction only. |
+
+The Halogen section below records the concrete audited instance of C1-C4
+(from its public size-sweep script); the halo-box ~800 PP row is C5 (HIP
+UD-IQ4_XS, not our payload); Myhacsint's ~60 TG headline is C4 plus an
+unpublished deployment preset (not reproduced: TG 24.0-25.2 under our
+protocol).
+
 ### Halogen: Different Weights and Speculative Decode
 
 The pinned [README](https://github.com/peonist-ai/halogen-flash-server/blob/0208581a5a0c54c53fc11f2e9e06622f168f5b6f/README.md)
@@ -65,7 +90,7 @@ snapshots, and switching from singleton speculation to batched AR under load.
 These are hypotheses; their implementation and isolated causal gains are not
 publicly auditable.
 
-Benchmark traps from the public [size-sweep script](https://github.com/peonist-ai/halogen-flash-server/blob/0208581a5a0c54c53fc11f2e9e06622f168f5b6f/tools/halogen-bench.py):
+Benchmark traps from the public [size-sweep script](https://github.com/peonist-ai/halogen-flash-server/blob/0208581a5a0c54c53fc11f2e9e06622f168f5b6f/tools/halogen-bench.py), as the audited concrete instance of confounds C1-C4 above:
 
 - Its prefill input repeats one filler sentence; it is not the README's
   separate real-text engine-prefill benchmark. MoE routing and PLE locality
