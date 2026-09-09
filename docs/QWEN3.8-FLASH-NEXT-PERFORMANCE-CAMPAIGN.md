@@ -428,6 +428,17 @@ generation wrapper, not layer launches. Decode TG progress therefore
 runs through kernel efficiency (#22 GEMV pair) or wrapper host work, not
 launch restructuring.
 
+Q8_0 grouped WMMA down promotion (T1, `1ddc5f53c`): the five Q8_0 expert-down
+layers (2, 4, 30, 46, 47; 246-273 ms each per code-p4096, ~1.28 s of the
+14.7 s device total) now run the f16-WMMA dequant grouped GEMM (the Q5_1
+down contract on Q8_0 blocks). Teacher-forced logits KL 2e-14..3.6e-13 with
+100% top-1; full-suite campaign A/B **+8.44% prefill geo-mean, all 12 cases
+winning**, decode neutral; in-situ binding 5 calls/chunk; the q5k state gate
+passes 12/12 with the route bound (the gate pins the route off in its own
+arms - its opt-out arm de-groups layer 2, an interaction recorded in the
+worklog). Combined with the six prior promotions the expected device total
+at code-p4096 is ~13.5 s (R2e refresh pending).
+
 Post-Q5_K-promotion refresh (clean `771337563`, six promotions active):
 code-p4096 prefill MoE 7.496s, linear 3.458s (dense iu8 took attn_gate +
 shared_down), GR 1.463s, QSA 1.335s, GDN 0.826s, device total **14.697s
