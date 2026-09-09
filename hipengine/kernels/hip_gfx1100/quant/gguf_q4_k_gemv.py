@@ -1051,6 +1051,49 @@ def gguf_q4_k_selected_dual_q8_1_dp4a_silu_logical128_t64_gemv_bf16_bf16_out(
     _check_launch(runtime, err)
 
 
+def gguf_q4_k_selected_dual_q8_1_dp4a_silu_warp256_gemv_bf16_bf16_out(
+    xq_ptr: int,
+    selected_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    out_ptr: int,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run the #22 R11 warp-per-expert Q8_1 DP4A Q4 dual+SiLU.
+
+    One 256-thread block per output column; warp w serves expert row w
+    (rows <= 8); lanes stride the 4-element groups by 32 with the same
+    per-group DP4A arithmetic as the logical128/t64 incumbent. Warp
+    shuffle reductions, no barriers. T1 versus the incumbent (reduction
+    order differs; per-group expression preserved).
+    """
+
+    if rows > 8:
+        raise ValueError("warp256 dual+SiLU requires rows <= 8")
+    _validate_selected(x_rows, rows, num_experts, in_features, out_features, 256)
+    library = library or build_gguf_q4_k_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(
+        library,
+        "hipengine_gguf_q4_k_selected_dual_q8_1_dp4a_silu_warp256_gemv_bf16_bf16_out",
+    )
+    fn.argtypes = [ctypes.c_void_p] * 5 + [ctypes.c_int64] * 5 + [ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    err = fn(
+        xq_ptr, selected_ptr, qweight_a_ptr, qweight_b_ptr, out_ptr,
+        x_rows, rows, num_experts, in_features, out_features, stream,
+    )
+    _check_launch(runtime, err)
+
+
 def gguf_q4_k_selected_dual_silu_logical128_t64_gemv_bf16_bf16_out(
     x_ptr: int,
     selected_ptr: int,
