@@ -134,6 +134,7 @@ from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1 import (
     qwen4_exp_q5_1_selected_sparse_exact_repair_row_publish_bf16,
     qwen4_exp_q5_1_selected_wmma_iu8_risk_prefill_bf16_bf16_out,
     qwen4_exp_q5_1_selected_weighted_sum_warp256_bf16_bf16_out,
+    qwen4_exp_q5_1_selected_weighted_sum_warp256_fast_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn import (
     qwen4_exp_gdn_decode_f32,
@@ -3352,12 +3353,14 @@ def _qwen4_exp_q4_iu8_exact_enabled() -> bool:
 def _qwen4_exp_moe_decode_warp_enabled() -> bool:
     """Default-off warp256 MoE decode GEMV pair (#22 R11).
 
-    Replaces the rows==1 dp4a dual (gate/up) and the Q5_1
-    logical256_t64 weighted-sum (down) with the warp-per-expert
-    warp256 kernels: down bit-exact, gate/up within one bf16 ulp
-    (reduction order only; compounding through the decode chain
-    measured at teacher-forced KL ~1e-2, envelope-review required
-    before any production binding of the dual leg).
+    Replaces the rows==1 dp4a dual (gate/up) with the warp256
+    kernel (2.0x; T1 reduction order). Qualified under the production
+    envelope at 996 shared-chain teacher-forced rows (all bars pass
+    with 2.6-4.4x margin, top-1 99.50%); free-running trajectory
+    divergence ~1/12 canonical cases, routed to that packet per the
+    contract. The down leg is gated separately
+    (HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_DOWN) so the incumbent
+    bit-exact weighted-sum stays the production default.
     """
 
     return os.environ.get(
@@ -4732,24 +4735,39 @@ def run_qwen4_exp_moe(
             down_weight.spec.quant_key,
             "selected_weighted_sum_logical256_t64_bf16_bf16_out",
         )
+        down_warp_mode = os.environ.get(
+            "HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_DOWN", "0"
+        )
         fused_down = bool(rows == 1 and is_registered(fused_down_key))
-        if fused_down and (
-            _qwen4_exp_moe_decode_warp_enabled()
-            or _qwen4_exp_moe_decode_warp_down_enabled()
-        ) and compact <= 12:
-            qwen4_exp_q5_1_selected_weighted_sum_warp256_bf16_bf16_out(
-                scratch.expert_intermediate.ptr,
-                scratch.selected.ptr,
-                down_weight.allocation("raw").tensor.ptr,
-                scratch.routing.ptr,
-                scratch.routed.ptr,
-                compact,
-                experts,
-                ffn,
-                hidden,
-                stream=stream,
-                runtime=active_runtime,
-            )
+        if fused_down and down_warp_mode in {"fast", "1"} and compact <= 12:
+            if down_warp_mode == "fast":
+                qwen4_exp_q5_1_selected_weighted_sum_warp256_fast_bf16_bf16_out(
+                    scratch.expert_intermediate.ptr,
+                    scratch.selected.ptr,
+                    down_weight.allocation("raw").tensor.ptr,
+                    scratch.routing.ptr,
+                    scratch.routed.ptr,
+                    compact,
+                    experts,
+                    ffn,
+                    hidden,
+                    stream=stream,
+                    runtime=active_runtime,
+                )
+            else:
+                qwen4_exp_q5_1_selected_weighted_sum_warp256_bf16_bf16_out(
+                    scratch.expert_intermediate.ptr,
+                    scratch.selected.ptr,
+                    down_weight.allocation("raw").tensor.ptr,
+                    scratch.routing.ptr,
+                    scratch.routed.ptr,
+                    compact,
+                    experts,
+                    ffn,
+                    hidden,
+                    stream=stream,
+                    runtime=active_runtime,
+                )
         elif fused_down:
             resolve(
                 backend=fused_down_key.backend,
