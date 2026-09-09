@@ -71,10 +71,43 @@ def main() -> None:
         prompt = [int(t) for t in rng.integers(0, 150000, size=int(args.prompt_tokens))]
     n = int(args.decode_tokens)
 
-    # The shipped policy is empty by decision; the candidate is explicit so
-    # this probe stays meaningful regardless of the shipped default.
-    base_policy = dict(be.GGUF_IQ_DENSE_DECODE_POLICY)
+    # The incumbent is pinned explicitly - the strict per-row GEMV (the
+    # pre-enable shipped default) - because the shipped policy is now the
+    # enabled route: copying the module default would compare the candidate
+    # against itself and falsely certify regressions on rerun. The owner
+    # assertion below fails loudly if the two arms ever resolve to the same
+    # kernel again.
+    base_policy: dict = {}
     candidate_policy = {"gguf_iq4_xs": {"variant": "local32_gemv_bf16_bf16_out"}}
+
+    def _assert_owners_differ():
+        from hipengine.kernels.backends import load_backend_kernel_package
+        from hipengine.kernels.hip_gfx1100.quant import gguf_iq_source_mmq_prefill as iq_mmq
+        from hipengine.runtime.gguf_linear import (
+            GGUFLinearDispatch, _iq_dense_decode_dispatch)
+        from hipengine.kernels.registry import KernelKey
+        load_backend_kernel_package("hip_gfx1100")
+        base = GGUFLinearDispatch(
+            KernelKey("hip_gfx1100", "linear", "gguf_iq4_xs",
+                     "gemv_bf16_bf16_out"), "raw")
+        with iq_mmq.iq_dense_mmq_session(True):
+            saved = dict(be.GGUF_IQ_DENSE_DECODE_POLICY)
+            try:
+                be.GGUF_IQ_DENSE_DECODE_POLICY = base_policy
+                incumbent_owner = _iq_dense_decode_dispatch(
+                    base, rows=1, out_features=17408).key.variant
+                be.GGUF_IQ_DENSE_DECODE_POLICY = candidate_policy
+                candidate_owner = _iq_dense_decode_dispatch(
+                    base, rows=1, out_features=17408).key.variant
+            finally:
+                be.GGUF_IQ_DENSE_DECODE_POLICY = saved
+        if incumbent_owner == candidate_owner:
+            raise RuntimeError(
+                "gate arms resolve to the same decode owner "
+                f"({incumbent_owner}); the incumbent pin has gone stale"
+            )
+
+    _assert_owners_differ()
 
     def run(local32: bool, forced_tokens=None):
         be.GGUF_IQ_DENSE_DECODE_POLICY = candidate_policy if local32 else base_policy
@@ -119,17 +152,31 @@ def main() -> None:
     print(f"DECODE per-position KL:  mean={metrics.kl_mean:.4e}  max={metrics.kl_max:.4e}")
     print(f"DECODE per-position top1 agreement: {top1:.4f}")
     print(f"candidate logits finite: {finite}")
-    # Section 6.1 envelope (mean/p95/p99/max/top-1) is the binding gate for the
-    # production run; this probe's single-context screen uses its mean and top-1.
-    gate = metrics.kl_mean <= 1e-3 and top1 >= 0.99
-    print(f"PROBE GATE (mean KL<=1e-3 & top1>=0.99): {'PASS' if gate else 'FAIL'}")
+    # The complete section-6.1 screen: the calibrated mean (<= 1e-3), the
+    # absolute per-position ceiling (max <= 5e-2), top-1 (>= 0.99), finite
+    # candidate logits, and the prefill sanity check (the decode policy must
+    # not perturb the prefill position: its KL is identically zero by
+    # construction, so any nonzero value means the arms are contaminated).
+    prefill_clean = pre.kl_mean == 0.0
+    gate = (
+        metrics.kl_mean <= 1e-3
+        and metrics.kl_max <= 5e-2
+        and top1 >= 0.99
+        and finite
+        and prefill_clean
+    )
+    print(
+        "PROBE GATE (mean<=1e-3 & max<=5e-2 & top1>=0.99 & finite & "
+        f"prefill-clean): {'PASS' if gate else 'FAIL'}"
+    )
     if args.json is not None:
         args.json.write_text(json.dumps({
             "decode_positions": int(ref_dec.shape[0]),
             "prompt_tokens": len(prompt),
             "kl_mean": metrics.kl_mean, "kl_max": metrics.kl_max,
             "top1_agreement": top1, "candidate_finite": finite,
-            "prefill_kl_sanity": pre.kl_mean, "probe_gate_pass": gate,
+            "prefill_kl_sanity": pre.kl_mean, "prefill_clean": prefill_clean,
+            "probe_gate_pass": gate,
         }, indent=2) + "\n")
 
 
