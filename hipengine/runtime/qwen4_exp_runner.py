@@ -5022,6 +5022,8 @@ def run_qwen4_exp_gdn_layer(
     runtime: HipRuntime | None = None,
     moe_graph_cache: MoeGraphCache | None = None,
     moe_graph_key: object | None = None,
+    layer_graph_cache: MoeGraphCache | None = None,
+    layer_graph_key: object | None = None,
 ) -> DeviceBuffer:
     """Execute one complete strict Qwen4Exp GDN+MoE physical layer."""
 
@@ -5030,16 +5032,66 @@ def run_qwen4_exp_gdn_layer(
     active_runtime = runtime or scratch.runtime
     if active_runtime is not scratch.runtime:
         raise ValueError("runtime must match the GDN layer scratch owner")
-    attention_read = run_qwen4_exp_gr_read(
-        residual_ptr,
-        weights.attention_gr.norm_weight_ptr,
-        weights.attention_gr.down,
-        weights.attention_gr.up,
-        weights.attention_gr.inject,
-        scratch.attention_gr,
-        rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
-        stream=stream, runtime=active_runtime,
+    layer_graph = (
+        layer_graph_cache
+        if (layer_graph_cache is not None and rows == 1 and layer_graph_key is not None)
+        else None
     )
+    if layer_graph is not None and (
+        weights.attention_gr.inject is None or weights.ffn_gr.inject is None
+    ):
+        # Inject-free GR reads memset inject_logits; keep that rare layout on
+        # the plain path until it is needed.
+        layer_graph = None
+    if layer_graph is not None:
+        # #20 R10: graph-capture the three stateless segments around the
+        # stateful GDN conv/recurrent mixer (the retired whole-layer decode
+        # graph machinery died on the mixer's in-place state hazard; these
+        # segments only recompute from fixed scratch pointers, so they replay
+        # bit-exact and the self-validating cache rejects any unit that does
+        # not).
+        def _segment_gr_read_attn(graph_stream: int) -> None:
+            run_qwen4_exp_gr_read(
+                residual_ptr,
+                weights.attention_gr.norm_weight_ptr,
+                weights.attention_gr.down,
+                weights.attention_gr.up,
+                weights.attention_gr.inject,
+                scratch.attention_gr,
+                rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
+                stream=graph_stream, runtime=active_runtime,
+            )
+
+        layer_graph.run(
+            (layer_graph_key, "gr_read_attn"),
+            eager=_segment_gr_read_attn,
+            out_ptr=scratch.attention_gr.mixed.ptr,
+            out_nbytes=scratch.attention_gr.mixed.nbytes,
+            out_regions=(
+                (
+                    scratch.attention_gr.inject_logits.ptr,
+                    scratch.attention_gr.inject_logits.nbytes,
+                ),
+            ),
+            stream=stream,
+        )
+        attention_read = Qwen4ExpGRReadDeviceResult(
+            normalized=scratch.attention_gr.normalized,
+            gate=scratch.attention_gr.gate,
+            mixed=scratch.attention_gr.mixed,
+            inject_logits=scratch.attention_gr.inject_logits,
+        )
+    else:
+        attention_read = run_qwen4_exp_gr_read(
+            residual_ptr,
+            weights.attention_gr.norm_weight_ptr,
+            weights.attention_gr.down,
+            weights.attention_gr.up,
+            weights.attention_gr.inject,
+            scratch.attention_gr,
+            rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
+            stream=stream, runtime=active_runtime,
+        )
     mixer_output = run_qwen4_exp_gdn_token_mixer(
         attention_read.mixed.ptr,
         weights.mixer.projections,
@@ -5054,21 +5106,59 @@ def run_qwen4_exp_gdn_layer(
         num_k_heads=num_k_heads, num_v_heads=num_v_heads, head_dim=head_dim,
         conv_kernel=conv_kernel, stream=stream, runtime=active_runtime,
     )
-    qwen4_exp_gr_write_bf16_f32(
-        residual_ptr, mixer_output.ptr, attention_read.inject_logits.ptr,
-        scratch.after_attention.ptr, rows, branches, hidden,
-        stream=stream, runtime=active_runtime,
-    )
-    ffn_read = run_qwen4_exp_gr_read(
-        scratch.after_attention.ptr,
-        weights.ffn_gr.norm_weight_ptr,
-        weights.ffn_gr.down,
-        weights.ffn_gr.up,
-        weights.ffn_gr.inject,
-        scratch.ffn_gr,
-        rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
-        stream=stream, runtime=active_runtime,
-    )
+    if layer_graph is not None:
+        def _segment_gr_write_ffn_read(graph_stream: int) -> None:
+            qwen4_exp_gr_write_bf16_f32(
+                residual_ptr, mixer_output.ptr, attention_read.inject_logits.ptr,
+                scratch.after_attention.ptr, rows, branches, hidden,
+                stream=graph_stream, runtime=active_runtime,
+            )
+            run_qwen4_exp_gr_read(
+                scratch.after_attention.ptr,
+                weights.ffn_gr.norm_weight_ptr,
+                weights.ffn_gr.down,
+                weights.ffn_gr.up,
+                weights.ffn_gr.inject,
+                scratch.ffn_gr,
+                rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
+                stream=graph_stream, runtime=active_runtime,
+            )
+
+        layer_graph.run(
+            (layer_graph_key, "gr_write_ffn_read"),
+            eager=_segment_gr_write_ffn_read,
+            out_ptr=scratch.ffn_gr.mixed.ptr,
+            out_nbytes=scratch.ffn_gr.mixed.nbytes,
+            out_regions=(
+                (
+                    scratch.ffn_gr.inject_logits.ptr,
+                    scratch.ffn_gr.inject_logits.nbytes,
+                ),
+            ),
+            stream=stream,
+        )
+        ffn_read = Qwen4ExpGRReadDeviceResult(
+            normalized=scratch.ffn_gr.normalized,
+            gate=scratch.ffn_gr.gate,
+            mixed=scratch.ffn_gr.mixed,
+            inject_logits=scratch.ffn_gr.inject_logits,
+        )
+    else:
+        qwen4_exp_gr_write_bf16_f32(
+            residual_ptr, mixer_output.ptr, attention_read.inject_logits.ptr,
+            scratch.after_attention.ptr, rows, branches, hidden,
+            stream=stream, runtime=active_runtime,
+        )
+        ffn_read = run_qwen4_exp_gr_read(
+            scratch.after_attention.ptr,
+            weights.ffn_gr.norm_weight_ptr,
+            weights.ffn_gr.down,
+            weights.ffn_gr.up,
+            weights.ffn_gr.inject,
+            scratch.ffn_gr,
+            rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
+            stream=stream, runtime=active_runtime,
+        )
     moe_output = run_qwen4_exp_moe(
         ffn_read.mixed.ptr,
         weights.moe,
@@ -5077,24 +5167,53 @@ def run_qwen4_exp_gdn_layer(
         stream=stream, runtime=active_runtime,
         graph_cache=moe_graph_cache, graph_key=moe_graph_key,
     )
-    bf16_to_f32(
-        moe_output.output.ptr,
-        scratch.moe_f32.ptr,
-        rows * hidden,
-        stream=stream,
-        runtime=active_runtime,
-    )
-    qwen4_exp_gr_write_bf16_f32(
-        scratch.after_attention.ptr,
-        scratch.moe_f32.ptr,
-        ffn_read.inject_logits.ptr,
-        scratch.output.ptr,
-        rows,
-        branches,
-        hidden,
-        stream=stream,
-        runtime=active_runtime,
-    )
+    if layer_graph is not None:
+        def _segment_epilogue(graph_stream: int) -> None:
+            bf16_to_f32(
+                moe_output.output.ptr,
+                scratch.moe_f32.ptr,
+                rows * hidden,
+                stream=graph_stream,
+                runtime=active_runtime,
+            )
+            qwen4_exp_gr_write_bf16_f32(
+                scratch.after_attention.ptr,
+                scratch.moe_f32.ptr,
+                ffn_read.inject_logits.ptr,
+                scratch.output.ptr,
+                rows,
+                branches,
+                hidden,
+                stream=graph_stream,
+                runtime=active_runtime,
+            )
+
+        layer_graph.run(
+            (layer_graph_key, "epilogue"),
+            eager=_segment_epilogue,
+            out_ptr=scratch.output.ptr,
+            out_nbytes=scratch.output.nbytes,
+            stream=stream,
+        )
+    else:
+        bf16_to_f32(
+            moe_output.output.ptr,
+            scratch.moe_f32.ptr,
+            rows * hidden,
+            stream=stream,
+            runtime=active_runtime,
+        )
+        qwen4_exp_gr_write_bf16_f32(
+            scratch.after_attention.ptr,
+            scratch.moe_f32.ptr,
+            ffn_read.inject_logits.ptr,
+            scratch.output.ptr,
+            rows,
+            branches,
+            hidden,
+            stream=stream,
+            runtime=active_runtime,
+        )
     return scratch.output
 
 
@@ -5701,6 +5820,19 @@ class Qwen4ExpGGUFResidentModelRunner:
             )
             self.moe_graph_cache = MoeGraphCache(
                 self.runtime, enabled=graph_enabled
+            )
+            layer_graph_override = os.environ.get(
+                "HIPENGINE_QWEN4_EXP_LAYER_GRAPHS"
+            )
+            layer_graph_enabled = bool(
+                backend_package_capability(
+                    self.backend, "QWEN4_EXP_LAYER_GRAPHS", False
+                )
+                if layer_graph_override is None
+                else layer_graph_override not in {"", "0", "false", "False"}
+            )
+            self.layer_graph_cache: MoeGraphCache | None = MoeGraphCache(
+                self.runtime, enabled=layer_graph_enabled
             )
         except Exception:
             self.close()
@@ -6439,6 +6571,14 @@ class Qwen4ExpGGUFResidentModelRunner:
                             "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS", ""
                         ),
                     ),
+                    layer_graph_cache=self.layer_graph_cache,
+                    layer_graph_key=(
+                        "gdn", layer,
+                        os.environ.get("HIPENGINE_QWEN4_EXP_Q4_DP4A64", ""),
+                        os.environ.get(
+                            "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS", ""
+                        ),
+                    ),
                 ).ptr
             else:
                 binding = self.qsa_bindings[layer]
@@ -6971,6 +7111,9 @@ class Qwen4ExpGGUFResidentModelRunner:
         if self.moe_graph_cache is not None:
             self.moe_graph_cache.close()
             self.moe_graph_cache = None
+        if getattr(self, "layer_graph_cache", None) is not None:
+            self.layer_graph_cache.close()
+            self.layer_graph_cache = None
         if self._target_verify_output is not None:
             self._target_verify_output.close()
             self._target_verify_output = None
