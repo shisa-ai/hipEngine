@@ -113,6 +113,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_selected_prefill import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_prefill import (
     gguf_q8_0_selected_grouped_prefill_compact_bf16_bf16_out,
+    gguf_q8_0_selected_grouped_wmma_prefill_compact_bf16_bf16_out,
     gguf_q8_0_wmma_prefill_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
@@ -4326,7 +4327,32 @@ def run_qwen4_exp_moe(
             # Production selects the grouped owner after the exact
             # one-process/one-residency canonical gate; strict keeps the
             # per-expert selected gemv.
-            if os.environ.get("HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN", "0") not in {
+            if os.environ.get(
+                "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN", "0"
+            ) not in {"", "0", "false", "False"} and wmma_total_rows > 0:
+                # #19 R9 candidate: the Q5_1-style grouped WMMA down for the
+                # Q8_0 expert-down layers (2, 4, 30, 46, 47). Same f16-WMMA
+                # dequant arithmetic class as the promoted Q5_1 down route
+                # (NOT bit-exact vs the row4 grouped parent); qualified by
+                # the production numerical envelope. The tile map
+                # (qwen35_moe_wmma_tile_map) has already run under the
+                # grouped-prefill gate.
+                gguf_q8_0_selected_grouped_wmma_prefill_compact_bf16_bf16_out(
+                    scratch.expert_intermediate.ptr,
+                    scratch.group_expert_start.ptr,
+                    scratch.group_wmma_expert_start.ptr,
+                    scratch.group_tile_expert.ptr,
+                    weights["expert_down"].allocation("raw").tensor.ptr,
+                    scratch.expert_down.ptr,
+                    compact,
+                    experts,
+                    ffn,
+                    hidden,
+                    wmma_total_rows,
+                    stream=stream,
+                    runtime=active_runtime,
+                )
+            elif os.environ.get("HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN", "0") not in {
                 "", "0", "false", "False",
             }:
                 # x (expert_intermediate) and out (expert_down) are already in
