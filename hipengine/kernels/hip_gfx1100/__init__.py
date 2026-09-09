@@ -1057,6 +1057,27 @@ GGUF_IQ_DENSE_PREFILL_POLICY = {
     }
     for quant in ("gguf_iq4_xs", "gguf_iq3_xxs", "gguf_iq3_s", "gguf_iq4_nl")
 }
+# Dense raw-IQ decode owner (rows=1): the local32 IQ4_XS GEMV candidate.
+# One wave per 8 output columns, each lane owning 8 contiguous K, two u32
+# payload loads per column-block and a byte-indexed fused codebook LUT -
+# measured 2.5-2.9x the strict GEMV per launch on every real shape of the
+# UD-Q4_K_M artifact and 22.76 vs 17.57 tok/s end-to-end decode with the
+# route enabled (2026-09-09, W7900).
+#
+# NOT ROUTED. The teacher-forced probe (scripts/gguf_iq_local32_decode_gate.py,
+# 512-token contexts, 9 forced positions each, incumbent = this tree with the
+# route disabled) passes most contexts but breaches the binding section-6.1
+# envelope on occasional ones: over 8 seeds the per-context mean KL spans
+# 3.7e-5 .. 2.19e-3 (two over the 1e-3 limit) and the max row 5.85e-2 at seed
+# 59 breaches the 5e-2 absolute ceiling. Top-1 agreement was 100% everywhere.
+# The error is pure summation-order noise (per-element products are identical
+# to the strict owner; only lane grouping differs), so unlike the integer-MMQ
+# route there is no arithmetic defect to fix - but per the campaign rule a
+# route that cannot provably pass stays unrouted, and the full 162-row
+# production-referenced gate has not been run here. Enabling is a one-line
+# edit pending that gate or an explicit envelope decision; the kernel,
+# dispatch, session wiring and tests are all landed.
+GGUF_IQ_DENSE_DECODE_POLICY = {}
 # Q3_K, IQ2_S and IQ2_XS are W4A16-serviceable but deliberately NOT routed:
 # adding all three measured 176.5 tok/s on gfx1151 but moved the mean
 # 0.000827 -> 0.001061, 6% over the calibrated 1e-3 limit. See the gfx1151
@@ -1148,6 +1169,7 @@ GGUF_CONSUMER_LAYERS: frozenset[str] = frozenset(
 __all__ = [
     "GGUF_CONSUMER_LAYERS",
     "GGUF_IQ_DENSE_PREFILL_POLICY",
+    "GGUF_IQ_DENSE_DECODE_POLICY",
     "LAGUNA_GLOBAL_SPLIT_MIN_LIVE",
     "LAGUNA_HEAD_KV_FUSION",
     "LAGUNA_GROUPED_GATE_UP_ROLE_VARIANTS",

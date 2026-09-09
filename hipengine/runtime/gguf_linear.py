@@ -3450,6 +3450,11 @@ def launch_gguf_linear(
             in_features=in_features,
             out_features=out_features,
         )
+        dispatch = _iq_dense_decode_dispatch(
+            dispatch,
+            rows=rows,
+            out_features=out_features,
+        )
         dispatch = _q4_pack8_wmma_dispatch(
             dispatch,
             rows=rows,
@@ -7742,6 +7747,50 @@ _IQ_DENSE_MMQ_OUTPUT_VARIANTS = frozenset({"prefill_bf16_bf16_out"})
 _IQ_DENSE_INTEGER_MMQ_VARIANT = (
     "dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out"
 )
+
+
+def _iq_dense_decode_dispatch(
+    dispatch: GGUFLinearDispatch,
+    *,
+    rows: int,
+    out_features: int,
+) -> GGUFLinearDispatch:
+    """Select the backend-declared dense raw-IQ decode owner (rows=1).
+
+    The local32 owner trades the strict per-row GEMV's pinned accumulation
+    contract for lane-grouped contiguous k, a wave32 shuffle tree and a
+    fixed-order cross-wave sum, so it is approximate: like the prefill routes
+    it requires an opened dense-IQ session (the execution-owner gate) and a
+    backend ``GGUF_IQ_DENSE_DECODE_POLICY`` entry, and any route admitting it
+    owes the production-referenced accuracy gate. Without either, or for an
+    unregistered variant, the strict GEMV keeps the call.
+    """
+
+    if rows != 1 or dispatch.abi != "raw":
+        return dispatch
+    if dispatch.key.variant != "gemv_bf16_bf16_out":
+        return dispatch
+    if iq_dense_mmq_workspace() is None:
+        return dispatch
+    policy = backend_package_capability(
+        dispatch.key.backend,
+        "GGUF_IQ_DENSE_DECODE_POLICY",
+        {},
+    )
+    if not isinstance(policy, Mapping):
+        return dispatch
+    entry = policy.get(dispatch.key.quant)
+    if not isinstance(entry, Mapping):
+        return dispatch
+    if out_features % 8:  # the local32 grid is N/8 blocks
+        return dispatch
+    key = KernelKey(
+        dispatch.key.backend,
+        dispatch.key.layer,
+        dispatch.key.quant,
+        str(entry.get("variant", "")),
+    )
+    return GGUFLinearDispatch(key, dispatch.abi) if is_registered(key) else dispatch
 
 
 def _iq_dense_prefill_dispatch(

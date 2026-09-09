@@ -21,6 +21,52 @@ OUTPUTS = {'f32': 0, 'bf16': 1}
 ROW_BATCHES = (1, 2, 4, 8)
 _HANDLES = {}
 _LIBRARY = None
+_LOCAL32_HANDLES = {}
+
+
+def launch_local32(x_ptr, qweight_ptr, out_ptr, rows, in_features, out_features, *,
+                   quant='gguf_iq4_xs', output='bf16', stream=0, library=None,
+                   runtime=None):
+    """Launch the local32 IQ4_XS decode GEMV (rows=1, bf16 out).
+
+    One wave per 8 output columns with each lane owning 8 contiguous K
+    values; narrow-N shapes split K across the block's waves. The
+    accumulation order differs from the strict per-row GEMV (lane-grouped
+    contiguous k, wave32 shuffle tree, fixed-order cross-wave sum), so this
+    owner is approximate and routes admitting it owe the production-referenced
+    accuracy gate. Measured max relative error against the strict owner on
+    real tensors is <= 2.3e-4 (2026-09-09, W7900).
+    """
+    if quant != 'gguf_iq4_xs':
+        raise ValueError('local32 dense IQ decode supports gguf_iq4_xs only')
+    if output != 'bf16':
+        raise ValueError('local32 dense IQ decode writes bf16 only')
+    if (rows != 1 or in_features <= 0 or in_features % 256
+            or out_features <= 0 or out_features % 8):
+        raise ValueError('local32 dense IQ decode requires rows=1, K divisible '
+                         'by 256 and N divisible by 8')
+    if not all((x_ptr, qweight_ptr, out_ptr)):
+        raise ValueError('local32 dense IQ decode pointers must be nonzero')
+    library = library or _default_library()
+    fn = _LOCAL32_HANDLES.get(id(library))
+    if fn is None:
+        fn = library.hipengine_gguf_iq4_xs_local32_gemv
+        fn.argtypes = [ctypes.c_void_p] * 3 + [ctypes.c_int64] * 4 + [ctypes.c_void_p]
+        fn.restype = ctypes.c_int
+        _LOCAL32_HANDLES[id(library)] = fn
+    # Split-K wave count: narrow-N shapes leave too few single-wave blocks on
+    # a 96-CU part (ffn_down at N=5120 -> 640), so they take 4 waves; wide-N
+    # takes 2 (measured best-or-tied on every real shape, 2026-09-09, W7900).
+    # Each wave needs at least a few 256-element blocks to stay efficient.
+    waves = 4 if out_features < 8192 else 2
+    while waves > 1 and in_features // 256 < 4 * waves:
+        waves //= 2
+    err = fn(ctypes.c_void_p(x_ptr), ctypes.c_void_p(qweight_ptr),
+             ctypes.c_void_p(out_ptr), rows, in_features, out_features,
+             waves, ctypes.c_void_p(stream))
+    if err:
+        rt = runtime or get_hip_runtime()
+        raise RuntimeError(f'local32 dense IQ decode failed: {rt.error_string(err)}')
 
 
 def _row_batch(rows):
@@ -101,6 +147,9 @@ def register_gguf_iq_dense_kernels(*, backend='hip_gfx1100', replace=True):
             for prefix in ('gemv', 'prefill'):
                 register(KernelKey(backend, 'linear', quant, f'{prefix}_bf16_{output}_out'),
                          fn, replace=replace)
+    register(KernelKey(backend, 'linear', 'gguf_iq4_xs',
+                       'local32_gemv_bf16_bf16_out'),
+             launch_local32, replace=replace)
 
 
 register_gguf_iq_dense_kernels()
