@@ -51,18 +51,28 @@ def hip_available() -> bool:
         return False
 
 
-def _forced_logits(generator, token_ids):
-    """Teacher-forced prefill + DECODE_STEPS decode; returns stacked logits."""
+def _forced_logits(generator, token_ids, steps, forced=None):
+    """Teacher-forced prefill + `steps` decode; returns stacked logits.
+
+    With ``forced`` (the incumbent arm's token chain) every arm consumes
+    the SAME token sequence, so each row is a same-context measurement of
+    pure route drift (the calibration definition) - a flip cannot cascade
+    into incomparable contexts.
+    """
 
     first = generator.runner.prefill(token_ids)
     rows = [np.ascontiguousarray(first.logits, dtype=np.float32)]
     token = int(first.token_id)
-    for _ in range(DECODE_STEPS):
+    chain = [token]
+    for i in range(steps):
+        if forced is not None:
+            token = forced[i]
         nxt = generator.runner.step(token)
         generator.runner.runtime.device_synchronize()
         token = int(nxt.token_id)
+        chain.append(token)
         rows.append(np.ascontiguousarray(nxt.logits, dtype=np.float32))
-    return np.stack(rows)
+    return np.stack(rows), chain
 
 
 def _kl(ref: np.ndarray, cand: np.ndarray) -> float:
@@ -80,6 +90,7 @@ def main() -> None:
     p.add_argument("--model-root", type=Path, required=True)
     p.add_argument("--compiler-version-file", type=Path, required=True)
     p.add_argument("--case-id", action="append")
+    p.add_argument("--decode-steps", type=int, default=4)
     p.add_argument("--output", type=Path, required=True)
     a = p.parse_args()
     if not hip_available():
@@ -108,7 +119,7 @@ def main() -> None:
         "command": sys.argv,
         "arithmetic_class": "down bit-exact T0 / gate-up T1 (1 bf16 ulp, reduction order)",
         "flag": FLAG,
-        "decode_steps": DECODE_STEPS,
+        "decode_steps": a.decode_steps,
         "runtime_default_changed": False,
         "fixture_sha256": digest,
         "manifest_sha256": resolved.manifest_sha256,
@@ -119,16 +130,18 @@ def main() -> None:
             if a.case_id:
                 if case["id"] not in a.case_id:
                     continue
-            elif not (case["prompt_tokens"] in (512, 1024)
-                      or case["id"] == "code-p4096"):
-                continue
             rows = {}
+            forced_chain = None
             for label, enabled in (
                 ("incumbent_a", "0"), ("incumbent_b", "0"),
                 ("candidate_a", "1"), ("candidate_b", "1"),
             ):
                 os.environ[FLAG] = enabled
-                rows[label] = _forced_logits(generator, case["prompt_token_ids"])
+                rows[label], chain = _forced_logits(
+                    generator, case["prompt_token_ids"], a.decode_steps,
+                    forced=forced_chain)
+                if forced_chain is None:
+                    forced_chain = chain
 
             incumbent_b_ok = bool(
                 np.array_equal(rows["incumbent_a"], rows["incumbent_b"]))
@@ -139,8 +152,24 @@ def main() -> None:
             cand = rows["candidate_a"]
             diff = np.abs(cand - ref)
             rel = diff / np.maximum(np.abs(ref), 1e-30)
+            step_kls = [
+                _kl(ref[i], cand[i]) for i in range(ref.shape[0])
+            ]
+            step_top1 = [
+                bool(ref[i].argmax() == cand[i].argmax())
+                for i in range(ref.shape[0])
+            ]
+            step_margins = []
+            for i in range(ref.shape[0]):
+                order = np.argsort(-ref[i])
+                step_margins.append(
+                    float(ref[i][order[0]] - ref[i][order[1]]))
             entry = {
                 "id": case["id"],
+                "category": case.get("category", "unknown"),
+                "step_kls": step_kls,
+                "step_top1": step_top1,
+                "step_margins": step_margins,
                 "prompt_tokens": case["prompt_tokens"],
                 "incumbent_deterministic": incumbent_b_ok,
                 "candidate_deterministic": candidate_deterministic,
@@ -162,6 +191,38 @@ def main() -> None:
             }
             report["cases"].append(entry)
             print(json.dumps(entry), flush=True)
+        # envelope aggregation over every teacher-forced row
+        rows = []
+        flipped = []
+        for c in report["cases"]:
+            for i, kl in enumerate(c["step_kls"]):
+                rows.append({
+                    "id": c["id"], "category": c["category"], "step": i,
+                    "kl": kl, "top1": c["step_top1"][i],
+                })
+                if not c["step_top1"][i]:
+                    flipped.append({
+                        "id": c["id"], "step": i,
+                        "kl": kl, "margin": c["step_margins"][i],
+                    })
+        kls = np.array([r["kl"] for r in rows])
+        report["envelope"] = {
+            "rows": len(rows),
+            "kl_mean": float(kls.mean()) if len(rows) else None,
+            "kl_p95": float(np.percentile(kls, 95)) if len(rows) else None,
+            "kl_p99": float(np.percentile(kls, 99)) if len(rows) else None,
+            "kl_max": float(kls.max()) if len(rows) else None,
+            "bars": {"mean": 1e-3, "p95": 5e-3, "p99": 2e-2, "max": 5e-2,
+                     "top1_overall": 0.99, "top1_per_scope": 0.97},
+            "top1_overall": float(
+                sum(1 for r in rows if r["top1"]) / len(rows)) if rows else None,
+            "top1_by_category": {
+                cat: float(sum(1 for r in rows if r["category"] == cat and r["top1"])
+                           / sum(1 for r in rows if r["category"] == cat))
+                for cat in sorted({r["category"] for r in rows})
+            },
+            "flipped_rows": flipped,
+        }
     finally:
         os.environ[FLAG] = "0"
     a.output.write_text(json.dumps(report, indent=1) + "\n")
