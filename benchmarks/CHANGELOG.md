@@ -5210,3 +5210,4 @@ Examples:
 - 2026-09-09: `2026-09-09-framework-qwen4exp-q5k-iu8-screen.json` — Q5_K selected dual gate/up iu8-risk+repair screen: bit-exact vs row4 parent (both orders), 5.67/6.00/6.68x at rows 512/1024/4096 at multiplier 16; `q5k-iu8-exact` A/B route package wired, full-suite A/B pending.
 - 2026-09-09: `2026-09-09-framework-qwen4exp-q5k-iu8-*.json` — #15 promoted: Q5_K iu8-WMMA risk+repair for layer-2 gate/up, bit-exact vs row4 parent, +4.29% prefill geo-mean (12/12 cases win), state gate 12/12 exact.
 - 2026-09-09: `2026-09-09-framework-qwen4exp-post-q5k-family.json` + `...-baselines-v5.json` — R2d six-promotion refresh: device 14.697s (-10.9%), HE PP 268/286/263, Vulkan lead 1.28/1.36/1.56x PP.
+- 2026-09-09: R10 layer-graph A/B (code-p4096) — bit-exact, TG -0.5%; rejected as the measured path.

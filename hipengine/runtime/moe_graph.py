@@ -73,14 +73,24 @@ class MoeGraphCache:
         out_nbytes: int,
         mutable_inputs: tuple[tuple[int, int], ...] = (),
         stream: int,
+        out_regions: tuple[tuple[int, int], ...] = (),
     ) -> str:
         """Run the capturable unit for ``key``.
 
         ``eager(stream)`` must launch the full stateless unit on the given stream
         and is the numerically-authoritative path.  ``out_ptr``/``out_nbytes``
         bound the unit's primary device output, snapshotted for the self-validating
-        parity check.  Returns one of ``"capture"``/``"replay"``/``"eager"``.
+        parity check.  ``out_regions`` (optional) adds further output regions to
+        the parity check for units with multiple visible outputs.
+        Returns one of ``"capture"``/``"replay"``/``"eager"``.
         """
+        regions = (
+            ((int(out_ptr), int(out_nbytes)), *out_regions)
+            if int(out_ptr) > 0
+            else tuple((int(p), int(n)) for p, n in out_regions)
+        )
+        if not regions:
+            raise ValueError("graph capture requires at least one output region")
         if not self._enabled:
             eager(stream)
             self._stats["eager"] += 1
@@ -106,8 +116,7 @@ class MoeGraphCache:
         return self._capture(
             key,
             eager,
-            int(out_ptr),
-            int(out_nbytes),
+            regions,
             normalized_inputs,
             stream,
         )
@@ -116,8 +125,7 @@ class MoeGraphCache:
         self,
         key: Hashable,
         eager: Callable[[int], None],
-        out_ptr: int,
-        out_nbytes: int,
+        out_regions: tuple[tuple[int, int], ...],
         mutable_inputs: tuple[tuple[int, int], ...],
         stream: int,
     ) -> str:
@@ -131,7 +139,9 @@ class MoeGraphCache:
         #    A genuine failure here is a real decode bug -> let it propagate.
         eager(stream)
         self._sync(stream)
-        ref = self._snapshot(out_ptr, out_nbytes)
+        ref = tuple(
+            (ptr, self._snapshot(ptr, nbytes)) for ptr, nbytes in out_regions
+        )
 
         graph = 0
         graph_exec = 0
@@ -164,8 +174,12 @@ class MoeGraphCache:
             )
         rt.graph_launch(graph_exec, stream)
         self._sync(stream)
-        got = self._snapshot(out_ptr, out_nbytes)
-        if not np.array_equal(got, ref):
+        got = tuple(
+            (ptr, self._snapshot(ptr, nbytes)) for ptr, nbytes in out_regions
+        )
+        if any(
+            not np.array_equal(g, r) for (_, g), (_, r) in zip(got, ref)
+        ):
             return self._reject(key, graph, graph_exec)
 
         self._execs[key] = graph_exec

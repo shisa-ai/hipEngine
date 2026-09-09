@@ -418,6 +418,16 @@ linear 3.43s, GR 1.71s. Combined-default 12-case screen: HE PP
 packet), TG 19.41/18.68/16.78 (+1.4/+0.5/+2.4%); Vulkan lead PP
 1.614/1.738/1.937x, TG 1.301/1.332/1.436x.
 
+R10 decode layer-graph expansion (measured negative, kept default-off): the
+three stateless GDN segments around the stateful mixer graph-capture and
+replay bit-exact (108 units, 0 rejects, full state gate identical), but
+wall time regresses in both the raw runner loop (+0.6 ms/step) and the
+serving path (TG -0.5%): the replaced launches were already overlapped
+with device execution, and the serving-path host bucket lives in the
+generation wrapper, not layer launches. Decode TG progress therefore
+runs through kernel efficiency (#22 GEMV pair) or wrapper host work, not
+launch restructuring.
+
 Post-Q5_K-promotion refresh (clean `771337563`, six promotions active):
 code-p4096 prefill MoE 7.496s, linear 3.458s (dense iu8 took attn_gate +
 shared_down), GR 1.463s, QSA 1.335s, GDN 0.826s, device total **14.697s
