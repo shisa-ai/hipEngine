@@ -406,9 +406,111 @@ __global__ void gguf_iq_prefill_wmma_coop_kernel(
                              ? out_start + dec_col
                              : out_features - 1) * row_bytes;
 
+  const bool wave_active = row_start + wave * ROWS_PER_WAVE < rows;
+  constexpr bool DOUBLE_BUFFER = !SPLIT_LO && OUT_COLS == 64;
+  if constexpr (DOUBLE_BUFFER) {
+    // Double-buffered half-width units: the decode of unit u+1 (into the
+    // other slab) is issued before the WMMA phase of unit u consumes the
+    // current one, hiding the decode's global-load latency behind the
+    // arithmetic it feeds. Two OUT_COLS x 144-half slabs fit the 64 KB LDS
+    // budget where two full-width ones do not. The per-element decode and
+    // the K16 WMMA association are unchanged, so the kernel stays bit-exact
+    // with the single-buffered owner.
+    constexpr int UNIT_K = QK_K / 2;
+    constexpr int SEG_U = UNIT_K / THREADS_PER_COL;
+    static_assert(SEG_U % 32 == 0, "unit segment must span whole groups");
+    __shared__ __align__(1024) half_t buf[2][OUT_COLS][UNIT_K + 16];
+    const int64_t total_units = in_features / UNIT_K;
+    // dec_k0 is scaled for the full QK_K block (SEG per thread); the unit
+    // only spans UNIT_K, so scale the thread's segment offset to the unit.
+    const int dec_k0_u = (tid % THREADS_PER_COL) * SEG_U;
+    auto decode_unit = [&](int64_t u, half_t (*slab)[UNIT_K + 16]) {
+      const int64_t k_base = u * UNIT_K;
+      if constexpr (Q == 0) {
+        static_assert(BLOCK_BYTES == 136 && BLOCK_ELEMS == 256);
+        const uint8_t* block = dec_row + (k_base >> 8) * BLOCK_BYTES;
+        const float d = fp16_bytes_to_float(block);
+        const int hi_word = int(block[2]) | (int(block[3]) << 8);
+#pragma unroll
+        for (int s = 0; s < SEG_U / 32; ++s) {
+          // g is block-local: the block owns 8 scale groups.
+          const int g = int(((k_base + dec_k0_u) >> 5) & 7) + s;
+          const int scale =
+              (((block[4 + g / 2] >> (4 * (g & 1))) & 15) |
+               (((hi_word >> (2 * g)) & 3) << 4)) - 32;
+          const float ds = d * float(scale);
+          const uint8_t* codes = block + 8 + g * 16;
+#pragma unroll
+          for (int kk = 0; kk < 32; ++kk) {
+            slab[dec_col][dec_k0_u + s * 32 + kk] = static_cast<half_t>(
+                ds * s_cb[((kk >> 4) << 8) + codes[kk & 15]]);
+          }
+        }
+      } else if constexpr (Q == 1) {
+        static_assert(BLOCK_BYTES == 18 && BLOCK_ELEMS == 32);
+#pragma unroll
+        for (int s = 0; s < SEG_U / 32; ++s) {
+          const uint8_t* block =
+              dec_row + int64_t((k_base + dec_k0_u) >> 5) * BLOCK_BYTES +
+              int64_t(s) * BLOCK_BYTES;
+          const float d = fp16_bytes_to_float(block);
+#pragma unroll
+          for (int kk = 0; kk < 32; ++kk) {
+            const int code = (block[2 + (kk & 15)] >> (4 * (kk >> 4))) & 15;
+            slab[dec_col][dec_k0_u + s * 32 + kk] =
+                static_cast<half_t>(d * s_cb[code]);
+          }
+        }
+      } else {
+#pragma unroll
+        for (int kk = 0; kk < SEG_U; ++kk) {
+          const int k = dec_k0_u + kk;
+          const uint8_t* block =
+              dec_row + int64_t((k_base + k) / BLOCK_ELEMS) * BLOCK_BYTES;
+          const float wv = iq_weight<Q>(block, (k_base + k) % BLOCK_ELEMS);
+          slab[dec_col][k] = static_cast<half_t>(wv);
+          (void)0;
+        }
+      }
+    };
+    auto wmma_unit = [&](int64_t u, const half_t (*slab)[UNIT_K + 16]) {
+      if (!wave_active) return;
+      const int64_t block_k_base = u * UNIT_K;
+#pragma unroll 1
+      for (int kt = 0; kt < UNIT_K / K_TILE; ++kt) {
+        const int k_off = kt * K_TILE;
+        half16_t a_reg[TN];
+#pragma unroll
+        for (int tn = 0; tn < TN; ++tn) {
+          const int64_t input_row =
+              row_start + wave * ROWS_PER_WAVE + tn * 16 + lane16;
+          const bool valid_row = input_row < rows;
+          a_reg[tn] = load_act_half16<scalar_t>(
+              x + int64_t(valid_row ? input_row : 0) * in_features +
+                  block_k_base + k_off);
+          if (!valid_row) a_reg[tn] = half16_t{};
+        }
+#pragma unroll
+        for (int tm = 0; tm < TM; ++tm) {
+          const half16_t b_reg = *reinterpret_cast<const half16_t*>(
+              &slab[tm * 16 + lane16][k_off]);
+#pragma unroll
+          for (int tn = 0; tn < TN; ++tn)
+            acc[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
+                a_reg[tn], b_reg, acc[tm][tn]);
+        }
+      }
+    };
+    decode_unit(0, buf[0]);
+    __syncthreads();
+    for (int64_t u = 0; u < total_units; ++u) {
+      if (u + 1 < total_units) decode_unit(u + 1, buf[(u + 1) & 1]);
+      wmma_unit(u, buf[u & 1]);
+      __syncthreads();
+    }
+  } else {
   for (int64_t blk = 0; blk < blocks_per_row * BLOCK_ELEMS / QK_K; ++blk) {
     const int64_t k_blk = int64_t(blk) * QK_K;
-    const bool wave_active = row_start + wave * ROWS_PER_WAVE < rows;
     if constexpr (Q == 0) {
       // IQ4_XS column-owner fast path: dec_k0 is 32-aligned and k_blk is
       // 256-aligned, so this thread's SEG elements span whole scale groups
@@ -507,6 +609,7 @@ __global__ void gguf_iq_prefill_wmma_coop_kernel(
     }
     }  // wave_active
     __syncthreads();
+  }
   }
 
 #pragma unroll
