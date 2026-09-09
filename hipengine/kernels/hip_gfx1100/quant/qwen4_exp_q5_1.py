@@ -435,6 +435,50 @@ def qwen4_exp_q5_1_selected_weighted_sum_logical256_t64_bf16_bf16_out(
         runtime.check(int(error))
 
 
+def qwen4_exp_q5_1_selected_weighted_sum_warp256_bf16_bf16_out(
+    input_ptr: int,
+    selected_ptr: int,
+    weights_ptr: int,
+    routing_weights_ptr: int,
+    output_ptr: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run the #22 R11 warp-per-expert selected Q5_1 weighted sum.
+
+    One 256-thread block per output column; warp w serves expert row w
+    (rows <= 8), lanes own 16-element half-block chunks with vectorized
+    loads. Same per-row bf16 rounding + routing-weight fma semantics as
+    the logical256_t64 incumbent; the intra-dot reduction order differs
+    (T1 vs the incumbent).
+    """
+
+    if rows <= 0 or rows > 8 or num_experts <= 0 or in_features <= 0 or out_features <= 0:
+        raise ValueError("rows (<=8), experts, and features must be positive")
+    if in_features % 32:
+        raise ValueError("Q5_1 in_features must be divisible by 32")
+    library = library or build_qwen4_exp_q5_1(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_qwen4_exp_q5_1_selected_weighted_sum_warp256_bf16_bf16_out",
+        _ARGS_WEIGHTED,
+        ctypes.c_int,
+    )
+    error = fn(
+        input_ptr, selected_ptr, weights_ptr, routing_weights_ptr, output_ptr,
+        rows, num_experts, in_features, out_features, stream,
+    )
+    if int(error) != HIP_SUCCESS:
+        runtime.check(int(error))
+
+
 def qwen4_exp_q5_1_selected_gemv_logical256_t64_bf16_bf16_out(
     input_ptr: int,
     selected_ptr: int,

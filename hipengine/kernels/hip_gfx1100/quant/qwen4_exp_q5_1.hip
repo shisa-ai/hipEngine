@@ -747,6 +747,86 @@ __global__ void q5_1_selected_weighted_sum_logical256_t64_bf16_bf16_kernel(
   if (threadIdx.x == 0) output[out] = float_to_bf16_bits(combined);
 }
 
+// #22 R11 candidate: warp-per-expert weighted-sum combine.
+//
+// One block per output column, 256 threads = 8 warps; warp w serves expert
+// row w (the decode top-k rows). Each lane owns 16 consecutive k elements
+// (half a Q5_1 block: the low- or high-nibble half of the 16-byte qs
+// region plus its 16 high bits), so the warp covers the full k axis at
+// rows==top_k<=8 with vectorized loads (uint4 qs, 2x uint4 activations)
+// and a single block-wide barrier instead of the incumbent's serial
+// per-row loop with ~6 barriers per expert.
+__launch_bounds__(256, 2)
+__global__ void q5_1_selected_weighted_sum_warp256_bf16_bf16_kernel(
+    const uint16_t* __restrict__ input,
+    const int64_t* __restrict__ selected,
+    const uint8_t* __restrict__ weights,
+    const float* __restrict__ routing_weights,
+    uint16_t* __restrict__ output,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t row_bytes) {
+  __shared__ float warp_sums[8];
+  const int64_t out = blockIdx.x;
+  if (out >= out_features) return;
+  const int warp = threadIdx.x >> 5;
+  const int lane = threadIdx.x & 31;
+  if (warp < rows && lane == 0) {
+    warp_sums[warp] = 0.0f;
+  }
+  if (warp < rows) {
+    const int64_t expert = selected[warp];
+    if (expert >= 0 && expert < num_experts) {
+      const uint8_t* weight_row =
+          weights + (expert * out_features + out) * row_bytes;
+      const uint16_t* x_row = input + warp * in_features;
+      float partial = 0.0f;
+      const int64_t k0 = static_cast<int64_t>(lane) * 16;
+      if (k0 < in_features) {
+        const int64_t block = k0 >> 5;
+        const int half = (k0 >> 4) & 1;
+        const uint8_t* wb = weight_row + block * 24;
+        const float d = load_fp16(wb);
+        const float m = load_fp16(wb + 2);
+        const uint32_t qh = *reinterpret_cast<const uint32_t*>(wb + 4);
+        const uint16_t qh16 = static_cast<uint16_t>(qh >> (16 * half));
+        const uint4 qs4 = *reinterpret_cast<const uint4*>(wb + 8);
+        const uint4 xa = *reinterpret_cast<const uint4*>(x_row + k0);
+        const uint4 xb = *reinterpret_cast<const uint4*>(x_row + k0 + 8);
+        const uint16_t* xh = reinterpret_cast<const uint16_t*>(&xa);
+        const uint16_t* xg = reinterpret_cast<const uint16_t*>(&xb);
+        const uint8_t* qsb = reinterpret_cast<const uint8_t*>(&qs4);
+#pragma unroll
+        for (int j = 0; j < 16; ++j) {
+          const int nib = (qsb[j] >> (half ? 4 : 0)) & 0x0F;
+          const int bit = (qh16 >> j) & 1;
+          const float v =
+              fmaf(d, static_cast<float>(nib | (bit << 4)), m);
+          partial = fmaf(bf16_bits_to_float(xh[j]), v, partial);
+        }
+      }
+#pragma unroll
+      for (int offset = 16; offset > 0; offset >>= 1) {
+        partial += __shfl_down(partial, offset, 32);
+      }
+      if (lane == 0) {
+        const float rounded = bf16_bits_to_float(float_to_bf16_bits(partial));
+        warp_sums[warp] = fmaf(rounded, routing_weights[warp], 0.0f);
+      }
+    }
+  }
+  __syncthreads();
+  if (threadIdx.x == 0) {
+    float combined = 0.0f;
+    for (int w = 0; w < 8; ++w) {
+      if (w < rows) combined += warp_sums[w];
+    }
+    output[out] = float_to_bf16_bits(combined);
+  }
+}
+
 __launch_bounds__(64, 4)
 __global__ void q5_1_selected_gemv_logical256_t64_bf16_bf16_kernel(
     const uint16_t* __restrict__ input,
@@ -1625,6 +1705,36 @@ extern "C" int hipengine_qwen4_exp_q5_1_selected_weighted_sum_logical256_t64_bf1
       static_cast<const uint16_t*>(input), static_cast<const int64_t*>(selected),
       static_cast<const uint8_t*>(weights),
       static_cast<const float*>(routing_weights), static_cast<uint16_t*>(output),
+      rows, num_experts, in_features, out_features, row_bytes);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen4_exp_q5_1_selected_weighted_sum_warp256_bf16_bf16_out(
+    const void* input,
+    const void* selected,
+    const void* weights,
+    const void* routing_weights,
+    void* output,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (!input || !selected || !weights || !routing_weights || !output ||
+      rows <= 0 || rows > 8 || num_experts <= 0 || in_features <= 0 ||
+      (in_features % 32) || out_features <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t row_bytes = (in_features / 32) * 24;
+  hipLaunchKernelGGL(
+      q5_1_selected_weighted_sum_warp256_bf16_bf16_kernel,
+      dim3(static_cast<uint32_t>(out_features)), dim3(256),
+      0, stream,
+      static_cast<const uint16_t*>(input),
+      static_cast<const int64_t*>(selected),
+      static_cast<const uint8_t*>(weights),
+      static_cast<const float*>(routing_weights),
+      static_cast<uint16_t*>(output),
       rows, num_experts, in_features, out_features, row_bytes);
   return static_cast<int>(hipGetLastError());
 }
