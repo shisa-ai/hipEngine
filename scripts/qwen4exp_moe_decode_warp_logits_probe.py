@@ -102,6 +102,15 @@ def main() -> None:
     p.add_argument("--case-id", action="append")
     p.add_argument("--decode-steps", type=int, default=4)
     p.add_argument("--packet", choices=sorted(PACKETS), default="dual")
+    p.add_argument("--emit-teacher", type=Path,
+                   help="run the STRICT arm only and save its chains and "
+                        "logits rows to this .npz (pass one of the two-pass "
+                        "strict-reference qualification)")
+    p.add_argument("--teacher", type=Path,
+                   help="force the strict teacher chains from this .npz into "
+                        "every arm and reference the strict logits rows "
+                        "(production-versus-strict, the 6.1 calibration "
+                        "definition) instead of the production incumbent")
     p.add_argument("--output", type=Path, required=True)
     a = p.parse_args()
     if not hip_available():
@@ -111,9 +120,13 @@ def main() -> None:
 
     register_gfx1151_kernels(replace=True)
     register_qwen4_exp_gfx1151_profiles()
+    if a.emit_teacher and a.teacher:
+        p.error("--emit-teacher and --teacher are mutually exclusive")
+    profile = (ExecutionProfile.STRICT if a.emit_teacher
+               else ExecutionProfile.PRODUCTION)
     resolved = resolve_runtime_profile(
         model=QWEN4_EXP_MODEL, backend=QWEN4_EXP_BACKEND,
-        quant=QWEN4_EXP_QUANTS[1], profile=ExecutionProfile.PRODUCTION)
+        quant=QWEN4_EXP_QUANTS[1], profile=profile)
     fixture, digest = load_fixture(DEFAULT_FIXTURE)
     index = load_gguf_index(discover_gguf_files(a.model_root)[0])
     generator = resolved.construct_generator(lambda: Qwen4ExpGGUFTextGenerator(
@@ -134,7 +147,9 @@ def main() -> None:
         "packet": a.packet,
         "arm_flags": {"incumbent": {"dual": "0", "down": "0"},
                       "candidate": {"dual": dual_v, "down": down_v}},
-        "comparison": "production incumbent (both flags off)",
+        "comparison": ("strict teacher (production-versus-strict, 6.1)"
+                       if a.teacher else "production incumbent (both flags off)"),
+        "execution_profile": str(profile),
         "decode_steps": a.decode_steps,
         "runtime_default_changed": False,
         "fixture_sha256": digest,
@@ -142,12 +157,48 @@ def main() -> None:
         "cases": [],
     }
     try:
+        if a.emit_teacher:
+            # pass one: strict teacher only - free chains, save rows
+            os.environ[FLAG] = "0"
+            os.environ[FLAG_DOWN] = "0"
+            teacher = {}
+            for case in fixture["cases"]:
+                if a.case_id:
+                    if case["id"] not in a.case_id:
+                        continue
+                trows, chain = _forced_logits(
+                    generator, case["prompt_token_ids"], a.decode_steps)
+                teacher[case["id"]] = {"chain": np.array(chain, dtype=np.int64),
+                                        "logits": trows}
+                print(f"teacher {case['id']}: {len(chain)} tokens", flush=True)
+            np.savez_compressed(
+                a.emit_teacher,
+                **{f"{cid}__{field}": payload
+                    for cid, entry in teacher.items()
+                    for field, payload in entry.items()})
+            a.output.write_text(json.dumps({
+                "schema": 1, "kind": "strict_teacher_emit",
+                "source": _git_metadata(ROOT), "host": _host_metadata(),
+                "command": sys.argv, "decode_steps": a.decode_steps,
+                "cases": sorted(teacher),
+                "manifest_sha256": resolved.manifest_sha256,
+                "fixture_sha256": digest,
+            }, indent=1) + "\n")
+            print(f"wrote {a.output} and {a.emit_teacher}")
+            return
+        teacher_data = None
+        if a.teacher:
+            teacher_data = np.load(a.teacher)
         for case in fixture["cases"]:
             if a.case_id:
                 if case["id"] not in a.case_id:
                     continue
             rows = {}
             forced_chain = None
+            ref_strict = None
+            if teacher_data is not None:
+                forced_chain = teacher_data[f"{case['id']}__chain"].tolist()
+                ref_strict = teacher_data[f"{case['id']}__logits"]
             dual_v, down_v = PACKETS[a.packet]
             for label, enabled in (
                 ("incumbent_a", "0"), ("incumbent_b", "0"),
@@ -166,13 +217,21 @@ def main() -> None:
             candidate_deterministic = bool(
                 np.array_equal(rows["candidate_a"], rows["candidate_b"]))
 
-            ref = rows["incumbent_a"]
+            ref = (ref_strict if ref_strict is not None
+                   else rows["incumbent_a"])
             cand = rows["candidate_a"]
             diff = np.abs(cand - ref)
             rel = diff / np.maximum(np.abs(ref), 1e-30)
             step_kls = [
                 _kl(ref[i], cand[i]) for i in range(ref.shape[0])
             ]
+            inc_step_kls = ([_kl(ref[i], rows["incumbent_a"][i])
+                             for i in range(ref.shape[0])]
+                            if ref_strict is not None else None)
+            inc_step_top1 = ([bool(ref[i].argmax()
+                                   == rows["incumbent_a"][i].argmax())
+                              for i in range(ref.shape[0])]
+                             if ref_strict is not None else None)
             step_top1 = [
                 bool(ref[i].argmax() == cand[i].argmax())
                 for i in range(ref.shape[0])
@@ -186,6 +245,8 @@ def main() -> None:
                 "id": case["id"],
                 "category": case.get("category", "unknown"),
                 "step_kls": step_kls,
+                "incumbent_step_kls": inc_step_kls,
+                "incumbent_step_top1": inc_step_top1,
                 "step_top1": step_top1,
                 "step_margins": step_margins,
                 "prompt_tokens": case["prompt_tokens"],
@@ -206,6 +267,16 @@ def main() -> None:
                 "top1_agreement_final": float(
                     ref[-1].argmax() == cand[-1].argmax()),
                 "exact_equal": bool(np.array_equal(ref, cand)),
+                "reference": ("strict" if ref_strict is not None
+                             else "production_incumbent"),
+                "incumbent_kl_vs_reference_max": (
+                    float(max(_kl(ref[i], rows["incumbent_a"][i])
+                             for i in range(ref.shape[0])))
+                    if ref_strict is not None else None),
+                "incumbent_top1_agreement_all": (
+                    float(np.mean(ref.argmax(axis=1)
+                                 == rows["incumbent_a"].argmax(axis=1)))
+                    if ref_strict is not None else None),
             }
             report["cases"].append(entry)
             print(json.dumps(entry), flush=True)
@@ -241,6 +312,20 @@ def main() -> None:
             },
             "flipped_rows": flipped,
         }
+        if teacher_data is not None:
+            # control envelope: the qualified production incumbent
+            # versus the same strict teacher (must be within bars too)
+            inc_kls = np.array([kl for c in report["cases"]
+                                for kl in c["incumbent_step_kls"]])
+            report["incumbent_envelope_vs_strict"] = {
+                "kl_mean": float(inc_kls.mean()),
+                "kl_p95": float(np.percentile(inc_kls, 95)),
+                "kl_p99": float(np.percentile(inc_kls, 99)),
+                "kl_max": float(inc_kls.max()),
+                "top1_overall": float(np.mean([
+                    t for c in report["cases"]
+                    for t in c["incumbent_step_top1"]])),
+            }
     finally:
         os.environ[FLAG] = "0"
         os.environ[FLAG_DOWN] = "0"
