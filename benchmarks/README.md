@@ -30,6 +30,25 @@ row, not across them.
 | Qwen3.8-27B Dense | GGUF `Q4_K_M` | **678.8** | **29.6** | — | — |
 | Laguna S 2.1 | GGUF `UD-Q2_K_XL` | **440.9** (4K) | — | — | — |
 
+#### AMD Radeon RX 7900 XTX — 24 GB (`gfx1100`)
+
+| Model | Quant | Prompt processing | Text generation | With MTP | Max context |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **766.0** (8K) | **33.9** | — | **232,448** (DMS / opt-in direct INT8) |
+
+Measured one-request context ceilings, Qwen3.8-27B `Q4_K_M` on the 24 GB card:
+
+| KV policy and route | Max context |
+| --- | ---: |
+| BF16 KV, serving route | 40,960 |
+| INT8 KV, serving route | 54,272 |
+| INT8 KV, dense (before alias and direct routes) | 131,072 |
+| DMS, BF16 KV | 73,728 |
+| Direct-resident INT8, hidden-plane alias | 155,648 |
+| DMS, INT8 KV merged lane | 172,288 |
+| Opt-in direct INT8 KV (no BF16 mirror) | 232,448 |
+| DMS, INT8 KV with hidden-plane alias | 232,448 |
+
 #### Strix Halo / Radeon 8060S — 120 GB (`gfx1151`)
 
 | Model | Quant | Prompt processing | Text generation | With MTP | Max context |
@@ -49,7 +68,7 @@ row, not across them.
 Blank cells are shapes we have not measured yet, not failures. Max context is
 published only where a dedicated ceiling run exists.
 
-- **Qwen3.8-27B `Q4_K_M` fits long contexts on the RX 7900 XTX.** Observed one-request passes reach 40,960 tokens with BF16 KV, 54,272 with INT8 KV on the serving route, and **155,648 prompt tokens** on the direct-resident INT8 route after a byte-identical hidden-plane alias. [Serving-route audit](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-07-rx7900xtx-int8-repair-capacity-audit.json), [INT8 alias artifact](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-09-rx7900xtx-int8-layer-outer-hidden-alias-capacity.json)
+- **Qwen3.8-27B `Q4_K_M` holds 232,448 tokens of context on one 24 GB RX 7900 XTX** (per-route table above; the model's full 262,144 context needs a predicted 24.8 GiB and does not fit). The opt-in direct-INT8 route prefills at 96% of the 766.0 tok/s default with a measured quality cost. [Capacity evidence](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-capacity.json)
 
 ### Serving several requests at once
 
@@ -74,7 +93,7 @@ generated tokens per request, showing what each added request costs in memory:
 | Peak memory (GiB) | 19.4 | 20.3 | 21.1 | 22.0 | 22.8 | 23.7 | 24.5 | 25.4 |
 
 Eight concurrent requests need about 25 GiB, so this shape wants a 32 GB or
-larger card. What the same model tolerates on a 24 GB card is not qualified yet.
+larger card; concurrent-request shapes on 24 GB are not qualified yet.
 
 On Strix Halo, Maple-Preview 2-bit scales to **214.788** tok/s across eight
 requests (123.131 at one, 165.697 at two, 202.038 at four). Where speculative
