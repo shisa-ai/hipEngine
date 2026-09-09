@@ -469,6 +469,15 @@ GGUF_DENSE_PAIR_SILU_DECODE_POLICIES = {
 # H5120 K6,144/N5,120 recurrent output projections. The materializer remains
 # shape/role qualified; peer backends keep dense BF16 until independently gated.
 GGUF_DENSE_Q5_T16_SSM_OUT = True
+# W7900 port of the gfx1151 UD route-plan item 2 (e35a032bd): compact the
+# exact H5120 Q5 FFN-down, recurrent-QKV, and full-attention-V roles through
+# the operation-complete direct/rowtile/WMMA T16 family. The UD Qwen3.8-27B
+# files carry Q5_K at these roles; without this flag they stay raw and the
+# raw-K coltile prefill owner dominates end-to-end prefill (measured 74% of
+# the 512-token prefill GPU budget on the W7900, 2026-09-09 census). The
+# same role/shape predicates and T16 consumers are shared source lineage
+# with the gated gfx1151 declaration.
+GGUF_DENSE_Q5_T16_H5120 = True
 # Default-on C8 production route: retain a raw sidecar for the measured
 # K6144/N5120 recurrent output role so physical R24/R32 verification can use
 # operation-complete Q8_1+Q5 MMQ. The env opt-out is resolved by the materializer
@@ -1026,6 +1035,32 @@ GGUF_F32_ORDERED_PREFILL_POLICIES = {
     "gguf_q5_k": GGUF_Q5_F32_ORDERED_PREFILL_POLICY,
     "gguf_q6_k": GGUF_Q6_F32_ORDERED_PREFILL_POLICY,
 }
+# Dense raw-IQ prefill route selection - the gfx1100 port of the gfx1151
+# policy (UD route-plan item F). The W4A16 kernel body is the same
+# source-lineage module (hip_gfx1100/quant/gguf_iq_wmma_prefill.hip)
+# compiled for this arch, and the accuracy record behind the shipped
+# four-quant set is the production-referenced scoring recorded beside the
+# gfx1151 declaration: W4A16 passes every threshold in the calibrated
+# 6.1 envelope (mean 0.000827, p95 0.004547, p99 0.012475, max 0.023513,
+# no row over the 5e-2 ceiling) where the integer-MMQ alternative breaches
+# the absolute maximum-row ceiling at 0.170390.
+#
+# min_rows is the integer route's measured crossover, kept shared so a route
+# swap between the two variants carries no second variable; W4A16 has no
+# 128-row padding and does not need the floor.
+_IQ_DENSE_W4A16_VARIANT = "dense_wmma_w4a16_prefill_bf16_bf16_out"
+GGUF_IQ_DENSE_PREFILL_POLICY = {
+    quant: {
+        "min_rows": 8,
+        "max_rows": 131072,
+        "variant": _IQ_DENSE_W4A16_VARIANT,
+    }
+    for quant in ("gguf_iq4_xs", "gguf_iq3_xxs", "gguf_iq3_s", "gguf_iq4_nl")
+}
+# Q3_K, IQ2_S and IQ2_XS are W4A16-serviceable but deliberately NOT routed:
+# adding all three measured 176.5 tok/s on gfx1151 but moved the mean
+# 0.000827 -> 0.001061, 6% over the calibrated 1e-3 limit. See the gfx1151
+# declaration and docs/UD-OPTIMIZED-ROUTE-PLAN.md for the unblock paths.
 # LCP-2B removes the 512-token compact-MoE scheduler's per-layer scalar D2H
 # boundary using a routing-independent tight padded-row upper bound. Larger
 # selected-row shapes keep the exact scalar read until independently measured.
@@ -1112,6 +1147,7 @@ GGUF_CONSUMER_LAYERS: frozenset[str] = frozenset(
 
 __all__ = [
     "GGUF_CONSUMER_LAYERS",
+    "GGUF_IQ_DENSE_PREFILL_POLICY",
     "LAGUNA_GLOBAL_SPLIT_MIN_LIVE",
     "LAGUNA_HEAD_KV_FUSION",
     "LAGUNA_GROUPED_GATE_UP_ROLE_VARIANTS",
@@ -1214,6 +1250,7 @@ __all__ = [
     "GGUF_FULL_ATTN_QK_POSTPROCESS_DECODE_POLICIES",
     "GGUF_C8_Q5_RAW_MMQ_SSM_OUT",
     "GGUF_DENSE_Q5_T16_SSM_OUT",
+    "GGUF_DENSE_Q5_T16_H5120",
     "GGUF_DENSE_Q6_T16_QMICRO_PLANAR",
     "GGUF_DENSE_T16_F16_ROCBLAS_PREFILL_POLICIES",
     "GGUF_Q4_T16_F16_ROCBLAS_PREFILL_POLICIES",

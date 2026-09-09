@@ -1803,7 +1803,10 @@ def test_gfx1151_backend_admits_dense_q5_t16_ssm_out_and_08b_roles() -> None:
         "GGUF_DENSE_Q5_T16_SSM_OUT",
         False,
     )
-    assert not backend_package_capability(
+    # Route-plan item F: the H5120 Q5 role coverage is ported to gfx1100
+    # (UD-Q4 files on the W7900); the 0.8B-model roles below stay gfx1151-only
+    # until independently gated.
+    assert backend_package_capability(
         "hip_gfx1100",
         "GGUF_DENSE_Q5_T16_H5120",
         False,

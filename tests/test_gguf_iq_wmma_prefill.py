@@ -62,18 +62,22 @@ def test_registered_on_both_hip_backends(backend, quant):
     assert is_registered(KernelKey(backend, "linear", quant, w4a16._VARIANT))
 
 
-def test_is_the_gfx1151_dense_iq_prefill_default():
-    """W4A16 owns dense raw-IQ prefill on gfx1151.
+@pytest.mark.parametrize("backend", ("hip_gfx1100", "hip_gfx1151"))
+def test_is_the_dense_iq_prefill_default_on_both_hip_backends(backend):
+    """W4A16 owns dense raw-IQ prefill on both HIP backends.
 
-    Scored against hipEngine strict, as EXECUTION-PROFILES.md section 6
-    specifies, it passes every threshold in the calibrated envelope
+    Scored against the production reference, as EXECUTION-PROFILES.md
+    section 6 and the UD route plan's accuracy ruling specify, it passes
+    every threshold in the calibrated envelope
     (mean 0.000827, p95 0.004547, p99 0.012475, max 0.023513, top-1 100%)
     while the integer-MMQ alternative breaches the 5e-2 absolute maximum-row
-    ceiling at 0.170390. It costs 12% throughput: 150.9 against 171.9 tok/s.
+    ceiling at 0.170390. It costs 12% throughput: 150.9 against 171.9 tok/s
+    (gfx1151 measurements; the gfx1100 policy is the route-plan item-F port
+    of the same kernel and set).
     """
-    load_backend_kernel_package("hip_gfx1151")
+    load_backend_kernel_package(backend)
     policy = backend_package_capability(
-        "hip_gfx1151", "GGUF_IQ_DENSE_PREFILL_POLICY", {})
+        backend, "GGUF_IQ_DENSE_PREFILL_POLICY", {})
     assert set(policy) == {"gguf_iq4_xs", "gguf_iq3_xxs", "gguf_iq3_s", "gguf_iq4_nl"}
     for quant, entry in policy.items():
         assert entry["variant"] == w4a16._VARIANT, quant
