@@ -459,6 +459,8 @@ def gguf_q8_0_selected_grouped_wmma_prefill_compact_bf16_bf16_out(
 
 
 _WRAPPERS = {
+    "selected_grouped_wmma_prefill_bf16_bf16_out": (
+        gguf_q8_0_selected_grouped_wmma_prefill_compact_bf16_bf16_out),
     "wmma_prefill_bf16_bf16_out": gguf_q8_0_wmma_prefill_bf16_bf16_out,
     "wmma_prefill_bf16_fp16_out": gguf_q8_0_wmma_prefill_bf16_fp16_out,
     "wmma_prefill_bf16_f32_out": gguf_q8_0_wmma_prefill_bf16_f32_out,

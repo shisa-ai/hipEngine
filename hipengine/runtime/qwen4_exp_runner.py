@@ -4327,17 +4327,49 @@ def run_qwen4_exp_moe(
             # Production selects the grouped owner after the exact
             # one-process/one-residency canonical gate; strict keeps the
             # per-expert selected gemv.
+            q8_wmma_total = 0
             if os.environ.get(
                 "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN", "0"
-            ) not in {"", "0", "false", "False"} and wmma_total_rows > 0:
+            ) not in {"", "0", "false", "False"}:
                 # #19 R9 candidate: the Q5_1-style grouped WMMA down for the
                 # Q8_0 expert-down layers (2, 4, 30, 46, 47). Same f16-WMMA
                 # dequant arithmetic class as the promoted Q5_1 down route
                 # (NOT bit-exact vs the row4 grouped parent); qualified by
-                # the production numerical envelope. The tile map
-                # (qwen35_moe_wmma_tile_map) has already run under the
-                # grouped-prefill gate.
-                gguf_q8_0_selected_grouped_wmma_prefill_compact_bf16_bf16_out(
+                # the production numerical envelope. Resolved through the
+                # registry so counted wrappers (state gate) can intercept
+                # the route. The tile row total comes from the shared tile
+                # map on the production-grouped layers, or is read here
+                # after the fact on the exact-grouped-Q4 layers (e.g.
+                # layer 4) whose own qwen35_moe_wmma_tile_map (same 16-row
+                # contract) ran inside the gate/up. Combinations that
+                # produce no tile map fall back to the parent below.
+                q8_wmma_total = wmma_total_rows
+                if q8_wmma_total <= 0:
+                    q8_wmma_host = np.empty(1, dtype=np.int64)
+                    if stream:
+                        active_runtime.stream_synchronize(stream)
+                    copy_device_to_host(
+                        host_array_ptr(q8_wmma_host),
+                        scratch.group_wmma_total,
+                        DType.INT64.itemsize,
+                        runtime=active_runtime,
+                    )
+                    q8_wmma_total = int(q8_wmma_host[0])
+                    tile_capacity = (
+                        scratch.group_tile_expert.nbytes // DType.INT64.itemsize
+                    )
+                    if q8_wmma_total < 0 or q8_wmma_total > tile_capacity * 16:
+                        raise RuntimeError(
+                            "Qwen4Exp Q8_0 WMMA down tile row count is invalid"
+                        )
+            if q8_wmma_total > 0:
+                q8_wmma_down = resolve(
+                    backend=backend,
+                    layer="linear",
+                    quant=weights["expert_down"].spec.quant_key,
+                    variant="selected_grouped_wmma_prefill_bf16_bf16_out",
+                )
+                q8_wmma_down(
                     scratch.expert_intermediate.ptr,
                     scratch.group_expert_start.ptr,
                     scratch.group_wmma_expert_start.ptr,
@@ -4348,7 +4380,7 @@ def run_qwen4_exp_moe(
                     experts,
                     ffn,
                     hidden,
-                    wmma_total_rows,
+                    q8_wmma_total,
                     stream=stream,
                     runtime=active_runtime,
                 )
