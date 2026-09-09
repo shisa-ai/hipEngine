@@ -3999,7 +3999,10 @@ def run_qwen4_exp_moe(
             from hipengine.kernels.hip_gfx1100.quant.gguf_q5_k_q8_1_selected_prefill import (
                 register_gguf_q5_k_q8_1_selected_prefill_kernels as _register_q5k_iu8,
             )
-            _register_q5k_iu8(replace=False)
+            try:
+                _register_q5k_iu8(replace=False)
+            except Exception:
+                pass  # already registered by the import-time or probe path
             risk_count, risk_indices = scratch.ensure_group_risk_buffers(
                 compact_rows=compact, out_features_total=2 * ffn
             )
