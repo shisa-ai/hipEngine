@@ -95,8 +95,8 @@ def test_is_the_dense_iq_prefill_default_on_both_hip_backends(backend):
     dict(x_ptr=0),
 ])
 def test_rejects_invalid_arguments_before_building(kwargs, monkeypatch):
-    monkeypatch.setattr(w4a16, "_default_library",
-                        lambda: pytest.fail("built before validation"))
+    monkeypatch.setattr(w4a16, "_library_for_rows",
+                        lambda rows: pytest.fail("built before validation"))
     args = dict(x_ptr=1, qweight_ptr=2, out_ptr=3, rows=8, in_features=256,
                 out_features=128, quant="gguf_iq4_xs")
     args.update(kwargs)

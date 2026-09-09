@@ -1,0 +1,82 @@
+{
+ "schema": 1,
+ "date": "2026-09-09",
+ "status": "retained",
+ "host": "w7900-desktop",
+ "hardware": "AMD Radeon RX 7900 XTX (gfx1100, GPU1) for the sweep and E2E; W7900 (GPU0) leaf cross-check",
+ "backend": "hip_gfx1100",
+ "purpose": "UD route-plan item A step 2-3 (task 3): re-sweep the W4A16 tile config on gfx1100, retain the winner, and re-measure the min_rows crossover with the new row-conditional tiles (task 6).",
+ "changes": {
+  "hipengine/kernels/hip_gfx1100/quant/gguf_iq_wmma_prefill.py": "Row-conditional, arch-conditional retained tiles: gfx1100 builds use 16x64 through 64 rows and 32x64 above; gfx1151 keeps 16x128 at every row count. launch() picks the library by rows; explicit HIPENGINE_IQ_WMMA_TILE_M/N env overrides still win.",
+  "hipengine/kernels/hip_gfx1100/quant/gguf_iq_wmma_prefill.hip": "Header comment updated: the Python wrapper always passes explicit tiles; the C #defaults are direct-compilation fallbacks only.",
+  "scripts/gguf_iq_w4a16_tile_sweep.py": "new sweep tool (env-overridable tile set)"
+ },
+ "measurements": {
+  "tile_sweep_512_rows": {
+   "xtx": {
+    "32x64": 9.24,
+    "16x128": 11.25,
+    "16x64": 13.63,
+    "note": "total ms over the 3 real shapes (5120x17408, 17408x5120, 12288x5120); 32x64 wins on every shape"
+   },
+   "w7900": {
+    "32x64": 10.38,
+    "16x128": 12.93,
+    "16x64": 14.93,
+    "note": "same ordering on both gfx1100 cards; gfx1151 kept 16x128 from its own sweep where 32x64 measured 50% worse"
+   }
+  },
+  "tile_sweep_small_rows_xtx_total_ms": {
+   "8": {
+    "16x64": 1.13,
+    "32x64": 1.49,
+    "16x128": 2.75
+   },
+   "16": {
+    "16x64": 1.15,
+    "16x128": 2.81
+   },
+   "32": {
+    "16x64": 1.17,
+    "16x128": 2.94
+   },
+   "64": {
+    "16x64": 1.32,
+    "16x128": 3.19
+   },
+   "128": {
+    "32x64": 2.14,
+    "16x128": 3.7
+   },
+   "256": {
+    "32x64": 4.53,
+    "16x128": 6.12
+   },
+   "note": "tile crossover between 64 and 128 rows -> _SMALL_ROWS_MAX = 64"
+  },
+  "end_to_end_published_protocol_xtx": {
+   "old_tile_16x128": {
+    "prefill": 452.6,
+    "decode": 19.99
+   },
+   "new_tiles": {
+    "prefill": 479.1,
+    "decode": 20.09
+   },
+   "delta": "+5.9% prefill, decode unchanged",
+   "note": "the 27B UD model fits in 16.5 GiB on the XTX (24 GB)"
+  },
+  "w4a16_crossover_with_new_tiles": {
+   "ffn_gate 17408x5120": "crossover 8 rows (1.15x at 8; was 0.68x with the 128 tile)",
+   "attn_q 12288x5120": "crossover 8 rows (1.10x at 8)",
+   "attn_qkv 10240x5120": "crossover 12 rows (0.89x at 8)",
+   "ffn_down 5120x17408": "crossover 12 rows (0.74x at 8)",
+   "rows_below_8": "W4A16 still loses 2-3x (single-wave padding)",
+   "verdict": "min_rows=8 is now approximately correct on gfx1100 (it was clearly wrong with the 128 tile: 0.68x everywhere at 8 rows). Keep the shared floor; a per-shape floor for ffn_down/qkv at rows 8-11 (10-25% slower there) is not worth the second variable."
+  }
+ },
+ "limitations": [
+  "The W7900 end-to-end confirmation of the tile change could not run: the peer agent resumed GPU0 work (int8 prefill gate) mid-measurement and the first attempt measured contention numbers (192.5 prefill / 4.17 decode). The W7900 leaf sweep confirms the same tile ordering; the E2E confirmation is owed when GPU0 is free.",
+  "Tile timings are min-of-5 on real tensors, single seed; the E2E A/B on the XTX is median of 3 measured runs."
+ ]
+}
