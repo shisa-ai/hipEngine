@@ -32,28 +32,85 @@ def _table_hash() -> str:
         _SOURCE.with_name(name).read_bytes() for name in _TABLES)).hexdigest()
 
 
-def _flags() -> tuple[str, ...]:
+# Retained tile configs per target arch, as (small-rows tile, large-rows tile).
+# gfx1151 keeps the 2026-09-09 zbook sweep's retained 16x128 at every row
+# count. The gfx1100 re-sweep (2026-09-09, 7900 XTX and W7900, 512-row real
+# IQ4_XS shapes from the UD-Q4_K_M artifact) retained 32x64 for large rows -
+# 18-20% under 16x128 on BOTH cards and on every shape, unlike gfx1151 where
+# 32x64 measured 50% worse - and 16x64 through 64 rows (2.4x 16x128 at 8
+# rows: the TILE_N activation padding dominates small rows). The tile
+# crossover sits between 64 and 128 rows (16x64 wins at 64, 32x64 at 128).
+_ARCH_TILES = {
+    "gfx1100": ((16, 64), (32, 64)),
+    "gfx1151": ((16, 128), (16, 128)),
+}
+_SMALL_ROWS_MAX = 64
+_detected_arch: str | None = None
+_ROW_LIBRARIES: dict[tuple[int, int], object] = {}
+
+
+def _target_arch() -> str:
+    """The build's target arch: HIPENGINE_HIP_ARCH when a backend scoped it,
+    otherwise the (single) visible HIP device's arch."""
+
     import os
-    flags = [f"-DHIPENGINE_IQ_WMMA_TABLE_HASH={_table_hash()}"]
-    # Tile sweep hook. Unset uses the kernel's retained default; the value is
+    arch = (os.environ.get("HIPENGINE_HIP_ARCH") or "").strip()
+    if arch:
+        return arch
+    global _detected_arch
+    if _detected_arch is None:
+        from hipengine.kernels.backends import detect_hip_target_arches
+        arches = detect_hip_target_arches()
+        _detected_arch = arches[0] if len(arches) == 1 else ""
+    return _detected_arch
+
+
+def _retained_tiles() -> tuple[tuple[int, int], tuple[int, int]]:
+    """(small-rows, large-rows) retained tiles for the target arch."""
+
+    return _ARCH_TILES.get(_target_arch(), ((16, 128), (16, 128)))
+
+
+def _flags(tiles: tuple[int, int] | None = None) -> tuple[str, ...]:
+    import os
+    if tiles is None:
+        tiles = _retained_tiles()[1]
+    flags = [f"-DHIPENGINE_IQ_WMMA_TABLE_HASH={_table_hash()}",
+             f"-DIQ_WMMA_TILE_M={tiles[0]}",
+             f"-DIQ_WMMA_TILE_N={tiles[1]}"]
+    # Tile sweep hook: explicit env overrides always win, and the values are
     # part of the build cache key, so variants do not collide.
     for name in ("IQ_WMMA_TILE_M", "IQ_WMMA_TILE_N"):
         value = os.environ.get(f"HIPENGINE_{name}")
         if value:
-            flags.append(f"-D{name}={int(value)}")
+            flags[1 if name == "IQ_WMMA_TILE_M" else 2] = f"-D{name}={int(value)}"
     return tuple(flags)
 
 
 def plan_gguf_iq_wmma_prefill_build(**kwargs) -> BuildArtifact:
     return plan_hip_build(sources=[_SOURCE], family="gguf_iq_wmma_prefill",
                           profile=kwargs.pop("profile", "prefill"),
-                          extra_flags=_flags(), output_name=_OUTPUT_NAME, **kwargs)
+                          extra_flags=_flags(kwargs.pop("tiles", None)),
+                          output_name=_OUTPUT_NAME, **kwargs)
 
 
-def build_gguf_iq_wmma_prefill(*, profile: ProfileName = "prefill", **kwargs):
+def build_gguf_iq_wmma_prefill(*, profile: ProfileName = "prefill",
+                               tiles: tuple[int, int] | None = None, **kwargs):
     return build_hip(sources=[_SOURCE], family="gguf_iq_wmma_prefill",
-                     profile=profile, extra_flags=_flags(),
+                     profile=profile, extra_flags=_flags(tiles),
                      output_name=_OUTPUT_NAME, **kwargs)
+
+
+def _library_for_rows(rows: int):
+    """The retained library for this row count (small-rows vs large-rows tile)."""
+
+    small, large = _retained_tiles()
+    tiles = small if int(rows) <= _SMALL_ROWS_MAX else large
+    lib = _ROW_LIBRARIES.get(tiles)
+    if lib is None:
+        lib = build_gguf_iq_wmma_prefill(load=True, tiles=tiles)
+        _ROW_LIBRARIES[tiles] = lib
+    return lib
 
 
 def _default_library():
@@ -85,7 +142,7 @@ def launch(x_ptr: int, qweight_ptr: int, out_ptr: int, rows: int,
             f"W4A16 prefill requires positive dimensions and K divisible by {block}")
     if not all((x_ptr, qweight_ptr, out_ptr)):
         raise ValueError("W4A16 prefill pointers must be nonzero")
-    library = library if isinstance(library, ctypes.CDLL) else _default_library()
+    library = library if isinstance(library, ctypes.CDLL) else _library_for_rows(rows)
     fn = _HANDLES.get(id(library))
     if fn is None:
         fn = getattr(library, _SYMBOL)

@@ -248,7 +248,12 @@ __global__ void gguf_iq_prefill_wmma_kernel(
 // cost falls steeply as TILE_N grows and rises with TILE_M.
 //   64x16 33.3 ms   64x32 24.7   32x32 20.8   32x64 17.2
 //   16x64 12.0      16x96 12.6   16x128 11.4  32x128 15.1   128x16 42.2
-// 16x128 is the retained shape; past it the curve is flat.
+// 16x128 is the retained shape on gfx1151; past it the curve is flat.
+// The Python build wrapper (gguf_iq_wmma_prefill.py _flags/_retained_tiles)
+// always passes explicit tiles: gfx1100 builds use 16x64 through 64 rows
+// and 32x64 above (re-swept 2026-09-09 on the 7900 XTX and W7900, 18-20%
+// under 16x128 at 512 rows on both cards and 2.4x at 8 rows), gfx1151 keeps
+// 16x128. These #defaults only apply to direct .hip compilation.
 #ifndef IQ_WMMA_TILE_M
 #define IQ_WMMA_TILE_M 16
 #endif
