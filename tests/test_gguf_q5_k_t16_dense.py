@@ -39,6 +39,11 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
     gguf_q5_k_t16_wmma_prefill_gfx1100_bf16_bf16_out,
     gguf_q5_k_t16_wmma_prefill_shared8r2_bf16_bf16_out,
 )
+from hipengine.kernels.hip_gfx1100.quant import gguf_t16_selected_gemv as t16_gemv
+from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
+    gguf_q5_k_t16_dense_dual_silu_gemv_bf16_bf16_out,
+    gguf_q5_k_t16_gemv_decode_bf16_bf16_out,
+)
 from hipengine.quant.gguf_t16 import repack_gguf_q5_k_tile16
 
 
@@ -223,6 +228,101 @@ def test_shared8r2_bulk_owner_matches_plain_single() -> None:
             for buffer in reversed(buffers):
                 free(buffer, runtime=runtime)
         np.testing.assert_array_equal(actual_bits, expected_bits)
+
+
+def test_dense_dual_silu_gemv_decode_matches_unfused_chain() -> None:
+    """The Q5 T16 decode dual must be bit-exact with the unfused chain.
+
+    The dual mirrors the resident direct-GEMV decode owner exactly - the
+    same 128-thread block, strided K ownership, weight expression, wave32
+    tree and serial wave-0..3 reduction - with gate and up independently
+    rounded to BF16 before the fused SiLU product, so every output bit must
+    match single GEMV x2 + silu_mul_separate.
+    """
+
+    runtime = get_hip_runtime()
+    in_features = 512
+    out_features = 64
+    raw_a = make_q5_k_raw(out_features, in_features, seed=0x5A29)
+    raw_b = make_q5_k_raw(out_features, in_features, seed=0x5A2A)
+    tiles_a = repack_gguf_q5_k_tile16(raw_a[None, ...]).tiles
+    tiles_b = repack_gguf_q5_k_tile16(raw_b[None, ...]).tiles
+    rng = np.random.default_rng(0x38D54)
+    x_bits = _bf16_bits(
+        rng.normal(0.0, 0.2, size=(1, in_features)).astype(np.float32)
+    )
+    expected_bits = np.zeros((1, out_features), dtype=np.uint16)
+    actual_bits = np.zeros_like(expected_bits)
+    buffers = []
+    try:
+        x_dev = malloc(x_bits.nbytes, runtime=runtime)
+        tiles_a_dev = malloc(tiles_a.nbytes, runtime=runtime)
+        tiles_b_dev = malloc(tiles_b.nbytes, runtime=runtime)
+        gate_dev = malloc(expected_bits.nbytes, runtime=runtime)
+        up_dev = malloc(expected_bits.nbytes, runtime=runtime)
+        control_dev = malloc(expected_bits.nbytes, runtime=runtime)
+        candidate_dev = malloc(expected_bits.nbytes, runtime=runtime)
+        buffers.extend(
+            (x_dev, tiles_a_dev, tiles_b_dev, gate_dev, up_dev, control_dev, candidate_dev)
+        )
+        copy_host_to_device(x_dev, host_array_ptr(x_bits), runtime=runtime)
+        copy_host_to_device(
+            tiles_a_dev, host_array_ptr(tiles_a), runtime=runtime
+        )
+        copy_host_to_device(
+            tiles_b_dev, host_array_ptr(tiles_b), runtime=runtime
+        )
+        library = t16_gemv.build_gguf_t16_selected_gemv(load=True)
+        silu_library = build_paro_silu(load=True)
+        for tiles_dev, out_dev in (
+            (tiles_a_dev, gate_dev),
+            (tiles_b_dev, up_dev),
+        ):
+            gguf_q5_k_t16_gemv_decode_bf16_bf16_out(
+                x_dev.ptr,
+                tiles_dev.ptr,
+                out_dev.ptr,
+                1,
+                in_features,
+                out_features,
+                library=library,
+                runtime=runtime,
+            )
+        silu_mul_separate_out_bf16(
+            gate_dev.ptr,
+            up_dev.ptr,
+            control_dev.ptr,
+            1,
+            out_features,
+            library=silu_library,
+            runtime=runtime,
+        )
+        gguf_q5_k_t16_dense_dual_silu_gemv_bf16_bf16_out(
+            x_dev.ptr,
+            tiles_a_dev.ptr,
+            tiles_b_dev.ptr,
+            candidate_dev.ptr,
+            1,
+            in_features,
+            out_features,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(
+            host_array_ptr(expected_bits), control_dev, runtime=runtime
+        )
+        copy_device_to_host(
+            host_array_ptr(actual_bits), candidate_dev, runtime=runtime
+        )
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    np.testing.assert_array_equal(actual_bits, expected_bits)
+    assert np.isfinite(
+        (actual_bits.astype(np.uint32) << 16).view(np.float32)
+    ).all()
 
 
 def test_dense_pair_variants_are_registered() -> None:

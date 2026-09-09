@@ -464,6 +464,21 @@ GGUF_DENSE_PAIR_SILU_DECODE_POLICIES = {
     (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {
         (1, 5_120, 17_408): "dense_dual_local32_bf16_bf16_out",
     },
+    # 2026-09-10, UD impact-list task 5: the UD artifacts carry Q5_K T16
+    # ffn gate/up pairs (9 on K_M, 6 on K_S) that decode through the direct
+    # T16 GEMV. The dense pair decode policy never fired for them - the
+    # registered raw-abii pack8 pair can't match the T16-only materialization
+    # - so every Q5 tensor ran as a single launch (131 on K_M, 15.8 ms/token
+    # at 353 GB/s). The q5 dense dual SiLU GEMV is bit-exact with the unfused
+    # chain (verified on the real blk.25 pair) and takes the gate/up pairs
+    # through one launch; mixed-quant pairs and other roles are unaffected
+    # (the dispatch equality declines them).
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "gguf_ud_q4_k_m"): {
+        (1, 5_120, 17_408): "q5_dense_dual_silu_gemv_decode_bf16_bf16_out",
+    },
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S", "gguf_ud_q4_k_s"): {
+        (1, 5_120, 17_408): "q5_dense_dual_silu_gemv_decode_bf16_bf16_out",
+    },
 }
 # Production-cache rotation admits sole-resident Q5T16 for the measured dense
 # H5120 K6,144/N5,120 recurrent output projections. The materializer remains
