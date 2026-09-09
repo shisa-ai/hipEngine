@@ -1,0 +1,47 @@
+{
+ "schema": 1,
+ "kind": "rx7900xtx_gguf_int8_direct_prefill_blocked",
+ "date": "2026-09-09",
+ "status": "blocked_default_off",
+ "performance_claim": false,
+ "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+ "model_sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+ "hardware": {
+  "host": "epyc",
+  "gpu": "AMD Radeon RX 7900 XTX",
+  "arch": "gfx1100",
+  "physical_gpu_index": 1
+ },
+ "question": "Remove the remaining full-capacity transients on the pure-INT8 direct-resident route (shared BF16 K/V oracle pair + full-capacity hidden plane) by porting the PARO streaming_direct INT8 prefill attention to the GGUF route.",
+ "change": "HIPENGINE_GGUF_INT8_PREFILL_DIRECT (default OFF): the retained INT8 store is written through and read back directly by a new BF16-output sibling of the groupwise INT8 prefill kernel; the lifetime plan resolves to chunk_outer_direct_int8 (zero oracle, chunk-sized hidden planes). Also fixes a latent fp16-vs-bf16 output dtype mismatch the port exposed in the unexercised direct int8 prefill branch.",
+ "ab_8192": {
+  "protocol": "Comparison capacity protocol, fresh process per arm, GPU1, 1024-row prefill chunks.",
+  "control_oracle_route": {
+   "mode": "layer_outer_shared_oracle",
+   "tracked_peak_gib": 16.8951,
+   "prefill_tok_s": 761.58,
+   "decode_tok_s": 33.705
+  },
+  "direct_route": {
+   "mode": "chunk_outer_direct_int8",
+   "tracked_peak_gib": 16.8018,
+   "prefill_tok_s": 164.22,
+   "decode_tok_s": 33.401,
+   "oracle_buffers": 0,
+   "required_hidden_capacity_rows": 1024
+  },
+  "realprompt_greedy_token_agreement": "32/32 on a composed 8,192-token mtpbench prompt"
+ },
+ "blocker": "Prefill speed: the groupwise INT8 prefill kernel is a sequential online-softmax loop; 761.6 -> 164.2 tok/s at 8,192 tokens (4.6x) and the per-token attention cost grows with context, making the 163,840-token ladder point impractical to complete (stopped after ~80 minutes). The gate stays default OFF until the kernel is tiled/split-K optimized toward AOTriton-competitive speed and the production-profile numerics campaign covers INT8-read prefill arithmetic; the projected capacity bound (weights + INT8 KV + scales + chunk-sized scratch) is NOT a measured claim.",
+ "capacity_context": {
+  "before_alias": {
+   "largest_passing_prompt": 131072
+  },
+  "after_alias": {
+   "largest_passing_prompt": 155648,
+   "artifact": "results/2026-09-09-rx7900xtx-int8-layer-outer-hidden-alias-capacity.json"
+  },
+  "direct_route_capacity": "not measured (speed-blocked); external engines reach 196,608 on Q8_0"
+ },
+ "created_utc": "2026-09-09T00:44:21.844181+00:00"
+}

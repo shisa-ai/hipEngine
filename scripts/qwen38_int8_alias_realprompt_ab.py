@@ -30,8 +30,15 @@ if str(REPO_ROOT) not in sys.path:
 
 MODEL = "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf"
 OUTPUT = Path(sys.argv[1] if len(sys.argv) > 1 else "/tmp/int8_alias_realprompt_ab.json")
+# Optional second argument selects which route gate this driver exercises:
+# "alias" (default, single-plane hidden) or "direct" (oracle-free INT8
+# prefill attention). The direct route changes prefill numerics, so its
+# equality gate compares two DIRECT arms against each other only for
+# determinism; cross-arm comparison is informational divergence, not a gate.
+ROUTE = sys.argv[2] if len(sys.argv) > 2 else "alias"
 DECODE_TOKENS = 32
 ALIAS_ENV = "HIPENGINE_INT8_LAYER_OUTER_HIDDEN_ALIAS"
+DIRECT_ENV = "HIPENGINE_GGUF_INT8_PREFILL_DIRECT"
 
 
 def compose_prompt_ids() -> list[int]:
@@ -89,7 +96,11 @@ def main() -> int:
     # Pure-INT8 capacity-route environment (caller may have set these).
     os.environ.setdefault("HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG", "1")
     os.environ.setdefault("HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS", "none")
-    os.environ.pop(ALIAS_ENV, None)
+    if ROUTE == "direct":
+        gate_env = DIRECT_ENV
+    else:
+        gate_env = ALIAS_ENV
+    os.environ.pop(gate_env, None)
 
     prompt_ids = compose_prompt_ids()
     runtime = get_hip_runtime()
@@ -120,7 +131,7 @@ def main() -> int:
         if release is None:
             raise RuntimeError("resident session lacks workspace release")
         release()
-        os.environ[ALIAS_ENV] = "1"
+        os.environ[gate_env] = "1"
         session.reset()
         candidate_ids, _, candidate_wall = generate(session, prompt_ids)
     finally:

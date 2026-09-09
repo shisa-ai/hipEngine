@@ -1851,7 +1851,7 @@ __global__ void qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel(
   }
 }
 
-template <typename scale_t, int64_t quant_group_dim, bool use_hadamard>
+template <typename scale_t, int64_t quant_group_dim, bool use_hadamard, bool out_bf16 = false>
 __global__ void qwen35_paged_full_attn_prefill_gqa_gate_int8_groupwise_kernel(
     const float* __restrict__ query,       // [rows, num_q_heads, head_dim]
     const int8_t* __restrict__ key_cache,
@@ -1859,7 +1859,7 @@ __global__ void qwen35_paged_full_attn_prefill_gqa_gate_int8_groupwise_kernel(
     const scale_t* __restrict__ k_scale,   // [num_blocks, block_size, num_kv_heads]
     const scale_t* __restrict__ v_scale,
     const half_t* __restrict__ gate,       // [rows, num_q_heads, head_dim] view-compatible
-    half_t* __restrict__ out,              // [rows, num_q_heads * head_dim]
+    uint16_t* __restrict__ out,            // [rows, num_q_heads * head_dim] fp16 or bf16 bits
     const int32_t* __restrict__ block_tables,
     const int64_t* __restrict__ context_counts,
     const int64_t* __restrict__ row_positions,
@@ -1972,7 +1972,18 @@ __global__ void qwen35_paged_full_attn_prefill_gqa_gate_int8_groupwise_kernel(
     const int64_t gate_idx = (row * num_q_heads + q_head) * gate_stride1 + tid * gate_stride2;
     const float gate_v = static_cast<float>(gate[gate_idx]);
     const float attn_bf16 = bf16_bits_to_float(float_to_bf16_bits(out_acc * inv_l));
-    out[(row * num_q_heads + q_head) * head_dim + tid] = static_cast<half_t>(attn_bf16 * sigmoid_f32(gate_v));
+    const float gated = attn_bf16 * sigmoid_f32(gate_v);
+    const int64_t out_idx = (row * num_q_heads + q_head) * head_dim + tid;
+    if constexpr (out_bf16) {
+      out[out_idx] = float_to_bf16_bits(gated);
+    } else {
+      union {
+        half_t f;
+        uint16_t u;
+      } fp16_bits;
+      fp16_bits.f = static_cast<half_t>(gated);
+      out[out_idx] = fp16_bits.u;
+    }
   }
 }
 
@@ -4770,7 +4781,7 @@ extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans(
   return static_cast<int>(hipGetLastError());
 }
 
-template <typename scale_t, int64_t quant_group_dim = 256, bool use_hadamard = false>
+template <typename scale_t, int64_t quant_group_dim = 256, bool use_hadamard = false, bool out_bf16 = false>
 int launch_qwen35_paged_full_attn_prefill_gqa_gate_int8(
     const float* query,
     const int8_t* key_cache,
@@ -4778,7 +4789,7 @@ int launch_qwen35_paged_full_attn_prefill_gqa_gate_int8(
     const scale_t* k_scale,
     const scale_t* v_scale,
     const half_t* gate,
-    half_t* out,
+    uint16_t* out,
     const int32_t* block_tables,
     const int64_t* context_counts,
     const int64_t* row_positions,
@@ -4801,7 +4812,7 @@ int launch_qwen35_paged_full_attn_prefill_gqa_gate_int8(
   const int threads = 256;
   const size_t shared = static_cast<size_t>(threads + head_dim) * sizeof(float);
   hipLaunchKernelGGL(
-      HIP_KERNEL_NAME(qwen35_paged_full_attn_prefill_gqa_gate_int8_groupwise_kernel<scale_t, quant_group_dim, use_hadamard>),
+      HIP_KERNEL_NAME(qwen35_paged_full_attn_prefill_gqa_gate_int8_groupwise_kernel<scale_t, quant_group_dim, use_hadamard, out_bf16>),
       dim3(static_cast<unsigned int>(num_q_heads), static_cast<unsigned int>(rows)),
       dim3(threads),
       shared,
@@ -4836,7 +4847,7 @@ extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_int8_scale_f32_
     const float* k_scale,
     const float* v_scale,
     const half_t* gate,
-    half_t* out,
+    uint16_t* out,
     const int32_t* block_tables,
     const int64_t* context_counts,
     const int64_t* row_positions,
@@ -4875,6 +4886,57 @@ extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_int8_scale_f32_
       stream);
 }
 
+// BF16-output sibling for the GGUF resident (BF16-pipeline) route: the
+// gated attention output is stored as BF16 bits so the attn_output
+// projection consumes the same activation dtype as every other owner of
+// the full_gated scratch buffer. The fp16-output symbols above remain
+// the PARO (fp16-pipeline) contract.
+extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_int8_scale_f32_bf16out_spans(
+    const float* query,
+    const int8_t* key_cache,
+    const int8_t* value_cache,
+    const float* k_scale,
+    const float* v_scale,
+    const half_t* gate,
+    uint16_t* out,
+    const int32_t* block_tables,
+    const int64_t* context_counts,
+    const int64_t* row_positions,
+    int64_t rows,
+    int64_t max_context_len,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t gate_stride1,
+    int64_t gate_stride2,
+    float scale,
+    hipStream_t stream) {
+  return launch_qwen35_paged_full_attn_prefill_gqa_gate_int8<float, 256, false, true>(
+      query,
+      key_cache,
+      value_cache,
+      k_scale,
+      v_scale,
+      gate,
+      out,
+      block_tables,
+      context_counts,
+      row_positions,
+      rows,
+      max_context_len,
+      block_size,
+      block_table_len,
+      num_q_heads,
+      num_kv_heads,
+      head_dim,
+      gate_stride1,
+      gate_stride2,
+      scale,
+      stream);
+}
+
 extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_int8_scale_fp16_spans(
     const float* query,
     const int8_t* key_cache,
@@ -4882,7 +4944,7 @@ extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_int8_scale_fp16
     const half_t* k_scale,
     const half_t* v_scale,
     const half_t* gate,
-    half_t* out,
+    uint16_t* out,
     const int32_t* block_tables,
     const int64_t* context_counts,
     const int64_t* row_positions,
@@ -4924,7 +4986,7 @@ extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_int8_scale_fp16
 #define DEFINE_HADAMARD_GROUP32_PREFILL(SUFFIX, SCALE_T)                                      \
 extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_int8_hadamard_group32_scale_##SUFFIX##_spans(\
     const float* query, const int8_t* key_cache, const int8_t* value_cache,                    \
-    const SCALE_T* k_scale, const SCALE_T* v_scale, const half_t* gate, half_t* out,           \
+    const SCALE_T* k_scale, const SCALE_T* v_scale, const half_t* gate, uint16_t* out,         \
     const int32_t* block_tables, const int64_t* context_counts, const int64_t* row_positions,  \
     int64_t rows, int64_t max_context_len, int64_t block_size, int64_t block_table_len,        \
     int64_t num_q_heads, int64_t num_kv_heads, int64_t head_dim, int64_t gate_stride1,         \
