@@ -92,13 +92,18 @@ def materialize_evie_weights(
     target_device = device or Device("hip", 0)
     expected = expected_evie_weight_shapes(spec)
     allocations: dict[str, DeviceTensorAllocation] = {}
+    # rocBLAS SGEMM tiles can over-read past operand ends; keep every
+    # weight's tail inside mapped memory so heap layout cannot fault.
+    weight_pad = 1 << 20
     try:
         for name in sorted(expected):
             info = index.tensors[name]
             host = convert_evie_weight_to_fp32(name, info)
+            padded = np.empty(host.nbytes + weight_pad, dtype=np.float32)
+            padded[: host.size] = host.reshape(-1)
             prepared = load_host_array_to_device(
                 name,
-                host,
+                padded,
                 device=target_device,
                 runtime=runtime,
             )
