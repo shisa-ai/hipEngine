@@ -174,6 +174,8 @@ def main() -> None:
         "query_input_ids": query_batch["input_ids"].cpu().numpy(),
         "query_attention_mask": query_batch["attention_mask"].cpu().numpy(),
         "query_embeddings_128": query_embeddings.cpu().numpy(),
+        "query_hidden": query_last_hidden.numpy(),
+        "query_full_proj_2048": query_full_proj.numpy(),
         "maxsim_score": scores.cpu().numpy(),
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
