@@ -5884,6 +5884,57 @@ def launch_gguf_linear_pair_silu(
         "gguf_q4_k",
         "pack8_bf16_bf16_out",
     )
+    # Q5 T16 gate/up decode dual (2026-09-10): fires only when both sides
+    # dispatch to the Q5 T16 direct-GEMV decode owner at rows == 1; the
+    # registered variant defaults to the bit-exact dense dual SiLU GEMV.
+    # Mixed-quant pairs and every other row count decline unchanged.
+    q5_t16_decode = KernelKey(
+        resolved_backend,
+        "linear",
+        "gguf_q5_k_t16_v1",
+        "t16_gemv_decode_bf16_bf16_out",
+    )
+    q5_t16_pair_variant = (
+        registered_decode_variant or "q5_dense_dual_silu_gemv_decode_bf16_bf16_out"
+    )
+    q5_t16_pair_silu = KernelKey(
+        resolved_backend,
+        "linear_pair_silu",
+        "gguf_q5_k_t16_v1",
+        q5_t16_pair_variant,
+    )
+    _ensure_linear_kernel_registered(q5_t16_pair_silu)
+    if (
+        rows == 1
+        and dispatch_a.key == q5_t16_decode
+        and dispatch_b.key == q5_t16_decode
+        and is_registered(q5_t16_pair_silu)
+    ):
+        fn = resolve(
+            backend=q5_t16_pair_silu.backend,
+            layer=q5_t16_pair_silu.layer,
+            quant=q5_t16_pair_silu.quant,
+            variant=q5_t16_pair_silu.variant,
+        )
+        kwargs = {"stream": stream, "runtime": runtime}
+        library = (
+            None
+            if libraries is None
+            else libraries.get(q5_t16_pair_silu.quant)
+        )
+        if library is not None:
+            kwargs["library"] = library
+        fn(
+            x_ptr,
+            weight_a.allocation("tiles").tensor.ptr,
+            weight_b.allocation("tiles").tensor.ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            **kwargs,
+        )
+        return True
     fused_key = KernelKey(
         resolved_backend,
         "linear_pair_silu",

@@ -2082,6 +2082,122 @@ void q4_k_t16_selected_dual_interleaved_natural_tile8_silu_gemv_kernel(
   }
 }
 
+// Decode-only dense/shared Q5T16 gate/up dual (2026-09-10, UD impact-list
+// task 5). Mirrors the resident Q5 direct GEMV
+// (qk_t16_selected_direct_gemv_kernel<scalar_t, 5, false, false, true>)
+// exactly - same 128-thread block, per-thread strided K ownership, weight
+// expression, wave32 tree and serial wave-0..3 reduction - with both
+// matrices' accumulators fed by one activation load per element, halving the
+// pair's blocks and activation traffic. Gate and up are independently
+// rounded to BF16 before the fused SiLU product, so the kernel is bit-exact
+// with the unfused chain (direct GEMV x2 + silu_mul_separate) it replaces.
+template <typename scalar_t>
+__global__ __launch_bounds__(128, 2) void q5_k_t16_dense_dual_silu_gemv_kernel(
+    const scalar_t* __restrict__ x,
+    const uint8_t* __restrict__ tiles_a,
+    const uint8_t* __restrict__ tiles_b,
+    scalar_t* __restrict__ out,
+    int64_t in_features,
+    int64_t out_features) {
+  const int64_t out_tile = blockIdx.x;
+  const int tid = threadIdx.x;
+  const int64_t blocks_per_row = in_features / QK_K;
+  const int64_t out_tiles = out_features / T16_COLS;
+
+  float acc_a[T16_COLS];
+  float acc_b[T16_COLS];
+#pragma unroll
+  for (int col = 0; col < T16_COLS; ++col) {
+    acc_a[col] = 0.0f;
+    acc_b[col] = 0.0f;
+  }
+
+  for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
+    const uint8_t* __restrict__ tile_a =
+        expert_tile_ptr<Q5_T16_BLOCK_BYTES>(
+            tiles_a, 0, out_tile, blk, out_tiles, blocks_per_row);
+    const uint8_t* __restrict__ tile_b =
+        expert_tile_ptr<Q5_T16_BLOCK_BYTES>(
+            tiles_b, 0, out_tile, blk, out_tiles, blocks_per_row);
+    const int64_t k_base = blk * QK_K;
+    for (int k_in_block = tid; k_in_block < QK_K;
+         k_in_block += blockDim.x) {
+      const float xv = scalar_to_float<scalar_t>(x[k_base + k_in_block]);
+      const int sb = k_in_block >> 5;
+      const int lane32 = k_in_block & 31;
+#pragma unroll
+      for (int col = 0; col < T16_COLS; ++col) {
+        const float d_a =
+            fp16_bytes_to_float(tile_a + Q5_T16_D_OFFSET + col * 2);
+        const float dmin_a =
+            fp16_bytes_to_float(tile_a + Q5_T16_DMIN_OFFSET + col * 2);
+        const float scale_a =
+            d_a * static_cast<float>(
+                       tile_a[Q5_T16_SCALE_OFFSET + sb * T16_COLS + col]);
+        const float minv_a =
+            dmin_a * static_cast<float>(
+                        tile_a[Q5_T16_MIN_OFFSET + sb * T16_COLS + col]);
+        const float q_a = static_cast<float>(
+            t16_q5_quant(tile_a, sb, lane32, col));
+        acc_a[col] += xv * (scale_a * q_a - minv_a);
+        const float d_b =
+            fp16_bytes_to_float(tile_b + Q5_T16_D_OFFSET + col * 2);
+        const float dmin_b =
+            fp16_bytes_to_float(tile_b + Q5_T16_DMIN_OFFSET + col * 2);
+        const float scale_b =
+            d_b * static_cast<float>(
+                       tile_b[Q5_T16_SCALE_OFFSET + sb * T16_COLS + col]);
+        const float minv_b =
+            dmin_b * static_cast<float>(
+                        tile_b[Q5_T16_MIN_OFFSET + sb * T16_COLS + col]);
+        const float q_b = static_cast<float>(
+            t16_q5_quant(tile_b, sb, lane32, col));
+        acc_b[col] += xv * (scale_b * q_b - minv_b);
+      }
+    }
+  }
+
+#pragma unroll
+  for (int col = 0; col < T16_COLS; ++col) {
+    GGUF_T16_WAVE_REDUCE(acc_a[col]);
+  }
+#pragma unroll
+  for (int col = 0; col < T16_COLS; ++col) {
+    GGUF_T16_WAVE_REDUCE(acc_b[col]);
+  }
+
+  __shared__ float xchg_a[4 * T16_COLS];
+  __shared__ float xchg_b[4 * T16_COLS];
+  const int sub_id = tid >> 5;
+  const int sub_lane = tid & 31;
+  if (sub_lane == 0) {
+#pragma unroll
+    for (int col = 0; col < T16_COLS; ++col) {
+      xchg_a[sub_id * T16_COLS + col] = acc_a[col];
+      xchg_b[sub_id * T16_COLS + col] = acc_b[col];
+    }
+  }
+  __syncthreads();
+
+  if (tid == 0) {
+    scalar_t* __restrict__ out_row =
+        out + out_tile * T16_COLS;
+#pragma unroll
+    for (int col = 0; col < T16_COLS; ++col) {
+      float total_a = 0.0f;
+      float total_b = 0.0f;
+      for (int g = 0; g < 4; ++g) {
+        total_a += xchg_a[g * T16_COLS + col];
+        total_b += xchg_b[g * T16_COLS + col];
+      }
+      const float gate = round_trip_scalar_to_float<scalar_t>(total_a);
+      const float up = round_trip_scalar_to_float<scalar_t>(total_b);
+      const float sig = 1.0f / (1.0f + expf(-gate));
+      out_row[col] = float_to_scalar<scalar_t>(gate * sig * up);
+    }
+  }
+}
+
 // Decode-only dense/shared Q4T16 owner. Match the retained pack8 local32
 // owner exactly: each lane owns eight contiguous K values per 256-wide
 // superblock, every output uses the same FMA sequence and wave32 tree, and
@@ -6303,6 +6419,38 @@ int launch_q4_dense_dual_local32_silu(
 }
 
 template <typename scalar_t>
+int launch_q5_dense_dual_silu(
+    const void* x,
+    const void* tiles_a,
+    const void* tiles_b,
+    void* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (!x || !tiles_a || !tiles_b || !out || rows != 1 ||
+      in_features <= 0 || (in_features % QK_K) != 0 ||
+      out_features <= 0 || (out_features % T16_COLS) != 0) {
+    return hipErrorInvalidValue;
+  }
+  const dim3 block(128);
+  const dim3 grid(static_cast<unsigned int>(out_features / T16_COLS));
+  hipLaunchKernelGGL(
+      (q5_k_t16_dense_dual_silu_gemv_kernel<scalar_t>),
+      grid,
+      block,
+      0,
+      stream,
+      reinterpret_cast<const scalar_t*>(x),
+      reinterpret_cast<const uint8_t*>(tiles_a),
+      reinterpret_cast<const uint8_t*>(tiles_b),
+      reinterpret_cast<scalar_t*>(out),
+      in_features,
+      out_features);
+  return hipGetLastError();
+}
+
+template <typename scalar_t>
 int launch_q4_dense_single_local32(
     const void* x,
     const void* tiles,
@@ -7597,6 +7745,15 @@ hipengine_gguf_q4_k_t16_dense_dual_local32_silu_gemv_bf16_bf16_out(
     int64_t rows, int64_t in_features, int64_t out_features,
     hipStream_t stream) {
   return launch_q4_dense_dual_local32_silu<uint16_t>(
+      x, tiles_a, tiles_b, out, rows, in_features, out_features, stream);
+}
+
+extern "C" int
+hipengine_gguf_q5_k_t16_dense_dual_silu_gemv_bf16_bf16_out(
+    const void* x, const void* tiles_a, const void* tiles_b, void* out,
+    int64_t rows, int64_t in_features, int64_t out_features,
+    hipStream_t stream) {
+  return launch_q5_dense_dual_silu<uint16_t>(
       x, tiles_a, tiles_b, out, rows, in_features, out_features, stream);
 }
 
