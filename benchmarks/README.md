@@ -101,10 +101,11 @@ Earlier published C2/K2 and C8/K3 speedups are withdrawn
 
 Strix Halo `Q4_K_M`: strict C1/K3 automatic at **18.191 tok/s (1.6445x AR)**; production explicit/K0. Production C8/K3 is **52.103 vs 52.025 AR tok/s**. Detailed gfx1151 evidence remains in result artifacts.
 
-TimesFM 2.5 200M GPU decode (batch 8, context 8192, horizon 512): **0.096 s**
+TimesFM 2.5 200M GPU decode (batch 8, context 8192, horizon 512): **0.092 s**
 with the double correctness gate described above. Attention runs as a fused
-WMMA flash kernel with causal skipping
-([artifact](results/gfx1151-timesfm-flash-attn-2026-09-09.json)).
+WMMA flash kernel with causal skipping; the FP16 GEMMs use shape-keyed
+rocBLAS solution autotuning
+([artifact](results/gfx1151-timesfm-transpose-gemm-autotune-2026-09-09.json)).
 
 ### W7900 Qwen3.8 `Q4_K_M` C1-C8
 

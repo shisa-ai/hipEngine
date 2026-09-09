@@ -218,7 +218,7 @@ Encoder kernels are currently CUDA-only; see the CUDA catalog below.
 | RoPE + QK norm + scatter | `timesfm/timesfm.{hip,py}` | `timesfm_rope` (timescale table), `timesfm_qkv_norm_scatter` | One block per (b, n, h) head vector: in-kernel non-interleaved RoPE, query/key RMSNorm, per-dim softplus query scaling, head-major `[B, H, S, D]` k/v cache scatter, `[B, H, Q, D]` q transpose. |
 | Masked softmax | `timesfm/timesfm.{hip,py}` | `timesfm_mask_softmax` | Register-resident two-pass row softmax; masked keys are `-INFINITY`, all-masked rows emit uniform 1/S (reference parity). |
 | Attention | `timesfm/timesfm.{hip,py}` + rocBLAS `gemm_strided_batched` | `timesfm_attention` (strict FP32 fallback), `timesfm_flash_attention` (FP16 production) | Naive block-per-row kernel for the strict path; production path is a WMMA flash kernel (w32 `__builtin_amdgcn_wmma_f32_16x16x16_f16_w32`): online softmax with width-16 shuffle row reductions, LDS-staged P, causal kv-tile skipping, uniform-1/S all-masked fallback, ragged-S bounds guards, 4 q-tiles/block for Q>=64. Attention sub-window: 0.73 ms/layer prefill at b8/ctx8192. |
-| Head transpose | `timesfm/timesfm.{hip,py}` | `timesfm_transpose_heads` | `[B, H, Q, D]` back to row-major `[B*Q, H*D]` for the out projection. |
+| Head transpose | `timesfm/timesfm.{hip,py}` | `timesfm_transpose_heads` | `[B, H, Q, D]` back to row-major `[B*Q, H*D]` for the out projection; one block per row, half4-vectorized coalesced (6.8 us at b8/n=256). |
 
 Model contract, loader, NumPy oracle, and GPU orchestration live in
 `models/timesfm.py`, `loading/timesfm.py`, `kernels/cpu_reference/timesfm.py`,
