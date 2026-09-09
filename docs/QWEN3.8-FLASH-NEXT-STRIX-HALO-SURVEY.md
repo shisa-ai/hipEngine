@@ -604,7 +604,12 @@ rank the engines above:
   This is useful quant evidence, but it also changes tensor format, PLE layout,
   K/V, and fork.
 - `cafe-llama.cpp` and other fresh forks remain source leads. No matched local
-  rate or correctness packet was available for this survey.
+  rate or correctness packet was available for this survey. The later
+  September external set — halo-box/strix-llama.cpp, Myhacsint, Halogen,
+  nasone32 (RDNA3/7900XTX, not a comparator row) and mlx-serve — is reviewed
+  separately with pinned refs and per-commit mechanism tables in
+  [`QWEN4EXP-EXTERNAL-FORKS-REVIEW.md`](QWEN4EXP-EXTERNAL-FORKS-REVIEW.md); that
+  review and its confounds checklist govern all newer fork intake.
 
 #### H6.7 Pat1entZ3r0 optimization program (source review only, 2026-09-01)
 
@@ -705,3 +710,6 @@ larger than a speed screenshot:
 - EngramHalo source and methodology: [Aristo94/EngramHalo.cpp](https://github.com/Aristo94/EngramHalo.cpp)
 - Nathan release: [Nathanw1014/strix-halo-llamacpp v0.7.2](https://github.com/Nathanw1014/strix-halo-llamacpp/releases/tag/v0.7.2)
 - Pat1entZ3r0 source review (historical section H6.7): [Pat1entZ3r0/strix-qwen-next-flash-optimization](https://github.com/Pat1entZ3r0/strix-qwen-next-flash-optimization) `413c33c`
+- September external fork review (halo-box, Myhacsint, Halogen, nasone32,
+  mlx-serve; pinned refs, mechanism tables, benchmark-confounds checklist):
+  [`QWEN4EXP-EXTERNAL-FORKS-REVIEW.md`](QWEN4EXP-EXTERNAL-FORKS-REVIEW.md)
