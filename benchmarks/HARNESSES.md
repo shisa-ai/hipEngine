@@ -7,6 +7,35 @@ only compared like for like. A check mark means the harness measures that axis;
 a blank does not mean zero. Run hipEngine rows through the hermetic thecrock
 wrapper for the target architecture; see [`docs/BENCHMARK.md`](../docs/BENCHMARK.md).
 
+## Capacity testing: ALWAYS probe first (two-tier protocol)
+
+**Never run a full-prompt ladder point to answer "does context N fit".**
+The resident scratch's per-layer KV caches, scales, and metadata tables
+are sized by `max_positions` at session initialization - not by the
+prompt - and the bulk prefill workspace acquires before any attention
+work. The allocation decision (and the tracked peak) is therefore fully
+determined within the first ~3 minutes, while a full synthetic prompt
+at 160K+ tokens costs ~90 minutes per point on the 27B. This cost was
+actually paid on 2026-09-09 (three full ladder points bracketing a bound
+that two 3-minute probes would have bracketed); do not repeat it.
+
+- **Tier 1 - allocation probe** (`scripts/gguf_capacity_probe.py`,
+  ~3 min/point): session at the target `--max-sequence-length` with the
+  route's env vars, one short bulk prefill, a few decode steps, finite
+  logits, tracked peak reported. Answers every *does-it-fit* question:
+  bracketing bounds, OOM checks, memory-regression checks across
+  changes. Binary-search the bound here.
+- **Tier 2 - full-prompt harness point** (`qwen35_gguf_bench.py`,
+  ~1 min per 32K tokens): only when the question requires the prefill
+  path to actually RUN at that depth - kernel stability across the full
+  context, finite logits after deep attention, or a tok/s-at-depth
+  claim. Use it to CONFIRM the bound Tier 1 found, with at most a
+  pass/fail point or two; never to search for one.
+
+A "capacity ladder" artifact should state which tier produced each point.
+A Tier-1 point is a memory-envelope claim; a Tier-2 point additionally
+carries a completion/stability claim at depth.
+
 **Legend:** AR = true no-MTP autoregressive decode; MTP = speculative
 multi-token-prediction decode with a true-AR denominator where a ratio is
 reported; Prefill = prompt-processing tok/s; Decode = generation tok/s; Mem =
@@ -16,6 +45,7 @@ graphics-memory usage; Conc = a concurrency sweep.
 | --- | --- | :-: | :-: | :-: | :-: | :-: | :-: | --- |
 | `qwen35_readme_sweep.py` | Single-request prefill/decode/memory per shape (llama-bench-style), one resident session, per-shape reset | ✓ | | ✓ | ✓ | ✓ | | `--engine gguf --model <model> --backend hip_gfx1151 --workloads 512/128 1K/128 ...` |
 | `qwen35_gguf_bench.py` | GGUF c=1 AR prefill/decode, fresh resident session per run, HIP-graph decode | ✓ | | ✓ | ✓ | ✓ | | `--model <model> --prompt-length 512 --decode-tokens 128` |
+| `gguf_capacity_probe.py` | **Capacity-tier-1 probe**: does a context size FIT (allocation validity, tracked peak) - minutes per point, no full prefill | | | | | ✓ | | `--max-sequence-length 229376` (route envs set by caller) |
 | `qwen38_prefill_sweep_trace.py` + `qwen38_prefill_sweep_analyze.py` | Fixed-row prefill wall/HIP-event capture plus dispatch-matched quant-family sweep attribution | | | ✓ | | | | `--rows 16,35,48,72,96,256,288,536,1024` |
 | `gguf_true_ar_category_bench.py` | True no-MTP AR baseline over the mtp-bench category suite (the legitimate MTP speed denominator) | ✓ | | ✓ | ✓ | | | `--model <model> --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl` |
 | `gguf_mtp_category_bench.py` | MTP category matrix over budgets 1..8 with guarded objective extraction; attach a true-AR baseline for ratios | | ✓ | | ✓ | | | `--budgets 1,3,5 --objective-budget b5` |
