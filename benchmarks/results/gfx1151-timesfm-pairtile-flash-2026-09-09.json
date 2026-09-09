@@ -1,0 +1,45 @@
+{
+  "schema": "timesfm-gpu-decode-bench/1",
+  "date": "2026-09-09",
+  "model": "google/timesfm-2.5-200m-pytorch",
+  "task": "time-series-forecast decode",
+  "hardware": "AMD Radeon 8060S (gfx1151, Strix Halo iGPU), Ryzen AI MAX+ PRO 395 host, 120 GB shared LPDDR5X",
+  "host": "zbook",
+  "workload": {
+    "batch": 8,
+    "context": 8192,
+    "horizon": 512,
+    "masks": "none"
+  },
+  "command": "python3 scripts/timesfm_gpu_bench.py --metric",
+  "change": "pair-tile prefill flash attention (two kv tiles per round; halved sync/reduction overhead) + fast __expf",
+  "baseline": {
+    "decode_seconds_b8_ctx8192_h512": 0.0909,
+    "note": "flashshort+warp-scatter build, 10-run median"
+  },
+  "measurements": {
+    "decode_seconds_b8_ctx8192_h512": [
+      0.0868,
+      0.0892,
+      0.0856,
+      0.0865,
+      0.0873,
+      0.0887,
+      0.0897,
+      0.088,
+      0.0876,
+      0.0863
+    ],
+    "median": 0.0874
+  },
+  "subwindow": {
+    "prefill_flash_us_per_call": [
+      881.8,
+      742.6
+    ]
+  },
+  "correctness": {
+    "guard": "fp32 strict parity + fp16 production gate pass",
+    "pytest": "3/3"
+  }
+}
