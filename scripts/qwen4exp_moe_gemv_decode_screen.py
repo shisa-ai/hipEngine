@@ -36,6 +36,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
 from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1 import (
     build_qwen4_exp_q5_1,
     qwen4_exp_q5_1_selected_weighted_sum_logical256_t64_bf16_bf16_out,
+    qwen4_exp_q5_1_selected_weighted_sum_warp256_bf16_bf16_out,
 )
 from hipengine.loading.gguf import GGUFReader, discover_gguf_files
 from scripts.qwen4exp_canonical_ar_bench import _git_metadata, _host_metadata
@@ -127,6 +128,8 @@ def main() -> None:
         drouting = _upload(routing, runtime, allocations)
         out_down = _alloc(hidden, np.uint16, runtime, allocations)
 
+        out_down_v2 = _alloc(hidden, np.uint16, runtime, allocations)
+
         def run_down() -> None:
             qwen4_exp_q5_1_selected_weighted_sum_logical256_t64_bf16_bf16_out(
                 dinter.ptr, dsel.ptr, dw_down.ptr, drouting.ptr, out_down.ptr,
@@ -134,13 +137,22 @@ def main() -> None:
                 library=lib51, runtime=runtime)
             runtime.device_synchronize()
 
+        def run_down_v2() -> None:
+            qwen4_exp_q5_1_selected_weighted_sum_warp256_bf16_bf16_out(
+                dinter.ptr, dsel.ptr, dw_down.ptr, drouting.ptr, out_down_v2.ptr,
+                top_k, experts, ffn, hidden,
+                library=lib51, runtime=runtime)
+            runtime.device_synchronize()
+
         # reference outputs + timing
         for name, fn, bytes_moved, out_ptr, out_shape in (
             ("gate_up_dp4a", run_gate_up,
-             top_k * 2 * ffn * hidden * 18 / 256.0, out_gu.ptr,
+             top_k * 2 * ffn * hidden * 144 / 256.0, out_gu.ptr,
              (top_k, ffn)),
             ("down_wsum", run_down,
-             top_k * hidden * ffn * 22 / 32.0, out_down.ptr, (hidden,)),
+             top_k * hidden * ffn * 24 / 32.0, out_down.ptr, (hidden,)),
+            ("down_warp256", run_down_v2,
+             top_k * hidden * ffn * 24 / 32.0, out_down_v2.ptr, (hidden,)),
         ):
             fn()
             ref = _download(_Buf(out_ptr), out_shape, np.float32, runtime)
@@ -158,6 +170,12 @@ def main() -> None:
                 "ref_sha256": hashlib.sha256(
                     ref.astype(np.uint16).tobytes()).hexdigest()[:16],
             }
+            if name == "down_warp256":
+                inc = _download(_Buf(out_down.ptr), (hidden,), np.float32, runtime)
+                cand = _download(_Buf(out_down_v2.ptr), (hidden,), np.float32, runtime)
+                diff = np.abs(cand - inc)
+                case["drift_abs_max"] = float(diff.max())
+                case["drift_abs_p999"] = float(np.quantile(diff, 0.999))
             report["cases"].append(case)
             print(
                 f"{name:14s} {med:8.1f} us  {bytes_moved/1e6:5.2f} MB  "
