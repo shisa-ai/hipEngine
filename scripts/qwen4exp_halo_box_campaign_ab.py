@@ -123,7 +123,8 @@ def measurement_sequence(case_index: int, repetitions: int) -> tuple[str, ...]:
 
 
 def summarize_campaign_ab(
-    samples: Sequence[Mapping[str, Any]], *, repetitions_per_mode: int
+    samples: Sequence[Mapping[str, Any]], *, repetitions_per_mode: int,
+    allow_cross_mode_drift: bool = False,
 ) -> dict[str, Any]:
     """Validate the balanced A/B packet and summarize complete timing walls."""
 
@@ -174,11 +175,10 @@ def summarize_campaign_ab(
         }
     if not within_mode_deterministic:
         raise ValueError("within-mode output mismatch in campaign A/B")
-    if mismatches:
+    if mismatches and not allow_cross_mode_drift:
         raise ValueError(
             "cross-mode output mismatch in campaign A/B: " + ", ".join(mismatches)
         )
-
     by_shape: dict[int, list[Mapping[str, Any]]] = defaultdict(list)
     by_category: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
     by_mode: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
@@ -198,9 +198,9 @@ def summarize_campaign_ab(
 
     result = {
         "correctness": {
-            "within_mode_deterministic": True if expected>1 else None,
-            "cross_mode_output_exact": True,
-            "mismatched_case_ids": [],
+            "within_mode_deterministic": True if expected > 1 else None,
+            "cross_mode_output_exact": not mismatches,
+            "mismatched_case_ids": mismatches,
         },
         "by_case": case_summary,
         "by_shape": {
@@ -423,6 +423,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--prefill-chunk-size", type=int, default=512)
     parser.add_argument("--warmups-per-mode", type=int, default=1)
     parser.add_argument("--repetitions-per-mode", type=int, default=3)
+    parser.add_argument("--allow-cross-mode-drift", action="store_true",
+                        help="non-exact route packages: record cross-mode "
+                             "output drift instead of failing the protocol "
+                             "(within-mode determinism still required)")
     parser.add_argument("--screen-only", action="store_true",
                         help="Permit one pair/case; diagnostic only, no promotion evidence")
     parser.add_argument("--staged-screen",action="store_true",
@@ -1071,6 +1075,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             artifact["summary"] = summarize_campaign_ab(
                 artifact["samples"],
                 repetitions_per_mode=measured_repetitions,
+                allow_cross_mode_drift=args.allow_cross_mode_drift,
             )
         except ValueError as error:
             artifact["status"] = "failed_correctness_or_protocol"
