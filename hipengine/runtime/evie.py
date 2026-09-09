@@ -305,6 +305,29 @@ class EvieRunner:
         copy_host_to_device(buf, host_array_ptr(host), nbytes)
         return buf.ptr
 
+    def _scores16_scratch(self, rows: int, heads: int) -> tuple[DeviceBuffer, int]:
+        """f16 scores buffer plus the per-head element stride (256B aligned)."""
+
+        stride = (rows * rows + 127) & ~127
+        key = ("scores16", rows, heads)
+        if not hasattr(self, "_scores_bufs"):
+            self._scores_bufs: dict[Any, DeviceBuffer] = {}
+        if key not in self._scores_bufs:
+            self._scores_bufs[key] = _malloc_committed(
+                heads * stride * 2 + _GEMM_PAD_BYTES
+            )
+        return self._scores_bufs[key], stride
+
+    def _plane16_scratch(self, key: str, n: int) -> DeviceBuffer:
+        """f16 staging plane for attention inputs/outputs."""
+
+        k = ("plane16", key, n)
+        if not hasattr(self, "_plane16_bufs"):
+            self._plane16_bufs: dict[Any, DeviceBuffer] = {}
+        if k not in self._plane16_bufs:
+            self._plane16_bufs[k] = _malloc_committed(n * 2 + _GEMM_PAD_BYTES)
+        return self._plane16_bufs[k]
+
     def _scores_scratch(self, rows: int, heads: int = 1) -> tuple[DeviceBuffer, int]:
         """Scores buffer plus the per-head element stride (16-byte aligned)."""
 
@@ -593,8 +616,76 @@ class EvieRunner:
         Both GEMMs are rocBLAS strided-batched SGEMMs over the packed qkv
         layout (row stride 3*hidden, per-head stride head_dim); the AV
         product writes straight into the packed (tokens, heads*head_dim)
-        output, so no per-head gathers or scatters are needed.
+        output, so no per-head gathers or scatters are needed. In fp16 mode
+        the attention runs f16 GEMMs over per-head-contiguous planes (the
+        batched-ex kernels need 256-byte-aligned batch pointers) with an
+        f16 scale+softmax kernel and an f32 scatter at the end.
         """
+
+        if self.precision == "fp16":
+            # per-head plane stride, padded to keep every batch pointer
+            # 256-byte aligned for gemm_strided_batched_ex
+            plane = (tokens * head_dim + 127) & ~127
+            qkv16 = self._plane16_scratch("packed", 3 * heads * plane)
+            err = self._k(
+                "hipengine_evie_gather_qkv_f16", [_P, _P, _I, _I, _I, _I, _I, _S]
+            )(
+                _P(q_ptr), _P(qkv16.ptr), _I(tokens), _I(row_stride),
+                _I(heads), _I(head_dim), _I(plane), _S(0),
+            )
+            self._check(err, "gather qkv f16")
+            scores16, head_stride = self._scores16_scratch(tokens, heads)
+            self.rocblas.gemm_ex_strided_batched_f16_f32acc(
+                qkv16.ptr + heads * plane * 2,  # k plane
+                qkv16.ptr,                       # q plane
+                scores16.ptr,
+                m=tokens,
+                n=tokens,
+                k=head_dim,
+                lda=head_dim,
+                ldb=head_dim,
+                ldc=tokens,
+                stride_a=plane,
+                stride_b=plane,
+                stride_c=head_stride,
+                batch=heads,
+                trans_a=True,
+                trans_b=False,
+            )
+            err = self._k(
+                "hipengine_evie_scale_softmax_rows_f16",
+                [_P, _F, _I, _I, _I, _I, _S],
+            )(
+                _P(scores16.ptr), _F(scale), _I(heads * tokens), _I(tokens),
+                _I(tokens), _I(head_stride), _S(0),
+            )
+            self._check(err, "softmax f16")
+            out16 = self._plane16_scratch("out", heads * plane)
+            self.rocblas.gemm_ex_strided_batched_f16_f32acc(
+                qkv16.ptr + 2 * heads * plane * 2,  # v plane
+                scores16.ptr,
+                out16.ptr,
+                m=head_dim,
+                n=tokens,
+                k=tokens,
+                lda=head_dim,
+                ldb=tokens,
+                ldc=head_dim,
+                stride_a=plane,
+                stride_b=head_stride,
+                stride_c=plane,
+                batch=heads,
+                trans_a=False,
+                trans_b=False,
+            )
+            err = self._k(
+                "hipengine_evie_scatter_heads_f16", [_P, _P, _I, _I, _I, _I, _S]
+            )(
+                _P(out16.ptr), _P(out_ptr), _I(tokens), _I(heads),
+                _I(head_dim), _I(plane), _S(0),
+            )
+            self._check(err, "scatter out f32")
+            return
 
         scores, head_stride = self._scores_scratch(tokens, heads)
         # scores[h] = q_h @ k_h^T  -> row-major (tokens, tokens) per head
