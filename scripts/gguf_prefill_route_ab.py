@@ -49,6 +49,10 @@ def main() -> int:
                     help="KV storage policy: bf16 or int8_per_token_head")
     ap.add_argument("--kv-scale-dtype", default="fp32")
     ap.add_argument("--arms", default="scalar_bulk,packed_slot_local")
+    ap.add_argument("--use-wmma-prefill", action="store_true", default=True)
+    ap.add_argument("--no-wmma-prefill", dest="use_wmma_prefill", action="store_false")
+    ap.add_argument("--use-gemv-decode", action="store_true", default=True)
+    ap.add_argument("--no-gemv-decode", dest="use_gemv_decode", action="store_false")
     ap.add_argument("--json", type=Path, default=None)
     args = ap.parse_args()
 
@@ -72,6 +76,8 @@ def main() -> int:
         "max_sequence_length": int(args.max_sequence_length),
         "kv_storage": str(args.kv_storage),
         "kv_scale_dtype": str(args.kv_scale_dtype),
+        "use_wmma_prefill": bool(args.use_wmma_prefill),
+        "use_gemv_decode": bool(args.use_gemv_decode),
         "decode_tokens": int(args.decode_tokens),
         "env": {k: os.environ.get(k) for k in (
             "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG",
@@ -88,6 +94,12 @@ def main() -> int:
             kv_policy=policy.create_policy(),
             kv_scale_dtype=str(args.kv_scale_dtype),
             kv_scale_granularity=str(policy.scale_granularity),
+            # Match the shipping serving owner's low-level selectors. Without
+            # these the session runs a non-shipping default (WMMA prefill off,
+            # see hipengine/runtime/gguf_linear.py) and absolute rates are ~6x
+            # below the real route, which invalidates any rate attribution.
+            use_wmma_prefill=bool(args.use_wmma_prefill),
+            use_gemv_decode=bool(args.use_gemv_decode),
         ) as session:
             t0 = time.perf_counter()
             if arm == "scalar_bulk":
