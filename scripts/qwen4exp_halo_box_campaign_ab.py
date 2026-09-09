@@ -583,13 +583,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         from hipengine.kernels.registry import KernelKey, register, resolve
         row4_key = KernelKey("hip_gfx1151", "linear", "gguf_q8_0",
                              "selected_grouped_wmma_prefill_bf16_bf16_out")
-        original_row4 = resolve(
+        q8_wmma_original = resolve(
             backend=row4_key.backend, layer=row4_key.layer,
             quant=row4_key.quant, variant=row4_key.variant)
 
         def counted_q8_wmma_down(*call_args, **call_kwargs):
             row4_calls[0] += 1
-            return original_row4(*call_args, **call_kwargs)
+            return q8_wmma_original(*call_args, **call_kwargs)
 
         register(row4_key, counted_q8_wmma_down, replace=True)
         artifact["arms"] = {
