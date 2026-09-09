@@ -155,7 +155,21 @@ class EvieRunner:
         for buf in self._misc_buffers:
             hip_free(buf)
         self._misc_buffers.clear()
-        self._rope_cache.clear()  # buffers owned by _misc_buffers
+        self._zero_conv_state = None
+        self._rope_cache.clear()
+
+    def _release_call_buffers(self) -> None:
+        """Free per-call scratch; keep persistent state alive."""
+
+        keep = {self._zero_conv_state.ptr} if self._zero_conv_state is not None else set()
+        for cos_buf, sin_buf in self._rope_cache.values():
+            keep.update((cos_buf.ptr, sin_buf.ptr))
+        for buf in self._misc_buffers:
+            if buf.ptr not in keep:
+                hip_free(buf)
+        self._misc_buffers = [
+            buf for buf in self._misc_buffers if buf.ptr in keep
+        ]
 
     # -- low-level helpers -----------------------------------------------------
 
@@ -890,7 +904,9 @@ class EvieRunner:
         scratch = self._scratch_for(len(ids))
         hidden_ptr = self.text_forward(ids, positions, scratch)
         emb_ptr = self.project(hidden_ptr, len(ids), scratch)
-        return self._to_host(emb_ptr, len(ids) * 128).reshape(len(ids), 128)
+        emb = self._to_host(emb_ptr, len(ids) * 128).reshape(len(ids), 128)
+        self._release_call_buffers()
+        return emb
 
     def encode_document(
         self,
@@ -915,7 +931,9 @@ class EvieRunner:
         positions = lm_rope_positions(ids, attention_mask.reshape(-1), grid, spec)
         hidden_ptr = self.text_forward(ids, positions, scratch, visual_ptr=visual.ptr)
         emb_ptr = self.project(hidden_ptr, len(ids), scratch)
-        return self._to_host(emb_ptr, len(ids) * 128).reshape(len(ids), 128)
+        emb = self._to_host(emb_ptr, len(ids) * 128).reshape(len(ids), 128)
+        self._release_call_buffers()
+        return emb
 
 
 def maxsim(query: np.ndarray, doc: np.ndarray) -> float:

@@ -75,7 +75,7 @@ def _preprocess_page(
         .transpose(2, 4, 0, 1, 3, 5)  # (ph, pw, 3, 2, 16, 16)
         .reshape(-1, 3 * 2 * 16 * 16)
     )
-    return np.ascontiguousarray(patches), np.array([[1, H, W]], dtype=np.int64)
+    return np.ascontiguousarray(patches), np.array([[1, H // 16, W // 16]], dtype=np.int64)
 
 
 def main() -> None:
