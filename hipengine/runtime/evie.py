@@ -191,8 +191,32 @@ class EvieRunner:
         return _fn(self.library, symbol, argtypes)
 
     def _gemm32(self, x_ptr: int, w_ptr: int, out_ptr: int, rows: int, fin: int, fout: int) -> None:
-        self.rocblas.sgemm_rowmajor_nt(
-            x_ptr, w_ptr, out_ptr, rows=rows, in_features=fin, out_features=fout
+        """GDN projection GEMM.
+
+        In fp16 mode this runs FP16 inputs with an FP32 output: the f32-out
+        epilogue is required because f16 rounding of the in_proj outputs
+        drifts the gated-delta-net recurrence (verified: f16-out collapses
+        query cosine to 0.015; f32-out keeps 0.9999995). In fp32 mode this
+        is the plain strict SGEMM.
+        """
+
+        if self.precision != "fp16":
+            self.rocblas.sgemm_rowmajor_nt(
+                x_ptr, w_ptr, out_ptr, rows=rows, in_features=fin, out_features=fout
+            )
+            return
+        n = rows * fin
+        if self._cast16_scratch is None or self._cast16_scratch.nbytes < n * 2 + _GEMM_PAD_BYTES:
+            if self._cast16_scratch is not None:
+                hip_free(self._cast16_scratch)
+            self._cast16_scratch = _malloc_committed(n * 2 + _GEMM_PAD_BYTES)
+        err = self._k("hipengine_evie_cast_f32_to_f16", [_P, _P, _I, _S])(
+            _P(x_ptr), _P(self._cast16_scratch.ptr), _I(n), _S(0)
+        )
+        self._check(err, "cast f32->f16")
+        self.rocblas.gemm_ex_rowmajor_nt_fp16_f32_out(
+            self._cast16_scratch.ptr, w_ptr, out_ptr,
+            rows=rows, in_features=fin, out_features=fout,
         )
 
     def _gemm(self, x_ptr: int, w_ptr: int, out_ptr: int, rows: int, fin: int, fout: int) -> None:
