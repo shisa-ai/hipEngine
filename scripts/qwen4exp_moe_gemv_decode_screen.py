@@ -32,6 +32,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     build_gguf_q4_k_gemv,
     gguf_q4_k_quantize_bf16_q8_1,
     gguf_q4_k_selected_dual_q8_1_dp4a_silu_logical128_t64_gemv_bf16_bf16_out,
+    gguf_q4_k_selected_dual_q8_1_dp4a_silu_warp256_gemv_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1 import (
     build_qwen4_exp_q5_1,
@@ -109,11 +110,22 @@ def main() -> None:
         dq8 = _alloc(4096 * 64, np.uint8, runtime, allocations)  # q8_1 blocks
         out_gu = _alloc(top_k * ffn, np.uint16, runtime, allocations)
 
+        out_gu_v2 = _alloc(top_k * ffn, np.uint16, runtime, allocations)
+
         def run_gate_up() -> None:
             gguf_q4_k_quantize_bf16_q8_1(
                 dx.ptr, dq8.ptr, 1, hidden, library=lib4, runtime=runtime)
             gguf_q4_k_selected_dual_q8_1_dp4a_silu_logical128_t64_gemv_bf16_bf16_out(
                 dq8.ptr, dsel.ptr, dw_gate.ptr, dw_up.ptr, out_gu.ptr,
+                1, top_k, experts, hidden, ffn,
+                library=lib4, runtime=runtime)
+            runtime.device_synchronize()
+
+        def run_gate_up_v2() -> None:
+            gguf_q4_k_quantize_bf16_q8_1(
+                dx.ptr, dq8.ptr, 1, hidden, library=lib4, runtime=runtime)
+            gguf_q4_k_selected_dual_q8_1_dp4a_silu_warp256_gemv_bf16_bf16_out(
+                dq8.ptr, dsel.ptr, dw_gate.ptr, dw_up.ptr, out_gu_v2.ptr,
                 1, top_k, experts, hidden, ffn,
                 library=lib4, runtime=runtime)
             runtime.device_synchronize()
@@ -153,9 +165,12 @@ def main() -> None:
              top_k * hidden * ffn * 24 / 32.0, out_down.ptr, (hidden,)),
             ("down_warp256", run_down_v2,
              top_k * hidden * ffn * 24 / 32.0, out_down_v2.ptr, (hidden,)),
+            ("gate_up_warp256", run_gate_up_v2,
+             top_k * 2 * ffn * hidden * 144 / 256.0, out_gu_v2.ptr,
+             (top_k, ffn)),
         ):
             fn()
-            ref = _download(_Buf(out_ptr), out_shape, np.float32, runtime)
+            ref = _download(_Buf(out_ptr, int(np.prod(out_shape)) * 2), out_shape, np.uint16, runtime)
             times = []
             for pair in range(a.pairs):
                 t0 = time.perf_counter()
@@ -168,11 +183,17 @@ def main() -> None:
                 "weight_bytes": bytes_moved,
                 "achieved_bandwidth_gbs": bytes_moved / med / 1e3,
                 "ref_sha256": hashlib.sha256(
-                    ref.astype(np.uint16).tobytes()).hexdigest()[:16],
+                    ref.tobytes()).hexdigest()[:16],
             }
             if name == "down_warp256":
-                inc = _download(_Buf(out_down.ptr), (hidden,), np.float32, runtime)
-                cand = _download(_Buf(out_down_v2.ptr), (hidden,), np.float32, runtime)
+                inc = _bf16_to_f32(_download(_Buf(out_down.ptr, hidden * 2), (hidden,), np.uint16, runtime))
+                cand = _bf16_to_f32(_download(_Buf(out_down_v2.ptr, hidden * 2), (hidden,), np.uint16, runtime))
+                diff = np.abs(cand - inc)
+                case["drift_abs_max"] = float(diff.max())
+                case["drift_abs_p999"] = float(np.quantile(diff, 0.999))
+            if name == "gate_up_warp256":
+                inc = _bf16_to_f32(_download(_Buf(out_gu.ptr, top_k * ffn * 2), (top_k * ffn,), np.uint16, runtime))
+                cand = _bf16_to_f32(_download(_Buf(out_gu_v2.ptr, top_k * ffn * 2), (top_k * ffn,), np.uint16, runtime))
                 diff = np.abs(cand - inc)
                 case["drift_abs_max"] = float(diff.max())
                 case["drift_abs_p999"] = float(np.quantile(diff, 0.999))
@@ -189,6 +210,10 @@ def main() -> None:
 
     a.output.write_text(json.dumps(report, indent=1) + "\n")
     print(f"wrote {a.output}")
+
+
+def _bf16_to_f32(bits: np.ndarray) -> np.ndarray:
+    return (bits.astype(np.uint32) << 16).view(np.float32)
 
 
 class _Buf:
