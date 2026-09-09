@@ -361,6 +361,12 @@ __global__ void gguf_iq_prefill_wmma_coop_kernel(
       s_cb[i] = float(iq4_values[nib]);
     }
     __syncthreads();
+  } else if constexpr (Q == 1) {
+    // IQ4_NL: the same divergent __constant__ iq4_values[code] access;
+    // a plain 16-entry LDS copy.
+    for (int i = threadIdx.x; i < 16; i += THREADS)
+      s_cb[i] = float(iq4_values[i]);
+    __syncthreads();
   }
 
   const int out_start = static_cast<int>(blockIdx.x) * OUT_COLS;
@@ -427,6 +433,24 @@ __global__ void gguf_iq_prefill_wmma_coop_kernel(
         for (int kk = 0; kk < 32; ++kk) {
           slab_hi[dec_col][dec_k0 + s * 32 + kk] = static_cast<half_t>(
               ds * s_cb[((kk >> 4) << 8) + codes[kk & 15]]);
+        }
+      }
+    } else if constexpr (Q == 1) {
+      // IQ4_NL fast path: dec_k0 is 32-aligned and BLOCK_ELEMS == 32, so
+      // each 32-element sub-segment spans exactly one 18-byte block with
+      // one shared fp16 d. The generic form re-loads d per element.
+      static_assert(BLOCK_BYTES == 18 && BLOCK_ELEMS == 32);
+#pragma unroll
+      for (int s = 0; s < SEG / 32; ++s) {
+        const uint8_t* block =
+            dec_row + int64_t((k_blk + dec_k0) >> 5) * BLOCK_BYTES +
+            int64_t(s) * BLOCK_BYTES;
+        const float d = fp16_bytes_to_float(block);
+#pragma unroll
+        for (int kk = 0; kk < 32; ++kk) {
+          const int code = (block[2 + (kk & 15)] >> (4 * (kk >> 4))) & 15;
+          slab_hi[dec_col][dec_k0 + s * 32 + kk] =
+              static_cast<half_t>(d * s_cb[code]);
         }
       }
     } else {
