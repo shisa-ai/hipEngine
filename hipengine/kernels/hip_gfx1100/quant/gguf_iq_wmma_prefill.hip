@@ -303,6 +303,217 @@ int launch_iq_wmma_prefill(const void* x, const void* w, void* out,
   return int(hipGetLastError());
 }
 
+// Cooperative shared-LDS multi-wave W4A16 prefill (2026-09-10 review
+// follow-up): one 256-thread block owns 32 output columns x 256 activation
+// rows; all eight waves decode the 32x256-K weight slab into LDS once per
+// K-block, then consume it with the one-wave owner's exact K16 WMMA
+// association. The one-wave owner re-decodes the same column slab once per
+// 64-row tile - at 512 rows that is 8x redundant decode, and the IQ element
+// decode (codebook lookups, per-32 scales) is expensive enough to dominate.
+// The per-element arithmetic is identical (the same iq_weight<Q> value, the
+// same fp16 rounding incl. the hi+lo split path) and the k-tile sequence per
+// output is unchanged, so the kernel is bit-exact with the one-wave owner.
+template <int Q, typename scalar_t, typename out_t,
+          int OUT_TILES_PER_BLOCK = 2, int ROW_TILES_PER_WAVE = 2,
+          int WAVES_PER_BLOCK = 8>
+__launch_bounds__(WAVES_PER_BLOCK * 32, 1)
+__global__ void gguf_iq_prefill_wmma_coop_kernel(
+    const scalar_t* __restrict__ x,
+    const uint8_t* __restrict__ qweight,
+    out_t* __restrict__ out,
+    int rows,
+    int in_features,
+    int out_features) {
+  constexpr int TM = OUT_TILES_PER_BLOCK;
+  constexpr int TN = ROW_TILES_PER_WAVE;
+  constexpr int BLOCK_BYTES = iq_block_bytes<Q>();
+  constexpr int BLOCK_ELEMS = iq_block_elements<Q>();
+  constexpr int OUT_COLS = TM * 16;
+  constexpr int ROWS_PER_WAVE = TN * 16;
+  constexpr int ROWS_PER_BLOCK = WAVES_PER_BLOCK * ROWS_PER_WAVE;
+  static_assert(OUT_COLS == 32, "the decode mapping assumes 32 columns");
+
+  // +16 halves of padding makes the column stride 272 halves = 544 B:
+  // 17 x 32 B, so every row stays 32 B aligned for the half16 vector
+  // loads in the WMMA phase (one LDS vector per b fragment instead of
+  // sixteen 2 B scalars).
+  constexpr int SLAB_STRIDE = QK_K + 16;
+  __shared__ __align__(1024) half_t slab_hi[OUT_COLS][SLAB_STRIDE];
+  __shared__ __align__(1024) half_t slab_lo[OUT_COLS][SLAB_STRIDE];
+  // IQ4_XS fused codebook LUT (the strict decode kernel's trick): the
+  // per-element __constant__ iq4_values[code] load is a divergent scalar
+  // access that costs ~24% of a decode-bound kernel. s_cb[byte] is the low
+  // nibble's codebook value, s_cb[256 + byte] the high one, fusing the
+  // nibble extract and the codebook into one LDS read. Values are
+  // entry-for-entry iq4_values.
+  __shared__ float s_cb[512];
+  if constexpr (Q == 0) {
+    for (int i = threadIdx.x; i < 512; i += WAVES_PER_BLOCK * 32) {
+      const int byte = i & 255;
+      const int nib = i >= 256 ? (byte >> 4) : (byte & 15);
+      s_cb[i] = float(iq4_values[nib]);
+    }
+    __syncthreads();
+  }
+
+  const int out_start = static_cast<int>(blockIdx.x) * OUT_COLS;
+  const int row_start = static_cast<int>(blockIdx.y) * ROWS_PER_BLOCK;
+  const int tid = threadIdx.x;
+  const int wave = tid >> 5;
+  const int lane16 = tid & 15;
+  const int half_id = (tid & 31) >> 4;
+  constexpr bool SPLIT_LO = (Q == 3 || Q == 5 || Q == 6);
+  const int64_t blocks_per_row = in_features / BLOCK_ELEMS;
+  const int64_t row_bytes = int64_t(blocks_per_row) * BLOCK_BYTES;
+
+  int safe_out[TM];
+#pragma unroll
+  for (int tm = 0; tm < TM; ++tm) {
+    const int col = out_start + tm * 16 + lane16;
+    safe_out[tm] = col < out_features ? col : out_features - 1;
+  }
+  int safe_token[TN];
+#pragma unroll
+  for (int tn = 0; tn < TN; ++tn) {
+    const int row = row_start + wave * ROWS_PER_WAVE + tn * 16 + lane16;
+    safe_token[tn] = row < rows ? row : rows - 1;
+  }
+
+  float8_t acc[TM][TN];
+#pragma unroll
+  for (int tm = 0; tm < TM; ++tm)
+#pragma unroll
+    for (int tn = 0; tn < TN; ++tn)
+      acc[tm][tn] = float8_t{0, 0, 0, 0, 0, 0, 0, 0};
+
+  // Decode mapping: 256 threads, one column each (col = tid >> 3), each
+  // owning 32 contiguous K values of the 256-wide slab.
+  const int dec_col = tid >> 3;
+  const int dec_k0 = (tid & 7) * 32;
+  const uint8_t* dec_row =
+      qweight + int64_t(out_start + dec_col < out_features
+                             ? out_start + dec_col
+                             : out_features - 1) * row_bytes;
+
+  for (int64_t blk = 0; blk < blocks_per_row * BLOCK_ELEMS / QK_K; ++blk) {
+    const int64_t k_blk = int64_t(blk) * QK_K;
+    const bool wave_active = row_start + wave * ROWS_PER_WAVE < rows;
+    if constexpr (Q == 0) {
+      // IQ4_XS column-owner fast path: dec_k0 is 32-aligned and k_blk is
+      // 256-aligned, so this thread's 32 elements span exactly one scale
+      // group g of one 136-byte block. The generic iq_weight path cannot
+      // prove that invariant (dec_k0 is a runtime value), so its per-element
+      // form re-loads d, the hi word and the scale byte 32 times.
+      static_assert(BLOCK_BYTES == 136 && BLOCK_ELEMS == 256);
+      const int g = dec_k0 >> 5;
+      const uint8_t* block =
+          dec_row + ((k_blk + dec_k0) >> 8) * BLOCK_BYTES;
+      const float d = fp16_bytes_to_float(block);
+      const int hi_word = int(block[2]) | (int(block[3]) << 8);
+      const int scale =
+          (((block[4 + g / 2] >> (4 * (g & 1))) & 15) |
+           (((hi_word >> (2 * g)) & 3) << 4)) - 32;
+      const float ds = d * float(scale);
+      const uint8_t* codes = block + 8 + g * 16;
+#pragma unroll
+      for (int kk = 0; kk < 32; ++kk) {
+        slab_hi[dec_col][dec_k0 + kk] = static_cast<half_t>(
+            ds * s_cb[((kk >> 4) << 8) + codes[kk & 15]]);
+      }
+    } else {
+#pragma unroll
+      for (int kk = 0; kk < 32; ++kk) {
+        const int k = dec_k0 + kk;
+        const uint8_t* block =
+            dec_row + int64_t((k_blk + k) / BLOCK_ELEMS) * BLOCK_BYTES;
+        const float wv = iq_weight<Q>(block, (k_blk + k) % BLOCK_ELEMS);
+        const half_t hi = static_cast<half_t>(wv);
+        slab_hi[dec_col][k] = hi;
+        if constexpr (SPLIT_LO)
+          slab_lo[dec_col][k] =
+              static_cast<half_t>(wv - static_cast<float>(hi));
+      }
+    }
+    __syncthreads();
+
+    const int64_t block_k_base = k_blk;
+    if (wave_active) {
+#pragma unroll 1
+    for (int kt = 0; kt < QK_K / K_TILE; ++kt) {
+      const int k_off = kt * K_TILE;
+      half16_t a_reg[TN];
+#pragma unroll
+      for (int tn = 0; tn < TN; ++tn) {
+        const int64_t input_row =
+            row_start + wave * ROWS_PER_WAVE + tn * 16 + lane16;
+        const bool valid_row = input_row < rows;
+        a_reg[tn] = load_act_half16<scalar_t>(
+            x + int64_t(valid_row ? input_row : 0) * in_features +
+                block_k_base + k_off);
+        if (!valid_row) a_reg[tn] = half16_t{};
+      }
+#pragma unroll
+      for (int tm = 0; tm < TM; ++tm) {
+        const half16_t b_reg =
+            *reinterpret_cast<const half16_t*>(
+                &slab_hi[tm * 16 + lane16][k_off]);
+#pragma unroll
+        for (int tn = 0; tn < TN; ++tn)
+          acc[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
+              a_reg[tn], b_reg, acc[tm][tn]);
+        if constexpr (SPLIT_LO) {
+          const half16_t b_lo =
+              *reinterpret_cast<const half16_t*>(
+                  &slab_lo[tm * 16 + lane16][k_off]);
+#pragma unroll
+          for (int tn = 0; tn < TN; ++tn)
+            acc[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
+                a_reg[tn], b_lo, acc[tm][tn]);
+        }
+      }
+    }
+    }  // wave_active
+    __syncthreads();
+  }
+
+#pragma unroll
+  for (int tm = 0; tm < TM; ++tm) {
+    const int col = out_start + tm * 16 + lane16;
+    if (col >= out_features) continue;
+#pragma unroll
+    for (int tn = 0; tn < TN; ++tn)
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        // Q5-family fragment convention: this kernel passes
+        // wmma(activations, weights), so the C fragment maps
+        // col <- lane16 and row <- (half_id + 2j) - the mirror of the
+        // one-wave owner's store, which pairs with its swapped operands.
+        const int out_row =
+            row_start + wave * ROWS_PER_WAVE + tn * 16 + half_id + j * 2;
+        if (out_row < rows)
+          store_output<out_t>(out, int64_t(out_row) * out_features + col,
+                              float(acc[tm][tn][j]));
+      }
+  }
+}
+
+template <int Q>
+int launch_iq_wmma_prefill_coop(const void* x, const void* w, void* out,
+                                int rows, int in_features, int out_features,
+                                hipStream_t stream) {
+  if (!x || !w || !out || rows <= 0 || in_features <= 0 || out_features <= 0)
+    return int(hipErrorInvalidValue);
+  if (in_features % iq_block_elements<Q>()) return int(hipErrorInvalidValue);
+  if (in_features % QK_K) return int(hipErrorInvalidValue);
+  dim3 grid((out_features + 31) / 32, (rows + 255) / 256);
+  hipLaunchKernelGGL(
+      (gguf_iq_prefill_wmma_coop_kernel<Q, uint16_t, uint16_t, 2, 2, 8>),
+      grid, dim3(256), 0, stream,
+      static_cast<const uint16_t*>(x), static_cast<const uint8_t*>(w),
+      static_cast<uint16_t*>(out), rows, in_features, out_features);
+  return int(hipGetLastError());
+}
+
 }  // namespace
 
 extern "C" int hipengine_gguf_iq_wmma_prefill_bf16_bf16_out(
@@ -318,6 +529,23 @@ extern "C" int hipengine_gguf_iq_wmma_prefill_bf16_bf16_out(
     case 4: return launch_iq_wmma_prefill<4>(x, w, out, r, k, n, (hipStream_t)stream);
     case 5: return launch_iq_wmma_prefill<5>(x, w, out, r, k, n, (hipStream_t)stream);
     case 6: return launch_iq_wmma_prefill<6>(x, w, out, r, k, n, (hipStream_t)stream);
+    default: return int(hipErrorInvalidValue);
+  }
+}
+
+extern "C" int hipengine_gguf_iq_wmma_prefill_coop_bf16_bf16_out(
+    const void* x, const void* w, void* out,
+    int64_t rows, int64_t in_features, int64_t out_features,
+    int quant, void* stream) {
+  const int r = int(rows), k = int(in_features), n = int(out_features);
+  switch (quant) {
+    case 0: return launch_iq_wmma_prefill_coop<0>(x, w, out, r, k, n, (hipStream_t)stream);
+    case 1: return launch_iq_wmma_prefill_coop<1>(x, w, out, r, k, n, (hipStream_t)stream);
+    case 2: return launch_iq_wmma_prefill_coop<2>(x, w, out, r, k, n, (hipStream_t)stream);
+    case 3: return launch_iq_wmma_prefill_coop<3>(x, w, out, r, k, n, (hipStream_t)stream);
+    case 4: return launch_iq_wmma_prefill_coop<4>(x, w, out, r, k, n, (hipStream_t)stream);
+    case 5: return launch_iq_wmma_prefill_coop<5>(x, w, out, r, k, n, (hipStream_t)stream);
+    case 6: return launch_iq_wmma_prefill_coop<6>(x, w, out, r, k, n, (hipStream_t)stream);
     default: return int(hipErrorInvalidValue);
   }
 }

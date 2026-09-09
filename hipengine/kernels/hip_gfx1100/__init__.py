@@ -1080,6 +1080,19 @@ GGUF_F32_ORDERED_PREFILL_POLICIES = {
 # the originally routed four keep the single-pass path). Enabling Q3_K is
 # worth ~+14% prefill on the K_M artifact.
 _IQ_DENSE_W4A16_VARIANT = "dense_wmma_w4a16_prefill_bf16_bf16_out"
+# Cooperative shared-LDS W4A16 owner (2026-09-10, XTX): one 256-thread
+# block owns 32 output columns x 256 rows and decodes the weight slab into
+# LDS once per K-block instead of once per 64-row tile, with a fused
+# LDS codebook for the IQ4_XS nibble-to-value step. Bit-exact with the
+# one-wave owner on every real tensor shape at rows 8..2048 (the
+# per-element arithmetic and the K16 WMMA association are unchanged);
+# measured 1.5-2.1x the one-wave owner at 128+ rows and 1.0-1.8x at 8-64
+# rows on the XTX, ~44 TFLOPS vs the one-wave 28. Routed for IQ4_XS only
+# (the census owner of 345.8ms of the 870.7ms K_M prefill wall, 39.7%);
+# the other six W4A16 quants keep the one-wave owner pending their own
+# fast decode paths (Q3_K/IQ2_S/IQ2_XS would also need the split path
+# ported to the cooperative epilogue).
+_IQ_DENSE_W4A16_COOP_VARIANT = "dense_wmma_w4a16_prefill_coop_bf16_bf16_out"
 GGUF_IQ_DENSE_PREFILL_POLICY = {
     quant: {
         "min_rows": 8,
@@ -1089,6 +1102,7 @@ GGUF_IQ_DENSE_PREFILL_POLICY = {
     for quant in ("gguf_iq4_xs", "gguf_iq3_xxs", "gguf_iq3_s", "gguf_iq4_nl",
                  "gguf_q3_k", "gguf_iq2_s", "gguf_iq2_xs")
 }
+GGUF_IQ_DENSE_PREFILL_POLICY["gguf_iq4_xs"]["variant"] = _IQ_DENSE_W4A16_COOP_VARIANT
 # Dense raw-IQ decode owner (rows=1): the local32 IQ4_XS GEMV candidate.
 # One wave per 8 output columns, each lane owning 8 contiguous K, two u32
 # payload loads per column-block and a byte-indexed fused codebook LUT -
