@@ -2,25 +2,32 @@
 """State/engagement gate for the #22 R11 MoE decode warp pair.
 
 The pair (warp256 dp4a dual + warp256 T1 Q5_1 down) is a non-exact decode
-route, so the exactness state gate does not apply byte-for-byte. This gate
-verifies the applicable contract properties instead:
+route, so the exactness state gate does not apply byte-for-byte. The MoE
+decode block runs through ``MoeGraphCache``: Python kernel wrappers are
+invoked only at capture time (twice per new key), so wrapper counting
+cannot prove per-arm engagement. This gate instruments ``MoeGraphCache.run``
+instead and verifies the applicable contract properties:
 
-- engagement: candidate arms call the warp256 dual and warp256 fast down
-  exactly once per MoE layer per decode step and never during prefill;
-  incumbent arms never call them; the exact-tree warp down variant is
-  never called in pair mode;
-- isolation: the off->on->off->on arm sequence returns identical bytes
-  for repeated same-flag arms (no cross-arm leakage);
+- engagement: every ``run()`` call in a candidate arm carries a graph key
+  with the warp route flags enabled (``1``/``fast``) and every call in an
+  incumbent arm carries them disabled (``0``/``0``); the call count equals
+  MoE-layer-count x decode-steps per arm;
+- capture bookkeeping: captures happen once per key; the exact-tree warp
+  down kernel is never invoked in fast mode (cumulative wrapper count);
+- isolation: the off->on->off->on arm sequence returns identical bytes for
+  repeated same-flag arms (graph keys embed the route flags, so each arm
+  replays its own graphs);
 - determinism: repeated candidate arms are bit-identical on full logits
-  and the full decode-state digest;
+  and the full decode-state digest (plus the cross-run probe repeat);
 - state drift: decode-state buffers stay finite and their max-abs drift
   versus the incumbent arm is recorded (bounded evidence, not asserted
-  equal - logits drift is qualified separately by the envelope probe).
+  equal - logits drift is qualified separately by the envelope probes).
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -44,6 +51,7 @@ from hipengine.generation.qwen4_exp_profiles import (
 from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
 from hipengine.loading.gguf import discover_gguf_files, load_gguf_index
 from hipengine.models import resolve_model
+from hipengine.runtime.moe_graph import MoeGraphCache
 from scripts.qwen4exp_canonical_ar_bench import (
     DEFAULT_FIXTURE, load_fixture, _git_metadata, _host_metadata,
 )
@@ -54,9 +62,12 @@ import hipengine.runtime.qwen4_exp_runner as runner_module
 FLAG = "HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP"
 FLAG_DOWN = "HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_DOWN"
 
-DUAL_WRAPPER = "gguf_q4_k_selected_dual_q8_1_dp4a_silu_warp256_gemv_bf16_bf16_out"
-DOWN_FAST_WRAPPER = "qwen4_exp_q5_1_selected_weighted_sum_warp256_fast_bf16_bf16_out"
 DOWN_EXACT_WRAPPER = "qwen4_exp_q5_1_selected_weighted_sum_warp256_bf16_bf16_out"
+
+# graph key layout at both call sites:
+# (route, layer, Q4_DP4A64, Q4_DP4A64_LAYERS, MOE_DECODE_WARP, ...DOWN)
+KEY_WARP_INDEX = 4
+KEY_WARP_DOWN_INDEX = 5
 
 
 def _drift_stats(incumbent: dict, candidate: dict) -> dict:
@@ -104,19 +115,33 @@ def main() -> None:
         backend=QWEN4_EXP_BACKEND, max_sequence_length=4352,
         prefill_chunk_size=1024))
 
-    counters = {"dual": 0, "down_fast": 0, "down_exact": 0}
-    call_log: dict[str, list] = {"dual": [], "down_fast": [], "down_exact": []}
-    originals = {}
+    # instrument the graph cache (primary per-arm engagement signal)
+    graph_events: list[dict] = []
+    original_run = MoeGraphCache.run
 
-    for key, wrapper_name in (
-        ("dual", DUAL_WRAPPER),
-        ("down_fast", DOWN_FAST_WRAPPER),
-        ("down_exact", DOWN_EXACT_WRAPPER),
-    ):
-        original = getattr(runner_module, wrapper_name)
-        originals[key] = original
-        setattr(runner_module, wrapper_name,
-                _make_counter(counters, key, original, call_log))
+    def counting_run(self, key, *, eager, out_ptr, out_nbytes,
+                     mutable_inputs=(), stream=0, out_regions=()):
+        mode = original_run(
+            self, key, eager=eager, out_ptr=out_ptr, out_nbytes=out_nbytes,
+            mutable_inputs=mutable_inputs, stream=stream,
+            out_regions=out_regions)
+        graph_events.append({
+            "mode": mode,
+            "key": [str(k) for k in key] if isinstance(key, tuple) else [str(key)],
+        })
+        return mode
+
+    MoeGraphCache.run = counting_run
+
+    # cumulative wrapper guard: the exact-tree warp down must never run
+    down_exact_count = [0]
+    down_exact_original = getattr(runner_module, DOWN_EXACT_WRAPPER)
+
+    def counted_down_exact(*a, **kw):
+        down_exact_count[0] += 1
+        return down_exact_original(*a, **kw)
+
+    setattr(runner_module, DOWN_EXACT_WRAPPER, counted_down_exact)
 
     report = {
         "status": "running",
@@ -127,11 +152,12 @@ def main() -> None:
         "manifest_sha256": resolved.manifest_sha256,
         "route_package": "moe-decode-warp-pair",
         "decode_steps": args.decode_steps,
-        "scope": "engagement + isolation + same-arm determinism + state drift recording",
+        "scope": "graph-key engagement + isolation + same-arm determinism "
+                 "+ state drift recording",
         "cases": [],
     }
     try:
-        moe_layers = None
+        moe_run_calls_per_step = None
         for case in fixture["cases"]:
             if args.case_id:
                 if case["id"] not in args.case_id:
@@ -142,12 +168,9 @@ def main() -> None:
             for enabled in ("0", "1", "0", "1"):
                 os.environ[FLAG] = enabled
                 os.environ[FLAG_DOWN] = "fast" if enabled == "1" else "0"
-                for k in counters:
-                    counters[k] = 0
-                for k in call_log:
-                    call_log[k] = []
+                del graph_events[:]
                 first = generator.runner.prefill(case["prompt_token_ids"])
-                prefill_counts = dict(counters)
+                prefill_events = len(graph_events)
                 logits = first.logits.copy()
                 token = int(first.token_id)
                 step_logits = []
@@ -161,57 +184,47 @@ def main() -> None:
                     step_logits.append(next_row.logits.copy())
                 next_logits = np.stack(step_logits)
                 state = _state_summary(generator.runner)
-                total_counts = dict(counters)
-                decode_counts = {
-                    k: total_counts[k] - prefill_counts[k]
-                    for k in total_counts}
-                if enabled == "1":
-                    assert prefill_counts == {"dual": 0, "down_fast": 0,
-                                               "down_exact": 0}, (
-                        "warp pair ran during prefill", prefill_counts)
-                    assert decode_counts["down_exact"] == 0, (
-                        "exact-tree down engaged in fast pair mode")
-                    # The MoE decode block runs through MoeGraphCache: each
-                    # new graph key captures via TWO eager invocations of
-                    # the full MoE (reference + capture stream), then replays
-                    # without calling the Python wrappers. Wrapper counts
-                    # therefore measure CAPTURES, not per-step launches.
-                    # Per-step engagement is proven by the candidate arm's
-                    # logits differing from the incumbent arm (asserted
-                    # below) plus same-arm determinism. Eligibility sets
-                    # differ by design: dual covers dp4a-eligible Q4_K
-                    # gate/up layers (42 on this model), fast down covers
-                    # Q5_1-down layers (43; the five Q8_0-down layers
-                    # 2/4/30/46/47 stay on the promoted wmma route).
-                    for k in ("dual", "down_fast"):
-                        assert decode_counts[k] > 0, (k, "not captured")
-                        assert decode_counts[k] % 2 == 0, (
-                            "capture counts must be even (2 eager calls "
-                            "per captured key)", decode_counts)
-                    if moe_layers is None:
-                        moe_layers = {
-                            "dual_layers": decode_counts["dual"] // 2,
-                            "down_fast_layers": decode_counts["down_fast"] // 2,
-                        }
-                    else:
-                        assert moe_layers == {
-                            "dual_layers": decode_counts["dual"] // 2,
-                            "down_fast_layers": decode_counts["down_fast"] // 2,
-                        }, ("capture counts changed across cases",
-                            moe_layers, decode_counts)
-                else:
-                    assert total_counts == {"dual": 0, "down_fast": 0,
-                                            "down_exact": 0}, (
-                        "incumbent arm engaged the warp pair", total_counts)
                 assert state["finite"], ("non-finite state", case["id"])
+                assert prefill_events == 0, (
+                    "MoE graph ran during prefill", prefill_events)
+                decode_events = graph_events
+                if enabled == "1":
+                    for ev in decode_events:
+                        assert ev["key"][KEY_WARP_INDEX] == "1", (
+                            "candidate arm replayed a non-warp graph", ev)
+                        assert ev["key"][KEY_WARP_DOWN_INDEX] == "fast", (
+                            "candidate arm replayed a non-fast-down graph", ev)
+                else:
+                    for ev in decode_events:
+                        assert ev["key"][KEY_WARP_INDEX] == "0", (
+                            "incumbent arm replayed a warp graph", ev)
+                        assert ev["key"][KEY_WARP_DOWN_INDEX] == "0", (
+                            "incumbent arm replayed a fast-down graph", ev)
+                modes = {}
+                layers = set()
+                for ev in decode_events:
+                    modes[ev["mode"]] = modes.get(ev["mode"], 0) + 1
+                    layers.add((ev["key"][0], ev["key"][1]))
+                if enabled == "1":
+                    assert modes.get("replay", 0) + modes.get("capture", 0) + \
+                        modes.get("eager", 0) == len(decode_events)
+                    if moe_run_calls_per_step is None:
+                        assert len(decode_events) % args.decode_steps == 0
+                        moe_run_calls_per_step = (
+                            len(decode_events) // args.decode_steps)
+                    else:
+                        assert len(decode_events) == (
+                            moe_run_calls_per_step * args.decode_steps), (
+                            "graph run() count changed across cases",
+                            len(decode_events))
                 captures.append({
                     "enabled": enabled,
-                    "call_log": {k: list(v) for k, v in call_log.items()},
                     "prefill_logits_sha256": _sha(logits),
                     "step_logits_sha256": _sha(next_logits),
                     "state_sha256": state["state_sha256"],
                     "layout_sha256": state["layout_sha256"],
-                    "decode_counts": decode_counts,
+                    "graph_modes": modes,
+                    "graph_layers": len(layers),
                     "step_seconds": step_seconds,
                     "state_buffers": {
                         str(name): np.ascontiguousarray(raw)
@@ -228,14 +241,14 @@ def main() -> None:
             assert captures[1]["step_logits_sha256"] != captures[0]["step_logits_sha256"], (
                 "candidate arm byte-identical to incumbent: engagement unproven")
             drift = _drift_stats(captures[0]["state_buffers"],
-                                  captures[1]["state_buffers"])
+                                 captures[1]["state_buffers"])
             entry = {
                 "id": case["id"],
-                "captured_layers": moe_layers,
+                "graph_run_calls_per_step": moe_run_calls_per_step,
                 "incumbent_deterministic": True,
                 "candidate_deterministic": True,
-                "decode_counts_candidate": captures[1]["decode_counts"],
-                "decode_counts_incumbent": captures[0]["decode_counts"],
+                "candidate_graph_modes": captures[1]["graph_modes"],
+                "incumbent_graph_modes": captures[0]["graph_modes"],
                 "state_drift_max_abs": drift,
                 "state_drift_overall_max": max(drift.values()) if drift else 0.0,
                 "median_step_ms": float(np.median(captures[1]["step_seconds"]) * 1e3),
@@ -243,19 +256,18 @@ def main() -> None:
             report["cases"].append(entry)
             print(json.dumps({k: v for k, v in entry.items()
                               if k != "state_drift_max_abs"}), flush=True)
-        report["moe_layers"] = moe_layers
+        assert down_exact_count[0] == 0, (
+            "exact-tree warp down engaged in fast pair mode", down_exact_count[0])
+        report["down_exact_wrapper_calls"] = down_exact_count[0]
+        report["moe_run_calls_per_step"] = moe_run_calls_per_step
         report["status"] = "passed"
     except Exception as error:
         report["status"] = "failed"
         report["error"] = f"{type(error).__name__}: {error}"
         raise
     finally:
-        for key, wrapper_name in (
-            ("dual", DUAL_WRAPPER),
-            ("down_fast", DOWN_FAST_WRAPPER),
-            ("down_exact", DOWN_EXACT_WRAPPER),
-        ):
-            setattr(runner_module, wrapper_name, originals[key])
+        MoeGraphCache.run = original_run
+        setattr(runner_module, DOWN_EXACT_WRAPPER, down_exact_original)
         os.environ[FLAG] = "0"
         os.environ[FLAG_DOWN] = "0"
     args.output.write_text(json.dumps(report, indent=1) + "\n")
@@ -263,26 +275,7 @@ def main() -> None:
 
 
 def _sha(array: np.ndarray) -> str:
-    import hashlib
     return hashlib.sha256(np.ascontiguousarray(array)).hexdigest()
-
-
-def _wrapper_name(key: str) -> str:
-    return {"dual": DUAL_WRAPPER, "down_fast": DOWN_FAST_WRAPPER,
-            "down_exact": DOWN_EXACT_WRAPPER}[key]
-
-
-def _make_counter(counters: dict, key: str, original, call_log=None):
-    def counted(*a, **kw):
-        counters[key] += 1
-        if call_log is not None:
-            # positional arg 6 is `compact` (selected-expert count) at both
-            # call sites; 7 is num_experts, 8/9 feature dims.
-            call_log[key].append(
-                {"compact": a[6] if len(a) > 6 else None,
-                 "experts": a[7] if len(a) > 7 else None})
-        return original(*a, **kw)
-    return counted
 
 
 if __name__ == "__main__":
