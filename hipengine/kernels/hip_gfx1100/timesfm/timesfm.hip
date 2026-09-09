@@ -596,61 +596,66 @@ __global__ void qkv_norm_scatter_kernel(
     T* __restrict__ qt,
     T* __restrict__ cache_k,
     T* __restrict__ cache_v) {
-  __shared__ float partial[2 * kThreadsHead];
-  int64_t idx = blockIdx.x;  // b * H * N + h * N + n
-  int n = idx % N;
-  int h = (idx / N) % H;
-  int b = idx / ((int64_t)N * H);
+  // One warp per (b, n, h) head vector: warp-shuffle reductions, no block
+  // syncs.  Lanes cover the D/2 RoPE pairs as j = lane and j = lane + 32.
+  constexpr int WARPS = 8;
+  const int warp = threadIdx.x >> 5;
+  const int lane = threadIdx.x & 31;
+  const int64_t idx = (int64_t)blockIdx.x * WARPS + warp;
+  if (idx >= (int64_t)B * H * N) return;
+  const int n = (int)(idx % N);
+  const int h = (int)((idx / N) % H);
+  const int b = (int)(idx / ((int64_t)N * H));
   const T* row = qkv + (int64_t)b * N * patch_stride + (int64_t)n * patch_stride + h * D;
   const T* q = row;
   const T* k = row + (int64_t)H * D;
   const T* v = row + 2 * (int64_t)H * D;
 
-  float p = pos[(int64_t)b * N + n];
+  const float p = pos[(int64_t)b * N + n];
+  const int half = D / 2;
 
-  float qv = 0.0f, kv = 0.0f;
-  float qv2 = 0.0f, kv2 = 0.0f;
-  int half = D / 2;
-  if (threadIdx.x < half) {
-    int j = threadIdx.x;
-    float fraction = 2.0f * (float)j / (float)D;
-    float angle = p / timescale[j];
-    float sin_a = sinf(angle);
-    float cos_a = cosf(angle);
-    float q1 = ld(q + j), q2 = ld(q + j + half);
-    float k1 = ld(k + j), k2 = ld(k + j + half);
-    qv = q1 * cos_a - q2 * sin_a;
-    qv2 = q2 * cos_a + q1 * sin_a;
-    kv = k1 * cos_a - k2 * sin_a;
-    kv2 = k2 * cos_a + k1 * sin_a;
-    partial[threadIdx.x] = qv * qv + qv2 * qv2;
-    partial[threadIdx.x + kThreadsHead] = kv * kv + kv2 * kv2;
-  } else {
-    partial[threadIdx.x] = 0.0f;
-    partial[threadIdx.x + kThreadsHead] = 0.0f;
-  }
-  __syncthreads();
-  for (int stride = kThreadsHead / 2; stride > 0; stride >>= 1) {
-    if (threadIdx.x < stride) {
-      partial[threadIdx.x] += partial[threadIdx.x + stride];
-      partial[threadIdx.x + kThreadsHead] += partial[threadIdx.x + kThreadsHead + stride];
+  float rope[2][4];  // per rep: qv, qv2, kv, kv2
+  float qsq = 0.0f, ksq = 0.0f;
+#pragma unroll
+  for (int rep = 0; rep < 2; ++rep) {
+    const int j = lane + rep * 32;
+    rope[rep][0] = rope[rep][1] = rope[rep][2] = rope[rep][3] = 0.0f;
+    if (j < half) {
+      float angle = p / timescale[j];
+      float sin_a, cos_a;
+      __sincosf(angle, &sin_a, &cos_a);
+      const float q1 = ld(q + j), q2 = ld(q + j + half);
+      const float k1 = ld(k + j), k2 = ld(k + j + half);
+      rope[rep][0] = q1 * cos_a - q2 * sin_a;
+      rope[rep][1] = q2 * cos_a + q1 * sin_a;
+      rope[rep][2] = k1 * cos_a - k2 * sin_a;
+      rope[rep][3] = k2 * cos_a + k1 * sin_a;
+      qsq += rope[rep][0] * rope[rep][0] + rope[rep][1] * rope[rep][1];
+      ksq += rope[rep][2] * rope[rep][2] + rope[rep][3] * rope[rep][3];
     }
-    __syncthreads();
   }
-  float qinv = rsqrtf(partial[0] / (float)D + 1.0e-6f);
-  float kinv = rsqrtf(partial[kThreadsHead] / (float)D + 1.0e-6f);
-  float factor = 1.442695041f / sqrtf((float)D);
+#pragma unroll
+  for (int w = 16; w > 0; w >>= 1) {
+    qsq += __shfl_xor(qsq, w);
+    ksq += __shfl_xor(ksq, w);
+  }
+  const float qinv = rsqrtf(qsq / (float)D + 1.0e-6f);
+  const float kinv = rsqrtf(ksq / (float)D + 1.0e-6f);
+  const float factor = 1.442695041f / sqrtf((float)D);
 
-  int64_t qt_dst = (((int64_t)b * H + h) * N + n) * D;
-  int64_t kv_dst = (((int64_t)b * H + h) * S + (start + n)) * D;
-  if (threadIdx.x < half) {
-    int j = threadIdx.x;
-    qt[qt_dst + j] = to_half<T>(qv * qinv * q_ln[j] * factor * softplus_(per_dim[j]));
-    qt[qt_dst + j + half] = to_half<T>(qv2 * qinv * q_ln[j + half] * factor * softplus_(per_dim[j + half]));
-    cache_k[kv_dst + j] = to_half<T>(kv * kinv * k_ln[j]);
-    cache_k[kv_dst + j + half] = to_half<T>(kv2 * kinv * k_ln[j + half]);
-    cache_v[kv_dst + j] = v[j];
-    cache_v[kv_dst + j + half] = v[j + half];
+  const int64_t qt_dst = (((int64_t)b * H + h) * N + n) * D;
+  const int64_t kv_dst = (((int64_t)b * H + h) * S + (start + n)) * D;
+#pragma unroll
+  for (int rep = 0; rep < 2; ++rep) {
+    const int j = lane + rep * 32;
+    if (j < half) {
+      qt[qt_dst + j] = to_half<T>(rope[rep][0] * qinv * q_ln[j] * factor * softplus_(per_dim[j]));
+      qt[qt_dst + j + half] = to_half<T>(rope[rep][1] * qinv * q_ln[j + half] * factor * softplus_(per_dim[j + half]));
+      cache_k[kv_dst + j] = to_half<T>(rope[rep][2] * kinv * k_ln[j]);
+      cache_k[kv_dst + j + half] = to_half<T>(rope[rep][3] * kinv * k_ln[j + half]);
+      cache_v[kv_dst + j] = v[j];
+      cache_v[kv_dst + j + half] = v[j + half];
+    }
   }
 }
 
@@ -1408,10 +1413,11 @@ extern "C" int timesfm_qkv_norm_scatter_f16(
     int B, int N, int S, int H, int D, int patch_stride, int start,
     half_t* qt, half_t* cache_k, half_t* cache_v,
     hipStream_t stream) {
-  if (B <= 0 || N <= 0 || S <= 0 || H <= 0 || D <= 0 || D > 2 * kThreadsHead) return (int)hipErrorInvalidValue;
+  if (B <= 0 || N <= 0 || S <= 0 || H <= 0 || D <= 0 || D > 128) return (int)hipErrorInvalidValue;
   int64_t total = (int64_t)B * H * N;
-  hipLaunchKernelGGL(qkv_norm_scatter_kernel<half_t>, dim3((unsigned)total),
-                     dim3(kThreadsHead), 0, stream,
+  hipLaunchKernelGGL(qkv_norm_scatter_kernel<half_t>,
+                     dim3((unsigned)((total + 7) / 8)),
+                     dim3(256), 0, stream,
                      qkv, pos, timescale, q_ln, k_ln, per_dim,
                      B, N, S, H, D, patch_stride, start,
                      qt, cache_k, cache_v);
