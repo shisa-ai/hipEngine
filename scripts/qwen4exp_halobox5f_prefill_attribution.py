@@ -135,6 +135,8 @@ def main() -> None:
         for row in csv.DictReader(handle):
             name = row.get("Name") or row.get("Kernel_Name") or ""
             dur = row.get("Duration") or row.get("Duration_ns")
+            if dur is None and name and row.get("Start_Timestamp") and row.get("End_Timestamp"):
+                dur = int(float(row["End_Timestamp"])) - int(float(row["Start_Timestamp"]))
             if not name or not dur:
                 continue
             ns = int(float(dur))
