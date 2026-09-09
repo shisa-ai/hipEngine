@@ -463,6 +463,77 @@ host work.
 [Family](../benchmarks/results/2026-09-09-framework-qwen4exp-r2e-family.json),
 [baselines](../benchmarks/results/2026-09-09-framework-qwen4exp-current-default-baselines-v6.json).
 
+### Milliseconds-to-parity ledger versus the newer engines (September 10, 2026)
+
+Prefill-first re-ranking against the best **reproduced** engines (September
+9, same host/protocol; quality-unqualified competitive targets, not admitted
+references). Best prefill = newer halo-box HIP `5f851647f`; best decode =
+newer halo-box Vulkan `5f851647f` (Myhacsint failed repeatability; the
+newer engines are deterministic but not trajectory-equivalent to the old
+pin). hipEngine numbers are the seven-promotion R2e packet above.
+
+**Wall-time targets (tok/s -> ms):**
+
+| Leg | hipEngine | Best reproduced | Gap |
+| --- | ---: | ---: | ---: |
+| PP512 | 297.3 (1,722 ms) | 466.4 HIP `5f851647f` (1,098 ms) | 1.57x |
+| PP1024 | 312.9 (3,273 ms) | 614.3 HIP `5f851647f` (1,667 ms) | 1.96x |
+| PP4096 | 290.6 (14,098 ms) | 709.5 HIP `5f851647f` (5,773 ms) | **2.44x** |
+| TG4096 | 18.69 (53.51 ms/tok) | 24.55 Vulkan `5f851647f` (40.73 ms/tok) | **1.31x** |
+
+The prefill ratio grows with context (1.57x -> 1.96x -> 2.44x), so
+context-proportional owners (linear, MoE, QSA) dominate the long-context
+gap. **Prefill ledger, four-category p4096 device-ms attribution versus
+the old pinned Vulkan (the only profiled comparator):**
+
+| Owner | hipEngine | old Vulkan | excess | recoverable-to-old-parity path |
+| --- | ---: | ---: | ---: | --- |
+| linear | 3,467 | 1,019 | **+2,448** | Q8 three-plane MMQ (attn_qkv 1.09 s, ssm_out 0.654 s, attn_gate 0.587 s) |
+| moe | 6,214 | 4,372 | **+1,842** | expert-row tiles + next-K staging + pipelining |
+| qsa | 1,334 | 645 | **+689** | bounded D256 tile/occupancy sweep |
+| gr_read | 1,457 | 1,707 | -250 | already faster |
+| gdn | 830 | 1,390 | -560 | already faster |
+| boundary | 103 | 507 | -404 | already faster |
+| ple | 16 | 76 | -59 | already faster |
+| **device total** | **13,421** | **9,717** | **+3,705** | |
+
+Two ledger consequences: (1) closing the owner-attributed excess
+(+4,979 ms in the three losing owners, +3,705 ms net) only reaches
+old-pin parity (9,967 ms wall at 411 tok/s) - **another ~4,194 ms**
+of the 8,325 ms total gap belongs to gains the newer HIP engine has
+beyond the old pin and is **unattributed until the newer HIP prefill path
+is profiled on matching inputs** (queue item 1: tile utilization, fewer
+activation passes, chunk2048, or another arithmetic path; sparse repair
+is ~10 ms and packing ~72 ms in the raw role profile, not the lever).
+(2) The repair/packing tails are noise next to MMQ compute.
+
+**Decode ledger, per-transition device-ms (four-category TG128, R2e
+family split):**
+
+| Bucket | hipEngine | old Vulkan | excess | next experiment |
+| --- | ---: | ---: | ---: | --- |
+| moe | 17.36 | 12.47 | **+4.89** | R11 pair (in qualification), then shared-expert block (6.19 ms/token R6) |
+| linear | 17.19 | 16.39 | +0.80 | shares the Q8 MMQ family |
+| gr_read | 6.63 | 6.11 | +0.52 | - |
+| qsa | 2.63 | 3.16 | -0.53 | - |
+| gdn | 2.36 | 2.78 | -0.42 | - |
+| boundary | 0.46 | 1.39 | -0.93 | - |
+| **device total** | **46.67** | **42.42** | **+4.25** | |
+| wrapper/host | ~6.8 (53.51 wall - 46.67 device; R6 split 5.3) | | | wrapper tracing, not graph expansion (R10 negative) |
+
+Path from 53.51 to the 40.73 ms/tok target (12.78 ms to recover):
+R11 expert pair leaf-measured ~5.7 ms (11.3 -> ~5.6 ms, in qualification
+now) plus the shared-expert block (6.19 ms/token) plus wrapper work
+(~5.3-6.8 ms bounded) plus linear/GR (+3.2 ms) is sufficient on paper,
+but every bucket needs its own measured mechanism and gates; R11 alone
+moves 53.5 to ~47.8, still above target.
+
+**Execution order (prefill-first, GPU serialized):** finish R11
+qualification -> newer-halo-box HIP prefill attribution capture -> dense
+Q8 three-plane MMQ -> MoE expert-row utilization/pipelining -> bounded QSA
+D256 sweep. No IU4, resident-PLE/offload, GDN, or MTP detours for this
+serial-AR gap.
+
 Post-Q5_K-promotion refresh (clean `771337563`, six promotions active):
 code-p4096 prefill MoE 7.496s, linear 3.458s (dense iu8 took attn_gate +
 shared_down), GR 1.463s, QSA 1.335s, GDN 0.826s, device total **14.697s
