@@ -45,6 +45,10 @@ def main() -> int:
     ap.add_argument("--max-sequence-length", type=int, default=16384)
     ap.add_argument("--decode-tokens", type=int, default=8)
     ap.add_argument("--vocab-span", type=int, default=32000)
+    ap.add_argument("--kv-storage", default="int8_per_token_head",
+                    help="KV storage policy: bf16 or int8_per_token_head")
+    ap.add_argument("--kv-scale-dtype", default="fp32")
+    ap.add_argument("--arms", default="scalar_bulk,packed_slot_local")
     ap.add_argument("--json", type=Path, default=None)
     args = ap.parse_args()
 
@@ -58,7 +62,7 @@ def main() -> int:
     rng = np.random.default_rng(20260909)
     prompt = [int(t) for t in rng.integers(1000, args.vocab_span, size=args.prompt_length)]
     runtime = get_hip_runtime()
-    policy = resolve_kv_policy("int8_per_token_head", scale_dtype="fp32")
+    policy = resolve_kv_policy(str(args.kv_storage), scale_dtype=str(args.kv_scale_dtype))
 
     out = {
         "kind": "prefill_route_parity",
@@ -66,6 +70,8 @@ def main() -> int:
         "prompt_length": len(prompt),
         "prompt_kind": "deterministic_varied_rng20260909",
         "max_sequence_length": int(args.max_sequence_length),
+        "kv_storage": str(args.kv_storage),
+        "kv_scale_dtype": str(args.kv_scale_dtype),
         "decode_tokens": int(args.decode_tokens),
         "env": {k: os.environ.get(k) for k in (
             "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG",
@@ -80,7 +86,7 @@ def main() -> int:
             max_sequence_length=int(args.max_sequence_length),
             prefill_config=PrefillConfig(),
             kv_policy=policy.create_policy(),
-            kv_scale_dtype="fp32",
+            kv_scale_dtype=str(args.kv_scale_dtype),
             kv_scale_granularity=str(policy.scale_granularity),
         ) as session:
             t0 = time.perf_counter()
@@ -111,7 +117,8 @@ def main() -> int:
                     int(memory_stats().get("peak_allocated_bytes", 0)) / 2**30, 4),
             }
 
-    for arm in ("scalar_bulk", "packed_slot_local"):
+    selected = [a.strip() for a in str(args.arms).split(",") if a.strip()]
+    for arm in selected:
         r = run(arm)
         logits = r.pop("logits")
         r["logits_sha_head"] = float(logits[:1][0])
@@ -120,6 +127,13 @@ def main() -> int:
         print(f"[{arm}] {r['prefill_wall_seconds']} s {r['prefill_tok_s']} tok/s "
               f"ids={r['generated_ids'][:4]}", flush=True)
 
+    if len(out.get("_logits", {})) < 2:
+        out.pop("_logits", None)
+        payload = json.dumps(out, indent=2, default=str)
+        print(payload)
+        if args.json:
+            args.json.write_text(payload + "\n", encoding="utf-8")
+        return 0
     la = out["_logits"]["scalar_bulk"]
     lb = out["_logits"]["packed_slot_local"]
     import numpy as np
