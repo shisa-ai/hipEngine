@@ -4984,3 +4984,4 @@ Examples:
 - 2026-09-09: TimesFM 2.5 200M b8/ctx8192/h512 decode 0.091s -> 0.087s median (-3.8%; pair-tile prefill flash 882->743us/call; gates pass) — artifact results/gfx1151-timesfm-pairtile-flash-2026-09-09.json.
 - 2026-09-09: TimesFM 2.5 200M b8/ctx8192/h512 decode 0.087s -> 0.086s median (-1.5%; pair-tile flash_short 107.9->97.4us/call; gates pass) — artifact results/gfx1151-timesfm-pairtile-flashshort-2026-09-09.json.
 - 2026-09-09: TimesFM 2.5 200M b8/ctx8192/h512 decode 0.086s -> 0.084s median (-3.8%; scatter constant folding 65.7->44.4us avg; custom small-GEMM lever measured flat vs autotuned rocBLAS and dropped; gates pass) — artifact results/gfx1151-timesfm-qscale-folding-2026-09-09.json.
+- 2026-09-09: TimesFM 2.5 200M b8/ctx8192/h512 decode 0.084s -> 0.082s median (-2.4%; quad-tile prefill flash rounds; gates pass) — artifact results/gfx1151-timesfm-quadtile-flash-2026-09-09.json.

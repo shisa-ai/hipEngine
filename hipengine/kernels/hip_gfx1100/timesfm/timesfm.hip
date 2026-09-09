@@ -979,7 +979,7 @@ __global__ void flash_attention_kernel(
     if (dt >= d_tiles) break;
   }
 
-  __shared__ half_t p_stage[WAVES][2][16][17];
+  __shared__ half_t p_stage[WAVES][4][16][17];
 
   // Highest query row in this tile (global) for the causal bound.
   const int q_hi = min(q0 + 15, Q - 1);
@@ -996,48 +996,34 @@ __global__ void flash_attention_kernel(
 #pragma unroll
   for (int j = 0; j < 8; ++j) unif[j] = (q0 + half_id + 2 * j + off) < nm;
 
-  // Two kv tiles per round: the max/sum reductions and the LDS staging
-  // round are amortized over both tiles, halving the per-tile overhead.
-  for (int s0 = 0; s0 <= s_end; s0 += 32) {
-    const int s1 = s0 + 16;
-    const bool t1 = s1 <= s_end;
-    // ---- score tiles [16 q, 16 s] x2 ----
-    float8_t sc0 = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
-    float8_t sc1 = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
-    {
-      const int k_row = s0 + col;
-      for (int dt = 0; dt < d_tiles; ++dt) {
-        half16_t b_frag;
-        if (k_row < S) {
-          const T* src = k_base + (int64_t)k_row * D + dt * 16;
+  // Four kv tiles per round: the max/sum reductions and the LDS staging
+  // round are amortized over four tiles (two __syncthreads per 64 keys).
+  for (int s0 = 0; s0 <= s_end; s0 += 64) {
+    float8_t sc[4];
 #pragma unroll
-          for (int i = 0; i < 16; ++i) b_frag[i] = src[i];
-        } else {
+    for (int t = 0; t < 4; ++t) {
+      const int st = s0 + t * 16;
+      sc[t] = (float8_t){0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+      if (st <= s_end) {
+        const int k_row = st + col;
+        for (int dt = 0; dt < d_tiles; ++dt) {
+          half16_t b_frag;
+          if (k_row < S) {
+            const T* src = k_base + (int64_t)k_row * D + dt * 16;
 #pragma unroll
-          for (int i = 0; i < 16; ++i) b_frag[i] = (T)0;
+            for (int i = 0; i < 16; ++i) b_frag[i] = src[i];
+          } else {
+#pragma unroll
+            for (int i = 0; i < 16; ++i) b_frag[i] = (T)0;
+          }
+          sc[t] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(q_frag[dt], b_frag, sc[t]);
         }
-        sc0 = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(q_frag[dt], b_frag, sc0);
+      } else {
+#pragma unroll
+        for (int j = 0; j < 8; ++j) sc[t][j] = -INFINITY;
       }
     }
-    if (t1) {
-      const int k_row = s1 + col;
-      for (int dt = 0; dt < d_tiles; ++dt) {
-        half16_t b_frag;
-        if (k_row < S) {
-          const T* src = k_base + (int64_t)k_row * D + dt * 16;
-#pragma unroll
-          for (int i = 0; i < 16; ++i) b_frag[i] = src[i];
-        } else {
-#pragma unroll
-          for (int i = 0; i < 16; ++i) b_frag[i] = (T)0;
-        }
-        sc1 = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(q_frag[dt], b_frag, sc1);
-      }
-    } else {
-#pragma unroll
-      for (int j = 0; j < 8; ++j) sc1[j] = -INFINITY;
-    }
-    // Mask + row max over both tiles.
+    // Mask + row max over all four tiles.
     float tile_max[8];
 #pragma unroll
     for (int j = 0; j < 8; ++j) tile_max[j] = -INFINITY;
@@ -1045,13 +1031,14 @@ __global__ void flash_attention_kernel(
     for (int j = 0; j < 8; ++j) {
       const int r = half_id + 2 * j;
       const bool row_ok = (q0 + r < Q);
-      const int sa = s0 + col;
-      const bool allowed0 = row_ok && (q0 + r + off >= sa) && (sa >= nm) && (sa < S);
-      if (!allowed0) sc0[j] = -INFINITY;
-      tile_max[j] = fmaxf(tile_max[j], allowed0 ? sc0[j] : -INFINITY);
-      const bool allowed1 = row_ok && t1 && (q0 + r + off >= s1 + col) && (s1 + col >= nm) && (s1 + col < S);
-      if (!allowed1) sc1[j] = -INFINITY;
-      tile_max[j] = fmaxf(tile_max[j], allowed1 ? sc1[j] : -INFINITY);
+#pragma unroll
+      for (int t = 0; t < 4; ++t) {
+        const int st = s0 + t * 16;
+        const int sv = st + col;
+        const bool allowed = row_ok && (st <= s_end) && (q0 + r + off >= sv) && (sv >= nm) && (sv < S);
+        if (!allowed) sc[t][j] = -INFINITY;
+        tile_max[j] = fmaxf(tile_max[j], allowed ? sc[t][j] : -INFINITY);
+      }
     }
     // Row max across the 16-lane half (the row's columns).
 #pragma unroll
@@ -1069,22 +1056,21 @@ __global__ void flash_attention_kernel(
       alpha[j] = (m_run[j] == -INFINITY) ? 1.0f : __expf(m_run[j] - m_new[j]);
       m_run[j] = m_new[j];
     }
-    // Exponentiate and row-sum over both tiles.
+    // Exponentiate and row-sum over all four tiles.
     float tile_sum[8];
 #pragma unroll
     for (int j = 0; j < 8; ++j) tile_sum[j] = 0.0f;
 #pragma unroll
     for (int j = 0; j < 8; ++j) {
-      const bool unif_now = unif[j] && (s0 + col < S);
-      float e = unif_now ? 1.0f
-                         : (sc0[j] == -INFINITY ? 0.0f : __expf(sc0[j] - m_new[j]));
-      sc0[j] = e;
-      tile_sum[j] += e;
-      const bool unif_now1 = unif[j] && (s1 + col < S);
-      float e1 = unif_now1 ? 1.0f
-                           : (sc1[j] == -INFINITY ? 0.0f : __expf(sc1[j] - m_new[j]));
-      sc1[j] = e1;
-      tile_sum[j] += e1;
+#pragma unroll
+      for (int t = 0; t < 4; ++t) {
+        const int st = s0 + t * 16;
+        const bool unif_now = unif[j] && (st + col < S);
+        float e = unif_now ? 1.0f
+                           : (sc[t][j] == -INFINITY ? 0.0f : __expf(sc[t][j] - m_new[j]));
+        sc[t][j] = e;
+        tile_sum[j] += e;
+      }
     }
 #pragma unroll
     for (int w = 8; w > 0; w >>= 1) {
@@ -1100,19 +1086,21 @@ __global__ void flash_attention_kernel(
 #pragma unroll
       for (int j = 0; j < 8; ++j) acc_o[dt][j] *= alpha[j];
     }
-    // Stage both P tiles through LDS (C layout -> A layout).
+    // Stage all four P tiles through LDS (C layout -> A layout).
     __syncthreads();
 #pragma unroll
     for (int j = 0; j < 8; ++j) {
-      p_stage[threadIdx.x >> 5][0][half_id + 2 * j][col] = (half_t)sc0[j];
-      p_stage[threadIdx.x >> 5][1][half_id + 2 * j][col] = (half_t)sc1[j];
+#pragma unroll
+      for (int t = 0; t < 4; ++t) {
+        p_stage[threadIdx.x >> 5][t][half_id + 2 * j][col] = (half_t)sc[t][j];
+      }
     }
     __syncthreads();
     // AV WMMA per tile.
 #pragma unroll
-    for (int t = 0; t < 2; ++t) {
+    for (int t = 0; t < 4; ++t) {
       const int st = s0 + t * 16;
-      if (t == 1 && !t1) break;
+      if (st > s_end) break;
       half16_t p_frag;
 #pragma unroll
       for (int i = 0; i < 16; ++i) p_frag[i] = p_stage[threadIdx.x >> 5][t][lane & 15][i];
