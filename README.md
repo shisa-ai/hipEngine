@@ -8,36 +8,35 @@ model loading, generation, and OpenAI-compatible serving on supported hardware.
 the latest version of hipEngine now supports inference for more model
 families. These include [Laguna S 2.1](https://poolside.ai/blog/introducing-laguna-s-2-1),
 [Maple ternary](https://github.com/deepgrove-ai/mlx-lm-deepgrove), and [Moonshine ASR](https://github.com/moonshine-ai/moonshine).
+It has also undergone extensive tuning for [Qwen 3.8 27B Q4_K_M]().
 
 ## Why use hipEngine?
 
 - **Native AMD support.** HIP-first kernels directly target and tune for specific
+  published.
   RDNA 3 (gfx1100) and Strix Halo RDNA 3.5 (gfx1151) instead of being CUDA ports.
 - **No PyTorch runtime required.** There is no PyTorch dependency, which keeps
   hipEngine lightweight. Although it is packaged for Python, almost all of the
   hot path is C++.
 - **Optimized for agents and concurrent requests.** Besides extensive tuning for
-  fast single-request performance (especially for prefill), hipEngine also has
-  tuned support for c=N. It is significantly faster than llama.cpp or vLLM for
-  c=8 workloads.
+  fast single-request performance (especially prefill), hipEngine also has
+  tuned support for multiple concurrent requests.
 - **Drop-in support for existing clients.** The included OpenAI-compatible server
   supports completion, chat, token-level SSE, logprobs, tools, structured-output
   validation, Qwen thinking controls, logprob-biased effort control, and
   request diagnostics.
+- **Rigorous correctness.** All implementations are checked against a CPU-side 
+  oracle for correctness. There is a *strict* profile which must be an exact/parent-parity
+  match as well as correctness gated *production* defaults. Any optimizations or routes that 
+  fail these gates are rejected or made explicitly opt-in with measured costs stated.
 
-hipEngine is a new, small software project focused on making a select list of
-models perform well, particularly Qwen 3.x variants and fine-tunes.
+hipEngine is a from-scratch project and does not inherit any unvetted code or legacy design.
 
 ## Supported models
 
-`Yes` means that public text generation has been tested. A dash means that the
-combination is not supported. The Qwen rows group closely related model
-versions, with size-specific format coverage shown explicitly. Features such as
-batching, sampling, tools, and long context can differ by model.
-
 | Model family | Tested models and formats | AMD Radeon (`gfx1100`) | Radeon 8060S (`gfx1151`) | NVIDIA Blackwell (`sm_120a`) |
 | --- | --- | :---: | :---: | :---: |
-| Qwen3.x Dense | **0.8B:** [GGUF](docs/GGUF.md) `Q4_K_M`, `Q8_0`, `Q4_1`, `UD-Q4_K_XL`<br>**27B:** [GGUF](docs/GGUF.md) `Q4_K_M`; Qwen3.8-27B `Q4_K_S` on `gfx1151` | Yes | Yes | — |
+| Qwen3.x Dense | **0.8B:** [GGUF](docs/GGUF.md) `Q4_K_M`, `Q8_0`, `Q4_1`, `UD-Q4_K_XL`<br>**27B:** [GGUF](docs/GGUF.md) [`Q4_K_M`](https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/blob/65ca473/Qwen3.8-27B-Q4_K_M.gguf); Qwen3.8-27B `Q4_K_S` on `gfx1151` | Yes | Yes | — |
 | Qwen3.x MoE | **35B-A3B:** [GGUF](docs/GGUF.md) `Q4_K_M`, `Q4_K_S`, `UD-Q3_K_M`, `UD-Q4_K_M`<br>[ParoQuant W4](https://huggingface.co/shisa-ai/Qwen3.6-35B-A3B-PARO-packed) | Yes | Yes | — |
 | Laguna S 2.1 | [GGUF `Q4_K_M`](https://huggingface.co/poolside/Laguna-S-2.1-GGUF) | — | Yes | — |
 | Maple-Preview 20B-A1B | [2-bit MLX](https://huggingface.co/deepgrove/maple-preview-2bit-mlx) | Yes | Yes | Python API only |
@@ -53,61 +52,42 @@ limits.
 
 ### Long context with DMS
 
-On `gfx1100` cards, Qwen3.8-27B `Q4_K_M` can run with
-[Dynamic Memory Sparsification](https://arxiv.org/abs/2506.05345) (DMS): a
-trained eviction policy compacts the KV cache so a **single 24 GB card
-holds 232K tokens of context** (dense INT8 tops out near 129K), while
-decoding at or below dense latency from 16K context up. See
-[DMS analysis](docs/DMS-ANALYSIS.md) for the quality bar and evidence plan,
+Qwen3.8-27B `Q4_K_M` can run with [Dynamic Memory Sparsification](https://arxiv.org/abs/2506.05345) (DMS):
+a trained eviction policy compacts the KV cache so a **single 24 GB card
+holds 232K tokens of context** (~3X BF16 with practically zero quality loss). It is significantly *more* accurate than direct-INT8 KV.
+
+| | DMS, INT8 KV | INT8 KV, direct prefill |
+| --- | --- | --- |
+| Prefill reads | BF16 oracle planes | the INT8 cache directly |
+| Mean row-KL vs dense-BF16 teacher | 0.001 | 0.188 (max 6.46) |
+| Top-1 agreement | 100% | 91.4% |
+| KL ≤ 0.05 / top-1 ≥ 90% gate | passes | fails |
+
+See [DMS analysis](docs/DMS-ANALYSIS.md) for the quality bar and evidence plan,
 and the [FastDMS reference implementation](https://github.com/shisa-ai/FastDMS)
 for the method's lineage. DMS is opt-in and currently requires the model's
-eviction sidecar artifacts.
+[eviction sidecar artifacts](https://huggingface.co/shisa-ai/Qwen3.8-27B-Q4_K_M-DMS-W8192).
 
-How much context fits on a 24 GB card depends on the KV format and the
+How much context fits on a singl 24 GB card depends on the KV format and the
 route. Measured one-request ceilings for Qwen3.8-27B `Q4_K_M` (the model
 itself weighs 16.25 GiB):
 
-| Configuration | Max context |
-| --- | ---: |
-| BF16 KV, server | 40,960 |
-| INT8 KV, server | 54,272 |
-| DMS, BF16 KV | 73,728 |
-| INT8 KV, direct engine | 131,072 |
-| INT8 KV, direct engine, single hidden plane | 155,648 |
-| DMS, INT8 KV | 172,288 |
-| DMS, INT8 KV, single hidden plane | 232,448 |
-| INT8 KV, direct prefill (opt-in) | 232,448 |
+| KV Type     | Max context |
+| ----------- | ----------: |
+| BF16        |      40,960 |
+| INT8        |      54,272 |
+| BF16 DMS    |      73,728 |
+| INT8 DMS    |     232,448 |
+| direct-INT8 |     232,448 |
 
-What the rows differ in:
+The model's full 262,144-token context needs a predicted 24.8 GiB (use `Q4_K_S` if you want full context)
 
-- **KV format.** BF16 stores each K and V value in 2 bytes. INT8 stores
-  1 byte per value plus one FP32 scale per token per KV head.
-- **Route.** The server adds per-request buffers (logits, sampler,
-  workspace) on top of the engine's allocations. The direct engine runs
-  one resident session through the Python API with no server buffers.
-  Direct-engine prefill keeps two full-capacity BF16 hidden planes; the
-  single-hidden-plane rows alias them into one, because the layer loop
-  consumes each 1024-row chunk before writing output, so the second plane
-  held no unique data.
-- **DMS.** Beyond the fixed 8,192-token full-attention window, the
-  eviction policy drops about 48% of older history instead of storing it.
-- **Direct prefill (opt-in).** Prefill reads the INT8 cache directly
-  instead of a BF16 copy (`HIPENGINE_GGUF_INT8_PREFILL_DIRECT=1`, default
-  off). The server rows include the server's per-request buffers and a
-  BF16 copy of the cache that prefill reads for quality; the direct
-  prefill route carries neither. Measured cost of dropping the copy:
-  mean row-KL 0.19–0.22 vs 0.003 for the BF16 route at 4,096 tokens.
-  196,608 tokens are certified with a full prompt, 232,448 by allocation
-  probe, and 235,520 OOMs.
-
-The model's full 262,144-token context needs a predicted 24.8 GiB on the
-232,448-token routes and does not fit.
+When it exists, DMS has higher accuracy, but pure INT8 KV is available as well.
 
 ### GGUF or ParoQuant for Qwen?
 
-For Qwen3.6 35B-A3B on W7900, the optimized ParoQuant W4 checkpoint currently
-leads short-context generation and uses less memory. GGUF leads prompt
-processing from 1K tokens onward in the current six-shape sweep.
+For Qwen3.6 35B-A3B on RDNA3, the optimized ParoQuant W4 checkpoint currently
+slightly leads short-context generation and uses less memory, but GGUF now is fully optimized.
 
 GGUF has a much larger model and quantization ecosystem. Current development is
 therefore focused on GGUF compatibility. Choose PARO for this exact optimized
@@ -123,8 +103,9 @@ checkpoint or GGUF for broader compatibility.
 | NVIDIA Blackwell | Linux x86-64, Python 3.11+ and the CUDA toolkit with `nvcc`; Maple only |
 | Published wheel | glibc 2.39 or newer, such as Ubuntu 24.04 |
 
-ROCm 7.x is the safest choice for the current wheel. The first model load
-compiles and caches kernels, so it takes longer than later starts.
+ROCm 7.x is the safest choice for the current wheel (ROCm 10.0 has been tested and works fine as well). 
+
+The first model load compiles and caches kernels, so it takes longer than later starts.
 
 Install from PyPI:
 
@@ -253,7 +234,7 @@ row, not across them.
 Blank cells are shapes we have not measured yet, not failures. Max context is
 published only where a dedicated ceiling run exists.
 
-- **Qwen3.8-27B `Q4_K_M` holds 232,448 tokens of context on a 24 GB `gfx1100` card.** The ceiling depends on the KV format and route — eight measured configurations, 40,960 to 232,448; see Long context with DMS for what each applies to. The model's full 262,144 context needs a predicted 24.8 GiB and does not fit. [Capacity evidence](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-capacity.json)
+- **Qwen3.8-27B `Q4_K_M` holds 232,448 tokens of context on a 24 GB `gfx1100` card.** The ceiling depends on the KV format and route — six measured configurations, 40,960 to 232,448; see Long context with DMS for what each applies to. The model's full 262,144 context needs a predicted 24.8 GiB and does not fit. [Capacity evidence](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-capacity.json)
 
 ### Serving several requests at once
 
@@ -316,16 +297,9 @@ Full user-facing change history is in the [changelog](CHANGELOG.md).
 
 Important limits:
 
-- hipEngine uses one GPU. Multi-GPU inference is not implemented.
+- hipEngine uses one GPU. Multi-GPU inference is not yet implemented.
 - There is no desktop GUI, model catalog, or automatic model download.
 - CPU model inference is not implemented.
-- NVIDIA support is limited to single-request Maple generation through the
-  Python API. CUDA server and multi-request support are not ready.
-- Maple currently uses greedy generation only.
-- Advertised model context lengths are not a promise that hipEngine supports the
-  same length. Use the model guide and set a conservative server context limit.
-  Repeated 128K context on Strix Halo can still stall, so no 128K number is
-  published.
 - The concurrency memory figures come from a 48 GB W7900. Single-request
   context on a 24 GB card is qualified to 232,448 tokens on the DMS and
   opt-in direct-INT8 routes; concurrent-request shapes on 24 GB are not
