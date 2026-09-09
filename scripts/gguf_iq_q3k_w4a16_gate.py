@@ -39,14 +39,41 @@ def main() -> None:
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
     import hipengine.kernels.hip_gfx1100 as be
 
-    rng = np.random.default_rng(args.seed)
-    prompt = [int(t) for t in rng.integers(0, 150000, size=int(args.prompt_tokens))]
-    n = int(args.decode_tokens)
     compiler_version = (Path(args.compiler_version_file).read_text()
                         if args.compiler_version_file else None)
+    rng = np.random.default_rng(args.seed)
+    if os.environ.get("HIPENGINE_Q3K_GATE_NATURAL") == "1":
+        # Self-generated text: greedily extend a short random seed, then use
+        # the extension as the probe prompt. Uniform-random token ids measure
+        # a prompt-sensitivity floor at ~1e-3 that masks route differences;
+        # the model's own output is the realistic token distribution the
+        # campaign's real prompts approximate.
+        with Qwen35GGUFResidentSession(
+            args.model, compiler_version=compiler_version,
+            require_cached_build=args.require_cached_build,
+            max_sequence_length=args.prompt_tokens + 64,
+            use_wmma_prefill=True, use_gemv_decode=True,
+        ) as gen:
+            seed_ids = [int(t) for t in rng.integers(1000, 50000, size=8)]
+            first = gen.prefill(seed_ids, use_bulk=True, bulk_attention_mode="bulk",
+                                return_logits=True)
+            prompt = list(seed_ids)
+            cur = first
+            while len(prompt) < args.prompt_tokens:
+                cur = gen.step(int(cur.token_id), return_logits=True)
+                prompt.append(int(cur.token_id))
+            prompt = prompt[:args.prompt_tokens]
+    else:
+        prompt = [int(t) for t in rng.integers(0, 150000, size=int(args.prompt_tokens))]
+    n = int(args.decode_tokens)
 
     base_policy = dict(be.GGUF_IQ_DENSE_PREFILL_POLICY)
     cand_policy = {**base_policy, "gguf_q3_k": dict(base_policy["gguf_iq4_xs"])}
+    # Optional third arm: the all-strict reference, to measure the incumbent's
+    # own noise level on the same prompts (HIPENGINE_Q3K_GATE_STRICT_ARM=1).
+    import os as _os
+    strict_arm = _os.environ.get("HIPENGINE_Q3K_GATE_STRICT_ARM") == "1"
+    ref_policy = {} if strict_arm else base_policy
 
     def run(policy, forced_tokens=None):
         be.GGUF_IQ_DENSE_PREFILL_POLICY = policy
@@ -73,7 +100,7 @@ def main() -> None:
             use_wmma_prefill=True,
             use_gemv_decode=True,
         ) as session:
-            ref_logits, ref_tokens = run(base_policy)
+            ref_logits, ref_tokens = run(ref_policy)
             session.reset()
             cand_logits, _ = run(cand_policy, forced_tokens=ref_tokens[:-1])
     finally:
@@ -85,7 +112,8 @@ def main() -> None:
     top1 = float(np.mean(np.argmax(ref_logits, -1) == np.argmax(cand_logits, -1)))
     finite = bool(np.all(np.isfinite(cand_logits)))
     print(f"positions: {ref_logits.shape[0]}  (prompt={len(prompt)})")
-    print(f"KL vs 4-quant incumbent:  mean={metrics.kl_mean:.4e}  max={metrics.kl_max:.4e}")
+    label = "all-strict ref" if strict_arm else "4-quant incumbent"
+    print(f"KL vs {label}:  mean={metrics.kl_mean:.4e}  max={metrics.kl_max:.4e}")
     print(f"top1 agreement: {top1:.4f}  finite: {finite}")
     # The zbook's recorded 7-quant arm delta was +0.000234 mean (0.000827 ->
     # 0.001061); this probe measures the same pair on this host.

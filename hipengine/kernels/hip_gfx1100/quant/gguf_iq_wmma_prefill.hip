@@ -203,6 +203,19 @@ __global__ void gguf_iq_prefill_wmma_kernel(
     for (int tn = 0; tn < TN; ++tn)
       acc[tm][tn] = float8_t{0, 0, 0, 0, 0, 0, 0, 0};
 
+  // The hi+lo split path (Q3_K, IQ2_S, IQ2_XS). The WMMA products of fp16
+  // operands are exact in the f32 accumulator - verified against an f64 dot
+  // of fp16-rounded weights on a real tensor (2026-09-09, W7900: the kernel
+  // and the simulation's bf16-ULP distance distributions match to the third
+  // decimal, 10.4% of outputs >=1 ULP both) - so a second pass over the
+  // fp16 rounding residual restores the weight to ~22 mantissa bits and the
+  // route's intrinsic error drops under the bf16 output floor. Unsplit, the
+  // route's entire noise is that rounding: it is what breaches the
+  // production-referenced mean for Q3_K (2/3 probe contexts over 1e-3, one
+  // absolute-ceiling row; the accumulation order contributes nothing). The
+  // originally routed four quants keep the single-pass path: they pass the
+  // gate as shipped and the split would double their WMMA cost.
+  constexpr bool SPLIT_LO = (Q == 3 || Q == 5 || Q == 6);
   for (int k_base = 0; k_base < in_features; k_base += K_TILE) {
     half16_t b_reg[TN];
 #pragma unroll
@@ -213,17 +226,28 @@ __global__ void gguf_iq_prefill_wmma_kernel(
 #pragma unroll
     for (int tm = 0; tm < TM; ++tm) {
       const uint8_t* row_ptr = qweight + int64_t(safe_out[tm]) * row_bytes;
-      half16_t a_reg;
+      half16_t a_hi;
+      [[maybe_unused]] half16_t a_lo;
 #pragma unroll
       for (int kk = 0; kk < K_TILE; ++kk) {
         const int k = k_base + kk;
         const uint8_t* block = row_ptr + int64_t(k / BLOCK_ELEMS) * BLOCK_BYTES;
-        a_reg[kk] = static_cast<half_t>(iq_weight<Q>(block, k % BLOCK_ELEMS));
+        const float wv = iq_weight<Q>(block, k % BLOCK_ELEMS);
+        const half_t hi = static_cast<half_t>(wv);
+        a_hi[kk] = hi;
+        if constexpr (SPLIT_LO)
+          a_lo[kk] = static_cast<half_t>(wv - static_cast<float>(hi));
       }
 #pragma unroll
       for (int tn = 0; tn < TN; ++tn)
         acc[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
-            a_reg, b_reg[tn], acc[tm][tn]);
+            a_hi, b_reg[tn], acc[tm][tn]);
+      if constexpr (SPLIT_LO) {
+#pragma unroll
+        for (int tn = 0; tn < TN; ++tn)
+          acc[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
+              a_lo, b_reg[tn], acc[tm][tn]);
+      }
     }
   }
 

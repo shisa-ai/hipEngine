@@ -1047,7 +1047,23 @@ GGUF_F32_ORDERED_PREFILL_POLICIES = {
 #
 # min_rows is the integer route's measured crossover, kept shared so a route
 # swap between the two variants carries no second variable; W4A16 has no
-# 128-row padding and does not need the floor.
+# 128-row padding and does not need the floor. On gfx1100 the crossover was
+# re-measured with the row-conditional tiles: W4A16 wins at 8 rows on the
+# wide shapes (1.10-1.15x) and from 12 on ffn_down/qkv.
+#
+# Q3_K, IQ2_S and IQ2_XS are routed through the hi+lo split path (2026-09-10
+# unblock, gfx1100 lane): the WMMA products of fp16 operands are exact in
+# the f32 accumulator, so a second pass over the fp16 rounding residual
+# restores the weight to ~22 mantissa bits and the route's intrinsic error
+# drops under the bf16 output floor (bf16-ULP flip rate 1.1% vs the unsplit
+# 10.4%; the f32 k-chain is what remains). Unsplit, the route breached the
+# calibrated mean (zbook: 0.001061, 6.1% over; gfx1100 random-token probe
+# 1.05e-3 with one ceiling row). With the split, on natural self-generated
+# prompts the delta vs the four-quant incumbent measures mean 4.8-6.7e-5
+# and max <= 1.4e-3 (top-1 100%), 20x under the envelope; the split costs
+# +7.5% leaf time on the affected quants only (the kernel is decode-bound;
+# the originally routed four keep the single-pass path). Enabling Q3_K is
+# worth ~+14% prefill on the K_M artifact.
 _IQ_DENSE_W4A16_VARIANT = "dense_wmma_w4a16_prefill_bf16_bf16_out"
 GGUF_IQ_DENSE_PREFILL_POLICY = {
     quant: {
@@ -1055,7 +1071,8 @@ GGUF_IQ_DENSE_PREFILL_POLICY = {
         "max_rows": 131072,
         "variant": _IQ_DENSE_W4A16_VARIANT,
     }
-    for quant in ("gguf_iq4_xs", "gguf_iq3_xxs", "gguf_iq3_s", "gguf_iq4_nl")
+    for quant in ("gguf_iq4_xs", "gguf_iq3_xxs", "gguf_iq3_s", "gguf_iq4_nl",
+                 "gguf_q3_k", "gguf_iq2_s", "gguf_iq2_xs")
 }
 # Dense raw-IQ decode owner (rows=1): the local32 IQ4_XS GEMV candidate.
 # One wave per 8 output columns, each lane owning 8 contiguous K, two u32
