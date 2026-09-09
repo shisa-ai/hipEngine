@@ -75,10 +75,14 @@ itself weighs 16.25 GiB):
 | KV Type     | Max context |
 | ----------- | ----------: |
 | BF16        |      40,960 |
-| INT8        |      54,272 |
+| INT8        | 54,272 (re-measuring) |
 | BF16 DMS    |      73,728 |
 | INT8 DMS    |     232,448 |
 | direct-INT8 |     232,448 |
+
+The INT8 server-route ceiling is being re-measured: long-prompt prefill on
+that route was repaired and the fixed route transiently uses more memory, so
+54,272 is optimistic rather than a current ceiling.
 
 The model's full 262,144-token context needs a predicted 24.8 GiB (use `Q4_K_S` if you want full context)
 
