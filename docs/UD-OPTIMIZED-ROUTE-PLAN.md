@@ -33,6 +33,7 @@ Companion to [`OPTIMIZE-KERNEL-IQ-DENSE.md`](OPTIMIZE-KERNEL-IQ-DENSE.md)
 | 5 | IQ4_NL per-tensor localization | **done, negative** (`fb7592949`) | the cost is not attributable to particular tensors; the bisect measured divergence-from-default instead of gate agreement — the first proxy error below |
 | 6 | W4A16 dense IQ prefill kernel | **done, both HIP backends** (`e37888dc4`) | one bf16-WMMA route covers all seven dense IQ quants — no int8 expressibility constraint; registered unrouted at landing |
 | 7 | Re-score on the production reference | **done** (`17ba7822a`, `85aac60c7`) | the ranking inverts: the four-quant integer MMQ breaches the 5e-2 max-row ceiling at 0.170390; W4A16 passes every threshold and is the default route (`563cece26`) |
+| 8 | gfx1100 port (item F) | **done, W7900** (2026-09-09) | W4A16 policy + item-2 Q5T16 role coverage ported; UD-Q4_K_M 413.3/16.5 tok/s vs plain 868.7/26.58 (0.48x/0.62x — the campaign end state on gfx1100); see `benchmarks/results/2026-09-09-w7900-ud-gfx1100-port.json` |
 
 ## Where this leaves it
 
@@ -170,9 +171,24 @@ output-format floor.
 
 ### F. gfx1100 lane (W7900)
 
-17. W4A16 is registered on `hip_gfx1100` but no dense IQ prefill policy
-    exists there at all; the integer-MMQ route is gfx1151-only. Port
-    decision and measurement when the W7900 lane has time.
+17. ~~W4A16 is registered on `hip_gfx1100` but no dense IQ prefill policy
+    exists there at all~~ **done, 2026-09-09** (W7900, GPU0): the four-quant
+    W4A16 policy is ported (`GGUF_IQ_DENSE_PREFILL_POLICY` in
+    `hipengine/kernels/hip_gfx1100/__init__.py`, A/B at 8 layers:
+    80.2 → 136.8 tok/s prefill), and the item-2 Q5 dense role coverage was
+    ported with it (`GGUF_DENSE_Q5_T16_H5120 = True`) — without it the UD
+    files' Q5 tensors stayed raw and the raw-K coltile owner took 74% of
+    the 512-token prefill GPU budget. With both, the materialization plan
+    is identical to gfx1151's (61.3% optimized bytes, K_M) and the
+    published-protocol comparison on the W7900 reaches the campaign's
+    end state: UD-Q4_K_M 413.3/16.5 tok/s vs plain Q4_K_M 868.7/26.58
+    (0.48x prefill / 0.62x decode, matching the zbook's 0.51x/0.61x). The
+    integer-MMQ route stays gfx1151-only by its accuracy failure, not by
+    port state. Artifact:
+    `benchmarks/results/2026-09-09-w7900-ud-gfx1100-port.json`. Remaining
+    gaps are the campaign-wide ones (Q3_K mean-gate blocker, item C decode),
+    not gfx1100 port gaps; item D's crossover re-measures apply to this
+    backend too (`min_rows=8` was measured on gfx1151).
 
 ## How we got here (historical, preserved)
 

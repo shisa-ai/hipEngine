@@ -56,25 +56,24 @@ def test_selected_moe_keys_stay_gfx1100_only(quant):
     )
 
 
-def test_gfx1151_declares_the_policy_and_gfx1100_does_not_yet():
-    """gfx1151 is this unit's target; gfx1100 is a separate follow-up."""
-    assert isinstance(
-        backend_package_capability("hip_gfx1151", "GGUF_IQ_DENSE_PREFILL_POLICY", None),
-        dict,
-    )
-    assert backend_package_capability(
-        "hip_gfx1100", "GGUF_IQ_DENSE_PREFILL_POLICY", None
-    ) is None
+def test_both_hip_backends_declare_the_policy():
+    """gfx1151 is this unit's target; gfx1100 is the item-F port."""
+    for backend in ("hip_gfx1100", "hip_gfx1151"):
+        assert isinstance(
+            backend_package_capability(backend, "GGUF_IQ_DENSE_PREFILL_POLICY", None),
+            dict,
+        )
 
 
 # -------------------------------------------------------------------- dispatch
 
 
-def _dispatch(quant, *, rows, in_features, out_features, variant="prefill_bf16_bf16_out"):
+def _dispatch(quant, *, rows, in_features, out_features, variant="prefill_bf16_bf16_out",
+              backend="hip_gfx1151"):
     from hipengine.runtime.gguf_linear import (
         GGUFLinearDispatch, _iq_dense_prefill_dispatch)
-    load_backend_kernel_package("hip_gfx1151")
-    base = GGUFLinearDispatch(KernelKey("hip_gfx1151", "linear", quant, variant), "raw")
+    load_backend_kernel_package(backend)
+    base = GGUFLinearDispatch(KernelKey(backend, "linear", quant, variant), "raw")
     return _iq_dense_prefill_dispatch(
         base, rows=rows, in_features=in_features, out_features=out_features)
 
@@ -137,10 +136,12 @@ def test_route_declines_outside_its_policy(kwargs, reason):
     assert out.key.variant == kwargs.get("variant", "prefill_bf16_bf16_out"), reason
 
 
+@pytest.mark.parametrize("backend", ("hip_gfx1100", "hip_gfx1151"))
 @pytest.mark.parametrize("rows", (8, 16, 32, 512))
-def test_route_is_selected_inside_its_policy(rows):
+def test_route_is_selected_inside_its_policy(backend, rows):
     with iq_mmq.iq_dense_mmq_session(True, workspace_ptr=1 << 20, workspace_nbytes=1 << 24):
-        out = _dispatch("gguf_iq4_xs", rows=rows, in_features=5120, out_features=17408)
+        out = _dispatch("gguf_iq4_xs", rows=rows, in_features=5120,
+                       out_features=17408, backend=backend)
     assert out.key.variant == _POLICY_VARIANT
     assert out.abi == "raw"
 
@@ -183,13 +184,14 @@ def test_unsupported_quants_keep_the_strict_owner():
 
 def test_every_policy_quant_has_a_registered_owner():
     """A policy entry without a registered kernel would silently do nothing."""
-    load_backend_kernel_package("hip_gfx1151")
-    policy = backend_package_capability(
-        "hip_gfx1151", "GGUF_IQ_DENSE_PREFILL_POLICY", {})
-    assert set(policy) == {"gguf_iq4_xs", "gguf_iq3_xxs", "gguf_iq3_s", "gguf_iq4_nl"}
-    for quant, entry in policy.items():
-        assert is_registered(
-            KernelKey("hip_gfx1151", "linear", quant, entry["variant"]))
+    for backend in ("hip_gfx1100", "hip_gfx1151"):
+        load_backend_kernel_package(backend)
+        policy = backend_package_capability(
+            backend, "GGUF_IQ_DENSE_PREFILL_POLICY", {})
+        assert set(policy) == {"gguf_iq4_xs", "gguf_iq3_xxs", "gguf_iq3_s", "gguf_iq4_nl"}
+        for quant, entry in policy.items():
+            assert is_registered(
+                KernelKey(backend, "linear", quant, entry["variant"])), backend
 
 
 @pytest.mark.parametrize("quant", ("gguf_iq4_xs", "gguf_iq3_xxs", "gguf_iq3_s", "gguf_iq4_nl"))
