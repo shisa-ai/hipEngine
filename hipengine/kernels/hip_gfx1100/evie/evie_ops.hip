@@ -1082,3 +1082,172 @@ extern "C" int hipengine_evie_cast_f16_to_f32(
       static_cast<const __half*>(x), out, n);
   return static_cast<int>(hipGetLastError());
 }
+
+// ---- fp16 attention softmax (production path) ---------------------------------
+
+__global__ void evie_scale_softmax_rows_f16_kernel(
+    __half* __restrict__ scores,
+    float scale,
+    int64_t rows,
+    int64_t cols,
+    int64_t tokens,
+    int64_t head_stride) {
+  const int64_t row = blockIdx.x;
+  if (row >= rows) {
+    return;
+  }
+  __half* sr =
+      scores + (row / tokens) * head_stride + (row % tokens) * cols;
+  float m = -INFINITY;
+  for (int64_t i = threadIdx.x; i < cols; i += blockDim.x) {
+    m = fmaxf(m, __half2float(sr[i]) * scale);
+  }
+  __shared__ float sm[256];
+  sm[threadIdx.x] = m;
+  __syncthreads();
+  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if ((int)threadIdx.x < stride) {
+      sm[threadIdx.x] = fmaxf(sm[threadIdx.x], sm[threadIdx.x + stride]);
+    }
+    __syncthreads();
+  }
+  const float mx = sm[0];
+  float denom = 0.0f;
+  for (int64_t i = threadIdx.x; i < cols; i += blockDim.x) {
+    const float e = expf(__half2float(sr[i]) * scale - mx);
+    sr[i] = __float2half(e);
+    denom += e;
+  }
+  sm[threadIdx.x] = denom;
+  __syncthreads();
+  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if ((int)threadIdx.x < stride) {
+      sm[threadIdx.x] += sm[threadIdx.x + stride];
+    }
+    __syncthreads();
+  }
+  const float inv = 1.0f / sm[0];
+  for (int64_t i = threadIdx.x; i < cols; i += blockDim.x) {
+    sr[i] = __float2half(__half2float(sr[i]) * inv);
+  }
+}
+
+extern "C" int hipengine_evie_scale_softmax_rows_f16(
+    void* scores,
+    float scale,
+    int64_t rows,
+    int64_t cols,
+    int64_t tokens,
+    int64_t head_stride,
+    hipStream_t stream) {
+  if (rows <= 0 || cols <= 0 || tokens <= 0 || head_stride <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      evie_scale_softmax_rows_f16_kernel,
+      dim3(static_cast<unsigned int>(rows)),
+      dim3(256),
+      0,
+      stream,
+      static_cast<__half*>(scores), scale, rows, cols, tokens, head_stride);
+  return static_cast<int>(hipGetLastError());
+}
+
+// ---- fp16 attention layout kernels -------------------------------------------
+
+__global__ void evie_gather_qkv_f16_kernel(
+    const float* __restrict__ x,
+    __half* __restrict__ out,
+    int64_t tokens,
+    int64_t row_stride,
+    int64_t heads,
+    int64_t head_dim,
+    int64_t head_stride) {
+  const int64_t plane_total = heads * head_stride;
+  const int64_t total = 3 * plane_total;
+  for (int64_t idx = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+       idx < total;
+       idx += (int64_t)gridDim.x * blockDim.x) {
+    const int64_t plane = idx / plane_total;
+    int64_t rem = idx % plane_total;
+    const int64_t h = rem / head_stride;
+    rem %= head_stride;
+    const int64_t t = rem / head_dim;
+    const int64_t i = rem % head_dim;
+    if (t < tokens) {
+      out[idx] = __float2half(
+          x[t * row_stride + plane * heads * head_dim + h * head_dim + i]);
+    }
+  }
+}
+
+extern "C" int hipengine_evie_gather_qkv_f16(
+    const float* x,
+    void* out,
+    int64_t tokens,
+    int64_t row_stride,
+    int64_t heads,
+    int64_t head_dim,
+    int64_t head_stride,
+    hipStream_t stream) {
+  if (tokens <= 0 || row_stride <= 0 || heads <= 0 || head_dim <= 0
+      || head_stride <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t total = 3 * heads * head_stride;
+  const int64_t blocks = (total + 255) / 256;
+  hipLaunchKernelGGL(
+      evie_gather_qkv_f16_kernel,
+      dim3(static_cast<unsigned int>(blocks)),
+      dim3(256),
+      0,
+      stream,
+      x, static_cast<__half*>(out), tokens, row_stride, heads, head_dim,
+      head_stride);
+  return static_cast<int>(hipGetLastError());
+}
+
+__global__ void evie_scatter_heads_f16_kernel(
+    const __half* __restrict__ in,
+    float* __restrict__ out,
+    int64_t tokens,
+    int64_t heads,
+    int64_t head_dim,
+    int64_t head_stride) {
+  const int64_t total = heads * tokens * head_dim;
+  for (int64_t idx = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+       idx < total;
+       idx += (int64_t)gridDim.x * blockDim.x) {
+    int64_t rem = idx;
+    const int64_t h = rem / (tokens * head_dim);
+    rem %= tokens * head_dim;
+    const int64_t t = rem / head_dim;
+    const int64_t i = rem % head_dim;
+    out[t * heads * head_dim + h * head_dim + i] =
+        __half2float(in[h * head_stride + t * head_dim + i]);
+  }
+}
+
+extern "C" int hipengine_evie_scatter_heads_f16(
+    const void* in,
+    float* out,
+    int64_t tokens,
+    int64_t heads,
+    int64_t head_dim,
+    int64_t head_stride,
+    hipStream_t stream) {
+  if (tokens <= 0 || heads <= 0 || head_dim <= 0 || head_stride <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t total = heads * tokens * head_dim;
+  const int64_t blocks = (total + 255) / 256;
+  hipLaunchKernelGGL(
+      evie_scatter_heads_f16_kernel,
+      dim3(static_cast<unsigned int>(blocks)),
+      dim3(256),
+      0,
+      stream,
+      static_cast<const __half*>(in), out, tokens, heads, head_dim,
+      head_stride);
+  return static_cast<int>(hipGetLastError());
+}
