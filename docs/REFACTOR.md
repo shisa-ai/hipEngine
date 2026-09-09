@@ -5422,3 +5422,5 @@ run justifies each:
   `<|im_start|>user` block; the checkpoint template merges consecutive tool
   messages into one user block. Merge when multi-tool transcripts show
   degraded behavior.
+
+- [2026-09-09] TimesFM `_Buffers.scores` is no longer read by the FP16 attention path (WMMA flash kernel replaced the scores GEMM + softmax chain; 2026-09-09 flash-attn unit). Remove the allocation and its `f16()` sizing once the FP32 strict path also stops using it or a strict-path replacement is registered.

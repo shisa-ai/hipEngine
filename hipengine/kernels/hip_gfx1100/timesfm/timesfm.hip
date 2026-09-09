@@ -27,6 +27,8 @@ __device__ __forceinline__ float softplus_(float x) {
 }
 
 using half_t = _Float16;
+typedef _Float16 __attribute__((ext_vector_type(16))) half16_t;
+typedef float __attribute__((ext_vector_type(8))) float8_t;
 
 template <typename T>
 __device__ __forceinline__ float ld(const T* p) { return (float)(*p); }
@@ -648,6 +650,209 @@ __global__ void qkv_norm_scatter_kernel(
   }
 }
 
+
+// Flash-attention-style fused causal attention (FP16 production path).
+//
+// One wave32 block per (batch*head, 16-row q tile).  Uses the RDNA
+// __builtin_amdgcn_wmma_f32_16x16x16_f16_w32 intrinsic with the same
+// fragment conventions as the PARO WMMA kernels:
+//   - A fragment: lane loads 16 consecutive k elements of row (lane & 15)
+//   - B fragment: lane loads 16 consecutive k elements of column (lane & 15)
+//   - C fragment: lane holds rows (lane >> 4) + 2*j, column (lane & 15)
+//
+// Per-row softmax statistics live in the two 16-lane halves (a row's 16
+// columns are exactly one half-group), so reductions use width-16 shuffles.
+// The probability tile is staged through LDS between the QK and AV WMMA
+// calls (C layout -> A layout).  Causality skips whole upper-triangle kv
+// tiles; front-masked queries (no allowed keys) emit zeros, matching the
+// uniform-1/S reference behaviour is NOT needed here because such rows'
+// outputs are always discarded downstream; the reference-visible behaviour
+// is preserved by the strict FP32 path.
+//
+// D must be a multiple of 16 (TimesFM: 80 = 5 tiles).
+template <typename T, int TPB>
+__global__ void flash_attention_kernel(
+    const T* __restrict__ qt,        // [B, H, Q, D] normed+scaled queries
+    const T* __restrict__ cache_k,   // [B, H, S, D]
+    const T* __restrict__ cache_v,  // [B, H, S, D]
+    const int* __restrict__ num_masked,
+    const int* __restrict__ q_offset,
+    T* __restrict__ out,            // [B, H, Q, D]
+    int B,
+    int Q,
+    int S,
+    int H,
+    int D) {
+  constexpr int WAVES = TPB / 32;
+  const int q0 = (blockIdx.x * WAVES + (threadIdx.x >> 5)) * 16;
+  const int bh = blockIdx.y;
+  const int b = bh / H;
+  const int h = bh % H;
+  const int lane = threadIdx.x & 31;
+  const int col = lane & 15;
+  const int half_id = lane >> 4;
+  const int d_tiles = D / 16;
+  const int nm = num_masked[b];
+  const int off = q_offset[b];
+
+  const T* q_base = qt + ((int64_t)bh * Q) * D;
+  const T* k_base = cache_k + ((int64_t)bh * S) * D;
+  const T* v_base = cache_v + ((int64_t)bh * S) * D;
+
+  // A fragments: full q row (lane & 15) across all d tiles.
+  half16_t q_frag[5];
+  const int q_row = q0 + (lane & 15);
+  const bool q_valid = q_row < Q;
+#pragma unroll
+  for (int dt = 0; dt < 5; ++dt) {
+    if (dt < d_tiles) {
+      const T* src = q_base + (int64_t)(q_valid ? q_row : 0) * D + dt * 16;
+#pragma unroll
+      for (int i = 0; i < 16; ++i) q_frag[dt][i] = q_valid ? src[i] : (T)0;
+    }
+  }
+
+  // Per-thread rows of the C fragment: rows half_id + 2*j (j = 0..7).
+  float m_run[8], l_run[8];
+  float8_t acc_o[5];
+#pragma unroll
+  for (int j = 0; j < 8; ++j) {
+    m_run[j] = -INFINITY;
+    l_run[j] = 0.0f;
+  }
+#pragma unroll
+  for (int dt = 0; dt < 5; ++dt) {
+    acc_o[dt] = (float8_t){0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+    if (dt >= d_tiles) break;
+  }
+
+  __shared__ half_t p_stage[WAVES][16][17];
+
+  // Highest query row in this tile (global) for the causal bound.
+  const int q_hi = min(q0 + 15, Q - 1);
+  const int s_limit = min(S - 1, q_hi + off);
+  // Front-masked (all-masked) query rows exist only when off < num_masked,
+  // i.e. only in the first q tile of the prefill.  The reference softmax
+  // over an all-masked scores row is uniform 1/S, so those rows must average
+  // V over the *whole* cache — extend this tile's kv loop to S accordingly.
+  const bool has_unif = (q0 == 0) && (off < nm);
+  const int s_end = has_unif ? (S - 1) : s_limit;
+  if (q0 >= Q) return;
+  // Per C-fragment row: uniform fallback (all keys masked) rows.
+  bool unif[8];
+#pragma unroll
+  for (int j = 0; j < 8; ++j) unif[j] = (q0 + half_id + 2 * j + off) < nm;
+
+  for (int s0 = 0; s0 <= s_end; s0 += 16) {
+    // ---- scores tile [16 q, 16 s] ----
+    float8_t sc = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+    const int k_row = s0 + col;
+    for (int dt = 0; dt < d_tiles; ++dt) {
+      half16_t b_frag;
+      if (k_row < S) {
+        const T* src = k_base + (int64_t)k_row * D + dt * 16;
+#pragma unroll
+        for (int i = 0; i < 16; ++i) b_frag[i] = src[i];
+      } else {
+#pragma unroll
+        for (int i = 0; i < 16; ++i) b_frag[i] = (T)0;
+      }
+      sc = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(q_frag[dt], b_frag, sc);
+    }
+    // Mask + row max.
+    float tile_max[8];
+#pragma unroll
+    for (int j = 0; j < 8; ++j) tile_max[j] = -INFINITY;
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      const int r = half_id + 2 * j;
+      const int s = s0 + col;
+      const bool allowed = (q0 + r < Q) && (q0 + r + off >= s) && (s >= nm) && (s < S);
+      if (!allowed) sc[j] = -INFINITY;
+      tile_max[j] = fmaxf(tile_max[j], allowed ? sc[j] : -INFINITY);
+    }
+    // Row max across the 16-lane half (the row's columns).
+#pragma unroll
+    for (int w = 8; w > 0; w >>= 1) {
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        tile_max[j] = fmaxf(tile_max[j], __shfl_xor(tile_max[j], w, 16));
+      }
+    }
+    // Update running max / scale.
+    float alpha[8], m_new[8];
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      m_new[j] = fmaxf(m_run[j], tile_max[j]);
+      alpha[j] = (m_run[j] == -INFINITY) ? 1.0f : expf(m_run[j] - m_new[j]);
+      m_run[j] = m_new[j];
+    }
+    // Exponentiate and row-sum.
+    float tile_sum[8];
+#pragma unroll
+    for (int j = 0; j < 8; ++j) tile_sum[j] = 0.0f;
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      // Uniform-fallback rows weight every in-range key with 1 so the final
+      // normalization yields the mean of V (reference: softmax of an
+      // all-masked row is uniform 1/S).
+      const bool unif_now = unif[j] && (s0 + col < S);
+      float e = unif_now ? 1.0f
+                         : (sc[j] == -INFINITY ? 0.0f : expf(sc[j] - m_new[j]));
+      sc[j] = e;
+      tile_sum[j] += e;
+    }
+#pragma unroll
+    for (int w = 8; w > 0; w >>= 1) {
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        tile_sum[j] += __shfl_xor(tile_sum[j], w, 16);
+      }
+    }
+#pragma unroll
+    for (int j = 0; j < 8; ++j) l_run[j] = l_run[j] * alpha[j] + tile_sum[j];
+#pragma unroll
+    for (int dt = 0; dt < d_tiles; ++dt) {
+#pragma unroll
+      for (int j = 0; j < 8; ++j) acc_o[dt][j] *= alpha[j];
+    }
+    // Stage P through LDS (C layout -> A layout) and run the AV WMMA.
+    __syncthreads();
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      p_stage[threadIdx.x >> 5][half_id + 2 * j][col] = (half_t)sc[j];
+    }
+    __syncthreads();
+    half16_t p_frag;
+#pragma unroll
+    for (int i = 0; i < 16; ++i) p_frag[i] = p_stage[threadIdx.x >> 5][lane & 15][i];
+    for (int dt = 0; dt < d_tiles; ++dt) {
+      half16_t b_frag;
+      // B[k = s, c = d]: lane loads column d = dt*16 + col over 16 k rows.
+      // V is [S, D] row-major, so these are strided loads.  Rows beyond S
+      // (last partial tile) read zeros; their probability weights are 0.
+      const T* vcol = v_base + (int64_t)s0 * D + dt * 16 + col;
+#pragma unroll
+      for (int i = 0; i < 16; ++i) b_frag[i] = (s0 + i < S) ? vcol[(int64_t)i * D] : (T)0;
+      acc_o[dt] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(p_frag, b_frag, acc_o[dt]);
+    }
+  }
+
+  // Epilogue: normalize and store.  All-masked rows (l == 0) emit zeros.
+  T* out_base = out + ((int64_t)bh * Q) * D;
+#pragma unroll
+  for (int j = 0; j < 8; ++j) {
+    const int r = half_id + 2 * j;
+    const float inv = (q0 + r < Q && l_run[j] > 0.0f) ? 1.0f / l_run[j] : 0.0f;
+    for (int dt = 0; dt < d_tiles; ++dt) {
+      if (q0 + r < Q) {
+        out_base[(int64_t)(q0 + r) * D + dt * 16 + col] = (half_t)(acc_o[dt][j] * inv);
+      }
+    }
+  }
+  (void)q_frag;
+}
+
 inline unsigned grid_for(int64_t count, int threads) {
   return (unsigned)((count + threads - 1) / threads);
 }
@@ -754,6 +959,30 @@ extern "C" int timesfm_scatter_kv_f16(
   hipLaunchKernelGGL(scatter_kv_kernel<half_t>, dim3(grid_for(total, kThreads)),
                      dim3(kThreads), 0, stream,
                      qkv, cache_k, cache_v, B, N, S, H, D, patch_stride, start);
+  return (int)hipGetLastError();
+}
+
+
+extern "C" int timesfm_flash_attention_f16(
+    const half_t* qt, const half_t* k, const half_t* v,
+    const int* num_masked, const int* q_offset, half_t* out,
+    int B, int Q, int S, int H, int D, hipStream_t stream) {
+  if (B <= 0 || Q <= 0 || S <= 0 || H <= 0 || D <= 0) return (int)hipErrorInvalidValue;
+  if (D % 16 != 0) return (int)hipErrorInvalidValue;
+  // Four q tiles per block (128 threads) for enough resident waves per CU on
+  // long-prefill shapes; a single tile per 32-thread block for short (AR)
+  // queries where four-way packing would idle three of four waves.
+  if (Q >= 64) {
+    dim3 grid((unsigned)((Q + 63) / 64), (unsigned)((int64_t)B * H));
+    hipLaunchKernelGGL((flash_attention_kernel<half_t, 128>), grid, dim3(128), 0,
+                       stream, qt, k, v, num_masked, q_offset, out,
+                       B, Q, S, H, D);
+  } else {
+    dim3 grid((unsigned)((Q + 15) / 16), (unsigned)((int64_t)B * H));
+    hipLaunchKernelGGL((flash_attention_kernel<half_t, 32>), grid, dim3(32), 0,
+                       stream, qt, k, v, num_masked, q_offset, out,
+                       B, Q, S, H, D);
+  }
   return (int)hipGetLastError();
 }
 

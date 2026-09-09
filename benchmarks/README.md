@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-08**
+Last updated: **2026-09-09**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -101,9 +101,10 @@ Earlier published C2/K2 and C8/K3 speedups are withdrawn
 
 Strix Halo `Q4_K_M`: strict C1/K3 automatic at **18.191 tok/s (1.6445x AR)**; production explicit/K0. Production C8/K3 is **52.103 vs 52.025 AR tok/s**. Detailed gfx1151 evidence remains in result artifacts.
 
-TimesFM 2.5 200M GPU decode (batch 8, context 8192, horizon 512): **0.099 s**
-with the double correctness gate described above
-([artifact](results/gfx1151-timesfm-gpu-decode-2026-09-08.json)).
+TimesFM 2.5 200M GPU decode (batch 8, context 8192, horizon 512): **0.096 s**
+with the double correctness gate described above. Attention runs as a fused
+WMMA flash kernel with causal skipping
+([artifact](results/gfx1151-timesfm-flash-attn-2026-09-09.json)).
 
 ### W7900 Qwen3.8 `Q4_K_M` C1-C8
 
