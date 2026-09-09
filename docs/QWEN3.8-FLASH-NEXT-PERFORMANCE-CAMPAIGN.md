@@ -453,13 +453,19 @@ consistent with the q8-wmma-down A/B +8.44%), TG **19.94/19.26/18.69**
 **1.290/1.313/1.310x**; halo-box-hip: PP 316.8/387.5/354.5, TG
 22.17/21.16/19.48. The TG gap is untouched by all seven promotions
 (prefill-only wins), confirming R10's conclusion: decode progress requires
-kernel efficiency (#22 R11 GEMV pair: down+gate/up validated at the true
-geometry - correction: the fast down is the T1 vectorized variant at
-68.6us (+72%), not the slower bit-exact tree (134.5us, -14%); the
-996-row packet envelope is 991/996 agreements (99.50%), five flips -
-incremental-drift evidence pending production-contract qualification;
-projected TG +11% is a projection, not an achieved win) or wrapper
-host work.
+kernel efficiency or wrapper host work. **R11 qualification outcome
+(September 10): NOT promoted - the full contract chain completed and the
+route fails the 18-prompt admission task suite in every packet
+configuration (max row KL 0.121-0.431 versus the 5e-2 ceiling; the dual
+gate/up leg carries the worst tail, so no dual-only escape; top-10
+overlap degrades to 6-7/10).** The canonical 996-row envelopes, the
+non-exact state gate (engagement/isolation/determinism), cross-run
+determinism, and the serving-path A/B all passed; measured serving-path
+gain +6.5% TG (prefill neutral). The warp256 kernels stay default-off
+with complete evidence recorded
+([outcome worklog](../worklog/entries/20260910T083000.000000Z-lhl-qwen4exp-r11-outcome.md));
+a future revisit needs a reduction-order-preserving gate/up variant or a
+model-class recalibration decision.
 [Family](../benchmarks/results/2026-09-09-framework-qwen4exp-r2e-family.json),
 [baselines](../benchmarks/results/2026-09-09-framework-qwen4exp-current-default-baselines-v6.json).
 
