@@ -703,3 +703,216 @@ extern "C" int hipengine_gguf_iq_wmma_prefill_coop64_bf16_bf16_out(
     default: return int(hipErrorInvalidValue);
   }
 }
+
+// Operation-complete dense IQ4_XS gate/up prefill dual: the raw-IQ port of
+// the Q5 T16 dual. One 256-thread block owns a 32-column x 256-row tile for
+// BOTH matrices; each activation K16 fragment feeds both matrices' WMMA
+// chains, and the two LDS weight slabs are decoded once per block by all
+// threads with the IQ4_XS fast path (one 136-byte block per 32-K scale
+// group, d hoisted, fused LDS codebook). The epilogue rounds both
+// accumulators to bf16 before the SiLU exactly like the unfused pair of
+// singles, so the route is bit-exact with the two-singles path.
+template <int Q = 0, typename scalar_t = uint16_t,
+          int ROW_TILES_PER_WAVE = 2, int WAVES_PER_BLOCK = 8>
+__launch_bounds__(WAVES_PER_BLOCK * 32, 1)
+__global__ void gguf_iq_prefill_wmma_dual_silu_kernel(
+    const scalar_t* __restrict__ x,
+    const uint8_t* __restrict__ qweight_a,
+    const uint8_t* __restrict__ qweight_b,
+    uint16_t* __restrict__ out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features) {
+  constexpr int MATRICES = 2;
+  constexpr int OUT_TILES_PER_BLOCK = 2;
+  constexpr int OUT_COLS_PER_BLOCK = OUT_TILES_PER_BLOCK * 16;
+  constexpr int ROWS_PER_WAVE = ROW_TILES_PER_WAVE * 16;
+  constexpr int ROWS_PER_BLOCK = WAVES_PER_BLOCK * ROWS_PER_WAVE;
+  constexpr int BLOCK_BYTES = iq_block_bytes<Q>();
+  constexpr int BLOCK_ELEMS = iq_block_elements<Q>();
+  constexpr int SLAB_STRIDE = QK_K + 16;
+  union SharedStorage {
+    half_t weights[MATRICES][OUT_COLS_PER_BLOCK * SLAB_STRIDE];
+    uint16_t rounded[MATRICES][ROWS_PER_BLOCK * OUT_COLS_PER_BLOCK];
+  };
+  __shared__ __align__(1024) SharedStorage shared;
+  __shared__ float s_cb[512];
+
+  const int tid = threadIdx.x;
+  const int wave = tid >> 5;
+  const int lane16 = tid & 15;
+  const int half_id = (tid & 31) >> 4;
+  const int64_t col_tile_base =
+      static_cast<int64_t>(blockIdx.x) * OUT_TILES_PER_BLOCK;
+  const int64_t block_row_base =
+      static_cast<int64_t>(blockIdx.y) * ROWS_PER_BLOCK;
+  const int64_t row_base = block_row_base + wave * ROWS_PER_WAVE;
+  const int64_t blocks_per_row = in_features / BLOCK_ELEMS;
+  const int64_t row_bytes = blocks_per_row * BLOCK_BYTES;
+  const int64_t out_tiles = out_features / 16;
+  const bool wave_active = row_base < rows;
+
+  for (int i = tid; i < 512; i += WAVES_PER_BLOCK * 32) {
+    const int byte = i & 255;
+    const int nib = i >= 256 ? (byte >> 4) : (byte & 15);
+    s_cb[i] = float(iq4_values[nib]);
+  }
+  __syncthreads();
+
+  float8_t acc_a[OUT_TILES_PER_BLOCK][ROW_TILES_PER_WAVE];
+  float8_t acc_b[OUT_TILES_PER_BLOCK][ROW_TILES_PER_WAVE];
+#pragma unroll
+  for (int tm = 0; tm < OUT_TILES_PER_BLOCK; ++tm)
+#pragma unroll
+    for (int tn = 0; tn < ROW_TILES_PER_WAVE; ++tn) {
+      acc_a[tm][tn] = float8_t{0, 0, 0, 0, 0, 0, 0, 0};
+      acc_b[tm][tn] = float8_t{0, 0, 0, 0, 0, 0, 0, 0};
+    }
+
+  // Decode mapping: 32 (matrix, column-pair) units x 8 threads each; a
+  // thread owns 32 consecutive K of one column pair - exactly one IQ4_XS
+  // scale group of one 136-byte block.
+  constexpr int NUM_DECODE_PAIRS = MATRICES * OUT_COLS_PER_BLOCK / 2;
+  constexpr int DECODE_TPP = WAVES_PER_BLOCK * 32 / NUM_DECODE_PAIRS;
+  static_assert(DECODE_TPP == 8, "8 threads per column pair");
+  const int decode_pair = tid / DECODE_TPP;
+  const int matrix = decode_pair / (OUT_COLS_PER_BLOCK / 2);
+  const int col_pair = decode_pair % (OUT_COLS_PER_BLOCK / 2);
+  const int col0 = col_pair * 2;
+  const int k_segment = (tid % DECODE_TPP) * 32;
+  const uint8_t* dec_row =
+      (matrix == 0 ? qweight_a : qweight_b) +
+      int64_t(col_tile_base * 16 + col0 < out_features
+                  ? col_tile_base * 16 + col0
+                  : out_features - 1) * row_bytes;
+
+  for (int64_t blk = 0; blk < blocks_per_row * BLOCK_ELEMS / QK_K; ++blk) {
+    const int64_t k_blk = blk * QK_K;
+    {
+      // Raw IQ4_XS blocks are per output column: the pair's two columns
+      // have separate 136-byte block streams.
+      static_assert(BLOCK_BYTES == 136 && BLOCK_ELEMS == 256);
+      const int g = k_segment >> 5;
+#pragma unroll
+      for (int c = 0; c < 2; ++c) {
+        const uint8_t* block =
+            dec_row + int64_t(c) * row_bytes + (k_blk >> 8) * BLOCK_BYTES;
+        const float d = fp16_bytes_to_float(block);
+        const int hi_word = int(block[2]) | (int(block[3]) << 8);
+        const int scale =
+            (((block[4 + g / 2] >> (4 * (g & 1))) & 15) |
+             (((hi_word >> (2 * g)) & 3) << 4)) - 32;
+        const float ds = d * float(scale);
+        const uint8_t* codes = block + 8 + g * 16;
+#pragma unroll
+        for (int kk = 0; kk < 32; ++kk) {
+          shared.weights[matrix][(col0 + c) * SLAB_STRIDE + k_segment + kk] =
+              static_cast<half_t>(
+                  ds * s_cb[((kk >> 4) << 8) + codes[kk & 15]]);
+        }
+      }
+    }
+    __syncthreads();
+
+    if (wave_active) {
+      const int64_t block_k_base = k_blk;
+#pragma unroll 1
+      for (int kt = 0; kt < QK_K / K_TILE; ++kt) {
+        const int k_off = kt * K_TILE;
+        half16_t a_reg[ROW_TILES_PER_WAVE];
+#pragma unroll
+        for (int tn = 0; tn < ROW_TILES_PER_WAVE; ++tn) {
+          const int64_t input_row = row_base + tn * 16 + lane16;
+          const bool valid_row = input_row < rows;
+          a_reg[tn] = load_act_half16<scalar_t>(
+              x + int64_t(valid_row ? input_row : 0) * in_features +
+                  block_k_base + k_off);
+          if (!valid_row) a_reg[tn] = half16_t{};
+        }
+#pragma unroll
+        for (int tm = 0; tm < OUT_TILES_PER_BLOCK; ++tm) {
+          const int index = (tm * 16 + lane16) * SLAB_STRIDE + k_off;
+          const half16_t b_a =
+              *reinterpret_cast<const half16_t*>(&shared.weights[0][index]);
+          const half16_t b_b =
+              *reinterpret_cast<const half16_t*>(&shared.weights[1][index]);
+#pragma unroll
+          for (int tn = 0; tn < ROW_TILES_PER_WAVE; ++tn) {
+            acc_a[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
+                a_reg[tn], b_a, acc_a[tm][tn]);
+            acc_b[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
+                a_reg[tn], b_b, acc_b[tm][tn]);
+          }
+        }
+      }
+    }
+    __syncthreads();
+  }
+
+  if (wave_active) {
+#pragma unroll
+    for (int tm = 0; tm < OUT_TILES_PER_BLOCK; ++tm) {
+      const int local_col = tm * 16 + lane16;
+      const int64_t out_col = col_tile_base * 16 + local_col;
+      if (out_col >= out_features) continue;
+#pragma unroll
+      for (int tn = 0; tn < ROW_TILES_PER_WAVE; ++tn)
+#pragma unroll
+        for (int j = 0; j < 8; ++j) {
+          const int local_row =
+              wave * ROWS_PER_WAVE + tn * 16 + half_id + j * 2;
+          const int64_t out_row = block_row_base + local_row;
+          if (out_row < rows) {
+            const int index = local_row * OUT_COLS_PER_BLOCK + local_col;
+            shared.rounded[0][index] = float_to_bf16_bits(acc_a[tm][tn][j]);
+            shared.rounded[1][index] = float_to_bf16_bits(acc_b[tm][tn][j]);
+          }
+        }
+    }
+  }
+  __syncthreads();
+
+  constexpr int RESULT_COUNT = ROWS_PER_BLOCK * OUT_COLS_PER_BLOCK;
+  for (int index = tid; index < RESULT_COUNT; index += WAVES_PER_BLOCK * 32) {
+    const int local_row = index / OUT_COLS_PER_BLOCK;
+    const int local_col = index - local_row * OUT_COLS_PER_BLOCK;
+    const int64_t out_row = block_row_base + local_row;
+    const int64_t result_col = col_tile_base * 16 + local_col;
+    if (out_row < rows && result_col < out_features) {
+      const float gate = bf16_bits_to_float(shared.rounded[0][index]);
+      const float up = bf16_bits_to_float(shared.rounded[1][index]);
+      const float sig = 1.0f / (1.0f + expf(-gate));
+      out[out_row * out_features + result_col] =
+          float_to_bf16_bits(gate * sig * up);
+    }
+  }
+}
+
+namespace {
+
+int launch_iq_wmma_prefill_dual_silu(
+    const void* x, const void* wa, const void* wb, void* out,
+    int rows, int in_features, int out_features, hipStream_t stream) {
+  if (!x || !wa || !wb || !out || rows <= 0 || in_features <= 0 ||
+      out_features <= 0 || in_features % QK_K || out_features % 16)
+    return int(hipErrorInvalidValue);
+  dim3 grid((out_features + 31) / 32, (rows + 255) / 256);
+  hipLaunchKernelGGL(
+      (gguf_iq_prefill_wmma_dual_silu_kernel<0, uint16_t, 2, 8>),
+      grid, dim3(256), 0, stream,
+      static_cast<const uint16_t*>(x), static_cast<const uint8_t*>(wa),
+      static_cast<const uint8_t*>(wb), static_cast<uint16_t*>(out), rows,
+      in_features, out_features);
+  return int(hipGetLastError());
+}
+
+}  // namespace
+
+extern "C" int hipengine_gguf_iq_wmma_prefill_dual_silu_bf16_bf16_out(
+    const void* x, const void* wa, const void* wb, void* out,
+    int64_t rows, int64_t in_features, int64_t out_features,
+    void* stream) {
+  return launch_iq_wmma_prefill_dual_silu(
+      x, wa, wb, out, int(rows), int(in_features), int(out_features),
+      (hipStream_t)stream);
+}

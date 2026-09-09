@@ -5449,6 +5449,49 @@ def launch_gguf_linear_pair_silu(
                 **kwargs,
             )
             return True
+        iq4_xs_dual = (
+            dispatch_a.key.quant == dispatch_b.key.quant == "gguf_iq4_xs"
+            and int(rows) >= 129
+            and in_features % 256 == 0
+            and out_features % 16 == 0
+        )
+        if iq4_xs_dual:
+            # Fused IQ4_XS gate/up dual on the cooperative WMMA structure
+            # (2026-09-10): bit-exact with the two-singles path (both
+            # accumulators are bf16-rounded before the SiLU, exactly like
+            # the unfused pair) and measured 1.06x the two 64-column
+            # cooperative singles at the 512-row shapes on the XTX.
+            iq4_pair_key = KernelKey(
+                resolved_backend,
+                "linear_pair_silu",
+                "gguf_iq4_xs",
+                "dense_iq_wmma_prefill_dual_silu_bf16_bf16_out",
+            )
+            _ensure_linear_kernel_registered(iq4_pair_key)
+            if is_registered(iq4_pair_key):
+                fn = resolve(
+                    backend=iq4_pair_key.backend,
+                    layer=iq4_pair_key.layer,
+                    quant=iq4_pair_key.quant,
+                    variant=iq4_pair_key.variant,
+                )
+                kwargs = {"stream": stream, "runtime": runtime}
+                library = (
+                    None if libraries is None else libraries.get("gguf_iq4_xs")
+                )
+                if library is not None:
+                    kwargs["library"] = library
+                fn(
+                    x_ptr,
+                    weight_a.allocation("raw").tensor.ptr,
+                    weight_b.allocation("raw").tensor.ptr,
+                    out_ptr,
+                    rows,
+                    in_features,
+                    out_features,
+                    **kwargs,
+                )
+                return True
         q5_pair_variant = (
             _q5_t16_dense_pair_silu_variant(int(rows))
             if dense_pair_quant == "gguf_q5_k_t16_v1"
