@@ -5577,3 +5577,47 @@ A second latent route bug fixed alongside: dense H5120 Q4_K_M auto
 full-attention chunks (4,096 rows below the 52K threshold) overflowed
 the 1,024-row scratch cap (positions-buffer copy error at 8K/16K
 prompts); both chunk resolutions now clamp to the row cap.
+
+## Slot-local INT8 oracle prefill AOTriton admission flag
+
+- Added 2026-09-09. `HIPENGINE_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON` (default
+  OFF) admits AOTriton on slot-local full-attention prefill layers that own a
+  transient BF16 oracle. Before the flag, the `int8_direct` route hard-disabled
+  AOTriton for those layers (`allow_aotriton=not transient_direct_oracle`, added
+  by the compact-serial-c4 qualification `c2ca58171` with no recorded rationale),
+  leaving every server INT8 request above the 8,192-position mirror threshold on
+  the native split-K paged kernel at 16 query rows per batch. Measured on the
+  W7900 at 8,192 tokens: 44.31 -> 121.44 tok/s (2.74x), peak -24 MiB, generated
+  IDs unchanged. Default OFF is bit-identical to the pre-flag tree.
+- Removal trigger: run the production-profile numerics gate with strict = flag
+  off and candidate = flag on over the full mtp-bench category suite. On a pass,
+  make admission unconditional, delete the flag and the
+  `_gguf_slot_local_prefill_allow_aotriton` helper, and fold its tests into the
+  route's parity coverage. On a fail, keep the flag OFF and record the binding
+  threshold here.
+
+## Packed execution workspace doubles the declared-context page budget
+
+- Recorded 2026-09-09. `configure_engine_loop`
+  (`hipengine/generation/qwen35_gguf.py:5560-5592`) sizes the eager packed
+  workspace lease as `capacity * max(max_pages_per_request, 1024//256)`, so the
+  global KV arena is allocated at exactly **2x** the declared context: request
+  pages plus an equal pinned lease. Measured on the retained XTX audit
+  (`2026-09-07-rx7900xtx-int8-repair-capacity-audit.json`): pool pages are
+  126/256/384/424 for 63/128/192/212 request pages at 16,128/32,768/49,152/54,272
+  declared context, at 33,280 B/token, i.e. 32.5 KiB/token of duplicate budget on
+  INT8 and 64 KiB/token on BF16. The 4-point server peak fit is 99.4 KiB/token
+  against the direct engine's 33.6.
+- The lease is **not** simply over-reserved: although the packed verifier is
+  guarded to context < 1024 (`runtime/qwen35_gguf_runner.py:19907`) and slot-local
+  prefill never writes the packed KV planes (`copy_kv=not slot_local_full_prefill`),
+  `_sync_packed_decode_initial_state` (`runtime/qwen35_gguf_runner.py:25702-25713`)
+  copies the entire KV history into those planes on the prefill->decode
+  transition. Shrinking the lease alone converts a silent over-reservation into a
+  `RuntimeError` at long context.
+- Removal trigger: the CONCURRENCY2 task-5 follow-up already recorded in
+  `worklog/entries/20260818T121922.772662Z-lhl-concurrency2-task5-layout-rebind-c9eadd.md`
+  ("packed slots borrow the row's own lease pages; flush scatters only
+  conv/recurrent state"). Land that, then size the lease to
+  `capacity * (_PACKED_VERIFY_MIN_MAX_SEQUENCE // 256)` and re-measure the server
+  single-request context ceiling, which is stale at 54,272 independently of this.

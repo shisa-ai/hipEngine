@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_int8_slot_local_aotriton_admission_screen",
+  "date": "2026-09-09",
+  "status": "candidate_default_off",
+  "performance_claim": false,
+  "capacity_claim": false,
+  "question": "The int8_direct route's slot-local full-attention prefill hard-disables AOTriton for oracle-owning layers, leaving it on the native split-K paged kernel. What does admitting AOTriton cost and buy?",
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "model_sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+  "hardware": {
+    "host": "epyc",
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "physical_gpu_index": 0
+  },
+  "protocol": {
+    "harness": "in-process A/B of the two prefill entry points on identical resident sessions; no server",
+    "prompt": "deterministic varied prompt, numpy default_rng(20260909), token IDs in [1000, 32000)",
+    "kv": "int8_per_token_head, FP32 per-token/head scales, max_sequence_length 16384 so the route is int8_direct with no BF16 mirror",
+    "env": {
+      "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG": "1",
+      "HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS": "none",
+      "HIP_VISIBLE_DEVICES": "0",
+      "GPU_MAX_HW_QUEUES": "1"
+    },
+    "flag": "HIPENGINE_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON",
+    "oracle": "packed-before vs packed-after. Packed-vs-scalar parity is NOT the oracle: the two entry points already disagree on this route by design (different GDN state-capture arithmetic, generation/qwen35_gguf.py:7406-7408)."
+  },
+  "regression_proof": {
+    "claim": "default OFF is bit-identical to the pre-change tree",
+    "scalar_bulk": { "generated_ids_match": true, "logit0_abs_delta": 0.0 },
+    "packed_slot_local": { "generated_ids_match": true, "logit0_abs_delta": 0.0 }
+  },
+  "points": {
+    "4096": {
+      "packed_slot_local": {
+        "prefill_tok_s_off": 93.97,
+        "prefill_tok_s_on": 129.38,
+        "speedup": 1.377,
+        "tracked_peak_gib_off": 17.6694,
+        "tracked_peak_gib_on": 17.6457,
+        "generated_ids_identical_8_greedy": true,
+        "logit0_abs_delta": 0.00527
+      },
+      "scalar_bulk_control": {
+        "prefill_tok_s_off": 131.39,
+        "prefill_tok_s_on": 129.76,
+        "logit0_abs_delta": 0.0,
+        "note": "untouched by the flag; confirms change scoping"
+      }
+    },
+    "8192": {
+      "packed_slot_local": {
+        "prefill_tok_s_off": 44.31,
+        "prefill_tok_s_on": 121.44,
+        "speedup": 2.741,
+        "tracked_peak_gib_off": 17.7967,
+        "tracked_peak_gib_on": 17.7731,
+        "first_token_identical": true
+      }
+    }
+  },
+  "route_context_at_8192_tok_s": {
+    "bf16_default_aotriton": 766.0,
+    "int8_oracle_free_wmma_numerics_rejected": 735.6,
+    "int8_oracle_scalar_bulk": 129.35,
+    "int8_oracle_packed_slot_local_before": 44.31,
+    "int8_oracle_packed_slot_local_after": 121.44,
+    "note": "This change closes the packed-vs-scalar half only. The residual ~6x to BF16 is the oracle route's own BF16-oracle-plus-INT8 double write and cast, not the attention kernel."
+  },
+  "variance_note": "Same-session run-to-run spread on the packed baseline is ~13% (82.71 and 93.97 tok/s across runs at 4,096), so 4,096 is 1.4-1.6x; 8,192 is the firmer point and the ratio grows with context.",
+  "blocker_to_default_on": "Attention reduction order changes (logit0 delta 5.27e-3), so promotion requires the production-profile calibrated mean/tail/max KL and top-1 gate over the full mtp-bench category suite. Not run in this unit.",
+  "created_utc": "2026-09-09T14:40:00+00:00"
+}
