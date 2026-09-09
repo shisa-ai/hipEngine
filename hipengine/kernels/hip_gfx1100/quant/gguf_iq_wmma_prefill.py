@@ -21,12 +21,15 @@ _VARIANT = "dense_wmma_w4a16_prefill_bf16_bf16_out"
 _COOP_SYMBOL = "hipengine_gguf_iq_wmma_prefill_coop_bf16_bf16_out"
 _COOP_VARIANT = "dense_wmma_w4a16_prefill_coop_bf16_bf16_out"
 _COOP64_SYMBOL = "hipengine_gguf_iq_wmma_prefill_coop64_bf16_bf16_out"
+_DUAL_SYMBOL = "hipengine_gguf_iq_wmma_prefill_dual_silu_bf16_bf16_out"
+_DUAL_VARIANT = "dense_iq_wmma_prefill_dual_silu_bf16_bf16_out"
 _COOP64_VARIANT = "dense_wmma_w4a16_prefill_coop64_bf16_bf16_out"
 _TABLES = ("gguf_iq_dense_tables.h", "gguf_iq2_xs_dense_table.h", "gguf_iq3_s_grid.h")
 QUANTS = {"gguf_iq4_xs": 0, "gguf_iq4_nl": 1, "gguf_iq3_s": 2, "gguf_q3_k": 3,
           "gguf_iq3_xxs": 4, "gguf_iq2_s": 5, "gguf_iq2_xs": 6}
 # IQ4_NL blocks hold 32 elements; every other supported quant holds 256.
 _COOP64_HANDLES: dict[int, object] = {}
+_DUAL_HANDLES: dict[int, object] = {}
 _BLOCK_ELEMENTS = {"gguf_iq4_nl": 32}
 _HANDLES: dict[int, object] = {}
 _COOP_HANDLES: dict[int, object] = {}
@@ -240,6 +243,38 @@ def launch_coop64(x_ptr: int, qweight_ptr: int, out_ptr: int, rows: int,
         (runtime or get_hip_runtime()).check(int(error))
 
 
+def launch_dual_silu(x_ptr: int, qweight_a_ptr: int, qweight_b_ptr: int,
+                     out_ptr: int, rows: int, in_features: int,
+                     out_features: int, *, quant: str = "gguf_iq4_xs",
+                     output: str = "bf16", stream: int = 0,
+                     library: ctypes.CDLL | None = None,
+                     runtime: HipRuntime | None = None,
+                     **_ignored) -> None:
+    """Fused IQ4_XS gate/up dual with SiLU (bit-exact with two singles)."""
+
+    if output != "bf16":
+        raise ValueError("W4A16 prefill writes bf16 only")
+    if (rows <= 0 or in_features <= 0 or in_features % 256
+            or out_features <= 0 or out_features % 16):
+        raise ValueError("IQ4_XS dual prefill requires K % 256 and N % 16")
+    if not all((x_ptr, qweight_a_ptr, qweight_b_ptr, out_ptr)):
+        raise ValueError("W4A16 prefill pointers must be nonzero")
+    library = library if isinstance(library, ctypes.CDLL) else _library_for_rows(rows)
+    if id(library) not in _DUAL_HANDLES:
+        fn = getattr(library, _DUAL_SYMBOL)
+        fn.argtypes = [ctypes.c_void_p] * 4 + [ctypes.c_int64] * 3 + \
+                      [ctypes.c_void_p]
+        fn.restype = ctypes.c_int
+        _DUAL_HANDLES[id(library)] = fn
+    fn = _DUAL_HANDLES[id(library)]
+    error = fn(ctypes.c_void_p(x_ptr), ctypes.c_void_p(qweight_a_ptr),
+               ctypes.c_void_p(qweight_b_ptr), ctypes.c_void_p(out_ptr),
+               ctypes.c_int64(rows), ctypes.c_int64(in_features),
+               ctypes.c_int64(out_features), ctypes.c_void_p(stream))
+    if int(error) != HIP_SUCCESS:
+        (runtime or get_hip_runtime()).check(int(error))
+
+
 def register_gguf_iq_wmma_prefill_kernels(*, replace: bool = True) -> None:
     from functools import partial
     for quant in QUANTS:
@@ -249,6 +284,9 @@ def register_gguf_iq_wmma_prefill_kernels(*, replace: bool = True) -> None:
                  partial(launch_coop, quant=quant), replace=replace)
         register(KernelKey("hip_gfx1100", "linear", quant, _COOP64_VARIANT),
                  partial(launch_coop64, quant=quant), replace=replace)
+    register(KernelKey("hip_gfx1100", "linear_pair_silu", "gguf_iq4_xs",
+                       _DUAL_VARIANT),
+            launch_dual_silu, replace=replace)
 
 
 register_gguf_iq_wmma_prefill_kernels()
