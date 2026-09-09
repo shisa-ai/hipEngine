@@ -386,11 +386,57 @@ def timesfm_attention_f32(
     _check_launch(runtime, err)
 
 
+_FLASH_ATTENTION = (
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32,
+    ctypes.c_void_p,
+)
+
+
+def timesfm_flash_attention_f16(
+    qt_ptr: int,
+    k_ptr: int,
+    v_ptr: int,
+    num_masked_ptr: int,
+    q_offset_ptr: int,
+    out_ptr: int,
+    batch: int,
+    queries: int,
+    cache_size: int,
+    heads: int,
+    head_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """WMMA flash-attention (FP16 production path).
+
+    Computes causal+front-masked attention from the head-major query tensor
+    ``qt`` [B, H, Q, D] and the per-layer KV caches [B, H, S, D], writing
+    head-major ``out`` [B, H, Q, D].  Replaces the scores GEMM + masked
+    softmax + AV GEMM chain; ``head_dim`` must be a multiple of 16.
+    """
+
+    library = library or _library()
+    runtime = runtime or get_hip_runtime()
+    if head_dim % 16 != 0:
+        raise ValueError("flash attention requires head_dim % 16 == 0")
+    fn = signed_kernel_fn(library, "timesfm_flash_attention_f16", _FLASH_ATTENTION, ctypes.c_int)
+    err = fn(
+        qt_ptr, k_ptr, v_ptr, num_masked_ptr, q_offset_ptr, out_ptr,
+        batch, queries, cache_size, heads, head_dim, stream,
+    )
+    _check_launch(runtime, err)
+
+
 __all__ = [
     "build_timesfm",
     "plan_timesfm_build",
     "timesfm_add_f32",
     "timesfm_attention_f32",
+    "timesfm_flash_attention_f16",
     "timesfm_bias_f32",
     "timesfm_bias_swish_f32",
     "timesfm_head_perdim_scale_f32",

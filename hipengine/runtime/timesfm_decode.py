@@ -55,7 +55,7 @@ from hipengine.kernels.hip_gfx1100.timesfm.timesfm import (
     timesfm_qkv_norm_scatter_f16,
     timesfm_rope_norm_scatter_f16,
     timesfm_k_norm_scatter_f16,
-    timesfm_mask_softmax_f16,
+    timesfm_flash_attention_f16,
     timesfm_q_norm_transpose_f16,
     timesfm_transpose_heads_f16,
     timesfm_v_scatter_f16,
@@ -347,27 +347,10 @@ class TimesFMGPUDecoder:
                     batch, n, cache_size, heads, hd, patch_stride, start,
                     bufs.qt.ptr, bufs.caches_k[layer].ptr, bufs.caches_v[layer].ptr,
                 )
-                # scores[bh][q,s] = sum_d Q[bh][q,d] K[bh][s,d]
-                self.rocblas.gemm_ex_strided_batched_f16_f32acc(
-                    bufs.caches_k[layer].ptr, bufs.qt.ptr, bufs.scores.ptr,
-                    m=cache_size, n=n, k=hd,
-                    lda=hd, ldb=hd, ldc=cache_size,
-                    stride_a=cache_size * hd, stride_b=n * hd, stride_c=n * cache_size,
-                    batch=batch * heads,
-                    trans_a=True, trans_b=False,
-                )
-                timesfm_mask_softmax_f16(
-                    bufs.scores.ptr, bufs.num_masked.ptr, bufs.q_offset.ptr,
-                    batch, n, cache_size, heads,
-                )
-                # attn[bh][q,d] = sum_s P[bh][q,s] V[bh][s,d]
-                self.rocblas.gemm_ex_strided_batched_f16_f32acc(
-                    bufs.caches_v[layer].ptr, bufs.scores.ptr, bufs.attn_o.ptr,
-                    m=hd, n=n, k=cache_size,
-                    lda=hd, ldb=cache_size, ldc=hd,
-                    stride_a=cache_size * hd, stride_b=n * cache_size, stride_c=n * hd,
-                    batch=batch * heads,
-                    trans_a=False, trans_b=False,
+                timesfm_flash_attention_f16(
+                    bufs.qt.ptr, bufs.caches_k[layer].ptr, bufs.caches_v[layer].ptr,
+                    bufs.num_masked.ptr, bufs.q_offset.ptr, bufs.attn_o.ptr,
+                    batch, n, cache_size, heads, hd,
                 )
                 timesfm_transpose_heads_f16(
                     bufs.attn_o.ptr, bufs.attn_out.ptr, batch, n, heads, hd
