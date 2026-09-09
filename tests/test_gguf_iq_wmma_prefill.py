@@ -87,8 +87,14 @@ def test_is_the_dense_iq_prefill_default_on_both_hip_backends(backend):
         # IQ4_XS routes to the cooperative shared-LDS owner on gfx1100
         # (bit-exact sibling, same registered family); the one-wave variant
         # remains the default for the other six quants and on gfx1151.
-        if backend == "hip_gfx1100" and quant == "gguf_iq4_xs":
+        # gfx1100 routes by quant through the cooperative owners; the
+        # split quants (Q3_K, IQ2_S, IQ2_XS) and IQ3_S take the 32-column
+        # cooperative owner, IQ4_XS and IQ4_NL the 64-column one.
+        if backend == "hip_gfx1100" and quant in ("gguf_iq4_xs",
+                                                  "gguf_iq4_nl"):
             assert entry["variant"] == w4a16._COOP64_VARIANT, quant
+        elif backend == "hip_gfx1100" and quant in ("gguf_q3_k", "gguf_iq3_s"):
+            assert entry["variant"] == w4a16._COOP_VARIANT, quant
         else:
             assert entry["variant"] == w4a16._VARIANT, quant
 

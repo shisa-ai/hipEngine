@@ -1112,6 +1112,15 @@ GGUF_IQ_DENSE_PREFILL_POLICY = {
                  "gguf_q3_k", "gguf_iq2_s", "gguf_iq2_xs")
 }
 GGUF_IQ_DENSE_PREFILL_POLICY["gguf_iq4_xs"]["variant"] = _IQ_DENSE_W4A16_COOP64_VARIANT
+# IQ4_NL joins the 64-column cooperative owner (2026-09-10): an explicit
+# fast path (one 18-byte block per 32-element sub-segment, d hoisted, LDS
+# codebook) measures 2.0-2.2x the one-wave owner, bit-exact.
+GGUF_IQ_DENSE_PREFILL_POLICY["gguf_iq4_nl"]["variant"] = _IQ_DENSE_W4A16_COOP64_VARIANT
+# Q3_K and IQ3_S join the 32-column cooperative owner (the hi+lo split path
+# needs two slabs and cannot widen to 64 columns): 1.4-1.5x the one-wave
+# owner, bit-exact incl. the split arithmetic.
+GGUF_IQ_DENSE_PREFILL_POLICY["gguf_q3_k"]["variant"] = _IQ_DENSE_W4A16_COOP_VARIANT
+GGUF_IQ_DENSE_PREFILL_POLICY["gguf_iq3_s"]["variant"] = _IQ_DENSE_W4A16_COOP_VARIANT
 # Dense raw-IQ decode owner (rows=1): the local32 IQ4_XS GEMV candidate.
 # One wave per 8 output columns, each lane owning 8 contiguous K, two u32
 # payload loads per column-block and a byte-indexed fused codebook LUT -
