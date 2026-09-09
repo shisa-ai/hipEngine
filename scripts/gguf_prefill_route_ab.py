@@ -53,6 +53,16 @@ def main() -> int:
     ap.add_argument("--no-wmma-prefill", dest="use_wmma_prefill", action="store_false")
     ap.add_argument("--use-gemv-decode", action="store_true", default=True)
     ap.add_argument("--no-gemv-decode", dest="use_gemv_decode", action="store_false")
+    ap.add_argument(
+        "--assert-entry-agreement",
+        action="store_true",
+        help=(
+            "Exit non-zero unless both prefill entry points produce identical "
+            "generated IDs. On the int8_direct route this is the multi-chunk "
+            "oracle-history contract: pick --prompt-length above the prefill "
+            "chunk cap (1024 rows on dense H5120 Q4_K_M) to exercise it."
+        ),
+    )
     ap.add_argument("--json", type=Path, default=None)
     args = ap.parse_args()
 
@@ -165,10 +175,26 @@ def main() -> int:
     a = out["arms"]["scalar_bulk"]["prefill_tok_s"]
     b = out["arms"]["packed_slot_local"]["prefill_tok_s"]
     out["speed_ratio_scalar_over_packed"] = round(a / b, 3) if b else None
+    if args.assert_entry_agreement:
+        out["entry_agreement_gate"] = {
+            "requested": True,
+            "generated_ids_match": bool(out["parity"]["generated_ids_match"]),
+            "top1_match": bool(out["parity"]["top1_match"]),
+            "logit_max_abs_diff": out["parity"]["logit_max_abs_diff"],
+        }
     payload = json.dumps(out, indent=2, default=str)
     print(payload)
     if args.json:
         args.json.write_text(payload + "\n", encoding="utf-8")
+    if args.assert_entry_agreement and not out["parity"]["generated_ids_match"]:
+        print(
+            "FAIL: prefill entry points disagree. scalar_bulk="
+            f"{out['arms']['scalar_bulk']['generated_ids']} "
+            f"packed_slot_local={out['arms']['packed_slot_local']['generated_ids']} "
+            f"(logit max abs diff {out['parity']['logit_max_abs_diff']:.4g})",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 

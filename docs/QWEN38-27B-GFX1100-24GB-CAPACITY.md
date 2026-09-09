@@ -3,6 +3,83 @@
 Status: measurement and optimization plan with scoped offline DMS INT8
 integration evidence. General production-serving qualification is not established.
 
+## P1 defect: packed INT8 prefill shares one BF16 oracle across layers — 2026-09-10 UTC
+
+The packed slot-local INT8 prefill route produces **wrong output for any prompt
+that spans more than one prefill chunk** (>1,024 rows on the dense H5120 Q4_K_M
+geometry). `int8_direct` sessions are forced onto this entry unconditionally by
+`_gguf_single_row_block_table_prefill_required`, so this is the shipping server
+path for every INT8 KV request above 1,024 prompt tokens. Single-chunk prompts
+are unaffected.
+
+`_int8_prefill_oracle_cache_for_layer` keys the BF16 oracle pair `-1` — one
+shared pair for all INT8 layers — whenever the lifetime plan mode is
+`layer_outer_shared_oracle`. That function's own docstring states the invariant:
+chunk-outer prefill "keeps one full-length pair per INT8 layer", and only a
+layer-outer plan "safely reuses one pair after each layer completes". But
+`_prefill_batch_native_impl` chunks the prompt by `_bulk_prefill_scratch.rows`
+and `_prefill_batch_native_single_slab` iterates layers *inside* each chunk,
+while `_plan_gguf_int8_prefill_lifetime` still selects the shared mode purely
+from a memory comparison (`use_shared = projected_delta < 0`). Plan and executor
+disagree; from the second chunk onward every layer attends over the previous
+chunk's *last* layer's K/V.
+
+Reproduced on the W7900 (GPU0), gfx1100, `int8_per_token_head` + FP32 scales,
+`max_sequence_length` 16384, shipping selectors (`use_wmma_prefill`,
+`use_gemv_decode`), deterministic varied prompt, 8 greedy IDs, via
+[`gguf_prefill_route_ab.py`](../scripts/gguf_prefill_route_ab.py):
+
+| Prompt rows | Chunks | Oracle | Scalar bulk IDs | Packed IDs | Agree |
+| ---: | ---: | --- | --- | --- | :-: |
+| 1,024 | 1 | shared (shipped) | `[62,198,197,197]` | `[62,198,197,197]` | yes |
+| 2,048 | 2 | shared (shipped) | `[198,197,197,1]` | `[14,198,248046,198]` | **no** |
+| 2,048 | 2 | per-layer (patched control) | `[198,197,197,1]` | `[198,197,197,1]` | yes |
+
+The scalar arm is the control and is unchanged by the oracle variant (742.28 vs
+749.29 tok/s, identical IDs) because scalar bulk prefill is layer-outer. Packed
+prefill measures **449.16 tok/s in both oracle variants**, so correcting the
+lifetime is speed-neutral at this shape and costs memory only.
+
+Two earlier conclusions are withdrawn. The packed-versus-scalar divergence is
+**not** the "different GDN state-capture arithmetic" recorded at
+`hipengine/generation/qwen35_gguf.py:7406-7408`: with per-layer oracles the two
+entry points agree exactly. And absolute prefill rates previously taken from a
+harness that omitted `use_wmma_prefill`/`use_gemv_decode` were roughly 6x low;
+with the shipping selectors the oracle route reaches 742-749 tok/s, consistent
+with the retained XTX oracle-route control of 761.58 tok/s at 8,192
+([`blocked artifact`](../benchmarks/results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-blocked.json)),
+so the BF16 oracle is close to free and is not the cause of any slow path.
+
+Fix options, none free:
+
+1. **Layer-outer packed executor.** Invert the packed loops for the slot-local
+   INT8 case so all chunks of a layer complete before the next layer, matching
+   the scalar bulk parent. Preserves the memory model — the shared plan already
+   budgets `required_hidden_capacity = positions` precisely so the executor can
+   be layer-outer — and is the recommended target.
+2. **Per-layer oracles whenever the executor is chunk-outer.** Correct and
+   measured speed-neutral, but the oracle cost moves from ~4 KiB/token to
+   ~64 KiB/token on this geometry (16 pairs), which pulls the context ceiling
+   down hard at long contexts and is a non-starter above ~16K.
+3. **Repopulate the shared oracle per chunk from the retained INT8 store.**
+   Reintroduces a dequantized read on the strict path, so it needs its own
+   numerics gate.
+
+Consequence for open work: the AOTriton slot-local admission gate
+([`gate artifact`](../benchmarks/results/2026-09-09-w7900-int8-slot-local-aotriton-gate.json))
+used a sound before/after method and its flag is default OFF, so nothing shipped
+changed, but both arms shared the same corrupted multi-chunk history. Its
+1.97e-05 mean KL does not qualify the route; re-run after the lifetime is fixed
+and against the shipping selectors. Two review findings remain open and
+unprofiled: `_prefill_batch_native_single_slab` calls
+`_sync_packed_decode_initial_state` once per slab (copying positions
+`0..session.position` into packed storage, then clearing the reuse identity so
+the next slab re-imports — roughly 15.5 full-prompt history copies at 32K in 1K
+slabs), and `_int8_prefill_oracle_capacity_positions` sizes the oracle by
+`backing_pages * block_size`, the whole pool, rather than the request context.
+
+[`Defect evidence`](../benchmarks/results/2026-09-10-w7900-int8-packed-shared-oracle-defect.json)
+
 ## Hidden-plane alias adoption and the 232,448-token ladder — 2026-09-08 UTC
 
 The route-scoped single-plane hidden stream for layer_outer prefill was
