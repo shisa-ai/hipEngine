@@ -1327,3 +1327,53 @@ extern "C" int hipengine_evie_cast_f32_to_f32_strided(
       x, out, rows, cols, out_stride);
   return static_cast<int>(hipGetLastError());
 }
+
+__global__ void evie_gather_repeat_f16_kernel(
+    const float* __restrict__ x,
+    __half* __restrict__ out,
+    int64_t tokens,
+    int64_t row_stride,
+    int64_t heads,
+    int64_t repeat,
+    int64_t head_dim,
+    int64_t head_stride) {
+  const int64_t total = heads * tokens * head_dim;
+  for (int64_t idx = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+       idx < total;
+       idx += (int64_t)gridDim.x * blockDim.x) {
+    int64_t rem = idx;
+    const int64_t h = rem / (tokens * head_dim);
+    rem %= tokens * head_dim;
+    const int64_t t = rem / head_dim;
+    const int64_t i = rem % head_dim;
+    out[idx] = __float2half(
+        x[t * row_stride + (h / repeat) * head_dim + i]);
+  }
+}
+
+extern "C" int hipengine_evie_gather_repeat_f16(
+    const float* x,
+    void* out,
+    int64_t tokens,
+    int64_t row_stride,
+    int64_t heads,
+    int64_t repeat,
+    int64_t head_dim,
+    int64_t head_stride,
+    hipStream_t stream) {
+  if (tokens <= 0 || row_stride <= 0 || heads <= 0 || repeat <= 0
+      || head_dim <= 0 || head_stride <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t total = heads * tokens * head_dim;
+  const int64_t blocks = (total + 255) / 256;
+  hipLaunchKernelGGL(
+      evie_gather_repeat_f16_kernel,
+      dim3(static_cast<unsigned int>(blocks)),
+      dim3(256),
+      0,
+      stream,
+      x, static_cast<__half*>(out), tokens, row_stride, heads, repeat,
+      head_dim, head_stride);
+  return static_cast<int>(hipGetLastError());
+}

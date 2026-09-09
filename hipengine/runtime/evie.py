@@ -340,7 +340,9 @@ class EvieRunner:
         Both GEMMs are rocBLAS pointer-array batched SGEMMs; GQA head groups
         map each query head to its key/value head (heads must be a multiple
         of kv_heads), so no repeat expansion is materialized and the AV
-        product writes straight into the packed output.
+        product writes straight into the packed output. In fp16 mode the
+        GEMMs run f16 on per-head-contiguous planes (256-byte-aligned batch
+        pointers) with an f16 scale+softmax kernel.
         """
 
         if kv_heads is None:
@@ -350,6 +352,77 @@ class EvieRunner:
         repeat = heads // kv_heads
         q_row = heads * head_dim
         kv_row = kv_heads * head_dim
+        if self.precision == "fp16":
+            plane = (tokens * head_dim + 127) & ~127
+            q16 = self._plane16_scratch("q", heads * plane)
+            k16 = self._plane16_scratch("k", heads * plane)
+            v16 = self._plane16_scratch("v", heads * plane)
+            for src, buf, src_repeat, src_row in (
+                (q_ptr, q16, 1, q_row),
+                (k_ptr, k16, repeat, kv_row),
+                (v_ptr, v16, repeat, kv_row),
+            ):
+                err = self._k(
+                    "hipengine_evie_gather_repeat_f16",
+                    [_P, _P, _I, _I, _I, _I, _I, _I, _S],
+                )(
+                    _P(src), _P(buf.ptr), _I(tokens), _I(src_row),
+                    _I(heads), _I(src_repeat), _I(head_dim), _I(plane), _S(0),
+                )
+                self._check(err, "gather repeat f16")
+            scores16, head_stride = self._scores16_scratch(tokens, heads)
+            self.rocblas.gemm_ex_strided_batched_f16_f32acc(
+                k16.ptr,
+                q16.ptr,
+                scores16.ptr,
+                m=tokens,
+                n=tokens,
+                k=head_dim,
+                lda=head_dim,
+                ldb=head_dim,
+                ldc=tokens,
+                stride_a=plane,
+                stride_b=plane,
+                stride_c=head_stride,
+                batch=heads,
+                trans_a=True,
+                trans_b=False,
+            )
+            err = self._k(
+                "hipengine_evie_scale_softmax_rows_f16",
+                [_P, _F, _I, _I, _I, _I, _S],
+            )(
+                _P(scores16.ptr), _F(scale), _I(heads * tokens), _I(tokens),
+                _I(tokens), _I(head_stride), _S(0),
+            )
+            self._check(err, "softmax f16")
+            out16 = self._plane16_scratch("attn_out", heads * plane)
+            self.rocblas.gemm_ex_strided_batched_f16_f32acc(
+                v16.ptr,
+                scores16.ptr,
+                out16.ptr,
+                m=head_dim,
+                n=tokens,
+                k=tokens,
+                lda=head_dim,
+                ldb=tokens,
+                ldc=head_dim,
+                stride_a=plane,
+                stride_b=head_stride,
+                stride_c=plane,
+                batch=heads,
+                trans_a=False,
+                trans_b=False,
+            )
+            err = self._k(
+                "hipengine_evie_scatter_heads_f16", [_P, _P, _I, _I, _I, _I, _S]
+            )(
+                _P(out16.ptr), _P(out_ptr), _I(tokens), _I(heads),
+                _I(head_dim), _I(plane), _S(0),
+            )
+            self._check(err, "scatter out f32")
+            return
+
         scores, head_stride = self._scores_scratch(tokens, heads)
         # scores[h] = q_h @ k_{h//repeat}^T  -> row-major (tokens, tokens) per head
         a_dev = self._dev_ptr_array(
