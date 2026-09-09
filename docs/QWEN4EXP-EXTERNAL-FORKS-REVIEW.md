@@ -14,6 +14,7 @@ UD-Q4_K_XL/BF16 KV, its profile gates and prefill-first priority.
 | [Myhacsint production branch](https://github.com/myhacsint/llama.cpp/tree/2dff8596dcb7bdf765d24d44e1155d51f04c82b7) | `2dff8596dcb7bdf765d24d44e1155d51f04c82b7`, September 1 | Requested `production/strix-halo-qwen4exp-b10685`, not its upstream-tracking master. Squashed source snapshots plus a shared-MTP fit fix. |
 | [Halo-box master](https://github.com/halo-box/strix-llama.cpp/tree/7449a0fe9710ab584c5f9a6d25e7a31eea2708b8) | `7449a0fe9710ab584c5f9a6d25e7a31eea2708b8`, September 7 UTC / September 8 JST | 66 commits ahead of our `b212548e0` comparator at review time. Includes HIP PR18, UMA input-ring PR29 and ROCmFPx PR30. |
 | [PR18 results](https://github.com/gaetan-puleo/strix-halo-pull-18-results/tree/c09bef366291556235b7bc473005a95483cb3eac) | `c09bef366291556235b7bc473005a95483cb3eac` | Author's separate benchmark and per-model correctness tables, not a run at the latest halo-box master. |
+| [nasone32 RDNA3 build](https://github.com/nasone32/llama.cpp-RDNA3-7900xtx-opt/tree/1a6b9351092cb95afbe6a654120176eb09649b3f) | `1a6b9351092cb95afbe6a654120176eb09649b3f`, September 9 | MIT-licensed llama.cpp fork (referenceable under lineage rules, unlike Halogen's EULA). RDNA3/3.5 kernel tunings plus multi-GPU allreduce/P2P; author benchmarks on two RX 7900 XTX, `UD_Q3_XXL` Flash-Next / Q8_0 27B, PP8192 with RAM offload. |
 
 Representative discovery commands; use pinned refs for subsequent file reads:
 
@@ -184,6 +185,40 @@ dequant-once KV, tile, wave32 or concat changes to current master unless the
 specific code is independently found there. ROCmFPx additions likewise
 describe new weight formats, not native IU4 acceleration of our Q4_K payload.
 
+### nasone32: RDNA3/3.5-Tuned Build with Multi-GPU Focus
+
+Reviewed September 9, 2026 at `1a6b9351` via a read-only blob-less clone;
+no external runtime, weights or kernels were built or executed. This is an
+MIT llama.cpp fork, so commit bodies are referenceable under the campaign's
+source-lineage rules. All performance rows are author-reported on two RX
+7900 XTX (`gfx1100`, not our `gfx1151`), ROCm 7.14, PP8192, using
+`UD_Q3_XXL` Flash-Next (not our UD-Q4_K_XL) and Q8_0 27B under tensor
+parallel with RAM offload. None of its headline rates is a comparator row
+for this campaign. The build's unique value is multi-GPU machinery
+(internal HIP allreduce and P2P without RCCL, optional Q8_0 inter-GPU wire
+compression, fused allreduce+residual, DFlash2 tensor-split) that is out
+of scope for the single-GPU Framework lane and recorded here for a future
+dual-GPU lane. Several commits are LLM-assisted; mechanism and code review
+precede any transfer.
+
+High-value inspected commit mechanisms:
+
+| Commit | Mechanism | Relevance to this campaign |
+| --- | --- | --- |
+| `ed11a0d2f` `fattn-tile.cuh` | RDNA3.5 D=256 tile flash-attn config: `nbatch_K` 128->64, occupancy 3->4 for the D=256/ncols=32 prefill row (rocWMMA FA off); other cases fall back to the shared RDNA table. | **Directly relevant.** Our QSA is 24q/2kv/D256 on gfx1151 and QSA prefill is 1.331 s versus Vulkan's 0.646 s. A bounded tile-config/occupancy sweep on our QSA prefill tiles is arithmetic-preserving; author rates do not transfer. |
+| `47ff3777a` (#24546) + `9a764c613` `mmq.cuh` | Size routed-MoE MMQ tile J from the typical expert width (`ncols_dst / nchannels_x`) or `2 x` tokens-per-expert instead of `ncols_max`, for tile selection only - the launch grid still uses `ncols_max`. | Same tile-underfill problem our routing histogram shows (p4096 medians 9-12 active rows/expert). Strengthens E1's expert-row-aware tile selection with an RDNA3 reference implementation; our compact tile maps and rejected scalar-prefetch settings stay binding. |
+| `7dfa528e3` `mmq.cuh` | Opt-in compacted MoE tiling for RDNA3.5 (92 lines). | Same E1 class; secondary reference. |
+| `cec239cb8` (rdna-boosts block 13) | Fused MoE gate+up+GLU MMQ; mmvq short-K item-split. | We already fuse gate/up+SiLU in our dual kernels; the short-K item-split maps to R6's MoE expert GEMV pair target. |
+| `670512936` `mmvq.cu` | Dequant-float matvec (`mmvdq`) for Q4_K/Q5_K/Q6_K. | Decode GEMV candidate for R6; our three-plane/strict arithmetic contracts apply. |
+| `33611a98a` + `d7f316ec` | Channels-major SSM conv input mode; drops the delta-net transpose before GDN conv. | Our GDN is already ahead of the comparator (0.82 s versus 1.39 s); bounded R7-style screen only with fresh complete-owner evidence. |
+| `7f3e1e4d0` / `7f1d25f7e` `top-k.cu` | Hybrid and wave32-native TOP_K kernels for ROCm. | Our router decode owner is 0.33 ms/token - below current re-rank threshold on Framework (the W7900 lane already retains fused router top-k+softmax). |
+| `d2d89512d` (#28213) `qwen4exp.cpp` | Gather-based sparse attention for QSA decode (graph-level, not kernel). | Superseded by our ordered-v2 QSA decode route (0.179 ms/layer, bit-exact); no current gap. |
+| `abca85cdc` (#28136) | Direct `pread()` staging of gathered PLE rows instead of faulting lazy host-offloaded PLE tables through mmap (`--lazy-mode on-direct`). | The +58.88% Flash PP claim is a host-offload/mmap pathology; our PLE owner is 15.7 ms of 16.5 s with resident weights. Inapplicable while weights are resident; revisit only for an offload serving lane. |
+| `6ed7fb04f` / `deaa39d7` | GPU-resident LRU cache for host-offloaded MoE experts (with overhead removal). | Inapplicable (all-resident payload); the author disables it for prompt processing. |
+| `b7b53d5bf` (block 11) | Skip CUDA graphs for multi-token prefill. | Corroborates our advancing-graph neutral finding (warm graph ~= eager); no action. |
+| `10579a736` (block 01) | Adaptive MTP draft depth (runtime n-max from acceptance). | W7900 MTP lane feature candidate; separate campaign economics gates. |
+| `7c5bb5cb9` / `e06dcf630` / `22ed83e9a` | Internal HIP allreduce + P2P, Q8_0 wire compression + fused allreduce+residual, DFlash2 tensor-split fix. | Multi-GPU lane only; out of Framework scope, recorded for future dual-GPU work. |
+
 ## Campaign Experiments
 
 Do not restart completed R4 work or interrupt current Q5_1 admission.
@@ -201,6 +236,7 @@ external headline ratios do not supply current recoverable milliseconds.
 | E5 / R3 followup, R6 | Extend the existing UMA audit with delayed host-input consumers, ring wrap, pointer-generation changes, cross-view lifetime, cancellation and ordered output consumption. | No generic scheduler port or asynchronous rewrite without an exposed-cost bucket. PR29 is not a PM4 implementation or proof that our drift is a race; do not remove synchronization on that inference. |
 | E6 / P11 MTP | Count duplicate target replay forwards at each rejection depth; test full/partial restore into dirty destinations and shared target/draft allocation accounting. | Complete true-AR category/heldout economics and exact state/control remain binding. Capacity beyond1K and batch-invariant verification precede budget/confidence tuning. No headline-driven MTP default. |
 | E7 / separate serving-memory followup | Measure PLE page-cache pressure, pinned resident bytes, startup fragmentation, and ownership-preserving in-place prefix snapshots. | First compare with existing PLE/prefix ownership. Charge all retained KV/state and additional buffers; preserve cache-hit/cold policy and isolation. No host sysctl/THP change, Halogen installation or new weight format is authorized by this review. |
+| E8 / R7 QSA prefill + E1 MoE prefill | Screen the nasone32 RDNA3.5 mechanisms on our owners after the R2d re-rank: (a) D=256 QSA prefill tile-config/occupancy sweep (reference `ed11a0d2f`); (b) expert-row-aware tile J from typical expert width on the retained MoE grouped chains (references `47ff3777a`/`9a764c613`/`7dfa528e3`, strengthening E1). | Author rows are gfx1100/`UD_Q3_XXL`/PP8192 with RAM offload and are not transferable rates. Representation-preserving only: no arithmetic change in (a); charge tile-map and padding overhead against actual routing histograms in (b). The fork's multi-GPU machinery, expert cache and lazy-PLE staging stay out of this campaign's scope. |
 
 Already covered mechanisms include radix QSA selection, gathered decode,
 incremental pooled keys, host PLE gathering, grouped experts/weighted down,

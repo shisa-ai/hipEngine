@@ -471,7 +471,7 @@ from this refreshed join, not the older 3.161 ms snapshot.
 
 #### External experiment attachments
 
-Use the [source review's E0-E7 table](QWEN4EXP-EXTERNAL-FORKS-REVIEW.md#campaign-experiments)
+Use the [source review's E0-E8 table](QWEN4EXP-EXTERNAL-FORKS-REVIEW.md#campaign-experiments)
 for pinned files/commits, test gaps and stop criteria:
 
 - **E0:** qualify refreshed halo-box HIP/Vulkan and Myhacsint comparators
@@ -512,6 +512,11 @@ for pinned files/commits, test gaps and stop criteria:
   P11, and page-cache/pinning/in-place-prefix checks as separate serving
   followups. No new weights, proprietary kernel import, global runtime
   replacement or numerical-policy relaxation is authorized.
+- **E8 (added September 9, nasone32 review):** after the R2d re-rank, screen
+  the RDNA3.5 D=256 QSA prefill tile-config sweep and the expert-row-aware
+  MoE tile-J-from-typical-expert-width mechanism on our owners. The fork's
+  multi-GPU allreduce/P2P/Q8-wire machinery, host-offload expert cache and
+  lazy-PLE staging are out of this campaign's scope.
 
 The source review records conflicting external logit-exactness evidence,
 cache-sensitive benchmark tooling and quant/layout-specific route guards.
