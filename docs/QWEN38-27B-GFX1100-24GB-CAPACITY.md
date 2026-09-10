@@ -51,11 +51,21 @@ one block per (q\_head, query row) that serially walks the whole visible
 context, and its score buffer is dynamic LDS sized by the whole context
 (`(max_context_len + threads + head_dim) × 4` bytes: ~4.6 KB at ctx 1,024 →
 ~33.5 KB at ctx 8,192 per block), so occupancy collapses as the slab's end
-context grows. Escape hatches: AOTriton admission on transient-oracle layers
-(built, default OFF, gate to re-run on the corrected route) or the WMMA
-score-GEMM structure the scalar parent's bulk path already uses. The
-layer-outer packed executor would fix the oracle memory but not this — every
-schedule still attends over the full history per chunk.
+context grows. **Escape hatch, corrected 2026-09-10 per the parity roadmap F1
+trace: the direct arm is not a separate WMMA score-GEMM — its attention
+above the 512-row crossover is AOTriton compact varlen through the same
+`_run_full_attention_prefill_layer_aotriton` wrapper with `allow_aotriton`
+left at its True default; only the slot-local route's
+`_gguf_slot_local_prefill_allow_aotriton` gate keeps it on the native
+kernel.** Admitting AOTriton on transient-oracle layers (flag built, default
+OFF) therefore reuses the already-admitted direct attention family rather
+than importing a new kernel; sub-512-row slabs (tail slabs) keep the native
+kernel, so traces must expect two attention identities. The earlier
+"WMMA score-GEMM structure" wording in this note and in the attribution
+artifact's escape-hatch field is withdrawn; `use_wmma_prefill` selects
+projection kernels, not the attention core. The layer-outer packed executor
+would fix the oracle memory but not this — every schedule still attends over
+the full history per chunk.
 
 [`Attribution evidence`](../benchmarks/results/2026-09-10-w7900-int8-packed-paged-attn-attribution.json)
 
