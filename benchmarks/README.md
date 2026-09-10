@@ -351,6 +351,32 @@ in the artifacts
 ([sprint](results/gfx1151-evie-4p5b-fp16-perf-sprint-2026-09-09.json),
 [cluster8](results/gfx1151-evie-4p5b-cluster8-recurrence-2026-09-10.json)).
 
+### W7900 Qwen3.8 `UD-Q4_K_M` / `UD-Q4_K_S` dynamic-routing stack
+
+2026-09-10 four-arm A/B (hipEngine direct, p512/d128, medians of 3): the UD
+artifacts vs their plain counterparts. Prefill is time per 512-token prompt
+(lower is better); decode is tokens/s.
+
+| Model | Prefill plain | Prefill UD | Ratio | Decode plain | Decode UD |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `UD-Q4_K_M` | 985.2 ms | **936.4 ms** | 0.950x | 26.14 | **34.15** |
+| `UD-Q4_K_S` | 949.8 ms | **896.0 ms** | 0.943x | 25.54 | **35.06** |
+
+Qualification (`scripts/gguf_ud_combined_stack_gate.py --category-heldout`,
+tokenized 18-prompt category/heldout screen, 1170 teacher-forced positions):
+`UD-Q4_K_S` passes every binding statistic (mean 8.9e-5 / p95 4.2e-4 / p99
+8.5e-4 / max 5.1e-3 / top-1 99.83%). `UD-Q4_K_M` passes every statistic but
+the absolute max-row ceiling: one position (code_lru_cache, decode step 1)
+reaches KL 9.4e-2 where the Q3_K W4A16 prefill route (5.3e-2 alone) compounds
+with the IQ4_XS local32 decode route (2.7e-2 alone). Both are 1-ULP
+accumulation-order classes with 100% top-1 agreement on the worst prompt, and
+the calibration arm shows the incumbent 4-quant tree itself measures max
+4.2e-2 vs all-strict on the same prompts - the ceiling sits below the admitted
+baseline's own noise tail. The K_M performance numbers above stand as
+measurements; the Q3_K-route revert-vs-envelope-amendment decision is open
+([gate artifacts](results/combined-stack-gate2/),
+[four-arm artifacts](results/final-four-arm-2026-09-10/)).
+
 ### W7900 Qwen3.8 `Q4_K_M` C1-C8
 
 #### Server performance on the INT8 KV route

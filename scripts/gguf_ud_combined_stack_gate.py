@@ -212,15 +212,25 @@ def main() -> None:
 def _run_category_heldout_gate(args, compiler_version) -> None:
     """The 18-prompt category/heldout half of the section-6.1 screen.
 
-    Teacher-forced over the campaign fixture (the same jsonl pair the
-    gfx1151 gates use), grouped by scope; binds per-scope top-1 >= 0.97
-    and the overall KL thresholds against the pinned incumbent.
-    """
+    Prompts are tokenized with the model's own tokenizer
+    (Qwen35GGUFTokenizer + the chat template), then extended to
+    --prompt-tokens with the incumbent arm's own continuation so the
+    prefill window exercises the >=129-row owners (the fused IQ4_XS
+    dual included) while the instruction content is the real fixture
+    prompt. The candidate is teacher-forced on the incumbent's tokens.
 
-    import copy
+    Binding predicate on the position-pooled KL vector (weighted by
+    construction): mean/p95/p99/max <= 1e-3/5e-3/2e-2/5e-2, overall
+    top-1 >= 0.99, per-scope top-1 >= 0.97, finite candidate logits.
+    Positions above the 2e-2 p99 envelope are listed as diagnostics -
+    a pass does not suppress them.
+    """
 
     from hipengine.benchmark.correctness import evaluate_logits
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+    from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
+    from hipengine.loading.gguf import scan_gguf
+    from scripts.gguf_mtp_bench import build_chat_prompt
     import hipengine.kernels.hip_gfx1100 as be
 
     prompt_rows = []
@@ -235,11 +245,16 @@ def _run_category_heldout_gate(args, compiler_version) -> None:
     for row in prompt_rows:
         by_scope.setdefault(row["category"], []).append(row)
 
-    rng = np.random.default_rng(args.seed)
+    tokenizer = Qwen35GGUFTokenizer.from_gguf_info(scan_gguf(args.model))
     n = int(args.decode_tokens)
-    scopes: dict[str, dict[str, float]] = {}
-    all_kl: list[np.ndarray] = []
-    all_top1: list[bool] = []
+    rng = np.random.default_rng(args.seed)
+
+    scope_stats: dict[str, dict] = {}
+    pooled_kl: list[np.ndarray] = []
+    pooled_top1: list[np.ndarray] = []
+    pooled_calib: list[np.ndarray] = []
+    diagnostics: list[dict] = []
+    candidate_finite = True
     try:
         with Qwen35GGUFResidentSession(
             args.model,
@@ -249,80 +264,170 @@ def _run_category_heldout_gate(args, compiler_version) -> None:
             use_wmma_prefill=True,
             use_gemv_decode=True,
         ) as session:
-            def _run_pair(prompt_ids):
-                def _run(prefill_policy, decode_policy, forced_tokens=None):
-                    be.GGUF_IQ_DENSE_PREFILL_POLICY = prefill_policy
-                    be.GGUF_IQ_DENSE_DECODE_POLICY = decode_policy
-                    logits_rows = []
-                    first = session.prefill(
-                        prompt_ids, use_bulk=True,
-                        bulk_attention_mode="bulk", return_logits=True)
+            def _arm(prefill_policy, decode_policy, prompt_ids, forced=None):
+                be.GGUF_IQ_DENSE_PREFILL_POLICY = prefill_policy
+                be.GGUF_IQ_DENSE_DECODE_POLICY = decode_policy
+                logits_rows = []
+                cur = session.prefill(
+                    prompt_ids, use_bulk=True, bulk_attention_mode="bulk",
+                    return_logits=True)
+                logits_rows.append(np.asarray(
+                    cur.logits, dtype=np.float32).reshape(-1))
+                for i in range(n):
+                    feed = (int(cur.token_id) if forced is None
+                            else int(forced[i]))
+                    cur = session.step(feed, return_logits=True)
                     logits_rows.append(np.asarray(
-                        first.logits, dtype=np.float32).reshape(-1))
-                    cur = first
-                    for i in range(n):
-                        feed = (int(cur.token_id) if forced_tokens is None
-                                else int(forced_tokens[i]))
-                        cur = session.step(feed, return_logits=True)
-                        logits_rows.append(np.asarray(
-                            cur.logits, dtype=np.float32).reshape(-1))
-                    return np.vstack(logits_rows)
-
-                ref = _run(INCUMBENT_PREFILL, INCUMBENT_DECODE)
-                session.reset()
-                cand = _run(SHIPPED_PREFILL, SHIPPED_DECODE,
-                            forced_tokens=[
-                                int(x) for x in np.argmax(ref, -1)][:-1])
-                session.reset()
-                return ref, cand
+                        cur.logits, dtype=np.float32).reshape(-1))
+                return np.vstack(logits_rows), cur
 
             for scope in sorted(by_scope):
                 ref_rows = []
                 cand_rows = []
+                calib_rows = []
+                prompt_ids_order = []
                 for row in by_scope[scope]:
+                    prompt_ids_order.append(row["id"])
                     content = row["messages"][0]["content"]
-                    ids = [int(t) for t in rng.integers(
-                        1000, 50000, size=8)] + [
-                        int(c) % 100000 for c in content.encode()[:64]]
-                    ids = ids[: max(8, min(args.prompt_tokens, len(ids)))]
-                    ref, cand = _run_pair(ids)
+                    seed_ids = build_chat_prompt(tokenizer, content)
+                    assert len(seed_ids) >= 8, row["id"]
+                    # Extend to the full prefill window with the
+                    # incumbent's own continuation: the real instruction
+                    # content leads, and the window crosses the 129-row
+                    # owner boundary.
+                    be.GGUF_IQ_DENSE_PREFILL_POLICY = INCUMBENT_PREFILL
+                    be.GGUF_IQ_DENSE_DECODE_POLICY = INCUMBENT_DECODE
+                    ids = list(seed_ids)
+                    cur = session.prefill(
+                        ids, use_bulk=True, bulk_attention_mode="bulk",
+                        return_logits=True)
+                    while len(ids) < args.prompt_tokens:
+                        t = int(cur.token_id)
+                        ids.append(t)
+                        cur = session.step(t, return_logits=True)
+                    session.reset()
+
+                    ref, ref_cur = _arm(
+                        INCUMBENT_PREFILL, INCUMBENT_DECODE, ids)
+                    ref_tokens = [int(x) for x in np.argmax(ref, -1)]
+                    session.reset()
+                    cand, _ = _arm(
+                        SHIPPED_PREFILL, SHIPPED_DECODE, ids,
+                        forced=ref_tokens[:-1])
+                    session.reset()
+                    # Calibration arm: the incumbent's own distance from
+                    # all-strict arithmetic on the same forced tokens -
+                    # the reference baseline's intrinsic noise class.
+                    calib, _ = _arm({}, {}, ids, forced=ref_tokens[:-1])
+                    session.reset()
+
+                    if not np.all(np.isfinite(cand)):
+                        candidate_finite = False
                     ref_rows.append(ref)
                     cand_rows.append(cand)
+                    calib_rows.append(calib)
+
                 ref_m = np.vstack(ref_rows)
                 cand_m = np.vstack(cand_rows)
                 m = evaluate_logits(ref_m, cand_m)
-                top1 = float(np.mean(
-                    np.argmax(ref_m, -1) == np.argmax(cand_m, -1)))
-                scopes[scope] = {
+                top1_rows = (
+                    np.argmax(ref_m, -1) == np.argmax(cand_m, -1))
+                # Per-position KL of this scope's pooled rows.
+                ref_lse = ref_m - ref_m.max(-1, keepdims=True)
+                ref_p = np.exp(ref_lse)
+                ref_p /= ref_p.sum(-1, keepdims=True)
+                cand_lse = cand_m - cand_m.max(-1, keepdims=True)
+                cand_p = np.exp(cand_lse)
+                cand_p /= cand_p.sum(-1, keepdims=True)
+                kl = np.sum(
+                    ref_p * (np.log(ref_p + 1e-12)
+                             - np.log(cand_p + 1e-12)), axis=-1)
+                for i in np.nonzero(kl > 2e-2)[0]:
+                    diag_row = dict(
+                        scope=scope,
+                        prompt=prompt_ids_order[int(i) // (n + 1)],
+                        position_in_prompt=int(i) % (n + 1),
+                        is_prefill_row=(int(i) % (n + 1) == 0),
+                        kl=float(kl[i]),
+                    )
+                    diagnostics.append(diag_row)
+                calib_m = np.vstack(calib_rows)
+                cal_lse = calib_m - calib_m.max(-1, keepdims=True)
+                cal_p = np.exp(cal_lse)
+                cal_p /= cal_p.sum(-1, keepdims=True)
+                kl_calib = np.sum(
+                    ref_p * (np.log(ref_p + 1e-12) - np.log(cal_p + 1e-12)),
+                    axis=-1)
+                scope_stats[scope] = {
                     "positions": int(ref_m.shape[0]),
                     "kl_mean": m.kl_mean, "kl_max": m.kl_max,
-                    "top1": top1,
+                    "top1": float(np.mean(top1_rows)),
+                    "calib_mean": float(np.mean(kl_calib)),
+                    "calib_max": float(np.max(kl_calib)),
                 }
-                all_kl.append(m.kl_mean)
-                all_top1.append(top1 >= 0.97)
+                pooled_kl.append(kl)
+                pooled_top1.append(top1_rows)
+                pooled_calib.append(kl_calib)
                 print(f"scope {scope:12s}: positions={ref_m.shape[0]:4d}  "
                       f"mean={m.kl_mean:.4e}  max={m.kl_max:.4e}  "
-                      f"top1={top1:.4f}")
+                      f"top1={float(np.mean(top1_rows)):.4f}",
+                      flush=True)
     finally:
         be.GGUF_IQ_DENSE_PREFILL_POLICY = SHIPPED_PREFILL
         be.GGUF_IQ_DENSE_DECODE_POLICY = SHIPPED_DECODE
 
-    overall_mean = float(np.mean(all_kl))
-    overall_max = max(s["kl_max"] for s in scopes.values())
+    kl_all = np.concatenate(pooled_kl)
+    top1_all = np.concatenate(pooled_top1)
+    overall = {
+        "positions": int(kl_all.shape[0]),
+        "kl_mean": float(np.mean(kl_all)),
+        "kl_p95": float(np.percentile(kl_all, 95)),
+        "kl_p99": float(np.percentile(kl_all, 99)),
+        "kl_max": float(np.max(kl_all)),
+        "top1": float(np.mean(top1_all)),
+    }
     gate = (
-        overall_mean <= 1e-3
-        and overall_max <= 5e-2
-        and all(s["top1"] >= 0.97 for s in scopes.values())
-        and all(all_top1)
+        overall["kl_mean"] <= 1e-3
+        and overall["kl_p95"] <= 5e-3
+        and overall["kl_p99"] <= 2e-2
+        and overall["kl_max"] <= 5e-2
+        and overall["top1"] >= 0.99
+        and all(s["top1"] >= 0.97 for s in scope_stats.values())
+        and candidate_finite
     )
-    print(f"overall: mean={overall_mean:.4e}  max={overall_max:.4e}")
-    print(f"CATEGORY/Heldout GATE (mean<=1e-3 & max<=5e-2 & per-scope "
-          f"top1>=0.97): {'PASS' if gate else 'FAIL'}")
+    calib_all = np.concatenate(pooled_calib) if pooled_calib else np.array([])
+    calibration = {
+        "positions": int(calib_all.shape[0]),
+        "kl_mean": float(np.mean(calib_all)) if calib_all.size else None,
+        "kl_max": float(np.max(calib_all)) if calib_all.size else None,
+    }
+    print(f"calibration (incumbent vs all-strict, same forced tokens): "
+          f"mean={calibration['kl_mean']:.4e}  max={calibration['kl_max']:.4e}")
+    print(f"pooled ({overall['positions']} positions): "
+          f"mean={overall['kl_mean']:.4e}  p95={overall['kl_p95']:.4e}  "
+          f"p99={overall['kl_p99']:.4e}  max={overall['kl_max']:.4e}  "
+          f"top1={overall['top1']:.4f}  finite={candidate_finite}")
+    if diagnostics:
+        print(f"DIAGNOSTIC: {len(diagnostics)} position(s) above the 2e-2 "
+              f"p99 envelope (within the 5e-2 max gate):")
+        for d in diagnostics[:10]:
+            print(f"  {d['scope']}/{d['prompt']} pos "
+                  f"{d['position_in_prompt']} "
+                  f"({'prefill' if d['is_prefill_row'] else 'decode'}): "
+                  f"KL {d['kl']:.4e}")
+    print(f"CATEGORY/HELDOUT GATE (pooled mean<=1e-3 & p95<=5e-3 & p99<=2e-2 "
+          f"& max<=5e-2 & overall top1>=0.99 & per-scope top1>=0.97 & "
+          f"finite): {'PASS' if gate else 'FAIL'}")
     if args.json is not None:
         args.json.write_text(json.dumps({
             "model": str(args.model), "seed": args.seed,
-            "scopes": scopes,
-            "overall_kl_mean": overall_mean, "overall_kl_max": overall_max,
+            "prompt_tokens": int(args.prompt_tokens),
+            "tokenized": True,
+            "scopes": scope_stats,
+            "overall": overall,
+            "calibration_incumbent_vs_all_strict": calibration,
+            "diagnostics_above_p99_envelope": diagnostics,
+            "candidate_finite": candidate_finite,
             "gate_pass": gate,
         }, indent=2) + "\n")
 

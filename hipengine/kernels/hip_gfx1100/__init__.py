@@ -1102,6 +1102,16 @@ _IQ_DENSE_W4A16_COOP_VARIANT = "dense_wmma_w4a16_prefill_coop_bf16_bf16_out"
 # (worst 0.97x, within noise). IQ4_XS routes here; the split quants cannot
 # (two 34.8 KB slabs exceed the 64 KB LDS budget at 64 columns).
 _IQ_DENSE_W4A16_COOP64_VARIANT = "dense_wmma_w4a16_prefill_coop64_bf16_bf16_out"
+# The admitted IQ4_XS prefill owner the fused pair is authorized to
+# replace: an explicit contract, not a live-policy lookup (reading the
+# live policy would let a pinned policy - an admission-gate incumbent
+# arm - move both sides of the comparison and re-engage the dual in an
+# arm that declares one-wave singles). The dual is bit-exact with this
+# owner's single path (and, transitively, with the one-wave owner); it
+# is NOT authorized to replace the strict GEMV or any other owner.
+# Update in lockstep with the cooperative owners.
+GGUF_IQ4_XS_ADMITTED_PREFILL_PAIR_VARIANT = (
+    "dense_wmma_w4a16_prefill_coop64_bf16_bf16_out")
 GGUF_IQ_DENSE_PREFILL_POLICY = {
     quant: {
         "min_rows": 8,

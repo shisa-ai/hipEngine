@@ -2211,23 +2211,19 @@ def _q4_t16_physical_dual_silu_variant(
     return None
 
 
-# The admitted IQ4_XS prefill owner the fused pair is authorized to
-# replace. This is an explicit contract, not a live-policy lookup:
-# reading the live policy would let a pinned policy (an admission-gate
-# incumbent arm) move both sides of the comparison and re-engage the
-# dual in an arm that declares one-wave singles. The dual is bit-exact
-# with that owner's single path (and, transitively, with the one-wave
-# owner); it is NOT authorized to replace the strict GEMV or any other
-# owner. Update in lockstep if the admitted prefill owner changes.
-_IQ4_XS_ADMITTED_PREFILL_VARIANT = "dense_wmma_w4a16_prefill_coop64_bf16_bf16_out"
-
-
 def _iq4_xs_admitted_prefill_variant(backend: str) -> str | None:
-    """Return the admitted IQ4_XS prefill owner variant for the backend."""
+    """Return the admitted IQ4_XS prefill owner variant for the backend.
 
-    if backend != "hip_gfx1100":
-        return None
-    return _IQ4_XS_ADMITTED_PREFILL_VARIANT
+    Declared by the backend package as an explicit contract
+    (GGUF_IQ4_XS_ADMITTED_PREFILL_PAIR_VARIANT), not derived from the
+    live policy: reading the live policy would let a pinned policy (an
+    admission-gate incumbent arm) move both sides of the comparison and
+    re-engage the dual in an arm that declares one-wave singles.
+    """
+
+    variant = backend_package_capability(
+        backend, "GGUF_IQ4_XS_ADMITTED_PREFILL_PAIR_VARIANT", None)
+    return variant if isinstance(variant, str) else None
 
 
 def _q4_t16_grouped_pair_rows6_variant(
