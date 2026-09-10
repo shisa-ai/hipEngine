@@ -35,5 +35,16 @@
   "tg_ab": "PASS - median 60.26/60.38/60.93 (off) vs 59.36/59.61/59.71 (on) ms/token: -0.77 ms/token (~1.3% TG), beyond the +/-0.9 ms run-to-run spread",
   "copy_surface": "27 -> 4 blocking copies per decode step (24x8B H2D eliminated; rope + PLE row + token readbacks remain)",
   "promotion": "recommended - pure host-side, no kernel or numeric change, bit-exact, +1.3% TG"
+ },
+ "compiler_version_cache_fix": {
+  "finding": "cProfile screen of 64 decode steps exposed 919 _resolve_compiler_version calls per step (one per build_hip on the per-launch path); the env/file branch _compiler_version_from_environment ran BEFORE the _COMPILER_VERSION_CACHE check and re-read the version file from disk every call - measured 8.845 ms/step un-instrumented",
+  "fix": "non-None env-version cache in hipengine/core/build.py (env/file version is process-static; unset-env path stays dynamic); 9.6us -> 0.09us per resolve",
+  "gates": "bit-exact token digest ea0412231532bc7b (all fixture cases, separate incumbent/candidate processes); TG median 59.31 (incumbent) vs 57.40/57.48/57.39 (candidate) ms/token = -1.9 ms/token (~3.2%), stable across 3 runs",
+  "note": "prefill also pays per-launch resolves (~1700/prefill, ~16ms at p1024) - sub-1% of prefill wall, not separately gated"
+ },
+ "ple_staging_open_finding": {
+  "status": "OPEN - next wrapper-host target",
+  "measurement": "Qwen4ExpPLEStagingRing.stage costs 19.61 ms/step un-instrumented (np.memmap __getitem__ fancy-index gather, confirmed by cProfile and direct timing)",
+  "note": "largest single host-side item remaining; the staged row is 10KB - the mechanism (likely memmap fancy-index materializing or per-head Python lookups) needs investigation; potential multi-ms/token"
  }
 }

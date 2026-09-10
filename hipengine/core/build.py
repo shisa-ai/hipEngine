@@ -459,16 +459,30 @@ def _resolve_compiler_version(
     return version
 
 
+_ENV_VERSION_CACHE: dict[str, str] = {}
+
+
 def _compiler_version_from_environment(compiler: str) -> str | None:
+    # The env/file version is static for the process; cache the resolved
+    # value so per-launch ``build_X(load=True)`` calls do not re-read the
+    # version file from disk on every kernel launch (measured 919 resolves
+    # and ~8.8 ms per Qwen4Exp decode step before this cache; see the R7
+    # wrapper-host screen, 2026-09-10). Only non-None results are cached:
+    # the env-unset path is the rare cold-start case and stays dynamic.
+    cached = _ENV_VERSION_CACHE.get(compiler)
+    if cached is not None:
+        return cached
     specific = _compiler_env_prefix(compiler)
     for name in (f"{specific}_VERSION_TEXT", "HIPENGINE_COMPILER_VERSION_TEXT"):
         value = os.environ.get(name)
         if value:
-            return value.strip()
+            _ENV_VERSION_CACHE[compiler] = value.strip()
+            return _ENV_VERSION_CACHE[compiler]
     for name in (f"{specific}_VERSION_FILE", "HIPENGINE_COMPILER_VERSION_FILE"):
         value = os.environ.get(name)
         if value:
-            return Path(value).expanduser().read_text().strip()
+            _ENV_VERSION_CACHE[compiler] = Path(value).expanduser().read_text().strip()
+            return _ENV_VERSION_CACHE[compiler]
     return None
 
 
