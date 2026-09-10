@@ -181,7 +181,10 @@ def test_resolve_flags_match_pinned_backend_capabilities():
         "dense_q5_qmicro_planar_ssm_out": False,
         "dense_q5_t16_ssm_out_08b": False,
         "dense_q5_t16_qkv": False,
-        "dense_q5_t16_h5120": False,
+        # Flipped True by the item-F port (42b2e6966): the UD files' Q5 FFN-
+        # down/recurrent-QKV/full-attention-V roles route T16; without it the
+        # raw-K coltile owner dominated the 512-token prefill budget.
+        "dense_q5_t16_h5120": True,
         "dense_q6_qmicro_planar": True,
         "dense_q6_qmicro_planar_excluded_slots": (),
     }
@@ -1073,11 +1076,13 @@ def test_nextn_refusal_does_not_discard_valid_ar_report():
 
 
 def test_ar_slot_refusals_are_collected_per_slot_not_all_or_nothing():
-    # A Q3_K embedding (the published K_S shape of refusal) makes the whole-AR
-    # production plan raise on its first unsupported slot. The audit must fall
-    # back to per-slot planning, keep every other AR route, and report BOTH
-    # tied-head consumers of the refused source as distinct slot rejections
-    # instead of discarding the AR report.
+    # A Q3_K embedding makes the whole-AR production plan raise on its first
+    # unsupported slot. The audit must fall back to per-slot planning, keep
+    # every other AR route, and report the refused tied-head consumers as
+    # distinct slot rejections instead of discarding the AR report. Since
+    # 410704904 the token-embedding consumer itself plans raw (the published
+    # UD-Q4_K_S artifact carries a Q3_K token_embd that must load); only the
+    # tied lm_head consumer - a rank-2 non-expert slot - is refused.
     tensors = _fixture_tensors(embedding_qtype=GGMLQuantizationType.Q3_K)
     maps = _mapped(tensors)
     section = maps.section
@@ -1088,14 +1093,11 @@ def test_ar_slot_refusals_are_collected_per_slot_not_all_or_nothing():
 
     assert backend["planner_mode"] == "per_slot_fallback"
     assert backend["map_validation_passed"] is True
-    assert backend["rejected_tensors"] == 2
+    assert backend["rejected_tensors"] == 1
     assert list(backend["rejections"]) == ["Q3_K"]
     assert all(
-        entry.startswith(prefix)
-        for entry, prefix in zip(
-            sorted(backend["rejections"]["Q3_K"]),
-            sorted(["root.lm_head", "root.token_embedding"]),
-        )
+        entry.startswith("root.lm_head")
+        for entry in backend["rejections"]["Q3_K"]
     )
     # Every other AR slot still routed: 873 F32 residents, nothing else lost.
     assert backend["routes"]["F32"] == {"f32-resident": 873}
@@ -1103,7 +1105,7 @@ def test_ar_slot_refusals_are_collected_per_slot_not_all_or_nothing():
     # The refusal is a route-table verdict only; NextN fallback slots that
     # borrow the same source refuse identically and never touch AR counts.
     assert backend["nextn_routes"]["own"]["rejected_tensors"] == 0
-    assert backend["nextn_routes"]["fallback"]["rejected_tensors"] == 2
+    assert backend["nextn_routes"]["fallback"]["rejected_tensors"] == 1
 
 
 def test_map_unavailable_produces_no_guessed_route_table(tmp_path, capsys):
@@ -1487,7 +1489,9 @@ def test_raw_iq_contract_contracts_f32_slots_in_per_slot_fallback_mode():
     maps = _mapped(tensors)
     report = audit.plan("hip_gfx1100", dict(_QWEN35_METADATA), maps)
     assert report["planner_mode"] == "per_slot_fallback"
-    assert report["rejected_tensors"] == 2  # refused Q3_K embedding + tied head
+    assert report["rejected_tensors"] == 1  # refused tied lm_head only; the
+    # Q3_K token-embedding consumer plans raw since 410704904 (the published
+    # UD-Q4_K_S artifact's Q3_K token_embd must load)
     assert _count_f32_contracted(report) == 112
     assert report["routes"]["F32"] == {"f32-resident": 873 - 1 - 112, "bf16-expand": 112}
 

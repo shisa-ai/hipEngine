@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "status": "diagnostic_retained_pending_rollup_gate",
+  "status": "perf_measurement_valid_category_gate_fail",
   "performance_claim": false,
   "mode": "qwen35_readme_persistent_resident_sweep",
   "engine": "gguf",
@@ -9865,5 +9865,12 @@
     "The model/session is loaded once for the largest requested shape and reset between repetitions.",
     "Each workload uses warmup_runs discarded repetitions followed by measured_runs measured repetitions.",
     "Discarded repetitions warm the same kernels through eager submission. Measured repetitions capture a fresh state-bound graph after reset/prefill/warmup; graph capture is excluded from decode throughput."
-  ]
+  ],
+  "qualification": {
+    "category_gate": "FAIL (2026-09-10, scripts/gguf_ud_combined_stack_gate.py --category-heldout, seed 7, tokenized prompts, 1170 positions)",
+    "gate_stats": "pooled mean 2.48e-4 / p95 4.57e-4 / p99 3.30e-3 / max 9.40e-2 (ceiling 5e-2) / top-1 99.83%",
+    "attribution": "single position (code_lru_cache, decode step 1): the Q3_K W4A16 prefill route (5.33e-2 alone, bit-exact-identical via coop32 and one-wave owners) compounding with the IQ4_XS local32 decode route (2.67e-2 alone). Both are 1-ULP f32-accumulation-order classes (per-element products identical to the strict owner) amplified by MoE routing; top-1 agreement is 100% on the worst prompt.",
+    "calibration": "the incumbent 4-quant tree itself measures mean 2.28e-4 / max 4.24e-2 vs all-strict arithmetic on the same forced tokens - the absolute max ceiling sits below the admitted baseline's own noise tail on natural prompts.",
+    "decision_pending": "revert the Q3_K prefill route (+26% UD-only prefill cost, inverts the 0.950x claim) or amend the max-row ceiling with the calibration evidence; recorded in the worklog 2026-09-10 round-3 entry."
+  }
 }

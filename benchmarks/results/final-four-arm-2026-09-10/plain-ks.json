@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "status": "diagnostic_retained_pending_rollup_gate",
+  "status": "baseline_measurement_valid",
   "performance_claim": false,
   "mode": "qwen35_readme_persistent_resident_sweep",
   "engine": "gguf",
@@ -9505,5 +9505,8 @@
     "The model/session is loaded once for the largest requested shape and reset between repetitions.",
     "Each workload uses warmup_runs discarded repetitions followed by measured_runs measured repetitions.",
     "Discarded repetitions warm the same kernels through eager submission. Measured repetitions capture a fresh state-bound graph after reset/prefill/warmup; graph capture is excluded from decode throughput."
-  ]
+  ],
+  "qualification": {
+    "note": "baseline arm of the K_S A/B; UD K_S is qualified (ud-ks.json)"
+  }
 }

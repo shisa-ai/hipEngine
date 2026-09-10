@@ -1886,6 +1886,14 @@ def test_gfx1151_backend_admits_dense_q5_t16_ssm_out_and_08b_roles() -> None:
         (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {
             (1, 5_120, 17_408): "dense_dual_local32_bf16_bf16_out",
         },
+        # The Q5 decode dual admitted in the UD campaign (8r2 lane): same-
+        # launch gate+up SiLU GEMV for the Q5 FFN role, keyed by the stamp.
+        (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "gguf_ud_q4_k_m"): {
+            (1, 5_120, 17_408): "q5_dense_dual_silu_gemv_decode_bf16_bf16_out",
+        },
+        (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S", "gguf_ud_q4_k_s"): {
+            (1, 5_120, 17_408): "q5_dense_dual_silu_gemv_decode_bf16_bf16_out",
+        },
     }
     assert backend_package_capability(
         "hip_gfx1151",

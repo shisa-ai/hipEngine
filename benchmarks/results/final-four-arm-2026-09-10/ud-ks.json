@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "status": "diagnostic_retained_pending_rollup_gate",
-  "performance_claim": false,
+  "status": "qualified_perf_and_category_gate",
+  "performance_claim": true,
   "mode": "qwen35_readme_persistent_resident_sweep",
   "engine": "gguf",
   "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf",
@@ -10037,5 +10037,10 @@
     "The model/session is loaded once for the largest requested shape and reset between repetitions.",
     "Each workload uses warmup_runs discarded repetitions followed by measured_runs measured repetitions.",
     "Discarded repetitions warm the same kernels through eager submission. Measured repetitions capture a fresh state-bound graph after reset/prefill/warmup; graph capture is excluded from decode throughput."
-  ]
+  ],
+  "qualification": {
+    "category_gate": "PASS (2026-09-10, scripts/gguf_ud_combined_stack_gate.py --category-heldout, seed 7, tokenized prompts, 1170 positions)",
+    "gate_stats": "pooled mean 8.90e-5 / p95 4.23e-4 / p99 8.54e-4 / max 5.07e-3 / top-1 99.83%; calibration (incumbent vs all-strict) max 1.36e-2",
+    "artifact": "benchmarks/results/combined-stack-gate2/category-ks-seed7.json"
+  }
 }
