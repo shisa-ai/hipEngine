@@ -233,6 +233,39 @@ Strix Halo `Q4_K_M`: strict C1/K3 automatic at **18.191 tok/s (1.6445x AR)**; pr
 
 ### W7900 Qwen3.8 `Q4_K_M` C1-C8
 
+#### Server/direct parity result (2026-09-10, roadmap P0-P7)
+
+The [server-direct parity campaign](../../docs/SERVER-DIRECT-PARITY-ROADMAP.md)
+section 1.1 has the full stage table. The qualification headline on the
+repaired C1 INT8 route (slot-local AOTriton prefill, layer-outer packed
+executor default, duplicate packed-KV reservation removed):
+
+- **Speed**: packed prefill 677-732 tok/s at 2K-8K rows vs the direct scalar
+  control's 685-756 (paired 8,192-row repetitions: ratio median 1.004,
+  mean 0.978, min 0.890 under shared-host contention; all bitwise-identical
+  logits and IDs)
+  ([paired reps](results/2026-09-10-w7900-p7-c1-speed-parity-paired-reps.json)).
+- **Decode boundary**: R0 raw session 35.15 ms/token median; R1 the packed
+  server entry 35.22 ms (ratio 1.002); R3 the public LLM service wrapper
+  ~2% per request
+  ([ladder](results/2026-09-10-w7900-decode-boundary-ladder-16k.json)).
+- **Memory**: canonical 32.5 KiB/L-token KV exactly (2 x 16 x 4 x (256+4));
+  zero server-only linear context term on the scoped route (lease 0,
+  one shared oracle pair, 0.0625-0.59 GiB from 16K-152K declared)
+  ([probe](results/2026-09-10-w7900-server-alloc-probe-16k-p4-lease-removed.json));
+  route transients at 32K declared fell ~6.4 GiB -> ~1.6 GiB (-75%).
+- **Capacity**: fresh C1 ceiling 155,648+ declared contexts (2.87x the
+  pre-repair 54,272; exceeds the plain direct-engine INT8 ceiling of
+  131,072).
+- **Trace identity**: AOTriton `attn_fwd` for >=512-row rounds, native paged
+  prefill for <512-row tails - two kernel identities, as predicted
+  ([trace](results/2026-09-10-w7900-layer-outer-trace-identity-1500.csv.gz)).
+
+Rollbacks: `HIPENGINE_GGUF_PACKED_LAYER_OUTER=0` (chunk-outer executor),
+`HIPENGINE_GGUF_PACKED_KV_LEASE=1` (eager pool lease). Remaining open
+packets: C>1 INT8 (IKV-C2), resumable prefill (P6), and the paired
+publish for those once they land.
+
 These are aggregate tokens per second across all active requests under the
 standardized complete-wall server protocol.
 
