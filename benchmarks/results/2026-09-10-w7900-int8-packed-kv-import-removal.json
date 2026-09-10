@@ -1,0 +1,82 @@
+{
+ "schema": 1,
+ "kind": "w7900_int8_packed_slot_local_kv_import_removal",
+ "date": "2026-09-10",
+ "status": "dead_work_removed_attribution_corrected",
+ "performance_claim": false,
+ "capacity_claim": false,
+ "question": "Does the per-slab whole-history KV import in _sync_packed_decode_initial_state cause the multi-chunk packed slot-local prefill slowdown, and is removing it safe?",
+ "answer": "Removal is safe and exact (zero KV-import calls on the eligible route, identical final-logit sha256 and 8-token greedy sequences at 1/2/4/8 chunks, Conv/GDN imports unchanged), but it is NOT the long-prompt bottleneck: prefill wall time is unchanged at every measured shape (121.770 -> 121.862 s at 8 chunks). The import was 910 MiB / 7,168 memcpy dispatches of dead work at 8 chunks; the earlier attribution of the slowdown to this import is disproven at these shapes and withdrawn. The real bottleneck remains open; kernel-family attribution with prewarmed, cached-build profiling is the queued follow-up.",
+ "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+ "model_sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+ "hardware": {
+  "host": "epyc",
+  "gpu": "AMD Radeon Pro W7900",
+  "arch": "gfx1100",
+  "physical_gpu_index": 0
+ },
+ "change": "_sync_packed_decode_initial_state gains copy_kv=True (mirroring _scatter_packed_decode_state's copy_kv); the FULL_ATTENTION branch skips the whole-history KV segment copies when copy_kv=False while the Conv/GDN linear-state import is preserved. _prefill_batch_native_single_slab passes copy_kv=not slot_local_full_prefill after final route resolution (after the device_kv_nonidentity_scatter / direct_int8 adjustments). Non-slot-local fallback paths and the packed decode rounds keep the default import.",
+ "protocol": {
+  "harness": "scripts/gguf_packed_kv_import_profile.py --rows 1024,2048,4096,8192 (new; counts _copy_session_packed_kv_segments calls/rows/memcpy dispatches/bytes via runtime.memcpy_async wrapping, _sync call count, fused linear-state copies; wall time of the synchronized prefill; a second pass with stream/device synchronization neutralized for CPU submission; final-logits sha256 + 8 greedy decode IDs)",
+  "prompt": "deterministic varied prompt, numpy default_rng(20260910), token IDs in [1000, 32000)",
+  "kv": "int8_per_token_head, FP32 per-token/head scales, max_sequence_length 16384 (route int8_direct, no mirror, slot-local full attention)",
+  "selectors": "use_wmma_prefill=True, use_gemv_decode=True (shipping)",
+  "env": {
+   "HIP_VISIBLE_DEVICES": "0",
+   "GPU_MAX_HW_QUEUES": "1",
+   "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG": "1",
+   "HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS": "none"
+  },
+  "control": "pre-fix run on the committed tree (16c9c716f / ca21f09fa) in the same session, before the runner change; post-fix run on the working tree afterwards",
+  "caveats": [
+   "CPU submission ~= wall does NOT establish device-bound execution: the neutralized-synchronization pass can still block on a full command queue (GPU_MAX_HW_QUEUES=1), so it is an upper bound on host enqueue time, not a host-bound proof",
+   "per-chunk cost growth is not established linear: 4 -> 8 chunks takes wall 18.015 -> 121.862 s (6.8x for 2x the chunks)",
+   "no kernel-family GPU-time attribution is included; two rocprofv3 attempts stalled in hipcc --version compiler-version discovery under the profiler and were stopped; the follow-up profile must prewarm the JIT cache, pass HIPENGINE_COMPILER_VERSION_FILE and HIPENGINE_REQUIRE_CACHED_BUILD=1"
+  ]
+ },
+ "evidence": {
+  "prefill_wall_seconds": {
+   "1024_rows_1_chunk": {"pre": 1.852, "post": 1.839},
+   "2048_rows_2_chunks": {"pre": 4.547, "post": 4.53},
+   "4096_rows_4_chunks": {"pre": 18.033, "post": 18.015},
+   "8192_rows_8_chunks": {"pre": 121.77, "post": 121.862}
+  },
+  "kv_import_calls": {
+   "1024_rows_1_chunk": {"pre": 0, "post": 0},
+   "2048_rows_2_chunks": {"pre": 16, "post": 0},
+   "4096_rows_4_chunks": {"pre": 48, "post": 0},
+   "8192_rows_8_chunks": {"pre": 112, "post": 0}
+  },
+  "kv_import_bytes_mib": {
+   "2048_rows_2_chunks": {"pre": 32.5, "post": 0.0},
+   "4096_rows_4_chunks": {"pre": 195.0, "post": 0.0},
+   "8192_rows_8_chunks": {"pre": 910.0, "post": 0.0}
+  },
+  "kv_import_memcpy_dispatches": {
+   "2048_rows_2_chunks": {"pre": 256, "post": 0},
+   "4096_rows_4_chunks": {"pre": 1536, "post": 0},
+   "8192_rows_8_chunks": {"pre": 7168, "post": 0}
+  },
+  "exactness": {
+   "final_logits_sha256_match": true,
+   "greedy_ids_match_8_tokens": true,
+   "kv_scatter_calls_pre_and_post": 0,
+   "sync_calls_per_config_equals_chunk_count": true,
+   "fused_linear_copies_per_slab_pre_and_post": 2,
+   "decode_round_kv_import_calls_pre_and_post": 0
+  },
+  "tracked_peak_gib": {
+   "1024": 17.5738,
+   "2048": 18.5432,
+   "4096": 18.6069,
+   "8192": 18.7342
+  },
+  "raw": [
+   "benchmarks/results/2026-09-10-w7900-int8-packed-kv-import-prefix.json",
+   "benchmarks/results/2026-09-10-w7900-int8-packed-kv-import-postfix.json"
+  ]
+ },
+ "tests": "tests/test_gguf_packed_kv_import_skip.py: 4 host-policy tests (copy_kv=False skips KV segments and keeps the linear import; default keeps the whole-history import; copy_linear_state=False skips only the linear side; position-zero slab imports nothing either way). Prefill/packed/INT8-KV bundle + new files: 165 passed, 5 skipped.",
+ "not_a_perf_claim": "Wall time is unchanged at every measured shape. This change removes dead copy work (dispatches, bytes, host segment walking) and the quadratic import's memory traffic; it is not a throughput improvement and no topline row moves.",
+ "created_utc": "2026-09-10T05:00:00Z"
+}
