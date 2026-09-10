@@ -152,8 +152,20 @@ def main() -> None:
         },
     }
 
+    # pair-share by expert-count bucket (for sub-16 path break-even analysis)
+    buckets = [(1, 2), (3, 4), (5, 8), (9, 12), (13, 16), (17, 24), (25, 32),
+               (33, 48), (49, 64), (65, 128), (129, 1024)]
+    bucket_pairs = {}
+    bucket_instances = {}
+    for lo, hi in buckets:
+        mask = (positive >= lo) & (positive <= hi)
+        bucket_pairs[f"{lo}-{hi}"] = int(positive[mask].sum())
+        bucket_instances[f"{lo}-{hi}"] = int(mask.sum())
+
     report = {
         "schema": 1, "kind": "qwen4exp_moe_routing_distribution",
+        "bucket_pairs": bucket_pairs,
+        "bucket_instances": bucket_instances,
         "source": _git_metadata(ROOT), "host": _host_metadata(),
         "command": sys.argv, "fixture_sha256": digest,
         "captures": len(captures),

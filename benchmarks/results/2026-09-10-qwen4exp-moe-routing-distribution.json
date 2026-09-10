@@ -1,10 +1,36 @@
 {
  "schema": 1,
  "kind": "qwen4exp_moe_routing_distribution",
+ "bucket_pairs": {
+  "1-2": 93878,
+  "3-4": 131618,
+  "5-8": 346985,
+  "9-12": 389276,
+  "13-16": 430871,
+  "17-24": 806341,
+  "25-32": 784490,
+  "33-48": 1300543,
+  "49-64": 1023716,
+  "65-128": 2399696,
+  "129-1024": 3106026
+ },
+ "bucket_instances": {
+  "1-2": 67104,
+  "3-4": 38133,
+  "5-8": 54363,
+  "9-12": 37172,
+  "13-16": 29889,
+  "17-24": 39552,
+  "25-32": 27756,
+  "33-48": 32653,
+  "49-64": 18353,
+  "65-128": 27130,
+  "129-1024": 13912
+ },
  "source": {
   "path": "/home/lhl/hipEngine",
-  "head": "34bc05c88e2a809f8a0e16313a3fc2c9e71b96e4",
-  "tracked_clean": true
+  "head": "849eda6356cd6f5936f4d8b27de205446ac6c905",
+  "tracked_clean": false
  },
  "host": {
   "hostname": "gfx1151",
@@ -27,7 +53,7 @@
   "--compiler-version-file",
   "/tmp/hipengine-hipcc-version.txt",
   "--output",
-  "/tmp/r13-routing-full.json"
+  "/tmp/r13-routing-full2.json"
  ],
  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
  "captures": 1152,
