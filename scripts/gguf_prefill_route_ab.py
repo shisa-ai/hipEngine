@@ -134,6 +134,11 @@ def main() -> int:
                 "kv_attention_source": getattr(session, "kv_attention_source", None),
                 "lifetime_mode": getattr(
                     getattr(session, "_int8_prefill_lifetime_plan", None), "mode", None),
+                "executor_mode": (
+                    (session.last_packed_prefill_plan or {}).get("executor_mode")
+                    if arm != "scalar_bulk"
+                    else "scalar_bulk"
+                ),
                 "prefill_wall_seconds": round(elapsed, 3),
                 "prefill_tok_s": round(len(prompt) / elapsed, 2),
                 "generated_ids": ids,
