@@ -3,6 +3,56 @@
 Status: measurement and optimization plan with scoped offline DMS INT8
 integration evidence. General production-serving qualification is not established.
 
+## Packed slot-local prefill: the per-slab whole-history KV import is dead work, not the long-prompt bottleneck — 2026-09-10 UTC
+
+`_prefill_batch_native_single_slab` called `_sync_packed_decode_initial_state`
+once per slab, and each call imported every session's whole prior KV history into
+packed storage — even though slot-local attention reads request-owned KV and
+the end-of-slab scatter already skipped packed KV on that route. The import is
+now removed: `_sync_packed_decode_initial_state` takes `copy_kv=True` (mirroring
+`_scatter_packed_decode_state`), the full-attention segment copies are skipped
+when `copy_kv=False` while the Conv/GDN linear-state import is preserved, and
+the single-slab call site passes `copy_kv=not slot_local_full_prefill` after
+final route resolution. Non-slot-local fallbacks and the packed decode rounds
+keep the default import.
+
+Measured directly with the new census harness
+([`gguf_packed_kv_import_profile.py`](../scripts/gguf_packed_kv_import_profile.py)),
+W7900 GPU0, shipping selectors, `int8_per_token_head` + FP32 scales,
+`max_sequence_length` 16,384, deterministic varied prompt:
+
+| rows | chunks | import MiB (pre → post) | import `memcpy`s (pre → post) | wall s (pre → post) |
+| ---: | ---: | ---: | ---: | ---: |
+| 1,024 | 1 | 0 → 0 | 0 → 0 | 1.852 → 1.839 |
+| 2,048 | 2 | 32.5 → 0 | 256 → 0 | 4.547 → 4.530 |
+| 4,096 | 4 | 195.0 → 0 | 1,536 → 0 | 18.033 → 18.015 |
+| 8,192 | 8 | 910.0 → 0 | 7,168 → 0 | 121.770 → 121.862 |
+
+Two conclusions:
+
+1. **The removal is exact.** Final-logit sha256 and all eight greedy decode IDs
+are identical pre/post at every shape; the Conv/GDN import (two fused copies
+per slab) and the scatter side (already zero on this route) are unchanged.
+2. **The earlier attribution is withdrawn.** The 2026-09-10 per-layer-oracle
+unit recorded the per-slab import as "the real cause of the slow long-prompt
+server path". Disproven at these shapes: with the import fully removed, wall
+time does not move at 1/2/4/8 chunks. The import was 910 MiB of dead copy work
+at 8 chunks — worth removing — but the multi-chunk slowdown lives elsewhere.
+Candidate (unprofiled): the slot-local full-attention path runs the native
+split-K paged kernel with AOTriton hard-disabled on transient-oracle layers,
+while the scalar parent runs the WMMA bulk kernels.
+
+Evidence caveats recorded with the artifact: the sync-neutralized CPU pass is
+an upper bound on host enqueue (a full command queue still blocks), so it
+does not prove host- or device-bound; and per-chunk cost growth is not
+established linear (4 → 8 chunks costs 6.8× wall). Two `rocprofv3` attribution
+attempts stalled in `hipcc --version` compiler discovery under the profiler
+and were stopped; the working recipe (prewarm, `HIPENGINE_COMPILER_VERSION_FILE`,
+`HIPENGINE_REQUIRE_CACHED_BUILD=1`) is now in
+[`HARNESSES.md`](../benchmarks/HARNESSES.md) and the probe's docstring.
+
+[`Removal evidence`](../benchmarks/results/2026-09-10-w7900-int8-packed-kv-import-removal.json)
+
 ## P1 defect: packed INT8 prefill shares one BF16 oracle across layers — 2026-09-10 UTC
 
 The packed slot-local INT8 prefill route produces **wrong output for any prompt

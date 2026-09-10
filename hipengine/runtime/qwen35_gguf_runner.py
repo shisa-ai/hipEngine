@@ -22582,6 +22582,11 @@ class Qwen35GGUFResidentSession:
             packed_state,
             runtime=runtime,
             stream=stream,
+            # Route resolution above has already settled slot-local versus
+            # packed-scratch attention by this point. Slot-local slabs never
+            # read the packed full-attention KV, so skip the whole-history
+            # import (see the copy_kv contract in the sync helper).
+            copy_kv=not slot_local_full_prefill,
         )
         packed_scratch = packed_scratch_base.for_packed_verify_layout(layout, runtime=runtime, stream=stream)
         linear_state_plan = _packed_ar_prefill_linear_state_plan(layout)
@@ -25675,6 +25680,7 @@ class Qwen35GGUFResidentSession:
         runtime: HipRuntime,
         stream: int,
         copy_linear_state: bool = True,
+        copy_kv: bool = True,
     ) -> tuple[int, ...]:
         if self.runner is None or self.runner.weights is None:
             raise RuntimeError("GGUF resident session is closed")
@@ -25730,6 +25736,17 @@ class Qwen35GGUFResidentSession:
                         )
                     )
                 elif layer_type == FULL_ATTENTION:
+                    if not copy_kv:
+                        # Slot-local prefill attention reads request-owned KV
+                        # and its end-of-slab scatter skips packed KV (the
+                        # scatter already passes copy_kv=not
+                        # slot_local_full_prefill), so the packed pair's
+                        # contents are never observed on that route. Importing
+                        # each session's whole prior history per slab is
+                        # quadratic dead work there; the Conv/GDN import above
+                        # stays because the packed slab consumes the packed
+                        # per-slot linear state.
+                        continue
                     if start_position <= 0:
                         continue
                     self._copy_session_packed_kv_segments(

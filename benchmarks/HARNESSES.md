@@ -45,7 +45,8 @@ graphics-memory usage; Conc = a concurrency sweep.
 | --- | --- | :-: | :-: | :-: | :-: | :-: | :-: | --- |
 | `qwen35_readme_sweep.py` | Single-request prefill/decode/memory per shape (llama-bench-style), one resident session, per-shape reset | ✓ | | ✓ | ✓ | ✓ | | `--engine gguf --model <model> --backend hip_gfx1151 --workloads 512/128 1K/128 ...` |
 | `qwen35_gguf_bench.py` | GGUF c=1 AR prefill/decode, fresh resident session per run, HIP-graph decode | ✓ | | ✓ | ✓ | ✓ | | `--model <model> --prompt-length 512 --decode-tokens 128` |
-| `gguf_prefill_route_ab.py` | **Prefill entry-point A/B and multi-chunk oracle anchor**: scalar bulk parent vs the packed slot-local route the server is forced onto, one process, deterministic varied prompt - tok/s, tracked peak, greedy IDs, logit agreement. `--assert-entry-agreement` exits non-zero when the entries disagree; above the 1,024-row chunk cap that is the shared-oracle history contract (RED today, see the 2026-09-10 defect). Always pass the shipping selectors (defaults on) or absolute rates are ~6x low | ✓ | | ✓ | | ✓ | | `--prompt-length 2048 --max-sequence-length 16384 --assert-entry-agreement` (route envs set by caller) |
+| `gguf_prefill_route_ab.py` | **Prefill entry-point A/B and multi-chunk oracle anchor**: scalar bulk parent vs the packed slot-local route the server is forced onto, one process, deterministic varied prompt - tok/s, tracked peak, greedy IDs, logit agreement. `--assert-entry-agreement` exits non-zero when the entries disagree; above the 1,024-row chunk cap that is the multi-chunk oracle-history contract (fixed 2026-09-10, per-layer keying). Always pass the shipping selectors (defaults on) or absolute rates are ~6x low | ✓ | | ✓ | | ✓ | | `--prompt-length 2048 --max-sequence-length 16384 --assert-entry-agreement` (route envs set by caller) |
+| `gguf_packed_kv_import_profile.py` | **Packed slot-local KV-import census**: counts the per-slab whole-history KV imports (calls/rows/`memcpy` dispatches/bytes), Conv/GDN import preservation, per-slab sync counts, wall time, a sync-neutralized CPU-submission pass, and final-logits sha256 + greedy IDs so an import change can be gated on exactness. Measures copy work directly - never infer import cost from throughput alone (2026-09-10: removing the import changed no wall time) | | | ✓ | | ✓ | | `--rows 1024,2048,4096,8192 --json out.json` (route envs set by caller) |
 | `gguf_capacity_probe.py` | **Capacity-tier-1 probe**: does a context size FIT (allocation validity, tracked peak) - minutes per point, no full prefill | | | | | ✓ | | `--max-sequence-length 229376` (route envs set by caller) |
 | `qwen38_prefill_sweep_trace.py` + `qwen38_prefill_sweep_analyze.py` | Fixed-row prefill wall/HIP-event capture plus dispatch-matched quant-family sweep attribution | | | ✓ | | | | `--rows 16,35,48,72,96,256,288,536,1024` |
 | `gguf_true_ar_category_bench.py` | True no-MTP AR baseline over the mtp-bench category suite (the legitimate MTP speed denominator) | ✓ | | ✓ | ✓ | | | `--model <model> --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl` |
@@ -67,6 +68,26 @@ The concurrency scoreboards primarily come from
 from `qwen35_readme_sweep.py` and `qwen35_gguf_bench.py`. Speculative-decode
 tables use `gguf_ar_mtp_suite.py` or `gguf_mtp_category_bench.py` with a
 `gguf_true_ar_category_bench.py` true-AR denominator.
+
+## Profiling these harnesses under rocprofv3 (read before launching)
+
+A profiled Python/ctypes process must never discover the compiler: the
+profiler preloads into children, and a `hipcc --version` probe inside
+`rocprofv3` can block indefinitely (two stalled attempts on 2026-09-10, each
+stopped after ~15-30 min with no trace written). The recipe, and the fuller
+trap catalog, live in [`docs/KERNELS.md`](../docs/KERNELS.md) and
+[`RDNA3-TUNING-GUIDE.md`](../docs/RDNA3-TUNING-GUIDE.md) section 4.9:
+
+1. **Prewarm the JIT cache outside the profiler first** - run the exact
+   harness once uninstrumented so every kernel is built and cached.
+2. Export `HIPENGINE_COMPILER_VERSION_FILE=<file>` containing the `hipcc
+   --version` output (captured on the host, not under the profiler) so the
+   cache key resolves without probing the compiler.
+3. Export `HIPENGINE_REQUIRE_CACHED_BUILD=1` so any cache miss fails closed
+   instead of spawning `hipcc` under the profiler.
+4. Prefer a short configuration (a few seconds of device work); per-launch
+   interception makes launch-dense host-bound workloads many times slower
+   than their uninstrumented wall time.
 
 Update this catalog in the same logical unit whenever a harness gains or loses
 an axis.
