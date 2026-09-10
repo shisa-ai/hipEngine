@@ -3,6 +3,57 @@
 Status: measurement and optimization plan with scoped offline DMS INT8
 integration evidence. General production-serving qualification is not established.
 
+## Slot-local AOTriton admitted on the repaired route — 2026-09-10 UTC
+
+The F1 escape hatch is executed and qualified.
+`HIPENGINE_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON` is **promoted to default
+ON** (env `0` rolls back to the native paged kernel). The slot-local route now
+reads its transient BF16 oracle through AOTriton — the same already-admitted
+attention family the direct arm runs above the 512-row crossover — instead of
+the native split-K paged kernel whose per-launch cost grows ~quadratically with
+slab context.
+
+Qualification (W7900 GPU0, 27B `Q4_K_M`, shipping selectors,
+`int8_per_token_head` + FP32 scales, 18-prompt category+heldout suite,
+`execution_profile_gguf_int8_direct_prefill_gate.py --candidate
+slot_local_aotriton --prefill-entry packed_slot_local`, clean-provenance
+worktree):
+
+| Prompt rows (slabs) | kl_mean | kl_max | top-1 | Verdict |
+| --- | ---: | ---: | ---: | :-: |
+| 2,048 (1,024 + 1,024, both AOTriton) | 6.01e-05 | 1.06e-03 | 448/450 | **passed** |
+| 1,500 (1,024 AOTriton + 476 native tail) | 5.89e-05 | 1.30e-03 | 449/450 | **passed** |
+
+Both runs: calibrated envelope thresholds met with margin (bounds 1e-03 mean
+/ 5e-02 max), three deterministic candidate repeats, state fingerprints finite,
+layout-stable and byte-repeatable (the state checkpoint now reads INT8 payload
+as int8 with FP32 scale windows and only fingerprints `hidden_seed_fp32` when
+the route populated it — two harness defects fixed in `c35b3be72` that had
+made every earlier INT8 state gate fail regardless of correctness).
+
+Trace identity (rocprofv3, cache-only recipe, 1,500 rows): slab 1 runs
+AOTriton (`attn_fwd`), the 476-row tail slab runs the native paged kernel —
+two attention identities, exactly the expected mixed pattern. Decode kernels
+unchanged.
+
+Same-host diagnostic A/B (matched deterministic prompts, flag off vs on):
+
+| rows | chunks | off | on | speedup | on tok/s |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1,024 | 1 | 1.839 s | 1.398 s | 1.32× | 732.3 |
+| 2,048 | 2 | 4.530 s | 2.746 s | 1.65× | 745.8 |
+| 4,096 | 4 | 18.015 s | 5.661 s | 3.18× | 723.6 |
+| 8,192 | 8 | 121.862 s | 12.100 s | **10.07×** | **677.0** |
+
+The quadratic collapse is eliminated: 677–746 tok/s flat from 1K to 8K, against
+the scalar parent's 692 tok/s at 8,192. Logits differ by design (attention
+reduction order — the envelope's contract); this is a diagnostic, not a
+topline row.
+
+[`Gate (2,048)`](../benchmarks/results/2026-09-10-w7900-int8-slot-local-aotriton-gate-corrected.json),
+[`Gate (1,500 tail)`](../benchmarks/results/2026-09-10-w7900-int8-slot-local-aotriton-gate-tail1500.json),
+[`Speed A/B`](../benchmarks/results/2026-09-10-w7900-int8-slot-local-aotriton-speed.json)
+
 ## Packed slot-local prefill: the per-slab whole-history KV import is dead work, not the long-prompt bottleneck — 2026-09-10 UTC
 
 `_prefill_batch_native_single_slab` called `_sync_packed_decode_initial_state`
