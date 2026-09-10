@@ -543,6 +543,13 @@ hipEngine's 6.01 s whole-MoE block; 6x) while dense linear is nearly at
 parity (~3.0 s external MMQ+GEMM versus 3.84 s; the old-pin-based
 "+2.45 s linear excess" overstated dense for the newer engine). Order:
 ~~MoE expert-row utilization/pipelining~~ -> bounded QSA D256 sweep.
+**QSA D256 sweep GATE-EVALUATED, NOT RUN (September 10, task #36):** all
+tree gate branches closed - no complete-owner savings since the deferral,
+the ~40 us floor / 3x headroom claim remains a serial-chain estimate, and
+the qualification-repair window completed with #30. Bounded design
+pre-declared (admission bars, budget, stop conditions) in
+`2026-09-10-qwen4exp-qsa-d256-sweep-gate.json`; execute on any opening
+condition.
 **R13 MoE project CLOSED (September 10):** the 6x gap is
 exactness-structural - the three-plane iu8 chain is ~3x, padding 33%
 (analytically closed: c<=16 experts hold 12.9% of pairs; dp4a loses at

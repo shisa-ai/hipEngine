@@ -1,0 +1,41 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp_qsa_d256_sweep_gate_evaluation",
+ "date": "2026-09-10",
+ "task": "#36 QSA D256 bounded sweep",
+ "decision": "SWEEP NOT RUN - gate remains CLOSED; bounded design pre-declared for when it opens",
+ "gate_criteria": {
+  "source": "docs/QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md R7 item + experiment-order rank 7",
+  "criteria": [
+   "fresh complete-owner savings justifying QSA values-pass tuning priority",
+   "a measured latency/resource mechanism for the ~40 us floor / 3x headroom claim (a serial-chain estimate alone is explicitly insufficient)",
+   "or execution as part of the qualification-repair window's spare capacity"
+  ],
+  "rationale": "QSA decode and GDN are no longer the leading comparator deficits; the queue ranked QSA prefill/values scheduling last"
+ },
+ "gate_status_audit": {
+  "complete_owner_savings_since_deferral": "NONE. Post-deferral promotions are all non-QSA-prefill: batched QSA positions (decode host copies, +0.9% TG), compiler-version override-identity cache (~0 TG, correctness), PLE warm (promoted then DEMOTED to opt-in). R11/R12/R13 candidates all REJECTED at gates; #30 ablation and #35 screen produced no promotions. The QSA prefill owner remains at its post-quad state: 1,334 ms at code-p4096 vs 645 ms old Vulkan (+689 ms excess, ~5% of the 13.4 s device total).",
+  "floor_headroom_claim": "STILL A SERIAL-CHAIN ESTIMATE. No rocprof or A/B measurement of the prefill values-pass floor exists in any artifact; the only measured values-pass figures are per-launch microsecond durations (scores 2.96 us / coefficients 1.28 us / values 2.32 us, pf2 trace) and the DECODE v2 values pass (~110 us/layer after rewrite) - different owner.",
+  "qualification_repair_window": "CLOSED. The review-finding-2 isolation work completed as task #30 (route-drift leave-one-out ablation, 2f4e3f3ba): single-route attribution refuted, drift is compounded micro-drift, 6.1 policy fork open. No active spare-capacity window."
+ },
+ "opening_conditions": [
+  "a fresh complete-owner QSA-prefill saving lands (making the residual values-pass share the leading deficit), or",
+  "a rocprof resource/latency measurement of the prefill values pass establishes the claimed floor/headroom as a measured mechanism, or",
+  "a new qualification-repair window with GPU spare capacity is declared"
+ ],
+ "predeclared_bounded_design": {
+  "scope": "single sweep; tile/occupancy variants of the QSA sparse-prefill values (weighted-V) pass at D256/page256/Hq24/Hkv2 on the promoted quad route; chunked prefill rows 512/1024",
+  "admission_bars": [
+   "focused RED/oracle: bit-identical to parent operand order across selected 1..4096, tail counts, extreme query scales (the decode-v2 qualification set)",
+   "six-case off/on/off full-state gate (full logits, 4 decode steps, state, full KV) bit-identical",
+   "full 12-case chunk1024 canonical A/B: 72/72 trajectories exact",
+   "performance: complete-owner QSA prefill reduction >= 5% at p4096 with no p512/p1024 prefill regression; TG neutral",
+   "no default change without the full gate chain (screen -> admission -> A/B -> promotion)"
+  ],
+  "budget": "~0.69 s excess at code-p4096 (~5% of device) bounds the maximum recoverable; the sweep stops at the first failed bar"
+ },
+ "source": {
+  "head": "eb13017f396e",
+  "path": "/home/lhl/hipEngine"
+ }
+}
