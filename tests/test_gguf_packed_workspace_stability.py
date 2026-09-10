@@ -242,7 +242,16 @@ def test_slot_views_delegate_packed_workspace_to_batch_owner(monkeypatch) -> Non
 
     original_ensure = gguf_runner.Qwen35GGUFResidentSession._ensure_packed_verify_workspace
 
-    def owner_ensure(self, *, slot_count, rows, max_sequence_length, runtime, stream=0):
+    def owner_ensure(
+        self,
+        *,
+        slot_count,
+        rows,
+        max_sequence_length,
+        runtime,
+        stream=0,
+        require_kv_planes=True,
+    ):
         delegated.append((int(slot_count), int(rows), int(max_sequence_length)))
         return original_ensure(
             self,
@@ -251,6 +260,7 @@ def test_slot_views_delegate_packed_workspace_to_batch_owner(monkeypatch) -> Non
             max_sequence_length=max_sequence_length,
             runtime=runtime,
             stream=stream,
+            require_kv_planes=require_kv_planes,
         )
 
     owner._ensure_packed_verify_workspace = MethodType(owner_ensure, owner)
@@ -569,3 +579,135 @@ def test_prefill_transient_inventory_reports_owners_and_modes() -> None:
         "slot_fair_bounded_rounds", "None",
     ]
     assert report["oracle_per_layer_flags"] == [True, False]
+
+
+def test_slot_local_prefill_leases_no_packed_kv_planes(monkeypatch) -> None:
+    """P4: slot-local packed prefill must not pin the pool KV plane lease.
+
+    The packed KV planes are read only by non-slot-local packed attention,
+    packed batch decode, and the MTP verifier - all of which pass
+    require_kv_planes=True. A slot-local prefill resolves the route before
+    the workspace ensure, so it can represent the absence of a packed KV
+    consumer in the resolved workspace plan (roadmap F2) instead of pinning
+    a second full-context reservation.
+    """
+
+    from hipengine.runtime.qwen35_gguf_runner import (
+        _GGUFPackedTargetState,
+        _rebind_packed_verify_layout_pages,
+    )
+
+    state = object.__new__(_GGUFPackedTargetState)
+    state.__dict__.update(
+        slot_count=1,
+        max_sequence_length=4096,
+        block_size=256,
+        blocks_per_slot=16,
+        total_positions=4096,
+        kv_layout=SimpleNamespace(
+            layer_storage_dtypes=(None, "int8_per_token_head"),
+            bf16_mirror_layer_indices=(),
+        ),
+        layer_conv_states=(SimpleNamespace(ptr=1, nbytes=8), None),
+        layer_recurrent_states=(SimpleNamespace(ptr=2, nbytes=8), None),
+        full_key_caches=(None, None),
+        full_value_caches=(None, None),
+        full_bf16_mirror_key_caches=(None, None),
+        full_bf16_mirror_value_caches=(None, None),
+        full_k_scale_caches=(None, None),
+        full_v_scale_caches=(None, None),
+        full_kv_scale_metadata=(None, None),
+        buffers=(),
+        page_ids=(),
+        kv_backing_kind="unleased",
+    )
+    # post_init accepts the unleased kind.
+    _GGUFPackedTargetState.__post_init__(state)
+
+    # Fail closed: an unleased state cannot serve packed-scratch attention.
+    with pytest.raises(ValueError, match="no packed full-attention KV cache"):
+        state.full_cache(1)
+    # The linear state slots are present and unaffected.
+    assert state.linear_state_pair(0) == (
+        state.layer_conv_states[0],
+        state.layer_recurrent_states[0],
+    )
+    # The layout rebind is the identity binding: slot-local execution never
+    # consumes the packed block table.
+    layout = SimpleNamespace(
+        slot_count=1,
+        blocks_per_slot=16,
+        cu_seqlens=(0, 4),
+        active_mask=(True,),
+        block_table=object(),
+    )
+    assert _rebind_packed_verify_layout_pages(layout, state) is layout
+
+    # Non-int8 or plane-requiring routes must not produce unleased states:
+    # the allocate flag only skips the lease for INT8 storage layouts.
+    assert (
+        _GGUFPackedTargetState.__dataclass_fields__["kv_backing_kind"].default
+        == "private"
+    )
+
+
+def test_ensure_packed_workspace_upgrades_unleased_for_plane_consumers(
+    monkeypatch,
+) -> None:
+    """A plane-requiring call reallocates an unleased state with planes."""
+
+    real_ensure = gguf_runner.Qwen35GGUFResidentSession._ensure_packed_verify_workspace
+
+    def fake_ensure(self, **kwargs):
+        # Emulate the growth decision: an unleased state is not ready when
+        # planes are required, and the allocate call then leases them.
+        state = getattr(self, "_packed_verify_state", None)
+        require = bool(kwargs.get("require_kv_planes", True))
+        if (
+            state is not None
+            and require
+            and getattr(state, "kv_backing_kind", "private") == "unleased"
+        ):
+            upgraded = SimpleNamespace(
+                slot_count=state.slot_count,
+                max_sequence_length=state.max_sequence_length,
+                kv_backing_kind="pool_lease",
+            )
+            self._packed_verify_state = upgraded
+            self._packed_verify_scratch = SimpleNamespace(
+                rows=kwargs["rows"],
+                max_positions=kwargs["max_sequence_length"],
+                gdn_segment_capacity=kwargs["slot_count"],
+            )
+            return upgraded, self._packed_verify_scratch
+        return real_ensure(self, **kwargs)
+
+    owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner._packed_verify_state = SimpleNamespace(
+        slot_count=1,
+        max_sequence_length=4096,
+        kv_backing_kind="unleased",
+    )
+    owner._packed_verify_scratch = SimpleNamespace(
+        rows=8, max_positions=4096, gdn_segment_capacity=1
+    )
+    owner._invalidate_live_packed_decode_graphs = lambda: None
+    owner._free_packed_verify_workspace = lambda **kwargs: None
+    owner._packed_verify_union_geometry = lambda **kwargs: (1, 8, 4096, 1)
+    owner._workspace_kv_pool = object()
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(
+            gguf_runner.Qwen35GGUFResidentSession,
+            "_ensure_packed_verify_workspace",
+            fake_ensure,
+        )
+        runtime = SimpleNamespace()
+        state, scratch = owner._ensure_packed_verify_workspace(
+            slot_count=1,
+            rows=8,
+            max_sequence_length=4096,
+            runtime=runtime,
+            require_kv_planes=True,
+        )
+    assert state.kv_backing_kind == "pool_lease"

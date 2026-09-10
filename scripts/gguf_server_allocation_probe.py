@@ -250,6 +250,9 @@ def main() -> int:
                     "request_error": request_error,
                     "usage": usage,
                     "generated_chars": None if generated is None else len(generated),
+                    "generated_text_head": (
+                        None if generated is None else generated[:64]
+                    ),
                     "baseline": {
                         name: baseline.get(name) for name in _TRACKED_GAUGES
                     },

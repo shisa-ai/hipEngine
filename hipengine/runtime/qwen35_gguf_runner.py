@@ -1537,6 +1537,13 @@ def _rebind_packed_verify_layout_pages(
     state_slots = int(packed_state.slot_count)
     state_bps = int(packed_state.blocks_per_slot)
     layout_bps = int(layout.blocks_per_slot)
+    if getattr(packed_state, "kv_backing_kind", "private") == "unleased":
+        # No packed KV planes exist. Slot-local packed execution never
+        # consumes the packed block table (attention goes through each
+        # session's request-owned KV), so the identity layout is the
+        # correct binding; a non-slot-local call would have reallocated the
+        # state with planes before reaching any packed-scratch kernel.
+        return layout
     if int(layout.slot_count) > state_slots:
         raise ValueError(
             f"packed layout slot_count {layout.slot_count} exceeds packed state slot_count {state_slots}"
@@ -1773,7 +1780,7 @@ class _GGUFPackedTargetState:
     kv_backing_kind: str = "private"
 
     def __post_init__(self) -> None:
-        if self.kv_backing_kind not in {"private", "pool_lease"}:
+        if self.kv_backing_kind not in {"private", "pool_lease", "unleased"}:
             raise ValueError(
                 f"unknown packed KV backing kind {self.kv_backing_kind!r}"
             )
@@ -1836,6 +1843,7 @@ class _GGUFPackedTargetState:
         block_size: int = 256,
         kv_layout: Qwen35GGUFKVChunkLayout | None = None,
         kv_pool: object | None = None,
+        lease_kv_planes: bool = True,
     ) -> "_GGUFPackedTargetState":
         slot_count = int(slot_count)
         max_sequence_length = int(max_sequence_length)
@@ -1889,6 +1897,7 @@ class _GGUFPackedTargetState:
         layer_conv_states: list[object | None] = []
         layer_recurrent_states: list[object | None] = []
         state_buffers: list[object] = []
+        kv_cache_fields: dict[str, tuple] | None = None
         try:
             for layer_type in cfg.layer_types:
                 if layer_type == LINEAR_ATTENTION:
@@ -1909,7 +1918,43 @@ class _GGUFPackedTargetState:
                 else:
                     raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
             lease_pages: tuple[int, ...] | None = None
-            if kv_pool is not None:
+            if (
+                kv_pool is not None
+                and not lease_kv_planes
+                and kv_layout.layer_storage_dtypes
+                and all(
+                    storage is None or storage == DType.INT8_PER_TOKEN_HEAD
+                    for storage in kv_layout.layer_storage_dtypes
+                )
+            ):
+                # Slot-local packed execution never reads the packed KV
+                # planes: attention goes through each session's request-
+                # owned KV and the linear layers use the conv/recurrent
+                # state slots. Skip the pool lease entirely (the P4 duplicate
+                # reservation removal); any later non-slot-local call
+                # reallocates this state WITH planes via the ensure growth
+                # path (fail closed in full_cache/copy_planes until then).
+                full_layer_indices = tuple(
+                    layer_id
+                    for layer_id, storage in enumerate(kv_layout.layer_storage_dtypes)
+                    if storage is not None
+                )
+                empty_caches = tuple(
+                    None for _ in full_layer_indices
+                )
+                kv_cache_fields = {
+                    "full_key_caches": empty_caches,
+                    "full_value_caches": empty_caches,
+                    "full_bf16_mirror_key_caches": empty_caches,
+                    "full_bf16_mirror_value_caches": empty_caches,
+                    "full_k_scale_caches": empty_caches,
+                    "full_v_scale_caches": empty_caches,
+                    "full_kv_scale_metadata": empty_caches,
+                }
+                page_ids = ()
+                backing_kind = "unleased"
+                owned_buffers = tuple(state_buffers)
+            elif kv_pool is not None:
                 workspace_pages_fn = getattr(kv_pool, "workspace_pages", None)
                 if callable(workspace_pages_fn):
                     lease_pages = workspace_pages_fn(_GGUF_PACKED_WORKSPACE_LEASE_KEY)
@@ -1926,6 +1971,15 @@ class _GGUFPackedTargetState:
                     raise RuntimeError(
                         f"packed workspace lease holds {len(lease_pages)} pages but the workspace needs {total_pages}"
                     )
+                kv_cache_fields = {
+                    "full_key_caches": arena_backing.full_key_caches,
+                    "full_value_caches": arena_backing.full_value_caches,
+                    "full_bf16_mirror_key_caches": arena_backing.full_bf16_mirror_key_caches,
+                    "full_bf16_mirror_value_caches": arena_backing.full_bf16_mirror_value_caches,
+                    "full_k_scale_caches": arena_backing.full_k_scale_caches,
+                    "full_v_scale_caches": arena_backing.full_v_scale_caches,
+                    "full_kv_scale_metadata": arena_backing.full_kv_scale_metadata,
+                }
                 kv_backing = arena_backing
                 page_ids = tuple(int(page) for page in lease_pages[:total_pages])
                 backing_kind = "pool_lease"
@@ -1945,6 +1999,16 @@ class _GGUFPackedTargetState:
             for buffer in reversed(state_buffers):
                 free(buffer, runtime=runtime)
             raise
+        if kv_cache_fields is None:
+            kv_cache_fields = {
+                "full_key_caches": kv_backing.full_key_caches,
+                "full_value_caches": kv_backing.full_value_caches,
+                "full_bf16_mirror_key_caches": kv_backing.full_bf16_mirror_key_caches,
+                "full_bf16_mirror_value_caches": kv_backing.full_bf16_mirror_value_caches,
+                "full_k_scale_caches": kv_backing.full_k_scale_caches,
+                "full_v_scale_caches": kv_backing.full_v_scale_caches,
+                "full_kv_scale_metadata": kv_backing.full_kv_scale_metadata,
+            }
         return cls(
             slot_count=slot_count,
             max_sequence_length=max_sequence_length,
@@ -1954,13 +2018,7 @@ class _GGUFPackedTargetState:
             kv_layout=kv_layout,
             layer_conv_states=tuple(layer_conv_states),
             layer_recurrent_states=tuple(layer_recurrent_states),
-            full_key_caches=kv_backing.full_key_caches,
-            full_value_caches=kv_backing.full_value_caches,
-            full_bf16_mirror_key_caches=kv_backing.full_bf16_mirror_key_caches,
-            full_bf16_mirror_value_caches=kv_backing.full_bf16_mirror_value_caches,
-            full_k_scale_caches=kv_backing.full_k_scale_caches,
-            full_v_scale_caches=kv_backing.full_v_scale_caches,
-            full_kv_scale_metadata=kv_backing.full_kv_scale_metadata,
+            **kv_cache_fields,
             buffers=owned_buffers,
             page_ids=page_ids,
             kv_backing_kind=backing_kind,
@@ -22582,6 +22640,7 @@ class Qwen35GGUFResidentSession:
             rows=max_chunk_rows,
             max_sequence_length=max(1024, max_live_count),
             runtime=runtime,
+            require_kv_planes=False,
         )
         # The shared oracle key is sound here: within one layer, its chunks
         # run back-to-back and positions never overlap across rounds.
@@ -23029,6 +23088,10 @@ class Qwen35GGUFResidentSession:
             rows=rows,
             max_sequence_length=slot_capacity,
             runtime=runtime,
+            # Slot-local slabs never read the packed KV planes (attention
+            # goes through each session's request-owned KV); non-slot-local
+            # slabs require the pool lease and reallocate with it.
+            require_kv_planes=not slot_local_full_prefill,
         )
         layout = _rebind_packed_verify_layout_pages(layout, packed_state)
         hidden_seed_buf = None
@@ -25549,6 +25612,7 @@ class Qwen35GGUFResidentSession:
         max_sequence_length: int,
         runtime: HipRuntime,
         stream: int = 0,
+        require_kv_planes: bool = True,
     ) -> tuple[_GGUFPackedTargetState, object]:
         delegate = getattr(self, "_resident_batch_owner", None)
         if delegate is not None and delegate is not self:
@@ -25558,6 +25622,7 @@ class Qwen35GGUFResidentSession:
                 max_sequence_length=max_sequence_length,
                 runtime=runtime,
                 stream=stream,
+                require_kv_planes=require_kv_planes,
             )
             self._packed_verify_state = state
             self._packed_verify_scratch = scratch
@@ -25578,6 +25643,11 @@ class Qwen35GGUFResidentSession:
             and int(self._packed_verify_state.slot_count) >= slot_count
             and int(self._packed_verify_state.max_sequence_length) >= max_sequence_length
             and getattr(self._packed_verify_state, "kv_layout", kv_layout) == kv_layout
+            and (
+                not require_kv_planes
+                or getattr(self._packed_verify_state, "kv_backing_kind", "private")
+                != "unleased"
+            )
         )
         scratch_ready = (
             self._packed_verify_scratch is not None
@@ -25614,6 +25684,7 @@ class Qwen35GGUFResidentSession:
                 runtime=runtime,
                 kv_layout=kv_layout,
                 kv_pool=self._workspace_kv_pool,
+                lease_kv_planes=require_kv_planes,
             )
         if self._packed_verify_scratch is None:
             self._packed_verify_scratch = _GGUFFullAttentionPrefillScratch.allocate(

@@ -4614,6 +4614,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 max_active_requests=config.max_active_requests,
                 max_sequence_length=config.max_context_tokens,
                 prefix_cache=prefix_cache_mode,
+                speculative_mtp_serving=config.speculative_mtp_serving,
                 speculative_provider=config.speculative_provider,
                 draft_model=config.draft_model,
                 speculative_candidate_budget=config.speculative_candidate_budget,
