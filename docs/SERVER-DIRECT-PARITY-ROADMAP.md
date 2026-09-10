@@ -46,6 +46,37 @@ promise: transport, token handling, and fairness have costs. Equal KV geometry,
 no redundant context-proportional storage, and near-direct model-step time are
 reasonable requirements.
 
+## 1.1 Execution status (2026-09-10, end of day)
+
+Packets P0-P4 are landed with their gates; P5's C1 baseline and P7's capacity
+re-qualification are landed. Stage table (W7900 GPU0, 27B Q4_K_M,
+int8_per_token_head + FP32 scales, C1, real server route, 2,048-row prompt
+unless noted):
+
+| Stage | Packed prefill | Decode boundary | Server-route transients @16K/32K declared | Commit |
+| --- | ---: | ---: | --- | --- |
+| Session start | 67 tok/s | unmeasured | unmeasured | - |
+| P1 slot-local AOTriton | 677 tok/s (10.1x) | - | unmeasured | `18ebfabd8` |
+| P0 telemetry freeze | 677 | - | oracle 2.0/4.0 GiB (16 owners); lease 0.51/1.02; workspace 0.95; hidden 0.27/0.43; pool high-water 0.58/1.09 | `ab517a6df` |
+| P2 server-faithful probe | 677 | - | same, now measured while-live on the real route (in-process oracle peak capture) | `8941b9d15` |
+| P3 layer-outer executor | 732 | - | oracle 0.125/0.25 GiB (1 owner); bitwise parity vs scalar at 2,048 and 1,500 rows | `a58cc4169` |
+| P4 lease removal | 677-732 | - | lease 0/0; pinned 0/0; pool high-water 0.07; chunk-outer oracle halves to 1.0 GiB (pool-backing coupling); determinism verified | `b959c83fe` |
+| P5 t1 decode ladder | - | R0 35.15 ms; R1 35.22 ms (ratio 1.002); R3 wrapper ~2% | - | `9ace7cb91` |
+| P7 t1 capacity | - | - | fresh C1 ceiling 155,648+ declared (2.87x the old 54,272); exceeds the plain direct-engine INT8 ceiling | `f2ff6fdf6` |
+
+Combined P3+P4 at 32K declared: ~1.6 GiB of route transients vs ~6.4 GiB at
+the P0 baseline (-75%). The layer-outer executor ships behind
+`HIPENGINE_GGUF_PACKED_LAYER_OUTER` (default off) pending the same-host wall
+A/B at 1K/2K/4K/8K and the trace-identity check; the lease removal is default
+on for the C1/prefix-off/MTP-off route with `HIPENGINE_GGUF_PACKED_KV_LEASE=1`
+as the rollback.
+
+Remaining open packets: P5 remainder (kernel-family/HIP-API/queue-gap
+telemetry attribution, graph-capture amortization, then the IKV-C2 C>1
+row-batched consumer - the capacity>1 lease gate stays until it lands), P6
+(resumable prefill owner, bounded service yield, cancellation coverage), and
+P7 remainder (the qualifying publish with paired repetitions and noise).
+
 ## 2. Findings, ordered by impact
 
 ### F1 - P1: long packed INT8 prefill selects the wrong performance regime
