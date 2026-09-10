@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-09**
+Last updated: **2026-09-10**
 
 Non-GR linear structural floor measured on Framework gfx1151:
 the GDN-gate (2560,6144) exact coltile is 1.94x/1.86x slower than the
@@ -839,6 +839,14 @@ with the double correctness gate described above. Attention runs as fused
 WMMA flash kernels (long-prefill and split-kv short-query variants) and the
 FP16 GEMMs use shape-keyed rocBLAS solution autotuning
 ([artifact](results/gfx1151-timesfm-quadtile-flash-2026-09-09.json)).
+
+TimesFM 3.0 500M GPU decode (batch 8, 3 variates, context 8192, horizon 512,
+one non-autoregressive pass): **0.319 s median, 4.17x the torch fp32 reference
+on the same GPU**. The same double gate on three oracle fixtures (multivariate,
+unaligned/univariate, covariate-mask + 640-horizon); the fp16 production path
+fuses the variate-attention QK norms in-kernel with a strict unfused fp32
+fallback. Torch comparison protocol in the artifact
+([artifact](results/gfx1151-timesfm3-varnorm-fusion-2026-09-10.json)).
 
 EVIE-4.5B multimodal retrieval encode (8 pages 448x336 + 8 queries): the
 batched segment-isolated runtime (encode_documents/encode_queries, ragged

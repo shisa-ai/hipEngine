@@ -2060,7 +2060,7 @@ def main() -> None:
   parser.add_argument("--batch", type=int, default=2)
   parser.add_argument("--context", type=int, default=512)
   parser.add_argument("--horizon", type=int, default=96)
-  parser.add_argument("--case", default="base", choices=["base", "edge"])
+  parser.add_argument("--case", default="base", choices=["base", "edge", "covmask"])
   args = parser.parse_args()
 
   import json
@@ -2105,7 +2105,27 @@ def main() -> None:
   batch, context, horizon = args.batch, args.context, args.horizon
 
   global_mask = None
-  if args.case == "edge":
+  past_only_mask = None
+  past_future_mask = None
+  if args.case == "covmask":
+    # Covariate-mask fixture: a FULLY masked past-only covariate (every
+    # sequence-attention row for that variate is fully masked), a partially
+    # masked past-future covariate, and a horizon of 640 (long-horizon
+    # stitching over 19 forecast patches).
+    batch, context, horizon = 1, 512, 640
+    t = np.arange(context, dtype=np.float64)
+    target = (
+        np.sin(2 * np.pi * t / 24.0) * 2.0 + 0.3 * rng.standard_normal(context)
+    ).astype(np.float32)[None, None]
+    past_only = rng.standard_normal((1, 1, context)).astype(np.float32)
+    past_only_mask = np.ones((1, 1, context), bool)  # fully masked covariate
+    past_future = np.sin(
+        2 * np.pi * np.arange(context + horizon) / 7.0
+    ).astype(np.float32)[None, None]
+    past_future_mask = np.zeros((1, 1, context + horizon), bool)
+    past_future_mask[..., 100:200] = True  # partially masked covariate
+    target_mask = np.zeros_like(target, dtype=bool)
+  elif args.case == "edge":
     # Edge fixture: unaligned context (500 -> pad 12) and horizon (100 -> pad
     # 28), an explicit global mask with interior masked region, a strongly
     # linear series (linear detrending applies), and a TRUE univariate batch
@@ -2164,6 +2184,10 @@ def main() -> None:
       decode_kwargs["past_only_covariates"] = torch.from_numpy(past_only)
     if past_future is not None:
       decode_kwargs["past_future_covariates"] = torch.from_numpy(past_future)
+    if past_only_mask is not None:
+      decode_kwargs["past_only_mask"] = torch.from_numpy(past_only_mask)
+    if past_future_mask is not None:
+      decode_kwargs["past_future_mask"] = torch.from_numpy(past_future_mask)
     logits = model.decode(torch.from_numpy(target), **decode_kwargs)
 
   payload = {
@@ -2178,6 +2202,10 @@ def main() -> None:
     payload["past_only_covariates"] = past_only
   if past_future is not None:
     payload["past_future_covariates"] = past_future
+  if past_only_mask is not None:
+    payload["past_only_mask"] = past_only_mask
+  if past_future_mask is not None:
+    payload["past_future_mask"] = past_future_mask
   if global_mask is not None:
     payload["global_mask"] = global_mask
 
