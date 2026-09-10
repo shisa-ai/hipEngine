@@ -1,16 +1,26 @@
 """Combined-stack admission gate for the shipped UD route set (gfx1100).
 
 Compares the declared production incumbent (the session-start shipped state:
-four-quant W4A16 prefill policy, empty decode policy - strict per-row GEMV)
-against the current shipped production stack (seven-quant prefill incl. the
-Q3_K hi+lo split, local32 IQ4_XS decode) on one artifact, teacher-forced, on
-natural self-generated prompts. Both arms' policies are pinned explicitly and
-asserted to differ - copying the module defaults would compare the candidate
-against itself now that the routes are enabled.
+four-quant W4A16 prefill policy on the one-wave owner, empty decode policy -
+strict per-row GEMV) against the CURRENT shipped production stack, teacher-
+forced, on natural self-generated prompts.
 
-The complete section-6.1 screen binds: mean KL <= 1e-3, per-position max
-<= 5e-2, top-1 >= 0.99, finite candidate logits, and a zero-KL prefill-only
-sanity arm (decode policy must not perturb prefill).
+The incumbent arm is pinned explicitly (a frozen reference must not move when
+the defaults change). The shipped arm is DERIVED from the live module
+defaults at run time and asserted against the expected shape - deriving it
+keeps the gate testing what actually ships (the 2026-09-10 review found a
+stale pin still naming the one-wave owner for every quant after the
+cooperative owners shipped). The fused IQ4_XS dual is owner-gated in the
+dispatcher: it engages only when both operands resolve to the admitted
+cooperative prefill owner, so the incumbent arm (one-wave variants) runs the
+two-singles path exactly like the production incumbent did.
+
+The complete section-6.1 screen binds: mean/p95/p99/max KL <=
+1e-3/5e-3/2e-2/5e-2 and top-1 >= 0.99 overall, plus finite candidate logits
+and a zero-KL prefill-only sanity arm (decode policy must not perturb
+prefill). The per-scope 97% top-1 requirement is a multi-category heldout
+property of the full gate suite; this single-prompt diagnostic binds the
+overall screen.
 """
 from __future__ import annotations
 
@@ -32,13 +42,22 @@ INCUMBENT_PREFILL = {
     quant: dict(_W4A16_ENTRY)
     for quant in ("gguf_iq4_xs", "gguf_iq3_xxs", "gguf_iq3_s", "gguf_iq4_nl")
 }
-SHIPPED_PREFILL = {
-    **{quant: dict(_W4A16_ENTRY)
-       for quant in ("gguf_iq4_xs", "gguf_iq3_xxs", "gguf_iq3_s", "gguf_iq4_nl",
-                     "gguf_q3_k", "gguf_iq2_s", "gguf_iq2_xs")},
-}
 INCUMBENT_DECODE: dict = {}
-SHIPPED_DECODE = {"gguf_iq4_xs": {"variant": "local32_gemv_bf16_bf16_out"}}
+# The shipped arms are captured from the live module defaults at import
+# time (after the kernel package initializes its policies) and asserted
+# in main() to match the shipped shape.
+SHIPPED_PREFILL: dict = {}
+SHIPPED_DECODE: dict = {}
+
+
+def _capture_shipped_policies() -> tuple[dict, dict]:
+    import copy
+
+    import hipengine.kernels.hip_gfx1100 as backend
+
+    prefill = copy.deepcopy(backend.GGUF_IQ_DENSE_PREFILL_POLICY)
+    decode = copy.deepcopy(backend.GGUF_IQ_DENSE_DECODE_POLICY)
+    return prefill, decode
 
 
 def main() -> None:
@@ -62,9 +81,23 @@ def main() -> None:
     compiler_version = (Path(args.compiler_version_file).read_text()
                          if args.compiler_version_file else None)
 
-    # Arm-pin assertions: the policies must route different quant sets.
-    assert set(INCUMBENT_PREFILL) != set(SHIPPED_PREFILL), (
+    global SHIPPED_PREFILL, SHIPPED_DECODE
+    SHIPPED_PREFILL, SHIPPED_DECODE = _capture_shipped_policies()
+
+    # Arm assertions: the incumbent is the frozen four-quant reference; the
+    # shipped arm must be the live default policy covering the seven-quant
+    # route set (a stale pin here would test a stack that no longer ships).
+    assert set(INCUMBENT_PREFILL) < set(SHIPPED_PREFILL), (
         "prefill arms route the same quant set; the incumbent pin is stale")
+    assert set(SHIPPED_PREFILL) == {
+        "gguf_iq4_xs", "gguf_iq3_xxs", "gguf_iq3_s", "gguf_iq4_nl",
+        "gguf_q3_k", "gguf_iq2_s", "gguf_iq2_xs"}, (
+        "the shipped prefill policy no longer routes the seven-quant set; "
+        "update this gate's expectation")
+    assert SHIPPED_PREFILL["gguf_iq4_xs"]["variant"].endswith(
+        "dense_wmma_w4a16_prefill_coop64_bf16_bf16_out"), (
+        "the shipped IQ4_XS prefill owner is not the cooperative 64-column "
+        "owner; update this gate's expectation")
     assert INCUMBENT_DECODE != SHIPPED_DECODE, (
         "decode arms route the same policy; the incumbent pin is stale")
 
@@ -123,25 +156,47 @@ def main() -> None:
     metrics = evaluate_logits(ref_logits, cand_logits)
     top1 = float(np.mean(np.argmax(ref_logits, -1) == np.argmax(cand_logits, -1)))
     finite = bool(np.all(np.isfinite(cand_logits)))
+    # Per-position KL vector for the p95/p99 percentiles of the complete
+    # section-6.1 screen.
+    ref_lse = ref_logits - ref_logits.max(-1, keepdims=True)
+    ref_p = np.exp(ref_lse)
+    ref_p /= ref_p.sum(-1, keepdims=True)
+    cand_lse = cand_logits - cand_logits.max(-1, keepdims=True)
+    cand_p = np.exp(cand_lse)
+    cand_p /= cand_p.sum(-1, keepdims=True)
+    kl_rows = np.sum(ref_p * (np.log(ref_p + 1e-12) - np.log(cand_p + 1e-12)),
+                     axis=-1)
+    kl_p95 = float(np.percentile(kl_rows, 95))
+    kl_p99 = float(np.percentile(kl_rows, 99))
     print(f"model: {args.model.name}  seed: {args.seed}")
     print(f"positions: {ref_logits.shape[0]}  (natural prompt={len(prompt)})")
-    print(f"KL vs pinned incumbent:  mean={metrics.kl_mean:.4e}  max={metrics.kl_max:.4e}")
+    print(f"KL vs pinned incumbent:  mean={metrics.kl_mean:.4e}  "
+          f"p95={kl_p95:.4e}  p99={kl_p99:.4e}  max={metrics.kl_max:.4e}")
     print(f"top1 agreement: {top1:.4f}  finite: {finite}")
     gate = (
         metrics.kl_mean <= 1e-3
+        and kl_p95 <= 5e-3
+        and kl_p99 <= 2e-2
         and metrics.kl_max <= 5e-2
         and top1 >= 0.99
         and finite
     )
-    print(f"COMBINED GATE (mean<=1e-3 & max<=5e-2 & top1>=0.99 & finite): "
-          f"{'PASS' if gate else 'FAIL'}")
+    print(f"COMBINED GATE (mean<=1e-3 & p95<=5e-3 & p99<=2e-2 & max<=5e-2 & "
+          f"top1>=0.99 & finite): {'PASS' if gate else 'FAIL'}")
     if args.json is not None:
         args.json.write_text(json.dumps({
             "model": str(args.model), "seed": args.seed,
             "positions": int(ref_logits.shape[0]),
-            "kl_mean": metrics.kl_mean, "kl_max": metrics.kl_max,
+            "kl_mean": metrics.kl_mean, "kl_p95": kl_p95, "kl_p99": kl_p99,
+            "kl_max": metrics.kl_max,
             "top1_agreement": top1, "candidate_finite": finite,
             "gate_pass": gate,
+            "incumbent_prefill_variants": {
+                q: e["variant"] for q, e in INCUMBENT_PREFILL.items()},
+            "shipped_prefill_variants": {
+                q: e["variant"] for q, e in SHIPPED_PREFILL.items()},
+            "shipped_decode_variants": {
+                q: e["variant"] for q, e in SHIPPED_DECODE.items()},
         }, indent=2) + "\n")
 
 

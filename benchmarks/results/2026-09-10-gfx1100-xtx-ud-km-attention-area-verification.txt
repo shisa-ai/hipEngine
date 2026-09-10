@@ -1,27 +1,31 @@
 Attention-area verification (2026-09-10, XTX, K_M 512-row prefill)
 
 Objective item: "attention" as a prefill lever. Verification of each
-attention-area stage from the device-side stage census:
+attention-area stage from the DEDUPLICATED device-side stage census
+(2026-09-10 revision: the first census summed alias keys, double
+counting 85.273ms; this revision drops aliases at mark time and its
+total, 552.5ms, matches the 557ms prefill wall):
 
-1. full-attn core + core_gate (22.4ms across 32 layers): AOTriton
-   compact-varlen (vendor-tuned). ~0.7ms/layer at 512 rows with GQA
+1. full_attn core_gate (10.942ms across 32 layers): AOTriton
+   compact-varlen (vendor-tuned), ~0.34ms/layer at 512 rows with GQA
    24q/4kv x 256 head_dim. No in-tree lever.
-2. qkv_head_norm_rope stage (28.9ms): dominated by the QKV linear
+2. qkv_head_norm_rope stage (28.598ms): dominated by the QKV linear
    projections (already on the optimized wide-N owners). The non-linear
    remainder measured standalone:
    - head RMSNorm + partial RoPE (512 tokens, 24+4 heads x 256,
-     rope 64): 103.4us per layer call = 3.31ms across 32 layers.
-     One 256-thread block per (head, token); already at ~600 GB/s
-     effective on its 25MB of traffic. No lever.
+     rope 64): 103.4us per layer call = 3.31ms across 32 layers -
+     one 256-thread block per (head, token) at ~600 GB/s effective on
+     its 25MB of traffic. No lever.
    - split_qgate + bf16->f32 K cast: a few ms total (same class).
-3. full_attn_output (12.5ms): output projection linear + gate
+3. full_attn_output (12.412ms): output projection linear + gate
    postprocessing; the linear is on the optimized owners.
 4. The remaining non-linear mass is the GDN linear-attention recurrence
-   (35.2ms across 96 layers) - a dedicated chunked-scan kernel subsystem
-   (compact peer-wave32 and segmented modes), a separate campaign from
-   the attention lever, recorded as the open item.
+   (35.330ms across 96 layers) - a dedicated chunked-scan kernel
+   subsystem (compact peer-wave32 and segmented modes), a separate
+   campaign from the attention lever, recorded as the open item.
 
-Conclusion: the attention lever as scoped by the objective is exhausted;
-the core is vendor-tuned and the surrounding kernels are at memory
-bandwidth. The next prefill levers are the GDN recurrence and the
-norm/RoPE/residual fusion chains (both recorded in the stage census).
+Deprioritization rationale (not proof of no remaining optimization):
+the attention core is vendor-tuned, the norm/RoPE chain is at memory
+bandwidth, and the stages around them are the already-optimized linear
+owners. The next prefill levers by measured size are the GDN recurrence
+(35.3ms) and the norm/RoPE/residual fusion chains.
