@@ -164,6 +164,7 @@ class EvieRunner:
         self._zero_conv_state: DeviceBuffer | None = None
         self._zero_gdn_state: DeviceBuffer | None = None
         self._gdn_state_zero: DeviceBuffer | None = None
+        self._head_bias: DeviceBuffer | None = None
         # GDN prefill recurrence. cluster8 is algebraically exact for this
         # block (the 1/sqrt(d_k) q scale is applied at its output via
         # kOutputScale instead of on the input): single-layer max diff vs
@@ -188,6 +189,7 @@ class EvieRunner:
         if self._gdn_state_zero is not None:
             hip_free(self._gdn_state_zero)
             self._gdn_state_zero = None
+        self._head_bias = None
         if self._cast16_scratch is not None:
             hip_free(self._cast16_scratch)
             self._cast16_scratch = None
@@ -208,6 +210,8 @@ class EvieRunner:
         """Free per-call scratch; keep persistent state alive."""
 
         keep = {self._zero_conv_state.ptr} if self._zero_conv_state is not None else set()
+        if self._head_bias is not None:
+            keep.add(self._head_bias.ptr)
         for cos_buf, sin_buf in self._rope_cache.values():
             keep.update((cos_buf.ptr, sin_buf.ptr))
         for buf in self._misc_buffers:
@@ -994,9 +998,13 @@ class EvieRunner:
             self._zero_conv_state = _malloc_committed(self.GDN_QKV_DIM * 4 * 4)
             self._misc_buffers.append(self._zero_conv_state)
         # the prefill conv kernel chains segments through conv_state, so it
-        # must be re-zeroed before every layer invocation
-        zeros = np.zeros(self.GDN_QKV_DIM * 4, dtype=np.float32)
-        copy_host_to_device(self._zero_conv_state, host_array_ptr(zeros))
+        # must be re-zeroed before every layer invocation (GPU-side scale
+        # by 0.0 — an H2D upload here cost a host alloc + copy per layer)
+        err = self._k("hipengine_evie_scale_f32", [_P, _P, _F, _I, _S])(
+            _P(self._zero_conv_state.ptr), _P(self._zero_conv_state.ptr),
+            _F(0.0), _I(self.GDN_QKV_DIM * 4), _S(0),
+        )
+        self._check(err, "zero conv state")
         qwen35_linear_attn_conv_prefill_f32(
             qkv_ptr,
             self._zero_conv_state.ptr,
@@ -1094,31 +1102,27 @@ class EvieRunner:
     def project(
         self, hidden_ptr: int, tokens: int, scratch: _Scratch, head_dim: int = 128
     ) -> int:
-        head_out = scratch.buffers["head_out"].ptr
+        # Prefix-MRL: only the first head_dim=128 rows of the (2048, h)
+        # projection are needed; they are contiguous at the weight start,
+        # so GEMM straight to (tokens, 128) instead of computing 2048
+        # channels and slicing (16x less head GEMM work).
+        slice_ptr = scratch.buffers["head_slice"].ptr
         self._gemm(
-            hidden_ptr, self._w["custom_text_proj.weight"], head_out, tokens,
-            self.spec.hidden_size, 2048,
+            hidden_ptr, self._w["custom_text_proj.weight"], slice_ptr, tokens,
+            self.spec.hidden_size, head_dim,
         )
-        # bias add: broadcast the (2048,) bias over all token rows
-        bias = self._to_dev(self._read_bias())
+        if self._head_bias is None:
+            # persistent device copy of the bias prefix (a per-encode
+            # GPU->CPU->GPU roundtrip was removed)
+            bias_host = self._read_bias()[:head_dim].copy()
+            buf = _malloc_committed(head_dim * 4 + _GEMM_PAD_BYTES)
+            copy_host_to_device(buf, host_array_ptr(bias_host), head_dim * 4)
+            self._head_bias = buf
+            self._misc_buffers.append(buf)
         err = self._k("hipengine_evie_add_bias_f32", [_P, _P, _I, _I, _S])(
-            _P(head_out), _P(bias.ptr), _I(tokens * 2048), _I(2048), _S(0)
+            _P(slice_ptr), _P(self._head_bias.ptr), _I(tokens * head_dim), _I(head_dim), _S(0)
         )
         self._check(err, "head bias")
-        slice_ptr = scratch.buffers["head_slice"].ptr
-        # slice head_dim columns: row-wise copy via gather with dim=head_dim,
-        # row stride 2048 — use expand_heads with src_heads=1 over rows? Use a
-        # dedicated loop via scatter kernel is per-head; simplest: rmsnorm-like
-        # row copy. Use l2norm with a stride variant: run l2norm on the
-        # head_dim prefix of each row by treating rows as stride-2048.
-        err = self._k(
-            "hipengine_evie_expand_heads_f32",
-            [_P, _P, _I, _I, _I, _I, _I, _I, _S],
-        )(
-            _P(head_out), _P(slice_ptr), _I(tokens), _I(0), _I(2048),
-            _I(1), _I(head_dim), _I(1), _S(0),
-        )
-        self._check(err, "head slice")
         err = self._k("hipengine_evie_l2norm_rows_f32", [_P, _P, _I, _I, _S])(
             _P(slice_ptr), _P(slice_ptr), _I(tokens), _I(head_dim), _S(0)
         )
