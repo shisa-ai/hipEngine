@@ -95,15 +95,27 @@ def run_arm(args) -> None:
         backend=QWEN4_EXP_BACKEND, max_sequence_length=4352,
         prefill_chunk_size=1024))
 
+    teacher = None
+    if args.teacher is not None:
+        teacher = np.load(args.teacher)
     payload = {}
     for case in fixture["cases"]:
         if args.case_id and case["id"] not in args.case_id:
             continue
-        rows_a, chain = _forced_logits(
-            generator, case["prompt_token_ids"], args.decode_steps)
-        rows_b, _ = _forced_logits(
-            generator, case["prompt_token_ids"], args.decode_steps,
-            forced=chain)
+        if teacher is not None:
+            chain = teacher[f"{case['id']}__chain"].tolist()
+            rows_a, _ = _forced_logits(
+                generator, case["prompt_token_ids"], args.decode_steps,
+                forced=chain)
+            rows_b, _ = _forced_logits(
+                generator, case["prompt_token_ids"], args.decode_steps,
+                forced=chain)
+        else:
+            rows_a, chain = _forced_logits(
+                generator, case["prompt_token_ids"], args.decode_steps)
+            rows_b, _ = _forced_logits(
+                generator, case["prompt_token_ids"], args.decode_steps,
+                forced=chain)
         deterministic = bool(np.array_equal(rows_a, rows_b))
         payload[case["id"]] = {
             "category": case.get("category", "unknown"),
@@ -127,10 +139,13 @@ def orchestrate(args) -> None:
     env = dict(os.environ)
     for arm in ("incumbent", "candidate"):
         cmd = [sys.executable, str(Path(__file__).resolve()), "--arm", arm,
+               *(["--teacher", str(args.arm_output_pattern % "incumbent")]
+                 if arm == "candidate" else []),
                "--model-root", str(args.model_root),
                "--compiler-version-file", str(args.compiler_version_file),
                "--decode-steps", str(args.decode_steps),
-               "--arm-output", str(args.arm_output_pattern % arm)]
+               "--arm-output", str(args.arm_output_pattern % arm),
+               "--output", str(args.arm_output_pattern % arm) + ".arm.json"]
         if args.fixture is not None:
             cmd += ["--fixture", str(args.fixture)]
         for cid in args.case_id or ():
@@ -247,6 +262,8 @@ def main() -> None:
     p.add_argument("--arm", choices=("incumbent", "candidate"), default=None)
     p.add_argument("--arm-output", type=Path, default=None,
                    help="npz path for this arm's chains+logits (subprocess mode)")
+    p.add_argument("--teacher", type=Path, default=None,
+                   help="incumbent npz: force this arm onto the teacher chain")
     p.add_argument("--model-root", type=Path, default=MODEL_ROOT)
     p.add_argument("--compiler-version-file", type=Path, required=True)
     p.add_argument("--case-id", action="append")
