@@ -851,10 +851,14 @@ __global__ void gguf_q4_t16_dense_unequal_dual_wmma_prefill_bf16_kernel(
   constexpr int WAVES_PER_BLOCK = 4;
   constexpr int OUT_COLS_PER_BLOCK = OUT_TILES_PER_BLOCK * T16_COLS;
   constexpr int ROWS_PER_WAVE = ROW_TILES_PER_WAVE * 16;
-  // Padded slab stride (272 halves = 17 x 32 B) keeps every column row
-  // 32 B aligned for the vectorized b-fragment loads and breaks the
-  // 256-half stride's 16-way LDS bank conflict.
-  constexpr int SLAB_STRIDE = QK_K + 16;
+  // Unpadded slab stride: the 272-half padding that breaks the LDS bank
+  // conflict also grows this dual's LDS from exactly 32 KB (two blocks
+  // per CU) to 34.8 KB (one block), and the occupancy loss measured 0.60x
+  // the two-singles path on the plain Q4_K_M gate/up shapes. The
+  // unpadded 256-half stride still keeps every column row 32 B aligned,
+  // so the vectorized b-fragment loads stay legal; only the bank-conflict
+  // padding is given up.
+  constexpr int SLAB_STRIDE = QK_K;
   __shared__ __align__(1024) half_t
       weights[MATRICES][SLAB_STRIDE * OUT_COLS_PER_BLOCK];
 
@@ -1172,10 +1176,14 @@ __global__ void gguf_q4_t16_dense_dual_wmma_smallm_silu_bf16_kernel(
   constexpr int MATRICES = 2;
   constexpr int ROWS_PER_BLOCK = 16;
   constexpr int OUT_COLS_PER_BLOCK = T16_COLS;
-  // Padded slab stride (272 halves = 17 x 32 B) keeps every column row
-  // 32 B aligned for the vectorized b-fragment loads and breaks the
-  // 256-half stride's 16-way LDS bank conflict.
-  constexpr int SLAB_STRIDE = QK_K + 16;
+  // Unpadded slab stride: the 272-half padding that breaks the LDS bank
+  // conflict also grows this dual's LDS from exactly 32 KB (two blocks
+  // per CU) to 34.8 KB (one block), and the occupancy loss measured 0.60x
+  // the two-singles path on the plain Q4_K_M gate/up shapes. The
+  // unpadded 256-half stride still keeps every column row 32 B aligned,
+  // so the vectorized b-fragment loads stay legal; only the bank-conflict
+  // padding is given up.
+  constexpr int SLAB_STRIDE = QK_K;
   union SharedStorage {
     half_t weights[MATRICES][SLAB_STRIDE * OUT_COLS_PER_BLOCK];
     uint16_t rounded[MATRICES][ROWS_PER_BLOCK * OUT_COLS_PER_BLOCK];
@@ -1324,10 +1332,14 @@ __global__ void gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel(
   constexpr int OUT_COLS_PER_BLOCK = OUT_TILES_PER_BLOCK * T16_COLS;
   constexpr int ROWS_PER_WAVE = ROW_TILES_PER_WAVE * 16;
   constexpr int ROWS_PER_BLOCK = WAVES_PER_BLOCK * ROWS_PER_WAVE;
-  // Padded slab stride (272 halves = 17 x 32 B) keeps every column row
-  // 32 B aligned for the vectorized b-fragment loads and breaks the
-  // 256-half stride's 16-way LDS bank conflict.
-  constexpr int SLAB_STRIDE = QK_K + 16;
+  // Unpadded slab stride: the 272-half padding that breaks the LDS bank
+  // conflict also grows this dual's LDS from exactly 32 KB (two blocks
+  // per CU) to 34.8 KB (one block), and the occupancy loss measured 0.60x
+  // the two-singles path on the plain Q4_K_M gate/up shapes. The
+  // unpadded 256-half stride still keeps every column row 32 B aligned,
+  // so the vectorized b-fragment loads stay legal; only the bank-conflict
+  // padding is given up.
+  constexpr int SLAB_STRIDE = QK_K;
   union SharedStorage {
     half_t weights[MATRICES][SLAB_STRIDE * OUT_COLS_PER_BLOCK];
     uint16_t rounded[MATRICES][ROWS_PER_BLOCK * OUT_COLS_PER_BLOCK];
@@ -1687,10 +1699,14 @@ __global__ void gguf_q5_k_t16_dense_dual_wmma_prefill_silu_bf16_kernel(
   constexpr int OUT_COLS_PER_BLOCK = OUT_TILES_PER_BLOCK * T16_COLS;
   constexpr int ROWS_PER_WAVE = ROW_TILES_PER_WAVE * 16;
   constexpr int ROWS_PER_BLOCK = WAVES_PER_BLOCK * ROWS_PER_WAVE;
-  // Padded slab stride (272 halves = 17 x 32 B) keeps every column row
-  // 32 B aligned for the vectorized b-fragment loads and breaks the
-  // 256-half stride's 16-way LDS bank conflict.
-  constexpr int SLAB_STRIDE = QK_K + 16;
+  // Unpadded slab stride: the 272-half padding that breaks the LDS bank
+  // conflict also grows this dual's LDS from exactly 32 KB (two blocks
+  // per CU) to 34.8 KB (one block), and the occupancy loss measured 0.60x
+  // the two-singles path on the plain Q4_K_M gate/up shapes. The
+  // unpadded 256-half stride still keeps every column row 32 B aligned,
+  // so the vectorized b-fragment loads stay legal; only the bank-conflict
+  // padding is given up.
+  constexpr int SLAB_STRIDE = QK_K;
   union SharedStorage {
     half_t weights[MATRICES][SLAB_STRIDE * OUT_COLS_PER_BLOCK];
     uint16_t rounded[MATRICES][ROWS_PER_BLOCK * OUT_COLS_PER_BLOCK];
