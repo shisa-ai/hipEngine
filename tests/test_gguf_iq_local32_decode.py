@@ -230,3 +230,73 @@ def test_matches_the_strict_gemv_on_real_rows(waves_shape):
     rel = float(np.abs(a - c).max()) / scale
     assert rel <= 5e-4, "local32 diverged from the strict GEMV"
     assert float(np.corrcoef(a.ravel(), c.ravel())[0, 1]) >= 0.9999
+
+
+def test_local32_dual_silu_is_bit_exact_with_singles_and_silu_mul():
+    """The fused gate/up dual is bit-identical to the unfused path.
+
+    The reference runs the two local32 singles and the production
+    silu_mul_separate_out kernel (all on device, so the SiLU's expf is the
+    same libm the fused kernel calls); the fused owner must match every
+    bf16 output bit. The fused accumulator is bf16-rounded before the SiLU
+    exactly where the elementwise kernel would read the two buffers.
+    """
+    from hipengine.core.memory import (copy_device_to_host, copy_host_to_device,
+                                       free, host_array_ptr, malloc)
+    from hipengine.kernels.hip_gfx1100.fused import silu_mul_separate_out_bf16
+
+    entries = json.loads((FIXTURE / "real_rows.json").read_text())["entries"]
+    entry = next((e for e in entries if e["type"] == "IQ4_XS"), None)
+    if entry is None:
+        pytest.skip("no IQ4_XS fixture row")
+    with np.load(FIXTURE / "real_rows.npz") as data:
+        source = data[entry["key"] + "_raw"]
+        k = data[entry["key"] + "_f32"].shape[1]
+    if k % 256:
+        pytest.skip(f"IQ4_XS fixture K={k} is not block-aligned")
+    # Two independent weight matrices from the same real rows (the dual's
+    # arithmetic does not depend on the weights being distinct).
+    rng = np.random.default_rng(23)
+    wa = np.ascontiguousarray(source[rng.integers(0, len(source), 64) % len(source)])
+    wb = np.ascontiguousarray(source[rng.integers(0, len(source), 64) % len(source)])
+    n = len(wa)
+
+    x = bf16(rng.normal(0, 0.1, (1, k)))
+    got = np.zeros((1, n), dtype=np.uint16)
+    ref = np.zeros((1, n), dtype=np.uint16)
+    ga = np.zeros((1, n), dtype=np.uint16)
+    ub = np.zeros((1, n), dtype=np.uint16)
+    bufs = []
+    try:
+        def dev(a):
+            b = malloc(a.nbytes); bufs.append(b)
+            copy_host_to_device(b, host_array_ptr(a), a.nbytes); return b
+        x_b, wa_b, wb_b = dev(x), dev(wa), dev(wb)
+        ga_b, ub_b = dev(ga), dev(ub)
+        o_b = malloc(got.nbytes); bufs.append(o_b)
+        r_b = malloc(ref.nbytes); bufs.append(r_b)
+        # unfused: two singles + the production elementwise kernel
+        gguf_iq_dense.launch_local32(x_b.ptr, wa_b.ptr, ga_b.ptr, 1, k, n)
+        gguf_iq_dense.launch_local32(x_b.ptr, wb_b.ptr, ub_b.ptr, 1, k, n)
+        silu_mul_separate_out_bf16(ga_b.ptr, ub_b.ptr, r_b.ptr, 1, n)
+        # fused dual + SiLU
+        gguf_iq_dense.launch_local32_dual_silu(
+            x_b.ptr, wa_b.ptr, wb_b.ptr, o_b.ptr, 1, k, n)
+        copy_device_to_host(host_array_ptr(ref), r_b, ref.nbytes)
+        copy_device_to_host(host_array_ptr(got), o_b, got.nbytes)
+    finally:
+        for b in reversed(bufs):
+            free(b)
+
+    assert np.array_equal(got, ref), (
+        "fused IQ4_XS dual+SiLU diverged from single/single/silu_mul: "
+        f"{int((got != ref).sum())}/{ref.size} bf16 outputs differ")
+
+
+@pytest.mark.parametrize("backend", ("hip_gfx1100", "hip_gfx1151"))
+def test_local32_dual_registered_as_the_pair_silu_owner(backend):
+    """Shared source lineage: the aliasing pass registers it on gfx1151 too."""
+    load_backend_kernel_package(backend)
+    key = KernelKey(backend, "linear_pair_silu", "gguf_iq4_xs",
+                    "local32_pair_silu_bf16_bf16_out")
+    assert is_registered(key)

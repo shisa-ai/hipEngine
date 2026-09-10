@@ -471,6 +471,143 @@ void gguf_iq4_xs_local32_gemv_kernel(
     }
 }
 }
+// Fused IQ4_XS gate/up dual + SiLU decode GEMV (2026-09-11): the decode
+// analogue of the Q4 T16 dense dual local32 SiLU owner. One block computes
+// the same 8 output columns for BOTH matrices from one activation window
+// (the x reads, codebook LUT and per-lane geometry are shared), halving the
+// gate/up launch count and folding the SiLU multiply. Both accumulators are
+// bf16-rounded before the SiLU exactly like the unfused
+// single/single/silu_mul path (the separate kernel reads the two bf16
+// buffers and computes 1/(1+expf(-g))*g*u in f32), so the fused owner is
+// bit-exact with it: same per-column accumulation as the single, same
+// rounding boundaries, same SiLU arithmetic.
+template<int WAVES>
+__global__ __launch_bounds__(32 * WAVES, 16 / WAVES > 0 ? 16 / WAVES : 1)
+void gguf_iq4_xs_local32_dual_silu_kernel(
+    const uint16_t* __restrict__ x, const uint8_t* __restrict__ wa,
+    const uint8_t* __restrict__ wb, uint16_t* __restrict__ out,
+    int64_t K, int64_t N) {
+    constexpr int COLS = 8;
+    const int tid = threadIdx.x;
+    const int wave = tid >> 5;
+    const int lane = tid & 31;
+    const int64_t n0 = int64_t(blockIdx.x) * COLS;
+    const int64_t blocks_per_row = K / 256;
+    const int64_t col_bytes = blocks_per_row * 136;
+
+    const int g = lane >> 2;
+    const int nib = (lane >> 1) & 1;
+    const int byteoff = 8 + g * 16 + (lane & 1) * 8;
+
+    __shared__ float s_cb[512];
+    for (int i = tid; i < 512; i += 32 * WAVES)
+        s_cb[i] = float(iq4_values[i >= 256 ? ((i & 255) >> 4) : (i & 15)]);
+    __syncthreads();
+
+    float acc_a[COLS];
+    float acc_b[COLS];
+#pragma unroll
+    for (int t = 0; t < COLS; ++t) { acc_a[t] = 0.0f; acc_b[t] = 0.0f; }
+
+    for (int64_t blk = wave; blk < blocks_per_row; blk += WAVES) {
+        const uint16_t* xp = x + blk * 256 + lane * 8;
+        float xv[8];
+#pragma unroll
+        for (int j = 0; j < 8; ++j) xv[j] = bf16_load(xp[j]);
+#pragma unroll
+        for (int t = 0; t < COLS; ++t) {
+            if (n0 + t >= N) break;
+            const uint8_t* ba = wa + (n0 + t) * col_bytes + blk * 136;
+            const uint8_t* bb = wb + (n0 + t) * col_bytes + blk * 136;
+            const uint32_t hdr_a = *reinterpret_cast<const uint32_t*>(ba);
+            const uint32_t scl_a = *reinterpret_cast<const uint32_t*>(ba + 4);
+            const int scale_a = (((scl_a >> (8 * (g >> 1) + 4 * (g & 1))) & 15) |
+                               (((hdr_a >> (16 + 2 * g)) & 3) << 4)) - 32;
+            const float sd_a = half_load(ba) * float(scale_a);
+            const uint32_t hdr_b = *reinterpret_cast<const uint32_t*>(bb);
+            const uint32_t scl_b = *reinterpret_cast<const uint32_t*>(bb + 4);
+            const int scale_b = (((scl_b >> (8 * (g >> 1) + 4 * (g & 1))) & 15) |
+                               (((hdr_b >> (16 + 2 * g)) & 3) << 4)) - 32;
+            const float sd_b = half_load(bb) * float(scale_b);
+            const uint32_t pa[2] = {
+                *reinterpret_cast<const uint32_t*>(ba + byteoff),
+                *reinterpret_cast<const uint32_t*>(ba + byteoff + 4)};
+            const uint32_t pb[2] = {
+                *reinterpret_cast<const uint32_t*>(bb + byteoff),
+                *reinterpret_cast<const uint32_t*>(bb + byteoff + 4)};
+#pragma unroll
+            for (int j = 0; j < 8; ++j) {
+                const int code_a = int((pa[j >> 2] >> (8 * (j & 3))) & 0xffu);
+                const int code_b = int((pb[j >> 2] >> (8 * (j & 3))) & 0xffu);
+                acc_a[t] += xv[j] * (sd_a * s_cb[code_a + (nib << 8)]);
+                acc_b[t] += xv[j] * (sd_b * s_cb[code_b + (nib << 8)]);
+            }
+        }
+    }
+#pragma unroll
+    for (int t = 0; t < COLS; ++t)
+        for (int delta = 16; delta; delta >>= 1) {
+            acc_a[t] += __shfl_down(acc_a[t], delta);
+            acc_b[t] += __shfl_down(acc_b[t], delta);
+        }
+    __shared__ float xwave_a[WAVES > 1 ? WAVES : 1][COLS];
+    __shared__ float xwave_b[WAVES > 1 ? WAVES : 1][COLS];
+    if (lane == 0) {
+#pragma unroll
+        for (int t = 0; t < COLS; ++t) {
+            xwave_a[wave][t] = acc_a[t];
+            xwave_b[wave][t] = acc_b[t];
+        }
+    }
+    __syncthreads();
+    if (tid < COLS) {
+        const int t = tid;
+        if (n0 + t < N) {
+            float ta = 0.0f, tb = 0.0f;
+#pragma unroll
+            for (int wv2 = 0; wv2 < WAVES; ++wv2) {
+                ta += xwave_a[wv2][t];
+                tb += xwave_b[wv2][t];
+            }
+            // bf16-round both accumulators exactly like the unfused path,
+            // then the silu_mul kernel's arithmetic verbatim.
+            const float ga = bf16_load(bf16_store(ta));
+            const float ub = bf16_load(bf16_store(tb));
+            const float sig = 1.0f / (1.0f + expf(-ga));
+            out[n0 + t] = bf16_store(ga * sig * ub);
+        }
+    }
+}
+
+extern "C" int hipengine_gguf_iq4_xs_local32_dual_silu(const void* x,
+    const void* wa, const void* wb, void* out, int64_t rows,
+    int64_t K, int64_t N, int waves, void* stream) {
+    if (!x || !wa || !wb || !out || rows != 1 || K <= 0 || K % 256 || N <= 0 || N % 8)
+        return int(hipErrorInvalidValue);
+    const dim3 grid(unsigned(N / 8));
+    const hipStream_t s = (hipStream_t)stream;
+    int err;
+    switch (waves) {
+        case 1:
+            err = (gguf_iq4_xs_local32_dual_silu_kernel<1><<<grid, 32, 0, s>>>(
+                (const uint16_t*)x, (const uint8_t*)wa, (const uint8_t*)wb,
+                (uint16_t*)out, K, N), int(hipGetLastError()));
+            return err;
+        case 2:
+            err = (gguf_iq4_xs_local32_dual_silu_kernel<2><<<grid, 64, 0, s>>>(
+                (const uint16_t*)x, (const uint8_t*)wa, (const uint8_t*)wb,
+                (uint16_t*)out, K, N), int(hipGetLastError()));
+            return err;
+        case 4:
+            err = (gguf_iq4_xs_local32_dual_silu_kernel<4><<<grid, 128, 0, s>>>(
+                (const uint16_t*)x, (const uint8_t*)wa, (const uint8_t*)wb,
+                (uint16_t*)out, K, N), int(hipGetLastError()));
+            return err;
+        default:
+            return int(hipErrorInvalidValue);
+    }
+}
+
 extern "C" int hipengine_gguf_q3_k_embedding(const void* ids, const void* w,
     void* out, int64_t rows, int64_t K, int64_t vocab, void* stream) {
     if (!ids || !w || !out || rows<=0 || rows>65535 || K<=0 || K%256 || vocab<=0)

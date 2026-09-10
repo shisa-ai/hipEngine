@@ -5963,6 +5963,74 @@ def launch_gguf_linear_pair_silu(
             **kwargs,
         )
         return True
+    # IQ4_XS local32 gate/up decode dual (2026-09-11): fires only when both
+    # sides dispatch to the local32 decode owner at rows == 1 (the same
+    # execution-owner gate as the single route). The fused owner is
+    # bit-exact with single/single/silu_mul (per-column accumulation is
+    # the single's; both accumulators bf16-round before the SiLU exactly
+    # where the elementwise kernel would read them), so it needs no new
+    # accuracy evidence beyond the already-gated local32 route: the gate
+    # compares identical arithmetic, not an approximation class.
+    # Apply the same decode-owner rewrite the singles would get (the raw
+    # resolve above does not consult the dense-IQ session or the decode
+    # policy), then gate the fusion on both operands actually taking the
+    # local32 owner: the fused dual is only authorized on that path.
+    dispatch_a_decode = _iq_dense_decode_dispatch(
+        dispatch_a,
+        rows=rows,
+        out_features=out_features,
+    )
+    dispatch_b_decode = _iq_dense_decode_dispatch(
+        dispatch_b,
+        rows=rows,
+        out_features=out_features,
+    )
+    iq4_xs_local32_decode = KernelKey(
+        resolved_backend,
+        "linear",
+        "gguf_iq4_xs",
+        "local32_gemv_bf16_bf16_out",
+    )
+    iq4_xs_local32_pair = KernelKey(
+        resolved_backend,
+        "linear_pair_silu",
+        "gguf_iq4_xs",
+        "local32_pair_silu_bf16_bf16_out",
+    )
+    _ensure_linear_kernel_registered(iq4_xs_local32_pair)
+    if (
+        rows == 1
+        and dispatch_a_decode.key == iq4_xs_local32_decode
+        and dispatch_b_decode.key == iq4_xs_local32_decode
+        and in_features % 256 == 0
+        and out_features % 8 == 0
+        and is_registered(iq4_xs_local32_pair)
+    ):
+        fn = resolve(
+            backend=iq4_xs_local32_pair.backend,
+            layer=iq4_xs_local32_pair.layer,
+            quant=iq4_xs_local32_pair.quant,
+            variant=iq4_xs_local32_pair.variant,
+        )
+        kwargs = {"stream": stream, "runtime": runtime}
+        library = (
+            None
+            if libraries is None
+            else libraries.get(iq4_xs_local32_pair.quant)
+        )
+        if library is not None:
+            kwargs["library"] = library
+        fn(
+            x_ptr,
+            weight_a.allocation("raw").tensor.ptr,
+            weight_b.allocation("raw").tensor.ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            **kwargs,
+        )
+        return True
     q4_decode = KernelKey(
         resolved_backend,
         "linear",

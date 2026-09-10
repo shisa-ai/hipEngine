@@ -22,6 +22,7 @@ ROW_BATCHES = (1, 2, 4, 8)
 _HANDLES = {}
 _LIBRARY = None
 _LOCAL32_HANDLES = {}
+_LOCAL32_DUAL_HANDLES = {}
 
 
 def launch_local32(x_ptr, qweight_ptr, out_ptr, rows, in_features, out_features, *,
@@ -67,6 +68,47 @@ def launch_local32(x_ptr, qweight_ptr, out_ptr, rows, in_features, out_features,
     if err:
         rt = runtime or get_hip_runtime()
         raise RuntimeError(f'local32 dense IQ decode failed: {rt.error_string(err)}')
+
+
+def launch_local32_dual_silu(x_ptr, qweight_a_ptr, qweight_b_ptr, out_ptr,
+                             rows, in_features, out_features, *,
+                             quant='gguf_iq4_xs', output='bf16', stream=0,
+                             library=None, runtime=None):
+    """Launch the fused IQ4_XS gate/up dual local32 + SiLU decode GEMV.
+
+    Bit-exact with the unfused single/single/silu_mul path: the per-column
+    accumulation is the single owner's, and both accumulators are
+    bf16-rounded before the SiLU exactly where the separate elementwise
+    kernel would read the two bf16 buffers.
+    """
+    if quant != 'gguf_iq4_xs':
+        raise ValueError('local32 dense IQ decode supports gguf_iq4_xs only')
+    if output != 'bf16':
+        raise ValueError('local32 dense IQ decode writes bf16 only')
+    if (rows != 1 or in_features <= 0 or in_features % 256
+            or out_features <= 0 or out_features % 8):
+        raise ValueError('local32 dense IQ decode requires rows=1, K divisible '
+                         'by 256 and N divisible by 8')
+    if not all((x_ptr, qweight_a_ptr, qweight_b_ptr, out_ptr)):
+        raise ValueError('local32 dense IQ decode pointers must be nonzero')
+    library = library or _default_library()
+    key = id(library)
+    fn = _LOCAL32_DUAL_HANDLES.get(key)
+    if fn is None:
+        fn = library.hipengine_gguf_iq4_xs_local32_dual_silu
+        fn.argtypes = [ctypes.c_void_p] * 4 + [ctypes.c_int64] * 4 + [ctypes.c_void_p]
+        fn.restype = ctypes.c_int
+        _LOCAL32_DUAL_HANDLES[key] = fn
+    waves = 4 if out_features < 8192 else 2
+    while waves > 1 and in_features // 256 < 4 * waves:
+        waves //= 2
+    err = fn(ctypes.c_void_p(x_ptr), ctypes.c_void_p(qweight_a_ptr),
+             ctypes.c_void_p(qweight_b_ptr), ctypes.c_void_p(out_ptr),
+             rows, in_features, out_features, waves,
+             ctypes.c_void_p(stream))
+    if err:
+        rt = runtime or get_hip_runtime()
+        raise RuntimeError(f'local32 dense IQ dual decode failed: {rt.error_string(err)}')
 
 
 def _row_batch(rows):
@@ -150,6 +192,9 @@ def register_gguf_iq_dense_kernels(*, backend='hip_gfx1100', replace=True):
     register(KernelKey(backend, 'linear', 'gguf_iq4_xs',
                        'local32_gemv_bf16_bf16_out'),
              launch_local32, replace=replace)
+    register(KernelKey(backend, 'linear_pair_silu', 'gguf_iq4_xs',
+                       'local32_pair_silu_bf16_bf16_out'),
+             launch_local32_dual_silu, replace=replace)
 
 
 register_gguf_iq_dense_kernels()
