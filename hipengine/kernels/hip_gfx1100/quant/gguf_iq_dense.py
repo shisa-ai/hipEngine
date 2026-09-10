@@ -38,8 +38,9 @@ def launch_local32(x_ptr, qweight_ptr, out_ptr, rows, in_features, out_features,
     accuracy gate. Measured max relative error against the strict owner on
     real tensors is <= 2.3e-4 (2026-09-09, W7900).
     """
-    if quant != 'gguf_iq4_xs':
-        raise ValueError('local32 dense IQ decode supports gguf_iq4_xs only')
+    if quant not in ('gguf_iq4_xs', 'gguf_iq4_nl'):
+        raise ValueError('local32 dense IQ decode supports gguf_iq4_xs and '
+                         'gguf_iq4_nl only')
     if output != 'bf16':
         raise ValueError('local32 dense IQ decode writes bf16 only')
     if (rows != 1 or in_features <= 0 or in_features % 256
@@ -49,12 +50,16 @@ def launch_local32(x_ptr, qweight_ptr, out_ptr, rows, in_features, out_features,
     if not all((x_ptr, qweight_ptr, out_ptr)):
         raise ValueError('local32 dense IQ decode pointers must be nonzero')
     library = library or _default_library()
-    fn = _LOCAL32_HANDLES.get(id(library))
+    key = id(library)
+    fn = _LOCAL32_HANDLES.get((key, quant))
     if fn is None:
-        fn = library.hipengine_gguf_iq4_xs_local32_gemv
+        symbol = ('hipengine_gguf_iq4_xs_local32_gemv'
+                  if quant == 'gguf_iq4_xs'
+                  else 'hipengine_gguf_iq4_nl_local32_gemv')
+        fn = getattr(library, symbol)
         fn.argtypes = [ctypes.c_void_p] * 3 + [ctypes.c_int64] * 4 + [ctypes.c_void_p]
         fn.restype = ctypes.c_int
-        _LOCAL32_HANDLES[id(library)] = fn
+        _LOCAL32_HANDLES[(key, quant)] = fn
     # Split-K wave count: narrow-N shapes leave too few single-wave blocks on
     # a 96-CU part (ffn_down at N=5120 -> 640), so they take 4 waves; wide-N
     # takes 2 (measured best-or-tied on every real shape, 2026-09-09, W7900).
@@ -189,9 +194,15 @@ def register_gguf_iq_dense_kernels(*, backend='hip_gfx1100', replace=True):
             for prefix in ('gemv', 'prefill'):
                 register(KernelKey(backend, 'linear', quant, f'{prefix}_bf16_{output}_out'),
                          fn, replace=replace)
+    # The raw-ABI launcher does not pass the quant (the strict kernels bind
+    # it the same way): each routed quant registers a partial so the decode
+    # owner reads its own block format.
     register(KernelKey(backend, 'linear', 'gguf_iq4_xs',
                        'local32_gemv_bf16_bf16_out'),
-             launch_local32, replace=replace)
+             partial(launch_local32, quant='gguf_iq4_xs'), replace=replace)
+    register(KernelKey(backend, 'linear', 'gguf_iq4_nl',
+                       'local32_gemv_bf16_bf16_out'),
+             partial(launch_local32, quant='gguf_iq4_nl'), replace=replace)
     register(KernelKey(backend, 'linear_pair_silu', 'gguf_iq4_xs',
                        'local32_pair_silu_bf16_bf16_out'),
              launch_local32_dual_silu, replace=replace)

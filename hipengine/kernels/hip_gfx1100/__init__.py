@@ -1176,6 +1176,15 @@ GGUF_IQ_DENSE_PREFILL_STRICT_SLOTS = {
 # rows > 1 keep the strict GEMV.
 GGUF_IQ_DENSE_DECODE_POLICY = {
     "gguf_iq4_xs": {"variant": "local32_gemv_bf16_bf16_out"},
+    # IQ4_NL joins the local32 decode owner (2026-09-11, decode lever 2):
+    # the sibling kernel shares the XS owner's geometry (byte 2+(k&15),
+    # nibble (k>>4)&1 - each lane's 8 contiguous k span one nibble half
+    # and one 8-byte payload window), so the same accumulation-order class
+    # and the same gate obligations apply. Kernel-level agreement with the
+    # strict GEMV on the real-tensor fixture matches the XS owner's class
+    # (<= 5e-4 relative); the tokenized category suite is the admission
+    # evidence (3 seeds, both artifacts).
+    "gguf_iq4_nl": {"variant": "local32_gemv_bf16_bf16_out"},
 }
 # Q3_K, IQ2_S and IQ2_XS are W4A16-serviceable but deliberately NOT routed:
 # adding all three measured 176.5 tok/s on gfx1151 but moved the mean

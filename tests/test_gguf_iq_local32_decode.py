@@ -65,8 +65,10 @@ def test_local32_registered_on_both_hip_backends(backend):
 
 
 def test_gfx1100_routes_local32_for_iq4_xs_and_gfx1151_keeps_none():
-    """The local32 candidate is routed on gfx1100 (2026-09-10) and registered
-    on both backends.
+    """The local32 owners are routed on gfx1100 and registered on both backends.
+
+    IQ4_XS admitted 2026-09-10; IQ4_NL (the same-geometry sibling) admitted
+    2026-09-11 with its own category-suite evidence.
 
     The holdout was a random-token probe artifact (see the declaration
     comment): on natural self-generated prompts the route's delta measures
@@ -81,6 +83,7 @@ def test_gfx1100_routes_local32_for_iq4_xs_and_gfx1151_keeps_none():
     assert backend_package_capability(
         "hip_gfx1100", "GGUF_IQ_DENSE_DECODE_POLICY", None) == {
         "gguf_iq4_xs": {"variant": "local32_gemv_bf16_bf16_out"},
+        "gguf_iq4_nl": {"variant": "local32_gemv_bf16_bf16_out"},
     }
     assert backend_package_capability(
         "hip_gfx1151", "GGUF_IQ_DENSE_DECODE_POLICY", None) is None
@@ -139,9 +142,17 @@ def test_route_declines_above_one_row():
 
 
 def test_route_declines_for_unrouted_quants():
+    """IQ4_XS and IQ4_NL route to the local32 decode owner; the rest stay strict.
+
+    IQ4_NL joined the owner 2026-09-11 (decode lever 2): same geometry class,
+    same gate obligations, category-suite admission evidence.
+    """
     from hipengine.kernels.hip_gfx1100.quant import gguf_iq_source_mmq_prefill as iq_mmq
     with iq_mmq.iq_dense_mmq_session(True):
-        for quant in ("gguf_iq4_nl", "gguf_q3_k", "gguf_iq3_xxs"):
+        for quant in ("gguf_iq4_xs", "gguf_iq4_nl"):
+            out = _dispatch(quant, rows=1)
+            assert out.key.variant == "local32_gemv_bf16_bf16_out", quant
+        for quant in ("gguf_q3_k", "gguf_iq3_xxs", "gguf_iq3_s"):
             out = _dispatch(quant, rows=1)
             assert out.key.variant == "gemv_bf16_bf16_out", quant
 
@@ -157,7 +168,7 @@ def test_route_declines_when_n_is_not_multiple_of_8():
 
 
 @pytest.mark.parametrize("kwargs", [
-    dict(quant="gguf_iq4_nl"),                      # unsupported quant
+    dict(quant="gguf_iq3_s"),                      # unsupported quant
     dict(output="f32"),                             # kernel writes bf16 only
     dict(rows=2),                                   # decode owner serves rows=1
     dict(in_features=255),                          # K not block-aligned
@@ -300,3 +311,57 @@ def test_local32_dual_registered_as_the_pair_silu_owner(backend):
     key = KernelKey(backend, "linear_pair_silu", "gguf_iq4_xs",
                     "local32_pair_silu_bf16_bf16_out")
     assert is_registered(key)
+
+
+def test_iq4_nl_local32_matches_the_strict_gemv_on_real_rows():
+    """The NL sibling must agree with the strict GEMV within tolerance.
+
+    Same contract as the IQ4_XS owner: per-element products identical, only
+    the summation order differs (lane-grouped contiguous k, wave32 shuffle
+    tree, fixed-order cross-wave sum).
+    """
+    from hipengine.core.memory import (copy_device_to_host, copy_host_to_device,
+                                       free, host_array_ptr, malloc)
+
+    entries = json.loads((FIXTURE / "real_rows.json").read_text())["entries"]
+    entry = next((e for e in entries if e["type"] == "IQ4_NL"), None)
+    if entry is None:
+        pytest.skip("no IQ4_NL fixture row")
+    with np.load(FIXTURE / "real_rows.npz") as data:
+        source = data[entry["key"] + "_raw"]
+        k = data[entry["key"] + "_f32"].shape[1]
+    raw = np.ascontiguousarray(source[np.arange(64) % len(source)])
+    n = len(raw)
+    if k % 256:
+        pytest.skip(f"IQ4_NL fixture K={k} is not window-aligned")
+
+    x = bf16(np.random.default_rng(19).normal(0, 0.1, (1, k)))
+    dense_lib = gguf_iq_dense.build_gguf_iq_dense()
+    got = np.zeros((1, n), dtype=np.uint16)
+    ref = np.zeros((1, n), dtype=np.uint16)
+    bufs = []
+    try:
+        def dev(a):
+            b = malloc(a.nbytes); bufs.append(b)
+            copy_host_to_device(b, host_array_ptr(a), a.nbytes); return b
+        x_b, w_b = dev(x), dev(raw)
+        o_b = malloc(got.nbytes); bufs.append(o_b)
+        r_b = malloc(ref.nbytes); bufs.append(r_b)
+        gguf_iq_dense.launch(x_b.ptr, w_b.ptr, r_b.ptr, 1, k, n,
+                             quant="gguf_iq4_nl", output="bf16",
+                             library=dense_lib)
+        gguf_iq_dense.launch_local32(x_b.ptr, w_b.ptr, o_b.ptr, 1, k, n,
+                                     quant="gguf_iq4_nl")
+        copy_device_to_host(host_array_ptr(ref), r_b, ref.nbytes)
+        copy_device_to_host(host_array_ptr(got), o_b, got.nbytes)
+    finally:
+        for b in reversed(bufs):
+            free(b)
+
+    a = bf16_f32(ref).astype(np.float64)
+    c = bf16_f32(got).astype(np.float64)
+    assert np.isfinite(c).all()
+    scale = max(float(np.abs(a).max()), 1e-30)
+    rel = float(np.abs(a - c).max()) / scale
+    assert rel <= 5e-4, "IQ4_NL local32 diverged from the strict GEMV"
+    assert float(np.corrcoef(a.ravel(), c.ravel())[0, 1]) >= 0.9999
