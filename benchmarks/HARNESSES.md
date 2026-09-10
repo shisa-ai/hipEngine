@@ -91,3 +91,14 @@ trap catalog, live in [`docs/KERNELS.md`](../docs/KERNELS.md) and
 
 Update this catalog in the same logical unit whenever a harness gains or loses
 an axis.
+
+## Parity measurement manifest (R0-R4)
+
+Server/direct parity comparisons never assemble a ratio from unrelated runs.
+The matched case manifest with exact token-ID fixtures, boundary definitions
+(R0 raw session → R4 HTTP), stage timing list, and control freeze list is
+[`parity/r0r4-c1-fixture.json`](parity/r0r4-c1-fixture.json); the boundary
+semantics live in
+[`docs/SERVER-DIRECT-PARITY-ROADMAP.md`](../docs/SERVER-DIRECT-PARITY-ROADMAP.md)
+section 3. Every R0-R4 timing harness must name the manifest it consumed and
+record per-stage times and independent peaks.

@@ -11,9 +11,12 @@ Both arms run in one process on fresh identical sessions with a deterministic
 varied prompt, and report prefill tok/s, tracked peak, greedy continuation IDs
 and final-prefill logit agreement.
 
-The two arms are NOT expected to agree with each other on the ``int8_direct``
-route: they use different GDN state-capture arithmetic by design
-(``hipengine/generation/qwen35_gguf.py`` ``_prefill_native_row``). Use this to
+The two arms may differ on the ``int8_direct`` route: the packed entry is
+chunk-outer with per-layer BF16 oracles while the scalar bulk parent is
+layer-outer with one shared pair, and the two attention kernels reorder
+floating-point arithmetic differently (the historical "different GDN
+state-capture arithmetic" explanation for their divergence was withdrawn on
+2026-09-10: with per-layer oracles the two entries agree exactly). Use this to
 compare one arm across a code or flag change (before vs after), which is the
 binding oracle, and to keep the other arm as an untouched control.
 
@@ -155,6 +158,17 @@ def main() -> int:
         print(payload)
         if args.json:
             args.json.write_text(payload + "\n", encoding="utf-8")
+        if args.assert_entry_agreement:
+            # Fail closed: a requested agreement gate with fewer than two
+            # measured arms is a harness error, not a silent pass (F9 in the
+            # server/direct parity roadmap).
+            print(
+                "FAIL: entry agreement requested but only one arm was measured "
+                f"(arms={selected}); the gate cannot pass without both "
+                "scalar_bulk and packed_slot_local.",
+                file=sys.stderr,
+            )
+            return 1
         return 0
     la = out["_logits"]["scalar_bulk"]
     lb = out["_logits"]["packed_slot_local"]
