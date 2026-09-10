@@ -2275,9 +2275,9 @@ class StepFunResidentSession:
             llama3_scaling = False
             sliding_window = self.model_map.config.sliding_window
         else:
-            partial_factor = 0.5
+            partial_factor = 1.0
             theta = self.model_map.config.rope_freq_base
-            llama3_scaling = True
+            llama3_scaling = False
             sliding_window = None
         q_rope = step_apply_rope(
             q,
