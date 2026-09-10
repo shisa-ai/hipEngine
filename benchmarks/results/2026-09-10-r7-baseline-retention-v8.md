@@ -21,10 +21,14 @@ affected by hipEngine code, so this is host drift, not regression.
 
 ## Why hipEngine TG is flat vs v7b despite ~12% promoted gains
 
-Clean per-process interleaved A/B on the CURRENT (degraded) host, same day:
-- flags OFF (BATCHED_POSITION=0, PLE_WARM=0): TG median 59.68 ms/token
+Clean per-process A/B on the CURRENT (degraded) host, same day
+(SUPERSEDED by 2026-09-10-r7-combined-tg-attribution.json, which uses a
+true all-off arm at 8a770b782 and correct units):
+- flags OFF (BATCHED_POSITION=0, PLE_WARM=0; version cache still active -
+  this arm did NOT isolate the compiler cache): TG median 59.68 ms/token
 - flags ON (defaults): TG median 52.06 ms/token
-- delta: **-7.62 ms/token (-12.8%)**, digests identical (ea0412231532bc7b)
+- delta: -7.62 ms/token = **-12.8% latency = +14.6% throughput** (the
+  original label '+12.8% TG' conflated latency with throughput)
 
 The promotions' effect is fully present; the packet's flat cross-window
 comparison reflects ~10% host drift since the v7b window (comparator-
