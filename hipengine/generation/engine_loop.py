@@ -91,6 +91,11 @@ class EngineLoopConfig:
     kv_pool_idle_grace_seconds: float = DEFAULT_KV_POOL_IDLE_GRACE_SECONDS
     max_pending_requests: int | None = None
     prefix_cache: str = "off"
+    # P4 (roadmap F2): the packed KV plane lease is skipped only when no
+    # plane consumer can appear. The MTP verifier is one such consumer,
+    # so the serving policy must reach configure_engine_loop - "off"
+    # means the verifier never runs; anything else keeps the lease.
+    speculative_mtp_serving: str = "auto"
 
     def __post_init__(self) -> None:
         if self.prefill_decode_policy not in PREFILL_DECODE_POLICIES:
@@ -1765,6 +1770,12 @@ def engine_loop_config_from_args(args: object) -> EngineLoopConfig:
             else int(getattr(args, "max_pending_requests"))
         ),
         prefix_cache=resolve_prefix_cache_mode(getattr(args, "prefix_cache", "off")),
+        speculative_mtp_serving=str(
+            getattr(args, "speculative_mtp_serving", "auto")
+        )
+        .strip()
+        .lower()
+        .replace("-", "_"),
     )
 
 

@@ -246,6 +246,7 @@ class LLM:
         max_active_requests: int | None = None,
         max_sequence_length: int | None = None,
         prefix_cache: str | None = None,
+        speculative_mtp_serving: str | None = None,
         speculative_provider: str | None = None,
         draft_model: str | None = None,
         speculative_candidate_budget: int = 4,
@@ -303,6 +304,14 @@ class LLM:
             from hipengine.kvcache import resolve_prefix_cache_mode
 
             self.prefix_cache = resolve_prefix_cache_mode(prefix_cache)
+        # P4 (roadmap F2): the MTP serving policy must reach
+        # configure_engine_loop, where the packed KV plane lease is skipped
+        # only when no plane consumer (MTP verifier included) can appear.
+        self.speculative_mtp_serving = (
+            None
+            if speculative_mtp_serving is None
+            else str(speculative_mtp_serving).strip().lower().replace("-", "_")
+        )
         self._resolved_backend: str | None = None
         self._resolved_quant: str | None = None
         self._resolved_execution_profile: Any | None = None
@@ -946,6 +955,11 @@ class LLM:
             )
         if self.prefix_cache is not None:
             loop_config = replace(loop_config, prefix_cache=self.prefix_cache)
+        if self.speculative_mtp_serving is not None:
+            loop_config = replace(
+                loop_config,
+                speculative_mtp_serving=self.speculative_mtp_serving,
+            )
         resident_driver = SubmitPollTextGenerator(
             generator,
             config=loop_config,

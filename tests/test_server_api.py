@@ -200,7 +200,10 @@ class FakeLLM:
         stream_chunks: list[str] | None = None,
         token_map: dict[str, list[int]] | None = None,
         detailed_outputs: list[GenerationOutput] | None = None,
+        speculative_mtp_serving: str | None = None,
+        **_unused_kwargs: Any,
     ) -> None:
+        self.speculative_mtp_serving = speculative_mtp_serving
         self.outputs = outputs
         self.detailed_outputs = detailed_outputs
         self.stream_chunks = stream_chunks
@@ -3090,6 +3093,7 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
         max_active_requests: int | None = None,
         max_sequence_length: int | None = None,
         prefix_cache: str | None = None,
+        speculative_mtp_serving: str | None = None,
         speculative_provider: str | None = None,
         draft_model: str | None = None,
         speculative_candidate_budget: int = 4,

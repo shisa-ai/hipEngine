@@ -5476,6 +5476,9 @@ class Qwen35GGUFResidentModelRunner:
                     if pool_stats is not None
                     else 0
                 ),
+                "packed_kv_workspace_lease_skipped": bool(
+                    getattr(self, "_packed_kv_workspace_lease_skipped", False)
+                ),
                 "packed_workspace_note": (
                     "current_bytes is owner-deduplicated unique allocation bytes"
                     " (shared slot views report their workspace once, split-growth"
@@ -5735,15 +5738,48 @@ class Qwen35GGUFResidentModelRunner:
             )
             workspace_slots = max(1, int(self.capacity))
             workspace_pages = workspace_slots * workspace_pages_per_slot
+            # P4 (roadmap F2): the packed KV plane lease exists only for
+            # plane consumers - non-slot-local packed prefill (prefix-cache
+            # COW scatter), packed batch decode above one resident slot, and
+            # the MTP verifier. A C1 server with prefix cache and MTP both
+            # off has no such consumer: slot-local prefill reads request-
+            # owned KV and singleton decode uses the request's direct
+            # session. Creating the pool without the workspace share and
+            # without the lease removes the second full-context KV
+            # reservation outright instead of pinning pages nobody reads.
+            # A plane consumer that appears anyway (misconfiguration, page
+            # fragmentation forcing the non-slot-local fallback) fails safe:
+            # _GGUFPackedTargetState.allocate falls back to a private KV
+            # chunk allocation. HIPENGINE_GGUF_PACKED_KV_LEASE=1 forces the
+            # eager lease for debugging or rollback.
+            mtp_serving_policy = str(
+                getattr(config, "speculative_mtp_serving", "auto")
+            ).strip().lower().replace("-", "_")
+            workspace_lease_needed = (
+                int(self.capacity) > 1
+                or self._prefix_cache_mode != "off"
+                or mtp_serving_policy != "off"
+                or os.environ.get("HIPENGINE_GGUF_PACKED_KV_LEASE", "0")
+                .strip()
+                .lower()
+                in {"1", "true", "yes", "on"}
+            )
             self._kv_pool_generation += 1
-            self._kv_pool = create_global_pool(
-                page_capacity=global_capacity + workspace_pages,
-                generation=self._kv_pool_generation,
-            )
-            self._kv_pool.lease_workspace(
-                _GGUF_PACKED_WORKSPACE_LEASE_KEY,
-                workspace_pages,
-            )
+            if workspace_lease_needed:
+                self._kv_pool = create_global_pool(
+                    page_capacity=global_capacity + workspace_pages,
+                    generation=self._kv_pool_generation,
+                )
+                self._kv_pool.lease_workspace(
+                    _GGUF_PACKED_WORKSPACE_LEASE_KEY,
+                    workspace_pages,
+                )
+            else:
+                self._packed_kv_workspace_lease_skipped = True
+                self._kv_pool = create_global_pool(
+                    page_capacity=global_capacity,
+                    generation=self._kv_pool_generation,
+                )
             owner = self._resident_batch_owner
             if owner is not None:
                 bind = getattr(owner, "bind_workspace_kv_pool", None)
