@@ -155,6 +155,7 @@ __global__ void var_attention_kernel(
     const float* __restrict__ qscale,  // q_ln * log2(e)/sqrt(D) * softplus(per_dim)
     const float* __restrict__ k_ln,
     float eps,
+    int normalized,  // 1 = in-kernel QK norm + scale (fused); 0 = inputs already normalized
     T* __restrict__ out,
     int B,          // batch
     int V,          // variates (<= kVarMaxV)
@@ -200,7 +201,8 @@ __global__ void var_attention_kernel(
   // Deterministic per-row squared sums (warp-per-row, lane-strided): no
   // atomics, so the reduction order — and therefore the output — is
   // identical across launches.  Rows are q then k (2V total).
-  for (int row = warp; row < 2 * V; row += (blockDim.x >> 5)) {
+  // Skipped entirely in the unfused mode (inputs pre-normalized).
+  if (normalized) for (int row = warp; row < 2 * V; row += (blockDim.x >> 5)) {
     const float* rowp = row < V ? q_s + row * D : k_s + (row - V) * D;
     float sumsq = 0.0f;
     for (int d = lane; d < D; d += 32) sumsq += rowp[d] * rowp[d];
@@ -211,8 +213,9 @@ __global__ void var_attention_kernel(
   __syncthreads();
 
   // In-place RMS normalization of the staged q/k rows.  q rows carry the
-  // folded per-dim scale (qscale), k rows the key_ln weight.
-  for (size_t i = threadIdx.x; i < 2 * elems; i += blockDim.x) {
+  // folded per-dim scale (qscale), k rows the key_ln weight.  Skipped in
+  // the unfused mode (inputs pre-normalized).
+  if (normalized) for (size_t i = threadIdx.x; i < 2 * elems; i += blockDim.x) {
     const size_t r = i % elems;
     const int which = (int)(i / elems);
     const int vi = (int)(r / D);
@@ -321,6 +324,7 @@ extern "C" int timesfm3_var_attention_f16(
     const float* qscale,
     const float* k_ln,
     float eps,
+    int normalized,
     half_t* out,
     int B, int V, int N, int H, int D,
     hipStream_t stream) {
@@ -331,7 +335,7 @@ extern "C" int timesfm3_var_attention_f16(
   dim3 grid((unsigned)((int64_t)B * N), (unsigned)H);
   hipLaunchKernelGGL(var_attention_kernel<half_t>, grid, dim3(kVarBlock),
                      lds_bytes, stream,
-                     q, k, v, front_masked, qscale, k_ln, eps, out, B, V, N, H, D);
+                     q, k, v, front_masked, qscale, k_ln, eps, normalized, out, B, V, N, H, D);
   return (int)hipGetLastError();
 }
 
@@ -343,6 +347,7 @@ extern "C" int timesfm3_var_attention_f32(
     const float* qscale,
     const float* k_ln,
     float eps,
+    int normalized,
     float* out,
     int B, int V, int N, int H, int D,
     hipStream_t stream) {
@@ -353,6 +358,6 @@ extern "C" int timesfm3_var_attention_f32(
   dim3 grid((unsigned)((int64_t)B * N), (unsigned)H);
   hipLaunchKernelGGL(var_attention_kernel<float>, grid, dim3(kVarBlock),
                      lds_bytes, stream,
-                     q, k, v, front_masked, qscale, k_ln, eps, out, B, V, N, H, D);
+                     q, k, v, front_masked, qscale, k_ln, eps, normalized, out, B, V, N, H, D);
   return (int)hipGetLastError();
 }

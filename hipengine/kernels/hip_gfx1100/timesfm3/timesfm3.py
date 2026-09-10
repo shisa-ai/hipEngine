@@ -35,7 +35,7 @@ _QKV_SCATTER = (
 _VAR_ATTENTION = (
     ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
     ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
-    ctypes.c_float,
+    ctypes.c_float, ctypes.c_int32,
     ctypes.c_void_p,
     ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32,
     ctypes.c_int32,
@@ -149,6 +149,7 @@ def timesfm3_var_attention(
     qscale_ptr: int,
     k_ln_ptr: int,
     eps: float,
+    normalized: bool,
     out_ptr: int,
     batch: int,
     variates: int,
@@ -167,8 +168,10 @@ def timesfm3_var_attention(
     row-major with row index ((b*V + v)*N + n); ``front_masked`` is
     [batch*variates] int32.  q rows are RMS-normalized and scaled by the
     folded ``qscale`` (= q_ln * log2(e)/sqrt(D) * softplus(per_dim)); k
-    rows are RMS-normalized with ``k_ln``.  Fully-masked query rows
-    produce zeros.
+    rows are RMS-normalized with ``k_ln``.  With ``normalized=False`` the
+    inputs must already be normalized+scaled (strict unfused fallback
+    chain: ``head_rmsnorm`` x2 + ``head_perdim``).  Fully-masked query
+    rows produce zeros.
     """
 
     if dtype not in ("f16", "f32"):
@@ -179,7 +182,8 @@ def timesfm3_var_attention(
         library, f"timesfm3_var_attention_{dtype}", _VAR_ATTENTION, ctypes.c_int
     )
     err = fn(
-        q_ptr, k_ptr, v_ptr, front_masked_ptr, qscale_ptr, k_ln_ptr, eps, out_ptr,
+        q_ptr, k_ptr, v_ptr, front_masked_ptr, qscale_ptr, k_ln_ptr, eps,
+        1 if normalized else 0, out_ptr,
         batch, variates, n, heads, head_dim, stream,
     )
     _check_launch(runtime, err)

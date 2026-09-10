@@ -5424,3 +5424,15 @@ run justifies each:
   degraded behavior.
 
 - [2026-09-09] TimesFM `_Buffers.scores` is no longer read by the FP16 attention path (WMMA flash kernel replaced the scores GEMM + softmax chain; 2026-09-09 flash-attn unit). Remove the allocation and its `f16()` sizing once the FP32 strict path also stops using it or a strict-path replacement is registered.
+
+## 2026-09-10 TimesFM kernel families lack four-axis registry entries — open
+
+Both TimesFM kernel families (`kernels/hip_gfx1100/timesfm/` for 2.5 and
+`kernels/hip_gfx1100/timesfm3/` for 3.0) are direct-launched through their
+Python wrapper modules with no `(backend, layer, quant, variant)` registry
+registrations. The fused composites carry their strict fallbacks at the
+runtime level instead (2.5: fp32 unfused path; 3.0: fp32 routes through the
+separate var-q/k normalization chain). Register both families under the
+four-axis registry with their strict fallback chains when a second consumer
+of the kernels appears; until then the runtime-level fallback is the
+contract of record (see MODEL-TIMESFM3.md).

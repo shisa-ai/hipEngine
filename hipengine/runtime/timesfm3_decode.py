@@ -254,7 +254,9 @@ class TimesFM3GPUDecoder:
                 "post_seq": raw[f"{prefix}.post_seq_attn_ln.weight"],
                 "pre_var": raw[f"{prefix}.pre_var_attn_ln.weight"],
                 "var_qscale": var_qscale_buf.ptr,
+                "var_q_ln": raw[f"{prefix}.var_attn.query_ln.weight"],
                 "var_k_ln": raw[f"{prefix}.var_attn.key_ln.weight"],
+                "var_perdim": raw[f"{prefix}.var_attn.per_dim_scale.per_dim_scale"],
                 "post_var": raw[f"{prefix}.post_var_attn_ln.weight"],
                 "pre_ff": raw[f"{prefix}.pre_ff_ln.weight"],
                 "post_ff": raw[f"{prefix}.post_ff_ln.weight"],
@@ -406,15 +408,30 @@ class TimesFM3GPUDecoder:
             self._gemm(bufs.normed.ptr, w["var_q"], bufs.var_q.ptr, rows, d, d)
             self._gemm(bufs.normed.ptr, w["var_k"], bufs.var_k.ptr, rows, d, d)
             self._gemm(bufs.normed.ptr, w["var_v"], bufs.var_v.ptr, rows, d, d)
-            # Fused var attention: raw GEMM outputs; the kernel applies QK
-            # RMSNorm + the folded per-dim query scale and the sqrt(D) score
-            # scale internally.
-            timesfm3_var_attention(
-                bufs.var_q.ptr, bufs.var_k.ptr, bufs.var_v.ptr,
-                bufs.front_masked.ptr, w["var_qscale"], w["var_k_ln"], _RMS_EPS,
-                bufs.var_out.ptr,
-                batch, variates, n, heads, hd, dtype=dt,
-            )
+            if dt == "f16":
+                # Fused var attention (production): raw GEMM outputs; the
+                # kernel applies QK RMSNorm + the folded per-dim query scale
+                # and the sqrt(D) score scale internally.
+                timesfm3_var_attention(
+                    bufs.var_q.ptr, bufs.var_k.ptr, bufs.var_v.ptr,
+                    bufs.front_masked.ptr, w["var_qscale"], w["var_k_ln"], _RMS_EPS,
+                    True,
+                    bufs.var_out.ptr,
+                    batch, variates, n, heads, hd, dtype=dt,
+                )
+            else:
+                # Strict unfused fallback (fp32): the separate normalization
+                # chain, then the same attention kernel with normalized=0.
+                timesfm_head_rmsnorm_f32(bufs.var_q.ptr, w["var_q_ln"], rows, 1, heads, hd, d, 0, _RMS_EPS, dtype=dt)
+                timesfm_head_rmsnorm_f32(bufs.var_k.ptr, w["var_k_ln"], rows, 1, heads, hd, d, 0, _RMS_EPS, dtype=dt)
+                timesfm_head_perdim_scale_f32(bufs.var_q.ptr, w["var_perdim"], rows, 1, heads, hd, d, 0, dtype=dt)
+                timesfm3_var_attention(
+                    bufs.var_q.ptr, bufs.var_k.ptr, bufs.var_v.ptr,
+                    bufs.front_masked.ptr, w["var_qscale"], w["var_k_ln"], _RMS_EPS,
+                    False,
+                    bufs.var_out.ptr,
+                    batch, variates, n, heads, hd, dtype=dt,
+                )
             self._gemm(bufs.var_out.ptr, w["var_out"], bufs.hidden.ptr, rows, d, d)
             timesfm_norm_add_f32(bufs.hidden.ptr, bufs.attn_res.ptr, w["post_var"], bufs.hidden2.ptr, rows, d, _RMS_EPS, dtype=dt)
 

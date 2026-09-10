@@ -1,7 +1,7 @@
 # MODEL-TIMESFM3.md — TimesFM 3.0 500M on hipEngine
 
-Status: **complete (GPU decode, initial implementation; no optimization
-campaign yet)**. Per-model record following `MODEL-TIMESFM.md`.
+Status: **complete (GPU decode; optimization campaign started)**.
+Per-model record following `MODEL-TIMESFM.md`.
 
 ## Model
 
@@ -65,17 +65,19 @@ K-side norm weight (both precisions).
   FP16/FP32-accum GEMMs; gate: max ≤ 2%, mean ≤ 0.5% of per-series signal
   scale vs the torch oracle on both fixtures (measured max 0.42% / mean
   0.12%).
-- **`fp32` (strict):** rocBLAS SGEMM + FP32 kernels; parity vs the torch
-  oracle fixture at max 1.1e-5.
+- **`fp32` (strict):** rocBLAS SGEMM + FP32 kernels, routed through the
+  **unfused** variate-attention chain (`head_rmsnorm` ×2 + `head_perdim`
+  + raw var attention) — the strict fallback for the fused fp16 var
+  kernel; parity vs the torch oracle fixture at max 1.1e-5, deterministic.
 
 Both validated by `python3 scripts/timesfm3_gpu_bench.py --check`.
 
 ## Performance (initial implementation, no optimization campaign)
 
 Workload: batch 8, 3 variates (2 targets + 1 past-future covariate), context
-8192, horizon 512 — one non-autoregressive forward pass (258 context + 17
-horizon patches; 6,600 rows). Same host throughout (zbook, Ryzen AI MAX+
-PRO 395, Radeon 8060S).
+8192, horizon 512 — one non-autoregressive forward pass (256 context + 16
+horizon patches = 272 patches; 6,528 rows). Same host throughout (zbook,
+Ryzen AI MAX+ PRO 395, Radeon 8060S).
 
 | Path | Precision | Decode time | Speed vs hipEngine fp16 |
 | --- | --- | ---: | ---: |
