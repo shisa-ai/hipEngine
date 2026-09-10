@@ -1131,6 +1131,25 @@ GGUF_IQ_DENSE_PREFILL_POLICY["gguf_iq4_nl"]["variant"] = _IQ_DENSE_W4A16_COOP64_
 # owner, bit-exact incl. the split arithmetic.
 GGUF_IQ_DENSE_PREFILL_POLICY["gguf_q3_k"]["variant"] = _IQ_DENSE_W4A16_COOP_VARIANT
 GGUF_IQ_DENSE_PREFILL_POLICY["gguf_iq3_s"]["variant"] = _IQ_DENSE_W4A16_COOP_VARIANT
+# Per-artifact Q3_K admission (2026-09-10 review round 4). The Q3_K W4A16
+# prefill owner's fp16 hi+lo split accumulates in a different association
+# than the strict per-row GEMV: per-element products match, but ~1.2% of
+# bf16 layer outputs flip exactly 1 ULP, and through 60 layers of MoE
+# routing that class amplifies to a max-row KL of 5.3e-2 vs the incumbent
+# on natural tokenized prompts (one position of the 18-prompt category
+# suite; top-1 agreement preserved). UD-Q4_K_S measures max 5.1e-3 with the
+# same route - its Q3_K tensors are the embedding-class roles - so the split
+# is per artifact, not per quant: the K_M stamp excludes the Q3_K entry and
+# its Q3_K prefill keeps the strict owner. Everything else in the shipped
+# stack is bit-exact vs the incumbent once Q3_K reverts, so K_M qualifies
+# with local32 decode and all cooperative owners intact. The next lever is
+# a precision-preserving Q3_K owner (strict-association accumulation with
+# shared decoded weights, or a higher-precision split representation);
+# changing the cooperative geometry alone cannot help - coop32 vs one-wave
+# is already bit-exact.
+GGUF_IQ_DENSE_PREFILL_STRICT_SLOTS = {
+    ("MOSTLY_Q4_K_M", "gguf_ud_q4_k_m"): ("layers.0.ffn_up",),
+}
 # Dense raw-IQ decode owner (rows=1): the local32 IQ4_XS GEMV candidate.
 # One wave per 8 output columns, each lane owning 8 contiguous K, two u32
 # payload loads per column-block and a byte-indexed fused codebook LUT -
@@ -1249,6 +1268,7 @@ GGUF_CONSUMER_LAYERS: frozenset[str] = frozenset(
 __all__ = [
     "GGUF_CONSUMER_LAYERS",
     "GGUF_IQ_DENSE_PREFILL_POLICY",
+    "GGUF_IQ_DENSE_PREFILL_STRICT_SLOTS",
     "GGUF_IQ_DENSE_DECODE_POLICY",
     "LAGUNA_GLOBAL_SPLIT_MIN_LIVE",
     "LAGUNA_HEAD_KV_FUSION",

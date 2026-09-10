@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "status": "qualified_perf_and_category_gate",
+  "status": "superseded_by_perslot_four_arm",
   "performance_claim": true,
   "mode": "qwen35_readme_persistent_resident_sweep",
   "engine": "gguf",
@@ -10042,5 +10042,6 @@
     "category_gate": "PASS (2026-09-10, scripts/gguf_ud_combined_stack_gate.py --category-heldout, seed 7, tokenized prompts, 1170 positions)",
     "gate_stats": "pooled mean 8.90e-5 / p95 4.23e-4 / p99 8.54e-4 / max 5.07e-3 / top-1 99.83%; calibration (incumbent vs all-strict) max 1.36e-2",
     "artifact": "benchmarks/results/combined-stack-gate2/category-ks-seed7.json"
-  }
+  },
+  "superseded_by": "benchmarks/results/final-four-arm-perslot-2026-09-11/ (same-conditions re-measure with the per-slot Q3_K strict pin that qualifies K_M)"
 }

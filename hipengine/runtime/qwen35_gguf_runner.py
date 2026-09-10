@@ -19390,6 +19390,38 @@ class Qwen35GGUFResidentSession:
             raise RuntimeError("resident dense IQ MMQ workspace is undersized")
         return buffer
 
+    def _iq_dense_mmq_strict_slots(self) -> tuple[str, ...]:
+        """Per-stamp strict slots declared for this artifact, if any.
+
+        The backend table is keyed by ``(file_type, artifact preset key)`` -
+        the same policy identity the dense-pair tables use - so a pinned
+        qualified plain control (preset ``None``) never matches a UD row and
+        an unqualified manifest cannot borrow one either. Slots listed for
+        the stamp keep the strict per-row GEMV in prefill; every other slot
+        resolves the backend's dense-IQ policy unchanged.
+        """
+
+        weights = getattr(self, "weights", None)
+        if weights is None:
+            # The resident session carries its weights on the runner.
+            weights = getattr(getattr(self, "runner", None), "weights", None)
+        identity = _gguf_policy_identity(weights)
+        if identity is None:
+            return ()
+        file_type = identity[1]
+        preset = identity[2] if len(identity) > 2 else None
+        if file_type is None:
+            return ()
+        table = backend_package_capability(
+            self.backend, "GGUF_IQ_DENSE_PREFILL_STRICT_SLOTS", {}
+        )
+        if not isinstance(table, Mapping):
+            return ()
+        slots = table.get((str(file_type), preset))
+        if not isinstance(slots, (tuple, list)):
+            return ()
+        return tuple(str(s) for s in slots)
+
     def _iq_dense_mmq_context(self):
         """Bind the dense raw-IQ execution-owner session (UD items 3 and C).
 
@@ -19401,6 +19433,7 @@ class Qwen35GGUFResidentSession:
         session, so a decode-only backend is not silently unrouted.
         """
 
+        strict_slots = self._iq_dense_mmq_strict_slots()
         if not bool(getattr(self, "use_iq_dense_mmq", True)):
             return iq_dense_mmq_session(False)
         policy = backend_package_capability(
@@ -19414,7 +19447,7 @@ class Qwen35GGUFResidentSession:
                 return iq_dense_mmq_session(False)
             # Decode-only owners read the caller's buffer like W4A16; a
             # workspace-less session is enough and allocates nothing.
-            return iq_dense_mmq_session(True)
+            return iq_dense_mmq_session(True, strict_slots=strict_slots)
         # Only the integer-MMQ route consumes an activation plane. When the
         # backend routes dense IQ prefill through W4A16, open the session
         # without one: it still marks this prefill as the execution owner, but
@@ -19424,7 +19457,7 @@ class Qwen35GGUFResidentSession:
             for entry in policy.values()
             if isinstance(entry, Mapping)
         ):
-            return iq_dense_mmq_session(True)
+            return iq_dense_mmq_session(True, strict_slots=strict_slots)
         buffer = self._ensure_iq_dense_mmq_buffer()
         if self._iq_dense_mmq_library is None:
             self._iq_dense_mmq_library = build_gguf_iq_source_mmq_prefill(
@@ -19444,6 +19477,7 @@ class Qwen35GGUFResidentSession:
             workspace_nbytes=int(buffer.nbytes),
             library=self._iq_dense_mmq_library,
             producer_library=self._iq_dense_mmq_producer_library,
+            strict_slots=strict_slots,
         )
 
     def _q6_integer_mmq_context(self, *, target_verifier: bool = False):

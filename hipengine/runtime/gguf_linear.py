@@ -61,6 +61,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import 
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_iq_source_mmq_prefill import (
     iq_dense_mmq_has_workspace,
+    iq_dense_mmq_strict_slots,
     iq_dense_mmq_workspace,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
@@ -3464,6 +3465,7 @@ def launch_gguf_linear(
             rows=rows,
             in_features=in_features,
             out_features=out_features,
+            slot_path=getattr(getattr(weight, "spec", None), "slot_path", None),
         )
         dispatch = _iq_dense_decode_dispatch(
             dispatch,
@@ -5477,12 +5479,14 @@ def launch_gguf_linear_pair_silu(
             rows=rows,
             in_features=in_features,
             out_features=out_features,
+            slot_path=getattr(getattr(weight_a, "spec", None), "slot_path", None),
         )
         dispatch_b_prefill = _iq_dense_prefill_dispatch(
             dispatch_b,
             rows=rows,
             in_features=in_features,
             out_features=out_features,
+            slot_path=getattr(getattr(weight_b, "spec", None), "slot_path", None),
         )
         iq4_xs_dual = (
             dispatch_a.key.quant == dispatch_b.key.quant == "gguf_iq4_xs"
@@ -7987,6 +7991,7 @@ def _iq_dense_prefill_dispatch(
     rows: int,
     in_features: int,
     out_features: int,
+    slot_path: str | None = None,
 ) -> GGUFLinearDispatch:
     """Select the backend-declared dense raw-IQ prefill owner.
 
@@ -8003,6 +8008,12 @@ def _iq_dense_prefill_dispatch(
     if iq_dense_mmq_workspace() is None or dispatch.abi != "raw":
         return dispatch
     if dispatch.key.variant not in _IQ_DENSE_MMQ_OUTPUT_VARIANTS:
+        return dispatch
+    # Per-slot quality admission: an owning session may pin specific slots
+    # to the strict per-row GEMV for its artifact (the tokenized category
+    # gate showed the early-layer Q3_K tensor amplifies the route's 1-ULP
+    # accumulation-order class past the max-row ceiling on UD-Q4_K_M).
+    if slot_path is not None and slot_path in iq_dense_mmq_strict_slots():
         return dispatch
     if int(in_features) % _IQ_DENSE_MMQ_K_ALIGN or int(out_features) % _IQ_DENSE_MMQ_N_ALIGN:
         return dispatch
