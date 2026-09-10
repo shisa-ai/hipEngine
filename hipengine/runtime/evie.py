@@ -137,6 +137,7 @@ def _fn(library: ctypes.CDLL, symbol: str, argtypes: list) -> "ctypes._FuncPtr":
 class EvieRunner:
     """EVIE-4.5B fp32 encoder on the HIP device."""
 
+    # family-shared contracts (asserted per spec at construction)
     GDN_QKV_DIM = 8192
     GDN_Z_DIM = 4096
     GDN_HEADS = 32
@@ -147,7 +148,6 @@ class EvieRunner:
     ATTENTION_HEAD_DIM = 256
     ROTARY_DIM = 64
     VISION_HEADS = 16
-    VISION_HEAD_DIM = 64
 
     def __init__(
         self,
@@ -171,6 +171,11 @@ class EvieRunner:
             )
         self.loaded = loaded
         self.spec: EvieModelSpec = loaded.spec
+        # vision head dim is model-specific (4.5B: 1024/16=64, 8B:
+        # 1152/16=72); every other family contract above is shared
+        self.VISION_HEAD_DIM = (
+            self.spec.vision_hidden_size // self.spec.vision_num_heads
+        )
         self.runtime = runtime or get_hip_runtime()
         self.rocblas = rocblas or Rocblas.load()
         # SGEMM needs no auxiliary workspace; release rocBLAS's lazy ~32-MiB
@@ -588,9 +593,10 @@ class EvieRunner:
         from hipengine.kernels.cpu_reference.evie import _bilinear_interp_indices
 
         if self._pos_embed_table is None:
+            pe = self.spec.vision_num_position_embeddings
             self._pos_embed_table = self._to_host(
-                self._w["visual.pos_embed.weight"], 2304 * 1024
-            ).reshape(2304, 1024)
+                self._w["visual.pos_embed.weight"], pe * self.spec.vision_hidden_size
+            ).reshape(pe, self.spec.vision_hidden_size)
         table = self._pos_embed_table
         indices, weights = _bilinear_interp_indices(
             grid_thw, 48, self.spec.vision_spatial_merge_size
@@ -629,7 +635,13 @@ class EvieRunner:
         )
 
         positions = vision_position_ids_block_major(grid_thw, merge)
-        inv_freq = 1.0 / (10000.0 ** (np.arange(0, 16, dtype=np.float32) / 16))
+        # vision rope: head_dim//4 frequency pairs per axis, doubled to
+        # the full head_dim table (cpu_reference vision_rope_tables); the
+        # pair count is head-dim dependent (4.5B: 16, 8B: 18)
+        half_pairs = head_dim // 4
+        inv_freq = 1.0 / (
+            10000.0 ** (np.arange(0, half_pairs, dtype=np.float32) / half_pairs)
+        )
         fh = positions[:, 0][:, None].astype(np.float32) * inv_freq[None]
         fw = positions[:, 1][:, None].astype(np.float32) * inv_freq[None]
         freqs = np.concatenate([fh, fw], axis=-1)
@@ -729,17 +741,22 @@ class EvieRunner:
         )
         self._check(err, "merger layernorm")
         merged_ptr = scratch.buffers["merged_in"].ptr
+        # merger fc1 is square: (merge^2 * vh, merge^2 * vh) in the
+        # checkpoint (4.5B: 4096x4096, 8B: 4608x4608); its width is
+        # merge^2 * vh, NOT the vision block MLP width
+        # (vision_intermediate_size)
+        inter = merge * merge * vh
         self._gemm(
             norm_ptr, self._w["visual.merger.linear_fc1.weight"], merged_ptr,
-            n_merged, merge * merge * vh, merge * merge * vh,
+            n_merged, inter, inter,
         )
         err = self._k("hipengine_evie_add_bias_f32", [_P, _P, _I, _I, _S])(
             _P(merged_ptr), _P(self._w["visual.merger.linear_fc1.bias"]),
-            _I(n_merged * merge * merge * vh), _I(merge * merge * vh), _S(0)
+            _I(n_merged * inter), _I(inter), _S(0)
         )
         self._check(err, "merger fc1 bias")
         err = self._k("hipengine_evie_gelu_erf_f32", [_P, _P, _I, _S])(
-            _P(merged_ptr), _P(merged_ptr), _I(n_merged * merge * merge * vh), _S(0)
+            _P(merged_ptr), _P(merged_ptr), _I(n_merged * inter), _S(0)
         )
         self._check(err, "merger gelu")
         out = _malloc_committed(n_merged * spec.vision_out_hidden_size * 4 + _GEMM_PAD_BYTES)
@@ -1251,12 +1268,19 @@ class EvieRunner:
     # -- head ----------------------------------------------------------------------
 
     def project(
-        self, hidden_ptr: int, tokens: int, scratch: _Scratch, head_dim: int = 128
+        self,
+        hidden_ptr: int,
+        tokens: int,
+        scratch: _Scratch,
+        head_dim: int | None = None,
     ) -> int:
-        # Prefix-MRL: only the first head_dim=128 rows of the (2048, h)
-        # projection are needed; they are contiguous at the weight start,
-        # so GEMM straight to (tokens, 128) instead of computing 2048
-        # channels and slicing (16x less head GEMM work).
+        # Prefix-MRL (4.5B): only the first default_head rows of the
+        # (proj_dim, h) projection are needed; they are contiguous at the
+        # weight start, so GEMM straight to (tokens, 128) instead of
+        # computing 2048 channels and slicing (16x less head GEMM work).
+        # Single-head (8B): default_head == proj_dim, full GEMM.
+        if head_dim is None:
+            head_dim = self.spec.default_head
         slice_ptr = scratch.buffers["head_slice"].ptr
         self._gemm(
             hidden_ptr, self._w["custom_text_proj.weight"], slice_ptr, tokens,
@@ -1281,7 +1305,7 @@ class EvieRunner:
         return slice_ptr
 
     def _read_bias(self) -> np.ndarray:
-        return self._to_host(self._w["custom_text_proj.bias"], 2048)
+        return self._to_host(self._w["custom_text_proj.bias"], self.spec.proj_dim)
 
     # -- top-level API ---------------------------------------------------------------
 
@@ -1329,15 +1353,19 @@ class EvieRunner:
             "gdn_normed": f32(tokens, self.GDN_Z_DIM),
             "gate_proj": f32(tokens, inter),
             "up_proj": f32(tokens, inter),
-            "head_out": f32(tokens, 2048),
-            "head_slice": f32(tokens, 128),
-            "vx": f32(tokens, 1024),
-            "vx2": f32(tokens, 1024),
-            "vqkv": f32(tokens, 3072),
-            "vnorm": f32(tokens, 1024),
-            "vmlp": f32(tokens, 4096),
-            "vout": f32(tokens, 1024),
-            "merged_in": f32(tokens, 4096),
+            "head_out": f32(tokens, self.spec.proj_dim),
+            "head_slice": f32(tokens, self.spec.default_head),
+            "vx": f32(tokens, self.spec.vision_hidden_size),
+            "vx2": f32(tokens, self.spec.vision_hidden_size),
+            "vqkv": f32(tokens, 3 * self.spec.vision_hidden_size),
+            "vnorm": f32(tokens, self.spec.vision_hidden_size),
+            "vmlp": f32(tokens, self.spec.vision_intermediate_size),
+            "vout": f32(tokens, self.spec.vision_hidden_size),
+            "merged_in": f32(
+                tokens,
+                self.spec.vision_spatial_merge_size**2
+                * self.spec.vision_hidden_size,
+            ),
         }
         scratch = _Scratch(tokens=tokens, buffers=bufs)
         self._scratch[tokens] = scratch
@@ -1360,7 +1388,8 @@ class EvieRunner:
         scratch = self._scratch_for(len(ids))
         hidden_ptr = self.text_forward(ids, positions, scratch)
         emb_ptr = self.project(hidden_ptr, len(ids), scratch)
-        emb = self._to_host(emb_ptr, len(ids) * 128).reshape(len(ids), 128)
+        hd = self.spec.default_head
+        emb = self._to_host(emb_ptr, len(ids) * hd).reshape(len(ids), hd)
         self._release_call_buffers()
         return emb
 
@@ -1446,7 +1475,8 @@ class EvieRunner:
         scratch = self._scratch_for(tokens)
         hidden_ptr = self.text_forward(ids_cat, positions, scratch, seg=seg)
         emb_ptr = self.project(hidden_ptr, tokens, scratch)
-        emb_all = self._to_host(emb_ptr, tokens * 128).reshape(tokens, 128)
+        hd = self.spec.default_head
+        emb_all = self._to_host(emb_ptr, tokens * hd).reshape(tokens, hd)
         self._release_call_buffers()
         return [emb_all[s0:s1] for s0, s1 in ranges]
 
@@ -1478,7 +1508,8 @@ class EvieRunner:
         )
         hidden_ptr = self.text_forward(ids, positions, scratch, visual_ptr=visual.ptr)
         emb_ptr = self.project(hidden_ptr, len(ids), scratch)
-        emb = self._to_host(emb_ptr, len(ids) * 128).reshape(len(ids), 128)
+        hd = self.spec.default_head
+        emb = self._to_host(emb_ptr, len(ids) * hd).reshape(len(ids), hd)
         self._release_call_buffers()
         return emb
 
@@ -1586,7 +1617,8 @@ class EvieRunner:
             ids_cat, positions, scratch2, visual_ptr=visual_cat.ptr, seg=seg
         )
         emb_ptr = self.project(hidden_ptr, tokens, scratch2)
-        emb_all = self._to_host(emb_ptr, tokens * 128).reshape(tokens, 128)
+        hd = self.spec.default_head
+        emb_all = self._to_host(emb_ptr, tokens * hd).reshape(tokens, hd)
         self._release_call_buffers()
         return [emb_all[s0:s1] for s0, s1 in ranges]
 
