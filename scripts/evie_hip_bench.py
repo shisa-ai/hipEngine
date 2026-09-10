@@ -64,15 +64,15 @@ def _preprocess_page(
     img = (img - mean) / std
     # (H, W, 3) -> (3, H, W)
     img = img.transpose(2, 0, 1)
-    # pad to multiples of patch 16 temporally: t dimension 2 -> repeat frame
-    # Qwen3.5-VL: temporal patch size 2 — duplicate the single frame.
-    tpatches = np.concatenate([img, img], axis=0)  # (6, H, W) = (3*2, H, W)
-    # fold into (t2, H/16, W/16, 3, 16, 16) block-major patch rows
-    c, H, W = tpatches.shape
+    # temporal duplication: (2, 3, H, W) so channel c, slot t maps to
+    # index t*3+c (the earlier concatenate + reshape(3,2,...) pairing
+    # mapped channel c slot t to index 2c+t, scrambling channels)
+    tpatches = np.stack([img, img], axis=0)  # (2, 3, H, W)
+    _, c, H, W = tpatches.shape
     ph, pw = H // 16, W // 16
     patches = (
-        tpatches.reshape(3, 2, ph, 16, pw, 16)
-        .transpose(2, 4, 0, 1, 3, 5)  # (ph, pw, 3, 2, 16, 16)
+        tpatches.reshape(2, 3, ph, 16, pw, 16)
+        .transpose(2, 4, 1, 0, 3, 5)  # (ph, pw, 3, 2, 16, 16)
         .reshape(-1, 3 * 2 * 16 * 16)
     )
     return np.ascontiguousarray(patches), np.array([[1, H // 16, W // 16]], dtype=np.int64)
