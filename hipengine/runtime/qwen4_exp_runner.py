@@ -3246,15 +3246,27 @@ def _qwen4_exp_gr_sigmoid_mean_fused(rows: int) -> bool:
 
 
 def _qwen4_exp_q8_mmq_policy(policy):
-    """Add the P3 attention-gate shape only for an explicit candidate run."""
+    """Add the P3 attention-gate shape only for an explicit candidate run.
 
-    if policy is None or os.environ.get(
+    Also applies the #28 R12 plane-count candidate env per prefill (the
+    base policy resolves once at construction; the session re-applies
+    route candidates per chunk so an A/B can switch arms in residency).
+    """
+
+    if policy is None:
+        return None
+    if os.environ.get(
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE", "0"
     ) in {"", "0", "false", "False"}:
-        return policy
-    minimums = dict(policy.min_rows)
-    minimums[(2560, 6144)] = 64
-    return replace(policy, min_rows=minimums)
+        pass
+    else:
+        minimums = dict(policy.min_rows)
+        minimums[(2560, 6144)] = 64
+        policy = replace(policy, min_rows=minimums)
+    planes_env = os.environ.get("HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES", "")
+    if planes_env in {"2", "3"} and int(planes_env) != policy.planes:
+        policy = replace(policy, planes=int(planes_env))
+    return policy
 
 
 def _qwen4_exp_router_f32_tile4_enabled(rows: int) -> bool:
