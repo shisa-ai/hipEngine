@@ -544,9 +544,17 @@ parity (~3.0 s external MMQ+GEMM versus 3.84 s; the old-pin-based
 "+2.45 s linear excess" overstated dense for the newer engine). Order:
 **MoE expert-row utilization/pipelining first** (the
 mul_mat_q_routed_compact row-count-selected 48/32/16 tile geometries,
-plus map/padding/quantize/repair costs) -> dense Q8 three-plane MMQ
-(0.5-0.8 s) -> bounded QSA D256 sweep. No IU4, resident-PLE/offload,
-GDN, or MTP detours for this serial-AR gap.
+plus map/padding/quantize/repair costs) -> bounded QSA D256 sweep. No
+IU4, resident-PLE/offload, GDN, or MTP detours for this serial-AR gap.
+**R12 dense-MMQ project CLOSED (September 10):** the tile sweep
+confirmed the retained 128x128 tile optimal; the two-plane d4x2 variant
+is +1.39-1.44x per leg but the whole-model route FAILS the 996-row
+canonical envelope on every bar (mean 1.60e-3, max 7.18e-2, top-1
+0.983) - the dense gap to the newer engine is the exactness-chain
+price, and closing it needs bounded-drift arithmetic the current bars
+reject at whole-model scope. Candidate wiring retained default-off; a
+P2-style layer-cluster continuation is recorded unverified in the
+[rejection worklog](../worklog/entries/20260910T113000.000000Z-lhl-qwen4exp-r12-d4x2-rejection.md).
 
 Post-Q5_K-promotion refresh (clean `771337563`, six promotions active):
 code-p4096 prefill MoE 7.496s, linear 3.458s (dense iu8 took attn_gate +
