@@ -780,11 +780,19 @@ __global__ void gguf_iq_prefill_wmma_dual_silu_kernel(
   const int col_pair = decode_pair % (OUT_COLS_PER_BLOCK / 2);
   const int col0 = col_pair * 2;
   const int k_segment = (tid % DECODE_TPP) * 32;
-  const uint8_t* dec_row =
-      (matrix == 0 ? qweight_a : qweight_b) +
-      int64_t(col_tile_base * 16 + col0 < out_features
-                  ? col_tile_base * 16 + col0
-                  : out_features - 1) * row_bytes;
+  // Each column clamps independently: for an incomplete 32-column block
+  // the pair's second column can be == out_features, and reading its block
+  // stream would run one row past the weight tensor. The decoded values
+  // are garbage for out-of-range columns and never stored (the epilogue
+  // guards result_col < out_features).
+  const uint8_t* dec_base = matrix == 0 ? qweight_a : qweight_b;
+  int64_t dec_col_offset[2];
+#pragma unroll
+  for (int c = 0; c < 2; ++c) {
+    const int64_t col = col_tile_base * 16 + col0 + c;
+    dec_col_offset[c] = (col < out_features ? col : out_features - 1) *
+                        row_bytes;
+  }
 
   for (int64_t blk = 0; blk < blocks_per_row * BLOCK_ELEMS / QK_K; ++blk) {
     const int64_t k_blk = blk * QK_K;
@@ -796,7 +804,7 @@ __global__ void gguf_iq_prefill_wmma_dual_silu_kernel(
 #pragma unroll
       for (int c = 0; c < 2; ++c) {
         const uint8_t* block =
-            dec_row + int64_t(c) * row_bytes + (k_blk >> 8) * BLOCK_BYTES;
+            dec_base + dec_col_offset[c] + (k_blk >> 8) * BLOCK_BYTES;
         const float d = fp16_bytes_to_float(block);
         const int hi_word = int(block[2]) | (int(block[3]) << 8);
         const int scale =
