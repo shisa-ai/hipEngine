@@ -51,6 +51,187 @@ __device__ __forceinline__ float evie_row_sum_squares(
 }  // namespace
 
 // out = (1 + w) * x / sqrt(mean(x^2) + eps), row-wise over hidden dim.
+// ---- strict (pre-coalescing) elementwise fallbacks ----------------------
+// Selected at launch time via HIPENGINE_EVIE_STRICT_ELEMENTWISE: the
+// original one-thread-per-row bodies, preserved bit-for-bit as the
+// registered strict fallback for the coalesced variants above.
+
+__global__ void evie_rmsnorm_kernel_strict(
+    const float* __restrict__ x,
+    const float* __restrict__ w,
+    float* __restrict__ out,
+    int64_t rows,
+    int64_t hidden,
+    float eps) {
+  const int64_t row = blockIdx.x;
+  if (row >= rows) {
+    return;
+  }
+  const float* xr = x + row * hidden;
+  const float total = evie_row_sum_squares(xr, hidden);
+  if (threadIdx.x == 0) {
+    const float inv = rsqrtf(total / static_cast<float>(hidden) + eps);
+    float* orow = out + row * hidden;
+    for (int64_t i = 0; i < hidden; ++i) {
+      orow[i] = (1.0f + w[i]) * xr[i] * inv;
+    }
+  }
+}
+
+__global__ void evie_layernorm_kernel_strict(
+    const float* __restrict__ x,
+    const float* __restrict__ w,
+    const float* __restrict__ b,
+    float* __restrict__ out,
+    int64_t rows,
+    int64_t hidden,
+    float eps) {
+  const int64_t row = blockIdx.x;
+  if (row >= rows) {
+    return;
+  }
+  const float* xr = x + row * hidden;
+  float acc = 0.0f;
+  float acc2 = 0.0f;
+  for (int64_t i = threadIdx.x; i < hidden; i += blockDim.x) {
+    acc += xr[i];
+    acc2 += xr[i] * xr[i];
+  }
+  __shared__ float p1[256];
+  __shared__ float p2[256];
+  p1[threadIdx.x] = acc;
+  p2[threadIdx.x] = acc2;
+  __syncthreads();
+  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if ((int)threadIdx.x < stride) {
+      p1[threadIdx.x] += p1[threadIdx.x + stride];
+      p2[threadIdx.x] += p2[threadIdx.x + stride];
+    }
+    __syncthreads();
+  }
+  if (threadIdx.x == 0) {
+    const float mean = p1[0] / static_cast<float>(hidden);
+    const float var = p2[0] / static_cast<float>(hidden) - mean * mean;
+    const float inv = rsqrtf(var + eps);
+    float* orow = out + row * hidden;
+    for (int64_t i = 0; i < hidden; ++i) {
+      orow[i] = (xr[i] - mean) * inv * w[i] + b[i];
+    }
+  }
+}
+
+__global__ void evie_rope_kernel_strict(
+    float* __restrict__ x,
+    const float* __restrict__ cos,
+    const float* __restrict__ sin,
+    int64_t tokens,
+    int64_t heads,
+    int64_t head_dim,
+    int64_t rotary_dim,
+    int64_t row_stride) {
+  const int64_t idx =
+      static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const int64_t n = tokens * heads;
+  if (idx >= n) {
+    return;
+  }
+  const int64_t token = idx / heads;
+  const int64_t row = token * row_stride + (idx % heads) * head_dim;
+  const int64_t half = rotary_dim / 2;
+  const float* crow = cos + token * rotary_dim;
+  const float* srow = sin + token * rotary_dim;
+  for (int64_t d = 0; d < half; ++d) {
+    const float x1 = x[row + d];
+    const float x2 = x[row + d + half];
+    x[row + d] = x1 * crow[d] - x2 * srow[d];
+    x[row + d + half] = x2 * crow[d + half] + x1 * srow[d + half];
+  }
+}
+
+__global__ void evie_gdn_rmsnorm_gate_kernel_strict(
+    const float* __restrict__ x,
+    const float* __restrict__ z,
+    const float* __restrict__ w,
+    float* __restrict__ out,
+    int64_t rows,
+    int64_t head_dim,
+    float eps) {
+  const int64_t row = blockIdx.x;
+  if (row >= rows) {
+    return;
+  }
+  const float* xr = x + row * head_dim;
+  float acc = 0.0f;
+  for (int64_t i = threadIdx.x; i < head_dim; i += blockDim.x) {
+    acc += xr[i] * xr[i];
+  }
+  __shared__ float partial[256];
+  partial[threadIdx.x] = acc;
+  __syncthreads();
+  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if ((int)threadIdx.x < stride) {
+      partial[threadIdx.x] += partial[threadIdx.x + stride];
+    }
+    __syncthreads();
+  }
+  if (threadIdx.x == 0) {
+    const float inv = rsqrtf(partial[0] / static_cast<float>(head_dim) + eps);
+    const float* zr = z + row * head_dim;
+    float* orow = out + row * head_dim;
+    for (int64_t i = 0; i < head_dim; ++i) {
+      const float g = zr[i] / (1.0f + expf(-zr[i]));
+      orow[i] = xr[i] * inv * w[i] * g;
+    }
+  }
+}
+
+__global__ void evie_gdn_l2norm_scale_repeat_kernel_strict(
+    const float* __restrict__ src,
+    float* __restrict__ q_out,
+    float* __restrict__ k_out,
+    float q_scale,
+    int64_t tokens,
+    int64_t kv_heads,
+    int64_t head_dim,
+    int64_t src_stride,
+    int64_t k_offset) {
+  const int64_t idx =
+      static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const int64_t rows = tokens * kv_heads;
+  if (idx >= rows) {
+    return;
+  }
+  const int64_t token = idx / kv_heads;
+  const int64_t head = idx % kv_heads;
+  const float* qr = src + token * src_stride + head * head_dim;
+  const float* kr = src + token * src_stride + k_offset + head * head_dim;
+  float sq = 0.0f;
+  float sk = 0.0f;
+  for (int64_t i = 0; i < head_dim; ++i) {
+    sq += qr[i] * qr[i];
+    sk += kr[i] * kr[i];
+  }
+  const float iq = rsqrtf(sq + 1e-6f) * q_scale;
+  const float ik = rsqrtf(sk + 1e-6f);
+  const int64_t out_base = (token * kv_heads + head) * 2 * head_dim;
+  for (int rep = 0; rep < 2; ++rep) {
+    float* qo = q_out + out_base + rep * head_dim;
+    float* ko = k_out + out_base + rep * head_dim;
+    for (int64_t i = 0; i < head_dim; ++i) {
+      qo[i] = qr[i] * iq;
+      ko[i] = kr[i] * ik;
+    }
+  }
+}
+
+static bool evie_strict_elementwise_requested() {
+  static int cached = -1;
+  if (cached < 0) {
+    cached = getenv("HIPENGINE_EVIE_STRICT_ELEMENTWISE") != nullptr ? 1 : 0;
+  }
+  return cached != 0;
+}
+
 __global__ void evie_rmsnorm_kernel(
     const float* __restrict__ x,
     const float* __restrict__ w,
@@ -90,7 +271,8 @@ extern "C" int hipengine_evie_rmsnorm_f32(
     return static_cast<int>(hipErrorInvalidValue);
   }
   hipLaunchKernelGGL(
-      evie_rmsnorm_kernel,
+      evie_strict_elementwise_requested() ? evie_rmsnorm_kernel_strict
+                                           : evie_rmsnorm_kernel,
       dim3(static_cast<unsigned int>(rows)),
       dim3(256),
       0,
@@ -191,7 +373,8 @@ extern "C" int hipengine_evie_layernorm_f32(
     return static_cast<int>(hipErrorInvalidValue);
   }
   hipLaunchKernelGGL(
-      evie_layernorm_kernel,
+      evie_strict_elementwise_requested() ? evie_layernorm_kernel_strict
+                                           : evie_layernorm_kernel,
       dim3(static_cast<unsigned int>(rows)),
       dim3(256),
       0,
@@ -507,6 +690,15 @@ extern "C" int hipengine_evie_rope_f32(
       rotary_dim > head_dim || (rotary_dim & 1) != 0 || row_stride <= 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
+  if (evie_strict_elementwise_requested()) {
+    const int64_t n = tokens * heads;
+    const int threads = 64;
+    const int blocks = static_cast<int>((n + threads - 1) / threads);
+    hipLaunchKernelGGL(
+        evie_rope_kernel_strict, dim3(blocks), dim3(threads), 0, stream,
+        x, cos, sin, tokens, heads, head_dim, rotary_dim, row_stride);
+    return static_cast<int>(hipGetLastError());
+  }
   const int64_t n = tokens * heads * (rotary_dim / 2);
   const int threads = 64;
   const int blocks = static_cast<int>((n + threads - 1) / threads);
@@ -754,6 +946,7 @@ extern "C" int hipengine_evie_softmax_rows_f32(
   return static_cast<int>(hipGetLastError());
 }
 
+
 // Embedding lookup with visual-feature injection: for tokens whose id equals
 // image_token_id, read the next row (in token order) from visual_features.
 __global__ void evie_embed_lookup_kernel(
@@ -969,6 +1162,19 @@ extern "C" int hipengine_evie_gdn_l2norm_scale_repeat_f32(
     return static_cast<int>(hipErrorInvalidValue);
   }
   const int64_t rows = tokens * kv_heads;
+  if (evie_strict_elementwise_requested()) {
+    const int threads = 64;
+    const int blocks = static_cast<int>((rows + threads - 1) / threads);
+    hipLaunchKernelGGL(
+        evie_gdn_l2norm_scale_repeat_kernel_strict,
+        dim3(blocks),
+        dim3(threads),
+        0,
+        stream,
+        src, q_out, k_out, q_scale, tokens, kv_heads, head_dim, src_stride,
+        k_offset);
+    return static_cast<int>(hipGetLastError());
+  }
   const int threads = 32;  // one warp per (token, head) row
   hipLaunchKernelGGL(
       evie_gdn_l2norm_scale_repeat_kernel,
@@ -1036,7 +1242,9 @@ extern "C" int hipengine_evie_gdn_rmsnorm_gate_f32(
     return static_cast<int>(hipErrorInvalidValue);
   }
   hipLaunchKernelGGL(
-      evie_gdn_rmsnorm_gate_kernel,
+      evie_strict_elementwise_requested()
+          ? evie_gdn_rmsnorm_gate_kernel_strict
+          : evie_gdn_rmsnorm_gate_kernel,
       dim3(static_cast<unsigned int>(rows)),
       dim3(256),
       0,

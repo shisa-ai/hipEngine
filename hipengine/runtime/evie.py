@@ -355,18 +355,25 @@ class EvieRunner:
         return buf.ptr
 
     def _evict_caches(self, keep: tuple) -> None:
-        """Bound every lazily-grown scratch cache to 4 entries."""
+        """Bound the lazily-grown attention scratch caches.
 
-        for cache_name in ("_scores_bufs", "_plane16_bufs"):
+        Called ONLY at the start of an attention call, with the full keep
+        set of that call's keys: plane/score buffers are live for exactly
+        one attention call, so evicting every non-keep entry is safe while
+        the call's own acquisitions must never be evicted mid-call (an
+        earlier per-acquisition eviction freed sibling planes still read
+        by the next GEMM).
+        """
+
+        for cache_name, cap in (("_plane16_bufs", 8), ("_scores_bufs", 6)):
             cache = getattr(self, cache_name, None)
-            if not isinstance(cache, dict) or len(cache) < 4:
+            if not isinstance(cache, dict) or len(cache) < cap:
                 continue
             keepers = set(keep)
-            while len(cache) >= 4:
-                oldest = next(iter(cache))
-                if oldest in keepers:
+            for k in [key for key in cache if key not in keepers]:
+                if len(cache) < cap:
                     break
-                hip_free(cache.pop(oldest))
+                hip_free(cache.pop(k))
 
     def _scores16_scratch(self, rows: int, heads: int) -> tuple[DeviceBuffer, int]:
         """f16 scores buffer plus the per-head element stride (256B aligned)."""
@@ -376,7 +383,6 @@ class EvieRunner:
         if not hasattr(self, "_scores_bufs"):
             self._scores_bufs: dict[Any, DeviceBuffer] = {}
         if key not in self._scores_bufs:
-            self._evict_caches((key,))
             self._scores_bufs[key] = _malloc_committed(
                 heads * stride * 2 + _GEMM_PAD_BYTES
             )
@@ -389,7 +395,6 @@ class EvieRunner:
         if not hasattr(self, "_plane16_bufs"):
             self._plane16_bufs: dict[Any, DeviceBuffer] = {}
         if k not in self._plane16_bufs:
-            self._evict_caches((k,))
             self._plane16_bufs[k] = _malloc_committed(n * 2 + _GEMM_PAD_BYTES)
         return self._plane16_bufs[k]
 
@@ -401,7 +406,6 @@ class EvieRunner:
         if not hasattr(self, "_scores_bufs"):
             self._scores_bufs: dict[Any, DeviceBuffer] = {}
         if key not in self._scores_bufs:
-            self._evict_caches((key,))
             self._scores_bufs[key] = _malloc_committed(
                 heads * stride * 4 + _GEMM_PAD_BYTES
             )
@@ -441,6 +445,15 @@ class EvieRunner:
         kv_row = kv_heads * head_dim
         if self.precision == "fp16":
             plane = (tokens * head_dim + 127) & ~127
+            # bound the scratch caches for the whole call up front: every
+            # plane/score buffer of THIS call stays pinned until it returns
+            self._evict_caches((
+                ("plane16", "q", heads * plane),
+                ("plane16", "k", heads * plane),
+                ("plane16", "v", heads * plane),
+                ("plane16", "attn_out", heads * plane),
+                ("scores16", tokens, heads),
+            ))
             q16 = self._plane16_scratch("q", heads * plane)
             k16 = self._plane16_scratch("k", heads * plane)
             v16 = self._plane16_scratch("v", heads * plane)
@@ -510,6 +523,7 @@ class EvieRunner:
             self._check(err, "scatter out f32")
             return
 
+        self._evict_caches((("scores", tokens, heads),))
         scores, head_stride = self._scores_scratch(tokens, heads)
         # scores[h] = q_h @ k_{h//repeat}^T  -> row-major (tokens, tokens) per head
         a_dev = self._dev_ptr_array(
@@ -769,6 +783,11 @@ class EvieRunner:
             # per-head plane stride, padded to keep every batch pointer
             # 256-byte aligned for gemm_strided_batched_ex
             plane = (tokens * head_dim + 127) & ~127
+            self._evict_caches((
+                ("plane16", "packed", 3 * heads * plane),
+                ("plane16", "out", heads * plane),
+                ("scores16", tokens, heads),
+            ))
             qkv16 = self._plane16_scratch("packed", 3 * heads * plane)
             err = self._k(
                 "hipengine_evie_gather_qkv_f16", [_P, _P, _I, _I, _I, _I, _I, _S]
