@@ -4,6 +4,12 @@ Review date: 2026-09-10. Reviewed source: `026b77db8`, including the oracle
 repair, its regression tests, and the dead KV-import removal. This is a
 code/evidence review and proposed execution order, not new GPU qualification.
 
+Amended 2026-09-10 with a follow-up read-only code trace at the same base
+(`648e99ae2` is docs-only over `026b77db8`, so the runtime is unchanged). The
+amendment answers this review's open direct-arm question in F1, names the
+second AOTriton admission site, and records the slab-count and oracle-lifetime
+mechanisms in F3/F5. It adds no measurement.
+
 Primary scope: Qwen3.8-27B Q4_K_M, gfx1100, dense BF16 and uniform
 INT8-per-token/head KV with FP32 scales, autoregressive serving. The immediate
 problem is the compact INT8 server route. Shared service, scheduler, accounting,
@@ -77,6 +83,39 @@ do not establish an exact same-run GPU-busy percentage.
 the scalar attention core is a separate in-tree WMMA score-GEMM implementation.
 Trace the direct arm before describing its actual attention kernel family.
 
+**Direct arm traced (2026-09-10, code only).** `_prefill_bulk()` is
+layer-outer and, for `FULL_ATTENTION`, calls the same
+`_run_full_attention_prefill_layer_aotriton()` with `allow_aotriton` left at
+its default `True` and no per-call `aotriton_min_tokens` override. For INT8-KV
+sessions on this geometry `_full_attention_prefill_scratch_for_layer()`
+replaces only `key_cache`/`value_cache` with the BF16 oracle pair and leaves
+`append_spans`/`prefill_spans` BF16, reaching the INT8 store through
+`retained_*` alone; the wrapper's `direct_int8_prefill` term is therefore
+False. `_gguf_aotriton_prefill_allowed()` has no gfx1100 capability entry and
+returns its `True` default. So the direct arm's attention family is AOTriton
+compact varlen (`_gguf_aotriton_prefill_mode()`, v3 by default) above the
+512-row crossover and the same native paged kernel below it. This confirms the
+correction above: there is no separate in-tree WMMA score-GEMM on the direct
+BF16-oracle arm, and the server route differs from it by kernel selection
+rather than by arithmetic contract.
+
+**Both admission sites, and what the flag actually changes.** Two places
+restrict AOTriton on this route, and only one of them gates admission.
+`_prefill_batch_native_single_slab()` clears `force_aotriton_slots` when the
+route is `direct_int8_prefill`; that drops the per-slot `aotriton_min_tokens=1`
+override only, returning those slots to the standard 512-row crossover, so it
+is not by itself a block. `_gguf_slot_local_prefill_allow_aotriton()` is the
+gate: because `direct_int8_prefill` is False on transient-oracle layers for the
+reason traced above, that helper supplies the only False term in the wrapper's
+`use_aotriton` conjunction. Enabling the flag is consequently expected to admit
+AOTriton on slabs at or above 512 rows while sub-512 slabs keep the native
+kernel, including the tail slab of any prompt that is not a multiple of the
+slab width. That is the same mixed pattern the admitted direct arm already runs
+(`_chunk_ranges()` merges a tail only below `min_chunk_size=2`), so it is not a
+new hazard; it does mean the P1 trace check must expect two kernel identities
+and the P1 numerical packet must include a prompt whose final slab is under
+512 rows. Expected admission is a code reading, not a measurement.
+
 **Action:** re-qualify the existing AOTriton route first. A new paged/tiled
 attention kernel is a conditional fallback project, not the first assumption.
 Keep the registered strict arithmetic fallback and the default-off flag until
@@ -125,6 +164,23 @@ both the layer-outer hidden allocation and chunk-outer oracle allocation.
 The runtime fix is correct containment; its old lifetime estimate is not an
 accurate estimate of the realized packed route.
 
+**Slab count is a backend policy input, not a constant.**
+`_prefill_batch_native_impl()` sets `oracle_per_layer = len(chunks) > 1`, and
+the chunk count follows `_prefill_scratch_rows()` through
+`_gguf_dense_prefill_scratch_row_cap()`. For this geometry
+`GGUF_DENSE_PREFILL_SCRATCH_ROW_CAP_POLICIES` in
+[`kernels/hip_gfx1100/__init__.py`](../hipengine/kernels/hip_gfx1100/__init__.py)
+declares a single `max_rows_by_capacity` entry, so the cap resolves to 1,024
+rows at every capacity at or above 1,024. Every prompt longer than 1,024 rows
+is therefore multi-slab and takes the per-layer pair count, while sub-slab
+prompts already take the one-pair path on today's code. That gives P3 a cheap
+in-tree contrast for the plan/allocation binding check (compare realized
+oracle owners for a sub-1,024 prompt against a 2,048 one), and it makes the row
+cap an input the inspectable plan should name. Raising the cap is not a free
+lever: the same policy's comment records that 1,024-row chunks measured faster
+than 4,096-row chunks, and wider slabs enlarge the hidden and scratch owners
+that P3 is trying to bound.
+
 **Action:** make executor schedule, oracle count, address space, hidden
 lifetime, and resource claim agree in one inspectable plan. A layer-outer
 packed executor removes the per-layer pair count. A request-logical oracle
@@ -168,6 +224,17 @@ long prefill can delay other requests' decode, admission, cancellation, and
 control calls. A faster attention kernel reduces the stall but does not
 restore bounded service progress. The default service command timeout is
 30 seconds, which is relevant when a single prefill call outlasts it.
+
+**The blocking boundary is oracle lifetime, and it is narrower than it
+looks.** `prefill_batch_native()`'s `finally` releases every session's INT8
+prefill oracle buffers and clears `_int8_prefill_oracle_per_layer` on each call
+return. Within one call the oracles already survive all internal slabs, which
+is why the runner can chunk an 8,192-row prompt internally while
+`_prefill_native_chunk()` cannot chunk it across scheduler ticks. The
+checkpointable owner P6 needs is therefore an extension of an existing
+cross-slab lifetime rather than a new capability. It must still keep the
+release-on-failure guarantee the `finally` currently provides, which is
+precisely the part that makes the extension non-trivial.
 
 **Action:** define resumable prefill work with a real execution boundary.
 For a layer-outer route, checkpoint layer index, chunk offset, hidden ownership,
@@ -393,8 +460,14 @@ promote in its qualified scope and keep the strict fallback.
 If blocked: isolate the exact cause first. Consider the already registered
 global-score strict variant as a bounded diagnostic; measure occupancy and
 launch count. A tiled paged BF16 kernel using `KVLiveSpans` is the subsequent
-kernel project if arbitrary-page or arithmetic constraints prevent reuse.
-Do not confuse oracle-free INT8-read prefill with this BF16-oracle route.
+kernel project if arbitrary-page or arithmetic constraints prevent reuse. That
+project has an in-tree structural donor in
+`qwen35_paged_attn_prefill_int8_gqa_gate_bf16_out_wmma_spans` (BF16 WMMA score
+GEMM with per-tile exp and online max, 2026-09-09), whose score-GEMM and
+epilogue structure is the reusable part. Reuse the structure only: its K/V
+source, scale handling, and measured numerics belong to the oracle-free
+INT8-read route. Do not confuse oracle-free INT8-read prefill with this
+BF16-oracle route.
 
 ### P2 - Build a server-faithful allocation preflight
 
@@ -525,8 +598,10 @@ prefix, sampled, MTP, or mixed-serving modes.
 
 ## 6. Immediate assignment for the coder
 
-1. Continue the corrected-route AOTriton gate already in progress; record the
-   direct attention family accurately and verify page/address contracts.
+1. Continue the corrected-route AOTriton gate already in progress. The direct
+   attention family is now recorded in F1 (AOTriton compact varlen above the
+   512-row crossover); what remains is verifying the page/address contracts and
+   covering both kernel identities in the trace and numerical packets.
 2. In the next accounting unit, fix shared-owner workspace telemetry and add
    oracle/lease/hidden live-stage counters plus the server allocation probe.
 3. Implement layer-outer ownership and remove the unused full-context packed
