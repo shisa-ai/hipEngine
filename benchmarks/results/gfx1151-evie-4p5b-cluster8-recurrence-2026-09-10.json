@@ -1,0 +1,19 @@
+{
+  "model": "tencent/EVIE-4.5B",
+  "backend": "hip_gfx1151 (AMD Radeon 8060S, Strix Halo)",
+  "host": "zbook (Ryzen AI MAX+ PRO 395)",
+  "date": "2026-09-10",
+  "protocol": "scripts/evie_hip_bench.py --precision {fp16|fp32} --pages 8 --queries 8 (seed 20260909, best of 3; timing includes CPU preprocessing)",
+  "change": "GDN prefill recurrence k2 -> normalized_cluster8 (algebraically exact: the 1/sqrt(d_k) q scale is applied at the recurrence output instead of its input; prior 'max err 0.39 not numerically equivalent' finding retracted - it was a double-applied scale in the comparison harness)",
+  "classification": "T0/T2 (layout/reduction-order only; single-layer max diff vs k2 3.0e-08)",
+  "correctness_gate": {
+    "single_layer_vs_k2": {"max_abs": 2.98e-08},
+    "end_to_end_strict_vs_torch_oracle": {"doc_max_abs": 4.42e-05, "query_max_abs": 2.63e-06, "maxsim_delta": 1.05e-05, "bit_repeatable": true},
+    "tests": "tests/test_evie_gpu_runtime.py (strict atol 2e-4) + tests/test_evie_gpu_runtime_fp16.py (manifest) all green"
+  },
+  "results": {
+    "fp16_production": {"doc_ms": 1666.6, "query_ms": 495.6, "maxsim_ms": 0.4, "total_ms": 2162.6, "prev_total_ms": 2460, "delta_pct": -12.1},
+    "fp32_strict": {"doc_ms": 6537.8, "query_ms": 1178.2, "maxsim_ms": 0.5, "total_ms": 7716.5, "prev_total_ms": 14692, "delta_pct": -47.5}
+  },
+  "rollback": "HIPENGINE_EVIE_GDN_RECURRENCE=k2"
+}
