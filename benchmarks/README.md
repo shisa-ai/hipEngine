@@ -269,9 +269,11 @@ packet gates; duplicate packed-KV reservation removed):
   one shared oracle pair, 0.0625-0.59 GiB from 16K-152K declared)
   ([probe](results/2026-09-10-w7900-server-alloc-probe-16k-p4-lease-removed.json));
   route transients at 32K declared fell ~6.4 GiB -> ~1.6 GiB (-75%).
-- **Capacity**: fresh C1 ceiling 155,648+ declared contexts (2.87x the
-  pre-repair 54,272; exceeds the plain direct-engine INT8 ceiling of
-  131,072).
+- **Capacity**: tier-1 allocation-validity bracket passes 65,536-155,648
+  DECLARED contexts (one 2,048-row request per point, not full-length
+  completions; 2.87x the pre-repair 54,272). The 131,072 direct-engine
+  figure is a different card's route - no cross-card comparison is
+  claimed.
 - **Trace identity**: AOTriton `attn_fwd` for >=512-row rounds, native paged
   prefill for <512-row tails - two kernel identities, as predicted
   ([trace](results/2026-09-10-w7900-layer-outer-trace-identity-1500.csv.gz)).
