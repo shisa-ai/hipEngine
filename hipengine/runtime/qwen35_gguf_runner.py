@@ -1212,11 +1212,24 @@ _gguf_packed_layer_outer_enabled_cache: bool | None = None
 
 
 def _gguf_packed_layer_outer_enabled() -> bool:
+    """Default ON since 2026-09-10 (all promotion gates passed).
+
+    Gates: bitwise parity vs the scalar bulk control at 2,048-row (two full
+    rounds) and 1,500-row (476-row tail round) prompts; wall A/B at
+    1K/2K/4K/8K within 2% of scalar; the server allocation probe (one shared
+    oracle owner, -94% transient); decode handoff with clean teardown; and
+    the rocprofv3 trace identity (AOTriton attn_fwd for >=512-row rounds,
+    native qwen35_paged_full_attn_prefill for <512-row tails - two kernel
+    identities, exactly as the roadmap's F1 correction predicted). Set
+    HIPENGINE_GGUF_PACKED_LAYER_OUTER=0 to roll back to the corrected
+    chunk-outer executor.
+    """
+
     global _gguf_packed_layer_outer_enabled_cache
     if _gguf_packed_layer_outer_enabled_cache is None:
         _gguf_packed_layer_outer_enabled_cache = (
-            os.environ.get(_GGUF_PACKED_LAYER_OUTER_ENV, "0").strip().lower()
-            in {"1", "true", "yes", "on"}
+            os.environ.get(_GGUF_PACKED_LAYER_OUTER_ENV, "1").strip().lower()
+            not in {"", "0", "false", "off", "no"}
         )
     return _gguf_packed_layer_outer_enabled_cache
 
