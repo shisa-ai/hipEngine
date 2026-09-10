@@ -46,5 +46,18 @@
   "status": "OPEN - next wrapper-host target",
   "measurement": "Qwen4ExpPLEStagingRing.stage costs 19.61 ms/step un-instrumented (np.memmap __getitem__ fancy-index gather, confirmed by cProfile and direct timing)",
   "note": "largest single host-side item remaining; the staged row is 10KB - the mechanism (likely memmap fancy-index materializing or per-head Python lookups) needs investigation; potential multi-ms/token"
+ },
+ "ple_page_cache_promotion": {
+  "finding": "PLE staging gather (16 rows/step via np.memmap fancy index) costs 1.4-27.7 ms/step page-fault-bound on cold cache (~10 major faults/step, btrfs-compressed NVMe, ~2ms/fault); case-dependent with code-like content worst",
+  "mechanism_tests": {
+   "posix_fadvise WILLNEED": "INEFFECTIVE (queued, never materialized on btrfs/compressed; 75s settle no change)",
+   "madvise WILLNEED": "INEFFECTIVE (same)",
+   "madvise POPULATE_READ": "EINVAL on this kernel (7.1.6)",
+   "pread sweep": "PARTIAL (28.8GB in 14.4s at 2.0GB/s; stage 28.2 -> 7.8 ms/step, residual 3.3 faults/step)",
+   "mmap-touch sweep": "COMPLETE (15.1s one-time; stage 28.2 -> 0.11 ms/step, wall 83 -> 54.4 ms/step on code-p512)"
+  },
+  "promotion": "warm_page_cache() = mmap-touch sweep at runner init (chunked uint64 sum through the byte view); default ON via HIPENGINE_QWEN4_EXP_PLE_WARM, opt-out =0",
+  "gates": "bit-exact digest ea0412231532bc7b both arms (cold-cache A/B with POSIX_FADV_DONTNEED reset); TG median 57.14 (off) vs 52.33 (on) ms/token = -4.8 ms (~8.4%), mean 61.86 -> 52.68",
+  "cost": "one-time ~15 s sequential pass at generator construction (28.8 GB at ~1.9 GB/s); long-lived serving amortizes instantly"
  }
 }
