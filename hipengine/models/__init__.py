@@ -62,6 +62,16 @@ from hipengine.models.timesfm import (
     parse_timesfm_model_spec,
     validate_timesfm_weight_index,
 )
+from hipengine.models.timesfm3 import (
+    PINNED_TIMESFM3_MODEL_ID,
+    TIMESFM3,
+    TIMESFM3_ARCHITECTURE,
+    TimesFM3Model,
+    TimesFM3ModelSpec,
+    expected_timesfm3_weight_shapes,
+    parse_timesfm3_model_spec,
+    validate_timesfm3_weight_index,
+)
 
 __all__ = [
     "LAGUNA_GGUF",
@@ -81,6 +91,8 @@ __all__ = [
     "parse_evie_model_spec",
     "validate_evie_weight_index",
     "TIMESFM",
+    "TIMESFM3",
+    "TIMESFM3_ARCHITECTURE",
     "TIMESFM_ARCHITECTURE",
     "DuplicateModelError",
     "KVCapabilityEvidence",
@@ -99,10 +111,15 @@ __all__ = [
     "Qwen35MoeGGUFModel",
     "Qwen35ParoMoeModel",
     "ToyOneLayerModel",
+    "PINNED_TIMESFM3_MODEL_ID",
     "TimesFM25Model",
+    "TimesFM3Model",
+    "TimesFM3ModelSpec",
     "TimesFMModelSpec",
     "model_artifact_identity",
     "parse_maple_model_spec",
+    "expected_timesfm3_weight_shapes",
+    "parse_timesfm3_model_spec",
     "parse_timesfm_model_spec",
     "register_model",
     "register_qwen35_dms_decision_capability",
@@ -110,5 +127,6 @@ __all__ = [
     "resolve_kv_capability",
     "resolve_model",
     "resolve_qwen35_dms_decision_capability",
+    "validate_timesfm3_weight_index",
     "validate_timesfm_weight_index",
 ]
