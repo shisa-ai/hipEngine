@@ -788,6 +788,17 @@ Fallback requirements:
 
 ## Source-lineage audit
 
+R7 wrapper-host promote (2026-09-10): `HIPENGINE_QWEN4_EXP_BATCHED_POSITION`
+default ON replaces 24 per-layer 8B blocking `set_position` H2D copies per
+decode step (12 QSA layers x position+context, unique states) with one shared
+interleaved [position,context] int64 region and a single 192B H2D via
+`position_prepared`. Bit-exact token streams (digest ea0412231532bc7b, all
+fixture cases, 3 reps/arm), TG median -0.77ms/token (~1.3%); copy surface
+27->4 per step. Opt-out via `=0`. Evidence: `2026-09-10-r7-wrapper-host-screen.json`,
+retention v7 `2026-09-10-r7-baseline-retention-v7.json` (TG +1.6/+1.4/+3.6%
+at p512/p1024/p4096; packet PP deltas environmental, direct interleaved PP A/B
+within +/-0.85%). Promote commit b7e9f19b9.
+
 H256 QSA exposes kernel-only `strict_h256_head_quad_rows_spans`,
 four-head specialization of exact K/V-sharing body,page256 and GQA
 divisible by4. Synthetic selected2051 attention512/1024 ratios
