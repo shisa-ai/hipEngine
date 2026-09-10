@@ -1,0 +1,21 @@
+{
+ "schema": 1,
+ "kind": "r7_wrapper_host_screen",
+ "date": "2026-09-10",
+ "scope": "decode wrapper host attribution (the R10/R7-endorsed direction: kernel efficiency or wrapper host work - NOT launch restructuring)",
+ "method": "rocprofv3 hip-api trace around 64 decode steps of code-p512 (runner-direct, serving kwargs capture_logits=False + token_id_resident=True); rocprof inflates walls ~1.5x (82ms vs the R6-measured 54.6ms) - counts are exact, durations inflated",
+ "per_step_api_surface": {
+  "kernel_launches": 447,
+  "graph_launches": 20,
+  "blocking_hipMemcpy": 10.6,
+  "async_hipMemcpy": 4.9,
+  "deviceSynchronize": 0.4
+ },
+ "findings": [
+  "The serving path already uses the device-argmax knob (capture_logits=False via _qwen4_exp_compact_step_kwargs): no full-vocab logits D2H per step in serving TG.",
+  "Blocking hipMemcpy durations (520us avg) are stream-wait dominated: they queue behind the step's device work, so they measure device time, not host cost. The 10-11 per-step copies are small state mirrors (positions/PLE/token), not the logits.",
+  "447 individual launches + 20 graph launches per step carry the 31-49ms device work (R6/R2e); R10's negative on launch restructuring stands - the launches overlap device execution.",
+  "Genuine host levers: consolidate the ~10 small blocking state readbacks per step into fewer async/pinned copies or resident mirrors (est. 0.5-1 ms/token), and the Python wrapper bookkeeping between calls (the remainder of the R6 5.3ms host bucket)."
+ ],
+ "queue_item_6_handoff": "the wrapper trace confirms the direction is copy/mirror consolidation + Python bookkeeping, not launch restructuring and not a logits-copy fix (already optimized)."
+}
