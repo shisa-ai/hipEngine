@@ -73,13 +73,14 @@ def test_both_hip_backends_declare_the_policy():
 
 
 def _dispatch(quant, *, rows, in_features, out_features, variant="prefill_bf16_bf16_out",
-              backend="hip_gfx1151"):
+              backend="hip_gfx1151", slot_path=None):
     from hipengine.runtime.gguf_linear import (
         GGUFLinearDispatch, _iq_dense_prefill_dispatch)
     load_backend_kernel_package(backend)
     base = GGUFLinearDispatch(KernelKey(backend, "linear", quant, variant), "raw")
     return _iq_dense_prefill_dispatch(
-        base, rows=rows, in_features=in_features, out_features=out_features)
+        base, rows=rows, in_features=in_features, out_features=out_features,
+        slot_path=slot_path)
 
 
 def test_no_route_engages_without_an_execution_owner():
@@ -249,3 +250,54 @@ def test_launch_without_a_session_raises_rather_than_reading_stale_state():
     with pytest.raises(RuntimeError, match="workspace session"):
         iq_mmq.gguf_iq4_xs_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out(
             1, 2, 3, 512, 5120, 17408)
+
+
+# ---------------------------------------------------------------- strict slots
+
+def test_strict_slots_pin_the_strict_owner_per_slot():
+    """A session may pin named slots to the strict per-row GEMV.
+
+    The tokenized category gate measured the early-layer Q3_K tensor
+    (layers.0.ffn_up on UD-Q4_K_M) amplifying the W4A16 route's 1-ULP
+    accumulation-order class past the max-row KL ceiling; the per-stamp
+    table pins that slot only, so the route survives on every other slot.
+    """
+    with iq_mmq.iq_dense_mmq_session(
+        True, strict_slots=("layers.0.ffn_up",)
+    ):
+        pinned = _dispatch(
+            "gguf_q3_k", rows=512, in_features=5120, out_features=17408,
+            backend="hip_gfx1100", slot_path="layers.0.ffn_up",
+        )
+        routed = _dispatch(
+            "gguf_q3_k", rows=512, in_features=5120, out_features=17408,
+            backend="hip_gfx1100", slot_path="layers.13.ffn_gate",
+        )
+    assert pinned.key.variant == "prefill_bf16_bf16_out", "pinned slot stays strict"
+    policy = backend_package_capability(
+        "hip_gfx1100", "GGUF_IQ_DENSE_PREFILL_POLICY", {})
+    assert routed.key.variant == policy["gguf_q3_k"]["variant"]
+
+
+def test_strict_slots_never_apply_without_a_session():
+    """Slot pinning is a session-bound admission, like the route itself."""
+
+    out = _dispatch(
+        "gguf_q3_k", rows=512, in_features=5120, out_features=17408,
+        backend="hip_gfx1100", slot_path="layers.0.ffn_up",
+    )
+    assert out.key.variant == "prefill_bf16_bf16_out"
+
+
+def test_strict_slot_table_is_stamp_keyed():
+    """The backend table keys on (file type, artifact preset key).
+
+    A pinned qualified plain control (preset None) must never match a UD
+    row: the plain key falls back to the generic identity and misses.
+    """
+
+    table = backend_package_capability(
+        "hip_gfx1100", "GGUF_IQ_DENSE_PREFILL_STRICT_SLOTS", {})
+    assert ("MOSTLY_Q4_K_M", "gguf_ud_q4_k_m") in table
+    for file_type, preset in table:
+        assert preset is not None, "plain controls cannot be pinned by a UD row"

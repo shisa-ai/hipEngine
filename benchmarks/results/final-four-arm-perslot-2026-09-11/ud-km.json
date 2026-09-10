@@ -1,11 +1,11 @@
 {
   "schema": 1,
-  "status": "superseded_by_perslot_four_arm",
-  "performance_claim": false,
+  "status": "qualified_perf_and_category_gate_perslot",
+  "performance_claim": true,
   "mode": "qwen35_readme_persistent_resident_sweep",
   "engine": "gguf",
-  "model": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
-  "quant": "gguf_q4_k_s",
+  "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+  "quant": "gguf_ud_q4_k_m",
   "workloads": [
     "512/128"
   ],
@@ -14,19 +14,19 @@
   "warmup_runs": 1,
   "measured_runs": 3,
   "max_sequence_length": 642,
-  "persistent_session_load_seconds": 73.0878251362592,
+  "persistent_session_load_seconds": 55.104558013379574,
   "persistent_session_memory": {
     "summary": {
-      "tracked_peak_allocated_bytes": 17386398084,
-      "tracked_peak_allocated_gib": 16.192345026880503,
-      "tracked_current_allocated_bytes_before_close": 17386398084,
-      "tracked_current_allocated_gib_before_close": 16.192345026880503,
+      "tracked_peak_allocated_bytes": 17145921924,
+      "tracked_peak_allocated_gib": 15.968384150415659,
+      "tracked_current_allocated_bytes_before_close": 17145921924,
+      "tracked_current_allocated_gib_before_close": 15.968384150415659,
       "tracked_current_allocated_bytes_after_close": 0,
       "tracked_current_allocated_gib_after_close": 0.0,
-      "owned_session_peak_bytes": 17386398084,
-      "owned_session_peak_gib": 16.192345026880503,
-      "hip_used_peak_sampled_bytes": 18005622784,
-      "hip_used_peak_sampled_gib": 16.76904296875,
+      "owned_session_peak_bytes": 17145921924,
+      "owned_session_peak_gib": 15.968384150415659,
+      "hip_used_peak_sampled_bytes": 17709924352,
+      "hip_used_peak_sampled_gib": 16.49365234375,
       "notes": [
         "tracked_* covers hipENGINE allocations through hipengine.core.memory.malloc and keeps a high-water mark.",
         "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
@@ -57,58 +57,70 @@
       "after_load": {
         "label": "after_load",
         "tracked": {
-          "current_allocated_bytes": 17386398084,
-          "peak_allocated_bytes": 17386398084,
-          "total_allocated_bytes": 17386398084,
+          "current_allocated_bytes": 17145921924,
+          "peak_allocated_bytes": 17145921924,
+          "total_allocated_bytes": 17145921924,
           "total_freed_bytes": 0,
-          "active_allocations": 1178,
-          "peak_allocations": 1178
+          "active_allocations": 1163,
+          "peak_allocations": 1163
         },
         "hip": {
           "available": true,
-          "free_bytes": 7784628224,
+          "free_bytes": 8086618112,
           "total_bytes": 25753026560,
-          "used_bytes": 17968398336,
-          "free_gib": 7.25,
+          "used_bytes": 17666408448,
+          "free_gib": 7.53125,
           "total_gib": 23.984375,
-          "used_gib": 16.734375
+          "used_gib": 16.453125
         },
-        "owned_session_bytes": 17386398084,
-        "owned_session_gib": 16.192345026880503,
+        "owned_session_bytes": 17145921924,
+        "owned_session_gib": 15.968384150415659,
         "owned_session_breakdown": {
-          "total_bytes": 17386398084,
-          "total_gib": 16.192345026880503,
-          "logical_requested_bytes": 17386398084,
+          "total_bytes": 17145921924,
+          "total_gib": 15.968384150415659,
+          "logical_requested_bytes": 17145921924,
           "allocation_arena_padding_bytes": 0,
           "families": {
             "weights": {
-              "total_bytes": 16548202496,
-              "total_gib": 15.411714553833008,
-              "allocation_count": 898,
-              "physical_owner_count": 898,
-              "physical_owner_bytes": 16548202496,
+              "total_bytes": 16307726336,
+              "total_gib": 15.187753677368164,
+              "allocation_count": 883,
+              "physical_owner_count": 883,
+              "physical_owner_bytes": 16307726336,
               "alignment_padding_bytes": 0,
               "by_quant_key_bytes": {
-                "f32": 104953856,
-                "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                "gguf_q4_k_t16_v1": 12684902400,
-                "gguf_q5_k_t16_v1": 2715402240
+                "f32": 10582016,
+                "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                "gguf_iq4_xs": 4760043520,
+                "gguf_q3_k": 268083200,
+                "gguf_q5_k_t16_v1": 5657149440,
+                "gguf_q8_0_t16_v1": 69632000,
+                "gguf_iq4_nl": 330301440,
+                "gguf_q4_k_t16_v1": 3585720320,
+                "gguf_iq3_s": 153190400
               },
               "by_layout_bytes": {
-                "dense_f32": 104953856,
-                "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                "gguf_q4_k_t16_v1": 12684902400,
-                "gguf_q5_k_t16_v1": 2715402240
+                "dense_f32": 10582016,
+                "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                "raw_gguf": 5511618560,
+                "gguf_q5_k_t16_v1": 5657149440,
+                "gguf_q8_0_t16_v1": 69632000,
+                "gguf_q4_k_t16_v1": 3585720320
               },
               "by_quant_layout_bytes": {
-                "f32:dense_f32": 104953856,
-                "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 12684902400,
-                "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 2715402240
+                "f32:dense_f32": 10582016,
+                "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                "gguf_iq4_xs:raw_gguf": 4760043520,
+                "gguf_q3_k:raw_gguf": 268083200,
+                "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 5657149440,
+                "gguf_q8_0_t16_v1:gguf_q8_0_t16_v1": 69632000,
+                "gguf_iq4_nl:raw_gguf": 330301440,
+                "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 3585720320,
+                "gguf_iq3_s:raw_gguf": 153190400
               },
               "by_allocation_name_bytes": {
-                "raw": 1143044096,
-                "tiles": 15405158400
+                "raw": 6235887616,
+                "tiles": 10071838720
               }
             },
             "decode_scratch": {
@@ -342,58 +354,70 @@
       "before_close": {
         "label": "before_close",
         "tracked": {
-          "current_allocated_bytes": 17386398084,
-          "peak_allocated_bytes": 17386398084,
-          "total_allocated_bytes": 17386398084,
+          "current_allocated_bytes": 17145921924,
+          "peak_allocated_bytes": 17145921924,
+          "total_allocated_bytes": 17145921924,
           "total_freed_bytes": 0,
-          "active_allocations": 1178,
-          "peak_allocations": 1178
+          "active_allocations": 1163,
+          "peak_allocations": 1163
         },
         "hip": {
           "available": true,
-          "free_bytes": 7747403776,
+          "free_bytes": 8043102208,
           "total_bytes": 25753026560,
-          "used_bytes": 18005622784,
-          "free_gib": 7.21533203125,
+          "used_bytes": 17709924352,
+          "free_gib": 7.49072265625,
           "total_gib": 23.984375,
-          "used_gib": 16.76904296875
+          "used_gib": 16.49365234375
         },
-        "owned_session_bytes": 17386398084,
-        "owned_session_gib": 16.192345026880503,
+        "owned_session_bytes": 17145921924,
+        "owned_session_gib": 15.968384150415659,
         "owned_session_breakdown": {
-          "total_bytes": 17386398084,
-          "total_gib": 16.192345026880503,
-          "logical_requested_bytes": 17386398084,
+          "total_bytes": 17145921924,
+          "total_gib": 15.968384150415659,
+          "logical_requested_bytes": 17145921924,
           "allocation_arena_padding_bytes": 0,
           "families": {
             "weights": {
-              "total_bytes": 16548202496,
-              "total_gib": 15.411714553833008,
-              "allocation_count": 898,
-              "physical_owner_count": 898,
-              "physical_owner_bytes": 16548202496,
+              "total_bytes": 16307726336,
+              "total_gib": 15.187753677368164,
+              "allocation_count": 883,
+              "physical_owner_count": 883,
+              "physical_owner_bytes": 16307726336,
               "alignment_padding_bytes": 0,
               "by_quant_key_bytes": {
-                "f32": 104953856,
-                "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                "gguf_q4_k_t16_v1": 12684902400,
-                "gguf_q5_k_t16_v1": 2715402240
+                "f32": 10582016,
+                "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                "gguf_iq4_xs": 4760043520,
+                "gguf_q3_k": 268083200,
+                "gguf_q5_k_t16_v1": 5657149440,
+                "gguf_q8_0_t16_v1": 69632000,
+                "gguf_iq4_nl": 330301440,
+                "gguf_q4_k_t16_v1": 3585720320,
+                "gguf_iq3_s": 153190400
               },
               "by_layout_bytes": {
-                "dense_f32": 104953856,
-                "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                "gguf_q4_k_t16_v1": 12684902400,
-                "gguf_q5_k_t16_v1": 2715402240
+                "dense_f32": 10582016,
+                "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                "raw_gguf": 5511618560,
+                "gguf_q5_k_t16_v1": 5657149440,
+                "gguf_q8_0_t16_v1": 69632000,
+                "gguf_q4_k_t16_v1": 3585720320
               },
               "by_quant_layout_bytes": {
-                "f32:dense_f32": 104953856,
-                "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 12684902400,
-                "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 2715402240
+                "f32:dense_f32": 10582016,
+                "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                "gguf_iq4_xs:raw_gguf": 4760043520,
+                "gguf_q3_k:raw_gguf": 268083200,
+                "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 5657149440,
+                "gguf_q8_0_t16_v1:gguf_q8_0_t16_v1": 69632000,
+                "gguf_iq4_nl:raw_gguf": 330301440,
+                "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 3585720320,
+                "gguf_iq3_s:raw_gguf": 153190400
               },
               "by_allocation_name_bytes": {
-                "raw": 1143044096,
-                "tiles": 15405158400
+                "raw": 6235887616,
+                "tiles": 10071838720
               }
             },
             "decode_scratch": {
@@ -628,20 +652,20 @@
         "label": "after_close",
         "tracked": {
           "current_allocated_bytes": 0,
-          "peak_allocated_bytes": 17386398084,
-          "total_allocated_bytes": 17386398084,
-          "total_freed_bytes": 17386398084,
+          "peak_allocated_bytes": 17145921924,
+          "total_allocated_bytes": 17145921924,
+          "total_freed_bytes": 17145921924,
           "active_allocations": 0,
-          "peak_allocations": 1178
+          "peak_allocations": 1163
         },
         "hip": {
           "available": true,
-          "free_bytes": 25663373312,
+          "free_bytes": 25657081856,
           "total_bytes": 25753026560,
-          "used_bytes": 89653248,
-          "free_gib": 23.90087890625,
+          "used_bytes": 95944704,
+          "free_gib": 23.89501953125,
           "total_gib": 23.984375,
-          "used_gib": 0.08349609375
+          "used_gib": 0.08935546875
         }
       }
     }
@@ -651,10 +675,10 @@
   "provenance": {
     "kind": "hipengine_artifact_provenance",
     "schema_version": 2,
-    "collected_at": "2026-09-10T05:59:45.941673+00:00",
+    "collected_at": "2026-09-10T15:57:30.143789+00:00",
     "host_name": "epyc",
     "repo_root": "/home/lhl/hipEngine-ud",
-    "hipengine_commit": "ed8188871c89eb1d082467642644c0620b4122be",
+    "hipengine_commit": "8b103d954c520329cfe70d47ad22fabb4b5b38fe",
     "git_branch": "ud-quants",
     "staged_dirty": false,
     "unstaged_dirty": true,
@@ -665,51 +689,39 @@
     "resolved_backend": "hip_gfx1100",
     "target_arch": "gfx1100",
     "device_name": "AMD Radeon RX 7900 XTX",
-    "model_path": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "model_path": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
     "model_revision": null,
     "model_fingerprint": {
       "algorithm": "sha256-sampled-v1",
-      "value": "029f5dcc4cb3f6ed46cf6e58fc86f46956739deb3732b352fdf73aaf428970aa",
-      "size_bytes": 16121359328,
+      "value": "f343914a95e38d8f9f56886d10de4248738ad94aabb0fa0af8fd1b00c4e82f97",
+      "size_bytes": 16464440224,
       "sampled_bytes": 3145728,
       "sample_offsets": [
         0,
-        8060155376,
-        16120310752
+        8231695824,
+        16463391648
       ],
       "exists": true,
       "path_type": "file"
     },
-    "quant": "gguf_q4_k_s",
+    "quant": "gguf_ud_q4_k_m",
     "kv_dtype": "bf16",
     "command": [
       "scripts/qwen35_readme_sweep.py",
       "--engine",
       "gguf",
       "--model",
-      "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+      "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
       "--quant",
-      "gguf_q4_k_s",
-      "--backend",
-      "hip_gfx1100",
+      "gguf_ud_q4_k_m",
       "--workloads",
       "512/128",
-      "--warmup-runs",
-      "1",
-      "--measured-runs",
-      "3",
-      "--warmup-decode-tokens",
-      "1",
       "--force-bulk-prefill",
-      "--bulk-prefill-attention-mode",
-      "bulk",
-      "--use-wmma-prefill",
-      "--use-gemv-decode",
       "--graph-replay-decode",
       "--compiler-version-file",
       "/tmp/ud-hipcc-version.txt",
       "--json",
-      "/tmp/ud-final5-plain_ks.json"
+      "/tmp/ud-final14-graph.json"
     ],
     "environment": {
       "HIPENGINE_BACKEND": null,
@@ -737,34 +749,34 @@
     "512/128": {
       "prefill_tok_s": {
         "count": 3,
-        "median": 949.8290417167898,
-        "min": 949.277751776831,
-        "max": 950.9644873691984,
-        "mean": 950.0237602876064,
-        "stdev": 0.8600614693179913
+        "median": 904.0983420593811,
+        "min": 903.269400715737,
+        "max": 912.588610484053,
+        "mean": 906.652117753057,
+        "stdev": 5.157833401407656
       },
       "decode_tok_s": {
         "count": 3,
-        "median": 35.0611309457472,
-        "min": 35.039987328440624,
-        "max": 35.06834606104214,
-        "mean": 35.05648811174332,
-        "stdev": 0.014738431374531773
+        "median": 26.19700730734029,
+        "min": 26.173866526104316,
+        "max": 26.213428610996687,
+        "mean": 26.19476748148043,
+        "stdev": 0.01987592149233974
       },
       "tracked_peak_allocated_gib": {
         "count": 3,
-        "median": 16.192345026880503,
-        "min": 16.192345026880503,
-        "max": 16.192345026880503,
-        "mean": 16.192345026880503,
+        "median": 15.968384150415659,
+        "min": 15.968384150415659,
+        "max": 15.968384150415659,
+        "mean": 15.968384150415659,
         "stdev": 0.0
       },
       "hip_used_peak_sampled_gib": {
         "count": 3,
-        "median": 16.76904296875,
-        "min": 16.76904296875,
-        "max": 16.76904296875,
-        "mean": 16.76904296875,
+        "median": 16.49365234375,
+        "min": 16.49365234375,
+        "max": 16.49365234375,
+        "mean": 16.49365234375,
         "stdev": 0.0
       },
       "final_token_ids": [
@@ -783,8 +795,8 @@
         "persistent_session": true,
         "resolved_backend": "hip_gfx1100",
         "target_arch": "gfx1100",
-        "model": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
-        "quant": "gguf_q4_k_s",
+        "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+        "quant": "gguf_ud_q4_k_m",
         "prompt_length": 512,
         "decode_tokens": 128,
         "warmup_decode_tokens": 1,
@@ -852,7 +864,7 @@
         "host_token_embedding_mapped": {
           "enabled": true,
           "nbytes": 715161600,
-          "device_ptr": 139615112670176,
+          "device_ptr": 140633688910752,
           "owns_buffer": false,
           "storage": "hip_registered_gguf_mmap"
         },
@@ -864,10 +876,10 @@
           "owner_bytes": 0,
           "selected_allocation_count": 0,
           "selected_requested_bytes": 0,
-          "dedicated_allocation_count": 898,
-          "dedicated_requested_bytes": 16548202496,
-          "dedicated_2m_aligned_count": 501,
-          "physical_owner_count": 898
+          "dedicated_allocation_count": 883,
+          "dedicated_requested_bytes": 16307726336,
+          "dedicated_2m_aligned_count": 452,
+          "physical_owner_count": 883
         },
         "decode_graph_disabled_reason": null,
         "gpu_stage_timings_ms": {
@@ -878,23 +890,23 @@
           "decode_tokens": 128
         },
         "timings": {
-          "load_seconds": 73.0878251362592,
+          "load_seconds": 55.104558013379574,
           "load_seconds_is_shared_session": true,
-          "prefill_seconds": 0.5639353608712554,
-          "warmup_decode_seconds": 0.045038992539048195,
+          "prefill_seconds": 0.591272390447557,
+          "warmup_decode_seconds": 0.09659442864358425,
           "graph_capture_seconds": 0.0,
-          "decode_seconds_excluding_graph_capture": 3.7412847904488444,
-          "wall_seconds_excluding_load": 4.350259143859148
+          "decode_seconds_excluding_graph_capture": 12.216965444386005,
+          "wall_seconds_excluding_load": 12.904832263477147
         },
         "throughput": {
-          "prefill_tok_s": 907.9054720189606,
-          "decode_tok_s": 34.212845899027045,
-          "decode_ms_per_token": 29.228787425381597
+          "prefill_tok_s": 865.9291525728901,
+          "decode_tok_s": 10.477233530919017,
+          "decode_ms_per_token": 95.44504253426567
         },
         "correctness_sanity": {
           "finite_final_logits": true,
           "final_token_id": 9707,
-          "final_logit": 25.301164627075195,
+          "final_logit": 25.19176483154297,
           "generated_preview_token_ids": [
             9707,
             9707,
@@ -934,16 +946,16 @@
           "generated_count_including_prefill_sample_and_warmup": 130
         },
         "memory": {
-          "tracked_peak_allocated_bytes": 17386398084,
-          "tracked_peak_allocated_gib": 16.192345026880503,
-          "tracked_current_allocated_bytes_before_close": 17386398084,
-          "tracked_current_allocated_gib_before_close": 16.192345026880503,
+          "tracked_peak_allocated_bytes": 17145921924,
+          "tracked_peak_allocated_gib": 15.968384150415659,
+          "tracked_current_allocated_bytes_before_close": 17145921924,
+          "tracked_current_allocated_gib_before_close": 15.968384150415659,
           "tracked_current_allocated_bytes_after_close": 0,
           "tracked_current_allocated_gib_after_close": 0.0,
-          "owned_session_peak_bytes": 17386398084,
-          "owned_session_peak_gib": 16.192345026880503,
-          "hip_used_peak_sampled_bytes": 18003525632,
-          "hip_used_peak_sampled_gib": 16.76708984375,
+          "owned_session_peak_bytes": 17145921924,
+          "owned_session_peak_gib": 15.968384150415659,
+          "hip_used_peak_sampled_bytes": 17707827200,
+          "hip_used_peak_sampled_gib": 16.49169921875,
           "notes": [
             "tracked_* covers hipENGINE allocations through hipengine.core.memory.malloc and keeps a high-water mark.",
             "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
@@ -954,58 +966,70 @@
           "after_load": {
             "label": "after_load",
             "tracked": {
-              "current_allocated_bytes": 17386398084,
-              "peak_allocated_bytes": 17386398084,
-              "total_allocated_bytes": 17386398084,
+              "current_allocated_bytes": 17145921924,
+              "peak_allocated_bytes": 17145921924,
+              "total_allocated_bytes": 17145921924,
               "total_freed_bytes": 0,
-              "active_allocations": 1178,
-              "peak_allocations": 1178
+              "active_allocations": 1163,
+              "peak_allocations": 1163
             },
             "hip": {
               "available": true,
-              "free_bytes": 7784628224,
+              "free_bytes": 8086618112,
               "total_bytes": 25753026560,
-              "used_bytes": 17968398336,
-              "free_gib": 7.25,
+              "used_bytes": 17666408448,
+              "free_gib": 7.53125,
               "total_gib": 23.984375,
-              "used_gib": 16.734375
+              "used_gib": 16.453125
             },
-            "owned_session_bytes": 17386398084,
-            "owned_session_gib": 16.192345026880503,
+            "owned_session_bytes": 17145921924,
+            "owned_session_gib": 15.968384150415659,
             "owned_session_breakdown": {
-              "total_bytes": 17386398084,
-              "total_gib": 16.192345026880503,
-              "logical_requested_bytes": 17386398084,
+              "total_bytes": 17145921924,
+              "total_gib": 15.968384150415659,
+              "logical_requested_bytes": 17145921924,
               "allocation_arena_padding_bytes": 0,
               "families": {
                 "weights": {
-                  "total_bytes": 16548202496,
-                  "total_gib": 15.411714553833008,
-                  "allocation_count": 898,
-                  "physical_owner_count": 898,
-                  "physical_owner_bytes": 16548202496,
+                  "total_bytes": 16307726336,
+                  "total_gib": 15.187753677368164,
+                  "allocation_count": 883,
+                  "physical_owner_count": 883,
+                  "physical_owner_bytes": 16307726336,
                   "alignment_padding_bytes": 0,
                   "by_quant_key_bytes": {
-                    "f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs": 4760043520,
+                    "gguf_q3_k": 268083200,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl": 330301440,
+                    "gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s": 153190400
                   },
                   "by_layout_bytes": {
-                    "dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "raw_gguf": 5511618560,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_q4_k_t16_v1": 3585720320
                   },
                   "by_quant_layout_bytes": {
-                    "f32:dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 2715402240
+                    "f32:dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs:raw_gguf": 4760043520,
+                    "gguf_q3_k:raw_gguf": 268083200,
+                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1:gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl:raw_gguf": 330301440,
+                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s:raw_gguf": 153190400
                   },
                   "by_allocation_name_bytes": {
-                    "raw": 1143044096,
-                    "tiles": 15405158400
+                    "raw": 6235887616,
+                    "tiles": 10071838720
                   }
                 },
                 "decode_scratch": {
@@ -1239,58 +1263,70 @@
           "before_reset": {
             "label": "before_reset",
             "tracked": {
-              "current_allocated_bytes": 17386398084,
-              "peak_allocated_bytes": 17386398084,
-              "total_allocated_bytes": 17386398084,
+              "current_allocated_bytes": 17145921924,
+              "peak_allocated_bytes": 17145921924,
+              "total_allocated_bytes": 17145921924,
               "total_freed_bytes": 0,
-              "active_allocations": 1178,
-              "peak_allocations": 1178
+              "active_allocations": 1163,
+              "peak_allocations": 1163
             },
             "hip": {
               "available": true,
-              "free_bytes": 7784628224,
+              "free_bytes": 8086618112,
               "total_bytes": 25753026560,
-              "used_bytes": 17968398336,
-              "free_gib": 7.25,
+              "used_bytes": 17666408448,
+              "free_gib": 7.53125,
               "total_gib": 23.984375,
-              "used_gib": 16.734375
+              "used_gib": 16.453125
             },
-            "owned_session_bytes": 17386398084,
-            "owned_session_gib": 16.192345026880503,
+            "owned_session_bytes": 17145921924,
+            "owned_session_gib": 15.968384150415659,
             "owned_session_breakdown": {
-              "total_bytes": 17386398084,
-              "total_gib": 16.192345026880503,
-              "logical_requested_bytes": 17386398084,
+              "total_bytes": 17145921924,
+              "total_gib": 15.968384150415659,
+              "logical_requested_bytes": 17145921924,
               "allocation_arena_padding_bytes": 0,
               "families": {
                 "weights": {
-                  "total_bytes": 16548202496,
-                  "total_gib": 15.411714553833008,
-                  "allocation_count": 898,
-                  "physical_owner_count": 898,
-                  "physical_owner_bytes": 16548202496,
+                  "total_bytes": 16307726336,
+                  "total_gib": 15.187753677368164,
+                  "allocation_count": 883,
+                  "physical_owner_count": 883,
+                  "physical_owner_bytes": 16307726336,
                   "alignment_padding_bytes": 0,
                   "by_quant_key_bytes": {
-                    "f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs": 4760043520,
+                    "gguf_q3_k": 268083200,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl": 330301440,
+                    "gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s": 153190400
                   },
                   "by_layout_bytes": {
-                    "dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "raw_gguf": 5511618560,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_q4_k_t16_v1": 3585720320
                   },
                   "by_quant_layout_bytes": {
-                    "f32:dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 2715402240
+                    "f32:dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs:raw_gguf": 4760043520,
+                    "gguf_q3_k:raw_gguf": 268083200,
+                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1:gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl:raw_gguf": 330301440,
+                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s:raw_gguf": 153190400
                   },
                   "by_allocation_name_bytes": {
-                    "raw": 1143044096,
-                    "tiles": 15405158400
+                    "raw": 6235887616,
+                    "tiles": 10071838720
                   }
                 },
                 "decode_scratch": {
@@ -1524,58 +1560,70 @@
           "after_reset": {
             "label": "after_reset",
             "tracked": {
-              "current_allocated_bytes": 17386398084,
-              "peak_allocated_bytes": 17386398084,
-              "total_allocated_bytes": 17386398084,
+              "current_allocated_bytes": 17145921924,
+              "peak_allocated_bytes": 17145921924,
+              "total_allocated_bytes": 17145921924,
               "total_freed_bytes": 0,
-              "active_allocations": 1178,
-              "peak_allocations": 1178
+              "active_allocations": 1163,
+              "peak_allocations": 1163
             },
             "hip": {
               "available": true,
-              "free_bytes": 7784628224,
+              "free_bytes": 8086618112,
               "total_bytes": 25753026560,
-              "used_bytes": 17968398336,
-              "free_gib": 7.25,
+              "used_bytes": 17666408448,
+              "free_gib": 7.53125,
               "total_gib": 23.984375,
-              "used_gib": 16.734375
+              "used_gib": 16.453125
             },
-            "owned_session_bytes": 17386398084,
-            "owned_session_gib": 16.192345026880503,
+            "owned_session_bytes": 17145921924,
+            "owned_session_gib": 15.968384150415659,
             "owned_session_breakdown": {
-              "total_bytes": 17386398084,
-              "total_gib": 16.192345026880503,
-              "logical_requested_bytes": 17386398084,
+              "total_bytes": 17145921924,
+              "total_gib": 15.968384150415659,
+              "logical_requested_bytes": 17145921924,
               "allocation_arena_padding_bytes": 0,
               "families": {
                 "weights": {
-                  "total_bytes": 16548202496,
-                  "total_gib": 15.411714553833008,
-                  "allocation_count": 898,
-                  "physical_owner_count": 898,
-                  "physical_owner_bytes": 16548202496,
+                  "total_bytes": 16307726336,
+                  "total_gib": 15.187753677368164,
+                  "allocation_count": 883,
+                  "physical_owner_count": 883,
+                  "physical_owner_bytes": 16307726336,
                   "alignment_padding_bytes": 0,
                   "by_quant_key_bytes": {
-                    "f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs": 4760043520,
+                    "gguf_q3_k": 268083200,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl": 330301440,
+                    "gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s": 153190400
                   },
                   "by_layout_bytes": {
-                    "dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "raw_gguf": 5511618560,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_q4_k_t16_v1": 3585720320
                   },
                   "by_quant_layout_bytes": {
-                    "f32:dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 2715402240
+                    "f32:dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs:raw_gguf": 4760043520,
+                    "gguf_q3_k:raw_gguf": 268083200,
+                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1:gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl:raw_gguf": 330301440,
+                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s:raw_gguf": 153190400
                   },
                   "by_allocation_name_bytes": {
-                    "raw": 1143044096,
-                    "tiles": 15405158400
+                    "raw": 6235887616,
+                    "tiles": 10071838720
                   }
                 },
                 "decode_scratch": {
@@ -1809,58 +1857,70 @@
           "after_prefill": {
             "label": "after_prefill",
             "tracked": {
-              "current_allocated_bytes": 17386398084,
-              "peak_allocated_bytes": 17386398084,
-              "total_allocated_bytes": 17386398084,
+              "current_allocated_bytes": 17145921924,
+              "peak_allocated_bytes": 17145921924,
+              "total_allocated_bytes": 17145921924,
               "total_freed_bytes": 0,
-              "active_allocations": 1178,
-              "peak_allocations": 1178
+              "active_allocations": 1163,
+              "peak_allocations": 1163
             },
             "hip": {
               "available": true,
-              "free_bytes": 7753695232,
+              "free_bytes": 8049393664,
               "total_bytes": 25753026560,
-              "used_bytes": 17999331328,
-              "free_gib": 7.22119140625,
+              "used_bytes": 17703632896,
+              "free_gib": 7.49658203125,
               "total_gib": 23.984375,
-              "used_gib": 16.76318359375
+              "used_gib": 16.48779296875
             },
-            "owned_session_bytes": 17386398084,
-            "owned_session_gib": 16.192345026880503,
+            "owned_session_bytes": 17145921924,
+            "owned_session_gib": 15.968384150415659,
             "owned_session_breakdown": {
-              "total_bytes": 17386398084,
-              "total_gib": 16.192345026880503,
-              "logical_requested_bytes": 17386398084,
+              "total_bytes": 17145921924,
+              "total_gib": 15.968384150415659,
+              "logical_requested_bytes": 17145921924,
               "allocation_arena_padding_bytes": 0,
               "families": {
                 "weights": {
-                  "total_bytes": 16548202496,
-                  "total_gib": 15.411714553833008,
-                  "allocation_count": 898,
-                  "physical_owner_count": 898,
-                  "physical_owner_bytes": 16548202496,
+                  "total_bytes": 16307726336,
+                  "total_gib": 15.187753677368164,
+                  "allocation_count": 883,
+                  "physical_owner_count": 883,
+                  "physical_owner_bytes": 16307726336,
                   "alignment_padding_bytes": 0,
                   "by_quant_key_bytes": {
-                    "f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs": 4760043520,
+                    "gguf_q3_k": 268083200,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl": 330301440,
+                    "gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s": 153190400
                   },
                   "by_layout_bytes": {
-                    "dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "raw_gguf": 5511618560,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_q4_k_t16_v1": 3585720320
                   },
                   "by_quant_layout_bytes": {
-                    "f32:dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 2715402240
+                    "f32:dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs:raw_gguf": 4760043520,
+                    "gguf_q3_k:raw_gguf": 268083200,
+                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1:gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl:raw_gguf": 330301440,
+                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s:raw_gguf": 153190400
                   },
                   "by_allocation_name_bytes": {
-                    "raw": 1143044096,
-                    "tiles": 15405158400
+                    "raw": 6235887616,
+                    "tiles": 10071838720
                   }
                 },
                 "decode_scratch": {
@@ -2094,58 +2154,70 @@
           "after_warmup_decode": {
             "label": "after_warmup_decode",
             "tracked": {
-              "current_allocated_bytes": 17386398084,
-              "peak_allocated_bytes": 17386398084,
-              "total_allocated_bytes": 17386398084,
+              "current_allocated_bytes": 17145921924,
+              "peak_allocated_bytes": 17145921924,
+              "total_allocated_bytes": 17145921924,
               "total_freed_bytes": 0,
-              "active_allocations": 1178,
-              "peak_allocations": 1178
+              "active_allocations": 1163,
+              "peak_allocations": 1163
             },
             "hip": {
               "available": true,
-              "free_bytes": 7749500928,
+              "free_bytes": 8045199360,
               "total_bytes": 25753026560,
-              "used_bytes": 18003525632,
-              "free_gib": 7.21728515625,
+              "used_bytes": 17707827200,
+              "free_gib": 7.49267578125,
               "total_gib": 23.984375,
-              "used_gib": 16.76708984375
+              "used_gib": 16.49169921875
             },
-            "owned_session_bytes": 17386398084,
-            "owned_session_gib": 16.192345026880503,
+            "owned_session_bytes": 17145921924,
+            "owned_session_gib": 15.968384150415659,
             "owned_session_breakdown": {
-              "total_bytes": 17386398084,
-              "total_gib": 16.192345026880503,
-              "logical_requested_bytes": 17386398084,
+              "total_bytes": 17145921924,
+              "total_gib": 15.968384150415659,
+              "logical_requested_bytes": 17145921924,
               "allocation_arena_padding_bytes": 0,
               "families": {
                 "weights": {
-                  "total_bytes": 16548202496,
-                  "total_gib": 15.411714553833008,
-                  "allocation_count": 898,
-                  "physical_owner_count": 898,
-                  "physical_owner_bytes": 16548202496,
+                  "total_bytes": 16307726336,
+                  "total_gib": 15.187753677368164,
+                  "allocation_count": 883,
+                  "physical_owner_count": 883,
+                  "physical_owner_bytes": 16307726336,
                   "alignment_padding_bytes": 0,
                   "by_quant_key_bytes": {
-                    "f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs": 4760043520,
+                    "gguf_q3_k": 268083200,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl": 330301440,
+                    "gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s": 153190400
                   },
                   "by_layout_bytes": {
-                    "dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "raw_gguf": 5511618560,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_q4_k_t16_v1": 3585720320
                   },
                   "by_quant_layout_bytes": {
-                    "f32:dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 2715402240
+                    "f32:dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs:raw_gguf": 4760043520,
+                    "gguf_q3_k:raw_gguf": 268083200,
+                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1:gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl:raw_gguf": 330301440,
+                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s:raw_gguf": 153190400
                   },
                   "by_allocation_name_bytes": {
-                    "raw": 1143044096,
-                    "tiles": 15405158400
+                    "raw": 6235887616,
+                    "tiles": 10071838720
                   }
                 },
                 "decode_scratch": {
@@ -2379,58 +2451,70 @@
           "after_decode": {
             "label": "after_decode",
             "tracked": {
-              "current_allocated_bytes": 17386398084,
-              "peak_allocated_bytes": 17386398084,
-              "total_allocated_bytes": 17386398084,
+              "current_allocated_bytes": 17145921924,
+              "peak_allocated_bytes": 17145921924,
+              "total_allocated_bytes": 17145921924,
               "total_freed_bytes": 0,
-              "active_allocations": 1178,
-              "peak_allocations": 1178
+              "active_allocations": 1163,
+              "peak_allocations": 1163
             },
             "hip": {
               "available": true,
-              "free_bytes": 7749500928,
+              "free_bytes": 8045199360,
               "total_bytes": 25753026560,
-              "used_bytes": 18003525632,
-              "free_gib": 7.21728515625,
+              "used_bytes": 17707827200,
+              "free_gib": 7.49267578125,
               "total_gib": 23.984375,
-              "used_gib": 16.76708984375
+              "used_gib": 16.49169921875
             },
-            "owned_session_bytes": 17386398084,
-            "owned_session_gib": 16.192345026880503,
+            "owned_session_bytes": 17145921924,
+            "owned_session_gib": 15.968384150415659,
             "owned_session_breakdown": {
-              "total_bytes": 17386398084,
-              "total_gib": 16.192345026880503,
-              "logical_requested_bytes": 17386398084,
+              "total_bytes": 17145921924,
+              "total_gib": 15.968384150415659,
+              "logical_requested_bytes": 17145921924,
               "allocation_arena_padding_bytes": 0,
               "families": {
                 "weights": {
-                  "total_bytes": 16548202496,
-                  "total_gib": 15.411714553833008,
-                  "allocation_count": 898,
-                  "physical_owner_count": 898,
-                  "physical_owner_bytes": 16548202496,
+                  "total_bytes": 16307726336,
+                  "total_gib": 15.187753677368164,
+                  "allocation_count": 883,
+                  "physical_owner_count": 883,
+                  "physical_owner_bytes": 16307726336,
                   "alignment_padding_bytes": 0,
                   "by_quant_key_bytes": {
-                    "f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs": 4760043520,
+                    "gguf_q3_k": 268083200,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl": 330301440,
+                    "gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s": 153190400
                   },
                   "by_layout_bytes": {
-                    "dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "raw_gguf": 5511618560,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_q4_k_t16_v1": 3585720320
                   },
                   "by_quant_layout_bytes": {
-                    "f32:dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 2715402240
+                    "f32:dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs:raw_gguf": 4760043520,
+                    "gguf_q3_k:raw_gguf": 268083200,
+                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1:gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl:raw_gguf": 330301440,
+                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s:raw_gguf": 153190400
                   },
                   "by_allocation_name_bytes": {
-                    "raw": 1143044096,
-                    "tiles": 15405158400
+                    "raw": 6235887616,
+                    "tiles": 10071838720
                   }
                 },
                 "decode_scratch": {
@@ -2664,58 +2748,70 @@
           "before_close": {
             "label": "before_close",
             "tracked": {
-              "current_allocated_bytes": 17386398084,
-              "peak_allocated_bytes": 17386398084,
-              "total_allocated_bytes": 17386398084,
+              "current_allocated_bytes": 17145921924,
+              "peak_allocated_bytes": 17145921924,
+              "total_allocated_bytes": 17145921924,
               "total_freed_bytes": 0,
-              "active_allocations": 1178,
-              "peak_allocations": 1178
+              "active_allocations": 1163,
+              "peak_allocations": 1163
             },
             "hip": {
               "available": true,
-              "free_bytes": 7749500928,
+              "free_bytes": 8045199360,
               "total_bytes": 25753026560,
-              "used_bytes": 18003525632,
-              "free_gib": 7.21728515625,
+              "used_bytes": 17707827200,
+              "free_gib": 7.49267578125,
               "total_gib": 23.984375,
-              "used_gib": 16.76708984375
+              "used_gib": 16.49169921875
             },
-            "owned_session_bytes": 17386398084,
-            "owned_session_gib": 16.192345026880503,
+            "owned_session_bytes": 17145921924,
+            "owned_session_gib": 15.968384150415659,
             "owned_session_breakdown": {
-              "total_bytes": 17386398084,
-              "total_gib": 16.192345026880503,
-              "logical_requested_bytes": 17386398084,
+              "total_bytes": 17145921924,
+              "total_gib": 15.968384150415659,
+              "logical_requested_bytes": 17145921924,
               "allocation_arena_padding_bytes": 0,
               "families": {
                 "weights": {
-                  "total_bytes": 16548202496,
-                  "total_gib": 15.411714553833008,
-                  "allocation_count": 898,
-                  "physical_owner_count": 898,
-                  "physical_owner_bytes": 16548202496,
+                  "total_bytes": 16307726336,
+                  "total_gib": 15.187753677368164,
+                  "allocation_count": 883,
+                  "physical_owner_count": 883,
+                  "physical_owner_bytes": 16307726336,
                   "alignment_padding_bytes": 0,
                   "by_quant_key_bytes": {
-                    "f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs": 4760043520,
+                    "gguf_q3_k": 268083200,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl": 330301440,
+                    "gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s": 153190400
                   },
                   "by_layout_bytes": {
-                    "dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "raw_gguf": 5511618560,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_q4_k_t16_v1": 3585720320
                   },
                   "by_quant_layout_bytes": {
-                    "f32:dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 2715402240
+                    "f32:dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs:raw_gguf": 4760043520,
+                    "gguf_q3_k:raw_gguf": 268083200,
+                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1:gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl:raw_gguf": 330301440,
+                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s:raw_gguf": 153190400
                   },
                   "by_allocation_name_bytes": {
-                    "raw": 1143044096,
-                    "tiles": 15405158400
+                    "raw": 6235887616,
+                    "tiles": 10071838720
                   }
                 },
                 "decode_scratch": {
@@ -2954,8 +3050,8 @@
         "persistent_session": true,
         "resolved_backend": "hip_gfx1100",
         "target_arch": "gfx1100",
-        "model": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
-        "quant": "gguf_q4_k_s",
+        "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+        "quant": "gguf_ud_q4_k_m",
         "prompt_length": 512,
         "decode_tokens": 128,
         "warmup_decode_tokens": 1,
@@ -3022,13 +3118,13 @@
           "backend": "hip_gfx1100",
           "gfx_arch": "gfx1100",
           "source": "hip_runtime_graph",
-          "graph_handle": 94919886919968,
-          "graph_exec": 94919898169552,
+          "graph_handle": 94417003259152,
+          "graph_exec": 94417040259616,
           "launches": 128,
           "submission_started": true,
           "native_fallbacks": 0,
           "closed": false,
-          "decode_graph_key_sha256": "3512bffb7a139ccd0b0a570b1ce65a31612486ee59cd2e97e51218cf01c4c222",
+          "decode_graph_key_sha256": "320a0b32af021d739b1b30951bc50f28d6377e52fbdb942884d7967f859a4b3c",
           "replayed_steps": 128
         },
         "rocprof_selected_region": "none",
@@ -3037,7 +3133,7 @@
         "host_token_embedding_mapped": {
           "enabled": true,
           "nbytes": 715161600,
-          "device_ptr": 139615112670176,
+          "device_ptr": 140633688910752,
           "owns_buffer": false,
           "storage": "hip_registered_gguf_mmap"
         },
@@ -3049,10 +3145,10 @@
           "owner_bytes": 0,
           "selected_allocation_count": 0,
           "selected_requested_bytes": 0,
-          "dedicated_allocation_count": 898,
-          "dedicated_requested_bytes": 16548202496,
-          "dedicated_2m_aligned_count": 501,
-          "physical_owner_count": 898
+          "dedicated_allocation_count": 883,
+          "dedicated_requested_bytes": 16307726336,
+          "dedicated_2m_aligned_count": 452,
+          "physical_owner_count": 883
         },
         "decode_graph_disabled_reason": null,
         "gpu_stage_timings_ms": {
@@ -3063,23 +3159,23 @@
           "decode_tokens": 128
         },
         "timings": {
-          "load_seconds": 73.0878251362592,
+          "load_seconds": 55.104558013379574,
           "load_seconds_is_shared_session": true,
-          "prefill_seconds": 0.5384007571265101,
-          "warmup_decode_seconds": 0.02867672871798277,
-          "graph_capture_seconds": 0.04724087659269571,
-          "decode_seconds_excluding_graph_capture": 3.6500153094530106,
-          "wall_seconds_excluding_load": 4.264333671890199
+          "prefill_seconds": 0.561041409149766,
+          "warmup_decode_seconds": 0.08723475690931082,
+          "graph_capture_seconds": 0.10908734425902367,
+          "decode_seconds_excluding_graph_capture": 4.882993442006409,
+          "wall_seconds_excluding_load": 5.64035695232451
         },
         "throughput": {
-          "prefill_tok_s": 950.9644873691984,
-          "decode_tok_s": 35.06834606104214,
-          "decode_ms_per_token": 28.515744605101645
+          "prefill_tok_s": 912.588610484053,
+          "decode_tok_s": 26.213428610996687,
+          "decode_ms_per_token": 38.14838626567507
         },
         "correctness_sanity": {
           "finite_final_logits": true,
           "final_token_id": 9707,
-          "final_logit": 25.301164627075195,
+          "final_logit": 25.19176483154297,
           "generated_preview_token_ids": [
             9707,
             9707,
@@ -3093,16 +3189,16 @@
           "generated_count_including_prefill_sample_and_warmup": 3
         },
         "memory": {
-          "tracked_peak_allocated_bytes": 17386398084,
-          "tracked_peak_allocated_gib": 16.192345026880503,
-          "tracked_current_allocated_bytes_before_close": 17386398084,
-          "tracked_current_allocated_gib_before_close": 16.192345026880503,
+          "tracked_peak_allocated_bytes": 17145921924,
+          "tracked_peak_allocated_gib": 15.968384150415659,
+          "tracked_current_allocated_bytes_before_close": 17145921924,
+          "tracked_current_allocated_gib_before_close": 15.968384150415659,
           "tracked_current_allocated_bytes_after_close": 0,
           "tracked_current_allocated_gib_after_close": 0.0,
-          "owned_session_peak_bytes": 17386398084,
-          "owned_session_peak_gib": 16.192345026880503,
-          "hip_used_peak_sampled_bytes": 18005622784,
-          "hip_used_peak_sampled_gib": 16.76904296875,
+          "owned_session_peak_bytes": 17145921924,
+          "owned_session_peak_gib": 15.968384150415659,
+          "hip_used_peak_sampled_bytes": 17709924352,
+          "hip_used_peak_sampled_gib": 16.49365234375,
           "notes": [
             "tracked_* covers hipENGINE allocations through hipengine.core.memory.malloc and keeps a high-water mark.",
             "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
@@ -3113,58 +3209,70 @@
           "after_load": {
             "label": "after_load",
             "tracked": {
-              "current_allocated_bytes": 17386398084,
-              "peak_allocated_bytes": 17386398084,
-              "total_allocated_bytes": 17386398084,
+              "current_allocated_bytes": 17145921924,
+              "peak_allocated_bytes": 17145921924,
+              "total_allocated_bytes": 17145921924,
               "total_freed_bytes": 0,
-              "active_allocations": 1178,
-              "peak_allocations": 1178
+              "active_allocations": 1163,
+              "peak_allocations": 1163
             },
             "hip": {
               "available": true,
-              "free_bytes": 7749500928,
+              "free_bytes": 8045199360,
               "total_bytes": 25753026560,
-              "used_bytes": 18003525632,
-              "free_gib": 7.21728515625,
+              "used_bytes": 17707827200,
+              "free_gib": 7.49267578125,
               "total_gib": 23.984375,
-              "used_gib": 16.76708984375
+              "used_gib": 16.49169921875
             },
-            "owned_session_bytes": 17386398084,
-            "owned_session_gib": 16.192345026880503,
+            "owned_session_bytes": 17145921924,
+            "owned_session_gib": 15.968384150415659,
             "owned_session_breakdown": {
-              "total_bytes": 17386398084,
-              "total_gib": 16.192345026880503,
-              "logical_requested_bytes": 17386398084,
+              "total_bytes": 17145921924,
+              "total_gib": 15.968384150415659,
+              "logical_requested_bytes": 17145921924,
               "allocation_arena_padding_bytes": 0,
               "families": {
                 "weights": {
-                  "total_bytes": 16548202496,
-                  "total_gib": 15.411714553833008,
-                  "allocation_count": 898,
-                  "physical_owner_count": 898,
-                  "physical_owner_bytes": 16548202496,
+                  "total_bytes": 16307726336,
+                  "total_gib": 15.187753677368164,
+                  "allocation_count": 883,
+                  "physical_owner_count": 883,
+                  "physical_owner_bytes": 16307726336,
                   "alignment_padding_bytes": 0,
                   "by_quant_key_bytes": {
-                    "f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs": 4760043520,
+                    "gguf_q3_k": 268083200,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl": 330301440,
+                    "gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s": 153190400
                   },
                   "by_layout_bytes": {
-                    "dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "raw_gguf": 5511618560,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_q4_k_t16_v1": 3585720320
                   },
                   "by_quant_layout_bytes": {
-                    "f32:dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 2715402240
+                    "f32:dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs:raw_gguf": 4760043520,
+                    "gguf_q3_k:raw_gguf": 268083200,
+                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1:gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl:raw_gguf": 330301440,
+                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s:raw_gguf": 153190400
                   },
                   "by_allocation_name_bytes": {
-                    "raw": 1143044096,
-                    "tiles": 15405158400
+                    "raw": 6235887616,
+                    "tiles": 10071838720
                   }
                 },
                 "decode_scratch": {
@@ -3398,58 +3506,70 @@
           "before_reset": {
             "label": "before_reset",
             "tracked": {
-              "current_allocated_bytes": 17386398084,
-              "peak_allocated_bytes": 17386398084,
-              "total_allocated_bytes": 17386398084,
+              "current_allocated_bytes": 17145921924,
+              "peak_allocated_bytes": 17145921924,
+              "total_allocated_bytes": 17145921924,
               "total_freed_bytes": 0,
-              "active_allocations": 1178,
-              "peak_allocations": 1178
+              "active_allocations": 1163,
+              "peak_allocations": 1163
             },
             "hip": {
               "available": true,
-              "free_bytes": 7749500928,
+              "free_bytes": 8045199360,
               "total_bytes": 25753026560,
-              "used_bytes": 18003525632,
-              "free_gib": 7.21728515625,
+              "used_bytes": 17707827200,
+              "free_gib": 7.49267578125,
               "total_gib": 23.984375,
-              "used_gib": 16.76708984375
+              "used_gib": 16.49169921875
             },
-            "owned_session_bytes": 17386398084,
-            "owned_session_gib": 16.192345026880503,
+            "owned_session_bytes": 17145921924,
+            "owned_session_gib": 15.968384150415659,
             "owned_session_breakdown": {
-              "total_bytes": 17386398084,
-              "total_gib": 16.192345026880503,
-              "logical_requested_bytes": 17386398084,
+              "total_bytes": 17145921924,
+              "total_gib": 15.968384150415659,
+              "logical_requested_bytes": 17145921924,
               "allocation_arena_padding_bytes": 0,
               "families": {
                 "weights": {
-                  "total_bytes": 16548202496,
-                  "total_gib": 15.411714553833008,
-                  "allocation_count": 898,
-                  "physical_owner_count": 898,
-                  "physical_owner_bytes": 16548202496,
+                  "total_bytes": 16307726336,
+                  "total_gib": 15.187753677368164,
+                  "allocation_count": 883,
+                  "physical_owner_count": 883,
+                  "physical_owner_bytes": 16307726336,
                   "alignment_padding_bytes": 0,
                   "by_quant_key_bytes": {
-                    "f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs": 4760043520,
+                    "gguf_q3_k": 268083200,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl": 330301440,
+                    "gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s": 153190400
                   },
                   "by_layout_bytes": {
-                    "dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "raw_gguf": 5511618560,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_q4_k_t16_v1": 3585720320
                   },
                   "by_quant_layout_bytes": {
-                    "f32:dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 2715402240
+                    "f32:dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs:raw_gguf": 4760043520,
+                    "gguf_q3_k:raw_gguf": 268083200,
+                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1:gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl:raw_gguf": 330301440,
+                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s:raw_gguf": 153190400
                   },
                   "by_allocation_name_bytes": {
-                    "raw": 1143044096,
-                    "tiles": 15405158400
+                    "raw": 6235887616,
+                    "tiles": 10071838720
                   }
                 },
                 "decode_scratch": {
@@ -3683,58 +3803,70 @@
           "after_reset": {
             "label": "after_reset",
             "tracked": {
-              "current_allocated_bytes": 17386398084,
-              "peak_allocated_bytes": 17386398084,
-              "total_allocated_bytes": 17386398084,
+              "current_allocated_bytes": 17145921924,
+              "peak_allocated_bytes": 17145921924,
+              "total_allocated_bytes": 17145921924,
               "total_freed_bytes": 0,
-              "active_allocations": 1178,
-              "peak_allocations": 1178
+              "active_allocations": 1163,
+              "peak_allocations": 1163
             },
             "hip": {
               "available": true,
-              "free_bytes": 7749500928,
+              "free_bytes": 8045199360,
               "total_bytes": 25753026560,
-              "used_bytes": 18003525632,
-              "free_gib": 7.21728515625,
+              "used_bytes": 17707827200,
+              "free_gib": 7.49267578125,
               "total_gib": 23.984375,
-              "used_gib": 16.76708984375
+              "used_gib": 16.49169921875
             },
-            "owned_session_bytes": 17386398084,
-            "owned_session_gib": 16.192345026880503,
+            "owned_session_bytes": 17145921924,
+            "owned_session_gib": 15.968384150415659,
             "owned_session_breakdown": {
-              "total_bytes": 17386398084,
-              "total_gib": 16.192345026880503,
-              "logical_requested_bytes": 17386398084,
+              "total_bytes": 17145921924,
+              "total_gib": 15.968384150415659,
+              "logical_requested_bytes": 17145921924,
               "allocation_arena_padding_bytes": 0,
               "families": {
                 "weights": {
-                  "total_bytes": 16548202496,
-                  "total_gib": 15.411714553833008,
-                  "allocation_count": 898,
-                  "physical_owner_count": 898,
-                  "physical_owner_bytes": 16548202496,
+                  "total_bytes": 16307726336,
+                  "total_gib": 15.187753677368164,
+                  "allocation_count": 883,
+                  "physical_owner_count": 883,
+                  "physical_owner_bytes": 16307726336,
                   "alignment_padding_bytes": 0,
                   "by_quant_key_bytes": {
-                    "f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs": 4760043520,
+                    "gguf_q3_k": 268083200,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl": 330301440,
+                    "gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s": 153190400
                   },
                   "by_layout_bytes": {
-                    "dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "raw_gguf": 5511618560,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_q4_k_t16_v1": 3585720320
                   },
                   "by_quant_layout_bytes": {
-                    "f32:dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 2715402240
+                    "f32:dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs:raw_gguf": 4760043520,
+                    "gguf_q3_k:raw_gguf": 268083200,
+                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1:gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl:raw_gguf": 330301440,
+                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s:raw_gguf": 153190400
                   },
                   "by_allocation_name_bytes": {
-                    "raw": 1143044096,
-                    "tiles": 15405158400
+                    "raw": 6235887616,
+                    "tiles": 10071838720
                   }
                 },
                 "decode_scratch": {
@@ -3968,58 +4100,70 @@
           "after_prefill": {
             "label": "after_prefill",
             "tracked": {
-              "current_allocated_bytes": 17386398084,
-              "peak_allocated_bytes": 17386398084,
-              "total_allocated_bytes": 17386398084,
+              "current_allocated_bytes": 17145921924,
+              "peak_allocated_bytes": 17145921924,
+              "total_allocated_bytes": 17145921924,
               "total_freed_bytes": 0,
-              "active_allocations": 1178,
-              "peak_allocations": 1178
+              "active_allocations": 1163,
+              "peak_allocations": 1163
             },
             "hip": {
               "available": true,
-              "free_bytes": 7749500928,
+              "free_bytes": 8045199360,
               "total_bytes": 25753026560,
-              "used_bytes": 18003525632,
-              "free_gib": 7.21728515625,
+              "used_bytes": 17707827200,
+              "free_gib": 7.49267578125,
               "total_gib": 23.984375,
-              "used_gib": 16.76708984375
+              "used_gib": 16.49169921875
             },
-            "owned_session_bytes": 17386398084,
-            "owned_session_gib": 16.192345026880503,
+            "owned_session_bytes": 17145921924,
+            "owned_session_gib": 15.968384150415659,
             "owned_session_breakdown": {
-              "total_bytes": 17386398084,
-              "total_gib": 16.192345026880503,
-              "logical_requested_bytes": 17386398084,
+              "total_bytes": 17145921924,
+              "total_gib": 15.968384150415659,
+              "logical_requested_bytes": 17145921924,
               "allocation_arena_padding_bytes": 0,
               "families": {
                 "weights": {
-                  "total_bytes": 16548202496,
-                  "total_gib": 15.411714553833008,
-                  "allocation_count": 898,
-                  "physical_owner_count": 898,
-                  "physical_owner_bytes": 16548202496,
+                  "total_bytes": 16307726336,
+                  "total_gib": 15.187753677368164,
+                  "allocation_count": 883,
+                  "physical_owner_count": 883,
+                  "physical_owner_bytes": 16307726336,
                   "alignment_padding_bytes": 0,
                   "by_quant_key_bytes": {
-                    "f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs": 4760043520,
+                    "gguf_q3_k": 268083200,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl": 330301440,
+                    "gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s": 153190400
                   },
                   "by_layout_bytes": {
-                    "dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "raw_gguf": 5511618560,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_q4_k_t16_v1": 3585720320
                   },
                   "by_quant_layout_bytes": {
-                    "f32:dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 2715402240
+                    "f32:dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs:raw_gguf": 4760043520,
+                    "gguf_q3_k:raw_gguf": 268083200,
+                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1:gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl:raw_gguf": 330301440,
+                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s:raw_gguf": 153190400
                   },
                   "by_allocation_name_bytes": {
-                    "raw": 1143044096,
-                    "tiles": 15405158400
+                    "raw": 6235887616,
+                    "tiles": 10071838720
                   }
                 },
                 "decode_scratch": {
@@ -4253,58 +4397,70 @@
           "after_warmup_decode": {
             "label": "after_warmup_decode",
             "tracked": {
-              "current_allocated_bytes": 17386398084,
-              "peak_allocated_bytes": 17386398084,
-              "total_allocated_bytes": 17386398084,
+              "current_allocated_bytes": 17145921924,
+              "peak_allocated_bytes": 17145921924,
+              "total_allocated_bytes": 17145921924,
               "total_freed_bytes": 0,
-              "active_allocations": 1178,
-              "peak_allocations": 1178
+              "active_allocations": 1163,
+              "peak_allocations": 1163
             },
             "hip": {
               "available": true,
-              "free_bytes": 7749500928,
+              "free_bytes": 8045199360,
               "total_bytes": 25753026560,
-              "used_bytes": 18003525632,
-              "free_gib": 7.21728515625,
+              "used_bytes": 17707827200,
+              "free_gib": 7.49267578125,
               "total_gib": 23.984375,
-              "used_gib": 16.76708984375
+              "used_gib": 16.49169921875
             },
-            "owned_session_bytes": 17386398084,
-            "owned_session_gib": 16.192345026880503,
+            "owned_session_bytes": 17145921924,
+            "owned_session_gib": 15.968384150415659,
             "owned_session_breakdown": {
-              "total_bytes": 17386398084,
-              "total_gib": 16.192345026880503,
-              "logical_requested_bytes": 17386398084,
+              "total_bytes": 17145921924,
+              "total_gib": 15.968384150415659,
+              "logical_requested_bytes": 17145921924,
               "allocation_arena_padding_bytes": 0,
               "families": {
                 "weights": {
-                  "total_bytes": 16548202496,
-                  "total_gib": 15.411714553833008,
-                  "allocation_count": 898,
-                  "physical_owner_count": 898,
-                  "physical_owner_bytes": 16548202496,
+                  "total_bytes": 16307726336,
+                  "total_gib": 15.187753677368164,
+                  "allocation_count": 883,
+                  "physical_owner_count": 883,
+                  "physical_owner_bytes": 16307726336,
                   "alignment_padding_bytes": 0,
                   "by_quant_key_bytes": {
-                    "f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs": 4760043520,
+                    "gguf_q3_k": 268083200,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl": 330301440,
+                    "gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s": 153190400
                   },
                   "by_layout_bytes": {
-                    "dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "raw_gguf": 5511618560,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_q4_k_t16_v1": 3585720320
                   },
                   "by_quant_layout_bytes": {
-                    "f32:dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 2715402240
+                    "f32:dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs:raw_gguf": 4760043520,
+                    "gguf_q3_k:raw_gguf": 268083200,
+                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1:gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl:raw_gguf": 330301440,
+                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s:raw_gguf": 153190400
                   },
                   "by_allocation_name_bytes": {
-                    "raw": 1143044096,
-                    "tiles": 15405158400
+                    "raw": 6235887616,
+                    "tiles": 10071838720
                   }
                 },
                 "decode_scratch": {
@@ -4538,58 +4694,70 @@
           "after_decode": {
             "label": "after_decode",
             "tracked": {
-              "current_allocated_bytes": 17386398084,
-              "peak_allocated_bytes": 17386398084,
-              "total_allocated_bytes": 17386398084,
+              "current_allocated_bytes": 17145921924,
+              "peak_allocated_bytes": 17145921924,
+              "total_allocated_bytes": 17145921924,
               "total_freed_bytes": 0,
-              "active_allocations": 1178,
-              "peak_allocations": 1178
+              "active_allocations": 1163,
+              "peak_allocations": 1163
             },
             "hip": {
               "available": true,
-              "free_bytes": 7747403776,
+              "free_bytes": 8043102208,
               "total_bytes": 25753026560,
-              "used_bytes": 18005622784,
-              "free_gib": 7.21533203125,
+              "used_bytes": 17709924352,
+              "free_gib": 7.49072265625,
               "total_gib": 23.984375,
-              "used_gib": 16.76904296875
+              "used_gib": 16.49365234375
             },
-            "owned_session_bytes": 17386398084,
-            "owned_session_gib": 16.192345026880503,
+            "owned_session_bytes": 17145921924,
+            "owned_session_gib": 15.968384150415659,
             "owned_session_breakdown": {
-              "total_bytes": 17386398084,
-              "total_gib": 16.192345026880503,
-              "logical_requested_bytes": 17386398084,
+              "total_bytes": 17145921924,
+              "total_gib": 15.968384150415659,
+              "logical_requested_bytes": 17145921924,
               "allocation_arena_padding_bytes": 0,
               "families": {
                 "weights": {
-                  "total_bytes": 16548202496,
-                  "total_gib": 15.411714553833008,
-                  "allocation_count": 898,
-                  "physical_owner_count": 898,
-                  "physical_owner_bytes": 16548202496,
+                  "total_bytes": 16307726336,
+                  "total_gib": 15.187753677368164,
+                  "allocation_count": 883,
+                  "physical_owner_count": 883,
+                  "physical_owner_bytes": 16307726336,
                   "alignment_padding_bytes": 0,
                   "by_quant_key_bytes": {
-                    "f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs": 4760043520,
+                    "gguf_q3_k": 268083200,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl": 330301440,
+                    "gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s": 153190400
                   },
                   "by_layout_bytes": {
-                    "dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "raw_gguf": 5511618560,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_q4_k_t16_v1": 3585720320
                   },
                   "by_quant_layout_bytes": {
-                    "f32:dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 2715402240
+                    "f32:dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs:raw_gguf": 4760043520,
+                    "gguf_q3_k:raw_gguf": 268083200,
+                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1:gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl:raw_gguf": 330301440,
+                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s:raw_gguf": 153190400
                   },
                   "by_allocation_name_bytes": {
-                    "raw": 1143044096,
-                    "tiles": 15405158400
+                    "raw": 6235887616,
+                    "tiles": 10071838720
                   }
                 },
                 "decode_scratch": {
@@ -4823,58 +4991,70 @@
           "before_close": {
             "label": "before_close",
             "tracked": {
-              "current_allocated_bytes": 17386398084,
-              "peak_allocated_bytes": 17386398084,
-              "total_allocated_bytes": 17386398084,
+              "current_allocated_bytes": 17145921924,
+              "peak_allocated_bytes": 17145921924,
+              "total_allocated_bytes": 17145921924,
               "total_freed_bytes": 0,
-              "active_allocations": 1178,
-              "peak_allocations": 1178
+              "active_allocations": 1163,
+              "peak_allocations": 1163
             },
             "hip": {
               "available": true,
-              "free_bytes": 7747403776,
+              "free_bytes": 8043102208,
               "total_bytes": 25753026560,
-              "used_bytes": 18005622784,
-              "free_gib": 7.21533203125,
+              "used_bytes": 17709924352,
+              "free_gib": 7.49072265625,
               "total_gib": 23.984375,
-              "used_gib": 16.76904296875
+              "used_gib": 16.49365234375
             },
-            "owned_session_bytes": 17386398084,
-            "owned_session_gib": 16.192345026880503,
+            "owned_session_bytes": 17145921924,
+            "owned_session_gib": 15.968384150415659,
             "owned_session_breakdown": {
-              "total_bytes": 17386398084,
-              "total_gib": 16.192345026880503,
-              "logical_requested_bytes": 17386398084,
+              "total_bytes": 17145921924,
+              "total_gib": 15.968384150415659,
+              "logical_requested_bytes": 17145921924,
               "allocation_arena_padding_bytes": 0,
               "families": {
                 "weights": {
-                  "total_bytes": 16548202496,
-                  "total_gib": 15.411714553833008,
-                  "allocation_count": 898,
-                  "physical_owner_count": 898,
-                  "physical_owner_bytes": 16548202496,
+                  "total_bytes": 16307726336,
+                  "total_gib": 15.187753677368164,
+                  "allocation_count": 883,
+                  "physical_owner_count": 883,
+                  "physical_owner_bytes": 16307726336,
                   "alignment_padding_bytes": 0,
                   "by_quant_key_bytes": {
-                    "f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs": 4760043520,
+                    "gguf_q3_k": 268083200,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl": 330301440,
+                    "gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s": 153190400
                   },
                   "by_layout_bytes": {
-                    "dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "raw_gguf": 5511618560,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_q4_k_t16_v1": 3585720320
                   },
                   "by_quant_layout_bytes": {
-                    "f32:dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 2715402240
+                    "f32:dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs:raw_gguf": 4760043520,
+                    "gguf_q3_k:raw_gguf": 268083200,
+                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1:gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl:raw_gguf": 330301440,
+                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s:raw_gguf": 153190400
                   },
                   "by_allocation_name_bytes": {
-                    "raw": 1143044096,
-                    "tiles": 15405158400
+                    "raw": 6235887616,
+                    "tiles": 10071838720
                   }
                 },
                 "decode_scratch": {
@@ -5113,8 +5293,8 @@
         "persistent_session": true,
         "resolved_backend": "hip_gfx1100",
         "target_arch": "gfx1100",
-        "model": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
-        "quant": "gguf_q4_k_s",
+        "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+        "quant": "gguf_ud_q4_k_m",
         "prompt_length": 512,
         "decode_tokens": 128,
         "warmup_decode_tokens": 1,
@@ -5181,13 +5361,13 @@
           "backend": "hip_gfx1100",
           "gfx_arch": "gfx1100",
           "source": "hip_runtime_graph",
-          "graph_handle": 94919887010176,
-          "graph_exec": 94919898169552,
+          "graph_handle": 94417024781344,
+          "graph_exec": 94417040259616,
           "launches": 128,
           "submission_started": true,
           "native_fallbacks": 0,
           "closed": false,
-          "decode_graph_key_sha256": "3512bffb7a139ccd0b0a570b1ce65a31612486ee59cd2e97e51218cf01c4c222",
+          "decode_graph_key_sha256": "320a0b32af021d739b1b30951bc50f28d6377e52fbdb942884d7967f859a4b3c",
           "replayed_steps": 128
         },
         "rocprof_selected_region": "none",
@@ -5196,7 +5376,7 @@
         "host_token_embedding_mapped": {
           "enabled": true,
           "nbytes": 715161600,
-          "device_ptr": 139615112670176,
+          "device_ptr": 140633688910752,
           "owns_buffer": false,
           "storage": "hip_registered_gguf_mmap"
         },
@@ -5208,10 +5388,10 @@
           "owner_bytes": 0,
           "selected_allocation_count": 0,
           "selected_requested_bytes": 0,
-          "dedicated_allocation_count": 898,
-          "dedicated_requested_bytes": 16548202496,
-          "dedicated_2m_aligned_count": 501,
-          "physical_owner_count": 898
+          "dedicated_allocation_count": 883,
+          "dedicated_requested_bytes": 16307726336,
+          "dedicated_2m_aligned_count": 452,
+          "physical_owner_count": 883
         },
         "decode_graph_disabled_reason": null,
         "gpu_stage_timings_ms": {
@@ -5222,23 +5402,23 @@
           "decode_tokens": 128
         },
         "timings": {
-          "load_seconds": 73.0878251362592,
+          "load_seconds": 55.104558013379574,
           "load_seconds_is_shared_session": true,
-          "prefill_seconds": 0.5393574209883809,
-          "warmup_decode_seconds": 0.030167113058269024,
-          "graph_capture_seconds": 0.02674594707787037,
-          "decode_seconds_excluding_graph_capture": 3.6529693575575948,
-          "wall_seconds_excluding_load": 4.249239838682115
+          "prefill_seconds": 0.5663100751116872,
+          "warmup_decode_seconds": 0.12131557613611221,
+          "graph_capture_seconds": 0.11332073342055082,
+          "decode_seconds_excluding_graph_capture": 4.886054292321205,
+          "wall_seconds_excluding_load": 5.687000676989555
         },
         "throughput": {
-          "prefill_tok_s": 949.277751776831,
-          "decode_tok_s": 35.039987328440624,
-          "decode_ms_per_token": 28.53882310591871
+          "prefill_tok_s": 904.0983420593811,
+          "decode_tok_s": 26.19700730734029,
+          "decode_ms_per_token": 38.172299158759415
         },
         "correctness_sanity": {
           "finite_final_logits": true,
           "final_token_id": 9707,
-          "final_logit": 25.301164627075195,
+          "final_logit": 25.19176483154297,
           "generated_preview_token_ids": [
             9707,
             9707,
@@ -5252,16 +5432,16 @@
           "generated_count_including_prefill_sample_and_warmup": 3
         },
         "memory": {
-          "tracked_peak_allocated_bytes": 17386398084,
-          "tracked_peak_allocated_gib": 16.192345026880503,
-          "tracked_current_allocated_bytes_before_close": 17386398084,
-          "tracked_current_allocated_gib_before_close": 16.192345026880503,
+          "tracked_peak_allocated_bytes": 17145921924,
+          "tracked_peak_allocated_gib": 15.968384150415659,
+          "tracked_current_allocated_bytes_before_close": 17145921924,
+          "tracked_current_allocated_gib_before_close": 15.968384150415659,
           "tracked_current_allocated_bytes_after_close": 0,
           "tracked_current_allocated_gib_after_close": 0.0,
-          "owned_session_peak_bytes": 17386398084,
-          "owned_session_peak_gib": 16.192345026880503,
-          "hip_used_peak_sampled_bytes": 18005622784,
-          "hip_used_peak_sampled_gib": 16.76904296875,
+          "owned_session_peak_bytes": 17145921924,
+          "owned_session_peak_gib": 15.968384150415659,
+          "hip_used_peak_sampled_bytes": 17709924352,
+          "hip_used_peak_sampled_gib": 16.49365234375,
           "notes": [
             "tracked_* covers hipENGINE allocations through hipengine.core.memory.malloc and keeps a high-water mark.",
             "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
@@ -5272,58 +5452,70 @@
           "after_load": {
             "label": "after_load",
             "tracked": {
-              "current_allocated_bytes": 17386398084,
-              "peak_allocated_bytes": 17386398084,
-              "total_allocated_bytes": 17386398084,
+              "current_allocated_bytes": 17145921924,
+              "peak_allocated_bytes": 17145921924,
+              "total_allocated_bytes": 17145921924,
               "total_freed_bytes": 0,
-              "active_allocations": 1178,
-              "peak_allocations": 1178
+              "active_allocations": 1163,
+              "peak_allocations": 1163
             },
             "hip": {
               "available": true,
-              "free_bytes": 7747403776,
+              "free_bytes": 8043102208,
               "total_bytes": 25753026560,
-              "used_bytes": 18005622784,
-              "free_gib": 7.21533203125,
+              "used_bytes": 17709924352,
+              "free_gib": 7.49072265625,
               "total_gib": 23.984375,
-              "used_gib": 16.76904296875
+              "used_gib": 16.49365234375
             },
-            "owned_session_bytes": 17386398084,
-            "owned_session_gib": 16.192345026880503,
+            "owned_session_bytes": 17145921924,
+            "owned_session_gib": 15.968384150415659,
             "owned_session_breakdown": {
-              "total_bytes": 17386398084,
-              "total_gib": 16.192345026880503,
-              "logical_requested_bytes": 17386398084,
+              "total_bytes": 17145921924,
+              "total_gib": 15.968384150415659,
+              "logical_requested_bytes": 17145921924,
               "allocation_arena_padding_bytes": 0,
               "families": {
                 "weights": {
-                  "total_bytes": 16548202496,
-                  "total_gib": 15.411714553833008,
-                  "allocation_count": 898,
-                  "physical_owner_count": 898,
-                  "physical_owner_bytes": 16548202496,
+                  "total_bytes": 16307726336,
+                  "total_gib": 15.187753677368164,
+                  "allocation_count": 883,
+                  "physical_owner_count": 883,
+                  "physical_owner_bytes": 16307726336,
                   "alignment_padding_bytes": 0,
                   "by_quant_key_bytes": {
-                    "f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs": 4760043520,
+                    "gguf_q3_k": 268083200,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl": 330301440,
+                    "gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s": 153190400
                   },
                   "by_layout_bytes": {
-                    "dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "raw_gguf": 5511618560,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_q4_k_t16_v1": 3585720320
                   },
                   "by_quant_layout_bytes": {
-                    "f32:dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 2715402240
+                    "f32:dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs:raw_gguf": 4760043520,
+                    "gguf_q3_k:raw_gguf": 268083200,
+                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1:gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl:raw_gguf": 330301440,
+                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s:raw_gguf": 153190400
                   },
                   "by_allocation_name_bytes": {
-                    "raw": 1143044096,
-                    "tiles": 15405158400
+                    "raw": 6235887616,
+                    "tiles": 10071838720
                   }
                 },
                 "decode_scratch": {
@@ -5557,58 +5749,70 @@
           "before_reset": {
             "label": "before_reset",
             "tracked": {
-              "current_allocated_bytes": 17386398084,
-              "peak_allocated_bytes": 17386398084,
-              "total_allocated_bytes": 17386398084,
+              "current_allocated_bytes": 17145921924,
+              "peak_allocated_bytes": 17145921924,
+              "total_allocated_bytes": 17145921924,
               "total_freed_bytes": 0,
-              "active_allocations": 1178,
-              "peak_allocations": 1178
+              "active_allocations": 1163,
+              "peak_allocations": 1163
             },
             "hip": {
               "available": true,
-              "free_bytes": 7747403776,
+              "free_bytes": 8043102208,
               "total_bytes": 25753026560,
-              "used_bytes": 18005622784,
-              "free_gib": 7.21533203125,
+              "used_bytes": 17709924352,
+              "free_gib": 7.49072265625,
               "total_gib": 23.984375,
-              "used_gib": 16.76904296875
+              "used_gib": 16.49365234375
             },
-            "owned_session_bytes": 17386398084,
-            "owned_session_gib": 16.192345026880503,
+            "owned_session_bytes": 17145921924,
+            "owned_session_gib": 15.968384150415659,
             "owned_session_breakdown": {
-              "total_bytes": 17386398084,
-              "total_gib": 16.192345026880503,
-              "logical_requested_bytes": 17386398084,
+              "total_bytes": 17145921924,
+              "total_gib": 15.968384150415659,
+              "logical_requested_bytes": 17145921924,
               "allocation_arena_padding_bytes": 0,
               "families": {
                 "weights": {
-                  "total_bytes": 16548202496,
-                  "total_gib": 15.411714553833008,
-                  "allocation_count": 898,
-                  "physical_owner_count": 898,
-                  "physical_owner_bytes": 16548202496,
+                  "total_bytes": 16307726336,
+                  "total_gib": 15.187753677368164,
+                  "allocation_count": 883,
+                  "physical_owner_count": 883,
+                  "physical_owner_bytes": 16307726336,
                   "alignment_padding_bytes": 0,
                   "by_quant_key_bytes": {
-                    "f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs": 4760043520,
+                    "gguf_q3_k": 268083200,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl": 330301440,
+                    "gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s": 153190400
                   },
                   "by_layout_bytes": {
-                    "dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "raw_gguf": 5511618560,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_q4_k_t16_v1": 3585720320
                   },
                   "by_quant_layout_bytes": {
-                    "f32:dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 2715402240
+                    "f32:dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs:raw_gguf": 4760043520,
+                    "gguf_q3_k:raw_gguf": 268083200,
+                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1:gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl:raw_gguf": 330301440,
+                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s:raw_gguf": 153190400
                   },
                   "by_allocation_name_bytes": {
-                    "raw": 1143044096,
-                    "tiles": 15405158400
+                    "raw": 6235887616,
+                    "tiles": 10071838720
                   }
                 },
                 "decode_scratch": {
@@ -5842,58 +6046,70 @@
           "after_reset": {
             "label": "after_reset",
             "tracked": {
-              "current_allocated_bytes": 17386398084,
-              "peak_allocated_bytes": 17386398084,
-              "total_allocated_bytes": 17386398084,
+              "current_allocated_bytes": 17145921924,
+              "peak_allocated_bytes": 17145921924,
+              "total_allocated_bytes": 17145921924,
               "total_freed_bytes": 0,
-              "active_allocations": 1178,
-              "peak_allocations": 1178
+              "active_allocations": 1163,
+              "peak_allocations": 1163
             },
             "hip": {
               "available": true,
-              "free_bytes": 7747403776,
+              "free_bytes": 8043102208,
               "total_bytes": 25753026560,
-              "used_bytes": 18005622784,
-              "free_gib": 7.21533203125,
+              "used_bytes": 17709924352,
+              "free_gib": 7.49072265625,
               "total_gib": 23.984375,
-              "used_gib": 16.76904296875
+              "used_gib": 16.49365234375
             },
-            "owned_session_bytes": 17386398084,
-            "owned_session_gib": 16.192345026880503,
+            "owned_session_bytes": 17145921924,
+            "owned_session_gib": 15.968384150415659,
             "owned_session_breakdown": {
-              "total_bytes": 17386398084,
-              "total_gib": 16.192345026880503,
-              "logical_requested_bytes": 17386398084,
+              "total_bytes": 17145921924,
+              "total_gib": 15.968384150415659,
+              "logical_requested_bytes": 17145921924,
               "allocation_arena_padding_bytes": 0,
               "families": {
                 "weights": {
-                  "total_bytes": 16548202496,
-                  "total_gib": 15.411714553833008,
-                  "allocation_count": 898,
-                  "physical_owner_count": 898,
-                  "physical_owner_bytes": 16548202496,
+                  "total_bytes": 16307726336,
+                  "total_gib": 15.187753677368164,
+                  "allocation_count": 883,
+                  "physical_owner_count": 883,
+                  "physical_owner_bytes": 16307726336,
                   "alignment_padding_bytes": 0,
                   "by_quant_key_bytes": {
-                    "f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs": 4760043520,
+                    "gguf_q3_k": 268083200,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl": 330301440,
+                    "gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s": 153190400
                   },
                   "by_layout_bytes": {
-                    "dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "raw_gguf": 5511618560,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_q4_k_t16_v1": 3585720320
                   },
                   "by_quant_layout_bytes": {
-                    "f32:dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 2715402240
+                    "f32:dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs:raw_gguf": 4760043520,
+                    "gguf_q3_k:raw_gguf": 268083200,
+                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1:gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl:raw_gguf": 330301440,
+                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s:raw_gguf": 153190400
                   },
                   "by_allocation_name_bytes": {
-                    "raw": 1143044096,
-                    "tiles": 15405158400
+                    "raw": 6235887616,
+                    "tiles": 10071838720
                   }
                 },
                 "decode_scratch": {
@@ -6127,58 +6343,70 @@
           "after_prefill": {
             "label": "after_prefill",
             "tracked": {
-              "current_allocated_bytes": 17386398084,
-              "peak_allocated_bytes": 17386398084,
-              "total_allocated_bytes": 17386398084,
+              "current_allocated_bytes": 17145921924,
+              "peak_allocated_bytes": 17145921924,
+              "total_allocated_bytes": 17145921924,
               "total_freed_bytes": 0,
-              "active_allocations": 1178,
-              "peak_allocations": 1178
+              "active_allocations": 1163,
+              "peak_allocations": 1163
             },
             "hip": {
               "available": true,
-              "free_bytes": 7747403776,
+              "free_bytes": 8043102208,
               "total_bytes": 25753026560,
-              "used_bytes": 18005622784,
-              "free_gib": 7.21533203125,
+              "used_bytes": 17709924352,
+              "free_gib": 7.49072265625,
               "total_gib": 23.984375,
-              "used_gib": 16.76904296875
+              "used_gib": 16.49365234375
             },
-            "owned_session_bytes": 17386398084,
-            "owned_session_gib": 16.192345026880503,
+            "owned_session_bytes": 17145921924,
+            "owned_session_gib": 15.968384150415659,
             "owned_session_breakdown": {
-              "total_bytes": 17386398084,
-              "total_gib": 16.192345026880503,
-              "logical_requested_bytes": 17386398084,
+              "total_bytes": 17145921924,
+              "total_gib": 15.968384150415659,
+              "logical_requested_bytes": 17145921924,
               "allocation_arena_padding_bytes": 0,
               "families": {
                 "weights": {
-                  "total_bytes": 16548202496,
-                  "total_gib": 15.411714553833008,
-                  "allocation_count": 898,
-                  "physical_owner_count": 898,
-                  "physical_owner_bytes": 16548202496,
+                  "total_bytes": 16307726336,
+                  "total_gib": 15.187753677368164,
+                  "allocation_count": 883,
+                  "physical_owner_count": 883,
+                  "physical_owner_bytes": 16307726336,
                   "alignment_padding_bytes": 0,
                   "by_quant_key_bytes": {
-                    "f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs": 4760043520,
+                    "gguf_q3_k": 268083200,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl": 330301440,
+                    "gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s": 153190400
                   },
                   "by_layout_bytes": {
-                    "dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "raw_gguf": 5511618560,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_q4_k_t16_v1": 3585720320
                   },
                   "by_quant_layout_bytes": {
-                    "f32:dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 2715402240
+                    "f32:dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs:raw_gguf": 4760043520,
+                    "gguf_q3_k:raw_gguf": 268083200,
+                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1:gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl:raw_gguf": 330301440,
+                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s:raw_gguf": 153190400
                   },
                   "by_allocation_name_bytes": {
-                    "raw": 1143044096,
-                    "tiles": 15405158400
+                    "raw": 6235887616,
+                    "tiles": 10071838720
                   }
                 },
                 "decode_scratch": {
@@ -6412,58 +6640,70 @@
           "after_warmup_decode": {
             "label": "after_warmup_decode",
             "tracked": {
-              "current_allocated_bytes": 17386398084,
-              "peak_allocated_bytes": 17386398084,
-              "total_allocated_bytes": 17386398084,
+              "current_allocated_bytes": 17145921924,
+              "peak_allocated_bytes": 17145921924,
+              "total_allocated_bytes": 17145921924,
               "total_freed_bytes": 0,
-              "active_allocations": 1178,
-              "peak_allocations": 1178
+              "active_allocations": 1163,
+              "peak_allocations": 1163
             },
             "hip": {
               "available": true,
-              "free_bytes": 7747403776,
+              "free_bytes": 8043102208,
               "total_bytes": 25753026560,
-              "used_bytes": 18005622784,
-              "free_gib": 7.21533203125,
+              "used_bytes": 17709924352,
+              "free_gib": 7.49072265625,
               "total_gib": 23.984375,
-              "used_gib": 16.76904296875
+              "used_gib": 16.49365234375
             },
-            "owned_session_bytes": 17386398084,
-            "owned_session_gib": 16.192345026880503,
+            "owned_session_bytes": 17145921924,
+            "owned_session_gib": 15.968384150415659,
             "owned_session_breakdown": {
-              "total_bytes": 17386398084,
-              "total_gib": 16.192345026880503,
-              "logical_requested_bytes": 17386398084,
+              "total_bytes": 17145921924,
+              "total_gib": 15.968384150415659,
+              "logical_requested_bytes": 17145921924,
               "allocation_arena_padding_bytes": 0,
               "families": {
                 "weights": {
-                  "total_bytes": 16548202496,
-                  "total_gib": 15.411714553833008,
-                  "allocation_count": 898,
-                  "physical_owner_count": 898,
-                  "physical_owner_bytes": 16548202496,
+                  "total_bytes": 16307726336,
+                  "total_gib": 15.187753677368164,
+                  "allocation_count": 883,
+                  "physical_owner_count": 883,
+                  "physical_owner_bytes": 16307726336,
                   "alignment_padding_bytes": 0,
                   "by_quant_key_bytes": {
-                    "f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs": 4760043520,
+                    "gguf_q3_k": 268083200,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl": 330301440,
+                    "gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s": 153190400
                   },
                   "by_layout_bytes": {
-                    "dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "raw_gguf": 5511618560,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_q4_k_t16_v1": 3585720320
                   },
                   "by_quant_layout_bytes": {
-                    "f32:dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 2715402240
+                    "f32:dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs:raw_gguf": 4760043520,
+                    "gguf_q3_k:raw_gguf": 268083200,
+                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1:gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl:raw_gguf": 330301440,
+                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s:raw_gguf": 153190400
                   },
                   "by_allocation_name_bytes": {
-                    "raw": 1143044096,
-                    "tiles": 15405158400
+                    "raw": 6235887616,
+                    "tiles": 10071838720
                   }
                 },
                 "decode_scratch": {
@@ -6697,58 +6937,70 @@
           "after_decode": {
             "label": "after_decode",
             "tracked": {
-              "current_allocated_bytes": 17386398084,
-              "peak_allocated_bytes": 17386398084,
-              "total_allocated_bytes": 17386398084,
+              "current_allocated_bytes": 17145921924,
+              "peak_allocated_bytes": 17145921924,
+              "total_allocated_bytes": 17145921924,
               "total_freed_bytes": 0,
-              "active_allocations": 1178,
-              "peak_allocations": 1178
+              "active_allocations": 1163,
+              "peak_allocations": 1163
             },
             "hip": {
               "available": true,
-              "free_bytes": 7747403776,
+              "free_bytes": 8043102208,
               "total_bytes": 25753026560,
-              "used_bytes": 18005622784,
-              "free_gib": 7.21533203125,
+              "used_bytes": 17709924352,
+              "free_gib": 7.49072265625,
               "total_gib": 23.984375,
-              "used_gib": 16.76904296875
+              "used_gib": 16.49365234375
             },
-            "owned_session_bytes": 17386398084,
-            "owned_session_gib": 16.192345026880503,
+            "owned_session_bytes": 17145921924,
+            "owned_session_gib": 15.968384150415659,
             "owned_session_breakdown": {
-              "total_bytes": 17386398084,
-              "total_gib": 16.192345026880503,
-              "logical_requested_bytes": 17386398084,
+              "total_bytes": 17145921924,
+              "total_gib": 15.968384150415659,
+              "logical_requested_bytes": 17145921924,
               "allocation_arena_padding_bytes": 0,
               "families": {
                 "weights": {
-                  "total_bytes": 16548202496,
-                  "total_gib": 15.411714553833008,
-                  "allocation_count": 898,
-                  "physical_owner_count": 898,
-                  "physical_owner_bytes": 16548202496,
+                  "total_bytes": 16307726336,
+                  "total_gib": 15.187753677368164,
+                  "allocation_count": 883,
+                  "physical_owner_count": 883,
+                  "physical_owner_bytes": 16307726336,
                   "alignment_padding_bytes": 0,
                   "by_quant_key_bytes": {
-                    "f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs": 4760043520,
+                    "gguf_q3_k": 268083200,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl": 330301440,
+                    "gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s": 153190400
                   },
                   "by_layout_bytes": {
-                    "dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "raw_gguf": 5511618560,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_q4_k_t16_v1": 3585720320
                   },
                   "by_quant_layout_bytes": {
-                    "f32:dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 2715402240
+                    "f32:dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs:raw_gguf": 4760043520,
+                    "gguf_q3_k:raw_gguf": 268083200,
+                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1:gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl:raw_gguf": 330301440,
+                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s:raw_gguf": 153190400
                   },
                   "by_allocation_name_bytes": {
-                    "raw": 1143044096,
-                    "tiles": 15405158400
+                    "raw": 6235887616,
+                    "tiles": 10071838720
                   }
                 },
                 "decode_scratch": {
@@ -6982,58 +7234,70 @@
           "before_close": {
             "label": "before_close",
             "tracked": {
-              "current_allocated_bytes": 17386398084,
-              "peak_allocated_bytes": 17386398084,
-              "total_allocated_bytes": 17386398084,
+              "current_allocated_bytes": 17145921924,
+              "peak_allocated_bytes": 17145921924,
+              "total_allocated_bytes": 17145921924,
               "total_freed_bytes": 0,
-              "active_allocations": 1178,
-              "peak_allocations": 1178
+              "active_allocations": 1163,
+              "peak_allocations": 1163
             },
             "hip": {
               "available": true,
-              "free_bytes": 7747403776,
+              "free_bytes": 8043102208,
               "total_bytes": 25753026560,
-              "used_bytes": 18005622784,
-              "free_gib": 7.21533203125,
+              "used_bytes": 17709924352,
+              "free_gib": 7.49072265625,
               "total_gib": 23.984375,
-              "used_gib": 16.76904296875
+              "used_gib": 16.49365234375
             },
-            "owned_session_bytes": 17386398084,
-            "owned_session_gib": 16.192345026880503,
+            "owned_session_bytes": 17145921924,
+            "owned_session_gib": 15.968384150415659,
             "owned_session_breakdown": {
-              "total_bytes": 17386398084,
-              "total_gib": 16.192345026880503,
-              "logical_requested_bytes": 17386398084,
+              "total_bytes": 17145921924,
+              "total_gib": 15.968384150415659,
+              "logical_requested_bytes": 17145921924,
               "allocation_arena_padding_bytes": 0,
               "families": {
                 "weights": {
-                  "total_bytes": 16548202496,
-                  "total_gib": 15.411714553833008,
-                  "allocation_count": 898,
-                  "physical_owner_count": 898,
-                  "physical_owner_bytes": 16548202496,
+                  "total_bytes": 16307726336,
+                  "total_gib": 15.187753677368164,
+                  "allocation_count": 883,
+                  "physical_owner_count": 883,
+                  "physical_owner_bytes": 16307726336,
                   "alignment_padding_bytes": 0,
                   "by_quant_key_bytes": {
-                    "f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs": 4760043520,
+                    "gguf_q3_k": 268083200,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl": 330301440,
+                    "gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s": 153190400
                   },
                   "by_layout_bytes": {
-                    "dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "raw_gguf": 5511618560,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_q4_k_t16_v1": 3585720320
                   },
                   "by_quant_layout_bytes": {
-                    "f32:dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 2715402240
+                    "f32:dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs:raw_gguf": 4760043520,
+                    "gguf_q3_k:raw_gguf": 268083200,
+                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1:gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl:raw_gguf": 330301440,
+                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s:raw_gguf": 153190400
                   },
                   "by_allocation_name_bytes": {
-                    "raw": 1143044096,
-                    "tiles": 15405158400
+                    "raw": 6235887616,
+                    "tiles": 10071838720
                   }
                 },
                 "decode_scratch": {
@@ -7272,8 +7536,8 @@
         "persistent_session": true,
         "resolved_backend": "hip_gfx1100",
         "target_arch": "gfx1100",
-        "model": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
-        "quant": "gguf_q4_k_s",
+        "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+        "quant": "gguf_ud_q4_k_m",
         "prompt_length": 512,
         "decode_tokens": 128,
         "warmup_decode_tokens": 1,
@@ -7340,13 +7604,13 @@
           "backend": "hip_gfx1100",
           "gfx_arch": "gfx1100",
           "source": "hip_runtime_graph",
-          "graph_handle": 94919886919968,
-          "graph_exec": 94919898169552,
+          "graph_handle": 94417024943104,
+          "graph_exec": 94417040259616,
           "launches": 128,
           "submission_started": true,
           "native_fallbacks": 0,
           "closed": false,
-          "decode_graph_key_sha256": "3512bffb7a139ccd0b0a570b1ce65a31612486ee59cd2e97e51218cf01c4c222",
+          "decode_graph_key_sha256": "320a0b32af021d739b1b30951bc50f28d6377e52fbdb942884d7967f859a4b3c",
           "replayed_steps": 128
         },
         "rocprof_selected_region": "none",
@@ -7355,7 +7619,7 @@
         "host_token_embedding_mapped": {
           "enabled": true,
           "nbytes": 715161600,
-          "device_ptr": 139615112670176,
+          "device_ptr": 140633688910752,
           "owns_buffer": false,
           "storage": "hip_registered_gguf_mmap"
         },
@@ -7367,10 +7631,10 @@
           "owner_bytes": 0,
           "selected_allocation_count": 0,
           "selected_requested_bytes": 0,
-          "dedicated_allocation_count": 898,
-          "dedicated_requested_bytes": 16548202496,
-          "dedicated_2m_aligned_count": 501,
-          "physical_owner_count": 898
+          "dedicated_allocation_count": 883,
+          "dedicated_requested_bytes": 16307726336,
+          "dedicated_2m_aligned_count": 452,
+          "physical_owner_count": 883
         },
         "decode_graph_disabled_reason": null,
         "gpu_stage_timings_ms": {
@@ -7381,23 +7645,23 @@
           "decode_tokens": 128
         },
         "timings": {
-          "load_seconds": 73.0878251362592,
+          "load_seconds": 55.104558013379574,
           "load_seconds_is_shared_session": true,
-          "prefill_seconds": 0.5390443727374077,
-          "warmup_decode_seconds": 0.02904623281210661,
-          "graph_capture_seconds": 0.02435618732124567,
-          "decode_seconds_excluding_graph_capture": 3.650766434147954,
-          "wall_seconds_excluding_load": 4.243213227018714
+          "prefill_seconds": 0.5668297847732902,
+          "warmup_decode_seconds": 0.0853288508951664,
+          "graph_capture_seconds": 0.0885985866189003,
+          "decode_seconds_excluding_graph_capture": 4.890374139882624,
+          "wall_seconds_excluding_load": 5.631131362169981
         },
         "throughput": {
-          "prefill_tok_s": 949.8290417167898,
-          "decode_tok_s": 35.0611309457472,
-          "decode_ms_per_token": 28.52161276678089
+          "prefill_tok_s": 903.269400715737,
+          "decode_tok_s": 26.173866526104316,
+          "decode_ms_per_token": 38.206047967833
         },
         "correctness_sanity": {
           "finite_final_logits": true,
           "final_token_id": 9707,
-          "final_logit": 25.301164627075195,
+          "final_logit": 25.19176483154297,
           "generated_preview_token_ids": [
             9707,
             9707,
@@ -7411,16 +7675,16 @@
           "generated_count_including_prefill_sample_and_warmup": 3
         },
         "memory": {
-          "tracked_peak_allocated_bytes": 17386398084,
-          "tracked_peak_allocated_gib": 16.192345026880503,
-          "tracked_current_allocated_bytes_before_close": 17386398084,
-          "tracked_current_allocated_gib_before_close": 16.192345026880503,
+          "tracked_peak_allocated_bytes": 17145921924,
+          "tracked_peak_allocated_gib": 15.968384150415659,
+          "tracked_current_allocated_bytes_before_close": 17145921924,
+          "tracked_current_allocated_gib_before_close": 15.968384150415659,
           "tracked_current_allocated_bytes_after_close": 0,
           "tracked_current_allocated_gib_after_close": 0.0,
-          "owned_session_peak_bytes": 17386398084,
-          "owned_session_peak_gib": 16.192345026880503,
-          "hip_used_peak_sampled_bytes": 18005622784,
-          "hip_used_peak_sampled_gib": 16.76904296875,
+          "owned_session_peak_bytes": 17145921924,
+          "owned_session_peak_gib": 15.968384150415659,
+          "hip_used_peak_sampled_bytes": 17709924352,
+          "hip_used_peak_sampled_gib": 16.49365234375,
           "notes": [
             "tracked_* covers hipENGINE allocations through hipengine.core.memory.malloc and keeps a high-water mark.",
             "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
@@ -7431,58 +7695,70 @@
           "after_load": {
             "label": "after_load",
             "tracked": {
-              "current_allocated_bytes": 17386398084,
-              "peak_allocated_bytes": 17386398084,
-              "total_allocated_bytes": 17386398084,
+              "current_allocated_bytes": 17145921924,
+              "peak_allocated_bytes": 17145921924,
+              "total_allocated_bytes": 17145921924,
               "total_freed_bytes": 0,
-              "active_allocations": 1178,
-              "peak_allocations": 1178
+              "active_allocations": 1163,
+              "peak_allocations": 1163
             },
             "hip": {
               "available": true,
-              "free_bytes": 7747403776,
+              "free_bytes": 8043102208,
               "total_bytes": 25753026560,
-              "used_bytes": 18005622784,
-              "free_gib": 7.21533203125,
+              "used_bytes": 17709924352,
+              "free_gib": 7.49072265625,
               "total_gib": 23.984375,
-              "used_gib": 16.76904296875
+              "used_gib": 16.49365234375
             },
-            "owned_session_bytes": 17386398084,
-            "owned_session_gib": 16.192345026880503,
+            "owned_session_bytes": 17145921924,
+            "owned_session_gib": 15.968384150415659,
             "owned_session_breakdown": {
-              "total_bytes": 17386398084,
-              "total_gib": 16.192345026880503,
-              "logical_requested_bytes": 17386398084,
+              "total_bytes": 17145921924,
+              "total_gib": 15.968384150415659,
+              "logical_requested_bytes": 17145921924,
               "allocation_arena_padding_bytes": 0,
               "families": {
                 "weights": {
-                  "total_bytes": 16548202496,
-                  "total_gib": 15.411714553833008,
-                  "allocation_count": 898,
-                  "physical_owner_count": 898,
-                  "physical_owner_bytes": 16548202496,
+                  "total_bytes": 16307726336,
+                  "total_gib": 15.187753677368164,
+                  "allocation_count": 883,
+                  "physical_owner_count": 883,
+                  "physical_owner_bytes": 16307726336,
                   "alignment_padding_bytes": 0,
                   "by_quant_key_bytes": {
-                    "f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs": 4760043520,
+                    "gguf_q3_k": 268083200,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl": 330301440,
+                    "gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s": 153190400
                   },
                   "by_layout_bytes": {
-                    "dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "raw_gguf": 5511618560,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_q4_k_t16_v1": 3585720320
                   },
                   "by_quant_layout_bytes": {
-                    "f32:dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 2715402240
+                    "f32:dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs:raw_gguf": 4760043520,
+                    "gguf_q3_k:raw_gguf": 268083200,
+                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1:gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl:raw_gguf": 330301440,
+                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s:raw_gguf": 153190400
                   },
                   "by_allocation_name_bytes": {
-                    "raw": 1143044096,
-                    "tiles": 15405158400
+                    "raw": 6235887616,
+                    "tiles": 10071838720
                   }
                 },
                 "decode_scratch": {
@@ -7716,58 +7992,70 @@
           "before_reset": {
             "label": "before_reset",
             "tracked": {
-              "current_allocated_bytes": 17386398084,
-              "peak_allocated_bytes": 17386398084,
-              "total_allocated_bytes": 17386398084,
+              "current_allocated_bytes": 17145921924,
+              "peak_allocated_bytes": 17145921924,
+              "total_allocated_bytes": 17145921924,
               "total_freed_bytes": 0,
-              "active_allocations": 1178,
-              "peak_allocations": 1178
+              "active_allocations": 1163,
+              "peak_allocations": 1163
             },
             "hip": {
               "available": true,
-              "free_bytes": 7747403776,
+              "free_bytes": 8043102208,
               "total_bytes": 25753026560,
-              "used_bytes": 18005622784,
-              "free_gib": 7.21533203125,
+              "used_bytes": 17709924352,
+              "free_gib": 7.49072265625,
               "total_gib": 23.984375,
-              "used_gib": 16.76904296875
+              "used_gib": 16.49365234375
             },
-            "owned_session_bytes": 17386398084,
-            "owned_session_gib": 16.192345026880503,
+            "owned_session_bytes": 17145921924,
+            "owned_session_gib": 15.968384150415659,
             "owned_session_breakdown": {
-              "total_bytes": 17386398084,
-              "total_gib": 16.192345026880503,
-              "logical_requested_bytes": 17386398084,
+              "total_bytes": 17145921924,
+              "total_gib": 15.968384150415659,
+              "logical_requested_bytes": 17145921924,
               "allocation_arena_padding_bytes": 0,
               "families": {
                 "weights": {
-                  "total_bytes": 16548202496,
-                  "total_gib": 15.411714553833008,
-                  "allocation_count": 898,
-                  "physical_owner_count": 898,
-                  "physical_owner_bytes": 16548202496,
+                  "total_bytes": 16307726336,
+                  "total_gib": 15.187753677368164,
+                  "allocation_count": 883,
+                  "physical_owner_count": 883,
+                  "physical_owner_bytes": 16307726336,
                   "alignment_padding_bytes": 0,
                   "by_quant_key_bytes": {
-                    "f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs": 4760043520,
+                    "gguf_q3_k": 268083200,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl": 330301440,
+                    "gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s": 153190400
                   },
                   "by_layout_bytes": {
-                    "dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "raw_gguf": 5511618560,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_q4_k_t16_v1": 3585720320
                   },
                   "by_quant_layout_bytes": {
-                    "f32:dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 2715402240
+                    "f32:dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs:raw_gguf": 4760043520,
+                    "gguf_q3_k:raw_gguf": 268083200,
+                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1:gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl:raw_gguf": 330301440,
+                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s:raw_gguf": 153190400
                   },
                   "by_allocation_name_bytes": {
-                    "raw": 1143044096,
-                    "tiles": 15405158400
+                    "raw": 6235887616,
+                    "tiles": 10071838720
                   }
                 },
                 "decode_scratch": {
@@ -8001,58 +8289,70 @@
           "after_reset": {
             "label": "after_reset",
             "tracked": {
-              "current_allocated_bytes": 17386398084,
-              "peak_allocated_bytes": 17386398084,
-              "total_allocated_bytes": 17386398084,
+              "current_allocated_bytes": 17145921924,
+              "peak_allocated_bytes": 17145921924,
+              "total_allocated_bytes": 17145921924,
               "total_freed_bytes": 0,
-              "active_allocations": 1178,
-              "peak_allocations": 1178
+              "active_allocations": 1163,
+              "peak_allocations": 1163
             },
             "hip": {
               "available": true,
-              "free_bytes": 7747403776,
+              "free_bytes": 8043102208,
               "total_bytes": 25753026560,
-              "used_bytes": 18005622784,
-              "free_gib": 7.21533203125,
+              "used_bytes": 17709924352,
+              "free_gib": 7.49072265625,
               "total_gib": 23.984375,
-              "used_gib": 16.76904296875
+              "used_gib": 16.49365234375
             },
-            "owned_session_bytes": 17386398084,
-            "owned_session_gib": 16.192345026880503,
+            "owned_session_bytes": 17145921924,
+            "owned_session_gib": 15.968384150415659,
             "owned_session_breakdown": {
-              "total_bytes": 17386398084,
-              "total_gib": 16.192345026880503,
-              "logical_requested_bytes": 17386398084,
+              "total_bytes": 17145921924,
+              "total_gib": 15.968384150415659,
+              "logical_requested_bytes": 17145921924,
               "allocation_arena_padding_bytes": 0,
               "families": {
                 "weights": {
-                  "total_bytes": 16548202496,
-                  "total_gib": 15.411714553833008,
-                  "allocation_count": 898,
-                  "physical_owner_count": 898,
-                  "physical_owner_bytes": 16548202496,
+                  "total_bytes": 16307726336,
+                  "total_gib": 15.187753677368164,
+                  "allocation_count": 883,
+                  "physical_owner_count": 883,
+                  "physical_owner_bytes": 16307726336,
                   "alignment_padding_bytes": 0,
                   "by_quant_key_bytes": {
-                    "f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs": 4760043520,
+                    "gguf_q3_k": 268083200,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl": 330301440,
+                    "gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s": 153190400
                   },
                   "by_layout_bytes": {
-                    "dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "raw_gguf": 5511618560,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_q4_k_t16_v1": 3585720320
                   },
                   "by_quant_layout_bytes": {
-                    "f32:dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 2715402240
+                    "f32:dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs:raw_gguf": 4760043520,
+                    "gguf_q3_k:raw_gguf": 268083200,
+                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1:gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl:raw_gguf": 330301440,
+                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s:raw_gguf": 153190400
                   },
                   "by_allocation_name_bytes": {
-                    "raw": 1143044096,
-                    "tiles": 15405158400
+                    "raw": 6235887616,
+                    "tiles": 10071838720
                   }
                 },
                 "decode_scratch": {
@@ -8286,58 +8586,70 @@
           "after_prefill": {
             "label": "after_prefill",
             "tracked": {
-              "current_allocated_bytes": 17386398084,
-              "peak_allocated_bytes": 17386398084,
-              "total_allocated_bytes": 17386398084,
+              "current_allocated_bytes": 17145921924,
+              "peak_allocated_bytes": 17145921924,
+              "total_allocated_bytes": 17145921924,
               "total_freed_bytes": 0,
-              "active_allocations": 1178,
-              "peak_allocations": 1178
+              "active_allocations": 1163,
+              "peak_allocations": 1163
             },
             "hip": {
               "available": true,
-              "free_bytes": 7747403776,
+              "free_bytes": 8043102208,
               "total_bytes": 25753026560,
-              "used_bytes": 18005622784,
-              "free_gib": 7.21533203125,
+              "used_bytes": 17709924352,
+              "free_gib": 7.49072265625,
               "total_gib": 23.984375,
-              "used_gib": 16.76904296875
+              "used_gib": 16.49365234375
             },
-            "owned_session_bytes": 17386398084,
-            "owned_session_gib": 16.192345026880503,
+            "owned_session_bytes": 17145921924,
+            "owned_session_gib": 15.968384150415659,
             "owned_session_breakdown": {
-              "total_bytes": 17386398084,
-              "total_gib": 16.192345026880503,
-              "logical_requested_bytes": 17386398084,
+              "total_bytes": 17145921924,
+              "total_gib": 15.968384150415659,
+              "logical_requested_bytes": 17145921924,
               "allocation_arena_padding_bytes": 0,
               "families": {
                 "weights": {
-                  "total_bytes": 16548202496,
-                  "total_gib": 15.411714553833008,
-                  "allocation_count": 898,
-                  "physical_owner_count": 898,
-                  "physical_owner_bytes": 16548202496,
+                  "total_bytes": 16307726336,
+                  "total_gib": 15.187753677368164,
+                  "allocation_count": 883,
+                  "physical_owner_count": 883,
+                  "physical_owner_bytes": 16307726336,
                   "alignment_padding_bytes": 0,
                   "by_quant_key_bytes": {
-                    "f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs": 4760043520,
+                    "gguf_q3_k": 268083200,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl": 330301440,
+                    "gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s": 153190400
                   },
                   "by_layout_bytes": {
-                    "dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "raw_gguf": 5511618560,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_q4_k_t16_v1": 3585720320
                   },
                   "by_quant_layout_bytes": {
-                    "f32:dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 2715402240
+                    "f32:dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs:raw_gguf": 4760043520,
+                    "gguf_q3_k:raw_gguf": 268083200,
+                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1:gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl:raw_gguf": 330301440,
+                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s:raw_gguf": 153190400
                   },
                   "by_allocation_name_bytes": {
-                    "raw": 1143044096,
-                    "tiles": 15405158400
+                    "raw": 6235887616,
+                    "tiles": 10071838720
                   }
                 },
                 "decode_scratch": {
@@ -8571,58 +8883,70 @@
           "after_warmup_decode": {
             "label": "after_warmup_decode",
             "tracked": {
-              "current_allocated_bytes": 17386398084,
-              "peak_allocated_bytes": 17386398084,
-              "total_allocated_bytes": 17386398084,
+              "current_allocated_bytes": 17145921924,
+              "peak_allocated_bytes": 17145921924,
+              "total_allocated_bytes": 17145921924,
               "total_freed_bytes": 0,
-              "active_allocations": 1178,
-              "peak_allocations": 1178
+              "active_allocations": 1163,
+              "peak_allocations": 1163
             },
             "hip": {
               "available": true,
-              "free_bytes": 7747403776,
+              "free_bytes": 8043102208,
               "total_bytes": 25753026560,
-              "used_bytes": 18005622784,
-              "free_gib": 7.21533203125,
+              "used_bytes": 17709924352,
+              "free_gib": 7.49072265625,
               "total_gib": 23.984375,
-              "used_gib": 16.76904296875
+              "used_gib": 16.49365234375
             },
-            "owned_session_bytes": 17386398084,
-            "owned_session_gib": 16.192345026880503,
+            "owned_session_bytes": 17145921924,
+            "owned_session_gib": 15.968384150415659,
             "owned_session_breakdown": {
-              "total_bytes": 17386398084,
-              "total_gib": 16.192345026880503,
-              "logical_requested_bytes": 17386398084,
+              "total_bytes": 17145921924,
+              "total_gib": 15.968384150415659,
+              "logical_requested_bytes": 17145921924,
               "allocation_arena_padding_bytes": 0,
               "families": {
                 "weights": {
-                  "total_bytes": 16548202496,
-                  "total_gib": 15.411714553833008,
-                  "allocation_count": 898,
-                  "physical_owner_count": 898,
-                  "physical_owner_bytes": 16548202496,
+                  "total_bytes": 16307726336,
+                  "total_gib": 15.187753677368164,
+                  "allocation_count": 883,
+                  "physical_owner_count": 883,
+                  "physical_owner_bytes": 16307726336,
                   "alignment_padding_bytes": 0,
                   "by_quant_key_bytes": {
-                    "f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs": 4760043520,
+                    "gguf_q3_k": 268083200,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl": 330301440,
+                    "gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s": 153190400
                   },
                   "by_layout_bytes": {
-                    "dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "raw_gguf": 5511618560,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_q4_k_t16_v1": 3585720320
                   },
                   "by_quant_layout_bytes": {
-                    "f32:dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 2715402240
+                    "f32:dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs:raw_gguf": 4760043520,
+                    "gguf_q3_k:raw_gguf": 268083200,
+                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1:gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl:raw_gguf": 330301440,
+                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s:raw_gguf": 153190400
                   },
                   "by_allocation_name_bytes": {
-                    "raw": 1143044096,
-                    "tiles": 15405158400
+                    "raw": 6235887616,
+                    "tiles": 10071838720
                   }
                 },
                 "decode_scratch": {
@@ -8856,58 +9180,70 @@
           "after_decode": {
             "label": "after_decode",
             "tracked": {
-              "current_allocated_bytes": 17386398084,
-              "peak_allocated_bytes": 17386398084,
-              "total_allocated_bytes": 17386398084,
+              "current_allocated_bytes": 17145921924,
+              "peak_allocated_bytes": 17145921924,
+              "total_allocated_bytes": 17145921924,
               "total_freed_bytes": 0,
-              "active_allocations": 1178,
-              "peak_allocations": 1178
+              "active_allocations": 1163,
+              "peak_allocations": 1163
             },
             "hip": {
               "available": true,
-              "free_bytes": 7747403776,
+              "free_bytes": 8043102208,
               "total_bytes": 25753026560,
-              "used_bytes": 18005622784,
-              "free_gib": 7.21533203125,
+              "used_bytes": 17709924352,
+              "free_gib": 7.49072265625,
               "total_gib": 23.984375,
-              "used_gib": 16.76904296875
+              "used_gib": 16.49365234375
             },
-            "owned_session_bytes": 17386398084,
-            "owned_session_gib": 16.192345026880503,
+            "owned_session_bytes": 17145921924,
+            "owned_session_gib": 15.968384150415659,
             "owned_session_breakdown": {
-              "total_bytes": 17386398084,
-              "total_gib": 16.192345026880503,
-              "logical_requested_bytes": 17386398084,
+              "total_bytes": 17145921924,
+              "total_gib": 15.968384150415659,
+              "logical_requested_bytes": 17145921924,
               "allocation_arena_padding_bytes": 0,
               "families": {
                 "weights": {
-                  "total_bytes": 16548202496,
-                  "total_gib": 15.411714553833008,
-                  "allocation_count": 898,
-                  "physical_owner_count": 898,
-                  "physical_owner_bytes": 16548202496,
+                  "total_bytes": 16307726336,
+                  "total_gib": 15.187753677368164,
+                  "allocation_count": 883,
+                  "physical_owner_count": 883,
+                  "physical_owner_bytes": 16307726336,
                   "alignment_padding_bytes": 0,
                   "by_quant_key_bytes": {
-                    "f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs": 4760043520,
+                    "gguf_q3_k": 268083200,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl": 330301440,
+                    "gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s": 153190400
                   },
                   "by_layout_bytes": {
-                    "dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "raw_gguf": 5511618560,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_q4_k_t16_v1": 3585720320
                   },
                   "by_quant_layout_bytes": {
-                    "f32:dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 2715402240
+                    "f32:dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs:raw_gguf": 4760043520,
+                    "gguf_q3_k:raw_gguf": 268083200,
+                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1:gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl:raw_gguf": 330301440,
+                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s:raw_gguf": 153190400
                   },
                   "by_allocation_name_bytes": {
-                    "raw": 1143044096,
-                    "tiles": 15405158400
+                    "raw": 6235887616,
+                    "tiles": 10071838720
                   }
                 },
                 "decode_scratch": {
@@ -9141,58 +9477,70 @@
           "before_close": {
             "label": "before_close",
             "tracked": {
-              "current_allocated_bytes": 17386398084,
-              "peak_allocated_bytes": 17386398084,
-              "total_allocated_bytes": 17386398084,
+              "current_allocated_bytes": 17145921924,
+              "peak_allocated_bytes": 17145921924,
+              "total_allocated_bytes": 17145921924,
               "total_freed_bytes": 0,
-              "active_allocations": 1178,
-              "peak_allocations": 1178
+              "active_allocations": 1163,
+              "peak_allocations": 1163
             },
             "hip": {
               "available": true,
-              "free_bytes": 7747403776,
+              "free_bytes": 8043102208,
               "total_bytes": 25753026560,
-              "used_bytes": 18005622784,
-              "free_gib": 7.21533203125,
+              "used_bytes": 17709924352,
+              "free_gib": 7.49072265625,
               "total_gib": 23.984375,
-              "used_gib": 16.76904296875
+              "used_gib": 16.49365234375
             },
-            "owned_session_bytes": 17386398084,
-            "owned_session_gib": 16.192345026880503,
+            "owned_session_bytes": 17145921924,
+            "owned_session_gib": 15.968384150415659,
             "owned_session_breakdown": {
-              "total_bytes": 17386398084,
-              "total_gib": 16.192345026880503,
-              "logical_requested_bytes": 17386398084,
+              "total_bytes": 17145921924,
+              "total_gib": 15.968384150415659,
+              "logical_requested_bytes": 17145921924,
               "allocation_arena_padding_bytes": 0,
               "families": {
                 "weights": {
-                  "total_bytes": 16548202496,
-                  "total_gib": 15.411714553833008,
-                  "allocation_count": 898,
-                  "physical_owner_count": 898,
-                  "physical_owner_bytes": 16548202496,
+                  "total_bytes": 16307726336,
+                  "total_gib": 15.187753677368164,
+                  "allocation_count": 883,
+                  "physical_owner_count": 883,
+                  "physical_owner_bytes": 16307726336,
                   "alignment_padding_bytes": 0,
                   "by_quant_key_bytes": {
-                    "f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs": 4760043520,
+                    "gguf_q3_k": 268083200,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl": 330301440,
+                    "gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s": 153190400
                   },
                   "by_layout_bytes": {
-                    "dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1": 2715402240
+                    "dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "raw_gguf": 5511618560,
+                    "gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1": 69632000,
+                    "gguf_q4_k_t16_v1": 3585720320
                   },
                   "by_quant_layout_bytes": {
-                    "f32:dense_f32": 104953856,
-                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1042944000,
-                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 12684902400,
-                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 2715402240
+                    "f32:dense_f32": 10582016,
+                    "gguf_q6_k_t16_qmicro_planar_v1:gguf_q6_k_t16_qmicro_planar_v1": 1473024000,
+                    "gguf_iq4_xs:raw_gguf": 4760043520,
+                    "gguf_q3_k:raw_gguf": 268083200,
+                    "gguf_q5_k_t16_v1:gguf_q5_k_t16_v1": 5657149440,
+                    "gguf_q8_0_t16_v1:gguf_q8_0_t16_v1": 69632000,
+                    "gguf_iq4_nl:raw_gguf": 330301440,
+                    "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 3585720320,
+                    "gguf_iq3_s:raw_gguf": 153190400
                   },
                   "by_allocation_name_bytes": {
-                    "raw": 1143044096,
-                    "tiles": 15405158400
+                    "raw": 6235887616,
+                    "tiles": 10071838720
                   }
                 },
                 "decode_scratch": {
@@ -9495,10 +9843,10 @@
       "owner_bytes": 0,
       "selected_allocation_count": 0,
       "selected_requested_bytes": 0,
-      "dedicated_allocation_count": 898,
-      "dedicated_requested_bytes": 16548202496,
-      "dedicated_2m_aligned_count": 501,
-      "physical_owner_count": 898
+      "dedicated_allocation_count": 883,
+      "dedicated_requested_bytes": 16307726336,
+      "dedicated_2m_aligned_count": 452,
+      "physical_owner_count": 883
     }
   },
   "notes": [
@@ -9507,7 +9855,10 @@
     "Discarded repetitions warm the same kernels through eager submission. Measured repetitions capture a fresh state-bound graph after reset/prefill/warmup; graph capture is excluded from decode throughput."
   ],
   "qualification": {
-    "note": "baseline arm of the K_S A/B; UD K_S is qualified (ud-ks.json)"
-  },
-  "superseded_by": "benchmarks/results/final-four-arm-perslot-2026-09-11/ (same-conditions re-measure with the per-slot Q3_K strict pin that qualifies K_M)"
+    "category_gate": "PASS (2026-09-11, scripts/gguf_ud_combined_stack_gate.py --category-heldout, tokenized prompts, seeds 7/11/23, 1170 positions each; deterministic across seeds)",
+    "gate_stats": "pooled mean 1.53e-4 / p95 3.73e-4 / p99 1.86e-3 / max 2.81e-2 / top-1 99.74%; one diagnostic position above the 2e-2 p99 envelope (local32 decode tail, within the 5e-2 max ceiling)",
+    "policy": "the Q3_K W4A16 prefill route is pinned strict for layers.0.ffn_up only (GGUF_IQ_DENSE_PREFILL_STRICT_SLOTS, stamp-keyed on (MOSTLY_Q4_K_M, gguf_ud_q4_k_m)); see Q3K-BISECTION.md in this directory",
+    "prefill_cost": "936.4 -> 904.1 tok/s vs the unpinned route (~3.4%); 0.922x of plain K_M (980.7), same-conditions four-arm",
+    "decode": "26.20 tok/s, graph-replay protocol (0.768x of plain 34.12)"
+  }
 }

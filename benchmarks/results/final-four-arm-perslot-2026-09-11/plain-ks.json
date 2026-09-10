@@ -1,11 +1,11 @@
 {
   "schema": 1,
-  "status": "superseded_by_perslot_four_arm",
+  "status": "baseline_measurement_valid",
   "performance_claim": false,
   "mode": "qwen35_readme_persistent_resident_sweep",
   "engine": "gguf",
   "model": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
-  "quant": "gguf_q4_k_s",
+  "quant": "plain_ks",
   "workloads": [
     "512/128"
   ],
@@ -14,7 +14,7 @@
   "warmup_runs": 1,
   "measured_runs": 3,
   "max_sequence_length": 642,
-  "persistent_session_load_seconds": 73.0878251362592,
+  "persistent_session_load_seconds": 73.7076283171773,
   "persistent_session_memory": {
     "summary": {
       "tracked_peak_allocated_bytes": 17386398084,
@@ -651,10 +651,10 @@
   "provenance": {
     "kind": "hipengine_artifact_provenance",
     "schema_version": 2,
-    "collected_at": "2026-09-10T05:59:45.941673+00:00",
+    "collected_at": "2026-09-10T16:02:10.659646+00:00",
     "host_name": "epyc",
     "repo_root": "/home/lhl/hipEngine-ud",
-    "hipengine_commit": "ed8188871c89eb1d082467642644c0620b4122be",
+    "hipengine_commit": "8b103d954c520329cfe70d47ad22fabb4b5b38fe",
     "git_branch": "ud-quants",
     "staged_dirty": false,
     "unstaged_dirty": true,
@@ -680,7 +680,7 @@
       "exists": true,
       "path_type": "file"
     },
-    "quant": "gguf_q4_k_s",
+    "quant": "plain_ks",
     "kv_dtype": "bf16",
     "command": [
       "scripts/qwen35_readme_sweep.py",
@@ -689,27 +689,15 @@
       "--model",
       "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
       "--quant",
-      "gguf_q4_k_s",
-      "--backend",
-      "hip_gfx1100",
+      "plain_ks",
       "--workloads",
       "512/128",
-      "--warmup-runs",
-      "1",
-      "--measured-runs",
-      "3",
-      "--warmup-decode-tokens",
-      "1",
       "--force-bulk-prefill",
-      "--bulk-prefill-attention-mode",
-      "bulk",
-      "--use-wmma-prefill",
-      "--use-gemv-decode",
       "--graph-replay-decode",
       "--compiler-version-file",
       "/tmp/ud-hipcc-version.txt",
       "--json",
-      "/tmp/ud-final5-plain_ks.json"
+      "/tmp/ud-final15-plain-ks.json"
     ],
     "environment": {
       "HIPENGINE_BACKEND": null,
@@ -737,19 +725,19 @@
     "512/128": {
       "prefill_tok_s": {
         "count": 3,
-        "median": 949.8290417167898,
-        "min": 949.277751776831,
-        "max": 950.9644873691984,
-        "mean": 950.0237602876064,
-        "stdev": 0.8600614693179913
+        "median": 944.5018698929147,
+        "min": 943.7810790826893,
+        "max": 945.3550280413926,
+        "mean": 944.5459923389989,
+        "stdev": 0.7879015952751792
       },
       "decode_tok_s": {
         "count": 3,
-        "median": 35.0611309457472,
-        "min": 35.039987328440624,
-        "max": 35.06834606104214,
-        "mean": 35.05648811174332,
-        "stdev": 0.014738431374531773
+        "median": 30.551321181305056,
+        "min": 29.16438162972778,
+        "max": 32.99304430777706,
+        "mean": 30.902915706269965,
+        "stdev": 1.9383958594830024
       },
       "tracked_peak_allocated_gib": {
         "count": 3,
@@ -784,7 +772,7 @@
         "resolved_backend": "hip_gfx1100",
         "target_arch": "gfx1100",
         "model": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
-        "quant": "gguf_q4_k_s",
+        "quant": "plain_ks",
         "prompt_length": 512,
         "decode_tokens": 128,
         "warmup_decode_tokens": 1,
@@ -852,7 +840,7 @@
         "host_token_embedding_mapped": {
           "enabled": true,
           "nbytes": 715161600,
-          "device_ptr": 139615112670176,
+          "device_ptr": 139697482509280,
           "owns_buffer": false,
           "storage": "hip_registered_gguf_mmap"
         },
@@ -878,18 +866,18 @@
           "decode_tokens": 128
         },
         "timings": {
-          "load_seconds": 73.0878251362592,
+          "load_seconds": 73.7076283171773,
           "load_seconds_is_shared_session": true,
-          "prefill_seconds": 0.5639353608712554,
-          "warmup_decode_seconds": 0.045038992539048195,
+          "prefill_seconds": 0.5709675429388881,
+          "warmup_decode_seconds": 0.038416565395891666,
           "graph_capture_seconds": 0.0,
-          "decode_seconds_excluding_graph_capture": 3.7412847904488444,
-          "wall_seconds_excluding_load": 4.350259143859148
+          "decode_seconds_excluding_graph_capture": 4.8145038560032845,
+          "wall_seconds_excluding_load": 5.423887964338064
         },
         "throughput": {
-          "prefill_tok_s": 907.9054720189606,
-          "decode_tok_s": 34.212845899027045,
-          "decode_ms_per_token": 29.228787425381597
+          "prefill_tok_s": 896.7234763724573,
+          "decode_tok_s": 26.586332429746562,
+          "decode_ms_per_token": 37.61331137502566
         },
         "correctness_sanity": {
           "finite_final_logits": true,
@@ -2955,7 +2943,7 @@
         "resolved_backend": "hip_gfx1100",
         "target_arch": "gfx1100",
         "model": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
-        "quant": "gguf_q4_k_s",
+        "quant": "plain_ks",
         "prompt_length": 512,
         "decode_tokens": 128,
         "warmup_decode_tokens": 1,
@@ -3022,13 +3010,13 @@
           "backend": "hip_gfx1100",
           "gfx_arch": "gfx1100",
           "source": "hip_runtime_graph",
-          "graph_handle": 94919886919968,
-          "graph_exec": 94919898169552,
+          "graph_handle": 94835758003744,
+          "graph_exec": 94835757922912,
           "launches": 128,
           "submission_started": true,
           "native_fallbacks": 0,
           "closed": false,
-          "decode_graph_key_sha256": "3512bffb7a139ccd0b0a570b1ce65a31612486ee59cd2e97e51218cf01c4c222",
+          "decode_graph_key_sha256": "35d2282a5b8c313c0893b1f60b015cabf81b939778486b509b67cf42d684ff24",
           "replayed_steps": 128
         },
         "rocprof_selected_region": "none",
@@ -3037,7 +3025,7 @@
         "host_token_embedding_mapped": {
           "enabled": true,
           "nbytes": 715161600,
-          "device_ptr": 139615112670176,
+          "device_ptr": 139697482509280,
           "owns_buffer": false,
           "storage": "hip_registered_gguf_mmap"
         },
@@ -3063,18 +3051,18 @@
           "decode_tokens": 128
         },
         "timings": {
-          "load_seconds": 73.0878251362592,
+          "load_seconds": 73.7076283171773,
           "load_seconds_is_shared_session": true,
-          "prefill_seconds": 0.5384007571265101,
-          "warmup_decode_seconds": 0.02867672871798277,
-          "graph_capture_seconds": 0.04724087659269571,
-          "decode_seconds_excluding_graph_capture": 3.6500153094530106,
-          "wall_seconds_excluding_load": 4.264333671890199
+          "prefill_seconds": 0.5424986910074949,
+          "warmup_decode_seconds": 0.028656166046857834,
+          "graph_capture_seconds": 0.06348447129130363,
+          "decode_seconds_excluding_graph_capture": 4.388915274292231,
+          "wall_seconds_excluding_load": 5.023554602637887
         },
         "throughput": {
-          "prefill_tok_s": 950.9644873691984,
-          "decode_tok_s": 35.06834606104214,
-          "decode_ms_per_token": 28.515744605101645
+          "prefill_tok_s": 943.7810790826893,
+          "decode_tok_s": 29.16438162972778,
+          "decode_ms_per_token": 34.28840058040805
         },
         "correctness_sanity": {
           "finite_final_logits": true,
@@ -5114,7 +5102,7 @@
         "resolved_backend": "hip_gfx1100",
         "target_arch": "gfx1100",
         "model": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
-        "quant": "gguf_q4_k_s",
+        "quant": "plain_ks",
         "prompt_length": 512,
         "decode_tokens": 128,
         "warmup_decode_tokens": 1,
@@ -5181,13 +5169,13 @@
           "backend": "hip_gfx1100",
           "gfx_arch": "gfx1100",
           "source": "hip_runtime_graph",
-          "graph_handle": 94919887010176,
-          "graph_exec": 94919898169552,
+          "graph_handle": 94835758015936,
+          "graph_exec": 94835757922912,
           "launches": 128,
           "submission_started": true,
           "native_fallbacks": 0,
           "closed": false,
-          "decode_graph_key_sha256": "3512bffb7a139ccd0b0a570b1ce65a31612486ee59cd2e97e51218cf01c4c222",
+          "decode_graph_key_sha256": "35d2282a5b8c313c0893b1f60b015cabf81b939778486b509b67cf42d684ff24",
           "replayed_steps": 128
         },
         "rocprof_selected_region": "none",
@@ -5196,7 +5184,7 @@
         "host_token_embedding_mapped": {
           "enabled": true,
           "nbytes": 715161600,
-          "device_ptr": 139615112670176,
+          "device_ptr": 139697482509280,
           "owns_buffer": false,
           "storage": "hip_registered_gguf_mmap"
         },
@@ -5222,18 +5210,18 @@
           "decode_tokens": 128
         },
         "timings": {
-          "load_seconds": 73.0878251362592,
+          "load_seconds": 73.7076283171773,
           "load_seconds_is_shared_session": true,
-          "prefill_seconds": 0.5393574209883809,
-          "warmup_decode_seconds": 0.030167113058269024,
-          "graph_capture_seconds": 0.02674594707787037,
-          "decode_seconds_excluding_graph_capture": 3.6529693575575948,
-          "wall_seconds_excluding_load": 4.249239838682115
+          "prefill_seconds": 0.5415954692289233,
+          "warmup_decode_seconds": 0.02856670506298542,
+          "graph_capture_seconds": 0.03892364166676998,
+          "decode_seconds_excluding_graph_capture": 4.189671511761844,
+          "wall_seconds_excluding_load": 4.798757327720523
         },
         "throughput": {
-          "prefill_tok_s": 949.277751776831,
-          "decode_tok_s": 35.039987328440624,
-          "decode_ms_per_token": 28.53882310591871
+          "prefill_tok_s": 945.3550280413926,
+          "decode_tok_s": 30.551321181305056,
+          "decode_ms_per_token": 32.73180868563941
         },
         "correctness_sanity": {
           "finite_final_logits": true,
@@ -7273,7 +7261,7 @@
         "resolved_backend": "hip_gfx1100",
         "target_arch": "gfx1100",
         "model": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
-        "quant": "gguf_q4_k_s",
+        "quant": "plain_ks",
         "prompt_length": 512,
         "decode_tokens": 128,
         "warmup_decode_tokens": 1,
@@ -7340,13 +7328,13 @@
           "backend": "hip_gfx1100",
           "gfx_arch": "gfx1100",
           "source": "hip_runtime_graph",
-          "graph_handle": 94919886919968,
-          "graph_exec": 94919898169552,
+          "graph_handle": 94835757916000,
+          "graph_exec": 94835757922912,
           "launches": 128,
           "submission_started": true,
           "native_fallbacks": 0,
           "closed": false,
-          "decode_graph_key_sha256": "3512bffb7a139ccd0b0a570b1ce65a31612486ee59cd2e97e51218cf01c4c222",
+          "decode_graph_key_sha256": "35d2282a5b8c313c0893b1f60b015cabf81b939778486b509b67cf42d684ff24",
           "replayed_steps": 128
         },
         "rocprof_selected_region": "none",
@@ -7355,7 +7343,7 @@
         "host_token_embedding_mapped": {
           "enabled": true,
           "nbytes": 715161600,
-          "device_ptr": 139615112670176,
+          "device_ptr": 139697482509280,
           "owns_buffer": false,
           "storage": "hip_registered_gguf_mmap"
         },
@@ -7381,18 +7369,18 @@
           "decode_tokens": 128
         },
         "timings": {
-          "load_seconds": 73.0878251362592,
+          "load_seconds": 73.7076283171773,
           "load_seconds_is_shared_session": true,
-          "prefill_seconds": 0.5390443727374077,
-          "warmup_decode_seconds": 0.02904623281210661,
-          "graph_capture_seconds": 0.02435618732124567,
-          "decode_seconds_excluding_graph_capture": 3.650766434147954,
-          "wall_seconds_excluding_load": 4.243213227018714
+          "prefill_seconds": 0.5420846864581108,
+          "warmup_decode_seconds": 0.02869745623320341,
+          "graph_capture_seconds": 0.024593930691480637,
+          "decode_seconds_excluding_graph_capture": 3.879605616442859,
+          "wall_seconds_excluding_load": 4.474981689825654
         },
         "throughput": {
-          "prefill_tok_s": 949.8290417167898,
-          "decode_tok_s": 35.0611309457472,
-          "decode_ms_per_token": 28.52161276678089
+          "prefill_tok_s": 944.5018698929147,
+          "decode_tok_s": 32.99304430777706,
+          "decode_ms_per_token": 30.309418878459837
         },
         "correctness_sanity": {
           "finite_final_logits": true,
@@ -9507,7 +9495,6 @@
     "Discarded repetitions warm the same kernels through eager submission. Measured repetitions capture a fresh state-bound graph after reset/prefill/warmup; graph capture is excluded from decode throughput."
   ],
   "qualification": {
-    "note": "baseline arm of the K_S A/B; UD K_S is qualified (ud-ks.json)"
-  },
-  "superseded_by": "benchmarks/results/final-four-arm-perslot-2026-09-11/ (same-conditions re-measure with the per-slot Q3_K strict pin that qualifies K_M)"
+    "note": "baseline arm of the K_S A/B, same-conditions re-measure (prefill 944.5 / decode 30.55)"
+  }
 }
