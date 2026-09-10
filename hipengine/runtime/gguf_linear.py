@@ -1032,16 +1032,29 @@ def resolve_q8_mmq_prefill_policy(
     *,
     backend: str = "hip_gfx1100",
 ) -> Q8MMQPrefillPolicy | None:
-    """Resolve the optional raw-Q8 MMQ policy on the model quant axis."""
+    """Resolve the optional raw-Q8 MMQ policy on the model quant axis.
+
+    #28 R12 candidate gate: HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES=2 selects the
+    two-plane d4x2 MMQ (raw-vec4, +1.4x on the dense legs, quantization-level
+    drift pending envelope qualification); the default stays the retained
+    three-plane d4x3 exact chain.
+    """
 
     register_gguf_q8_0_mmq_prefill_kernels()
-    return resolve(
+    policy = resolve(
         backend=backend,
         layer="linear_prefill_policy",
         quant=str(quant),
         variant="raw_q8_mmq128",
         missing="none",
     )
+    planes_env = os.environ.get("HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES", "")
+    if policy is not None and planes_env in {"2", "3"}:
+        planes = int(planes_env)
+        if planes != policy.planes:
+            from dataclasses import replace
+            policy = replace(policy, planes=planes)
+    return policy
 
 
 _DISPATCH_TABLE: Mapping[tuple[str, str, str], GGUFLinearDispatch] = {
@@ -6005,7 +6018,7 @@ def _q8_mmq_prefill_dispatch(
                     dispatch.key.backend,
                     dispatch.key.layer,
                     dispatch.key.quant,
-                    "mmq128_prefill_q8_1_d4x2_guarded_f32_f32_out",
+                    "mmq128_raw_vec4_q8_1_d4x2_guarded_f32_f32_out",
                 ),
                 "raw_mmq_d4x2_f32",
             )
