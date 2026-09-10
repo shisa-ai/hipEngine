@@ -441,3 +441,95 @@ def test_env_flag_cache_resets(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("HIPENGINE_GGUF_PACKED_LAYER_OUTER", raising=False)
     gguf_runner._gguf_packed_layer_outer_enabled_cache = None
     assert _gguf_packed_layer_outer_enabled() is False
+
+
+def test_layer_outer_cancellation_releases_and_survives(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A mid-executor failure must leave every session reusable.
+
+    Reviewer packet gate: cancellation cleanup. The layer-outer executor
+    clears per-layer oracle keying before the layer loop; a failure after
+    that point (cancellation, kernel error) must still leave the sessions
+    with released oracle buffers, cleared flags, and a working next call -
+    the public wrapper's finally owns the release, so this drives the real
+    impl through a mid-executor exception.
+    """
+
+    class _MidExecutorStop(Exception):
+        pass
+
+    def failing_sync(self, session_tuple, layout, packed_state, **kwargs):
+        raise _MidExecutorStop()
+
+    monkeypatch.setattr(
+        gguf_runner.Qwen35GGUFResidentSession,
+        "_packed_ar_kv_layout_for_sessions",
+        lambda self, sessions, **kwargs: SimpleNamespace(
+            layer_storage_dtypes=("int8_per_token_head",),
+            bf16_mirror_layer_indices=(),
+        ),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        gguf_runner,
+        "_gguf_device_kv_contiguous_base_row",
+        lambda session: 0,
+    )
+    monkeypatch.setattr(
+        gguf_runner.Qwen35GGUFResidentSession,
+        "_ensure_bulk_prefill_workspace",
+        lambda self: None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        gguf_runner.Qwen35GGUFResidentSession,
+        "_ensure_packed_verify_workspace",
+        lambda self, **kwargs: (
+            SimpleNamespace(slot_count=1, blocks_per_slot=1, page_ids=[0]),
+            SimpleNamespace(),
+        ),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        gguf_runner.Qwen35GGUFResidentSession,
+        "_sync_packed_decode_initial_state",
+        failing_sync,
+        raising=False,
+    )
+
+    owner = _fake_runner_session(monkeypatch, per_layer=True)
+    owner.runtime = SimpleNamespace(free=lambda ptr: None)
+    sessions = (_fake_runner_session(monkeypatch, per_layer=True),)
+    sessions[0].runtime = SimpleNamespace(free=lambda ptr: None)
+    prompts = (tuple(range(16)),)
+    chunks = _chunks_for(prompts, row_capacity=8)
+    with pytest.raises(_MidExecutorStop):
+        owner._prefill_batch_native_layer_outer(
+            prompts, sessions=sessions, chunks=chunks
+        )
+    # The per-layer keying was cleared before the failure and stays clear:
+    # no later single-chunk call can inherit per-layer pairs.
+    assert sessions[0]._int8_prefill_oracle_per_layer is False
+    assert sessions[0]._int8_prefill_oracle_buffers == {}
+    # The wrapper's finally releases any acquired oracle buffers even when
+    # the executor raises: simulate one acquired pair on the session and
+    # drive the public entry so the finally runs.
+    sessions[0]._int8_prefill_oracle_buffers = {
+        -1: (
+            SimpleNamespace(ptr=1, nbytes=2048),
+            SimpleNamespace(ptr=2, nbytes=2048),
+        )
+    }
+    monkeypatch.setattr(
+        gguf_runner.Qwen35GGUFResidentSession,
+        "_prefill_batch_native_impl",
+        lambda self, prompt_token_ids, **kwargs: (_ for _ in ()).throw(
+            _MidExecutorStop()
+        ),
+        raising=False,
+    )
+    with pytest.raises(_MidExecutorStop):
+        owner.prefill_batch_native(prompts, sessions=sessions)
+    assert sessions[0]._int8_prefill_oracle_buffers == {}
+    assert sessions[0]._int8_prefill_oracle_per_layer is False
