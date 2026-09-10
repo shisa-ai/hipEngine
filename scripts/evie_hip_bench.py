@@ -89,6 +89,12 @@ def main() -> None:
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--page-size", default="448x336")
     parser.add_argument("--precision", choices=["fp32", "fp16"], default="fp32")
+    parser.add_argument(
+        "--accuracy",
+        action="store_true",
+        help="after timing, re-encode the same inputs in strict fp32 and "
+        "report score deltas and ranking agreement vs the timed precision",
+    )
     args = parser.parse_args()
 
     snapshot = resolve_model_path("tencent/EVIE-4.5B")
@@ -138,12 +144,13 @@ def main() -> None:
         scores = [maxsim(q, d) for q, d in zip(qs, docs)]
         get_hip_runtime().device_synchronize()
         t3 = time.perf_counter()
-        return t1 - t0, t2 - t1, t3 - t2, scores
+        last_docs, last_qs = docs, qs
+        return t1 - t0, t2 - t1, t3 - t2, scores, last_docs, last_qs
 
     run_once()
     best = None
     for _ in range(args.repeats):
-        doc_s, q_s, score_s, scores = run_once()
+        doc_s, q_s, score_s, scores, docs, qs = run_once()
         total = doc_s + q_s + score_s
         print(
             f"doc {doc_s*1e3:8.1f} ms | query {q_s*1e3:7.1f} ms | "
@@ -158,6 +165,36 @@ def main() -> None:
         f"total {total*1e3:.1f} ms"
     )
     runner.close()
+
+    if args.accuracy:
+        # strict fp32 teacher on the same inputs (single-model residency:
+        # the timed runner was closed above)
+        loaded_t = load_evie_model(snapshot, runtime=None, precision="fp32")
+        teacher = EvieRunner(loaded_t)
+        t_docs, t_qs = [], []
+        for img in images:
+            patches, grid = _preprocess_page(img, processor_info)
+            n_img_tokens = int(patches.shape[0] // 4)
+            ids, mask = _doc_template(n_img_tokens, loaded_t.spec.image_token_id)
+            t_docs.append(teacher.encode_document(ids, mask, patches, grid))
+        for q in queries:
+            ids, mask = _query_template(q, loaded_t.spec.image_token_id)
+            t_qs.append(teacher.encode_query(ids, mask))
+        S_t = np.array([
+            [maxsim(q, d) for d in t_docs] for q in t_qs
+        ])
+        # full candidate score matrix (the timed loop only scores zipped
+        # pairs)
+        S_c = np.array([[maxsim(q, d) for d in docs] for q in qs])
+        diff = np.abs(S_c - S_t)
+        rel = diff / np.maximum(np.abs(S_t), 1e-9)
+        agree = int((S_c.argmax(axis=1) == S_t.argmax(axis=1)).sum())
+        print(
+            f"accuracy vs strict fp32 teacher: max|d| {diff.max():.5f} "
+            f"mean|d| {diff.mean():.5f} maxrel {rel.max():.5f} "
+            f"argmax agreement {agree}/{len(t_qs)}"
+        )
+        teacher.close()
 
 
 _TOKENS = {
