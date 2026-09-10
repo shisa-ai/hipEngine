@@ -64,12 +64,17 @@ __global__ void evie_rmsnorm_kernel(
   }
   const float* xr = x + row * hidden;
   const float total = evie_row_sum_squares(xr, hidden);
+  __shared__ float s_inv;
   if (threadIdx.x == 0) {
-    const float inv = rsqrtf(total / static_cast<float>(hidden) + eps);
-    float* orow = out + row * hidden;
-    for (int64_t i = 0; i < hidden; ++i) {
-      orow[i] = (1.0f + w[i]) * xr[i] * inv;
-    }
+    s_inv = rsqrtf(total / static_cast<float>(hidden) + eps);
+  }
+  __syncthreads();
+  // all threads write coalesced strided slices (the single-thread write
+  // loop dominated runtime at batch sizes)
+  const float inv = s_inv;
+  float* orow = out + row * hidden;
+  for (int64_t i = threadIdx.x; i < hidden; i += blockDim.x) {
+    orow[i] = (1.0f + w[i]) * xr[i] * inv;
   }
 }
 
@@ -156,16 +161,20 @@ __global__ void evie_layernorm_kernel(
     }
     __syncthreads();
   }
+  __shared__ float s_mean;
+  __shared__ float s_inv;
   if (threadIdx.x == 0) {
-    float s1 = p1[0];
-    float s2 = p2[0];
-    const float mean = s1 / static_cast<float>(hidden);
-    const float var = s2 / static_cast<float>(hidden) - mean * mean;
-    const float inv = rsqrtf(var + eps);
-    float* orow = out + row * hidden;
-    for (int64_t i = 0; i < hidden; ++i) {
-      orow[i] = (xr[i] - mean) * inv * w[i] + b[i];
-    }
+    const float mean = p1[0] / static_cast<float>(hidden);
+    const float var = p2[0] / static_cast<float>(hidden) - mean * mean;
+    s_mean = mean;
+    s_inv = rsqrtf(var + eps);
+  }
+  __syncthreads();
+  const float mean = s_mean;
+  const float inv = s_inv;
+  float* orow = out + row * hidden;
+  for (int64_t i = threadIdx.x; i < hidden; i += blockDim.x) {
+    orow[i] = (xr[i] - mean) * inv * w[i] + b[i];
   }
 }
 
@@ -461,25 +470,27 @@ __global__ void evie_rope_kernel(
     int64_t head_dim,
     int64_t rotary_dim,
     int64_t row_stride) {
+  // one thread per (row, d) pair; consecutive threads touch consecutive
+  // addresses (the old thread-per-row serial loop was uncoalesced)
   const int64_t idx =
       static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-  const int64_t n = tokens * heads;
+  const int64_t half = rotary_dim / 2;
+  const int64_t n = tokens * heads * half;
   if (idx >= n) {
     return;
   }
-  const int64_t token = idx / heads;
-  const int64_t row = token * row_stride + (idx % heads) * head_dim;
-  const int64_t half = rotary_dim / 2;
+  const int64_t d = idx % half;
+  const int64_t rh = idx / half;
+  const int64_t token = rh / heads;
+  const int64_t row = token * row_stride + (rh % heads) * head_dim;
   const float* crow = cos + token * rotary_dim;
   const float* srow = sin + token * rotary_dim;
-  for (int64_t d = 0; d < half; ++d) {
-    const float x1 = x[row + d];
-    const float x2 = x[row + d + half];
-    // rotate_half: first half x1*cos - x2*sin, second half x2*cos + x1*sin
-    // (tables are doubled, so crow[d] == crow[d + half]).
-    x[row + d] = x1 * crow[d] - x2 * srow[d];
-    x[row + d + half] = x2 * crow[d + half] + x1 * srow[d + half];
-  }
+  const float x1 = x[row + d];
+  const float x2 = x[row + d + half];
+  // rotate_half: first half x1*cos - x2*sin, second half x2*cos + x1*sin
+  // (tables are doubled, so crow[d] == crow[d + half]).
+  x[row + d] = x1 * crow[d] - x2 * srow[d];
+  x[row + d + half] = x2 * crow[d + half] + x1 * srow[d + half];
 }
 
 extern "C" int hipengine_evie_rope_f32(
@@ -496,7 +507,7 @@ extern "C" int hipengine_evie_rope_f32(
       rotary_dim > head_dim || (rotary_dim & 1) != 0 || row_stride <= 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
-  const int64_t n = tokens * heads;
+  const int64_t n = tokens * heads * (rotary_dim / 2);
   const int threads = 64;
   const int blocks = static_cast<int>((n + threads - 1) / threads);
   hipLaunchKernelGGL(
@@ -904,9 +915,11 @@ __global__ void evie_gdn_l2norm_scale_repeat_kernel(
     int64_t head_dim,
     int64_t src_stride,
     int64_t k_offset) {
-  const int64_t idx =
-      static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  // one block per (token, kv_head) row: lane-parallel sum with a warp
+  // shuffle reduction, then coalesced writes (the old thread-per-row
+  // serial loop was uncoalesced and dominated batched runtime)
   const int64_t rows = tokens * kv_heads;
+  const int64_t idx = static_cast<int64_t>(blockIdx.x);
   if (idx >= rows) {
     return;
   }
@@ -914,19 +927,26 @@ __global__ void evie_gdn_l2norm_scale_repeat_kernel(
   const int64_t head = idx % kv_heads;
   const float* qr = src + token * src_stride + head * head_dim;
   const float* kr = src + token * src_stride + k_offset + head * head_dim;
+  const int tid = static_cast<int>(threadIdx.x);
+  const int nthr = static_cast<int>(blockDim.x);  // one warp per block
   float sq = 0.0f;
   float sk = 0.0f;
-  for (int64_t i = 0; i < head_dim; ++i) {
+  for (int64_t i = tid; i < head_dim; i += nthr) {
     sq += qr[i] * qr[i];
     sk += kr[i] * kr[i];
   }
+  // full butterfly: every lane holds both totals
+  for (int off = 16; off > 0; off >>= 1) {
+    sq += __shfl_xor(sq, off);
+    sk += __shfl_xor(sk, off);
+  }
   const float iq = rsqrtf(sq + 1e-6f) * q_scale;
   const float ik = rsqrtf(sk + 1e-6f);
-  const int64_t out_base = (token * kv_heads + head) * 2 * head_dim;
+  const int64_t out_base = idx * 2 * head_dim;
   for (int rep = 0; rep < 2; ++rep) {
     float* qo = q_out + out_base + rep * head_dim;
     float* ko = k_out + out_base + rep * head_dim;
-    for (int64_t i = 0; i < head_dim; ++i) {
+    for (int64_t i = tid; i < head_dim; i += nthr) {
       qo[i] = qr[i] * iq;
       ko[i] = kr[i] * ik;
     }
@@ -949,11 +969,10 @@ extern "C" int hipengine_evie_gdn_l2norm_scale_repeat_f32(
     return static_cast<int>(hipErrorInvalidValue);
   }
   const int64_t rows = tokens * kv_heads;
-  const int threads = 64;
-  const int blocks = static_cast<int>((rows + threads - 1) / threads);
+  const int threads = 32;  // one warp per (token, head) row
   hipLaunchKernelGGL(
       evie_gdn_l2norm_scale_repeat_kernel,
-      dim3(blocks),
+      dim3(static_cast<unsigned int>(rows)),
       dim3(threads),
       0,
       stream,
@@ -990,14 +1009,17 @@ __global__ void evie_gdn_rmsnorm_gate_kernel(
     }
     __syncthreads();
   }
+  __shared__ float s_inv;
   if (threadIdx.x == 0) {
-    const float inv = rsqrtf(partial[0] / static_cast<float>(head_dim) + eps);
-    const float* zr = z + row * head_dim;
-    float* orow = out + row * head_dim;
-    for (int64_t i = 0; i < head_dim; ++i) {
-      const float g = zr[i] / (1.0f + expf(-zr[i]));
-      orow[i] = xr[i] * inv * w[i] * g;
-    }
+    s_inv = rsqrtf(partial[0] / static_cast<float>(head_dim) + eps);
+  }
+  __syncthreads();
+  const float inv = s_inv;
+  const float* zr = z + row * head_dim;
+  float* orow = out + row * head_dim;
+  for (int64_t i = threadIdx.x; i < head_dim; i += blockDim.x) {
+    const float g = zr[i] / (1.0f + expf(-zr[i]));
+    orow[i] = xr[i] * inv * w[i] * g;
   }
 }
 

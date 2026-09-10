@@ -31,6 +31,7 @@ from typing import Any
 import numpy as np
 
 from hipengine.core.hip import HipRuntime, get_hip_runtime
+from hipengine.core.runtime import MemcpyKind
 from hipengine.core.memory import (
     DeviceBuffer,
     copy_device_to_host,
@@ -42,6 +43,7 @@ from hipengine.core.memory import free as hip_free
 from hipengine.core.rocblas import Rocblas
 from hipengine.kernels.hip_gfx1100.evie.evie_ops import build_evie_ops
 from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
+    qwen35_linear_attn_conv_prefill_segments_f32,
     build_qwen35_linear_attn_conv,
     qwen35_linear_attn_conv_prefill_f32,
 )
@@ -49,6 +51,8 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     build_qwen35_linear_attn_gdn,
     qwen35_gdn_prefill_recurrent_k2_f32,
     qwen35_gdn_prefill_recurrent_normalized_cluster8_f32,
+    qwen35_gdn_prefill_recurrent_normalized_segments_cluster8_f32,
+    qwen35_gdn_prefill_recurrent_segments_k2_f32,
 )
 from hipengine.loading.evie import EvieLoadedModel
 from hipengine.models.evie import EvieModelSpec
@@ -92,6 +96,29 @@ class _Scratch:
         for buf in self.buffers.values():
             hip_free(buf)
         self.buffers.clear()
+
+
+@dataclass
+class _SegMeta:
+    """Batched-stream segment metadata (ragged, no padding).
+
+    ranges: per-segment [start, end) token spans in the concatenated
+    stream. Device buffers: cu_seqlens (int32, segments+1), state_indices
+    (int64, identity), a zeroed conv-state slab (one
+    (channels, kernel_size) slot per segment; the segments conv kernel
+    reads boundary taps from the owning segment's slot), and a GDN state
+    slab (one [V, K, Dv] slot per segment, re-zeroed each layer).
+    """
+
+    ranges: list[tuple[int, int]]
+    cu_buf: DeviceBuffer
+    state_idx_buf: DeviceBuffer
+    conv_state_slab: DeviceBuffer
+    gdn_state_slab: DeviceBuffer
+
+    @property
+    def segments(self) -> int:
+        return len(self.ranges)
 
 
 def _raw_buffer(ptr: int, nbytes: int) -> DeviceBuffer:
@@ -882,6 +909,7 @@ class EvieRunner:
         scratch: _Scratch,
         *,
         visual_ptr: int | None = None,
+        seg: "_SegMeta | None" = None,
     ) -> int:
         spec = self.spec
         tokens = len(input_ids)
@@ -911,9 +939,9 @@ class EvieRunner:
             lp = f"language_model.layers.{layer}."
             self._rmsnorm(x_ptr, self._w[lp + "input_layernorm.weight"], norm_ptr, tokens, h)
             if spec.is_full_attention(layer):
-                self._full_attention_layer(layer, norm_ptr, attn_out_ptr, tokens, cos_buf, sin_buf, scratch)
+                self._full_attention_layer(layer, norm_ptr, attn_out_ptr, tokens, cos_buf, sin_buf, scratch, seg=seg)
             else:
-                self._gdn_layer(layer, norm_ptr, attn_out_ptr, tokens, scratch)
+                self._gdn_layer(layer, norm_ptr, attn_out_ptr, tokens, scratch, seg=seg)
             self._add(x_ptr, attn_out_ptr, x_ptr, tokens * h)
             self._rmsnorm(x_ptr, self._w[lp + "post_attention_layernorm.weight"], norm_ptr, tokens, h)
             gate_ptr = scratch.buffers["gate_proj"].ptr
@@ -939,6 +967,8 @@ class EvieRunner:
         cos_buf: DeviceBuffer,
         sin_buf: DeviceBuffer,
         scratch: _Scratch,
+        *,
+        seg: "_SegMeta | None" = None,
     ) -> None:
         spec = self.spec
         p = f"language_model.layers.{layer}.self_attn."
@@ -976,10 +1006,25 @@ class EvieRunner:
             _I(hd), _I(self.ROTARY_DIM), _I(nk * hd), _S(0),
         )
         self._check(err, "rope k")
-        self._attention(
-            q_ptr, k_ptr, v_ptr, heads_out, tokens, nq, hd, scratch,
-            1.0 / math.sqrt(hd), kv_heads=nk,
-        )
+        # attention is bidirectional in this model; in a batched stream
+        # each segment attends only within itself (B x L^2 work, not
+        # (B L)^2) via pointer-offset sub-range calls
+        if seg is None:
+            self._attention(
+                q_ptr, k_ptr, v_ptr, heads_out, tokens, nq, hd, scratch,
+                1.0 / math.sqrt(hd), kv_heads=nk,
+            )
+        else:
+            for s0, s1 in seg.ranges:
+                n = s1 - s0
+                self._attention(
+                    q_ptr + s0 * nq * hd * 4,
+                    k_ptr + s0 * nk * hd * 4,
+                    v_ptr + s0 * nk * hd * 4,
+                    heads_out + s0 * nq * hd * 4,
+                    n, nq, hd, scratch,
+                    1.0 / math.sqrt(hd), kv_heads=nk,
+                )
         # sigmoid gate
         err = self._k("hipengine_evie_sigmoid_mul_f32", [_P, _P, _I, _S])(
             _P(gate_ptr), _P(heads_out), _I(tokens * nq * hd), _S(0)
@@ -994,6 +1039,8 @@ class EvieRunner:
         out_ptr: int,
         tokens: int,
         scratch: _Scratch,
+        *,
+        seg: _SegMeta | None = None,
     ) -> None:
         p = f"language_model.layers.{layer}.linear_attn."
         h = self.spec.hidden_size
@@ -1029,18 +1076,46 @@ class EvieRunner:
             _F(0.0), _I(self.GDN_QKV_DIM * 4), _S(0),
         )
         self._check(err, "zero conv state")
-        qwen35_linear_attn_conv_prefill_f32(
-            qkv_ptr,
-            self._zero_conv_state.ptr,
-            self._w[p + "conv1d.weight"],
-            conv_ptr,
-            tokens,
-            self.GDN_QKV_DIM,
-            4,
-            stream=0,
-            library=self.conv_library,
-            runtime=self.runtime,
-        )
+        if seg is None:
+            qwen35_linear_attn_conv_prefill_f32(
+                qkv_ptr,
+                self._zero_conv_state.ptr,
+                self._w[p + "conv1d.weight"],
+                conv_ptr,
+                tokens,
+                self.GDN_QKV_DIM,
+                4,
+                stream=0,
+                library=self.conv_library,
+                runtime=self.runtime,
+            )
+        else:
+            # segment-aware conv: boundary taps read the owning segment's
+            # state slot. The wrapper's trailing state kernel writes each
+            # segment's FINAL state into its slot, so the slab must be
+            # re-zeroed before every layer (otherwise layer N reads layer
+            # N-1's final state as its boundary history).
+            n_conv_state = seg.segments * self.GDN_QKV_DIM * 4
+            err = self._k("hipengine_evie_scale_f32", [_P, _P, _F, _I, _S])(
+                _P(seg.conv_state_slab.ptr), _P(seg.conv_state_slab.ptr),
+                _F(0.0), _I(n_conv_state), _S(0),
+            )
+            self._check(err, "zero conv state slab")
+            qwen35_linear_attn_conv_prefill_segments_f32(
+                qkv_ptr,
+                seg.conv_state_slab.ptr,
+                self._w[p + "conv1d.weight"],
+                conv_ptr,
+                seg.cu_buf.ptr,
+                seg.state_idx_buf.ptr,
+                tokens,
+                seg.segments,
+                self.GDN_QKV_DIM,
+                4,
+                stream=0,
+                library=self.conv_library,
+                runtime=self.runtime,
+            )
         err = self._k(
             "hipengine_evie_gdn_l2norm_scale_repeat_f32",
             [_P, _P, _P, _F, _I, _I, _I, _I, _I, _S],
@@ -1085,31 +1160,64 @@ class EvieRunner:
         # zero the recurrent state before the layer: persistent buffer,
         # re-zeroed each time because the recurrence mutates it in place
         n_state = self.GDN_HEADS * self.GDN_HEAD_DIM * self.GDN_HEAD_DIM
-        if self._gdn_state_zero is None:
-            self._gdn_state_zero = _malloc_committed(n_state * 4 + _GEMM_PAD_BYTES)
+        if seg is None:
+            if self._gdn_state_zero is None:
+                self._gdn_state_zero = _malloc_committed(n_state * 4 + _GEMM_PAD_BYTES)
+            state_slab = self._gdn_state_zero
+            n_state_total = n_state
+        else:
+            state_slab = seg.gdn_state_slab
+            n_state_total = n_state * seg.segments
         # GPU-side re-zero (x * 0.0) avoids the 2 MB host upload per layer
         err = self._k("hipengine_evie_scale_f32", [_P, _P, _F, _I, _S])(
-            _P(self._gdn_state_zero.ptr), _P(self._gdn_state_zero.ptr),
-            _F(0.0), _I(n_state), _S(0),
+            _P(state_slab.ptr), _P(state_slab.ptr),
+            _F(0.0), _I(n_state_total), _S(0),
         )
         self._check(err, "zero gdn state")
-        state_zero = self._gdn_state_zero
-        self._gdn_recurrence(
-            q_ptr,
-            k_ptr,
-            v_ptr,
-            beta_ptr,
-            decay_ptr,
-            state_zero.ptr,
-            gdn_out,
-            tokens,
-            self.GDN_HEADS,
-            self.GDN_HEAD_DIM,
-            self.GDN_HEAD_DIM,
-            stream=0,
-            library=self.gdn_library,
-            runtime=self.runtime,
-        )
+        if seg is None:
+            self._gdn_recurrence(
+                q_ptr,
+                k_ptr,
+                v_ptr,
+                beta_ptr,
+                decay_ptr,
+                state_slab.ptr,
+                gdn_out,
+                tokens,
+                self.GDN_HEADS,
+                self.GDN_HEAD_DIM,
+                self.GDN_HEAD_DIM,
+                stream=0,
+                library=self.gdn_library,
+                runtime=self.runtime,
+            )
+        else:
+            # segment-aware recurrence: per-segment state slots in the
+            # slab; picks the segments variant matching the selected
+            # recurrence (k2 vs normalized cluster8, same scale conventions)
+            if self._gdn_recurrence is qwen35_gdn_prefill_recurrent_k2_f32:
+                seg_fn = qwen35_gdn_prefill_recurrent_segments_k2_f32
+            else:
+                seg_fn = qwen35_gdn_prefill_recurrent_normalized_segments_cluster8_f32
+            seg_fn(
+                q_ptr,
+                k_ptr,
+                v_ptr,
+                beta_ptr,
+                decay_ptr,
+                state_slab.ptr,
+                gdn_out,
+                seg.cu_buf.ptr,
+                seg.state_idx_buf.ptr,
+                tokens,
+                seg.segments,
+                self.GDN_HEADS,
+                self.GDN_HEAD_DIM,
+                self.GDN_HEAD_DIM,
+                stream=0,
+                library=self.gdn_library,
+                runtime=self.runtime,
+            )
         err = self._k(
             "hipengine_evie_gdn_rmsnorm_gate_f32",
             [_P, _P, _P, _P, _I, _I, _F, _S],
@@ -1237,6 +1345,92 @@ class EvieRunner:
         self._release_call_buffers()
         return emb
 
+    def encode_queries(
+        self, items: list[tuple[np.ndarray, np.ndarray]]
+    ) -> list[np.ndarray]:
+        """Encode a batch of text queries in one batched forward.
+
+        Each item is (input_ids, attention_mask); masks are applied per
+        sequence (valid-token compression, same as encode_query) and the
+        valid streams are concatenated raggedly — no padding. Dense
+        projections run once over the concatenated stream; attention,
+        conv, and the GDN recurrence are segment-isolated (per-segment
+        attention sub-ranges, segments kernels with per-segment zeroed
+        state slots). Returns one (valid_tokens, head_dim) embedding
+        array per item, in input order.
+
+        Isolation contract: a query's embeddings do not depend on the
+        content or length of its batch neighbors (bit-exact when the
+        batch shape is unchanged; a different shape may differ by GEMM
+        tiling only). Fixed batches repeat bit-exactly.
+        """
+
+        from hipengine.kernels.cpu_reference.evie import lm_rope_positions
+
+        if not items:
+            return []
+        spec = self.spec
+        seqs: list[np.ndarray] = []
+        for ids, mask in items:
+            ids = np.asarray(ids, dtype=np.int64).reshape(-1)
+            if mask is None:
+                mask = np.ones(len(ids), dtype=np.int64)
+            m = np.asarray(mask).reshape(-1).astype(bool)
+            if not m.all():
+                ids = ids[m]
+            if len(ids) == 0:
+                raise EvieRuntimeError("encode_queries: empty query after mask")
+            seqs.append(ids)
+        if len(seqs) == 1:
+            return [self.encode_query(seqs[0], np.ones(len(seqs[0]), dtype=np.int64))]
+
+        # concatenate raggedly; per-segment positions restart at 0
+        ids_cat = np.concatenate(seqs)
+        cu = np.zeros(len(seqs) + 1, dtype=np.int32)
+        for i, sq in enumerate(seqs):
+            cu[i + 1] = cu[i] + len(sq)
+        pos_parts = []
+        for sq in seqs:
+            pos_parts.append(
+                lm_rope_positions(
+                    sq, np.ones(len(sq), dtype=np.int64),
+                    np.zeros((0, 3), dtype=int), spec,
+                )
+            )
+        positions = np.concatenate(pos_parts, axis=1)
+        ranges = [(int(cu[i]), int(cu[i + 1])) for i in range(len(seqs))]
+
+        # segment metadata buffers (uploaded once per call)
+        cu_buf = _malloc_committed(cu.nbytes)
+        copy_host_to_device(cu_buf, host_array_ptr(np.ascontiguousarray(cu)), cu.nbytes)
+        state_idx = np.arange(len(seqs), dtype=np.int64)
+        si_buf = _malloc_committed(state_idx.nbytes)
+        copy_host_to_device(si_buf, host_array_ptr(state_idx), state_idx.nbytes)
+        conv_slab = _malloc_committed(
+            len(seqs) * self.GDN_QKV_DIM * 4 * 4 + _GEMM_PAD_BYTES
+        )
+        n_state = self.GDN_HEADS * self.GDN_HEAD_DIM * self.GDN_HEAD_DIM
+        gdn_slab = _malloc_committed(
+            len(seqs) * n_state * 4 + _GEMM_PAD_BYTES
+        )
+        seg = _SegMeta(
+            ranges=ranges,
+            cu_buf=cu_buf,
+            state_idx_buf=si_buf,
+            conv_state_slab=conv_slab,
+            gdn_state_slab=gdn_slab,
+        )
+        for buf in (cu_buf, si_buf, conv_slab, gdn_slab):
+            self._misc_buffers.append(buf)
+
+        tokens = len(ids_cat)
+        scratch = self._scratch_for(tokens)
+        hidden_ptr = self.text_forward(ids_cat, positions, scratch, seg=seg)
+        emb_ptr = self.project(hidden_ptr, tokens, scratch)
+        emb_all = self._to_host(emb_ptr, tokens * 128).reshape(tokens, 128)
+        self._release_call_buffers()
+        return [emb_all[s0:s1] for s0, s1 in ranges]
+
     def encode_document(
         self,
         input_ids: np.ndarray,
@@ -1268,6 +1462,114 @@ class EvieRunner:
         emb = self._to_host(emb_ptr, len(ids) * 128).reshape(len(ids), 128)
         self._release_call_buffers()
         return emb
+
+    def encode_documents(
+        self, items: list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]]
+    ) -> list[np.ndarray]:
+        """Encode a batch of document pages with a batched text stack.
+
+        v1: the vision tower runs per page (sequential, unchanged); the
+        text stack runs once over the concatenated (mask-compressed,
+        ragged) stream with the same segment isolation as
+        encode_queries. Each page's merged visual features are copied
+        into one concatenated visual buffer in stream order — the embed
+        kernel picks visual rows by image-token position in the whole
+        stream, so per-page ownership follows from concatenation order.
+        Isolation contract: identical to encode_queries.
+        """
+
+        from hipengine.kernels.cpu_reference.evie import lm_rope_positions
+
+        if not items:
+            return []
+        spec = self.spec
+        if len(items) == 1:
+            ids0, m0, pv0, g0 = items[0]
+            return [self.encode_document(ids0, m0, pv0, g0)]
+
+        seqs = []
+        visuals = []
+        grids = []
+        for ids, mask, pv, grid in items:
+            ids = np.asarray(ids, dtype=np.int64).reshape(-1)
+            if mask is None:
+                mask = np.ones(len(ids), dtype=np.int64)
+            m = np.asarray(mask).reshape(-1).astype(bool)
+            if not m.all():
+                ids = ids[m]
+            if len(ids) == 0:
+                raise EvieRuntimeError("encode_documents: empty page after mask")
+            seqs.append(ids)
+            visuals.append(np.asarray(pv, dtype=np.float32))
+            grids.append(np.asarray(grid, dtype=int))
+
+        # vision tower per page (scratch sized for the largest page)
+        max_page = max(len(pv) for pv in visuals)
+        scratch = self._scratch_for(max(max(len(sq) for sq in seqs), max_page))
+        n_vis = []
+        vis_bufs = []
+        for (sq, pv, grid) in zip(seqs, visuals, grids):
+            visual = self.vision_forward(pv, grid, scratch)
+            vis_bufs.append(visual)
+            # authoritative row count: the embed kernel consumes one row
+            # per image token (nbytes includes allocation padding)
+            n_vis.append(int((sq == spec.image_token_id).sum()))
+        # concatenated visual buffer (stream order)
+        total_rows = sum(n_vis)
+        h = spec.vision_out_hidden_size
+        visual_cat = _malloc_committed(total_rows * h * 4 + _GEMM_PAD_BYTES)
+        self._misc_buffers.append(visual_cat)
+        offset = 0
+        for visual, rows in zip(vis_bufs, n_vis):
+            nbytes = rows * h * 4
+            self.runtime.memcpy(visual_cat.ptr + offset, visual.ptr, nbytes, MemcpyKind.DEVICE_TO_DEVICE)
+            offset += nbytes
+
+        ids_cat = np.concatenate(seqs)
+        cu = np.zeros(len(seqs) + 1, dtype=np.int32)
+        for i, sq in enumerate(seqs):
+            cu[i + 1] = cu[i] + len(sq)
+        pos_parts = []
+        for sq, grid in zip(seqs, grids):
+            pos_parts.append(
+                lm_rope_positions(
+                    sq, np.ones(len(sq), dtype=np.int64), grid, spec
+                )
+            )
+        positions = np.concatenate(pos_parts, axis=1)
+        ranges = [(int(cu[i]), int(cu[i + 1])) for i in range(len(seqs))]
+
+        cu_buf = _malloc_committed(cu.nbytes)
+        copy_host_to_device(cu_buf, host_array_ptr(np.ascontiguousarray(cu)), cu.nbytes)
+        state_idx = np.arange(len(seqs), dtype=np.int64)
+        si_buf = _malloc_committed(state_idx.nbytes)
+        copy_host_to_device(si_buf, host_array_ptr(state_idx), state_idx.nbytes)
+        conv_slab = _malloc_committed(
+            len(seqs) * self.GDN_QKV_DIM * 4 * 4 + _GEMM_PAD_BYTES
+        )
+        n_state = self.GDN_HEADS * self.GDN_HEAD_DIM * self.GDN_HEAD_DIM
+        gdn_slab = _malloc_committed(
+            len(seqs) * n_state * 4 + _GEMM_PAD_BYTES
+        )
+        seg = _SegMeta(
+            ranges=ranges,
+            cu_buf=cu_buf,
+            state_idx_buf=si_buf,
+            conv_state_slab=conv_slab,
+            gdn_state_slab=gdn_slab,
+        )
+        for buf in (cu_buf, si_buf, conv_slab, gdn_slab):
+            self._misc_buffers.append(buf)
+
+        tokens = len(ids_cat)
+        scratch2 = self._scratch_for(tokens)
+        hidden_ptr = self.text_forward(
+            ids_cat, positions, scratch2, visual_ptr=visual_cat.ptr, seg=seg
+        )
+        emb_ptr = self.project(hidden_ptr, tokens, scratch2)
+        emb_all = self._to_host(emb_ptr, tokens * 128).reshape(tokens, 128)
+        self._release_call_buffers()
+        return [emb_all[s0:s1] for s0, s1 in ranges]
 
 
 def maxsim(query: np.ndarray, doc: np.ndarray) -> float:
