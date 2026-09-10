@@ -104,6 +104,126 @@ def _new_gguf_timing_batch_id(kind: str) -> str:
     return f"gguf-{str(kind)}-{uuid.uuid4().hex}"
 
 
+def packed_workspace_owner_inventory(
+    sessions: Sequence[Any],
+) -> tuple[int, int]:
+    """Return (unique owner bytes, contributing session count).
+
+    Resident slot views share one physical packed workspace through the batch
+    owner: every view's ``packed_workspace_nbytes()`` reports the same buffers,
+    so summing per session inflates the total by the view count (F6 in the
+    server/direct parity roadmap: two views of one 1,024-byte allocation
+    summed to 2,048). This helper deduplicates by buffer pointer across every
+    session first, then sums. Growth owners (``full_attn_split_growth_buffers``)
+    are included by the per-session helper.
+    """
+
+    unique: dict[int, int] = {}
+    contributing = 0
+    for session in sessions:
+        size = getattr(session, "packed_workspace_nbytes", None)
+        if not callable(size):
+            continue
+        contributing += 1
+        for workspace in (
+            getattr(session, "_packed_ar_attention_workspace", None),
+            getattr(session, "_packed_verify_scratch", None),
+            getattr(session, "_packed_verify_state", None),
+        ):
+            if workspace is None:
+                continue
+            for buffer in (
+                *workspace.buffers,
+                *(
+                    getattr(workspace, "full_attn_split_growth_buffers", ())
+                    if workspace is getattr(session, "_packed_verify_scratch", None)
+                    else ()
+                ),
+            ):
+                if buffer is None or int(buffer.ptr) == 0:
+                    continue
+                unique[int(buffer.ptr)] = int(buffer.nbytes)
+    return sum(unique.values()), contributing
+
+
+def prefill_transient_owner_inventory(sessions: Sequence[Any]) -> dict[str, Any]:
+    """Owner-deduplicated prefill transient state for observability.
+
+    Distinct accounting domains (F3/F4 in the server/direct parity roadmap):
+    the per-layer/shared BF16 oracle owners, the bulk-prefill hidden/scratch
+    owner, and the *actual* executor's last packed route - reported separately
+    from the legacy INT8 lifetime plan mode, which the packed executor can
+    override at the point of use (per-layer oracle keying) without the plan
+    knowing.
+    """
+
+    oracle_buffers: dict[int, int] = {}
+    hidden_buffers: dict[int, int] = {}
+    oracle_owner_counts: list[int] = []
+    oracle_capacity_positions: list[int] = []
+    lifetime_modes: list[str] = []
+    executor_routes: list[str] = []
+    per_layer_flags: list[bool] = []
+    for session in sessions:
+        oracle_buffers_by_session = getattr(
+            session, "_int8_prefill_oracle_buffers", None
+        )
+        if isinstance(oracle_buffers_by_session, dict):
+            oracle_owner_counts.append(len(oracle_buffers_by_session))
+            for pair in oracle_buffers_by_session.values():
+                try:
+                    key_cache, value_cache = pair
+                except (TypeError, ValueError):
+                    continue
+                for buffer in (key_cache, value_cache):
+                    if buffer is not None and int(getattr(buffer, "ptr", 0)):
+                        oracle_buffers[int(buffer.ptr)] = int(buffer.nbytes)
+            capacity = getattr(session, "_int8_prefill_oracle_capacity_positions", None)
+            if callable(capacity):
+                try:
+                    oracle_capacity_positions.append(int(capacity()))
+                except (RuntimeError, AttributeError, ValueError):
+                    pass
+        plan = getattr(session, "_int8_prefill_lifetime_plan", None)
+        lifetime_modes.append(str(getattr(plan, "mode", None)))
+        last_plan = getattr(session, "last_packed_prefill_plan", None)
+        executor_routes.append(
+            str(last_plan.get("route")) if isinstance(last_plan, dict) else None
+        )
+        per_layer_flags.append(
+            bool(getattr(session, "_int8_prefill_oracle_per_layer", False))
+        )
+        for buffer in (
+            getattr(session, "_prefill_hidden_a", None),
+            getattr(session, "_prefill_hidden_b", None),
+            getattr(session, "_prefill_token_buf", None),
+        ):
+            if buffer is not None and int(getattr(buffer, "ptr", 0)):
+                hidden_buffers[int(buffer.ptr)] = int(buffer.nbytes)
+        bulk_scratch = getattr(session, "_bulk_prefill_scratch", None)
+        if bulk_scratch is not None:
+            for buffer in getattr(bulk_scratch, "buffers", ()):
+                if buffer is not None and int(getattr(buffer, "ptr", 0)):
+                    hidden_buffers[int(buffer.ptr)] = int(buffer.nbytes)
+    return {
+        "oracle_owner_bytes": sum(oracle_buffers.values()),
+        "oracle_owner_counts": oracle_owner_counts,
+        "oracle_owner_count_total": sum(oracle_owner_counts),
+        "oracle_capacity_positions": oracle_capacity_positions,
+        "hidden_and_bulk_owner_bytes": sum(hidden_buffers.values()),
+        "int8_prefill_lifetime_plan_modes": lifetime_modes,
+        "last_packed_executor_routes": executor_routes,
+        "oracle_per_layer_flags": per_layer_flags,
+        "note": (
+            "oracle_owner_bytes is the live per-layer/shared BF16 oracle pair"
+            " total (unique buffers); oracle_capacity_positions is per-session"
+            " pool-backed sizing, not prompt length; lifetime_plan_modes is the"
+            " legacy plan while last_packed_executor_routes + oracle_per_layer"
+            " report what actually ran"
+        ),
+    }
+
+
 def _encode_prompt_timed(
     tokenizer: Any,
     prompt: PromptInput,
@@ -5313,6 +5433,15 @@ class Qwen35GGUFResidentModelRunner:
         for label, row in buckets.items():
             row["entries"] = int(active_entries.get(label, 0))
         prefix_observability = self._prefix_cache_observability()
+        workspace_owner_bytes, workspace_sessions = packed_workspace_owner_inventory(
+            sessions
+        )
+        prefill_transients = prefill_transient_owner_inventory(sessions)
+        pool_page_bytes = (
+            0
+            if pool_stats is None or not pool_stats.get("current_pages")
+            else int(pool_stats["current_bytes"]) // int(pool_stats["current_pages"])
+        )
         kv_layout_audits = [
             copy.deepcopy(audit())
             for session in sessions
@@ -5326,12 +5455,21 @@ class Qwen35GGUFResidentModelRunner:
                 "active_request_ids": list(self.active_request_ids),
                 "active_requests": len(self._rows),
                 "available_sessions": len(self._available),
-                "packed_workspace_current_bytes": sum(
-                    int(size())
-                    for session in sessions
-                    for size in (getattr(session, "packed_workspace_nbytes", None),)
-                    if callable(size)
+                "packed_workspace_current_bytes": workspace_owner_bytes,
+                "packed_workspace_owner_sessions": workspace_sessions,
+                "packed_workspace_leased_pool_bytes": (
+                    int(pool_stats.get("pinned_pages", 0)) * pool_page_bytes
+                    if pool_stats is not None
+                    else 0
                 ),
+                "packed_workspace_note": (
+                    "current_bytes is owner-deduplicated unique allocation bytes"
+                    " (shared slot views report their workspace once, split-growth"
+                    " owners included); leased_pool_bytes counts the pool-plane"
+                    " pages pinned by workspace leases - a different accounting"
+                    " domain, never a substitute for either"
+                ),
+                "prefill_transients": prefill_transients,
                 "packed_workspace_release_events": int(
                     getattr(self, "_packed_workspace_release_events", 0)
                 ),
@@ -7405,7 +7543,11 @@ class Qwen35GGUFResidentModelRunner:
         native_compact_prefill = False
         # Direct no-mirror INT8 uses one block-table-aware single-row prefill
         # route at every physical base. Keeping base-zero c1 on scalar bulk
-        # prefill would compare different GDN state-capture arithmetic at c>N.
+        # prefill keeps the c1 control on the layer-outer executor (the
+        # historical "different GDN state-capture arithmetic" divergence was
+        # withdrawn 2026-09-10; the entries agree exactly with per-layer
+        # oracles, but mixing executors across bases still compares two
+        # schedules at c>N).
         packed_owner = self._packed_execution_owner(lease.session)
         if (
             getattr(self, "_resident_batch_owner", None) is None

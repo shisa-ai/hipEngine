@@ -24859,7 +24859,12 @@ class Qwen35GGUFResidentSession:
         self._verify_linear_initial_snapshot_users -= 1
 
     def packed_workspace_nbytes(self) -> int:
-        """Return owner-only packed workspace bytes retained by this session."""
+        """Return owner-only packed workspace bytes retained by this session.
+
+        Includes the separately owned ``full_attn_split_growth_buffers`` of
+        the verify scratch: they are freed together with the workspace, so
+        released-bytes reporting must count them too.
+        """
 
         seen: set[int] = set()
         total = 0
@@ -24870,7 +24875,14 @@ class Qwen35GGUFResidentSession:
         ):
             if workspace is None:
                 continue
-            for buffer in workspace.buffers:
+            for buffer in (
+                *workspace.buffers,
+                *(
+                    getattr(workspace, "full_attn_split_growth_buffers", ())
+                    if workspace is self._packed_verify_scratch
+                    else ()
+                ),
+            ):
                 if buffer is None or int(buffer.ptr) == 0 or int(buffer.ptr) in seen:
                     continue
                 seen.add(int(buffer.ptr))

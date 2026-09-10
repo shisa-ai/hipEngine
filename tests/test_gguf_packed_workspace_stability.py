@@ -402,3 +402,170 @@ def test_prefill_scratch_allocate_is_atomic_on_failure(monkeypatch) -> None:
 
     leaked = [ptr for ptr in live if ptr not in freed]
     assert leaked == [], f"{len(leaked)} buffer(s) leaked by partial allocation failure"
+
+
+def _shared_view_of(owner: gguf_runner.Qwen35GGUFResidentSession) -> (
+    gguf_runner.Qwen35GGUFResidentSession
+):
+    """A slot view: same workspace objects, different session identity."""
+
+    view = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    view._resident_batch_owner = owner
+    view._packed_ar_attention_workspace = owner._packed_ar_attention_workspace
+    view._packed_verify_scratch = owner._packed_verify_scratch
+    view._packed_verify_state = owner._packed_verify_state
+    return view
+
+
+def test_packed_workspace_nbytes_counts_split_growth_owners(monkeypatch) -> None:
+    """The split-growth buffers are freed with the workspace, so they count."""
+
+    recorder = _AllocRecorder(monkeypatch)
+    recorder.install()
+    owner = _make_owner(recorder)
+    runtime = SimpleNamespace()
+    owner._ensure_packed_verify_workspace(
+        slot_count=2, rows=4, max_sequence_length=1024, runtime=runtime
+    )
+    scratch = owner._packed_verify_scratch
+    if scratch is None:
+        pytest.skip("workspace allocation is not available on this host")
+    # The recorder fakes the state/scratch as SimpleNamespaces; give them the
+    # buffer tuples the accounting walks.
+    owner._packed_verify_state.buffers = (
+        gguf_runner.DeviceBuffer(ptr=0xA0000, nbytes=1024),
+    )
+    scratch.buffers = (gguf_runner.DeviceBuffer(ptr=0xB0000, nbytes=512),)
+    before = owner.packed_workspace_nbytes()
+    growth = tuple(
+        gguf_runner.DeviceBuffer(ptr=0xBEEF000 + index, nbytes=256)
+        for index in range(2)
+    )
+    object.__setattr__(scratch, "full_attn_split_growth_buffers", growth)
+    try:
+        after = owner.packed_workspace_nbytes()
+    finally:
+        object.__setattr__(scratch, "full_attn_split_growth_buffers", ())
+    assert after == before + 512
+
+
+def test_packed_workspace_owner_bytes_dedupes_shared_views(monkeypatch) -> None:
+    """Owner-deduplicated bytes: views of one workspace report it once."""
+
+    from hipengine.generation.qwen35_gguf import (
+        packed_workspace_owner_inventory,
+    )
+
+    recorder = _AllocRecorder(monkeypatch)
+    recorder.install()
+    owner = _make_owner(recorder)
+    runtime = SimpleNamespace()
+    owner._ensure_packed_verify_workspace(
+        slot_count=2, rows=4, max_sequence_length=1024, runtime=runtime
+    )
+    if owner._packed_verify_scratch is None:
+        pytest.skip("workspace allocation is not available on this host")
+    owner._packed_verify_state.buffers = (
+        gguf_runner.DeviceBuffer(ptr=0xA0000, nbytes=1024),
+    )
+    owner._packed_verify_scratch.buffers = (
+        gguf_runner.DeviceBuffer(ptr=0xB0000, nbytes=512),
+    )
+    single = owner.packed_workspace_nbytes()
+    assert single > 0
+
+    views = tuple(_shared_view_of(owner) for _ in range(3))
+    unique_bytes, contributing_sessions = packed_workspace_owner_inventory(
+        (owner, *views)
+    )
+    assert unique_bytes == single
+    assert contributing_sessions == 4
+    # The per-session sum that the old counter used inflates by the view count.
+    assert sum(view.packed_workspace_nbytes() for view in views) == 3 * single
+
+
+def test_packed_workspace_owner_inventory_independent_allocations(monkeypatch) -> None:
+    """Independent workspaces on distinct sessions still sum."""
+
+    from hipengine.generation.qwen35_gguf import (
+        packed_workspace_owner_inventory,
+    )
+
+    recorder = _AllocRecorder(monkeypatch)
+    recorder.install()
+    first = _make_owner(recorder)
+    second = _make_owner(recorder)
+    runtime = SimpleNamespace()
+    first._ensure_packed_verify_workspace(
+        slot_count=2, rows=4, max_sequence_length=1024, runtime=runtime
+    )
+    second._ensure_packed_verify_workspace(
+        slot_count=2, rows=4, max_sequence_length=1024, runtime=runtime
+    )
+    if first._packed_verify_scratch is None or second._packed_verify_scratch is None:
+        pytest.skip("workspace allocation is not available on this host")
+    first._packed_verify_state.buffers = (
+        gguf_runner.DeviceBuffer(ptr=0xA0000, nbytes=1024),
+    )
+    first._packed_verify_scratch.buffers = (
+        gguf_runner.DeviceBuffer(ptr=0xB0000, nbytes=512),
+    )
+    second._packed_verify_state.buffers = (
+        gguf_runner.DeviceBuffer(ptr=0xC0000, nbytes=1024),
+    )
+    second._packed_verify_scratch.buffers = (
+        gguf_runner.DeviceBuffer(ptr=0xD0000, nbytes=512),
+    )
+    expected = first.packed_workspace_nbytes() + second.packed_workspace_nbytes()
+    unique_bytes, contributing = packed_workspace_owner_inventory((first, second))
+    assert unique_bytes == expected
+    assert contributing == 2
+
+
+def test_prefill_transient_inventory_reports_owners_and_modes() -> None:
+    """Oracle/hidden owners and actual-vs-legacy executor mode, deduped."""
+
+    from hipengine.generation.qwen35_gguf import prefill_transient_owner_inventory
+
+    owner = _make_owner(_AllocRecorder.__new__(_AllocRecorder))
+    owner._int8_prefill_oracle_buffers = {
+        3: (gguf_runner.DeviceBuffer(ptr=0x1000, nbytes=2048),
+            gguf_runner.DeviceBuffer(ptr=0x2000, nbytes=2048)),
+        5: (gguf_runner.DeviceBuffer(ptr=0x3000, nbytes=2048),
+            gguf_runner.DeviceBuffer(ptr=0x4000, nbytes=2048)),
+    }
+    owner._int8_prefill_oracle_capacity_positions = lambda: 65_536
+    owner._int8_prefill_lifetime_plan = SimpleNamespace(mode="layer_outer_shared_oracle")
+    owner.last_packed_prefill_plan = {"route": "slot_fair_bounded_rounds", "chunk_count": 2}
+    owner._int8_prefill_oracle_per_layer = True
+    owner._prefill_hidden_a = gguf_runner.DeviceBuffer(ptr=0x5000, nbytes=4096)
+    owner._prefill_hidden_b = gguf_runner.DeviceBuffer(ptr=0x6000, nbytes=4096)
+    owner._prefill_token_buf = None
+    owner._bulk_prefill_scratch = None
+
+    view = _shared_view_of(owner)
+    view._int8_prefill_oracle_buffers = {}
+    view._int8_prefill_oracle_capacity_positions = lambda: 65_536
+    view._int8_prefill_lifetime_plan = None
+    view.last_packed_prefill_plan = {}
+    view._int8_prefill_oracle_per_layer = False
+    view._prefill_hidden_a = owner._prefill_hidden_a
+    view._prefill_hidden_b = None
+    view._prefill_token_buf = None
+    view._bulk_prefill_scratch = None
+
+    report = prefill_transient_owner_inventory((owner, view))
+    # Two per-layer oracle pairs, counted once despite the view.
+    assert report["oracle_owner_bytes"] == 4 * 2048
+    assert report["oracle_owner_count_total"] == 2
+    assert report["oracle_capacity_positions"] == [65_536, 65_536]
+    # The hidden plane is shared with the view and counted once.
+    assert report["hidden_and_bulk_owner_bytes"] == 2 * 4096
+    # The legacy plan and the actual executor disagree, and both are visible.
+    assert report["int8_prefill_lifetime_plan_modes"] == [
+        "layer_outer_shared_oracle", "None",
+    ]
+    assert report["last_packed_executor_routes"] == [
+        "slot_fair_bounded_rounds", "None",
+    ]
+    assert report["oracle_per_layer_flags"] == [True, False]
