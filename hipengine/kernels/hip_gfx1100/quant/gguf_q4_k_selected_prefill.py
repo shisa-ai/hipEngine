@@ -440,6 +440,62 @@ def gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out(
     """
 
     _launch_wmma_iu8_risk(
+        3,
+        x_ptr,
+        expert_start_compact_ptr,
+        expert_start_wmma_ptr,
+        tile_expert_ptr,
+        qweight_a_ptr,
+        qweight_b_ptr,
+        out_ptr,
+        risk_count_ptr,
+        risk_indices_ptr,
+        max_risks,
+        risk_multiplier,
+        compact_rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        num_experts,
+        wmma_total_rows,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q4_k_selected_dual_wmma_iu8_risk_p2_prefill_bf16_bf16_out(
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_wmma_ptr: int,
+    tile_expert_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    out_ptr: int,
+    risk_count_ptr: int,
+    risk_indices_ptr: int,
+    max_risks: int,
+    risk_multiplier: float,
+    compact_rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    num_experts: int,
+    wmma_total_rows: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """#29 R13 screen: two-plane iu8-WMMA selected dual prefill.
+
+    Same kernel, same risk criterion and repair path as the retained
+    three-plane chain; fewer WMMA passes, more rows queued for the
+    sparse exact repair.
+    """
+
+    _launch_wmma_iu8_risk(
+        2,
         x_ptr,
         expert_start_compact_ptr,
         expert_start_wmma_ptr,
@@ -925,6 +981,7 @@ def _launch_wmma_iu8(
 
 
 def _launch_wmma_iu8_risk(
+    planes: int,
     x_ptr: int,
     expert_start_compact_ptr: int,
     expert_start_wmma_ptr: int,
@@ -965,7 +1022,10 @@ def _launch_wmma_iu8_risk(
         raise ValueError("risk_multiplier must be non-negative")
     library = library or build_gguf_q4_k_selected_prefill(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_IU8_RISK_BF16)
+    symbol = _SYMBOL_IU8_RISK_BF16
+    if planes == 2:
+        symbol = "hipengine_gguf_q4_k_selected_dual_wmma_iu8_risk_p2_prefill_bf16_bf16_out"
+    fn = getattr(library, symbol)
     fn.argtypes = [
         ctypes.c_void_p,
         ctypes.c_void_p,
@@ -1359,6 +1419,16 @@ def register_gguf_q4_k_selected_prefill_kernels(*, replace: bool = True) -> None
             "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out",
         ),
         gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q4_k",
+            "selected_dual_wmma_iu8_risk_p2_prefill_bf16_bf16_out",
+        ),
+        gguf_q4_k_selected_dual_wmma_iu8_risk_p2_prefill_bf16_bf16_out,
         replace=replace,
     )
     register(

@@ -1538,7 +1538,7 @@ __global__ void gguf_q4_k_selected_dual_wmma_iu8_prefill_kernel(
     int64_t out_features_b,
     int64_t num_experts,
     int64_t wmma_total_rows) {
-  constexpr int IU8_ACT_PLANES = 3;  // residual quantization planes (ds4 class)
+  constexpr int IU8_ACT_PLANES = ACT_PLANES;  // residual quantization planes (ds4 class)
   __shared__ int8_t lds_q8a[IU8_ACT_PLANES * 16 * IU8_LDS_ROW_STRIDE];
   __shared__ float lds_da[IU8_ACT_PLANES * 16 * Q4_K_SUBBLOCKS];
   __shared__ int lds_sumq8a[IU8_ACT_PLANES * 16 * Q4_K_SUBBLOCKS];
@@ -1830,6 +1830,7 @@ __device__ inline float q4_pair_bf16_rounding_boundary_distance(float value) {
 
 template <typename scalar_t>
 __launch_bounds__(128, 2)
+template <int ACT_PLANES = 3>
 __global__ void gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_kernel(
     const scalar_t* __restrict__ x,
     const int64_t* __restrict__ expert_start_compact,
@@ -2229,7 +2230,7 @@ __global__ void gguf_q4_k_selected_dual_sparse_exact_repair_bf16_kernel(
   }
 }
 
-template <typename scalar_t>
+template <typename scalar_t, int ACT_PLANES = 3>
 static int launch_selected_dual_wmma_iu8_risk(
     const scalar_t* x,
     const int64_t* expert_start_compact,
@@ -2269,7 +2270,7 @@ static int launch_selected_dual_wmma_iu8_risk(
       static_cast<unsigned int>((out_features_total + 127) / 128),
       static_cast<unsigned int>(row_tiles));
   hipLaunchKernelGGL(
-      (gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_kernel<scalar_t>),
+      (gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_kernel<scalar_t, ACT_PLANES>),
       grid, block, 0, stream,
       x, expert_start_compact, expert_start_wmma, tile_expert, qweight_a,
       qweight_b, out, risk_count, risk_indices, max_risks, risk_multiplier,
@@ -2754,6 +2755,35 @@ extern "C" int hipengine_gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_bf16_bf16
     int64_t wmma_total_rows,
     hipStream_t stream) {
   return launch_selected_dual_wmma_iu8_risk<uint16_t>(
+      x, expert_start_compact, expert_start_wmma, tile_expert, qweight_a,
+      qweight_b, out, risk_count, risk_indices, max_risks, risk_multiplier,
+      compact_rows, in_features, out_features_a, out_features_b, num_experts,
+      wmma_total_rows, stream);
+}
+
+// #29 R13 plane-count screen: two-plane iu8 risk chain (same kernel,
+// same risk criterion and repair path - more rows flagged, fewer WMMA
+// passes).
+extern "C" int hipengine_gguf_q4_k_selected_dual_wmma_iu8_risk_p2_prefill_bf16_bf16_out(
+    const uint16_t* x,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_wmma,
+    const int64_t* tile_expert,
+    const uint8_t* qweight_a,
+    const uint8_t* qweight_b,
+    uint16_t* out,
+    int* risk_count,
+    int* risk_indices,
+    int64_t max_risks,
+    float risk_multiplier,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t wmma_total_rows,
+    hipStream_t stream) {
+  return launch_selected_dual_wmma_iu8_risk<uint16_t, 2>(
       x, expert_start_compact, expert_start_wmma, tile_expert, qweight_a,
       qweight_b, out, risk_count, risk_indices, max_risks, risk_multiplier,
       compact_rows, in_features, out_features_a, out_features_b, num_experts,
