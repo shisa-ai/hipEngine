@@ -260,6 +260,12 @@ executor default, duplicate packed-KV reservation removed):
 - **Trace identity**: AOTriton `attn_fwd` for >=512-row rounds, native paged
   prefill for <512-row tails - two kernel identities, as predicted
   ([trace](results/2026-09-10-w7900-layer-outer-trace-identity-1500.csv.gz)).
+- **HTTP transport budget**: SSE chunk-gap median 34.7 ms vs the raw 35.1 ms
+  decode boundary (sub-ms/token transport overhead; first chunk at 2.76 s
+  = prefill-bound TTFT); kernel-family attribution: FFN/WMMA 72%, native
+  tail attention 18%, AOTriton round 1%
+  ([SSE](results/2026-09-10-w7900-p7-http-transport-budget.json),
+  [attribution](results/2026-09-10-w7900-p5-kernel-family-attribution-1500.json)).
 
 Rollbacks: `HIPENGINE_GGUF_PACKED_LAYER_OUTER=0` (chunk-outer executor),
 `HIPENGINE_GGUF_PACKED_KV_LEASE=1` (eager pool lease). Remaining open
