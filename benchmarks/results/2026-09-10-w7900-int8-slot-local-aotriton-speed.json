@@ -1,0 +1,62 @@
+{
+ "schema": 1,
+ "kind": "w7900_int8_slot_local_aotriton_admission_speed",
+ "date": "2026-09-10",
+ "status": "diagnostic_ab_same_host",
+ "performance_claim": false,
+ "capacity_claim": false,
+ "question": "What does admitting AOTriton on slot-local transient-oracle layers buy on the multi-chunk packed route, same host, same prompts?",
+ "answer": "The quadratic-in-chunk-count collapse is eliminated: prefill is flat at 677-746 tok/s from 1K to 8K rows (vs the direct scalar parent's 692 tok/s at 8,192). Speedup is 1.32x at 1 chunk, 1.65x at 2, 3.18x at 4 and 10.07x at 8 (121.862 -> 12.100 s at 8,192 rows). This is a same-host diagnostic A/B with matched deterministic prompts, not a topline benchmark row; the qualification evidence is the gate artifact.",
+ "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+ "model_sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+ "hardware": {
+  "host": "epyc",
+  "gpu": "AMD Radeon Pro W7900",
+  "arch": "gfx1100",
+  "physical_gpu_index": 0
+ },
+ "protocol": {
+  "harness": "scripts/gguf_packed_kv_import_profile.py --rows 1024,2048,4096,8192, flag off vs HIPENGINE_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON=1, separate processes, same numpy default_rng(20260910) prompt per row count (prompt identity matched across arms by construction)",
+  "selectors": "use_wmma_prefill=True, use_gemv_decode=True (shipping)",
+  "kv": "int8_per_token_head, FP32 per-token/head scales, max_sequence_length 16384 (route int8_direct, slot-local full attention)",
+  "env": {
+   "HIP_VISIBLE_DEVICES": "0",
+   "GPU_MAX_HW_QUEUES": "1",
+   "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG": "1",
+   "HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS": "none"
+  },
+  "caveats": [
+   "both arms ran while another lane intermittently used GPU0 for test bundles; wall times are diagnostic, not topline claims",
+   "tracked peaks are process-cumulative across configs within each arm (fresh session per config but one allocator peak counter); compare peaks within a config only",
+   "logits differ between arms by design (attention reduction order); the numerical envelope is the gate artifact's contract, not bitwise equality",
+   "greedy continuation IDs match at 4,096/8,192 rows and differ at 1,024/2,048 (two top-1 flips of the kind the envelope documents and bounds)"
+  ]
+ },
+ "evidence": {
+  "prefill_wall_seconds": {
+   "1024_rows_1_chunk": {"off": 1.839, "on": 1.398},
+   "2048_rows_2_chunks": {"off": 4.53, "on": 2.746},
+   "4096_rows_4_chunks": {"off": 18.015, "on": 5.661},
+   "8192_rows_8_chunks": {"off": 121.862, "on": 12.1}
+  },
+  "prefill_tok_s": {
+   "1024_rows_1_chunk": {"off": 556.77, "on": 732.33},
+   "2048_rows_2_chunks": {"off": 452.09, "on": 745.75},
+   "4096_rows_4_chunks": {"off": 227.36, "on": 723.57},
+   "8192_rows_8_chunks": {"off": 67.22, "on": 677.03}
+  },
+  "speedup": {"1_chunk": 1.32, "2_chunks": 1.65, "4_chunks": 3.18, "8_chunks": 10.07},
+  "kv_import_calls_on_arm": 0,
+  "trace_identity_check": {
+   "protocol": "rocprofv3 kernel-trace, cache-only recipe, flag on, rows=1500 (slabs 1024 + 476)",
+   "slab_1_1024_rows": "AOTriton (attn_fwd) engaged; no native paged prefill kernel in the slab",
+   "slab_2_476_rows": "native qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel, 16 launches, 425.1 ms (sub-512-row crossover keeps the strict fallback, as expected)",
+   "decode": "native paged decode split-K, unchanged"
+  },
+  "raw": [
+   "benchmarks/results/2026-09-10-w7900-int8-packed-kv-import-postfix.json (off arm)",
+   "/tmp/kv-import-aotriton-on.json (on arm, reproduced via the documented command)"
+  ]
+ },
+ "created_utc": "2026-09-10T10:00:00Z"
+}

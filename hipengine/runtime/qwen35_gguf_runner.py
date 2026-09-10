@@ -29631,22 +29631,35 @@ _GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON_ENV = (
 def _gguf_int8_prefill_slot_local_aotriton_enabled() -> bool:
     """Admit AOTriton on slot-local prefill layers owning a transient BF16 oracle.
 
-    The ``int8_direct`` route forces slot-local full-attention prefill and has
+    The ``int8_direct`` route forces slot-local full-attention prefill and had
     hard-disabled AOTriton for oracle-owning layers since the compact-serial-c4
-    qualification, which leaves it on the native split-K paged kernel (16 query
-    rows per batch). That is the route every server INT8 request takes above the
-    8,192-position mirror threshold, and it is the only place in the engine that
-    reads a dense BF16 oracle without AOTriton: the scalar bulk parent and the
-    strict arithmetic declared by
+    qualification, which left it on the native split-K paged kernel: one block
+    per (q_head, query row) serially walking the whole visible context with a
+    context-sized dynamic-LDS score buffer, whose per-launch cost grows
+    ~quadratically with slab context (2026-09-10 attribution: 91% of prefill
+    device time at 8 chunks, 33.7 -> 3,042 ms per launch from ctx 1,024 to
+    8,192). That is the route every server INT8 request takes above the
+    8,192-position mirror threshold, and it was the only place in the engine
+    that read a dense BF16 oracle without AOTriton: the scalar bulk parent and
+    the strict arithmetic declared by
     ``scripts/execution_profile_gguf_int8_direct_prefill_gate.py`` both read the
-    same oracle pair *through* AOTriton.
+    same oracle pair *through* AOTriton (AOTriton compact varlen above the
+    512-row crossover - the same already-admitted attention family).
 
-    Enabling it changes the attention reduction order, so this is default OFF
-    pending the production-profile numerics gate; env "1" opts in and "0" is the
-    explicit rollback once promoted. See ``docs/REFACTOR.md``.
+    Promoted to default ON 2026-09-10 after the repaired-route qualification
+    (W7900 GPU0, 27B Q4_K_M, shipping selectors, 18-prompt category+heldout
+    suite at 2,048 rows = two slabs and at 1,500 rows = 1,024-row AOTriton
+    slab + 476-row native tail): calibrated envelope passed (kl_mean 6.0e-05
+    / 5.9e-05 vs the 1e-03 bound, top-1 448-449/450), three deterministic
+    candidate repeats, finite/layout-stable/byte-repeatable state, expected
+    kernel identities in trace, and prefill 67 -> 677 tok/s at 8,192 rows
+    (10.1x, flat 677-746 tok/s from 1K to 8K). Enabling it changes the
+    attention reduction order; env "0" is the explicit rollback to the
+    native paged kernel. See ``docs/REFACTOR.md`` for the eventual flag
+    removal.
     """
 
-    return _env_flag(_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON_ENV, False)
+    return _env_flag(_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON_ENV, True)
 
 
 def _gguf_slot_local_prefill_allow_aotriton(*, transient_direct_oracle: bool) -> bool:

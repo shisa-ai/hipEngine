@@ -7,6 +7,10 @@ kernel even though the declared strict arithmetic for the route is the oracle
 pair read *through AOTriton* (see
 ``scripts/execution_profile_gguf_int8_direct_prefill_gate.py``).
 
+Promoted to default ON 2026-09-10 after the repaired-route qualification
+(numerical envelope + state gate + trace identity + 10.1x wall at 8 chunks;
+see the capacity campaign doc).
+
 These tests pin the admission decision itself. It is pure host policy, so no HIP
 runtime or model artifact is required.
 """
@@ -29,12 +33,12 @@ def test_layers_without_a_transient_oracle_always_admit_aotriton(monkeypatch):
     assert _gguf_slot_local_prefill_allow_aotriton(transient_direct_oracle=False) is True
 
 
-def test_transient_oracle_layers_default_to_the_native_kernel(monkeypatch):
-    """Default stays on the retained pre-flag behavior so rollback is the default."""
+def test_transient_oracle_layers_default_to_aotriton(monkeypatch):
+    """Default admits AOTriton since the 2026-09-10 repaired-route qualification."""
 
     monkeypatch.delenv(_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON_ENV, raising=False)
-    assert _gguf_int8_prefill_slot_local_aotriton_enabled() is False
-    assert _gguf_slot_local_prefill_allow_aotriton(transient_direct_oracle=True) is False
+    assert _gguf_int8_prefill_slot_local_aotriton_enabled() is True
+    assert _gguf_slot_local_prefill_allow_aotriton(transient_direct_oracle=True) is True
 
 
 @pytest.mark.parametrize("raw", ["1", "true", "on", "yes"])

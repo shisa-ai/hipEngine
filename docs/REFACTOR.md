@@ -5621,3 +5621,17 @@ prompts); both chunk resolutions now clamp to the row cap.
   conv/recurrent state"). Land that, then size the lease to
   `capacity * (_PACKED_VERIFY_MIN_MAX_SEQUENCE // 256)` and re-measure the server
   single-request context ceiling, which is stale at 54,272 independently of this.
+
+## `HIPENGINE_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON` — promoted, remove after soak
+
+- Promoted to default ON 2026-09-10 (see the capacity campaign doc and
+  `benchmarks/results/2026-09-10-w7900-int8-slot-local-aotriton-gate-corrected.json`):
+  the slot-local transient-oracle AOTriton admission now matches the engine-wide
+  AOTriton default that the direct arm already runs. `=0` is the explicit
+  rollback to the native split-K paged kernel.
+- Removal trigger: once the parity roadmap P1/P2 follow-ups (server-faithful
+  allocation probe, R0-R4 matched walls) confirm the route with the default on
+  and no rollback demand is recorded, delete the flag and the
+  `transient_direct_oracle` gate term so slot-local admission is unconditional,
+  keeping the native kernel only as the sub-512-row crossover and the
+  AOTriton-wrap failure fallback.
