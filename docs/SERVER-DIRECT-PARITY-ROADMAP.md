@@ -70,11 +70,11 @@ Combined P3+P4 at 32K declared: ~1.6 GiB of route transients vs ~6.4 GiB at
 the P0 baseline (-75%), measured with the executor flag enabled. The
 layer-outer executor's diagnostics all passed (bitwise parity at 2,048/1,500
 rows, wall A/B at 1K/2K/4K/8K within 2%, trace identity, server probe,
-decode handoff) but the full packet gates are outstanding
-(layer-boundary/state comparison, exact KV/control fixtures, shifted/ragged
-GPU coverage, aliasing on this executor, cancellation cleanup), so the
-default is OFF (reviewer finding 4); `HIPENGINE_GGUF_PACKED_LAYER_OUTER=1`
-enables it. The lease removal is default
+decode handoff) and cancellation cleanup is CPU-tested, but the remaining
+packet gates are outstanding (layer-boundary/state comparison, exact
+KV/control fixtures, shifted/ragged GPU coverage, aliasing on this
+executor), so the default is OFF (reviewer finding 4);
+`HIPENGINE_GGUF_PACKED_LAYER_OUTER=1` enables it. The lease removal is default
 on for the C1/prefix-off/MTP-off route with `HIPENGINE_GGUF_PACKED_KV_LEASE=1`
 as the rollback.
 
