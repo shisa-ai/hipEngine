@@ -3831,9 +3831,13 @@ def run_qwen4_exp_moe(
                     risk_count.ptr, 0, DType.INT32.itemsize
                 )
                 risk_capacity = compact * 2 * ffn
+                iu8_gate_up_variant = (
+                    "selected_dual_wmma_iu8_risk_p2_prefill_bf16_bf16_out"
+                    if os.environ.get("HIPENGINE_QWEN4_EXP_Q4_IU8_PLANES", "3") == "2"
+                    else "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out")
                 iu8_risk_gate_up = resolve(
                     backend=backend, layer="moe_linear", quant="gguf_q4_k",
-                    variant="selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out",
+                    variant=iu8_gate_up_variant,
                 )
                 sparse_exact_repair = resolve(
                     backend=backend, layer="moe_linear", quant="gguf_q4_k",
