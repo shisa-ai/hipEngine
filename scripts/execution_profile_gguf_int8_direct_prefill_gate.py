@@ -402,6 +402,11 @@ def _capture(
         kv_policy=policy.create_policy(),
         kv_scale_dtype="fp32",
         kv_scale_granularity="per_token_head",
+        # The shipping serving owner sets both selectors on every request; a
+        # gate that omits them qualifies a route nobody runs (and absolute
+        # rates are ~6x low, see the 2026-09-10 defect entry).
+        use_wmma_prefill=bool(args.use_wmma_prefill),
+        use_gemv_decode=bool(args.use_gemv_decode),
     ) as session:
         if session.runner is None:
             raise GateError("GGUF resident session closed during setup")

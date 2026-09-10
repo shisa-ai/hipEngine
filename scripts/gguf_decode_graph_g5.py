@@ -69,9 +69,20 @@ def _fingerprint_raw(raw: np.ndarray, *, dtype: str) -> dict[str, Any]:
         if raw_u8.size % np.dtype(np.uint16).itemsize:
             raise ValueError("BF16 buffer is not element-aligned")
         values = _bf16_to_f32(raw_u8)
+    elif dtype == "int8":
+        # INT8 KV payload bytes: fingerprint them as what they are. Reading
+        # them as bf16 would interpret payload byte pairs as floats, and any
+        # 0x7f/0xff high byte (int8 values 127/-1, both common in quantized
+        # payloads) reads as Inf/NaN - guaranteeing a false "nonfinite state"
+        # verdict on every INT8-KV session regardless of correctness.
+        values = raw_u8.view("<i1")
     else:
         raise ValueError(f"unsupported checkpoint dtype: {dtype}")
-    finite = bool(np.all(np.isfinite(values)))
+    finite = (
+        True
+        if dtype == "int8"
+        else bool(np.all(np.isfinite(values)))
+    )
     values64 = values.astype(np.float64, copy=False)
     rms = float(math.sqrt(float(np.mean(values64 * values64)))) if values.size else 0.0
     max_abs = float(np.max(np.abs(values64))) if values.size else 0.0
@@ -119,11 +130,23 @@ def _capture_checkpoint(
     session.runtime.device_synchronize()
     runner = session.runner
     scratch = session.scratch
-    hidden_seed = _copy_device_fingerprint(
-        session,
-        ptr=int(scratch.hidden_seed_fp32.ptr),
-        nbytes=int(runner.hidden_size) * DType.FP32.itemsize,
-        dtype="fp32",
+    # Only fingerprint the hidden seed when the route actually populated
+    # it. The packed-AR prefill entry (return_logits=True) never writes
+    # ``hidden_seed_fp32`` - it is mutually exclusive with hidden-seed return
+    # in the slab contract - and its decode consumers already gate on the
+    # populated flag. Reading the stale buffer here reported deterministic
+    # NaN garbage as a "nonfinite state" failure on every packed-entry
+    # prompt regardless of route correctness (2026-09-10 gate debugging).
+    hidden_seed = (
+        _copy_device_fingerprint(
+            session,
+            ptr=int(scratch.hidden_seed_fp32.ptr),
+            nbytes=int(runner.hidden_size) * DType.FP32.itemsize,
+            dtype="fp32",
+        )
+        if bool(getattr(session, "_hidden_seed_fp32_populated", False))
+        and getattr(scratch, "hidden_seed_fp32", None) is not None
+        else None
     )
     linear_states: list[dict[str, Any]] = []
     for layer_id, (conv_state, recurrent_state) in enumerate(
@@ -151,8 +174,13 @@ def _capture_checkpoint(
 
     cfg = runner.weights.config
     live_positions = int(position)
-    kv_row_nbytes = int(cfg.head_count_kv) * int(cfg.key_length) * DType.BF16.itemsize
+    kv_storage_dtype = getattr(session, "kv_storage_dtype", None)
+    kv_payload_is_int8 = kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD
+    kv_itemsize = DType.INT8_PER_TOKEN_HEAD.itemsize if kv_payload_is_int8 else DType.BF16.itemsize
+    kv_payload_dtype = "int8" if kv_payload_is_int8 else "bf16"
+    kv_row_nbytes = int(cfg.head_count_kv) * int(cfg.key_length) * kv_itemsize
     live_nbytes = live_positions * kv_row_nbytes
+    scale_row_nbytes = int(cfg.head_count_kv) * DType.FP32.itemsize
     kv_states: list[dict[str, Any]] = []
     for layer_id, (key_cache, value_cache) in enumerate(
         zip(scratch.full_key_caches, scratch.full_value_caches, strict=True)
@@ -160,28 +188,57 @@ def _capture_checkpoint(
         if key_cache is None or value_cache is None:
             continue
         checked_nbytes = min(live_nbytes, int(key_cache.nbytes), int(value_cache.nbytes))
-        kv_states.append(
-            {
-                "layer": int(layer_id),
-                "live_positions": live_positions,
-                "key": _copy_device_fingerprint(
+        row: dict[str, Any] = {
+            "layer": int(layer_id),
+            "live_positions": live_positions,
+            "key": _copy_device_fingerprint(
+                session,
+                ptr=int(key_cache.ptr),
+                nbytes=checked_nbytes,
+                dtype=kv_payload_dtype,
+            ),
+            "value": _copy_device_fingerprint(
+                session,
+                ptr=int(value_cache.ptr),
+                nbytes=checked_nbytes,
+                dtype=kv_payload_dtype,
+            ),
+        }
+        k_scale_caches = getattr(scratch, "full_k_scale_caches", ()) or ()
+        v_scale_caches = getattr(scratch, "full_v_scale_caches", ()) or ()
+        k_scale_cache = k_scale_caches[layer_id] if layer_id < len(k_scale_caches) else None
+        v_scale_cache = v_scale_caches[layer_id] if layer_id < len(v_scale_caches) else None
+        if kv_payload_is_int8 and k_scale_cache is not None and v_scale_cache is not None:
+            # Per-token/per-head FP32 scales are as much a part of the state
+            # as the payload; fingerprint the live window of both.
+            checked_scale_nbytes = min(
+                live_positions * scale_row_nbytes,
+                int(k_scale_cache.nbytes),
+                int(v_scale_cache.nbytes),
+            )
+            if checked_scale_nbytes > 0:
+                row["k_scale"] = _copy_device_fingerprint(
                     session,
-                    ptr=int(key_cache.ptr),
-                    nbytes=checked_nbytes,
-                    dtype="bf16",
-                ),
-                "value": _copy_device_fingerprint(
+                    ptr=int(k_scale_cache.ptr),
+                    nbytes=checked_scale_nbytes,
+                    dtype="fp32",
+                )
+                row["v_scale"] = _copy_device_fingerprint(
                     session,
-                    ptr=int(value_cache.ptr),
-                    nbytes=checked_nbytes,
-                    dtype="bf16",
-                ),
-            }
-        )
+                    ptr=int(v_scale_cache.ptr),
+                    nbytes=checked_scale_nbytes,
+                    dtype="fp32",
+                )
+        kv_states.append(row)
     fingerprints = [
-        hidden_seed,
+        *( [hidden_seed] if hidden_seed is not None else [] ),
         *(row[part] for row in linear_states for part in ("conv", "recurrent")),
-        *(row[part] for row in kv_states for part in ("key", "value")),
+        *(
+            row[part]
+            for row in kv_states
+            for part in ("key", "value", "k_scale", "v_scale")
+            if part in row
+        ),
     ]
     return {
         "position": live_positions,
@@ -419,7 +476,7 @@ def _checkpoint_summary(checkpoint: Mapping[str, Any]) -> dict[str, Any]:
         "position": checkpoint.get("position"),
         "input_token_id": checkpoint.get("input_token_id"),
         "predicted_token_id": checkpoint.get("predicted_token_id"),
-        "hidden_seed": checkpoint.get("hidden_seed", {}).get("blake2b_128"),
+        "hidden_seed": ((checkpoint.get("hidden_seed") or {}).get("blake2b_128")),
         "linear_states": [
             {
                 "layer": row.get("layer"),
