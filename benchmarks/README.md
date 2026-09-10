@@ -111,7 +111,9 @@ EVIE-4.5B multimodal retrieval encode (8 pages 448x336 + 8 queries, fp16
 production path): **2.16 s total** (matched-protocol check: 2.13 s with
 real-processor inputs and preprocessing outside timing; torch bf16 1.30 s
 with page batching — see the matched-protocol artifact) (doc 1.67 s, query 0.50 s, MaxSim 0.4 ms)
-— beats torch fp32 on the same GPU (4.148 s); torch bf16 is 1.356 s. The
+— this is a cross-precision comparison (hip fp16 vs torch fp32, 4.148 s);
+torch bf16 is 1.356 s and, under the matched protocol, leads (1.30 s vs
+2.13 s) via page batching. The
 fp16 path is fixture-gated against the torch fp32 oracle (query embedding
 cos 0.9999986, MaxSim within 0.01%); a strict fp32 path passes the same
 oracle at 1e-5 tolerances. Full optimization history (15.62 s -> 2.16 s)

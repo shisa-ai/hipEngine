@@ -70,13 +70,14 @@ def _preprocess_page(
     tpatches = np.stack([img, img], axis=0)  # (2, 3, H, W)
     _, c, H, W = tpatches.shape
     ph, pw = H // 16, W // 16
-    # patch rows in 2x2 merge-block order (verified against the real
-    # ColQwen3_5Processor: block (pr, pc) emits its four patches in raster
-    # order; a plain raster fold is wrong for this vision tower)
+    # patch rows in 2x2 merge-block order, each patch flattened (ch, t, p, p)
+    # per the Conv3d weight layout (cpu_reference/evie.py reshape
+    # (-1, 3, 2, 16, 16)); verified against the real ColQwen3_5Processor with
+    # RGB-differentiated content
     assert ph % 2 == 0 and pw % 2 == 0
     patches = (
         tpatches.reshape(2, 3, ph // 2, 2, 16, pw // 2, 2, 16)
-        .transpose(2, 5, 3, 6, 0, 1, 4, 7)  # (pr, pc, r, c, t, ch, 16, 16)
+        .transpose(2, 5, 3, 6, 1, 0, 4, 7)  # (pr, pc, r, c, ch, t, 16, 16)
         .reshape(-1, 3 * 2 * 16 * 16)
     )
     return np.ascontiguousarray(patches), np.array([[1, H // 16, W // 16]], dtype=np.int64)

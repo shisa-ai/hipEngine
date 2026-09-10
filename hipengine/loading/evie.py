@@ -150,7 +150,7 @@ def materialize_evie_weights(
                     tensor=prepared.tensor,
                 )
                 continue
-            padded = np.empty(
+            padded = np.zeros(
                 host.size + weight_pad // 4, dtype=np.float32
             )
             padded[: host.size] = host.reshape(-1)
