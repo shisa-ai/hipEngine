@@ -1,0 +1,188 @@
+{
+ "schema": 1,
+ "kind": "halobox5f_hip_prefill_attribution_windowed",
+ "capture": "rocprofv3 kernel trace, n_predict=1, requests clustered at 10ms gaps; p4096 = 2x2048-row ub-chunks merged",
+ "cases": {
+  "code-p512": {
+   "device_total_ms": 999.0,
+   "family_ms": {
+    "dense_mul_mat_mmq": 528.0,
+    "moe_routed_compact": 203.1,
+    "blas_wmma_gemm": 75.8,
+    "elementwise_other": 48.8,
+    "hc_fused_epilogue": 45.9,
+    "gdn": 35.1,
+    "quantize": 26.9,
+    "moe_weighted_reduction": 23.0,
+    "flash_attn": 9.7,
+    "other": 2.7
+   }
+  },
+  "code-p1024": {
+   "device_total_ms": 1642.2,
+   "family_ms": {
+    "dense_mul_mat_mmq": 739.8,
+    "moe_routed_compact": 276.3,
+    "elementwise_other": 159.3,
+    "blas_wmma_gemm": 128.0,
+    "hc_fused_epilogue": 108.0,
+    "gdn": 74.0,
+    "quantize": 67.5,
+    "moe_weighted_reduction": 49.3,
+    "flash_attn": 34.5,
+    "other": 5.5
+   }
+  },
+  "code-p4096": {
+   "device_total_ms": 5553.0,
+   "family_ms": {
+    "dense_mul_mat_mmq": 2138.7,
+    "moe_routed_compact": 802.9,
+    "elementwise_other": 526.9,
+    "blas_wmma_gemm": 493.2,
+    "hc_fused_epilogue": 434.9,
+    "flash_attn": 344.7,
+    "gdn": 289.5,
+    "quantize": 283.5,
+    "moe_weighted_reduction": 199.8,
+    "other": 38.8
+   }
+  },
+  "general_en-p512": {
+   "device_total_ms": 1040.0,
+   "family_ms": {
+    "dense_mul_mat_mmq": 524.2,
+    "moe_routed_compact": 199.4,
+    "elementwise_other": 93.5,
+    "blas_wmma_gemm": 76.0,
+    "hc_fused_epilogue": 46.2,
+    "gdn": 35.9,
+    "quantize": 28.1,
+    "moe_weighted_reduction": 23.2,
+    "flash_attn": 9.8,
+    "other": 3.7
+   }
+  },
+  "general_en-p1024": {
+   "device_total_ms": 1596.5,
+   "family_ms": {
+    "dense_mul_mat_mmq": 711.1,
+    "moe_routed_compact": 262.9,
+    "elementwise_other": 157.7,
+    "blas_wmma_gemm": 128.2,
+    "hc_fused_epilogue": 106.9,
+    "gdn": 73.8,
+    "quantize": 66.8,
+    "moe_weighted_reduction": 49.1,
+    "flash_attn": 34.5,
+    "other": 5.5
+   }
+  },
+  "general_en-p4096": {
+   "device_total_ms": 5445.9,
+   "family_ms": {
+    "dense_mul_mat_mmq": 2060.5,
+    "moe_routed_compact": 774.0,
+    "elementwise_other": 526.6,
+    "blas_wmma_gemm": 493.8,
+    "hc_fused_epilogue": 434.4,
+    "flash_attn": 344.7,
+    "gdn": 289.7,
+    "quantize": 282.6,
+    "moe_weighted_reduction": 200.8,
+    "other": 38.8
+   }
+  },
+  "general_ja-p512": {
+   "device_total_ms": 964.1,
+   "family_ms": {
+    "dense_mul_mat_mmq": 505.6,
+    "moe_routed_compact": 192.9,
+    "blas_wmma_gemm": 76.1,
+    "elementwise_other": 45.9,
+    "hc_fused_epilogue": 45.7,
+    "gdn": 35.3,
+    "quantize": 27.2,
+    "moe_weighted_reduction": 23.1,
+    "flash_attn": 9.6,
+    "other": 2.7
+   }
+  },
+  "general_ja-p1024": {
+   "device_total_ms": 1574.8,
+   "family_ms": {
+    "dense_mul_mat_mmq": 695.6,
+    "moe_routed_compact": 257.0,
+    "elementwise_other": 157.4,
+    "blas_wmma_gemm": 128.3,
+    "hc_fused_epilogue": 106.8,
+    "gdn": 73.9,
+    "quantize": 66.8,
+    "moe_weighted_reduction": 49.0,
+    "flash_attn": 34.7,
+    "other": 5.4
+   }
+  },
+  "general_ja-p4096": {
+   "device_total_ms": 5427.9,
+   "family_ms": {
+    "dense_mul_mat_mmq": 2048.5,
+    "moe_routed_compact": 766.8,
+    "elementwise_other": 526.4,
+    "blas_wmma_gemm": 494.3,
+    "hc_fused_epilogue": 434.6,
+    "flash_attn": 345.2,
+    "gdn": 289.5,
+    "quantize": 283.0,
+    "moe_weighted_reduction": 200.9,
+    "other": 38.7
+   }
+  },
+  "mixed_ja_en-p512": {
+   "device_total_ms": 1063.5,
+   "family_ms": {
+    "dense_mul_mat_mmq": 539.5,
+    "moe_routed_compact": 206.2,
+    "elementwise_other": 94.8,
+    "blas_wmma_gemm": 75.9,
+    "hc_fused_epilogue": 46.2,
+    "gdn": 36.0,
+    "quantize": 28.2,
+    "moe_weighted_reduction": 23.3,
+    "flash_attn": 9.9,
+    "other": 3.7
+   }
+  },
+  "mixed_ja_en-p1024": {
+   "device_total_ms": 1640.2,
+   "family_ms": {
+    "dense_mul_mat_mmq": 742.2,
+    "moe_routed_compact": 275.3,
+    "elementwise_other": 158.2,
+    "blas_wmma_gemm": 128.1,
+    "hc_fused_epilogue": 106.9,
+    "gdn": 73.9,
+    "quantize": 66.7,
+    "moe_weighted_reduction": 48.9,
+    "flash_attn": 34.5,
+    "other": 5.5
+   }
+  },
+  "mixed_ja_en-p4096": {
+   "device_total_ms": 5519.6,
+   "family_ms": {
+    "dense_mul_mat_mmq": 2116.1,
+    "moe_routed_compact": 792.4,
+    "elementwise_other": 526.7,
+    "blas_wmma_gemm": 494.1,
+    "hc_fused_epilogue": 434.3,
+    "flash_attn": 345.5,
+    "gdn": 289.2,
+    "quantize": 282.5,
+    "moe_weighted_reduction": 200.1,
+    "other": 38.8
+   }
+  }
+ },
+ "comparison_note": "hipEngine code-p4096 (R2e): MoE 6.01s, linear 3.84s, device total 13.49s. The external advantage is ~63% MoE routed-expert path (1.00s external vs 6.01s), dense linear only ~0.5-0.8s. Re-ranks the queue: MoE expert-row utilization before dense Q8 MMQ."
+}

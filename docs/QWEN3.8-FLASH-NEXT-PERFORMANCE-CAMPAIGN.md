@@ -1,0 +1,5086 @@
+# Qwen3.8-Flash-Next gfx1151 Performance Campaign
+
+**September 8, 2026 review:** use the
+[review conclusions](#review-conclusions-september-8-2026),
+[active punchlist](#active-review-punchlist-september-8-2026) and
+[ranked experiments](#ranked-targets-and-iu4-experiments-september-8-2026) before older
+"next" instructions below or the halo-box PF queue. The QSA ordered-v2 and
+iu8-risk+repair promotions remain in production; this review changes neither
+runtime defaults nor numerical gates. Whole-family closure, refreshed Vulkan
+parity, and a host-bound decode diagnosis are not established.
+
+**Tool-calling correctness followup:** the embedded XML-parameter protocol and
+greedy grammar masks are implemented. JSON compatibility remains for other
+models. Local development sanity scored93/100 on15 short scenarios and83/100
+on six structured-output scenarios; remaining misses involve model tool choices,
+not the former empty-message transport defect. These are not a frozen full69-case
+qualification or a comparator-speed result. See [contract/evidence](QWEN4EXP-TOOLS-GRAMMAR.md).
+
+**Historical owner priority, 2026-09-06:** resume prefill tuning after the validated
+context-capacity and tool-protocol detours. Capture actual expert routing before
+the next FFN scheduling screen; retain exact prefill wins and tackle decode later.
+The following records the completed
+[served context-capacity correctness detour](QWEN4EXP-CONTEXT-CAPACITY.md).
+Expose admission-aware native context through the public factory/prepare path,
+preserving the2051 model constant and exact sparse control. Short-capacity
+A/B is complete (48 exact trajectories; decode changes below0.1%, prefill
+cost explicit). Public plumbing now admits native262144 context on Framework,
+with c2 startup, served8K retrieval and clean over-limit rejection verified.
+Clean native-capacity boundary/chat followup also passes: live2051 remains
+dense-equivalent,2052/4097 indexed-sparse, and served8154-token chat retrieves
+the archive code. The public-capacity detour is validated; do not claim fresh
+256K-length inference from this allocation evidence.
+MTP's independent1024 cap is not lifted by this work.
+
+## Active execution contract (2026-09-05)
+
+**Owner decision, 2026-09-05:** retain the substantial measured exact prefill
+gains and work on decode afterward. Promote the exact H256/page256 sparse
+QSA and bundled-Q4 publication paths with their strict fallbacks after
+combined correctness validation. This explicitly accepts their reported
+small hot-decode throughput tradeoffs for retention; it supersedes the
+default-off performance dispositions below for these two candidates only.
+Keep all adverse timing rows visible and track decode optimization as open
+work. No numerical, state, isolation or task-quality threshold is relaxed,
+and D1 is not resolved by this decision. Independent HIP/Vulkan parity and
+statistical closure claims still require their named evidence.
+
+The owner has authorized continued optimization with exclusive access to the
+Framework Desktop, hostname `gfx1151`, machine ID
+`55ea6c509d0b49eea8de7094a1023668`, Ryzen AI Max+ 395 / Radeon 8060S.
+This supersedes `zbook` execution instructions and historical "blocked closure"
+stop instructions below. Historical rates and rejected experiments remain
+evidence for their original physical host, not Framework performance claims.
+
+Target halo-box **Vulkan** `b212548e0` directly, retaining HIP as a diagnostic
+comparison. Its September 5 repeatable screen is the working performance
+target despite variance, not a frozen statistical closure claim. Use the
+[Framework packet](../benchmarks/results/2026-09-05-framework-gfx1151-qwen38-flash-next-current-comparators.json)
+and report uncertainty rather than waiting for <=2% CV before optimizing.
+Section 6 still governs claims of statistically established match/beat.
+Refresh exclusive owner costs on this host before selecting a new kernel;
+operation-complete microbenchmarks and same-residency whole-model A/B are both
+required. Do not transfer absolute microseconds or candidate rankings by GPU
+architecture alone.
+
+The binding weights remain **UD-Q4_K_XL**, with BF16 K/V. The full model is
+native **FP8**, available remotely through `pi` as
+`local/Qwen3.8-Flash-Next`; there is no BF16 full-model oracle. BF16 K/V is
+cache storage, not the teacher representation. Use llama.cpp as the
+same-artifact implementation reference. Production need not reproduce its
+generated text: quantify PPL, KLD and top-1 where the required aligned
+probabilities/logits are available, alongside task quality and exact control,
+state ownership, isolation and declared repeatability. Remote text alone
+cannot establish PPL or full-distribution KLD. Record FP8 service/model,
+template, sampling and capture identity; never label FP8 evidence BF16.
+Historical BF16-oracle prerequisites below are superseded for this model,
+not globally for other execution-profile campaigns. Existing numerical
+thresholds are unchanged; D1 still needs a valid route-covering qualification
+decision, and does not block T0 work.
+
+GDN Hv48 tile-16 was promoted in `22dc56268` after engagement-verified
+one-residency validation. The remaining GDN target is the serial prefix,
+not repeating the completed suffix admission. The September 5 portfolio was
+routed MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner
+cost; the active review queue below now controls execution.
+
+## Production-correctness re-review (September8 UTC)
+
+**Contract correction (user directive, recorded in AGENTS.md):** there is
+no exactness contract; the binding contract is production correctness
+(docs/EXECUTION-PROFILES.md): exact control/ownership in every profile plus
+the calibrated production numerical envelope. A candidate is not discarded
+for failing bit-identity with the strict parent; it is reviewed against the
+production gates. Re-review of prior strict/exactness-based discards:
+
+- **Q8 early wave publication** — performance rejection (0.65-0.91x).
+  Stands; correctness was never the reason.
+- **Expanded F32 Q8 cache** — performance rejection (0.161x) plus
+  footprint/setup costs. Stands.
+- **Q5_K bundle (5% prefill win)** — production-envelope rejection **Resolved (September 9, 2026):** the reopened #15 target is closed by promotion, not a shave - the production iu8-WMMA risk+repair chain was adapted to Q5_K weights for layer 2 (the sole Q5_K MoE layer). Bit-exact versus the strict row4 parent (state gate 12/12, identical A/B digests), actual-weight screen 5.67x/6.00x/6.68x at rows 512/1024/4096, full 12-case A/B +4.29% prefill geo-mean with every case winning. The T2 f16 drift class cannot recur by construction. Production-only binding `HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT`.
+  (prefill-last mean KL 0.001179 > 0.001). Stands rejected under the
+  binding bars (bars move only via explicit policy decision); flagged as
+  the highest-value near-miss for a KL-shaving variant.
+- **Q8 MMQ attention-gate (K2560/N6144)** — rejected for nondeterminism
+  (repeat 1 differs from repeats 2-3), binding in every profile. REOPENED
+  as a target: localize and fix the MMQ warmup/correction state and the
+  candidate re-qualifies (it passed numerical scopes and won p508).
+- **GDN gate 3-plane MMQ (linear family)** — the "scheme does not
+  transfer" conclusion applied to the exact risk+repair scheme only. The
+  specific (2560,6144) 3-plane candidate failed the production envelope
+  narrowly (p95 5.26e-3 vs 5e-3, top-1 98.67% vs 99%) and stays rejected,
+  but modified variants (fourth plane, fp32-scale in-kernel staging like
+  the Q5_1 iu8 kernel) remain production-eligible; the discriminator's
+  float64 evidence (1-2 ulp chains) suggests the envelope gap is closable.
+  The "structural floor" phrasing is softened accordingly: it bounds the
+  exact route, not the family.
+- **2-plane MMQ** — KL mean 2.8e-3 vs 1e-3. Stands.
+- **Q5_1 MMQ ds4 chain** — speed rejection (0.75x). Stands.
+
+**Effect on R4b (Q5_1 iu8 down):** flip escapes at multiplier 4 (up to 7
+per chunk-layer on captured activations) are bounded drift, not contract
+violations; the state-gate evidence at multiplier 4 showed teacher-forced
+prefill logits bit-identical at every size with only free-running decode
+divergence at p4096 (diagnostic under the contract). The default multiplier
+is nonetheless raised to the screened floor margin 16 (zero flips across
+all five captured layers/cases) so the route remains bit-identical to the
+strict parent in practice and every existing gate stays green, at ~1.3x
+in-situ owner speedup versus ~1.6x at multiplier 4.
+
+### Retained promotion snapshots
+
+**Weight-exact iu8 Q5_1 down promoted (September8 UTC):** the largest MoE
+kernel owner (pair2 expertgrid64 m1 row-publish, 3.15-3.22s across the
+three p4096 cases) is replaced by an iu8-WMMA chain with in-kernel
+three-plane fp32 staging, raw 5-bit codes as the integer operand, the
+m-offset from staged plane sums, the Kahan risk criterion with the R4a
+guards, and a sparse exact repair reproducing the pair2 row-publish
+arithmetic. Screen path: MMQ ds4 rejected (0.75x, 18% flips, latent
+single-plane-pack wiring inconsistency in the default-off route); the new
+WMMA-class kernel reached 1.62-1.75x operation-complete after a
+launch-bounds occupancy fix (the unbounded build ran at 0.46x). Captured
+five real down-input snapshots; the flip-escape floor is 12.0 (worst:
+code-p4096); default multiplier 16 keeps a ~1.3x margin with zero flips on
+all captures. A control-flow bug that ran the parent after the chain was
+found via in-situ rocprof and fixed before promotion. Qualification at
+`aff70fdce`/`a57a3e418`: 20/20 focused tests; full 12-case state gate
+bit-identical (full logits, four decode steps, state, full KV) before and
+after the production-default flip; canonical 12-case chunk1024 A/B: 72/72
+trajectories exact, prefill +1.9-3.0% on every case, decode
+neutral-to-positive (to +3.6%). Promoted:
+`HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT=1` production / strict 0.
+Under the production-correctness contract the route would also have been
+admissible at multiplier 4 (teacher-forced logits bit-identical at every
+size; only free-running decode divergence at p4096, which is diagnostic);
+16 was chosen to keep practical bit-identity and every existing gate green.
+[State gate](../benchmarks/results/2026-09-08-framework-qwen4exp-q51-iu8-state-gate.json),
+[A/B](../benchmarks/results/2026-09-08-framework-qwen4exp-q51-iu8-ab.json),
+[post-promotion gate](../benchmarks/results/2026-09-08-framework-qwen4exp-q51-iu8-state-gate-postpromo.json).
+
+## Current-host owner refresh
+
+### Review conclusions (September 8, 2026)
+
+Reviewed source: `5b8b6a19d`, including admission `f4e60b712` and promotion
+`28522ba21`. Binding lane: Framework `gfx1151`, machine ID
+`55ea6c509d0b49eea8de7094a1023668`, Ryzen AI Max+ 395 / Radeon 8060S,
+UD-Q4_K_XL, BF16 K/V, c1, chunk1024; comparator remains halo-box Vulkan
+`b212548e0`. The review found no reproducible QSA kernel regression in the
+focused tests. It did not rerun the full-model campaign.
+
+**Measured results, with their estimators and source boundaries:**
+
+| Evidence | Retainable result | Limit |
+| --- | --- | --- |
+| [QSA v2 same-residency A/B](../benchmarks/results/2026-09-08-framework-qwen4exp-qsa-ordered-v2-production.json), clean `f4e60b712`, 12 cases / 72 trajectories | p4096 token/time-weighted TG **12.348 -> 14.164 tok/s (+14.705%)**; p4096 total request wall **-4.535%**; all generated trajectories exact | **+16.516%** is the ratio of arithmetic-mean rates, not the weighted result. Per-case **+7.1/+11.0/+11.4/+24.8%** are median-rate gains. English after-arm TG CV is **18.738%**; magnitude needs the paired drift re-check. |
+| [iu8 same-residency A/B](../benchmarks/results/2026-09-07-framework-qwen4exp-q4-iu8-exact-production.json), clean `73dc4acf2`, 12 cases / 72 trajectories | Weighted PP gains at p512/p1024/p4096 **+7.602/+8.842/+8.361%** | The later **+7.9/+9.6/+13.1%** figures compare separate combined-default packets; they are not this promotion's paired effect. |
+| [Combined-default comparator screen](../benchmarks/results/2026-09-08-framework-qwen4exp-current-default-baselines-post.json), clean `dbb33a527` | HE PP/TG **205.95/19.53**, **221.15/18.88**, **210.42/13.87**; Vulkan **347.14/25.77**, **396.31/25.34**, **421.93/24.46** | This is **before QSA v2**, not a measurement at `5b8b6a19d`. Do not replace its TG4096 cell with a projection or extrapolate another packet's gain onto it. |
+
+The leaf's `12 * 0.179 ms ~= 2.15 ms` estimates only the replacement attention
+calls, not the complete QSA owner. It mixes synchronized leaf wall with the
+older family device ledger if used as a direct replacement for 16.955 ms.
+The projected 0.67x QSA/Vulkan and 1.08x total-decode ratios therefore cannot
+establish either a Vulkan win or "largely host-bound" decode. Measure complete
+owners and matched wall/device windows first. FFN's projected ~8.7-8.8 s and
+total prefill ~18.8 s likewise remain projections, not refreshed captures.
+Neither promotion by itself closes the parent family.
+
+The non-GR linear discriminator rejects a particular MMQ replacement, not
+all exact headroom. It uses one actual weight tensor with synthetic inputs,
+two row counts, and one alternative chain. Error versus float64 truth does
+not separately isolate activation quantization from accumulation order.
+Preserve the existing numerical bars and rejected candidates, but leave exact
+staging, reuse, fusion, scheduling, and three-plane-chain optimization eligible
+when a new measured mechanism justifies them.
+
+The iu8 risk multiplier is empirically calibrated; BF16 publication alone is
+not an exactness proof or a guarantee of Q5_1/GR transfer. The detector must
+cover discrepancy from the parent, including within-subblock cancellation,
+activation quantization, and both accumulation orders. Current parameterized
+repair tests exercise multipliers 32 and 1e30 rather than production's 4.
+The review's additional multiplier-4 screens found no mismatch, but do not
+certify all admitted inputs. Add durable default-4/adversarial coverage and a
+conservative error argument before widening or transferring the mechanism.
+
+The QSA state and leaf artifacts identify a dirty pre-admission tree; their
+full-state result is not source-bound by the later clean generated-ID A/B.
+Close that provenance gap with committed-source state evidence, a compact
+named v2 trace summary, and current catalog/refactor entries. No evidence is
+retroactively relabeled clean. The
+[review decision](../worklog/entries/20260908T031054.395922Z-lhl-qwen4exp-campaign-review-6df7cb.md)
+records validation and supersedes the broader closure interpretations.
+
+### Active review punchlist (September 8, 2026)
+
+This is the gate checklist; the ranked experiments below set execution order
+after the retained R1-R3 refresh. Historical phase numbers and older "next"
+notes are not priorities. Re-rank after each retained change by recoverable
+complete-request milliseconds, not leaf speedup. These are gates, not
+permission to change the admitted numerical policy. R3 and its followup
+probe are complete: the canonical third-rep sag did not reproduce on the
+current tree even on the previously strongest case, so the residual ~5%
+p4096 TG variance is treated as transient system-state noise; reopen only
+if a fresh canonical packet reproduces a >=10% dip under a dedicated probe.
+
+- [x] **R1 - Freeze and close QSA provenance.** Pin a clean source commit,
+  model/compiler identity, resolved production/strict manifests, and active
+  variant calls. Re-run the six-case off/on/off full-logit, four-step,
+  recurrent-state and full-KV gate on committed source; retain exact
+  engagement assertions. Preserve c1 dense/sparse boundaries and fallback
+  coverage. Retain named v2 kernel durations with cache-only profiling and
+  update `docs/KERNELS.md` and the selector removal criteria in
+  `docs/REFACTOR.md`. Do not rewrite immutable source artifacts.
+- [x] **R2 - Refresh complete owners and throughput.** Run the shared-taxonomy
+  family capture and full logger-off 12-case combined-default protocol at
+  explicit chunk1024 with both promotions active. Use
+  `scripts/qwen4exp_framework_family_refresh.py` and its existing protocols.
+  Keep fixed-live4097 one-step device diagnostics separate from TG128, record
+  overlapping buckets once, and identify whether comparator evidence is
+  freshly captured or reused. Report weighted rates, per-case medians, every
+  repetition and CV separately; use section 6 for any match/beat claim.
+- [x] **R3 - Explain p4096 timing drift during that refresh.** Counterbalance
+  v2 off/on with identical preceding prefill and preserve every repetition,
+  including slow thirds. Collect clocks, temperature/power, CPU frequency,
+  memory pressure, synchronization and launch gaps with their timing windows.
+  A repeated screen measures variability; it does not by itself explain it.
+  Do not classify unmatched wall-minus-device residual as host overhead.
+- [x] **R4a - Qualify repair (completed September8 UTC).** Durable
+  production-multiplier-4 test suite plus calibration sweep; two criterion
+  holes found and fixed in `62dffb872`: nonfinite activations were silently
+  dropped by the staging (fmaxf ignores NaN) producing finite outputs that
+  were never queued, and activation scales below ~2^-100 broke the Kahan
+  bound (measured onset 2^-100..2^-110, ~100% garbage by 2^-115). Both are
+  now row-level at-risk guards (queue + exact repair). Full-state gate
+  12/12 cases bit-identical (logits, four decode steps, state, full KV);
+  canonical 12-case chunk1024 A/B: 72/72 trajectories exact, prefill
+  +7.0-8.8% on every case (promotion range preserved), decode neutral.
+- [x] **R4b - Screen Q5_1 down (completed; promoted September8 UTC).** The
+  fresh post-promotion p4096 kernel ranking puts the Q5_1 down exact parent
+  (pair2 expertgrid64 m1 row-publish) at 3.15-3.22s across all three cases —
+  the largest single MoE kernel owner (of the 18.7s device total). The
+  default-off MMQ ds4 chain is NOT the promotion vehicle: as wired in the
+  runner it pairs the single-plane ds4 pack with the three-plane consumer
+  (latent inconsistency in a default-off route; single-plane accuracy
+  ~1.3% median relative error), and even with the correct three-plane
+  residual pack it runs at 0.75-0.78x of pair2 with an 18% BF16 flip
+  fraction (fp16-rounded ds4 scales contribute). The viable candidate is a
+  new weight-exact iu8-WMMA-class Q5_1 kernel: in-kernel three-plane fp32
+  staging (no fp16 scale rounding), raw 5-bit codes as the integer operand,
+  m-offset from staged plane sums (ds-trick), Kahan risk criterion with the
+  R4a guards, and a sparse exact repair reproducing the pair2 row-publish
+  arithmetic. For Q5_1, capture actual layer/category inputs and routing;
+  establish its own exact bound/fallback before admission. Start with durable
+  production-multiplier-4 tests and a conservative parent-error criterion for
+  iu8 repair. Cover cancellation, rounding ties, extreme finite scales,
+  nonfinite handling, risk-queue capacity/overflow, deterministic repair,
+  skewed/empty experts and tile tails. For Q5_1, capture actual layer/category
+  inputs and routing; establish its own exact bound/fallback before admission.
+  Time the complete map/quantize/compute/repair/publication chain. The old
+  ~1.6 s owner is a targeting clue, not a current measured saving.
+
+**Candidate admitted (default-off) at `270710155`:** the weight-exact
+iu8-WMMA Q5_1 down chain (`HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT=1`, multiplier
+default 4.0). Evidence: 20/20 focused exactness tests (bit-identical to the
+pair2 row-publish parent at multiplier 4.0 across skewed/empty experts,
+tile tails, cancellation/tie/wide-scale/tiny/subtiny/huge adversarial
+activations, nonfinite rows, queue-overflow boundedness, determinism);
+flip probe on actual blk.0 down weights at production geometry:
+**1.62-1.70x operation-complete** (uniform and skewed routing, 512/1024
+rows), **zero flip escapes at multiplier 4.0 with 0.44% of outputs queued**
+(repair cost negligible). A launch-bounds occupancy fix ((128,2)) was worth
+3.2x alone - the unbounded build ran at 0.46x. Remaining: full 12-case
+state gate and canonical chunk1024 A/B at the committed source, then the
+promotion decision.
+  Commit `62dffb872` adds default-4/adversarial tests and nonfinite/tiny-scale
+  row repair; use that work and its
+  [scale sweep](../benchmarks/results/2026-09-08-framework-qwen4exp-q4-iu8-scale-sweep.json)
+  rather than restarting it. This is partial R4 progress, not an all-input
+  parent-error proof, Q5_1 admission, or a new full-model performance packet.
+- [x] **R5 - Screen GR at its actual publication boundary.** Locate every
+  F32 intermediate, nonlinear operation and BF16 rounding boundary before
+  adapting repair. Preserve their order and qualify the complete composite,
+  not just a projection eventually consumed as BF16. Compare recoverable
+  request savings against Q5_1 using R2; move GR ahead only when that evidence
+  supports it. The old ~2.44 s composite is not the entire GR family.
+  **Done (September 8, 2026).** Boundary map: the fused GR up kernel
+  (4.913 s of the 18.5 s code-p4096 prefill device total - the single
+  biggest prefill kernel) publishes F32 `gate` and `mixed`; `gate` has no
+  downstream consumer, the single BF16 boundary is `gr_write_bf16_f32`
+  at the end, and the sigmoid/gated-mean epilogue contracts projection
+  drift. Candidate: dense iu8-WMMA Q8_0 projection (raw codes - no weight
+  requantization at all; fp32 three-plane in-kernel staging; retained
+  exact sigmoid + gated-mean epilogue). Operation-complete screen on real
+  weights: 2.93x rows 1024 / 3.77x rows 512 versus the fused parent
+  (earlier projection-only estimate was 1.94x); drift ~1 fp32 ulp on
+  gate/mixed. Teacher-forced full-model logits: KL vs the incumbent
+  production route <= 7.4e-8 across all 9 fixture cases (bar: 1e-3; the
+  rejected Q5_K bundle sat at 1.2e-3), top-1 agreement 100% everywhere
+  with 10-100x argmax margins, both routes bit-deterministic. Default-off
+  route `HIPENGINE_QWEN4_EXP_GR_IU8`; 6 focused tests pass. Full-suite
+  same-residency A/B (72 samples): prefill geo-mean **+9.2%**, every case
+  winning (1.077-1.103), decode neutral; cross-mode digests differ on
+  10/12 cases (expected T1 free-running decode divergence) with the
+  teacher-forced logits packet as the declared production numerical
+  acceptance. **Promoted to production** at e6d32d866 (first T1
+  production-numerical prefill promotion; the exact fused parent stays
+  the strict fallback). The GR down leg (10240->320 Q8_0, 3.76 s on the
+  F32 coltile) screened 2.55x rows 1024 with the same ulp-level drift,
+  logits KL <= 5.5e-8 / top-1 100% / deterministic, and a full-suite A/B
+  of **+2.0%** incremental prefill geo-mean (11/12 cases) on top of the
+  promoted up leg: **promoted at 07dd97c9f**. Combined GR family effect:
+  **+11.3% prefill** over the pre-R5 default.
+- [x] **R6 - Select the remaining decode owner from R2.** Split MoE into
+  gate/up, down, combine and graph/API costs; examine linear and GR in the
+  same window. Target the largest measured recoverable cost. Any host or
+  launch optimization first needs an exclusive measured overhead bucket;
+  old 1.39x MoE and projected near-parity totals do not establish the ranking.
+  **Done (September 9, 2026).** Code-p4096 fixed-live4097 split (three
+  repetitions, six promotions active at `3e6be5848`): per-transition wall
+  54.6 ms / device 49.3 ms gives the exclusive host/launch overhead bucket
+  **5.3 ms/token (9.7% of wall)**; ~1700 individually hipLaunchKernel'd
+  kernels carry 31.2 ms of device work while the 18.1 ms MoE block is
+  already hipGraphLaunch'd. MoE subowners (18.09 ms): expert gate/up Q4_K
+  dp4a dual 5.68 ms, expert down/combine Q5_1 weighted sum 5.60 ms,
+  shared-expert block 6.19 ms, router 0.33 ms, quantize/cast 0.29 ms;
+  linear family 24.73 ms (attn_qkv 5.05, lm_head 3.25, attn_gate 3.12,
+  ssm_out 3.10, attn_q 1.98, GR down 3.63, GR up 2.08); GDN 2.44, QSA
+  2.69, GR epilogue 0.86 ms. Comparator gaps: MoE +5.6 ms, linear+GR
+  +3.2 ms; QSA and GDN faster than Vulkan. **Selected next decode target:
+  decode graph expansion beyond the MoE block** - no arithmetic
+  reordering, estimated recoverable 3-5 ms/token (+6-9% TG). Second
+  target: the MoE expert GEMV pair (11.3 ms today, ~5.6 ms at Vulkan
+  parity).
+  [Split](../benchmarks/results/2026-09-09-framework-qwen4exp-r6-decode-owner-split.json).
+- [ ] **R7 - Keep bounded secondary screens open.** Exact linear reuse and
+  scheduling, including the existing three-plane chain, remain eligible
+  without relaxing gates; do not repeat rejected settings unchanged. QSA
+  values-pass tuning is lower priority until fresh complete-owner savings
+  justify it. A ~40 us floor or "3x headroom" needs a measured mechanism and
+  resource/latency evidence, not a serial-chain estimate alone.
+- [x] **R8 - Bound direct-Q4 IU4 grouped-prefill feasibility.** Preserve
+  UD-Q4_K_XL weights and their scale/min groups; compare against the current
+  repaired IU8 chain, not an older scalar or F16 baseline. Use the experiment,
+  precision accounting and stop criteria below. No sidecar or default
+  admission is authorized by the old dense-model IU4 speed screens.
+
+For each new candidate: focused RED/oracle -> operation-complete screen ->
+full-state admission -> full-suite same-residency A/B -> promotion or recorded
+rejection. Keep registered strict fallbacks, validate category/heldout and
+lifecycle coverage required by the affected profile, and update the benchmark
+rollups, catalog, refactor ledger and immutable worklog before committing.
+Do not rerun unrelated broad tests when existing evidence plus a focused gate
+is sufficient.
+  **Done (September 9, 2026).** The instruction-level control closes the
+  screen: `v_wmma_i32_16x16x16_iu4` exists on gfx1151 and runs at
+  **1.892x** the iu8 rate (timed microbenchmark, identical instruction
+  counts). The precision-matched integer split therefore nets
+  **0.945x** (loses ~5% on arithmetic alone before recombination
+  overhead), and the residual 2-plane IU4 hypothesis is bounded at a
+  **1.06x** arithmetic ceiling - unable to fund its numerical risk or
+  qualification cost. Rejected per the stop rules without a kernel
+  build; the old dense-prefill IU4 gains remain non-transferable.
+  Artifact: `benchmarks/results/2026-09-09-framework-qwen4exp-r8-iu4-bound.json`.
+
+### Ranked targets and IU4 experiments (September 8, 2026)
+
+**External source refresh:** the
+[three-fork review](QWEN4EXP-EXTERNAL-FORKS-REVIEW.md) pins Halogen
+`0208581a5`, Myhacsint's requested production branch `2dff8596d`, and
+halo-box master `7449a0fe9`. It adds E0-E7 as bounded experiments within
+this queue, not a new performance baseline or numerical policy. Continue
+current R4 admission; do not restart it from the earlier ranking snapshot.
+
+**Decision:** retain the prefill-first workload priority. Execute repair
+qualification -> Q5_1 down -> GR, with a bounded direct-Q4 IU4 feasibility
+screen alongside that queue only when it does not contend for the physical
+GPU or shared files. Serialize measurements on Framework. If the owner
+changes the objective to inter-token latency, move MoE decode to rank 1.
+This is an experiment plan, not a new benchmark or promotion packet.
+
+#### Measured basis
+
+Use the [post-v2 owner ledger](../benchmarks/results/2026-09-08-framework-qwen4exp-post-v2-family.json)
+and [combined-default screen](../benchmarks/results/2026-09-08-framework-qwen4exp-current-default-baselines-v2.json),
+including their exact commands, source/compiler/model identities and gates.
+They bind Framework `gfx1151`, machine ID
+`55ea6c509d0b49eea8de7094a1023668`, Ryzen AI Max+ 395 / Radeon 8060S,
+UD-Q4_K_XL, BF16 KV, c1, chunk1024. The family capture uses clean `20a63e689`
+and reused pinned halo-box Vulkan `b212548e0` profiles. The logger-off
+12-case screen uses one warmup and three repetitions at p512/p1024/p4096,
+128 decode transitions, with repeating trajectories within each engine and
+clean ownership/teardown. Neither packet establishes statistical closure.
+
+Post-Q5_1-promotion refresh (clean `4dbdeb7d6`, three promotions active):
+code-p4096 prefill MoE 8.402s (was 8.643), linear 4.448s, GR 3.418s, QSA
+1.333s, GDN 0.807s, device total 18.526s; absolute Vulkan gaps: MoE 3.86s,
+linear 3.43s, GR 1.71s. Combined-default 12-case screen: HE PP
+210.71/226.11/214.05 (+3.2/+2.2/+1.6% cross-packet versus the two-promotion
+packet), TG 19.41/18.68/16.78 (+1.4/+0.5/+2.4%); Vulkan lead PP
+1.614/1.738/1.937x, TG 1.301/1.332/1.436x.
+
+R10 decode layer-graph expansion (measured negative, kept default-off): the
+three stateless GDN segments around the stateful mixer graph-capture and
+replay bit-exact (108 units, 0 rejects, full state gate identical), but
+wall time regresses in both the raw runner loop (+0.6 ms/step) and the
+serving path (TG -0.5%): the replaced launches were already overlapped
+with device execution, and the serving-path host bucket lives in the
+generation wrapper, not layer launches. Decode TG progress therefore
+runs through kernel efficiency (#22 GEMV pair) or wrapper host work, not
+launch restructuring.
+
+Q8_0 grouped WMMA down promotion (T1, `1ddc5f53c`): the five Q8_0 expert-down
+layers (2, 4, 30, 46, 47; 246-273 ms each per code-p4096, ~1.28 s of the
+14.7 s device total) now run the f16-WMMA dequant grouped GEMM (the Q5_1
+down contract on Q8_0 blocks). Teacher-forced logits KL 2e-14..3.6e-13 with
+100% top-1; full-suite campaign A/B **+8.44% prefill geo-mean, all 12 cases
+winning**, decode neutral; in-situ binding 5 calls/chunk; the q5k state gate
+passes 12/12 with the route bound (the gate pins the route off in its own
+arms - its opt-out arm de-groups layer 2, an interaction recorded in the
+worklog). Combined with the six prior promotions the expected device total
+at code-p4096 is ~13.5 s (R2e refresh pending).
+
+R2e refresh (seven promotions, clean `b13f0f0af`): the q8-wmma-down
+promotion landed as predicted — code-p4096 prefill device total
+**13.486 s (was 14.697 s at R2d, -8.2%)**, MoE **6.302 s** (was 7.496 s;
+Vulkan gap now +1.760 s), linear 3.473 s (gap +2.454 s), GR read 1.447 s
+(0.262 s faster than Vulkan), QSA 1.335 s (gap +0.689 s), GDN 0.811 s
+(0.579 s faster), boundary 0.102 s. Vulkan device 9.888 s. Logger-off
+combined-default 12-case screen (1 warmup + 3 repetitions, matched
+protocol): HE PP weighted **297.3/312.9/290.6** at p512/1024/p4096
+(+10.8/+9.3/+10.4% cross-packet versus the R2d six-promotion packet,
+consistent with the q8-wmma-down A/B +8.44%), TG **19.94/19.26/18.69**
+(decode neutral as measured). Vulkan lead: PP **1.160/1.256/1.415x**, TG
+**1.290/1.313/1.310x**; halo-box-hip: PP 316.8/387.5/354.5, TG
+22.17/21.16/19.48. The TG gap is untouched by all seven promotions
+(prefill-only wins), confirming R10's conclusion: decode progress requires
+kernel efficiency or wrapper host work. **R11 qualification outcome
+(September 10): NOT promoted - the full contract chain completed and the
+route fails the 18-prompt admission task suite in every packet
+configuration (max row KL 0.121-0.431 versus the 5e-2 ceiling; the dual
+gate/up leg carries the worst tail, so no dual-only escape; top-10
+overlap degrades to 6-7/10).** The canonical 996-row envelopes, the
+non-exact state gate (engagement/isolation/determinism), cross-run
+determinism, and the serving-path A/B all passed; measured serving-path
+gain +6.5% TG (prefill neutral). The warp256 kernels stay default-off
+with complete evidence recorded
+([outcome worklog](../worklog/entries/20260910T083000.000000Z-lhl-qwen4exp-r11-outcome.md));
+a future revisit needs a reduction-order-preserving gate/up variant or a
+model-class recalibration decision.
+[Family](../benchmarks/results/2026-09-09-framework-qwen4exp-r2e-family.json),
+[baselines](../benchmarks/results/2026-09-09-framework-qwen4exp-current-default-baselines-v6.json).
+
+### Milliseconds-to-parity ledger versus the newer engines (September 10, 2026)
+
+Prefill-first re-ranking against the best **reproduced** engines (September
+9, same host/protocol; quality-unqualified competitive targets, not admitted
+references). Best prefill = newer halo-box HIP `5f851647f`; best decode =
+newer halo-box Vulkan `5f851647f` (Myhacsint failed repeatability; the
+newer engines are deterministic but not trajectory-equivalent to the old
+pin). hipEngine numbers are the seven-promotion R2e packet above.
+
+**Wall-time targets (tok/s -> ms):**
+
+| Leg | hipEngine | Best reproduced | Gap |
+| --- | ---: | ---: | ---: |
+| PP512 | 297.3 (1,722 ms) | 466.4 HIP `5f851647f` (1,098 ms) | 1.57x |
+| PP1024 | 312.9 (3,273 ms) | 614.3 HIP `5f851647f` (1,667 ms) | 1.96x |
+| PP4096 | 290.6 (14,098 ms) | 709.5 HIP `5f851647f` (5,773 ms) | **2.44x** |
+| TG4096 | 18.69 (53.51 ms/tok) | 24.55 Vulkan `5f851647f` (40.73 ms/tok) | **1.31x** |
+
+The prefill ratio grows with context (1.57x -> 1.96x -> 2.44x), so
+context-proportional owners (linear, MoE, QSA) dominate the long-context
+gap. **Prefill ledger, four-category p4096 device-ms attribution versus
+the old pinned Vulkan (the only profiled comparator):**
+
+| Owner | hipEngine | old Vulkan | excess | recoverable-to-old-parity path |
+| --- | ---: | ---: | ---: | --- |
+| linear | 3,467 | 1,019 | **+2,448** | Q8 three-plane MMQ (attn_qkv 1.09 s, ssm_out 0.654 s, attn_gate 0.587 s) |
+| moe | 6,214 | 4,372 | **+1,842** | expert-row tiles + next-K staging + pipelining |
+| qsa | 1,334 | 645 | **+689** | bounded D256 tile/occupancy sweep |
+| gr_read | 1,457 | 1,707 | -250 | already faster |
+| gdn | 830 | 1,390 | -560 | already faster |
+| boundary | 103 | 507 | -404 | already faster |
+| ple | 16 | 76 | -59 | already faster |
+| **device total** | **13,421** | **9,717** | **+3,705** | |
+
+Two ledger consequences: (1) closing the owner-attributed excess
+(+4,979 ms in the three losing owners, +3,705 ms net) only reaches
+old-pin parity (9,967 ms wall at 411 tok/s) - **another ~4,194 ms**
+of the 8,325 ms total gap belongs to gains the newer HIP engine has
+beyond the old pin and is **unattributed until the newer HIP prefill path
+is profiled on matching inputs** (queue item 1: tile utilization, fewer
+activation passes, chunk2048, or another arithmetic path; sparse repair
+is ~10 ms and packing ~72 ms in the raw role profile, not the lever).
+(2) The repair/packing tails are noise next to MMQ compute.
+
+**Decode ledger, per-transition device-ms (four-category TG128, R2e
+family split):**
+
+| Bucket | hipEngine | old Vulkan | excess | next experiment |
+| --- | ---: | ---: | ---: | --- |
+| moe | 17.36 | 12.47 | **+4.89** | R11 pair (in qualification), then shared-expert block (6.19 ms/token R6) |
+| linear | 17.19 | 16.39 | +0.80 | shares the Q8 MMQ family |
+| gr_read | 6.63 | 6.11 | +0.52 | - |
+| qsa | 2.63 | 3.16 | -0.53 | - |
+| gdn | 2.36 | 2.78 | -0.42 | - |
+| boundary | 0.46 | 1.39 | -0.93 | - |
+| **device total** | **46.67** | **42.42** | **+4.25** | |
+| wrapper/host | ~6.8 (53.51 wall - 46.67 device; R6 split 5.3) | | | wrapper tracing, not graph expansion (R10 negative) |
+
+Path from 53.51 to the 40.73 ms/tok target (12.78 ms to recover):
+R11 expert pair leaf-measured ~5.7 ms (11.3 -> ~5.6 ms, in qualification
+now) plus the shared-expert block (6.19 ms/token) plus wrapper work
+(~5.3-6.8 ms bounded) plus linear/GR (+3.2 ms) is sufficient on paper,
+but every bucket needs its own measured mechanism and gates; R11 alone
+moves 53.5 to ~47.8, still above target.
+
+### Wrapper-host retention and maximum-speed configuration (September 10)
+
+Post wrapper-host arc retention (same protocol family as the v6 packet
+above; clean window v7b at the batched-positions-promoted default,
+three-promotion v8 in a degraded 19 GB-swap window with comparators down
+5-10% corroborating):
+
+| Engine | p512 PP / TG | p1024 PP / TG | p4096 PP / TG |
+| --- | ---: | ---: | ---: |
+| hipEngine (v7b clean) | 296.28 / 20.02 | 294.99 / 19.53 | 262.21 / 19.14 |
+| hipEngine (v8 degraded) | 288.87 / 19.96 | 283.68 / 19.30 | 259.07 / 19.21 |
+| halo-box Vulkan `b212548e0` (v7) | 344.40 / 26.02 | 393.59 / 25.59 | 413.23 / 24.73 |
+| halo-box HIP (v7b recapture) | 305.44 / 22.01 | 385.74 / 21.18 | 349.59 / 19.49 |
+
+Positions: versus the pinned baseline, HE is at PP 0.86x/0.75x/0.63x and
+TG 0.77x/0.76x/0.77x; versus the refreshed frontier `5f851647f`, PP4096
+is 0.37x of best HIP (709.5) and TG4096 is 0.78x of best Vulkan (24.55).
+Corrected wrapper-host attribution with a TRUE all-off arm (git worktree
+at `8a770b782` vs HEAD, 4 arms x 3 interleaved reps, fresh process per
+arm-rep, all bit-exact, median basis): combined **-13.05% TG latency =
++15.01% throughput**; PLE warm -7.35 ms (-12.2% = +13.9%) but DEMOTED to
+opt-in; batched positions -0.54 ms (-0.9% = +0.9%); compiler-version cache
+~0 ms TG (correctness/robustness only; the earlier -1.9 ms claim was
+measured with the buggy compiler-only cache key and is withdrawn).
+Evidence: `2026-09-10-r7-baseline-retention-v8.md` (both windows),
+`2026-09-10-r7-combined-tg-attribution.json`.
+
+**Maximum speed and why it is not the default.** The fastest *qualified*
+configuration adds `HIPENGINE_QWEN4_EXP_PLE_WARM=1` to the current
+defaults: the true all-off-arm attribution measures the full promoted set
+at -13.05% TG latency (+15.01% throughput), bit-exact. It is opt-in, not
+default, because its cost is **resource-shaped, not numerical**: the warm
+sweep costs +15.4 s and +6,015 major faults per runner construction (28.8
+GB page-cache read), amortizes only after 577-15,400 generated tokens
+(median ~2,050; canonical benches at ~576 tokens per construction never
+amortize it), and its 28.8 GB residency is unqualified on memory-
+constrained shared hosts. Long-lived serving may enable it; short-lived
+runners should not.
+
+Faster still are configurations the **quality gates reject**: the two-plane
+dense d4x2 variant (+1.39-1.44x per leg) and the MoE 2-plane iu8 screens
+fail the 996-row canonical envelope on every bar (mean 1.60e-3, max
+7.18e-2, top-1 0.983 versus the declared limits), and the strict-teacher
+control already places the promoted production stack beyond the frozen
+bars through compounded micro-drift of the seven R2e prefill routes (mean
+KL 0.001276, max 0.05257, top-1 98.494%). No threshold relaxation is
+justified by current evidence; widening the envelope is the 6.1
+bounded-drift admission policy decision, not an engineering step. The
+A/B-harness digest `ea0412231532bc7b` used in the wrapper-host gates is
+the harness digest, not the canonical-contract digest (`19045b7c9fd442e5`);
+arm-equality conclusions are unaffected - see the digest-mismatch worklog
+(`20260910T094500.000000Z-lhl-qwen4exp-digest-mismatch-repro.md`).
+
+**Execution order (prefill-first, GPU serialized):** R11 qualification
+is CLOSED (not promoted, evidence recorded). The newer-engine windowed
+attribution (2026-09-10-halobox5f-hip-prefill-attribution-windowed.json)
+RE-RANKS the remaining queue: at code-p4096 the external advantage is
+**~63% the MoE routed-expert path** (1.00 s external routed+reduce versus
+hipEngine's 6.01 s whole-MoE block; 6x) while dense linear is nearly at
+parity (~3.0 s external MMQ+GEMM versus 3.84 s; the old-pin-based
+"+2.45 s linear excess" overstated dense for the newer engine). Order:
+~~MoE expert-row utilization/pipelining~~ -> bounded QSA D256 sweep.
+**Hot-expert reuse / next-K pipelining REFUTATED (September 10, task #35):**
+screen over 28,800 layer captures reproducing the R13 routing distribution -
+no small hot set exists (top-16/512 experts cover 25.3% of pairs; ~65% of
+the pool streamed per layer-chunk; top-8 hot set = 1.2 GB vs MB-class
+caches; cross-case top-32 Jaccard 0.316), and decode weight fetch is not
+the TG bottleneck (~29 GB/s at 52.3 ms/token). Residual recorded not
+promoted: within-expert weight-tile reuse, ceiling 2.32x, gated on rocprof
+memory counters. Evidence:
+`2026-09-10-qwen4exp-hot-expert-reuse-screen.json`.
+**QSA D256 sweep GATE-EVALUATED, NOT RUN (September 10, task #36):** all
+tree gate branches closed - no complete-owner savings since the deferral,
+the ~40 us floor / 3x headroom claim remains a serial-chain estimate, and
+the qualification-repair window completed with #30. Bounded design
+pre-declared (admission bars, budget, stop conditions) in
+`2026-09-10-qwen4exp-qsa-d256-sweep-gate.json`; execute on any opening
+condition.
+**R13 MoE project CLOSED (September 10):** the 6x gap is
+exactness-structural - the three-plane iu8 chain is ~3x, padding 33%
+(analytically closed: c<=16 experts hold 12.9% of pairs; dp4a loses at
+the measured ~14x per-row deficit; different experts cannot share a
+WMMA A-fragment), repair 0.75s, legacy layers and router previously
+rejected. Every T0 lever is measured or analytically closed; the
+remaining ~3x requires the bounded-drift admission policy decision
+(same blocker as R12). See the
+[closure worklog](../worklog/entries/20260910T143000.000000Z-lhl-qwen4exp-r13-closure.md). No
+IU4, resident-PLE/offload, GDN, or MTP detours for this serial-AR gap.
+**R12 dense-MMQ project CLOSED (September 10):** the tile sweep
+confirmed the retained 128x128 tile optimal; the two-plane d4x2 variant
+is +1.39-1.44x per leg but the whole-model route FAILS the 996-row
+canonical envelope on every bar (mean 1.60e-3, max 7.18e-2, top-1
+0.983) - the dense gap to the newer engine is the exactness-chain
+price, and closing it needs bounded-drift arithmetic the current bars
+reject at whole-model scope. Candidate wiring retained default-off; a
+P2-style layer-cluster continuation is recorded unverified in the
+[rejection worklog](../worklog/entries/20260910T113000.000000Z-lhl-qwen4exp-r12-d4x2-rejection.md).
+
+Post-Q5_K-promotion refresh (clean `771337563`, six promotions active):
+code-p4096 prefill MoE 7.496s, linear 3.458s (dense iu8 took attn_gate +
+shared_down), GR 1.463s, QSA 1.335s, GDN 0.826s, device total **14.697s
+(-10.9% versus the five-promotion packet)**; absolute Vulkan gaps: MoE
+2.954s, linear 2.439s, QSA 0.690s. Layer-2 gate/up confirmed on the iu8
+route in situ (66.4ms risk + 60.4ms repair; was 765ms row4); layer-2
+Q8_0 down (246ms) is that layer's dominant remaining cost. Combined
+default: HE PP 268.4/286.2/263.1 (+11.9/+12.5/+10.6% cross-packet), TG
+19.50/19.00/18.38; Vulkan lead PP 1.278/1.363/1.560x, TG
+1.311/1.322/1.318x.
+
+Post-GR-promotion refresh (clean `3fcceff86`, five promotions active):
+code-p4096 prefill MoE 8.301s, linear 4.439s, **GR 1.483s (was 3.418s;
+now 0.226s faster than Vulkan's 1.709s)**, QSA 1.331s, GDN 0.820s, device
+total **16.498s (-10.9%)**; absolute Vulkan gaps: MoE 3.76s, linear 3.42s,
+QSA 0.69s. Combined-default 12-case screen: HE PP
+**239.72/254.46/237.94** (+13.8/+12.5/+11.2% cross-packet versus the
+three-promotion packet, matching the GR legs' +11.3% combined A/B), TG
+**19.65/19.24/18.31**; Vulkan lead PP **1.393/1.539/1.734x**, TG
+**1.290/1.298/1.321x**; halo-box-hip PP 283.01/361.30/351.69.
+[Family](../benchmarks/results/2026-09-08-framework-qwen4exp-post-gr-family.json),
+[baselines](../benchmarks/results/2026-09-08-framework-qwen4exp-current-default-baselines-v4.json).
+
+Post-GR state update (September9 UTC): the dense Q8_0 iu8-WMMA route is
+promoted (+7.9% paired prefill geo-mean, every case winning) but has no
+post-promotion family/combined-default packet yet, so the rows above
+remain the five-promotion basis. E0 also qualified refreshed comparators
+under this fixture: halo-box master `5f851647f` is substantially faster
+than the pinned `b212548e0` these Vulkan leads reference (HIP PP
+466.4/614.3/709.5; Vulkan PP 404.6/411.0/546.6), so the 1.39-1.73x PP
+and 1.29-1.32x TG leads here overstate the position against the
+refreshed comparator frontier - at p4096 the v4 HE PP 237.94 is **0.335x**
+halo-box-HIP `5f851647f` (post-dense ~257 is an estimate, refresh
+pending) while HE TG 18.31 is at HIP parity (**0.994x**). `b212548e0`
+remains the pinned baseline: the E1 greedy-mode cross-check (September
+10) is NEGATIVE - within-engine deterministic everywhere, but
+cross-version greedy trajectories differ (full-digest agreement only
+2/12 cases vs the pinned Vulkan baseline; median token-prefix 64.5/128;
+several cases diverge within the first 5-16 tokens). The 5f851647f
+rocmfpx Vulkan-stack line is not numerics-equivalent to `b212548e0`;
+adopting the faster comparator would be a policy decision accepting a
+new reference trajectory set, not a like-for-like re-pin.
+[E1](../benchmarks/results/2026-09-10-qwen4exp-e1-greedy-crosscheck.json).
+[E0](../benchmarks/results/e0-comparators/2026-09-09-e0-summary.json).
+
+| Owner | Code-p4096 prefill HE / Vulkan (s) | Fixed-live4097 decode HE / Vulkan (ms) |
+| --- | ---: | ---: |
+| MoE | 8.402 / 4.542 | 17.280 / 12.446 |
+| Non-GR linear | 4.448 / 1.019 | 17.177 / 16.356 |
+| Gated residual | 3.418 / 1.709 | 6.625 / 6.106 |
+| QSA | 1.333 / 0.646 | 2.617 / 3.081 |
+| GDN | 0.807 / 1.390 | 2.346 / 2.770 |
+
+These are device-owner costs, not unprofiled request walls. The decode window
+is not TG128. Comparator differences are targeting clues, not proven removable
+costs or permission to change arithmetic. QSA's 3.081 ms comparator cell is
+from this refreshed join, not the older 3.161 ms snapshot.
+
+#### Experiment order
+
+| Rank / gate | Target and mechanism | First discriminator / stop condition |
+| --- | --- | --- |
+| 1 / R4 | Qualify current repair, then Q5_1 exact grouped down. Attempt faster integer projection with sparse parent-order repair at its actual publication boundary. | Close remaining error-bound/queue coverage; capture actual layer/category activations and routing. Establish Q5_1's own bound and strict fallback. Time map + quantize + compute + repair + publication. Stop if repair removes the complete-chain gain or misses any binding exactness case. |
+| 2 / R5 | GR composite. Reduce expensive projection/reuse costs while preserving nonlinear and rounding boundaries. | Enumerate F32 intermediates and BF16 publications first. Qualify the full composite; eventual BF16 consumption does not permit earlier reassociation. Compare measured request savings with Q5_1 before reordering. |
+| 3 / R8 | Direct-Q4 IU4 grouped gate/up prefill, without requantizing weights. | Run the bounded feasibility screen below against today's repaired IU8 route. Stop if extra activation planes, metadata/corrections, tile underfill or repair consume the gain. |
+| 4 / R6 | MoE decode bandwidth and scheduling. Investigate weight traversal, coalescing, register pressure, repeated work and combine boundaries before changing arithmetic lanes. | Attribute gate/up, down, combine and graph/API costs in one matched window. Record bytes, effective bandwidth, VGPR/scratch and grid sufficiency. A matrix-instruction roof alone is not a c1 mechanism. |
+| 5 / R7 | Exact linear and the admitted three-plane chain. Share activation packing where inputs/contracts match; improve staging, reuse and scheduling without reducing required precision. | Use actual rotating weights and complete producer/consumer chains. Keep rejected fewer-plane/MMQ settings rejected; a new exact mechanism remains eligible. Sparse BF16 repair is not automatically useful for F32-output owners. |
+| 6 / R3 followup, R6 | Canonical-sequence drift and exposed submission overhead. Mirror the warmup/slot sequence, then evaluate graph/PM4 changes only for measured gaps. | Preserve every repetition; collect aligned wall, kernel union, launch/sync gaps and telemetry in the reproducing sequence. Existing controlled probes did not reproduce the canonical sag, so its cause remains open. Do not add overlapping API and device times or label unmatched residual as host cost. |
+| 7 / R7 | QSA prefill/values scheduling and the remaining serial GDN prefix. | Require new complete-owner evidence and a concrete latency/resource mechanism. QSA decode and GDN are no longer the leading comparator deficits; do not repeat the completed suffix admission. |
+
+#### External experiment attachments
+
+Use the [source review's E0-E8 table](QWEN4EXP-EXTERNAL-FORKS-REVIEW.md#campaign-experiments)
+for pinned files/commits, test gaps and stop criteria:
+
+- **E0:** qualify refreshed halo-box HIP/Vulkan and Myhacsint comparators
+  under our exact payload/fixture. Halo-box's published ~800 PP row is HIP
+  UD-IQ4_XS, not our UD-Q4_K_XL; Halogen's ~50 TG includes MTP and different
+  weights. Myhacsint's supplied ~60 TG headline lacks a reproduced protocol.
+  **Done (September 9, 2026).** Under our exact payload, logger-off
+  protocol, same host and identical server args (1 warmup + 3 reps):
+  halo-box master `5f851647f` PP **404.6/411.0/546.6** (Vulkan) and
+  **466.4/614.3/709.5** (HIP), TG **26.30/26.03/24.55** (Vulkan) and
+  **20.06/19.94/18.42** (HIP), deterministic within engine; Myhacsint
+  `2dff8596` Vulkan PP **489.4/577.6/573.5**, TG **25.21/24.74/24.01** -
+  its ~60 TG headline is not reproduced (our protocol excludes MTP and an
+  unpublished deployment preset) and it is nondeterministic across
+  repeated identical requests, consistent with the source review's stale
+  union-count selection. The refreshed pins are substantially faster than
+  the pinned `b212548e0` baselines (HIP 283/361/352; Vulkan 334/392/413),
+  so the measured frontier is halo-box-HIP `5f851647f` at PP 709 /
+  TG 18.4 on p4096. Cross-backend digests disagree on every request
+  (seeded sampling semantics amplify numeric differences), so a greedy-mode
+  logits cross-check is required before freezing `5f851647f` as the
+  campaign comparison target; `b212548e0` remains the pinned baseline per
+  the standing rule.
+  [Summary](../benchmarks/results/e0-comparators/2026-09-09-e0-summary.json).
+- **E1:** attach representation-preserving MMQ next-K register staging and
+  expert-row-aware tile selection to the prefill R4/R8/R7 screens. Measure
+  against current admitted kernels; rejected scalar prefetch/cache settings
+  are not reopened unchanged.
+- **E2/E3:** attach surviving fused quantize/shared-input matvec and ordered
+  F32 prefetch to R6, and alias-safe rounded HC mix/combine to R5. Preserve
+  our activation planes and publication order; the fork removed some early
+  decode HC and mixed-F32 experiments for correctness.
+- **E4:** keep fixed shape-specific GEMM plans and larger bounded chunks as
+  conditional long-prefill screens, not a reversal of chunk1024 admission.
+- **E5:** extend existing UMA lifetime/drift diagnostics; the newly merged
+  input ring is not PM4 and is not evidence of a hipEngine race or speedup.
+- **E6/E7:** retain duplicate-replay/dirty-restore/shared-MTP-fit checks under
+  P11, and page-cache/pinning/in-place-prefix checks as separate serving
+  followups. No new weights, proprietary kernel import, global runtime
+  replacement or numerical-policy relaxation is authorized.
+- **E8 (added September 9, nasone32 review):** after the R2d re-rank, screen
+  the RDNA3.5 D=256 QSA prefill tile-config sweep and the expert-row-aware
+  MoE tile-J-from-typical-expert-width mechanism on our owners. The fork's
+  multi-GPU allreduce/P2P/Q8-wire machinery, host-offload expert cache and
+  lazy-PLE staging are out of this campaign's scope.
+
+The source review records conflicting external logit-exactness evidence,
+cache-sensitive benchmark tooling and quant/layout-specific route guards.
+Reproduce rather than credit headline rates or undefined "% theory" labels.
+Rerank these mechanisms by fresh recoverable request cost after the current
+admission unit; no external microbenchmark supersedes the campaign gates.
+
+#### IU4 history and bounded screen
+
+The earlier IU4 campaign is on a separate Git ref, not this checkout:
+`origin/mtp-iu4:MTP-IU4.md`, pinned for this review at `3a8ab17d3`.
+Read it without switching or merging the shared worktree:
+
+```bash
+git show 3a8ab17d3:MTP-IU4.md
+git show 80d2bb187 --stat
+git show 9d969cdaa --stat
+```
+
+The pinned document's instruction diagnostic and R6-R8 artifact links carry
+the old host, model, commands, quality verdicts and source limitations. Its
+gfx1151 instruction screen establishes a faster IU4 lane, not a product win;
+it is disclosed dirty-tree/register-only evidence. Rebuilt dense
+Qwen3.8-27B prefill kernels and the Kairic full-FFN sidecar won speed screens,
+but the full-model sidecar failed binding distribution gates against both
+tested authorities. Tiny-M verifier work offered little incremental
+representation value after correcting the exact baseline's scheduling deficit.
+Do not summarize that history as "IU4 never helped"; equally, do not transfer
+its dense-prefill gains or quality-traded product to Flash-Next MoE.
+
+The new hypothesis is **native IU4 over existing Q4_K nibbles**, retaining
+subblock scales/minima and the current publication contract. It avoids the
+old requantized-weight sidecar, but still has to pay for activation precision:
+
+- The current gate/up route uses three INT8 residual activation planes.
+  An exact integer split `q8 = low4 + 16 * high4` (unsigned low nibble,
+  signed high nibble) needs two IU4 products per IU8 product. At twice the
+  instruction throughput, that cancels the nominal arithmetic gain before
+  recombination/correction overhead. It is a control, not a speed prediction;
+  reconstruct the I32 dot before applying scales to preserve that stage.
+- Fewer INT4 residual planes are a separate numerical hypothesis. Measure
+  residual error and parent-order discrepancy, then qualify a conservative
+  repair criterion or the applicable production-profile gate. Never assume
+  BF16 publication or the current IU8 multiplier certifies an IU4 route.
+- Prompt rows are not expert rows. Refresh chunk1024 per-expert histograms
+  and capture actual activation/routing pairs across layers and categories.
+  The [earlier routing capture](../benchmarks/results/2026-09-06-framework-qwen4exp-real-routing.json)
+  retained counts with synthetic-activation replay, not a complete activation
+  oracle. Include skewed/empty experts and tails; select routes by validated
+  geometry/profile capability, never prompt or token identity.
+- First compare precision-matched integer-split IU4 and bounded residual-IU4
+  candidates against the current repaired IU8 chain on rotating actual weights.
+  Charge map, activation packing, metadata, compute, corrections, risk
+  collection/repair, SiLU/publication and scratch/peak bytes. Record useful
+  versus padded work, plane count, repair fraction, VGPR/LDS/scratch and named
+  cache-only traces. Inspect `docs/KERNELS.md` and run the lineage check before
+  adapting code from the old branch or a read-only reference.
+- Advance only a complete-chain win with its declared correctness contract.
+  Require full-state admission and same-residency category/heldout/model gates
+  before promotion. If the bounded screen loses, record the limiting mechanism
+  and return to the ranked queue; do not replace UD-Q4_K_XL with a sidecar,
+  extend into tiny-M MTP, or relax numerical thresholds to rescue it.
+
+Already rejected cache, larger-row/tile, cooperative-staging, fewer-plane and
+CPU-wait settings remain rejected unless a new measured mechanism changes the
+experiment. MTP, alternate KV storage and alternative weight products retain
+their separate capacity, quality and true-AR economics gates.
+
+### Retained promotion snapshots
+
+**Dense Q8_0 linear iu8-WMMA promoted (September9 UTC):** the reopened
+#13 lane resolved by subsumption rather than revival of the old
+prepacked-MMQ attention-gate candidate (its determinism blocker was
+already fixed by the later state work; perf sat at ~1.01x with a CI
+through 1.0). The R5 iu8-WMMA kernel was registered as a generic
+`linear` variant with a dispatch rule rewriting the retained F32 coltile
+family (`prefill_f32_f32_out` /
+`coltile8_rowbatch4[_wave_scale]_f32_f32_out`) for prefill-sized rows,
+capturing the attention-gate (2560->6144) and shared-expert down
+(640->2560) projections - 84 calls per routed chunk. Raw MMQ keeps the
+shapes where its 128-row tiles win (verified: the 16-row kernel loses on
+2560->10240, so the dispatch ordering is correct); the exact wave-scale
+coltile stays the fallback and sub-256-row path. Operation-complete
+screens on real weights: 2.47-2.64x (attn-gate) and 3.23-3.45x
+(shared-expert down) versus the wave-scale coltile parent, drift ~1e-6
+absolute (rel p50 ~2e-7). Teacher-forced full-model logits (9 fixture
+cases, double-run): KL <= 5.1e-8, top-1 agreement 100% with argmax gaps
+15-30, bit-deterministic. Full-suite same-residency A/B (72 samples,
+chunk1024, both arms carrying the five promoted routes): prefill
+geo-mean **+7.9%**, every case winning (1.068-1.087), decode neutral;
+the p4096 TG wiggle on two cases matches the known variance signature.
+Two dispatch bugs found and fixed in qualification: the linear resolve
+cache did not key on the route flag (arms silently reused the first
+arm's kernel, exposed by impossible zero-drift-with-nondeterminism
+cells) and the first launch could fall past the lazily-registered
+variant. Promoted at `219c54865`; production binds
+`HIPENGINE_QWEN4_EXP_Q8_IU8_WMM=1` (route default-off outside the
+profile; strict fallback retained). Post-promotion
+family/combined-default refresh pending.
+[A/B](../benchmarks/results/2026-09-09-framework-qwen4exp-q8-iu8-dense-campaign-ab.json).
+
+**Q5_K selected dual gate/up iu8 screen (September9 UTC):** T0-exact
+candidate extending the iu8-risk+repair mechanism to the Q5_K selected
+gate/up owner. Boundary: grouped Q5_K gate/up plus identical BF16 SiLU
+(tile map + iu8-risk + sparse exact repair) versus the row4 parent; no
+routing/down/combine. Actual-weight screens (layer 2, uniform routing,
+10 pairs in both orders per case, multiplier 16): SiLU outputs bit-exact
+in all pairs with operation-complete speedups **5.67x / 6.00x / 6.68x**
+at rows 512/1024/4096 (parent 115.6 -> candidate 20.4 ms median at rows
+512; repair share ~5.4%). The `q5k-iu8-exact` A/B route package is wired
+into the campaign A/B harness; runtime default unchanged. Full-state
+admission and the full-suite same-residency A/B are the next gates.
+[Screen](../benchmarks/results/2026-09-09-framework-qwen4exp-q5k-iu8-screen.json).
+
+**R2/R3 post-promotion refresh and drift diagnosis (September8 UTC):** clean
+`20a63e689`/`1629b3f04`, both promotions active. Shared-taxonomy family
+capture (six cases/twelve phases, chunk1024, comparator profiles reused from
+the pinned b212548e0 capture): code-p4096 prefill FFN8.643s (was10.214),
+linear4.442s,GR3.383s,QSA1.330s,GDN0.801s, device total18.714s (1.892x
+Vulkan,was2.09x). Fixed-live4097 decode: QSA2.617ms versus Vulkan3.081ms
+(**0.849x — hipEngine faster on the QSA decode owner**); MoE17.28ms (1.388x,
+the top remaining decode owner), linear1.050x,GR1.085x, device total46.533ms
+(1.101x,was1.43x). Logger-off combined-default 12-case screen: HE
+PP204.24/221.26/210.74 (unchanged), TG19.15/18.58/**16.39** — p4096 TG
++18.2% versus the pre-ordered-v2 packet (13.87), Vulkan TG lead1.500x at
+p4096 (was1.764x). Protocol note: both engines run the identical 1-warmup
++3-repetition structure, so the 1:1 is protocol-matched; hipEngine's
+repetition-order drift makes its 3-rep average conservative versus its own
+first-rep rate (p4096 first-rep ~18.0 versus average16.4) while Vulkan is
+flat (0.12% CV). Final comparisons must use matched multi-run averages on
+both sides. R3 drift diagnosis (counterbalanced off/on, fresh prefill per
+arm, 8 warmup steps, 128-step windows, sclk/temperature/power/CPU-frequency
+sampled per step): GPU sclk pinned2900MHz, temperatures68-77C, CPU5.1GHz
+p10>=4.84GHz in every arm — the drift is **not** clock, thermal or
+CPU-frequency, and per-step logits capture does not reproduce it. The
+ordered-v2 route is repetition-stable to0.3-0.4% spread; the parent route
+shows a uniform first-window-after-first-prefill penalty (general_en
+12.03s versus8.45s steady, decaying after one window; mechanism
+unidentified — not clocks). The canonical third-rep sag (18.0->12.8 TG) did
+not reproduce under this controlled structure in either arm — it is
+arm-independent in the retained A/B and carried by canonical-harness
+sequencing (1 warmup per mode, slot interleave) with hardware state ruled
+out; a narrowing probe must mirror that sequence exactly. **R3-followup
+(September9 UTC):** the dedicated six-repetition canonical-structure
+probe on the previously strongest case (mixed_ja_en-p4096, 1 warmup + 6
+reps, production default, chunk1024, six promotions through the dense
+iu8 route) is flat at 18.7/18.7/18.7/18.8/18.7/18.7 TG with PP flat at
+258-259: the deep 12.8 sag does not reproduce at all on the current
+tree, and the mild v4 wiggle (16.8/17.9 on ja/mixed rep-2) does not
+reproduce minutes later on the same host. The canonical sag is not
+reproducible; residual p4096 TG variation is bounded (~5%),
+case-dependent (ja/mixed) and consistent with transient system-state
+noise rather than a structural host or launch cost. Reopen only on a
+fresh canonical-packet reproduction (>=10% dip) under a dedicated probe.
+[Probe](../benchmarks/results/2026-09-09-framework-qwen4exp-tg-sag-probe.json)
+[Family](../benchmarks/results/2026-09-08-framework-qwen4exp-post-v2-family.json),
+[baselines](../benchmarks/results/2026-09-08-framework-qwen4exp-current-default-baselines-v2.json),
+[drift](../benchmarks/results/2026-09-08-framework-qwen4exp-qsa-v2-drift-probe.json),
+[drift+logits](../benchmarks/results/2026-09-08-framework-qwen4exp-qsa-v2-drift-probe-logits.json).
+
+**Exact ordered-v2 QSA sparse decode promoted (September8 JST):** the
+largest decode owner (fixed-live4097 QSA,16.955ms versus Vulkan3.161ms,
+5.365x and75% of the total decode device gap) is rewritten while preserving
+the exact ordered arithmetic and parent operand order. Leaf probe at c1
+geometry (24q/2kv/D256,selected2051 of4097): production route1.154ms/layer
+= scores401us + coefficients177us + values533us (rocprof). The v2 route:
+warp-tree scores (validated eight-coordinates-per-lane tree,32us), exact
+fmaxf block-scan coefficients with pointwise expf off the critical path and
+a prefetched serial denominator (14us), and staged-tile values with
+clamped unconditional loads (110us) - total0.179ms/layer,6.45x,
+bit-exact. A load-isolation experiment identified the per-load
+`token<0?0.0f:load` select as defeating all memory-level parallelism
+(406 versus122us); the fix is clamped loads plus a post-load select.
+Qualification:14 focused tests (selected1..4096,invalid positions,tails,
+extreme scales), six-case off/on/off state gate at chunk1024 with full
+logits/4 decode steps/state/full KV bit-identical and exact call accounting
+(48 sparse decode calls per enabled p4096 arm,zero prefill/short-context),
+full12-case chunk1024 A/B at clean f4e60b712:72 exact trajectories,p4096
+decode per-case median-rate gains+7.1/+11.0/+11.4/+24.8%
+(weighted aggregate+14.705%; arithmetic-mean-rate ratio+16.516%;
+p4096 request wall-4.535%),prefill and p512/p1024 decode neutral.
+This is a leaf/paired-workload win, not measured whole-family closure.
+Promoted: production binds
+HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2=1,strict0.
+[Leaf](../benchmarks/results/2026-09-08-framework-qwen4exp-qsa-ordered-v2-leaf.json),
+[state](../benchmarks/results/2026-09-08-framework-qwen4exp-qsa-ordered-v2-state.json),
+[A/B](../benchmarks/results/2026-09-08-framework-qwen4exp-qsa-ordered-v2-production.json).
+
+**Combined-default refresh after the iu8-risk+repair promotion (September8
+JST):** clean dbb33a527, hipEngine chunk1024, UD-Q4_K_XL/BF16 KV, full
+12-case logger-off protocol, first default screen with the exact
+iu8-risk+repair MoE gate/up route active. HE PP/TG512:205.95/19.53,
+1024:221.15/18.88,4096:210.42/13.87 (prior 95df2c3a9 packet
+190.94/19.79,201.82/19.34,186.03/14.93: PP +7.9/+9.6/+13.1% cross-packet,
+matching the paired A/B direction, not its causal magnitude). Pinned Vulkan
+b212548e0:
+347.14/25.77,396.31/25.34,421.93/24.46 - within1.2% of the prior packet,
+so the Vulkan prefill lead narrows to 1.687/1.791/2.006x (from
+1.796/1.951/2.263x); TG lead 1.320/1.342/1.764x. Decode moved down in this
+packet (-1.4/-2.4/-7.1%): at p4096 the first-two repetitions hold steady
+at14.4 (vs15.05 prior,-4.3% cross-packet) while third repetitions sag to
+12.0-13.2 on non-code cases, driving the weighted mean to13.87 and max
+decode CV to10.12%; the promotion's paired A/B measured decode neutral
+(-0.06%), so the sag is unattributed packet-level drift requiring a paired
+re-check, and the HIP diagnostic stage itself moved -10.7% at p4096
+(386.51->344.98) outside the promotion's touch. Max PP/TG CV: HE
+3.21/10.12%,Vulkan0.57/0.25%,HIP11.46/2.59%. All108 trajectories repeat
+within each engine, HE ownership0, servers exit0. Total serial stage
+33m00s; sequential screening, not statistical closure and not the current
+7baf0a98c fork measurement.
+[Evidence](../benchmarks/results/2026-09-08-framework-qwen4exp-current-default-baselines-post.json).
+
+**Non-GR linear replacement discriminator (September7 UTC; scope corrected
+by September8 review):** a
+discriminator probe on actual blk.0.attn_gate weights (Q8_0, K2560->N6144,
+F32 in/out, rows512/1024, synthetic inputs) screens one MMQ replacement.
+The exact wave-scale coltile runs 5.47/10.99 ms versus
+2.83/5.91 ms for the 3-plane quantize+MMQ chain (1.94x/1.86x), but 91.2%
+of F32 outputs differ between the chains, so the exact iu8-risk+repair
+scheme is not established for this owner (F32 consumer, no BF16 publication
+boundary at this projection).
+Against float64 truth the parent coltile itself deviates ~1 ulp (median
+5.7e-8) and the 3-plane MMQ ~2 ulp (median 1.2e-7): the chain's error is
+consistent with a significant accumulation-order contribution, but this probe
+does not independently isolate it or test a fourth plane. The rejected
+(2560,6144) policy row (p95 5.26e-3 vs 5e-3, top-1 98.67% vs 99%) and
+2-plane rejection (KL mean 2.8e-3 vs 1e-3) remain binding failures; no gate
+is relaxed. The measured family total is 4.45 s; informal subowner estimates
+are not an additive exclusive ledger. This is not a proof that all exact
+linear scheduling or three-plane-chain optimization is exhausted.
+Q5_1 down (~1.6 s) and GR (~2.44 s composite) are conditional repair
+feasibility targets under R4/R5, not proven transfers.
+[Discriminator](../benchmarks/results/2026-09-07-framework-qwen4exp-gate-mmq-discriminator.json).
+
+**Exact iu8-risk+repair MoE gate/up promoted (September7 UTC):** clean
+73dc4acf2 full12-case chunk1024 A/B preserves all72 trajectories exactly
+and improves every prefill case: PP512/1024/4096 aggregate
+190.604/203.122/193.437 -> 205.093/221.083/209.609 tok/s
+(+7.602%/+8.842%/+8.361%); per-case prefill +7.54% to +9.06%. Decode
+aggregate -0.016%/+0.082%/+0.324% is incidental (worst case -0.604%
+Japanese p4096); total request wall 629.839 -> 602.595 s
+(0.95674x). Max within-case PP CV 1.048%/1.092%. Production binds
+HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT=1 (strict0) with multiplier default4;
+the strict fallback chain (pair2 -> expertgrid64) is unchanged. This
+replaces the early-layer exact grouped pair2 owner (3.397s of code-p4096
+device time) with a chain observed bit-identical on the retained gates:
+iu8-WMMA + Kahan-risk collection
++ sparse pair2-exact repair, projected ~1.5s off the p4096 FFN owner.
+[Production evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-q4-iu8-exact-production.json)
+[State evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-q4-iu8-exact-state.json)
+[Kernel screen](../benchmarks/results/2026-09-07-framework-qwen4exp-q4-iu8-exact-screen.json)
+[Flip probe](../benchmarks/results/2026-09-07-framework-qwen4exp-q4-iu8-flip-probe.json).
+
+**Earlier admission (default-off, September7 UTC):** the production
+iu8-WMMA kernel (layers 35-47 owner) extended with a Kahan-compensation
+error probe, per-output BF16-boundary risk collection, and a sparse exact
+repair that reproduces the pair2 arithmetic and reduction tree. Actual-
+weight screens: 32 cases across layers 0/3/10/26, uniform/skewed routing,
+512/1024-row chunks, multipliers 1-8 are all bit-identical to pair2 with
+1.50-2.00x operation-complete speedups; the multiplier floor is between
+0.5 and 1 (below it flips escape), so the default multiplier is 4 (>=4x
+margin, 1.50-1.82x). Full five-case off/on/off state gate at chunk1024
+passes with bit-identical full logits, four decode steps, state and full
+KV; engagement 26/104 calls at p512/p4096, zero decode, zero final
+allocations. Admission used the exact-trajectory route rather than relaxing
+the T2 KL blocks that stopped f16-WMMA/iu8 scope extension at layers 27/35.
+The retained gates observed incumbent equality; R4 requires a conservative
+repair criterion before that observation can support broader exactness or
+transfer claims.
+
+**Expanded F32 Q8 cache rejected (September7 UTC):** exact host
+dequantization plus resident F32 weights keeps the same coltile8/row4
+FMA/reduction tree but increases layer0 attention-gate512/1024 projection
+5.633->34.879ms /11.079->69.026ms (0.161x/0.161x).
+Shared-down also loses0.787x/0.782x. All80 pairs exact,11 focused
+tests pass;cached trace resources remain72 VGPR/512B LDS/scratch0.
+Gate sidecar is60MiB versus15.9375MiB raw,adds~14.8ms CPU
+dequant/upload setup outside steady-state timing;both costs are retained.
+This rejects removing dequantization by widening the existing row-major
+weight representation. Larger traffic/cache footprint is a hypothesis,
+not a measured cache-miss attribution. Candidate removed,no model A/B.
+Do not repeat this unchanged cache or the already rejected MMQ gate
+policy expansion;future layout work must preserve compact weights and
+address actual traversal/shared-input reuse.
+[Evidence/recipe](../benchmarks/results/2026-09-07-framework-qwen4exp-q8-f32-cache-rejected.json).
+
+**Q8 early wave publication rejected (September7 UTC):** fresh trace
+identifies attention-gate projection as1.579s of code4096 linear time.
+Unlike Q4 pair2,its Q8 coltile8/row4 parent publishes wave sums after
+all shuffles. Interleaving each exact accumulator's publication shortens
+VGPR72->64 but loses:actual layer0 attention-gate512/1024 ratios
+0.874x/0.910x,shared-down0.722x/0.651x. All80 pairs exact,
+ten tests pass;cached trace confirms512B LDS/scratch0 both.
+The512 attention case has substantial order effects,retained without
+favorable rerun;both1024 attention order strata lose.
+Candidate removed,no runtime admission or full-model qualification.
+Do not equate fewer registers with faster execution or repeat this
+publication-only rewrite. Q4 already publishes per accumulator;its
+Q5_1-like lifetime opportunity is not the same missing mechanism.
+[Evidence/recipe](../benchmarks/results/2026-09-07-framework-qwen4exp-q8-early-publication-rejected.json).
+
+**Post-four-head owner refresh (September7 UTC):** clean `30b92de13`,
+six cases/twelve phases at explicit chunk1024,complete semantic attribution.
+Four-category p4096 mean:FFN10.214s,non-GR linear4.452s,GR3.395s,
+QSA1.331s,GDN0.801s,total20.305s. QSA2.068->1.331s (-35.66%)
+and total21.227->20.305s (-4.345%) are snapshot deltas spanning
+GDN wave normalization,raw-Q token64 and four-head QSA,not causal A/B.
+Reused pinned Vulkan ratios are2.336x/4.367x/1.988x/2.062x/0.576x
+respectively. FFN and non-GR linear remain the leading prefill targets.
+Code4096 profiled wall21.061s exceeds device sum20.397s by0.664s;
+keep host/transition costs in full-request qualification.
+Fixed-live4097 decode QSA16.955ms versus Vulkan3.161ms is a separate
+one-step ledger,not tg128 throughput. No new competitor throughput run.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-post-qsa-quad-family.json).
+
+**Four-head QSA promoted (September7 UTC):** clean6c0e3d214 staged
+full12-case/chunk1024 run preserves72 exact trajectories and all first-stage
+samples. p4096 PP185.413->192.034 (+3.571%),TG13.990->13.496
+(-3.531%). All4 p4096 request means improve1.00983-1.01637x with
+transition included. Overall request1.008325x;unchanged short-path PP
++0.082%/+0.149%,mixed request deltas retained (worst short~0.458% loss).
+Max PP/TG CV3.004%/7.957%,measured span27m39s. Not a statistical
+all-case non-regression claim or cross-packet pair-vs-quad comparison.
+Promote scoped page256/Hq24/Hkv2 sparse prefill under prefill-first direction:
+productionquad/strict0,dense shortcuts and decode kernels unchanged.
+CPU recovery penalty remains explicitly accepted because complete long
+requests improve;no clock/affinity/wait overrides or hidden warmup.
+Prior pair regression and all mitigation failures remain historical evidence.
+The completed owner snapshot above now guides larger FFN/linear work.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-qsa-head-quad-production.json).
+
+**Four-head QSA model admission (September7 UTC):** explicit
+`HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR=quad` mode,default-off,after
+existing page256/Hq24/Hkv2/D256 sparse-prefill guards. Two-head mode1
+and disabled0 remain distinct;invalid modes select parent.
+Six full-logit/state/KV cases pass atchunk1024:code512/1024 unchanged,
+all four p4096 categories exact with0/24/0 calls,zero decode engagement,
+tracked teardown0.15 focused tests pass. No production default change.
+Next full-request qualification must include CPU recovery penalty;neither
+four-head leaf speedup nor state equality establishes net request benefit.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-qsa-head-quad-state.json).
+
+**Four-head QSA leaf candidate (September7 UTC):** existing exact
+head-sharing template instantiated for4 adjacent query heads/page256,
+GQA ratio divisible by4. Synthetic selected2051 at512/1024 rows gives
+1.033121x/1.063059x versus two-head candidate,both order means positive,
+20 pairs exact.23 focused tests pass including extreme query scales,
+invalid grouping and poisoned unused KV. VGPR72->112,no LDS/scratch.
+Cold first pair/quad samples retained;warmup label corrected explicitly.
+Kernel-only,no runtime selector or complete-QSA/request speedup claim.
+This may increase prefill savings but does not solve the CPU transition;
+any admission must preserve full-state/KV gates and charge transition time.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-qsa-head-quad.json).
+
+**Advancing GDN graph feasibility (September7 UTC):** diagnostic wrapper
+captures all36 full GDN layers inside real code/mixed p4096 decode.
+Each first use snapshots BF16 residual and FP32 conv/matrix state,runs
+production eager reference,verifies capture is nonexecuting,restores
+starting bytes and validates graph state/output exactly. No extra recurrent
+update is published. All16-step off/on/on/off trajectories/state match.
+First graph arms include228/232ms setup/validation and total1.225/1.231s;
+warm graph1.049/1.049s versus final eager1.046/1.047s. Thus the layer
+microprobe's larger ratios do NOT produce a demonstrated warm AR win.
+36 captures+540 replays then576 warm replays per case verified,
+clean teardown. Initial BF16 snapshot-size adapter error retained as failed
+instrumentation,not performance evidence. No production graph/default
+change or QSA-transition mitigation claim. Stop expanding this GDN-only
+graph path without a paying full-request protocol;larger CPU submission/
+sparse-QSA ownership and explicit prefill-first retention remain open.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-gdn-advancing-graph.json).
+
+**Paired GDN layer-graph screen (September7 UTC):** production-profile
+layer0/24/46 after code4096 at chunk1024,20 balanced pairs per layer,
+restoring identical layer state before every arm. Eager retains MoE cache:
+1 capture/20 replay per layer,zero fallback/reject. All60 pairs state/output
+exact plus four chained replay checks. Layer medians1.405->1.021ms,
+1.464->1.034ms,1.534->1.098ms;both orders favor graph. Full graph setup
+9.079/9.285/8.413ms and warmup timings retained separately.
+This differs materially from no-restore AR-like replay:host restoration/
+hashes perturb cache and CPU state. No full-step speedup or transition
+mitigation claimed. Next request-owned integration gate must measure
+real advancing decode with setup costs and strict fallback,not multiply
+these isolated ratios by36 layers.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-gdn-layer-graph-paired.json).
+
+**GDN layer graph baseline corrected (September7 UTC):** existing
+stateful graph probe now supports `--gdn-moe-baseline`,limited to
+production GDN-only segments. Eager baseline uses the actual MoE cache
+and records capture/replay counts;full-layer graph excludes nested MoE
+capture. Code4096/chunk1024/layer0:four state/output replays exact,
+capture nonexecuting,final measured state equal. Verified eager cache
+delta1 capture/19 replay,zero eager/reject. Exploratory medians
+0.938->0.904ms (1.037x),with cold first samples retained.
+Not counterbalanced,not full-step AR,and full-graph setup cost excluded;
+no production change or qualified speedup. Initial run0.944->0.904ms
+is also retained,then repeated only to add missing engagement validation.
+Next counterbalance operation-complete timings and cover other GDN layers
+before considering runtime integration. Reducing real submission work is
+preferable to artificial CPU-active delay,but this packet does not establish
+a transition mitigation.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-gdn-layer-graph-current.json).
+
+**Charged CPU-active transition rejected (September7 UTC):** both arms
+use paired-head prefill;arm1 adds100ms CPU busy interval before decode,
+fully charged in transition+decode/request totals. Code4096,two balanced
+tg128 pairs:decode-only8.948->8.861s,but interval+decode8.948->8.961s.
+Full request averages29.922->29.939s. This moves delay between timers,
+not a latency gain. Exact tokens/state/layout and clean teardown pass;
+no policy/affinity writes. Do not add CPU warm-up to production or report
+its uncharged decode-only benefit. Stop bounded active-delay tuning here;
+paired-head candidate still needs an explicit complete-request retention
+decision or a demonstrated hardware/runtime fix.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-qsa-active-transition.json).
+
+**Requested CPU floor intervention (September7 UTC):** caller pinned17,
+policy17 minimum temporarily2->4GHz,readback verified. Parent/candidate
+early decode1.169/1.589s;feedback still~1.5GHz/~600MHz. The original
+2GHz minimum and0..31 affinity were restored and independently read back.
+All tokens/state/layout exact,zero candidate decode calls,clean teardown.
+Governor/EPP were already performance;no other policy modified. This
+rejects a requested-minimum workaround,not all hardware-policy hypotheses.
+Read-only RyzenAdj reports configured STAPM120W/fast160W/slow140W;
+clock-control fields unavailable. These snapshots do not identify a limit
+trigger during inference. No production policy change. Stop floor/wait
+guessing;identify the hardware constraint or qualify the full-request
+prefill-first tradeoff explicitly without hiding transition time.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-qsa-cpu-floor.json).
+
+**ROCr MWAITX request tested (September7 UTC):** source inspection at
+ROCr1559d101f2716ed3d4f30beb33200e91f1af024b identifies
+`HSA_ENABLE_MWAITX` in `runtime/hsa-runtime/core/util/flag.h` and
+conditional MWAITX in default_signal.cpp/interrupt_signal.cpp.
+CLR50f79bbaefa7e265493881cb2ff9c8da6476d44c rocvirtual.hpp has a
+separate active/blocked signal wait path. These are upstream references,
+not confirmed installed-runtime source identity.
+Disposable process with MWAITX=1,code4096,2 balanced pairs/tg128:
+parent/candidate decode8.496/8.937s;early~1.5GHz/~600MHz persists.
+Exact tokens/state and zero candidate decode calls,clean teardown.
+Loaded HIP/HSA binary hashes and env recorded;actual MWAITX engagement
+unproven. No production env change or energy claim. Stop trying generic
+wait switches without engagement evidence;next investigate bounded CPU
+frequency policy intervention or identify installed runtime wait code.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-qsa-mwaitx.json).
+
+**HIP wait-policy isolation (September7 UTC):** disposable code4096
+phase probes with2 balanced pairs/128 decode steps,decode HEAD_PAIR flag0.
+Initial device flags already1 (spin);explicit spin1->1 is a no-op,
+not a mitigation. Parent/candidate decode8.496/8.925s. A separate
+yield process verifies flags1->2 before allocation and measures8.509/
+8.940s;early parent~1.5GHz/candidate~600MHz split persists.
+Exact tokens/state/layout,zero candidate decode calls and clean teardown
+pass in both processes. All prefill/transition time retained,clocks and
+affinity unchanged. Processes are not inter-policy counterbalanced;
+no claim that spin outperforms yield or that all HIP wait paths honor flags.
+Generic HIP scheduling flags do not resolve this transition in these runs.
+Next inspect the actual wait/submission path or controlled hardware-policy
+intervention;do not add an always-on heater thread or hide delay as warmup.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-qsa-wait-policy.json).
+
+**Calling-thread affinity isolation (September7 UTC):** pin CPU17
+after model initialization,restore original0..31 mask on exit. Same
+code4096 two-pair16-step phase probe still shows parent/candidate
+wall1.167/1.573s. All samples remain on CPU17;candidate early CPUFreq
+~600MHz versus parent~1.5GHz. Tokens/state/layout exact,zero candidate
+decode calls,clean teardown and verified affinity restoration. Pinning
+alone does not fix the transition. No GPU threads or clock policy changed.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-qsa-phase-affinity.json).
+
+**CPU-warmth source leads,not fixes:** local Strix HEAD remains
+7baf0a98c. `common/common.h:74` defaults worker polling50;
+`ggml-cpu.c:3208` polls before sleeping. These are CPU worker controls,
+not a proven HIP submission-thread frequency fix. `ggml-cuda.cu:367`
+sets ScheduleSpin for NVIDIA cc12.1 only,inside non-HIP code.
+Local HIP SDK `hip_runtime_api.h:2635` documents ScheduleSpin as
+active waiting with CPU/power cost;Auto is heuristic. Investigate HIP
+wait policy with explicit before/after flags and full-request timing.
+No always-on CPU warm thread or production pinning justified yet.
+Host CPU governor and EPP already read `performance`;requested minimum
+is2GHz while sampled feedback can be~600MHz,so a requested floor alone
+cannot be assumed effective. Keep all original unpinned results.
+
+**QSA transition frequency samples (September7 UTC):** code4096,
+2 balanced pairs/16 steps,CPU accounting+hardware counters+read-only
+CPUFreq snapshots. Parent/candidate wall1.170/1.567s. Candidate
+prefill leaves early decode samples near600MHz for several steps;parent
+reaches~1.5GHz earlier. Both later reach~5.1GHz. CPU IDs/migrations
+retained;sampling costs3.5-8ms/window,not the~400ms penalty.
+Combined with similar instructions/cycles and GPU kernel time,this
+localizes the observed slowdown to delayed CPU frequency recovery.
+It does not identify which firmware/power-policy mechanism triggers it.
+No clocks/affinity changed;next controlled CPU policy or affinity
+isolation must record and restore settings rather than silently lock clocks.
+Candidate remains default-off until the mitigation/retention decision.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-qsa-phase-frequency.json).
+
+**QSA transition CPU hardware counters (September7 UTC):** unprofiled
+code4096,2 balanced pairs/16 decode steps,decode flag0. Parent/candidate
+wall1.169/1.581s;both retire~3.91B user instructions and1.72-1.75B
+user cycles. CPI0.439-0.443 parent versus0.447-0.448 candidate.
+Counter running fraction100% in every measured arm;thread-local user
+scope excludes kernel/hypervisor. CPU thread time rises with wall,
+not instruction count. This is consistent with lower effective CPU
+execution rate after candidate prefill,not proof of a specific clock or
+power-policy mechanism. No affinity/clocks changed. Next directly inspect
+effective CPU frequency/rate across transition;keep candidate default-off.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-qsa-phase-perf.json).
+
+**QSA transition CPU accounting (September7 UTC):** unprofiled
+code4096,2 balanced pairs/16 steps after parent/candidate prefill,
+decode flag0. Wall1.170->1.574s tracks thread CPU1.165->1.563s.
+No GC events or major faults;minor faults0 except one candidate arm1.
+Involuntary switches16-20 per window,voluntary0-1. Thus off-CPU waits/
+GC do not explain the~0.40s penalty in this bounded run;more CPU work,
+lower effective execution rate,or CPU-side waiting/spinning remain possible.
+No clock/scheduling intervention. `perf stat -e cycles,instructions -- true`
+succeeds;next measure decode-window instructions/cycles to distinguish
+work count from execution rate. Exact tokens/state/layout and clean
+teardown pass;candidate stays default-off. Do not label it thermal.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-qsa-phase-cpu.json).
+
+**QSA transition trace (September7 UTC):** code4096,first16 steps,
+decode flag0 after parent/candidate prefill,2 balanced pairs. Same29440
+kernel launches per window. Parent/candidate wall1203.112/1569.281ms,
+kernel interval-union981.766/976.068ms,residual221.346/593.213ms.
+HIP API interval-union724.192/685.656ms;wall outside HIP API calls
+478.920/883.626ms. Launch API totals rise,blocking memcpy totals fall.
+The penalty is not slower GPU kernel arithmetic;investigate CPU execution/
+scheduling between submissions next. Residual is not automatically CPU
+work: it includes transfers/idle/untraced activity. Profiler explicitly
+substitutes a system-memory queue ring and drops priority/CU-mask metadata,
+so absolute rates are instrumented. Exact tokens/state/layout and clean
+teardown pass. Candidate remains default-off;no clock change or thermal
+causality claim. Committed marker/CSV-summary tooling enables reproduction.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-qsa-phase-trace.json).
+
+**QSA preceding-prefill isolation (September7 UTC):** fresh p4096
+prefill per arm,decode flag held0,both code/mixed,2 balanced pairs of128
+steps after warmups. Parent/candidate-prefill decode8.478->8.925s and
+8.482->8.936s;both orders reproduce~5% rate loss. All tokens/final
+state/layout exact,24 candidate-prefill calls and zero candidate-decode
+calls. Extra~0.45s concentrates in first16 decode steps;last16 steps
+~1.043-1.046s in both arms. The effect follows preceding prefill workload,
+not the decode flag,and is transient rather than steady-tail degradation.
+No snapshot restore or state hashing between prefill and decode.
+Read-only clocks/temperatures do not identify the hardware mechanism.
+Next: trace early decode kernel versus host gaps under both prefill arms;
+keep candidate default-off and retain original staged regressions.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-qsa-prefill-phase.json).
+
+**Paired-head decode flag isolation (September7 UTC):** fixed
+parent-prefilled p4096 roots restored before each arm,only HEAD_PAIR
+flag toggled at decode. Code/mixed,4 balanced pairs of16 steps:
+off/on wall ratios0.999450/0.999805 (on wall+0.055%/+0.019%).
+All tokens/state/layout exact,zero paired-head calls,clean teardown.
+Read-only temperature/clock snapshots retained;no clock intervention.
+This does not reproduce the staged6.526% loss and gives no evidence of
+a flag-at-decode dispatch leak in this bounded test. It does not rule out
+effects of candidate prefill,128-step trajectories,or phase history.
+Candidate stays default-off;next isolate preceding prefill with decode
+flag held constant. No favorable throughput rerun or thermal attribution.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-qsa-decode-flag.json).
+
+**Paired-head QSA staged model result (September7 UTC):** clean a8957d6ec,
+full12 cases/chunk1024,72 exact trajectories,first24 samples preserved
+and remaining48 added without reload. No early-stop condition triggered.
+p4096 PP186.922->193.577 (+3.560%),TG13.662->12.771 (-6.526%);
+two p4096 request averages regress (English0.996791x,mixed0.997346x),
+code/Japanese improve1.008937x/1.009882x.
+Untouched short PP-0.161%/+0.035%;max PP/TG CV3.187%/10.318%.
+Measured span27m45s. Staged ordering differs from canonical and absolute
+rates drift between phases;do not label that as proven thermal causality.
+Retain kernel/route default-off:prefill gain measured,but decode tradeoff
+exceeds prior small accepted losses. Next isolate decode launch/phase
+behavior before promotion;no full-suite rerun to seek favorable numbers.
+This validates staged continuation/sample preservation,not an early-stop
+runtime saving or statistical non-regression.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-qsa-head-pair-model.json).
+
+**Paired-head QSA model admission (September7 UTC):** default-off
+page256-parent Hq24/Hkv2 selector;existing D256/rows>=16 route guard
+stays. Dense shortcuts and decode untouched. Eight full-logit/state/KV
+off/on/off cases pass at chunk1024,including all four p4096 categories.
+Each p4096 enabled arm runs24 sparse attention calls;short cases0,
+decode0,clean tracked teardown.13 focused route/profile tests pass.
+Both binders0;next staged full12-case throughput qualification. Do not
+replace selection/publication or infer complete-QSA speedup from leaf timing.
+[State evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-qsa-head-pair-state.json).
+
+**Paired-head H256 QSA candidate (September7 UTC):** two adjacent heads
+per wave share selected K/V reads,with independent exact score tree and
+online-softmax accumulators. Page256/even GQA only;binding Hq24/Hkv2/D256
+meets scope. Explicit parent accumulator FMA contraction fixes initial
+strict mismatches.23 tests pass,including unused-KV poison.
+Synthetic selected2051 attention at512/1024 rows wins2.544x/2.610x,
+30 pairs exact. VGPR40->72,no LDS/scratch,half head blocks.
+The first screen label was stale:page256 wave timed,strict reference
+output separately checked;corrected label and cold-first-sample caveat
+are retained in the artifact. No model or full-QSA ratio extrapolation.
+Next: default-off production page256-parent route,full logits/state/KV,
+then staged throughput qualification.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-qsa-head-pair.json).
+
+**Framework raw-vector square64 rejected (September7 UTC):** distinct
+from historical zbook scalar-staging retile. Compared to promoted128x64,
+64x64 on actual Q layers3/7 at512/1024 rows yields0.984/0.985x and
+0.959/0.980x.80 pairs exact,27 tests pass. Threads256->128,dynamic
+LDS48384->28928B,VGPR160/scratch0 unchanged. Smaller residency footprint
+does not improve operation-complete time;candidate removed,raw-Q128x64
+retained. Do not repeat this same-host/staging combination unchanged.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-mmq-square64-rejected.json).
+
+**Same-residency staged screening (September7 UTC):**
+`--staged-screen` now runs one measured pair for all12 cases,then either
+stops diagnostically or completes the remaining two pairs without reload
+or repeated warmups. All initial samples are retained. The predeclared
+stop rule requires at least two cases with both prefill and total request
+wall >5% slower in the candidate. This is conservative operational triage,
+not a confidence bound;historical calibration alone does not prove it safe
+under unseen interference. No automatic early promotion.
+Stopped packets are `screen_only`,variance/repeatability unmeasured,
+and rejected by retention. Completed packets have72 trajectories and
+qualification `staged-one-then-three`;their cross-case ordering differs
+from canonical case-local A/B and must remain labeled. The original
+canonical protocol remains default. Prospective GPU validation/runtime
+savings are not yet measured;unit tests cover preservation and decisions.
+
+**Prepacked MMQ token64 expansion rejected (September7 UTC):** actual
+layer0 qkv/SSM,512/1024 rows,complete quantize/clear/MMQ/repair
+boundary ratios0.941/0.969 and0.931/0.952.80 pairs exact,both orders
+lose;27 tests pass. VGPR144->112,scratch0,dynamic LDS57856->48384B.
+Despite lower resource usage,prepacked path loses. Candidate removed;
+prepacked128 production and promoted raw-Q64 remain unchanged.
+Do not transfer raw-Q tile results to prepacked or GR paths.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-prepacked-token64-rejected.json).
+
+**Raw-Q token64 promoted (September7 UTC):** clean ee36b0b75,
+full12-case chunk1024 A/B,72 exact trajectories,all12 prefill means
+improve. PP512/1024/4096:190.315->191.353 (+0.545%),
+202.324->203.168 (+0.417%),186.490->186.895 (+0.217%).
+Total request1.001647x;11/12 request means improve. Japanese4096
+request wall increases0.183%,TG decreases0.706%;retain explicitly
+under prefill-first direction. Aggregate TG-0.003%/-0.076%/+0.088%.
+The all-request-win retention helper correctly declines;this is a
+documented prefill-first retention,not an all-case non-regression claim.
+Max PP/TG CV1.016%/5.131%,measured span27m39s. No favorable rerun.
+Production1/strict0,parent raw-vector K2560/N12288 rows>=512 only;
+prepacked qkv/GR unchanged. External screening rates remain revision-pinned.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-mmq-token64-production.json).
+
+**Raw-Q token64 admission (September7 UTC):** default-off
+`HIPENGINE_QWEN4_EXP_MMQ_TOKEN64=1` replaces only existing raw-vector
+K2560/N12288 Q at rows>=512. Five full-logit/state/KV off/on/off cases
+at chunk1024 pass exactly;12 calls at512,48 at4096,zero decode calls
+and clean tracked teardown. Prepacked qkv,GR and short rows unchanged.
+Both binders0;full-model throughput qualification remains.
+[State evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-mmq-token64-state.json).
+
+**Raw-vector MMQ token64 candidate (September7 UTC):** distinct from
+earlier64-output/128-token GR rejection. Current candidate retains128
+outputs,halves token tile to64 with retained vector activation staging.
+Actual qkv/Q512 ratios1.050x/1.125x,1024 ratios1.077x/1.109x;
+independent layer7 Q1024 1.138x,both orders positive. Long-row GR is
+flat/mixed and short-Q has large outliers;all adverse rows retained.
+200 screen pairs exact,23 tests include nonzero repair threshold/tails.
+VGPR184->160,dynamic LDS57856->48384B,scratch0. Kernel-only:
+next default-off parent raw-vector K2560/N12288 rows>=512 Q route,
+then model state/KV and throughput gate. Prepacked qkv is not qualified
+by these raw-only screens;do not blanket replace MMQ.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-mmq-token64.json).
+
+**Current-default three-engine refresh (September7 UTC):** clean95df2c3a9,
+hipEngine chunk1024,UD-Q4_K_XL/BF16 KV,full12-case logger-off protocol.
+HE PP/TG512:190.94/19.79,1024:201.82/19.34,4096:186.03/14.93.
+Pinned Vulkan b212548e0:342.90/25.60,393.68/25.38,420.95/24.55;
+HIP diagnostic305.87/21.59,405.98/21.26,386.51/19.44.
+All108 measured trajectories repeat within each engine,HE ownership0,
+servers exit0. Vulkan lead1.796/1.951/2.263x PP and1.293/1.312/1.645x TG.
+Max PP/TG CV:HE2.55/4.47%,Vulkan3.08/2.83%,HIP13.71/2.87%.
+Sequential screening,not statistical closure or current7baf0a98c fork
+measurement. Total serial stage33m10s; no source/clock changes during run.
+Standalone combined-default decode staleness is resolved at this named
+revision. The remaining gap remains substantial,especially long prefill.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-current-default-baselines.json).
+
+**Current-default baseline plumbing (September7 UTC):**
+`qwen4exp_framework_family_refresh.py baselines --prefill-chunk-size 1024`
+now explicitly selects the current hipEngine chunk. Historical default512
+and pinned comparator command arguments remain unchanged. The runner
+records the selected chunk and rejects resume with a different chunk;
+legacy manifests imply512. Use1024 for the queued combined-default
+logger-off baseline refresh. This tooling change alone updates no rates.
+
+**MMQ bank-first loop order closed (September7 UTC):** move output
+fragment bank outside token-group loop,keeping each output's accumulation
+order. Actual qkv/Q512 medians1.000x/0.998x,1024 medians1.013x/1.020x,
+but order-stratified means disagree in all four shapes.80 pairs exact,
+22 tests pass. VGPR184->192,scratch0;the intended register reduction
+did not materialize. Candidate removed;no full-model run or favorable
+rescreen. Raw-vector production remains.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-mmq-bank-first-rejected.json).
+
+**Dense MMQ scale-hoist rejected (September7 UTC):** move16 weight
+scales/subblock outside token-group loop,keep integer WMMA and F32
+accumulation order. Actual layer0 qkv/layer3 Q at512/1024 rows,
+complete quantize/clear/matmul/repair boundary gives0.319-0.338x speedup
+(roughly3x slower);80 pairs exact,22 tests pass.
+Trace VGPR184->256,scratch0->1132B. Candidate removed before runtime
+admission;raw-vector production unchanged. Scale live ranges cannot be
+expanded this way on the current128x128 accumulator schedule.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-mmq-scale-cache-rejected.json).
+
+**Poisoned-QSA reader coverage (September7 UTC):**
+`tests/test_qwen4exp_qsa_poisoned_padding.py` now checks parent,
+H256 wave,and production page256 wave readers against BF16 NaN/Inf in
+every unselected physical KV row. The union of all query-required cells
+is preserved,so neighboring live inputs remain valid. Unused selection
+slots receive INT64_MAX;empty selection and invalid active indices are
+included. Repeated poison/restore cycles preserve exact F32 output bits.
+18 focused GPU/CPU tests pass on Framework gfx1151. No runtime zeroing
+or performance change. This closes this kernel-level coverage gap only:
+served multi-request reset/checkpoint isolation and top-k publication
+ordering still require their own tests. Do not mark the full P1 audit done.
+
+**One-pair empirical calibration (September7 UTC):** committed
+`scripts/qwen4exp_screen_calibration.py` validates same Framework/model/
+chunk1024,72 samples,12 cases,canonical order and exact trajectories.
+Training packets:Q8-register promotion and Q8-prefetch2 rejection;
+held-out packets:Q5_1 row-publication promotion and GDN nearzero model run.
+Maximum absolute log(first-pair ratio / full-three-pair ratio) corresponds
+to multiplicative factors1.03520 prefill /1.03398 request. Neither
+held-out packet exceeds this envelope or yields a wrong-sign decisive row,
+but10/24 Q5_1 metric rows and24/24 GDN rows remain uncertain.
+Neither packet supports all-case early promotion under this conservative
+rule. This selected four-packet study is NOT a confidence guarantee;
+three-pair averages also contain noise. No promotion policy changed.
+Same-residency continuation and a broader prospective calibration remain
+required before adaptive early promotion. No GPU time spent.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-screen-calibration.json).
+
+**Shared-input preparation audit:** current code-p4096 profile attributes
+223.675ms/1256 launches to all Q8 D4x3 activation quantization combined.
+Explicit-pair reuse can save only a subset of that, not the multi-second
+linear gap. Do not add a pointer-only reuse cache across layers; any future
+reuse must have explicit input/workspace lifetime and alias guarantees.
+
+**Q5_1 row16 after spill removal rejected (September7 UTC):**
+larger row group on the current per-row-publication kernel preserves
+arithmetic but loses0.428561x/0.411661x at512/1024 synthetic-routing
+tokens with actual layer0/1 weights.40 paired outputs exact,both orders
+lose;9 tests pass. Dynamic LDS8672->16864B,VGPR96->88,scratch0 both.
+No revival of prior spill issue; increased reduction slab/work distribution
+is a separate cost,not a proven occupancy diagnosis. Candidate removed
+before model admission;current row8 production remains.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-q51-row16-rejected.json).
+
+**GDN wave normalization promoted on owner evidence (September7 UTC):**
+model-input probe intercepts all21 serial-prefix calls/chunk,restores
+identical starting state outside timing,and compares full output/state
+hashes after every warmup/measured pair. Six cases,378 calls,756 measured
+pairs exact;all call means improve (minimum1.0158x).
+p51261.357->58.972ms,p1024121.671->116.900ms;
+four p4096 categories486.661-486.922->467.330-467.521ms (~19ms saving).
+Promote under existing exact sub-window-retention policy,production1/
+strict0,tiled suffix unchanged. Prior full72-trajectory A/B stays mixed
+nearzero,not a statistical headline win. Scratch24->36B explicit.
+Instrumented event timings include no state-copy/hash time and are not
+normal serving throughput. No favorable full-suite rerun was performed.
+[Owner evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-gdn-wave-norm-owner.json).
+
+**GDN full-model qualification (September7 UTC):** clean ffe46a7c6,
+canonical12 cases/chunk1024,72 exact trajectories,expected21/84
+engagement,zero final owners. PP512/1024/4096 +0.010%/+0.139%/-0.044%;
+TG-0.094%/+0.001%/+0.061%. Six request-case means regress,maximum
+loss0.180%; worst PP case-0.306%. Max within-case PP CV1.188%,TG CV3.690%.
+Measured span27m45s. These mixed nearzero means do not establish a
+headline win or statistical non-regression. User wants the measured small
+gain retained: keep the kernel/default-off route and measure the actual-model
+GDN owner sub-window next. A verified sub-window saving may justify promotion
+under the existing microsecond-retention policy; no favorable full-suite rerun.
+[Model evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-gdn-wave-norm-model.json).
+
+**Expedited qualification tooling (September7 UTC):** user requested fewer
+repeats for clear outcomes. `qwen4exp_halo_box_campaign_ab.py --screen-only
+--repetitions-per-mode 1` now runs all12 cases with one measured pair each,
+alternating first arm across cases. Warmups unchanged:48 total case-arm
+executions versus96 canonical, so roughly half runtime is expected, not
+yet measured. Outputs/engagement/ownership still checked; within-case
+variance and repeatability are null/unmeasured, not zero/perfect.
+`qwen4exp_campaign_ab_retention.py` rejects screen-only packets.
+Default remains canonical3 repeats. Automatic early promotion and
+same-residency adaptive continuation need a predeclared calibrated
+historical noise bound; they are not implemented or inferred from one pair.
+Avoid screening known tiny effects only to pay for a separate full run:
+the GDN wave-normalization candidate is already expected near noise and
+should go directly to canonical qualification.
+
+**GDN wave-normalization admission (September7 UTC):** default-off,
+existing serial-register prefix only. Five chunk1024 full-logit/state/KV
+cases exact,21/84 expected calls,zero decode. The first harness attempt
+incorrectly expected36 GDN calls; production already sends the later
+15 GDN layers to tiled prefill. Corrected counts are derived from that
+route, not an arithmetic relaxation.18 CPU tests pass;both binders0,
+throughput qualification pending. User requests expedited screening;
+single-sample variance must not be interpreted as repeatability evidence.
+[State evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-gdn-wave-norm-state.json).
+
+**GDN exact normalization wave-tail candidate (September7 UTC):**
+source comparison confirms current Strix tiled recurrence uses a different
+sum/contraction order; it is not an exact drop-in. In-tree alternative
+keeps serial recurrence and changes only normalization reduction:
+stride64/32 parent tree then wave16/8/4/2/1. Complete Hk16/Hv48/D128
+synthetic recurrence/norm/gate at64/512/1024 tokens improves1.065x/
+1.042x/1.040x;60 measured pairs exact,including output/state checks.
+Tests cover split execution through1024. VGPR256 unchanged,scratch24->36B.
+Kernel-only; roughly0.15% whole-prefill opportunity by prior attribution,
+not measured. Require model state/KV and canonical A/B for admission.
+Do not prioritize a lengthy GDN geometry port merely from external rates.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-gdn-wave-norm.json).
+
+**Q4 two-block pipeline rejected (September7 UTC):** actual layer3
+gate/up+SiLU with synthetic routing/activations at512/1024 tokens yields
+0.910252x/0.909234x (~10% slower),all40 pairs exact,14 tests pass.
+Prefetching two weight blocks preserves row8 reuse and product/reduction
+order but raises VGPR88->112;LDS4608B/scratch0 unchanged. Candidate
+removed before model admission. Q5_1's per-row spill removal does not
+directly transfer: this Q4 parent already has zero scratch and moving
+the row loop outside K would sacrifice weight reuse. Neither an unchanged
+full-weight cache nor another two-block pipeline is a justified next step.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-q4-block-pair-rejected.json).
+
+**Post-Q5_1-row-publication refresh (September7 UTC):** clean e7024541b,
+six cases/twelve phases at explicit chunk1024. Four-category p4096
+FFN11.231->10.281s (-8.46%),non-GR linear4.515->4.523s,
+GR3.429->3.414s,QSA2.071->2.068s,GDN0.835->0.826s.
+Total device22.196->21.227s (-4.36% snapshot); all phases fully
+attributed,restored decode/state exact,zero final owners.
+Pinned Vulkan profiles reused:FFN2.352x,linear4.437x,GR2.000x,
+QSA3.204x,GDN0.594x. Do not interpret as new logger-off parity factors.
+Code-p4096 Q5_1 row-publication kernel2.575->1.616s; Q4 paired
+gate/up3.397s remains largest individual FFN kernel. Linear's increase
+is retained; snapshots do not establish single-change causality.
+Fixed-live4097 decode QSA16.961vs3.161ms remains open.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-post-q51-row-publish-family.json).
+
+**Historical next priority at this snapshot:** FFN and non-GR linear retain
+the largest absolute excess over the reused Vulkan family intervals (5.909s and3.503s).
+The new fork's GDN source comparison stays queued, but the entire
+current GDN owner is only0.826s; do not prioritize geometry copying over
+multi-second owners without an operation-complete measured case.
+Investigate whether per-row publication/lifetime shortening applies to
+the Q4 paired gate/up owner; preserve its distinct accumulation/reduction
+contract and reject unchanged prior cache/retile experiments.
+
+### Current Strix Fork Follow-ups (September 7, 2026)
+
+Read-only source: `/home/lhl/strix-llama.cpp`, clean
+`7baf0a98c7ed0bd7c9f6fd3b7f8c3d8747c3889a`. This is a new source lane,
+not the benchmarked halo-box `b212548e0` or the earlier Nathan fork.
+The owner-provided review motivates the queue below; only the explicitly
+inspected source predicates are confirmed here. No GPU benchmark of this
+fork was run and no comparator rates are replaced.
+
+| Priority | Follow-up | Bounded gate / stop condition |
+| --- | --- | --- |
+| P1 source comparison | Non-KDA H=48 tiled GDN | Confirmed in `ggml/src/ggml-cuda/gated_delta_net.cu:539`: RDNA3.5, Sv128, num_warps32, tokens>=16; H48 defaults to `<128,8,8,16,keep_rs_t>`. Compare Q/K tile staging, column ownership, registers and snapshot writes with `qwen4_exp_gdn.hip` serial-register/tile16. Measure complete recurrence/norm/gate on current gfx1151. Preserve serial arithmetic or require full production numerical gates; do not copy geometry alone. |
+| P1 correctness coverage | Retired/padded KV and deterministic selection publication | Audit which attention readers can touch masked/padded cells; poison free rows while keeping neighboring live slots, then test repeated requests, reset and restore. Check ordered selected positions as well as set equality. No blanket zeroing without a demonstrated reader requirement. |
+| P2 launch grouping | Shared-input c1 projections and complete GDN/GR chains | `mmvq.cu:2171` exposes `ggml_cuda_mmv_group`; graph use is in `ggml-cuda.cu:3765`. Trace remaining QKV/gate/alpha/beta or GR down/inject launches first. Require independent outputs, alias/lifetime proof, exact ownership and operation-complete timing. Existing graphs do not count as removed kernels. |
+| P2 attention layout | D256 WMMA prefill and Q8_0 KV tiled decode | Confirmed `fattn.cu:491` predicate: RDNA3.5, one query, equal Q/K/V D64/128/256, K/V Q8_0; no blanket GQA6 restriction there. Audit other dispatch constraints before claiming coverage. Study instruction/layout ideas, not a BF16-KV replacement. Any adapted reader must consume complete `KVLiveSpans`; no GQA12 claim from GQA6 evidence. |
+| P2 conditional | Transposed CONCAT/state-prefix copy | `concat.cu:90` defines `concat_transposed_src1_dim0`. Only investigate if a current hipEngine trace identifies separate history/transposition materialization; existing fused causal-conv/preparation may already eliminate it. Do not add a concat abstraction otherwise. |
+
+Already substantially covered: grouped MoE/shared activations/weighted down,
+dense QSA shortcut, host PLE gather and sparse page advice, device checkpoints.
+Audit production coverage and lifecycle tests rather than add duplicate features.
+Preserve the bounded head-major AOTriton scratch decision in
+[the earlier review](STRIX-HALO-LLAMACPP-REVIEW.md); no persistent-KV rewrite.
+Vulkan LDS/compiler/command policies are not HIP launch settings. ROCmFPx,
+new quant formats and DeepSeek-only kernels stay out of this Qwen patch scope.
+
+Execution order: the promoted Q5_1 owner refresh above is complete;
+fresh costs retain FFN/linear ahead of a GPU GDN port.
+The P1 poisoned-cell audit is a correctness follow-up, not an assertion of
+a known defect. Existing historical PR11 explanations and `b212548e0`
+measurements retain their revision identity; they do not describe this fork.
+
+**Q5_1 per-row publication promoted (September7 UTC):** cleanbe156c242
+full12-case chunk1024 A/B preserves72 exact trajectories and improves all
+prefill/request averages. PP512/1024/4096:181.824->189.634 (+4.296%),
+191.750->200.824 (+4.732%),177.070->184.724 (+4.323%).
+Total request1.024648x; individual request1.00963-1.03227x.
+TG-0.012%/-0.048%/-0.201% is incidental and explicitly retained under
+prefill-first direction,not a decode improvement. Max PP CV1.068%,
+TG CV4.423%; measured span28m07s excludes loading/initial warmup.
+Production binder1/strict0; parent-only K640/rows>=512 guard unchanged.
+The current family table now includes this promotion. Frozen comparator
+throughput rates are not updated by this internal A/B.
+[Production evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-q51-row-publish-production.json).
+
+**Historical Q5_1 per-row publication admission (September7 UTC):** default-off
+parent-only rows>=512/K640 route passes five chunk1024 full-logit/state/
+full-KV off/on/off cases. p512 calls0/25/0,p4096 calls0/100/0,zero decode
+calls and final owners; peak86,094,241,540 bytes unchanged.16 CPU tests
+pass. Both binders remain0; clean canonical12-case A/B is next.
+[State evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-q51-row-publish-state.json).
+
+**Q5_1 spill-free per-row publication candidate (September7 UTC):**
+interchange row/pass work so both logical256 streams finish and publish
+the exact folded sum to LDS before the next row. The register weight cache,
+tile and full original LDS tree stay unchanged. Actual layer0/1 weights
+with synthetic routing512/1024 improve1.413x/1.523x; historical captured
+mixed-p4096 chunk0 (512-token routing, synthetic activations) improves1.498x.
+All60 pairs exact,both orders positive;22 tests include current10240
+compact rows. VGPR96/dynamic LDS8672B unchanged,scratch36->0B.
+Default-off K640 current-chunk admission passes above; canonical12-case
+A/B remains required before a production claim.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-q51-row-publish.json).
+
+**Q5_1 first-wave reduction rejected (September7 UTC):** preserve register
+cache arithmetic, replace seven LDS reduction stages with first-wave
+stride64/32 reads then shuffle16/8/4/2/1. Actual layer0/1 down banks,
+synthetic routing/activations at512/1024 tokens:0.809x/0.798x speedup
+(about24%/25% slower), all40 pairs exact, both orders lose.21 tests pass.
+VGPR96 unchanged,scratch36->24B,dynamic LDS8672B unchanged. Fewer barriers
+did not pay off; first-wave concentration is a hypothesis, not a measured
+cause. Candidate removed before model admission; no full-model A/B.
+Do not repeat this unchanged reduction. Next FFN investigation should
+address weight traversal/activation reuse or different work distribution,
+not simply replace the same LDS tree with one-wave shuffles.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-q51-wave-tail-rejected.json).
+
+**Q8 paired loads rejected/removed (September7 UTC):** clean067a9bcc0
+full12-case chunk1024 A/B preserves72 exact trajectories, but code-p512
+prefill regresses1.052% and nine request-wall cases regress.
+Aggregate PP512/1024/4096 +0.433%/+1.664%/+1.865%; TG
+-1.068%/-2.207%/-14.822%. Total request speedup0.975227x.
+Max within-case PP CV3.200%,TG CV9.709%; all samples retained.
+Measured span29m02s excludes loading/initial warmup. Decode slowdown is
+observed, not diagnosed as thermal or a decode dispatch change.
+Remove candidate kernel/key/selector/flags/harness routes/tests; production
+wave-scale stays. Earlier kernel and state records below are historical.
+Do not rerun unchanged for a favorable verdict; reconsider only with a
+specific causal finding or materially different implementation.
+[Rejected evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-q8-prefetch2-rejected.json).
+
+**Historical Q8 gate paired-load admission (September7 UTC):** default-off route
+K2560/N6144,rows>=64,existing wave-scale parent only. Full chunk1024
+five-case off/on/off gate passes exact prefill/four decode logits,
+state/full KV; p512 calls0/36/0,p4096 calls0/144/0,zero decode calls
+and final tracked owners. Both profile binders remain0. Shared-down
+and GR are untouched. Clean canonical12-case throughput A/B is next.
+[State evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-q8-prefetch2-state.json).
+
+**Historical Q8 gate paired-load kernel candidate (September7 UTC):** pipeline two
+K-lane weight/activation loads before consuming them, preserving exact
+FMA order and the current coltile8/rowbatch4 reduction. Actual layer0/4
+K2560/N6144 at1024 rows10.909->7.992ms /10.893->7.998ms (1.365x/1.362x);
+layer20 with64MiB fill wins1.255x/1.360x/1.368x at64/511/1024 rows.
+All180 pairs across the full screen are exact; K640 shared-down medians
+lose0.5-1.3%, so exclude that shape. VGPR72->80,LDS512B/scratch0.
+No runtime default or GR expansion. Gate-only default-off admission has
+passed above; canonical1024 A/B remains pending.
+[Kernel evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-q8-prefetch2.json).
+
+**Post-Q8-register family refresh (September7 UTC):** clean `cc3d48a70`,
+explicit chunk1024, six cases/twelve phases with complete attribution and
+restored-state/output checks. Four-category p4096 FFN11.356->11.231s,
+non-GR linear4.517->4.515s, GR3.404->3.429s, QSA2.070->2.071s,
+GDN0.820->0.835s; total device22.281->22.196s (-0.38% snapshot).
+Preserve the GR/GDN increases; this is not single-change causal evidence.
+Pinned Vulkan `b212548e0` capture/reference are reused, not rerun:
+FFN2.569x/linear4.430x/GR2.008x/QSA3.208x, while GDN remains0.601x.
+Fixed-live4097 decode QSA16.956vs3.161ms remains open; this is not a tg128
+absolute refresh. Generated shared-taxonomy tables are in the halo-box campaign.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-post-q8-register-family.json).
+
+**Next structural screen:** code-p4096 individual kernel sums identify
+Q4 paired gate/up3.398s, Q5_1 paired down2.575s, and exact Q8 attention
+gate1.578s. Inspect exact Q8 coltile load sharing/vector staging on the
+gate/GR paths while preserving K-lane ownership, FMA order and publication
+tree. This is an investigation, not a predicted win. Do not repeat the
+rejected attention-gate MMQ policy expansion (numerical gate failure) or
+tile-only attention-gate geometry screen. Require current-host actual
+weights and operation-complete timing before model admission.
+
+**Q8 down register promoted (September7 UTC):** clean58dcdbdb2 full12-case
+chunk1024 A/B,72 exact trajectories, all12 prefill/request averages improve.
+PP512/1024/4096:181.424->182.969 (+0.851%),
+191.973->193.319 (+0.701%),177.663->178.812 (+0.647%).
+Total request1.004743x; weakest request case mixed-p512 only1.000040x,
+so do not call request improvement robust. Max within-case PP CV1.181%,
+TG CV3.356%; TG aggregate -0.028%/+0.067%/+0.458% is incidental,
+not a decode-kernel win. Measured span28m19s excludes loading/initial
+warmup. Production binds1/strict0; K640/rows>=512 and map-ready guards stay.
+The post-promotion family refresh above supersedes the older snapshot;
+a combined-default external/decode throughput refresh remains a follow-up.
+[Production evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-q8-down-register-production.json).
+
+**Q8 down register-weight admission (historical, September7 UTC):** cache five K640
+weights/thread before expert row loop,128 threads only,unchanged exact
+row4 bundled arithmetic. Actual layer4 compact/counts37.373->32.127ms
+(1.163x);layer2 mapped with explicitly borrowed layer0 counts37.228->
+30.808ms (1.208x).40 pairs exact,both orders positive;18 tests pass.
+Trace VGPR24->32,LDS512B/scratch0 unchanged. These512-token projection
+screens are not current1024 whole-model throughput results. Default-off
+admission passes five chunk1024 full-logit/state/KV cases: p512 runs4
+compact+1 mapped call; p4096 runs16+4, zero decode calls, clean teardown.
+Both binders remain0; canonical12-case A/B is next. No throughput/default
+promotion yet. Keep thermal/clock experiments deferred; prioritize
+substantial prefill owner reductions over gains that change sign with noise.
+[State gate](../benchmarks/results/2026-09-07-framework-qwen4exp-q8-down-register-state.json).
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-q8-down-register.json).
+
+**Router shuffle rejected and removed (September7 UTC):** full12-case
+chunk1024 A/B at clean `db929145c` preserves72 exact trajectories but
+only marginal aggregate PP+0.357%/+0.168%/+0.253%;one prefill case and
+four request-wall cases regress. Max PP/TG CV0.994%/4.616%,zero final
+owners. No broadly non-regressive model win established;no favorable
+rerun. Remove candidate kernel/key/flag/harness routes and candidate
+tests;affected code matches pre-experimentfa4cf3a02.21 regressions pass.
+Earlier kernel/state packets remain historical;production unchanged.
+[Rejection](../benchmarks/results/2026-09-07-framework-qwen4exp-router-shuffle-rejected.json).
+
+**Router shuffle default-off admission (September7 UTC):** five cases at
+current chunk1024 pass full logits,four decode steps,state/full KV and
+all prefill router-logit/selected-expert/routing-weight hashes.
+Calls0/48/0 at512 or0/192/0 at4096,zero decode/final owners.
+18 CPU tests pass;only existing exact multirow tile4 route eligible,
+both binders0. Next canonical12-case A/B must explicitly use chunk1024.
+The state harness now accepts explicit1024 for this route and records it;
+older route protocols retain512 rather than silently changing count gates.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-router-shuffle-state.json).
+
+**Exact router shuffle-tail candidate (September7 UTC):** router owns
+about0.618s of code4096. Preserve dense per-thread FMA sequence and
+shared reduction128/64;wave0 combines32 then shuffles16..1 in identical
+order,removing six block barriers. Actual layer0/27 weights at1024 rows:
+3.043->2.635ms /3.051->2.648ms (1.155x/1.152x);512 rows also
+positive,both orders.80 pairs exact,16 GPU tests pass. Trace32 VGPR/
+zero scratch/dynamic LDS4096B unchanged. Kernel-only;full model
+logits/routing/state/KV and canonical A/B required before promotion.
+No proportional whole-model speedup claimed.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-router-shuffle.json).
+
+**Current chunk1024 owner refresh (September7 UTC):** clean `fc947658a`,
+six cases/twelve phases,explicit1024 child/join metadata. All100%
+attribution,matched decode roots,restored state/output and zero owners.
+Four-category p4096 FFN11.356s,linear4.517s,GR3.404s,QSA2.070s,
+GDN0.820s;reused-Vulkan ratios2.597x/4.432x/1.994x/3.207x/0.590x.
+Prior full snapshot predates mapped-Q8 and chunk1024;FFN/GR improve
+while QSA/GDN rise. This is not single-change causal attribution.
+Device mean22.281s,code wall22.574s. Decode QSA16.945vs3.161ms remains.
+Generated halo-box tables updated. Next prioritize substantial remaining
+FFN and non-GR linear;do not repeat rejected Q4 staging/cache schemes.
+[Packet](../benchmarks/results/2026-09-07-framework-qwen4exp-post-chunk1024-family.json).
+
+**Family capture chunk provenance (September7 UTC):** collector accepts
+explicit `--prefill-chunk-size`,passes it to both prefill/decode children
+and emits `hipengine_prefill_chunk_size` in joined evidence. Join rejects
+declared/child mismatches. Historical default512 is preserved;current
+qualified production refresh must explicitly pass1024.22 CPU tests pass.
+No new timing claim until the clean1024 capture completes.
+
+**Chunk1024 scoped production promotion (September7 UTC):** retain the
+full-category +7.87%/+8.18% p1024/p4096 prefill gains and faster long
+requests under prefill-first direction. p512-0.053% is a same-work
+control;three short request cases fluctuate slightly negative (worst-0.144%).
+Aggregate p4096 decode-1.72%,worst Japanese-3.14%,explicitly retained.
+All72 trajectories/full12-case logits/state/KV are exact;native/c2
+allocation fits existing scratch allowance. Public registered factory
+gate now confirms two1024-chunk runners,262144 capacity,8K retrieval,
+over-limit400 and zero final owners.21 focused tests pass.
+Only gfx1151 UD-Q4_K_XL factory defaults to1024;implicit strict execution
+uses512 within the larger allocation. Explicit factory/constructor chunk
+arguments remain overrides;Q4_K_M and generic direct constructors stay512.
+Historical direct benchmark defaults remain512:current-default captures
+must pass `--prefill-chunk-size 1024` and name that protocol.
+No refreshed Vulkan parity claim.
+[Promotion](../benchmarks/results/2026-09-07-framework-qwen4exp-chunk1024-promotion.json).
+
+**Chunk1024 native/c2 allocation gate (September7 UTC):** clean `856b03b81`
+allocates two262144-context runners with shared model weights and
+1024-capacity prefill scratch. Tracked allocation106,866,880,936B versus
+explicit plan components99,739,496,800B plus8GiB scratch;remaining
+scratch margin1,462,550,456B before the separate4GiB reserve.
+Both runners prepared and teardown returns0 allocations/bytes. No
+native-length inference or c2 throughput claim. Existing admission
+allowance fits this measured configuration without a policy increase.
+The subsequent scoped promotion above uses these allocation gates and
+keeps the measured throughput tradeoffs explicit.
+[Memory evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-chunk1024-native-c2-memory.json).
+
+**Chunk1024 full-category screen (September7 UTC):** clean `e5afb7b41`,
+72/72 trajectories exact,coverage verified,zero final owners. PP512
+180.264->180.168 (-0.053%,identical work control);PP1024176.706->
+190.614 (+7.871%);PP4096162.799->176.114 (+8.178%).
+Every long-prompt prefill/request case improves;three p512 request cases
+are slightly negative (worst mixed-0.144%). TG1024-0.224%,TG4096-1.723%,
+worst Japanese4096-3.139%,not hidden or attributed causally to heat.
+Max PP/TG CV0.950%/3.204%;shared-capacity peak86,093,186,980B.
+Positive candidate with explicit tradeoffs,not an all-metric/all-case win.
+Default512 remains until native-context/c2 admission check and a recorded
+retention decision. Prepared allocation-only
+`scripts/qwen4exp_chunk_memory_probe.py` validates actual c2 bytes against
+explicit plan components plus scratch separately from reserve;not yet run.
+[Full screen](../benchmarks/results/2026-09-07-framework-qwen4exp-chunk1024-full.json).
+
+**Chunk1024 full state gate (September6 UTC):** all12 canonical cases pass
+512/1024/512 full-logit comparisons,four decode steps,recurrent state and
+full KV. Chunk coverage verified;kernel flags unchanged;zero final owners.
+Shared1024-capacity peak86,094,241,540B. At measured context4352,the
+peak remainder after explicit weight/staging/KV/index/state plan components
+is3,289,254,740B,below the4GiB scratch allowance. Native-context/c2
+margins still need qualification;this is not allocation-size neutrality.
+20 CPU harness tests pass. Default512 unchanged pending full-category
+throughput and memory admission. Failed state gates now persist explicit
+status/error rather than looking like an unexplained partial artifact.
+[State evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-chunk1024-state.json).
+
+**Framework chunk512/1024 diagnostic (September6 UTC):** clean `bc00c771f`,
+one shared1024-capacity residency,three code cases/18 exact trajectories.
+Actual chunk coverage verified. PP512180.835->180.837 (neutral);
+PP1024179.228->190.609 (+6.350%);PP4096168.062->177.264 (+5.475%).
+Request ratios1.000025x/1.028450x/1.038810x. Decode4096-0.461%;
+short decode essentially neutral. Max PP/TG CV0.174%/0.126%,zero final
+allocations. Tracked peak86,093,186,980B,754,856,960B above recent
+512-capacity run;not a simultaneous allocation-size comparison.
+This is stronger current-host evidence than the old zbook sweep,but still
+code-only. Require full categories,full logits/state/KV and admission
+accounting before any chunk-default change. Default512 unchanged.
+[Evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-chunk1024-code.json).
+
+**Current-host chunk diagnostic prepared (September6 UTC):** the prior
+P0 chunk sweep was zbook/070803e,not Framework/current kernels. New
+`--route-package chunk1024 --prefill-chunk-size1024` in the canonical
+A/B harness shares one1024-capacity allocation and changes only active
+chunk512/1024. It verifies actual executed chunk lengths,keeps kernel
+flags fixed and requires exact trajectories for this screen.
+21 CPU tests pass;the subsequent GPU screen above is positive. Larger allocation
+admission and production numerical/state qualification remain separate.
+Begin with code512/code1024/code4096 diagnostic,not a full ladder.
+
+**Mapped Q8 down production (September6 UTC):** clean `8740dc13f`
+canonical12-case A/B passes all72 exact trajectories and every prefill/
+request case. PP512/1024/4096:178.770->181.065 /175.601->178.108 /
+161.575->164.150 tok/s (+1.284%/+1.427%/+1.594%).
+Total request1.00962x. TG-0.059%/+0.031%/+0.239%,worst
+mixed512-0.267%,explicit under prefill-first policy. Max PP/TG
+CV3.027%/1.576%;measured span29m35.9s excludes initial load/warmup.
+Zero final allocations,tracked peak85,338,330,020B unchanged.
+Production mapped-down1,strict0;current-call map-ready guard remains
+mandatory. Manifest names mapped token-major route and selected-GEMV
+strict fallback. This qualifies real layer2 behavior,not only borrowed
+microbenchmark counts. Family refresh next;no fresh external parity claim.
+[Production packet](../benchmarks/results/2026-09-06-framework-qwen4exp-q8-mapped-down-production.json).
+
+**Earlier mapped Q8 down default-off admission (September6 UTC):** current-call
+map-ready flag starts false and becomes true only after ungrouped Q5_K
+row4 map construction. Existing bundled Q8 down consumes original-order
+activations through that map, preserving output/SiLU/combine ordering.
+Five off/on/off cases pass full logits,four decode steps,state/full KV:
+calls0/1/0 at512 or0/8/0 at4096,zero decode/final allocations.
+22 CPU tests pass;both binders0. Shared-kernel counters filter mapped
+and compact calls separately,so prior bundle A/B remains usable.
+Subsequent canonical12-case A/B above passes and promotes the route.
+[State evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q8-mapped-down-state.json).
+
+**Mapped Q8 down dispatch gap (September6 UTC):** the ungrouped Q5_K
+row4 gate/up branch already builds expert starts and sorted-to-original
+lane map,then still launches selected Q8 down. Existing bundled Q8 row4
+accepts that map and preserves token-major input/output order.
+Layer2 actual weights with explicitly borrowed layer0 code/mixed counts
+and seeded permutation measure80.728->37.969ms /80.566->37.420ms,
+2.126x/2.153x;40 pairs exact,both orders positive.15 existing mapped
+kernel tests pass;trace80.787->37.820ms,VGPR16->24/scratch0.
+No new kernel or default change. Integrate only when the current request
+actually built the map;stale scratch must never enable the route. Then
+full logits/state/KV and canonical A/B subsequently qualified retention above.
+[Screen evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q8-mapped-down.json).
+
+**Post-raw-MMQ-vector full owner refresh (September6 UTC):** clean
+`eee086e25` six cases/twelve phases pass100% attribution,matched decode
+roots,restored state/output checks and zero final ownership. Raw-vector
+calls242/484/1936 in prefill,zero in all18 decode windows.
+Four-category p4096 FFN12.698s,non-GR linear4.556s,GR3.755s,
+QSA1.922s,GDN0.784s. Prior linear4.762s/GR4.254s become4.556s/3.755s
+(-4.34%/-11.73% snapshot changes);reused-Vulkan ratios4.470x/2.199x.
+Other owner variation is not attributed to raw-MMQ promotion.
+Code4096 device23.939s,wall24.269s,FFN53.68%,zero-cost2.159x.
+Decode QSA16.947vs3.161ms stays open. Generated family tables updated;
+external throughput screen remains tied to5104604e1.
+[Packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-raw-vector-family.json).
+
+**Q4 residual diagnostic cleanup (September6 UTC):** remove the unused
+two-plane raw-WMMA template branches,export/wrapper/key,harness and
+candidate tests after raw and cooperative implementations lost timing.
+Q4 kernel files match pre-experiment24934b692 byte-for-byte;25 existing
+GPU regression tests pass. No runtime/performance default change.
+Reproduction source20e39e32e and retained numerical/timing artifacts remain;
+temporary reference debt is closed. Next measurement is the combined-default
+owner refresh after raw-MMQ vector promotion,not another Q4/thermal detour.
+
+**Raw MMQ vector production (September6 UTC):** clean `cea077722` canonical
+12-case A/B passes all72 exact trajectories and every prefill/request-wall
+case. PP512/1024/4096:173.204->179.037 /170.840->175.707 /
+157.211->161.879 tok/s (+3.367%/+2.849%/+2.969%).
+Total request1.01730x. Aggregate TG-0.354%/-0.064%/-0.214%;
+worst mixed512-0.748%,explicitly retained under prefill-first policy.
+Max PP/TG CV2.929%/1.309%;measured span29m53.1s excludes initial load/
+warmup. Zero final allocations,tracked peak85,338,330,020B unchanged.
+Production raw-vector1,strict0;existing raw MMQ rows>=64 only. Prepacked
+vector path stays independent. Manifest now names raw scope and corrects
+the stale prepacked declaration to its already-promoted vector variant.
+No new external comparison;family refresh remains next.
+[Production evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-mmq-raw-vector-production.json).
+
+**Earlier raw MMQ vector default-off admission (September6 UTC):** five off/on/off
+cases pass full logits,four decode steps,state and full KV. Invocation
+0/242/0 at512 or0/1936/0 at4096,zero decode/final allocations.
+32 CPU tests pass. Only existing raw-weight three-plane MMQ rows>=64;
+prepacked vector path independent and both raw-vector binders0.
+The subsequent canonical A/B above passes and promotes the raw route.
+[State evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-mmq-raw-vector-state.json).
+
+**Raw MMQ vector activation staging (September6 UTC):** extend the retained
+activation-copy mechanism to raw-weight MMQ without packed storage or
+arithmetic change. Actual GR/query/output512 complete chains:
+1.891->1.371ms (1.379x),6.452->5.293ms (1.219x),
+2.891->2.229ms (1.297x).64-row cases also positive,both orders positive,
+all120 pairs exact.25 tests pass;trace184 VGPR/scratch0 unchanged.
+Raw-only harness no longer allocates an unused packed bank;retained
+screen uses that corrected memory surface. Subsequent full-model gates
+pass as recorded above;prepacked production route unchanged.
+[Evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-mmq-raw-vector.json).
+
+**Q4 cooperative residual staging rejected (September6 UTC):** four-wave
+64-output/16-row K64 producer/consumer matches the two-plane reference
+but takes61.357ms versus exact17.403ms. Trace224 VGPR/18KiB LDS/scratch0.
+Explicit no-unroll59.887ms,then padded LDS stride68/alignment-safe copies
+57.152ms do not rescue it. Each passes numerical/reference-control tests;
+all cooperative code removed,no model gate or default change. These
+results reject this dataflow,not every WMMA implementation.
+Stop further tuning of this K64 staging scheme. The unoptimized residual
+reference remains diagnostic only,with cleanup decision required before
+another new consumer;no performance promotion or numerical waiver.
+[Evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q4-cooperative-rejected.json).
+
+**Q4 two-plane WMMA numerical reference (September6 UTC):** declared T2,
+not exact and not a production candidate. FP16 high+residual weight
+planes improve captured layer0/code4096chunk0 BF16 element agreement
+89.66%->99.65% at gate/up and82.46%->99.37% after SiLU.
+This is projection agreement,not LM token top1 or full-profile quality.
+The raw-weight16/32/64-output implementations all lose to exact pair2:
+two-plane19.399/18.237/17.823ms versus17.430/17.405/17.392ms.
+30 tests pass,including finite/deterministic CPU-reference floors and
+two-plane cross-tile equality;full model gates remain unrun.
+Keep the explicit-only kernel as a numerical reference for cooperative
+weight staging,with cleanup debt;no runtime route/default change.
+Next investigate four-wave K64 staging with coalesced raw weight loads
+and shared activation fragments. That is a new dataflow,not another
+unchanged output-tile sweep;its full boundary and quality must both win.
+[Evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q4-residual-wmma-reference.json).
+
+**Q4 paired-activation layout rejected (September6 UTC):** transpose each
+K256 BF16 block from2x128 to128x2 so the consumer uses one32-bit load
+for its two logical input values. Packing included:17.470->22.938ms,
+both orders lose,all20 pairs exact.17 candidate tests pass. Cached trace
+packer0.184ms,parent consumer17.333ms,candidate22.657ms;VGPR88->72,
+LDS4608B/scratch0 unchanged. Consumer loss dominates,so routing-fused
+packing would not rescue this layout. Candidate removed,original9 tests
+pass;no model A/B or default change. Stop scalar-layout/cache tweaks on
+this evidence;investigate a materially different compute path with its
+declared arithmetic gate,not relaxed correctness thresholds.
+[Recipe/evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q4-input-pair-rejected.json).
+
+**Q4 wave-uniform metadata rejected (September6 UTC):** scalarize the four
+wave-uniform scale/min operands after LDS load via readfirstlane, without
+changing pair2 tile/arithmetic. Actual code4096chunk0 gate/up+SiLU:
+17.478->17.490ms,median0.998x;order strata1.002x/0.996x,all20 pairs
+exact.13 candidate tests pass. Cached trace VGPR88->80,SGPR128/LDS4608B/
+scratch0 unchanged;three traced calls' tiny kernel reduction is not a
+repeatable complete-boundary win. Candidate removed,no model A/B;
+original9 GPU tests pass after restoration. Avoid unchanged scalarization
+rescreens;lower register count alone did not remove the binding work.
+[Recipe/evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q4-wave-meta-rejected.json).
+
+**Post-Q5_1-register owner refresh (September6 UTC):** clean `932af5889`
+six cases/twelve phases pass100% attribution,matched decode roots,
+restored state/output repeatability and zero final ownership. Register-cache
+calls25/50/200 in prefill,zero in all decode windows.
+Four-category p4096 FFN12.813s (was13.442s,-4.68% snapshot delta),
+non-GR linear4.762s,GR4.254s,QSA1.920s,GDN0.778s.
+FFN reused-Vulkan ratio2.931x;linear4.672x,GR2.491x,QSA2.975x.
+Code4096 Q5_1 projection3.438->2.816s,complete FFN12.989s.
+Device sum24.794s,FFN share52.39%,zero-cost ceiling2.100x.
+Decode QSA16.946vs3.161ms remains open. Generated campaign tables
+updated;no new external throughput claim. Next Q4 mechanism must avoid
+the already-rejected full/packed-register caches,LDS caches and blanket retiles.
+[Packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-q51-register-family.json).
+
+**Q5_1 register-cache production (September6 UTC):** clean `67fdfccb4`
+full12-case A/B preserves all72 trajectories and improves every prefill/
+request-wall case. PP512/1024/4096:168.518->173.392 /165.910->170.780 /
+153.381->157.547 tok/s (+2.892%/+2.936%/+2.716%).
+Total request1.01790x. Aggregate TG+0.212%/+0.012%/+0.434%;
+worst individual code1024-0.023%,incidental timing not a decode-kernel win.
+Max PP/TG CV1.210%/1.250%;measured span30m26.4s excludes initial
+load/warmup. Zero final allocations;tracked peak unchanged85,338,330,020B.
+Production binds register-cache1,strict0,only after folded-pair rows>=512
+and K640;manifest names that scope and the original strict fallback.
+Private scratch36B remains explicit despite the positive full-residency
+result. Family refresh is next; the fresh external screen remains tied
+to5104604e1 rather than silently updated with these A/B rates.
+[Production packet](../benchmarks/results/2026-09-06-framework-qwen4exp-q51-register-cache-production.json).
+
+**Earlier Q5_1 register-cache default-off admission (September6 UTC):** five
+code512/code4096/en512/ja512/mixed512 off/on/off cases pass full logits,
+four decode steps,state and full KV. Calls0/25/0 or0/200/0,zero decode/
+final ownership;18 CPU tests pass. Existing folded-pair rows>=512 and
+K640 only,both profile binders0 at admission. The subsequent canonical
+A/B above passes and promotes the candidate;private scratch36B remains explicit.
+[State packet](../benchmarks/results/2026-09-06-framework-qwen4exp-q51-register-cache-state.json).
+
+**Q5_1 register-resident short-K reuse (September6 UTC):** unlike the
+rejected LDS materialization below, K640 needs ten cached decoded weights
+per thread/output pair. Exact two-bank projections at captured code0/mixed7
+512-row routing improve34.450->28.195ms /33.756->27.819ms
+(1.222x/1.213x);both orders positive,all40 pairs exact.17 GPU tests pass.
+Cached trace17.124->14.060ms;VGPR72->96,private scratch0->36B,dynamic
+LDS8672B unchanged. This kernel screen preceded the full-model gates and
+promotion above,limited to folded-pair rows>=512 and K640.
+[Evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q51-register-cache.json).
+
+**Q5_1 decoded-LDS weight reuse rejected (September6 UTC):** decode both
+640-element output weight rows once before the routed-row loop, preserving
+folded-pair arithmetic. Captured code4096chunk0 routing/actual layer0+1
+banks measure34.449->58.987ms (+71.23% time,0.584x),both orders negative,
+all20 pairs exact.17 GPU tests pass. Cached trace17.155->29.344ms per
+projection;72 VGPR/zero scratch unchanged,requested dynamic LDS8672->
+13792B. Staging/residency costs are not isolated,so do not overstate the
+cause. Candidate removed;no model A/B and no runtime default change.
+Do not repeat unchanged decoded-LDS caching on this owner.
+[Recipe/evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q51-weight-cache-rejected.json).
+
+**Combined-default baseline refresh (September6 UTC):** clean `5104604e1`
+serial hipEngine/Vulkan/HIP full12-case suites complete,36 samples each,
+all within-engine outputs repeat and clean teardown. hipEngine PP/TG:
+168.58/19.64,166.86/19.01,155.89/14.89 at512/1024/4096.
+Vulkan PP346.78/397.38/421.63,TG26.12/25.69/24.83;prefill target
+factors2.057x/2.382x/2.705x. Max per-case PP/TG CV:
+HE2.78%/4.62%,VK0.17%/0.09%,HIP10.93%/2.70%. This is a current
+screening checkpoint,not statistical closure. New retention helper emits
+per-case mean,median,sample SD,CV,range and repetition drift with identity/
+repeatability/lifecycle gates. Keep n=3 uncertainty explicit.
+[Packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-vec4-baselines.json).
+
+**Owner priority clarification, September6:** defer a new thermal/clock/
+cooldown campaign; collect variance from existing runs and return to large
+compute/reuse opportunities. No clock/power setting changed here.
+Prior2700MHz control and varying effective clocks under2900/high are
+recorded evidence,not unexplored levers. Any future formal intervention
+needs a documented protocol and read-only `ryzenadj`/CPU/GPU telemetry
+first; CPU/APU contention and heat are plausible,not proven explanations.
+Next optimization should address substantial MoE projection work:
+code4096 exact Q4 pair gate/up3.596s and Q5_1 folded down3.438s,
+within13.586s complete FFN. Avoid further unchanged marginal retiles.
+
+**Post-MMQ-vector full owner refresh (September6 UTC):** clean `1e89361d5`
+six cases/twelve phases pass100% attribution, matched decode roots,
+repeated state/output checks and zero final ownership. MMQ-vector
+engagement72/144/576 in prefill,zero decode. Four-category p4096:
+FFN13.442s,non-GR linear4.770s,GR4.268s,QSA1.920s,GDN0.781s.
+Non-GR linear was5.363s (-11.07% snapshot delta);reused-Vulkan ratio
+5.262x->4.680x. Remaining linear compute:MMQ2.737s,coltile1.588s;
+quantization43ms and repair12ms are small. Decode QSA16.959vs3.161ms
+remains the largest decode gap. Tables regenerated in the halo-box campaign;
+next checkpoint is an unprofiled combined-default comparator refresh.
+[Packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-vec4-family.json).
+
+**MMQ vector staging production (September6 UTC):** clean `9b0d14cec`
+canonical12-case A/B preserves all72 trajectories and improves every
+prefill/request-wall case. PP512/1024/4096:
+164.712->168.040 /162.186->165.711 /150.246->153.335 tok/s
+(+2.021%/+2.173%/+2.056%);total request1.01205x.
+Aggregate TG-0.180%/-0.038%/-0.349%;worst case Japanese4096-0.527%,
+retained under the prefill-first direction. Max PP/TG CV0.793%/1.668%;
+measured span30m56.4s excludes initial loading/warmup. No new persistent
+memory;zero final allocations. Production binds vec4=1,strict=0;
+existing prepacked scope and rows>=64 only. Scalar-stage prepacked parent,
+raw MMQ and strict coltile fallbacks remain. Fresh family/comparator
+refreshes are next; this is not a new Vulkan parity result.
+[Production evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-mmq-vec4-production.json).
+
+**Earlier MMQ vector staging default-off admission (September6 UTC):** five
+off/on/off cases pass full logits, four decode steps, state and full KV.
+Calls0/72/0 at512 or0/576/0 at4096;zero decode/final owners.23 CPU tests
+pass. Existing prepacked MMQ rows>=64 only;both profile binders0.
+The subsequent canonical12-case A/B above passes and promotes the candidate.
+[State evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-mmq-vec4-state.json).
+
+**MMQ vector activation staging (September6 UTC):** the fresh four-category
+linear split is3.329s MMQ compute,1.590s exact Q8 attention-gate coltile,
+43ms quantization and13ms repair, with the remaining small dense roles/head.
+Prioritize compute rather than more activation-quantizer cleanup.
+The new kernel-only candidate copies identical activation-plane bytes to LDS
+in aligned four-word groups. Actual QKV/SSM512 complete chains improve
+5.196->4.022ms (1.292x) /2.857->2.156ms (1.325x);64-row results also
+positive, both arm orders positive throughout, all80 pairs exact.
+25 tests pass; cached QKV trace5.007->3.777ms, unchanged144 VGPR/
+57856B LDS/scratch0. All three planes and ordered arithmetic remain.
+This kernel screen alone was not a model-throughput improvement; the
+subsequent state gate and production A/B above qualified promotion.
+[Evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-mmq-activation-vec4.json).
+
+**Q5_K bundle rejected and removed (September6 UTC):** clean `4b39fbfa5`
+canonical 12-case A/B is complete: all72 trajectories exact, zero final
+allocations, but five prefill cases and six request-wall cases regress.
+Aggregate PP512/1024/4096 changes +0.136%/-0.025%/+0.301%; the last
+aggregate is dominated by English4096 (+1.038%) with measurable drift.
+Max PP CV2.681%; first-to-last measured span30m50.7s excludes initial
+load/warmup. No broad non-regressive win: candidate kernel, registry key,
+flag and harness routes removed; existing Q5_K row4 and Q8/Q5_1 defaults
+unchanged. Do not repeat the unchanged mechanism to obtain a favorable run.
+[Rejection packet](../benchmarks/results/2026-09-06-framework-qwen4exp-q5k-bundle-rejected.json).
+Next structural target is non-GR linear: split its5.363s by actual shape
+and variant before choosing a kernel change. Its5.262x Vulkan ratio is
+diagnostic, not a guarantee that every kernel improvement transfers to wall.
+
+**Earlier Q5_K bundle default-off admission (superseded):** existing row4
+gate/up rows>=64 only,both binders0. Five code512/code4096/en512/ja512/
+mixed512 off/on/off cases pass full logits,four decode steps,state/full KV.
+Prefill calls0/2/0 or0/16/0,zero decode/final owners.27 CPU tests pass.
+The subsequent canonical A/B above rejects retention despite exactness.
+[State packet](../benchmarks/results/2026-09-06-framework-qwen4exp-q5k-bundle-state.json).
+
+**Earlier Q5_K bundled row4 kernel screen (candidate now removed):** exact bundled
+publication improves actual layer2 gate/up plus identical group-map work
+1.015x/1.021x at64/512 tokens,means/both orders positive. Forty pairs exact;
+34 GPU tests pass including CPU floor and64/128/256 threads. Trace24 VGPR/
+512B LDS/scratch0 unchanged. Full-model performance subsequently failed
+retention. At a0.787s owner,1.02x projects only~15ms savings,
+so no substantial model speedup is implied.
+[Evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q5k-row4-bundle.json).
+
+**Q4 row4/output4 blanket replacement rejected (September6 UTC):** increase
+concurrent output activation reuse while retaining32 accumulator slots.
+Captured layer3/mixed4096chunk7 loses0.992x in both orders;layer0/code4096chunk0
+wins1.008x in both orders. All40 gate/up/SiLU pairs exact,13 GPU tests pass.
+Trace VGPR88->104/LDS4608->8704B/scratch0:constant accumulators did not keep
+the full resource footprint constant. Candidate removed;no model A/B.
+Do not hand-pick layer/prompt routes from this split result.
+[Recipe/evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q4-row4-pair4-rejected.json).
+
+**Full post-folded-pair refresh (September6 UTC):** clean `c075a6692` all
+six cases/twelve phases pass100% ownership,matched decode roots,repeated
+decode/state and zero final allocations. Folded-pair engagement25/50/200
+at512/1024/4096,zero decode. Four-category p4096 prefill:FFN13.437s,
+non-GR linear5.363s,GR4.251s,QSA1.922s,GDN0.779s; reused-Vulkan gaps
+3.073x/5.262x/2.490x/2.978x,with GDN ahead. FFN remains first absolute
+opportunity,linear next. Code4096 FFN share52.33%,zero-cost ceiling2.098x.
+Decode QSA16.972ms versus3.161ms remains open. This full overview supersedes
+post-MMQ and interim code-only snapshots,not the paired throughput evidence.
+[Generated starting/current and family-gap tables](QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md#521-framework-starting-and-current-owner-snapshots)
+and [full packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-fold-pair-family.json).
+
+**Folded Q5_1 pair production (September6 UTC):** clean `f24130796` full12-case
+A/B preserves all72 trajectories and improves every prefill/request-wall case.
+PP512/1024/4096:161.799->164.954 /160.478->162.953 /147.876->150.680 tok/s
+(+1.950%/+1.543%/+1.896%). Total request1.01054x. Aggregate
+TG-0.359%/-0.318%/-0.140%;worst individual mixed512-0.814%,retained explicitly
+under prefill-first policy. Max PP/TG CV1.705%/0.707%;first-to-last measured
+span31m06.9s excludes initial loading/warmups. Zero final allocations.
+Production selects folded-pair only after fold128 for rows>=512;64-511
+rows retain sequential fold128 and strict arithmetic/decode stay unchanged.
+Dynamic LDS is8672B vs4576B at K640;no added persistent allocations.
+Full six-case owner refresh follows separately;no new Vulkan parity claim.
+[Production packet](../benchmarks/results/2026-09-06-framework-qwen4exp-q51-fold-pair-production.json).
+
+**Folded Q5_1 pair default-off admission (September6 UTC):** selector applies
+only after fold128 and rows>=512;both binders0,smaller chunks stay sequential.
+Five code512/code4096/en512/ja512/mixed512 off/on/off cases pass full logits,
+four decode steps,state/full KV exactly. Calls0/25/0 or0/200/0 only in prefill,
+zero decode/final owners.28 CPU tests pass. Next clean12-case A/B:
+`--route-package q51-fold-pair`;no new throughput or native-capacity claim.
+[State evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q51-fold-pair-state.json).
+
+**Folded Q5_1 pair reduction candidate (September6 UTC):** combine both
+fold128 output reductions within the original unfolded pair2 LDS budget,
+not the rejected doubled unfolded arena. Captured code/mixed512-row screens
+improve1.163x/1.160x,all80 two-bank pairs exact.13 GPU tests pass;72 VGPR/
+scratch0 unchanged,dynamic LDS4576->8672B. Synthetic64 candidate-first0.936x:
+keep smaller chunks on fold128 and admit only rows>=512 to model testing.
+Full logits/state/KV and12-case A/B pending;no runtime default changed.
+[Evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q51-fold-pair.json).
+
+**Post-Q8-bundle code4096 refresh (September6 UTC):** clean `2c132e253`
+confirms32 bundled-Q8 calls/1207.650ms. FFN14.104s,non-GR linear5.360s,
+GR4.249s,QSA1.921s,GDN0.778s. Reused pinned Vulkan code-only gaps:
+3.105x/5.260x/2.487x/2.975x,with GDN ahead.100% coverage,matched decode
+roots,exact repeats,zero final owners. Decode QSA16.998ms versus3.081ms.
+Snapshot only,not causal A/B; full multi-category overview remains historical.
+[Current code-only table](QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md#521-framework-starting-and-current-owner-snapshots)
+and [packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-q8-bundle-family.json).
+
+**Q8 bundled reduction production (September6 UTC):** clean `c0fc635b5`
+full12-case A/B preserves all72 trajectories and improves every case's prefill
+and request wall. PP512/1024/4096:160.762->162.095 /158.892->159.958 /
+147.110->148.240 tok/s (+0.829%/+0.671%/+0.768%). Total request1.00458x.
+Aggregate TG-0.041%/-0.011%/-0.085%; worst individual TG-0.268%
+(Japanese4096). Retain under the exact-prefill-first owner decision, not a
+decode win. Max PP/TG CV0.955%/0.936%. Measured first-to-last span31m22.8s,
+excluding initial load/warmup; zero final owners and no new sidecars.
+Production selects bundle only within existing Q8 row4 rows>=512; strict,
+row1 small chunks and decode unchanged. Owner refresh follows separately.
+[Production evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q8-down-bundle-production.json).
+
+**Q8 bundled reduction default-off admission (September6 UTC):** selector
+applies only after existing Q8 row4 prefill selection, rows>=512; both binders0.
+Five code512/code4096/en512/ja512/mixed512 off/on/off cases pass full logits,
+four decode steps,state/full KV exactly. Calls0/4/0 or0/32/0 only in prefill,
+zero decode/final owners.28 CPU tests pass. Previous Q8 row4 and Q5 fold128
+promotions remain active. Clean12-case `--route-package q8-down-bundle` A/B
+is next; no new throughput or native-capacity claim.
+[State evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q8-down-bundle-state.json).
+
+**Q8 down bundled reduction candidate (September6 UTC):** bundle row4 wave
+reductions into one LDS publication phase, preserving every row's arithmetic.
+Actual layer4 weights/counts and independent layer30 weights/borrowed layer4
+counts improve1.152x/1.153x, all40 pairs exact and both orders positive.
+24 GPU tests pass; trace24 VGPR/512B LDS/scratch0 unchanged.
+Kernel retained, no runtime promotion until full-model state/KV and12-case A/B.
+[Evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q8-down-bundle.json).
+
+**Post-fold128 code4096 refresh (September6 UTC):** clean `1dacd1edb`
+confirms200 fold128 Q5_1 calls/3919.051ms. FFN14.266s, non-GR linear5.350s,
+GR4.237s, QSA1.919s and GDN0.778s; code-only reused-Vulkan gaps
+3.141x/5.251x/2.480x/2.973x respectively, with GDN ahead.100% owner
+coverage, matched decode roots, exact repeats and zero final owners.
+Decode QSA16.939ms versus3.081ms remains open. This is attribution, not
+causal speedup, and does not replace the historical full-category overview.
+[Updated code-only table](QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md#521-framework-starting-and-current-owner-snapshots)
+and [packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-fold128-family.json).
+
+**Q5_1 fold128 production (September6 UTC):** clean `318e0ad26` full12-case
+A/B preserves all72 trajectories, every case's prefill and request wall improves.
+Weighted PP512/1024/4096:159.222->160.363 /156.767->158.300 /
+145.546->146.878 tok/s (+0.716%/+0.978%/+0.915%).
+Total request-wall ratio1.00627x. Aggregate TG+0.250%/+0.134%/+0.070% is
+incidental; five per-case TG decreases range0.031-0.067% and remain explicit.
+Max PP/TG CV0.983%/0.683%. Measured first-to-last span31m35.1s excludes
+initial loading/warmups. Zero final owners; no new allocation.
+Production selects fold128 only after existing pair2 prefill admission,
+rows>=64; strict/M1/WMMA/decode unchanged. Earlier pair2 remains rollback.
+Owner refresh follows separately; no new Vulkan parity or native256K claim.
+[Production packet](../benchmarks/results/2026-09-06-framework-qwen4exp-q51-fold128-production.json).
+
+**Q5_1 fold128 default-off admission (September6 UTC):** only existing pair2
+prefill rows>=64 can select fold128; both binders pin0. Five code512/code4096/
+English512/Japanese512/mixed512 off/on/off cases pass full prefill/four-step
+decode logits, state and full KV hashes. Calls0/25/0 or0/200/0 in prefill,
+zero decode; final owners0.38 CPU tests pass. Existing Q8 row4 stays production.
+Next clean12-case A/B: `--route-package q51-fold128`. No whole-model speed
+claim or native262144 requalification yet.
+[State packet](../benchmarks/results/2026-09-06-framework-qwen4exp-q51-fold128-state.json).
+
+**Q5_1 fold128 kernel candidate (September6 UTC):** isolate first stride128
+register addition plus halved reduction scratch, retaining original LDS64..1
+tree and sequential output-pair reduction. This differs from both rejected
+wave-tail and simultaneous-pair forms. Nine GPU tests pass;80 two-bank pairs
+exact. Captured code/mixed512-row screens improve1.031x/1.036x, means/both
+orders positive. Trace72 VGPR/scratch0 unchanged; dynamic LDS8672->4576B.
+Retain candidate, not runtime default; full-model gates and12-case A/B next.
+[Evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q51-fold128.json).
+
+**Q5_1 simultaneous pair reduction rejected (September6 UTC):** doubling
+the reduction arena allows both outputs to share barrier stages while keeping
+the exact256-element addition tree. Seven GPU tests and40 two-bank pairs
+are exact, but actual layer0/1 down loses0.657x/0.661x at64/512 tokens.
+Trace72 VGPR/scratch0 unchanged; dynamic LDS8672->16864 bytes.
+Candidate removed; no model A/B warranted.
+[Recipe/evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q51-dual-reduce-rejected.json).
+
+**Post-Q8-down code4096 refresh (September6 UTC):** clean `e959a095c`
+confirms32 row4 grouped-Q8 calls/1400.674ms, no row1 calls in that prefill
+owner. FFN14.679s, non-GR linear5.370s, GR4.254s, QSA1.919s, GDN0.777s.
+Shared-taxonomy join to reused pinned Vulkan gives code-only gaps
+3.232x/5.270x/2.490x/2.972x; GDN remains ahead.100% coverage, matched
+decode root, exact repeats and zero final owners. Decode QSA16.953ms versus
+3.081ms stays open. This snapshot is not a causal before/after speed test and
+does not replace the previous four-category overview.
+[Code-only table](QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md#521-framework-starting-and-current-owner-snapshots)
+and [packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-q8-down-family.json).
+
+**Q8 down row4 production (September6 UTC):** clean `c7dd804cb` full12-case
+same-residency A/B preserves all72 measured trajectories and improves every
+case's prefill and complete prefill+decode wall. Weighted PP512/1024/4096:
+158.216->159.516 /155.729->156.718 /144.452->145.470 tok/s
+(+0.822%/+0.635%/+0.705%). Total request-wall ratio1.00522x.
+Aggregate TG changes+0.249%/+0.110%/+0.260%, not a decode-kernel gain;
+code512/code1024/English1024 individually lose0.074%/0.002%/0.006% TG.
+Max per-case PP/TG CV0.575%/1.020%; measured first-to-last span31m48.2s,
+excluding initial loading/warmups. Zero final ownership, no new sidecars.
+Promote only existing grouped-Q8 prefill rows>=512; smaller chunks stay row1
+and strict stays selected GEMV. The split manifest scopes change identity,
+not strict arithmetic. Post-promotion owner refresh follows separately.
+[Production packet](../benchmarks/results/2026-09-06-framework-qwen4exp-q8-down-row4-production.json).
+
+**Q8 down row4 runtime admission (September6 UTC):** default-off selector
+is wired only into existing grouped-Q8 prefill, with measured rows>=512;
+smaller chunks and c1 keep row1. Both profile binders pin0. Five code512/
+code4096/English512/Japanese512/mixed512 cases pass full prefill logits,
+four-step decode logits, state and full KV hashes across off/on/off.
+Candidate prefill calls0/4/0 or0/32/0; decode0 throughout, zero final owners.
+Thirty-one CPU selector/profile/harness tests pass. Next run the clean
+12-case `qwen4exp_halo_box_campaign_ab.py --route-package q8-down-row4`
+protocol before promotion. No new whole-model speed or native256K gate claimed.
+[State evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q8-down-row4-state.json).
+
+**Q8 grouped down row4 candidate (September6 UTC):** fresh FFN audit finds
+1.487s in the row1 grouped Q8 down owner across layers4/30/46/47. Sharing
+decoded weights across four independent rows gives exact1.107x on real layer4
+weights/counts and1.137x on layer30 weights with explicitly borrowed layer4
+counts. Both orders/means positive;19 GPU tests pass, trace24 VGPR/512B LDS/
+scratch0 unchanged. Retain kernel candidate; full-model invocation/logits/
+state/KV and12-case A/B remain mandatory before runtime/default promotion.
+Layer2's separate selected-Q8 owner is outside this measured scope.
+[Evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q8-down-row4.json).
+
+**Q4 fixed-geometry screen near-flat (September6 UTC):** specialize K2560/
+N640 without K unrolling or new caches. Thirteen GPU tests and40 actual
+layer3/0 captured-routing pairs are exact. Medians1.003x/1.004x, but
+candidate-first strata0.9997x/0.9994x; trace resources unchanged88 VGPR/
+4608B LDS/scratch0. Removed rather than promote an uncertain small effect;
+no full-model A/B. Do not repeat this specialization unchanged.
+[Recipe/evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q4-shape-rejected.json).
+
+**WIL-1 current graph census (September6 UTC):** clean `e6f78c35d` code4096
+prefill has24940 kernel dispatches and **zero graph launches**; recorded kernel
+union26.992s of27.330s profiled wall, residual337ms (1.23%). This residual
+includes copies/waits/Python/profiling, not a PM4-saving estimate.
+At live4097 decode,48 MoE graphs contain625 kernel nodes and cover625/1836
+dispatches. Three exact token/state repeats record68.45-68.77ms windows,
+60.77-60.83ms kernel union and1.35-1.43ms intra-graph gaps. Graph API duration
+sums2.12-2.78ms mostly overlap kernels; only0.136-0.167ms lies outside recorded
+kernel intervals. No graph create/update APIs inside hot windows; captures
+stay48, replays increase0->144, no rejects/eager fallback, zero final ownership.
+**Decision:** no custom-runtime build justified as the next prefill fix.
+Retain PM4 as a bounded decode follow-up; neither graph gaps nor the7.62-7.98ms
+total non-kernel residual is a measured attainable speedup. Full ABI/lifecycle
+PM4 eligibility and unprofiled A/B remain unrun.21 parser/collector tests pass.
+[Reproducible census](../benchmarks/results/2026-09-06-framework-qwen4exp-wilkin-graph-census.json).
+
+**Q4 packed LDS cache rejected (September6 UTC):** staging packed nibbles
+in8192 additional LDS bytes avoids full K unrolling but still loses0.646x
+on actual layer3/mixed4096 chunk7. Thirteen GPU tests and ten real pairs exact.
+Trace VGPR88->128/LDS4608->12800B/scratch0; removed candidate.
+[Recipe/evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q4-lds-cache-rejected.json).
+
+**Q4 packed-nibble register cache rejected (September6 UTC):** ten uint32
+words/thread replace the preceding80-float cache, but fully unrolled code
+allocates256 VGPR and gives0.404x on the same real routing. A trace-directed
+volatile-metadata variant remains256 VGPR, spills1208 bytes and gives0.136x.
+Both pass13 GPU tests and ten exact real gate/up/SiLU pairs. Removed both.
+Source cache size is not generated live-register cost; do not repeat these
+fully-unrolled cache forms. This does not rule out bounded staged reuse.
+[Recipe/evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q4-packed-cache-rejected.json).
+
+**Q4 full decoded-weight register cache rejected (September6 UTC):**
+cache80 exact F32 values/thread across row groups at K2560, keeping RB8.
+Real layer3/mixed4096/chunk7 gate/up+SiLU loses17.013->25.548ms (0.666x),
+all ten pairs exact;13 GPU tests pass. Trace VGPR88->168, scratch0,
+LDS4608 unchanged, confirms the intended route. Register occupancy cost is
+a plausible explanation, not measured occupancy. Candidate removed.
+Do not repeat full-register caching unchanged.
+[Recipe/evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q4-weight-cache-rejected.json).
+
+**GR equal-accumulator column reuse also rejected (September6 UTC):**
+the opposite RB2/H4 trade is exact in13 tests/all80 real-weight pairs but
+near-flat:512-row attention1.006x, FFN0.996x, all order strata reverse.
+Cached trace slightly loses with unchanged72 VGPR/512B LDS/scratch0.
+Removed candidate; stop equal-accumulator GR retiling and return to FFN reuse.
+[Recipe/evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-gr-col-reuse-rejected.json).
+
+**GR constant-accumulator row reuse rejected (September6 UTC):** rebalance
+the operation-complete up composite from four rows/two hidden columns to
+eight rows/one column, preserving32 accumulators and exact per-output math.
+Thirteen tests and all80 actual-weight pairs pass;512-row attention/FFN
+up loses at0.847x/0.841x. Both orders and means lose. Cached trace confirms
+same72 VGPR/512-byte LDS/zero scratch: not a register-pressure loss.
+Candidate removed; no full-model A/B warranted.
+[Recipe/evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-gr-row-reuse-rejected.json).
+
+**Real-routing capture (September6 UTC):** resumed prefill work captures1683
+exact Q4/Q5_1 pair boundaries: code512 plus all four4096 categories, each
+uninstrumented/instrumented/uninstrumented with identical prefill/next logits
+and checked recurrent state/metadata, zero final tracked allocations.
+At4096, Q4 active-expert medians are9-12 rows;88.7-91.7% of rows belong to
+experts with more than8 rows. This supports examining reuse under real skew,
+not reviving unchanged rejected RB16/RB32 or worker-grid candidates.
+The committed capture tool emits compact summaries and identity-checked Q4
+replay; actual layer3/mixed4096/chunk7 gate/up+SiLU replay passes two exact
+counterbalanced pairs. Activations remain synthetic; no new speedup claimed.
+Full KV bytes are not covered by the capture state digest.
+[Routing packet](../benchmarks/results/2026-09-06-framework-qwen4exp-real-routing.json).
+
+**Post-MMQ family refresh (September6 UTC):** clean `ef63870f9` six-case/
+twelve-phase capture passes100% ownership coverage, matched decode roots,
+repeated decode/state and zero final ownership. Four-category p4096 prefill:
+FFN14.433s, non-GR linear5.367s, complete GR4.282s, QSA1.922s, GDN0.787s.
+Against explicitly reused pinned Vulkan, the first three gaps remain
+3.301x/5.266x/2.508x. Linear's prior snapshot was5.545s; this is diagnostic
+attribution, not a new causal A/B claim. Decode QSA16.949ms versus3.161ms
+remains the largest decode gap.44 collector/parser/ownership tests pass.
+Before more expert-scheduling screens, capture actual routing counts to
+complement prior real-weight/synthetic-uniform-or-skewed experiments.
+[Generated tables](QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md#521-framework-starting-and-current-owner-snapshots)
+and [source packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-mmq-family.json).
+
+**Q8 MMQ prepack production (September6 UTC):** clean `3d20550df` full12-case
+A/B preserves all72 trajectories and improves every case's prefill:
+156.707->157.748 /154.396->155.375 /143.903->144.736 tok/s at512/1K/4K
+(+0.664%/+0.634%/+0.579%). Eleven request-wall rows improve; mixed512
+regresses0.14%. Aggregate decode changes-0.057%/-0.027%/-0.138%, not a
+decode-kernel win. Retention follows the owner's exact-prefill-first direction.
+Overall request speedup1.00347x; max per-case PP/TG CV0.864%/1.804%.
+The72 GPU-packed sidecars add1,793,064,960 bytes; preparation0.1069s is
+reported separately and both A/B arms retain the allocation. Full run33m15.6s.
+Production binds measured GDN QKV/SSM only; GR and strict arithmetic stay
+unchanged. Raw MMQ remains the production-parent rollback, strict coltile
+the declared numerical fallback. Larger-context/c2 capacity is not requalified
+by this timing result. The post-GR owner table is historical; the post-MMQ
+refresh above now supplies the current attribution.
+[Production packet](../benchmarks/results/2026-09-06-framework-qwen4exp-mmq-prepack-production.json).
+
+**Earlier Q8 MMQ prepack runtime admission (September6 UTC):** default-off
+`HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK=1` prepares72 runner-owned sidecars
+(1,793,064,960 additional bytes) for measured GDN QKV/SSM shapes. All five
+code512/code4096/English512/Japanese512/mixed512 full logits/state/KV cases
+pass exactly, candidate calls0/72/0 or0/576/0, zero final ownership.
+144 CPU dispatch/cache/profile/ownership/harness tests pass.
+The complete12-case A/B route is wired with invocation checks and separate
+preparation/memory reporting; both timing arms retain sidecars. Next run
+`--route-package q8-mmq-prepack` from the clean admission commit.
+No default promotion or new throughput claim yet.
+[State/ownership packet](../benchmarks/results/2026-09-06-framework-qwen4exp-mmq-prepack-state.json).
+
+**Earlier Q8 MMQ K-major prepack kernel screen (September6 UTC):** matching the
+padded76-word LDS weight layout permits direct vector tile copies while
+preserving all three activation planes and per-output arithmetic.
+Real layer0/4 QKV rows512 confirms1.094/1.095x complete-chain speedup;
+SSM output1.022x, means and both orders positive.58 tests pass; cached
+trace VGPR184->144, scratch0, unchanged dynamic LDS57856 bytes.
+Initial72-word-layout losses and near-flat/order-sensitive GR remain explicit.
+Kernel only: next integrate persistent sidecar ownership for wide QKV/SSM,
+then invocation-counted full logits/state/KV and12-case normal-model A/B.
+CPU packing/upload and raw+packed memory costs are separate, not amortized
+away from model economics. No production/default change yet.
+[Evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-mmq-prepack.json).
+
+**GR-specific MMQ64x128 rejected (September6 UTC):** unlike earlier64x64/
+32x128 sweeps, this targeted320-output GR projections to avoid384-output
+padding while retaining128 tokens per tile. Four tests and every real-weight
+comparison are exact, but layer0/4 rows512 speedups are0.722x/0.720x;
+rows64 also lose, including means and both orders. Removed candidate.
+Trace audit puts Q8 packing at203ms versus5351ms matmul at code4096;
+packing elimination alone has a sub1% wall ceiling. Move beyond smaller-tile
+retuning; no full-model A/B warranted.
+[Complete-chain evidence and recipe](../benchmarks/results/2026-09-06-framework-qwen4exp-mmq64n128-rejected.json).
+
+**Q5_1 direct metadata rejected (September6 UTC):** direct wave-uniform
+scale/offset/high-bit loads in pair2, preserving reduction, pass8 tests and
+all actual-weight comparisons but lose at64/512 tokens (0.910x/0.921x,
+20 alternating pairs). Candidate removed; retain LDS staging. With this and
+the wave-tail result below, move to complete Q8 MMQ work rather than repeating
+these unchanged Q5_1 mechanisms.
+[Recipe/evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q51-direct-meta-rejected.json).
+
+**Q5_1 pair2 wave-tail rejected (September6 UTC):** replacing the original
+LDS reduction with the same logical256 addition tree and a wave-register
+tail passes8 tests and every actual-weight pair exactly, but measures
+0.949x/0.974x at64/512 tokens (20 counterbalanced pairs, rotating layer0/1
+banks). Removed candidate; production unchanged. No model A/B warranted.
+Fresh trace re-audit still puts Q5_1 pair2 at4.145s and Q4 pair2 at3.599s
+on code4096; Q8 MMQ variants total5.351s across semantic owners.
+[Rejected recipe/evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q51-wave-reduce-rejected.json).
+
+**Post-GR refresh (2026-09-06 UTC):** twelve phase captures at clean
+`9efbf6d23` pass100% coverage, repeated decode/state/lifecycle and matched
+Vulkan decode-root checks. Four-category p4096 prefill costs are FFN14.407s,
+non-GR linear5.545s, complete GR4.267s, QSA1.923s and GDN0.786s.
+Against the explicitly reused pinned Vulkan profile, the first three gaps
+are3.295x/5.440x/2.499x. Their ranking is unchanged; QSA remains the leading
+decode gap at16.969ms versus3.161ms. These are diagnostic device costs,
+not a new throughput comparison or a causal before/after speedup.
+[Generated tables](QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md#521-framework-starting-and-current-owner-snapshots)
+and [packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-gr-family.json).
+
+**GR up wave-scale production (2026-09-06 UTC):** full12-case A/B at
+clean `d692f8f50` preserves all72 trajectories and improves weighted prefill
+156.017->156.711 /153.748->154.285 /143.419->143.908 tok/s
+at512/1K/4K (+0.445%/+0.350%/+0.341%). All cases improve prefill and
+complete-request wall; elapsed2002.339s (33m22s). Decode remains effectively
+flat; no intrinsic decode win is claimed. Production binds the existing
+rows>256/four-branch exact composite; strict retains the parent.
+[Promotion packet](../benchmarks/results/2026-09-06-framework-qwen4exp-gr-wave-production.json).
+The post-Q8 family snapshot below is historical; the post-GR refresh above supersedes it.
+
+**GR up wave-scale kernel screen (2026-09-06 UTC):** reuse the exact Q8
+wave-uniform scale-address helper inside the operation-complete GR
+up+sigmoid+branch-mean composite. Actual layer0 rows512 attention/FFN up
+improves1.032/1.039x, layer4 confirms1.036/1.032x, without synthetic memory
+preconditioning. Means and both orders are positive;20 tests pass and gate/
+mixed F32 bits are exact. Both trace variants use72 VGPR/512 LDS/scratch0.
+Rows64 unconditioned order reversals remain explicit. Subsequent model admission
+above covers only existing rows>256 composite use.
+[Evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-gr-wave-scale.json).
+
+**Post-Q8 current-HE family refresh:** six cases/twelve phase captures at
+`39eb07a0a` pass100% ownership coverage, same-root decode checks and clean
+lifecycle. Reuse the pinned Vulkan profile explicitly, not as newly measured
+throughput. Four-category p4096 non-FFN/non-GR linear is now5.551s;
+FFN14.445s and GR4.362s remain the other large prefill owners. Decode QSA
+is16.982ms. Its proposed GR wave-scale screen has since passed and been
+promoted, followed by the post-GR refresh above. No numerical widening.
+[Updated generated table](QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md#521-framework-starting-and-current-owner-snapshots)
+and [source packet](../benchmarks/results/2026-09-05-framework-qwen4exp-post-q8-family.json).
+
+**Q8 wave-scale production (2026-09-05 UTC):** normal model execution,
+clean24e7b5fe7, full12-case72-trajectory A/B improves prefill
+**154.29->155.45 (+0.75%)**, **151.67->153.43 (+1.17%)**,
+**141.58->143.41 tok/s (+1.29%)** at p512/p1024/p4096. Every trajectory
+is exact, every case improves prefill (minimum0.45%) and request wall
+(minimum0.14%), and teardown is zero. Max prefill CV0.58%; decode CV3.50%
+and time-order drift prevent an intrinsic decode or stable absolute claim.
+Production selects the registry-checked exact F32 wave-scale route during
+prefill only; strict, MMQ/WMMA and decode owners stay unchanged.
+[Model evidence](../benchmarks/results/2026-09-05-framework-qwen4exp-q8-wave-scale-production.json).
+The earlier adverse unconditioned microbench remains valid for that protocol;
+the full model result, without synthetic memory preconditioning, is the
+promotion basis. The subsequent current-HE family refresh above supersedes
+the pre-Q8 table without relabeling the older Vulkan capture.
+
+**Q8 wave-uniform scale candidate (2026-09-05 UTC):** a new T0 raw-Q8 coltile
+variant preserves original F32 FMA/reduction order while explicitly making
+the Q8 block-scale index uniform per wave. Actual attention-gate rows512
+improves6.299->5.678ms (1.109x) under symmetric256MiB device-fill
+preconditioning; independent layer4 measures1.111x and shared-down1.089x.
+Twenty pairs balance both orders, and mean/order-stratified timings improve
+under that condition. Unconditioned attention-gate reverses by order; the
+initial odd-pair1.20x general claim is superseded, not a retained win.
+All outputs exact,15 focused tests pass, cached
+trace72 VGPR/512 LDS/scratch0 for both arms. This is not another coltile
+geometry sweep, and no layout/activation arithmetic changed.
+Model default stays original coltile pending invocation-verified state/KV
+and full12-case A/B admission.
+[Evidence](../benchmarks/results/2026-09-05-framework-qwen4exp-q8-wave-scale.json).
+
+**Q4 row-batch screen (2026-09-05 UTC):** straightforward pair2 RB16/32
+instantiations are exact but lose against RB8 across all final token-count
+512/1024/2048 x uniform/skewed routing cells, even after skipping padded-row
+reductions. Masked RB16 ratios0.880-0.981x, RB32 ratios0.586-0.623x.
+Measured VGPR increases88->120 (masked16) and176 (original32), with zero
+scratch. Weight-pass reductions alone did not predict performance.
+Remove these variants; keep RB8 and weight-pass telemetry.
+[Evidence](../benchmarks/results/2026-09-05-framework-qwen4exp-q4-rowbatch-rejected.json).
+This is a real-weight/synthetic-routing gate/up+SiLU screen, not a completed
+full-model chunk sweep or proof that all reuse designs are exhausted.
+Next independent portfolio is the large non-GR linear/GR deficit; QSA remains
+the leading decode target. Do not spend a full model A/B on these losing cells.
+
+**Shared-taxonomy Framework refresh complete (2026-09-05 UTC):** the committed
+collector now joins six same-host prompt cases across prefill/fixed-live decode,
+with100% semantic coverage, same-root decode inputs, Vulkan instrumentation
+prefix parity and HIP repeated-state/lifecycle checks. Taxonomy v2 groups
+complete FFN (routed+shared) and complete GR projections/read/mix consistently.
+The four-category p4096 prefill diagnostic is HE/Vulkan:
+**MoE14.418/4.372s (3.298x)**, **linear5.716/1.019s (5.609x)**,
+**GR4.339/1.707s (2.541x)**, **QSA1.920/0.645s (2.975x)**,
+**GDN0.778/1.390s (0.560x)**. Decode's principal positive difference is
+**QSA16.942/3.161ms (5.360x)**, followed by FFN17.272/12.469ms.
+These are HIP kernel sums versus Vulkan timestamp intervals, not guaranteed
+recoverable wall savings or cross-engine arithmetic equality.
+[Generated starting/current/target tables](QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md#521-framework-starting-and-current-owner-snapshots)
+and [family evidence](../benchmarks/results/2026-09-05-framework-qwen4exp-family-alignment.json).
+The logger-off baseline still needs2.997x prefill and1.700x decode at p4096,
+with explicit timing variance. Next measured lever: joint Q4 ROW_BATCH8/16/32
+x chunk512/1024/2048, starting with operation-complete actual routing and
+resource/spill checks. Dense/GR remains a necessary co-priority; no single
+owner's zero-cost ceiling closes the full prefill gap.
+
+**Q4 pair production (2026-09-05 UTC):** clean `9ed31059d` full12-case A/B
+passes all72 exact trajectories and improves prefill
+**145.21->153.78 (+5.90%)**, **142.82->151.21 (+5.87%)**,
+**134.01->141.30 tok/s (+5.44%)** at p512/p1024/p4096.
+All12 complete-request walls improve1.67-3.90%. Decode changes
+-0.01%/-0.23%/-1.63% amid drift remain explicit under the prefill-first
+direction. Production selects pair2 at rows>=64; smaller rows and strict
+retain their parents. Elapsed34m53s and zero final ownership.
+[Evidence](../benchmarks/results/2026-09-05-framework-qwen4exp-q4-pair-production.json).
+**Next priority, owner request:** freeze this combined default, rerun Framework
+baselines against halo-box Vulkan, and commit a shared-taxonomy family refresh
+using Vulkan timestamp logging plus hipEngine roles before further tuning.
+
+**Post-GDN refresh / next Q4 kernel (2026-09-05 UTC):** full p4096 role
+attribution is100%; the GDN owner now costs0.780s, including0.473s serial
+register recurrence, while routed MoE still costs15.512s. Logits match the
+prior profile exactly and teardown is zero. The new T0 shared-activation Q4
+output pair measures1.345x at tokens512 (actual layer0 gate/up+SiLU),
+and1.440x on an independent layer4/skewed map. All actual-weight outputs
+are exact;16 focused tests and cached zero-scratch trace pass.
+This differs from the exhausted serial-width/independent-team schedules
+because one activation load feeds two output accumulations. Next is full-model
+admission; current production still selects the bundled Q4 parent.
+[Q4 pair and owner evidence](../benchmarks/results/2026-09-05-framework-qwen4exp-q4-pair-reuse.json).
+
+**Serial GDN retention (2026-09-05 UTC):** clean `e235f4480` full12-case,
+72-sample A/B measures p512 **131.60->145.49 (+10.55%)**, p1024
+**129.83->143.10 (+10.23%)**, p4096 **122.67->134.32 tok/s (+9.50%)**.
+Every trajectory is exact and every complete-request wall improves3.28-6.79%.
+Production now selects register-state GDN only in its exact serial branch,
+Hk16/Hv48/D128 rows>=2; strict and the qualified suffix remain unchanged.
+Decode p512 is flat, p1024 loses0.45%, and p4096 loses3.63%. Retention follows
+the owner's prefill-first direction; these new adverse rows are explicit
+decode debt, not a numerical waiver or a claim of thermal causality.
+Max per-case prefill/decode CV is1.81%/3.61%; no stable absolute decode or
+external parity claim. Full A/B36m11s, zero final ownership.
+[Register-GDN evidence](../benchmarks/results/2026-09-05-framework-qwen4exp-gdn-register-production.json).
+The serial-prefix unit is now retained; rerank remaining routed MoE/dense
+work from a fresh profile rather than repeating the completed GDN screen.
+
+**Q5_1 pair2 retention:** the clean full-category A/B at `e60061201`
+improves prefill **126.88->132.13 (+4.14%)**, **125.37->130.60 (+4.17%)**,
+and **118.40->122.82 tok/s (+3.73%)** at p512/p1024/p4096, on top of
+retained QSA/page256, bundled-Q4 and Q5_K row4. All72 trajectories are exact,
+all12 cases improve, and final ownership is zero. Maximum prefill per-case
+CV is0.64%; decode has time-order drift in both arms (max CV3.02%) and
+aggregate paired changes remain within0.04%. No absolute decode or
+external parity claim is made. Production selects pair2 at rows>=64;
+short rows keep M1 and strict retains its original exact parent.
+[Pair2 evidence](../benchmarks/results/2026-09-05-framework-qwen4exp-q51-pair-production.json).
+
+**QSA followup (2026-09-05):** the exact H256 wave candidate passes all72
+canonical trajectories and improves p4096 prefill about19-20%, but late
+2900-MHz-requested runs lose about0.5-0.6% decode. Page256 addressing is
+another exact ~2% attention-leaf win. External phase telemetry associates
+the late losses with lower effective clocks. A separate fixed2700-MHz
+mixed-language control has +20.69% prefill and decode within0.017%, with
+all measured phase clocks exactly2700 MHz and exact outputs. Original
+2900/2900 high policy is restored.
+[Clock control](../benchmarks/results/2026-09-05-framework-qwen4exp-qsa-fixed-clock-control.json).
+This supports operating-point coupling, not an intrinsic arithmetic/state
+regression. The subsequent owner decision above accepts this measured
+tradeoff for retention; the original adverse results remain evidence.
+Do not keep repeating unchanged2900 runs. Continue remaining MoE/dense and
+decode work from the retained combined path. Strict fallbacks and D1 remain.
+
+**Retained grouped-row4 production improvement (2026-09-05):** a clean
+one-process/one-residency 12-case tg128 A/B at `82caa403d` measures weighted
+prefill **118.919->122.575 (+3.07%)**, **117.716->121.472 (+3.19%)**, and
+**95.421->97.850 tok/s (+2.55%)** at p512/p1024/p4096. All 72 trajectories
+are exact across arms, all 12 cases improve, max per-case prefill CV is 0.23%,
+and final tracked ownership is zero. Candidate invocations are 2/4/16 per
+after sample and zero per before sample. Decode is unchanged within 0.02%.
+The production profile selects exact Q5_K grouped-row4 gate/up for registered
+ungrouped rows>=64; strict and smaller rows retain selected GEMV. Evidence:
+[row4 promotion](../benchmarks/results/2026-09-05-framework-qwen4exp-row4-production.json).
+This is not halo-box parity or D1 requalification. Reprofile remaining MoE,
+dense/GR and QSA costs before the next optimization.
+
+Current-host follow-up:
+the [Framework owner refresh](../benchmarks/results/2026-09-05-framework-gfx1151-qwen38-flash-next-owner-refresh.json)
+at `cf9c55920` measures code-p512/p4096 unprofiled prefill at 4.306/43.046 s.
+Both role traces have 100% coverage and exact final logits against the
+unprofiled capture. Routed MoE owns 2.402/19.024 s of device time; QSA
+0.042/8.983 s; GDN 0.489/3.906 s. These are endpoint diagnostics, not an
+all-category speedup or fresh paired Vulkan verdict. Layer-2 Q5_K gate/up
+plus Q8 down is the first bounded grouped-traversal hypothesis; its speedup
+is unknown and the rejected WMMA arithmetic stays off.
+
+Remote-reference capability check: the authenticated pool advertises
+`Qwen3.8-Flash-Next`, but a request to `local/Qwen3.8-Flash-Next` returned
+`model=qwen38-flash-next-nvfp4` and top-5 log probabilities. Native FP8
+deployment identity remains unverified; do not use this response as an FP8
+quality oracle or infer full KLD from truncated probabilities. This does not
+block exact same-artifact work.
+
+## Historical campaign record
+
+Status: **active plan, fully impact-profiled 2026-09-01; production refreshed
+2026-09-04.** The historical category-balanced screening baseline remains
+**83.70/83.16/69.10 tok/s** prefill and **14.40/14.42/10.42 tok/s** decode at
+p512/p1024/p4096. The latest retained PF-1/PF-3 T0 package measures
+**89.34/88.54/72.58** and **14.84/14.79/12.40** in a committed
+one-process/one-residency packet. Its direct before→after prefill deltas are
+**+3.13%/+3.09%/+2.51%**, all 12 category/shape cases improve, and all 72
+measured trajectories are exact across modes. This updates current production,
+not the section-6 closure baseline; five same-thermal competitor pairs remain
+open. Evidence:
+[`halo PF-1/PF-3 production refresh`](../benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-halo-pf13-production-refresh.json).
+Exact matched profiling now
+attributes **100%** of hipEngine device time at all three prefills and at live
+513/1025/4097 decode; both hipEngine and pinned patched llama.cpp have zero
+generic family remainder. The old **41.6% unattributed** row was incomplete
+comparison coverage, not unidentified execution. The impact queue is now:
+exact p4096 QSA decode, operation-complete prefill MoE, dense/GR boundaries,
+p4096 QSA prefill, short-decode selected projections/Q8, then GDN. P8 returns
+to admission-pending because its replacement 1.112x ratio mixes a strict
+runner denominator with a graph result imported from another run; production
+`O` and `s` remain unknown. Cold PLE and MTP remain separate lanes. This is not
+section 6 closure: five thermal pairs, cold-PLE isolation, and category
+heldouts remain open. The first retained post-profile unit replaces serialized
+p4096 QSA decode with an exact ordered three-pass owner. Four-category tg128
+improves **93.912→80.061 ms/token (1.173x)** across 12 counterbalanced pairs
+with exact full logits and IDs; the named trace reduces the QSA operation role
+to **20.913 ms/token**. This is a retained production improvement, not section
+6 closure.
+
+**2026-09-05 execution-order update:** the
+[halo campaign source review](QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md#53-source-audit-corrections-2026-09-05)
+and its section-6 queue govern the next prefill units: routed MoE (including
+selected Q8/Q5_K tails), dense/GR, D=256 sparse QSA, GDN, then batch-policy and
+routing/combine cleanup. Correct binding geometry before promotion: GDN is
+Hk=16/Hv=48/D=128; `617038db9` repairs the tile-16 candidate's former Hv32-only
+envelope; `22dc56268` subsequently promoted the live-route validated owner. Q8 MMQ already
+uses 128×128 matrix tiles. Historical mixed-bucket ratios are not matched
+kernel ratios. This source-only reprioritization adds no benchmark and changes
+no section-6 closure target, representation or quality gate.
+
+This document is the performance-specific plan and punchlist.
+[`QWEN3.8-FLASH-NEXT.md`](QWEN3.8-FLASH-NEXT.md) remains the model/bring-up
+authority; this file owns only the gap-closure campaign. Cross-engine speed,
+static-logit, autoregressive-repeatability, MTP-equivalence, test-coverage, and
+absolute-quality evidence is consolidated in
+[`QWEN3.8-FLASH-NEXT-STRIX-HALO-SURVEY.md`](QWEN3.8-FLASH-NEXT-STRIX-HALO-SURVEY.md).
+
+## 1. Objective and boundaries
+
+Close the same-host, same-model, same-weight-quant performance gap to the best
+current HIP comparator first, then to the best same-host Vulkan comparator.
+Upstream llama.cpp remains the role-resolved attribution baseline; EngramHalo
+HIP and Nathan Vulkan are additional competitor lanes, not inherited evidence.
+A retained win must preserve the published execution-profile contract and must
+come with a compact artifact, a worklog entry, and a benchmark rollup. The
+campaign does not close merely because one microbenchmark, one prompt, one
+backend, or one MTP budget wins.
+
+### In scope
+
+- Active host: Framework Desktop `gfx1151`, Ryzen AI Max+ 395, Radeon 8060S;
+  `zbook` / Ryzen AI Max+ Pro 395 is the historical lane only.
+- Model: `Qwen/Qwen3.8-Flash-Next` through the pinned Unsloth
+  `UD-Q4_K_XL` split GGUF.
+- KV/cache policy: current BF16 baseline unless a row explicitly declares a
+  different KV profile.
+- Profiles: named `strict` and `production` manifests.
+- Binding AR representation: the pinned target weights with BF16 K/V. Q8 K/V
+  is a separately declared T3 product configuration after BF16 AR parity.
+- Workloads: category-balanced exact matched p512, p1024, and p4096 prefill
+  with 128 autoregressive transitions after each prefix, then the existing
+  long-context and full-category MTP suites. Legacy p508/p1012/tg32 rows remain
+  tail/continuity diagnostics, not closure targets.
+- Comparator lanes: upstream llama.cpp HIP/Vulkan, EngramHalo HIP, and Nathan
+  Vulkan, each pinned to an exact source and binary identity.
+
+### Out of scope
+
+- Changing model representation, quant recipe, or prompts to improve a score.
+- Treating external EngramHalo/Nathan numbers as hipEngine results.
+- Treating a different weight quant, KV type, prompt, cache state, or MTP policy
+  as a same-configuration old-to-new comparison.
+- Vulkan-specific code in this campaign except as design evidence for HIP work.
+- New feature expansion that does not close a measured gap.
+- Inferring W7900/gfx1100 performance from this host.
+
+## 2. Current verified gap
+
+Canonical screening evidence:
+[`2026-08-30-gfx1151-qwen38-flash-next-canonical-ar-screening.json`](../benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-canonical-ar-screening.json).
+It pins hipEngine commit `6fbcc721a`, current upstream `f1793c1c4`, every
+external binary and patch hash, the exact 12-case fixture, all 180 measured
+samples, host state, and output-repeatability verdicts. The current canonical
+impact authority is
+[`2026-09-01-gfx1151-qwen38-flash-next-canonical-impact-profile.json`](../benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-canonical-impact-profile.json).
+It adds exact-token p512/p1024/p4096 prefill, live-513/1025/4097 decode,
+allocation/lifecycle, broad-active-expert telemetry, and matched patched
+llama.cpp role-family evidence. The older p508/tg32 artifact remains historical
+continuity evidence only.
+
+### Historical p508/tg32 attribution rows
+
+| Workload | hipEngine production | llama.cpp HIP | llama.cpp Vulkan | HIP advantage | Vulkan advantage |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| p508 prefill | **84.83 tok/s** | 272.83 | 331.03 | **3.22x** | **3.90x** |
+| tg32 steady decode | **15.19 tok/s** | 16.64 | 24.22 | **1.10x** | **1.59x** |
+
+### 2.1 Canonical exact-token screening
+
+All rows use the same four category token arrays at each shape, BF16 K/V,
+greedy sampling, disabled prompt reuse, one warmup per case, and three measured
+requests per case. Each cell is prompt processing / 128-transition decode in
+tokens per second.
+
+| Engine | p512 | p1024 | p4096 | Repeatability |
+| --- | ---: | ---: | ---: | --- |
+| hipEngine production `61b1cef1b` | **83.70 / 14.40** | **83.16 / 14.42** | **69.10 / 10.42** | 12/12 exact |
+| Upstream Vulkan `f1793c1c4`, queue/repack/fit-off | 200.01 / 24.39 | 241.84 / 21.33 | 266.58 / 18.98 | 12/12 exact; p512 and p1024 prefill noisy |
+| Patched-upstream HIP `f1793c1c4` | 239.23 / 17.74 | 301.68 / 16.88 | 294.47 / 14.77 | 12/12 exact; non-stock loader |
+| EngramHalo HIP `1423f689` | 234.84 / 17.44 | 314.98 / 17.04 | 381.17 / 15.99 | p512/p1024 exact; `code-p4096` alternates |
+| Nathan Vulkan `ad914eb`, queue/repack/fit-off | 360.23 / 24.34 | 357.61 / 21.10 | 351.85 / 19.01 | 0/12 exact; diagnostic |
+
+#### Starting-point correctness and accuracy contract
+
+This screening measured exact greedy-continuation repeatability. It did **not**
+collect logits, KL divergence, task scores, or human accuracy ratings, so it
+cannot rank model accuracy. hipEngine's starting accuracy basis remains the
+existing BF16-teacher
+[`canonical text gate`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-text-bringup.json),
+[`heldout logits gate`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-heldout-logits.json),
+and named-production execution-profile packet (production manifest
+`9e27fec0...`, strict manifest `42509601...`). Any arithmetic change must re-run
+the applicable gates; a repeat-exact speed row does not replace them.
+
+The entitled Vulkan refresh uses graphics queue, repack, explicit fit-off, and
+auto clocks. Upstream remains exact, but p512 prefill/decode and p1024 prefill
+have coefficients of variation above 2%; these rows replace the
+under-configured diagnostic screen but cannot freeze the section 6 target.
+Nathan remains diagnostic. Evidence:
+[`2026-09-02-gfx1151-qwen38-flash-next-entitled-vulkan-canonical-refresh.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-entitled-vulkan-canonical-refresh.json).
+
+The measured correctness status is:
+
+- hipEngine production, pristine upstream Vulkan, and patched-upstream HIP are
+  repeat-exact on all 12 cases.
+- EngramHalo is repeat-exact at p512 and p1024, but `code-p4096` alternates
+  between two continuation hashes with the first difference at output index 1
+  (the second generated token). Its p4096 rates are diagnostic only.
+- Nathan fails repeatability on all 12 cases. A follow-up repeated the identical
+  p1024 token array 16 times and produced 16 distinct continuations, often
+  diverging at output indices 1–9. All Nathan rates are diagnostic only.
+- Full 129-token hashes do not establish cross-engine parity: hipEngine matches
+  pristine upstream Vulkan on 1/12 cases, patched-upstream HIP on 0/12, and
+  EngramHalo on 1/12. Compounding arithmetic differences make this diagnostic,
+  not an accuracy verdict; the logits/KL/task gates remain binding. No external
+  lane becomes an accuracy oracle merely by being deterministic or faster.
+
+#### Classifying a non-exact continuation
+
+A divergence is not self-explaining. Split it into one of two classes before
+assigning blame; an unclassified divergence is neither noise nor a bug.
+
+- **Tie class.** A last-ulp flip at a stable output position, with a logit
+  margin at or below roughly 0.04 nats, reproducing at the same position across
+  repeats. hipEngine tolerates this only where a declared production profile
+  already permits the reassociation that produced it.
+- **State class.** A divergence whose position moves between repeats, or one
+  carrying a whole-nat logit shift. Recurrent-state corruption lives here, and
+  it surfaces wherever the triggering event occurs: a rejected draft at 64K
+  produces a state-class divergence thousands of positions past any fixed
+  cutoff. Never classify by output index alone. The Pat1entZ3r0 program's
+  "only a divergence before position 50 is a real bug" rule would not have
+  caught the rollback-ring corruption that same program discovered.
+
+A single capture from build A against a single capture from build B cannot
+perform this split at all: it cannot separate "B is wrong" from "B is
+nondeterministic". Every equivalence claim here therefore needs a repeat arm on
+each build before any cross-build arm. That is what the 12-case canonical screen
+supplies and what external token-parity gates generally omit; it is why Nathan
+reads as 0/12 here and as an unremarkable pass elsewhere.
+
+#### Required upstream HIP loader patch on this host
+
+Pristine upstream HIP `f1793c1c4` produced zero samples after separate
+1,800-second starts with default mmap and with `--no-host`. For this exact
+111-GB model on `zbook`, the only successful current-upstream HIP configuration
+tested applied both documented Strix Halo loader patches:
+
+1. `llama-cpp-25992-rocm-host-buffer.patch`, SHA-256
+   `aca70db134d0e65be7a250cf1eb4237bb739d9d586f5c5153ce972372f67b4de`;
+2. `llama-cpp-qwen38-per-buffer-mmap.patch`, SHA-256
+   `971d428de98ecdf59941946bb391c257e82501ce98b7c71cc1f34803181fe133`.
+
+The combined source diff is
+`a37fa3bb64cb693dbe26c98177c757bda60683de2aeb5bae56222bfbfe5783b1` and the
+measured HIP server is
+`bb41c7555c4ad6cd14df4d2a308d991ddb5d1b44ec21d294fa0fe24f5aeafa86`.
+No single-patch ablation was run, so individual necessity is unknown. The
+campaign treats the pair as one host/model-scoped startup requirement until an
+ablation proves otherwise; this is not a claim that every upstream HIP
+installation needs the patches. The result must remain labeled **patched
+upstream**; pristine upstream HIP remains `startup_blocked` and has no numeric
+row.
+
+#### Decode-depth cliff
+
+The depth loss is larger than for the other hipEngine models in the scoreboard
+and is partly specific to Qwen4Exp. Throughput and derived synchronized latency
+are:
+
+| Lane | tg128 p512 | tg128 p1024 | tg128 p4096 | Added ms/token, p1024→p4096 | p512→p4096 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| hipEngine production | 14.399 | 14.421 | 10.416 | **+26.64** | **-27.7%** |
+| Upstream Vulkan | 24.385 | 21.327 | 18.975 | +5.81 | -22.2% |
+| Patched-upstream HIP | 17.741 | 16.881 | 14.768 | +8.47 | -16.8% |
+| EngramHalo HIP | 17.439 | 17.044 | 15.989 | +3.87 | -8.3% (p4096 diagnostic) |
+| Nathan Vulkan | 24.342 | 21.098 | 19.012 | +5.20 | -21.9% (diagnostic) |
+
+For context only, the same-host scoreboards show Qwen3.8-27B Dense at
+13.069→13.038 tok/s (-0.2%) and Qwen3.6-35B-A3B at 54.330→54.798 tok/s
+(+0.9%) from p512 to p4096. Those are different architectures and are not
+comparison denominators, but they show that this is not a generic hipEngine
+context penalty.
+
+The target GGUF declares a 2,048-token QSA budget and compression ratio 4, so
+`qsa_dense_equivalent_max_tokens == 2051`. p512 and p1024 decode remain on the
+dense-equivalent path. p4096 crosses the boundary: each of 12 QSA layers adds
+the index-query projection, normalization/RoPE, score over about context/4
+pooled blocks, stable top-k expansion, and sparse attention over 2,048 selected
+tokens plus the tail. The path transition is confirmed from dispatch and model
+geometry. The retained P6 boundary profile now localizes the cliff: clean wall
+adds **29.27 ms/token** at live 2,051→2,052, of which sparse attention owns
+**27.47 ms** and score/top-k only **0.92 ms** in the profiled delta. Live
+2,052→4,097 is flat, confirming fixed selected-budget cost rather than
+context-length growth. This supersedes the earlier unlocalized diagnosis.
+
+#### Repeatability-valid performance targets
+
+The repeatability-valid screening targets and current hipEngine gaps are:
+
+| Shape | HIP target and gap | Vulkan target and gap |
+| --- | ---: | ---: |
+| p512 / tg128 | patched upstream, **2.86x / 1.23x** | upstream, **2.39x / 1.69x** (noisy) |
+| p1024 / tg128 | EngramHalo, **3.79x / 1.18x** | upstream, **2.91x / 1.48x** (prefill noisy) |
+| p4096 / tg128 | patched upstream, **4.26x / 1.42x** | upstream, **3.86x / 1.82x** |
+
+These are screening ratios, not match/loss verdicts. Section 6 still requires
+five same-thermal counterbalanced pairs, per-row CV at or below 2% for a match,
+and paired confidence intervals. Cross-engine generated-ID equality is
+recorded but remains diagnostic for named production arithmetic; each lane's
+repeatability and hipEngine's execution-profile gates are separate checks.
+
+### 2.2 Wall-time gap budget and Amdahl ledger
+
+Throughput ratios hide how much time an optimization must actually remove. The
+following budget derives synchronized wall from the clean current diagnostic
+packet at `3ddb748d4`; it is used for candidate admission despite thermal drift,
+not promoted as the closure baseline. The HIP target is the fastest
+repeatability-valid HIP lane for that row.
+The final target is the fastest repeatability-valid HIP or Vulkan lane; invalid
+Nathan/apepojken rows and EngramHalo p4096 are excluded.
+
+| Workload | hipEngine wall | HIP target wall; reduction required | Final valid wall; reduction required |
+| --- | ---: | ---: | ---: |
+| p512 prefill | 5.939 s | 2.140 s; **3.799 s (64.0%)** | 2.140 s; **3.799 s (64.0%)** |
+| p1024 prefill | 11.947 s | 3.251 s; **8.696 s (72.8%)** | 3.251 s; **8.696 s (72.8%)** |
+| p4096 prefill | 57.730 s | 13.910 s; **43.821 s (75.9%)** | 13.910 s; **43.821 s (75.9%)** |
+| p512 decode | 68.012 ms/token | 56.367 ms; **11.645 ms (17.1%)** | 41.008 ms; **27.004 ms (39.7%)** |
+| p1024 decode | 68.250 ms/token | 58.672 ms; **9.578 ms (14.0%)** | 46.890 ms; **21.360 ms (31.3%)** |
+| p4096 decode | 94.461 ms/token | 67.714 ms; **26.747 ms (28.3%)** | 52.700 ms; **41.761 ms (44.2%)** |
+
+Every profile artifact and candidate decision now uses one Amdahl row with:
+
+- `W`: current unprofiled complete wall for the exact workload;
+- `C`: current same-host comparator wall under the same protocol;
+- `O`: the current path's **exclusive** owner wall, normalized per request or
+  token; and
+- `s`: a locally measured owner speedup. A source or comparator ratio is
+  recorded separately as a hypothesis until the local leaf screen runs.
+
+The zero-cost ceiling is `O/W`; the maximum complete-wall speedup is
+`W/(W-O)`. A realistic candidate projects `saved = O*(1-1/s)` and
+`gap_coverage = saved/(W-C)`. `s` is `unknown` until measured; a competitor
+kernel ratio is a hypothesis, not a local result. Kernel, submission, copy, and
+host-stage buckets must be mutually exclusive before they are added. In
+particular, graph savings and the kernels hidden by that graph cannot be summed
+from separate traces. The unprofiled wall is always the denominator; profiler
+API time is attribution evidence only.
+
+#### Current impact queue
+
+| Rank | Lane and measured owner | Amdahl interpretation | Next decision |
+| ---: | --- | --- | --- |
+| Blocked | Exact p4096 QSA decode: the retained ordered three-pass route reduces four-category complete wall **93.912→80.061 ms/token** and the traced QSA operation role from **36.304 to 20.913 ms/token**. | Local complete-wall `s=1.173`; the unit saves **13.851 ms/token** and covers **35.4%** of its measured final-valid gap. Exact four-column-per-thread value grouping loses its leaf screen and is removed. | Require a new exact data-reuse mechanism or fresh profile before more value-pass scheduling. Do not revisit partial-softmax merges. |
+| Blocked | Operation-complete prefill MoE owns **3.408/6.307/25.398 s** at p512/p1024/p4096. Exact chunks activate a median **333/327/325 of 512 experts** with seven rows per active expert. | Exact worker/output/team schedules are exhausted. Early exact layers already use device maps. A worst-case guarded grid removes the remaining WMMA-suffix D2H but is neutral at **1.0008x**, 95% CI **0.9994–1.0022**. | A paying route needs new projection/activation reuse or device-sized indirect dispatch, neither currently exists in-tree. Continue the highest independent owner. |
+| 1 | Dense linear + GR-read roles own **1.839/3.442/13.864 s**; aligned dense-projection delta reaches **1.131/2.079/8.429 s**. | No single projection closes prefill, but these uniform boundaries cover **48.3%/39.6%/31.6%** of the current final-valid gaps at zero cost. | Fuse shared layouts across `attn_qkv`, `attn_gate`, `ssm_out`, HC projection/read, and inject/publication boundaries. |
+| 2 | p4096 QSA prefill attention is **10.229 s** versus llama's **0.526 s**; its share grows from **0.85%** at p512 to **18.68%** at p4096. | Its p4096 zero-cost role ceiling covers **23.8%** of the final-valid gap, but the short rows are only 1–2% owners. | Differential-profile the exact flash/index materialization and build a prefill-specific path; do not assume the decode design transfers. |
+| 3 | Short decode selected Q4+Q5_1 projection deltas total **6.617 ms** at live 513; dense-Q8 adds **2.866 ms**. | Together they cover about **38.7%** of the p512 final-valid gap and most of its HIP gap after interactions; measure one exclusive operation-complete owner at a time. | Rank selected projection/data reuse before another submission-only campaign; preserve strict ordered weighting. |
+| 4 | GDN owns **0.655/1.233/4.983 s** prefill versus llama **0.083/0.222/1.845 s**; live-513 is **2.670 vs 0.531 ms**. | Zero-cost GDN covers **17.2%/14.2%/11.4%** of final-valid prefill gaps and **8.7%** of the p512 final-valid decode gap. | Port the multi-column transposed-state-in-register mechanism as an operation-complete owner, not another transpose sidecar. |
+| Admit | P8 whole-transition production graph. | Production `O` and `s` are **unknown**. The strict 68.855-ms runner denominator and 61.910-ms graph row came from different runs, so 1.112x/6.945 ms cannot rank this rung. | Admit only from a same-session named-production graph arm. Do not integrate from the current denominator. |
+| Defer | MTP full draft head: 3.153 ms per proposal. | Even a free head saves only **0.97%** of retained suite wall and remains 0.964x AR. | Keep below device-output and target-verifier work until its complete-wall ceiling rises. |
+
+These owners come from one current exact-token ledger and are mutually
+exclusive within each hipEngine trace. Comparator deltas use a shared complete
+symbol-family taxonomy; source ratios remain hypotheses, never local `s`.
+
+#### P8 denominator audit: both published ratios are unrankable for production
+
+The original P8 artifact's **194.758→61.910 ms/step (3.15x)** compared a graph
+against a probe-local eager arm that disabled the shipped per-layer MoE graph
+cache and drove 48 layers from a script loop. The follow-up denominator correctly
+measures those effects, but its claim that **68.855→61.910 ms (1.112x)** is the
+"honest" named-production graph speedup also overreaches:
+
+| Row at the shallow probe context | Profile / process | Median | Valid conclusion |
+| --- | --- | ---: | --- |
+| Runner, MoE graphs on, device argmax | strict; denominator process | 68.855 ms | Valid strict runner diagnostic |
+| Runner, MoE graphs off, device argmax | strict; denominator process | 143.989 ms | Shipped MoE cache is 2.091x versus this disabled route |
+| Probe-local eager loop | strict; graph-probe process | 194.758 ms | Invalid named baseline |
+| Whole-transition graph | strict; graph-probe process | 61.910 ms | Exact mechanism row; not counterbalanced against 68.855 ms |
+
+The follow-up imports 61.910 ms from a different run, and its generator helper
+hardcodes `ExecutionProfile.STRICT`. Therefore **1.112x and 6.945 ms are a
+cross-run strict diagnostic, not a same-session named-production A/B**. They do
+not define `O`, do not clear section 5.1, and cannot place P8 at rank 2. The
+current decision is admission-pending.
+
+The audit still retains two useful findings. First, the old 3.15x denominator
+was inflated by work production already removed. Second, device argmax versus
+host full-logit D2H differs by at most **0.35 ms/step** with a sign flip, so AR
+output publication is not a measured decode lever; P11 must justify that work on
+the MTP draft step. The denominator run also has zero steady allocation growth
+and clean teardown. Evidence:
+[`2026-09-01-gfx1151-qwen38-flash-next-p8-production-denominator.json`](../benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-production-denominator.json)
+and the superseding
+[`canonical impact profile`](../benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-canonical-impact-profile.json).
+
+**This is now a binding rule, not an anecdote.** A candidate's baseline arm must
+be the named path with its shipped optimizations enabled. Disabling an existing
+production optimization to construct a slower "before" is an invalid denominator
+and its ratio is not retainable. Every `W/C/O/s` row states which routes were
+active in the baseline arm.
+
+### 2.3 Historical external-fork shape refresh
+
+The 2026-08-30 refresh used the existing four-part `UD-Q4_K_XL`; no new
+weight quant was downloaded. EngramHalo HEAD remained `1423f689...`. Its
+locally built HIP binary also applied the two patches used by the fork's
+published container (`#25992` host-buffer workaround and per-buffer mmap).
+Nathan's toolbox HEAD was `a8631df...`, its source branch and v0.7.2 payload
+were both `ad914eb...`, and a local source build reproduced the release within
+1%. Compact evidence:
+[`2026-08-30-gfx1151-qwen38-flash-next-external-fork-refresh.json`](../benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-external-fork-refresh.json).
+
+| Same weights, BF16 K/V, `llama-bench` shape | p508 | p1012 | tg32 |
+| --- | ---: | ---: | ---: |
+| EngramHalo HIP HEAD + documented build patches | **296.12** | **362.72** | **17.62** |
+| Nathan Vulkan v0.7.2 payload | **413.04** | **396.25** | **23.85** |
+| Nathan Vulkan local build of the same source | 416.41 | 394.57 | 23.95 |
+
+These are **historical shape diagnostics**, not current targets, a source-only
+A/B, or a replacement for the frozen role profile. They use generated
+`llama-bench` inputs, `-b 8192 -ub 2048 -t 4`, lazy mmap, and fork-recommended backend
+settings. hipEngine's p508 row uses the committed text fixture, while its tg32
+diagnostic starts from token `9707`; prompt-dependent MoE routing and PLE page
+locality make exact-token matching material. P0 therefore adds one durable
+cross-engine exact-prompt harness before closure comparisons.
+
+Q8 K/V diagnostics were EngramHalo **301.07/361.75/17.85** and Nathan
+**420.99/393.79/23.67** at p508/p1012/tg32. They do not replace the BF16-KV
+campaign denominator. Nathan lazy mode partially reproduced its published
+mechanism on this 128-GiB host: BF16 p508 averaged **329.23 off vs 413.04 on
+(1.255x)**, but the off arm warmed from 271.87 to 396.97 tok/s inside its three
+repetitions and p1012 was neutral (**399.67 off vs 396.25 on**). Decode was
+also neutral. Cold/warm cache state must remain separate.
+
+An EngramHalo MTP check on the full ten-prompt category+heldout suite reduced
+complete request wall from **17.75 to 15.74 s (1.128x)** at 94.55% draft
+acceptance, but AR/MTP message hashes matched only **9/10** prompts; the
+`general_ja_plan` continuation differed while repeated AR was stable. That MTP
+row is a correctness-failing diagnostic, not a speed target. hipEngine must
+beat a true same-protocol AR denominator while retaining its own exact/full
+profile gate; it must not copy a competitor's invalid speed row.
+
+### Current exact-token device windows
+
+| Window | hipEngine kernel sum | patched llama HIP kernel sum | llama advantage | hipEngine / llama rows |
+| --- | ---: | ---: | ---: | ---: |
+| p512 prefill | **5.972 s** | 1.926 s | **3.10x** | 3,135 / 9,944 |
+| p1024 prefill | **11.196 s** | 2.990 s | **3.74x** | 6,210 / 9,984 |
+| p4096 prefill | **54.762 s** | 10.838 s | **5.05x** | 24,900 / 14,904 |
+| live-513 decode | **51.062 ms** | 41.009 ms | **1.25x** | 1,764 / 4,349 |
+| live-1025 decode | **53.262 ms** | 41.110 ms | **1.30x** | 1,764 / 4,349 |
+| live-4097 decode | **87.732 ms** | 44.005 ms | **1.99x** | 1,812 / 4,334 |
+
+Every hipEngine row is inside an exact ROCTX operation boundary; role coverage
+is **100%**. The comparator consumes the same code token arrays, and cached
+decode evaluates exactly one appended root token. Both symbol-family ledgers
+sum exactly to their device totals. Kernel rows are dispatch records, not host
+launches.
+
+### Prefill operation and aligned-delta ledger
+
+hipEngine's exclusive operation roles are:
+
+| Role | p512 | p1024 | p4096 |
+| --- | ---: | ---: | ---: |
+| Routed MoE | **3.408 s** | **6.307 s** | **25.398 s** |
+| Dense linear projections | 1.401 s | 2.630 s | **10.589 s** |
+| GDN mixer | 655 ms | 1.233 s | 4.983 s |
+| GR read/tail | 437 ms | 812 ms | 3.275 s |
+| QSA mixer/index/attention | 56 ms | 190 ms | **10.423 s** |
+| Root/PLE boundary | 13 ms | 24 ms | 94 ms |
+
+The matched aligned-family deltas explain the old remainder rather than leaving
+it unknown:
+
+| Family delta, hipEngine minus llama | p512 | p1024 | p4096 |
+| --- | ---: | ---: | ---: |
+| Dense projection compute | **1.131 s** | **2.079 s** | **8.429 s** |
+| Selected Q4 gate/up | 668 ms | **1.677 s** | **8.327 s** |
+| Selected Q5_1 down | 673 ms | **1.568 s** | **7.328 s** |
+| Dense Q8 | 688 ms | **1.351 s** | **5.650 s** |
+| GDN | 572 ms | **1.011 s** | **3.137 s** |
+| QSA attention | 38 ms | 131 ms | **9.703 s** |
+| Elementwise/materialization | 185 ms | 216 ms | 549 ms |
+| MoE routing | 99 ms | 180 ms | 634 ms |
+
+The earlier **41.6% unattributed remainder was a reporting artifact**: it
+subtracted five selected families from the total and called every omitted
+family unknown. It must not be used for prioritization. The current ledger also
+shows why one prefill kernel cannot close parity: MoE leads overall, dense/GR
+is a second portfolio, and QSA becomes a co-leading p4096 owner.
+
+Exact telemetry further constrains MoE design. Each 512-row chunk selects ten
+experts per token and activates a median **333/327/325 of 512 experts** at
+p512/p1024/p4096, with a median seven rows per active expert. Compact-map work
+must handle hundreds of active experts; tiny-active-set specialization would be
+benchmark-shape mismatch.
+
+### Decode aligned deltas per token
+
+| Family delta, hipEngine minus llama | live 513 | live 1025 | live 4097 |
+| --- | ---: | ---: | ---: |
+| QSA attention | 1.963 ms | 3.985 ms | **34.996 ms** |
+| Selected Q5_1 down | **3.379 ms** | **3.640 ms** | **4.919 ms** |
+| Selected Q4 gate/up | **3.238 ms** | **3.231 ms** | **4.112 ms** |
+| Dense Q8 | 2.866 ms | 3.058 ms | 3.035 ms |
+| GDN | 2.139 ms | 2.166 ms | 1.932 ms |
+| Other dense projection compute | 0.953 ms | 0.878 ms | 1.012 ms |
+
+At live 4097, QSA alone explains more than the complete device gap because
+llama is slower in some smaller routing/layout families. Candidate arithmetic
+must therefore use hipEngine's exclusive operation owner and complete wall,
+not sum positive family deltas as independent savings. At live 513 the selected
+Q4+Q5_1 delta is 6.617 ms and dense Q8 adds 2.866 ms; these are the measured
+short-decode kernel portfolio below QSA.
+
+The unprofiled and profiled runs use the same exact fixture but are separate
+processes, so wall-minus-kernel remains an order-of-magnitude residual, not
+host-overhead proof. P8 receives no residual by subtraction; only a same-session
+production graph arm can measure its exclusive saving.
+
+### Invalid path removed
+
+The previous "GDN colwarps decode all layers" row is invalid: its selector sat
+below the `rows == 1` branch and compared the strict owner with itself. Wiring
+the actual candidate costs **6.832 + 0.117 ms/token**, versus **2.454 ms/token**
+for the retained serial-column owner, and lowers full decode. Commit
+`15a436766` removed the dead route. The corrected evidence is
+[`2026-08-30-gfx1151-qwen38-flash-next-gdn-colwarps-decode-all.json`](../benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-gdn-colwarps-decode-all.json).
+
+## 3. Profiling pattern
+
+The committed tools replace the earlier `/tmp` harnesses. Use the same sequence
+for every campaign claim.
+
+### 3.1 Freeze identity
+
+1. Record repository, host, power, model, quant, profile manifests, and
+   comparator revisions before measuring.
+2. Confirm HIP and device visibility:
+
+   ```bash
+   python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"
+   rocminfo | grep -E 'Name:|gfx'
+   ```
+
+3. Prebuild hipEngine kernels outside the profiler and pass
+   `--compiler-version-file` plus `--require-cached-build` to the profiled
+   process. Do not let `rocprofv3` spawn `hipcc` or clang children.
+
+### 3.2 Build the comparator once
+
+The canonical 2026-08-30 refresh used current upstream HEAD
+`f1793c1c4e586022efa0b1d3aa6e30ccd67f4e2d`. The pristine Release binaries are
+HIP `020d0e94...` and Vulkan `c6c9dd2b...`; HIP uses
+`AMDGPU_TARGETS=gfx1151`, `GGML_HIP_GRAPHS=ON`, and
+`GGML_HIP_MMQ_MFMA=ON`, while Vulkan uses RADV/Mesa 26.2.1 in a separate build
+tree. Pristine HIP is startup-blocked for this 111-GB artifact. A separately
+labeled HIP binary `bb41c755...` applies only the documented host-buffer and
+per-buffer-mmap patches (`aca70db1...` and `971d428d...`). EngramHalo HIP is
+`0514f125...` at `1423f689...` plus the same patches; Nathan Vulkan is
+`d3dbb492...` at `ad914eb...`. Refresh any comparator only as a separate
+baseline event; do not report old and new absolute rows as an optimization A/B.
+
+### 3.3 Collect canonical exact-token wall rows
+
+The committed fixture
+[`qwen4exp_canonical_ar_p512_p1024_p4096.json`](../benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json)
+has SHA-256 `42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1`.
+It derives one code, English, Japanese, and mixed Japanese/English token array
+at each canonical length from the ten-prompt MTP bench source. Every engine
+consumes those exact IDs. Regenerate it only as an explicit protocol change:
+
+```bash
+MODEL_ROOT=/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL
+uv run python scripts/qwen4exp_canonical_ar_bench.py fixture \
+  --model-root "$MODEL_ROOT" \
+  --output benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json
+```
+
+Run hipEngine from a clean worktree after the current compiler cache is warm:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 \
+uv run python scripts/qwen4exp_canonical_ar_bench.py hipengine \
+  --model-root "$MODEL_ROOT" \
+  --compiler-version-file /tmp/hipengine-qwen4exp-hipcc-version.txt \
+  --require-cached-build \
+  --output /tmp/qwen4exp-canonical-hipengine.json
+```
+
+Run each llama.cpp-compatible lane with its exact binary/source identity and
+backend settings. Arguments that begin with `-` use the `--server-arg=value`
+form:
+
+```bash
+MODEL_PART="$MODEL_ROOT/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf"
+uv run python scripts/qwen4exp_canonical_ar_bench.py llamacpp \
+  --server-bin /path/to/llama-server \
+  --source-root /path/to/source \
+  --model "$MODEL_PART" \
+  --engine-label ENGINE_LABEL \
+  --server-arg=-ngl --server-arg=999 \
+  --server-arg=-fa --server-arg=on \
+  --server-arg=-ctk --server-arg=bf16 \
+  --server-arg=-ctv --server-arg=bf16 \
+  --server-arg=-c --server-arg=4352 \
+  --server-arg=-b --server-arg=8192 \
+  --server-arg=-ub --server-arg=2048 \
+  --output /tmp/qwen4exp-canonical-ENGINE_LABEL.json \
+  --server-log /tmp/qwen4exp-canonical-ENGINE_LABEL.server.log
+```
+
+The driver discards one warmup and records three measured requests per case.
+The first sampled output belongs to prefill; it requests 129 visible outputs
+from llama.cpp and reports exactly 128 post-first-output transitions, matching
+hipEngine's 128 timed `runner.step()` calls. Prompt cache is disabled while OS
+page-cache state is warm. Synthetic `llama-bench` p512/p1024/p4096/tg128 rows
+remain a separate `shape_only` diagnostic class.
+
+For a route-local prefill A/B, keep one model residency and reverse the first
+route in each pair with `scripts/qwen4exp_route_pair.py`. Select exact fixture
+cases explicitly and treat the override arm as diagnostic until its complete
+profile gate passes:
+
+```bash
+uv run python scripts/qwen4exp_route_pair.py \
+  --model-root "$MODEL_ROOT" \
+  --fixture benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json \
+  --case-id code-p512 --case-id general_en-p512 \
+  --case-id general_ja-p512 --case-id mixed_ja_en-p512 \
+  --pairs 5 --warmups 1 --require-cached-build \
+  --override HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL=1 \
+  --output /tmp/qwen4exp-layer2-p512-pairs.json
+```
+
+### 3.4 Collect role-resolved device traces
+
+The current ledger consumes exact fixture token IDs. Example p512 prefill:
+
+```bash
+TRACE=/tmp/qwen4exp-role-p512
+rm -rf "$TRACE" && mkdir -p "$TRACE"
+HIPENGINE_HIP_ARCH=gfx1151 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen4exp-hipcc-version.txt \
+HIPENGINE_REQUIRE_CACHED_BUILD=1 \
+rocprofv3 --kernel-trace --hip-trace --marker-trace \
+  --memory-copy-trace --memory-allocation-trace --output-format csv \
+  -d "$TRACE" -o role-p512 -- \
+  uv run python scripts/qwen4exp_profile_gap.py \
+    --model-root "$MODEL_ROOT" --mode prefill \
+    --fixture benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json \
+    --case-id code-p512 --profile --role-markers --repetitions 1 \
+    --compiler-version-file /tmp/hipengine-qwen4exp-hipcc-version.txt \
+    --require-cached-build --output "$TRACE/child.json"
+```
+
+Use `scripts/qwen4exp_context_decode_profile.py --live-count 513 1025 4097
+--repetitions 3 --profile --role-markers` for exact context-conditioned decode.
+It restores one snapshot before every transition, hashes every mutable owner,
+and scopes allocation growth separately to each warmed context bucket. A
+cross-bucket resize is reported but is not relabeled as per-step growth.
+
+To profile an isolated candidate that the named profile binder normally resets,
+use a repeatable post-binder `--override`. The child records bound/effective
+environments and `named_profile_intact: false`; that row remains diagnostic
+until the complete profile gate passes.
+
+For exact llama.cpp attribution, use
+`scripts/qwen4exp_llamacpp_exact_profile.py`. It launches the pinned server
+directly under `rocprofv3`, sends the same fixture arrays, and records monotonic
+bounds for p512/p1024/p4096 prefill plus cached live-513/1025/4097 one-token
+decode. Select rows with `qwen4exp_trace_analyze.py --start-ns ... --end-ns
+...`. Dynamic attach is not supported by this packaged ROCm SDK; do not change
+host ptrace policy. The retained comparator CSVs flushed completely, although
+the rocprof wrapper required forced exit after flush; they remain diagnostic
+attribution, not a promotion gate.
+
+### 3.5 Analyze without conflating rows and launches
+
+```bash
+uv run python scripts/qwen4exp_trace_analyze.py \
+  --trace-dir "$TRACE" --engine hipengine \
+  --marker-prefix qwen4exp_prefill_p512_ \
+  --output "$TRACE/summary.json"
+
+uv run python scripts/qwen4exp_role_analyze.py \
+  --trace-dir "$TRACE" \
+  --measure-prefix qwen4exp_prefill_p512_ \
+  --output "$TRACE/roles.json"
+```
+
+The analyzer reports the selected marker or explicit clock window, kernel
+sum/span, row counts, complete family totals, HIP API launch correlations,
+unmatched graph/copy rows, allocation events, and memory-copy rows. The role
+analyzer correlates ROCTX ranges to HIP launch correlation IDs and kernel rows,
+then reports attributed/unattributed time coverage, normalized/exact roles, and
+a flat exact-role kernel/API breakdown. Collect actual per-layer expert-row
+distributions in a **separate**, non-profiled instrumentation run so its D2H
+telemetry cannot contaminate the role trace:
+
+```bash
+uv run python scripts/qwen4exp_profile_gap.py \
+  --model-root "$MODEL_ROOT" --mode prefill \
+  --fixture benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json \
+  --case-id code-p512 --repetitions 1 --moe-telemetry \
+  --require-cached-build --output /tmp/qwen4exp-p512-moe-telemetry.json
+```
+
+`scripts/qwen4exp_perf_gap_report.py` renders the compact artifact as markdown
+tables:
+
+```bash
+uv run python scripts/qwen4exp_perf_gap_report.py \
+  benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-fresh-full-profile.json
+```
+
+### 3.6 Lifecycle profiling — required for every candidate
+
+Steady-state wall is half of a measurement. A kernel or graph that is fast in a
+warm loop but reallocates, leaks, or diverges on reuse is not retainable, and
+these failures are invisible in a median. Every candidate collects the
+following, and every compact artifact carries a `lifecycle` block. **A candidate
+without one is not eligible for promotion**, regardless of its speed row.
+
+1. **Tracked device memory, construct to close.** Wrap the run in
+   `hipengine.core.memory.reset_memory_stats()` / `memory_stats()` and record
+   `total_allocated_bytes`, `total_freed_bytes`, `peak_allocated_bytes`,
+   `active_allocations`, and `peak_allocations`. Require
+   `active_allocations == 0` and `current_allocated_bytes == 0` after close.
+2. **Steady-state allocation growth.** Sample allocation count and current
+   bytes after warmup and after the measured window; require **zero** growth.
+   For multiple context buckets, gate each warmed bucket independently and
+   report first-use cross-bucket resizing separately. A per-step allocation is
+   a leak, not a fast path.
+3. **Allocation timing under the profiler.** Add
+   `rocprofv3 --memory-allocation-trace` beside the kernel/HIP traces. For any
+   capture/replay unit require **zero device allocations at or after the first
+   graph launch**, and confirm capture is non-executing.
+4. **Per-step census, never per-run.** From the same trace, report kernel
+   dispatches, direct `hipLaunchKernel` correlations, graph launches, and
+   memcpy rows **per step** inside the marker window. Aggregate counts hide
+   exactly the launch growth this campaign is trying to remove.
+5. **Replay and state gates.** At least three consecutive replays,
+   `reset → replay`, `graph → forced eager → graph` resumption, and
+   snapshot/restore. Compare **every mutable owner by hash**, not only the
+   output: K/V, index cursors, recurrent state, PLE history, position/context
+   scalars. An output-only check passed on hardware that later failed a state
+   check.
+6. **First-arm and cold/warm separation.** Discard the first arm after model
+   load; it pays first-touch weight paging and clock ramp, and it moved the
+   named decode step by **35%** in the denominator harness above. Cold-cache
+   rows use the isolated protocol, and one process's warming repetitions are
+   never independent samples.
+7. **Concurrency, cancellation, and teardown.** Physical c2 isolation,
+   cancellation mid-step, and teardown with the tracked-memory check from
+   item 1.
+8. **Nested-process rule.** Never wrap a parent harness that spawns Python
+   children in `rocprofv3`; profiler and JIT state propagate into the children.
+   Profile the child directly, or use `scripts/mtp_verifier_rocprof.py`.
+   Prebuild kernels and pass `--compiler-version-file` plus
+   `--require-cached-build` so no profiled process spawns `hipcc`.
+
+Use shared model residency, a discarded first arm, counterbalanced named-path
+arms, per-arm route state, graph-cache census, and a lifecycle block. The P8
+denominator harness demonstrates those mechanics for its runner arms, but its
+imported graph value is not a counterbalanced arm and must not be copied as an
+A/B pattern.
+
+Interpretation rules:
+
+- End-to-end unprofiled wall is the headline.
+- Kernel sum ranks device dataflow.
+- Kernel span minus sum exposes gaps, but profiler inflation is not Python
+  overhead without a separate unprofiled event/control.
+- Direct `hipLaunchKernel` correlations count host submissions; graph-expanded
+  kernels and copy/fill kernels appear as trace rows without direct launches.
+- A/B decisions use same-session counterbalanced orders and identical IDs or
+  the applicable production-profile gate.
+
+## 4. External evidence review
+
+This section records useful external hypotheses and their evidentiary status.
+None of these numbers are hipEngine results.
+
+| Source | Mechanism or claim | Status for this campaign |
+| --- | --- | --- |
+| [Sleeping Robots, 2026-08-29](https://sleepingrobots.com/dreams/engramhalo-qwen38-flash-next-strix-halo/) | Independently tested EngramHalo on Strix Halo with a different quant. MTP reaches 28-38 tok/s at working depths; 26K MTP regresses to 15.0; kernel-only prefill improves up to about 35% at 26K. | Useful cross-check of the direction, not a same-quant baseline. Confidence: medium-high for the external fork, low for transfer magnitude. |
+| [apepojken/llama.cpp `843d575`](https://github.com/apepojken/llama.cpp/commit/843d5750579a15ed4a42d73eb862855c271021ac) and local survey, 2026-08-31 | Vulkan rollback/MTP fixes, pooled QSA keys, gathered attention, radix top-k, GDN/inject dataflow, and epilog fusion. Matched Q4/BF16 reaches 291.73/23.21, 375.23/22.42, and 397.43/22.25 pp/tg128 at p512/p1024/p4096. Static logits remain 160/160 top-1 vs upstream Vulkan, but only 8/12 AR cases repeat and Q8-KV MTP is 9/10 AR-message exact. | Fast experimental lane only. Its published Q3 50.4 tok/s headline remains author-reported; the matched AR and MTP rows fail this campaign's exact-output contract. See the Strix Halo survey. |
+| Local source/build refresh, 2026-08-30 | Existing `UD-Q4_K_XL` runs in both forks. EngramHalo BF16 reaches 296.12/362.72/17.62 and Nathan v0.7.2 reaches 413.04/396.25/23.85 at p508/p1012/tg32. Nathan lazy-on is 1.255x over the cache-cold-to-warm off average at p508 and neutral by p1012. Engram MTP is 1.128x complete-wall but only 9/10 AR-message exact. | Historical same-host shape evidence, superseded for AR targets by the exact-token screening in section 2.1. The MTP speed row fails correctness and remains diagnostic only. |
+| [Pat1entZ3r0/strix-qwen-next-flash-optimization](https://github.com/Pat1entZ3r0/strix-qwen-next-flash-optimization) `413c33c`, source-reviewed 2026-09-02 | Single-commit program consolidating the three forks this campaign already tracks: `SOURCE_LOCK.json` pins base `c589f0ed1` + #27879 and reference forks apepojken `843d575`, Nathan `ad914eb`, EngramHalo `1423f689`. 40 patches in two lines (`hybrid-04` correctness/perf, `hybrid-03-mtp` draft head + rollback fixes), 58 claimed experiments, and a published nulls catalog. Headline 2.5-3x decode and 2.5x prefill on Vulkan with a custom IQ4_XS + dense-Q6K quant, Q8 K/V, `-ub 2048`, and an EasiiX Q8_0 MTP sidecar. | Author-reported; nothing locally reproduced. No rate binds: different quant, K/V, backend, and host instance. The headline moves four axes at once, and its `pr-27742-035e227` baseline predates #27879, so the denominator still carries the QSA block-selection bug that the program's own patch `0001` fixes. Its correctness gate has no repeat arm. The value is the rollback-ring mechanism, the nulls catalog, and the fact that its `MODEL_LOCK.json` pins this campaign's exact UD-Q4_K_XL shards (revision `c8b5954a`, all four shards LFS-verified) while publishing no row for them. Full review: survey section 6.7. |
+| [Aristo94/EngramHalo.cpp](https://github.com/Aristo94/EngramHalo.cpp), refreshed at `1423f689986f670417128fd545a0aa1241166103` | Wide radix top-k (`33766da`), masked-slice FA skip (`bf8412d`), QSA top-k row gather (`2606d49`), MTP sidecar (`afb80ed` + `2ba3009`), PLE lazy row prefetch (`c911e6b`), and load-page drop-behind (`5486559`). Chunked GDN prefill exists (`62160a7`) but was explicitly not active in the published numbers. The published container additionally applies the tracked #25992 host-buffer and per-buffer-mmap patches. | Code and build mechanisms verified by source inspection and a local gfx1151 HIP build. hipEngine already covers the QSA selector/gather direction; PLE advice/prefetch, loader drop-behind, full-step graphing, and MTP economics remain open. |
+| [Nathanw1014/strix-halo-llamacpp v0.7.2](https://github.com/Nathanw1014/strix-halo-llamacpp/releases/tag/v0.7.2), toolbox HEAD `a8631dfbf0aeb6a4004866fce1fd7e5c10370049`, source `ad914eb6587d3da8b2bf50f0056cc20b3d3e91f5` | `TENSOR_READ_LAZY` + `MADV_RANDOM` alone loses; merged `WILLNEED` row prefetch is the paying half (`77362a8`). Qwen4Exp also adds host PLE gather and reusable decode topology (`631b9ff`), per-block QSA bias (`024b7ad`), and MTP graph/context (`3543908` + `39817c4`). Vulkan lineage includes MoE row lists (`212cca8`), route-scale epilogue, SiLU/mul fusion, transposed concat (`30d8bb0`), dense wave32 (`25c45fe`), and LDS padding (`baf6360`). | Source mechanisms verified; release and local source builds agree within 1% on this host. Vulkan shader topology is not portable to HIP, but the removed data movement, host synchronization, graph rebuild, and LDS-bank mechanisms are actionable. |
+| [quimmedes/cafe-llama.cpp](https://github.com/quimmedes/cafe-llama.cpp), observed HEAD `2da84198eccb0aee59abba59e967dcc61f84ce07` | The fresh fork exposes pinned-host/CPU routed-expert placement, PLE n-gram SSD mmap or disable modes, and Qwen4Exp MTP trunk/combiner fixes. Commits `ba7bd23` and `7ee981d` add the PLE controls; `19aefd2` and `d98dc18` address MTP hidden export and mixer mapping. | Track as a source lead, not a measured comparator. SSD PLE and host-placement ownership may inform P9; `--no-ngram` changes the model and cannot close parity. No same-weight local rate or correctness packet has been verified. Confidence: high for repository/commit identity, medium for transfer applicability. |
+| [omlx PR #3260](https://github.com/jundot/omlx/pull/3260), open head `3343e4414f75b9808d2d8a6de1950ad96ce8dac8` | Adds row-addressable SSD expert reads, fixed preallocated expert banks, manifest pins plus an evictable hot tier, learned route-frequency hotlists, expert-major overflow chunks, and checked/speculative miss handling with transactional KV/SSM restore. The author reports exact expert output at a 0% substitution threshold. | Track the fixed-bank, telemetry, hotlist, and transactional retry mechanisms for constrained-residency work. This is an unmerged Apple MLX/safetensors path with a dirty merge state, not direct HIP/GGUF code or local performance evidence. Confidence: high for PR state/design, low for transfer magnitude. |
+| [exllamav3 PR #303](https://github.com/turboderp-org/exllamav3/pull/303), open head `5705f07b39671746af336bb004ad2e324410a654` | Builds a selected draft-only vocabulary head, keeps draft IDs on GPU through the block, and leaves full-vocabulary target verification unchanged. The author reports CUDA/SM89 Qwen3.8-27B MTP-4 **36.584→44.579 tok/s (+21.9%)** with a grouped 64K head; follow-up comments report separately quantized individual-row 8K/16K/32K heads at 0.032/0.165/0.329 ms versus 0.932 ms for grouped 64K, but acceptance varies with the proposal map. | Mechanism: high-confidence source match. Transfer magnitude: low confidence because backend, model, quant, draft depth, and verifier differ. On gfx1151 the current Qwen4Exp 248,320-row Q8_0 draft head is **3.153 ms / 41.3%** of a 7.639-ms draft step, but eliminating it entirely would improve the retained full-suite wall only **0.97%** and **0.955x→0.964x AR** because serial target verification dominates. P11 should first remove host draft outputs, then test individual Q8_0 rows—not EXL3's 128-token groups—after target verification improves. |
+| [halo-box/strix-llama.cpp PR #11](https://github.com/halo-box/strix-llama.cpp/pull/11), head `a7ad7b7f` on base `6c84c7d5`, source-reviewed 2026-09-02 | gfx1151-gated ROCm prefill package: MMQ tile retune (256→128-wide Q4_K/Q5_K/Q6_K/Q8_0), parallel top-10 `mm_ids` compaction, device-built routed-compact J48 MMQ (Q6_K/Q8_0 only), fused weighted top-10 expert sum + shared mul-add-residual, 32-warp/tile-16 GDN, Q8_0-KV decode FA opt. Author-reported +44.8%/+25.6%/+15.3%/+13.5% PP2048 at depth 0/12K/32K/64K on UD-**IQ4_XS** with byte-identical-logits correctness claims; faster FA tiles were rejected for logit drift. | HB-0/HB-1/HB-2 now pin local binaries, same-payload screens and active symbols; HB-3 operation-matched microbenchmarks remain blocked. The published IQ4_XS gain remains author-reported. The 2026-09-05 source audit corrects M6 to active H=48 non-KDA warps, with H=32 KDA tile-16 inactive; prioritize actual owner coverage over literal PR transplants. Dedicated follow-up: [`QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md`](QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md). |
+| Upstream llama.cpp [#27742](https://github.com/ggml-org/llama.cpp/pull/27742) | Qwen4Exp architecture support; merged at `6c84c7d5`. | Already represented in the fresh comparator. |
+| Upstream [#27794](https://github.com/ggml-org/llama.cpp/pull/27794) | `TENSOR_READ_LAZY` plumbing; merged at `fac889fb`. Nathan's branch keeps the missing batched row-prefetch half. | Useful PLE hypothesis. |
+| Upstream [#27836](https://github.com/ggml-org/llama.cpp/pull/27836) | Qwen4Exp NextN/MTP draft head; open. Its key note is that the hyper-connection combiner must run per stream; mean pooling first destroys acceptance. | Matches our retained lesson; use it to audit, not re-derive, the Qwen4Exp MTP combiner. |
+| Upstream [#26592](https://github.com/ggml-org/llama.cpp/pull/26592) and [#26388](https://github.com/ggml-org/llama.cpp/pull/26388) | hipCUB/CUB paths for top-k/argsort on HIP. | Superseded for our purposes by the in-tree GPU QSA selector; keep as lineage context only. |
+| Upstream [#27466](https://github.com/ggml-org/llama.cpp/pull/27466) | ROCm radix top-k for long rows; open. | Confirms the long-context failure mode; hipEngine already uses a device selector. |
+| Upstream [#26001](https://github.com/ggml-org/llama.cpp/pull/26001) | Chunked GDN prefill using tensor-core fragments; CUDA/NVIDIA-focused and open. | Hypothesis only. Our nearest unit is the retained colwarps owner plus the rejected decode correction. |
+| Nathan's Vulkan evidence pack and branches | q8 KV dequant-once, contiguous K/V, MoE row-list prepass, scale epilogue, SiLU/mul fusion, concat transpose. | Vulkan/RADV-first; useful patterns, not HIP evidence. Map only the algorithmic dataflow, not shader specifics. |
+| Upstream [#25494](https://github.com/ggml-org/llama.cpp/pull/25494) | Vulkan q8_0 KV dequant-once for prefill; merged at `dc72703f`. | Not directly applicable to HIP; reinforces "dequantize/reorganize once, then attend". |
+| Upstream [#26419](https://github.com/ggml-org/llama.cpp/pull/26419) | MMA FlashAttention at head-dim 256 on RDNA; open. | Relevant to QSA prefill geometry, but measured on RDNA4, not gfx1151. |
+| Upstream [#27880](https://github.com/ggml-org/llama.cpp/pull/27880) | qwen4exp graph-split reduction; merged at `6fe74980`. | Already in the remote-HEAD comparator. |
+| Upstream [#27925](https://github.com/ggml-org/llama.cpp/pull/27925) and [#26686](https://github.com/ggml-org/llama.cpp/pull/26686) | Vulkan MoE padding/row-ID changes that improve the Vulkan comparator. | Already in the remote-HEAD Vulkan comparator; no HIP action implied. |
+
+#### Externally published claims this host does not reproduce
+
+Three widely repeated external statements fail or do not transfer here. Record
+them so no unit is planned or rejected on their authority.
+
+- **"ROCm/HIP is 25-30% slower than Vulkan on gfx1151."** Pat1entZ3r0's
+  `REJECTED.md`, from one containerized ROCm-10 experiment reported as four
+  percentages with no rates. The matched exact-token screen in section 2.1 does
+  not reproduce the prefill half: patched upstream HIP is level at p512 and
+  ahead at p1024/p4096 (**301.68 vs 259.73** and **294.47 vs 266.98**). Only the
+  decode half is directionally consistent (**17.74/16.88/14.77 vs
+  22.97/20.11/18.07**, -23%/-16%/-18%). It is a decode-only, build-specific
+  result, not a backend-level fact, and it does not bear on the HIP-first
+  ordering in section 1.
+- **"`RADV_PERFTEST=cswave32` is -4%."** A Vulkan shader-compilation knob that
+  does not transfer to wave32-native HIP kernels. It is not evidence against the
+  P3 dense retile and LDS-padding sweep.
+- **"`-ub 2048` is +26-36% prefill."** Their ubatch selects backend GEMM/MMQ
+  paths; hipEngine's chunk is host-loop granularity over its own kernels, where
+  the P0 sweep measured chunk 1024 at +2.25/2.55% and chunk 2048 losing. Not
+  transferable. Every comparator lane here already runs `-b 8192 -ub 2048`, so
+  no lane is under-configured on this axis.
+
+### 4.1 Mechanism transfer audit
+
+The useful part of the external forks is the mechanism, not their headline rates.
+This is how each mechanism maps to the current hipEngine implementation:
+
+| Mechanism | Current hipEngine state | Campaign action |
+| --- | --- | --- |
+| Wide, graph-safe QSA radix top-k | Exact stable four-pass radix selection already lives in `qwen4_exp_qsa.hip`; no host sort is used. | No port. Keep it as the selector oracle and re-profile only its real long-context score width. |
+| Persistent pooled QSA keys and per-block bias | Complete four-token blocks are pooled once into a persistent device buffer; selection is block-based rather than one bias value per KV cell. | Treat the Nathan fixes as corroboration. Audit metadata copies and append work, not the already-solved algorithm. |
+| Gather only selected QSA K/V rows | Paged sparse QSA consumes explicit selected positions/counts rather than scanning a dense mask. | Audit selected-row count, sort, page locality, and head-dim-256 geometry at 16K+; do not rebuild llama's graph gather. |
+| Host-side PLE row gather | `Qwen4ExpPLEMMapTable` gathers/dequantizes only requested rows, and a pinned two-buffer ring stages them. It still creates temporary arrays and performs synchronous gather/copy. | Preserve ownership, but add direct-to-ring dequantization, duplicate/page coalescing, telemetry, and prefill overlap in P9. |
+| PLE random advice plus merged row prefetch | No equivalent `MADV_RANDOM` + page-aligned merged `WILLNEED` pair exists. | Implement both halves together with off/auto/on rollback. Never ship random advice alone; Nathan measured that half losing. |
+| Load-page drop-behind | Hot weights are uploaded without an explicit per-tensor file-page release policy. | Measure transient free/available/swap/load wall, then add bounded unmap/fadvise only for copied tensors; never drop lazy PLE pages. |
+| Fixed expert bank plus route hotlist | Current Qwen4Exp keeps the declared routed-expert representation resident; it has no SSD miss/promotion tier. | Keep omlx PR #3260 as a constrained-memory design lead. Any future port needs GGUF row indexing, exact 0%-substitution routing, request-safe bank ownership, transactional state restore, and cold/warm workload gates; it is not part of short-AR parity. |
+| MoE row-list prepass | Device count/prefix/scatter and expert-sorted lanes already exist. | Do not port Vulkan topology. Remove the remaining D2H tile-count synchronization and the Q8 expert-start D2H + Python expert loop; use guarded fixed-capacity device grids. |
+| Route-scale/weighted-down epilogue | c1 Q5 down can fuse ordered weighted sum; grouped prefill still writes expert outputs and runs a separate weighted lane reduction. | Add exact/T2 grouped down+route-weight+scatter/ordered-reduce candidates, with the current chain registered as fallback. |
+| Shared-expert and router completion | Shared gate/up, SiLU, down, gate projection, cast, and combine remain separate; router writes all 512 logits before top-10. | P3 owns operation-complete shared-expert and exact stable router+top-10 candidates after role measurement. |
+| Dense wave32 retile and LDS padding | gfx1151 HIP kernels are wave32-native, but each quant/shape has independent register/LDS behavior. Vulkan constants do not transfer. | Sweep actual rotating-weight shapes with compiler VGPR/LDS/scratch evidence. Port the bank-conflict/resource hypothesis, not constants. |
+| Tiled transpose and SiLU/mul fusion | Exact bulk Conv and selected gate/up+SiLU cover analogous paths, but GDN state layout and shared-expert SiLU still expose traffic. | Use the transpose hypothesis in P7 and the activation hypothesis in P3/P6 only where a current trace names the traffic. |
+| Reusable decode topology | 48 stateless per-layer MoE graphs are reused; the other 1,195 direct launches/token remain outside them. | P8 grows from one stateful layer to one transition and then a full step, with pointer/state/rollback/replay gates at every rung. |
+| Device-owned decode boundary | Normal greedy text generation now runs exact registered F32 argmax on device and copies one int64 token; direct runner, MTP, numerical, and debug paths retain explicit full-logit output. | P5 still needs device-to-device token chaining and the complete blocking/async copy census before graph capture. |
+| MTP selected-vocabulary draft head | The Qwen4Exp draft currently runs the full 675,430,400-byte Q8_0 `248320×2560` head and returns 993,280 logit bytes plus hidden state to the host for every proposal. A clean leaf diagnostic measures the head at **3.153 ms**, **41.3%** of a 7.639-ms draft step. GGUF Q8_0 output rows are independent, so EXL3's aligned Hadamard-group restriction does not apply. | First use existing device argmax and one compact candidate packet; full draft logits remain debug-only. Then gather individual Q8_0 rows into default-off 8K/16K/32K heads (21.25/42.5/85 MiB) with a local→global ID map. Build the map from unrestricted full-suite plus training-only telemetry, gate category-heldouts separately, and report acceptance/economics by category. Do not expect this alone to fix current MTP: even a free head projects only **0.964x AR** on the retained suite. |
+| Per-stream MTP combiner and graph | The combiner is correct, but draft hidden/logits and target full logits cross the host; target verification is serial. | Keep the combiner. P11 makes proposal, hidden chaining, verification, acceptance, commit, and rollback device-resident before budget tuning. |
+| q8_0 K/V, `-ub 2048`, and hipBLASLt | These are different llama.cpp representation/config knobs. Current hipEngine is BF16 K/V at chunk 512. | Chunk size is a P0 same-representation sweep. Q8 K/V remains a separately gated T3 profile after BF16 AR parity. |
+| Quantized-KV dequant-once/contiguization | There is no quantized-QSA-KV owner in the binding campaign. | Backend-disjoint evidence only until P10; it cannot close a BF16-KV milestone. |
+| Fully masked FA slice skip | Current sparse attention no longer scans a dense selected-token mask, while short prefill has separate dense flash geometry. | Test only against a trace-proven masked slice in P4/P10; reject if it optimizes work hipEngine does not execute. |
+| Chunked GDN prefill | hipEngine has strict serial/prepare+peer/column-warp owners; Engram's chunked kernel was not active in its published rows. | Treat it as a design hypothesis in P4. Require local arithmetic classification, state parity, and whole-role evidence. |
+| Recurrent rollback ring depth and bank coverage | hipEngine owns its own checkpoint/replay for GDN conv and SSM state; no equivalent audit against the two Pat1entZ3r0 EXP-016 failure cells has been run. | Untested hypothesis, highest MTP-correctness value. Their patch `hybrid-03-mtp/0006` (after apepojken `32af70900`) claims banks `[n_written, K)` are never written and keep stale content a rollback then restores, and that the spec ring must be `n_max + 1` deep because the verify batch holds the previously sampled token plus `n_max` drafts. Symptom: a ~4.8-nat post-rejection logit shift, invisible to any single-shot logit gate. P11 owns the rejection-depth RED sweep; their own SSM clamp is self-described as "best-effort deeper" than exact, so a correct diagnosis may still be an incomplete fix. |
+| Depth-conditional draft budget | P11 currently sweeps budgets 1-6 at short context only, so a budget chosen there would be frozen for every depth. | Transfer the finding, not the constants. They report n-max 2 shallow and n-max 6 at >=32K (+37% at 64K, +41% at 128K versus plain) with code acceptance decaying 0.94-0.97 shallow to 0.75-0.88 at 128K. Fit a policy over measured acceptance rather than adopting two hand-chosen constants tuned on their prompts; a constant selected that way is not retainable under the anti-gaming rule. |
+| Lazy PLE from local storage | P9 already owns sparse mmap ownership, cold/warm separation, and the advice+prefetch pair. | External corroboration for the premise and a correction to the expected payoff. They report a Q8_0 PLE splice served from NVMe at identical decode speed with page cache down to ~7 GiB and ~30 GiB RAM freed, validated on 128-token reps only. Complementary negative: the IQ4_NL-PLE "91 GB" quant loses at 128K per its own publisher (18.6 vs 26.9 tok/s). Direction is stream a large PLE, not shrink it. Raises P9's memory payoff and lowers its expected speed payoff. |
+| Dense-versus-expert decode dominance | The impact queue already ranks short-decode selected projections and Q8; there is no in-tree quant-axis evidence separating dense from routed-expert decode cost. | Two independent external rows agree that dense tensors, not routed experts, bind decode bandwidth at this MoE shape: a dense-Q6K re-quant gives +5-13% decode at flat PPL, while Q3_K_XL, which shrinks only the experts, gives no meaningful speed. Supporting evidence for the dense/projection ranking. As a quant change it stays a separately gated T3 product configuration with its own denominator; it cannot move the pinned UD-Q4_K_XL AR baseline. |
+| Per-dispatch versus per-submit cost | P8 contracts 48 MoE graphs plus 1,195 direct launches toward one submission. | Cheap external prior on where a P8 win can come from: their `GGML_VK_MAX_NODES_PER_SUBMIT` 200-800 sweep measured -1.3 to -2.4%, concluding cost is per-dispatch, not per-submit. Supports the launch-count premise and pre-rejects any variant that only bundles submissions without removing dispatches. |
+| Indexer head-sum and pooling reassociation | The QSA selector and pooling path are exact and stable; no candidate currently reassociates the indexer head sum. | Two external exactness negatives worth banking before one does. Their bit-exact r=4 indexer-key pooling uses a tree of strided adds rather than transpose/mean/transpose (EXP-005), and the head-sum slice tree from #28023 flips bits at depth and had to be made opt-in (patch `0032`). Their pooled-key cache, the largest depth win they report (+38-40% at 32-64K), is explicitly non-bit-exact in QSA selection with no published KL or top-1. Any hipEngine analogue is a production-profile candidate that must clear the numerical gates, not a free win. |
+
+### 4.2 Direct hipEngine versus pinned llama.cpp implementation audit
+
+This audit compares the current in-tree runtime with the compute sources behind
+the pinned upstream HIP lane. The local readable checkout is
+`llama.cpp-hip@17252c769`; the measured comparator is `f1793c1c4`. The Qwen4Exp
+model graph, scheduler reuse, GDN kernel, and MoE graph builder are unchanged
+between those revisions. The relevant measured-revision delta specializes the
+HIP `mm_ids_helper` for top-10 routing. Loader patches affect startup ownership,
+not these compute conclusions.
+
+| Boundary | hipEngine implementation | Pinned llama.cpp implementation | Gap-closing action |
+| --- | --- | --- | --- |
+| Decode execution topology | `Qwen4ExpGGUFResidentModelRunner.step()` executes embedding, optional host PLE staging, and 48 physical layers from Python. Production `MoeGraphCache` captures only each stateless MoE subgraph. The exact full-transition graph exists only in `scripts/qwen4exp_stateful_layer_graph_probe.py`. | `src/models/qwen4exp.cpp` constructs one declarative root→48-layer→head graph and reuses topology through the backend scheduler. | Keep P8 admission-pending until the same-residency harness has a named-production graph arm. The strict cross-run 1.112x ratio is not an effect measurement. Work the larger measured QSA/MoE/dense owners first. |
+| QSA selected attention | `qsa_sparse_attention_paged_bf16_f32_kernel` gives one CTA to each query head and iterates about 2,048 selected tokens serially. Every token performs QK reduction, online-softmax update, weighted-V update, and several CTA barriers. Twelve calls own 35.88 ms/token above the QSA boundary. | `build_qsa_top_k()` builds selected visibility, then `build_attn_qsa()` turns it into an attention mask and delegates the QKV work to the backend MHA/flash-attention path. It does not run a barrier-per-selected-token Qwen-specific kernel. | Build strict ordered QK-score, online-softmax-coefficient, and weighted-V-recurrence passes in P6. Preserve the current stable selector and selected-position ABI; replace only the serialized attention owner. |
+| GDN recurrence/state | The strict decode kernel assigns one CTA per value head, repeatedly reads/writes strict-layout state, and combines prepare/recurrence/norm-gate through separate ownership. The rejected transposed candidate assigned one wave to each output value, creating 6,144 blocks. | `ggml-cuda/gated_delta_net.cu` assigns four output columns to a CTA, stores transposed state shards in registers across the token loop, and writes each shard once. Qwen4Exp then applies its sigmoid-gated norm in the graph. | Implement a four-or-more-column operation-complete owner with persistent transposed state. Do not retry transpose as a sidecar around the current stages. |
+| Routed MoE | `run_qwen4_exp_moe()` explicitly materializes router logits, top-10, BF16 activation, count/prefix/scatter maps, quant-specific gate/up, activation, down, weighting, and reduction. Some WMMA prefill routes read `group_wmma_total` back to the host to size launches. Three exact early-MoE tile/grid schedules have already lost. | `build_moe_ffn()` expresses routing, `MUL_MAT_ID` gate/up, GLU, down, weighting, and ordered adds in one graph. HIP `mm_ids_helper` builds expert bounds plus compact forward/inverse maps on device; `f1793c1c4` specializes top-10. | Stop changing isolated tile constants. Transfer device compact-map, activation reuse, and graph-fusion mechanisms against the current **3.408/6.307/25.398-s** operation owner and the measured broad-active-expert shape. |
+| PLE publication | hipEngine keeps the 28.8-GB IQ4_NL table as a sparse mmap, hashes on host, gathers/dequantizes 16 rows into pinned staging, and publishes 10 KiB before the graph. This is memory-efficient but remains a host boundary. | llama computes PLE row IDs in `llm_graph_input_ple::set_input()` and presents them as reusable graph inputs; `ggml_get_rows` and downstream PLE operations remain in the graph. Its loader needs host-specific patches for this artifact. | Keep hipEngine's sparse ownership. Make the host stage request-owned/direct-to-ring and overlap or enclose everything after publication; do not copy llama's full table residency. |
+| Prefill orchestration | hipEngine runs fixed chunks (512 default) through explicit Python-owned kernels. Chunk 1024 improved only 2.3–2.6% at longer shapes. | llama's reusable graph and backend selection use larger ubatches and generic MMQ/`MUL_MAT_ID` paths. Exact matched device sums are **3.10x/3.74x/5.05x** faster at p512/p1024/p4096. | Treat prefill as a MoE+dense/GR+long-QSA data-reuse portfolio. Graphing alone cannot erase the device-sum gap. |
+
+This source comparison narrows the campaign to mechanisms visible in both code
+and profiles. It does not prove the size of any unimplemented hipEngine win;
+section 2.2's local Amdahl row remains the admission gate.
+
+### 4.3 Wilkin runtime and scheduler follow-ups (September 6, 2026)
+
+Reviewed `pwilkin/rocm-systems` at `78d1160060bb6ada29b3b21e20c998a48161b257`,
+the Strix Halo site/installer at `4d0bf821cab29734dacce5321fcd73add72908c0`,
+and linked llama.cpp at `d3b5cc43d1fcfce891f2de94d5274ee40eceb21c`.
+See [source-pinned review and execution protocol](QWEN4EXP-WILKIN-RUNTIME-REVIEW.md).
+Our existing [PM4 work](PM4.md) is the baseline for this review, not missing
+infrastructure. User explicitly requests a revisit against Wilkin's differences.
+No external code or library installed; no new local speed claim.
+
+| Follow-up | Concrete difference / applicability | Next gate and disposition |
+| --- | --- | --- |
+| WIL-1: gfx1151 PM4 through HIP queue | External prepared lists use HIP's tracked queue and queue-aware scratch leases; ours is gfx1100-only with synchronous dedicated-queue boundaries. | **Census measured; runtime A/B deferred for prefill:** current code4096 has no prefill graph launches. Decode48 graphs/625 nodes, intra-graph gaps1.35-1.43ms; full ABI qualification and current HIP graph / custom AQL graph / custom PM4 A/B remain open for a paying decode scope. |
+| WIL-2: graph update and collapsed batches | Batched packet rebuilding, topology caching and optional collapsed-stream merge may reduce construction/rebuild cost without changing kernels. | **Hot-window update opportunity absent in measured case:** zero create/update APIs, stable48 graphs,144 replays. Cold/rebuild cost remains unmeasured by this hot census; test independently of PM4 if it becomes material. |
+| WIL-3: UMA input ownership | Ring slot retirement, pointer-generation invalidation and async allocation-root pinning are useful design checks. PLE currently documents synchronous consumption. | **Open before async PLE changes:** delayed consumer/wrap/cancel/c2 tests plus complete copy/wait timing and capacity charge; not a demonstrated current race or automatic ring-depth increase. |
+| WIL-4: semantic-safe TOP_K | Multi-CTA radix thresholding may help long-context selection; our QSA already has radix selection and strict ordered expansion. | **Open, lower priority until owner cost pays:** exact lower-index ties and sorted compaction after threshold. External atomic gather is not admissible unchanged. Separate QSA, top10 router and vocabulary k1 owners. |
+
+Do not use `ENABLE_RETAINED_PM4=0` as the AQL-graph control: the installer
+also disables graphs. HIP dispatch activity tracing disables external PM4;
+prove engagement unprofiled and keep profiling as a separate AQL diagnostic.
+The site's Qwen3.8-27B IQ4_XS/DFlash2 rates and another physical8060S host
+are not our Flash-Next UD-Q4_K_XL rates. The pinned halo-box Vulkan target
+and all production numerical/control gates remain unchanged.
+
+## 5. Plan
+
+Phase numbers preserve evidence lineage; they are not the execution queue. The
+[active review punchlist](#active-review-punchlist-september-8-2026) controls
+what runs next; section 2.2 retains historical impact evidence. After every
+retained unit, collect a fresh role/launch/copy census, recompute overlapping Amdahl rows, and
+re-rank the remaining work. If a phase is blocked, record the concrete blocker
+and continue the highest-gap-coverage independent phase; a blocker is not
+campaign closure.
+
+### 5.1 Impact gate and reprofile cadence
+
+Before implementation, a campaign-critical candidate must:
+
+1. come from the current named-production whole-path trace for the exact shape;
+2. name an exclusive owner `O`, current wall `W`, comparator wall `C`, plausible
+   local owner speedup `s`, zero-cost ceiling, projected wall saving, and
+   target-gap coverage;
+3. identify overlap with graph, copy, synchronization, host-stage, and kernel
+   buckets so savings are counted once;
+4. cite the concrete hipEngine and comparator implementation difference that
+   could produce `s`; and
+5. define the cheapest falsifying leaf test plus the binding whole-model gate.
+
+By default, do not spend a dedicated campaign iteration when either the
+zero-cost ceiling is below **1% of complete wall** or the candidate can close
+below **5% of the current comparator gap**. An exception must unblock a
+higher-impact owner, repair correctness, or have negligible implementation
+cost. Exact small sub-window wins remain retainable under repository policy,
+but they do not
+outrank a larger measured owner and they accumulate in a separate ledger until
+the complete-wall effect resolves.
+
+After a topology change such as whole-step graphing, rerun the complete affected
+profile before using any old kernel share. After an ordinary retained kernel
+change, refresh its role plus the launch/copy census immediately and refresh the
+full canonical ledger when cumulative measured savings reach 3% of wall or the
+owner order changes. Two losses in one scheduling family still require a new
+mechanism or profile. A micro win whose whole-role effect is below timing
+resolution is bundled into an operation-complete boundary rather than tuned
+again in isolation.
+
+### 5.2 Definition of done for one optimization unit
+
+Every code or kernel unit follows the same loop:
+
+1. Name `W/C/O/s`, zero-cost ceiling, projected wall saving, target-gap
+   coverage, arithmetic class (T0-T3), affected layers/shapes, expected
+   mechanism, overlap exclusions, and registered strict fallback.
+2. Add the RED oracle before implementation. For a port, run
+   `scripts/check_lineage.py`, inspect source drift, and cite source path plus
+   commit.
+3. Microbenchmark actual immutable weights/shapes. Rotate more than 64 MiB of
+   weights for c1 tests so MALL does not fake DRAM throughput. Use warmups plus
+   counterbalanced pairs and record grid, waves, VGPR, LDS, scratch, spills,
+   duration, and effective bandwidth/throughput.
+4. Trace the expected kernel name with `rocprofv3`; a fast helper that is not
+   selected is not evidence.
+5. Run the complete strict or production numerical/control/task/lifecycle gate
+   before promotion, then same-session p512/p1024/p4096 and context-conditioned
+   tg128 wall measurements.
+6. Retain an exact non-regression or a fully gated production win; otherwise
+   reject it and restore the registered incumbent. Do not tune the same family
+   again after two measured losses without a new profile or mechanism.
+7. Emit the compact accepted/rejected/blocked artifact, update rollups/catalogs,
+   write the immutable worklog entry, and commit the validated unit immediately.
+
+### Phase P0 — binding comparator and measurement contract
+
+Goal: turn the shape-only external refresh into one exact, repeatable target
+matrix before implementation claims parity.
+
+- [x] Promote the wall/profile driver, trace analyzers, role attributor, sync
+      diagnostic, report generator, and historical p508 fixture.
+- [x] Refresh/build EngramHalo HIP and Nathan Vulkan at exact identities; retain
+      same-weight BF16/Q8 shape diagnostics and the MTP correctness failure.
+- [x] Commit the category-balanced p512/p1024/p4096 fixture and cross-engine
+      driver that feed identical token IDs, sampler, K/V type, prompt-cache
+      state, and 128-transition output horizon to hipEngine and every comparator.
+      Keep generated `llama-bench` rows in a separate `shape_only` class.
+- [x] Add at least one prompt from every code/general-English/general-Japanese/
+      mixed category to the AR wall packet so one routed prompt cannot define
+      parity. Category-heldout expansion remains a closure gate.
+- [x] Freeze the current three-repeat BF16 screening target per row for
+      upstream llama.cpp, EngramHalo HIP, and Nathan Vulkan, with deterministic
+      rows separated from non-binding diagnostics. Refresh a comparator only as
+      a separate baseline event with old and new binaries measured on the same
+      host. A five-pair section 6 closure refresh remains open.
+- [x] Record hostname/machine ID, source and binary hashes, compiler/driver,
+      profile manifest, model-part hashes, exact command, CPU governor/TuneD,
+      `amd_iommu`, power/clock samples, free/available/swap, and active GPU
+      processes in the canonical screening artifact. Repeat the capture for the
+      eventual closure artifact.
+- [x] Add explicit warm-page-cache and isolated cold-PLE modes. Never average
+      or compare them as one workload. Cold mode closes/remaps and applies
+      DONTNEED only to the 28.8-GB PLE tensor range before every request; it
+      never uses global `drop_caches`. Matched code-p512 is **91.676 warm vs
+      56.214 cold pp/s (0.613x)** with deterministic equal outputs and zero
+      teardown. Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p0-ple-cache-modes.json`.
+- [x] Sweep hipEngine prompt chunk 256/512/1024 (and 2048 where the prompt
+      permits) at p512/p1024/p4096 with memory and correctness controls; select
+      by model evidence rather than copying an external `ubatch` value. All
+      routes are deterministic and tear down to zero. Chunk 1024 improves
+      weighted p1024/p4096 **2.55%/2.25%**, but is **-2.05%** at p512 versus
+      chunk 512 and adds **720 MiB** peak; the incumbent p512 arm is also noisy
+      (>2% CV). Chunk 2048 loses to 1024. Retain default 512; no promotion from
+      an ordered/noisy screen. Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p0-canonical-chunk-sweep.json`.
+- [x] Extend the gap report to carry per-layer role time, direct/graph launch
+      APIs, blocking/async copies and bytes, synchronizations, compiler resource
+      data, and unresolved wall-minus-device time. The current context report
+      renders marker-scoped wall/kernel/residual time, kernel rows/families,
+      direct/graph/memcpy call counts and API time; raw profile artifacts retain
+      copy direction/bytes, sync calls, and kernel VGPR/LDS/scratch resources.
+- [x] Emit the first current canonical Amdahl ledger: clean four-category wall,
+      100%-attributed exact-token hipEngine p512/p1024/p4096 prefill,
+      live-513/1025/4097 decode with complete state/lifecycle checks, broad-
+      active-expert telemetry, and matched pinned llama.cpp HIP family traces.
+      `s` remains unknown until a local candidate runs. The old 41.6% remainder
+      is retired, and P8 returns to admission-pending. Evidence:
+      `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-canonical-impact-profile.json`.
+
+- [x] Declare and hold one GPU clock policy across every arm of every paired
+      row, and record it in host state next to the existing power/clock samples.
+      Pat1entZ3r0 measures +3-7% interactive decode from pinning
+      `power_dpm_force_performance_level=high`, which is the same magnitude as
+      the entire section 6.1 match band. Either pin it for the serving window or
+      explicitly declare `auto` and prove both arms ran under it;
+      `scripts/pn3_clock_probe.py` already samples the control. An unpinned,
+      undeclared clock policy invalidates the five thermal closure pairs before
+      they are collected. The campaign declares `auto`; canonical host
+      metadata now records every visible
+      `power_dpm_force_performance_level` value, and paired campaign commands
+      verify `auto` before launch.
+- [x] Audit every comparator lane for configuration it is entitled to before the
+      closure freeze. `GGML_VK_ALLOW_GRAPHICS_QUEUE=1` measures +4.0% decode on
+      RADV APUs externally and appears nowhere in this tree, so both Vulkan
+      lanes may be under-configured on the exact axis milestone 3 binds to.
+      A/B it, and A/B `--no-repack` and `-fit off` (expected neutral at
+      `-ngl 999`, but they change loader behavior). Milestone 3 requires the
+      *best* same-host Vulkan engine: a target frozen against an
+      under-configured lane is invalid and would have to be re-frozen.
+      Chunk/ubatch needs no action; every lane already runs `-b 8192 -ub 2048`.
+      **Hybrid-04 subaudit:** on exact code-p512 with one warmup and three
+      measured repetitions, graphics queue changes median pp/tok/s from
+      **212.08/25.59** to **209.60/25.96** (+1.43% decode, -1.19% prefill).
+      Relative to queue-on/repack/fit-off, no-repack is **+0.40%/-0.03%** and
+      fit-on is **+0.17%/+0.02%**, both neutral. Every repetition has the same
+      generated-ID hash. This does not extrapolate to or close the historical
+      upstream/Nathan Vulkan lanes; their old temporary binaries are absent and
+      must be rebuilt for separate A/B. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-hybrid04-vulkan-config-screen.json`.
+      **Historical lanes complete:** exact-source rebuilds at upstream
+      `f1793c1c4` and Nathan `ad914eb` show graphics queue improves decode by
+      **2.23%** and **2.31%** respectively while changing prefill by -0.18% and
+      +0.40% when disabled. Upstream no-repack is neutral; Nathan no-repack
+      loses 1.02% prefill. Fit-on loses 8.86% upstream and 1.79% Nathan prefill.
+      Therefore both refreshed canonical lanes use graphics queue, repack, and
+      explicit fit-off. Upstream IDs are exact across all arms; Nathan repeats
+      its same four position-dependent hashes in every arm but remains
+      nondeterministic and diagnostic. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-historical-vulkan-config-audit.json`.
+      **Canonical refresh complete, freeze blocked:** upstream reaches
+      **200.01/24.39**, **241.84/21.33**, and **266.58/18.98 pp/tok/s** and is
+      exact on 12/12 cases. Nathan reaches **360.23/24.34**,
+      **357.61/21.10**, and **351.85/19.01** but remains 0/12 repeatable.
+      Upstream p512 prefill/decode CVs are **3.74%/2.81%** and p1024 prefill CV
+      is **2.46%**, so this screen replaces the old under-configured row but
+      cannot freeze the section 6 target. Stabilize and repeat upstream in the
+      final counterbalanced thermal window. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-entitled-vulkan-canonical-refresh.json`.
+- [x] Build the Pat1entZ3r0 `hybrid-04` patch line on the pinned UD-Q4_K_XL
+      shards with BF16 K/V and run it through the canonical 12-case screen. It
+      is a patch series over a pinned base, so it is the cheapest new comparator
+      lane available, and its `MODEL_LOCK.json` shows the program already held
+      these exact shards while publishing no row for them. Use `hybrid-04`, the
+      token-parity-clean default line, not the headline stack: patches `0032`
+      and `0033` make the head-sum slice tree and the non-bit-exact pooled-key
+      cache opt-in. Expect nothing; the point is to convert an author-reported
+      program into a matched row or to close it. **Screen complete:** all 33
+      patches apply cleanly to `c589f0ed1`; the opt-in non-bit-exact head-sum
+      and pooled-key routes remain off. On Vulkan graphics queue, BF16 K/V,
+      `-b 8192 -ub 2048`, and `fit off`, one 12-case repetition reaches
+      **270.31/25.83**, **327.03/25.67**, and **364.04/21.26 pp/tok/s** at
+      p512/p1024/p4096. It matches current hipEngine generated-ID hashes on only
+      **2/12** cases, so it is correctness-invalid and cannot bind a parity
+      target. Zero warmups/one repetition is screening, not final thermal
+      evidence. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-hybrid04-canonical-screen.json`.
+
+### Phase P1 — layer 2 and the Q8 expert-down family
+
+Goal: remove the largest isolated miss and replace the only host-driven grouped
+expert path.
+
+The frozen MoE map is 43 layers of Q4_K/Q4_K/Q5_1, layer 2 of
+Q5_K/Q5_K/Q8_0, and layers 4/30/46/47 of Q4_K/Q4_K/Q8_0.
+
+- [x] Commit a generated quant/shape/owner inventory test so artifact drift
+      fails before timing. (82f646979)
+- [x] Write actual-weight RED fixtures for layer-2 Q5_K dual gate/up and Q8_0
+      down, including compact row maps, empty experts, tails, and route order.
+      (runner-level regression RED, 30a2fad9e)
+- [x] Route the existing selected Q5_K WMMA body for layer 2; classify its
+      arithmetic before timing and preserve the strict selected chain.
+      **PROFILE-REJECTED; DEFAULT OFF.** A durable p508 role trace cuts
+      layer-2 MoE 371.10→88.13 ms (4.21x) and Q5_K gate/up 279.86→16.66 ms;
+      p508 improves 5.34%, and all 20 category-balanced p512 pairs win. The
+      complete 450-row gate nevertheless fails the binding prefill-last /
+      prefill-to-c1 mean-KL scope at 0.001179 > 0.001. Overall/category,
+      repeat, state, and lifecycle checks pass, but no scope can be averaged
+      away. The T2 route is rejected and remains default-off. Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p1-layer2-grouped-profile-rejected.json`.
+- [x] Replace the Q8 path's `group_expert_start` D2H copy and Python loop over
+      512 experts with a device-driven grouped Q8 owner. Use a fixed-capacity
+      grid guarded by device counts or an equivalent no-host-roundtrip design.
+      (2a58aa1d8). **Perf-negative** (20260830T202256); strict stays default.
+- [x] Extend the proven Q8 owner to layers 4/30/46/47 when their independent
+      actual-shape and composition gates pass; do not hardcode only layer 2.
+      (Disposition: owner is perf-negative, so extension is not warranted on
+      present evidence.) The p4096 re-audit measures strict selected Q8_0 down
+      at **3.086 s**: layer 2 **0.758 s** and layers 4/30/46/47
+      **0.569/0.581/0.592/0.586 s**. This confirms impact but does not overturn
+      the same-mechanism negative; a materially new owner is required. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-dense-other-subowners.json`.
+- [x] Fuse route scaling/ordered accumulation into Q8 down only if the declared
+      strict/T2 contract passes. **Blocked before implementation:** Q8 down has
+      the same expert-major BF16 publication versus token-major ordered-FMA
+      ownership boundary as Q5. Preweighting rounds early and atomics lose
+      top-k order, so no strict candidate was admitted; no T2 contract was
+      declared merely to close the checkbox. Keep the primitive chain. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p2-q5-down-route-blocked.json`
+      and
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-dense-other-subowners.json`.
+- [x] Run the complete 450-row/three-repeat packet, tasks, physical c2,
+      lifecycle, paired p512/p1024, and the canonical p4096 gate. Bind only
+      certified scopes. The 450-row/three-repeat numerical, state, task-screen,
+      and lifecycle rung ran and rejected the candidate. Physical c2 and depth
+      timing were not run because later gates cannot compensate for a binding
+      numerical failure. A future materially new candidate restarts this rung.
+
+Expected evidence: layer 2 falls from about 397.95 ms toward the comparator
+role range; its maximum standalone p508 contribution is about 6.6%.
+
+**Actual P1 status (2026-08-31):** the durable recheck supersedes the initial
+unretained performance reading, but the complete profile gate rejects the same
+T2 route. It closes the isolated Q5_K gate/up device gap and wins about 5% at
+p512, yet prefill-last mean KL is 0.001179 versus the binding 0.001 ceiling.
+The route remains default-off; no c2/depth/promotion work is warranted for this
+unchanged arithmetic. A future attempt requires a materially different exact
+or T1 Q5_K dataflow and restarts the profile gate. Otherwise proceed to the
+larger P2 early-MoE owner. The Q8_0 down strict-fallback regression from the
+earlier device-owner refactor remains fixed by 30a2fad9e.
+
+### Phase P2 — early routed MoE layers 0-26
+
+Goal: attack the **2.366 s** fresh early-MoE owner without repeating the failed
+broad WMMA suffix experiment. The current p508 split is Q4/Q5_K gate/up
+**1.200 s**, Q5_1/Q8 down **1.152 s**, and activation+routing/shared tails only
+**13.25 ms**. Excluding rejected layer 2, layers 3–26 still own **1.849 s**.
+Active experts span 166–298 with median 9 rows/active expert across layers 0–26.
+Evidence:
+[`2026-08-31 P2 profile`](../benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p2-early-moe-profile.json).
+
+- [x] Split the role into Q4 gate/up, activation, Q5_1/Q8 down, route-weight
+      reduction, and host synchronization by layer and actual active-row count.
+      A clean role/API/copy trace plus separately instrumented routing census is
+      retained; telemetry wall is excluded from performance evidence.
+- [~] Remove the per-layer `group_wmma_total` stream sync/D2H read. Launch a
+      safe maximum tile grid with a device count guard, or prove a different
+      device-only submission scheme. The pinned llama `MUL_MAT_ID` path builds
+      expert bounds and forward/inverse compact maps entirely on device and has
+      a top-10 specialization at `f1793c1c4`; use that ownership pattern as a
+      differential design reference, not as inherited performance evidence.
+      **Blocked:** early exact layers already avoid this read. For the production
+      WMMA suffix, a T0 maximum-grid candidate removes runner D2H calls and keeps
+      all logits exact, but four-category p512 is neutral: aggregate **1.0008x**,
+      95% CI **0.9994–1.0022**, with only 8/12 pair wins. Worst-case invalid
+      CTAs offset the synchronization saving. The candidate is removed; a paying
+      route needs device-sized indirect dispatch or compact graph submission,
+      neither currently exists in-tree. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p2-moe-device-tile-grid-blocked.json`.
+- [x] Optimize T0 exact association first: physical-lane contraction,
+      multi-row weight reuse, coalesced metadata, and output grouping while
+      preserving the strict reduction/publication tree. Gate/up and down are
+      co-primary owners; start with an actual-weight counterbalanced leaf screen
+      on layers 3–26 rather than the <0.6% routing/activation tail. A first
+      exact 64→128 expert-worker-grid mechanism is rejected and removed:
+      both-family/Q4-only/Q5_1-only paired ratios are 1.0016/1.0026/0.9981,
+      all confidence intervals include 1.0. More workers alone do not improve
+      data reuse. Exact wider output tiling is also rejected and removed:
+      Q4 output8/Q5_1 output16/both ratios are 0.9968/0.9980/0.9944; the
+      both-wide 95% CI is wholly below 1.0. Serial per-CTA work outweighs the
+      smaller grid. Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p2-expertgrid128-rejected.json`
+      and
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p2-wider-output-tiles-rejected.json`.
+      A two-team exact Q4 CTA that computes output columns concurrently is also
+      rejected/removed at 0.9978x (95% CI 0.9927–1.0028). With worker count,
+      serial width, and concurrent-team schedules exhausted, do not continue
+      this scheduling family without a new reuse mechanism.
+- [x] Add operation-complete grouped dual gate/up+SiLU and
+      down+route-weight+scatter/ordered-reduce candidates. Keep primitive
+      chains registered. The first T0 grouped-Q4+SiLU epilogue passed a small
+      byte-exact RED but faulted the GPU before the first bound p512 warmup was
+      recorded. Removing it restored named-production p512 to **5.517 s / 92.802
+      tok/s** with exact lifecycle closure. It is rejected/removed; any retry
+      requires an actual K2560/production-FFN owner oracle before whole-model
+      execution. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p2-q4-grouped-silu-rejected.json`.
+      **Exact down+route blocker:** grouped Q5 publishes expert-major BF16 rows,
+      while the binding reducer gathers token-major lanes and evaluates ordered
+      `fmaf(value, weight, accumulator)`. Preweighting rows rounds the product
+      before addition; expert-major atomics cannot preserve top-k order; keeping
+      BF16 publication leaves the reducer intact. Do not add a nominal epilogue.
+      A retry needs cooperative token-major ownership or explicit T1/T2 gates.
+      Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p2-q5-down-route-blocked.json`.
+- [x] Sweep wave32 ownership, workgroup size, row/output tiles, and LDS padding
+      on rotating actual weights. Use Nathan's wave32/bank-conflict findings as
+      hypotheses, never as transferable constants. The full-model p508 ladder
+      already traverses actual resident early-layer tensors: expert-grid
+      64→128 is neutral (**1.0026x**, 95% CI **0.9981–1.0070**), output4→8 is
+      neutral/negative (**0.9968x**, **0.9922–1.0013**), and two concurrent
+      128-thread teams are neutral (**0.9978x**, **0.9927–1.0028**). The retained
+      128-thread kernel uses contiguous unique LDS metadata stores, wave-uniform
+      metadata broadcasts, and one reduction slot per wave; there is no
+      strided multi-lane LDS access for padding to repair. This closes the T0
+      schedule family. A retry requires new concurrent data reuse or explicit
+      T1/T2 gates. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p2-exact-geometry-closure.json`.
+- [x] Test T1/T2 WMMA only in independently calibrated layer clusters. Every
+      candidate must pass category, shape, transition, repeat, task, c2, BF16-
+      relative, lifecycle, and manifest gates; no final-prompt or one-layer
+      screen can promote it. The retained Q4/Q5 suffix 27–47 and Q8 suffix
+      32–47 satisfy independent boundary screens, 450-row numerical/category/
+      transition/repeat/state gates, 18-prompt task gates, physical c2,
+      lifecycle, manifest, expected-kernel trace, and same-session p508/p1012
+      whole-model gates. Their p508 speedups are **1.132x** and **1.234x**.
+      Layer 2 demonstrates the fail-closed boundary: its **0.001179** mean KL
+      exceeds **0.001**, so c2/depth work was skipped and the route remains
+      default-off. BF16-relative comparison was inapplicable because no
+      qualified full-BF16 Qwen4Exp runtime existed; same-quant strict remained
+      binding. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p2-cluster-calibration-closure.json`.
+- [x] Re-profile after each retained cluster and stop widening when the next
+      boundary fails. Layers that fail remain on strict owners. The retained
+      chronology is MoE suffix **32→28→27**, then Q8 suffix **32**, with p508
+      speedups **1.096x→1.122x→1.132x→1.234x** and a complete superseding packet
+      at every step. Widening stopped at failed MoE suffix 24, every individual
+      layer 0–26, Q8 suffix 27, and grouped layer 2; all remain strict. The
+      later 100%-attributed post-P4 p512 ledger refreshes the queue at Q4
+      **1.265 s**, Q5 down **1.087 s**, dense-other **1.071 s**, Q8 **0.884 s**,
+      GDN **0.599 s**, and GR **0.404 s**. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p2-reprofile-stop-boundary-closure.json`.
+
+**Current P2 exact-scheduling outcome (2026-08-31):** three distinct T0
+schedules are exhausted without a retainable whole-model win: more expert
+workers, wider serial output ownership, and concurrent 128-thread Q4 teams. The
+remaining **1.849 s** layers 3–26 projection gap is a kernel data-reuse/quality
+problem, not a routing-tail or launch-grid problem. A future P2 attempt requires
+a new reuse mechanism (or independently justified T1 arithmetic), plus fresh
+actual-weight and complete-profile evidence. Continue P3 meanwhile; do not keep
+mutating the same schedule family.
+
+### Phase P3 — shared expert, router, dense projections, and GR prefill
+
+Goal: account for the large non-routed prefill remainder that the earlier plan
+left without an implementation phase. The fresh p508 split names **1.670 s**
+of primary P3 roles: GR projection/read **709.32 ms**, GDN
+`attn_qkv+attn_gate` **532.36 ms**, router **181.91 ms**, `ssm_out`
+**137.84 ms**, and shared gate/up/down **121.61 ms**. Evidence:
+[`2026-08-31 P3 profile`](../benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-prefill-profile.json).
+
+- [x] Re-profile and separately name router, shared gate/up/down, attention and
+      FFN GR reads/writes, `attn_qkv`, `attn_gate`, `ssm_out`, QSA projections,
+      casts, and elementwise tails. Exact per-layer roles and kernel symbols are
+      retained from the fresh current-production trace.
+- [x] Evaluate an exact F32 router+stable-top-10 owner so 512 router logits are
+      not written and reread when the public path only needs deterministic
+      routing. Keep the full-logit primitive for diagnostics. The retained
+      multirow producer now reuses each F32 weight row across four prompt rows,
+      preserves the dense FMA/reduction order, and improves clean p508
+      89.689→91.121 tok/s (1.0160x); c1 stays dense. The complete 450-row and
+      18-prompt state/task gate is exact. Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-router-f32-tile4.json`.
+      A counter-last projection+stable-top-10 fusion preserves logits/IDs/weights
+      exactly but regresses the rows508 operation-complete primitive
+      1.877→2.128 ms (0.882x), even with four selector CTAs per tile. It is
+      removed; do not retry without eliminating global coordination or the
+      materialized logits. Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-router-fused-select-rejected.json`.
+- [x] Fuse shared gate/up+SiLU, then shared down+sigmoid gate+combine, preserving
+      F32/BF16 boundaries and the strict shared-expert chain. Reusing one F32
+      D4x3 activation pack across the two production-MMQ projections is exact
+      and improves their GPU window 1.134→1.077 ms, but is rejected/removed:
+      combined p508 is 0.9988x (95% CI 0.9971–1.0005) and code-p1024 is 0.9997x
+      (95% CI 0.9980–1.0014). Pack reuse alone is below complete-wall
+      resolution; require a larger gate/up+SiLU or down+gate+combine boundary.
+      Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-shared-q8-pair-rejected.json`.
+      An exact shared-down+BF16-boundary+sigmoid-combine composite is likewise
+      rejected/removed: its rows508 GPU window improves 1.376→1.292 ms, but
+      p508 is flat at 0.99974x (95% CI 0.99772–1.00176). Small shared-expert
+      epilogue launch contractions are now exhausted; move to a larger data-
+      reuse boundary. Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-shared-down-combine-rejected.json`.
+- [x] Fuse GR grouped RMSNorm + unequal down/inject where ownership permits;
+      add down+scaled-SiLU and up+sigmoid+gated-mean epilogues. The exact
+      sigmoid+gated-mean subunit is now retained for rows <=256: it removes one
+      launch per GR read, improves clean counterbalanced p508+128-step decode
+      14.162→15.111 tok/s, and passes 450/450 logits, 18/18 state/task prompts,
+      and lifecycle exactly. The first all-row tail-only fusion lost at rows508;
+      a replacement rows>256 Q8-up composite keeps each output's coltile8
+      reduction but groups two hidden columns across four branches and emits
+      sigmoid gates plus branch mean. Clean p508 improves 91.158→91.600 tok/s and
+      code-p1024 88.754→89.239 tok/s; the complete 450-row/state/task gate is
+      exact. Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-gr-sigmoid-mean.json`
+      and
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-gr-up-sigmoid-mean.json`.
+      Exact Q8 down+scaled-SiLU publication is rejected/removed before
+      whole-model timing: rows2 improves 1.118x, but binding rows508 regresses
+      1.655→1.667 ms (0.9926x). Keep the separate scaled-SiLU fallback and do
+      not add transcendental work to the register-heavy down publication.
+      Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-gr-down-scaled-silu-rejected.json`.
+- [x] Evaluate output-projection+GR-write composites for attention and MoE
+      boundaries, including the exact inject ordering. Start with the 36-layer
+      Q8 `attn_qkv+attn_gate` boundary: preserve the current MMQ qkv and exact
+      coltile gate arithmetic while sharing input/activation quantization, or
+      declare and fully gate a T1 pair. Registered singleton routes remain
+      fallbacks. The real rows508/K2560/N6144 exact gate geometry is exhausted:
+      incumbent c8r4 is **8.04 ms**, versus c4r8/c16r2/c8r8/c16r4/c32r1 at
+      **10.59/9.69/12.46/18.06/37.92 ms**, all bit-exact. A qkv+gate win now
+      requires true original-F32/MMQ ownership, not another tile constant.
+      Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-attn-gate-exact-geometry-exhausted.json`.
+      A final five-pair/category auto-clock screen rejects the current Q8 MMQ
+      attention-gate route: English beats at **1.0309x** (95% CI
+      **1.0113–1.0504**), Japanese/mixed match, but code remains noisy with
+      bound/candidate CV **2.19%/2.30%** and interval **0.9862–1.0271**. All
+      logits and repeats are exact and teardown is zero, but section 6 forbids
+      averaging categories; keep the route default-off. The secondary GR
+      down+inject boundary has a static heterogeneous-arithmetic blocker: both
+      attention/FFN down
+      weights are Q8_0 **[320,10240]**, while inject is F32 **[4,10240]**.
+      Exact inject must preserve its original-F32 K/FMA/reduction tree; reusing
+      Q8 activation is T1/T2, while a T0 single launch still performs both
+      traversals and removes only the tiny four-output boundary. Do not add a
+      nominal pair kernel without a new mixed-Q8/F32 RED and operation-complete
+      win. This closes the evaluated composite ladder with strict chains intact.
+      Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p3-gr-composite-closure.json`.
+- [~] Extend dense Q8 MMQ/WMMA scopes earlier only through the complete
+      production packet. Optimize exact coltile/rowbatch fallbacks for layers
+      that reject changed arithmetic. The first default-off extension adds the
+      omitted K2560/N6144 attention-gate shape: same-process p508 improves 3.52%
+      and all numerical scopes pass, but candidate state repeat 1 differs from
+      repeats 2–3 on the first code prompt. Same-schedule state repeatability is
+      binding; the scope is rejected/default-off. Ignoring the first run as
+      warmup is diagnostic only, not a promotion rule. Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-q8-mmq-attn-gate-rejected.json`.
+      **Current recheck blocked on performance, not correctness.** Later state
+      fixes clear the first-repeat failure: the complete 450-row numerical,
+      state-repeat, lifecycle, and semantic task review now passes. Current
+      four-category p512 is only **1.0104x** aggregate (95% CI
+      **1.0002–1.0206**, 9/12 wins), every per-category interval includes 1.0,
+      and alternating first-pair drift makes three categories noisy. This is
+      neither a clean win nor a loss under section 6; the route stays
+      default-off. The subsequent five-pair/category screen confirms rejection:
+      code remains above 2% CV in both arms and its interval includes 1.0,
+      while the other categories cannot compensate. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p3-q8-mmq-attn-gate-fivepair-rejected.json`.
+- [x] Require each retained subunit to reduce its complete role and p512/p1024,
+      not merely an isolated GEMM; re-run p4096 at the phase gate. A fresh
+      stacked profile after the retained router/GR paths re-ranks P3 to GR
+      projection/read **651.16 ms**, `attn_qkv+attn_gate` **536.26 ms**,
+      `ssm_out` **137.62 ms**, shared expert **122.04 ms**, and router producer
+      **94.77 ms**. The 36-layer qkv+gate boundary remains the largest uniform
+      next target; GR down+inject is secondary. Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-stacked-profile.json`.
+
+### Phase P4 — GDN and QSA prefill parity
+
+Goal: close the remaining **634.94 vs 92.34 ms** GDN and
+**110.49 vs 13.91 ms** QSA gaps after P1-P3 are stacked.
+
+- [x] Re-profile prepare, recurrence, norm/gate tail, projection, KV/index
+      append, selection, attention, and output roles by admitted layer scope.
+      After QSA fixed256, dense attention falls **82.33→29.18 ms** and total
+      QSA role **103.32→50.61 ms**. Remaining GDN is 21 early strict recurrence
+      calls **522.58 ms**, admitted columnwarps **63.11 ms** plus **5.16 ms**
+      tail, and Conv **7.28 ms**. Early strict state layout is the P4 blocker;
+      P5 may proceed independently. Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p4-stacked-profile.json`.
+- [x] For GDN, test exact early-layer column ownership, prepare+recurrence
+      fusion, state residency, and bounded chunking. Engram's chunked kernel is
+      a design reference only; it was not active in the fork's published rows.
+      A strict-order prepared-QKV/scalar route is exact in output and recurrent
+      state but rejected/removed at rows508: **12.716→12.757 ms (0.9967x)**.
+      Prepared tensor traffic offsets removed norm/transcendental work; require
+      direct column ownership or state-layout reuse instead. A direct four-block
+      column candidate improves rows508 **12.628→12.227 ms (1.0328x)** and keeps
+      recurrent state exact, but production output parity fails (about 25% of
+      each 32-column quarter); the one-block reduced fixture masked it. It is
+      rejected/removed before model timing. Future layout work requires a
+      production-width output oracle from RED. Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p4-gdn-prepared-strict-rejected.json`
+      and
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p4-gdn-columnblocks4-rejected.json`.
+      The retained register-sharded column-warp route is confined to admitted
+      layers 27–47 and passes its full profile packet; early exact prepared
+      traffic is neutral, production-width four-block columns fail output
+      parity, and operation-complete transposed-state integration regresses
+      **0.07535→0.08535 ms (0.883x)**. Early layers therefore remain strict;
+      further widening is the separate T1/T2 item. Consolidated evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p4-gdn-exact-campaign-closure.json`.
+- [x] Evaluate T1/T2 GDN suffix widening only with fresh all-category boundary
+      packets; keep every rejected early layer strict. The calibrated ladder
+      rejects all-layer widening at mean KL **0.0068** and admits suffix 27–47
+      at **0.00099**. Its complete 450-row/three-repeat packet passes every
+      category/shape/transition, deterministic state, 18-prompt task, physical
+      c2, lifecycle, manifest, selected-kernel, and same-session p508/p1012
+      gate; whole-model deltas are **-17.09%/-15.67%**. Layers 0–26 and shape
+      misses retain `qwen4exp_sigmoid_strict_prefill`. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p4-gdn-suffix-boundary-closure.json`.
+- [x] For QSA, compare current key-parallel head-dim-256 flash geometry with the
+      selected llama kernel family, including key tiles, online-softmax merge,
+      grid sufficiency, and register/LDS pressure. The non-flash multirow dense
+      owner now selects the registered fixed256/precomputed-offset/vector2
+      kernel: real primitive **6.846→2.485 ms (2.755x)**, clean p508
+      **91.529→92.442 tok/s**, code-p1024 **89.150→90.634 tok/s**, and the
+      complete 450-row/state/task gate is exact. Generic batch attention remains
+      fallback. Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p4-qsa-dense-fixed256.json`.
+      The p4096 differential audit now isolates variable-selection sparse rows
+      at **9.418 s** of the **10.229-s** attention role; dense attention is
+      **0.638 s**, index score **0.129 s**, and top-k expand **0.023 s**.
+      The next mechanism is therefore a bounded multirow ordered-attention path,
+      not score/top-k tuning or a direct copy of the c1 scratch layout. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p4-qsa-prefill-subowner.json`.
+      **Rejected follow-up:** the first bounded three-pass implementation was
+      byte-exact at H256 and 2,049–2,051 selected tokens, but its QK grid exposed
+      about **25.2 million CTAs per 512-row chunk**. The p4096 whole-model screen
+      remained in its first warmup at 99% GPU use after more than 168 seconds,
+      so it was terminated before collecting an invalid sample and removed.
+      Any retry must tile rows or persist selected-token work rather than launch
+      one CTA per `(row, head, selected token)`. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p4-qsa-multirow-grid-rejected.json`.
+      **Exact-mechanism blocker:** the incumbent already exposes 12,288
+      row/head CTAs per 512-row chunk. Each exact H256 row needs all 256 threads
+      to preserve the QK tree and executes 11 block barriers per selected token.
+      A four-row tile reaches the 1,024-thread block limit, preserves total wave
+      work, couples variable row counts at block barriers, and cannot remove the
+      binding recurrence. Wave reductions or partial-summary merging cross into
+      T1/T2. Exact sparse-prefill QSA is therefore exhausted at this geometry;
+      re-rank to an independent owner unless production-numerics widening is
+      explicitly admitted. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p4-qsa-exact-rowtile-blocked.json`.
+- [x] Confirm selected-position attention already removes dense-mask work.
+      The current 100%-attributed p4096 trace contains explicit selected-position
+      sparse-row attention and a separate dense-row owner; it contains no
+      dense-mask or fully-masked-slice kernel. The conditional skip mechanism
+      is therefore inapplicable and is not ported. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p4-qsa-prefill-subowner.json`.
+- [x] Publish a fresh p512 device-role ledger after P4; no prefill phase may be
+      called closed with an unexplained multi-x owner. The new named-production
+      code-p512 trace is **100% role-attributed**: **5,483.08 ms** kernel sum in
+      a **5,552.89-ms** window. Owners are Q4 gate/up **1,265.08 ms**, Q5 down
+      **1,086.52 ms**, dense-other **1,071.12 ms**, dense Q8 **883.63 ms**, GDN
+      **599.36 ms**, and GR **403.94 ms**; no unexplained multi-x bucket remains.
+      Output/lifecycle pass, with zero steady growth and zero allocations after
+      close. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p4-p512-ledger.json`.
+
+### Phase P5 — device-owned AR output boundary
+
+Goal: remove full-vocabulary host readback and synchronization before enlarging
+graph scope.
+
+- [x] Add a registered device argmax/greedy sampler after the lm head and copy
+      only the token ID plus explicitly requested compact telemetry to the host.
+      The exact two-stage `top1_i64` route is now the strict and production
+      normal-greedy default.
+- [x] Keep full logits/probabilities as an explicit API/debug path; do not
+      silently change public response semantics. Direct runner, MTP, numerical,
+      and debug calls retain full logits by default.
+- [x] Feed the device-owned token into the next embedding path where possible.
+      PLE hashing consumes the compact host token, while the next embedding
+      lookup reuses the resident device token without an H2D round trip.
+- [x] Reduce the current 28 blocking and 12 async memcpy calls/token to a
+      role-explained minimum and record bytes/directions, synchronization count,
+      first-token, steady-state, and exact-ID/logit controls. The final ledger is
+      **26 blocking + 12 async**: no explicit sync, 10,440 blocking bytes/token,
+      and no unused normal-AR hidden D2D. The remaining 24 scalar H2D calls are
+      QSA position/context ownership and require a separate shared-state design.
+- [x] Re-run natural multi-prompt decode, not only the repeated `9707` steady
+      diagnostic. The complete 18-prompt/category-heldout T0 packet has 450/450
+      logits at KL=0, 18/18 exact generated ID sequences/tasks, repeat-exact
+      compact state, lifecycle closure, and a focused strict-repeat confirmation
+      for the one initial strict-state warmup anomaly. Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p5-device-argmax.json`.
+
+### Phase P6 — decode GR, MoE, and dense operation completion
+
+Goal: reduce the **48.63 vs 38.90 ms/token** device gap and the remaining
+direct-launch surface before graph capture hides it.
+
+- [x] Stack GR down+inject, down+scaled-SiLU, up+sigmoid+gated-mean, and GR-write
+      composites one at a time with exact/T1/T2 declarations. Exact up+sigmoid+
+      gated-mean row-scoped owners are retained; down+scaled-SiLU is rejected at
+      **0.9926x** on binding rows508; qkv+gate is rejected by the five-pair
+      category gate; and Q8-down/F32-inject is blocked from nominal T0 fusion by
+      incompatible arithmetic trees. Primitive projection/epilogue/GR-write
+      chains remain strict fallbacks. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p3-gr-composite-closure.json`.
+- [x] Re-rank dense Q8, selected Q4 gate/up, selected Q5_1/Q8 down, shared
+      expert, router, QSA, and lm-head kernels after P5. At live 2,052, profiled
+      per-step owners are sparse QSA attention **35.88 ms**, dense Q8
+      **25.84 ms**, Q4 gate/up **9.30 ms**, Q5 down **8.45 ms**, and remaining
+      dense **4.18 ms**. QSA is the context-conditioned first target.
+- [x] Profile decode immediately below/above the QSA transition (live counts
+      2,051/2,052) and at p4096. Clean identical-transition medians are
+      **66.61/95.88/96.02 ms**. The 2,051→2,052 kernel delta is **30.77 ms**:
+      sparse attention adds **27.47 ms**, score/top-k adds **0.92 ms**, and the
+      rest is launch/secondary-owner variance. The flat 2,052→4,097 result shows
+      a fixed selected-budget activation cost, not O(context) growth. The first
+      T1 wave8 H256 candidate improves the 2K-selected primitive **4.534x** and
+      removes the cliff (**95.88→67.84 ms** at 2,052), but is correctness-
+      rejected and removed: p4096 teacher top-1 is **98/100**, three category
+      scopes fail, and only **2/4** free-generation tasks match strict. Future
+      attention dataflow must preserve global selected-token softmax order or
+      pass this same gate. The next exact design splits the current serialized
+      body into three passes: parallel selected-token QK scores using the
+      incumbent reduction tree; deterministic selected-order online-softmax
+      coefficients; then one weighted-V recurrence per output column using those
+      coefficients in the same selected order. This removes per-token CTA
+      barriers without another partial-softmax merge. llama's selected-mask to
+      backend MHA path is topology evidence only. A second contiguous-chunk
+      merge lowers mean/p95/max KL to **0.000565/0.002551/0.004372** but worsens
+      top-1 to **97/100** and
+      free tasks to **1/4**; it is also removed. Partial-softmax merge schedules
+      are exhausted. Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p6-context-transition-profile.json`
+      and
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p6-qsa-wave8-h256-rejected.json`
+      and
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p6-qsa-contiguous-h256-rejected.json`.
+      The exact successor is retained. It computes incumbent-order QK scores in
+      parallel, runs one global selected-order online-softmax coefficient
+      recurrence per query head, and applies those coefficients in independent
+      output-column weighted-V recurrences. The actual 2,051-selected-token leaf
+      improves **2.158→1.180 ms (1.829x)** and is bit-exact to strict.
+      Four-category p4096 tg128 improves **93.912→80.061 ms/token (1.173x)**;
+      all 12 counterbalanced pairs win, the aggregate 95% ratio interval is
+      **1.170–1.176**, full logits/IDs are exact, and teardown is zero. A named
+      `rocprofv3` trace records all three expected kernels and reduces the QSA
+      role to **20.913 ms/token** with 100% attribution and no measured-window
+      allocations. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p6-qsa-ordered-decode.json`.
+      A follow-up exact four-column-per-thread weighted-V schedule is rejected
+      and removed: after fixing a RED-caught reciprocal-multiply
+      reassociation, it remains bit-exact but measures **1.469 ms** versus the
+      retained **1.180-ms** leaf in separate cached-build runs. The magnitude
+      is diagnostic because the runs used separate processes, but the candidate
+      clearly fails leaf admission and does not warrant whole-model timing.
+      Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p6-qsa-ordered-value-col4-rejected.json`.
+- [x] Tune Q4/Q5/Q8 c1 owners on rotating actual weights for coalescing,
+      physical-lane contraction, occupancy, and operation-complete epilogues;
+      do not force WMMA onto M=1. Actual-model retained packets select calibrated
+      Q4 DP4A+SiLU on 43 layers (**1.120x** complete decode; five layers stay
+      exact), exact physical64 Q5_1 weighted-down (**1.011x**), and exact Q8
+      F32/F32 output-pack8 (**1.107x**). Each packet proves the expected kernel,
+      full correctness controls, complete-model wall, and registered exact
+      fallback. All are decode-shaped GEMV/DP4A/output-column owners; no WMMA is
+      forced onto M=1. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p6-c1-quant-owner-closure.json`.
+- [x] Preserve the exact fused Q5 weighted-down and Q4 dual+SiLU fallbacks;
+      replace them only with same-role evidence. Current c1 dispatch still
+      resolves Q5_1 `selected_weighted_sum_logical256_t64_bf16_bf16_out` with
+      the exact selected-projection+ordered-weighted-sum chain on misses, while
+      the production Q4 DP4A scope names
+      `selected_dual_silu_logical128_t64_gemv_bf16_bf16_out` as strict
+      fallback. Focused registry/profile and fused-vs-unfused bit tests pass
+      **9/9**. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p6-c1-fallback-preservation.json`.
+- [x] After every retained fusion, update direct launches, graph launches,
+      kernel rows, API time, copy bytes, and context-conditioned tg128 wall.
+      The retained ordered-QSA unit refreshes this census; the requirement
+      remains binding for every later retained unit.
+
+### Phase P7 — normalized/transposed GDN decode
+
+Goal: replace the measured **2.659 vs 0.465 ms/token** recurrence with a
+c1-shaped layout without reviving the rejected prefill-colwarps route.
+
+- [x] Normalize Q/K once per head instead of once per output column. An exact
+      t128 sibling that removes the t256 zero-only reduction half is rejected
+      and removed: **0.06633→0.06754 ms (0.982x)** at production geometry.
+      Thread count is not the state-traffic solution. Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p7-gdn-t128-rejected.json`.
+- [x] Keep recurrent state transposed in the decode-native layout across steps;
+      define exact construction, snapshot, rollback, reset, and strict
+      conversion boundaries. Exact strict↔transposed conversion and a
+      default-unselected wave-per-value primitive now pass actual-shape
+      output/state envelopes, but operation-complete prepare+recurrence+gate
+      regresses **0.07535→0.08535 ms (0.883x)**. Runner layout integration is
+      removed; a paying design must fuse stages or reduce 6,144 wave-block
+      overhead. Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p7-gdn-transposed-integration-rejected.json`.
+- [x] Port the relevant llama four-warp decode dataflow, not its prefill body or
+      constants. `ggml-cuda/gated_delta_net.cu` assigns four output columns to
+      one CTA. The T0 hipEngine retile likewise packs four independent value
+      waves into one 128-thread CTA and reduces blocks **6,144→1,536**, while
+      preserving each wave's instruction/reduction order. It is bit-exact to
+      the transposed parent at actual kh16/vh48/d128, but loses recurrence leaf
+      **0.04817→0.04856 ms (0.9919x)** and complete
+      prepare+recurrence+norm-gate **0.06534→0.06571 ms (0.9944x)**. Fewer CTAs
+      do not reduce independent state traffic. The candidate is removed.
+- [x] Prove CPU-reference state/output parity on reduced and actual fixtures,
+      repeated steps, restore/replay, cancellation, and c2 isolation. Actual
+      fixed-shape parent parity and the existing parent strict output/state
+      envelope pass. Reduced dimensions are unsupported by the candidate's
+      explicit 128x128 admission. Repeated/cancellation/c2 integration was not
+      run because both actual-shape leaf boundaries regress; those gates cannot
+      rescue a losing primitive.
+- [x] Require expected kernel trace, complete profile packet, and canonical
+      tg128 win. Never re-enable the invalid `GDN_COLWARPS_DECODE_LAYERS` route.
+      No trace/profile/tg128 claim follows a pre-integration leaf rejection, and
+      no selector or registry entry remains. This closes the evaluated P7 ladder;
+      reopen only for fused prepare/recurrence/norm-gate or real cross-column
+      data reuse, not CTA repacking. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p7-gdn-col4-rejected.json`.
+
+### Phase P8 — state-safe whole-transition graph
+
+Goal: contract 48 small MoE graphs plus 1,195 direct launches/token toward one
+request-owned transition submission.
+
+- [x] Reproduce and localize the historical third-replay state corruption
+      before changing capture scope. A faithful recurrent-subgraph probe now
+      captures 36 independent production-shape Conv+GDN state pairs (72 kernels)
+      and remains bit-exact through four replays, reset, capture non-execution,
+      and teardown. The old fault is therefore **not** an isolated Conv/GDN
+      relaunch hazard on current ROCm; localization moves to cross-kernel/full-
+      layer composition. Do not widen production capture yet. Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p8-gdn-graph-replay-probe.json`.
+- [x] Capture in rungs: one stateful layer, one complete attention/FFN
+      transition, a multi-layer segment, then the full token step. **Rung 1 is
+      complete:** strict layer 0's full 34-kernel GR→Conv/GDN→MoE transition is
+      output/state exact through four replays and measures **4.051→1.258 ms
+      (3.22x)** over 30 synchronized samples; cached profiling confirms 34
+      dispatches per `hipGraphLaunch` and no post-launch device allocation.
+      A second rung chains complete GDN layers 0–2: all state/output remains
+      exact through four replays and **9.801→3.896 ms (2.52x)** over 30 samples;
+      profiling confirms 105 dispatches per graph launch and zero post-launch
+      allocation. These are GDN-only research rungs, not a production binding;
+      A fixed-position mixed GDN/GDN/GDN/QSA segment also passes all captured
+      device owners and output through four replays and measures
+      **12.160→4.955 ms (2.45x)**, with 142 dispatches/launch and no post-launch
+      allocation. It is diagnostic only: scalar position/live-counts and the
+      host QSA index cursor do not advance (`host_cursor_replay_safe=false`).
+      Its device-owned successor now passes positions 8–11 exactly across
+      position/context, K/V, raw index, GDN state, and output, and measures
+      **13.882→4.974 ms (2.79x)** over 30 advancing samples. Each graph launch
+      contains one device-position append plus one paired advance among 143
+      dispatches and allocates nothing post-launch. This admits the dynamic
+      four-layer research rung. The next eight-layer rung includes layer-1 PLE,
+      six GDN states, and two QSA owners; it remains exact at positions 8–11 and
+      measures **26.739→10.112 ms (2.64x)**, with 294 dispatches, two dynamic
+      appends, two advances, and no post-launch allocation per graph replay.
+      The all-physical-layer rung also passes: layer-1 PLE plus all 48 layers,
+      all 12 QSA owners, and 136 hashed device-state owners are exact at
+      positions 8–11; wall is **154.346→57.900 ms (2.67x)**. Profiling confirms
+      1,697 dispatches, 12 dynamic appends, 12 advances, and no post-launch
+      allocation per replay. The historical third-replay corruption therefore
+      does not reproduce on the current full physical stack. This still is not
+      production: token/PLE row publication, final mix/head/argmax, generated-
+      token feedback, bucket transitions, fallback, c2, and lifecycle remain.
+      Evidence:
+      `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-stateful-layer-graph.json`,
+      `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-gdn-segment3-graph.json`,
+      `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-mixed-segment4-graph.json`,
+      `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-advancing-mixed-segment4-graph.json`,
+      `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-advancing-segment8-graph.json`,
+      `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-all48-graph.json`.
+      The root/head boundary now feeds generated device argmax tokens through
+      embedding, active PLE, all 48 layers, full logits, and argmax. Exact PLE
+      lookup cannot live inside the graph: its 320,001,446-row IQ4_NL table is a
+      28.8-GB sparse mmap. The honest transition is host hash + 16-row mmap
+      gather/dequant + 10-KiB H2D, then one graph launch and token readback.
+      Across positions 8–11 the trajectory `3147→278→18407→2129→69422`, full
+      logits, and 138 owners are exact; reset→replay and graph→forced-eager→
+      graph resumption are also exact. Operation-complete wall including PLE
+      and readback is **194.758→61.910 ms** over 30 samples, but that eager arm
+      is probe-local. The later strict runner row of 68.855 ms came from another
+      process, so the derived **1.112x is not a named-production A/B** (see the
+      denominator audit in section 2.2). Profiling
+      confirms 10 launches with 1,708 dispatches each and no post-launch device
+      allocation.
+      Production binding stays off pending request graph keys/lifecycle,
+      multi-prompt generation, context buckets, fallback, cold PLE, and c2.
+      Evidence:
+      `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-full-transition-graph.json`.
+- [x] Audit the probe denominator. The strict runner measures **68.855 ms**
+      with shipped MoE graphs and **143.989 ms** without them, proving that the
+      194.758-ms probe eager arm is invalid. However, 61.910 ms is imported from
+      the separate graph-probe process, and both rows are strict rather than a
+      named-production same-session A/B. Therefore **1.112x/6.945 ms is also
+      unrankable**; production `O` and `s` remain unknown. Device argmax versus
+      host full-logit D2H is not measurable. Evidence:
+      `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-production-denominator.json`
+      and the canonical impact profile.
+- [x] Add a named-production graph arm to the same-residency harness and run a
+      counterbalanced p512/p1024/p4096 tg128 feasibility A/B. **Evaluated and
+      rejected; default remains eager.** After discarding one complete
+      production and graph trajectory per pair to remove PLE first-touch bias,
+      the production-manifest arm wins all five exact pairs at p512
+      (**57.312→55.907 ms, `O=1.404 ms`, `s=1.0251`, 8.6% of the measured
+      comparator gap**) and p1024 (**58.962→57.868 ms, `O=1.094 ms`,
+      `s=1.0189`, 9.1%**). The p4096 arm cannot execute: full-transition capture
+      rejects crossing QSA's dense-equivalent limit before timing, exactly where
+      sparse selection becomes active. Thus no p4096 `W/C/O/s` exists, no graph
+      result is imported from the strict probe, and no production cache is
+      admitted. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p8-production-feasibility-rejected.json`.
+- [~] Keep token/PLE input buffers and every weight/state/scratch pointer stable;
+      include profile-manifest hash, shape, context bucket, and fallback in the
+      graph key. The strict research probe reuses one graph exec over stable
+      resident weight/state/scratch allocations, updates token/PLE staging in
+      place, records manifest
+      `e93c8fa47bf2804a781bade0939c617563531ce5436e3281c2ab869209875dca`,
+      and performs zero device allocations after first launch. It does not have
+      a request-owned production graph cache or composite key, so this remains
+      partial pending a context-bucket-safe sparse-QSA mechanism; the named-
+      production A/B above rejected admission at p4096. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p8-pointer-key-audit.json`.
+- [ ] Gate GDN, QSA K/V/index append, PLE history, sampler output, snapshot,
+      rollback, reset, cancellation, c2 isolation, teardown, and at least three
+      consecutive replays at every rung.
+- [ ] Compare direct/graph API time, graph build/reuse counts, kernel rows/span,
+      compact copies, first-token latency, and context-conditioned tg128. A graph
+      that merely hides a slower kernel chain is not a retained win.
+- [x] Target no per-layer graph launches and no unexplained direct launch in the
+      steady transition; document any irreducible boundary. The research full
+      transition uses exactly one graph launch/token containing **1,708** traced
+      dispatches: embedding, active PLE consumer, all 48 layers, 12 QSA appends/
+      advances, lm head, and argmax, with zero post-launch allocation. The
+      explained external boundary is host PLE hash + 16-row IQ4_NL mmap gather/
+      dequant + 10-KiB H2D, then compact token readback; the exact 28.8-GB sparse
+      table is not graph-resident. This closes only the research prerequisite;
+      named-production A/B/key/lifecycle/c2/cancellation remain open. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p8-single-launch-boundary-closure.json`.
+- [x] Do not spend a rung on submission batching alone. The nearest external
+      evidence (`GGML_VK_MAX_NODES_PER_SUBMIT` 200-800, -1.3 to -2.4%) concludes
+      cost is per-dispatch, not per-submit. A P8 win must remove dispatches; a
+      variant that only bundles more nodes into one submission is pre-rejected
+      unless a local trace contradicts that prior.
+
+### Phase P9 — PLE mmap, cold-cache, and load-memory lane
+
+Goal: implement the reproduced Nathan/Engram mechanism without mixing it into
+warm GPU-kernel claims.
+
+- [x] Instrument `Qwen4ExpPLEMMapTable` and staging with requested/unique rows,
+      unique/adjacent pages, bytes, prefetch ranges, faults or resident-page
+      proxy, dequant/copy/H2D wall, and cache mode. Telemetry is opt-in and
+      excluded from performance evidence. A real warm code-p512 request records
+      10,240 requested / 4,216 unique rows, 4,297 unique pages with 86 adjacent
+      pairs, 921,600 source bytes, 1,310,720 H2D bytes, process-fault proxies,
+      cache advice/range, and **5.670 s gather+dequant / 0.825 ms staging copy /
+      19.207 ms H2D** across prefill plus 128 transitions. Output hash remains
+      canonical and teardown is zero. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p9-ple-telemetry.json`.
+- [x] Add off/auto/on random-access advice only together with page-aligned,
+      deduplicated and adjacent-range-merged `WILLNEED` prefetch. The default is
+      `off`; `auto` selects random advice only when useful row bytes are below
+      half the page-aligned fetch bytes. A real warm code-p512 route smoke selects
+      `on`, emits 16 deduplicated 4-KiB ranges for the final 16-row gather, keeps
+      the canonical output hash, and tears down to zero. This closes the mechanism,
+      not a speed claim: the single telemetry-enabled request is excluded, and a
+      future cold/warm paired gate must choose any production policy. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p9-random-prefetch.json`.
+- [x] Dequantize directly into the active pinned ring where practical; remove
+      temporary gather/value arrays and redundant copies. **Evaluated and
+      rejected.** The exact candidate removes the multi-row gather/value arrays
+      and final copy by dequantizing 16 IQ4_NL rows individually into the active
+      ring, but loses every one of 20 four-category p512 prefill pairs:
+      **111.698→113.594 s aggregate, 0.9833x**. The first exact tg128 pair also
+      loses **7.348→7.452 s (0.9861x)**, so the remaining decode pairs were
+      stopped as incapable of reversing rejection. The temporary flag and route
+      are removed; vectorized multi-row dequantization plus its measured
+      ~0.825-ms/request copy remains production. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p9-direct-staging-rejected.json`.
+- [x] For prefill, overlap next-chunk prefetch/dequant with current GPU work
+      using the existing two-buffer ownership plus explicit event/thread
+      lifetime. Decode remains demand-driven unless a real lookahead exists.
+      **Evaluated and rejected.** Because the complete prompt is known, exact PLE
+      hash rows can be precomputed safely; a one-worker candidate stages chunk
+      N+1 into the inactive pinned buffer while chunk N submits GPU work and
+      joins before reuse/H2D. Exact screens are neutral: p1024
+      **11.223→11.240 s (0.9985x)** and p4096 **54.487→54.396 s (1.0017x)**.
+      The latter is below the 1% complete-wall floor and cannot justify new
+      thread/future lifecycle. Candidate and flag removed; decode remains
+      demand-driven. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p9-prefill-overlap-rejected.json`.
+- [x] Add a safe isolated cold-cache protocol and a warm steady protocol. Do
+      not use one process's warming repetitions as independent samples. The
+      retained driver applies one initial file-scoped `WILLNEED` for warm steady;
+      cold closes/remaps the PLE mapping and reapplies mapping+file `DONTNEED`
+      before every warmup and measured request, only over the 28.8-GB PLE tensor
+      range. It never uses global `drop_caches` or treats warming repetitions as
+      independent samples. Existing code-p512 evidence is deterministic and
+      output-equal at **91.676 warm versus 56.214 cold pp/s**, with zero teardown.
+      Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p9-cache-protocol-closure.json`.
+- [x] Measure lazy on/off, cold/warm p512/p1024/p4096 and tg128, page reads,
+      RSS/file versus anonymous memory, available/free/swap, and exact output
+      hashes. The 18-row off/auto/on screening matrix records every requested
+      field and is exact by shape. Across the three complete rows, warm auto is
+      **0.9962x** off and warm on **0.9845x**, while isolated cold auto is
+      **1.1603x** and cold on **1.1546x**. Cold physical reads/major faults fall
+      from **55.15 GB / 29,271** off to **55.81 MB / 11** auto; file RSS also
+      falls materially. These are one-repetition diagnostics, not a thermal
+      promotion gate. Keep warm/off default and cold modes separate; auto/on
+      remain explicit diagnostics pending a counterbalanced cold policy gate.
+      Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p9-economics-matrix.json`.
+- [x] Add optional per-tensor load drop-behind only for data already copied to
+      device ownership. Never invalidate lazy PLE pages or validation readers;
+      include reload-heavy and one-shot serving controls. The default-off
+      `HIPENGINE_QWEN4_EXP_LOAD_DROP_BEHIND=1` path applies file `DONTNEED` only
+      after each of 1,223 hot tensor loaders returns successful device ownership;
+      descriptors are reused by part and closed on success/failure. Lazy PLE and
+      validation readers are excluded. One-shot and immediate reload controls
+      remain exact and zero-teardown at **47.12/45.67 s** process wall, with
+      ~**243/245 MB** RSS before request, but each request rereads **13.75/15.61
+      GB** and incurs **6,093/6,212** major faults. Retain only as explicit
+      one-shot serving control; reload-heavy services keep it off. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p9-load-drop-behind.json`.
+
+### Phase P10 — long-context AR and optional KV profile
+
+September6 context correctness update: [capacity documentation](QWEN4EXP-CONTEXT-CAPACITY.md)
+separates the immutable2051 dense-equivalence limit from admission-aware native
+sequence capacity. Registered serving now exposes262144 on Framework with c2
+startup, completions/chat8K retrieval, over-limit rejection and unchanged
+2051/2052 boundary passing. Prior depth-quality rows below remain their own
+evidence; native allocation does not replace full-depth inference validation.
+
+Goal: close depth-dependent competitor gaps only after short BF16 AR parity and
+the existing escalation thresholds permit each rung.
+
+- [x] Re-run natural 4K, 16K, then 64K retrieval with the current stacked
+      production path and exact selected-position/CPU selector controls. Current
+      chunk-512 rows reach **53.08 / 51.48 / 48.02 prompt tok/s** at 4K/16K/64K.
+      Every depth retrieves `VIOLET-7391`, selects the needle in all 12 QSA
+      layers, matches all 2,048 binding CPU-selected positions at layer 47,
+      passes repeat/rollback isolation, and tears down to zero. Historical depth
+      rows are not used as old→new comparisons. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p10-natural-retrieval-current.json`.
+- [x] Profile QSA score/top-k O(context/4), selected-K/V page locality, sparse
+      attention, PLE I/O, graph reuse, and KV bytes separately at each depth.
+      The corrected natural 4K/16K/64K census records 1,024/4,096/16,384 score
+      rows, fixed 2,048-token selected attention, a 2,048-byte physical K+V row,
+      and 1,024 selected 4-KiB pages per layer at every depth. Selected spans are
+      4,096/16,384/65,536 tokens with mean gaps 2.00/8.00/32.02 and maximum gaps
+      41/481/5,081. Live all-QSA-layer KV grows from 103,615,572 to
+      1,613,654,028 bytes. PLE publication remains 3,143,680 H2D bytes, and MoE
+      graph reuse remains 48 captures plus 14,688 replays with zero eager or
+      rejected routes. Every depth passes exact retrieval, CPU-selected-position
+      parity, repeatability, transaction isolation, and zero-allocation teardown.
+      The diagnostic adds no default-route work and makes no throughput claim.
+      Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p10-structural-depth-census.json`.
+- [x] Compare exact matched same-weight/BF16-KV Engram/Nathan/upstream rows; do
+      not compare against their IQ3/IQ4 or quantized-KV headlines. Audit result:
+      the shared canonical fixture contains 512/1,024/4,096-token rows only.
+      Upstream's refreshed 4,096 row is repeat-exact at **266.58/18.98 pp/tok/s**;
+      EngramHalo's **381.17/15.99** row fails `code-p4096` repeatability, and
+      Nathan's **351.85/19.01** row belongs to a 0/12-repeatable lane. No retained
+      exact-token BF16-KV row exists for any named external lane at 16K or 64K.
+      The current hipEngine natural-retrieval rates use a different single-prompt
+      protocol and are not divided by these canonical rates. Published Q8-KV and
+      different-weight-quant headlines remain excluded. This closes the evidence
+      inventory, not the missing 16K/64K measurement. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p10-matched-comparator-audit.json`.
+- [x] Optimize persistent compressed-key scoring, top-k, selected attention,
+      and graph/context buckets only where the depth profile ranks them. Exact
+      live-16K/64K clean decode is **82.617/82.459 ms/token**. Complete QSA is
+      **20.834/22.132 ms/token**, while ordered selected attention remains the
+      largest named P10 path at **19.642/19.584 ms/token**. Compressed-key
+      score/top-k grows from **1.116 ms (1.35%)** at 16K to only **2.490 ms
+      (3.02%)** at 64K. The fixed graph count and lifecycle remain clean. The
+      selected-attention route was already promoted in P6 and its next exact
+      col4 leaf was rejected, so no score/top-k or graph/context candidate opens.
+      Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p10-16k-owner-profile.json`,
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p10-64k-owner-profile.json`.
+- [~] After BF16 AR parity, open Q8 K/V as a T3 product configuration with its
+      own CPU/reference, BF16-relative, task/retrieval, memory, deterministic,
+      lifecycle, and same-config competitor gates. It cannot close BF16 parity.
+      Blocked at the declared prerequisite: the retained exact ordered route is
+      **12.868 tok/s** on `code-p4096`, only **0.678x** the repeat-valid
+      same-weight/BF16-KV upstream **18.975 tok/s**. Qwen4Exp also has no
+      registered quantized-KV storage, write, or attention family; existing
+      INT8-KV evidence belongs to other model/backend configurations. Do not
+      bypass BF16 parity or substitute those rows. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p10-q8-kv-readiness.json`.
+
+### Phase P11 — device-resident MTP economics
+
+Goal: exceed true AR on the full suite, then match only correctness-valid
+external MTP rows.
+
+- [x] Reconfirm the per-stream hyper-connection combiner and sidecar tensor map;
+      do not replace it with mean pooling. Focused GGUF-map and draft-runner
+      tests pass **6/6**: all 34 sidecar tensors are pinned with shape/qtype
+      drift rejection, the global-normalization reference pairs every branch
+      independently, and the real local sidecar is deterministic and
+      transactional. Per-stream hyper-connection ownership remains unchanged.
+- [x] Add phase timing/census for target hidden export, draft input fusion,
+      draft layer/head, sampler, target verify, acceptance, commit/rollback,
+      copies, and graphs on every category. The four-category B2/tg8 census
+      records **18 cycles, 34 proposals, 28 target rows**, and clean teardown.
+      Serial target verification owns **2,454.264 ms total / 87.652 ms per
+      row**, versus **320.013 ms** of proposal wall; host acceptance and cursor
+      repair total only **1.306 ms**. Nested asynchronous draft launch buckets
+      overlap proposal wall, and the synchronized bucket owns queued GPU work,
+      so they are not added together. A cached `rocprofv3` trace proves target
+      prefill/decode plus Q8 sidecar embedding/QSA execution and confirms that
+      this provider has no graph route. This T0 instrumentation changes no
+      arithmetic or dispatch and retains `target_ar` as strict fallback. The
+      retained 10-prompt reference remains `W=51.711 s` MTP and `C=49.383 s`
+      true AR; this census assigns no local speedup `s` and makes no promotion.
+      Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-mtp-phase-census.json`.
+      The earlier isolated sidecar diagnostic remains
+      `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-mtp-hot-head-feasibility.json`.
+- [~] Keep target hidden, draft hidden chaining, logits/top-k, and candidate IDs
+      on device. Remove per-draft full-logit/hidden D2H and host reconstruction;
+      read one compact candidate packet per cycle at most. The first T0 rung
+      keeps draft hidden chaining resident and replaces full-logit/hidden D2H
+      with device argmax plus one int64 read per draft; the explicit full-output
+      path remains the default/fallback. Sidecar B2 median improves
+      **16.945→16.639 ms (1.018x)** with exact IDs. A warmed four-category
+      same-session AB/BA is also exact and improves aggregate wall only
+      **6,585.101→6,537.548 ms (1.0073x)**; `general_en` and `mixed_ja_en`
+      regress to **0.9435x/0.9745x**, so promotion is rejected. Keep
+      `HIPENGINE_QWEN4_EXP_MTP_COMPACT_OUTPUT=1` default-off until candidate IDs
+      become one packet per cycle and target hidden export is resident; remove
+      it if that complete route still fails category non-regression. Cached
+      tracing proves the candidate's argmax stage1/stage2 route. A follow-up
+      appends each device argmax ID to a four-int64 device packet and performs
+      one D2H per cycle. Sidecar B2 is exact at **16.794→16.591 ms (1.012x)**;
+      warmed whole-model wall is **6,588.589→6,521.622 ms (1.0103x)**, but
+      `general_en` and `mixed_ja_en` still regress to **0.9344x/0.9845x**.
+      Packet D2H synchronizes preceding proposal work, so promotion remains
+      rejected and full output remains default. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-compact-draft-output-rejected.json`
+      and
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-candidate-packet-rejected.json`. A shared-runtime D2D handoff then removes post-prefill target-hidden D2H and draft-hidden H2D. It is exact and traced, but warmed whole-model wall is only **6,590.224→6,530.592 ms (1.0091x)**; `general_en`/`mixed_ja_en` regress to **0.9292x/0.9847x**. Packet synchronization masks the removed round trip, so this rung is also rejected and default-off. Evidence: `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-target-hidden-d2d-rejected.json`.
+- [~] After device-output cleanup and target-verifier progress, build
+      default-off individual-row compact Q8_0 draft heads at 8K/16K/32K with a
+      local→global token map. Do not port EXL3 block-group rules or FP8 constants.
+      Train maps on unrestricted multi-prompt proposal telemetry plus general
+      corpus frequency; keep category-heldouts disjoint and require full-suite
+      AR-equivalence, acceptance, memory, and same-command economics. The current
+      zero-cost-head upper bound is only **0.97% complete wall / 0.964x AR**, so
+      reject unchanged hot-head work if verifier progress does not raise its
+      Amdahl ceiling. Admission is currently blocked: compact output and D2D
+      hidden handoff both failed category promotion, the rows<=8 verifier is not
+      executable, and no disjoint map-training manifest exists. Even a free
+      head cannot reach 1.0x AR on retained full-suite economics. Do not build or
+      fit vocabulary maps until verifier/device transactions raise that ceiling.
+      Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-compact-head-admission.json`.
+- [~] Build the rows<=8 batch-invariant target verifier before raising budget.
+      Its per-row decode arithmetic, GDN/QSA/PLE state, and outputs must equal
+      serial target verification under the declared contract. Readiness audit:
+      Qwen4Exp has no `verify_target_block` API. Its `_prefill_chunk` commits all
+      rows, scores only the final residual, has rows=1 head/logit capacity, and
+      cannot defer accepted-prefix state. `Qwen4ExpRunnerSnapshot` also copies
+      recurrent state through the host. Qwen3.5's mature rows<=8 verifier uses a
+      different linear-state/layer/graph ABI and is not reusable unchanged.
+      Split this into per-row output storage, device state transactions,
+      deferred accepted-prefix commit, and rows2-8 serial-reference RED gates
+      before provider wiring. The first subunit is complete:
+      `Qwen4ExpTargetVerifyOutput` lazily owns bounded rows<=8 residual,
+      per-row-logit/token, and head-scratch storage; rows 0/9 reject before
+      allocation, HIP allocation/lifecycle passes, and serial dispatch is
+      unchanged. A second subunit adds exact D2D snapshot/restore ownership for
+      GDN matrix/conv, PLE conv, and residual state with idempotent cleanup.
+      A third subunit adds all-or-nothing begin/commit/rollback ownership over
+      that snapshot, every QSA KV/index cursor, runner position, and a copied
+      host PLE-hash map; double finalization rejects. A fourth subunit adds the
+      explicit rows1-8 serial oracle, returning every token, full-logit row, and
+      target-hidden row through unchanged `step` arithmetic. The first rows=2
+      bulk candidate reused prompt `_prefill_chunk` plus rows-capable head
+      output. It matched top-1 IDs but failed RED: hidden max absolute difference
+      **0.40625**, logit-row maxima **0.1803/1.3686**, and GDN matrix/conv, PLE
+      conv, and residual state all differed. Position and PLE hashes matched.
+      The uncommitted candidate was removed before timing/tracing; prompt-prefill
+      arithmetic is not the verifier. Accepted-prefix row commit and a
+      verifier-specific arithmetic candidate remain next. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-rows2-prefill-verifier-rejected.json`.
+      A verifier-specific follow-up preserves serial body/state order and batches
+      only final GR/head scoring. Rows2-8 pass bit-exact tokens, hidden, logits,
+      GDN/PLE/residual state, position, and hashes. Head-only B2 is effectively
+      neutral (**126.763→126.592 ms, 1.00136x**); including the required D2D
+      begin/commit transaction regresses **127.693→132.354 ms (0.9648x)**. The
+      uncommitted candidate was removed before provider wiring or tracing. A
+      viable verifier must capture accepted-prefix state without a full
+      pre-execution snapshot; final-head batching alone cannot pay for rollback.
+      A retained follow-up removes fresh HIP allocation from that transaction:
+      one request-owned 119.53-MB snapshot lease lowers begin/commit host wall
+      **6.568→0.0268 ms**, with downstream readback owning copy completion. The
+      exact complete B2 candidate then improves **128.464→127.560 ms
+      (1.0071x)**. Accepted-prefix replay now passes the complete rejection grid,
+      and cached B2 tracing proves GDN decode, QSA, router, and rows=2 final-head
+      execution. Keep it internal/default-off until provider wiring and
+      whole-model category gates pass. Default-off provider wiring then passes
+      **10/10 exact IDs** with unchanged acceptance, but full-suite tg16 is
+      **26.152 s** deferred versus **22.821 s** serial MTP (**0.8726x**) and
+      **16.904 s** true AR (**0.6464x**); every category regresses. Full-width
+      target execution plus early-mismatch replay overwhelms pooled/head savings.
+      The uncommitted provider branch was removed. A viable verifier must batch
+      operation-complete target bodies or avoid rejected-suffix work. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-public-deferred-verifier-rejected.json`,
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-deferred-head-verifier-rejected.json`
+      and
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-pooled-verifier-transaction.json`.
+      `W=51.711 s`, `C=49.383 s`, and the measured target-step owner is
+      `O=87.652 ms/row`; internal B2 `s=1.0071`, but public/full-suite `s`
+      remains unknown. Strict fallback is serial `target.step`. Device-output
+      cleanup remains independent. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-target-verifier-readiness.json`.
+- [x] Add a rejection-depth RED sweep before any budget work. Force a rejection
+      at every draft depth `d` in `[1, n_max]`, at the first, middle, and last
+      position of a verify batch, and with a batch shorter than the ring depth;
+      require post-rollback GDN conv state, SSM state, and the next-token logits
+      to be bit-equal to the no-MTP AR path at the same position. This is the
+      grid that localizes the Pat1entZ3r0 EXP-016 class: unwritten ring banks
+      beyond the written group, and a spec ring one entry too shallow for a
+      verify batch that carries the previously sampled token plus `n_max`
+      drafts. Passing at `n_max` only is not passing. The pooled verifier
+      transaction passes **12/12** real B2/B3/B4 cases: rejection at every
+      depth, full acceptance, and shorter widths. Committed tokens, hidden,
+      logits, GDN matrix/conv, PLE conv, residual, position, and PLE hashes are
+      bit-exact to serial; the following token, full logits, and hidden row are
+      also bit-exact. Rejections before the last row rollback and replay only
+      the consumed prefix; last-row rejection/full acceptance commit directly.
+      Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-rejection-depth-grid.json`.
+- [~] Falsify EXP-016 as the explanation for the measured external MTP failures
+      with one build. The failure identities are already known per lane
+      (EngramHalo 9/10 failing `general_ja_plan`; Nathan 8/10 with AR and MTP
+      each self-repeating 9/10; apepojken 9/10). Rebuild one lane on
+      `c589f0ed` + #27879 + EXP-016 and re-run the section 5.3 equivalence
+      probe: if those specific prompts move, the mechanism is confirmed and the
+      hipEngine audit above is urgent; if the same prompts fail, the hypothesis
+      is closed for the cost of one build. Either result is worth recording.
+      Blocked on immutable source: `patches/hybrid-03-mtp/0006`, program commit
+      `413c33c`, and parent `32af70900` are absent from all local comparator
+      object databases, and the cited repository returns HTTP 404. Three local
+      comparator trees are clean and remain untouched; the modified
+      `EngramHalo.cpp-patched` tree is excluded. Obtain the exact patch/commit,
+      then build it in a disposable clone rather than reconstructing it from
+      prose. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-exp016-readiness.json`.
+- [~] Move acceptance, first-mismatch selection, commit, rollback, and cursor
+      repair to device-owned transactional kernels/graphs with exact recovery
+      and cancellation tests. Admission is blocked by current ownership: the
+      four-category B2/tg8 census assigns only **0.150 ms** to host acceptance
+      and **1.156 ms** to draft cursor repair across 18 cycles, **1.306 ms total
+      / 0.020%** of 6,590.224-ms wall. The prerequisite pooled verifier adds
+      **3,331.227 ms** on the ten-prompt suite, 2,550x this owner. Building an
+      acceptance kernel cannot repair verifier economics. First produce an exact
+      operation-complete target-body verifier that beats serial MTP, then
+      re-profile this boundary. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-acceptance-kernel-admission.json`.
+- [~] Sweep budget against context depth, not budget alone, on the full
+      category+heldout suite against a true no-MTP AR denominator from the same
+      command. Record acceptance, visible tokens/cycle, target rows, phase wall,
+      and speed by category and context. Externally the optimum is
+      depth-dependent (n-max 2 shallow, 6 at >=32K, acceptance decaying
+      0.94-0.97 to 0.75-0.88 by 128K), so a single budget fitted at short
+      context under-serves depth. Fit a policy over measured acceptance -
+      raise the budget while marginal accepted tokens per cycle still increase -
+      rather than freezing a constant; a constant tuned on a fixed prompt set is
+      not retainable. Admission is blocked before fitting: the public provider
+      and draft are capped at **1,024 tokens**, while the committed long-context
+      suite has six **4,096-token** categories; local budgets are only 1-4, not
+      the external hypothesis's 6. The exact public deferred verifier is
+      **0.8726x serial MTP**, and serial MTP is only **0.7407x true AR** on the
+      ten-prompt suite. Sweeping <=1K budgets would fit the wrong depth and fixed
+      evaluation prompts. Extend draft/provider capacity to >=4K, add B6 RED,
+      and beat serial verification before fitting disjoint telemetry. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-depth-budget-admission.json`.
+- [~] Evaluate confidence thresholds as explicit provider policies over the
+      full suite. No fixed prompt, token, or candidate-specific policy is
+      retainable. Readiness is blocked: compact output exposes device argmax ID
+      and value, but no top-1 probability, runner-up margin, log-sum-exp, or
+      calibration metadata. The retained ten-row artifact calls its input
+      category+heldout but provides no machine-readable fit/heldout partition,
+      and there is no independent policy-fit corpus. A sweep now would restore
+      full-logit host output or fit the fixed evaluation prompts. Add a compact
+      calibrated confidence packet, immutable disjoint fit/heldout manifests,
+      and the rejection-depth gate first. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-confidence-policy-readiness.json`.
+      Deprioritize the `ngram-mod` combination: externally it is
+      -12% on code when combined with an MTP draft head (low-quality drafts
+      dilute the head), plain n-gram speculation is 0 to -33%, and two of its
+      four types hang the server on this hybrid-recurrent architecture. Run it
+      only if a local trace gives a reason to expect a different result.
+- [x] Require exact greedy outputs where that is the provider contract. The
+      public serial provider passes **10/10** category+heldout rows and all
+      generated IDs against true target AR at B2/tg16, with **134/159 = 84.28%**
+      accepted drafts. It remains **51.711 vs 49.383 s (0.955x AR)**, so this
+      closes correctness policy only and does not promote performance. The
+      refreshed Engram row is 1.128x but only 9/10 exact and is therefore not a
+      valid target or promotion precedent. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-exact-greedy-policy.json`.
+- [~] Promote at >=1.0x AR with every binding category non-regressive; continue
+      toward >=1.5x and the best correctness-valid same-config competitor.
+      Promotion is blocked: the current same-command full-suite row is exact
+      **10/10** but serial MTP is **22.821 s** versus true AR **16.904 s
+      (0.7407x)**. Every category regresses (**0.7581x code, 0.7354x English,
+      0.7462x Japanese, 0.7111x mixed**). The exact pooled B2 internal 1.0071x
+      does not transfer publicly; deferred full-suite verification is 0.8726x
+      serial. Required 4K MTP is unavailable at the 1K provider cap. Keep
+      `target_ar` default and do not promote from isolated or invalid external
+      rows. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-promotion-readiness.json`.
+
+### Phase P12 — final refresh, cleanup, and rollup
+
+Goal: make the complete result reproducible, default, and reversible.
+
+- [x] Refresh all comparator lanes once under P0's exact protocol and fixed host
+      state; do not compare old absolute rows to new binaries. The campaign
+      inventory binds source/binary hashes and exact-fixture attempts for
+      upstream Vulkan, Nathan Vulkan, patched/pristine upstream HIP,
+      EngramHalo HIP, and diagnostic hybrid-04. Upstream Vulkan is 12/12
+      repeatable but short-shape variance blocks final freeze; Nathan is 0/12,
+      Engram 4K alternates, hybrid-04 is 2/12 exact, and pristine HIP produced
+      no sample in two 1,800-second starts. This closes refresh-once inventory,
+      not section-6 five-pair target freeze. Temporary binaries are gone; rebuild
+      eligible lanes from pinned sources for final pairs rather than comparing
+      new binaries to these absolute rows. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p12-comparator-refresh-inventory.json`.
+- [~] Run the final strict/production packet, task/BF16/control/state/c2/
+      lifecycle gates, exact matched p512/p1024/p4096 with tg128, and every
+      unlocked long-context/MTP milestone. Current short packet passes:
+      **268** focused Qwen4Exp tests; strict and production each complete 36/36
+      deterministic exact-fixture samples with zero teardown. Weighted
+      strict pp/tg is **61.049/13.517, 60.322/13.427, 52.561/9.472** at
+      p512/p1024/p4096; production is **83.352/14.180, 82.933/14.164,
+      69.200/12.160**. Production manifest `37d59564…` does not fall back;
+      its existing 450-row BF16/task/state/lifecycle gate and c2 exactness remain
+      binding because later default-path changes are unselected T0 verifier
+      primitives. Current 4K/16K/64K retrieval remains qualified. Final packet
+      is still blocked by five-pair eligible comparator windows and 4K MTP at
+      the provider's 1K capacity; neither is relabeled as passed. The final
+      comparator attempt rebuilt clean upstream Vulkan `f1793c1c4` in a
+      disposable clone (binary `01c72085…`) and completed 60 deterministic
+      exact-fixture samples. Its max per-case CV is **9.24%/4.73%/1.68%** at
+      p512/p1024/p4096; p512/p1024 fail the <=2% closure rule. The current
+      production five-repeat arm was stopped because no valid paired verdict
+      could result. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p12-validation-packet.json`
+      and
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p12-fivepair-comparator-blocked.json`.
+- [~] Emit compact accepted/rejected/blocked artifacts, raw-log hashes, generated
+      reports, benchmark README/changelog updates, and the model checkpoint.
+      Current P12 packet, compact report, and README/changelog rollup are current;
+      report SHA-256 is `7130500d…`. Strict/production raw result hashes are
+      recorded without committing 148-KB raw files. Final-freeze comparator raw
+      hashes and the final model checkpoint remain blocked with their five-pair
+      and 4K-MTP inputs; do not publish a closure checkpoint early. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p12-validation-packet.json`
+      and
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p12-validation-report.md`.
+- [x] Update `docs/KERNELS.md`, lineage metadata, `docs/REFACTOR.md`, and
+      `docs/PLAN.md` if architecture moved. P11 added runtime-only verifier
+      storage/transaction/oracle primitives, not a kernel or lineage entry;
+      `docs/KERNELS.md` and `docs/source_lineage.json` therefore stay unchanged.
+      `docs/PLAN.md` now records current manifest/rates and MTP/verifier bounds;
+      `docs/REFACTOR.md` records selector closure and retained oracle lifetime.
+      The optional lineage audit is currently environment-blocked because
+      `/home/lhl/amd-gpu-tuning/reference/atlas` is absent, but no kernel port or
+      source-parent claim was made in P11/P12.
+- [~] Remove superseded experiment flags, dead selectors, duplicate fallback
+      chains, and stale graph routes only after their replacements are default.
+      Removed public `HIPENGINE_QWEN4_EXP_MTP_COMPACT_OUTPUT` selection and its
+      resident-hidden provider branch after three exact candidates failed
+      category promotion. The explicit runner `compact_output=True` leaf remains
+      only for focused rejected-path oracles/profiling. Retain strict serial MTP,
+      verifier oracles/transactions, and graph fallbacks because no replacement
+      is default. The broader campaign's rejected/default-off selectors remain
+      tracked in `docs/REFACTOR.md`; final cleanup stays partial.
+- [x] Commit every validated logical unit; campaign closure is its own final
+      decision/worklog commit. This final decision is **blocked closure**, not
+      section-6 success: independent work is exhausted with 17 prerequisite or
+      aggregate items open. Current short/default correctness passes, but final
+      five-pair comparator stability, HIP/Vulkan parity, matched 16K/64K
+      comparators, 4K MTP capacity/economics, Q8-KV prerequisites, and external
+      EXP-016 source do not. Resume only when a terminal prerequisite changes,
+      then re-profile before implementation. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-campaign-blocked-closure.json`.
+
+## 6. Acceptance and closure
+
+All comparisons bind to the same physical host, exact target parts, weight
+quant, K/V type, prompt/token fixture, cache mode, sampler, output horizon,
+power policy, and declared profile. A different representation gets a separate
+milestone and denominator.
+
+### 6.1 Match and beat rules
+
+- Screening may use three counterbalanced repetitions. Closure uses at least
+  five counterbalanced pairs after warmup, reports every sample and coefficient
+  of variation, and keeps competitor/hipEngine runs in the same thermal window.
+- **Beat** means the paired 95% confidence interval for the hipEngine/comparator
+  throughput ratio is above 1.0.
+- **Match** means the median ratio is at least 0.98, both arms have coefficient
+  of variation at most 2%, and the paired 95% interval includes 1.0. A noisy
+  result is neither a match nor a loss; stabilize and repeat.
+- p512, p1024, p4096, and context-conditioned tg128 bind independently. A large
+  prefill win cannot average away a decode loss, and one category cannot
+  compensate for another.
+- End-to-end unprofiled wall is binding. Kernel/sub-window/launch/copy wins are
+  retainable evidence but do not by themselves close parity.
+
+### 6.2 Milestones
+
+1. **P0 measurement closure:** exact matched cross-engine harness, frozen source
+   and binary identities, host state, cold/warm separation, and category
+   heldouts are committed.
+2. **HIP short-AR parity:** named hipEngine production matches or beats the best
+   refreshed same-configuration HIP comparator on p512, p1024, p4096, and the
+   corresponding tg128 rows.
+3. **Same-host short-AR parity:** the same path matches or beats the best
+   refreshed same-configuration HIP or Vulkan engine on every canonical row.
+   Vulkan is a required second milestone, not an optional source of ideas.
+4. **Role closure:** no layer-2/early-MoE, shared/router/GR, GDN, QSA, output,
+   submission, copy, or synchronization bucket remains an unexplained multi-x
+   outlier. Any residual >=1.25x names a measured architectural reason and an
+   exhausted or blocked action.
+5. **Correctness/product closure:** production manifest and strict fallbacks,
+   complete numerical/BF16/task/category packet, same-schedule deterministic
+   repeats, graph/eager and restore/replay, physical c2/isolation, cancellation,
+   memory, and teardown all pass.
+6. **Long-context parity:** every context rung unlocked by the benchmark ladder
+   passes retrieval/control gates and matches the best exact same-config
+   comparator at that depth. Historical or different-KV rows do not bind.
+7. **MTP parity:** the full category+heldout suite is exact under the provider
+   contract and non-regressive in every binding category versus true AR. It
+   reaches at least 1.5x AR or matches/beats the best correctness-valid
+   same-configuration external MTP row, whichever is higher. A competitor row
+   that fails output equivalence is not a target.
+8. **Evidence closure:** the final artifact contains exact commands,
+   source/binary/model/manifest hashes, raw trace/result hashes, role and
+   launch/API/copy census, the final non-overlapping Amdahl ledger, host state,
+   all correctness verdicts, and a generated report from
+   `scripts/qwen4exp_perf_gap_report.py`. Rollups, catalog, refactor ledger,
+   worklog, and atomic commits are current.
+
+A final deliberate comparator refresh freezes the closure target. A later
+external commit does not retroactively invalidate the artifact; it is a new
+baseline event and, if desired, a new campaign.
+
+## 7. Copyable coder goal
+
+```text
+Execute docs/QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md as the active
+performance authority for Qwen3.8-Flash-Next on Framework Desktop gfx1151.
+Follow its active execution contract before historical instructions. Keep the pinned
+Unsloth UD-Q4_K_XL target weights and BF16 K/V as the binding AR configuration.
+Do not obtain or substitute a new weight quant. Treat Q8 K/V and MTP as separate
+product configurations with their own gates.
+
+Do not declare success after a microbenchmark, a single prompt, HIP-only parity,
+or one accepted optimization. Execute the September 8 active review punchlist,
+not historical phase-number order or older "next" notes. Before coding, record
+W/C/O/s, overlap exclusions, zero-cost ceiling, projected wall saving, and
+target-gap coverage. Re-profile after every
+retained unit and re-rank the remaining work. The short-AR objective is complete
+only when named hipEngine production matches or beats the final refreshed best
+same-host HIP and Vulkan comparators on exact-matched p512, p1024, p4096, and
+their tg128 rows under section 6's statistical rule, while the complete
+execution-profile, task, determinism, state/isolation, lifecycle, and strict-
+fallback gates pass. Then continue through every unlocked
+long-context rung and the device-resident MTP milestone; MTP must beat true AR
+on the full category+heldout suite and reach the section 6 target without
+benchmark gaming.
+
+The QSA ordered-v2 and iu8-risk+repair promotions are retained, not proof of
+whole-family closure. R1-R3 provenance and refresh evidence is retained; use
+the September 8 ranked-target section instead of repeating completed gates.
+Qualify the repair criterion, building on 62dffb872, then screen Q5_1 down
+and GR at their actual publication boundaries; transfer is conditional.
+Keep a bounded direct-Q4 IU4 grouped-prefill screen at rank 3: preserve the
+binding weights, charge activation precision/correction/repair, and compare
+against the current repaired IU8 chain. Old dense-model sidecar results do not
+authorize a Flash-Next product or predict its speedup.
+Next attribute and optimize MoE decode, then exact linear/three-plane
+scheduling, canonical-sequence drift/exposed submission costs, and secondary
+QSA/GDN work. Re-rank from refreshed recoverable costs after each retained
+unit. The canonical drift mechanism remains open despite the completed
+controlled probe. Leaf projections cannot establish Vulkan parity or a
+host-bound diagnosis. P8 is not rank 2: do not integrate it until a same-session
+named-production arm supplies `O` and `s`.
+
+Consult docs/QWEN4EXP-EXTERNAL-FORKS-REVIEW.md for the September 8 gh-pinned
+Halogen/Myhacsint/halo-box review and E0-E7 experiments attached to this queue.
+Qualify the new comparator binaries separately; do not transfer IQ4_XS,
+custom-checkpoint, cache-hit or speculative rates onto UD-Q4_K_XL true AR.
+Prefer source-backed representation-preserving staging/fusion experiments
+where their measured recoverable cost beats an IU4 precision redesign.
+Preserve the review's final-source corrections and test limitations.
+
+Settle the P0 measurement gaps before the closure freeze: GPU clock policy must
+be declared and identical across both arms of every paired row, and the Vulkan
+lanes must be audited for configuration they are entitled to
+(`GGML_VK_ALLOW_GRAPHICS_QUEUE` first). A milestone-3 target frozen against an
+under-configured Vulkan lane is invalid and has to be re-frozen.
+
+Treat every external mechanism in section 4 as an untested hypothesis with a
+named falsification, never as a result. Nothing from an external program is
+adopted because it was published; it is adopted after it reproduces here under
+this campaign's gates, or closed with the evidence that killed it. The MTP
+rejection-depth RED sweep in P11 runs before any budget tuning, and a
+non-exact continuation is classified as tie or state class by the section 2.1
+rule before it is reported as either noise or a bug.
+
+For every implementation unit: declare the measured owner, complete-wall and
+gap-coverage ceilings, arithmetic class, affected scope, mechanism, and strict
+fallback; cite the concrete hipEngine-versus-comparator implementation delta;
+add the RED oracle; inspect kernel lineage before a port; benchmark actual
+rotating weights; prove the expected kernel ran; run the full applicable gate
+and same-session whole-model A/B; retain or reject from evidence; update compact
+artifacts, benchmark rollups, kernel/refactor docs, and the immutable worklog;
+then commit the validated unit immediately. Never hardcode prompt/token/
+candidate behavior, weaken a gate, relabel a different representation, add
+torch to the hot path,
+or add backend/quant branches outside the registry.
+
+Do not stop because one hypothesis loses. Record the rejection and move to the
+next measured owner. If blocked, write the exact blocker and continue every
+independent phase. Stop only on explicit user pause or when all campaign
+acceptance criteria are satisfied and the final comparator refresh, evidence,
+cleanup, and commits are complete.
+```
+
+## 8. References
+
+- Campaign authority: [`QWEN3.8-FLASH-NEXT.md`](QWEN3.8-FLASH-NEXT.md)
+- Benchmark policy: [`BENCHMARK.md`](BENCHMARK.md)
+- Testing policy: [`TESTING.md`](TESTING.md)
+- Profile contracts: [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md)
+- Kernel catalog and port rules: [`KERNELS.md`](KERNELS.md)
+- gfx1151 roofline: [`ROOFLINE-gfx1151.md`](ROOFLINE-gfx1151.md)
+- Canonical exact-token fixture and driver:
+  [`qwen4exp_canonical_ar_p512_p1024_p4096.json`](../benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json)
+  and `scripts/qwen4exp_canonical_ar_bench.py`.
+- Tracked implementation leads:
+  [cafe-llama.cpp](https://github.com/quimmedes/cafe-llama.cpp) and
+  [omlx PR #3260](https://github.com/jundot/omlx/pull/3260).
+- Source-reviewed external program (no local reproduction):
+  [Pat1entZ3r0/strix-qwen-next-flash-optimization](https://github.com/Pat1entZ3r0/strix-qwen-next-flash-optimization)
+  at `413c33c`; full review in survey section 6.7.
+- Canonical exact-token screening:
+  [`benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-canonical-ar-screening.json`](../benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-canonical-ar-screening.json)
+- Cross-engine Strix Halo speed/accuracy survey:
+  [`QWEN3.8-FLASH-NEXT-STRIX-HALO-SURVEY.md`](QWEN3.8-FLASH-NEXT-STRIX-HALO-SURVEY.md)
+- Current canonical impact profile:
+  [`benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-canonical-impact-profile.json`](../benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-canonical-impact-profile.json)
+- Historical p508/tg32 profile:
+  [`benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-fresh-full-profile.json`](../benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-fresh-full-profile.json)
+- External fork refresh:
+  [`benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-external-fork-refresh.json`](../benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-external-fork-refresh.json)
+- Corrected invalid decode route:
+  [`benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-gdn-colwarps-decode-all.json`](../benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-gdn-colwarps-decode-all.json)
+- Durable profiling tools: `scripts/qwen4exp_profile_gap.py`,
+  `scripts/qwen4exp_context_decode_profile.py`,
+  `scripts/qwen4exp_llamacpp_exact_profile.py`,
+  `scripts/qwen4exp_trace_analyze.py`, `scripts/qwen4exp_role_analyze.py`,
+  `scripts/qwen4exp_decode_sync_ab.py`, and
+  `scripts/qwen4exp_perf_gap_report.py`.

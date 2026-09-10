@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "date": "2026-08-27",
+  "status": "accepted_production_default",
+  "execution_profile": "production_wave32_h128",
+  "variant_source_sha256": "116cc79aa159adad61c6af2375ac3e45982f826ec9563a8d7feef747cebeef7f",
+  "scope": "Barrier-free one-wave32 H128 QSA sparse BF16-cache attention",
+  "host": {"identity": "zbook", "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8", "gpu": "AMD Radeon 8060S Graphics", "arch": "gfx1151"},
+  "model": {"id": "Qwen/Qwen3.8-Flash-Next", "quant": "Unsloth UD-Q4_K_XL", "quant_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5"},
+  "primitive": {
+    "shape": {"query_heads": 24, "kv_heads": 2, "head_dim": 128, "selected_tokens": 2048, "cache_tokens": 4096},
+    "strict_us": 1982.318639998084,
+    "candidate_us": 1795.7479100005003,
+    "reduction_percent": 9.41174270550167,
+    "max_relative_difference": 0.0000014043266,
+    "gate": "rtol 2e-6, atol 2e-8 vs registered strict shared-memory owner"
+  },
+  "natural_4k_paired": {
+    "tokens": 4096,
+    "baseline_seconds": 298.0777730909995,
+    "candidate_seconds": 290.94116565900003,
+    "reduction_percent": 2.3942098593917214,
+    "speedup": 1.0245293835124176,
+    "mean_kl": 0.0,
+    "max_kl": 0.0,
+    "top1_agreement": true,
+    "all_12_layer_control_exact": true,
+    "generated_ids_exact": true,
+    "final_answer": "VIOLET-7391",
+    "retrieval_exact": true
+  },
+  "category_packet_2304": {
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "baseline_seconds": 658.4090140019998,
+    "candidate_seconds": 653.0879152910002,
+    "reduction_percent": 0.8081752524401933,
+    "speedup": 1.008147599406473,
+    "all_logits_bit_exact": true,
+    "all_top1_exact": true,
+    "all_control_exact": true,
+    "rows": [
+      {"id": "code_merge_intervals", "baseline_seconds": 158.93109038300008, "candidate_seconds": 157.49441782299982},
+      {"id": "general_en_plan", "baseline_seconds": 160.9508191369996, "candidate_seconds": 162.77716074600085},
+      {"id": "general_ja_plan", "baseline_seconds": 168.1840383130002, "candidate_seconds": 165.9218272779999},
+      {"id": "mixed_ja_en_translate", "baseline_seconds": 170.34306616899994, "candidate_seconds": 166.8945094439996}
+    ]
+  },
+  "rocprof": {
+    "kernel": "qsa_sparse_attention_paged_bf16_wave32_f32_kernel",
+    "strict_duration_ns": 2507278,
+    "candidate_duration_ns": 1770652,
+    "workgroup": 32,
+    "vgpr": 32,
+    "scratch_bytes": 12,
+    "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen4exp-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace -f csv -o /tmp/qwen4exp-qsa-wave32-trace -- uv run pytest -q tests/test_qwen4_exp_qsa_sparse_hip.py::test_qwen4_exp_sparse_wave32_h128_matches_strict_production_envelope -x"
+  },
+  "memory": {"tracked_peak_bytes": 82816054736, "tracked_after_close_bytes": 0, "tracked_after_close_allocations": 0},
+  "fallback": {"registry_variant": "strict_spans / strict_rows_spans", "bisection": "HIPENGINE_QWEN4_EXP_QSA_WAVE32=0"},
+  "decision": {"promoted": true, "reason": "binding four-category plus natural-task profile has exact final logits/control/task output, aggregate wall improves, and primitive numerical error is inside the declared production envelope"}
+}

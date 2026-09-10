@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_hybrid04_canonical_screen",
+  "status": "diagnostic_correctness_invalid_comparator",
+  "host": "zbook",
+  "clock_policy": "auto",
+  "source": {
+    "program_repo": "Pat1entZ3r0/strix-qwen-next-flash-optimization",
+    "program_head": "9a6f7cbd879c7b1bb76ff68d513069033c53f899",
+    "base": "llama.cpp@c589f0ed10c643678c4707dd160c21ac7633ebc0",
+    "applied_head": "899dbe249",
+    "patch_line": "hybrid-04",
+    "patch_count": 33,
+    "non_exact_opts": {"LLAMA_QSA_HEADSUM_SLICES": false, "LLAMA_QSA_POOL_CACHE": false}
+  },
+  "configuration": {
+    "backend": "Vulkan/RADV",
+    "graphics_queue": true,
+    "model": "UD-Q4_K_XL pinned four-shard revision c8b5954a",
+    "kv": "BF16/BF16",
+    "context": 8192,
+    "batch": 8192,
+    "ubatch": 2048,
+    "fit": "off",
+    "repack": "on",
+    "warmups_per_case": 0,
+    "repetitions": 1,
+    "decode_transitions": 128
+  },
+  "shapes": {
+    "512": {"prefill_tok_s": 270.30868909128895, "decode_tok_s": 25.82699605099177},
+    "1024": {"prefill_tok_s": 327.0292640891449, "decode_tok_s": 25.66689949017617},
+    "4096": {"prefill_tok_s": 364.03705001296703, "decode_tok_s": 21.260592872394547}
+  },
+  "correctness": {
+    "within_run_deterministic": true,
+    "current_hipengine_exact_cases": 2,
+    "case_count": 12,
+    "exact_case_ids": ["mixed_ja_en-p512", "mixed_ja_en-p4096"],
+    "binding": false,
+    "reason": "Only 2/12 generated-ID hashes match current hipEngine production; performance cannot become a parity target. One repetition without warmups is screening, not final thermal evidence."
+  },
+  "raw": {
+    "artifact": "/tmp/qwen4exp-hybrid04-canonical-screen.json",
+    "server_log": "/tmp/qwen4exp-hybrid04-server.log",
+    "artifact_sha256": "cc946bb5c60bb231e7dd2de7f543bf6a21e01803d04fb031a7c09dcc60b5f9e2",
+    "server_log_sha256": "3ee8ed2ab5d0bc526248c66217498ebf3032f7b3f620e6626b0474b2ca91843d"
+  },
+  "decision": "The requested matched screen is complete. Hybrid-04 is fast but correctness-invalid under this campaign and remains a diagnostic external lane only."
+}

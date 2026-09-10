@@ -1,0 +1,523 @@
+{
+  "log_error_envelope": {
+    "prefill": 0.034591293479049365,
+    "request": 0.03341395774488821
+  },
+  "multiplicative_envelope": {
+    "prefill": 1.0351965307551156,
+    "request": 1.033978474059113
+  },
+  "heldout": [
+    {
+      "rows": [
+        {
+          "case_id": "code-p1024",
+          "metric": "prefill",
+          "first_ratio": 1.0440691375835738,
+          "aggregate_ratio": 1.046756844471343,
+          "log_error": -0.002570953672157847,
+          "decision": "win",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "code-p1024",
+          "metric": "request",
+          "first_ratio": 1.0192520647538983,
+          "aggregate_ratio": 1.0202763024309693,
+          "log_error": -0.0010043868765487302,
+          "decision": "uncertain",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "code-p4096",
+          "metric": "prefill",
+          "first_ratio": 1.0418879344023826,
+          "aggregate_ratio": 1.0414522507986606,
+          "log_error": 0.00041825489007339515,
+          "decision": "win",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "code-p4096",
+          "metric": "request",
+          "first_ratio": 1.0302020510569245,
+          "aggregate_ratio": 1.0296674062462283,
+          "log_error": 0.0005191055392432671,
+          "decision": "uncertain",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "code-p512",
+          "metric": "prefill",
+          "first_ratio": 1.046172143162138,
+          "aggregate_ratio": 1.045284549542852,
+          "log_error": 0.0008487803507184562,
+          "decision": "win",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "code-p512",
+          "metric": "request",
+          "first_ratio": 1.0141922311437426,
+          "aggregate_ratio": 1.013530724465239,
+          "log_error": 0.0006524626060391233,
+          "decision": "uncertain",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "general_en-p1024",
+          "metric": "prefill",
+          "first_ratio": 1.050830547893087,
+          "aggregate_ratio": 1.0498473114640923,
+          "log_error": 0.0009361135467931763,
+          "decision": "win",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "general_en-p1024",
+          "metric": "request",
+          "first_ratio": 1.0212220632709328,
+          "aggregate_ratio": 1.0205892878234477,
+          "log_error": 0.0006198177587796344,
+          "decision": "uncertain",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "general_en-p4096",
+          "metric": "prefill",
+          "first_ratio": 1.0518326887234963,
+          "aggregate_ratio": 1.0444485896271305,
+          "log_error": 0.007044979805977788,
+          "decision": "win",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "general_en-p4096",
+          "metric": "request",
+          "first_ratio": 1.0401865279563747,
+          "aggregate_ratio": 1.0322736045562428,
+          "log_error": 0.007636298260392979,
+          "decision": "win",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "general_en-p512",
+          "metric": "prefill",
+          "first_ratio": 1.0424174552350474,
+          "aggregate_ratio": 1.0422652994222732,
+          "log_error": 0.00014597502925024872,
+          "decision": "win",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "general_en-p512",
+          "metric": "request",
+          "first_ratio": 1.012680472523986,
+          "aggregate_ratio": 1.012454752449685,
+          "log_error": 0.00022291852163955545,
+          "decision": "uncertain",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "general_ja-p1024",
+          "metric": "prefill",
+          "first_ratio": 1.0483790740555732,
+          "aggregate_ratio": 1.0455658398630976,
+          "log_error": 0.00268701995589531,
+          "decision": "win",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "general_ja-p1024",
+          "metric": "request",
+          "first_ratio": 1.020658675096414,
+          "aggregate_ratio": 1.0195046733540045,
+          "log_error": 0.001131283792898842,
+          "decision": "uncertain",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "general_ja-p4096",
+          "metric": "prefill",
+          "first_ratio": 1.0437917813470212,
+          "aggregate_ratio": 1.0453560840515619,
+          "log_error": -0.0014975512483336188,
+          "decision": "win",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "general_ja-p4096",
+          "metric": "request",
+          "first_ratio": 1.0235506667192107,
+          "aggregate_ratio": 1.0281505748106825,
+          "log_error": -0.004484001574506754,
+          "decision": "uncertain",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "general_ja-p512",
+          "metric": "prefill",
+          "first_ratio": 1.054619659527146,
+          "aggregate_ratio": 1.0462590656439692,
+          "log_error": 0.007959181954614307,
+          "decision": "win",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "general_ja-p512",
+          "metric": "request",
+          "first_ratio": 1.0188818171873841,
+          "aggregate_ratio": 1.0142074985173344,
+          "log_error": 0.004598250426140184,
+          "decision": "uncertain",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "mixed_ja_en-p1024",
+          "metric": "prefill",
+          "first_ratio": 1.0453672979125266,
+          "aggregate_ratio": 1.0471626849759206,
+          "log_error": -0.0017159969210864784,
+          "decision": "win",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "mixed_ja_en-p1024",
+          "metric": "request",
+          "first_ratio": 1.0183755742659046,
+          "aggregate_ratio": 1.0197061889210302,
+          "log_error": -0.0013057521716908073,
+          "decision": "uncertain",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "mixed_ja_en-p4096",
+          "metric": "prefill",
+          "first_ratio": 1.04240943875967,
+          "aggregate_ratio": 1.0416403205828892,
+          "log_error": 0.0007380996622084833,
+          "decision": "win",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "mixed_ja_en-p4096",
+          "metric": "request",
+          "first_ratio": 1.0357386434662221,
+          "aggregate_ratio": 1.0300276534892658,
+          "log_error": 0.005529187435213203,
+          "decision": "win",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "mixed_ja_en-p512",
+          "metric": "prefill",
+          "first_ratio": 1.0371530313569575,
+          "aggregate_ratio": 1.0381317113743138,
+          "log_error": -0.0009431766829449248,
+          "decision": "win",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "mixed_ja_en-p512",
+          "metric": "request",
+          "first_ratio": 1.0076147782702367,
+          "aggregate_ratio": 1.009630379039693,
+          "log_error": -0.0019983703348348354,
+          "decision": "uncertain",
+          "outside_envelope": false,
+          "wrong_sign": false
+        }
+      ],
+      "all_case_early_win": false,
+      "violations": 0,
+      "wrong_signs": 0
+    },
+    {
+      "rows": [
+        {
+          "case_id": "code-p1024",
+          "metric": "prefill",
+          "first_ratio": 0.9957377130031868,
+          "aggregate_ratio": 0.9996743106964747,
+          "log_error": -0.003945654084140765,
+          "decision": "uncertain",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "code-p1024",
+          "metric": "request",
+          "first_ratio": 0.9974774608768261,
+          "aggregate_ratio": 0.9995599111260495,
+          "log_error": -0.0020855403441273146,
+          "decision": "uncertain",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "code-p4096",
+          "metric": "prefill",
+          "first_ratio": 0.9995348281142127,
+          "aggregate_ratio": 1.000037639224888,
+          "log_error": -0.000502918628342897,
+          "decision": "uncertain",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "code-p4096",
+          "metric": "request",
+          "first_ratio": 0.9995767471310957,
+          "aggregate_ratio": 1.000034526711829,
+          "log_error": -0.00045786858147789524,
+          "decision": "uncertain",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "code-p512",
+          "metric": "prefill",
+          "first_ratio": 1.0000473959808174,
+          "aggregate_ratio": 0.9989503626802319,
+          "log_error": 0.0010975834324620942,
+          "decision": "uncertain",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "code-p512",
+          "metric": "request",
+          "first_ratio": 1.0003483605808854,
+          "aggregate_ratio": 0.9996733216480054,
+          "log_error": 0.0006750316404175765,
+          "decision": "uncertain",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "general_en-p1024",
+          "metric": "prefill",
+          "first_ratio": 1.005592508648212,
+          "aggregate_ratio": 0.9999960457686229,
+          "log_error": 0.005580882871508517,
+          "decision": "uncertain",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "general_en-p1024",
+          "metric": "request",
+          "first_ratio": 1.0025021435234693,
+          "aggregate_ratio": 0.9996455767858464,
+          "log_error": 0.0028535044112308135,
+          "decision": "uncertain",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "general_en-p4096",
+          "metric": "prefill",
+          "first_ratio": 1.0008960768817452,
+          "aggregate_ratio": 0.9978452472694548,
+          "log_error": 0.0030527531949497222,
+          "decision": "uncertain",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "general_en-p4096",
+          "metric": "request",
+          "first_ratio": 1.0008072060700413,
+          "aggregate_ratio": 1.0000250168003049,
+          "log_error": 0.0007818639670456889,
+          "decision": "uncertain",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "general_en-p512",
+          "metric": "prefill",
+          "first_ratio": 1.0024034798772254,
+          "aggregate_ratio": 1.0029029817715542,
+          "log_error": -0.0004981801178147271,
+          "decision": "uncertain",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "general_en-p512",
+          "metric": "request",
+          "first_ratio": 1.0007984989601695,
+          "aggregate_ratio": 1.0009770102961335,
+          "log_error": -0.00017835300273361622,
+          "decision": "uncertain",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "general_ja-p1024",
+          "metric": "prefill",
+          "first_ratio": 1.0012902456180062,
+          "aggregate_ratio": 1.004815889036082,
+          "log_error": -0.003514915773405956,
+          "decision": "uncertain",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "general_ja-p1024",
+          "metric": "request",
+          "first_ratio": 1.0020122332356163,
+          "aggregate_ratio": 1.0023454491357071,
+          "log_error": -0.0003324914570800638,
+          "decision": "uncertain",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "general_ja-p4096",
+          "metric": "prefill",
+          "first_ratio": 1.0004074713452167,
+          "aggregate_ratio": 1.0008354865336533,
+          "log_error": -0.0004277493577455679,
+          "decision": "uncertain",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "general_ja-p4096",
+          "metric": "request",
+          "first_ratio": 0.9937936318988213,
+          "aggregate_ratio": 0.9985965559793417,
+          "log_error": -0.004821277893547632,
+          "decision": "uncertain",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "general_ja-p512",
+          "metric": "prefill",
+          "first_ratio": 0.9997790243503488,
+          "aggregate_ratio": 0.9969424019132951,
+          "log_error": 0.002841282021670615,
+          "decision": "uncertain",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "general_ja-p512",
+          "metric": "request",
+          "first_ratio": 1.0011347070479097,
+          "aggregate_ratio": 0.9986838528626694,
+          "log_error": 0.002451077774141982,
+          "decision": "uncertain",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "mixed_ja_en-p1024",
+          "metric": "prefill",
+          "first_ratio": 1.0005960782072572,
+          "aggregate_ratio": 1.0010330147666273,
+          "log_error": -0.0004365809508305135,
+          "decision": "uncertain",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "mixed_ja_en-p1024",
+          "metric": "request",
+          "first_ratio": 1.000198538029267,
+          "aggregate_ratio": 1.0007780317450068,
+          "log_error": -0.0005792109120059247,
+          "decision": "uncertain",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "mixed_ja_en-p4096",
+          "metric": "prefill",
+          "first_ratio": 1.0011787126278127,
+          "aggregate_ratio": 0.9995062522508472,
+          "log_error": 0.0016718881741985118,
+          "decision": "uncertain",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "mixed_ja_en-p4096",
+          "metric": "request",
+          "first_ratio": 1.006154944882124,
+          "aggregate_ratio": 1.000812650618096,
+          "log_error": 0.0053237599787815315,
+          "decision": "uncertain",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "mixed_ja_en-p512",
+          "metric": "prefill",
+          "first_ratio": 1.0039655114083001,
+          "aggregate_ratio": 1.0016232350881502,
+          "log_error": 0.002335750426545632,
+          "decision": "uncertain",
+          "outside_envelope": false,
+          "wrong_sign": false
+        },
+        {
+          "case_id": "mixed_ja_en-p512",
+          "metric": "request",
+          "first_ratio": 0.9977299592867362,
+          "aggregate_ratio": 0.9982035135482871,
+          "log_error": -0.000474519092827205,
+          "decision": "uncertain",
+          "outside_envelope": false,
+          "wrong_sign": false
+        }
+      ],
+      "all_case_early_win": false,
+      "violations": 0,
+      "wrong_signs": 0
+    }
+  ],
+  "schema": 1,
+  "sources": {
+    "aa5b8ee86b11303ed5fa990c5602e5accec7be036d4345e7bf78045c925d17de": "benchmarks/results/2026-09-07-framework-qwen4exp-q8-down-register-production.json",
+    "f5ab6198bc44ef7e8d4ddb30481a47e82735650bd9538b37bfd4f50584c57d0e": "benchmarks/results/2026-09-07-framework-qwen4exp-q8-prefetch2-rejected.json",
+    "adfa4f5a7ddc1b90a5a01ca7250093bfe396f7a8d8675d8512badc65c9f4dfd1": "benchmarks/results/2026-09-07-framework-qwen4exp-q51-row-publish-production.json",
+    "ca5045259b111b6b60859e77c0d0ae866ebcf77fd12c2c19bb54f9d46b59dba2": "benchmarks/results/2026-09-07-framework-qwen4exp-gdn-wave-norm-model.json"
+  },
+  "train": [
+    "benchmarks/results/2026-09-07-framework-qwen4exp-q8-down-register-production.json",
+    "benchmarks/results/2026-09-07-framework-qwen4exp-q8-prefetch2-rejected.json"
+  ],
+  "heldout_paths": [
+    "benchmarks/results/2026-09-07-framework-qwen4exp-q51-row-publish-production.json",
+    "benchmarks/results/2026-09-07-framework-qwen4exp-gdn-wave-norm-model.json"
+  ],
+  "promotion_policy_changed": false,
+  "limits": "Empirical envelope from a small selected historical sample. Three-pair means are noisy, not ground truth. This does not estimate confidence, certify early promotion, or cover unseen thermal/clock/interference conditions."
+}

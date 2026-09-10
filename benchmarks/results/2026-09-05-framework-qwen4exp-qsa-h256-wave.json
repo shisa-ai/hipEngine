@@ -1,0 +1,471 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_h256_wave_attention_screen",
+  "command": [
+    "scripts/qwen4exp_qsa_h256_wave_screen.py",
+    "--rows",
+    "16",
+    "64",
+    "512",
+    "--selected",
+    "2051",
+    "--pairs",
+    "10",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--require-cached-build",
+    "--output",
+    "/tmp/qwen4exp-qsa-h256-wave-screen.json"
+  ],
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "ce8972bd9ddd73025a98de61cbd14bdfe6868410",
+    "tracked_clean": false
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "arithmetic_class": "T0",
+  "runtime_default_changed": false,
+  "boundary": "selected paged BF16 K/V attention to F32 output; selection and KV publication excluded",
+  "geometry": {
+    "query_heads": 24,
+    "kv_heads": 2,
+    "head_dim": 256,
+    "capacity": 4352,
+    "block_size": 256
+  },
+  "fixture": "seed506 random Q/BF16 KV, per-row page permutations and sorted unique selected positions",
+  "cases": [
+    {
+      "rows": 16,
+      "selected_stride": 2051,
+      "selected_sha256": "a5cd86a20fb1315c0ee1d282f9b39399435d0a12b514a6e3dc6a054bba8749c7",
+      "counts_sha256": "532b9fea260eaa470d090150b1231644d33a789fe7e75a27471643baea24df1d",
+      "seconds": {
+        "parent": [
+          0.006535867229104042,
+          0.006497774971649051,
+          0.006557096028700471,
+          0.0065052988938987255,
+          0.006536258151754737,
+          0.006478078896179795,
+          0.006526899989694357,
+          0.00650915689766407,
+          0.0065627871081233025,
+          0.00649878685362637
+        ],
+        "candidate": [
+          0.002492236904799938,
+          0.0025257710367441177,
+          0.0024763571564108133,
+          0.0025128170382231474,
+          0.0024744539987295866,
+          0.0025068249087780714,
+          0.0024785820860415697,
+          0.0025145290419459343,
+          0.002473582047969103,
+          0.002601643092930317
+        ]
+      },
+      "all_pairs_exact": true,
+      "speedup": 2.607700679345681
+    },
+    {
+      "rows": 64,
+      "selected_stride": 2051,
+      "selected_sha256": "ab452f6f88b385f70efc6e85088891c52bb7cdeb3239692f5f32ef9455b38975",
+      "counts_sha256": "3fb073bf7d25ddc33b79a349f19b59b15eaebf51e6369ff908bb2985e592ec61",
+      "seconds": {
+        "parent": [
+          0.022016009781509638,
+          0.022030537948012352,
+          0.0220806619618088,
+          0.022025499027222395,
+          0.022204464068636298,
+          0.022237577009946108,
+          0.022154310019686818,
+          0.022014607908204198,
+          0.022104004863649607,
+          0.022212489042431116
+        ],
+        "candidate": [
+          0.005101835820823908,
+          0.005128114949911833,
+          0.005095622967928648,
+          0.005183669039979577,
+          0.005097938003018498,
+          0.005116713000461459,
+          0.005088940961286426,
+          0.005116543034091592,
+          0.005084692966192961,
+          0.005245074164122343
+        ]
+      },
+      "all_pairs_exact": true,
+      "speedup": 4.324038817977824
+    },
+    {
+      "rows": 512,
+      "selected_stride": 2051,
+      "selected_sha256": "0ce1bdd7a29a87f0189385fc07336728032bdc83c3f53955115b71ed3f07da5e",
+      "counts_sha256": "60e731104c86957c0dace2aeda901761435eedf57d34212469b6f16d33d9caf3",
+      "seconds": {
+        "parent": [
+          0.17201032605953515,
+          0.17161542503163218,
+          0.17184651899151504,
+          0.17183042806573212,
+          0.17222332581877708,
+          0.17165935807861388,
+          0.17245416902005672,
+          0.17207609000615776,
+          0.17254927707836032,
+          0.1718318711500615
+        ],
+        "candidate": [
+          0.027995793148875237,
+          0.028035137802362442,
+          0.02776423911564052,
+          0.028098957147449255,
+          0.027785820188000798,
+          0.028193114092573524,
+          0.027876219945028424,
+          0.02831849898211658,
+          0.027849148027598858,
+          0.028088517021387815
+        ]
+      },
+      "all_pairs_exact": true,
+      "speedup": 6.136911152704213
+    }
+  ],
+  "date": "2026-09-05",
+  "status": "accepted_standalone_runtime_pending",
+  "performance_claim": false,
+  "model_scope": "Qwen3.8-Flash-Next UD-Q4_K_XL BF16 KV; synthetic attention inputs at actual geometry",
+  "source_sha256": {
+    "hipengine/kernels/hip_gfx1100/attention/qwen4_exp_qsa.hip": "f8f728bfd388e0035665ec7e887da9693d14bd0333f41d269a3ef6ee79abe085",
+    "hipengine/kernels/hip_gfx1100/attention/qwen4_exp_qsa.py": "cdb2c1a17630c7bd3e5586994e26e993b4724fca11f87adcb05d23047a93f4d4",
+    "scripts/qwen4exp_qsa_h256_wave_screen.py": "51563bc1ab56b8887edd0517ee2327fa5aea7fbea68856a08d73a0c53200397e"
+  },
+  "environment": {
+    "LD_LIBRARY_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib",
+    "HIPENGINE_HIP_ARCH": "gfx1151"
+  },
+  "cwd": "/home/lhl/hipEngine",
+  "python": ".venv/bin/python",
+  "raw_result": {
+    "path": "/tmp/qwen4exp-qsa-h256-wave-screen.json",
+    "sha256": "e3a57a21604d0ef33f9c2eb4f7746f39dd110541ed4919f96076d8a11eeeaa3d"
+  },
+  "trace": {
+    "path": "/tmp/qwen4exp-qsa-h256-wave-trace/gfx1151/2126097_kernel_trace.csv",
+    "sha256": "d9b52247807fa7291d09c99515d15318959abeab168a57226c835db4cf686ab2",
+    "symbol": "qsa_sparse_attention_h256_wave_rows_f32_kernel",
+    "duration_ns": [
+      27727784,
+      27686711
+    ],
+    "vgpr": 40,
+    "lds_bytes": 0,
+    "scratch_bytes": 0,
+    "threads": 32,
+    "blocks": [
+      24,
+      512,
+      1
+    ],
+    "command": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/bin/rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen4exp-qsa-h256-wave-trace -- .venv/bin/python scripts/qwen4exp_qsa_h256_wave_screen.py --rows 512 --selected 2051 --pairs 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --output /tmp/qwen4exp-qsa-h256-wave-traced.json"
+  },
+  "post_row4_profile": {
+    "source": {
+      "path": "/home/lhl/hipEngine",
+      "head": "ce8972bd9ddd73025a98de61cbd14bdfe6868410",
+      "tracked_clean": true
+    },
+    "host": {
+      "hostname": "gfx1151",
+      "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+      "kernel": "7.1.6-1-cachyos",
+      "tuned_active": "Current active profile: accelerator-performance",
+      "cpu_governors": {
+        "performance": 32
+      },
+      "gpu_clock_policies": {
+        "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+      },
+      "rocm_platform": null,
+      "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+    },
+    "command": [
+      "qwen4exp_profile_gap.py",
+      "--model-root",
+      "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "--mode",
+      "prefill",
+      "--case-id",
+      "code-p4096",
+      "--repetitions",
+      "1",
+      "--profile",
+      "--role-markers",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--require-cached-build",
+      "--output",
+      "/tmp/qwen4exp-post-row4-profile-p4096.json"
+    ],
+    "manifest_sha256": "b3afcd551017d40f792ad5f9d4564098c0cd9cd74e92a2c6b7f144a3782b4510",
+    "logits_sha256": "0b361e7db968b63ae88a78a87f0f7139ef62a61e351d7ca062640e75abfb3087",
+    "lifecycle": {
+      "after_warmup": {
+        "current_allocated_bytes": 83544147716,
+        "peak_allocated_bytes": 83544147716,
+        "total_allocated_bytes": 83554633476,
+        "total_freed_bytes": 10485760,
+        "active_allocations": 1645,
+        "peak_allocations": 1645
+      },
+      "after_measurement": {
+        "current_allocated_bytes": 83544147716,
+        "peak_allocated_bytes": 83544147716,
+        "total_allocated_bytes": 83554633476,
+        "total_freed_bytes": 10485760,
+        "active_allocations": 1645,
+        "peak_allocations": 1645
+      },
+      "after_close": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 83544147716,
+        "total_allocated_bytes": 83554633476,
+        "total_freed_bytes": 83554633476,
+        "active_allocations": 0,
+        "peak_allocations": 1645
+      },
+      "steady_allocation_growth": 0,
+      "steady_allocated_byte_growth": 0,
+      "passed": true
+    },
+    "role_coverage_pct": 100.0,
+    "roles": [
+      {
+        "name": "moe:layers.*.expert_gate",
+        "ms": 17905.755095,
+        "rows": 6480,
+        "symbols": 25
+      },
+      {
+        "name": "qsa_prefill:layers.*.attn_q",
+        "ms": 8981.602144,
+        "rows": 1232,
+        "symbols": 13
+      },
+      {
+        "name": "gdn:layers.*.attn_qkv",
+        "ms": 3914.476172,
+        "rows": 984,
+        "symbols": 5
+      },
+      {
+        "name": "linear:layers.*.attn_gate",
+        "ms": 1829.602454,
+        "rows": 288,
+        "symbols": 1
+      },
+      {
+        "name": "linear:layers.*.attn_qkv",
+        "ms": 1623.209836,
+        "rows": 1152,
+        "symbols": 4
+      },
+      {
+        "name": "gr_read:layers.*.hc_attn_down",
+        "ms": 1340.951632,
+        "rows": 1152,
+        "symbols": 3
+      },
+      {
+        "name": "gr_read:layers.*.hc_ffn_down",
+        "ms": 1325.932089,
+        "rows": 1152,
+        "symbols": 3
+      },
+      {
+        "name": "linear:layers.*.ssm_out",
+        "ms": 904.916911,
+        "rows": 1152,
+        "symbols": 4
+      },
+      {
+        "name": "linear:layers.*.hc_attn_down",
+        "ms": 826.363621,
+        "rows": 1536,
+        "symbols": 4
+      },
+      {
+        "name": "linear:layers.*.hc_ffn_down",
+        "ms": 824.007534,
+        "rows": 1536,
+        "symbols": 4
+      },
+      {
+        "name": "linear:layers.*.attn_q",
+        "ms": 609.947515,
+        "rows": 384,
+        "symbols": 4
+      },
+      {
+        "name": "linear:layers.*.shared_down",
+        "ms": 355.117328,
+        "rows": 384,
+        "symbols": 1
+      },
+      {
+        "name": "linear:layers.*.attn_output",
+        "ms": 295.082782,
+        "rows": 384,
+        "symbols": 4
+      },
+      {
+        "name": "linear:layers.*.index_q",
+        "ms": 226.144845,
+        "rows": 96,
+        "symbols": 1
+      },
+      {
+        "name": "linear:layers.*.shared_gate",
+        "ms": 199.509743,
+        "rows": 1536,
+        "symbols": 4
+      },
+      {
+        "name": "linear:layers.*.shared_up",
+        "ms": 192.281385,
+        "rows": 1536,
+        "symbols": 4
+      },
+      {
+        "name": "prefill_boundary",
+        "ms": 79.659547,
+        "rows": 1229,
+        "symbols": 6
+      },
+      {
+        "name": "linear:layers.*.ssm_alpha",
+        "ms": 62.994212,
+        "rows": 288,
+        "symbols": 1
+      },
+      {
+        "name": "linear:layers.*.ssm_beta",
+        "ms": 62.243741,
+        "rows": 288,
+        "symbols": 1
+      },
+      {
+        "name": "linear:layers.*.index_k",
+        "ms": 47.906905,
+        "rows": 96,
+        "symbols": 1
+      },
+      {
+        "name": "linear:layers.*.attn_k",
+        "ms": 47.03635,
+        "rows": 384,
+        "symbols": 4
+      },
+      {
+        "name": "linear:layers.*.attn_v",
+        "ms": 46.672035,
+        "rows": 384,
+        "symbols": 4
+      },
+      {
+        "name": "linear:layers.*.ple_key",
+        "ms": 45.795623,
+        "rows": 32,
+        "symbols": 4
+      },
+      {
+        "name": "linear:layers.*.hc_attn_inject",
+        "ms": 30.999932,
+        "rows": 384,
+        "symbols": 1
+      },
+      {
+        "name": "linear:layers.*.hc_ffn_inject",
+        "ms": 30.619226,
+        "rows": 384,
+        "symbols": 1
+      },
+      {
+        "name": "ple:layers.*.ple_key",
+        "ms": 13.856886,
+        "rows": 64,
+        "symbols": 7
+      },
+      {
+        "name": "linear:layers.*.ple_value",
+        "ms": 9.812173,
+        "rows": 32,
+        "symbols": 4
+      },
+      {
+        "name": "linear:layers.*.shared_expert_gate",
+        "ms": 3.679125,
+        "rows": 384,
+        "symbols": 1
+      },
+      {
+        "name": "linear:root.lm_head",
+        "ms": 3.039263,
+        "rows": 1,
+        "symbols": 1
+      },
+      {
+        "name": "linear:root.head_hc_down",
+        "ms": 0.040877,
+        "rows": 1,
+        "symbols": 1
+      },
+      {
+        "name": "linear:root.head_hc_up",
+        "ms": 0.024406,
+        "rows": 1,
+        "symbols": 1
+      },
+      {
+        "name": "gr_read:root.head_hc_down",
+        "ms": 0.011181,
+        "rows": 4,
+        "symbols": 4
+      }
+    ],
+    "attention_subowner_ms": 8167.756198,
+    "attention_subowner_calls": 48,
+    "raw_path": "/tmp/qwen4exp-post-row4-profile-p4096.json",
+    "raw_sha256": "bb7e65cb6dbd392b69f6e2f675cb0651de336a7179e512021e9bbf7dede9b39a"
+  },
+  "correctness": {
+    "tests": "12 focused QSA tests pass; parent-bit and CPU-reference gates, large/tiny query scale, empty/invalid positions, per-row page permutations and budget tails",
+    "first_red": "Compiler fused score products despite __fmul_rn; disassembly identified contraction. Register boundary restores parent product rounding.",
+    "runtime_default_changed": false
+  },
+  "limitations": [
+    "Development-tree standalone screen with source hashes; not a product speedup or same-session halo-box comparison.",
+    "Selection/indexing/KV publication excluded from attention microboundary.",
+    "Full-model A/B and state/isolation validation pending; scalar products must retain register rounding boundary."
+  ]
+}

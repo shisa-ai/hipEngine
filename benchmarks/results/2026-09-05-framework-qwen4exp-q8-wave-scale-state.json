@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "date": "2026-09-05",
+  "date_basis": "UTC",
+  "kind": "qwen4exp_q8_wave_scale_state_gate",
+  "status": "passed_opt_in_integration",
+  "performance_claim": false,
+  "base_commit": "1fe1fdb34",
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "hardware": "Framework Desktop Ryzen AI Max+395 / Radeon 8060S"
+  },
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL, BF16 KV",
+  "profile": "production plus default-off exact Q8 coltile wave-scale prefill",
+  "raw_path": "/tmp/qwen4exp-q8-wave-scale-state.json",
+  "raw_sha256": "3d2256d0c110a37f59986ed7acff24dde3678f21db5bf1dfbd8d480e2c4792ee",
+  "command": ".venv/bin/python scripts/qwen4exp_row4_state_gate.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --compiler-version-file /tmp/hipengine-hipcc-version.txt --route-package q8-wave-scale --full-kv --output /tmp/qwen4exp-q8-wave-scale-state.json",
+  "environment_reference": "2026-09-05-framework-qwen4exp-gdn-register.json",
+  "protocol": "parent/candidate/parent; full prefill and one decode-transition logits, recurrent/Conv/PLE state, positions/index counts and full BF16 KV",
+  "cases": [
+    {"id": "code-p512", "exact": true, "calls": [0, 84, 0]},
+    {"id": "code-p4096", "exact": true, "calls": [0, 672, 0]},
+    {"id": "general_en-p512", "exact": true, "calls": [0, 84, 0]},
+    {"id": "general_ja-p512", "exact": true, "calls": [0, 84, 0]},
+    {"id": "mixed_ja_en-p512", "exact": true, "calls": [0, 84, 0]}
+  ],
+  "final_allocations": 0,
+  "cpu_tests_passed": 141,
+  "next": "Clean full12-case72-trajectory A/B with normal model execution; no synthetic memory precondition."
+}

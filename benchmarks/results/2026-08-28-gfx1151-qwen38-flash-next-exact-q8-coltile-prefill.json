@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "date": "2026-08-28",
+  "status": "accepted_exact_default",
+  "scope": "Exact raw-Q8_0 F32 coltile4/rowbatch8 projection prefill at p508/p1012",
+  "host": {"identity": "zbook", "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8", "gpu": "AMD Radeon 8060S Graphics", "arch": "gfx1151"},
+  "model": {"id": "Qwen/Qwen3.8-Flash-Next", "quant": "Unsloth UD-Q4_K_XL", "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5"},
+  "implementation": {"kernel": "gguf_k_prefill_out_coltile_rowbatch_kernel<float,float,8,4,8>", "input": "FP32", "weight": "raw Q8_0", "output": "FP32", "coltile": 4, "rowbatch": 8, "arithmetic": "each output row preserves scalar per-thread K order, wave32 shuffle tree, and ordered four-wave accumulation", "gfx1151_scope": "independent Q8/F32 capability only; W7900 Q5/Q6 policies remain disabled"},
+  "timing": {
+    "p508": {"scalar_seconds": 26.264247608000005, "candidate_seconds": 14.717505849002919, "reduction_percent": 43.963725636986844, "speedup": 1.7845583264897669, "candidate_prompt_tokens_per_second": 34.51671806432587},
+    "p1012": {"scalar_seconds": 56.54995841500204, "candidate_seconds": 29.621500367997214, "reduction_percent": 47.618882138483, "speedup": 1.9090848779590541, "candidate_prompt_tokens_per_second": 34.164373425637145}
+  },
+  "correctness": {"primitive_scalar_bf32_bits_exact": true, "p508_mean_kl": 0.0, "p508_max_logit_error": 0.0, "p508_top1_exact": true, "p1012_mean_kl": 0.0, "p1012_max_logit_error": 0.0, "p1012_top1_exact": true},
+  "profiler": {"scalar_total_kernel_seconds": 25.0075944, "candidate_total_kernel_seconds": 14.230379234, "q8_scalar_bucket_seconds": 13.972, "q8_candidate_bucket_seconds": 3.121, "q8_candidate_share_percent": 21.93, "q8_launches": 3952, "q8_mean_duration_us": 789.7, "workgroup": 128, "scratch_bytes": 0},
+  "memory": {"p508_tracked_peak_bytes": 82758409216, "p1012_tracked_peak_bytes": 82774593616, "new_persistent_bytes": 0},
+  "fallback": {"environment": "HIPENGINE_QWEN4_EXP_RAW_ROWBATCH=0", "route": "strict scalar raw-Q8 F32 prefill"},
+  "decision": {"promoted": true, "reason": "43.96-47.62% complete-model short-prefill reduction with exact primitive and full logits", "context_ladder": "p508 rate 34.52 tok/s exceeds the 20 tok/s prerequisite for 4K, but campaign remains at 512/1K until short optimization is deliberately complete"}
+}

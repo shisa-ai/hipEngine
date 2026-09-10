@@ -1,0 +1,220 @@
+{
+  "schema": 1,
+  "disposition": "rejected_cooperative_kernel_removed",
+  "performance_claim": false,
+  "iterations": [
+    {"name": "K64 stride64 original", "mean_ms": 61.35679708333333, "vgpr": 224, "lds_bytes": 18432, "scratch_bytes": 0},
+    {"name": "K64 stride64 no-unroll", "mean_ms": 59.887422666666666, "vgpr": 224, "lds_bytes": 18432, "scratch_bytes": 0},
+    {"name": "K64 stride68 alignment-safe copies", "mean_ms": 57.151561666666666, "lds_requested_bytes": 19584, "vgpr": null, "scratch_bytes": null, "resource_note": "Final padded variant not separately traced; do not reuse earlier register count as its measurement"}
+  ],
+  "recipe": {
+    "base": "20e39e32ecc04ca86c76a297edbcb5d8c56abac2",
+    "geometry": "128-thread block, four wave32s,64 output columns x16 compact rows,K64 loop; grid ceil((Na+Nb)/64) by padded_rows/16",
+    "producer": "Stage16x64 FP16 activations plus64x64 high and residual weight planes. Each thread iterates linear i by128, deriving output column=i/64 and K offset=i%64. Decode raw Q4_K into F32; high=FP16(weight),low=FP16(weight-F32(high)). Exact same reconstruction as two-plane reference.",
+    "consumer": "Each wave handles16 output columns. For each of four16-K parts, load input row lane%16 and weight row wave*16+lane%16; separate high/low WMMA accumulators. Add at final BF16 output.",
+    "barriers": "One block barrier after staging, one after consuming each K64 block",
+    "followups": "Disable unroll on producer/consumer loops; then pad half-row stride64->68 and use builtin_memcpy for alignment-safe half16 loads",
+    "cause_limit": "224 VGPR and large repeated staging observed. Padding and no-unroll do not rescue it; no hardware-counter proof of a unique bank-conflict or occupancy cause.",
+    "removed": "All cooperative kernel/wrapper/registry/harness/test changes removed; no runtime or profile changes"
+  },
+  "validation": {
+    "red": "Missing cooperative registry key",
+    "candidate_tests": "Six numerical/registry tests pass for each version, including bit equality with T2 reference and CPU-reference outer floors",
+    "cleanup_tests": "15 residual-reference plus exact Q4 bundle tests",
+    "trace_prefix": "HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv -d TRACE_DIR --",
+    "trace_arguments": "Same screen command with --repetitions 3 and respective trace output paths",
+    "original_trace": "/tmp/qwen4exp-q4-cooperative-trace/gfx1151/3534459_kernel_trace.csv",
+    "rolled_trace": "/tmp/qwen4exp-q4-cooperative-rolled-trace/gfx1151/3538042_kernel_trace.csv",
+    "lineage": "Broad audit fails on missing hb-pr11 reference;no external port"
+  },
+  "raw_sha256": {
+    "/tmp/qwen4exp-q4-cooperative-code.json": "11a79a8e2121866d1f353f35e2c66d0c87f114b6fab3dd9a485e518c6d8a3e5b",
+    "/tmp/qwen4exp-q4-cooperative-rolled-code.json": "32af6e7b6d7c7de09e8f285f8996d23ef2ceb46be1a5ac9b951da32ee07e42c4",
+    "/tmp/qwen4exp-q4-cooperative-padded-code.json": "a761d09638da8a3dcd19797286cf3011411c1fba4d13817a7f8a518cd64fd579"
+  },
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "20e39e32ecc04ca86c76a297edbcb5d8c56abac2",
+    "tracked_clean": false
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "command": [
+    "scripts/qwen4exp_q4_residual_wmma_screen.py",
+    "--model-root",
+    "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--routing-capture",
+    "/tmp/qwen4exp-routing-categories.json",
+    "--tile-m",
+    "64",
+    "--cooperative",
+    "--output",
+    "/tmp/qwen4exp-q4-cooperative-padded-code.json"
+  ],
+  "model_identity": {
+    "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+    "fingerprint": {
+      "algorithm": "sha256-directory-manifest-v1",
+      "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+      "size_bytes": 111334654784,
+      "sampled_bytes": 12582912,
+      "file_count": 4,
+      "exists": true,
+      "path_type": "directory"
+    }
+  },
+  "weights": [
+    {
+      "name": "blk.0.ffn_gate_exps.weight",
+      "sha256": "c52d2ded80cdbdb92f75c08ecfdd0ae3e2bc97198edda3d62ef8645df19a6947"
+    },
+    {
+      "name": "blk.0.ffn_up_exps.weight",
+      "sha256": "92e1eb072ea457687ae6b531c9402817c1d8ac6043a70ceed7986fd0e4997450"
+    }
+  ],
+  "arithmetic": "T2,not parent exact",
+  "runtime_default_changed": false,
+  "shape": [
+    5120,
+    2560,
+    640,
+    512
+  ],
+  "tile_m": 64,
+  "cooperative": true,
+  "routing": {
+    "case_id": "code-p4096",
+    "chunk": 0,
+    "layer": 0,
+    "sha256": "d34381f22f85fc5603b87b32dd1487ad41246b32ca76d5355e24bee4f4f34766"
+  },
+  "boundary": "WMMA arms: GPU tile-map + concatenated gate/up + BF16 SiLU; exact arm: separate gate/up + same BF16 SiLU. Routing counts/compact input supplied.",
+  "limits": "Synthetic activations; known fixture padded launch count avoids D2H,so this is not a model-path latency claim or production numerical qualification.",
+  "arms": {
+    "exact_pair2": {
+      "ms": [
+        17.41093,
+        17.471453,
+        17.414175,
+        17.420067,
+        17.437659,
+        17.307896,
+        17.484848,
+        17.482905,
+        17.489457,
+        17.489587,
+        17.497432,
+        17.614732
+      ],
+      "mean_ms": 17.460095083333332,
+      "median_ms": 17.477179,
+      "order_mean_ms": [
+        17.451358,
+        17.47236225,
+        17.456565
+      ],
+      "gate_up": {
+        "bf16_element_agreement": 1.0,
+        "max_abs": 0.0,
+        "relative_l2": 0.0,
+        "row_top1_agreement": 1.0
+      },
+      "silu": {
+        "bf16_element_agreement": 1.0,
+        "max_abs": 0.0,
+        "relative_l2": 0.0,
+        "row_top1_agreement": 1.0
+      },
+      "deterministic": true
+    },
+    "wmma_f16x2_reference": {
+      "ms": [
+        17.846748,
+        17.856776,
+        17.952687,
+        17.685725,
+        17.655028,
+        18.01877,
+        17.683872,
+        17.889918,
+        17.955351,
+        17.702838,
+        17.655679,
+        17.735369
+      ],
+      "mean_ms": 17.803230083333332,
+      "median_ms": 17.7910585,
+      "order_mean_ms": [
+        17.72979575,
+        17.76435025,
+        17.91554425
+      ],
+      "gate_up": {
+        "bf16_element_agreement": 0.9964692687988281,
+        "max_abs": 0.001953125,
+        "relative_l2": 0.00018706433183979243,
+        "row_top1_agreement": 1.0
+      },
+      "silu": {
+        "bf16_element_agreement": 0.9937078857421875,
+        "max_abs": 0.00048828125,
+        "relative_l2": 0.00028018857119604945,
+        "row_top1_agreement": 1.0
+      },
+      "deterministic": true
+    },
+    "wmma_f16x2_cooperative": {
+      "ms": [
+        57.094261,
+        57.443587,
+        57.055568,
+        57.243722,
+        57.094551,
+        57.143343,
+        57.142952,
+        57.043926,
+        57.144625,
+        57.091946,
+        57.044257,
+        57.276002
+      ],
+      "mean_ms": 57.151561666666666,
+      "median_ms": 57.1187515,
+      "order_mean_ms": [
+        57.14322025,
+        57.156580250000005,
+        57.1548845
+      ],
+      "gate_up": {
+        "bf16_element_agreement": 0.9964692687988281,
+        "max_abs": 0.001953125,
+        "relative_l2": 0.00018706433183979243,
+        "row_top1_agreement": 1.0
+      },
+      "silu": {
+        "bf16_element_agreement": 0.9937078857421875,
+        "max_abs": 0.00048828125,
+        "relative_l2": 0.00028018857119604945,
+        "row_top1_agreement": 1.0
+      },
+      "deterministic": true
+    }
+  },
+  "status": "screen_complete_not_model_qualified"
+}

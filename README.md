@@ -39,6 +39,7 @@ batching, sampling, tools, and long context can differ by model.
 | --- | --- | :---: | :---: | :---: |
 | Qwen3.x Dense | **0.8B:** [GGUF](docs/GGUF.md) `Q4_K_M`, `Q8_0`, `Q4_1`, `UD-Q4_K_XL`<br>**27B:** [GGUF](docs/GGUF.md) `Q4_K_M`; Qwen3.8-27B `Q4_K_S` on `gfx1151` | Yes | Yes | — |
 | Qwen3.x MoE | **35B-A3B:** [GGUF](docs/GGUF.md) `Q4_K_M`, `Q4_K_S`, `UD-Q3_K_M`, `UD-Q4_K_M`<br>[ParoQuant W4](https://huggingface.co/shisa-ai/Qwen3.6-35B-A3B-PARO-packed) | Yes | Yes | — |
+| Qwen3.8 Flash-Next | **125B-A6B + sparse PLE:** GGUF `UD-Q4_K_XL`; optional Q8 MTP and BF16 mmproj | — | Yes — text/QSA, opt-in MTP, ≤1K image/video, c2 serving | — |
 | Laguna S 2.1 | [GGUF `Q4_K_M`](https://huggingface.co/poolside/Laguna-S-2.1-GGUF) | — | Yes | — |
 | Maple-Preview 20B-A1B | [2-bit MLX](https://huggingface.co/deepgrove/maple-preview-2bit-mlx) | Yes | Yes | Python API only |
 
@@ -50,7 +51,6 @@ Support is specific to the listed model families and formats. hipEngine does
 not yet run every GGUF model. See the [GGUF](docs/GGUF.md),
 [Laguna](docs/LAGUNA.md), and [Maple](docs/MAPLE.md) guides for model-specific
 limits.
-
 ### GGUF or ParoQuant for Qwen?
 
 For Qwen3.6 35B-A3B on W7900, the optimized ParoQuant W4 checkpoint currently
@@ -71,8 +71,8 @@ checkpoint or GGUF for broader compatibility.
 | NVIDIA Blackwell | Linux x86-64, Python 3.11+ and the CUDA toolkit with `nvcc`; Maple only |
 | Published wheel | glibc 2.39 or newer, such as Ubuntu 24.04 |
 
-ROCm 7.x is the safest choice for the current wheel. The first model load
-compiles and caches kernels, so it takes longer than later starts.
+See the [TheRock setup guide](docs/THEROCK.md) for retained ROCm 7.13 and gfx1151 ROCm 10 setup/JIT validation.
+The first model load compiles and caches kernels, so it takes longer than later starts.
 
 Install from PyPI:
 

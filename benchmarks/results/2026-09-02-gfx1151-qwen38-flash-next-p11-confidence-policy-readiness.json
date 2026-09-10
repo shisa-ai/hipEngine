@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_p11_confidence_policy_readiness",
+  "status": "blocked_missing_device_confidence_and_disjoint_fit_data",
+  "performance_claim": false,
+  "source": {
+    "head": "d8fb232b1",
+    "draft_runner": "hipengine/runtime/qwen4_exp_mtp.py",
+    "provider": "hipengine/generation/qwen4_exp_mtp.py",
+    "evaluation_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "retained_evidence": "benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-mtp-fullsuite-short.json"
+  },
+  "amdahl_declaration": {
+    "W_seconds": 51.711070590004965,
+    "C_seconds": 49.383127938017424,
+    "O": null,
+    "s": null,
+    "arithmetic_class": "no candidate; future threshold policy changes control and requires exact provider output",
+    "scope": "Qwen4Exp short-context confidence-threshold policy",
+    "mechanism": "audit confidence telemetry and disjoint policy-fit data before threshold evaluation",
+    "strict_fallback": "unthresholded serial exact MTP or target_ar",
+    "overlap_exclusions": [
+      "no threshold or budget candidate was executed",
+      "full-logit debug output is not a device-resident confidence path",
+      "evaluation prompts are not used for policy fitting"
+    ]
+  },
+  "telemetry_audit": {
+    "compact_candidate_id": true,
+    "device_argmax_value": true,
+    "top1_probability": false,
+    "runner_up_margin": false,
+    "logsumexp": false,
+    "calibration_metadata": false,
+    "full_logits_debug_only": true
+  },
+  "data_audit": {
+    "evaluation_rows": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "artifact_calls_suite_category_plus_heldout": true,
+    "machine_readable_train_heldout_partition": false,
+    "independent_policy_fit_corpus": false,
+    "eligible_for_threshold_fitting": false
+  },
+  "dependencies": [
+    "complete rejection-depth RED grid before budget or threshold work",
+    "add device-resident calibrated confidence packet without full-logit D2H",
+    "define unrestricted fit corpus and immutable heldout manifest disjoint from evaluation rows",
+    "evaluate every policy on full category plus heldout suite against same-command true AR"
+  ],
+  "decision": {
+    "threshold_sweep_run": false,
+    "ngram_mod_run": false,
+    "reason": "Running thresholds now would either restore full-logit host output or fit on the fixed evaluation prompts. Both violate the intended device-resident economics and anti-gaming policy.",
+    "unblock": "Provide device confidence telemetry, a disjoint fit/heldout manifest, and the rejection-depth gate."
+  }
+}

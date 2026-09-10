@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "date": "2026-08-28",
+  "status": "accepted_exact_default",
+  "scope": "Qwen4Exp raw-Q8 F32-to-F32 c1 decode output-pack reuse",
+  "host": {"identity":"zbook","machine_id":"87c566d30a5645cf8d12ed7ef6b6e1e8","cpu":"AMD Ryzen AI Max+ Pro 395","gpu":"AMD Radeon 8060S Graphics","arch":"gfx1151"},
+  "model": {"id":"Qwen/Qwen3.8-Flash-Next","quant":"Unsloth UD-Q4_K_XL","quant_revision":"8bdc666649440e9bdc97e16f3f75782c98478ff5"},
+  "change": "Expose the existing raw-Q8 output-pack8 template for F32 activation/F32 output and let registered-key resolution select it at rows=1. Eight adjacent output columns share each F32 activation load; each output retains the original K traversal, scalar dequant/FMA order, wave reduction, and serial cross-wave sum.",
+  "correctness": {"synthetic_f32_output_bits_exact":true,"generated_ids_exact":true,"generated_tokens":32,"focused_tests_passed":22,"registered_strict_scalar_fallback":"gemv_f32_f32_out","new_resident_bytes":0},
+  "paired_complete_model": {"command":"uv run python /tmp/qwen4exp_decode_q8f32_paired.py","protocol":"one residency; discard one strict+candidate warm pair; counterbalanced S/C/C/S/S/C; each row resets, warms 8, measures 32 generated tokens","strict_seconds":[5.775251070997911,5.616354230995057,5.559743089004769],"candidate_seconds":[5.3774685980024515,5.075462658001925,5.003037868998945],"strict_median_seconds":5.616354230995057,"candidate_median_seconds":5.075462658001925,"reduction_percent":9.630652746368916,"speedup":1.1065699049406594,"strict_tok_s":5.69764631714309,"candidate_tok_s":6.304843943546528},
+  "kernel_trace": {"command":"HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace -f csv -o qwen4exp-decode32-q8f32pack8 -d /tmp -- uv run python /tmp/qwen4exp_decode32_profile.py","tokens_in_trace":41,"baseline_q8_kernel":"gguf_k_prefill_out_kernel<float,float,8>","candidate_q8_kernel":"gguf_k_pack8_prefill_out_kernel<float,float,8>","baseline_q8_seconds":2.620142922,"candidate_q8_seconds":1.170968896,"q8_reduction_percent":55.30896508214979,"baseline_total_kernel_seconds":6.04555034,"candidate_total_kernel_seconds":4.322284572,"total_kernel_reduction_percent":28.503039882095186,"launches":80599,"compiler_spawned_under_profiler":false},
+  "validation": {"command":"HIPENGINE_HIP_ARCH=gfx1151 uv run pytest -q tests/test_gguf_k_gemv.py tests/test_generation_qwen4_exp_gguf.py tests/test_qwen4_exp_artifact.py -x","result":"22 passed"},
+  "decision": "Promote by registered capability for every raw-Q8 F32/F32 rows1 projection. The scalar registered primitive remains the strict fallback and peer backends inherit only if they register the exact key."
+}

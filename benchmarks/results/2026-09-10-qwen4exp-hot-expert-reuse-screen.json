@@ -1,0 +1,115 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp_hot_expert_reuse_screen",
+ "source": {
+  "path": "/home/lhl/hipEngine",
+  "head": "4ade0fa78c13b4f10bc8e446b1e3074fa0679316",
+  "tracked_clean": true
+ },
+ "host": {
+  "hostname": "gfx1151",
+  "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+  "kernel": "7.1.6-1-cachyos",
+  "tuned_active": "Current active profile: accelerator-performance",
+  "cpu_governors": {
+   "performance": 32
+  },
+  "gpu_clock_policies": {
+   "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+  },
+  "rocm_platform": null,
+  "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+ },
+ "command": [
+  "scripts/qwen4exp_hot_expert_reuse_screen.py",
+  "--model-root",
+  "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "--compiler-version-file",
+  "/tmp/hipengine-hipcc-version.txt",
+  "--decode-steps",
+  "48",
+  "--output",
+  "benchmarks/results/2026-09-10-qwen4exp-hot-expert-reuse-screen.json"
+ ],
+ "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+ "model": {
+  "layers": 48,
+  "experts": 512,
+  "top_k": 10,
+  "per_expert_bytes_mean": 3133866.6666666665,
+  "per_layer_expert_weights_bytes_mean": 1604539733.3333333,
+  "l2_cache_bytes": null,
+  "l2_note": "exact enum unquerable; hot-set bytes below are orders of magnitude above any plausible L2"
+ },
+ "prefill": {
+  "captures": 1152,
+  "total_pairs": 10813440,
+  "distinct_experts_per_capture_mean": 335.0842013888889,
+  "selected_expert_weight_traffic_per_capture_gb_mean": 1.0479048,
+  "within_expert_tile_reread_ratio": {
+   "tile_rows": 16,
+   "fragments_today": 897210,
+   "ideal_reads": 386017,
+   "ratio": 2.324275873860478,
+   "assumption": "worst case: expert weight tile re-read once per 16-row padded fragment; ideal: once per selection (perfect within-expert L2 reuse)"
+  },
+  "pair_coverage_of_topK": {
+   "8": 0.15878249659682764,
+   "16": 0.25324383359966857,
+   "32": 0.37771560206557764,
+   "64": 0.5407866506865531,
+   "128": 0.735534852923769
+  },
+  "distinct_expert_weight_traffic_in_hotset": {
+   "8": 0.024098443640535205,
+   "16": 0.047923905447694065,
+   "32": 0.09539814996316026,
+   "64": 0.1887055052466691,
+   "128": 0.36709154887040024
+  },
+  "consecutive_chunk_jaccard_mean": 0.7970325149057232,
+  "consecutive_chunk_jaccard_n": 576,
+  "cross_case_top32_jaccard_mean": 0.315650901358359,
+  "hotset_bytes_per_K": {
+   "8": 1203404800,
+   "16": 2406809600,
+   "32": 4813619200,
+   "64": 9627238400,
+   "128": 19254476800
+  }
+ },
+ "decode": {
+  "steps": 48,
+  "consecutive_step_overlap_mean": 0.3765994385342789,
+  "exact_repeat_rate": 0.0016252955082742316
+ },
+ "note": "Screen only. Pair coverage answers 'what fraction of token-expert pairs hit a small hot set'; distinct-expert traffic coverage bounds the weight-read reuse from keeping the hot set resident; decode overlap bounds next-K prefetch (same-set prediction) hit rate. No arithmetic changes were made or proposed by this screen.",
+ "screen_conclusions": {
+  "appended_by": "post-processing; every number below is derived from the fields above",
+  "a_hot_expert_weight_reuse_prefill": {
+   "verdict": "REFUTED as a weight-set lever",
+   "reasons": [
+    "no small hot set exists: top-16 of 512 experts cover only 25.3% of pairs; top-128 (a quarter of the pool) covers 73.6%",
+    "routing is diffuse: 335/512 experts (~65%) are selected per (layer,chunk); ~1.05 GB of expert weights are streamed per capture",
+    "hot-set capacity is infeasible: top-8-per-layer across 48 layers is already 1.2 GB vs MB-class caches",
+    "hot sets are case-specific: cross-case top-32 Jaccard 0.316 - no universal hot set even if capacity existed",
+    "consecutive-chunk set stability (Jaccard 0.797) is stability of a LARGE diffuse set, not a reuse lever"
+   ]
+  },
+  "a_residual_within_expert_tile_reuse": {
+   "verdict": "bounded, recorded, not promoted",
+   "ceiling": "perfect within-expert weight-tile reuse cuts expert weight-read traffic up to 2.32x (897210 16-row fragments vs 386017 distinct selections)",
+   "kernel_structure": "confirmed in gguf_q4_k_selected_prefill.hip: each (col_tile,row_tile) block re-reads the expert weight rows; adjacent fragments may already hit L2, so 2.32x is an upper bound pending rocprof memory counters",
+   "promotion_condition": "only if kernel-level profiling shows fragment weight re-reads are material AND the 3-plane iu8 compute tax (the dominant R13 factor) is not; arithmetic-preserving (scheduling only) if attempted"
+  },
+  "b_next_k_pipelining_decode": {
+   "verdict": "REFUTED as a TG lever",
+   "reasons": [
+    "same-set prediction covers only 37.7% of the next step's selections (exact repeat rate 0.16%)",
+    "decode expert weight traffic is ~1.5 GB/step = ~29 GB/s at the 52.3 ms/token TG median - far below the platform memory peak, so expert weight fetch is not the decode bottleneck; overlap/prefetch cannot move TG materially",
+    "cross-chunk prefill routing pipelining is blocked by the sequential dependency: chunk t+1's router input depends on chunk t's full forward pass (speculating hidden states would change arithmetic and violate the no-exactness-relaxation constraint)"
+   ]
+  },
+  "constraint_compliance": "screen only; no runtime default changes, no arithmetic changes; all measurements observational (between-layer-call hooks)"
+ }
+}

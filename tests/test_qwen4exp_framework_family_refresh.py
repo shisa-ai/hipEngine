@@ -1,0 +1,235 @@
+import pytest
+
+from scripts.qwen4exp_framework_family_refresh import (
+    HOST_ID,
+    OVERVIEW_END,
+    OVERVIEW_START,
+    TAXONOMY,
+    annotated_sections,
+    baseline_commands,
+    check_capture_identity,
+    family_overview,
+    join_captures,
+    normalize_hip_roles,
+    summarize_sections,
+    update_overview_block,
+)
+
+
+def section(nodes="0x1", op="MUL_MAT_ID q5_1", us=10):
+    suffix = f" HE_NODES={nodes}" if nodes else ""
+    return f"Vulkan Timings:\n{op}{suffix}: 1 x {us} us = {us} us\nTotal time: {us} us.\n"
+
+
+def test_metadata_is_bound_to_each_graph_not_last_pointer_value():
+    text = "HE_OWNER 0x1 moe MUL_MAT_ID 66666e -\n" + section()
+    text += "HE_OWNER 0x1 gdn GATED_DELTA_NET 67646e -\n" + section(op="GATED_DELTA_NET")
+    result = annotated_sections(text)
+    assert result[0]["rows"][0]["owner"] == "moe"
+    assert result[1]["rows"][0]["owner"] == "gdn"
+    summary = summarize_sections(result)
+    assert summary["matched_gap_eligible"]
+    assert summary["owner_ms"]["moe"] == pytest.approx(0.01)
+    assert summary["owner_ms"]["gdn"] == pytest.approx(0.01)
+
+
+def test_cross_family_fusion_and_missing_metadata_are_not_guessed():
+    text = "HE_OWNER 0x1 linear MUL_MAT - -\nHE_OWNER 0x2 gr_read UNARY - -\n"
+    result = summarize_sections(annotated_sections(text + section("0x1,0x2")))
+    assert not result["matched_gap_eligible"]
+    assert result["owner_ms"]["mixed_fused"] == pytest.approx(0.01)
+    unknown = summarize_sections(annotated_sections(section()))
+    assert unknown["owner_ms"]["unclassified"] == pytest.approx(0.01)
+    assert not unknown["matched_gap_eligible"]
+
+
+def test_empty_fusion_members_do_not_create_false_mixed_cost():
+    text = "HE_OWNER 0x1 moe MUL_MAT_ID - -\nHE_OWNER 0x2 boundary VIEW - -\n"
+    assert summarize_sections(annotated_sections(text + section("0x1,0x2")))["matched_gap_eligible"]
+
+
+def test_reject_unfinished_duplicate_and_unreconciled_timings():
+    with pytest.raises(ValueError, match="unfinished"):
+        annotated_sections("Vulkan Timings:\n")
+    with pytest.raises(ValueError, match="twice"):
+        annotated_sections(section("0x1,0x1"))
+    with pytest.raises(ValueError, match="reconcile"):
+        annotated_sections(section(us=100).replace("Total time: 100", "Total time: 200"))
+    with pytest.raises(ValueError, match="invalid"):
+        annotated_sections(section(us=-1))
+
+
+def test_shared_projection_normalization_is_the_same_on_both_backends():
+    weight = b"blk.0.ffn_down_shexp.weight".hex()
+    text = f"HE_OWNER 0x1 linear MUL_MAT - {weight}\n" + section()
+    assert annotated_sections(text)[0]["rows"][0]["owner"] == "moe"
+    hip = normalize_hip_roles(
+        {
+            "roles": [
+                {"name": "linear:layers.*.shared_down", "ms": 2},
+                {"name": "moe:layers.*.expert_gate", "ms": 3},
+                {"name": "qsa_decode:layers.*.attn_q", "ms": 1},
+            ],
+            "unattributed_ms": 0,
+            "attributed_ms": 6,
+            "window_ms": 7,
+        }
+    )
+    assert hip["owner_ms"] == {"moe": 5, "qsa": 1}
+    with pytest.raises(ValueError, match="unattributed"):
+        normalize_hip_roles({"roles": [], "unattributed_ms": 1})
+
+
+@pytest.mark.parametrize(
+    "slot,weight",
+    [
+        ("hc_attn_down", "blk.0.hc_attn_down.weight"),
+        ("hc_attn_up", "blk.0.hc_attn_up.weight"),
+        ("hc_ffn_inject", "blk.0.hc_ffn_inject.weight"),
+        ("head_hc_down", "output_hc_down.weight"),
+        ("head_hc_up", "output_hc_up.weight"),
+    ],
+)
+def test_gr_projection_and_fused_mix_have_one_owner(slot, weight):
+    text = f"HE_OWNER 0x1 linear MUL_MAT - {weight.encode().hex()}\n" + section()
+    assert annotated_sections(text)[0]["rows"][0]["owner"] == "gr_read"
+    hip = normalize_hip_roles(
+        {
+            "roles": [
+                {"name": f"linear:layers.*.{slot}", "ms": 2},
+                {"name": "gr_read:layers.*.hc_attn_down", "ms": 3},
+            ],
+            "unattributed_ms": 0,
+            "attributed_ms": 5,
+            "window_ms": 6,
+        }
+    )
+    assert hip["owner_ms"] == {"gr_read": 5}
+
+
+def test_identity_rejects_cross_host_and_cross_fixture():
+    capture = {
+        "taxonomy": TAXONOMY,
+        "fixture_sha256": "fixture",
+        "quant": "q4",
+        "kv_dtype": "bf16",
+        "status": "captured",
+        "host": {"machine_id": HOST_ID},
+        "model_identity": {"fingerprint": {"value": "model"}},
+    }
+    check_capture_identity(capture, capture)
+    with pytest.raises(ValueError, match="host"):
+        check_capture_identity(capture, capture | {"host": {"machine_id": "zbook"}})
+    with pytest.raises(ValueError, match="fixture"):
+        check_capture_identity(capture, capture | {"fixture_sha256": "different"})
+
+
+def test_baseline_commands_preserve_full_suite_and_use_original_binaries(tmp_path):
+    queue = {
+        "fixture": {"path": "fixture.json"},
+        "model": {"root": "/model"},
+        "comparator": {
+            "source": "/reference",
+            "vulkan_binary": "/vk/llama-server",
+            "hip_binary": "/hip/llama-server",
+            "server_args": ["-ctk", "bf16"],
+        },
+    }
+    commands = baseline_commands(queue, tmp_path)
+    assert [name for name, _ in commands] == ["hipengine", "halo-box-vulkan", "halo-box-hip"]
+    for _, argv in commands:
+        assert "--case-id" not in argv
+        assert argv[argv.index("--repetitions") + 1] == "3"
+        assert argv[argv.index("--warmups") + 1] == "1"
+    assert "--server-arg=bf16" in commands[1][1]
+    current = baseline_commands(queue, tmp_path, prefill_chunk_size=1024)
+    assert current[0][1][current[0][1].index("--prefill-chunk-size")+1] == "1024"
+    assert current[1:] == commands[1:]
+    assert commands[0][1][commands[0][1].index("--prefill-chunk-size")+1] == "512"
+    with pytest.raises(ValueError,match="positive"):
+        baseline_commands(queue,tmp_path,prefill_chunk_size=0)
+
+
+def test_overview_rejects_incomplete_or_duplicate_case_matrix():
+    with pytest.raises(ValueError, match="six"):
+        family_overview({"comparisons": []}, {})
+    with pytest.raises(ValueError, match="six"):
+        family_overview({"comparisons": [{"id": "code-p512", "phase": "prefill"}] * 2}, {})
+
+
+def test_document_update_preserves_surrounding_text_and_rejects_missing_markers(tmp_path):
+    path = tmp_path / "doc.md"
+    path.write_text(f"before\n{OVERVIEW_START}\nold\n{OVERVIEW_END}\nafter\n")
+    update_overview_block(path, "new\n")
+    assert path.read_text() == f"before\n{OVERVIEW_START}\nnew\n\n{OVERVIEW_END}\nafter\n"
+    path.write_text("no markers")
+    with pytest.raises(ValueError, match="marker"):
+        update_overview_block(path, "new")
+
+
+def test_decode_join_rejects_different_root_token():
+    identity = {
+        "taxonomy": TAXONOMY,
+        "fixture_sha256": "fixture",
+        "quant": "q4",
+        "kv_dtype": "bf16",
+        "status": "captured",
+        "host": {"machine_id": HOST_ID},
+        "model_identity": {"fingerprint": {"value": "model"}},
+    }
+    profile = {
+        "matched_gap_eligible": True,
+        "owner_ms": {"moe": 1},
+        "total_device_ms": 1,
+        "profiled_window_ms": 2,
+    }
+    he = identity | {
+        "cases": [
+            {
+                "id": "code-p512",
+                "phase": "decode",
+                "prompt_tokens": 512,
+                "prompt_token_ids_sha256": "prompt",
+                "live_count": 513,
+                "profile": profile,
+                "raw": {"contexts": [{"root_token_id": 7}]},
+            }
+        ]
+    }
+    vk = identity | {
+        "cases": [
+            {
+                "id": "code-p512",
+                "prompt_tokens": 512,
+                "prompt_token_ids_sha256": "prompt",
+                "decode_profile": profile,
+                "decode": {"response": {"prompt_n": 1}},
+                "prefill": {"response": {"output_token_ids": [8]}},
+            }
+        ]
+    }
+    with pytest.raises(ValueError, match="root"):
+        join_captures(he, vk)
+    vk["cases"][0]["prefill"]["response"]["output_token_ids"] = [7]
+    assert len(join_captures(he, vk)["comparisons"]) == 1
+    he["source"] = {"head": "hip-revision", "tracked_clean": True}
+    vk["comparator_source"] = {"head": "vulkan-revision", "tracked_clean": True}
+    he["cases"][0].update(raw_path="/capture/child.json", raw_sha256="child-hash",
+                          command=["capture", "decode"])
+    joined = join_captures(he, vk)
+    assert joined["hipengine_source"] == he["source"]
+    assert joined["comparator_source"] == vk["comparator_source"]
+    assert joined["hip_raw_sources"][0]["raw_sha256"] == "child-hash"
+    he["prefill_chunk_size"] = 1024
+    he["cases"][0]["command"] += ["--prefill-chunk-size","1024"]
+    assert join_captures(he,vk)["hipengine_prefill_chunk_size"] == 1024
+    he["cases"][0]["command"][-1] = "512"
+    with pytest.raises(ValueError,match="chunk"):
+        join_captures(he,vk)
+
+
+def test_capture_chunk_arguments_validate_positive_size():
+    from scripts.qwen4exp_framework_family_refresh import hip_chunk_arguments
+    assert hip_chunk_arguments(1024) == ["--prefill-chunk-size","1024"]
+    with pytest.raises(ValueError):
+        hip_chunk_arguments(0)

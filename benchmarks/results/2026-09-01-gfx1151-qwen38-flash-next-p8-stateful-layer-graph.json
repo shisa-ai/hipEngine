@@ -1,0 +1,215 @@
+{
+  "capture_nonexecuting": true,
+  "command": [
+    "qwen4exp_stateful_layer_graph_probe.py",
+    "--model-root",
+    "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--prompt-file",
+    "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "--output",
+    "/tmp/qwen4exp-stateful-layer-graph.json"
+  ],
+  "decision": {
+    "finding": "one complete stateful GDN physical layer is graph-safe through four replays and graph replay removes most Python/ctypes submission wall",
+    "next_rung": "complete attention/FFN transition or multi-layer segment with request-owned dynamic state",
+    "production_binding": false
+  },
+  "first_mismatch": null,
+  "gdn_state_index": 0,
+  "host": {
+    "cpu_governors": {
+      "performance": 32
+    },
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "hostname": "zbook",
+    "kernel": "6.18.42-1-cachyos-lts",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "rocm_platform": "10.0.0",
+    "tuned_active": "Current active profile: accelerator-performance"
+  },
+  "kind": "qwen4exp_stateful_layer_graph_probe",
+  "layer": 0,
+  "lifecycle": {
+    "after_close": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 82741321248,
+      "peak_allocations": 1638,
+      "total_allocated_bytes": 82741321248,
+      "total_freed_bytes": 82741321248
+    },
+    "passed": true
+  },
+  "model": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "profile": {
+    "manifest_sha256": "e93c8fa47bf2804a781bade0939c617563531ce5436e3281c2ab869209875dca",
+    "name": "strict"
+  },
+  "profiler": {
+    "command": [
+      "rocprofv3",
+      "--hip-runtime-trace",
+      "--hip-graph-trace",
+      "--kernel-trace",
+      "--memory-allocation-trace",
+      "--output-format",
+      "csv",
+      "--",
+      "uv",
+      "run",
+      "python",
+      "scripts/qwen4exp_stateful_layer_graph_probe.py",
+      "--model-root",
+      "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "--prompt-file",
+      "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "--samples",
+      "3"
+    ],
+    "device_allocations_at_or_after_first_graph_launch": 0,
+    "graph_launches": 7,
+    "kernel_dispatches_per_graph_launch": [
+      34,
+      34,
+      34,
+      34,
+      34,
+      34,
+      34
+    ],
+    "profiled_timing": {
+      "eager_median_ms": 4.793337000592146,
+      "graph_median_ms": 1.4378820051206276,
+      "speedup": 3.333609422415729
+    },
+    "trace_sha256": {
+      "hip_api": "8f71082397c4cf243993622e5d51d50eb1ecaa1b55765d959b7240c0632198e7",
+      "kernel": "0e5a6c30cedaeff991b575c41a07992804add66e8960d339ee630254dc50c577",
+      "memory_allocation": "a9385efb5dfad89412fe8571508ff81407d0c904eca5d0652502a0877d7e2061"
+    }
+  },
+  "prompt_tokens": 8,
+  "rows": [
+    {
+      "output_exact": true,
+      "replay": 1,
+      "state_exact": true,
+      "state_owners": {
+        "gdn_conv": true,
+        "gdn_matrix": true,
+        "ple_conv": true,
+        "residual": true
+      }
+    },
+    {
+      "output_exact": true,
+      "replay": 2,
+      "state_exact": true,
+      "state_owners": {
+        "gdn_conv": true,
+        "gdn_matrix": true,
+        "ple_conv": true,
+        "residual": true
+      }
+    },
+    {
+      "output_exact": true,
+      "replay": 3,
+      "state_exact": true,
+      "state_owners": {
+        "gdn_conv": true,
+        "gdn_matrix": true,
+        "ple_conv": true,
+        "residual": true
+      }
+    },
+    {
+      "output_exact": true,
+      "replay": 4,
+      "state_exact": true,
+      "state_owners": {
+        "gdn_conv": true,
+        "gdn_matrix": true,
+        "ple_conv": true,
+        "residual": true
+      }
+    }
+  ],
+  "schema": 1,
+  "source": {
+    "head": "db6bbc505437cc5c9848498b1850ec46a2b4d84a",
+    "path": "/home/lhl/hipEngine",
+    "tracked_clean": true
+  },
+  "status": "passed",
+  "timing": {
+    "eager_median_ms": 4.050572002597619,
+    "eager_ms": [
+      5.117536995385308,
+      4.200973999104463,
+      4.041223997774068,
+      3.697749001730699,
+      3.93766000343021,
+      3.9862609992269427,
+      4.27963199763326,
+      4.131693996896502,
+      3.6019689941895194,
+      3.903385004377924,
+      4.172410997853149,
+      4.277187996194698,
+      4.000977998657618,
+      3.4297450038138777,
+      4.049399998621084,
+      4.164406003837939,
+      4.232484003296122,
+      3.6012170021422207,
+      4.026155998872127,
+      3.9017620001686737,
+      3.8692009984515607,
+      4.028480005217716,
+      4.051744006574154,
+      4.168573002971243,
+      4.201375995762646,
+      4.134460003115237,
+      3.575368995370809,
+      4.063847001816612,
+      4.209840997646097,
+      4.19270899874391
+    ],
+    "graph_median_ms": 1.25765849952586,
+    "graph_ms": [
+      1.470833994972054,
+      1.3561189989559352,
+      1.3547560010920279,
+      1.366648000839632,
+      1.4326020027510822,
+      1.299170995480381,
+      1.2580239999806508,
+      1.3653349960804917,
+      1.2715289994957857,
+      1.2618210021173581,
+      1.261140001588501,
+      1.2648070041905157,
+      1.2639049964491278,
+      1.2655390019062907,
+      1.2700469960691407,
+      1.2508310028351843,
+      1.2475740004447289,
+      1.2440979990060441,
+      1.242565005668439,
+      1.2282880052225664,
+      1.2390379997668788,
+      1.2329270030022599,
+      1.2368339957902208,
+      1.2314240011619404,
+      1.2334380007814616,
+      1.2408820039127022,
+      1.2345499999355525,
+      1.2548380036605522,
+      1.2364239955786616,
+      1.257292999071069
+    ],
+    "samples": 30,
+    "speedup": 3.2207248661895846
+  }
+}

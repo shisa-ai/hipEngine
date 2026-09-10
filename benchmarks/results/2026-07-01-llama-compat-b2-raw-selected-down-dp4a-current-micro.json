@@ -1,0 +1,57 @@
+{
+  "command": "PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_k_selected_pack8_dp4a_microbench.py --quant both --rows 16 --iters 120 --warmup 30 --json benchmarks/results/2026-07-01-llama-compat-b2-raw-selected-down-dp4a-current-micro.json",
+  "hip_arch": "gfx1151",
+  "host": "gfx1151",
+  "iters": 120,
+  "results": [
+    {
+      "correctness_vs_float": {
+        "kl_max": 0.4359203022350679,
+        "kl_mean": 0.027300659504160375,
+        "max_abs": 3.0,
+        "mean_abs": 0.30947449803352356,
+        "top1": 1.0
+      },
+      "quant": "q5",
+      "speedup": {
+        "float_over_dp4a_dot": 2.5800433055934664,
+        "float_over_dp4a_quantize_plus_dot": 2.506225755462626
+      },
+      "timing_ms": {
+        "q8_1_quantize": 0.0028466747608035803,
+        "selected_pack8_dp4a_dot_prequantized": 0.07644694026870032,
+        "selected_pack8_dp4a_quantize_plus_dot": 0.07869858333530526,
+        "selected_pack8_float": 0.19723641647336385
+      }
+    },
+    {
+      "correctness_vs_float": {
+        "kl_max": 0.025760348875160044,
+        "kl_mean": 0.003740928028063851,
+        "max_abs": 0.5,
+        "mean_abs": 0.05370141565799713,
+        "top1": 1.0
+      },
+      "quant": "q6",
+      "speedup": {
+        "float_over_dp4a_dot": 2.207369830837685,
+        "float_over_dp4a_quantize_plus_dot": 2.044237419844817
+      },
+      "timing_ms": {
+        "q8_1_quantize": 0.003939391657089193,
+        "selected_pack8_dp4a_dot_prequantized": 0.046202358013639845,
+        "selected_pack8_dp4a_quantize_plus_dot": 0.04988935737249752,
+        "selected_pack8_float": 0.10198569119287033
+      }
+    }
+  ],
+  "schema": "hipengine.gguf_k_selected_pack8_dp4a_microbench.v1",
+  "shape": {
+    "experts": 256,
+    "in_features": 512,
+    "input_scale": 0.1,
+    "out_features": 2048,
+    "rows": 16
+  },
+  "warmup": 30
+}

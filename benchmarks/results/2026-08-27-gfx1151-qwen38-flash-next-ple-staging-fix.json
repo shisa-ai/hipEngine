@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "date": "2026-08-27",
+  "status": "accepted_correctness_fix_candidate_still_blocked",
+  "scope": "Qwen4Exp PLE prompt staging ownership and corrected fast-prefill qualification",
+  "host": {"identity": "zbook", "gpu": "AMD Radeon 8060S Graphics", "arch": "gfx1151"},
+  "model": {"id": "Qwen/Qwen3.8-Flash-Next", "quant": "Unsloth UD-Q4_K_XL", "quant_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5"},
+  "bug": {
+    "owner": "Qwen4Exp PLE two-buffer host staging ring",
+    "failure": "Chunk prefill accumulated views from repeated stage() calls and stacked only after later calls had overwritten prior ring buffers.",
+    "fix": "Copy each staged row immediately into one owned contiguous prompt matrix before the next ring call."
+  },
+  "natural_suite": {
+    "prompt_file": "/tmp/qwen4exp-canonical-plus-heldouts.jsonl",
+    "prompt_count": 18,
+    "tokens": 687,
+    "plain_chunk64_before": {"mean_kl": 0.13033125956378036, "max_kl": 0.6496211511948197, "top1_rate": 0.9444444444444444},
+    "plain_chunk64_after": {"tok_s": 13.474067705094198, "mean_kl": 0.005640923748458209, "p95_kl": 0.01482689113117602, "p99_kl": 0.02427039903425833, "max_kl": 0.02663127601002893, "top1_rate": 1.0},
+    "full_fast_before": {"tok_s": 35.75360864493251, "mean_kl": 0.17168812531725103, "max_kl": 1.3437819660963952, "top1_rate": 0.9444444444444444},
+    "full_fast_after": {"tok_s": 35.42628860898306, "mean_kl": 0.004755682805076025, "p95_kl": 0.014579629800553369, "p99_kl": 0.015303820297532703, "max_kl": 0.015484867921777537, "top1_rate": 1.0}
+  },
+  "structural_prefill": {"warm_512_tok_s": 211.7584439193768, "status": "unchanged performance diagnostic"},
+  "thresholds": {"mean_kl": 0.001, "p95_kl": 0.005, "p99_kl": 0.02, "max_kl": 0.05},
+  "decision": {
+    "fix_promoted": true,
+    "fast_prefill_promoted": false,
+    "reason": "PLE ownership fix is exact. Fast candidate now has 100% top1 and all rows below 0.02, but mean/p95 remain above the production envelope."
+  },
+  "validation": {"focused_tests_passed": 11, "ring_alias_regression_passed": true}
+}

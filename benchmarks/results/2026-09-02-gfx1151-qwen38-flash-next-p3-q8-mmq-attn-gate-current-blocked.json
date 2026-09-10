@@ -1,0 +1,146 @@
+{
+  "amdahl": {
+    "comparator_seconds_p512": 2.129,
+    "complete_wall_seconds_p512": 5.939,
+    "dense_gr_owner_seconds_p512": 1.839,
+    "overlap_exclusions": [
+      "MoE",
+      "QSA attention",
+      "GDN recurrence",
+      "copies and host stages"
+    ],
+    "zero_cost_gap_coverage": 0.483
+  },
+  "candidate": {
+    "classification": "T2",
+    "default": "off",
+    "mechanism": "guarded Q8 MMQ F32 prefill for GDN attn_gate K2560/N6144",
+    "strict_fallback": "coltile8_rowbatch4_f32_f32_out"
+  },
+  "correctness": {
+    "candidate_repeat_exact": true,
+    "lifecycle_passed": true,
+    "rows": 450,
+    "scope_failures": [],
+    "semantic_task_review": {
+      "finding": "Both code continuations preserve the requested algorithm/interface direction; Japanese explanation is substantively equivalent. Code prefixes truncate before completion, so no executable-code claim is made.",
+      "passed": true,
+      "raw_sha256": "44c180764171c2d0c3b05e11300cf1a622bc1acac34ea2152885dc73f5dba9ac",
+      "scope": "128-token deterministic prefixes of the three strict-divergent prompts"
+    },
+    "state_repeat_passed": true,
+    "summary": {
+      "candidate_teacher_nll_mean": 0.17467341803592637,
+      "kl_max": 0.006677420051157262,
+      "kl_mean": 0.0003162396841455167,
+      "kl_p50": 1.2771294098448963e-05,
+      "kl_p95": 0.0017986799845486944,
+      "kl_p99": 0.00412277754148667,
+      "max_abs_logit_delta": 1.5236557126045227,
+      "rows": 450,
+      "strict_margin_min": 0.024791717529296875,
+      "strict_teacher_nll_mean": 0.17467872598854,
+      "teacher_delta_p_mean": -0.00012106292787721332,
+      "teacher_nll_delta": -5.307952613636813e-06,
+      "top1_agreement": 0.9933333333333333,
+      "top1_matches": 447,
+      "topk_overlap_mean": 0.983111111111111
+    }
+  },
+  "date": "2026-09-02",
+  "decision": {
+    "next": "Keep default off. Revisit only after thermal stabilization/five-pair closure protocol or a larger operation-complete dense/GR mechanism.",
+    "promoted": false,
+    "reason": "Current aggregate interval barely excludes 1.0, but every per-category interval includes 1.0, only 9/12 pairs win, and alternating first-pair drift makes three categories noisy. Section 6 forbids averaging categories and classifies noisy rows as neither match nor loss."
+  },
+  "kind": "qwen4exp_q8_mmq_attn_gate_current_recheck",
+  "performance": {
+    "aggregate_ratio_95ci": [
+      1.00016071261949,
+      1.0205779384099547
+    ],
+    "aggregate_ratio_mean": 1.0103693255147224,
+    "all_cross_route_logits_exact": true,
+    "cases": {
+      "code-p512": {
+        "bound_cv": 2.223031903708684,
+        "candidate_cv": 2.095394252278262,
+        "exact": true,
+        "ratio": {
+          "count": 3,
+          "max": 1.0366940382264325,
+          "mean": 1.0128077300672198,
+          "mean_95ci": [
+            0.9612226824727763,
+            1.0643927776616633
+          ],
+          "median": 1.0026813506183725,
+          "min": 0.9990478013568546
+        }
+      },
+      "general_en-p512": {
+        "bound_cv": 2.0603516674887135,
+        "candidate_cv": 2.082959937183859,
+        "exact": true,
+        "ratio": {
+          "count": 3,
+          "max": 1.0342549580882137,
+          "mean": 1.01328357475994,
+          "mean_95ci": [
+            0.9680727778176943,
+            1.0584943717021857
+          ],
+          "median": 1.003974040646237,
+          "min": 1.0016217255453697
+        }
+      },
+      "general_ja-p512": {
+        "bound_cv": 2.2250624537638672,
+        "candidate_cv": 2.216164727671865,
+        "exact": true,
+        "ratio": {
+          "count": 3,
+          "max": 1.039008068871646,
+          "mean": 1.0117544956040776,
+          "mean_95ci": [
+            0.9531211317553405,
+            1.0703878594528147
+          ],
+          "median": 0.9983242672639241,
+          "min": 0.9979311506766623
+        }
+      },
+      "mixed_ja_en-p512": {
+        "bound_cv": 0.28605458877205125,
+        "candidate_cv": 0.03252280195200346,
+        "exact": true,
+        "ratio": {
+          "count": 3,
+          "max": 1.006818127695609,
+          "mean": 1.003631501627652,
+          "mean_95ci": [
+            0.9967637862771878,
+            1.0104992169781164
+          ],
+          "median": 1.0022031908946598,
+          "min": 1.0018731862926875
+        }
+      }
+    },
+    "pairs": 12,
+    "protocol": "current stack, four p512 categories, three counterbalanced pairs/category after warmup",
+    "raw_sha256": "2977cd68ded093d50285ea3113d5d93aa7b871b23a02a662e5aed17a0169c2e3",
+    "teardown": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 83543106308,
+      "peak_allocations": 1645,
+      "total_allocated_bytes": 83543106308,
+      "total_freed_bytes": 83543106308
+    },
+    "wins": 9
+  },
+  "raw_gate_sha256": "6da567a4112dc8725d00c7fc3a4aee2c56d54d74ea3d82de32319cd58f6c1c2d",
+  "schema": 1,
+  "status": "blocked_noisy_default_off"
+}

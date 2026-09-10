@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_p3_gr_composite_closure",
+  "status": "closed_retained_rejected_and_blocked_boundaries",
+  "performance_claim": false,
+  "scope": "Close attention/MoE output and GR composite ladder, including exact inject ordering",
+  "amdahl": {
+    "W": "current p512 named-production wall",
+    "C": "refreshed comparator wall",
+    "O": "0.403941905 s fresh p512 GR owner",
+    "s": "no new speedup; retained/rejected subunits keep their original measurements",
+    "overlap_exclusions": "GDN, QSA, MoE projection owners, dense-other, and submission are excluded",
+    "strict_fallback": "separate exact projection, GR read epilogues, and qwen4_exp_gr_write_bf16_f32"
+  },
+  "completed_subunits": {
+    "up_sigmoid_gated_mean": {
+      "artifacts": [
+        "2026-08-31-gfx1151-qwen38-flash-next-p3-gr-sigmoid-mean.json",
+        "2026-08-31-gfx1151-qwen38-flash-next-p3-gr-up-sigmoid-mean.json"
+      ],
+      "decision": "retained exact row-scoped owners with complete gates"
+    },
+    "down_scaled_silu": {
+      "artifact": "2026-08-31-gfx1151-qwen38-flash-next-p3-gr-down-scaled-silu-rejected.json",
+      "decision": "rejected and removed; binding rows508 operation regresses to 0.9926x"
+    },
+    "attention_qkv_gate": {
+      "artifacts": [
+        "2026-08-31-gfx1151-qwen38-flash-next-p3-attn-gate-exact-geometry-exhausted.json",
+        "2026-09-02-gfx1151-qwen38-flash-next-p3-q8-mmq-attn-gate-fivepair-rejected.json"
+      ],
+      "decision": "exact tile family exhausted; T2 MMQ extension rejected/default-off because code remains noisy above 2% CV"
+    }
+  },
+  "down_inject_static_blocker": {
+    "inventory_command": "scan_gguf over all four pinned shards for blk.0 hc_attn/hc_ffn down+inject",
+    "attention_down": {"quant": "Q8_0", "shape": [320, 10240]},
+    "attention_inject": {"quant": "F32", "shape": [4, 10240]},
+    "ffn_down": {"quant": "Q8_0", "shape": [320, 10240]},
+    "ffn_inject": {"quant": "F32", "shape": [4, 10240]},
+    "source_roles_ms_p508": {
+      "attention_down": 132.274776,
+      "ffn_down": 122.769237,
+      "attention_inject": 6.082493,
+      "ffn_inject": 6.516383
+    },
+    "finding": "The projections share original F32 input but not arithmetic or representation. Q8 down consumes its quantized/raw-Q8 owner; exact F32 inject must preserve the original F32 K/FMA/reduction tree. Reusing Q8 activations for inject is T1/T2, while a T0 single launch still performs both traversals and can remove only a tiny four-output launch boundary.",
+    "decision": "Do not add a nominal heterogeneous pair kernel. A retry must declare T1/T2 and prove an operation-complete win, or provide a new mixed-Q8/F32 kernel with a production-width RED and same-session wall gate."
+  },
+  "runtime_order": "run_qwen4_exp_gr_read computes down and inject from the normalized F32 branch input before gated mean; qwen4_exp_gr_write later consumes residual, block output, and inject logits in exact branch order.",
+  "decision": "Close the P3 composite ladder. Exact retained up/tail owners stay default; down+scaled-SiLU and qkv+gate alternatives are rejected; heterogeneous Q8-down/F32-inject has no paying T0 shared-arithmetic mechanism and is blocked pending explicit T1/T2. Strict primitive chains remain registered."
+}

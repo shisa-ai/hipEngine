@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_p9_prefill_overlap_rejected",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "scope": "Default-off one-chunk-ahead PLE gather/dequant using exact full-prompt hash precomputation, the second pinned ring buffer, and one worker thread",
+  "amdahl": {
+    "p1024": {"W_bound_s": 11.223046, "candidate_s": 11.240229, "s": 0.9984713},
+    "p4096": {"W_bound_s": 54.486505, "candidate_s": 54.396211, "s": 1.0016599},
+    "C": "not applicable; same-model route screen",
+    "O": "host PLE gather/dequant and publication nested in complete prefill wall",
+    "arithmetic_class": "T0 ownership/scheduling",
+    "overlap_exclusions": "complete prefill wall already includes hashing, worker creation/join, gather/dequant, H2D, and GPU work; telemetry subwindows are not additive",
+    "strict_fallback": "serial chunk-local hash/gather/dequant remains the sole production path"
+  },
+  "mechanism": {
+    "lookahead": "The complete prompt is known, so all exact PLE hash rows can be computed before chunk 0 without semantic prediction.",
+    "ownership": "One worker stages the next chunk into the inactive pinned ring while the main thread submits current-chunk GPU work; future completion precedes reuse and H2D.",
+    "decode": "unchanged and demand-driven because generated tokens have no real lookahead"
+  },
+  "screen": {
+    "code_p1024": {"pairs": 1, "warmups_per_route": 1, "candidate_faster": false, "cross_route_logits_exact": true},
+    "code_p4096": {"pairs": 1, "warmups_per_route": 1, "candidate_faster": true, "cross_route_logits_exact": true},
+    "power_dpm_force_performance_level": "auto"
+  },
+  "validation": {
+    "focused_tests": "10 passed after removal",
+    "candidate_removed": true,
+    "temporary_flag_removed": "HIPENGINE_QWEN4_EXP_PLE_PREFILL_OVERLAP"
+  },
+  "decision": "Reject and remove. Exact lookahead/ownership is feasible, but the route is neutral: -0.15% at p1024 and +0.17% at p4096. This is below the 1% complete-wall iteration floor and does not justify thread/future lifecycle complexity."
+}

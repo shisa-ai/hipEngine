@@ -1,0 +1,72 @@
+{
+  "schema": 1,
+  "date": "2026-08-29",
+  "status": "accepted_exact_default",
+  "scope": "Qwen4Exp gfx1151 selected Q5_1 down projection plus routed weighted-sum fusion",
+  "host": {
+    "identity": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "cpu": "AMD Ryzen AI Max+ Pro 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "id": "Qwen/Qwen3.8-Flash-Next",
+    "quant": "Unsloth UD-Q4_K_XL",
+    "quant_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5"
+  },
+  "baseline_commit": "d571b65e5",
+  "implementation": {
+    "change": "One physical64 CTA per hidden output processes selected route slots in original order, preserves every Q5 logical partial/reduction, rounds every route result to BF16, then replays weighted_sum_out_kernel's fmaf(BF16, F32 weight, accumulator) chain exactly.",
+    "registry_variant": "selected_weighted_sum_logical256_t64_bf16_bf16_out",
+    "selection": "unconditional c1 selected-Q5_1 expert_down default",
+    "strict_fallback": "selected_gemv_logical256_t64_bf16_bf16_out plus weighted_sum_out_bf16_f32w",
+    "new_tracked_device_bytes": 0
+  },
+  "correctness": {
+    "primitive_command": "HIPENGINE_HIP_ARCH=gfx1151 uv run pytest -q tests/test_qwen4_exp_q5_1_selected.py -x",
+    "primitive_result": "3 passed",
+    "fused_vs_unfused_bf16_bits_exact": true,
+    "cpu_dequant_oracle_bf16_bits_exact": true,
+    "paired_generated_ids_exact": true,
+    "paired_full_logits_sha256_exact": true,
+    "paired_rows_per_mode": 3,
+    "measured_tokens_per_row": 32,
+    "deterministic_repeats": true
+  },
+  "paired_complete_model": {
+    "command": "uv run python /tmp/qwen4exp_decode_q5_fused_weighted_paired.py",
+    "protocol": "one residency; separate MoE graph-cache keys during screening; warm strict+candidate; counterbalanced S/C/C/S/S/C; every row reset + p1 + 8 warm + 32 measured greedy tokens; full-logit SHA at every step",
+    "strict_seconds": [2.360715030998108, 2.3917667790083215, 2.3976525320031215],
+    "candidate_seconds": [2.3664188029943034, 2.3670653689914616, 2.336518172000069],
+    "strict_median_seconds": 2.3917667790083215,
+    "candidate_median_seconds": 2.3664188029943034,
+    "strict_tok_s": 13.379230901964403,
+    "candidate_tok_s": 13.522542991760124,
+    "reduction_percent": 1.0598013249656342,
+    "speedup": 1.0107115342313644
+  },
+  "kernel_trace": {
+    "command": "HIPENGINE_QWEN4_EXP_Q5_FUSED_WEIGHTED=1 rocprofv3 --kernel-trace --output-format csv --output-file /tmp/q5fusedweighted -- uv run python /tmp/qwen4exp_decode32_profile.py",
+    "note": "The environment flag existed only in the uncommitted screen and is removed by promotion; strict measurements come from the immediately preceding exact-Q5-t64 trace.",
+    "strict_target_launches": 3822,
+    "candidate_target_launches": 2016,
+    "removed_launches": 1806,
+    "strict_target_cycle_wall_ms": 369.240914,
+    "candidate_target_cycle_wall_ms": 313.534702,
+    "cycle_wall_reduction_percent": 15.086684570388641,
+    "candidate_kernel": "q5_1_selected_weighted_sum_logical256_t64_bf16_bf16_kernel",
+    "candidate_q5_launches": 1806,
+    "candidate_q5_median_us": 163.367
+  },
+  "same_host_reference_after": {
+    "llama_cpp_hip_tg32": 15.847834,
+    "llama_cpp_vulkan_tg32": 18.716255,
+    "hipengine_tg32": 13.522542991760124,
+    "hipengine_fraction_of_hip": 0.8532738916725228,
+    "hipengine_fraction_of_vulkan": 0.7225026049153597,
+    "remaining_gap_to_hip": 1.1719566363853884,
+    "remaining_gap_to_vulkan": 1.3840780548011296
+  },
+  "decision": "Promote as exact gfx1151 c1 default. H=2560 provides enough output-column CTAs for route-slot serialization, removes one weighted-sum launch per Q5 layer/token, and improves complete graph decode."
+}

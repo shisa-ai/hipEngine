@@ -19,8 +19,17 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     gguf_q8_0_gemv_bf16_bf16_out,
     gguf_q8_0_gemv_bf16_f32_out,
     gguf_q8_0_dual_gemv_f32_f32_out,
+    gguf_q8_0_pack8_gemv_f32_f32_out,
     gguf_q8_0_gemv_f32_f32_out,
     gguf_q8_0_gemv_fp16_f32_out,
+    gguf_q8_0_gemv_rowbatch32_f32_f32_out,
+    gguf_q8_0_gemv_coltile4_rowbatch8_f32_f32_out,
+    gguf_q8_0_gemv_coltile8_rowbatch4_f32_f32_out,
+    gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32,
+    gguf_q8_0_gemv_coltile8_rowbatch8_f32_f32_out,
+    gguf_q8_0_gemv_coltile16_rowbatch2_f32_f32_out,
+    gguf_q8_0_gemv_coltile16_rowbatch4_f32_f32_out,
+    gguf_q8_0_gemv_coltile32_rowbatch1_f32_f32_out,
     plan_gguf_k_gemv_build,
 )
 from hipengine.kernels.registry import resolve
@@ -247,6 +256,174 @@ def test_gguf_k_wrapper_validates_kernel_contract() -> None:
         gguf_q6_k_gemv_f32_f32_out(
             1, 2, 3, rows=1, in_features=256, out_features=1, threads=96
         )
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_q8_0_f32_rowbatch32_matches_scalar_prefill_bits() -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
+
+    rows, in_features, out_features = 37, 256, 33
+    rng = np.random.default_rng(3808)
+    x = np.ascontiguousarray(rng.normal(0.0, 0.2, size=(rows, in_features)).astype(np.float32))
+    weight = np.ascontiguousarray(make_q8_0_weight(out_features, in_features))
+    runtime = get_hip_runtime(); library = build_gguf_k_gemv(load=True); bufs = []
+    try:
+        for host in (x, weight):
+            device = malloc(host.nbytes, runtime=runtime); copy_host_to_device(device, host_array_ptr(host), runtime=runtime); bufs.append(device)
+        baseline = malloc(rows * out_features * 4, runtime=runtime); candidate = malloc(rows * out_features * 4, runtime=runtime); coltiles = [malloc(rows * 32 * 4, runtime=runtime) for _ in range(6)]; bufs.extend((baseline, candidate, *coltiles))
+        gguf_q8_0_gemv_f32_f32_out(bufs[0].ptr, bufs[1].ptr, baseline.ptr, rows, in_features, out_features, library=library, runtime=runtime)
+        gguf_q8_0_gemv_rowbatch32_f32_f32_out(bufs[0].ptr, bufs[1].ptr, candidate.ptr, rows, in_features, out_features, library=library, runtime=runtime)
+        # Constant-32 accumulator tiles cover every factorization of 32.
+        for wrapper, output in zip((gguf_q8_0_gemv_coltile4_rowbatch8_f32_f32_out, gguf_q8_0_gemv_coltile8_rowbatch4_f32_f32_out, gguf_q8_0_gemv_coltile8_rowbatch8_f32_f32_out, gguf_q8_0_gemv_coltile16_rowbatch2_f32_f32_out, gguf_q8_0_gemv_coltile16_rowbatch4_f32_f32_out, gguf_q8_0_gemv_coltile32_rowbatch1_f32_f32_out), coltiles, strict=True):
+            wrapper(bufs[0].ptr, bufs[1].ptr, output.ptr, rows, in_features, 32, library=library, runtime=runtime)
+        runtime.device_synchronize(); got0=np.empty((rows,out_features),np.float32);got1=np.empty_like(got0);got_tiles=[np.empty((rows,32),np.float32) for _ in coltiles];copy_device_to_host(host_array_ptr(got0),baseline,runtime=runtime);copy_device_to_host(host_array_ptr(got1),candidate,runtime=runtime)
+        for got, output in zip(got_tiles, coltiles, strict=True): copy_device_to_host(host_array_ptr(got),output,got.nbytes,runtime=runtime)
+    finally:
+        for buf in reversed(bufs): free(buf,runtime=runtime)
+    np.testing.assert_array_equal(got1, got0)
+    for got in got_tiles:
+        np.testing.assert_array_equal(got, got0[:, :32])
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_q8_0_gr_up_sigmoid_mean_is_bit_exact_to_primitive_chain() -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr import (
+        qwen4_exp_gated_mean_f32,
+        qwen4_exp_sigmoid_f32,
+    )
+
+    rows, in_features, branches, hidden = 37, 320, 4, 2560
+    out_features = branches * hidden
+    rng = np.random.default_rng(3822)
+    x = np.ascontiguousarray(
+        rng.normal(0.0, 0.2, size=(rows, in_features)).astype(np.float32)
+    )
+    normalized = np.ascontiguousarray(
+        rng.normal(0.0, 0.2, size=(rows, branches, hidden)).astype(np.float32)
+    )
+    weight = np.ascontiguousarray(
+        np.tile(make_q8_0_weight(hidden, in_features), (branches, 1))
+    )
+    runtime = get_hip_runtime()
+    library = build_gguf_k_gemv(load=True)
+    buffers = []
+    try:
+        for host in (x, normalized, weight):
+            device = malloc(host.nbytes, runtime=runtime)
+            copy_host_to_device(device, host_array_ptr(host), runtime=runtime)
+            buffers.append(device)
+        for nbytes in (
+            rows * out_features * 4,
+            rows * hidden * 4,
+            rows * out_features * 4,
+            rows * hidden * 4,
+        ):
+            buffers.append(malloc(nbytes, runtime=runtime))
+        gguf_q8_0_gemv_coltile8_rowbatch4_f32_f32_out(
+            buffers[0].ptr, buffers[2].ptr, buffers[3].ptr,
+            rows, in_features, out_features, library=library, runtime=runtime,
+        )
+        qwen4_exp_sigmoid_f32(
+            buffers[3].ptr,
+            buffers[3].ptr,
+            rows * out_features,
+            runtime=runtime,
+        )
+        qwen4_exp_gated_mean_f32(
+            buffers[1].ptr,
+            buffers[3].ptr,
+            buffers[4].ptr,
+            rows,
+            branches,
+            hidden,
+            runtime=runtime,
+        )
+        gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32(
+            buffers[0].ptr,
+            buffers[2].ptr,
+            buffers[1].ptr,
+            buffers[5].ptr,
+            buffers[6].ptr,
+            rows,
+            in_features,
+            branches,
+            hidden,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        outputs = []
+        for device, shape in (
+            (buffers[3], (rows, out_features)),
+            (buffers[4], (rows, hidden)),
+            (buffers[5], (rows, out_features)),
+            (buffers[6], (rows, hidden)),
+        ):
+            host = np.empty(shape, dtype=np.float32)
+            copy_device_to_host(host_array_ptr(host), device, runtime=runtime)
+            outputs.append(host)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    np.testing.assert_array_equal(outputs[2].view(np.uint32), outputs[0].view(np.uint32))
+    np.testing.assert_array_equal(outputs[3].view(np.uint32), outputs[1].view(np.uint32))
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_q8_0_pack8_f32_matches_scalar_gemv_bits() -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+
+    rows, in_features, out_features = 1, 256, 32
+    rng = np.random.default_rng(3816)
+    x = np.ascontiguousarray(
+        rng.normal(0.0, 0.2, size=(rows, in_features)).astype(np.float32)
+    )
+    weight = np.ascontiguousarray(make_q8_0_weight(out_features, in_features))
+    runtime = get_hip_runtime()
+    library = build_gguf_k_gemv(load=True)
+    buffers = []
+    try:
+        for host in (x, weight):
+            device = malloc(host.nbytes, runtime=runtime)
+            copy_host_to_device(device, host_array_ptr(host), runtime=runtime)
+            buffers.append(device)
+        baseline = malloc(rows * out_features * 4, runtime=runtime)
+        candidate = malloc(rows * out_features * 4, runtime=runtime)
+        buffers.extend((baseline, candidate))
+        gguf_q8_0_gemv_f32_f32_out(
+            buffers[0].ptr, buffers[1].ptr, baseline.ptr,
+            rows, in_features, out_features, library=library, runtime=runtime,
+        )
+        gguf_q8_0_pack8_gemv_f32_f32_out(
+            buffers[0].ptr, buffers[1].ptr, candidate.ptr,
+            rows, in_features, out_features, library=library, runtime=runtime,
+        )
+        runtime.device_synchronize()
+        got = np.empty((rows, out_features), dtype=np.float32)
+        expected = np.empty_like(got)
+        copy_device_to_host(host_array_ptr(got), candidate, runtime=runtime)
+        copy_device_to_host(host_array_ptr(expected), baseline, runtime=runtime)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+    np.testing.assert_array_equal(got, expected)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")

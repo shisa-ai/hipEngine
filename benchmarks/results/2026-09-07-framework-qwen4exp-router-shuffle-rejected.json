@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "status": "rejected_removed_mixed_model_performance",
+  "performance_claim": false,
+  "source": "db929145c measured clean;candidate source6760c2fda",
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL / BF16 KV",
+  "host": "Framework gfx1151",
+  "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+  "command": ".venv/bin/python scripts/qwen4exp_halo_box_campaign_ab.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --route-package router-shuffle --prefill-chunk-size 1024 --output /tmp/qwen4exp-router-shuffle-production.json",
+  "environment": "Established therock devel/bin PATH,devel/lib:core/lib LD_LIBRARY_PATH,HIPENGINE_HIP_ARCH=gfx1151,compiler-version-file above;unchanged high/requested2900",
+  "protocol": "12 canonical cases,one residency,one warmup and3 repetitions per arm/case,counterbalanced,chunk1024,tg128",
+  "by_shape": [
+    {"prompt": 512, "before_pp": 180.51054127795715, "after_pp": 181.15495358526107, "before_tg": 19.498951820287033, "after_tg": 19.496056606273555},
+    {"prompt": 1024, "before_pp": 191.23803528978533, "after_pp": 191.55915046730684, "before_tg": 18.827021571162692, "after_tg": 18.810249942609452},
+    {"prompt": 4096, "before_pp": 176.5957835363052, "after_pp": 177.0424819876768, "before_tg": 14.023064308722898, "after_tg": 14.038859880902113}
+  ],
+  "request_wall_speedups": {
+    "code-p512": 1.0014167100059577, "code-p1024": 0.9996694318523025,
+    "code-p4096": 1.0017911391546144, "general_en-p512": 1.0010746958644277,
+    "general_en-p1024": 1.0004255788698035, "general_en-p4096": 1.0047171357550881,
+    "general_ja-p512": 1.001852509011183, "general_ja-p1024": 1.0017006358604468,
+    "general_ja-p4096": 0.9988446496278384, "mixed_ja_en-p512": 0.9995715442259365,
+    "mixed_ja_en-p1024": 0.9991551148704456, "mixed_ja_en-p4096": 1.0032250867185408
+  },
+  "prefill_regressed_cases": ["mixed_ja_en-p1024"],
+  "correctness": {"all72_trajectories_exact": true, "within_arm_deterministic": true,
+                  "final_allocations": 0, "final_bytes": 0, "peak_bytes": 86093186980},
+  "max_prefill_cv": 0.009937816787778839,
+  "max_decode_cv": 0.04615817319153652,
+  "first_to_last_measured_seconds": 1710.090925783,
+  "raw_path": "/tmp/qwen4exp-router-shuffle-production.json",
+  "raw_sha256": "d9bf2e03c85e182072146e810c7fb0c3a9abdc9fcd2668c2d12542b8b3c1e75f",
+  "prior_evidence": [
+    "benchmarks/results/2026-09-07-framework-qwen4exp-router-shuffle.json",
+    "benchmarks/results/2026-09-07-framework-qwen4exp-router-shuffle-state.json"
+  ],
+  "decision": "No repeatable broadly non-regressive model win established by marginal aggregate gains with one prefill/four request losses. No favorable rerun. Remove kernel/key/selector/harness routes and candidate-only tests.",
+  "cleanup": "Affected runtime/kernel/harness files restored exactly to fa4cf3a02;21 focused router/profile/A-B/chunk tests pass. Existing production promotions unchanged."
+}

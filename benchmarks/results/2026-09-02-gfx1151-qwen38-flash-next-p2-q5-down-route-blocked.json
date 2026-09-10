@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_q5_down_route_feasibility",
+  "status": "blocked_no_t0_candidate_admitted",
+  "scope": "p4096 grouped Q5 down plus route-weight/scatter/ordered-reduce",
+  "arithmetic_class": "T0",
+  "amdahl": {"wall_seconds": 57.730, "comparator_seconds": 13.910, "owner_seconds": 8.782, "hypothesized_local_speedup": 1.02, "hypothesized_savings_seconds": 0.172, "hypothesized_gap_coverage": 0.0039},
+  "current_abi": {
+    "down_owner": "expert-sorted compact rows; BF16 publication",
+    "reducer": "token-major top-k loop using lane_to_row and fmaf(BF16(value), F32(weight), accumulator)",
+    "sources": ["hipengine/runtime/qwen4_exp_runner.py:3340-3523", "hipengine/kernels/hip_gfx1100/fused/paro_combine.hip:53-84"]
+  },
+  "finding": [
+    "The Q5 owner is expert-major while the exact reduction is token-major; lanes for one token span independently scheduled expert CTAs.",
+    "Publishing preweighted F32 rows changes arithmetic because it rounds value*weight before the later addition instead of preserving the incumbent FMA(value, weight, accumulator).",
+    "Publishing BF16 rows preserves the boundary but leaves the complete weighting/reduction pass intact, so it is not an operation-complete mechanism.",
+    "Performing exact ordered reduction inside expert-major CTAs requires cross-CTA global coordination; atomics do not preserve top-k order. Reassigning the projection to token-major ownership discards the measured expert-row weight reuse and is a new kernel family, not an epilogue."
+  ],
+  "decision": "Do not implement a nominal fused epilogue. Exact Q5 down+route is blocked by the ownership boundary. A future candidate must either retain token-major FMA reduction through a cooperative/persistent owner or enter T1/T2 production numerics explicitly.",
+  "strict_fallback": "grouped Q5 down plus weighted_lanes_sum_out_bf16_f32w",
+  "overlap_exclusions": ["Q4 gate/up", "routing producer", "dense/GR/GDN/QSA", "copies", "host stages"]
+}

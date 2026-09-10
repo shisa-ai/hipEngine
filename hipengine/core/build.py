@@ -459,23 +459,66 @@ def _resolve_compiler_version(
     return version
 
 
-def _compiler_version_from_environment(compiler: str) -> str | None:
+_ENV_VERSION_CACHE: dict[tuple[str, tuple[str, str, str, str]], str] = {}
+
+
+def _environment_version_identity(compiler: str) -> tuple[str, str, str, str]:
+    """Raw values of the four version-override environment variables.
+
+    The identity is the cache key component alongside the compiler name:
+    changing any override variable (for example switching from
+    ``HIPENGINE_COMPILER_VERSION_TEXT`` to ``HIPENGINE_COMPILER_VERSION_FILE``,
+    or pointing the file variable at different content) must select a
+    different resolution instead of reusing the first cached value.
+    """
     specific = _compiler_env_prefix(compiler)
-    for name in (f"{specific}_VERSION_TEXT", "HIPENGINE_COMPILER_VERSION_TEXT"):
-        value = os.environ.get(name)
-        if value:
-            return value.strip()
-    for name in (f"{specific}_VERSION_FILE", "HIPENGINE_COMPILER_VERSION_FILE"):
-        value = os.environ.get(name)
-        if value:
-            return Path(value).expanduser().read_text().strip()
+    return (
+        os.environ.get(f"{specific}_VERSION_TEXT", ""),
+        os.environ.get("HIPENGINE_COMPILER_VERSION_TEXT", ""),
+        os.environ.get(f"{specific}_VERSION_FILE", ""),
+        os.environ.get("HIPENGINE_COMPILER_VERSION_FILE", ""),
+    )
+
+
+def _compiler_version_from_environment(compiler: str) -> str | None:
+    # The env/file version is static for a given override identity; cache the
+    # resolved value so per-launch ``build_X(load=True)`` calls do not re-read
+    # the version file from disk on every kernel launch (measured 919 resolves
+    # and ~8.8 ms per Qwen4Exp decode step before this cache; see the R7
+    # wrapper-host screen, 2026-09-10). The cache is keyed by the compiler AND
+    # the raw override-variable values, so a changed override selects a fresh
+    # resolution instead of the stale first one (test_build regression found
+    # in review, 2026-09-10). Only non-None results are cached: the
+    # env-unset path is the rare cold-start case and stays dynamic.
+    identity = _environment_version_identity(compiler)
+    cached = _ENV_VERSION_CACHE.get((compiler, identity))
+    if cached is not None:
+        return cached
+    specific_text, generic_text, specific_file, generic_file = identity
+    if specific_text or generic_text:
+        value = (specific_text or generic_text).strip()
+        _ENV_VERSION_CACHE[(compiler, identity)] = value
+        return value
+    if specific_file or generic_file:
+        _ENV_VERSION_CACHE[(compiler, identity)] = (
+            Path(specific_file or generic_file).expanduser().read_text().strip()
+        )
+        return _ENV_VERSION_CACHE[(compiler, identity)]
     return None
 
 
+_COMPILER_ENV_PREFIX_CACHE: dict[str, str] = {}
+
+
 def _compiler_env_prefix(compiler: str) -> str:
+    cached = _COMPILER_ENV_PREFIX_CACHE.get(compiler)
+    if cached is not None:
+        return cached
     basename = Path(compiler).name or compiler
     safe = "".join(char if char.isalnum() else "_" for char in basename).upper()
-    return f"HIPENGINE_{safe}"
+    prefix = f"HIPENGINE_{safe}"
+    _COMPILER_ENV_PREFIX_CACHE[compiler] = prefix
+    return prefix
 
 
 def _target_arch_from_environment() -> str | None:

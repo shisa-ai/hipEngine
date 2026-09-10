@@ -21,6 +21,7 @@ Instruction precedence: if this file conflicts with platform / system / develope
 - **Correctness gate for any new/ported kernel:** KL ≤ 0.05 AND top-1 agreement ≥ 90% vs `kernels/cpu_reference/` on fixture inputs is the outer smoke/safety floor. Strict variants additionally satisfy their declared exact/parent-parity RED contract. Production-profile variants satisfy the tighter calibrated mean/tail/max KL, top-1, deterministic/isolation, BF16-relative, and task gates in `docs/EXECUTION-PROFILES.md`; the broad floor alone cannot promote a production default.
 - **Default hardware:** AMD Radeon Pro W7900, gfx1100/RDNA3. Claims about other backends require the corresponding hardware or are marked explicitly unverified.
 - **Kernel work happens in this tree.** hipEngine is not a thin port of `~/amd-gpu-tuning/`; it is substantively different (torch-free runtime, four-axis registry, `KVLiveSpans` ABI, verifier-shaped kernels). New kernels, fused variants, small-batch/verifier-shaped kernels, micro-tuning, and `rocprofv3` iteration loops all live here under `kernels/<backend>/` with a strict exact/parent-parity RED test or a production-profile numerical RED test, plus the applicable correctness gate and a registered strict fallback. `~/amd-gpu-tuning/` and `nano-vllm-amd` remain read-only *references* for kernel lineage, prior evidence, and the device-code gotcha catalog — cite source file + commit when porting an idea, but do the development and measurement in-tree.
+- **IMPORTANT: there is no "exactness contract" — the contract is production correctness.** When optimizing, do **not** automatically discard a candidate because it is not bit-identical to the strict/exact parent (no BF16-flip-free / bit-exact requirement gates promotion). The binding contract is the one in [docs/EXECUTION-PROFILES.md](docs/EXECUTION-PROFILES.md): exact control/ownership in every profile, plus the calibrated production numerical envelope (mean/p95/p99/max KL, top-1 by category, determinism, isolation, task quality). A candidate that is not bit-exact must be re-reviewed under those production gates before any rejection; "strict" is a debugging oracle, not the promotion bar.
 - **Kernel catalog must stay current.** Before any kernel port, check `docs/KERNELS.md` and run `scripts/check_lineage.py`; update the catalog/path map if parent kernels or dispatch changed.
 
 ## Architectural Invariants
@@ -142,7 +143,7 @@ type: short summary (imperative, ≤ 72 chars)
 - Correctness / perf evidence when relevant
 ```
 
-Prefixes: `feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`, `perf:`, `port:` (upstream lineage), `kernel:` (kernel edits). **No bylines** — no `Co-authored-by`, no agent attribution, no generated-by footers.
+Prefixes: `feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`, `perf:`, `port:` (upstream lineage), `kernel:` (kernel edits). **No bylines** — no `Co-authored-by`, no agent attribution, no generated-by footers. Session URLs (`claude.ai/code/session_…`) are additionally banned as leaked credentials. Local enforcement: `scripts/check_commit_msg.py`, installable as a `commit-msg` hook via `python3 scripts/install_commit_msg_hook.py`.
 
 ### Never Committed
 

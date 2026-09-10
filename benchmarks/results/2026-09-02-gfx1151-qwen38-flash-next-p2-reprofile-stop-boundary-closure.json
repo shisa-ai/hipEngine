@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_p2_reprofile_stop_boundary_closure",
+  "status": "closed_from_sequential_profiles_and_fresh_role_ledger",
+  "performance_claim": false,
+  "scope": "Verify retained P2 clusters were re-profiled/re-ranked and widening stopped at binding failures",
+  "amdahl": {
+    "W_C_O_s": "unchanged from cited packets; no new speedup is credited",
+    "overlap_exclusions": "historical packets are not combined into a new A/B",
+    "arithmetic_class": "historical T2 decisions plus fresh diagnostic role profile",
+    "strict_fallback": "all omitted/failed layers retain exact grouped owners"
+  },
+  "retained_sequence": [
+    {
+      "cluster": "MoE 32-47",
+      "artifact": "2026-08-29-gfx1151-qwen38-flash-next-late-moe-production.json",
+      "p508_speedup": 1.096167907340536
+    },
+    {
+      "cluster": "MoE 28-47",
+      "artifact": "2026-08-29-gfx1151-qwen38-flash-next-late-moe28-production.json",
+      "supersedes": "MoE 32-47",
+      "p508_speedup": 1.1219311585448646,
+      "boundary": "suffix 28 passes; suffix 24 fails mean/p95 KL"
+    },
+    {
+      "cluster": "MoE 27-47",
+      "artifact": "2026-08-29-gfx1151-qwen38-flash-next-late-moe27-production.json",
+      "supersedes": "MoE 28-47",
+      "p508_speedup": 1.132015654505996,
+      "boundary": "layer 27 passes; every layer 0-26 fails an individual mean or p95 KL gate"
+    },
+    {
+      "cluster": "MoE 27-47 plus Q8 32-47",
+      "artifact": "2026-08-29-gfx1151-qwen38-flash-next-moe27-q8-32-production.json",
+      "supersedes": "MoE 27-47",
+      "p508_speedup": 1.2341007559972397,
+      "boundary": "Q8 suffix 32 passes; suffix 27 fails mean KL"
+    }
+  ],
+  "failed_boundaries": {
+    "moe_suffix_24": {"mean_kl": 0.0018784629999198858, "p95_kl": 0.00733643386938394},
+    "nearest_failed_layer_26": {"mean_kl": 0.001086, "p95_kl": 0.004932},
+    "q8_suffix_27": {"mean_kl": 0.0012588672559360305, "p95_kl": 0.004258546094038436},
+    "layer_2_grouped": {"mean_kl": 0.0011790983497016077, "threshold": 0.001}
+  },
+  "fresh_reprofile": {
+    "artifact": "2026-09-02-gfx1151-qwen38-flash-next-p4-p512-ledger.json",
+    "role_attribution_pct": 100.0,
+    "kernel_sum_ms": 5483.083432,
+    "selected_q4_gate_up_ms": 1265.082912,
+    "selected_q5_down_ms": 1086.518672,
+    "decision": "The current queue is re-ranked from a fully attributed named-production p512 trace; no unexplained bucket remains."
+  },
+  "decision": "Close the P2 re-profile/stop-boundary item. Each retained widening step superseded the prior packet with a new complete gate, widening stopped at the first binding numerical failure, and a later fully attributed production ledger refreshed the remaining queue."
+}

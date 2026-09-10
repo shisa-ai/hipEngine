@@ -1,0 +1,162 @@
+{
+  "amdahl": {
+    "comparator_wall_ms_per_token": 55.325,
+    "measured_ab_bound_ms_per_token": 93.91187842709314,
+    "measured_ab_candidate_ms_per_token": 80.06091947459026,
+    "measured_complete_wall_saved_ms_per_token": 13.850958952502879,
+    "measured_complete_wall_speedup": 1.173005244548795,
+    "measured_final_gap_coverage": 0.35895515566705327,
+    "overlap_exclusions": [
+      "QSA score/top-k outside sparse attention",
+      "MoE graphs",
+      "copies",
+      "host PLE staging",
+      "other dense and recurrent kernels"
+    ],
+    "prior_complete_wall_ms_per_token": 94.461,
+    "prior_exclusive_qsa_owner_ms_per_token": 36.304,
+    "zero_cost_final_gap_coverage": 0.928
+  },
+  "candidate": {
+    "classification": "T0",
+    "environment": "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE",
+    "mechanism": "parallel exact ordered QK scores, one global selected-order online-softmax coefficient recurrence, and independent output-column weighted-V recurrence",
+    "production_manifest_sha256": "37d595645b376083c2c2045687b76fa51b3bdf3c74e511af4f7831a180e16779",
+    "selected_variant": "strict_ordered_three_pass_spans",
+    "strict_fallback": "strict_spans",
+    "strict_manifest_sha256": "ec1c7828611b055014df9f5e5eb8a6c814e283606227cdfc6b33bfcaeeb0109b"
+  },
+  "correctness": {
+    "full_logits_exact_across_routes_all_measured_transitions": true,
+    "generated_ids_exact": true,
+    "lifecycle_passed": true,
+    "outer_cpu_oracle_test_passed": true,
+    "primitive_bit_exact_to_strict": true,
+    "same_schedule_state_repeat_exact": true
+  },
+  "date": "2026-09-02",
+  "decision": {
+    "next": "Re-profile the retained production stack and re-rank the remaining QSA residual against operation-complete prefill MoE and dense/GR owners.",
+    "promoted": true,
+    "reason": "Exact T0 route improves complete p4096 decode wall in every counterbalanced pair, traces the expected kernels, preserves full logits and IDs, and passes steady lifecycle/teardown."
+  },
+  "expected_kernel_trace": {
+    "attribution_percent": 100.0,
+    "expected_symbols": [
+      "qsa_sparse_attention_paged_bf16_ordered_scores_f32_kernel",
+      "qsa_sparse_attention_paged_bf16_ordered_coefficients_f32_kernel",
+      "qsa_sparse_attention_paged_bf16_ordered_values_f32_kernel"
+    ],
+    "measured_window_allocations": 0,
+    "production_manifest_named": true,
+    "profiled_median_ms_per_token": 83.30580499023199,
+    "qsa_operation_role_ms": 20.913345,
+    "qsa_operation_role_rows": 144,
+    "raw_child_sha256": "1e4689acfe856de977c1397025822e6b115109bad0051c844c566c41fc31fd3b",
+    "raw_role_summary_sha256": "912c637bcba0a803abe7ff3e143cad5d059704c38f54aa0927dba2cc77548901",
+    "raw_trace_summary_sha256": "243409616cb5edf03433414e01f91df3647157659099cc0ce19ca46b11e77e70",
+    "repeat_token_state_exact": true,
+    "steady_lifecycle_passed": true,
+    "teardown_passed": true
+  },
+  "kind": "qwen4exp_qsa_ordered_decode_promotion",
+  "leaf": {
+    "bit_exact": true,
+    "candidate_median_ms": 1.1797110055340454,
+    "speedup": 1.8293632829850646,
+    "strict_median_ms": 2.158119998057373
+  },
+  "lineage": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "detail": "/home/lhl/amd-gpu-tuning/reference/atlas is absent; candidate is an in-tree design, not an external port",
+    "status": "blocked_by_missing_unrelated_reference_checkout"
+  },
+  "same_session_whole_model_ab": {
+    "aggregate_bound_ms_per_token": 93.91187842709314,
+    "aggregate_candidate_ms_per_token": 80.06091947459026,
+    "aggregate_ratio_95ci": [
+      1.1699204413119917,
+      1.1762099440784883
+    ],
+    "aggregate_ratio_mean": 1.17306519269524,
+    "all_12_pairs_candidate_faster": true,
+    "all_cross_route_logits_exact": true,
+    "all_route_repeats_exact": true,
+    "cases": {
+      "code-p4096": {
+        "bound_cv_percent": 0.24798977169859074,
+        "bound_tok_s": 10.941042036949822,
+        "candidate_cv_percent": 0.2637358114190181,
+        "candidate_tok_s": 12.867621434342738,
+        "cross_route_logits_exact": true,
+        "paired_ratio_95ci": [
+          1.1753651859860266,
+          1.1768102469063233
+        ],
+        "paired_ratio_mean": 1.176087716446175
+      },
+      "general_en-p4096": {
+        "bound_cv_percent": 0.4940157126337335,
+        "bound_tok_s": 10.636615298352906,
+        "candidate_cv_percent": 1.099118446076426,
+        "candidate_tok_s": 12.504909749552162,
+        "cross_route_logits_exact": true,
+        "paired_ratio_95ci": [
+          1.1528658152812234,
+          1.1985529175593055
+        ],
+        "paired_ratio_mean": 1.1757093664202645
+      },
+      "general_ja-p4096": {
+        "bound_cv_percent": 0.157303268593612,
+        "bound_tok_s": 10.515236099939978,
+        "candidate_cv_percent": 0.08159316322638624,
+        "candidate_tok_s": 12.303256048514335,
+        "cross_route_logits_exact": true,
+        "paired_ratio_95ci": [
+          1.1675457256378274,
+          1.1725351884862107
+        ],
+        "paired_ratio_mean": 1.170040457062019
+      },
+      "mixed_ja_en-p4096": {
+        "bound_cv_percent": 0.05189849952510628,
+        "bound_tok_s": 10.511536337423825,
+        "candidate_cv_percent": 0.021413602778776793,
+        "candidate_tok_s": 12.302945160322034,
+        "cross_route_logits_exact": true,
+        "paired_ratio_95ci": [
+          1.1683536813562565,
+          1.1724927803487457
+        ],
+        "paired_ratio_mean": 1.170423230852501
+      }
+    },
+    "memory_after_close": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 83546258180,
+      "peak_allocations": 1645,
+      "total_allocated_bytes": 83556743940,
+      "total_freed_bytes": 83556743940
+    },
+    "protocol": "four canonical p4096 categories, 128 transitions, three counterbalanced pairs per category after warmup",
+    "raw_artifact_sha256": "97e280b0dc096f7baa4418bc76615a54359c9c7080f66c63059315b0a9571e60"
+  },
+  "schema": 1,
+  "scope": {
+    "arch": "gfx1151",
+    "clock_policy": "auto",
+    "execution_profile": "production",
+    "gpu": "AMD Radeon 8060S",
+    "host": "zbook",
+    "kv": "BF16",
+    "model": "Qwen/Qwen3.8-Flash-Next",
+    "weight_artifact": "Unsloth UD-Q4_K_XL split GGUF"
+  },
+  "source": {
+    "head_before_commit": "79a6442e3cfb8821c1e6ef5e76fded0555482f02",
+    "tracked_clean_during_measurement": false
+  },
+  "status": "accepted"
+}

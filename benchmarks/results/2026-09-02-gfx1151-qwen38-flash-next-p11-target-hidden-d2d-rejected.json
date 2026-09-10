@@ -1,0 +1,119 @@
+{
+  "amdahl_declaration": {
+    "C": {
+      "scope": "D2D-hidden/one-packet candidate",
+      "value_ms": 6530.592089984566
+    },
+    "O": {
+      "scope": "prior phase-census target-step boundary including hidden export",
+      "value_ms_per_target_row": 87.65228492640225
+    },
+    "W": {
+      "scope": "warmed four-category host-hidden/full-output control",
+      "value_ms": 6590.224339015549
+    },
+    "arithmetic_class": "T0 ownership",
+    "mechanism": "target last_target_hidden to draft last_hidden D2D on shared runtime; suppress target hidden D2H and draft hidden H2D",
+    "overlap_exclusions": [
+      "packet D2H synchronizes queued proposal work",
+      "target-step owner includes model compute",
+      "prompt priming still exports all target hidden rows"
+    ],
+    "s": 1.009131216313822,
+    "scope": "Qwen4Exp public MTP target-hidden handoff after prompt priming",
+    "strict_fallback": "host-hidden/full-output route (default)"
+  },
+  "date": "2026-09-02",
+  "decision": {
+    "default": "host_hidden_full_output",
+    "next": "Target verifier/device transaction work must remove the serial synchronization owner before this route is reconsidered.",
+    "promoted": false,
+    "reason": "Exact aggregate improves only 1.0091x; general_en and mixed_ja_en regress to 0.9292x and 0.9847x. Packet synchronization masks the removed hidden round trip."
+  },
+  "host": {
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+    },
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "hostname": "zbook",
+    "kernel": "6.18.42-1-cachyos-lts",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "rocm_platform": "10.0.0",
+    "tuned_active": "Current active profile: accelerator-performance"
+  },
+  "kind": "qwen4exp_p11_target_hidden_d2d",
+  "performance_claim": false,
+  "route_proof": {
+    "argmax_stage1_dispatches": 12,
+    "argmax_stage2_dispatches": 12,
+    "expected_route_passed": true,
+    "kernel_dispatches": 34010,
+    "raw_trace_sha256": "d2de44f98de58fe71801d69f00009fee11f52e7322427a27d0d9549d59c24e09",
+    "telemetry_handoff_values": [
+      "device_to_device",
+      "device_to_device",
+      "device_to_device",
+      "device_to_device"
+    ]
+  },
+  "schema": 1,
+  "source": {
+    "base_head": "490f5140c",
+    "tracked_clean": false
+  },
+  "status": "rejected_category_regression_default_off",
+  "whole_model_ab": {
+    "d2d_total_ms": 6530.592089984566,
+    "host_over_d2d": 1.009131216313822,
+    "host_total_ms": 6590.224339015549,
+    "ids_exact": true,
+    "lifecycle": {
+      "after_close": {
+        "active_allocations": 0,
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 88552984256,
+        "peak_allocations": 2183,
+        "total_allocated_bytes": 88553105088,
+        "total_freed_bytes": 88553105088
+      },
+      "passed": true
+    },
+    "rows": [
+      {
+        "category": "code",
+        "d2d_ms": 1454.9255890015047,
+        "host_ms": 1617.2910930181388,
+        "host_over_d2d": 1.1115971189482365,
+        "id": "code_merge_intervals",
+        "ids_exact": true
+      },
+      {
+        "category": "general_en",
+        "d2d_ms": 1534.8227309877984,
+        "host_ms": 1426.1892749927938,
+        "host_over_d2d": 0.9292208449863855,
+        "id": "general_en_plan",
+        "ids_exact": true
+      },
+      {
+        "category": "general_ja",
+        "d2d_ms": 1516.3724560115952,
+        "host_ms": 1553.3000860014,
+        "host_over_d2d": 1.0243526119479462,
+        "id": "general_ja_plan",
+        "ids_exact": true
+      },
+      {
+        "category": "mixed_ja_en",
+        "d2d_ms": 2024.4713139836676,
+        "host_ms": 1993.4438850032166,
+        "host_over_d2d": 0.9846738114953101,
+        "id": "mixed_ja_en_translate",
+        "ids_exact": true
+      }
+    ]
+  }
+}

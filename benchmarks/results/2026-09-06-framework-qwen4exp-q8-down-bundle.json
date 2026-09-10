@@ -1,0 +1,33 @@
+{
+  "schema":1,
+  "status":"kernel_candidate_retained_model_gate_pending",
+  "source":"5e3435936 plus in-tree candidate",
+  "host":"gfx1151",
+  "machine_id":"55ea6c509d0b49eea8de7094a1023668",
+  "hardware":"Framework Ryzen AI Max+395 Radeon8060S gfx1151",
+  "model":"Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "boundary":"Pre-grouped BF16 rows -> Q8 down BF16 output. Actual weights, captured routing counts, synthetic activations; grouping/combine unchanged and untimed.",
+  "mechanism":"Bundle four unchanged wave-shuffle reductions, publish sums[4][8] once, barrier, one thread per row performs original ascending serial wave sum, then final barrier. Original row4 math and fallback preserved.",
+  "command":".venv/bin/python scripts/qwen4exp_q8_down_row4_screen.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --compiler-version-file /tmp/hipengine-hipcc-version.txt --routing-capture /tmp/qwen4exp-routing-categories.json --layer 4 --case-id code-p4096 --chunk 0 --bundle --output /tmp/qwen4exp-q8-down-bundle.json",
+  "second_command":"Same command with --layer 30 --routing-layer 4 --case-id mixed_ja_en-p4096 --chunk 7 --output /tmp/qwen4exp-q8-down-bundle-layer30.json",
+  "environment":"Established therock SDK devel/bin PATH,devel/lib:core/lib LD_LIBRARY_PATH,HIPENGINE_HIP_ARCH=gfx1151, cached builds, unchanged high/2900-requested policy. Raw packets preserve compiler and weight identities.",
+  "cases":[
+    {"weight_layer":4,"routing_layer":4,"parent_ms":43.0027495604,"candidate_ms":37.3430668842,"speedup":1.1515591286,"mean_speedup":1.1501343628,"order_speedups":[1.1536168012,1.1504368905],"pairs":20,"exact":true},
+    {"weight_layer":30,"routing_layer":4,"parent_ms":41.3953519892,"candidate_ms":35.9153625323,"speedup":1.1525806527,"mean_speedup":1.1507892125,"order_speedups":[1.1545631170,1.1504310864],"pairs":20,"exact":true,"limitation":"Borrowed layer4 routing, not actual layer30 trajectory"}
+  ],
+  "correctness":"Registry RED then24 GPU tests pass: compact tails/empty experts64/128/256 threads, mapped repeats, CPU KL<=0.05/top1>=90%, existing quant tests. All40 actual-weight pairs exact.",
+  "trace":{
+    "prefix":"HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen4exp-q8-down-bundle-trace --",
+    "arguments":"first command with --pairs 2 --output /tmp/qwen4exp-q8-down-bundle-trace.json",
+    "symbols":"gguf_k_selected_grouped_prefill_out_kernel<unsigned short,unsigned short,4,false>/<unsigned short,unsigned short,4,true>",
+    "last_parent_ns":43023753,"last_candidate_ns":37309233,
+    "both_vgpr":24,"both_lds_bytes":512,"both_scratch_bytes":0
+  },
+  "raw":{
+    "/tmp/qwen4exp-q8-down-bundle.json":"79acd8862bbc1b9fd6022a96ae854442fe7c216fa1f2a50566abc4bcd49cd2df",
+    "/tmp/qwen4exp-q8-down-bundle-layer30.json":"c19749a94c1198aea3ea1f3de83962a856a64aa6c5e4bc3079d8932a8f010f61",
+    "/tmp/qwen4exp-q8-down-bundle-trace/gfx1151/3263680_kernel_trace.csv":"18c0db58d28e2d3f8aacdaa4e44fa8ccd4c86f030c58032df00ac9cae2b127c8"
+  },
+  "runtime_default_changed":false,
+  "promotion_blocker":"Invocation-checked full-model logits/state/KV and canonical12-case A/B pending; no production speed claim."
+}

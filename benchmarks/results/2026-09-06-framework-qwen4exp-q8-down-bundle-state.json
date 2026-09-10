@@ -1,0 +1,28 @@
+{
+  "schema":1,
+  "status":"state_gate_passed_performance_pending",
+  "source":"2dacf430d plus default-off admission edits",
+  "host":"gfx1151",
+  "machine_id":"55ea6c509d0b49eea8de7094a1023668",
+  "hardware":"Framework Ryzen AI Max+395 Radeon8060S gfx1151",
+  "model":"Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "kv_dtype":"BF16",
+  "command":".venv/bin/python scripts/qwen4exp_row4_state_gate.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --compiler-version-file /tmp/hipengine-hipcc-version.txt --route-package q8-down-bundle --decode-steps 4 --full-kv --output /tmp/qwen4exp-q8-down-bundle-state.json",
+  "environment":"Established therock SDK devel/bin PATH,devel/lib:core/lib LD_LIBRARY_PATH,HIPENGINE_HIP_ARCH=gfx1151,require_cached,unchanged high/2900-requested policy.",
+  "protocol":{"capacity":4352,"chunk":512,"decode_steps":4,"full_kv":true,"arms":["off","on","off"],"one_residency":true},
+  "cases":[
+    {"id":"code-p512","exact":true,"prefill_calls":[0,4,0],"decode_calls":[0,0,0]},
+    {"id":"code-p4096","exact":true,"prefill_calls":[0,32,0],"decode_calls":[0,0,0]},
+    {"id":"general_en-p512","exact":true,"prefill_calls":[0,4,0],"decode_calls":[0,0,0]},
+    {"id":"general_ja-p512","exact":true,"prefill_calls":[0,4,0],"decode_calls":[0,0,0]},
+    {"id":"mixed_ja_en-p512","exact":true,"prefill_calls":[0,4,0],"decode_calls":[0,0,0]}
+  ],
+  "correctness":"Full prefill logits,four decode logits,snapshot recurrent/PLE/index/position state and full allocated KV hashes exact across all arms/cases.",
+  "memory_after_close":{"active_allocations":0,"current_allocated_bytes":0,"peak_allocated_bytes":85339323140},
+  "cpu_tests":"28 route/profile/A-B tests pass; initial RED3 selector/package tests.",
+  "runtime_scope":"Bundle only after existing Q8 row4 selection,rows>=512. Both profiles pin bundle0. Q8 row4 and Q5_1 fold128 promotions remain active in both arms; strict/WMMA/decode unchanged.",
+  "raw_path":"/tmp/qwen4exp-q8-down-bundle-state.json",
+  "raw_sha256":"bcdd72a977188356e7afd9a4996883d9a82dc52ddde20a9bd3b4531a5dc9d215",
+  "performance_claim":false,
+  "promotion_blocker":"Clean canonical12-case A/B pending. Capacity4352 is diagnostic,not native262144 qualification."
+}

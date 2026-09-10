@@ -1,0 +1,3121 @@
+{
+  "status": "passed",
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "b7bc91a793c39a36709541d59f785f9dcfedc7f3",
+    "tracked_clean": false
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "model_identity": {
+    "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+    "fingerprint": {
+      "algorithm": "sha256-directory-manifest-v1",
+      "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+      "size_bytes": 111334654784,
+      "sampled_bytes": 12582912,
+      "file_count": 4,
+      "exists": true,
+      "path_type": "directory"
+    }
+  },
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "command": [
+    "scripts/qwen4exp_qsa_decode_flag_probe.py",
+    "--model-root",
+    "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--vary-prefill",
+    "--pairs",
+    "2",
+    "--steps",
+    "16",
+    "--case-id",
+    "code-p4096",
+    "--cpu-accounting",
+    "--thread-perf",
+    "--cpu-frequency",
+    "--pin-cpu",
+    "17",
+    "--output",
+    "/tmp/qwen4exp-qsa-phase-affinity.json"
+  ],
+  "cases": [
+    {
+      "id": "code-p4096",
+      "rows": [
+        {
+          "pair": 0,
+          "flag": 0,
+          "seconds": 1.1723151931073517,
+          "prefill_flag": "0",
+          "decode_flag": "0",
+          "prefill_seconds": 21.906815940048546,
+          "step_seconds": [
+            0.12345167202875018,
+            0.08116142102517188,
+            0.08159198006615043,
+            0.08464177581481636,
+            0.07984725385904312,
+            0.06536242901347578,
+            0.06525887409225106,
+            0.0652212540153414,
+            0.06508201197721064,
+            0.06537268799729645,
+            0.06531263492070138,
+            0.06526285200379789,
+            0.06532309390604496,
+            0.06533643999136984,
+            0.06521936994977295,
+            0.06533569912426174
+          ],
+          "cpu_steps": [
+            {
+              "thread_seconds": 0.12247328300000504,
+              "user_seconds": 0.11812099999998793,
+              "system_seconds": 0.003916999999999504,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.08068808099999103,
+              "user_seconds": 0.07659499999999753,
+              "system_seconds": 0.003942000000000334,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.08112892999999133,
+              "user_seconds": 0.07828800000000058,
+              "system_seconds": 0.002874999999999517,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.08416111599998999,
+              "user_seconds": 0.08230800000001182,
+              "system_seconds": 0.001882999999999413,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.07949141100000645,
+              "user_seconds": 0.07541499999999246,
+              "system_seconds": 0.0038789999999995217,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.0652441020000083,
+              "user_seconds": 0.06345399999999302,
+              "system_seconds": 0.0018609999999998905,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.06514369100000295,
+              "user_seconds": 0.06385699999999872,
+              "system_seconds": 0.0009500000000013387,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.06511369199999706,
+              "user_seconds": 0.0644489999999962,
+              "system_seconds": 0.0,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.06492441599999665,
+              "user_seconds": 0.06325200000000564,
+              "system_seconds": 0.0008189999999999031,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.06524314400000719,
+              "user_seconds": 0.06390900000000954,
+              "system_seconds": 0.0009650000000007708,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.06520637799999918,
+              "user_seconds": 0.06443499999998892,
+              "system_seconds": 0.0,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.06513321600000666,
+              "user_seconds": 0.06418800000000147,
+              "system_seconds": 0.0008020000000001914,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.0651933850000006,
+              "user_seconds": 0.06370099999999468,
+              "system_seconds": 0.0009169999999993905,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.0652147819999982,
+              "user_seconds": 0.06519300000000783,
+              "system_seconds": 0.0,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.06509673200000066,
+              "user_seconds": 0.064746999999997,
+              "system_seconds": 0.0,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.06522148900000957,
+              "user_seconds": 0.0644269999999949,
+              "system_seconds": 0.0,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            }
+          ],
+          "gc_events": [],
+          "hardware_counters": {
+            "cycles": 1744394086,
+            "instructions": 3923492692,
+            "enabled_ns": 1172250891,
+            "running_ns": 1172250891,
+            "running_fraction": 1.0,
+            "cycles_per_instruction": 0.44460235380502144,
+            "scope": "calling thread,user-mode only;raw counts,not scaled"
+          },
+          "frequency_steps": [
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 598847,
+                  "scaling_cur_freq": 603166,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 663196
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1509648,
+                  "scaling_cur_freq": 1509648,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 221657
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1521643,
+                  "scaling_cur_freq": 1521643,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 152987
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1510227,
+                  "scaling_cur_freq": 1510227,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 208412
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1510227,
+                  "scaling_cur_freq": 1510227,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 154901
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1511211,
+                  "scaling_cur_freq": 1511211,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 211687
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1511211,
+                  "scaling_cur_freq": 1511211,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 152617
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1510181,
+                  "scaling_cur_freq": 1510181,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 206688
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1510181,
+                  "scaling_cur_freq": 1510181,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 147177
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 3692278,
+                  "scaling_cur_freq": 3692278,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 84308
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 3692278,
+                  "scaling_cur_freq": 3692278,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 61245
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5114929,
+                  "scaling_cur_freq": 5114929,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 60243
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5114929,
+                  "scaling_cur_freq": 5114929,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 44293
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5112525,
+                  "scaling_cur_freq": 5112525,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 61495
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5112525,
+                  "scaling_cur_freq": 5112525,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 44053
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5097672,
+                  "scaling_cur_freq": 5097672,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 61064
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5097672,
+                  "scaling_cur_freq": 5097672,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 44544
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5108760,
+                  "scaling_cur_freq": 5126401,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 75582
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5126401,
+                  "scaling_cur_freq": 5126401,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 46627
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5120127,
+                  "scaling_cur_freq": 5120127,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 62607
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5120127,
+                  "scaling_cur_freq": 5120127,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 44584
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5101100,
+                  "scaling_cur_freq": 5101100,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 60895
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5101100,
+                  "scaling_cur_freq": 5101100,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 45044
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5103143,
+                  "scaling_cur_freq": 5103143,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 61595
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5103143,
+                  "scaling_cur_freq": 5103143,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 46547
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5122135,
+                  "scaling_cur_freq": 5122135,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 62628
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5122135,
+                  "scaling_cur_freq": 5122135,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 45455
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5095494,
+                  "scaling_cur_freq": 5095494,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 62898
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5095494,
+                  "scaling_cur_freq": 5095494,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 42860
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5104753,
+                  "scaling_cur_freq": 5104753,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 60994
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5104753,
+                  "scaling_cur_freq": 5104753,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 43322
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5098577,
+                  "scaling_cur_freq": 5098577,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 60985
+              }
+            }
+          ],
+          "state_sha256": "c7d5db93fad9556ee5bf3a8d2bf01938ae5624158f075fbc1533d25e38022242",
+          "tokens": [
+            198,
+            760,
+            1156,
+            369,
+            9859,
+            364,
+            2943,
+            12654,
+            1970,
+            66320,
+            11173,
+            1599,
+            2942,
+            13,
+            2302,
+            1318
+          ],
+          "candidate_calls": 0,
+          "telemetry_before": {
+            "/sys/class/drm/card1/device/pp_dpm_sclk": "0: 2900Mhz \n1: 1100Mhz \n2: 2900Mhz *",
+            "/sys/class/hwmon/hwmon8/temp1_input": "55000",
+            "/sys/class/hwmon/hwmon6/temp1_input": "60000",
+            "/sys/class/hwmon/hwmon4/temp1_input": "78800",
+            "/sys/class/hwmon/hwmon2/temp1_input": "48800",
+            "/sys/class/hwmon/hwmon9/temp1_input": "51850",
+            "/sys/class/hwmon/hwmon7/temp1_input": "78875",
+            "/sys/class/hwmon/hwmon5/temp1_input": "43850",
+            "/sys/class/hwmon/hwmon3/temp1_input": "47800",
+            "/sys/class/hwmon/hwmon1/temp1_input": "51800"
+          },
+          "telemetry_after": {
+            "/sys/class/drm/card1/device/pp_dpm_sclk": "0: 2900Mhz \n1: 1100Mhz \n2: 2900Mhz *",
+            "/sys/class/hwmon/hwmon8/temp1_input": "55500",
+            "/sys/class/hwmon/hwmon6/temp1_input": "57000",
+            "/sys/class/hwmon/hwmon4/temp1_input": "77800",
+            "/sys/class/hwmon/hwmon2/temp1_input": "48800",
+            "/sys/class/hwmon/hwmon9/temp1_input": "52850",
+            "/sys/class/hwmon/hwmon7/temp1_input": "77750",
+            "/sys/class/hwmon/hwmon5/temp1_input": "43850",
+            "/sys/class/hwmon/hwmon3/temp1_input": "47800",
+            "/sys/class/hwmon/hwmon1/temp1_input": "52800"
+          }
+        },
+        {
+          "pair": 0,
+          "flag": 1,
+          "seconds": 1.5646658500190824,
+          "prefill_flag": "1",
+          "decode_flag": "0",
+          "prefill_seconds": 21.167417695978656,
+          "step_seconds": [
+            0.18778423289768398,
+            0.18752689892426133,
+            0.18519632401876152,
+            0.10225962195545435,
+            0.08361513609997928,
+            0.08029937115497887,
+            0.08105494012124836,
+            0.08065845491364598,
+            0.08274796791374683,
+            0.08405752689577639,
+            0.07591932686045766,
+            0.06534496508538723,
+            0.06530556012876332,
+            0.06526206899434328,
+            0.0653561360668391,
+            0.06546441814862192
+          ],
+          "cpu_steps": [
+            {
+              "thread_seconds": 0.18575758999999437,
+              "user_seconds": 0.17814200000000824,
+              "system_seconds": 0.007869000000001236,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.18499823599999843,
+              "user_seconds": 0.17961300000000335,
+              "system_seconds": 0.004882999999999527,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 2
+            },
+            {
+              "thread_seconds": 0.18304914499999825,
+              "user_seconds": 0.1730450000000019,
+              "system_seconds": 0.009834999999998928,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 2
+            },
+            {
+              "thread_seconds": 0.1014900610000069,
+              "user_seconds": 0.09732200000000546,
+              "system_seconds": 0.004927000000000348,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.08312790799999448,
+              "user_seconds": 0.08145200000001296,
+              "system_seconds": 0.0019460000000002253,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.07985436699999582,
+              "user_seconds": 0.07647300000000712,
+              "system_seconds": 0.002938999999999581,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.0805602199999953,
+              "user_seconds": 0.07556300000000249,
+              "system_seconds": 0.00494899999999987,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.08020613399999377,
+              "user_seconds": 0.07838599999999474,
+              "system_seconds": 0.0019290000000005136,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.08225894499999242,
+              "user_seconds": 0.07734099999998989,
+              "system_seconds": 0.004913000000000167,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.08356770999999696,
+              "user_seconds": 0.0822339999999997,
+              "system_seconds": 0.0009119999999995798,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.07556075800000883,
+              "user_seconds": 0.07367499999999438,
+              "system_seconds": 0.001967000000000496,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.06518192599999395,
+              "user_seconds": 0.0637840000000125,
+              "system_seconds": 0.0009630000000004912,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.06518633799998952,
+              "user_seconds": 0.0643180000000001,
+              "system_seconds": 0.0,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.06514716399999543,
+              "user_seconds": 0.06488899999999376,
+              "system_seconds": 0.0,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.06522535699998855,
+              "user_seconds": 0.06451900000000421,
+              "system_seconds": 0.0,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.06534220400000379,
+              "user_seconds": 0.06423499999999649,
+              "system_seconds": 0.000828000000000273,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            }
+          ],
+          "gc_events": [],
+          "hardware_counters": {
+            "cycles": 1761199091,
+            "instructions": 3923755935,
+            "enabled_ns": 1564422514,
+            "running_ns": 1564422514,
+            "running_fraction": 1.0,
+            "cycles_per_instruction": 0.4488554130724749,
+            "scope": "calling thread,user-mode only;raw counts,not scaled"
+          },
+          "frequency_steps": [
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 603331,
+                  "scaling_cur_freq": 603331,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 661402
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 599485,
+                  "scaling_cur_freq": 599485,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 532329
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 599485,
+                  "scaling_cur_freq": 604441,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 394380
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 600389,
+                  "scaling_cur_freq": 604280,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 545644
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 604280,
+                  "scaling_cur_freq": 604280,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 384952
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 603298,
+                  "scaling_cur_freq": 603298,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 540084
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 603298,
+                  "scaling_cur_freq": 603298,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 381145
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1368137,
+                  "scaling_cur_freq": 1368137,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 233298
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1368137,
+                  "scaling_cur_freq": 1368137,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 171251
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1509006,
+                  "scaling_cur_freq": 1509006,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 203713
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1509006,
+                  "scaling_cur_freq": 1509006,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 148088
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1509580,
+                  "scaling_cur_freq": 1509580,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 219482
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1518454,
+                  "scaling_cur_freq": 1518454,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 150463
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1504081,
+                  "scaling_cur_freq": 1504081,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 208321
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1504081,
+                  "scaling_cur_freq": 1504081,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 150703
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1507261,
+                  "scaling_cur_freq": 1507261,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 213291
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1507261,
+                  "scaling_cur_freq": 1507261,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 149741
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1503591,
+                  "scaling_cur_freq": 1503591,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 207981
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1503591,
+                  "scaling_cur_freq": 1503591,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 153128
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1506878,
+                  "scaling_cur_freq": 1506878,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 210505
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1515489,
+                  "scaling_cur_freq": 1515489,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 148789
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 4370479,
+                  "scaling_cur_freq": 4370479,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 72305
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 4370479,
+                  "scaling_cur_freq": 4370479,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 52097
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5117798,
+                  "scaling_cur_freq": 5117798,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 63099
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5117798,
+                  "scaling_cur_freq": 5117798,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 44263
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5123579,
+                  "scaling_cur_freq": 5123579,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 64702
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5123579,
+                  "scaling_cur_freq": 5123579,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 44874
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5108442,
+                  "scaling_cur_freq": 5108442,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 62568
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5108442,
+                  "scaling_cur_freq": 5108442,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 45114
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5099216,
+                  "scaling_cur_freq": 5099216,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 63269
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5099216,
+                  "scaling_cur_freq": 5099216,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 45706
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5114749,
+                  "scaling_cur_freq": 5114749,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 62477
+              }
+            }
+          ],
+          "state_sha256": "c7d5db93fad9556ee5bf3a8d2bf01938ae5624158f075fbc1533d25e38022242",
+          "tokens": [
+            198,
+            760,
+            1156,
+            369,
+            9859,
+            364,
+            2943,
+            12654,
+            1970,
+            66320,
+            11173,
+            1599,
+            2942,
+            13,
+            2302,
+            1318
+          ],
+          "candidate_calls": 0,
+          "telemetry_before": {
+            "/sys/class/drm/card1/device/pp_dpm_sclk": "0: 2900Mhz \n1: 1100Mhz \n2: 2900Mhz *",
+            "/sys/class/hwmon/hwmon8/temp1_input": "55500",
+            "/sys/class/hwmon/hwmon6/temp1_input": "57000",
+            "/sys/class/hwmon/hwmon4/temp1_input": "77800",
+            "/sys/class/hwmon/hwmon2/temp1_input": "48800",
+            "/sys/class/hwmon/hwmon9/temp1_input": "52850",
+            "/sys/class/hwmon/hwmon7/temp1_input": "77750",
+            "/sys/class/hwmon/hwmon5/temp1_input": "43850",
+            "/sys/class/hwmon/hwmon3/temp1_input": "47800",
+            "/sys/class/hwmon/hwmon1/temp1_input": "52800"
+          },
+          "telemetry_after": {
+            "/sys/class/drm/card1/device/pp_dpm_sclk": "0: 2900Mhz \n1: 1100Mhz \n2: 2900Mhz *",
+            "/sys/class/hwmon/hwmon8/temp1_input": "56000",
+            "/sys/class/hwmon/hwmon6/temp1_input": "57000",
+            "/sys/class/hwmon/hwmon4/temp1_input": "75800",
+            "/sys/class/hwmon/hwmon2/temp1_input": "48800",
+            "/sys/class/hwmon/hwmon9/temp1_input": "53850",
+            "/sys/class/hwmon/hwmon7/temp1_input": "76625",
+            "/sys/class/hwmon/hwmon5/temp1_input": "43850",
+            "/sys/class/hwmon/hwmon3/temp1_input": "47800",
+            "/sys/class/hwmon/hwmon1/temp1_input": "53800"
+          }
+        },
+        {
+          "pair": 1,
+          "flag": 1,
+          "seconds": 1.581872371956706,
+          "prefill_flag": "1",
+          "decode_flag": "0",
+          "prefill_seconds": 21.196494619129226,
+          "step_seconds": [
+            0.18224247405305505,
+            0.18132240697741508,
+            0.18325044587254524,
+            0.12756482907570899,
+            0.08513922593556345,
+            0.08018871187232435,
+            0.07930136611685157,
+            0.08143374882638454,
+            0.07902502710931003,
+            0.08358530886471272,
+            0.08360153902322054,
+            0.06712052598595619,
+            0.06529131205752492,
+            0.06534893088974059,
+            0.06513288500718772,
+            0.06532238097861409
+          ],
+          "cpu_steps": [
+            {
+              "thread_seconds": 0.18017867899999374,
+              "user_seconds": 0.1691189999999949,
+              "system_seconds": 0.010856000000000421,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 2
+            },
+            {
+              "thread_seconds": 0.17925567800000408,
+              "user_seconds": 0.17307399999999973,
+              "system_seconds": 0.006885000000000474,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 2,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.18097864099999583,
+              "user_seconds": 0.17189799999999877,
+              "system_seconds": 0.008853000000000222,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 2
+            },
+            {
+              "thread_seconds": 0.12648431299999174,
+              "user_seconds": 0.11900099999999725,
+              "system_seconds": 0.006928999999999519,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.08462277300000665,
+              "user_seconds": 0.07953899999999692,
+              "system_seconds": 0.004958999999999492,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.0797134390000167,
+              "user_seconds": 0.0752600000000001,
+              "system_seconds": 0.003919999999999035,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 1,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.07883478499999796,
+              "user_seconds": 0.07656299999999305,
+              "system_seconds": 0.001972000000000307,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.0809057760000087,
+              "user_seconds": 0.08089700000000732,
+              "system_seconds": 0.0,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 1,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.0785852449999993,
+              "user_seconds": 0.07529999999999859,
+              "system_seconds": 0.002877999999999048,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.08309628300000327,
+              "user_seconds": 0.07953999999999439,
+              "system_seconds": 0.0029690000000002215,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.0831034789999876,
+              "user_seconds": 0.07854400000000794,
+              "system_seconds": 0.003964999999999108,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.06687757500000657,
+              "user_seconds": 0.06578199999999867,
+              "system_seconds": 0.0009740000000011406,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 2
+            },
+            {
+              "thread_seconds": 0.0651619989999972,
+              "user_seconds": 0.06474000000000046,
+              "system_seconds": 0.0,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.06517904300000055,
+              "user_seconds": 0.06430600000000197,
+              "system_seconds": 0.0,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.06498501799998735,
+              "user_seconds": 0.06485399999999686,
+              "system_seconds": 0.0,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.06520114799999988,
+              "user_seconds": 0.06275199999998904,
+              "system_seconds": 0.0018899999999995032,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            }
+          ],
+          "gc_events": [],
+          "hardware_counters": {
+            "cycles": 1732996353,
+            "instructions": 3919181321,
+            "enabled_ns": 1581479674,
+            "running_ns": 1581479674,
+            "running_fraction": 1.0,
+            "cycles_per_instruction": 0.44218325488390947,
+            "scope": "calling thread,user-mode only;raw counts,not scaled"
+          },
+          "frequency_steps": [
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 603156,
+                  "scaling_cur_freq": 603156,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 666291
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 603621,
+                  "scaling_cur_freq": 603621,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 537008
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 603621,
+                  "scaling_cur_freq": 603621,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 375625
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 599819,
+                  "scaling_cur_freq": 599819,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 516470
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 599819,
+                  "scaling_cur_freq": 599819,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 389091
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 599433,
+                  "scaling_cur_freq": 599433,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 540475
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 599433,
+                  "scaling_cur_freq": 599433,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 394531
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1311487,
+                  "scaling_cur_freq": 1311487,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 249549
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1312420,
+                  "scaling_cur_freq": 1312420,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 171272
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1468448,
+                  "scaling_cur_freq": 1468448,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 210926
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1468448,
+                  "scaling_cur_freq": 1468448,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 152196
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1506686,
+                  "scaling_cur_freq": 1515295,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 216426
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1515295,
+                  "scaling_cur_freq": 1515295,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 151073
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1508703,
+                  "scaling_cur_freq": 1508703,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 212890
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1508703,
+                  "scaling_cur_freq": 1508703,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 147276
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1503929,
+                  "scaling_cur_freq": 1503929,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 206859
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1503929,
+                  "scaling_cur_freq": 1503929,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 149691
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1504969,
+                  "scaling_cur_freq": 1504969,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 202229
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1516291,
+                  "scaling_cur_freq": 1516291,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 156513
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1505940,
+                  "scaling_cur_freq": 1505940,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 203412
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1505940,
+                  "scaling_cur_freq": 1517284,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 155172
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1777436,
+                  "scaling_cur_freq": 1777436,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 174587
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1777436,
+                  "scaling_cur_freq": 1777436,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 135404
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5121934,
+                  "scaling_cur_freq": 5121934,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 60413
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5121934,
+                  "scaling_cur_freq": 5121934,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 43662
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5101414,
+                  "scaling_cur_freq": 5101414,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 60423
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5101414,
+                  "scaling_cur_freq": 5101414,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 44363
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5120728,
+                  "scaling_cur_freq": 5120728,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 74610
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5120728,
+                  "scaling_cur_freq": 5120728,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 44463
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5116489,
+                  "scaling_cur_freq": 5116489,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 61736
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5116489,
+                  "scaling_cur_freq": 5116489,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 45215
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5110628,
+                  "scaling_cur_freq": 5110628,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 62758
+              }
+            }
+          ],
+          "state_sha256": "c7d5db93fad9556ee5bf3a8d2bf01938ae5624158f075fbc1533d25e38022242",
+          "tokens": [
+            198,
+            760,
+            1156,
+            369,
+            9859,
+            364,
+            2943,
+            12654,
+            1970,
+            66320,
+            11173,
+            1599,
+            2942,
+            13,
+            2302,
+            1318
+          ],
+          "candidate_calls": 0,
+          "telemetry_before": {
+            "/sys/class/drm/card1/device/pp_dpm_sclk": "0: 2900Mhz \n1: 1100Mhz \n2: 2900Mhz *",
+            "/sys/class/hwmon/hwmon8/temp1_input": "56500",
+            "/sys/class/hwmon/hwmon6/temp1_input": "57000",
+            "/sys/class/hwmon/hwmon4/temp1_input": "75800",
+            "/sys/class/hwmon/hwmon2/temp1_input": "48800",
+            "/sys/class/hwmon/hwmon9/temp1_input": "53850",
+            "/sys/class/hwmon/hwmon7/temp1_input": "76500",
+            "/sys/class/hwmon/hwmon5/temp1_input": "43850",
+            "/sys/class/hwmon/hwmon3/temp1_input": "47800",
+            "/sys/class/hwmon/hwmon1/temp1_input": "53800"
+          },
+          "telemetry_after": {
+            "/sys/class/drm/card1/device/pp_dpm_sclk": "0: 2900Mhz \n1: 1100Mhz \n2: 2900Mhz *",
+            "/sys/class/hwmon/hwmon8/temp1_input": "57000",
+            "/sys/class/hwmon/hwmon6/temp1_input": "58000",
+            "/sys/class/hwmon/hwmon4/temp1_input": "80800",
+            "/sys/class/hwmon/hwmon2/temp1_input": "48800",
+            "/sys/class/hwmon/hwmon9/temp1_input": "55850",
+            "/sys/class/hwmon/hwmon7/temp1_input": "77000",
+            "/sys/class/hwmon/hwmon5/temp1_input": "43850",
+            "/sys/class/hwmon/hwmon3/temp1_input": "47800",
+            "/sys/class/hwmon/hwmon1/temp1_input": "55800"
+          }
+        },
+        {
+          "pair": 1,
+          "flag": 0,
+          "seconds": 1.1608559051528573,
+          "prefill_flag": "0",
+          "decode_flag": "0",
+          "prefill_seconds": 21.859416518127546,
+          "step_seconds": [
+            0.11889120214618742,
+            0.07903808914124966,
+            0.07899520918726921,
+            0.08285478502511978,
+            0.07926986506208777,
+            0.06537902588024735,
+            0.06537611014209688,
+            0.06526682479307055,
+            0.06521778297610581,
+            0.06522694998420775,
+            0.06533119594678283,
+            0.06534858793020248,
+            0.06521323509514332,
+            0.06532446295022964,
+            0.06525470199994743,
+            0.06533693615347147
+          ],
+          "cpu_steps": [
+            {
+              "thread_seconds": 0.11782013900000265,
+              "user_seconds": 0.11601100000001452,
+              "system_seconds": 0.0019460000000002253,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.0785102049999864,
+              "user_seconds": 0.07697600000000193,
+              "system_seconds": 0.0009139999999998594,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 2
+            },
+            {
+              "thread_seconds": 0.07855455899999697,
+              "user_seconds": 0.07757499999999595,
+              "system_seconds": 0.000984000000000762,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.08238754900000345,
+              "user_seconds": 0.08216200000001095,
+              "system_seconds": 0.0,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.07885850100001335,
+              "user_seconds": 0.07708400000001348,
+              "system_seconds": 0.0019200000000001438,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.06526115400001231,
+              "user_seconds": 0.06465900000000602,
+              "system_seconds": 0.0,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.06525606899998593,
+              "user_seconds": 0.06422200000000089,
+              "system_seconds": 0.0009100000000010766,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.0651487029999771,
+              "user_seconds": 0.0646380000000022,
+              "system_seconds": 0.0,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.06510058999998591,
+              "user_seconds": 0.06234399999999596,
+              "system_seconds": 0.0019239999999989266,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.06509496900000045,
+              "user_seconds": 0.06388099999998076,
+              "system_seconds": 0.0009899999999998244,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.06521859700001187,
+              "user_seconds": 0.06364800000000059,
+              "system_seconds": 0.0009589999999999321,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.06523937899999055,
+              "user_seconds": 0.06517500000001064,
+              "system_seconds": 0.0,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.06503130600000873,
+              "user_seconds": 0.06375899999997614,
+              "system_seconds": 0.00090299999999921,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.06520921500001009,
+              "user_seconds": 0.06245399999997403,
+              "system_seconds": 0.0019369999999998555,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.0651250619999928,
+              "user_seconds": 0.06388599999999656,
+              "system_seconds": 0.0009889999999987964,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.06522220799999445,
+              "user_seconds": 0.06458000000000652,
+              "system_seconds": 0.0,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            }
+          ],
+          "gc_events": [],
+          "hardware_counters": {
+            "cycles": 1718510820,
+            "instructions": 3922254806,
+            "enabled_ns": 1160790366,
+            "running_ns": 1160790366,
+            "running_fraction": 1.0,
+            "cycles_per_instruction": 0.43814359469230263,
+            "scope": "calling thread,user-mode only;raw counts,not scaled"
+          },
+          "frequency_steps": [
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 601443,
+                  "scaling_cur_freq": 601443,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 666090
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1506257,
+                  "scaling_cur_freq": 1506257,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 213832
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1506257,
+                  "scaling_cur_freq": 1506257,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 154470
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1510303,
+                  "scaling_cur_freq": 1510303,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 216978
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1510303,
+                  "scaling_cur_freq": 1510303,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 151434
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1504527,
+                  "scaling_cur_freq": 1504527,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 203462
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1504527,
+                  "scaling_cur_freq": 1504527,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 149771
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1504334,
+                  "scaling_cur_freq": 1504334,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 205666
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 1504334,
+                  "scaling_cur_freq": 1504334,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 152226
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 3966046,
+                  "scaling_cur_freq": 3966046,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 80992
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 3966046,
+                  "scaling_cur_freq": 3966046,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 60153
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5119824,
+                  "scaling_cur_freq": 5119824,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 72336
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5119824,
+                  "scaling_cur_freq": 5119824,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 44133
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5114540,
+                  "scaling_cur_freq": 5114540,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 59672
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5114540,
+                  "scaling_cur_freq": 5114540,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 44243
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5108911,
+                  "scaling_cur_freq": 5108911,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 61465
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5108911,
+                  "scaling_cur_freq": 5108911,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 43432
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5107578,
+                  "scaling_cur_freq": 5107578,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 65443
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5127171,
+                  "scaling_cur_freq": 5127171,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 44233
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5106359,
+                  "scaling_cur_freq": 5106359,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 60584
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5106359,
+                  "scaling_cur_freq": 5106359,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 44493
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5116221,
+                  "scaling_cur_freq": 5116221,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 63189
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5116221,
+                  "scaling_cur_freq": 5116221,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 44283
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5114116,
+                  "scaling_cur_freq": 5114116,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 59973
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5114116,
+                  "scaling_cur_freq": 5114116,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 44403
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5103321,
+                  "scaling_cur_freq": 5103321,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 71183
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5103321,
+                  "scaling_cur_freq": 5103321,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 44433
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5100370,
+                  "scaling_cur_freq": 5100370,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 64721
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5110962,
+                  "scaling_cur_freq": 5110962,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 45526
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5102586,
+                  "scaling_cur_freq": 5102586,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 62317
+              }
+            },
+            {
+              "before": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5102586,
+                  "scaling_cur_freq": 5102586,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 45846
+              },
+              "after": {
+                "cpu_start": 17,
+                "cpu_end": 17,
+                "same_cpu_at_sample_boundaries": true,
+                "values": {
+                  "cpuinfo_avg_freq": 5114678,
+                  "scaling_cur_freq": 5114678,
+                  "scaling_min_freq": 2000000,
+                  "scaling_max_freq": 5187500,
+                  "scaling_driver": "amd-pstate-epp",
+                  "scaling_governor": "performance"
+                },
+                "errors": {},
+                "sample_ns": 62978
+              }
+            }
+          ],
+          "state_sha256": "c7d5db93fad9556ee5bf3a8d2bf01938ae5624158f075fbc1533d25e38022242",
+          "tokens": [
+            198,
+            760,
+            1156,
+            369,
+            9859,
+            364,
+            2943,
+            12654,
+            1970,
+            66320,
+            11173,
+            1599,
+            2942,
+            13,
+            2302,
+            1318
+          ],
+          "candidate_calls": 0,
+          "telemetry_before": {
+            "/sys/class/drm/card1/device/pp_dpm_sclk": "0: 2900Mhz \n1: 1100Mhz \n2: 2900Mhz *",
+            "/sys/class/hwmon/hwmon8/temp1_input": "56500",
+            "/sys/class/hwmon/hwmon6/temp1_input": "57000",
+            "/sys/class/hwmon/hwmon4/temp1_input": "80800",
+            "/sys/class/hwmon/hwmon2/temp1_input": "48800",
+            "/sys/class/hwmon/hwmon9/temp1_input": "55850",
+            "/sys/class/hwmon/hwmon7/temp1_input": "76875",
+            "/sys/class/hwmon/hwmon5/temp1_input": "43850",
+            "/sys/class/hwmon/hwmon3/temp1_input": "47800",
+            "/sys/class/hwmon/hwmon1/temp1_input": "55800"
+          },
+          "telemetry_after": {
+            "/sys/class/drm/card1/device/pp_dpm_sclk": "0: 2900Mhz \n1: 1100Mhz \n2: 2900Mhz *",
+            "/sys/class/hwmon/hwmon8/temp1_input": "57000",
+            "/sys/class/hwmon/hwmon6/temp1_input": "57000",
+            "/sys/class/hwmon/hwmon4/temp1_input": "80800",
+            "/sys/class/hwmon/hwmon2/temp1_input": "48800",
+            "/sys/class/hwmon/hwmon9/temp1_input": "55850",
+            "/sys/class/hwmon/hwmon7/temp1_input": "77375",
+            "/sys/class/hwmon/hwmon5/temp1_input": "43850",
+            "/sys/class/hwmon/hwmon3/temp1_input": "47800",
+            "/sys/class/hwmon/hwmon1/temp1_input": "55800"
+          }
+        }
+      ],
+      "off_on_wall_ratio": 0.7415041336428304,
+      "order_ratios": [
+        0.7492431646623171,
+        0.7338492824910583
+      ]
+    }
+  ],
+  "steps": 16,
+  "pairs": 2,
+  "vary_prefill": true,
+  "trace_markers": false,
+  "cpu_accounting": true,
+  "thread_perf": true,
+  "cpu_frequency": true,
+  "protocol": "Fresh prefill per arm,flag toggles only prefill;decode flag always0,one warmup per arm,balanced pairs. No snapshot restore or host hashes between prefill and decode.",
+  "limits": "Bounded two-case phase diagnostic with telemetry/step clocks,not full-suite throughput or thermal causal proof. No clock changes.",
+  "thread_affinity": {
+    "original": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31
+    ],
+    "active": [
+      17
+    ],
+    "cpu": 17,
+    "scope": "calling thread only,after model initialization"
+  },
+  "restored_thread_affinity": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31
+  ],
+  "memory_after_close": {
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 86094241540,
+    "total_allocated_bytes": 86100532996,
+    "total_freed_bytes": 86100532996,
+    "active_allocations": 0,
+    "peak_allocations": 1717
+  }
+}

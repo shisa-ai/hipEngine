@@ -359,6 +359,20 @@ current gfx1151 (`0.001319/0.005218/0.073151`, `98.0%` top-1), so its old label
 was not grandfathered across backend/current arithmetic. See the compact
 [`calibration artifact`](../benchmarks/results/2026-08-16-execution-profile-threshold-calibration.json).
 
+**Teacher-forced probe row-count standard (September 10, 2026):** the
+top-1 bars are rate measurements and need row counts that can resolve
+them: a 1-flip-in-60 probe resolves the 99% bar as "zero flips allowed"
+(granularity 1.67%) and cannot distinguish a true 0.5% flip rate from 2%.
+Screening probes at ~60 rows (prefill + 4 decode steps x 12 cases) are
+valid quick passes only when they show ZERO top-1 flips; any flip, or any
+promotion evidence, requires a 500-1000-row probe with shared-chain
+teacher forcing (the incumbent arm's token chain forced into every arm,
+so a flip cannot cascade into incomparable contexts - the calibration
+definition). Reference packet: the 996-row R11 probe
+(benchmarks/results/2026-09-10-qwen4exp-moe-decode-warp-envelope-996.json),
+where the 60-row reading (98.3%, fail) resolved to a true 0.50% flip
+rate (pass, all bars with 2.6-4.4x margin).
+
 Historical retained summaries still explain the `2e-2` review and `5e-2`
 ceiling: accepted maxima reached about `0.03-0.044`, while known rejected routes
 began around `0.059` and extended above `1.0`. Missing raw logits cannot create
@@ -532,6 +546,7 @@ and task evidence.
 
 ## 11. Related documents
 
+- [`PRODUCTION-ACCURACY-POLICY-REVIEW-2026-08-31.md`](PRODUCTION-ACCURACY-POLICY-REVIEW-2026-08-31.md) — dated evidence review of the frozen cutoffs, calibration limits, practical impact, excluded performance, and recalibration triggers; it does not change this normative policy.
 - [`PRODUCTION-NUMERICS-CAMPAIGN.md`](PRODUCTION-NUMERICS-CAMPAIGN.md) — active
   implementation, calibration, historical-recovery, and c1/cN campaign.
 - [`RELAXED.md`](RELAXED.md) — historical relaxed-mode inventory and provenance;

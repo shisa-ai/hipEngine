@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+"""Counterbalanced H256 sparse attention screen, no selection-policy changes."""
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import statistics
+import sys
+import time
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+import numpy as np
+
+from scripts.qwen4exp_canonical_ar_bench import _git_metadata, _host_metadata
+from tests.test_qwen4exp_qsa_h256_wave import Fixture
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--rows", nargs="+", type=int, default=[16, 64, 512])
+    parser.add_argument("--selected", type=int, default=2051)
+    parser.add_argument("--pairs", type=int, default=10)
+    parser.add_argument("--compiler-version-file", type=Path, required=True)
+    parser.add_argument("--require-cached-build", action="store_true")
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--page256", action="store_true")
+    parser.add_argument("--compare-generic", action="store_true")
+    parser.add_argument("--head-pair", action="store_true")
+    parser.add_argument("--head-quad", action="store_true")
+    args = parser.parse_args()
+    if args.head_quad:
+        args.head_pair=True
+    if args.head_pair and args.pairs%2:
+        parser.error("head-pair screening requires even pairs")
+    if args.head_pair:
+        if args.compare_generic:
+            parser.error("head-pair cannot combine compare-generic")
+        args.page256=True
+    if args.compare_generic and not args.page256:
+        parser.error("--compare-generic requires --page256")
+    if args.pairs < 1 or not 1 <= args.selected <= 4352 or any(r <= 0 for r in args.rows):
+        parser.error("positive rows/pairs and selected in 1..4352 required")
+    os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file)
+    if args.require_cached_build:
+        os.environ["HIPENGINE_REQUIRE_CACHED_BUILD"] = "1"
+    report = {
+        "schema": 1, "kind": "qwen4exp_h256_wave_attention_screen",
+        "command": sys.argv, "source": _git_metadata(ROOT), "host": _host_metadata(),
+        "arithmetic_class": "T0", "runtime_default_changed": False,
+        "boundary": "selected paged BF16 K/V attention to F32 output; selection and KV publication excluded",
+        "geometry": {"query_heads":24,"kv_heads":2,"head_dim":256,"capacity":4352,"block_size":256},
+        "fixture": "seed506 random Q/BF16 KV, per-row page permutations and sorted unique selected positions",
+        "cases": [],
+        "page256": args.page256,
+        "baseline": "paired_head_h256_wave" if args.head_quad else "page256_h256_wave" if args.head_pair else
+                    "generic_h256_wave" if args.compare_generic else "strict_rows",
+        "head_pair":args.head_pair,
+        "head_quad":args.head_quad,
+        "warmup_note":("Head-quad comparison retains cold first pair/quad samples; single-head and strict reference pre-run"
+                       if args.head_quad else "Head-pair timing retains its cold first sample; parent and strict reference pre-run"
+                       if args.head_pair else None),
+    }
+    for rows in args.rows:
+        f = Fixture(rows, args.selected, page256=args.page256)
+        try:
+            f.run(False)
+            expected = f.download(False).view(np.uint32)
+            f.run(True)
+            timing = {"parent": [], "candidate": []}
+            for pair in range(args.pairs):
+                for candidate in ((False, True) if pair % 2 == 0 else (True, False)):
+                    if args.compare_generic:
+                        f.page256 = candidate
+                    start = time.perf_counter()
+                    if args.head_pair:
+                        if args.head_quad:
+                            from tests.test_qwen4exp_qsa_head_pair import run_pair
+                            from tests.test_qwen4exp_qsa_head_quad import run_quad
+                            (run_quad if candidate else run_pair)(f)
+                        elif candidate:
+                            from tests.test_qwen4exp_qsa_head_pair import run_pair
+                            run_pair(f)
+                        else:
+                            f.run(True)
+                    else:
+                        f.run(True if args.compare_generic else candidate)
+                    timing["candidate" if candidate else "parent"].append(time.perf_counter()-start)
+                    np.testing.assert_array_equal(
+                        f.download(True if args.compare_generic or args.head_pair else candidate).view(np.uint32), expected)
+                np.testing.assert_array_equal(f.download(True).view(np.uint32), f.download(False).view(np.uint32))
+            report["cases"].append({
+                "rows": rows, "selected_stride": args.selected,
+                "selected_sha256": hashlib.sha256(f.selected).hexdigest(),
+                "counts_sha256": hashlib.sha256(f.counts).hexdigest(),
+                "seconds": timing, "all_pairs_exact": True,
+                "speedup": statistics.median(timing["parent"])/statistics.median(timing["candidate"]),
+                "order_speedups": [
+                    statistics.mean(timing["parent"][i::2])/
+                    statistics.mean(timing["candidate"][i::2])
+                    for i in (0,1) if len(timing["parent"])>i],
+            })
+        finally:
+            f.close()
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps(report, indent=2)+"\n")
+    print(json.dumps(report, indent=2))
+
+
+if __name__ == "__main__":
+    main()

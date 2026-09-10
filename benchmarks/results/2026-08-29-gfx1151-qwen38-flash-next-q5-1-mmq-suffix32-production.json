@@ -1,0 +1,168 @@
+{
+  "schema": 1,
+  "date": "2026-08-29",
+  "status": "accepted_certified_production_opt_in",
+  "scope": "Qwen4Exp gfx1151 raw Q5_1 selected-down MMQ (Q8_1 d4x3 activations, DP4A sudot4) on certified suffix layers 32-47 via HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL=1 (layer set HIPENGINE_QWEN4_EXP_Q5_1_MMQ_LAYERS default 32-47), stacked with the certified Q8 dense MMQ",
+  "host": {
+    "identity": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "id": "Qwen/Qwen3.8-Flash-Next",
+    "quant": "Unsloth UD-Q4_K_XL",
+    "quant_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5"
+  },
+  "microbench": {
+    "shape": [
+      5080,
+      640,
+      2560
+    ],
+    "owner_ms": 38.4,
+    "mmq_1plane_ms": 5.06,
+    "speedup": 7.6
+  },
+  "suffix_screen": {
+    "44": {
+      "seconds": 16.181677485001273,
+      "mean_kl": 4.015891832947538e-06,
+      "p95_kl": 1.9021545915974227e-05,
+      "p99_kl": 2.972999923959694e-05,
+      "max_kl": 3.2407112570502646e-05,
+      "top1_rate": 1.0
+    },
+    "40": {
+      "seconds": 15.84339732301305,
+      "mean_kl": 1.3935096908370747e-05,
+      "p95_kl": 5.8707765463940326e-05,
+      "p99_kl": 0.00010156492226979931,
+      "max_kl": 0.00011227921147126418,
+      "top1_rate": 1.0
+    },
+    "36": {
+      "seconds": 15.736977354012197,
+      "mean_kl": 3.0311555549923507e-05,
+      "p95_kl": 0.000114111488913381,
+      "p99_kl": 0.00018052060340037222,
+      "max_kl": 0.00019712288202212018,
+      "top1_rate": 1.0
+    },
+    "32": {
+      "seconds": 15.647687271004543,
+      "mean_kl": 0.0002588153903582244,
+      "p95_kl": 0.0012960476291545182,
+      "p99_kl": 0.0018934879389516353,
+      "max_kl": 0.002042848016400916,
+      "top1_rate": 1.0
+    },
+    "28": {
+      "seconds": 15.509971499006497,
+      "mean_kl": 0.0006296138994663742,
+      "p95_kl": 0.0023178169228859295,
+      "p99_kl": 0.005104289485781868,
+      "max_kl": 0.00580090762650586,
+      "top1_rate": 1.0
+    },
+    "24": {
+      "seconds": 15.407974687987007,
+      "mean_kl": 0.0020397810749813033,
+      "p95_kl": 0.006499254627420546,
+      "p99_kl": 0.014120230835743989,
+      "max_kl": 0.01602547488782487,
+      "top1_rate": 1.0
+    },
+    "20": {
+      "seconds": 15.27130235999357,
+      "mean_kl": 0.0018638865762238331,
+      "p95_kl": 0.004884199209363445,
+      "p99_kl": 0.0051077822220278015,
+      "max_kl": 0.005163677975193891,
+      "top1_rate": 1.0
+    },
+    "16": {
+      "seconds": 15.20268550599576,
+      "mean_kl": 0.0022380401089244855,
+      "p95_kl": 0.007935754889847265,
+      "p99_kl": 0.009027045373455486,
+      "max_kl": 0.009299867994357544,
+      "top1_rate": 1.0
+    },
+    "8": {
+      "seconds": 14.922296372009441,
+      "mean_kl": 0.0035135689017412883,
+      "p95_kl": 0.009631518078573454,
+      "p99_kl": 0.016695848536035268,
+      "max_kl": 0.018461931150400738,
+      "top1_rate": 1.0
+    },
+    "0": {
+      "seconds": 14.775335002021166,
+      "mean_kl": 0.0055965706273640465,
+      "p95_kl": 0.01700401650912077,
+      "p99_kl": 0.0340431919124143,
+      "max_kl": 0.03830298576323773,
+      "top1_rate": 1.0
+    }
+  },
+  "numerical_gate": {
+    "rows": 450,
+    "repeats": 3,
+    "kl_mean": 0.0001398799727698585,
+    "kl_p95": 0.0004669890840028783,
+    "kl_p99": 0.002218930367713305,
+    "kl_max": 0.011153200088960634,
+    "top1_matches": 450,
+    "scope_failures": [],
+    "state_repeat_passed": true,
+    "repeat_determinism_passed": true,
+    "eligible_for_automatic_admission": true,
+    "rejected_full_layer_reference": "benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-q5-1-mmq-full-layer-gate-failed.json",
+    "rejected_suffix28_note": "suffix 28-47 failed the prefill_last scope gate (mean 1.16e-3 > 1.0e-3)"
+  },
+  "free_generation": {
+    "strict_candidate_exact": 18,
+    "candidate_repeat_exact": 18,
+    "prompts": 18
+  },
+  "c2_physical": {
+    "exact": [
+      true,
+      true
+    ],
+    "stream_chunks": 6,
+    "teardown_zero": true
+  },
+  "performance": {
+    "p508_interleaved_same_conditions": {
+      "q8_only_seconds": [
+        7.581,
+        7.752
+      ],
+      "q8_plus_q5_suffix32_seconds": [
+        7.132
+      ],
+      "note": "interleaved after hours of gates; absolute walls drifted ~3% from morning runs"
+    },
+    "p508_morning_series": {
+      "q8_only_median": 7.393,
+      "combined_median_thermal_drift": 7.452
+    },
+    "p1012": {
+      "seconds_median": 14.702,
+      "tok_s": 68.834,
+      "q8_only_reference": {
+        "seconds": 15.167,
+        "tok_s": 66.722
+      }
+    }
+  },
+  "commands": {
+    "suffix_screen": "uv run python /tmp/qwen4exp_q5_1_mmq_suffix_screen.py",
+    "execution_gate": "uv run python /tmp/qwen4exp_q5_1_mmq_suffix32_gate.py",
+    "free_generation": "uv run python /tmp/qwen4exp_q5q8mmq_free_generation.py",
+    "c2_physical": "uv run python /tmp/qwen4exp_q5q8mmq_c2_physical.py"
+  },
+  "next": "Q4_K dual gate/up MMQ consumer (1.80s bucket) reuses this kernel skeleton; state-SHA first-run anomaly from the full-layer run is not present in the suffix-32 packet."
+}

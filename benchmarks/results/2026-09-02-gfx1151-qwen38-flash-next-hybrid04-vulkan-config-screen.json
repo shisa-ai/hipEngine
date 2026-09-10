@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_hybrid04_vulkan_configuration_screen",
+  "status": "diagnostic_subaudit_complete",
+  "host": "zbook",
+  "clock_policy": "auto",
+  "scope": "Pat1entZ3r0 hybrid-04 only; do not extrapolate to the two historical Vulkan binaries",
+  "model": "pinned UD-Q4_K_XL four-shard revision c8b5954a",
+  "case": "code-p512, 128 decode transitions",
+  "common": {"kv": "BF16/BF16", "context": 8192, "batch": 8192, "ubatch": 2048, "warmups": 1, "repetitions": 3},
+  "arms": {
+    "queue_off_repack_fitoff": {"prefill_median": 212.0831912886829, "decode_median": 25.592542333164115},
+    "queue_on_repack_fitoff": {"prefill_median": 209.59837757755858, "decode_median": 25.963362450162514},
+    "queue_on_norepack_fitoff": {"prefill_median": 210.44307309362003, "decode_median": 25.95673377496282},
+    "queue_on_repack_fiton": {"prefill_median": 209.94792307376883, "decode_median": 25.968266372738352}
+  },
+  "deltas_vs_queue_on_repack_fitoff_percent": {
+    "queue_off": {"prefill": 1.1855119013050919, "decode": -1.4282438097538375},
+    "no_repack": {"prefill": 0.4030067054068054, "decode": -0.02553088111147961},
+    "fit_on": {"prefill": 0.1667691803009852, "decode": 0.018887856244553802}
+  },
+  "correctness": {"all_arms_all_repetitions_exact": true, "output_token_ids_sha256": "9f803aa662d9551a52e2f7638883ae2cc597a905015bff8f18aa35dd1bb3e3f2"},
+  "interpretation": "Graphics queue trades -1.43% decode when disabled for +1.19% prefill. Repack and fit are neutral at this case. This closes only hybrid-04's configuration subaudit; the historical upstream and Nathan Vulkan binaries are absent locally and require rebuild before their separate A/B.",
+  "raw_sha256": {
+    "qoff_json": "036b441c508d10e6e94840bd47307a5f4d6b5929cbb3c4f3212847abca734e06",
+    "qon_json": "4644f666cfc17a178fe94a36b84ac5ba35d4a132ecda14dc1337209ea6abc04b",
+    "norepack_json": "d407fc30ca093eef94bbd2246b0536dc6412f3ae72fc1052a9c3766f42c02a1b",
+    "fiton_json": "59dce6fc8f9156c0293209f798c4a2f15d9ac276ba651e454b2a1b6f4706b840"
+  }
+}

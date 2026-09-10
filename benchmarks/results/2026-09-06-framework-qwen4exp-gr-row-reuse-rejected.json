@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "status": "rejected_removed",
+  "source": "982bb62a5 plus uncommitted candidate; runtime defaults unchanged",
+  "host": "gfx1151",
+  "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+  "hardware": "Framework Desktop Ryzen AI Max+395 Radeon 8060S gfx1151",
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "model_root": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "boundary": "Actual Q8_0 GR up projection + materialized sigmoid gate + ordered branch mean; synthetic F32 activations",
+  "arithmetic": "T0; same per-output K/FMA/wave/serial-wave/sigmoid/branch order",
+  "mechanism": "Template existing GR composite ROW_BATCH/HIDDEN_TILE; true,4,2 parent versus true,8,1 candidate. Both have 32 scalar accumulators per thread. Launch hidden/HIDDEN_TILE by ceil(rows/ROW_BATCH), 128 threads. Candidate halves weight decodes while doubling activation loads; no other math changes.",
+  "impact_prior": {
+    "owner": "GR up composite only, no overlap with GR down/read",
+    "code4096_owner_seconds_earlier_trace": 2.505,
+    "code4096_device_seconds_approx": 26.72,
+    "zero_cost_device_ceiling_approx": 1.103,
+    "hypothetical_1_2x_kernel_saving_seconds": 0.4175,
+    "measured_model_saving": null
+  },
+  "command": ".venv/bin/python scripts/qwen4exp_q8_wave_scale_screen.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --compiler-version-file /tmp/hipengine-hipcc-version.txt --gr-composite --gr-row-reuse --rows 64 512 --output /tmp/qwen4exp-gr-row-reuse.json",
+  "environment": {
+    "PATH_prefix": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin",
+    "LD_LIBRARY_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib",
+    "HIPENGINE_HIP_ARCH": "gfx1151",
+    "clock_policy": "unchanged high/2900-requested",
+    "compiler": "HIP 7.15.26333-0000000; AMD clang 23.0.0git 8f497e0992fb7513f7f78a6f6b6f1056c375e961"
+  },
+  "pairs": 20,
+  "preconditioning": "none",
+  "cases": [
+    {"tensor": "blk.0.hc_attn_up.weight", "shape": [64,320,10240], "parent_ms": 0.4394694697, "candidate_ms": 0.5208525108, "speedup": 0.8437503143, "exact": true},
+    {"tensor": "blk.0.hc_attn_up.weight", "shape": [512,320,10240], "parent_ms": 3.2436720794, "candidate_ms": 3.8279284490, "speedup": 0.8473700913, "mean_speedup": 0.8480652169, "order_speedups": [0.8736547381,0.8301887286], "exact": true},
+    {"tensor": "blk.0.hc_ffn_up.weight", "shape": [64,320,10240], "parent_ms": 0.4219819093, "candidate_ms": 0.5226809299, "speedup": 0.8073413151, "exact": true},
+    {"tensor": "blk.0.hc_ffn_up.weight", "shape": [512,320,10240], "parent_ms": 3.2090675086, "candidate_ms": 3.8165120641, "speedup": 0.8408377740, "mean_speedup": 0.8467710063, "order_speedups": [0.8646624540,0.8277898840], "exact": true}
+  ],
+  "correctness": "13 tests pass: registry RED/GREEN, six shapes each for parent wave-scale and row-reuse, repeated exact F32 gate/mixed bits; reduced CPU dequantized oracle KL<=0.05 and top1>=90%. All 80 actual-weight pairs exact. No full-model A/B warranted.",
+  "trace": {
+    "command_prefix": "HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen4exp-gr-row-reuse-trace --",
+    "screen_arguments": "same command with --rows 512 --pairs 1 --tensor blk.0.hc_attn_up.weight --output /tmp/qwen4exp-gr-row-reuse-trace.json",
+    "kernel": "q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel<true, ROW_BATCH, HIDDEN_TILE>",
+    "parent_ns": 3206488,
+    "candidate_ns": 3707746,
+    "both_vgpr": 72,
+    "both_lds_bytes": 512,
+    "both_scratch_bytes": 0
+  },
+  "raw": {
+    "/tmp/qwen4exp-gr-row-reuse.json": "909506216614b8161c9f7f631f748b818b0d0154a49ac6aa9bdf99a1b3d513aa",
+    "/tmp/qwen4exp-gr-row-reuse-trace.json": "ff5ba1000e6ad5889342cb9f2c11ed9a3f5a2e278e720a5863e071541ce6be00",
+    "/tmp/qwen4exp-gr-row-reuse-trace/gfx1151/3062537_kernel_trace.csv": "cc026f8a790f7d5351e4577492b40c0283c7390d82161f3e58898bd0daee29bb"
+  },
+  "disposition": "Remove candidate kernel, wrapper, registry and screen flag. Preserve explicit parent/candidate variant names in screen artifacts. Trace rules out increased register allocation or spills, but does not isolate the memory-access cause. No whole-model speedup or Vulkan parity claim."
+}

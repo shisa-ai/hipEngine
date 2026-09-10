@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "date": "2026-09-05",
+  "date_basis": "UTC",
+  "kind": "qwen4exp_gdn_register_state_gate",
+  "status": "passed_opt_in_integration",
+  "performance_claim": false,
+  "base_commit": "c564ef38409c4fef12e13563dcc072465f8e0420",
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "hardware": "Framework Desktop Ryzen AI Max+395 / Radeon 8060S"
+  },
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL, BF16 KV",
+  "profile": "production with register-state serial prefix opt-in",
+  "raw_path": "/tmp/qwen4exp-gdn-register-state.json",
+  "raw_sha256": "c9ad806c87e281309a9f0d11aff3612f2112f68d85eb2222490c4bb619fbf165",
+  "command": ".venv/bin/python scripts/qwen4exp_row4_state_gate.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --compiler-version-file /tmp/hipengine-hipcc-version.txt --route-package gdn-register --full-kv --output /tmp/qwen4exp-gdn-register-state.json",
+  "environment_reference": "2026-09-05-framework-qwen4exp-gdn-register.json",
+  "protocol": "parent/candidate/parent, full prefill and one decode transition logits, recurrent/Conv/PLE state, positions/index counts, full BF16 K/V",
+  "cases": [
+    {"id": "code-p512", "exact": true, "calls": [0, 21, 0]},
+    {"id": "code-p4096", "exact": true, "calls": [0, 168, 0]},
+    {"id": "general_en-p512", "exact": true, "calls": [0, 21, 0]},
+    {"id": "general_ja-p512", "exact": true, "calls": [0, 21, 0]},
+    {"id": "mixed_ja_en-p512", "exact": true, "calls": [0, 21, 0]}
+  ],
+  "final_allocations": 0,
+  "focused_tests": {"passed": 12, "failed": 0},
+  "next": "Clean full 12-case A/B before production promotion; no default change yet."
+}

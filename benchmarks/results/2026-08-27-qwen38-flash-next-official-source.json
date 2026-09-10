@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "date": "2026-08-27",
+  "status": "accepted_source_snapshot",
+  "repo": "Qwen/Qwen3.8-Flash-Next",
+  "revision": "f5d08274bafd880402bd16f5e3e6c514136ec06c",
+  "local_path": "/models/hf/Qwen3.8-Flash-Next",
+  "repository_files_excluding_local_manifest": 144,
+  "repository_bytes_excluding_local_manifest": 360023351155,
+  "safetensor_shards": 131,
+  "safetensor_shard_bytes": 360000192888,
+  "verification": {
+    "source": "pinned Hugging Face RepoFile LFS size and SHA-256 metadata",
+    "initial_completed_shards_reverified": 106,
+    "initial_completed_bytes_reverified": 295275658440,
+    "initial_reverification_seconds": 280.0,
+    "new_shards_verified_on_completion": 25,
+    "final_all_shard_reverification_count": 131,
+    "final_all_shard_reverification_seconds": 273.4,
+    "all_shards_passed": true,
+    "whole_repository_sync_exit_code": 0
+  },
+  "local_manifest": {
+    "path": "/models/hf/Qwen3.8-Flash-Next/official-shard-manifest.pinned.json",
+    "bytes": 26261,
+    "sha256": "973433d38d86f0e771855b74a170f55f07290bc446ff9bc7a42a688a152b912b",
+    "verified_count": 131
+  },
+  "scope": {
+    "complete": ["official BF16 source download", "all-shard pinned identity verification"],
+    "open": ["local conventional Q4_K_M conversion", "same-source quant quality comparison"]
+  }
+}

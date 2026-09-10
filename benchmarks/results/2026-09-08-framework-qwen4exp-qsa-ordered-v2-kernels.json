@@ -1,0 +1,106 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_qsa_ordered_v2_kernel_durations",
+  "source": {
+    "head": "91de3e295e1a4c2398e443929b66b27ce921862f",
+    "tracked_clean": true
+  },
+  "protocol": "leaf c1 decode geometry (24 q-heads/2 kv-heads/D256, block256, selected 2051 of 4097, seed506 fixture); rocprofv3 kernel-trace, cache-only build, 8 warmup + 40 reps; device durations, not synchronized leaf wall",
+  "exactness": {
+    "ordered_vs_strict_bit_equal": true,
+    "v2_vs_ordered_bit_equal": true,
+    "wave_vs_ordered_bit_equal": true,
+    "quad_vs_ordered_bit_equal": true,
+    "dense_max_abs_diff_vs_ordered": 0.02247557044029236
+  },
+  "kernels": {
+    "dense_full": {
+      "median_us": 739.35,
+      "min_us": 733.34,
+      "max_us": 750.21,
+      "n": 49,
+      "vgpr": "40",
+      "scratch": "0",
+      "lds": "0",
+      "grid": "(6144,1)"
+    },
+    "ordered_coefficients_parent": {
+      "median_us": 176.13,
+      "min_us": 175.89,
+      "max_us": 177.21,
+      "n": 49,
+      "vgpr": "8",
+      "scratch": "0",
+      "lds": "0",
+      "grid": "(24,1)"
+    },
+    "ordered_parent": {
+      "median_us": 399.67,
+      "min_us": 397.83,
+      "max_us": 412.33,
+      "n": 49,
+      "vgpr": "8",
+      "scratch": "0",
+      "lds": "0",
+      "grid": "(6144,2051)"
+    },
+    "ordered_values_parent": {
+      "median_us": 533.0,
+      "min_us": 529.95,
+      "max_us": 536.69,
+      "n": 49,
+      "vgpr": "8",
+      "scratch": "0",
+      "lds": "0",
+      "grid": "(6144,1)"
+    },
+    "strict_parent": {
+      "median_us": 2069.08,
+      "min_us": 2064.87,
+      "max_us": 2074.93,
+      "n": 49,
+      "vgpr": "24",
+      "scratch": "0",
+      "lds": "0",
+      "grid": "(6144,1)"
+    },
+    "v2_coefficients": {
+      "median_us": 14.31,
+      "min_us": 14.23,
+      "max_us": 14.55,
+      "n": 49,
+      "vgpr": "40",
+      "scratch": "0",
+      "lds": "512",
+      "grid": "(6144,1)"
+    },
+    "v2_scores": {
+      "median_us": 33.46,
+      "min_us": 33.18,
+      "max_us": 43.32,
+      "n": 49,
+      "vgpr": "32",
+      "scratch": "0",
+      "lds": "0",
+      "grid": "(6144,8)"
+    },
+    "v2_values": {
+      "median_us": 100.71,
+      "min_us": 100.11,
+      "max_us": 101.51,
+      "n": 49,
+      "vgpr": "96",
+      "scratch": "0",
+      "lds": "0",
+      "grid": "(6144,1)"
+    }
+  },
+  "leaf_wall_ms": {
+    "ordered": 1.1552,
+    "ordered_v2": 0.184,
+    "strict": 2.1052,
+    "wave": 2.2441,
+    "quad": 1.8361,
+    "dense": 0.7965
+  }
+}
