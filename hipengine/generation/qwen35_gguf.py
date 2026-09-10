@@ -209,6 +209,20 @@ def prefill_transient_owner_inventory(sessions: Sequence[Any]) -> dict[str, Any]
         "oracle_owner_bytes": sum(oracle_buffers.values()),
         "oracle_owner_counts": oracle_owner_counts,
         "oracle_owner_count_total": sum(oracle_owner_counts),
+        "oracle_observed_peak_bytes": max(
+            (
+                int(getattr(session, "_int8_prefill_oracle_observed_peak_bytes", 0))
+                for session in sessions
+            ),
+            default=0,
+        ),
+        "oracle_observed_peak_owners": max(
+            (
+                int(getattr(session, "_int8_prefill_oracle_observed_peak_owners", 0))
+                for session in sessions
+            ),
+            default=0,
+        ),
         "oracle_capacity_positions": oracle_capacity_positions,
         "hidden_and_bulk_owner_bytes": sum(hidden_buffers.values()),
         "int8_prefill_lifetime_plan_modes": lifetime_modes,
