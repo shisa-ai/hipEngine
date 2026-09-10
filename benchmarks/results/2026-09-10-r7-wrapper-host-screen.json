@@ -27,5 +27,13 @@
    "pinned host staging + async copies if the launch budget matters more than the copy latency"
   ],
   "estimated_gain": "~0.5 ms/token (~1% TG), plus restoring CPU/GPU overlap (the blocking copies serialize the stream at step start)"
+ },
+ "batched_position_candidate": {
+  "gate": "HIPENGINE_QWEN4_EXP_BATCHED_POSITION=1 (default off)",
+  "mechanism": "one interleaved [position, context] int64 pair per QSA state in a shared 192B device region; step() prepares all 12 states with ONE blocking H2D copy and passes position_prepared=True to the per-layer dense mixer (which skips set_position)",
+  "bit_exactness": "PASS - identical token digest ea0412231532bc7b across all fixture cases, 3 repetitions per arm",
+  "tg_ab": "PASS - median 60.26/60.38/60.93 (off) vs 59.36/59.61/59.71 (on) ms/token: -0.77 ms/token (~1.3% TG), beyond the +/-0.9 ms run-to-run spread",
+  "copy_surface": "27 -> 4 blocking copies per decode step (24x8B H2D eliminated; rope + PLE row + token readbacks remain)",
+  "promotion": "recommended - pure host-side, no kernel or numeric change, bit-exact, +1.3% TG"
  }
 }

@@ -683,6 +683,7 @@ class Qwen4ExpDenseAttentionState:
     max_positions: int
     runtime: HipRuntime
     closed: bool = False
+    owns_position_context: bool = True
 
     @classmethod
     def allocate(
@@ -693,6 +694,8 @@ class Qwen4ExpDenseAttentionState:
         kv_heads: int,
         head_dim: int,
         runtime: HipRuntime | None = None,
+        position_view: DeviceBuffer | None = None,
+        context_view: DeviceBuffer | None = None,
     ) -> "Qwen4ExpDenseAttentionState":
         if max_positions <= 0 or block_size <= 0 or kv_heads <= 0 or head_dim <= 0:
             raise ValueError("attention state dimensions must be positive")
@@ -712,10 +715,23 @@ class Qwen4ExpDenseAttentionState:
             buffers.append(value_cache)
             block_table = malloc(block_host.nbytes, runtime=active_runtime)
             buffers.append(block_table)
-            position = malloc(position_host.nbytes, runtime=active_runtime)
-            buffers.append(position)
-            context = malloc(context_host.nbytes, runtime=active_runtime)
-            buffers.append(context)
+            owns_position_context = True
+            if position_view is None or context_view is None:
+                position = malloc(position_host.nbytes, runtime=active_runtime)
+                buffers.append(position)
+                context = malloc(context_host.nbytes, runtime=active_runtime)
+                buffers.append(context)
+            else:
+                if (
+                    position_view.nbytes != position_host.nbytes
+                    or context_view.nbytes != context_host.nbytes
+                ):
+                    raise ValueError(
+                        "external QSA position/context views must be 8-byte int64 slots"
+                    )
+                position = position_view
+                context = context_view
+                owns_position_context = False
             copy_host_to_device(block_table, host_array_ptr(block_host), runtime=active_runtime)
             copy_host_to_device(position, host_array_ptr(position_host), runtime=active_runtime)
             copy_host_to_device(context, host_array_ptr(context_host), runtime=active_runtime)
@@ -751,6 +767,7 @@ class Qwen4ExpDenseAttentionState:
             key_cache, value_cache, block_table, position, context,
             append_spans, decode_spans, block_host, position_host, context_host,
             block_size, max_positions, active_runtime,
+            owns_position_context=owns_position_context,
         )
 
     def set_position(self, value: int) -> None:
@@ -771,11 +788,18 @@ class Qwen4ExpDenseAttentionState:
     def close(self) -> None:
         if self.closed:
             return
-        for buffer in reversed(
-            (self.key_cache, self.value_cache, self.block_table, self.position, self.context)
-        ):
+        owned: tuple[DeviceBuffer, ...] = (
+            self.key_cache, self.value_cache, self.block_table,
+        )
+        if self.owns_position_context:
+            owned = owned + (self.position, self.context)
+        for buffer in reversed(owned):
             free(buffer, runtime=self.runtime)
         self.closed = True
+
+
+def _qwen4_exp_batched_position_enabled() -> bool:
+    return os.environ.get("HIPENGINE_QWEN4_EXP_BATCHED_POSITION", "0") == "1"
 
 
 @dataclass
@@ -6034,6 +6058,26 @@ class Qwen4ExpGGUFResidentModelRunner:
             rows=1, branches=cfg.residual_branch_count, hidden=cfg.hidden_size,
             low_rank=cfg.residual_low_rank, runtime=self.runtime,
         )
+        self._batched_position = _qwen4_exp_batched_position_enabled()
+        self._shared_position_context: DeviceBuffer | None = None
+        self._shared_position_context_host: np.ndarray | None = None
+        if self._batched_position:
+            state_count = cfg.layer_types.count("qsa")
+            # One interleaved [position, context] int64 pair per QSA state; a
+            # single blocking H2D copy per decode step replaces the 24
+            # per-layer set_position copies (R7 wrapper-host screen).
+            self._shared_position_context = malloc(
+                2 * state_count * DType.INT64.itemsize, runtime=self.runtime
+            )
+            self._shared_position_context_host = np.zeros(
+                2 * state_count, dtype=np.int64
+            )
+            self._shared_position_context_host[1::2] = 1
+            copy_host_to_device(
+                self._shared_position_context,
+                host_array_ptr(self._shared_position_context_host),
+                runtime=self.runtime,
+            )
         self.attention_states = tuple(
             Qwen4ExpDenseAttentionState.allocate(
                 max_positions=self.max_sequence_length,
@@ -6041,8 +6085,24 @@ class Qwen4ExpGGUFResidentModelRunner:
                 kv_heads=cfg.attention_kv_head_count,
                 head_dim=cfg.attention_key_length,
                 runtime=self.runtime,
+                position_view=(
+                    DeviceBuffer(
+                        self._shared_position_context.ptr + 16 * index,
+                        DType.INT64.itemsize,
+                    )
+                    if self._batched_position
+                    else None
+                ),
+                context_view=(
+                    DeviceBuffer(
+                        self._shared_position_context.ptr + 16 * index + 8,
+                        DType.INT64.itemsize,
+                    )
+                    if self._batched_position
+                    else None
+                ),
             )
-            for _ in range(cfg.layer_types.count("qsa"))
+            for index in range(cfg.layer_types.count("qsa"))
         )
         self.index_states = tuple(
             Qwen4ExpQSAIndexDeviceState.allocate(
@@ -6565,6 +6625,22 @@ class Qwen4ExpGGUFResidentModelRunner:
         )
         return Qwen4ExpTokenResult(int(token[0]), None, hidden_seeds=hidden_seeds)
 
+    def _prepare_decode_positions(self, position: int) -> None:
+        """Batched set_position for every QSA state via one 8B-per-state H2D copy."""
+        if self._shared_position_context is None or self._shared_position_context_host is None:
+            raise RuntimeError("batched QSA positions requested without shared staging")
+        host = self._shared_position_context_host
+        host[0::2] = position
+        host[1::2] = position + 1
+        copy_host_to_device(
+            self._shared_position_context,
+            host_array_ptr(host),
+            runtime=self.runtime,
+        )
+        for state in self.attention_states:
+            state.position_host[0] = position
+            state.context_host[0] = position + 1
+
     def step(
         self,
         token_id: int,
@@ -6666,6 +6742,8 @@ class Qwen4ExpGGUFResidentModelRunner:
             cfg.gdn_time_step_rank * cfg.gdn_state_size * cfg.gdn_state_size * 4
         )
         for layer, kind in enumerate(cfg.layer_types):
+            if layer == 0 and self._batched_position:
+                self._prepare_decode_positions(self.position)
             if layer in cfg.ple_layers:
                 layer_prefix = f"layers.{layer}."
                 residual_ptr = run_qwen4_exp_ple(
@@ -6749,6 +6827,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     index_state=self.index_states[binding.qsa_state_index],
                     scratch=self.qsa_scratch,
                     position=self.position,
+                    position_prepared=self._batched_position,
                     rows=1, branches=cfg.residual_branch_count, hidden=cfg.hidden_size,
                     low_rank=cfg.residual_low_rank,
                     query_heads=cfg.attention_head_count,
@@ -7305,6 +7384,10 @@ class Qwen4ExpGGUFResidentModelRunner:
         for state in reversed(self.attention_states):
             state.close()
         self.attention_states = ()
+        if self._shared_position_context is not None:
+            free(self._shared_position_context, runtime=self.runtime)
+            self._shared_position_context = None
+            self._shared_position_context_host = None
         for owner in (
             self.qsa_prefill_metadata,
             self.ple_prefill_scratch,
