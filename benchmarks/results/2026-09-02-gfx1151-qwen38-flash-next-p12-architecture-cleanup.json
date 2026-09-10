@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_p12_architecture_cleanup",
+  "status": "architecture_current_cleanup_partial",
+  "performance_claim": false,
+  "source": {"base_head": "086802a78", "tracked_clean": false},
+  "architecture": {
+    "plan_updated": true,
+    "refactor_updated": true,
+    "kernel_catalog_updated": false,
+    "kernel_catalog_reason": "P11/P12 added runtime verifier state/output/control primitives and harness/report support; no kernel body, registry key, or dispatch family was added.",
+    "lineage_metadata_updated": false,
+    "lineage_metadata_reason": "No external kernel port or source-parent claim was made."
+  },
+  "cleanup": {
+    "removed_public_selector": "HIPENGINE_QWEN4_EXP_MTP_COMPACT_OUTPUT",
+    "removed_provider_branch": "shared-runtime resident target-hidden handoff selected by the removed environment flag",
+    "public_mtp_route": "full draft output plus serial exact target.step",
+    "retained_internal_leaf": "Qwen4ExpGGUFMTPDraftRunner.propose_chain(compact_output=True) for rejected-path oracle/profiling only",
+    "retained_verifier_primitives": [
+      "Qwen4ExpTargetVerifyOutput",
+      "Qwen4ExpDecodeStateDeviceSnapshot",
+      "Qwen4ExpRunnerDeviceTransaction",
+      "verify_target_block_serial_exact",
+      "verify_target_block_deferred_head",
+      "verify_target_block_with_acceptance"
+    ],
+    "reason_retained": "They are exact tested oracles/transactions and no replacement target verifier is default. Public deferred wiring was removed."
+  },
+  "lineage_check": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "passed": false,
+    "blocker": "/home/lhl/amd-gpu-tuning/reference/atlas is absent",
+    "impact": "No P11/P12 kernel changed, so this does not hide an unreviewed port."
+  },
+  "amdahl_declaration": {
+    "W": null,
+    "C": null,
+    "O": null,
+    "s": null,
+    "arithmetic_class": "cleanup/documentation plus removal of unpromoted public selector",
+    "scope": "Qwen4Exp P11/P12 runtime/harness documentation",
+    "mechanism": "remove public selection of rejected output paths while retaining strict oracles",
+    "strict_fallback": "serial exact MTP and named strict profile",
+    "overlap_exclusions": ["no throughput claim", "no kernel/registry change", "broader campaign cleanup remains open"]
+  },
+  "decision": {
+    "architecture_docs_complete_for_p11_p12": true,
+    "final_cleanup_complete": false,
+    "reason": "P11/P12 architecture is current and the superseded public compact selector is removed. Other campaign selectors remain tracked and cannot be removed before their replacements become default or final closure decides them."
+  }
+}

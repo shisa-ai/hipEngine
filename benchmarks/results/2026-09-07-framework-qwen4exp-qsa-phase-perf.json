@@ -1,0 +1,988 @@
+{
+  "decision": "Instruction and cycle counts nearly unchanged despite longer thread/wall time. Large extra instruction-work explanation unsupported;lower effective CPU execution rate consistent with data,not yet a directly measured clock-policy cause. Candidate remains default-off.",
+  "counter_scope": "User-mode current-thread cycles/instructions;kernel/hypervisor excluded. Group read IDs validated,100% running fraction every measured arm,no scaling.",
+  "status": "passed",
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "62316406fce143ebd521a09b60e76383a21b648a",
+    "tracked_clean": false
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "model_identity": {
+    "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+    "fingerprint": {
+      "algorithm": "sha256-directory-manifest-v1",
+      "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+      "size_bytes": 111334654784,
+      "sampled_bytes": 12582912,
+      "file_count": 4,
+      "exists": true,
+      "path_type": "directory"
+    }
+  },
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "command": [
+    "scripts/qwen4exp_qsa_decode_flag_probe.py",
+    "--model-root",
+    "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--vary-prefill",
+    "--pairs",
+    "2",
+    "--steps",
+    "16",
+    "--case-id",
+    "code-p4096",
+    "--cpu-accounting",
+    "--thread-perf",
+    "--output",
+    "/tmp/qwen4exp-qsa-phase-perf.json"
+  ],
+  "cases": [
+    {
+      "id": "code-p4096",
+      "rows": [
+        {
+          "pair": 0,
+          "flag": 0,
+          "seconds": 1.1725626988336444,
+          "prefill_flag": "0",
+          "decode_flag": "0",
+          "prefill_seconds": 21.89526317990385,
+          "step_seconds": [
+            0.12636734987609088,
+            0.07883348618634045,
+            0.08123973105102777,
+            0.08437946299090981,
+            0.08276643580757082,
+            0.06620997888967395,
+            0.06529190600849688,
+            0.06536296894773841,
+            0.06511411210522056,
+            0.06530191516503692,
+            0.06520113605074584,
+            0.06565356394276023,
+            0.06526021612808108,
+            0.06532660103403032,
+            0.06499282503500581,
+            0.0652215841691941
+          ],
+          "cpu_steps": [
+            {
+              "thread_seconds": 0.1253019900000112,
+              "user_seconds": 0.12299500000000307,
+              "system_seconds": 0.001964000000000965,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.0784424879999932,
+              "user_seconds": 0.07390900000000045,
+              "system_seconds": 0.003807000000000116,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.0808059299999968,
+              "user_seconds": 0.07700300000000482,
+              "system_seconds": 0.0028330000000007516,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 2
+            },
+            {
+              "thread_seconds": 0.08397401399999183,
+              "user_seconds": 0.07883799999999042,
+              "system_seconds": 0.004786000000001067,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.08238042600000028,
+              "user_seconds": 0.08035100000000739,
+              "system_seconds": 0.0019200000000001438,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.06603344799999888,
+              "user_seconds": 0.06570399999999665,
+              "system_seconds": 0.0,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.06511912300000233,
+              "user_seconds": 0.06449500000000796,
+              "system_seconds": 0.0,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.06520304099998953,
+              "user_seconds": 0.06421500000000435,
+              "system_seconds": 0.0,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.06494566200001373,
+              "user_seconds": 0.06484299999999621,
+              "system_seconds": 0.0,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.06513546200000064,
+              "user_seconds": 0.06473099999999476,
+              "system_seconds": 0.0,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.06503399300000012,
+              "user_seconds": 0.06442799999999238,
+              "system_seconds": 0.0,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.06551487899999131,
+              "user_seconds": 0.06525399999999593,
+              "system_seconds": 0.0,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 3
+            },
+            {
+              "thread_seconds": 0.06514725200000271,
+              "user_seconds": 0.06384799999999302,
+              "system_seconds": 0.0007789999999996411,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.06519767899999351,
+              "user_seconds": 0.06435100000000205,
+              "system_seconds": 0.0,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.06484826899999518,
+              "user_seconds": 0.06400899999999865,
+              "system_seconds": 0.0,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.06510446499999034,
+              "user_seconds": 0.06504400000000032,
+              "system_seconds": 0.0,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            }
+          ],
+          "gc_events": [],
+          "hardware_counters": {
+            "cycles": 1732698830,
+            "instructions": 3913071725,
+            "enabled_ns": 1172472799,
+            "running_ns": 1172472799,
+            "running_fraction": 1.0,
+            "cycles_per_instruction": 0.44279761572732224,
+            "scope": "calling thread,user-mode only;raw counts,not scaled"
+          },
+          "state_sha256": "c7d5db93fad9556ee5bf3a8d2bf01938ae5624158f075fbc1533d25e38022242",
+          "tokens": [
+            198,
+            760,
+            1156,
+            369,
+            9859,
+            364,
+            2943,
+            12654,
+            1970,
+            66320,
+            11173,
+            1599,
+            2942,
+            13,
+            2302,
+            1318
+          ],
+          "candidate_calls": 0,
+          "telemetry_before": {
+            "/sys/class/drm/card1/device/pp_dpm_sclk": "0: 2900Mhz \n1: 1100Mhz \n2: 2900Mhz *",
+            "/sys/class/hwmon/hwmon8/temp1_input": "54500",
+            "/sys/class/hwmon/hwmon6/temp1_input": "59000",
+            "/sys/class/hwmon/hwmon4/temp1_input": "80800",
+            "/sys/class/hwmon/hwmon2/temp1_input": "48800",
+            "/sys/class/hwmon/hwmon9/temp1_input": "51850",
+            "/sys/class/hwmon/hwmon7/temp1_input": "78375",
+            "/sys/class/hwmon/hwmon5/temp1_input": "43850",
+            "/sys/class/hwmon/hwmon3/temp1_input": "46800",
+            "/sys/class/hwmon/hwmon1/temp1_input": "51800"
+          },
+          "telemetry_after": {
+            "/sys/class/drm/card1/device/pp_dpm_sclk": "0: 2900Mhz \n1: 1100Mhz \n2: 2900Mhz *",
+            "/sys/class/hwmon/hwmon8/temp1_input": "55500",
+            "/sys/class/hwmon/hwmon6/temp1_input": "57000",
+            "/sys/class/hwmon/hwmon4/temp1_input": "79800",
+            "/sys/class/hwmon/hwmon2/temp1_input": "48800",
+            "/sys/class/hwmon/hwmon9/temp1_input": "52850",
+            "/sys/class/hwmon/hwmon7/temp1_input": "77250",
+            "/sys/class/hwmon/hwmon5/temp1_input": "43850",
+            "/sys/class/hwmon/hwmon3/temp1_input": "47800",
+            "/sys/class/hwmon/hwmon1/temp1_input": "52800"
+          }
+        },
+        {
+          "pair": 0,
+          "flag": 1,
+          "seconds": 1.568261485081166,
+          "prefill_flag": "1",
+          "decode_flag": "0",
+          "prefill_seconds": 21.1546237799339,
+          "step_seconds": [
+            0.18916226201690733,
+            0.18477480788715184,
+            0.18471073801629245,
+            0.11240853695198894,
+            0.08237170614302158,
+            0.08023756090551615,
+            0.08113618707284331,
+            0.08489310694858432,
+            0.08422062499448657,
+            0.08362424513325095,
+            0.07415277301333845,
+            0.06529395002871752,
+            0.06526274094358087,
+            0.06537483097054064,
+            0.06531336600892246,
+            0.06527634710073471
+          ],
+          "cpu_steps": [
+            {
+              "thread_seconds": 0.186473062999994,
+              "user_seconds": 0.18343000000000131,
+              "system_seconds": 0.003906999999999883,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 5
+            },
+            {
+              "thread_seconds": 0.18232472399999722,
+              "user_seconds": 0.17463700000000415,
+              "system_seconds": 0.006898999999998878,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.18196728899999925,
+              "user_seconds": 0.17766799999999705,
+              "system_seconds": 0.0038000000000000256,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.11124998699999367,
+              "user_seconds": 0.10644999999999527,
+              "system_seconds": 0.0038669999999996207,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.08171225299999207,
+              "user_seconds": 0.07855999999999597,
+              "system_seconds": 0.0028309999999986957,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.07963166299998647,
+              "user_seconds": 0.07812700000000916,
+              "system_seconds": 0.0009410000000009688,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.08054202599998916,
+              "user_seconds": 0.07496000000000436,
+              "system_seconds": 0.004881999999998499,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.08418927800001086,
+              "user_seconds": 0.0787949999999995,
+              "system_seconds": 0.004825999999999553,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 11
+            },
+            {
+              "thread_seconds": 0.08376097500000412,
+              "user_seconds": 0.08207300000000828,
+              "system_seconds": 0.0008829999999999671,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 7
+            },
+            {
+              "thread_seconds": 0.08311665399999413,
+              "user_seconds": 0.07683799999999508,
+              "system_seconds": 0.005836000000000396,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 2
+            },
+            {
+              "thread_seconds": 0.07387452099999336,
+              "user_seconds": 0.06836599999999748,
+              "system_seconds": 0.004915000000000447,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.06518019099999606,
+              "user_seconds": 0.06337700000000268,
+              "system_seconds": 0.0009050000000012659,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.06513835999999174,
+              "user_seconds": 0.06411600000001272,
+              "system_seconds": 0.0008599999999994168,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.06526683000001299,
+              "user_seconds": 0.06472899999999981,
+              "system_seconds": 0.0,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.0652086679999968,
+              "user_seconds": 0.06344199999999489,
+              "system_seconds": 0.0009160000000001389,
+              "minor_faults": 1,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.06516812700000685,
+              "user_seconds": 0.06417100000000175,
+              "system_seconds": 0.0008700000000008146,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            }
+          ],
+          "gc_events": [],
+          "hardware_counters": {
+            "cycles": 1747476846,
+            "instructions": 3909893643,
+            "enabled_ns": 1567162051,
+            "running_ns": 1567162051,
+            "running_fraction": 1.0,
+            "cycles_per_instruction": 0.44693718181530595,
+            "scope": "calling thread,user-mode only;raw counts,not scaled"
+          },
+          "state_sha256": "c7d5db93fad9556ee5bf3a8d2bf01938ae5624158f075fbc1533d25e38022242",
+          "tokens": [
+            198,
+            760,
+            1156,
+            369,
+            9859,
+            364,
+            2943,
+            12654,
+            1970,
+            66320,
+            11173,
+            1599,
+            2942,
+            13,
+            2302,
+            1318
+          ],
+          "candidate_calls": 0,
+          "telemetry_before": {
+            "/sys/class/drm/card1/device/pp_dpm_sclk": "0: 2900Mhz \n1: 1100Mhz \n2: 2900Mhz *",
+            "/sys/class/hwmon/hwmon8/temp1_input": "55500",
+            "/sys/class/hwmon/hwmon6/temp1_input": "57000",
+            "/sys/class/hwmon/hwmon4/temp1_input": "79800",
+            "/sys/class/hwmon/hwmon2/temp1_input": "48800",
+            "/sys/class/hwmon/hwmon9/temp1_input": "52850",
+            "/sys/class/hwmon/hwmon7/temp1_input": "77125",
+            "/sys/class/hwmon/hwmon5/temp1_input": "43850",
+            "/sys/class/hwmon/hwmon3/temp1_input": "47800",
+            "/sys/class/hwmon/hwmon1/temp1_input": "52800"
+          },
+          "telemetry_after": {
+            "/sys/class/drm/card1/device/pp_dpm_sclk": "0: 2900Mhz \n1: 1100Mhz \n2: 2900Mhz *",
+            "/sys/class/hwmon/hwmon8/temp1_input": "56000",
+            "/sys/class/hwmon/hwmon6/temp1_input": "57000",
+            "/sys/class/hwmon/hwmon4/temp1_input": "78800",
+            "/sys/class/hwmon/hwmon2/temp1_input": "48800",
+            "/sys/class/hwmon/hwmon9/temp1_input": "53850",
+            "/sys/class/hwmon/hwmon7/temp1_input": "76375",
+            "/sys/class/hwmon/hwmon5/temp1_input": "43850",
+            "/sys/class/hwmon/hwmon3/temp1_input": "46800",
+            "/sys/class/hwmon/hwmon1/temp1_input": "53800"
+          }
+        },
+        {
+          "pair": 1,
+          "flag": 1,
+          "seconds": 1.5928384121507406,
+          "prefill_flag": "1",
+          "decode_flag": "0",
+          "prefill_seconds": 21.168031593086198,
+          "step_seconds": [
+            0.2030115989036858,
+            0.18556476011872292,
+            0.18444308592006564,
+            0.11772772902622819,
+            0.08600029489025474,
+            0.08219111594371498,
+            0.07906067208386958,
+            0.08000119682401419,
+            0.07920660683885217,
+            0.08370772213675082,
+            0.08393683191388845,
+            0.06695732101798058,
+            0.06524776294827461,
+            0.06537355901673436,
+            0.06509856297634542,
+            0.06526171998120844
+          ],
+          "cpu_steps": [
+            {
+              "thread_seconds": 0.20005898400000888,
+              "user_seconds": 0.19029600000000357,
+              "system_seconds": 0.009795000000000442,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 14
+            },
+            {
+              "thread_seconds": 0.1833162629999947,
+              "user_seconds": 0.1755110000000002,
+              "system_seconds": 0.007816999999999297,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 4
+            },
+            {
+              "thread_seconds": 0.18227257199998803,
+              "user_seconds": 0.173924999999997,
+              "system_seconds": 0.007854000000000028,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 1,
+              "involuntary_switches": 4
+            },
+            {
+              "thread_seconds": 0.11674054499999897,
+              "user_seconds": 0.11062799999999129,
+              "system_seconds": 0.00587900000000019,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.0854870080000012,
+              "user_seconds": 0.08228300000000388,
+              "system_seconds": 0.0029420000000008883,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.08160969200000068,
+              "user_seconds": 0.07723099999999761,
+              "system_seconds": 0.0039239999999995945,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 4
+            },
+            {
+              "thread_seconds": 0.07863149900001076,
+              "user_seconds": 0.07420699999998703,
+              "system_seconds": 0.003917000000001281,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.07957637199999112,
+              "user_seconds": 0.07713300000000345,
+              "system_seconds": 0.0019230000000014513,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.07872180300000764,
+              "user_seconds": 0.07607799999999543,
+              "system_seconds": 0.0019169999999988363,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 2
+            },
+            {
+              "thread_seconds": 0.08326221699999792,
+              "user_seconds": 0.07993100000000197,
+              "system_seconds": 0.0028959999999997876,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.0835167090000084,
+              "user_seconds": 0.08220199999999522,
+              "system_seconds": 0.0009370000000004097,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.0667911150000009,
+              "user_seconds": 0.06538699999998698,
+              "system_seconds": 0.0010690000000010969,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 2
+            },
+            {
+              "thread_seconds": 0.0651408869999841,
+              "user_seconds": 0.06359899999999641,
+              "system_seconds": 0.0009549999999975967,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.06526076000000103,
+              "user_seconds": 0.0633760000000052,
+              "system_seconds": 0.0009249999999987324,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.06495992499998238,
+              "user_seconds": 0.06490000000000862,
+              "system_seconds": 0.0,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.06515140999999858,
+              "user_seconds": 0.06483000000000061,
+              "system_seconds": 0.0,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            }
+          ],
+          "gc_events": [],
+          "hardware_counters": {
+            "cycles": 1751201942,
+            "instructions": 3912918705,
+            "enabled_ns": 1591296019,
+            "running_ns": 1591296019,
+            "running_fraction": 1.0,
+            "cycles_per_instruction": 0.44754365577855776,
+            "scope": "calling thread,user-mode only;raw counts,not scaled"
+          },
+          "state_sha256": "c7d5db93fad9556ee5bf3a8d2bf01938ae5624158f075fbc1533d25e38022242",
+          "tokens": [
+            198,
+            760,
+            1156,
+            369,
+            9859,
+            364,
+            2943,
+            12654,
+            1970,
+            66320,
+            11173,
+            1599,
+            2942,
+            13,
+            2302,
+            1318
+          ],
+          "candidate_calls": 0,
+          "telemetry_before": {
+            "/sys/class/drm/card1/device/pp_dpm_sclk": "0: 2900Mhz \n1: 1100Mhz \n2: 2900Mhz *",
+            "/sys/class/hwmon/hwmon8/temp1_input": "56000",
+            "/sys/class/hwmon/hwmon6/temp1_input": "56000",
+            "/sys/class/hwmon/hwmon4/temp1_input": "78800",
+            "/sys/class/hwmon/hwmon2/temp1_input": "48800",
+            "/sys/class/hwmon/hwmon9/temp1_input": "53850",
+            "/sys/class/hwmon/hwmon7/temp1_input": "76375",
+            "/sys/class/hwmon/hwmon5/temp1_input": "43850",
+            "/sys/class/hwmon/hwmon3/temp1_input": "46800",
+            "/sys/class/hwmon/hwmon1/temp1_input": "53800"
+          },
+          "telemetry_after": {
+            "/sys/class/drm/card1/device/pp_dpm_sclk": "0: 2900Mhz \n1: 1100Mhz \n2: 2900Mhz *",
+            "/sys/class/hwmon/hwmon8/temp1_input": "56500",
+            "/sys/class/hwmon/hwmon6/temp1_input": "57000",
+            "/sys/class/hwmon/hwmon4/temp1_input": "77800",
+            "/sys/class/hwmon/hwmon2/temp1_input": "48800",
+            "/sys/class/hwmon/hwmon9/temp1_input": "54850",
+            "/sys/class/hwmon/hwmon7/temp1_input": "76625",
+            "/sys/class/hwmon/hwmon5/temp1_input": "43850",
+            "/sys/class/hwmon/hwmon3/temp1_input": "47800",
+            "/sys/class/hwmon/hwmon1/temp1_input": "54800"
+          }
+        },
+        {
+          "pair": 1,
+          "flag": 0,
+          "seconds": 1.1652096211910248,
+          "prefill_flag": "0",
+          "decode_flag": "0",
+          "prefill_seconds": 21.88159352587536,
+          "step_seconds": [
+            0.12192104407586157,
+            0.07870654296129942,
+            0.07885180483572185,
+            0.0842540089506656,
+            0.08263092488050461,
+            0.06585392216220498,
+            0.06529225502163172,
+            0.0652165929786861,
+            0.06520252698101103,
+            0.06517948396503925,
+            0.06527913082391024,
+            0.06543573597446084,
+            0.06535296002402902,
+            0.06538694398477674,
+            0.06526014511473477,
+            0.06535775889642537
+          ],
+          "cpu_steps": [
+            {
+              "thread_seconds": 0.12087631899998996,
+              "user_seconds": 0.1190029999999922,
+              "system_seconds": 0.0019759999999990896,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.07826672400000234,
+              "user_seconds": 0.07634899999999334,
+              "system_seconds": 0.000965999999998246,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.07839421699998184,
+              "user_seconds": 0.07272000000000389,
+              "system_seconds": 0.004870000000000374,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.08378009599999814,
+              "user_seconds": 0.08082100000001446,
+              "system_seconds": 0.002897999999998291,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.08221338299998138,
+              "user_seconds": 0.0815240000000017,
+              "system_seconds": 0.0,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.06571954699998628,
+              "user_seconds": 0.06424400000000219,
+              "system_seconds": 0.0009240000000012571,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.06518838400000959,
+              "user_seconds": 0.06240300000001753,
+              "system_seconds": 0.001937999999999107,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.06508322199999839,
+              "user_seconds": 0.06504500000002622,
+              "system_seconds": 0.0,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.06509094699998741,
+              "user_seconds": 0.0639189999999985,
+              "system_seconds": 0.0009060000000005175,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.06505789099998083,
+              "user_seconds": 0.06264500000000339,
+              "system_seconds": 0.001967000000000496,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.06516744699999322,
+              "user_seconds": 0.0644410000000164,
+              "system_seconds": 0.0,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.06533176499999627,
+              "user_seconds": 0.06125199999999609,
+              "system_seconds": 0.003917999999998756,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            },
+            {
+              "thread_seconds": 0.06522972999999865,
+              "user_seconds": 0.06471499999997832,
+              "system_seconds": 0.0,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 3
+            },
+            {
+              "thread_seconds": 0.06527543800001467,
+              "user_seconds": 0.06343000000001098,
+              "system_seconds": 0.0009440000000005,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 1
+            },
+            {
+              "thread_seconds": 0.06513585199999739,
+              "user_seconds": 0.06497300000000905,
+              "system_seconds": 0.0,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 2
+            },
+            {
+              "thread_seconds": 0.06524416499999575,
+              "user_seconds": 0.06472600000000739,
+              "system_seconds": 0.0,
+              "minor_faults": 0,
+              "major_faults": 0,
+              "voluntary_switches": 0,
+              "involuntary_switches": 0
+            }
+          ],
+          "gc_events": [],
+          "hardware_counters": {
+            "cycles": 1717667771,
+            "instructions": 3917131104,
+            "enabled_ns": 1165115437,
+            "running_ns": 1165115437,
+            "running_fraction": 1.0,
+            "cycles_per_instruction": 0.4385014760537359,
+            "scope": "calling thread,user-mode only;raw counts,not scaled"
+          },
+          "state_sha256": "c7d5db93fad9556ee5bf3a8d2bf01938ae5624158f075fbc1533d25e38022242",
+          "tokens": [
+            198,
+            760,
+            1156,
+            369,
+            9859,
+            364,
+            2943,
+            12654,
+            1970,
+            66320,
+            11173,
+            1599,
+            2942,
+            13,
+            2302,
+            1318
+          ],
+          "candidate_calls": 0,
+          "telemetry_before": {
+            "/sys/class/drm/card1/device/pp_dpm_sclk": "0: 2900Mhz \n1: 1100Mhz \n2: 2900Mhz *",
+            "/sys/class/hwmon/hwmon8/temp1_input": "56500",
+            "/sys/class/hwmon/hwmon6/temp1_input": "57000",
+            "/sys/class/hwmon/hwmon4/temp1_input": "77800",
+            "/sys/class/hwmon/hwmon2/temp1_input": "48800",
+            "/sys/class/hwmon/hwmon9/temp1_input": "54850",
+            "/sys/class/hwmon/hwmon7/temp1_input": "76625",
+            "/sys/class/hwmon/hwmon5/temp1_input": "43850",
+            "/sys/class/hwmon/hwmon3/temp1_input": "47800",
+            "/sys/class/hwmon/hwmon1/temp1_input": "54800"
+          },
+          "telemetry_after": {
+            "/sys/class/drm/card1/device/pp_dpm_sclk": "0: 2900Mhz \n1: 1100Mhz \n2: 2900Mhz *",
+            "/sys/class/hwmon/hwmon8/temp1_input": "57000",
+            "/sys/class/hwmon/hwmon6/temp1_input": "56000",
+            "/sys/class/hwmon/hwmon4/temp1_input": "77800",
+            "/sys/class/hwmon/hwmon2/temp1_input": "48800",
+            "/sys/class/hwmon/hwmon9/temp1_input": "55850",
+            "/sys/class/hwmon/hwmon7/temp1_input": "77375",
+            "/sys/class/hwmon/hwmon5/temp1_input": "43850",
+            "/sys/class/hwmon/hwmon3/temp1_input": "47800",
+            "/sys/class/hwmon/hwmon1/temp1_input": "55800"
+          }
+        }
+      ],
+      "off_on_wall_ratio": 0.7395439549606755,
+      "order_ratios": [
+        0.7476831574250884,
+        0.7315303374795519
+      ]
+    }
+  ],
+  "steps": 16,
+  "pairs": 2,
+  "vary_prefill": true,
+  "trace_markers": false,
+  "cpu_accounting": true,
+  "thread_perf": true,
+  "protocol": "Fresh prefill per arm,flag toggles only prefill;decode flag always0,one warmup per arm,balanced pairs. No snapshot restore or host hashes between prefill and decode.",
+  "limits": "Bounded two-case phase diagnostic with telemetry/step clocks,not full-suite throughput or thermal causal proof. No clock changes.",
+  "memory_after_close": {
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 86094241540,
+    "total_allocated_bytes": 86100532996,
+    "total_freed_bytes": 86100532996,
+    "active_allocations": 0,
+    "peak_allocations": 1717
+  }
+}

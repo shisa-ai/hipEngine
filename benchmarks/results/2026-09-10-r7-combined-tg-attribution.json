@@ -1,0 +1,116 @@
+{
+  "schema": 1,
+  "kind": "r7_combined_tg_attribution",
+  "date": "2026-09-10",
+  "trigger": "review finding 2: the prior A/B OFF arm left the compiler cache active and mislabeled latency as throughput",
+  "protocol": {
+    "arms": [
+      {
+        "id": "A1_all_off",
+        "source": "git worktree at 8a770b782",
+        "env": "HIPENGINE_QWEN4_EXP_BATCHED_POSITION=0 (unset PLE_WARM)",
+        "changes_off": "batched positions + version cache + PLE warm (both code changes absent at this commit)"
+      },
+      {
+        "id": "A2_batched",
+        "source": "git worktree at 8a770b782",
+        "env": "both unset (defaults: batched on)",
+        "changes": "+ batched QSA positions only"
+      },
+      {
+        "id": "A3_vcache",
+        "source": "current HEAD 0211fe125",
+        "env": "HIPENGINE_QWEN4_EXP_BATCHED_POSITION=0 (PLE default off after demotion)",
+        "changes": "+ compiler-version override-identity cache only"
+      },
+      {
+        "id": "A4_full",
+        "source": "current HEAD 0211fe125",
+        "env": "HIPENGINE_QWEN4_EXP_PLE_WARM=1 (batched default on)",
+        "changes": "full stack (batched + cache + PLE warm)"
+      }
+    ],
+    "measurement": "fresh process per arm-rep; 12 canonical fixture cases; 48 decode steps per case with device sync; per-case walls recorded; 3 repetitions interleaved by round; token digest checked per arm-rep (all ea0412231532bc7b - bit-exact across all arms)",
+    "command": "python /tmp/r7_attrib_arm.py (script logic inlined in artifact note: prefill + 48x step(capture_logits=False, token_id_resident=True) + device_synchronize per step)"
+  },
+  "per_arm": {
+    "A1_all_off": {
+      "medians": [
+        60.19,
+        60.772,
+        60.447
+      ],
+      "means": [
+        63.587,
+        63.555,
+        63.624
+      ]
+    },
+    "A2_batched": {
+      "medians": [
+        59.867,
+        60.001,
+        59.905
+      ],
+      "means": [
+        62.945,
+        62.769,
+        62.68
+      ]
+    },
+    "A3_vcache": {
+      "medians": [
+        60.576,
+        59.368,
+        59.947
+      ],
+      "means": [
+        63.101,
+        63.036,
+        63.123
+      ]
+    },
+    "A4_full": {
+      "medians": [
+        52.358,
+        52.56,
+        52.739
+      ],
+      "means": [
+        53.108,
+        53.44,
+        53.654
+      ]
+    }
+  },
+  "attribution_median_basis": {
+    "batched_positions": {
+      "delta_ms": 0.54,
+      "latency_pct": -0.9,
+      "throughput_pct": 0.9
+    },
+    "version_cache": {
+      "delta_ms": -0.04,
+      "latency_pct": 0.07,
+      "throughput_pct": -0.07,
+      "note": "NO measurable TG effect at protocol precision with the CORRECTED override-identity cache; the earlier -1.9 ms/token claim was measured with the buggy compiler-only cache and is WITHDRAWN. The cache is retained as a correctness/robustness fix (order-independent override handling, 7x cheaper resolves)"
+    },
+    "ple_warm": {
+      "delta_ms": 7.34,
+      "latency_pct": -12.26,
+      "throughput_pct": 13.97,
+      "note": "dominant change; opt-in after the #31 resource qualification"
+    },
+    "combined": {
+      "delta_ms": 7.89,
+      "latency_pct": -13.05,
+      "throughput_pct": 15.01
+    }
+  },
+  "corrections_issued": [
+    "the prior 'three promotions worth 12.8% TG' claim is withdrawn; the correct attribution (median basis) is -13.1% latency = +15.0% throughput combined, of which PLE warm contributes ~-12.2% latency, batched positions ~-0.9%, version cache ~0",
+    "latency/throughput labels now stated in both units throughout"
+  ],
+  "per_case_samples_note": "per-case walls for every arm-rep are in the session run logs; the per-arm medians/means above aggregate them. Full raw arrays available on request - the essential per-case pattern: code-p512 shows the largest PLE effect (~83 -> ~55 ms/token), general_ja-p1024 the smallest (~53 -> ~52)",
+  "digest_erratum": "2026-09-10 task #33: the arm digest ea0412231532bc7b is the A/B-harness digest, not the canonical-contract digest. The harness paired capture_logits=True prefill (which never writes token_id_buffer) with token_id_resident=True steps, so each case's first decode step embedded a stale token from token_id_buffer. All arm-reps ran fresh processes with the same deterministic buffer history, so the digest was identical across arms and the arm-equality (bit-exactness) conclusion stands. The canonical-contract digest (prefill/step with defaults, as in scripts/qwen4exp_canonical_ar_bench.py) is 19045b7c9fd442e5. Per-step kernel work is token-independent in volume (fixed top-k routing), so the TG latency deltas are unaffected. No runtime defect; the batched-position promotion is unaffected."
+}

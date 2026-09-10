@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "date": "2026-08-27",
+  "status": "rejected_full_row_production_gate",
+  "scope": "Qwen4Exp default-off grouped/WMMA/peer fast profile over every teacher-forced prompt row",
+  "host": {"identity": "zbook", "gpu": "AMD Radeon 8060S Graphics", "arch": "gfx1151"},
+  "model": {"id": "Qwen/Qwen3.8-Flash-Next", "quant": "Unsloth UD-Q4_K_XL", "quant_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5"},
+  "workload": {"prompt_file": "/tmp/qwen4exp-canonical-plus-heldouts.jsonl", "prompts": 18, "teacher_forced_rows": 687, "chunk_size": 64},
+  "timing": {"strict_seconds": 126.86052742099855, "candidate_seconds": 19.097521060000872, "candidate_aggregate_tok_s": 35.973253, "speedup": 6.6427},
+  "overall": {"mean_kl": 0.012795684100678542, "p95_kl": 0.05552632960263466, "p99_kl": 0.12147835368565613, "max_kl": 0.8223655738266455, "top1_agreement_rate": 0.9446870451237264},
+  "categories": {
+    "code": {"count": 224, "mean_kl": 0.01699068039891962, "p95_kl": 0.06818106496395482, "p99_kl": 0.14496698990751605, "max_kl": 0.8223655738266455, "top1_rate": 0.9464285714285714},
+    "general_en": {"count": 132, "mean_kl": 0.005891578291064544, "p95_kl": 0.018316938094873083, "p99_kl": 0.0677205654456235, "max_kl": 0.06844024422401816, "top1_rate": 0.9545454545454546},
+    "general_ja": {"count": 136, "mean_kl": 0.01565970297546207, "p95_kl": 0.06112852252137988, "p99_kl": 0.13966353668609732, "max_kl": 0.2796188135979807, "top1_rate": 0.9411764705882353},
+    "mixed_ja_en": {"count": 195, "mean_kl": 0.010652895531922063, "p95_kl": 0.03489832851607151, "p99_kl": 0.07719640470831435, "max_kl": 0.11928351642575932, "top1_rate": 0.9384615384615385}
+  },
+  "worst": {"id": "code_lru_cache", "category": "code", "position": 2, "kl": 0.8223655738266455, "top1_agreement": false},
+  "thresholds": {"mean_kl": 0.001, "p95_kl": 0.005, "p99_kl": 0.02, "max_kl": 0.05, "overall_top1": 0.99, "per_category_top1": 0.97},
+  "decision": {"promoted": false, "reason": "All binding distribution and top1 gates fail. The earlier 18-final-row packet understated drift; candidate remains internal/default-off."},
+  "command": "uv run python /tmp/qwen4exp_fast_allrows_gate.py"
+}

@@ -1,0 +1,67 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_remaining_punchlist_classification",
+  "status": "classified_21_open_or_partial",
+  "performance_claim": false,
+  "counts": {
+    "open_or_partial": 21,
+    "actionable_now": 3,
+    "prerequisite_or_measured_blocked": 14,
+    "final_closure_aggregate": 4
+  },
+  "actionable_now": [
+    {
+      "line": 1528,
+      "item": "P7 four-warp operation-complete GDN decode",
+      "next": "inspect lineage/current owner and build one RED-gated multi-column candidate"
+    },
+    {
+      "line": 1535,
+      "item": "P7 state/output/cancellation/c2 gate",
+      "depends_on": 1528
+    },
+    {
+      "line": 1537,
+      "item": "P7 trace/profile/tg128 gate",
+      "depends_on": 1528
+    }
+  ],
+  "blocked": [
+    {"line": 1084, "item": "P2 device-sized WMMA dispatch", "blocker": "safe maximum grid measured neutral; no indirect dispatch/compact graph submission"},
+    {"line": 1270, "item": "P3 early dense Q8 MMQ", "blocker": "five-pair code variance and no category-clean win"},
+    {"line": 1632, "item": "P8 stable full-transition pointers", "blocker": "production graph admission rejected at p4096"},
+    {"line": 1643, "item": "P8 full state/replay/cancellation gate", "blocker": "no admitted whole-transition graph candidate"},
+    {"line": 1646, "item": "P8 direct/graph complete comparison", "blocker": "no admitted p4096 graph route"},
+    {"line": 1798, "item": "P10 Q8 KV product profile", "blocker": "BF16 parity prerequisite and missing Qwen4Exp quantized-KV registry families"},
+    {"line": 1838, "item": "P11 device-owned draft outputs", "blocker": "three exact candidates failed category promotion; public selector removed"},
+    {"line": 1861, "item": "P11 compact draft heads", "blocker": "free-head ceiling 0.964x AR; verifier and disjoint-fit prerequisites"},
+    {"line": 1876, "item": "P11 batch verifier promotion", "blocker": "exact final-head-only route is 0.8726x public serial"},
+    {"line": 1953, "item": "external EXP-016 falsification", "blocker": "exact patch/commits unavailable and cited repository HTTP 404"},
+    {"line": 1969, "item": "device acceptance/commit", "blocker": "0.020% Amdahl owner and verifier prerequisite"},
+    {"line": 1980, "item": "depth-conditioned budget", "blocker": "1K provider versus required 4K suite; B6 unsupported"},
+    {"line": 1998, "item": "confidence policy", "blocker": "missing device confidence and disjoint fit manifest"},
+    {"line": 2022, "item": "MTP promotion", "blocker": "0.7407x AR and every category regresses"}
+  ],
+  "final_closure": [
+    {"line": 2050, "item": "final validation packet", "blocker": "five-pair comparator variance and 4K MTP"},
+    {"line": 2072, "item": "final artifacts/model checkpoint", "blocker": "same final inputs"},
+    {"line": 2091, "item": "broad cleanup", "status": "partial; rejected public compact selector removed, remaining fallbacks still required"},
+    {"line": 2100, "item": "campaign closure commit", "blocker": "section 6 not complete"}
+  ],
+  "amdahl_declaration": {
+    "W": null,
+    "C": null,
+    "O": null,
+    "s": null,
+    "arithmetic_class": "planning classification only",
+    "scope": "remaining campaign checklist",
+    "mechanism": "map each open item to retained evidence, explicit prerequisite, or next actionable owner",
+    "strict_fallback": "unchanged",
+    "overlap_exclusions": ["no blocker relabeled complete", "conditional sub-gates remain open with their parent candidate", "final aggregate items are counted separately"]
+  },
+  "decision": {
+    "next": "P7 operation-complete multi-column GDN decode candidate",
+    "reason": "It is the only independent implementation family not already measured, rejected, or prerequisite-blocked."
+  }
+}

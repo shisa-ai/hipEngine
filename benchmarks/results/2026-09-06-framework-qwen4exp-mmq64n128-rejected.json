@@ -1,0 +1,301 @@
+{
+  "schema": 1,
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "3bfb7237187f242e5d1f4027422db87d9add7897",
+    "tracked_clean": false
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "command": [
+    "scripts/qwen4exp_mmq64n128_screen.py",
+    "--model-root",
+    "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--rows",
+    "64",
+    "512",
+    "--pairs",
+    "20",
+    "--output",
+    "/tmp/qwen4exp-mmq64n128.json"
+  ],
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "default_changed": false,
+  "cases": [
+    {
+      "tensor": "blk.0.hc_attn_down.weight",
+      "shape": [
+        64,
+        10240,
+        320
+      ],
+      "weight_sha256": "d32cc0355b9e76d09486940b7738dc1f40f302fac5e64da5bc9725dab8c131a3",
+      "all_pairs_exact": true,
+      "parent_ms": [
+        1.453978,
+        1.441284,
+        1.46552,
+        1.461232,
+        1.467904,
+        1.457655,
+        1.479046,
+        1.45455,
+        1.448187,
+        1.447306,
+        1.445442,
+        1.446835,
+        1.455391,
+        1.446184,
+        1.43852,
+        1.453146,
+        1.436485,
+        1.46554,
+        1.440473,
+        1.448518
+      ],
+      "candidate_ms": [
+        1.824914,
+        1.893504,
+        1.853858,
+        1.868917,
+        1.842007,
+        1.831336,
+        1.845303,
+        1.823993,
+        1.864739,
+        1.835565,
+        1.845072,
+        1.857165,
+        1.834453,
+        1.823252,
+        1.839371,
+        1.842267,
+        1.850402,
+        1.83838,
+        1.831076,
+        1.852757
+      ],
+      "speedup": 0.7875809453911409,
+      "mean_speedup": 0.7873850988002682,
+      "order_speedups": [
+        0.7883887072976006,
+        0.7863834435399187
+      ]
+    },
+    {
+      "tensor": "blk.0.hc_attn_down.weight",
+      "shape": [
+        512,
+        10240,
+        320
+      ],
+      "weight_sha256": "d32cc0355b9e76d09486940b7738dc1f40f302fac5e64da5bc9725dab8c131a3",
+      "all_pairs_exact": true,
+      "parent_ms": [
+        1.878595,
+        1.905406,
+        1.930833,
+        1.874348,
+        1.923109,
+        1.888574,
+        1.908822,
+        1.884887,
+        1.900497,
+        1.882423,
+        1.917298,
+        1.874267,
+        1.90758,
+        1.882323,
+        1.88654,
+        1.868296,
+        1.897551,
+        1.839011,
+        1.89216,
+        1.880348
+      ],
+      "candidate_ms": [
+        2.612533,
+        2.64877,
+        2.603396,
+        2.64863,
+        2.604658,
+        2.629795,
+        2.595651,
+        2.697251,
+        2.590221,
+        2.627711,
+        2.586354,
+        2.622691,
+        2.593587,
+        2.624224,
+        2.578559,
+        2.771311,
+        2.585682,
+        2.619165,
+        2.587255,
+        2.617142
+      ],
+      "speedup": 0.721863978163079,
+      "mean_speedup": 0.7211968076170914,
+      "order_speedups": [
+        0.7341761644814985,
+        0.7084959683762854
+      ]
+    },
+    {
+      "tensor": "blk.4.hc_attn_down.weight",
+      "shape": [
+        64,
+        10240,
+        320
+      ],
+      "weight_sha256": "49fcacdf03155320e3e731e06d4a97e0ed5bba3a047e8af1bbd77446ba593841",
+      "all_pairs_exact": true,
+      "parent_ms": [
+        1.448839,
+        1.443719,
+        1.437026,
+        1.443559,
+        1.43918,
+        1.457845,
+        1.439421,
+        1.450702,
+        1.444842,
+        1.448097,
+        1.437217,
+        1.454449,
+        1.44445,
+        1.458917,
+        1.441064,
+        1.442898,
+        1.439091,
+        1.466462,
+        1.458167,
+        1.444962
+      ],
+      "candidate_ms": [
+        1.821528,
+        1.878475,
+        1.839081,
+        1.828832,
+        1.846815,
+        1.829242,
+        1.84403,
+        1.824574,
+        1.831317,
+        1.850622,
+        1.855953,
+        1.825976,
+        1.830155,
+        1.828562,
+        1.85987,
+        1.839182,
+        1.830966,
+        1.841645,
+        1.847366,
+        1.846485
+      ],
+      "speedup": 0.7855044622964699,
+      "mean_speedup": 0.7864232439643228,
+      "order_speedups": [
+        0.783899250511257,
+        0.7889490879841596
+      ]
+    },
+    {
+      "tensor": "blk.4.hc_attn_down.weight",
+      "shape": [
+        512,
+        10240,
+        320
+      ],
+      "weight_sha256": "49fcacdf03155320e3e731e06d4a97e0ed5bba3a047e8af1bbd77446ba593841",
+      "all_pairs_exact": true,
+      "parent_ms": [
+        1.937866,
+        1.890668,
+        1.911157,
+        1.882884,
+        1.951742,
+        1.882293,
+        1.896218,
+        1.885578,
+        1.920163,
+        1.866743,
+        1.875519,
+        1.864218,
+        1.88651,
+        1.867654,
+        1.877353,
+        1.869879,
+        1.919923,
+        1.872013,
+        1.909453,
+        1.877082
+      ],
+      "candidate_ms": [
+        2.614967,
+        2.662116,
+        2.595561,
+        2.644062,
+        2.598386,
+        2.631548,
+        2.592755,
+        2.689177,
+        2.594038,
+        2.617071,
+        2.589379,
+        2.622662,
+        2.587405,
+        2.626979,
+        2.588518,
+        2.62197,
+        2.584951,
+        2.620056,
+        2.588658,
+        2.666294
+      ],
+      "speedup": 0.7202665576970197,
+      "mean_speedup": 0.7231067739596836,
+      "order_speedups": [
+        0.735923852820967,
+        0.7105165587295021
+      ]
+    }
+  ],
+  "arithmetic": "T0 parent F32 bits",
+  "boundary": "quantize + count clear + matmul + exact repair + synchronize; D2H outside timing",
+  "date": "2026-09-06",
+  "status": "rejected_variants_removed",
+  "performance_claim": false,
+  "rejected_source_patch": "diff --git a/hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_mmq_prefill.hip b/hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_mmq_prefill.hip\nindex a04d0a421..5e2b47d60 100644\n--- a/hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_mmq_prefill.hip\n+++ b/hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_mmq_prefill.hip\n@@ -852,6 +852,17 @@ extern \"C\" int hipengine_gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out(\n       risk_count, risk_indices, max_risks, risk_threshold);\n }\n \n+extern \"C\" int hipengine_gguf_q8_0_mmq64n128_prefill_q8_1_d4x3_guarded_f32_f32_out(\n+    const void* x_d4, const uint8_t* qweight, float* out,\n+    int* risk_count, int* risk_indices, int64_t max_risks,\n+    float risk_threshold, int64_t rows, int64_t hidden,\n+    int64_t out_features, hipStream_t stream) {\n+  return launch_mmq_tile<64, 128, 3, float, true>(\n+      reinterpret_cast<const block_q8_1_mmq_d4*>(x_d4),\n+      qweight, out, rows, hidden, out_features, stream,\n+      risk_count, risk_indices, max_risks, risk_threshold);\n+}\n+\n // PF-1d plane-reduction candidate: guarded f32 chain with two activation\n // planes. Not bit-identical to d4x3; admission requires the production\n // numerics gate.\ndiff --git a/hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_mmq_prefill.py b/hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_mmq_prefill.py\nindex 515d7b333..8c780a59c 100644\n--- a/hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_mmq_prefill.py\n+++ b/hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_mmq_prefill.py\n@@ -619,6 +619,7 @@ def gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out(\n     stream: int = 0,\n     library: ctypes.CDLL | None = None,\n     runtime: HipRuntime | None = None,\n+    _tile64: bool = False,\n ) -> None:\n     \"\"\"Launch D4x3 MMQ (F32 output) and enqueue near-boundary outputs.\"\"\"\n \n@@ -634,7 +635,9 @@ def gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out(\n         raise ValueError(\"risk_threshold must be non-negative\")\n     library = library or build_gguf_q8_0_mmq_prefill(load=True)\n     runtime = runtime or get_hip_runtime()\n-    fn = getattr(library, _PREFILL_X3_GUARDED_F32_SYMBOL)\n+    fn = getattr(library,\n+        \"hipengine_gguf_q8_0_mmq64n128_prefill_q8_1_d4x3_guarded_f32_f32_out\"\n+        if _tile64 else _PREFILL_X3_GUARDED_F32_SYMBOL)\n     fn.argtypes = [\n         ctypes.c_void_p,\n         ctypes.c_void_p,\n@@ -665,6 +668,11 @@ def gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out(\n     if int(err) != HIP_SUCCESS:\n         runtime.check(int(err))\n \n+def gguf_q8_0_mmq64n128_prefill_q8_1_d4x3_guarded_f32_f32_out(*args, **kwargs):\n+    gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out(\n+        *args, **kwargs, _tile64=True)\n+\n+\n def gguf_q8_0_mmq128_prefill_q8_1_d4x2_guarded_f32_f32_out(\n     x_d4_ptr: int,\n     qweight_ptr: int,\n@@ -828,6 +836,12 @@ def gguf_q8_0_mmq128_prefill_q8_1_d4x3_bf16_f32_out(\n         runtime.check(int(err))\n \n def register_gguf_q8_0_mmq_prefill_kernels(*, replace: bool = True) -> None:\n+    register(\n+        KernelKey(\"hip_gfx1100\", \"linear\", \"gguf_q8_0\",\n+                  \"mmq64n128_prefill_q8_1_d4x3_guarded_f32_f32_out\"),\n+        gguf_q8_0_mmq64n128_prefill_q8_1_d4x3_guarded_f32_f32_out,\n+        replace=replace,\n+    )\n     register(\n         KernelKey(\"hip_gfx1100\", \"activation_quant\", \"q8_1_d4x3\", \"bf16\"),\n         gguf_q8_0_mmq128_quantize_bf16_d4x3,\n",
+  "rejected_test_source": "import ctypes\nimport numpy as np\nimport pytest\n\nfrom hipengine.core.hip import get_hip_runtime\nfrom hipengine.core.memory import free\nfrom hipengine.kernels.hip_gfx1100.quant import gguf_q8_0_mmq_prefill as mmq\nfrom tests.test_qwen4exp_pf1_dense_parity import _run_mmq_chain_factory\nfrom tests.test_qwen4_exp_pf3_moe_schedules import _upload\nfrom tests.test_gguf_k_gemv import make_q8_0_weight\n\nPARENT = \"gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out\"\nCANDIDATE = \"gguf_q8_0_mmq64n128_prefill_q8_1_d4x3_guarded_f32_f32_out\"\n\n\ndef hip_available():\n    try:\n        ctypes.CDLL(\"libamdhip64.so\")\n        return True\n    except OSError:\n        return False\n\n\ndef test_registry():\n    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels\n    from hipengine.kernels.registry import resolve\n    register_gfx1151_kernels(replace=True)\n    assert resolve(\n        backend=\"hip_gfx1151\", layer=\"linear\", quant=\"gguf_q8_0\",\n        variant=CANDIDATE.removeprefix(\"gguf_q8_0_\"),\n    ) is getattr(mmq, CANDIDATE)\n\n\n@pytest.mark.skipif(not hip_available(), reason=\"HIP unavailable\")\n@pytest.mark.parametrize(\"rows,k,n\", [(65,256,80), (257,10240,320), (512,10240,320)])\ndef test_exact_chain(rows, k, n):\n    runtime = get_hip_runtime()\n    library = mmq.build_gguf_q8_0_mmq_prefill(load=True)\n    allocations = []\n    try:\n        x = np.random.default_rng(9823).normal(0, .2, (rows,k)).astype(np.float32)\n        w = make_q8_0_weight(n,k)\n        dx, dw = [_upload(v, runtime, allocations) for v in (x,w)]\n        results = []\n        for name in (PARENT, CANDIDATE):\n            run = _run_mmq_chain_factory(\n                runtime, library, allocations, dx, dw, k, n, rows, getattr(mmq,name))\n            result = run()\n            np.testing.assert_array_equal(result, run())\n            results.append(result)\n        np.testing.assert_array_equal(*results)\n    finally:\n        for ptr in reversed(allocations):\n            free(ptr, runtime=runtime)\n",
+  "rejected_screen_source": "\"\"\"Actual GR down banks: complete three-plane MMQ chain, 128x128 vs 64x128.\"\"\"\nimport argparse\nimport hashlib\nimport json\nimport os\nfrom pathlib import Path\nimport statistics\nimport sys\nimport time\n\nROOT = Path(__file__).resolve().parents[1]\nsys.path.insert(0, str(ROOT))\nimport numpy as np\nfrom hipengine.core.hip import get_hip_runtime\nfrom hipengine.core.memory import free\nfrom hipengine.kernels.hip_gfx1100.quant import gguf_q8_0_mmq_prefill as mmq\nfrom hipengine.loading.gguf import GGUFReader, discover_gguf_files\nfrom scripts.qwen4exp_canonical_ar_bench import _git_metadata, _host_metadata\nfrom tests.test_qwen4_exp_pf3_moe_schedules import _upload, _alloc, _download\nfrom tests.test_qwen4exp_mmq64n128 import PARENT, CANDIDATE\n\n\ndef main():\n    p = argparse.ArgumentParser(description=__doc__)\n    p.add_argument(\"--model-root\", type=Path, required=True)\n    p.add_argument(\"--compiler-version-file\", type=Path, required=True)\n    p.add_argument(\"--output\", type=Path, required=True)\n    p.add_argument(\"--rows\", type=int, nargs=\"+\", default=[64,512])\n    p.add_argument(\"--pairs\", type=int, default=20)\n    a = p.parse_args()\n    if a.pairs < 2 or a.pairs % 2 or any(r < 1 for r in a.rows):\n        p.error(\"positive rows and even pairs>=2 required\")\n    os.environ[\"HIPENGINE_COMPILER_VERSION_FILE\"] = str(a.compiler_version_file)\n    os.environ[\"HIPENGINE_REQUIRE_CACHED_BUILD\"] = \"1\"\n    runtime = get_hip_runtime()\n    library = mmq.build_gguf_q8_0_mmq_prefill(load=True, require_cached=True)\n    readers = [GGUFReader(f) for f in discover_gguf_files(a.model_root)]\n    report = dict(schema=1, source=_git_metadata(ROOT), host=_host_metadata(),\n                  command=sys.argv, model=\"Qwen3.8-Flash-Next UD-Q4_K_XL\",\n                  default_changed=False, cases=[], arithmetic=\"T0 parent F32 bits\",\n                  boundary=\"quantize + count clear + matmul + exact repair + synchronize; D2H outside timing\")\n    for layer in (0,4):\n        name = f\"blk.{layer}.hc_attn_down.weight\"\n        reader = next(r for r in readers if any(t.name == name for t in r.info.tensors))\n        info = reader.tensor_info(name)\n        n,k = info.shape\n        assert info.ggml_type_name == \"Q8_0\" and (n,k) == (320,10240)\n        raw = reader.tensor_data(name)\n        for rows in a.rows:\n            allocations = []\n            try:\n                x = np.random.default_rng(4962+rows).normal(0,.2,(rows,k)).astype(np.float32)\n                dx,dw = [_upload(v,runtime,allocations) for v in (x,raw)]\n                packed = _alloc((mmq.q8_mmq_d4x3_nbytes(rows,k),),np.uint8,runtime,allocations)\n                count = _alloc((1,),np.int32,runtime,allocations)\n                indices = _alloc((rows*n,),np.int32,runtime,allocations)\n                outputs = [_alloc((rows,n),np.float32,runtime,allocations) for _ in range(2)]\n\n                def run(candidate):\n                    mmq.gguf_q8_0_mmq128_quantize_f32_d4x3(\n                        dx.ptr,packed.ptr,rows,k,library=library,runtime=runtime)\n                    runtime.memset(count.ptr,0,4)\n                    getattr(mmq,CANDIDATE if candidate else PARENT)(\n                        packed.ptr,dw.ptr,outputs[candidate].ptr,count.ptr,indices.ptr,\n                        rows*n,0.,rows,k,n,library=library,runtime=runtime)\n                    mmq.gguf_q8_0_mmq128_sparse_exact_correct_f32(\n                        dx.ptr,dw.ptr,outputs[candidate].ptr,count.ptr,indices.ptr,\n                        rows*n,rows,k,n,library=library,runtime=runtime)\n                    runtime.device_synchronize()\n\n                run(0)\n                run(1)\n                timings = [[],[]]\n                for pair in range(a.pairs):\n                    for mode in ((0,1) if pair % 2 == 0 else (1,0)):\n                        start = time.perf_counter_ns()\n                        run(mode)\n                        timings[mode].append((time.perf_counter_ns()-start)/1e6)\n                    np.testing.assert_array_equal(\n                        _download(outputs[0],(rows,n),np.float32,runtime),\n                        _download(outputs[1],(rows,n),np.float32,runtime))\n                report[\"cases\"].append(dict(\n                    tensor=name, shape=[rows,k,n], weight_sha256=hashlib.sha256(raw).hexdigest(),\n                    all_pairs_exact=True, parent_ms=timings[0], candidate_ms=timings[1],\n                    speedup=statistics.median(timings[0])/statistics.median(timings[1]),\n                    mean_speedup=statistics.mean(timings[0])/statistics.mean(timings[1]),\n                    order_speedups=[statistics.mean(timings[0][s::2])/statistics.mean(timings[1][s::2])\n                                    for s in (0,1)]))\n            finally:\n                for ptr in reversed(allocations):\n                    free(ptr,runtime=runtime)\n    a.output.write_text(json.dumps(report,indent=2)+\"\\n\")\n    print(json.dumps(report,indent=2))\n\n\nif __name__ == \"__main__\":\n    main()\n",
+  "tests_passed": 4,
+  "disposition": "64x128 loses on actual 320-output GR weights at both layers and both row counts; retain128x128.",
+  "limitations": [
+    "Real weights, synthetic F32 activations, operation-complete chain; no model A/B.",
+    "No profiler resource claim; causal balance of padding, activation traffic and occupancy not established."
+  ],
+  "cost_basis": {
+    "source": "/tmp/qwen4exp-post-gr-family.raw/code-p4096-prefill/qwen4exp_prefill_p4096_0.roles.json",
+    "production_commit": "9efbf6d2311be329b349b7a40d6657df2068a4d6",
+    "q8_quantize_ms": 202.803498,
+    "mmq_nocheck_ms": 3858.157402,
+    "mmq_checked_ms": 1492.842011
+  }
+}

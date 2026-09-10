@@ -13,6 +13,7 @@ working on.
 | --- | --- |
 | [`PLAN.md`](PLAN.md) | Source of truth for architecture, plugin boundaries, phase roadmap, LoC budgets, and invariants. |
 | [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md) | Normative strict/production/batch-invariant contracts, exact ownership rules, numerical gates, and registry resolution policy. |
+| [`PRODUCTION-ACCURACY-POLICY-REVIEW-2026-08-31.md`](PRODUCTION-ACCURACY-POLICY-REVIEW-2026-08-31.md) | Dated evidence review of production cutoffs, calibration limits, practical quality impact, cutoff-excluded performance, and recalibration triggers. |
 | [`PRODUCTION-NUMERICS-CAMPAIGN.md`](PRODUCTION-NUMERICS-CAMPAIGN.md) | Approved evaluator, calibration, historical-recovery, c1, and c>N/A4 campaign. |
 | [`IMPLEMENTATION.md`](IMPLEMENTATION.md) | Current implementation status, concrete milestones, and integration notes. |
 | [`API.md`](API.md) | OpenAI-compatible FastAPI server usage, endpoint support, and current limitations. |
@@ -26,6 +27,8 @@ working on.
 | [`QWEN38-Q4KM-MTP-ACCEPTANCE.md`](QWEN38-Q4KM-MTP-ACCEPTANCE.md) | gfx1151 physical-C3 decode-economics campaign for Qwen3.8-27B `Q4_K_M` MTP; gate state and next steps are in the document header. Appendix analyzes a DFlash2 revival. |
 | [`QWEN38-INT8-KV-CONTINUOUS.md`](QWEN38-INT8-KV-CONTINUOUS.md) | INT8 KV continuous-batching campaign: artifact-scoped admission, compact no-mirror c>N prefill/decode, complete memory accounting, and resident lifecycle promotion. |
 | [`QWEN38-27B-GFX1100-24GB-CAPACITY.md`](QWEN38-27B-GFX1100-24GB-CAPACITY.md) | 24 GB capacity campaign for Qwen3.8-27B `Q4_K_M` on gfx1100: measured RX 7900 XTX context ceiling, the inert INT8 KV defect, per-token footprint attribution, and the evidence rules for capacity claims. |
+| [`QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md`](QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md) | Active gfx1151 gap-closure campaign: measured llama.cpp gap, role-resolved profiling recipe, external fork audit, phased plan, and punchlist. |
+| [`QWEN3.8-FLASH-NEXT-STRIX-HALO-SURVEY.md`](QWEN3.8-FLASH-NEXT-STRIX-HALO-SURVEY.md) | Matched Strix Halo engine survey: speed, same-GGUF logits, AR/MTP exactness, test and promotion coverage, source audit, and bounded absolute-quality evidence. |
 | [`LESSONS-LEARNED.md`](LESSONS-LEARNED.md) | Local do-not-chase findings and recurring kernel/runtime pitfalls. |
 | [`PLAN-WORKLOG2-revamp.md`](PLAN-WORKLOG2-revamp.md) | Approved immutable worklog design, migration contract, and acceptance punchlist. |
 
@@ -36,7 +39,7 @@ working on.
 | [`TESTING.md`](TESTING.md) | RED/GREEN workflow, correctness oracles, fixture policy, and gate selection. |
 | [`BENCHMARK.md`](BENCHMARK.md) | Benchmark protocol, required evidence fields, correctness thresholds, and artifact format. |
 | [`PROCESS-EXPLORATION.md`](PROCESS-EXPLORATION.md) | Optional methodology for broader optimization searches, hypothesis beams, structural maturation, evaluation firewalls, and anti-overfitting gates. |
-| [`THEROCK.md`](THEROCK.md) | Retained TheRock ROCm setup, `gfx110X-all` package choice, verification commands, and ROCm 7.14 regression notes. |
+| [`THEROCK.md`](THEROCK.md) | Current stable ROCm 10 `gfx1151` setup and rollback procedure, plus the separately retained W7900 ROCm 7.13 benchmark environment. |
 | [`DEBUG-GFX1151-STALL.md`](DEBUG-GFX1151-STALL.md) | Open gfx1151 128K prefill no-progress signature, eliminated hypotheses, KFD/MES debug plan, and upstream-report checklist. |
 | [`../benchmarks/README.md`](../benchmarks/README.md) | Canonical topline scoreboard, platform freshness, exact protocols, artifacts, and refresh commands. |
 | [`../benchmarks/HISTORY.md`](../benchmarks/HISTORY.md) | Archived experiment rollup, source-lineage targets, external baselines, and superseded diagnostics. |
@@ -86,17 +89,19 @@ working on.
   [`ROOFLINE.md`](ROOFLINE.md) to decide whether the proposed change matches the
   measured bottleneck.
 - **Before making a performance claim:** read [`BENCHMARK.md`](BENCHMARK.md),
-  verify the ROCm environment against [`THEROCK.md`](THEROCK.md) for W7900
-  TheRock rows,
-  update [`../benchmarks/README.md`](../benchmarks/README.md) and
+  verify the host-specific ROCm environment against [`THEROCK.md`](THEROCK.md),
+  and do not compare absolute rates across its independent gfx1151/ROCm 10 and
+  W7900/ROCm 7.13 lanes. Then update
+  [`../benchmarks/README.md`](../benchmarks/README.md) and
   [`../benchmarks/CHANGELOG.md`](../benchmarks/CHANGELOG.md), and write a compact
   artifact under [`../benchmarks/results/`](../benchmarks/results/).
 - **Before opening a less-bounded optimization search:** read
   [`PROCESS-EXPLORATION.md`](PROCESS-EXPLORATION.md), freeze the evaluator and
   generalization envelope, then seed genuinely distinct hypothesis families.
 - **Before changing math or correctness-sensitive code:** read
-  [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md) and
-  [`TESTING.md`](TESTING.md), declare the applicable strict/production/
+  [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md), the latest dated
+  [production accuracy policy review](PRODUCTION-ACCURACY-POLICY-REVIEW-2026-08-31.md),
+  and [`TESTING.md`](TESTING.md), declare the applicable strict/production/
   batch-invariant contract, and add or update a CPU-reference / fixture gate
   before relying on benchmark output.
 

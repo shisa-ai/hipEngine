@@ -1,0 +1,71 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_p10_matched_comparator_audit",
+  "status": "audit_complete_long_context_comparison_blocked",
+  "performance_claim": false,
+  "baseline_claim": false,
+  "host": "zbook",
+  "hardware": "gfx1151",
+  "required_configuration": {
+    "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+    "kv": "BF16",
+    "prompt_protocol": "exact shared token arrays",
+    "depths": [4096, 16384, 65536],
+    "decode_transitions": 128
+  },
+  "available_exact_token_rows": {
+    "fixture": "benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+    "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+    "depths": [512, 1024, 4096],
+    "upstream_vulkan": {
+      "source": "f1793c1c4e586022efa0b1d3aa6e30ccd67f4e2d",
+      "4096_prompt_tok_s": 266.58250776072,
+      "4096_decode_tok_s": 18.975199155277505,
+      "repeat_exact": true,
+      "freeze_status": "blocked by variance at shorter shapes, not by the 4096 row"
+    },
+    "engramhalo_hip": {
+      "source": "1423f689986f670417128fd545a0aa1241166103",
+      "4096_prompt_tok_s": 381.1690248953889,
+      "4096_decode_tok_s": 15.988703148480644,
+      "repeat_exact": false,
+      "failure": "code-p4096 alternates between continuation hashes; first difference at output index 1"
+    },
+    "nathan_vulkan": {
+      "source": "ad914eb6587d3da8b2bf50f0056cc20b3d3e91f5",
+      "4096_prompt_tok_s": 351.8546700478752,
+      "4096_decode_tok_s": 19.011559795749505,
+      "repeat_exact": false,
+      "failure": "0/12 canonical cases repeat; identical p1024 prompt control produced 16 distinct continuations"
+    }
+  },
+  "long_context_inventory": {
+    "4096": "An exact-token upstream row exists. EngramHalo and Nathan rates are diagnostic because their repeatability gates fail.",
+    "16384": "No retained EngramHalo, Nathan, or upstream exact-token BF16-KV row exists.",
+    "65536": "No retained EngramHalo, Nathan, or upstream exact-token BF16-KV row exists.",
+    "hipengine_natural_retrieval_not_comparable": "The retained hipEngine 4K/16K/64K archive-retrieval ladder uses a different single-prompt protocol from the four-category canonical comparator fixture, so its rates are not divided by external canonical rates."
+  },
+  "excluded_rows": [
+    "2026-08-30 llama-bench p508/p1012/tg32 rows: generated inputs and different decode length",
+    "EngramHalo Q8-KV rows: different KV representation",
+    "Nathan Q8-KV rows: different KV representation",
+    "published EngramHalo IQ3/IQ4 rows: different weight quant",
+    "published Nathan Q3 headline rows: different weight quant",
+    "apepojken/hybrid rows: outside the named EngramHalo/Nathan/upstream comparison and not fully repeatable"
+  ],
+  "evidence": [
+    "benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-canonical-ar-screening.json",
+    "benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-entitled-vulkan-canonical-refresh.json",
+    "benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-external-fork-refresh.json",
+    "benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p10-natural-retrieval-current.json"
+  ],
+  "scope": {
+    "mechanism": "repository evidence inventory only",
+    "arithmetic_class": "no model arithmetic",
+    "w_c_o_s": "W is unchanged hipEngine production work; C is unavailable for a matched 16K/64K comparison; O and s are not applicable because no optimization is evaluated.",
+    "overlap_exclusions": ["different prompts", "different decode lengths", "different weight quants", "quantized KV", "repeatability-failing lanes"],
+    "strict_fallback": "unchanged"
+  },
+  "decision": "Close the inventory subtask without fabricating a long-context comparison. The 16K/64K comparator remains a measurement gap, and no external rate is promoted. Continue to independent P10 owner optimization; generate a committed exact-token long-context fixture and rerun eligible external lanes only when comparator closure is scheduled."
+}

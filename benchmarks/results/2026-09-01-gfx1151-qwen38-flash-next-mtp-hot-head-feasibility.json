@@ -1,0 +1,166 @@
+{
+  "command": [
+    "qwen4exp_mtp_head_profile.py",
+    "--output",
+    "benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-mtp-hot-head-feasibility.json"
+  ],
+  "current_fullsuite_ceiling": {
+    "ar_total_seconds": 49.383127938017424,
+    "artifact": "benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-mtp-fullsuite-short.json",
+    "ideal_zero_cost_head_mtp_vs_ar": 0.9643300438761082,
+    "ideal_zero_cost_head_saved_seconds": 0.5012921001398354,
+    "ideal_zero_cost_head_wall_reduction_percent": 0.969409633991852,
+    "measured_mtp_vs_ar": 0.9549817355272954,
+    "mtp_total_seconds": 51.711070590004965,
+    "note": "Upper bound only; a selected head costs nonzero time and may lower acceptance.",
+    "proposed_draft_tokens": 159
+  },
+  "date": "2026-09-01",
+  "decision": {
+    "binding_gate": "full category+heldout AR-equivalence and same-command true-AR economics",
+    "candidate": "individual-row compact Q8_0 draft heads at 8K/16K/32K with local-to-global ID map",
+    "first": "replace full-logit D2H/NumPy argmax with existing device argmax and compact candidate packet",
+    "transfer": "useful_after_device-output cleanup, not the current first MTP bottleneck"
+  },
+  "host": {
+    "cpu_governors": {
+      "performance": 32
+    },
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "hostname": "zbook",
+    "kernel": "6.18.42-1-cachyos-lts",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "rocm_platform": "10.0.0",
+    "tuned_active": "Current active profile: accelerator-performance"
+  },
+  "kind": "qwen4exp_mtp_draft_head_profile",
+  "lifecycle": {
+    "after_close": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 4128848868,
+      "peak_allocations": 114,
+      "total_allocated_bytes": 4128848868,
+      "total_freed_bytes": 4128848868
+    },
+    "passed": true
+  },
+  "measurement": {
+    "full_draft_forward": {
+      "max_ms": 8.183936995919794,
+      "median_ms": 7.638578499609139,
+      "min_ms": 6.9190229987725616,
+      "samples_ms": [
+        8.0453170085093,
+        7.506044988986105,
+        8.06225900305435,
+        8.070253999903798,
+        7.241268001962453,
+        7.106035001925193,
+        7.0586549991276115,
+        7.150557998102158,
+        7.146019008359872,
+        7.4449699895922095,
+        8.183936995919794,
+        7.771112010232173,
+        7.060899995849468,
+        7.979743997566402,
+        8.058502004132606,
+        7.134997998946346,
+        8.103186002699658,
+        7.992988001205958,
+        7.956039989949204,
+        6.9190229987725616
+      ]
+    },
+    "full_head": {
+      "max_ms": 3.2418429909739643,
+      "median_ms": 3.152780504024122,
+      "min_ms": 3.109776007477194,
+      "samples_ms": [
+        3.109776007477194,
+        3.1164179963525385,
+        3.164488007314503,
+        3.164597990689799,
+        3.150440999888815,
+        3.155120008159429,
+        3.157304003252648,
+        3.190356001141481,
+        3.1436400022357702,
+        3.121978006674908,
+        3.123622009297833,
+        3.1304750009439886,
+        3.137838008115068,
+        3.137787993182428,
+        3.237384997191839,
+        3.1568639969918877,
+        3.141945999232121,
+        3.1742470018798485,
+        3.225653010304086,
+        3.2418429909739643
+      ]
+    },
+    "full_logits_d2h": {
+      "max_ms": 0.1252650108654052,
+      "median_ms": 0.034099000913556665,
+      "min_ms": 0.03318299422971904,
+      "samples_ms": [
+        0.1252650108654052,
+        0.03865300095640123,
+        0.03546600055415183,
+        0.03333300992380828,
+        0.11773100413847715,
+        0.03560600453056395,
+        0.03452500095590949,
+        0.03405399911571294,
+        0.03389400080777705,
+        0.033482996514067054,
+        0.03318299422971904,
+        0.03379400004632771,
+        0.033603006158955395,
+        0.034425000194460154,
+        0.03433399251662195,
+        0.03362300049047917,
+        0.03320300311315805,
+        0.04035599704366177,
+        0.03410399949643761,
+        0.03409400233067572
+      ]
+    },
+    "head_share_of_draft_forward": 0.4127444005694839
+  },
+  "model": {
+    "head_bytes": 675430400,
+    "head_quant": "Q8_0",
+    "hidden": 2560,
+    "logit_bytes": 993280,
+    "sidecar": "/models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf",
+    "target_root": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "vocab": 248320
+  },
+  "performance_claim": false,
+  "protocol": {
+    "boundary": "synchronized c1 draft forward and isolated synchronized full Q8_0 head",
+    "hidden_seed": "zeros_fp32",
+    "iterations": 20,
+    "start_token": 248068,
+    "warmups": 3
+  },
+  "schema": 1,
+  "selected_q8_row_geometry": {
+    "bytes_per_vocab_row": 2720,
+    "incremental_head_bytes": {
+      "16384": 44564480,
+      "32768": 89128960,
+      "65536": 178257920,
+      "8192": 22282240
+    },
+    "note": "GGUF Q8_0 output rows are independently addressable; no EXL3 Hadamard-group constraint transfers."
+  },
+  "source": {
+    "head": "b9b11b346155e0aeafd38a6083143edf0f3d13a7",
+    "path": "/home/lhl/hipEngine",
+    "tracked_clean": true
+  },
+  "status": "diagnostic_retained"
+}

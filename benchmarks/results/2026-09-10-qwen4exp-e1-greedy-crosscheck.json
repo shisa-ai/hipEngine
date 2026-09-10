@@ -1,0 +1,113 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp_e1_greedy_crosscheck",
+ "question": "Can halo-box master 5f851647f be frozen as the campaign comparison target (replacing pinned b212548e0)?",
+ "protocol": "greedy mode (temperature 0.0), canonical p512/p1024/p4096 TG128 fixture, 129-token limit-stop outputs, 3 repetitions per engine; all five engine packets deterministic within engine",
+ "result": "NEGATIVE - not output-equivalent",
+ "digest_agreement_cases": "2/12 (5f851647f-Vulkan vs pinned b212548e0-Vulkan)",
+ "median_prefix_vs_pin": 97,
+ "summary": "Within-engine deterministic everywhere, but cross-version greedy trajectories differ: full-digest agreement only 2/12 cases (code-p512, mixed_ja_en-p512, both 129/129 prefixes); median prefix 64.5/128; several cases diverge within the first 5-16 tokens. The 5f851647f rocmfpx Vulkan-stack line is not numerics-equivalent to the pinned b212548e0 baseline in greedy mode. Freezing it as the comparison target would change the reference trajectories; the pinned b212548e0 remains the campaign baseline, and adopting the faster 5f851647f would be a policy decision accepting a new baseline trajectory set.",
+ "cases": [
+  {
+   "id": "code-p1024",
+   "digest_5f_vk_eq_pin": false,
+   "digest_5f_hip_eq_pin": null,
+   "prefix_5f_vk_vs_pin": 16,
+   "prefix_5f_hip_vs_pin_hip": 58,
+   "prefix_5f_vk_vs_hipengine": 10
+  },
+  {
+   "id": "code-p4096",
+   "digest_5f_vk_eq_pin": false,
+   "digest_5f_hip_eq_pin": null,
+   "prefix_5f_vk_vs_pin": 97,
+   "prefix_5f_hip_vs_pin_hip": 11,
+   "prefix_5f_vk_vs_hipengine": 10
+  },
+  {
+   "id": "code-p512",
+   "digest_5f_vk_eq_pin": true,
+   "digest_5f_hip_eq_pin": null,
+   "prefix_5f_vk_vs_pin": 129,
+   "prefix_5f_hip_vs_pin_hip": 4,
+   "prefix_5f_vk_vs_hipengine": 4
+  },
+  {
+   "id": "general_en-p1024",
+   "digest_5f_vk_eq_pin": false,
+   "digest_5f_hip_eq_pin": null,
+   "prefix_5f_vk_vs_pin": 5,
+   "prefix_5f_hip_vs_pin_hip": 4,
+   "prefix_5f_vk_vs_hipengine": 5
+  },
+  {
+   "id": "general_en-p4096",
+   "digest_5f_vk_eq_pin": false,
+   "digest_5f_hip_eq_pin": null,
+   "prefix_5f_vk_vs_pin": 5,
+   "prefix_5f_hip_vs_pin_hip": 15,
+   "prefix_5f_vk_vs_hipengine": 15
+  },
+  {
+   "id": "general_en-p512",
+   "digest_5f_vk_eq_pin": false,
+   "digest_5f_hip_eq_pin": null,
+   "prefix_5f_vk_vs_pin": 32,
+   "prefix_5f_hip_vs_pin_hip": 15,
+   "prefix_5f_vk_vs_hipengine": 44
+  },
+  {
+   "id": "general_ja-p1024",
+   "digest_5f_vk_eq_pin": false,
+   "digest_5f_hip_eq_pin": null,
+   "prefix_5f_vk_vs_pin": 4,
+   "prefix_5f_hip_vs_pin_hip": 7,
+   "prefix_5f_vk_vs_hipengine": 4
+  },
+  {
+   "id": "general_ja-p4096",
+   "digest_5f_vk_eq_pin": false,
+   "digest_5f_hip_eq_pin": null,
+   "prefix_5f_vk_vs_pin": 97,
+   "prefix_5f_hip_vs_pin_hip": 13,
+   "prefix_5f_vk_vs_hipengine": 103
+  },
+  {
+   "id": "general_ja-p512",
+   "digest_5f_vk_eq_pin": false,
+   "digest_5f_hip_eq_pin": null,
+   "prefix_5f_vk_vs_pin": 5,
+   "prefix_5f_hip_vs_pin_hip": 5,
+   "prefix_5f_vk_vs_hipengine": 5
+  },
+  {
+   "id": "mixed_ja_en-p1024",
+   "digest_5f_vk_eq_pin": false,
+   "digest_5f_hip_eq_pin": null,
+   "prefix_5f_vk_vs_pin": 112,
+   "prefix_5f_hip_vs_pin_hip": 78,
+   "prefix_5f_vk_vs_hipengine": 7
+  },
+  {
+   "id": "mixed_ja_en-p4096",
+   "digest_5f_vk_eq_pin": false,
+   "digest_5f_hip_eq_pin": null,
+   "prefix_5f_vk_vs_pin": 126,
+   "prefix_5f_hip_vs_pin_hip": 19,
+   "prefix_5f_vk_vs_hipengine": 54
+  },
+  {
+   "id": "mixed_ja_en-p512",
+   "digest_5f_vk_eq_pin": true,
+   "digest_5f_hip_eq_pin": null,
+   "prefix_5f_vk_vs_pin": 129,
+   "prefix_5f_hip_vs_pin_hip": 14,
+   "prefix_5f_vk_vs_hipengine": 129
+  }
+ ],
+ "sources": {
+  "e0_vulkan_5f851647f": "benchmarks/results/e0-comparators/2026-09-09-e0-halobox-vulkan-5f851647f.json",
+  "e0_hip_5f851647f": "benchmarks/results/e0-comparators/2026-09-09-e0-halobox-hip-5f851647f.json",
+  "v6_baselines_pinned": "benchmarks/results/2026-09-09-framework-qwen4exp-current-default-baselines-v6.json"
+ }
+}

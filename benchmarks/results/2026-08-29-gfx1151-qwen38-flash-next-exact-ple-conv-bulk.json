@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "date": "2026-08-29",
+  "status": "accepted_exact_default",
+  "scope": "Qwen4Exp chunk-batched PLE gather/dequant plus decode-order-exact bulk K4 Conv prefill",
+  "host": {"identity":"zbook","machine_id":"87c566d30a5645cf8d12ed7ef6b6e1e8","cpu":"AMD Ryzen AI Max+ Pro 395","gpu":"AMD Radeon 8060S Graphics","arch":"gfx1151"},
+  "model": {"id":"Qwen/Qwen3.8-Flash-Next","quant":"Unsloth UD-Q4_K_XL","quant_revision":"8bdc666649440e9bdc97e16f3f75782c98478ff5"},
+  "changes": {
+    "ple":"Flatten [chunk_rows,16] PLE indices, call mmap gather/dequant once per chunk, and return the active pinned ring view for the immediate synchronous H2D copy.",
+    "conv":"New registered Qwen4Exp K4 bulk Conv uses the same source-level acc += value * weight sequence as strict decode for every independent row, then updates final state in one kernel. HIP output and state are bit-exact to serial decode.",
+    "fallback":"HIPENGINE_QWEN4_EXP_EXACT_CONV_PREFILL=0 retains serial decode Conv; per-row PLE staging is retained only in the paired control harness."
+  },
+  "structural": {"p508_chunks":2,"ple_gather_dequant_calls_before":508,"ple_gather_dequant_calls_after":2,"ple_call_reduction_percent":99.60629921259843,"conv_compute_launches_before":18432,"conv_compute_launches_after":72,"conv_state_launches_after":72,"net_conv_launch_reduction":18288,"total_kernel_launches_before":29341,"total_kernel_launches_after":11053,"total_launch_reduction_percent":62.32916328686821,"new_resident_bytes":0},
+  "paired_complete_model": {"command":"uv run python /tmp/qwen4exp_ple_conv_exact_paired.py","protocol":"one residency; discard one control+candidate warm pair; counterbalanced C/N/N/C/C/N; p508 current natural prompt; explicit device synchronize","control_seconds":[8.815410932991654,8.767726915000821,8.785056146996794],"candidate_seconds":[8.71496218899847,8.697485159995267,8.637289760998101],"control_median_seconds":8.785056146996794,"candidate_median_seconds":8.697485159995267,"reduction_percent":0.9968176131858143,"speedup":1.0100685411231647,"control_tok_s":57.82546992299665,"candidate_tok_s":58.40768804488267,"full_logits_bit_exact":true,"top1_exact":true},
+  "ple_isolated_diagnostic": {"command":"uv run python /tmp/qwen4exp_ple_staging_baseline.py","per_row_seconds":[0.8849634650105145,0.30246515200997237],"batched_owned_seconds":[0.7886917599971639,0.26715969599899836],"batched_pinned_repeat_seconds":[0.8481541009969078,0.28682461399876047],"note":"Call-count reduction is binding; isolated wall is cache/noise sensitive and is not the complete-model speed claim."},
+  "kernel_trace": {"command":"HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace -f csv -o qwen4exp-prefill512-plebatch-bulkconv -d /tmp -- uv run python /tmp/qwen4exp_prefill512_default.py","expected_kernel":"qwen4_exp_linear_attn_conv_prefill_exact_kernel","launches":11053,"kernel_seconds":9.207226777,"profile_wall_seconds":10.620270473009441,"compiler_spawned_under_profiler":false,"comparison_policy":"Global kernel clocks shifted relative to the prior trace; use symbol/launch counts, not cross-trace duration, as mechanical evidence."},
+  "correctness": {"ple_chunk_values_exact":true,"ple_ring_lifetime_pinned":true,"conv_output_f32_bits_exact":true,"conv_state_f32_bits_exact":true,"p508_full_logits_bits_exact":true,"repeat_top1":248068},
+  "decision":"Promote both T0 launch/dataflow contractions. The exact structural reductions and paired +1.01% complete-model gain are retained; next T0 prefill owner is QSA index-key batch scatter."
+}

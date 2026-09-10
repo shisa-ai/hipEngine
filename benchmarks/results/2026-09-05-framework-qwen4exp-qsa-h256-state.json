@@ -1,0 +1,102 @@
+{
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "268b659ba1cf0dcedd8c7eab00804960ab02553d",
+    "tracked_clean": false
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "command": [
+    "scripts/qwen4exp_row4_state_gate.py",
+    "--model-root",
+    "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--route-package",
+    "qsa-h256-wave",
+    "--case-id",
+    "code-p4096",
+    "--output",
+    "/tmp/qwen4exp-qsa-h256-model-state.json"
+  ],
+  "manifest_sha256": "b3afcd551017d40f792ad5f9d4564098c0cd9cd74e92a2c6b7f144a3782b4510",
+  "strict_manifest_sha256": "204f20b6426b67a9145c0d30e1ec8c17a4b1217ec515075751c64b49921400f7",
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "cases": [
+    {
+      "id": "code-p4096",
+      "exact": true,
+      "captures": [
+        {
+          "enabled": "0",
+          "state_sha256": "cc9aea4b3518d5c3d30525dfd35d2c4d577b22bf3cc01eb0d5d7ebe7b09ee4fd",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "0b361e7db968b63ae88a78a87f0f7139ef62a61e351d7ca062640e75abfb3087",
+          "step_logits_sha256": "def91ca6373e27e526b1637e436e3d9afe9850b7e93b0f209b05c9d56bc9826e",
+          "candidate_calls": 0
+        },
+        {
+          "enabled": "1",
+          "state_sha256": "cc9aea4b3518d5c3d30525dfd35d2c4d577b22bf3cc01eb0d5d7ebe7b09ee4fd",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "0b361e7db968b63ae88a78a87f0f7139ef62a61e351d7ca062640e75abfb3087",
+          "step_logits_sha256": "def91ca6373e27e526b1637e436e3d9afe9850b7e93b0f209b05c9d56bc9826e",
+          "candidate_calls": 48
+        },
+        {
+          "enabled": "0",
+          "state_sha256": "cc9aea4b3518d5c3d30525dfd35d2c4d577b22bf3cc01eb0d5d7ebe7b09ee4fd",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "0b361e7db968b63ae88a78a87f0f7139ef62a61e351d7ca062640e75abfb3087",
+          "step_logits_sha256": "def91ca6373e27e526b1637e436e3d9afe9850b7e93b0f209b05c9d56bc9826e",
+          "candidate_calls": 0
+        }
+      ]
+    }
+  ],
+  "route_package": "qsa-h256-wave",
+  "scope": "full logits and snapshot decode buffers/PLE/attention positions/index counts; not full KV payload",
+  "memory_after_close": {
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 83546258180,
+    "total_allocated_bytes": 83556743940,
+    "total_freed_bytes": 83556743940,
+    "active_allocations": 0,
+    "peak_allocations": 1645
+  },
+  "schema": 1,
+  "date": "2026-09-05",
+  "kind": "qwen4exp_h256_wave_live_transition_gate",
+  "status": "accepted_single_case_state_gate_runtime_default_off",
+  "performance_claim": false,
+  "source_sha256": {
+    "hipengine/runtime/qwen4_exp_runner.py": "1066e41186eda26005530f27c724b20036580247d67d4b7d099529cec59cd1e3",
+    "scripts/qwen4exp_row4_state_gate.py": "dd8722b2a38563ce7ca283eade1206ba49679721b8dd72067b4dc07030535540"
+  },
+  "raw_sha256": "ea42872838d27b8b7df2e58d808851897881f000494f7f3817a27b34943463a4",
+  "environment": {
+    "LD_LIBRARY_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib",
+    "HIPENGINE_HIP_ARCH": "gfx1151"
+  },
+  "python": "/home/lhl/hipEngine/.venv/bin/python",
+  "cwd": "/home/lhl/hipEngine",
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL BF16 KV",
+  "limitations": [
+    "One code-p4096 correctness probe, not all-category promotion or a performance result.",
+    "Snapshot hashes exclude full KV payload, as declared by scope.",
+    "Development-tree runtime/gate hashes pinned; clean all-category timing remains pending."
+  ],
+  "kernel_commit": "268b659ba1cf0dcedd8c7eab00804960ab02553d"
+}

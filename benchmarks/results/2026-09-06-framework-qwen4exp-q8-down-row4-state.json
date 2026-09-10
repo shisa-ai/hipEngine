@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "status": "state_gate_passed_performance_pending",
+  "source": "a7a8520f6 plus default-off runtime/harness integration",
+  "host": "gfx1151",
+  "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+  "hardware": "Framework Desktop Ryzen AI Max+395 Radeon8060S gfx1151",
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "model_fingerprint": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+  "kv_dtype": "BF16",
+  "command": ".venv/bin/python scripts/qwen4exp_row4_state_gate.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --compiler-version-file /tmp/hipengine-hipcc-version.txt --route-package q8-down-row4 --decode-steps 4 --full-kv --output /tmp/qwen4exp-q8-down-row4-state.json",
+  "environment": {
+    "PATH_prefix": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin",
+    "LD_LIBRARY_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib",
+    "HIPENGINE_HIP_ARCH": "gfx1151",
+    "clock_policy": "unchanged high/2900-requested",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version.txt",
+    "jit": "require_cached"
+  },
+  "protocol": {
+    "capacity": 4352, "chunk": 512, "decode_steps": 4, "full_kv": true,
+    "arms": ["off","on","off"], "shared_weights_and_runner": true,
+    "flag": "HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL",
+    "production_default": "0",
+    "strict_default": "0",
+    "scope": "Existing grouped Q8 down only; selection finally narrowed to rows>=512. All measured chunks512, so no measured trajectory changes with narrowing.",
+    "perf_claim": false
+  },
+  "cases": [
+    {"id":"code-p512", "exact":true, "prefill_calls":[0,4,0], "decode_calls":[0,0,0]},
+    {"id":"code-p4096", "exact":true, "prefill_calls":[0,32,0], "decode_calls":[0,0,0]},
+    {"id":"general_en-p512", "exact":true, "prefill_calls":[0,4,0], "decode_calls":[0,0,0]},
+    {"id":"general_ja-p512", "exact":true, "prefill_calls":[0,4,0], "decode_calls":[0,0,0]},
+    {"id":"mixed_ja_en-p512", "exact":true, "prefill_calls":[0,4,0], "decode_calls":[0,0,0]}
+  ],
+  "correctness": "Full prefill logits, four decode-step logits, snapshot recurrent/PLE/index/position state and full allocated KV payload hashes match across off/on/off for all five cases.",
+  "memory_after_close": {"active_allocations":0, "current_allocated_bytes":0, "peak_allocated_bytes":85339323140},
+  "cpu_tests": "31 selector/profile/A-B/profile-tool tests pass; RED3 before implementation. Tail/small-chunk expected counts covered. Named profiles keep default0.",
+  "raw": {"/tmp/qwen4exp-q8-down-row4-state.json":"c8bdd3223da6f4a8aa1a7e1e6d060cd48dcd55313e8e7d8fc9d70568c8252557"},
+  "promotion_blocker": "Clean-source canonical12-case same-residency throughput A/B still required. Native262144 allocation not requalified by this4352 diagnostic gate."
+}

@@ -1,0 +1,116 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_halo_box_hb0_build_and_smoke",
+  "status": "accepted_identity_and_smoke_evidence",
+  "performance_claim": false,
+  "host": {
+    "hostname": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "kernel": "6.18.42-1-cachyos-lts",
+    "power_profile": "accelerator-performance",
+    "gpu_clock_policy": "auto",
+    "rocm_platform": "TheRock 10.0.0",
+    "hip": "7.15.26333-0000000",
+    "hip_clang_commit": "8f497e0992fb7513f7f78a6f6b6f1056c375e961"
+  },
+  "build": {
+    "generator": "Ninja",
+    "cmake": "4.4.3",
+    "type": "Release",
+    "flags": [
+      "GGML_HIP=ON",
+      "AMDGPU_TARGETS=gfx1151",
+      "GGML_HIP_GRAPHS=ON",
+      "GGML_HIP_MMQ_MFMA=ON",
+      "LLAMA_CURL=OFF"
+    ],
+    "rocm_prefix": "/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel"
+  },
+  "patches": [
+    {
+      "name": "llama-cpp-25992-rocm-host-buffer.patch",
+      "sha256": "aca70db134d0e65be7a250cf1eb4237bb739d9d586f5c5153ce972372f67b4de"
+    },
+    {
+      "name": "llama-cpp-qwen38-per-buffer-mmap.patch",
+      "sha256": "971d428de98ecdf59941946bb391c257e82501ce98b7c71cc1f34803181fe133"
+    }
+  ],
+  "lanes": {
+    "hb_base": {
+      "commit": "6c84c7d5d8833c6e0df69628f75a0f599797934e",
+      "patch_diff_sha256": "d12ba066d54f08bd18c003760b86bdb1acf174063d664cf8680697fb2ba9ef68",
+      "pristine_server_sha256": "c9d8cde0d89b87f133691ebceb2121bf28476509061a04781d538f3233cf4ad8",
+      "pristine_bench_sha256": "8b5b93c8fc2d8aa1a61a33f7c634116cd4f5f64c21486298b592b97fd7cdc2c3",
+      "patched_server_sha256": "14c40f2b64299c172219840b2bfbabf2ab888320516fe4b7dbb1d059aeada43c",
+      "patched_bench_sha256": "265b548bf50e63a522915836cacc580a6e17f834ae5e59331aa72c8f0c626f11"
+    },
+    "hb_pr11": {
+      "commit": "a7ad7b7f508746870e03d0da60cca420295a04b9",
+      "patch_diff_sha256": "7cd3766b1fca2f85262ed30414ebc23316e83d88c0eb00341e2b501b0e343213",
+      "pristine_server_sha256": "4d8579da5d47b69bd9d5bf6a2bd00adca7463c18c55db7654f6a7f1bd6c1a6f4",
+      "pristine_bench_sha256": "7960b37c9b96d274567575e4ed65d7736d2c995c32720b7d2558d68e0bcc2774",
+      "patched_server_sha256": "22f1f8e634ff0cc4ae83b7323c15508c82f9e02b62d4c31704ed33f22b414c58",
+      "patched_bench_sha256": "010559f5ac37a8469edef6b9399248c734d50b84b7e38bd3f99361f671536960"
+    }
+  },
+  "model": {
+    "id": "Qwen/Qwen3.8-Flash-Next",
+    "revision": "f5d08274bafd880402bd16f5e3e6c514136ec06c",
+    "quant": "Unsloth UD-Q4_K_XL",
+    "quant_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+    "tensor_bytes": 111323630080,
+    "kv": "BF16",
+    "new_weight_quant_downloaded": false
+  },
+  "fixture": {
+    "scope": "four-category p512 smoke subset",
+    "sha256": "4ab620d8f92ce74a01cfaa2b922bd7b7d29ef329ba76bead714f992efae8f2c9",
+    "canonical_parent_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+    "decode_transitions": 128
+  },
+  "pristine_admission": {
+    "lane": "hb_base",
+    "startup_timeout_seconds": 1800,
+    "status": "failed",
+    "samples": 0,
+    "result_sha256": "b6bf4e35c587b82735f7b2107255c0df7870ebc6581d9e342aba7434463696a4",
+    "server_log_sha256": "419823df0a6e7f5de3f2a5f5d357509569279cbf982096d382237bf49f8ef092",
+    "decision": "Apply and label the two documented loader patches on both comparison lanes."
+  },
+  "patched_smoke": {
+    "protocol": "one measured request per each of four p512 exact-token categories; no warmup; 128 post-first-output transitions; serial lane execution",
+    "hb_base": {
+      "startup_seconds": 24.09,
+      "result_sha256": "35228efe90c2952c798bd7578b5dff8a167c6d5c1235f8b6ff62aea11df274a7",
+      "server_log_sha256": "3d5978ae2e92716583a5777baa4e55e6fe3600dd8d04b72acfd50240264c7ccf",
+      "prefill_tok_s": [181.03246491965623, 236.18251557443784, 234.93577580886506, 224.6977990148406],
+      "decode_tok_s": [19.347198321630547, 18.93174941640664, 18.86796902822884, 18.646301797386954]
+    },
+    "hb_pr11": {
+      "startup_seconds": 21.49,
+      "result_sha256": "2bbd993a06b3057e4ffd1f19172bb2e233b3faa5363c77c4b8aaad9ee1225e50",
+      "server_log_sha256": "d625d2b3ea8d07d0a13cbdd68dddde851031ff0e66558d1ff52503f64502f98d",
+      "prefill_tok_s": [192.2223532070723, 260.4228921895004, 265.7338302002346, 235.2567101003241],
+      "decode_tok_s": [19.63999882160007, 19.059395030977473, 18.914256650503845, 18.785946468271415]
+    },
+    "hb_pr11_over_base_median_ratio": {
+      "prefill": 1.0784233995089338,
+      "decode": 1.004601442656262
+    },
+    "output_identity": "All four corresponding output-token SHA-256 values match between HB-base and HB-PR11.",
+    "lifecycle": "Both patched server processes reached health, completed all requests, and terminated before the next lane started."
+  },
+  "commands": {
+    "build": "cmake -S <lane> -B <lane>/build-hip-patched -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=<rocm-sdk> -DGGML_HIP=ON -DAMDGPU_TARGETS=gfx1151 -DGGML_HIP_GRAPHS=ON -DGGML_HIP_MMQ_MFMA=ON -DLLAMA_CURL=OFF && cmake --build <lane>/build-hip-patched --target llama-server llama-bench -j 16",
+    "smoke": "uv run python scripts/qwen4exp_canonical_ar_bench.py llamacpp --server-bin <patched-server> --source-root <lane> --model <Q4_K_XL-part-1> --fixture /tmp/qwen4exp-hb-p512-smoke-fixture.json --warmups 0 --repetitions 1 --startup-timeout 1800 --server-arg=-ngl --server-arg=999 --server-arg=-fa --server-arg=on --server-arg=-ctk --server-arg=bf16 --server-arg=-ctv --server-arg=bf16 --server-arg=-c --server-arg=4352 --server-arg=-b --server-arg=8192 --server-arg=-ub --server-arg=2048 --server-arg=-t --server-arg=4 --server-arg=-lm --server-arg=mmap"
+  },
+  "limitations": [
+    "Smoke values have one repetition and are not a performance claim.",
+    "HB-1 repeats the complete canonical matrix and repeat arms.",
+    "No IQ4_XS model was downloaded or measured."
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "date": "2026-08-27",
+  "status": "accepted_exact_default",
+  "scope": "Exact grouped row-batched Q4_K expert gate+up prefill",
+  "host": {"identity": "zbook", "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8", "gpu": "AMD Radeon 8060S Graphics", "arch": "gfx1151"},
+  "model": {"id": "Qwen/Qwen3.8-Flash-Next", "quant": "Unsloth UD-Q4_K_XL", "quant_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5"},
+  "workload": {"kind": "paired same-residency strict prompt prefill", "natural_tokens": 4096, "short_tokens": 508, "qsa_layers": 12, "chunk_size": 64, "top_k": 10},
+  "timing": {
+    "natural_4k": {"direct_seconds": 291.62388783000097, "grouped_seconds": 231.79821559599986, "reduction_percent": 20.5146679441006, "speedup": 1.258093756589874},
+    "short_508": {"direct_seconds": 34.55200765799964, "grouped_seconds": 26.206692939998902, "reduction_percent": 24.15290827845308, "speedup": 1.3184421146577943}
+  },
+  "implementation": {"row_batch": 8, "threads": 128, "arithmetic": "same per-thread column assignment, wave32 shuffle, and ordered wave-sum reduction as strict selected dual", "weight_reuse": "each dequantized gate/up weight serves up to eight adjacent rows of one expert", "removed_hot_path": "direct lane-order gate/up plus intermediate gather"},
+  "correctness": {"uneven_group_counts": [9, 0, 17, 3], "primitive_bf16_bits_exact": true, "mean_kl": 0.0, "max_kl": 0.0, "top1_agreement": true, "all_12_layer_control_exact": true, "generated_ids_exact": true, "final_answer": "VIOLET-7391", "retrieval_exact": true, "repeat_exact": true, "rollback_isolation_exact": true},
+  "memory": {"tracked_peak_bytes": 82874560240, "tracked_after_close_bytes": 0, "tracked_after_close_allocations": 0, "new_persistent_allocations": 0},
+  "rocprof": {"kernel": "gguf_q4_k_selected_dual_grouped_rowbatch_bf16_kernel<8>", "fixture_duration_ns": 100348, "workgroup": 128, "grid_x": 4096, "vgpr": 40, "scratch_bytes": 0},
+  "validation": {"focused_tests": "30 passed", "paired_natural_gate_exit_code": 0},
+  "fallback": {"flag": "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4=0", "route": "strict direct selected gate/up plus grouped-intermediate gather"},
+  "decision": {"promoted": true, "reason": "20.51% paired natural 4K wall reduction with bit-exact primitive/full-model/control/task behavior", "next": "natural 16K/64K requalification"}
+}

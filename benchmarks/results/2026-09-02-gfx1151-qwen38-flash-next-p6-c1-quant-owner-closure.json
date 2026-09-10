@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_p6_c1_quant_owner_closure",
+  "status": "closed_q4_q5_q8_c1_owner_sweep",
+  "performance_claim": false,
+  "scope": "Consolidate actual-weight Q4/Q5/Q8 c1 coalescing, lane ownership, occupancy, and operation-complete epilogue tuning",
+  "amdahl": {
+    "W_C_O_s": "unchanged from cited original packets; no new speedup credited",
+    "overlap_exclusions": "three retained same-role packets are reported independently and are not multiplied or summed",
+    "strict_fallbacks": "exact Q4 dual+SiLU, Q5 selected+ordered weighted sum, and Q8 scalar F32/F32 owners remain registered"
+  },
+  "owners": {
+    "q4_gate_up": {
+      "artifact": "2026-08-29-gfx1151-qwen38-flash-next-production-dp4a-safe43-decode.json",
+      "classification": "T2 calibrated static layer scope",
+      "mechanism": "one-plane Q8_1 DP4A plus fused SiLU on 43 admitted layers; five failed layers remain exact",
+      "complete_decode_speedup": 1.1198278158537518,
+      "target_cycle_wall_reduction_percent": 51.80712955977841,
+      "complete_gate": "450-row/category+heldout/task/repeat/state/c2/lifecycle/manifest/trace passed",
+      "expected_kernel_traced": true
+    },
+    "q5_1_weighted_down": {
+      "artifact": "2026-08-29-gfx1151-qwen38-flash-next-exact-q5-fused-weighted-decode.json",
+      "classification": "T0 exact",
+      "mechanism": "physical64 output-column CTA preserves logical partials, BF16 route publication, and ordered F32-weight fmaf chain",
+      "complete_decode_speedup": 1.0107115342313644,
+      "target_cycle_wall_reduction_percent": 15.086684570388641,
+      "full_logits_exact": true,
+      "expected_kernel_traced": true
+    },
+    "q8_f32_projection": {
+      "artifact": "2026-08-28-gfx1151-qwen38-flash-next-exact-q8-f32-pack8-decode.json",
+      "classification": "T0 exact",
+      "mechanism": "eight adjacent output columns reuse each F32 activation load while retaining per-output K/FMA/wave/cross-wave order",
+      "complete_decode_speedup": 1.1065699049406594,
+      "q8_kernel_reduction_percent": 55.30896508214979,
+      "generated_ids_exact": true,
+      "expected_kernel_traced": true
+    }
+  },
+  "m1_policy": "All retained owners are decode-shaped GEMV/DP4A/output-column paths. No WMMA path is forced onto M=1; scalar/exact registered misses remain available.",
+  "focused_reconfirmation": {
+    "artifact": "2026-09-02-gfx1151-qwen38-flash-next-p6-c1-fallback-preservation.json",
+    "tests": "9/9 registry/profile/fused-boundary/strict-bit checks passed"
+  },
+  "decision": "Close Q4/Q5/Q8 c1 owner tuning. Each quant has an actual-model, expected-kernel, correctness-controlled, complete-model retained packet; failed Q4 layers and all shape/backend misses retain exact fallbacks. Future work requires a materially new same-role mechanism rather than WMMA-at-M1 or retuning settled constants."
+}

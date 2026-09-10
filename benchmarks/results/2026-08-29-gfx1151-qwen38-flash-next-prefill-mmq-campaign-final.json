@@ -1,0 +1,573 @@
+{
+  "schema": 1,
+  "date": "2026-08-29",
+  "status": "campaign_complete",
+  "scope": "Qwen4Exp gfx1151 prefill MMQ campaign: Q8 dense, Q5_1 selected down, Q4_K selected dual gate/up, stacked production manifest, and GDN scan",
+  "host": {
+    "identity": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "cpu": "AMD Ryzen AI Max+ Pro 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "id": "Qwen/Qwen3.8-Flash-Next",
+    "quant": "Unsloth UD-Q4_K_XL",
+    "quant_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5"
+  },
+  "objective_checklist": [
+    {
+      "task": 10,
+      "deliverable": "Q4_K selected dual gate/up MMQ consumer",
+      "status": "complete",
+      "evidence": "benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-q4-k-mmq-suffix35-production.json",
+      "commit": "4391dddd8"
+    },
+    {
+      "task": 11,
+      "deliverable": "stacked production-profile row",
+      "status": "complete",
+      "evidence": "benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-production-mmq-prefill-dp4a43-stack.json",
+      "commit": "5312936b2"
+    },
+    {
+      "task": 12,
+      "deliverable": "MMQ routes in named profile manifest",
+      "status": "complete",
+      "evidence": "benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-production-mmq-profile-manifest.json",
+      "commit": "477323c7b"
+    },
+    {
+      "task": 13,
+      "deliverable": "GDN prefill scan gap investigation",
+      "status": "complete",
+      "evidence": "benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-production-gdn-peer35.json",
+      "commit": "dabc2d3ce"
+    },
+    {
+      "task": 14,
+      "deliverable": "final campaign rollup and completion audit",
+      "status": "complete",
+      "evidence": "this artifact"
+    }
+  ],
+  "final_profile": {
+    "name": "production",
+    "selected_manifest_sha256": "6ec035b7c08e747ba24bfede677352493f2291d10730905c616ed0fe6706d35c",
+    "strict_manifest_sha256": "9e648eb89a6b893c8e88e95e5066ff3af40dc8913c6ea5a267198d9bce0d8fb4",
+    "fell_back_to_strict": false,
+    "selections": {
+      "q8_dense_mmq": "policy-certified seven dense shapes",
+      "q5_1_down_mmq_layers": [
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47
+      ],
+      "q4_k_dual_mmq_layers": [
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47
+      ],
+      "gdn_peer_layers_declared": [
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47
+      ],
+      "gdn_peer_actual_layers": [
+        36,
+        37,
+        38,
+        40,
+        41,
+        42,
+        44,
+        45,
+        46
+      ],
+      "q4_dp4a_decode_layers": [
+        0,
+        2,
+        5,
+        6,
+        8,
+        9,
+        10,
+        11,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47
+      ]
+    },
+    "omitted_behavior": "registered strict exact fallbacks"
+  },
+  "final_performance": {
+    "command": "uv run python /tmp/qwen4exp_production_final_peer35_paired.py",
+    "protocol": "one residency per length; exact/candidate/exact/candidate repeated four times; median of four per mode",
+    "p508": {
+      "length": 508,
+      "rows": [
+        {
+          "mode": "baseline",
+          "seconds": 9.18433135500527,
+          "tok_s": 55.311593230262815,
+          "top1": 248068,
+          "sha": "30a5accee27d33b9452fbac161ed48eafccda7dd17aeb1a2851844accf792b48"
+        },
+        {
+          "mode": "candidate",
+          "seconds": 6.452966085984372,
+          "tok_s": 78.72348827361098,
+          "top1": 248068,
+          "sha": "17075ab9c60e42ff8a149be1d5f786435f19aed4e168a53843335ff9da93f55c"
+        },
+        {
+          "mode": "baseline",
+          "seconds": 8.237077377998503,
+          "tok_s": 61.672359829577935,
+          "top1": 248068,
+          "sha": "30a5accee27d33b9452fbac161ed48eafccda7dd17aeb1a2851844accf792b48"
+        },
+        {
+          "mode": "candidate",
+          "seconds": 6.4866911270073615,
+          "tok_s": 78.31419595191456,
+          "top1": 248068,
+          "sha": "17075ab9c60e42ff8a149be1d5f786435f19aed4e168a53843335ff9da93f55c"
+        },
+        {
+          "mode": "baseline",
+          "seconds": 8.267020924016833,
+          "tok_s": 61.44897958636951,
+          "top1": 248068,
+          "sha": "30a5accee27d33b9452fbac161ed48eafccda7dd17aeb1a2851844accf792b48"
+        },
+        {
+          "mode": "candidate",
+          "seconds": 6.487396154989256,
+          "tok_s": 78.30568503348033,
+          "top1": 248068,
+          "sha": "17075ab9c60e42ff8a149be1d5f786435f19aed4e168a53843335ff9da93f55c"
+        },
+        {
+          "mode": "baseline",
+          "seconds": 8.279787726001814,
+          "tok_s": 61.354229940542886,
+          "top1": 248068,
+          "sha": "30a5accee27d33b9452fbac161ed48eafccda7dd17aeb1a2851844accf792b48"
+        },
+        {
+          "mode": "candidate",
+          "seconds": 6.493436816002941,
+          "tok_s": 78.23283946461827,
+          "top1": 248068,
+          "sha": "17075ab9c60e42ff8a149be1d5f786435f19aed4e168a53843335ff9da93f55c"
+        }
+      ],
+      "median_seconds": {
+        "baseline": 8.273404325009324,
+        "candidate": 6.4870436409983085
+      },
+      "median_tok_s": {
+        "baseline": 61.40156821109157,
+        "candidate": 78.30994026145052
+      },
+      "delta_percent": -21.591603816715466
+    },
+    "p1012": {
+      "length": 1012,
+      "rows": [
+        {
+          "mode": "baseline",
+          "seconds": 18.40491413298878,
+          "tok_s": 54.98531493749822,
+          "top1": 248068,
+          "sha": "97e81f05e8ae3ea9346f29660579445827861e3d02752c31834dbb7348b1fe39"
+        },
+        {
+          "mode": "candidate",
+          "seconds": 13.168190240015974,
+          "tok_s": 76.85186662360768,
+          "top1": 248068,
+          "sha": "c986e93e58fddb5cac6d3eed982276ce6b9333c1be8b7c0d3eb29acc3fba3cdd"
+        },
+        {
+          "mode": "baseline",
+          "seconds": 16.749185203021625,
+          "tok_s": 60.42084959556306,
+          "top1": 248068,
+          "sha": "97e81f05e8ae3ea9346f29660579445827861e3d02752c31834dbb7348b1fe39"
+        },
+        {
+          "mode": "candidate",
+          "seconds": 13.133578326000134,
+          "tok_s": 77.05440017033098,
+          "top1": 248068,
+          "sha": "c986e93e58fddb5cac6d3eed982276ce6b9333c1be8b7c0d3eb29acc3fba3cdd"
+        },
+        {
+          "mode": "baseline",
+          "seconds": 16.803535404003924,
+          "tok_s": 60.22542135739256,
+          "top1": 248068,
+          "sha": "97e81f05e8ae3ea9346f29660579445827861e3d02752c31834dbb7348b1fe39"
+        },
+        {
+          "mode": "candidate",
+          "seconds": 13.1882500500069,
+          "tok_s": 76.73497212766833,
+          "top1": 248068,
+          "sha": "c986e93e58fddb5cac6d3eed982276ce6b9333c1be8b7c0d3eb29acc3fba3cdd"
+        },
+        {
+          "mode": "baseline",
+          "seconds": 16.816909702989506,
+          "tok_s": 60.177524757720434,
+          "top1": 248068,
+          "sha": "97e81f05e8ae3ea9346f29660579445827861e3d02752c31834dbb7348b1fe39"
+        },
+        {
+          "mode": "candidate",
+          "seconds": 13.190082294022432,
+          "tok_s": 76.72431281635178,
+          "top1": 248068,
+          "sha": "c986e93e58fddb5cac6d3eed982276ce6b9333c1be8b7c0d3eb29acc3fba3cdd"
+        }
+      ],
+      "median_seconds": {
+        "baseline": 16.810222553496715,
+        "candidate": 13.178220145011437
+      },
+      "median_tok_s": {
+        "baseline": 60.20146353086162,
+        "candidate": 76.7933748916077
+      },
+      "delta_percent": -21.605915072967196
+    },
+    "decode_tg32_tok_s": 15.54293254198248
+  },
+  "final_correctness": {
+    "numerical_gate": {
+      "command": "uv run python /tmp/qwen4exp_production_mmq_gdn_peer36_dp4a43_gate.py",
+      "declared_35_equivalent_reason": "layer 35 is QSA, so global suffix 35-47 and 36-47 select identical GDN layers",
+      "rows": 450,
+      "repeats": 3,
+      "kl_mean": 0.0003159690665032807,
+      "kl_p95": 0.0016092834649717234,
+      "kl_p99": 0.004250560942306012,
+      "kl_max": 0.009918399291229231,
+      "top1_matches": 448,
+      "scope_failures": [],
+      "prefill_last": {
+        "rows": 18,
+        "kl_mean": 0.0007207503885062355,
+        "kl_p50": 0.00012007073823745879,
+        "kl_p95": 0.002439639001291535,
+        "kl_p99": 0.007319104422464042,
+        "kl_max": 0.008538970777757181,
+        "top1_agreement": 1.0,
+        "top1_matches": 18,
+        "topk_overlap_mean": 0.9888888888888889,
+        "strict_teacher_nll_mean": 0.2994724796606097,
+        "candidate_teacher_nll_mean": 0.2966111036613164,
+        "teacher_nll_delta": -0.002861375999293314,
+        "teacher_delta_p_mean": 0.001063985075254104,
+        "strict_margin_min": 0.2081584930419922,
+        "max_abs_logit_delta": 0.6671743392944336,
+        "passed": true
+      },
+      "repeat_determinism": true,
+      "state_repeat_exact": true,
+      "eligible_for_automatic_admission": true,
+      "rejections": {
+        "all_layers": {
+          "kl_mean": 0.000643,
+          "top1_matches": 445,
+          "prefill_last_mean": 0.00167,
+          "prefill_last_p95": 0.00745
+        },
+        "suffix28": {
+          "prefill_last_mean": 0.00114,
+          "prefill_last_p95": 0.00591
+        },
+        "suffix34": {
+          "prefill_last_mean": 0.00108,
+          "prefill_last_p95": 0.0055
+        }
+      }
+    },
+    "free_generation": {
+      "command": "uv run python /tmp/qwen4exp_production_mmq_gdn_peer35_dp4a43_free_generation.py",
+      "prompts": 18,
+      "strict_candidate_exact": 16,
+      "candidate_repeat_exact": 18,
+      "task_valid_divergences": [
+        {
+          "id": "code_topological_sort",
+          "category": "code",
+          "strict_text": "```python\nfrom collections import deque\n\n\ndef topo_sort(nodes, edges):\n    \"\"\"\n    Perform topological sort on a directed graph.\n    \n   ",
+          "candidate_text": "```python\ndef topo_sort(nodes, edges):\n    \"\"\"\n    Perform topological sort on a directed graph.\n    \n    Args:\n        nodes",
+          "verdict": "task-valid alternate implementation/explanation"
+        },
+        {
+          "id": "heldout_general_ja_speculative",
+          "category": "general_ja",
+          "strict_text": "\u6295\u6a5f\u7684\u30c7\u30b3\u30fc\u30c9\uff08Speculative Decoding\uff09\u306f\u3001\u5c0f\u3055\u306a\u300c\u30c9\u30e9\u30d5\u30c8\u30e2\u30c7\u30eb\u300d\u3067\u8907\u6570\u306e\u30c8\u30fc\u30af\u30f3\u3092\u4e88\u6e2c\u3057\u3001\u5927\u304d\u306a\u300c\u30bf\u30fc\u30b2\u30c3\u30c8\u30e2\u30c7\u30eb\u300d\u3067\u4e26",
+          "candidate_text": "\u6295\u6a5f\u7684\u30c7\u30b3\u30fc\u30c9\uff08Speculative Decoding\uff09\u306f\u3001\u5c0f\u3055\u306a\u300c\u30c9\u30e9\u30d5\u30c8\u30e2\u30c7\u30eb\u300d\u3067\u751f\u6210\u3057\u305f\u5019\u88dc\u30c8\u30fc\u30af\u30f3\u3092\u3001\u5927\u304d\u306a\u300c\u30bf\u30fc\u30b2\u30c3\u30c8\u30e2\u30c7\u30eb\u300d\u3067\u4e26",
+          "verdict": "task-valid alternate implementation/explanation"
+        }
+      ]
+    },
+    "c2_physical": {
+      "command": "uv run python /tmp/qwen4exp_production_mmq_gdn_peer35_dp4a43_c2_physical.py",
+      "exact": [
+        true,
+        true
+      ],
+      "c2_wall_s": 27.094164290989283,
+      "stream_chunks": 6,
+      "teardown_zero": true
+    },
+    "public_profile_smoke": {
+      "command": "uv run python /tmp/qwen4exp_profile_manifest_smoke.py",
+      "production": {
+        "manifest_sha256": "6ec035b7c08e747ba24bfede677352493f2291d10730905c616ed0fe6706d35c",
+        "strict_manifest_sha256": "9e648eb89a6b893c8e88e95e5066ff3af40dc8913c6ea5a267198d9bce0d8fb4",
+        "fell_back_to_strict": false,
+        "resources_allocated": {
+          "q8": true,
+          "q8_policy": true,
+          "q5": true,
+          "q4": true
+        },
+        "route_env": {
+          "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "1",
+          "HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL": "1",
+          "HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL": "1",
+          "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL": "0"
+        },
+        "seconds": 7.613237791985739,
+        "tok_s": 66.72588114018436,
+        "top1": 248068,
+        "logits_sha256": "17075ab9c60e42ff8a149be1d5f786435f19aed4e168a53843335ff9da93f55c",
+        "tracked_after_close": {
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 83474325404,
+          "total_allocated_bytes": 83474325404,
+          "total_freed_bytes": 83474325404,
+          "active_allocations": 0,
+          "peak_allocations": 1644
+        }
+      },
+      "strict_after_production_same_process": {
+        "manifest_sha256": "9e648eb89a6b893c8e88e95e5066ff3af40dc8913c6ea5a267198d9bce0d8fb4",
+        "strict_manifest_sha256": "9e648eb89a6b893c8e88e95e5066ff3af40dc8913c6ea5a267198d9bce0d8fb4",
+        "fell_back_to_strict": false,
+        "resources_allocated": {
+          "q8": true,
+          "q8_policy": true,
+          "q5": true,
+          "q4": true
+        },
+        "route_env": {
+          "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "0",
+          "HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL": "0",
+          "HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL": "0",
+          "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL": "0"
+        },
+        "seconds": 9.34876159200212,
+        "tok_s": 54.33874797220145,
+        "top1": 248068,
+        "logits_sha256": "30a5accee27d33b9452fbac161ed48eafccda7dd17aeb1a2851844accf792b48",
+        "tracked_after_close": {
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 83474426364,
+          "total_allocated_bytes": 166948751768,
+          "total_freed_bytes": 166948751768,
+          "active_allocations": 0,
+          "peak_allocations": 1650
+        }
+      },
+      "expected_production_logits_sha256": "17075ab9c60e42ff8a149be1d5f786435f19aed4e168a53843335ff9da93f55c",
+      "expected_strict_logits_sha256": "30a5accee27d33b9452fbac161ed48eafccda7dd17aeb1a2851844accf792b48",
+      "verdict": "production resources allocated after binding; hashes match paired evidence; strict envs disable routes despite preallocated resources; both close to zero tracked bytes"
+    }
+  },
+  "component_results": {
+    "q8_mmq": {
+      "artifact": "benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-q8-mmq-prefill-production.json",
+      "p508_reduction_percent": -10.61,
+      "top1": "450/450"
+    },
+    "q5_1_mmq": {
+      "artifact": "benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-q5-1-mmq-suffix32-production.json",
+      "microbench_speedup": 7.6,
+      "layers": "32-47",
+      "top1": "450/450"
+    },
+    "q4_k_mmq": {
+      "artifact": "benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-q4-k-mmq-suffix35-production.json",
+      "microbench_speedup": 3.138039667914779,
+      "layers": "35-47",
+      "top1": "450/450"
+    },
+    "gdn_peer": {
+      "artifact": "benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-production-gdn-peer35.json",
+      "p508_incremental_reduction_percent": -2.835952684406595,
+      "layers": "35-47",
+      "top1": "448/450 complete stack"
+    }
+  },
+  "kernel_rollup": {
+    "pre_campaign_hipengine": {
+      "kernel_seconds": 8.753,
+      "launches": 4933
+    },
+    "final_hipengine": {
+      "kernel_seconds": 6.548155365,
+      "launches": 3684
+    },
+    "final_reduction_percent": -25.18958796983891,
+    "llama_cpp_hip_same_host": {
+      "kernel_seconds": 1.798,
+      "launches": 5543
+    },
+    "remaining_ratio_vs_llama": 3.6419106590656285,
+    "gdn": {
+      "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace -f csv -o qwen4exp-gdn-peer35-p508 -d /tmp -- uv run python /tmp/qwen4exp_gdn_peer35_p508_trace_child.py",
+      "exact_baseline": {
+        "exact_fused": {
+          "launches": 36,
+          "duration_ms": 992.158019,
+          "sample_symbol": "(anonymous namespace)::qwen4_exp_gdn_prefill_f32_kernel(float const*, float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long, long)"
+        },
+        "peer_prepare": {
+          "launches": 0,
+          "duration_ms": 0.0,
+          "sample_symbol": null
+        },
+        "peer_recurrent": {
+          "launches": 0,
+          "duration_ms": 0.0,
+          "sample_symbol": null
+        },
+        "peer_gate": {
+          "launches": 0,
+          "duration_ms": 0.0,
+          "sample_symbol": null
+        }
+      },
+      "peer35": {
+        "exact_fused": {
+          "launches": 27,
+          "duration_ms": 723.911408,
+          "sample_symbol": "(anonymous namespace)::qwen4_exp_gdn_prefill_f32_kernel(float const*, float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long, long)"
+        },
+        "peer_prepare": {
+          "launches": 9,
+          "duration_ms": 5.23244,
+          "sample_symbol": "(anonymous namespace)::qwen4_exp_gdn_prefill_prepare_f32_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, float*, float*, float*, long, long, long, long, long)"
+        },
+        "peer_recurrent": {
+          "launches": 9,
+          "duration_ms": 19.881829,
+          "sample_symbol": "void (anonymous namespace)::qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_kernel<float>(float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long)"
+        },
+        "peer_gate": {
+          "launches": 9,
+          "duration_ms": 1.651866,
+          "sample_symbol": "(anonymous namespace)::qwen4_exp_gdn_prefill_sigmoid_gate_f32_kernel(float*, float const*, float const*, long, long, long)"
+        }
+      },
+      "compiler_spawned_under_profiler": false,
+      "analysis": "exact fused family 992.158 ms/36; peer35 leaves 723.911 ms/27 exact and replaces nine with 26.766 ms, reducing traced GDN family by 241.48 ms. Remaining 27 numerically hot exact layers are the next algorithmic target; llama.cpp matched GDN family is 85 ms."
+    }
+  },
+  "rejected_boundaries": {
+    "q5_full_layer": "mixed category gate failure; suffix32 retained",
+    "q4_full_layer": "category/scope failure; suffix35 retained",
+    "legacy_cooperative_plus_mmq": "prefill-last failure; replaced rather than stacked",
+    "gdn_all_layer": "445/450 and prefill-last failure",
+    "gdn_suffix34": "prefill-last mean/p95 failure; suffix35 retained"
+  },
+  "remaining_non_campaign_blockers": [
+    "27 numerically hot exact GDN layers consume 723.91 ms at p508; current peer arithmetic cannot widen past layer34",
+    "final traced kernel wall 6.548 s remains 3.64x llama.cpp HIP 1.798 s",
+    "natural 16K production profile was not rerun; strict chunk512 remains 47.989 tok/s and below the 100 tok/s 64K rung",
+    "MTP remains opt-in at 0.955x AR"
+  ],
+  "commits": [
+    "f9a0750f9 chunk512",
+    "d7b02fb90 Q8 MMQ certification",
+    "926f8b47a Q5 kernel",
+    "db02dcaef Q5 certification",
+    "4391dddd8 Q4 certification",
+    "5312936b2 stack admission",
+    "477323c7b manifest fold",
+    "dabc2d3ce peer GDN"
+  ]
+}

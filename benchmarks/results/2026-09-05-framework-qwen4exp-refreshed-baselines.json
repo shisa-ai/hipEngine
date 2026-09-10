@@ -1,0 +1,1184 @@
+{
+  "schema": 1,
+  "date": "2026-09-05",
+  "date_basis": "UTC",
+  "kind": "qwen4exp_framework_baseline_refresh",
+  "status": "captured_screening_variance_not_statistical_closure",
+  "performance_claim": true,
+  "model_reference": "benchmarks/results/2026-09-05-framework-gfx1151-qwen38-flash-next-current-comparators.json",
+  "environment": {
+    "HIPENGINE_HIP_ARCH": "gfx1151",
+    "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-hipcc-version.txt",
+    "PATH_prefix": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin",
+    "LD_LIBRARY_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib"
+  },
+  "controller": {
+    "schema": 1,
+    "kind": "qwen4exp_framework_baseline_refresh",
+    "status": "captured",
+    "source": {
+      "path": "/home/lhl/hipEngine",
+      "head": "bd451a417c9d54ca8d6d737cb55dfb9a47a27309",
+      "tracked_clean": true
+    },
+    "host": {
+      "hostname": "gfx1151",
+      "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+      "kernel": "7.1.6-1-cachyos",
+      "tuned_active": "Current active profile: accelerator-performance",
+      "cpu_governors": {
+        "performance": 32
+      },
+      "gpu_clock_policies": {
+        "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+      },
+      "rocm_platform": null,
+      "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+    },
+    "queue_sha256": "a5aaac540ba7b5282bdf0f6a29786cdd7ec5a481fe4ca7504b589a8a9f8a2175",
+    "binary_hashes": {
+      "/home/lhl/halo-box-strix-llama/build-hip-release-b212548e/bin/libggml-base.so.0.22.0": "ed1c84a8fc054f8932411b93935fcd91aa0c34473f65ad07913290f93d818be1",
+      "/home/lhl/halo-box-strix-llama/build-hip-release-b212548e/bin/libggml-cpu.so.0.22.0": "ea4e5d84115240216fac4a8489300daebdeb11d99f78467c34511aa8d58cfff7",
+      "/home/lhl/halo-box-strix-llama/build-hip-release-b212548e/bin/libggml-hip.so.0.22.0": "a9e0fb1ac9a2a9170b5817eb63284ea54dd79ae7292b1400b2a6be4f01c22e68",
+      "/home/lhl/halo-box-strix-llama/build-hip-release-b212548e/bin/libggml.so.0.22.0": "b7ad1fdb3a8a5947b03f8b29a2c9c31899aa6f7d6e6a757ba0f6aef5702ccfe9",
+      "/home/lhl/halo-box-strix-llama/build-hip-release-b212548e/bin/libllama-bench-impl.so": "166881365db882631b3d285884095b8782648c75811051e238263e5f1bd76fed",
+      "/home/lhl/halo-box-strix-llama/build-hip-release-b212548e/bin/libllama-cli-impl.so": "d10d452660c57a81659b1b1b1b88dd096bd8ffeee82262e9700ba0fc7a71cb19",
+      "/home/lhl/halo-box-strix-llama/build-hip-release-b212548e/bin/libllama-common.so.0.3.0": "bc43cf312863850a3069d4c0486bc1f56f9d9e2bdaefa18af25a30c519ce7f19",
+      "/home/lhl/halo-box-strix-llama/build-hip-release-b212548e/bin/libllama-server-impl.so": "00492cb9f6cd599c4ee4a144fdfada57b97fd49d973568d0a7a59185b02c7f68",
+      "/home/lhl/halo-box-strix-llama/build-hip-release-b212548e/bin/libllama.so.0.3.0": "8b3ea0b2164734dd85d88f5bb0c57e965053c10323815e8983ad5c13ac046e30",
+      "/home/lhl/halo-box-strix-llama/build-hip-release-b212548e/bin/libmtmd.so.0.3.0": "260466db9bed35a8645172252415986bfeff13441ce624f65e804ddcad10fb07",
+      "/home/lhl/halo-box-strix-llama/build-hip-release-b212548e/bin/llama-server": "99ccfeeb6d5224276a198a973c6d8b8911530e3c73d225c5f2598de81335ff56",
+      "/home/lhl/halo-box-strix-llama/build-vulkan-release-b212548e/bin/libggml-base.so.0.22.0": "ed1c84a8fc054f8932411b93935fcd91aa0c34473f65ad07913290f93d818be1",
+      "/home/lhl/halo-box-strix-llama/build-vulkan-release-b212548e/bin/libggml-cpu.so.0.22.0": "362866aaccd0922ad8d16dd2874ddfef9a0e4bc88768e8c6670651fc61d2542e",
+      "/home/lhl/halo-box-strix-llama/build-vulkan-release-b212548e/bin/libggml-vulkan.so.0.22.0": "962941ff6be208f0d2f07918a4512778af0ed024b527ce3528c195bc9e7be966",
+      "/home/lhl/halo-box-strix-llama/build-vulkan-release-b212548e/bin/libggml.so.0.22.0": "ad04ac6dc93b540f37840cccaad4f5ab1b19d072b6ad93fe69786b9f6bfc0f15",
+      "/home/lhl/halo-box-strix-llama/build-vulkan-release-b212548e/bin/libllama-bench-impl.so": "1a3836c51d05fe65ad630745defd3947bfda3b7cee003e7c10e979236d5de4af",
+      "/home/lhl/halo-box-strix-llama/build-vulkan-release-b212548e/bin/libllama-cli-impl.so": "87cf778d10d0dde5a6531c1802a2c6ee953609f234e862a2c99f73504f0faa52",
+      "/home/lhl/halo-box-strix-llama/build-vulkan-release-b212548e/bin/libllama-common.so.0.3.0": "2f76b15a0f6046fac3f2343cbd95ba5dd792f28e0b9734d967cbfeb59404a63e",
+      "/home/lhl/halo-box-strix-llama/build-vulkan-release-b212548e/bin/libllama-server-impl.so": "983145f6bfe3b94c99f91a940ea373c6fa97ace1d22dc69fc9085fa93b483634",
+      "/home/lhl/halo-box-strix-llama/build-vulkan-release-b212548e/bin/libllama.so.0.3.0": "45a4d26d40192b884ee1ac73e28813c07832216e5f6798b7ed669cd18e3b8289",
+      "/home/lhl/halo-box-strix-llama/build-vulkan-release-b212548e/bin/libmtmd.so.0.3.0": "e17770f42b507cf1324a6942e5203140d8afd67ef3205c4f7a440c1d8e59917d",
+      "/home/lhl/halo-box-strix-llama/build-vulkan-release-b212548e/bin/llama-server": "5ddeced52a427b9b1db23ce3ad59f4ea446903451426baa01b5781c7f294c062"
+    },
+    "stages": [
+      {
+        "engine": "hipengine",
+        "command": [
+          "/home/lhl/hipEngine/.venv/bin/python",
+          "/home/lhl/hipEngine/scripts/qwen4exp_canonical_ar_bench.py",
+          "hipengine",
+          "--model-root",
+          "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+          "--execution-profile",
+          "production",
+          "--prefill-chunk-size",
+          "512",
+          "--compiler-version-file",
+          "/tmp/hipengine-hipcc-version.txt",
+          "--require-cached-build",
+          "--output",
+          "/tmp/qwen4exp-framework-refresh-baselines.raw/hipengine.json",
+          "--fixture",
+          "/home/lhl/hipEngine/benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+          "--warmups",
+          "1",
+          "--repetitions",
+          "3"
+        ],
+        "elapsed_seconds": 1041.1409163288772,
+        "path": "/tmp/qwen4exp-framework-refresh-baselines.raw/hipengine.json",
+        "sha256": "e26f0e6b3d61afd25f2dedcade0377e6721d62f11a57e872cb9ab055c944171e"
+      },
+      {
+        "engine": "halo-box-vulkan",
+        "command": [
+          "/home/lhl/hipEngine/.venv/bin/python",
+          "/home/lhl/hipEngine/scripts/qwen4exp_canonical_ar_bench.py",
+          "llamacpp",
+          "--server-bin",
+          "/home/lhl/halo-box-strix-llama/build-vulkan-release-b212548e/bin/llama-server",
+          "--source-root",
+          "/home/lhl/halo-box-strix-llama",
+          "--engine-label",
+          "halo-box-vulkan",
+          "--model",
+          "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+          "--port",
+          "18138",
+          "--output",
+          "/tmp/qwen4exp-framework-refresh-baselines.raw/halo-box-vulkan.json",
+          "--server-log",
+          "/tmp/qwen4exp-framework-refresh-baselines.raw/halo-box-vulkan.server.log",
+          "--fixture",
+          "/home/lhl/hipEngine/benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+          "--warmups",
+          "1",
+          "--repetitions",
+          "3",
+          "--server-arg=-ngl",
+          "--server-arg=999",
+          "--server-arg=-fa",
+          "--server-arg=on",
+          "--server-arg=-ctk",
+          "--server-arg=bf16",
+          "--server-arg=-ctv",
+          "--server-arg=bf16",
+          "--server-arg=-c",
+          "--server-arg=4352",
+          "--server-arg=-b",
+          "--server-arg=8192",
+          "--server-arg=-ub",
+          "--server-arg=2048",
+          "--server-arg=-t",
+          "--server-arg=4"
+        ],
+        "elapsed_seconds": 519.0822296480183,
+        "path": "/tmp/qwen4exp-framework-refresh-baselines.raw/halo-box-vulkan.json",
+        "sha256": "df0533f27dacb4415f26d312bca5e562579c829032b6f714ad7decf92db61dfb"
+      },
+      {
+        "engine": "halo-box-hip",
+        "command": [
+          "/home/lhl/hipEngine/.venv/bin/python",
+          "/home/lhl/hipEngine/scripts/qwen4exp_canonical_ar_bench.py",
+          "llamacpp",
+          "--server-bin",
+          "/home/lhl/halo-box-strix-llama/build-hip-release-b212548e/bin/llama-server",
+          "--source-root",
+          "/home/lhl/halo-box-strix-llama",
+          "--engine-label",
+          "halo-box-hip",
+          "--model",
+          "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+          "--port",
+          "18139",
+          "--output",
+          "/tmp/qwen4exp-framework-refresh-baselines.raw/halo-box-hip.json",
+          "--server-log",
+          "/tmp/qwen4exp-framework-refresh-baselines.raw/halo-box-hip.server.log",
+          "--fixture",
+          "/home/lhl/hipEngine/benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+          "--warmups",
+          "1",
+          "--repetitions",
+          "3",
+          "--server-arg=-ngl",
+          "--server-arg=999",
+          "--server-arg=-fa",
+          "--server-arg=on",
+          "--server-arg=-ctk",
+          "--server-arg=bf16",
+          "--server-arg=-ctv",
+          "--server-arg=bf16",
+          "--server-arg=-c",
+          "--server-arg=4352",
+          "--server-arg=-b",
+          "--server-arg=8192",
+          "--server-arg=-ub",
+          "--server-arg=2048",
+          "--server-arg=-t",
+          "--server-arg=4"
+        ],
+        "elapsed_seconds": 617.3862726038788,
+        "path": "/tmp/qwen4exp-framework-refresh-baselines.raw/halo-box-hip.json",
+        "sha256": "8e676aff4abe6b1ac5d20f19f1e5c5b069c39d234f356acb6bdcec7b05963e60"
+      }
+    ]
+  },
+  "elapsed_seconds": 2178.368,
+  "engines": [
+    {
+      "engine": "hipengine_production",
+      "source": {
+        "path": "/home/lhl/hipEngine",
+        "head": "bd451a417c9d54ca8d6d737cb55dfb9a47a27309",
+        "tracked_clean": true
+      },
+      "host": {
+        "hostname": "gfx1151",
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "kernel": "7.1.6-1-cachyos",
+        "tuned_active": "Current active profile: accelerator-performance",
+        "cpu_governors": {
+          "performance": 32
+        },
+        "gpu_clock_policies": {
+          "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+        },
+        "rocm_platform": null,
+        "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+      },
+      "profile": {
+        "requested": "production",
+        "manifest_sha256": "e509aeda3ccc1553362509e5ceabc11e0f8bde8007d3418f9b1342d997e0276b",
+        "strict_manifest_sha256": "bc28cd837049cd1739c8e99afd396352f8182da7a25b6f460818b80ddbf303e3",
+        "fell_back_to_strict": false
+      },
+      "protocol": {
+        "case_ids": [
+          "code-p512",
+          "code-p1024",
+          "code-p4096",
+          "general_en-p512",
+          "general_en-p1024",
+          "general_en-p4096",
+          "general_ja-p512",
+          "general_ja-p1024",
+          "general_ja-p4096",
+          "mixed_ja_en-p512",
+          "mixed_ja_en-p1024",
+          "mixed_ja_en-p4096"
+        ],
+        "ple_cache_mode": "warm",
+        "ple_cache_scope": "per_layer_token_embd.weight file range only",
+        "ple_telemetry": false,
+        "ple_random_access": "off",
+        "warmups_per_case": 1,
+        "measured_repetitions": 3,
+        "decode_transitions": 128,
+        "visible_output_tokens": 129,
+        "prefill_chunk_size": 512,
+        "timing_boundary": "synchronized runner.prefill including the first greedy output, followed by exactly N synchronized autoregressive runner.step transitions"
+      },
+      "commands": null,
+      "server_binary": null,
+      "server_binary_sha256": null,
+      "server_returncode": null,
+      "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+      "model_identity": null,
+      "summary": {
+        "all_cases_deterministic": true,
+        "sample_count": 36,
+        "shapes": {
+          "512": {
+            "prefill_tok_s_weighted": 153.95744352779164,
+            "decode_tok_s_weighted": 19.37673592311407
+          },
+          "1024": {
+            "prefill_tok_s_weighted": 152.30236156148882,
+            "decode_tok_s_weighted": 18.754424928678766
+          },
+          "4096": {
+            "prefill_tok_s_weighted": 142.0324662727408,
+            "decode_tok_s_weighted": 14.416729841749055
+          }
+        },
+        "cases": {
+          "code-p1024": {
+            "prompt_tokens": 1024,
+            "category": "code",
+            "deterministic": true,
+            "output_token_ids_sha256": [
+              "338e86d8fb2640d8671bff56bebe3cd3eb5eda22119e3007c49adfb28498d5b9"
+            ],
+            "prefill_samples": [
+              153.4479985940507,
+              154.19738300496203,
+              147.66488062325965
+            ],
+            "decode_samples": [
+              18.95711657416918,
+              19.096982841407616,
+              18.264765072450825
+            ],
+            "prefill_cv": 0.023554731625353306,
+            "decode_cv": 0.02373770280464948
+          },
+          "code-p4096": {
+            "prompt_tokens": 4096,
+            "category": "code",
+            "deterministic": true,
+            "output_token_ids_sha256": [
+              "bac9125c216f96dd135782feb3a6e38c9d3af9788e6aedf8405fa885054eda9c"
+            ],
+            "prefill_samples": [
+              141.6300424605695,
+              142.3997405125735,
+              139.5162927566757
+            ],
+            "decode_samples": [
+              15.084003264934864,
+              15.084388359142375,
+              14.218997402587862
+            ],
+            "prefill_cv": 0.0105751389049799,
+            "decode_cv": 0.03376111431617929
+          },
+          "code-p512": {
+            "prompt_tokens": 512,
+            "category": "code",
+            "deterministic": true,
+            "output_token_ids_sha256": [
+              "b2b0d9578d179234619f4c3157e50db89a96920c872ae0af4ab15528c96caf0d"
+            ],
+            "prefill_samples": [
+              156.0621989466263,
+              154.03532996687835,
+              149.0016049821378
+            ],
+            "decode_samples": [
+              20.016217408312134,
+              19.53470207957567,
+              17.712347625175845
+            ],
+            "prefill_cv": 0.023755919228884873,
+            "decode_cv": 0.06366522336436314
+          },
+          "general_en-p1024": {
+            "prompt_tokens": 1024,
+            "category": "general_en",
+            "deterministic": true,
+            "output_token_ids_sha256": [
+              "4a9dd0149fdcbfd9da827712e268e92c2312ccbf453d68397cecce3110040632"
+            ],
+            "prefill_samples": [
+              153.7165164123446,
+              154.64536116559356,
+              148.36766985718268
+            ],
+            "decode_samples": [
+              18.959819186188614,
+              18.944854724249918,
+              18.22807769255693
+            ],
+            "prefill_cv": 0.0222556562420418,
+            "decode_cv": 0.022351561520372577
+          },
+          "general_en-p4096": {
+            "prompt_tokens": 4096,
+            "category": "general_en",
+            "deterministic": true,
+            "output_token_ids_sha256": [
+              "74b2716677053cba3663304e2c654694d9f951b3916d01734c26daed2c0c2af6"
+            ],
+            "prefill_samples": [
+              143.84673325775898,
+              143.8185931001923,
+              140.95945031895454
+            ],
+            "decode_samples": [
+              15.099975150607925,
+              15.099529541056146,
+              13.489210565931664
+            ],
+            "prefill_cv": 0.011610923894367546,
+            "decode_cv": 0.06385036168111517
+          },
+          "general_en-p512": {
+            "prompt_tokens": 512,
+            "category": "general_en",
+            "deterministic": true,
+            "output_token_ids_sha256": [
+              "c9e27d335d6c245d9c9bde2c127b07b081462bdffa645fc0e0135e1d2622335e"
+            ],
+            "prefill_samples": [
+              156.3682344370936,
+              155.3636771054159,
+              150.13379473678788
+            ],
+            "decode_samples": [
+              20.02967854115878,
+              19.666792077958576,
+              18.31932775286107
+            ],
+            "prefill_cv": 0.021742444917111515,
+            "decode_cv": 0.04659955931710399
+          },
+          "general_ja-p1024": {
+            "prompt_tokens": 1024,
+            "category": "general_ja",
+            "deterministic": true,
+            "output_token_ids_sha256": [
+              "d7a78bb1a162449d54e7e761e1fb0510fb0393b4c2a8a8c5d7f44145c02c61b4"
+            ],
+            "prefill_samples": [
+              155.7179781557704,
+              154.95634988274838,
+              149.25806832919685
+            ],
+            "decode_samples": [
+              19.05558749598711,
+              18.955114815306487,
+              18.190745512394884
+            ],
+            "prefill_cv": 0.023027513497719317,
+            "decode_cv": 0.025247828331392958
+          },
+          "general_ja-p4096": {
+            "prompt_tokens": 4096,
+            "category": "general_ja",
+            "deterministic": true,
+            "output_token_ids_sha256": [
+              "3550671c83d9dfcaaf451b6ae1a9032a995d585e28dc3512e1c102dfa3d7096a"
+            ],
+            "prefill_samples": [
+              144.20531405818346,
+              144.12275558367682,
+              141.05849047902004
+            ],
+            "decode_samples": [
+              15.087350533827692,
+              15.094692259929191,
+              12.990884043750228
+            ],
+            "prefill_cv": 0.012530401344314546,
+            "decode_cv": 0.08425560959381134
+          },
+          "general_ja-p512": {
+            "prompt_tokens": 512,
+            "category": "general_ja",
+            "deterministic": true,
+            "output_token_ids_sha256": [
+              "550417bf723912b5e1a15dbad6dfcf488eda194295c1fca5b3540081f76e64bf"
+            ],
+            "prefill_samples": [
+              157.1239329241883,
+              155.2859426628524,
+              152.08292285486596
+            ],
+            "decode_samples": [
+              20.026853406927746,
+              19.84609855098746,
+              18.807885341875327
+            ],
+            "prefill_cv": 0.01647682082412532,
+            "decode_cv": 0.033630912502299964
+          },
+          "mixed_ja_en-p1024": {
+            "prompt_tokens": 1024,
+            "category": "mixed_ja_en",
+            "deterministic": true,
+            "output_token_ids_sha256": [
+              "6185347aef4b09d31d47af4d196f4371f72479c50497210d905efe50a51edb30"
+            ],
+            "prefill_samples": [
+              153.99729386089774,
+              154.5274442908821,
+              147.83018962088917
+            ],
+            "decode_samples": [
+              19.07214064376304,
+              19.247998265548443,
+              18.181056163136674
+            ],
+            "prefill_cv": 0.024474824661623703,
+            "decode_cv": 0.030372732297833344
+          },
+          "mixed_ja_en-p4096": {
+            "prompt_tokens": 4096,
+            "category": "mixed_ja_en",
+            "deterministic": true,
+            "output_token_ids_sha256": [
+              "0bc2b0d5ebdc843170a56ed2dc5ff5664dc37ce386c27e0fd7104fdcdf5ab658"
+            ],
+            "prefill_samples": [
+              142.56489008815024,
+              140.69190333171588,
+              139.79640161489525
+            ],
+            "decode_samples": [
+              15.09399039255861,
+              14.637545552173266,
+              12.692332708407294
+            ],
+            "prefill_cv": 0.01001797420441728,
+            "decode_cv": 0.09019110481737583
+          },
+          "mixed_ja_en-p512": {
+            "prompt_tokens": 512,
+            "category": "mixed_ja_en",
+            "deterministic": true,
+            "output_token_ids_sha256": [
+              "141d619f19761888e7835547a7514fc285f51e8f0402feddd781ecbbf9901221"
+            ],
+            "prefill_samples": [
+              156.24412224946605,
+              155.09494887476308,
+              151.22269741539523
+            ],
+            "decode_samples": [
+              20.046478421126718,
+              20.01104942924864,
+              18.873419024594934
+            ],
+            "prefill_cv": 0.017062983405524514,
+            "decode_cv": 0.033968936758342554
+          }
+        }
+      },
+      "memory_after_close": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 83545265060,
+        "total_allocated_bytes": 83555750820,
+        "total_freed_bytes": 83555750820,
+        "active_allocations": 0,
+        "peak_allocations": 1645
+      }
+    },
+    {
+      "engine": "halo-box-vulkan",
+      "source": {
+        "path": "/home/lhl/halo-box-strix-llama",
+        "head": "b212548e0ddbf0a14e5a1d81b6ffcf8e4d098faf",
+        "tracked_clean": true
+      },
+      "host": {
+        "hostname": "gfx1151",
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "kernel": "7.1.6-1-cachyos",
+        "tuned_active": "Current active profile: accelerator-performance",
+        "cpu_governors": {
+          "performance": 32
+        },
+        "gpu_clock_policies": {
+          "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+        },
+        "rocm_platform": null,
+        "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+      },
+      "profile": null,
+      "protocol": {
+        "warmups_per_case": 1,
+        "measured_repetitions": 3,
+        "decode_transitions": 128,
+        "visible_output_tokens": 129,
+        "temperature": 0.0,
+        "top_k": 1,
+        "ignore_eos": true,
+        "cache_prompt": false,
+        "timing_boundary": "llama.cpp prompt_ms for exact prefill; request N+1 visible outputs and normalize predicted_ms to N post-first-output AR transitions"
+      },
+      "commands": null,
+      "server_binary": "/home/lhl/halo-box-strix-llama/build-vulkan-release-b212548e/bin/llama-server",
+      "server_binary_sha256": "5ddeced52a427b9b1db23ce3ad59f4ea446903451426baa01b5781c7f294c062",
+      "server_returncode": 0,
+      "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+      "model_identity": null,
+      "summary": {
+        "all_cases_deterministic": true,
+        "sample_count": 36,
+        "shapes": {
+          "512": {
+            "prefill_tok_s_weighted": 316.2843670325644,
+            "decode_tok_s_weighted": 25.26983278806869
+          },
+          "1024": {
+            "prefill_tok_s_weighted": 391.68005018400646,
+            "decode_tok_s_weighted": 25.304836375320082
+          },
+          "4096": {
+            "prefill_tok_s_weighted": 425.71954046714455,
+            "decode_tok_s_weighted": 24.51331337838974
+          }
+        },
+        "cases": {
+          "code-p1024": {
+            "prompt_tokens": 1024,
+            "category": "code",
+            "deterministic": true,
+            "output_token_ids_sha256": [
+              "4d62794fd4c7b1b6dbc145d2847440aad5b2cfc3ffe470188dd29b89444bcd98"
+            ],
+            "prefill_samples": [
+              394.2097365185275,
+              393.4796124533223,
+              348.06029464799514
+            ],
+            "decode_samples": [
+              25.654947767127634,
+              25.716201226863706,
+              24.38223883431564
+            ],
+            "prefill_cv": 0.06982915178602714,
+            "decode_cv": 0.029824575315719283
+          },
+          "code-p4096": {
+            "prompt_tokens": 4096,
+            "category": "code",
+            "deterministic": true,
+            "output_token_ids_sha256": [
+              "ca521fdebf06c0bc085e4063390401e180eeaacffc0894c81b5c73362d82bebc"
+            ],
+            "prefill_samples": [
+              421.2090695279815,
+              420.92671702852044,
+              420.57313151709945
+            ],
+            "decode_samples": [
+              24.873968653358315,
+              24.87375113850851,
+              24.121946995413627
+            ],
+            "prefill_cv": 0.000757022991159744,
+            "decode_cv": 0.01763039477607026
+          },
+          "code-p512": {
+            "prompt_tokens": 512,
+            "category": "code",
+            "deterministic": true,
+            "output_token_ids_sha256": [
+              "9f803aa662d9551a52e2f7638883ae2cc597a905015bff8f18aa35dd1bb3e3f2"
+            ],
+            "prefill_samples": [
+              346.0705781203636,
+              282.7070525470691,
+              278.45957468563165
+            ],
+            "decode_samples": [
+              26.142584104573608,
+              24.782648428702643,
+              24.645641880339248
+            ],
+            "prefill_cv": 0.1252220076565817,
+            "decode_cv": 0.03285193360661357
+          },
+          "general_en-p1024": {
+            "prompt_tokens": 1024,
+            "category": "general_en",
+            "deterministic": true,
+            "output_token_ids_sha256": [
+              "0ac5a0d97159de82fdd8dc85270e5d8b1dfe8520a1b9eef016df532d240b299d"
+            ],
+            "prefill_samples": [
+              404.88727408456526,
+              405.1809346542865,
+              380.1296152895258
+            ],
+            "decode_samples": [
+              25.70742619257353,
+              25.721368851060614,
+              24.460834477546197
+            ],
+            "prefill_cv": 0.03624447010124086,
+            "decode_cv": 0.028611756565989042
+          },
+          "general_en-p4096": {
+            "prompt_tokens": 4096,
+            "category": "general_en",
+            "deterministic": true,
+            "output_token_ids_sha256": [
+              "43a2b14b76237e1a329e5a5b0705d481b7947057ae51db61e687647445e0ad6e"
+            ],
+            "prefill_samples": [
+              433.48965842475405,
+              433.63527589091615,
+              433.1552419504084
+            ],
+            "decode_samples": [
+              24.83658786418345,
+              24.831716620449924,
+              23.91157499566603
+            ],
+            "prefill_cv": 0.0005678633174055786,
+            "decode_cv": 0.021717450234583983
+          },
+          "general_en-p512": {
+            "prompt_tokens": 512,
+            "category": "general_en",
+            "deterministic": true,
+            "output_token_ids_sha256": [
+              "09a83ff7fafaa3a9ff8d05781cd90685de65668ed7fd531960473973e3d30044"
+            ],
+            "prefill_samples": [
+              351.1599595343015,
+              319.31248031582004,
+              313.28531664762687
+            ],
+            "decode_samples": [
+              26.15700291425796,
+              24.760950433606798,
+              24.73406531996122
+            ],
+            "prefill_cv": 0.06206223380148794,
+            "decode_cv": 0.032274751168752426
+          },
+          "general_ja-p1024": {
+            "prompt_tokens": 1024,
+            "category": "general_ja",
+            "deterministic": true,
+            "output_token_ids_sha256": [
+              "d7a78bb1a162449d54e7e761e1fb0510fb0393b4c2a8a8c5d7f44145c02c61b4"
+            ],
+            "prefill_samples": [
+              410.90338553892946,
+              411.2996546930536,
+              384.675201146813
+            ],
+            "decode_samples": [
+              25.735926871363798,
+              25.71467200835405,
+              24.417401748095205
+            ],
+            "prefill_cv": 0.03792891852828271,
+            "decode_cv": 0.029861991588790954
+          },
+          "general_ja-p4096": {
+            "prompt_tokens": 4096,
+            "category": "general_ja",
+            "deterministic": true,
+            "output_token_ids_sha256": [
+              "6fad40630eb2272991b272382819d4a197f2aed99f84b850f48d8eab66a49845"
+            ],
+            "prefill_samples": [
+              435.2198242629952,
+              434.5824040810004,
+              432.51585794684
+            ],
+            "decode_samples": [
+              24.852125002305616,
+              24.83816383873822,
+              23.810781670757905
+            ],
+            "prefill_cv": 0.003256179119824795,
+            "decode_cv": 0.024376396343488073
+          },
+          "general_ja-p512": {
+            "prompt_tokens": 512,
+            "category": "general_ja",
+            "deterministic": true,
+            "output_token_ids_sha256": [
+              "de6e1cbba5cf02f3d2b7bb846a89b06316d52ce2c54aab5f9af649f902bc02c3"
+            ],
+            "prefill_samples": [
+              359.4241071083839,
+              311.0516278874795,
+              310.6362582891951
+            ],
+            "decode_samples": [
+              26.136861591841054,
+              24.405604365705017,
+              24.48231850616543
+            ],
+            "prefill_cv": 0.08576555951472795,
+            "decode_cv": 0.0391130233728916
+          },
+          "mixed_ja_en-p1024": {
+            "prompt_tokens": 1024,
+            "category": "mixed_ja_en",
+            "deterministic": true,
+            "output_token_ids_sha256": [
+              "d2db47a15d76b3a71bcbc369c71271d73b9de1d6c0adac807aaaba76bc885927"
+            ],
+            "prefill_samples": [
+              392.46964205158906,
+              392.06437206908913,
+              391.48834003209134
+            ],
+            "decode_samples": [
+              25.727371068686853,
+              25.705443730181205,
+              24.869454791605627
+            ],
+            "prefill_cv": 0.0012579379937225391,
+            "decode_cv": 0.01923053713399845
+          },
+          "mixed_ja_en-p4096": {
+            "prompt_tokens": 4096,
+            "category": "mixed_ja_en",
+            "deterministic": true,
+            "output_token_ids_sha256": [
+              "ec48563573a1b568eaebc29e7ade706e1c13f5684712ea1266601b4be80d6a2c"
+            ],
+            "prefill_samples": [
+              423.90826029126305,
+              411.2776426320604,
+              410.30736990571745
+            ],
+            "decode_samples": [
+              24.81821144844705,
+              24.303191426745435,
+              24.168066243159068
+            ],
+            "prefill_cv": 0.01827687600176486,
+            "decode_cv": 0.01404319179809422
+          },
+          "mixed_ja_en-p512": {
+            "prompt_tokens": 512,
+            "category": "mixed_ja_en",
+            "deterministic": true,
+            "output_token_ids_sha256": [
+              "141d619f19761888e7835547a7514fc285f51e8f0402feddd781ecbbf9901221"
+            ],
+            "prefill_samples": [
+              342.5590094692142,
+              338.19555497428195,
+              273.3191406675393
+            ],
+            "decode_samples": [
+              26.155517026117714,
+              26.15831255995465,
+              24.932589485108913
+            ],
+            "prefill_cv": 0.121932276904847,
+            "decode_cv": 0.027452376560254576
+          }
+        }
+      },
+      "memory_after_close": null
+    },
+    {
+      "engine": "halo-box-hip",
+      "source": {
+        "path": "/home/lhl/halo-box-strix-llama",
+        "head": "b212548e0ddbf0a14e5a1d81b6ffcf8e4d098faf",
+        "tracked_clean": true
+      },
+      "host": {
+        "hostname": "gfx1151",
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "kernel": "7.1.6-1-cachyos",
+        "tuned_active": "Current active profile: accelerator-performance",
+        "cpu_governors": {
+          "performance": 32
+        },
+        "gpu_clock_policies": {
+          "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+        },
+        "rocm_platform": null,
+        "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+      },
+      "profile": null,
+      "protocol": {
+        "warmups_per_case": 1,
+        "measured_repetitions": 3,
+        "decode_transitions": 128,
+        "visible_output_tokens": 129,
+        "temperature": 0.0,
+        "top_k": 1,
+        "ignore_eos": true,
+        "cache_prompt": false,
+        "timing_boundary": "llama.cpp prompt_ms for exact prefill; request N+1 visible outputs and normalize predicted_ms to N post-first-output AR transitions"
+      },
+      "commands": null,
+      "server_binary": "/home/lhl/halo-box-strix-llama/build-hip-release-b212548e/bin/llama-server",
+      "server_binary_sha256": "99ccfeeb6d5224276a198a973c6d8b8911530e3c73d225c5f2598de81335ff56",
+      "server_returncode": 0,
+      "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+      "model_identity": null,
+      "summary": {
+        "all_cases_deterministic": true,
+        "sample_count": 36,
+        "shapes": {
+          "512": {
+            "prefill_tok_s_weighted": 282.76021464372076,
+            "decode_tok_s_weighted": 21.07948133716592
+          },
+          "1024": {
+            "prefill_tok_s_weighted": 368.3346137717219,
+            "decode_tok_s_weighted": 20.56482193876626
+          },
+          "4096": {
+            "prefill_tok_s_weighted": 351.0829156533295,
+            "decode_tok_s_weighted": 18.8303586474732
+          }
+        },
+        "cases": {
+          "code-p1024": {
+            "prompt_tokens": 1024,
+            "category": "code",
+            "deterministic": true,
+            "output_token_ids_sha256": [
+              "96de4bf63692f3ffd727f5f1b620e20e19269c805ffcd9111893f7ccc80ee7e2"
+            ],
+            "prefill_samples": [
+              383.7971631992492,
+              342.5536235248701,
+              339.8373692339654
+            ],
+            "decode_samples": [
+              21.153381516770168,
+              20.273187537438083,
+              20.200416538901663
+            ],
+            "prefill_cv": 0.0693129569895147,
+            "decode_cv": 0.02582165003274491
+          },
+          "code-p4096": {
+            "prompt_tokens": 4096,
+            "category": "code",
+            "deterministic": true,
+            "output_token_ids_sha256": [
+              "a10411024bf1a2bfa9c058c9061c4be97a8e930843647c764069e4df53b87adc"
+            ],
+            "prefill_samples": [
+              352.8067864314782,
+              347.08511211628706,
+              346.11651941645226
+            ],
+            "decode_samples": [
+              19.62972209834368,
+              18.731976874789176,
+              18.7491778924928
+            ],
+            "prefill_cv": 0.01036970763391985,
+            "decode_cv": 0.026969642681449673
+          },
+          "code-p512": {
+            "prompt_tokens": 512,
+            "category": "code",
+            "deterministic": true,
+            "output_token_ids_sha256": [
+              "910709037e62b115bffa3e4281337442f0dfe56c618f5d04d4b358198c1127b2"
+            ],
+            "prefill_samples": [
+              308.5619926354931,
+              256.4883538256841,
+              254.1665694512633
+            ],
+            "decode_samples": [
+              22.25344658946807,
+              20.524148263881543,
+              21.165942477251985
+            ],
+            "prefill_cv": 0.11263275861255798,
+            "decode_cv": 0.041012895142460815
+          },
+          "general_en-p1024": {
+            "prompt_tokens": 1024,
+            "category": "general_en",
+            "deterministic": true,
+            "output_token_ids_sha256": [
+              "1bbd683f4d66e29c913be843672bb66715ccb524008d8c56fc533afc20468733"
+            ],
+            "prefill_samples": [
+              397.33490715206716,
+              373.8085764245064,
+              371.5578287669941
+            ],
+            "decode_samples": [
+              21.243921209615596,
+              20.258427901679518,
+              20.21773553464459
+            ],
+            "prefill_cv": 0.03748247326519726,
+            "decode_cv": 0.028244194086782092
+          },
+          "general_en-p4096": {
+            "prompt_tokens": 4096,
+            "category": "general_en",
+            "deterministic": true,
+            "output_token_ids_sha256": [
+              "c76cae4ad2a85c489893ed3ef4185e327bfbbf1c43d78a496673f4e1272f1830"
+            ],
+            "prefill_samples": [
+              360.1435404132313,
+              357.2838853366454,
+              354.8918892387266
+            ],
+            "decode_samples": [
+              18.94521340302804,
+              18.756678403267415,
+              18.6912093928
+            ],
+            "prefill_cv": 0.007355906982336119,
+            "decode_cv": 0.007015606164919872
+          },
+          "general_en-p512": {
+            "prompt_tokens": 512,
+            "category": "general_en",
+            "deterministic": true,
+            "output_token_ids_sha256": [
+              "1fc0fa167083b35057af6ed2efe55d831b0096c9b13e41227b72e548755ddb8f"
+            ],
+            "prefill_samples": [
+              312.1692347463869,
+              282.93311008142615,
+              282.5635133240838
+            ],
+            "decode_samples": [
+              21.453598631662665,
+              20.540764511207634,
+              20.49846501728757
+            ],
+            "prefill_cv": 0.058064864527600846,
+            "decode_cv": 0.02590619395687981
+          },
+          "general_ja-p1024": {
+            "prompt_tokens": 1024,
+            "category": "general_ja",
+            "deterministic": true,
+            "output_token_ids_sha256": [
+              "ec1c9514ceac139d1162cc85be821ef059e51bf98d411a10487b51969e18857b"
+            ],
+            "prefill_samples": [
+              404.25893100358064,
+              374.89712295746966,
+              373.1785225556169
+            ],
+            "decode_samples": [
+              21.260678507978735,
+              20.188109014526923,
+              20.19698370671455
+            ],
+            "prefill_cv": 0.04547979098348187,
+            "decode_cv": 0.03001190518136239
+          },
+          "general_ja-p4096": {
+            "prompt_tokens": 4096,
+            "category": "general_ja",
+            "deterministic": true,
+            "output_token_ids_sha256": [
+              "10b96271b880d58707ec9f655713da72ff21e92a8f0859440d6c5b14634ab243"
+            ],
+            "prefill_samples": [
+              354.2367616118049,
+              355.5214230300459,
+              346.6822651115507
+            ],
+            "decode_samples": [
+              18.711699490106188,
+              18.7252713043117,
+              18.466341485934564
+            ],
+            "prefill_cv": 0.013562050754608281,
+            "decode_cv": 0.007820650892996979
+          },
+          "general_ja-p512": {
+            "prompt_tokens": 512,
+            "category": "general_ja",
+            "deterministic": true,
+            "output_token_ids_sha256": [
+              "3b1b421e82400105100df28a4e4e7c804c34f8ba4ba39accab4069517f4c1244"
+            ],
+            "prefill_samples": [
+              323.3688975962702,
+              287.3792249517012,
+              287.2529806704552
+            ],
+            "decode_samples": [
+              21.53378052939117,
+              20.46073744334134,
+              21.09999203804988
+            ],
+            "prefill_cv": 0.0695383994818028,
+            "decode_cv": 0.02566578950917811
+          },
+          "mixed_ja_en-p1024": {
+            "prompt_tokens": 1024,
+            "category": "mixed_ja_en",
+            "deterministic": true,
+            "output_token_ids_sha256": [
+              "87b393e8d302fe2707df80882c2c0f7b6f12b1701c469d2b48482613142e5902"
+            ],
+            "prefill_samples": [
+              383.7174879994604,
+              343.5042803853689,
+              345.9741147843456
+            ],
+            "decode_samples": [
+              21.244196226665615,
+              20.301673349565153,
+              20.36225404425386
+            ],
+            "prefill_cv": 0.06300243360250002,
+            "decode_cv": 0.025564399838047723
+          },
+          "mixed_ja_en-p4096": {
+            "prompt_tokens": 4096,
+            "category": "mixed_ja_en",
+            "deterministic": true,
+            "output_token_ids_sha256": [
+              "b9fe659a94c5a455e531005e4940dcee33c16f8a37fac996f86c64ea20c9ef7a"
+            ],
+            "prefill_samples": [
+              347.7418682228115,
+              343.83348990236755,
+              347.51457508028636
+            ],
+            "decode_samples": [
+              18.765524623227115,
+              18.742778356249552,
+              19.09702692113853
+            ],
+            "prefill_cv": 0.006333912697341411,
+            "decode_cv": 0.010508850909510257
+          },
+          "mixed_ja_en-p512": {
+            "prompt_tokens": 512,
+            "category": "mixed_ja_en",
+            "deterministic": true,
+            "output_token_ids_sha256": [
+              "e484400ec16f8e25ed42b38af85719d4e6983576c5c308da3087c16cf389b606"
+            ],
+            "prefill_samples": [
+              304.8735102433331,
+              257.61835852827465,
+              258.21744228562784
+            ],
+            "decode_samples": [
+              21.542134058046628,
+              21.369758085990906,
+              20.675527637850042
+            ],
+            "prefill_cv": 0.09910264844717573,
+            "decode_cv": 0.02164314669964003
+          }
+        }
+      },
+      "memory_after_close": null
+    }
+  ],
+  "limitations": [
+    "Sequential full suites on one exclusive host, not inter-engine counterbalanced experiments.",
+    "All cases repeat outputs; every engine has at least one metric exceeding the2% per-case CV rule.",
+    "Throughput samples are logger/profiler off; family captures use separate instruments.",
+    "Cross-engine generated-ID equality is diagnostic and not required for production correctness."
+  ],
+  "hipengine_artifact_provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 2,
+    "collected_at": "2026-09-05T21:31:02.300774+00:00",
+    "host_name": "gfx1151",
+    "repo_root": "/home/lhl/hipEngine",
+    "hipengine_commit": "bd451a417c9d54ca8d6d737cb55dfb9a47a27309",
+    "git_branch": "qwen3.8-flash-next",
+    "staged_dirty": false,
+    "unstaged_dirty": true,
+    "untracked_dirty": true,
+    "untracked_count": 77,
+    "dirty": true,
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S",
+    "model_path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "model_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+    "model_fingerprint": {
+      "algorithm": "sha256-directory-manifest-v1",
+      "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+      "size_bytes": 111334654784,
+      "sampled_bytes": 12582912,
+      "file_count": 4,
+      "exists": true,
+      "path_type": "directory"
+    },
+    "quant": "UD-Q4_K_XL",
+    "kv_dtype": "BF16",
+    "command": [
+      ".venv/bin/python",
+      "scripts/qwen4exp_framework_family_refresh.py",
+      "baselines",
+      "--output",
+      "/tmp/qwen4exp-framework-refresh-baselines.json"
+    ],
+    "environment": {
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": null,
+      "GPU_MAX_HW_QUEUES": null,
+      "HIPENGINE_BUILD_CACHE_ROOT": null,
+      "HIPENGINE_REQUIRE_CACHED_BUILD": null,
+      "HIP_VISIBLE_DEVICES": null,
+      "ROCR_VISIBLE_DEVICES": null,
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null
+    },
+    "rocm_version": "HIP version: 7.15.26333-0000000",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+    "build_profile": null,
+    "timing_protocol": "Sequential full12-case canonical AR, logger/profiler off; capture-time source tracked-clean recorded separately in controller",
+    "warmups": 1,
+    "repetitions": 3,
+    "profiler": null
+  },
+  "provenance_note": "Canonical provenance collected at retention time after docs-only edits; measurement-time clean source and original command/binary hashes are in controller. Target architecture applies to the controller HIP lane; each engine is separately identified."
+}

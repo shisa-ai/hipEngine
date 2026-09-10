@@ -1,0 +1,651 @@
+{
+  "schema": 1,
+  "date": "2026-08-30",
+  "status": "accepted_diagnostic_profile_next_units_selected",
+  "scope": "Fresh full production profile/module/launch comparison: hipEngine Qwen3.8-Flash-Next UD-Q4_K_XL vs llama.cpp remote HEAD HIP/Vulkan on zbook gfx1151, pp508 and tg32",
+  "host": {
+    "identity": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "cpu": "AMD Ryzen AI Max+ Pro 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "id": "Qwen/Qwen3.8-Flash-Next",
+    "quant": "Unsloth UD-Q4_K_XL",
+    "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+    "kv": "BF16"
+  },
+  "software": {
+    "hipengine_commit": "15a436766",
+    "llama_cpp_remote_head": "57291f2644af8c9df0dd8d44395881c5bdcf0ecd",
+    "prior_llama_comparator": "17252c769a63c1cb650ce98ae309cf4de0da7778",
+    "head_delta": "one graph allocator-dependency commit; no qwen4exp/MMQ/GDN/attention source change",
+    "llama_hip_binary_sha256": "3e1d74668f4c655db0fa6adc6d53f1c273062c132c4f30002283d0958a50005e",
+    "llama_vulkan_binary_sha256": "36715c99808cfb9b154d1d645f150e5fa125955a9f517c20390e7e2894959852",
+    "production_manifest_sha256": "9e27fec02cb0614d5834be9ea9a785c5a5ba34310c9777a118dc82e60b572c66",
+    "strict_manifest_sha256": "425096018bad1c0aa09945ee4a5fd93e3b681e61a31b47f15a4dbb9262f845f4"
+  },
+  "end_to_end": {
+    "hipengine_production": {
+      "pp508_tok_s": 84.83179725061414,
+      "pp508_seconds_samples": [
+        5.971707980992505,
+        5.963015248999,
+        6.0302386049879715
+      ],
+      "tg32_steady_tok_s": 15.187517802365074,
+      "tg32_seconds_samples": [
+        2.119859032012755,
+        2.1069934150145855,
+        2.0757241910032462
+      ],
+      "tg32_first_cold_window_tok_s": 10.8263,
+      "generated_ids_repeat_exact": true
+    },
+    "llama_head_hip": {
+      "pp508_tok_s": 272.825868,
+      "pp508_samples": [
+        254.964,
+        287.583,
+        275.93
+      ],
+      "tg32_tok_s": 16.64284,
+      "tg32_samples": [
+        16.8998,
+        15.8168,
+        17.2119
+      ]
+    },
+    "llama_head_vulkan": {
+      "pp508_tok_s": 331.029902,
+      "pp508_samples": [
+        328.456,
+        333.486,
+        331.148
+      ],
+      "tg32_tok_s": 24.218676,
+      "tg32_samples": [
+        24.3724,
+        24.13,
+        24.1536
+      ]
+    },
+    "ratios": {
+      "prefill_vs_llama_hip": 3.2160802534220134,
+      "prefill_vs_llama_vulkan": 3.9021913094927796,
+      "decode_vs_llama_hip": 1.095823571473167,
+      "decode_vs_llama_vulkan": 1.594643464136618
+    }
+  },
+  "profile_windows": {
+    "prefill": {
+      "hipengine": {
+        "profile_wall_ms": 6031.343333,
+        "kernel_sum_ms": 5958.531011,
+        "kernel_span_ms": 6030.415187,
+        "kernel_rows": 3328,
+        "role_attributed_rows": 3128
+      },
+      "llama_hip_selected_measured_graph": {
+        "kernel_sum_ms": 1624.868288,
+        "kernel_span_ms": 1656.851293,
+        "kernel_rows": 5119,
+        "graph_count": 1
+      },
+      "kernel_sum_gap": 3.6670855447207793
+    },
+    "decode": {
+      "hipengine_per_token": {
+        "profile_wall_ms": 85.7588413125,
+        "kernel_sum_ms": 48.6315748125,
+        "kernel_span_ms": 85.727798625,
+        "kernel_rows": 1860.0,
+        "role_attributed_rows": 1711.0
+      },
+      "llama_hip_per_output": {
+        "kernel_sum_ms": 38.89902853125,
+        "kernel_span_ms": 59.58641671875,
+        "kernel_rows": 4202.78125,
+        "large_graphs_for_32_outputs": 31
+      },
+      "kernel_sum_gap": 1.2502002401790377
+    }
+  },
+  "launch_and_host_census": {
+    "prefill_hipengine": {
+      "direct_kernel_launch_api_calls": 2796,
+      "kernel_rows": 3328,
+      "graph_launches": 0,
+      "copy_or_fill_kernel_rows": 532,
+      "python_visible_calls": {
+        "calls": {
+          "memset": 123,
+          "memcpy": 97,
+          "memset_async": 314,
+          "device_synchronize": 2
+        },
+        "bytes": {
+          "memset": 138600464,
+          "memcpy": 6317832,
+          "memset_async": 1256
+        },
+        "sizes": {
+          "memset": {
+            "2048": 94,
+            "786432": 24,
+            "113246208": 1,
+            "5898240": 1,
+            "368640": 1,
+            "20480": 1,
+            "16": 1
+          },
+          "memcpy": {
+            "8": 69,
+            "4064": 25,
+            "5201920": 1,
+            "20480": 1,
+            "993280": 1
+          },
+          "memset_async": {
+            "4": 314
+          }
+        },
+        "memcpy_kinds": {
+          "memcpy": {
+            "1": 74,
+            "2": 22,
+            "3": 1
+          }
+        },
+        "memcpy_size_kinds": {
+          "memcpy": {
+            "8:1": 48,
+            "4064:1": 25,
+            "8:2": 21,
+            "5201920:1": 1,
+            "20480:3": 1,
+            "993280:2": 1
+          }
+        }
+      },
+      "kernel_span_minus_sum_ms": 71.88417599999957,
+      "finding": "2,796 direct launches account for all direct kernel correlations; the extra 532 kernel rows are copy/fill work issued by memcpy/memset APIs. 97 blocking hipMemcpy calls include 74 H2D, 22 D2H and 1 D2D. Device kernel work is nearly contiguous, so launch-only prefill Amdahl headroom is about 72 ms in this profiled window."
+    },
+    "decode_hipengine_per_token": {
+      "direct_kernel_launch_api_calls": 1195.0,
+      "graph_launches": 48,
+      "captured_moe_graphs": 48,
+      "captured_graph_kernel_nodes": 625,
+      "kernel_rows": 1860.0,
+      "graph_expanded_kernel_rows": 625,
+      "copy_or_fill_kernel_rows": 40.0,
+      "blocking_memcpy_calls": 28,
+      "async_memcpy_calls": 12,
+      "device_synchronize_calls": 1,
+      "profiled_direct_launch_api_ms": 24.4575885625,
+      "profiled_graph_launch_api_ms": 3.5512128125,
+      "kernel_span_minus_sum_ms": 37.09622381250001,
+      "finding": "1,860 rows/token = 1,195 direct kernel launches + 625 kernels expanded from 48 per-layer MoE graph launches + 40 copy/fill kernels. Decode has substantial inter-launch/API headroom; unlike prefill, graph/fusion is material."
+    },
+    "llama_hip": {
+      "prefill": "one selected measured graph expands to 5,119 kernels",
+      "decode": "31 large model graphs cover the 32-output traced generation; 4,203 selected graph kernel rows/output. Kernel-row count is higher than hipEngine, but host submits whole graphs."
+    },
+    "interpretation": "Kernel trace rows are not host launch count. Graph nodes and memory-operation kernels appear as kernel rows without direct launch APIs; HIP API and Python-visible runtime censuses close that accounting."
+  },
+  "prefill_modules": {
+    "total_device": {
+      "hipengine_ms": 5958.531011,
+      "llama_hip_ms": 1624.868288,
+      "gap": 3.6670855447207793
+    },
+    "selected_q4_gate_up": {
+      "hipengine_ms": 1297.311197,
+      "llama_hip_ms": 477.431528,
+      "gap": 2.7172717361891525
+    },
+    "selected_q5_1_down": {
+      "hipengine_ms": 1131.499905,
+      "llama_hip_ms": 345.481962,
+      "gap": 3.2751345350991143
+    },
+    "layer2_q5_k_gate_up": {
+      "hipengine_ms": 301.465,
+      "llama_hip_ms": 15.376182,
+      "gap": 19.605972405893738,
+      "model_qtype": 13,
+      "note": "existing Q5_K selected WMMA code path is present but layer 2 is outside production grouped scope"
+    },
+    "layer2_q8_0_down": {
+      "hipengine_ms": 96.132,
+      "model_qtype": 8,
+      "llama_exact_role_ms": "not separable from 260.3-ms total Q8 MMQ family"
+    },
+    "moe_by_scope": {
+      "hipengine_total_ms": 3160.987229,
+      "layers0_26_ms": 2526.458497,
+      "layers27_47_ms": 634.528732
+    },
+    "gdn_conv_recurrence": {
+      "hipengine_ms": 634.943529,
+      "llama_hip_ms": 92.339544,
+      "gap": 6.876182202069354
+    },
+    "qsa_mixer": {
+      "hipengine_ms": 110.488806,
+      "llama_hip_ms": 13.908172,
+      "gap": 7.944164481141015
+    },
+    "gr_read_projection_and_elementwise": {
+      "hipengine_ms": 756.717519,
+      "note": "two GR reads/layer; llama trace does not expose an equal semantic bucket"
+    },
+    "top_hipengine_roles": [
+      {
+        "name": "moe:layers.*.expert_gate",
+        "ms": 3160.987229,
+        "rows": 757,
+        "symbols": 22
+      },
+      {
+        "name": "gdn:layers.*.attn_qkv",
+        "ms": 634.943529,
+        "rows": 123,
+        "symbols": 5
+      },
+      {
+        "name": "linear:layers.*.attn_gate",
+        "ms": 302.374677,
+        "rows": 36,
+        "symbols": 1
+      },
+      {
+        "name": "linear:layers.*.attn_qkv",
+        "ms": 266.586822,
+        "rows": 144,
+        "symbols": 4
+      },
+      {
+        "name": "linear:layers.*.hc_attn_up",
+        "ms": 222.932006,
+        "rows": 48,
+        "symbols": 1
+      },
+      {
+        "name": "linear:layers.*.hc_ffn_up",
+        "ms": 207.956467,
+        "rows": 48,
+        "symbols": 1
+      },
+      {
+        "name": "linear:layers.*.router",
+        "ms": 186.500815,
+        "rows": 48,
+        "symbols": 1
+      },
+      {
+        "name": "linear:layers.*.ssm_out",
+        "ms": 149.023068,
+        "rows": 144,
+        "symbols": 4
+      },
+      {
+        "name": "linear:layers.*.hc_attn_down",
+        "ms": 140.21194,
+        "rows": 192,
+        "symbols": 4
+      },
+      {
+        "name": "linear:layers.*.hc_ffn_down",
+        "ms": 131.906214,
+        "rows": 192,
+        "symbols": 4
+      },
+      {
+        "name": "qsa_prefill:layers.*.attn_q",
+        "ms": 110.488806,
+        "rows": 124,
+        "symbols": 9
+      },
+      {
+        "name": "linear:layers.*.attn_q",
+        "ms": 103.404035,
+        "rows": 48,
+        "symbols": 4
+      },
+      {
+        "name": "linear:layers.*.shared_down",
+        "ms": 61.749666,
+        "rows": 48,
+        "symbols": 1
+      },
+      {
+        "name": "linear:layers.*.attn_output",
+        "ms": 48.123591,
+        "rows": 48,
+        "symbols": 4
+      },
+      {
+        "name": "linear:layers.*.shared_gate",
+        "ms": 35.586084,
+        "rows": 192,
+        "symbols": 4
+      },
+      {
+        "name": "linear:layers.*.index_q",
+        "ms": 34.896858,
+        "rows": 12,
+        "symbols": 1
+      },
+      {
+        "name": "linear:layers.*.shared_up",
+        "ms": 34.748017,
+        "rows": 192,
+        "symbols": 4
+      },
+      {
+        "name": "gr_read:layers.*.hc_attn_down",
+        "ms": 21.392409,
+        "rows": 192,
+        "symbols": 4
+      },
+      {
+        "name": "gr_read:layers.*.hc_ffn_down",
+        "ms": 20.394128,
+        "rows": 192,
+        "symbols": 4
+      },
+      {
+        "name": "linear:layers.*.ssm_alpha",
+        "ms": 11.05467,
+        "rows": 36,
+        "symbols": 1
+      },
+      {
+        "name": "linear:layers.*.ssm_beta",
+        "ms": 11.02194,
+        "rows": 36,
+        "symbols": 1
+      },
+      {
+        "name": "unattributed",
+        "ms": 10.948401,
+        "rows": 200,
+        "symbols": 6
+      },
+      {
+        "name": "linear:layers.*.attn_k",
+        "ms": 8.095073,
+        "rows": 48,
+        "symbols": 4
+      },
+      {
+        "name": "linear:layers.*.attn_v",
+        "ms": 8.038805,
+        "rows": 48,
+        "symbols": 4
+      }
+    ]
+  },
+  "decode_modules_per_token": {
+    "total_device": {
+      "hipengine_ms": 48.6315748125,
+      "llama_hip_ms": 38.89902853125,
+      "gap": 1.2502002401790377
+    },
+    "dense_q8": {
+      "hipengine_ms": 25.2843066875,
+      "llama_hip_ms": 21.838730375,
+      "gap": 1.1577736550309874
+    },
+    "selected_q4_gate_up": {
+      "hipengine_ms": 7.6354648125,
+      "llama_hip_ms": 4.60335971875,
+      "gap": 1.658672204433622
+    },
+    "selected_q5_1_down": {
+      "hipengine_ms": 6.257528,
+      "llama_hip_ms": 2.83571721875,
+      "gap": 2.2066826546119267
+    },
+    "gdn_conv_recurrence": {
+      "hipengine_ms": 2.658559125,
+      "llama_hip_ms": 0.46469415625,
+      "gap": 5.721094378406012
+    },
+    "qsa_attention": {
+      "hipengine_ms": 0.1075544375,
+      "llama_hip_ms": 0.0821504375,
+      "gap": 1.3092375497087279
+    },
+    "moe_complete_role": {
+      "hipengine_ms": 19.5376171875,
+      "note": "includes routed and shared experts; llama equal semantic role unavailable"
+    },
+    "gr_read_projection_and_elementwise": {
+      "hipengine_ms": 7.7749898125,
+      "removable_direct_launches_if_operation_complete": 387
+    },
+    "top_hipengine_roles_per_token": [
+      {
+        "name": "moe:layers.*.expert_gate",
+        "ms": 19.5376171875,
+        "rows": 625.0,
+        "symbols": 14
+      },
+      {
+        "name": "linear:layers.*.attn_qkv",
+        "ms": 4.8063848125,
+        "rows": 36.0,
+        "symbols": 1
+      },
+      {
+        "name": "linear:root.lm_head",
+        "ms": 3.08198525,
+        "rows": 1.0,
+        "symbols": 1
+      },
+      {
+        "name": "linear:layers.*.attn_gate",
+        "ms": 3.0533609375,
+        "rows": 36.0,
+        "symbols": 1
+      },
+      {
+        "name": "linear:layers.*.ssm_out",
+        "ms": 2.9822043125,
+        "rows": 36.0,
+        "symbols": 1
+      },
+      {
+        "name": "gdn:layers.*.attn_qkv",
+        "ms": 2.658559125,
+        "rows": 72.0,
+        "symbols": 2
+      },
+      {
+        "name": "linear:layers.*.hc_attn_down",
+        "ms": 1.9237725,
+        "rows": 48.0,
+        "symbols": 1
+      },
+      {
+        "name": "linear:layers.*.hc_ffn_down",
+        "ms": 1.91632375,
+        "rows": 48.0,
+        "symbols": 1
+      },
+      {
+        "name": "linear:layers.*.attn_q",
+        "ms": 1.905548,
+        "rows": 12.0,
+        "symbols": 1
+      },
+      {
+        "name": "linear:layers.*.hc_attn_up",
+        "ms": 1.0633,
+        "rows": 48.0,
+        "symbols": 1
+      },
+      {
+        "name": "linear:layers.*.hc_ffn_up",
+        "ms": 1.0553316875,
+        "rows": 48.0,
+        "symbols": 1
+      },
+      {
+        "name": "linear:layers.*.attn_output",
+        "ms": 0.983106125,
+        "rows": 12.0,
+        "symbols": 1
+      },
+      {
+        "name": "gr_read:layers.*.hc_ffn_down",
+        "ms": 0.7286661875,
+        "rows": 192.0,
+        "symbols": 4
+      },
+      {
+        "name": "gr_read:layers.*.hc_attn_down",
+        "ms": 0.719349875,
+        "rows": 192.0,
+        "symbols": 4
+      },
+      {
+        "name": "unattributed",
+        "ms": 0.5320665625,
+        "rows": 149.0,
+        "symbols": 5
+      },
+      {
+        "name": "qsa_decode:layers.*.attn_q",
+        "ms": 0.2803005,
+        "rows": 84.0,
+        "symbols": 5
+      },
+      {
+        "name": "linear:layers.*.hc_ffn_inject",
+        "ms": 0.1846285,
+        "rows": 48.0,
+        "symbols": 1
+      },
+      {
+        "name": "linear:layers.*.hc_attn_inject",
+        "ms": 0.1836173125,
+        "rows": 48.0,
+        "symbols": 1
+      },
+      {
+        "name": "linear:layers.*.ssm_alpha",
+        "ms": 0.173919625,
+        "rows": 36.0,
+        "symbols": 1
+      },
+      {
+        "name": "linear:layers.*.ssm_beta",
+        "ms": 0.16890975,
+        "rows": 36.0,
+        "symbols": 1
+      }
+    ]
+  },
+  "missed_or_rejected": {
+    "invalid_gdn_decode_colwarps": {
+      "prior_artifact": "benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-gdn-colwarps-decode-all.json",
+      "reason": "route unreachable; old packet compared strict owner to itself",
+      "actual_candidate_ms_per_token": 6.949,
+      "retained_ms_per_token": 2.454,
+      "full_candidate_tok_s": "14.46-14.55",
+      "decision": "invalid/rejected; fixed by 15a436766"
+    },
+    "redundant_decode_sync": {
+      "sync_median_s": 2.1069934150145855,
+      "no_sync_median_s": 2.109240296005737,
+      "sync_tok_s": 15.187517802365074,
+      "no_sync_tok_s": 15.17133920710614,
+      "ids_and_logits_exact": true,
+      "decision": "neutral/slower; do not remove based on prior Qwen3.x transfer"
+    },
+    "launch_count_only": "llama executes more kernel rows but is faster; prefill device dataflow remains binding."
+  },
+  "proven_path_transfer": [
+    {
+      "pattern": "operation-complete projection/epilog kernels",
+      "source": "Qwen3.x qmicro gate/up+SiLU, down+residual, selected down+weighted combine",
+      "qwen4exp_target": "GR down+inject pair, down+scaled-SiLU epilog, up+sigmoid+gated-mean epilog; up to 387 direct launches/token"
+    },
+    {
+      "pattern": "existing selected WMMA families before new kernels",
+      "source": "Q5_K/Q6_K selected WMMA and Q8 dual paths already registered",
+      "qwen4exp_target": "layer-2 Q5_K gate/up first; Q8_0 selected down second"
+    },
+    {
+      "pattern": "layout/state ownership, not naive widening",
+      "source": "exact logical-to-physical contractions and qmicro/T16 wins; pack widening rejections",
+      "qwen4exp_target": "normalized-Q/K transposed GDN state for decode; do not reuse strided prefill columnwarp"
+    },
+    {
+      "pattern": "whole-unit graph only after state proof",
+      "source": "Qwen3.x graph wins and MoE-graph regressions both measured",
+      "qwen4exp_target": "state-safe layer/whole-step graph after GDN/QSA pointer/state audit; current 48 tiny graphs plus 1,195 direct launches/token"
+    }
+  ],
+  "ordered_next_units": [
+    {
+      "rank": 1,
+      "unit": "Layer-2 high-precision MoE prefill",
+      "evidence": "397.95 ms/layer: Q5_K gate/up 301.47 ms vs llama 15.38 ms; Q8_0 down 96.13 ms",
+      "action": "route the existing grouped selected Q5_K WMMA body for layer 2, microbench, then add grouped Q8_0 down; full 450-row/task/c2 gate before binding",
+      "amdahl": "up to ~6.6% p508 from this layer"
+    },
+    {
+      "rank": 2,
+      "unit": "Early exact MoE layers 0-26",
+      "evidence": "2.526 s of 5.959-s p508 kernel sum; 2.129 s excluding layer 2",
+      "action": "near-F32/split-precision WMMA or exact-association multiwarp dataflow; retain strict fallback and gate by layer/composition"
+    },
+    {
+      "rank": 3,
+      "unit": "GR operation-complete decode fusion",
+      "evidence": "7.775 ms/token and 384 GR element kernels plus 288 GR projection launches; 1,195 direct launches/token total",
+      "action": "reuse Q8 F32 unequal pair for down+inject; add exact down+scaled-SiLU and up+sigmoid+gated-mean epilogs; measure each stacked unit"
+    },
+    {
+      "rank": 4,
+      "unit": "GDN normalized/transposed decode kernel",
+      "evidence": "2.659 vs 0.465 ms/token (5.72x); prefill columnwarp is slower at rows1 because it renormalizes Q/K per column and reads row-major state with strided lanes",
+      "action": "normalize Q/K once, keep persistent state transposed, port llama four-warp recurrence, then tail; strict state conversion/fallback and full packet"
+    },
+    {
+      "rank": 5,
+      "unit": "State-safe larger decode graph",
+      "evidence": "48 tiny MoE graph launches + 1,195 direct launches/token vs llama whole-graph submission; 37.1 ms/token profiled span-minus-kernel",
+      "action": "audit the historical third-replay state corruption, capture one layer/transition only after exact state lifecycle proof"
+    },
+    {
+      "rank": 6,
+      "unit": "Remaining QSA/GDN prefill suffix extension",
+      "evidence": "QSA 110.49 vs 13.91 ms and GDN 634.94 vs 92.34 ms, but existing fast arithmetic is numerically suffix-limited",
+      "action": "optimize kernel dataflow first, then fresh all-category boundary screens; launch-only work is <=72 ms in current p508 profile"
+    }
+  ],
+  "commands": {
+    "hipengine_wall": "uv run python /tmp/qwen4exp_fresh_profile.py --mode prefill --repetitions 3 ...; uv run python /tmp/qwen4exp_decode_sync_ab.py",
+    "hipengine_profile": "rocprofv3 --kernel-trace --hip-trace --memory-copy-trace --marker-trace ... -- uv run python /tmp/qwen4exp_fresh_profile.py --mode <prefill|decode> --profile --role-markers ...",
+    "llama_build": "git clone --depth 1 https://github.com/ggml-org/llama.cpp.git /tmp/llama.cpp-head-57291f264; cmake HIP/Vulkan Release builds at commit 57291f264",
+    "llama_wall": "llama-bench -m <UD-Q4_K_XL part1> -p <508|0> -n <0|32> -r 3 -o json -ngl 999 -ctk bf16 -ctv bf16 -fa auto",
+    "llama_profile": "rocprofv3 --kernel-trace --hip-trace --hip-graph-trace --memory-copy-trace --stats ... llama-bench ... -r 1"
+  },
+  "raw_evidence": {
+    "/tmp/qwen4exp-fresh-role-p508/role-p508_kernel_trace.csv": "3d04c20b25046b27a558b22151d384fcca0ef13174d3808eeac3c23b6ebf223c",
+    "/tmp/qwen4exp-fresh-role-p508/role-p508_hip_api_trace.csv": "25446b5605ea310a0033e50297c6d595f82ad5ea80decc899ae1f01b468b65f4",
+    "/tmp/qwen4exp-fresh-role-p508/role-p508_marker_api_trace.csv": "8cb33701b7cb99612cdabab43619b5707cf62b917a88204c2de10fe0ab9f238f",
+    "/tmp/qwen4exp-fresh-role-tg16/role-tg16_kernel_trace.csv": "c202a6ab2bb186bdefce94488dcaf9dcccf01e5f24e7f32ad23debcd3973c84a",
+    "/tmp/qwen4exp-fresh-role-tg16/role-tg16_hip_api_trace.csv": "ca1d921851bd78d888cee9559d857a5c626feba8f67d2be42fcafd4c21f48a56",
+    "/tmp/qwen4exp-fresh-role-tg16/role-tg16_marker_api_trace.csv": "58527af13fa4dca1d9fc9f8a85718f27a0ce9d13672627835c7d8e348183562f",
+    "/tmp/llama-head-fresh-p508-trace/llama-p508_kernel_trace.csv": "0b8faa416131e1703ba4ff1325511109f3dfd92e75af740a18b4950905d51712",
+    "/tmp/llama-head-fresh-tg32-trace/llama-tg32_kernel_trace.csv": "8d5ae5ff852239a9a153d88d1e123b29fc73b4ea658b6a7dfa2d210fd64c2964"
+  },
+  "decision": "Prefill remains device-dataflow bound (3.67x kernel sum; 3.22x end-to-end). Decode is 1.10x behind llama HIP and 1.59x behind Vulkan end-to-end; both device kernels (1.25x) and direct submission are material. Start with layer-2 Q5_K/Q8 prefill, then GR operation-complete decode fusion and normalized/transposed GDN decode."
+}

@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_p11_acceptance_kernel_admission",
+  "status": "blocked_below_amdahl_floor_and_verifier_prerequisite",
+  "performance_claim": false,
+  "source_artifacts": [
+    "benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-mtp-phase-census.json",
+    "benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-target-hidden-d2d-rejected.json",
+    "benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-public-deferred-verifier-rejected.json"
+  ],
+  "amdahl_declaration": {
+    "W_ms": 6590.224339015549,
+    "C_ms": 6530.592089984566,
+    "O_ms": 1.306435005972162,
+    "s": null,
+    "zero_cost_wall_reduction_percent": 0.019823832069536466,
+    "arithmetic_class": "no candidate; future acceptance/commit changes exact control and state ownership",
+    "scope": "four-category B2/tg8 host acceptance plus draft cursor repair",
+    "mechanism": "admission audit for device first-mismatch, acceptance, commit, rollback, and cursor repair",
+    "strict_fallback": "host acceptance plus serial target.step and draft.trim",
+    "overlap_exclusions": [
+      "acceptance_control and draft_commit_or_rollback are exclusive host buckets",
+      "target verification and proposal wall are excluded",
+      "device transaction and mismatch replay belong to the blocked verifier, not this owner"
+    ]
+  },
+  "measurement": {
+    "acceptance_control_ms": 0.15025006723590195,
+    "draft_cursor_repair_ms": 1.15618493873626,
+    "combined_owner_ms": 1.306435005972162,
+    "cycles": 18,
+    "owner_ms_per_cycle": 0.07257972255400899,
+    "complete_wall_reference_ms": 6590.224339015549,
+    "zero_cost_ceiling_percent": 0.019823832069536466
+  },
+  "blocked_verifier": {
+    "serial_fullsuite_seconds": 22.82073687799857,
+    "deferred_fullsuite_seconds": 26.151964343036525,
+    "penalty_ms": 3331.227465037955,
+    "penalty_over_acceptance_owner": 2549.8608425293055,
+    "every_category_regressed": true
+  },
+  "decision": {
+    "build_device_acceptance_kernel_now": false,
+    "reason": "Deleting the measured host owner saves at most 0.020% of four-category wall, while the prerequisite verifier route adds 3.331 seconds on the ten-prompt suite. Acceptance kernels cannot repair verifier economics and would optimize the wrong Amdahl owner.",
+    "unblock": "First produce an exact operation-complete target-body verifier that beats serial MTP on complete wall. Re-profile acceptance after that route changes ownership."
+  }
+}

@@ -1,5 +1,419 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Qwen4Exp Q8 expanded F32 cache: removed
+
+- Exact dequantized row-major sidecar with unchanged coltile8/row4
+  loses0.161x on attention-gate512/1024 and0.787x/0.782x shared-down.
+  Gate sidecar60MiB plus~14.8ms setup;80 exact pairs,11 tests.
+- Resources unchanged72 VGPR/512B LDS/scratch0. No production path,
+  wrapper or registry entry retained;do not repeat unchanged.
+  Recipe:`benchmarks/results/2026-09-07-framework-qwen4exp-q8-f32-cache-rejected.json`.
+
+## Qwen4Exp Q8 early wave publication: removed
+
+- Publishing each accumulator immediately after its shuffle tree instead
+  of bulk publication lowers VGPR72->64 but loses on actual Q8 attention
+  gate and shared-down weights at512/1024 rows (0.651-0.910x).
+- Eighty exact pairs,ten tests,512B LDS/scratch0 both;candidate removed.
+  No runtime flag or registry debt remains. Do not repeat unchanged.
+  Recipe: `benchmarks/results/2026-09-07-framework-qwen4exp-q8-early-publication-rejected.json`.
+
+## H256 QSA four-head production
+
+- `strict_h256_head_quad_rows_spans` shares K/V across four heads,
+  requires page256 and GQA divisible by4. Production model mode
+  `HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR=quad` is Hq24/Hkv2-only,
+  after existing page256 sparse-prefill guard. Invalid values fail closed.
+- Synthetic512/1024 leaf ratios1.033x/1.063x versus two-head candidate;
+  VGPR72->112,no LDS/scratch.23 tests pass.
+- Full state/KV gate passes six cases including all4 p4096 categories,
+  24 calls each,zero dense/decode engagement. Staged72 trajectories exact;
+  all4 long-request means improve1.010-1.016x,PP+3.571%,TG-3.531%.
+- Production bindsquad,strict0. CPU recovery penalty persists and is
+  included,not hidden. Pair1/single-head0 retained for bisection;remove
+  temporary mode chain when profile plans own head grouping.
+
+## GDN full-layer diagnostic graph cache
+
+- `scripts/qwen4exp_gdn_decode_graph_probe.py` is single-runner/c1
+  diagnostic only,not a production graph owner. It snapshots state for
+  first-use validation and charges setup in first graph arm.
+- Real advancing code/mixed trajectories exact,but warm graph~1.049s/
+  16 steps is effectively equal to eager~1.046-1.047s.
+- No default flag or runtime integration justified. Keep probe for
+  lifecycle/reference evidence;do not generalize keying/lifetimes to serving.
+
+## QSA CPU-active transition diagnostic
+
+-100ms busy interval improves decode-only timer but not charged total:
+  direct8.948s versus interval+decode8.961s. No production warm-up added.
+- Diagnostic remains explicitly cost-accounted;never export decode-only
+  gain as request speedup or tune delay to benchmark inputs.
+
+## QSA requested CPU minimum diagnostic
+
+- Policy17 floor2->4GHz accepted but early feedback remained~600MHz
+  after candidate prefill;transition penalty unchanged. Original2GHz and
+  calling-thread affinity restored. No production floor override.
+- Diagnostic helper restores on failure;requested floor is never labeled
+  an effective hardware clock lock.
+
+## QSA MWAITX request diagnostic
+
+- HSA_ENABLE_MWAITX=1 request does not eliminate early decode recovery
+  penalty;installed-runtime path engagement not proven. No production override.
+- Probe now records loaded HIP/HSA hashes and requested wait environment.
+  Do not claim env readback proves the instruction path ran.
+
+## QSA transition HIP scheduling diagnostic
+
+- Initial HIP flags already spin1;explicit1->1 did not constitute a change.
+  Yield1->2 accepted before model allocation but transition penalty persists.
+- No production HIP flag override added. Diagnostic helper preserves
+  nonscheduling flags and fails readback mismatch;disposable process scope.
+- Paired-head QSA remains default-off pending transition decision;do not
+  repeat generic spin/yield as an assumed fix without new wait-path evidence.
+
+## Qwen4Exp H256 QSA head-pair candidate
+
+- Kernel-only `strict_h256_head_pair_rows_spans`:two heads/wave,
+  page256/even GQA ratio,shared K/V loads with exact independent states.
+- Synthetic selected2051 attention at512/1024 rows wins2.544x/2.610x;
+  VGPR40->72,no LDS/scratch. No runtime flag.
+- Default-off `HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR=1` replaces only
+  page256 Hq24/Hkv2 prefill parent;dense/decode unchanged.
+  Eight full-logit/state/KV cases pass,including all four p4096 categories,
+  24 sparse calls each and zero decode. Both binders0.
+- Staged72 trajectories exact,p4096 PP+3.560% but TG-6.526%;
+  two long-request means regress. Keep default-off until decode/phase
+  interference is localized;no favorable full-suite rerun.
+  Fixed parent-root16-step flag-only probe is near-neutral (wall+0.055%/
+  +0.019%),exact state and zero candidate calls;candidate-prefill effect
+  now reproduces~0.45s extra early decode with decode flag held0.
+  Last16 steps converge;trace early kernel/host gaps before promotion.
+  Trace now shows identical29440 kernel count and981.8->976.1ms GPU
+  busy,while wall1203.1->1569.3ms. CPU execution/scheduling between
+  submissions is next;profiling changes queue ring,so no causal clock claim.
+  Unprofiled CPU accounting now tracks wall penalty (thread1.165->1.563s),
+  with zero GC/major faults. Decode-window instructions/cycles are next;
+  hardware counter access confirmed.
+  Measured user-mode instructions~3.91B/cycles~1.74B remain nearly
+  unchanged while CPU time rises. Effective CPU rate/frequency is next;
+  no large extra-work or proven thermal explanation yet.
+  CPUFreq sampling now shows candidate near600MHz for initial decode
+  versus parent~1.5GHz,then both~5.1GHz. Controlled policy/affinity
+  isolation next;do not silently change host clocks or hide transition cost.
+  CPU17-only calling-thread isolation reproduces the penalty;affinity
+  restored. Pinning alone is not a mitigation. HIP wait-policy experiment
+  remains a source-informed lead,not a production default.
+  Do not assume all QSA cost shrinks by the kernel ratio.
+
+## Qwen4Exp raw-vector square64: removed
+
+- Framework vector-staging64x64 loses to promoted128x64 on actual Q
+  projections at512/1024 rows (0.959-0.985x). VGPR160/scratch0 both.
+- Candidate removed;not the historical zbook scalar-staging comparison.
+  Do not repeat this current-host combination unchanged.
+
+## Qwen4Exp prepacked MMQ token64: removed
+
+- Independent prepacked qkv/SSM screen loses0.931-0.969x despite
+  VGPR144->112,scratch0. Candidate removed;prepacked128 remains.
+- Promoted raw-Q token64 is separate and unchanged. Do not expand its
+  scope to prepacked weights based on raw-only evidence.
+
+## Qwen4Exp raw MMQ token64 production
+
+- `mmq128_token64_q8_1_d4x3_guarded_f32_f32_out` reduces
+  token tile128->64;VGPR184->160,scratch0,exact output/repair set.
+- Large raw Q projection wins across two tensors;short Q and long-row GR
+  have mixed order results. No blanket replacement or prepacked claim.
+- Production-bound `HIPENGINE_QWEN4_EXP_MMQ_TOKEN64=1` admits only parent
+  raw-vector K2560/N12288 rows>=512. Five chunk1024 full-logit/state/KV
+  cases pass,12/48 calls,zero decode/final owners.72 trajectories exact.
+- All12 PP means improve;11 request means improve,Japanese4096 request
+  -0.183% retained under prefill-first policy. Strict binds0.
+  Keep opt-out for bisection;remove flag chain when profile plans own scope.
+
+## Qwen4Exp MMQ bank-first order: removed
+
+- Output-bank-first compute gives mixed order results despite small
+  positive1024 medians. VGPR184->192,scratch0;candidate removed.
+- Do not repeat unchanged bank/scale loop reorderings. Production
+  raw-vector schedule remains; larger architectural work still open.
+
+## Qwen4Exp MMQ output-scale hoist: removed
+
+- Hoisting16 scales across token groups triggers VGPR184->256 and
+  scratch0->1132B;operation-complete ratios0.319-0.338x.
+- Candidate removed,raw-vector production unchanged. Do not repeat this
+  hoist without a materially different accumulator/register schedule.
+
+## Qwen4Exp Q5_1 row16 publication: removed
+
+- Row16 after spill-free row publication loses0.429x/0.412x at512/1024
+  tokens,40 exact pairs. Dynamic LDS8672->16864B,VGPR96->88,scratch0.
+- Candidate removed; no model admission. Keep row8 production and do not
+  repeat unchanged row16 on the assumption that spill removal makes it faster.
+
+## Qwen4Exp GDN wave-tail normalization production
+
+- Kernel-only `qwen4exp_sigmoid_wave_norm_prefill`: original serial
+  recurrence, exact128-element normalization tree with wave-local tail.
+- Hk16/Hv48/D128 at512/1024 tokens wins1.042x/1.040x; private scratch
+  rises24->36B. Whole-prefill contribution expected small,not measured.
+- Production-bound `HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM=1` replaces only the
+  serial-register parent;21-layer prefix, tiled suffix unchanged.
+  Five chunk1024 full-state/KV cases exact,21/84 calls,zero decode.
+  Full72 trajectories exact but model timing mixed/nearzero
+  (+0.010%/+0.139%/-0.044% PP). Actual-model owner probe saves~19ms
+  at p4096 across all categories,378 calls exact/all paired means faster.
+- Strict binds0. Retain parent opt-out for bisection; remove flag chain when
+  profile plans own selection. No headline throughput speedup claim.
+
+## Qwen4Exp Q4 paired-block pipeline: removed
+
+- Two-block weight prefetch loses ~10% at512/1024 tokens,exact outputs;
+  VGPR88->112,LDS4608B/scratch0 unchanged. Candidate removed.
+- Do not repeat unchanged paired-block/full-weight caches or row retiles.
+  Production pair2 and all prior promotions remain.
+
+## Qwen4Exp Q5_1 per-row partial publication production
+
+- Production-bound `HIPENGINE_QWEN4_EXP_Q51_ROW_PUBLISH=1` selects
+  `selected_grouped_prefill_pair2_row_publish_bf16_bf16_out`
+  computes/publishes each row before the next, preserves full LDS tree and
+  register-cache weights. K640 only; scratch36->0B.
+- Synthetic routing512/1024 wins1.413x/1.523x; captured mixed512 wins1.498x.
+  Five chunk1024 model state/full-KV cases pass exactly;25/100 prefill
+  calls,zero decode/final owners. Canonical72 trajectories exact,all12
+  prefill/request cases improve;PP gains4.296%/4.732%/4.323%.
+- Strict binds0. Keep register-cache parent for bisection; remove temporary
+  flag chain when profile plans own the scoped K640 selection.
+
+## Qwen4Exp Q5_1 first-wave reduction: removed
+
+- Exact first-wave stride64/32 plus shuffle tail loses at512/1024 tokens
+  (0.809x/0.798x), despite scratch36->24B and unchanged VGPR96.
+- Candidate kernel/key/wrapper/screen/tests removed before runtime admission.
+  Register-cache production unchanged; no unchanged rescreen.
+
+## Qwen4Exp Q8 coltile paired-load candidate: removed
+
+- Full12-case A/B retains72 exact trajectories but one prefill/nine
+  request cases regress; aggregate p4096 decode -14.822%.
+- Kernel/key/selector/flag/harness routes and candidate-only tests removed.
+  Existing wave-scale production stays. Reproduce at067a9bcc0; no unchanged
+  favorable rerun. Decode slowdown cause remains unproven, not labeled thermal.
+
+## Qwen4Exp Q8 down register-weight production
+
+- Production-bound `HIPENGINE_QWEN4_EXP_Q8_DOWN_REGISTER=1` selects
+  `selected_grouped_row4_register_gemv_bf16_bf16_out`,
+  K640/128 threads, rows>=512, parent bundle only. Existing compact/mapped
+  bundled row4 remains fallback. No extra LDS or private scratch.
+- Five chunk1024 full-logit/state/KV cases pass, including compact/mapped
+  engagement and zero decode calls. Canonical72 trajectories exact, all12
+  prefill/request cases improve; PP gains0.851%/0.701%/0.647%.
+- Strict binds0. Retain the opt-out/bundle for bisection; remove temporary
+  flag coordination when profile plans own this qualified K640 selection.
+
+## Qwen4Exp router shuffle-tail: removed
+
+- Closed after mixed full-model A/B:one prefill/four request cases lose.
+  Kernel/key/flag/harness routes and candidate-only tests removed;strict
+  shared-tree tile4 stays. Reproduce at db929145c;no unchanged rescreen.
+
+## Qwen4Exp chunk allocation before profile binding
+
+- The qualified UD-Q4_K_XL gfx1151 factory allocates1024-capacity scratch
+  before the profile binder runs. Its implicit strict profile executes512;
+  explicit chunk arguments bypass this default selection. Other quant/
+  direct constructors keep512. No runtime growth after allocation.
+- `_implicit_profile_chunk_size` is temporary factory/profile coordination.
+  Replace it when runtime profile plans can convey allocation defaults
+  before construction. Preserve explicit overrides and strict512 behavior.
+- Benchmark512/1024 arms intentionally share larger scratch;do not call
+  that allocation-size neutrality. Future current-default captures must
+  explicitly select1024 until benchmark defaults are separately revised.
+
+## Qwen4Exp mapped Q8 down rollback
+
+- Production `HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN` reuses the existing
+  grouped bundled Q8 kernel only when this invocation built the Q5_K
+  row4 map,rows>=512. Token-major outputs and combine order unchanged.
+- Five full-logit/state/KV cases and canonical A/B pass;production1/strict0.
+  Remove rollback flag after next qualified down change or release window.
+  Keep map-ready guard permanently;allocated scratch is not valid ownership.
+
+## Qwen4Exp raw MMQ vector staging rollback
+
+- Production `HIPENGINE_QWEN4_EXP_Q8_MMQ_RAW_VECTOR` selects
+  `mmq128_raw_vec4_q8_1_d4x3_guarded_f32_f32_out` in existing raw-weight
+  three-plane MMQ rows>=64 only. Production1/strict0;no sidecar.
+- Five full-model invocation/state/KV cases and canonical A/B pass.
+  Remove the rollback selector after next qualified MMQ change or release
+  window;prepacked vector path and strict/scalar raw fallbacks remain.
+
+## Qwen4Exp Q4 residual WMMA diagnostic: removed
+
+- Closed September6 UTC after both raw and cooperative implementations
+  failed timing. Removed residual template branches,export/wrapper/key,
+  diagnostic harness and candidate-only tests. Original Q4 code restored
+  byte-for-byte to24934b692;all retained production paths unchanged.
+- Reproduction source20e39e32e and the residual/cooperative artifacts
+  preserve numerical findings and losses. Do not revive unchanged
+  candidates or relax production quality thresholds.
+
+## Qwen4Exp Q5_1 register weight-cache rollback
+
+- `selected_grouped_prefill_pair2_register_cache_bf16_bf16_out` is
+  production-default through `HIPENGINE_QWEN4_EXP_Q51_REGISTER_CACHE`,
+  production1/strict0. Existing folded-pair rows>=512,K640 only. It removes repeated weight
+  decoding without extra LDS, but uses96 VGPR and36B private scratch.
+- Five invocation/full-logit/state/KV cases and canonical12-case A/B pass.
+  Remove rollback selector after the next qualified Q5_1 change or release
+  window;keep original folded-pair/M1 and all smaller-row fallbacks.
+
+## Qwen4Exp QSA ordered-v2 decode rollback
+
+- Production `HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2` selects
+  `strict_ordered_three_pass_v2_spans` for c1 H256 indexed-sparse decode
+  (head_dim256, selected_count<=4096, block256, Hq24/Hkv2). Production1/
+  strict0;it rewrites the retained ordered three-pass while preserving the
+  exact arithmetic and parent operand order: warp-tree scores, exact fmaxf
+  max-scan coefficients with pointwise expf, staged-tile values with clamped
+  unconditional loads. VGPR32/40/96, scratch0.
+- Named kernel durations at clean source, cache-only build: scores
+  399.7->33.5us, coefficients176.1->14.3us, values533.0->100.7us
+  (kernel-duration evidence:
+  `2026-09-08-framework-qwen4exp-qsa-ordered-v2-kernels.json`).
+- Six full-model off/on/off logits/4-step/state/full-KV cases pass at
+  committed source with exact engagement accounting (48 sparse decode calls
+  per enabled p4096 arm, zero prefill/short-context). Canonical 12-case
+  chunk1024 A/B: 72 exact trajectories, p4096 weighted TG +14.705%
+  (arithmetic-mean-rate ratio +16.516%, per-case median +7.1..+24.8%),
+  request wall -4.535%; short-context and prefill neutral.
+- Remove the rollback selector after the next qualified QSA decode change or
+  release window; the ordered parent and serialized strict fallback remain.
+
+## Qwen4Exp MMQ vector activation staging rollback
+
+- Production `mmq128_prepacked_vec4_q8_1_d4x3_guarded_f32_f32_out`
+  preserves the prepacked three-plane chain while vectorizing LDS staging.
+  `HIPENGINE_QWEN4_EXP_Q8_MMQ_VEC4` applies only in the existing prepacked
+  MMQ path at rows>=64;production binds1,strict0. Five full-model
+  logits/state/KV cases and canonical12-case A/B pass.
+  Existing scalar-stage prepacked parent,
+  raw MMQ rollback and strict coltile fallback remain.
+- Remove the rollback selector after the next qualified MMQ change or
+  release window. Keep strict coltile and the raw-weight fallback.
+
+## Qwen4Exp Q5_K bundled row4 candidate: removed
+
+- Closed September6 UTC: all72 canonical trajectories exact, but five
+  prefill and six request-wall cases regress. Removed candidate kernel,
+  registry key, flag and harness routes; original row4 and strict fallback
+  remain. The separately retained Q8 bundle is unaffected.
+- Do not reopen unchanged bundled publication on the strength of its
+  isolated1.02x screen. Evidence:
+  `benchmarks/results/2026-09-06-framework-qwen4exp-q5k-bundle-rejected.json`.
+
+## Qwen4Exp folded Q5_1 pair-reduction rollback
+
+- `selected_grouped_prefill_pair2_fold128_pair_bf16_bf16_out` shares barrier
+  stages across folded outputs. Production
+  `HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL` applies only after fold128
+  selection and rows>=512;production binds1,strict0 after full model/A-B gates.
+- Admit only measured rows>=512;64-row timing has an adverse order stratum.
+  Keep sequential fold128 for smaller chunks and rollback.
+- Full-model invocation/logits/state/KV plus12-case A/B pass. Remove the
+  opt-out after the next qualified Q5 down change or a release window;
+  keep sequential fold128 small-row/rollback and the strict fallback.
+
+## Qwen4Exp Q8 down bundled reduction rollback
+
+- Production `selected_grouped_row4_bundle_gemv_bf16_bf16_out` preserves
+  row4 arithmetic and bundles publication.
+  `HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL` only after existing row4
+  selection, rows>=512; production binds1,strict0 after full model/A-B gates.
+- Remove the bundle opt-out after the next qualified Q8-down change or a
+  release window; keep row4 rollback, row1 small-chunk owner and strict
+  selected-GEMV fallback until then.
+
+## Qwen4Exp Q5_1 fold128 rollback
+
+- `selected_grouped_prefill_pair2_fold128_bf16_bf16_out` halves reduction
+  scratch with exact arithmetic. Production
+  `HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL` selects it only after existing
+  pair2 prefill selection and rows>=64; production binds1, strict0.
+- Full model state/KV and12-case A/B now pass. Remove the opt-out after the
+  next qualified Q5 down change or a release window; retain pair2 rollback
+  and strict M1/fallback chains for bisection until then.
+- The existing Q5 screen now supports same-layer captured counts, still with
+  synthetic activations. Those micros do not replace model admission.
+
+## Qwen4Exp Q8 down row4 rollback
+
+- `selected_grouped_row4_gemv_bf16_bf16_out` passes invocation-checked model
+  gates and canonical12-case A/B and is production for rows>=512.
+- `HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL` selects row4 only inside the
+  existing grouped-Q8 path and for measured rows>=512. Production pins1,
+  strict0. Remove the opt-out after the next independently qualified Q8-down
+  improvement or a release window; keep row1 for smaller chunks and the
+  strict selected-GEMV fallback.
+- Diagnostic `scripts/qwen4exp_q8_down_row4_screen.py` labels borrowed routing
+  counts separately from weight identity; replace with whole-model evidence
+  before claiming production gains.
+
+## Qwen4Exp tool grammar host path
+
+- Model-owned embedded-template/XML parsing replaces the generic JSON tool
+  instruction format only for Qwen4Exp. Keep other model parsers independent.
+- llguidance masks currently use full F32 D2H plus NumPy argmax. A later device
+  bitmask/argmax kernel may remove this cost, but must retain request isolation,
+  selected-token handoff, EOS/content boundaries and the same grammar language.
+- Do not revive generic JSON forced prefixes or close-repair tokens on the XML
+  route. Required/named tool choice is enforced by its grammar.
+- XML schema coverage is explicit; unsupported string/schema combinations fail
+  rather than being silently ignored. Broader XML parameter schema forms require
+  additional lexer/parser tests. Speculative/multimodal grammar support remains
+  rejected until it applies the same masks at every relevant token decision.
+
+## Qwen4Exp context capacity policy
+
+- `native_context_length` is now consumed by public memory admission, bounded
+  by artifact context metadata. Keep `qsa_dense_equivalent_max_tokens` and
+  selected-position capacity independent and unchanged.
+- Public admission uses4GiB per resident runner for scratch including current
+  MMQ sidecars, plus4GiB reserve and separately reserved vision payload. Replace
+  this conservative allowance with exact composed scratch planning before new
+  scratch/sidecar growth exceeds its envelope; never silently over-admit.
+- The unused `bf16_compressed_index_bytes_per_token` remains an estimate, not
+  the actual raw-FP32 index allocation. Remove or explicitly implement it when
+  index quantization is independently qualified; never use it to admit memory.
+- Device-position-owned QSA remains dense-regime probe-only; promotion requires
+  native sparse selection support, not raising or bypassing the2051 guard.
+- Full KV zeroing occurs on reset too. Any live-span-only clearing optimization
+  needs isolation/rollback tests; context enablement does not change clearing.
+
+## Qwen4Exp prepacked Q8 MMQ admission
+
+- Separate prepacked registry candidate retains an exact raw-Q8 fallback.
+  Production-bound `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK=1` prepares runner-owned
+  sidecars for measured GDN QKV/SSM shapes and exposes them only through the
+  bounded prefill MMQ session. Five full logits/state/KV cases and lifecycle
+  pass; full12-case72-trajectory timing improves every prefill case. Strict
+  binds0. Retain rollback through the next owner refresh and one release
+  window; then remove redundant positive experiment selection.
+- CPU reference packer lives only in the test/screen. The registered GPU
+  `weight_pack/gguf_q8_0/mmq_kmajor76` API is now byte-exact and available
+  for admission and used by runtime; do not import tests from runtime. Raw weights remain necessary
+  for decode and risk repair, so account for the full additional sidecar.
+- Keep the measured mixed512 request-wall regression0.14% and1.67GiB additional
+  memory explicit under the prefill-first retention decision. GR remains excluded
+  until an independent positive complete-chain/model gate.
+
 This file tracks cleanup work that should happen after the fast/correct path is
 proven. During optimization, temporary flags and fallback paths are useful for
 bisection; after the optimal path stabilizes, they become dispatch confusion and
@@ -19,6 +433,312 @@ should be removed or collapsed.
   experiment toggles first.
 
 ## 2026-09-06 GGUF file-type stamp switches — open
+## 2026-09-05 Qwen4Exp PF-5 GDN tile-16 prefill opt-out — promoted default
+
+- `qwen4_exp_gdn_tile16_prefill_selected` in
+  `hipengine/runtime/qwen4_exp_runner.py` makes the exact token-tile-16 owner
+  (`qwen4exp_gdn_tiled16_prefill`, Hk16/Hv32-or-48/D128, rows>=16) the
+  production default inside the existing `HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL`
+  gate.
+- `HIPENGINE_QWEN4_EXP_GDN_TILE16_PREFILL=0` (or empty/false) forces the
+  columnwarp `<4, 4>` parent for rollback and bisection; non-envelope shapes
+  always use columnwarp, and the serial strict route stays registered below
+  both.
+- Removal trigger: after the gfx1151 stable-clock closure verify (five-pair
+  same-thermal 12-case comparison) confirms the promotion, drop the flag and
+  call tile-16 unconditionally inside the colwarps gate. Keep the registered
+  columnwarp and serial strict fallbacks per `EXECUTION-PROFILES.md`.
+
+## 2026-09-04 Qwen4Exp PF-5 GDN w32 prefill variant — retained rejected lever
+
+- `qwen4exp_gdn_w32_prefill` (`hipengine_qwen4_exp_gdn_prefill_w32_f32`,
+  a `WARPS_PER_BLOCK=32` instantiation of the templated columnwarps kernel in
+  `hipengine/kernels/hip_gfx1100/linear_attn/qwen4_exp_gdn.hip`) is a measured
+  loss vs the production columnwarps `<4, 4>` owner at every shape >= 64 rows
+  (+1.6% to +6.8%, bit-exact parity; rows=16 within noise) and stays a
+  registered non-default strict variant with its exact-parity RED tests
+  (`tests/test_qwen4_exp_gdn_w32_prefill.py`). It is never selected by
+  dispatch; the default remains columnwarps `<4, 4>`.
+- Remove the variant registration, the `<32, 4>` instantiation, the host
+  wrapper, and the test file if a later campaign wants the registry back —
+  trigger: a named product decision that the w32 geometry will not be
+  revisited on gfx11 (for example, at campaign closure), or if the still-open
+  tile-16 lever lands in a form that makes the 32-warp geometry unreachable. Do not remove before that trigger: it is the only
+  device-side reproduction of the 1024-thread occupancy loss measured in
+  `benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-pf5-gdn-w32-prefill-ab.json`.
+
+## 2026-09-02 Qwen4Exp P11 compact draft output — selector closed
+
+- The public `HIPENGINE_QWEN4_EXP_MTP_COMPACT_OUTPUT` selector and resident-hidden
+  provider branch were removed after target-verifier/device-transaction work
+  failed to eliminate category loss. One-packet output reached only 1.0103x
+  aggregate with two category regressions; resident target-hidden D2D reached
+  1.0091x with the same failure. The public route is again unambiguous full
+  output plus serial exact target verification. The explicit runner-level
+  `compact_output=True` argument remains only as a focused oracle/profiling leaf
+  for the recorded rejected mechanisms; it is not selected by public generation.
+  Remove that leaf too when the P11 replay window expires or a replacement
+  device-owned proposal boundary supersedes its tests.
+
+## 2026-09-02 Qwen4Exp P9 load drop-behind
+
+- `HIPENGINE_QWEN4_EXP_LOAD_DROP_BEHIND=1` is an explicit default-off one-shot
+  serving control. It applies file `DONTNEED` only after successful device
+  ownership of non-PLE tensors; lazy PLE and validation readers are excluded.
+  Keep it only while one-shot low-RSS deployment is a supported product mode.
+  Remove the flag and branch if that mode is dropped, or replace it with a named
+  loader policy if repeated-load evidence establishes a production contract.
+  Never make it a reload-heavy default: retained controls force 13.75-15.61 GB
+  of request reads and about 6.1K major faults after load.
+
+## 2026-08-30 Qwen4Exp P1 device-driven grouped Q8_0 down
+
+- `HIPENGINE_QWEN4_EXP_Q8_0_GROUPED=1` selects the new device-driven grouped
+  Q8_0 down owner
+  (`gguf_q8_0_selected_grouped_prefill_compact_bf16_bf16_out`) that reads
+  `expert_start` on device and iterates experts via a fixed worker grid,
+  replacing the `group_expert_start` D2H copy + Python loop over 512 experts
+  (`HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA`). The strict per-expert selected
+  gemv remains the default. Do not run a promotion packet for the current
+  perf-negative owner. First replace its grid/dataflow and prove that the new
+  candidate beats strict; only after the full 450-row/task/c2/lifecycle packet
+  and paired p512/p1024/p4096 evidence pass may it become the default. Then
+  remove the `Q8_0_GROUPED` / `Q8_0_GROUPED_WMMA` experiment flags together
+  with the D2H branch. Never leave the D2H loop as the sole path.
+
+  > **Perf-negative as of 2026-08-30** — `scripts/gguf_q8_0_grouped_down_microbench.py`
+  > (layer-2 shape, 512 experts, in=640/out=2560) measured the grouped owner at
+  > 4.17/6.32/14.46 ms (sparse/dense/deep) vs strict `selected_gemv` at
+  > 0.34/1.26/4.87 ms. The grouped kernel launches `dim3(out, experts)` =
+  > 1.31M blocks with OUT_BATCH=1 and a serial expert loop (no weight reuse),
+  > so it is ~3-12x slower than the strict default. Do **not** promote it to
+  > default until a re-audited tile/grid version (weight reuse + output tiling
+  > + empty-expert skip) beats `strict_ms`; see worklog entry 20260830T202256.
+
+## 2026-09-04 Qwen4Exp PF-1 fork-b grouped selected down (T0)
+
+- `HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN=1` routes the Qwen4-exp
+  grouped-prefill Q8_0 down through
+  `gguf_q8_0_selected_grouped_gemv_bf16_bf16_out` (one block per
+  (expert, out_col) pair, weight row read once, consuming the existing
+  `group_expert_start` + `group_sorted_lanes` map). Setting the flag to `0`
+  restores the strict per-expert selected gemv. The bit-parity contract is
+  pinned by `tests/test_qwen4exp_pf1_forkb_selected_down.py`.
+- Promotion review resolved (2026-09-04): a committed one-process,
+  one-residency ABBA gate measured the combined PF-1/PF-3 package at
+  **+3.13%/+3.09%/+2.51% prefill** for p512/p1024/p4096, with all 12 cases
+  positive and all 72 measured outputs exact across modes. Named production
+  now binds this flag to `1`; strict binds `0`. Retain the opt-out and strict
+  owner for one release checkpoint, then remove the process-global PF-1 bridge
+  if no rollback uses it. The legacy `Q8_0_GROUPED`/`Q8_0_GROUPED_WMMA` flags
+  remain governed by their own entry. Evidence:
+  `benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-halo-pf13-production-refresh.json`.
+- The same packet promotes
+  `HIPENGINE_QWEN4_EXP_PROFILE_Q5_1_DOWN_M1=1` for production and keeps `0`
+  for strict. After the same release checkpoint, replace this process-global
+  binder bridge with direct profile/registry resolution while preserving
+  `selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out`
+  as the registered strict fallback.
+
+## 2026-08-31 Qwen4Exp P1 layer-2 grouped Q5_K
+
+- `HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL=1` now changes only the layer-2
+  Q5_K/Q5_K grouped-WMMA route under the stacked production composition; Q4_K
+  layers resolve through their independently owned exact/production paths. A
+  durable p508 trace and 20 category-balanced p512 pairs show a 4.21x layer-2
+  role contraction and about 5% complete-prefill win, but the complete profile
+  gate rejects it: prefill-last mean KL is 0.001179 > 0.001. Keep the flag
+  default-off and remove this candidate selector when a materially new exact/T1
+  Q5_K route gets its own selector or at campaign cleanup, whichever comes
+  first. Do not leave the ambiguous broad flag as a latent production route.
+  Retain the strict selected Q5_K gemv chain as fallback.
+
+## 2026-08-31 Qwen4Exp P3 Q8 MMQ attention-gate scope
+
+- `HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE=1` adds the omitted
+  K2560/N6144 GDN attention-gate shape to the existing guarded F32 Q8 MMQ
+  policy. It wins p508 and passes numerical scopes but is production-rejected:
+  candidate state repeat 1 differs from repeats 2–3 on the first prompt. Both
+  strict and named production bind it off. Remove the flag after MMQ warmup/
+  correction state is localized or at P3 cleanup; never promote by ignoring the
+  first same-schedule run. Exact raw-Q8 coltile8/rowbatch4 remains fallback.
+
+## 2026-08-31 Qwen4Exp P2 exact grouped scheduling screens
+
+- Temporary expertgrid128, Q4 output8, Q5_1 output16, and Q4 team2 selectors
+  were removed after exact but neutral/regressive complete-p508 screens. Keep
+  the incumbent output4/output8 expertgrid64 owners. Do not add another env
+  selector for this schedule family without a materially new data-reuse
+  mechanism; if such a mechanism lands, give it one scoped candidate selector
+  and remove that selector immediately after admission/rejection.
+
+## 2026-08-29 Qwen4Exp late-layer production prefill
+
+- The named production manifest now owns `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL`,
+  `HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL` (layers 32–47), and
+  `HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL` (layers 35–47). These process-global
+  env values are internal binder bridges, not independent public profiles;
+  strict binds them off and route checks fail closed even when workspaces were
+  allocated earlier in the process. Remove the env transport once resolved
+  profile state is request-local. Retain exact coltile-Q8 and grouped Q4/Q5
+  fallbacks; the Q8 (320,10240) hc-down and K%256!=0 shapes remain strict.
+- `HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL` and
+  `HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS` were superseded for the named production
+  profile by the faster admitted MMQ stack, but `PRODUCTION_MOE_PREFILL` is
+  re-admitted 2026-08-29 as the certified transport for the WMMA-MoE27
+  suffix and now owned by the named production profile manifest
+  (`3b7a0644…`, see
+  `benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-wmma-moe27-production.json`).
+  The binder keeps the env transport as the request binding surface; fold it
+  into request-local profile state together with the other Qwen4Exp bridges
+  and retain the registered strict-owner fallbacks.
+- `HIPENGINE_QWEN4_EXP_Q4_DP4A64{,_LAYERS}` remains an internal named-profile
+  bridge for calibrated decode layers `0,2,5,6,8,9,10,11,13–47`. Remove the
+  process-global transport with the MMQ bridges once Qwen4Exp profile state is
+  request-local; retain logical128/t64 strict Q4 fallback.
+
+## 2026-08-29 Qwen4Exp per-layer MoE graphs
+
+- `HIPENGINE_QWEN4_EXP_MOE_GRAPH=0` restores eager MoE despite the gfx1151
+  package default. Remove the env override after c1/c2 cancellation, reset,
+  repeated-graph, and teardown soak; retain `MoeGraphCache` fail-closed eager
+  fallback and keep stateful GDN/QSA outside graphs.
+
+## 2026-08-28 Qwen4Exp native c2 runner pool
+
+- `Qwen4ExpResidentServingRunner` provides request-owned c2 residency and
+  scheduler-native stream events while invoking one request transition at a
+  time inside each resident-loop tick. Collapse the runner pool into packed
+  c-aware kernels only after a complete exact c2 performance packet proves a
+  gain; do not relabel the current functionality result as native batch math.
+- The primary generator runner is reused as one pool row and a second runner is
+  allocated lazily/eagerly by resident prepare. Remove the dedicated pool once
+  Qwen4Exp owns a multi-slot state/KV slab; preserve shared-once weights/PLE.
+
+## 2026-08-28 Qwen4Exp bounded general multimodal
+
+- `Qwen4ExpVisionRunner` preallocates at most 256 patch tokens per temporal pair
+  and public multimodal generation remains capped at 1K. Replace the
+  correctness-first one-thread vision attention and remove this cap only after
+  general-grid Transformers parity plus memory/admission gates pass at larger
+  shapes.
+- HTTP multimodal currently accepts inline bounded PNG data URLs only and is
+  non-streaming `n=1` without tools/session/continuation. Remove the dedicated
+  chat branch after the normal request/batcher/stream owner carries typed media,
+  request cancellation, exact token accounting, and safe remote-media policy.
+
+## 2026-08-28 Qwen4Exp exact raw-Q8 prefill tiling
+
+- `HIPENGINE_QWEN4_EXP_RAW_ROWBATCH` defaults to `32` and
+  `HIPENGINE_QWEN4_EXP_RAW_VARIANT` defaults to `coltile8`, selecting exact
+  coltile8/rowbatch4 for raw Q8_0 FP32 projections. `coltile` restores the
+  preceding coltile4/rowbatch8 owner. Remove both flags and the losing geometry
+  ladder after short-context serving/graph soak; keep the registered scalar
+  strict fallback.
+- `HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID` defaults to `64`, selecting exact
+  fixed-worker Q4_K/Q5_1 grouped kernels. `0`, `q4`, and `q5` isolate rollback
+  and family attribution. Remove the flag plus full-512-expert launch wrappers
+  after serving/cancellation/graph soak; retain direct selected primitives as
+  the strict unfused fallback.
+
+## 2026-08-27 Qwen4Exp exact grouped Q5_1 output batching
+
+- `HIPENGINE_QWEN4_EXP_Q5_1_OUT8` defaults on and batches eight adjacent output
+  columns sequentially per exact grouped-Q5_1 CTA. Remove the flag and output1
+  wrapper after natural 64K plus serving/cancellation/graph soak.
+
+## 2026-08-27 Qwen4Exp exact grouped Q4_K output batching
+
+- `HIPENGINE_QWEN4_EXP_Q4_OUT4` defaults on and batches four adjacent output
+  columns sequentially per exact grouped-Q4 CTA. Remove the flag and output1
+  wrapper after natural 64K plus serving/cancellation/graph soak.
+
+## 2026-08-27 Qwen4Exp exact grouped Q4_K bisection
+
+- `HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4` defaults on for the exact row-batched
+  gate/up path. `HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4_ALL=0` restricts it to the
+  preceding Q5_1-down admission for bisection; default-on also covers Q8_0-down
+  layers. Remove both flags and direct selected gate/up + gather fallback after
+  natural 16K/64K and serving/cancellation/graph soak.
+
+## 2026-08-27 Qwen4Exp batched QSA selection bisection
+
+- `HIPENGINE_QWEN4_EXP_QSA_BATCHED_SELECTION` defaults on for exact chunk-level
+  paged scoring and radix selection. Remove the flag and scalar prompt loop
+  after natural 16K/64K plus serving/cancellation/graph soak; c1 device
+  selection remains the strict decode fallback.
+
+## 2026-08-27 Qwen4Exp wave32 H128 sparse-attention bisection
+
+- `HIPENGINE_QWEN4_EXP_QSA_WAVE32` defaults on for the promoted production H128
+  sparse-attention route. Remove the flag and old dispatch branch after natural
+  16K/64K, cancellation, serving, and graph-repeat soak; retain the registered
+  strict spans kernel as the execution-profile fallback.
+
+## 2026-08-27 Qwen4Exp exact chunked prefill bisection flags
+
+- `HIPENGINE_QWEN4_EXP_EXACT_CONV_PREFILL` and
+  `HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN` default on for the promoted exact
+  chunked path. Public runner/generator chunk ownership is now 256 after exact
+  64/128/256/512 screening; constructors retain 64 as rollback. Remove both
+  flags, the old bulk-Conv/direct-down alternatives, and losing chunk policy
+  after public serving, rollback, cancellation, and long-context repeatability
+  gates stabilize; keep `prefill_serial()` as the registered strict fallback.
+
+## 2026-08-27 Qwen4Exp grouped prefill performance candidates
+
+- Qwen4Exp grouped Q4/Q5/Q8 MoE, Q4 tile, and Q8 tile candidates are
+  controlled by `HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL`,
+  `HIPENGINE_QWEN4_EXP_Q5_1_WMMA`,
+  `HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA`,
+  `HIPENGINE_QWEN4_EXP_Q4_TILE_M/N`, and
+  `HIPENGINE_GGUF_Q8_0_WMMA_TILE_M/N`. They raise warm repeated-token 512
+  prefill from 8.67 to 211.76 tok/s and corrected natural-suite wall by 6.60x,
+  but still fail the complete production numerical gate after the PLE ownership
+  fix on 18 final rows, and fail decisively on the binding 687-row packet
+  (mean/p95/max KL 0.01280/0.05553/0.82237; top-1 94.47%).
+  Keep them default-off for bisection while strict-compatible arithmetic and a
+  Q4 replacement layout are developed. Promote and collapse the duplicate
+  direct/grouped routes only after the full category+heldout mean/tail/max,
+  per-category top-1, determinism/isolation, BF16-relative, task, and lifecycle
+  gates pass; otherwise remove the candidates after the campaign.
+- `HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL{,_LAYERS}` is now an internal named
+  production-profile bridge selecting certified global layers 35–47. Strict
+  binds it off; the all-layer and suffix-34 candidates are measured failures.
+  Remove the process-global transport with the MMQ/DP4A bridges when profile
+  state is request-local; retain `qwen4exp_sigmoid_strict_prefill` fallback.
+- `HIPENGINE_QWEN4_EXP_Q5_1_WAVE64` selects a 64-thread decode reduction that
+  improves warm decode by 6-8% but fails production mean/p95 KL
+  (`0.002565/0.007202`). Keep it default-off only for exact-repack/reduction
+  bisection; remove it when that successor lands or at campaign closure.
+
+## 2026-08-27 Qwen4Exp bounded chunked prefill
+
+- `Qwen4ExpGGUFResidentModelRunner.prefill()` remains the strict serial default;
+  `prefill_chunked()` is a bounded size-2 candidate and the logits comparator
+  exposes `--prefill-mode` for qualification. Remove the duplicate public
+  methods by promoting chunked prefill only after the complete multi-prompt
+  production numerical/task gate passes, including category/shape tails and
+  2,052+ QSA transition coverage. If that gate fails, remove the candidate
+  path and retain only the serial strict owner. A nine-token real Q4-XL smoke
+  passes (`KL_teacher=0.00510`, `KL_serial=0.00410`, top-1 exact, teardown
+  clean) at 1.210 s versus 2.193 s serial; size 9 remains rejected at
+  `KL_serial=0.09754` despite a faster 0.801 s wall.
+
+## 2026-08-27 Qwen4Exp scalable device top-512 selection
+
+- The strict Qwen4Exp runner currently downloads one FP32 block-score row per
+  QSA layer and performs exact NumPy lexicographic top-512 selection. This
+  replaces the reduced-fixture single-thread device selector, whose
+  `O(blocks * budget²)` scan is not viable at 262K. Remove the host score copy,
+  host selection, and their device metadata mirrors only after a scalable exact
+  GPU selector matches Transformers/llama indices at 2,052/4K/16K/64K/262K,
+  preserves lower-start tie behavior, passes non-contiguous/cancellation/
+  rollback isolation, and improves complete-model wall time. Keep the current
+  host route as strict fallback until that gate; affected owner:
+  `hipengine/runtime/qwen4_exp_runner.py`.
+
+## 2026-08-26 speculative-MTP default capability migration
 
 - The initial audit found two gfx1151 switches that choose behavior from the header
   (`general.file_type`) instead of the file's actual per-tensor format mix:
@@ -5424,3 +6144,160 @@ run justifies each:
   degraded behavior.
 
 - [2026-09-09] TimesFM `_Buffers.scores` is no longer read by the FP16 attention path (WMMA flash kernel replaced the scores GEMM + softmax chain; 2026-09-09 flash-attn unit). Remove the allocation and its `f16()` sizing once the FP32 strict path also stops using it or a strict-path replacement is registered.
+## PF-1d MMQ tile template (2026-09-02)
+
+- `gguf_q8_0_mmq_prefill.hip` keeps the tile-parametrized
+  `q8_0_raw_mmq_tile_q8_1_d4_kernel<MMQ_M_T, MMQ_N_T, ...>` plus
+  `launch_mmq_tile<>`; only the `<128,128>` instantiation is registered.
+  Remove the template parameters (fold back to constants) if no second tile
+  variant is admitted by the end of PF-1e. Measured losers m64x64 (0.89x) and
+  m32n128 (0.35x) were removed after rejection; the cross-variant bit-parity
+  gate in `tests/test_qwen4exp_pf1_dense_parity.py` is the readmission path.
+
+## Q8 MMQ `policy.planes` is variant-scoped (2026-09-03)
+
+- `Q8MMQPrefillPolicy.planes` (`gguf_q8_0_mmq_prefill.py:63`) is consulted only
+  for the `gemv_f32_f32_out` / `prefill_f32_f32_out` variants
+  (`hipengine/runtime/gguf_linear.py:5883`); `prefill_bf16_bf16_out` is
+  hard-wired to `d4x3` at line 5871. A gate that flips `planes` therefore
+  measures nothing on shapes that dispatch the BF16 variant, which is how the
+  18-prompt reconciliation run produced trajectories bit-identical between
+  `planes=2` and `planes=3` on the two prompts that *did* engage the route
+  (`2026-09-03-...-pf1-admission-suite-reconciliation.json`).
+- **Not yet traced.** The mechanism above is inferred from dispatch source, not
+  confirmed by `rocprofv3 --kernel-trace`. Confirm or refute it before any
+  further plane-family work.
+- **Removal trigger:** the d4x3 chain is final for this family (PF-1d closed
+  rejected). If no plane candidate is readmitted, delete the `planes` field and
+  the `d4x2` dispatch branch together with the `mmq128_prefill_q8_1_d4x2_*`
+  registrations, so no knob remains that silently applies to a subset of
+  variants. If a candidate is readmitted, make `planes` bind on every Q8 MMQ
+  variant or rename it to state its scope.
+
+
+
+## PF-4 lever 2 fused combine is opt-in pending valid A/B (2026-09-04)
+
+- `hipengine/runtime/qwen4_exp_runner.py` keeps the fused
+  `weighted_lanes_sum_shared_gate_combine_batch_out_bf16_f32w` grouped-prefill
+  path reachable only via `HIPENGINE_QWEN4_EXP_FUSED_COMBINE=1`; the default
+  is the unfused `weighted_lanes_sum` + `shared_gate_combine` chain. The flag
+  was originally the inverse (`HIPENGINE_QWEN4_EXP_UNFUSED_COMBINE=1` gating a
+  fused default) before a process-separated diagnostic measured pp −1.69%
+  (all 12 cases negative). That run cannot close the lever under the required
+  one-residency protocol.
+- The fused kernel and its registry entry
+  (`KernelKey("hip_gfx1100", "weighted_lanes_sum+shared_gate_combine", <quant>, "out")`)
+  stay bit-exact and pinned by `tests/test_qwen4_exp_pf4_lever2_fused_combine.py`.
+- **Removal trigger:** repeat the whole-model comparison in one process and
+  one model residency. Promote only if that run is exact and non-regressive;
+  otherwise delete the fused kernel, its wrapper/registry entry, the
+  `HIPENGINE_QWEN4_EXP_FUSED_COMBINE` gate, and the lever-2 tests once PF-4 is
+  formally closed and no follow-up candidate reuses the fused chain. Keep the bit-exact-parity test file if the unfused chain ever changes
+  arithmetic.
+
+## Qwen4Exp Q5_K grouped row4 candidate (2026-09-05)
+
+`selected_grouped_row4_gemv_bf16_bf16_out` is now selected by the production
+binder through `HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL`; strict binds zero.
+The clean Framework all-category gate retained the path. Keep the post-binder
+opt-out for rollback and the reproducible A/B harness; replace it with direct
+manifest-driven selection when runtime profile dispatch owns this boundary.
+Always retain selected-GEMV strict fallback.
+
+## Qwen4Exp H256 wave sparse rows (2026-09-05)
+
+Production selects page256 wave prefill through
+`HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL=page256`; strict binds zero.
+The owner accepted the measured hot-decode tradeoff on 2026-09-05.
+Keep the score-product register boundary: removing it changes arithmetic
+under the current compiler. Preserve `strict_rows_spans` and the separate
+ordered decode parent. Retain the post-binder opt-out for reproducing the
+tradeoff and rollback; remove the generic-wave experimental selector when
+no longer needed for bisection. Decode performance remains open work.
+
+## Qwen4Exp Q4 bundled publication (2026-09-05)
+
+Production selects bundled Q4 publication through
+`HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL=1`; strict binds zero. Its complete
+12-case timing and real-model state gates pass correctness, and the owner
+accepted the measured decode tradeoff. Keep the old exact grouped owner as
+strict fallback. Replace the environment selector with direct profile-owned
+selection when that runtime boundary is migrated; keep rollback capability.
+
+## Qwen4Exp Q5_1 output-pair reuse (2026-09-05)
+
+Production selects pair2 through `HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL`,
+guarded by rows>=64 and registry capability; strict binds zero. The full
+12-case A/B retains a3.73-4.17% prefill win with exact outputs. Short rows
+and the post-binder opt-out keep M1; strict keeps its original exact parent.
+Remove the environment selector when this runtime dispatch moves directly
+under the manifest; retain rollback and registered strict fallbacks.
+
+## Qwen4Exp register-state serial GDN rollback
+
+- Production binds `HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL=1`; strict binds0.
+  The registry/shape-guarded serial branch uses Hk16/Hv48/D128 and rows>=2.
+  Suffix arithmetic and decode routes are unchanged.
+- Full72-trajectory admission passes exactly; prefill improves9.50-10.55% and
+  every request wall improves3.28-6.79%. Decode p4096 loses3.63% amid drift.
+  Retain the win under the owner's prefill-first direction and optimize decode
+  next; do not hide the adverse phase rows or claim thermal causality.
+- Keep the registered strict serial fallback. Remove the environment selector
+  when dispatch is owned directly by the manifest and rollback needs expire.
+- Resource review accepts256 VGPR/24-byte scratch with the measured whole-model
+  win. Avoid the rejected per-column/every8 scheduling barriers.
+
+## Qwen4Exp Q4 shared-activation output-pair admission
+
+- `selected_dual_grouped_pair2_bf16_bf16_out` is retained after exact
+  primitive/actual-weight gates and1.345-1.440x tokens512 gate/up+SiLU wins.
+  Full state/KV/logit and72-trajectory A/B admission now pass.
+- Production selects pair2 for supported rows>=64; retain the registered
+  bundled/serial strict fallback. Do not reopen the rejected independent-team
+  or wider serial-output sweeps: this path shares each activation load.
+- Selector `HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL` is production1/strict0,
+  guarded by rows>=64, supported K and registry availability.
+  Remove the environment selector when the admitted profile owns dispatch
+  directly and rollback needs expire; retain smaller-row/bundled fallbacks.
+
+## Qwen4Exp Q4 larger row-batch screen rejected
+
+- RB16/32 template instantiations and temporary wrappers/registry selectors
+  are removed after all12 masked uniform/skewed x tokens512/1024/2048
+  gate/up+SiLU cells lose to production RB8.
+- Keep the harness's inferred weight-pass counts as diagnostic metadata;
+  never label them measured DRAM/MALL traffic. Register counts grow88->120/176,
+  with zero scratch in observed traces.
+- Reopen only for a different resource/reuse mechanism, not the same template
+  enlargement. No persistent candidate flag or default change remains.
+
+## Qwen4Exp Q8 wave-scale rollback
+
+- Separate registered `coltile8_rowbatch4_wave_scale_f32_f32_out` is retained
+  after exact F32/CPU gates and actual attention-gate/shared-down wins.
+  These wins are conditioned on symmetric256MiB device-fill preconditioning.
+  Unconditioned attention-gate timings reverse by order; that adverse evidence
+  remains. Normal-model full72-trajectory admission now passes exactly, with
+  all12 prefill and request-wall results positive.
+- Preserve original coltile as strict fallback. Remove candidate-only
+  dispatch experimentation once admitted or rejected; do not claim SGPR
+  instruction counts without inspecting generated code.
+- Model-admission flag `HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE=1` selects a
+  scoped prefill geometry with registry-checked fallback. Production1/strict0;
+  MMQ/WMMA and decode stay unchanged. Remove the flag after admission/rollback
+  needs end, or remove the candidate if the actual-model gate loses.
+
+## Qwen4Exp GR wave-scale production rollback
+
+- Separate registered GR up wave-scale composite is promoted after exact
+  gate/mixed-output, full logits/state/KV and all72 normal-model trajectories.
+  All12 cases improve prefill and request wall (weighted prefill+0.34-0.44%).
+- Scope model admission to existing rows>256 fused GR use; rows64 microbench
+  has small order reversals and is not a small-row promotion basis.
+- Keep parent composite and unfused chain as strict fallbacks.
+- Production-bound `HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE=1` selects the registered
+  candidate only inside existing rows>256/four-branch fused GR use. Parent
+  and unfused fallback selection remain intact; strict binds0. Remove the
+  positive selector after one release window and a defaults-only refresh,
+  retaining explicit rollback only while bisection needs it.

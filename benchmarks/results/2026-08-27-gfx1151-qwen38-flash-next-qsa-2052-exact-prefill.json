@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "date": "2026-08-27",
+  "status": "accepted_exact_sparse_transition",
+  "scope": "Qwen4Exp promoted exact chunk64 prefill at first selected-QSA token",
+  "host": {"identity": "zbook", "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8", "gpu": "AMD Radeon 8060S Graphics", "arch": "gfx1151", "device_bytes": 133143986176},
+  "model": {"id": "Qwen/Qwen3.8-Flash-Next", "quant": "Unsloth UD-Q4_K_XL", "quant_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5"},
+  "workload": {"prompt": "2052 repetitions of tokenized ' a'", "tokens": 2052, "transition": "first selected-QSA row", "prefill_chunk_size": 64, "llama_batch": 2052},
+  "timing_seconds": {"serial": 370.56543670399697, "exact_chunk64": 136.12900741900376, "speedup": 2.722164},
+  "prior_size2": {"chunked_seconds": 245.855, "exact_chunk64_reduction_percent": 44.630},
+  "correctness": {
+    "teacher_to_serial_kl": 0.00007649459242953562,
+    "teacher_to_chunk64_kl": 0.00007649459242953562,
+    "serial_to_chunk64_kl": 0.0,
+    "serial_to_chunk64_max_absolute_logit_error": 0.0,
+    "teacher_top1": 264,
+    "serial_top1": 264,
+    "chunk64_top1": 264,
+    "top1_agreement": true
+  },
+  "memory": {"tracked_peak_bytes": 82807061104, "tracked_after_close_bytes": 0, "tracked_after_close_allocations": 0, "physical_free_after_close_bytes": 130348756992},
+  "command": "uv run python scripts/qwen4_exp_compare_logits.py /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --prompt-file /tmp/qwen4exp-2052-a.txt --context 2052 --llama-batch 2052 --prefill-mode both --prefill-chunk-size 64 --json-out /tmp/qwen4exp-long-2052-exact64.json",
+  "decision": {"passed": true, "promoted_path_retained": true, "reason": "first sparse-QSA boundary is bit-exact to serial, llama gate passes, wall improves, teardown is clean"}
+}

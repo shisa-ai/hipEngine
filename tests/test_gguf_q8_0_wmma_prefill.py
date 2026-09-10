@@ -146,6 +146,15 @@ def test_gguf_q8_0_wmma_prefill_default_tiles_match_paro_heuristic() -> None:
         assert tn in {16, 32}
 
 
+def test_gguf_q8_0_wmma_prefill_tile_override(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_Q8_0_WMMA_TILE_M", "64")
+    monkeypatch.setenv("HIPENGINE_GGUF_Q8_0_WMMA_TILE_N", "32")
+    assert _default_tiles(rows=512, in_features=2048, out_features=8192) == (64, 32)
+    monkeypatch.delenv("HIPENGINE_GGUF_Q8_0_WMMA_TILE_N")
+    with pytest.raises(ValueError, match="requires both"):
+        _default_tiles(rows=512, in_features=2048, out_features=8192)
+
+
 def test_gguf_q8_0_wmma_prefill_wrapper_validates_contract() -> None:
     """Wrappers reject invalid shapes/tiles before allocating any GPU work."""
 

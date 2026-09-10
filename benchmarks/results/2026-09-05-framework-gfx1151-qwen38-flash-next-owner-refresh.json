@@ -1,0 +1,1028 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_framework_owner_refresh",
+  "date": "2026-09-05",
+  "status": "accepted_diagnostic_profile",
+  "performance_claim": false,
+  "raw_sha256": {
+    "/tmp/qwen4exp-framework-20260905-owner-warm-p512.json": "a791348f6d1bf4001433f3b60f71d309fa36c4e93ec9df2da0f93a1bb75ec89d",
+    "/tmp/qwen4exp-framework-20260905-owner-warm-p4096.json": "9ac8a42b85b5f0014821279aca1d9389e36edfd99f5160790210d5c95d03898b",
+    "/tmp/qwen4exp-framework-20260905-owner-profile-p512.json": "ee62774747ce1bd68bb176035af6eff51f273db59213cfdd9e267e7b586daa71",
+    "/tmp/qwen4exp-framework-20260905-owner-profile-p4096.json": "3ce966ab96d1b3d6152120aa99925118ff3a0902e22f792ae00d2e713ee2e434",
+    "/tmp/qwen4exp-framework-20260905-fp8-capability-smoke.json": "015247d4bac92fa4715f601eefb2f152c7f247270288d79ed378e507fe625e11",
+    "/tmp/qwen4exp-framework-20260905-owner-trace-p512/gfx1151/2054650_kernel_trace.csv": "46bfe5e7fd719023ec618bb04aab1baa5a1d9ca79ad73c5c1999dbed193e26ab",
+    "/tmp/qwen4exp-framework-20260905-owner-trace-p4096/gfx1151/2059531_kernel_trace.csv": "f55c692b9de48bcec7da498f4a34542a77ef46ede756c87d1df8fd27499c3f86"
+  },
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "cf9c559203f66680a28ae3bf2cbd3b8e897200a5",
+    "tracked_clean": true
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "model": {
+    "repo": "unsloth/Qwen3.8-Flash-Next-GGUF",
+    "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+    "variant": "UD-Q4_K_XL",
+    "total_bytes": 111334654784,
+    "files": [
+      {
+        "path": "UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+        "bytes": 10946624,
+        "sha256": "4448186216b3af4cc558bbce2c3213f01608f8f8b2e5267a9767971dd3ec8082"
+      },
+      {
+        "path": "UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+        "bytes": 49859583136,
+        "sha256": "3f342f1c1580473f1ee94ddd5b28206e8c07a70fa1a366f59d1d6c922919a6c9"
+      },
+      {
+        "path": "UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00003-of-00004.gguf",
+        "bytes": 49376141504,
+        "sha256": "56758f40269cad5cd9b0d3d6fbae0f40f6d5be6de49e4ab392dbe83157d9cbd3"
+      },
+      {
+        "path": "UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00004-of-00004.gguf",
+        "bytes": 12087983520,
+        "sha256": "753bda48b98ba4f1636134a90a967de1b2d3908a236c026e464777342e53510a"
+      }
+    ],
+    "all_hashes_verified": true,
+    "kv_type": "BF16"
+  },
+  "fixture": {
+    "path": "benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+    "sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "prompt_tokens": [
+      512,
+      1024,
+      4096
+    ],
+    "canonical_protocol_decode_transitions": 128,
+    "measured_decode_transitions": 0,
+    "measured_case_ids": ["code-p512", "code-p4096"]
+  },
+  "profile": {
+    "requested": "production",
+    "manifest_sha256": "86e5c619d932ca7fe6e0edfd4eb524c54e6a678defc9d7d5546f847d351ab7a3",
+    "strict_manifest_sha256": "0499701275d719398a1426a5922768394045f0b23b427c0b8dd7e4ee134bc92b",
+    "fell_back_to_strict": false
+  },
+  "execution": {
+    "cwd": "/home/lhl/hipEngine",
+    "python": "/home/lhl/hipEngine/.venv/bin/python",
+    "environment": {
+      "LD_LIBRARY_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib",
+      "HIPENGINE_HIP_ARCH": "gfx1151"
+    },
+    "script_directory": "scripts",
+    "profiler": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/bin/rocprofv3",
+    "profiler_arguments": [
+      "--kernel-trace",
+      "--hip-trace",
+      "--marker-trace",
+      "--output-format",
+      "csv",
+      "-d",
+      "/tmp/qwen4exp-framework-20260905-owner-trace-p{shape}",
+      "--"
+    ],
+    "prefill_chunk_size": 512,
+    "warmups": 1,
+    "normal_repetitions": 3,
+    "profile_repetitions": 1
+  },
+  "cases": [
+    {
+      "case": {
+        "id": "code-p512",
+        "category": "code",
+        "prompt_tokens": 512,
+        "prompt_token_ids_sha256": "4ea99919370c0cc80a798432e0985f19d71beeecf9b6d486cb68eb16c58159b7"
+      },
+      "wall_seconds": [
+        4.3072182149626315,
+        4.296525924932212,
+        4.313580767950043
+      ],
+      "wall_summary": {
+        "count": 3,
+        "sum": 12.917324907844886,
+        "mean": 4.305774969281629,
+        "median": 4.3072182149626315,
+        "min": 4.296525924932212,
+        "max": 4.313580767950043,
+        "tok_s": 118.91006930290683
+      },
+      "profile_wall_seconds": [
+        4.348634005989879
+      ],
+      "commands": {
+        "warm": [
+          "qwen4exp_profile_gap.py",
+          "--model-root",
+          "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+          "--mode",
+          "prefill",
+          "--case-id",
+          "code-p512",
+          "--repetitions",
+          "3",
+          "--compiler-version-file",
+          "/tmp/hipengine-hipcc-version.txt",
+          "--require-cached-build",
+          "--output",
+          "/tmp/qwen4exp-framework-20260905-owner-warm-p512.json"
+        ],
+        "profile": [
+          "qwen4exp_profile_gap.py",
+          "--model-root",
+          "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+          "--mode",
+          "prefill",
+          "--case-id",
+          "code-p512",
+          "--repetitions",
+          "1",
+          "--profile",
+          "--role-markers",
+          "--compiler-version-file",
+          "/tmp/hipengine-hipcc-version.txt",
+          "--require-cached-build",
+          "--output",
+          "/tmp/qwen4exp-framework-20260905-owner-profile-p512.json"
+        ]
+      },
+      "logits_sha256": "e9483d7456ed2643377c6d9701231a99fd6e06ebb2e88d86683ada03cec89c99",
+      "profiled_logits_exact": true,
+      "lifecycle": {
+        "after_warmup": {
+          "current_allocated_bytes": 83425335396,
+          "peak_allocated_bytes": 83425335396,
+          "total_allocated_bytes": 83425335396,
+          "total_freed_bytes": 0,
+          "active_allocations": 1645,
+          "peak_allocations": 1645
+        },
+        "after_measurement": {
+          "current_allocated_bytes": 83425335396,
+          "peak_allocated_bytes": 83425335396,
+          "total_allocated_bytes": 83425335396,
+          "total_freed_bytes": 0,
+          "active_allocations": 1645,
+          "peak_allocations": 1645
+        },
+        "after_close": {
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 83425335396,
+          "total_allocated_bytes": 83425335396,
+          "total_freed_bytes": 83425335396,
+          "active_allocations": 0,
+          "peak_allocations": 1645
+        },
+        "steady_allocation_growth": 0,
+        "steady_allocated_byte_growth": 0,
+        "passed": true
+      },
+      "profile_lifecycle": {
+        "after_warmup": {
+          "current_allocated_bytes": 83425335396,
+          "peak_allocated_bytes": 83425335396,
+          "total_allocated_bytes": 83425335396,
+          "total_freed_bytes": 0,
+          "active_allocations": 1645,
+          "peak_allocations": 1645
+        },
+        "after_measurement": {
+          "current_allocated_bytes": 83425335396,
+          "peak_allocated_bytes": 83425335396,
+          "total_allocated_bytes": 83425335396,
+          "total_freed_bytes": 0,
+          "active_allocations": 1645,
+          "peak_allocations": 1645
+        },
+        "after_close": {
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 83425335396,
+          "total_allocated_bytes": 83425335396,
+          "total_freed_bytes": 83425335396,
+          "active_allocations": 0,
+          "peak_allocations": 1645
+        },
+        "steady_allocation_growth": 0,
+        "steady_allocated_byte_growth": 0,
+        "passed": true
+      },
+      "role_coverage_pct": 100.0,
+      "kernel_rows": 3135,
+      "roles": [
+        {
+          "name": "moe:layers.*.expert_gate",
+          "ms": 2401.686812,
+          "rows": 805,
+          "symbols": 24
+        },
+        {
+          "name": "gdn:layers.*.attn_qkv",
+          "ms": 488.648691,
+          "rows": 123,
+          "symbols": 5
+        },
+        {
+          "name": "linear:layers.*.attn_gate",
+          "ms": 228.996436,
+          "rows": 36,
+          "symbols": 1
+        },
+        {
+          "name": "linear:layers.*.attn_qkv",
+          "ms": 202.888436,
+          "rows": 144,
+          "symbols": 4
+        },
+        {
+          "name": "gr_read:layers.*.hc_ffn_down",
+          "ms": 168.329457,
+          "rows": 144,
+          "symbols": 3
+        },
+        {
+          "name": "gr_read:layers.*.hc_attn_down",
+          "ms": 165.557829,
+          "rows": 144,
+          "symbols": 3
+        },
+        {
+          "name": "linear:layers.*.ssm_out",
+          "ms": 112.13868,
+          "rows": 144,
+          "symbols": 4
+        },
+        {
+          "name": "linear:layers.*.hc_attn_down",
+          "ms": 103.633041,
+          "rows": 192,
+          "symbols": 4
+        },
+        {
+          "name": "linear:layers.*.hc_ffn_down",
+          "ms": 102.790384,
+          "rows": 192,
+          "symbols": 4
+        },
+        {
+          "name": "linear:layers.*.attn_q",
+          "ms": 77.537232,
+          "rows": 48,
+          "symbols": 4
+        },
+        {
+          "name": "linear:layers.*.shared_down",
+          "ms": 44.492019,
+          "rows": 48,
+          "symbols": 1
+        },
+        {
+          "name": "qsa_prefill:layers.*.attn_q",
+          "ms": 42.101537,
+          "rows": 124,
+          "symbols": 9
+        },
+        {
+          "name": "linear:layers.*.attn_output",
+          "ms": 36.965175,
+          "rows": 48,
+          "symbols": 4
+        },
+        {
+          "name": "linear:layers.*.index_q",
+          "ms": 28.675095,
+          "rows": 12,
+          "symbols": 1
+        },
+        {
+          "name": "linear:layers.*.shared_gate",
+          "ms": 25.005205,
+          "rows": 192,
+          "symbols": 4
+        },
+        {
+          "name": "linear:layers.*.shared_up",
+          "ms": 24.113339,
+          "rows": 192,
+          "symbols": 4
+        },
+        {
+          "name": "prefill_boundary",
+          "ms": 9.841201,
+          "rows": 200,
+          "symbols": 6
+        },
+        {
+          "name": "linear:layers.*.ssm_alpha",
+          "ms": 7.912048,
+          "rows": 36,
+          "symbols": 1
+        },
+        {
+          "name": "linear:layers.*.ssm_beta",
+          "ms": 7.787822,
+          "rows": 36,
+          "symbols": 1
+        },
+        {
+          "name": "linear:layers.*.index_k",
+          "ms": 5.99108,
+          "rows": 12,
+          "symbols": 1
+        },
+        {
+          "name": "linear:layers.*.attn_k",
+          "ms": 5.869497,
+          "rows": 48,
+          "symbols": 4
+        },
+        {
+          "name": "linear:layers.*.attn_v",
+          "ms": 5.831664,
+          "rows": 48,
+          "symbols": 4
+        },
+        {
+          "name": "linear:layers.*.ple_key",
+          "ms": 5.762655,
+          "rows": 4,
+          "symbols": 4
+        },
+        {
+          "name": "linear:layers.*.hc_ffn_inject",
+          "ms": 3.817083,
+          "rows": 48,
+          "symbols": 1
+        },
+        {
+          "name": "linear:layers.*.hc_attn_inject",
+          "ms": 3.785261,
+          "rows": 48,
+          "symbols": 1
+        },
+        {
+          "name": "linear:root.lm_head",
+          "ms": 3.050725,
+          "rows": 1,
+          "symbols": 1
+        },
+        {
+          "name": "ple:layers.*.ple_key",
+          "ms": 1.802703,
+          "rows": 8,
+          "symbols": 7
+        },
+        {
+          "name": "linear:layers.*.ple_value",
+          "ms": 1.237843,
+          "rows": 4,
+          "symbols": 4
+        },
+        {
+          "name": "linear:layers.*.shared_expert_gate",
+          "ms": 0.469483,
+          "rows": 48,
+          "symbols": 1
+        },
+        {
+          "name": "linear:root.head_hc_down",
+          "ms": 0.039595,
+          "rows": 1,
+          "symbols": 1
+        },
+        {
+          "name": "linear:root.head_hc_up",
+          "ms": 0.026851,
+          "rows": 1,
+          "symbols": 1
+        },
+        {
+          "name": "gr_read:root.head_hc_down",
+          "ms": 0.01038,
+          "rows": 4,
+          "symbols": 4
+        }
+      ],
+      "layer2_kernels": [
+        {
+          "role": "moe:layers.2.expert_gate",
+          "kernel": "void (anonymous namespace)::gguf_k_selected_prefill_out_kernel<unsigned short, unsigned short, 5>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+          "api": "hipLaunchKernel",
+          "ms": 225.83835,
+          "rows": 2
+        },
+        {
+          "role": "moe:layers.2.expert_gate",
+          "kernel": "void (anonymous namespace)::gguf_k_selected_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+          "api": "hipLaunchKernel",
+          "ms": 77.162651,
+          "rows": 1
+        },
+        {
+          "role": "moe:layers.2.expert_gate",
+          "kernel": "void (anonymous namespace)::qwen35_router_logits_f32_token_tile_dense_exact_kernel<4>(float const*, float const*, float*, long, long, long)",
+          "api": "hipLaunchKernel",
+          "ms": 1.628697,
+          "rows": 1
+        },
+        {
+          "role": "moe:layers.2.expert_gate",
+          "kernel": "void (anonymous namespace)::weighted_sum_batch_out_kernel<unsigned short, float>(unsigned short const*, float const*, unsigned short*, long, long, long)",
+          "api": "hipLaunchKernel",
+          "ms": 0.141825,
+          "rows": 1
+        },
+        {
+          "role": "moe:layers.2.expert_gate",
+          "kernel": "void (anonymous namespace)::silu_mul_separate_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long)",
+          "api": "hipLaunchKernel",
+          "ms": 0.068167,
+          "rows": 1
+        },
+        {
+          "role": "moe:layers.2.expert_gate",
+          "kernel": "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)",
+          "api": "hipLaunchKernel",
+          "ms": 0.050815,
+          "rows": 1
+        },
+        {
+          "role": "moe:layers.2.expert_gate",
+          "kernel": "(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)",
+          "api": "hipLaunchKernel",
+          "ms": 0.027211,
+          "rows": 2
+        },
+        {
+          "role": "moe:layers.2.expert_gate",
+          "kernel": "void (anonymous namespace)::shared_gate_combine_batch_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, float const*, unsigned short*, long, long)",
+          "api": "hipLaunchKernel",
+          "ms": 0.020358,
+          "rows": 1
+        },
+        {
+          "role": "moe:layers.2.expert_gate",
+          "kernel": "(anonymous namespace)::silu_mul_f32_kernel(float const*, float const*, float*, long)",
+          "api": "hipLaunchKernel",
+          "ms": 0.006011,
+          "rows": 1
+        }
+      ],
+      "runtime_census": {
+        "calls": {
+          "memset": 369,
+          "memcpy": 291,
+          "memset_async": 942,
+          "device_synchronize": 6
+        },
+        "bytes": {
+          "memset": 415801392,
+          "memcpy": 19078776,
+          "memset_async": 3768
+        },
+        "sizes": {
+          "memset": {
+            "2048": 282,
+            "786432": 72,
+            "113246208": 3,
+            "5898240": 3,
+            "368640": 3,
+            "20480": 3,
+            "16": 3
+          },
+          "memcpy": {
+            "8": 207,
+            "4096": 75,
+            "5242880": 3,
+            "20480": 3,
+            "993280": 3
+          },
+          "memset_async": {
+            "4": 942
+          }
+        },
+        "memcpy_kinds": {
+          "memcpy": {
+            "1": 222,
+            "2": 66,
+            "3": 3
+          }
+        },
+        "memcpy_size_kinds": {
+          "memcpy": {
+            "8:1": 144,
+            "4096:1": 75,
+            "8:2": 63,
+            "5242880:1": 3,
+            "20480:3": 3,
+            "993280:2": 3
+          }
+        }
+      }
+    },
+    {
+      "case": {
+        "id": "code-p4096",
+        "category": "code",
+        "prompt_tokens": 4096,
+        "prompt_token_ids_sha256": "72a815ea3e4758bfc8f026ca51dec5c64e5aa7f3b7947a0c6cd0dd8f2ad83c75"
+      },
+      "wall_seconds": [
+        43.045417067129165,
+        43.0505763462279,
+        43.0422769440338
+      ],
+      "wall_summary": {
+        "count": 3,
+        "sum": 129.13827035739087,
+        "mean": 43.04609011913029,
+        "median": 43.045417067129165,
+        "min": 43.0422769440338,
+        "max": 43.0505763462279,
+        "tok_s": 95.15382206988598
+      },
+      "profile_wall_seconds": [
+        43.17103584506549
+      ],
+      "commands": {
+        "warm": [
+          "qwen4exp_profile_gap.py",
+          "--model-root",
+          "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+          "--mode",
+          "prefill",
+          "--case-id",
+          "code-p4096",
+          "--repetitions",
+          "3",
+          "--compiler-version-file",
+          "/tmp/hipengine-hipcc-version.txt",
+          "--require-cached-build",
+          "--output",
+          "/tmp/qwen4exp-framework-20260905-owner-warm-p4096.json"
+        ],
+        "profile": [
+          "qwen4exp_profile_gap.py",
+          "--model-root",
+          "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+          "--mode",
+          "prefill",
+          "--case-id",
+          "code-p4096",
+          "--repetitions",
+          "1",
+          "--profile",
+          "--role-markers",
+          "--compiler-version-file",
+          "/tmp/hipengine-hipcc-version.txt",
+          "--require-cached-build",
+          "--output",
+          "/tmp/qwen4exp-framework-20260905-owner-profile-p4096.json"
+        ]
+      },
+      "logits_sha256": "0b361e7db968b63ae88a78a87f0f7139ef62a61e351d7ca062640e75abfb3087",
+      "profiled_logits_exact": true,
+      "lifecycle": {
+        "after_warmup": {
+          "current_allocated_bytes": 83544147716,
+          "peak_allocated_bytes": 83544147716,
+          "total_allocated_bytes": 83554633476,
+          "total_freed_bytes": 10485760,
+          "active_allocations": 1645,
+          "peak_allocations": 1645
+        },
+        "after_measurement": {
+          "current_allocated_bytes": 83544147716,
+          "peak_allocated_bytes": 83544147716,
+          "total_allocated_bytes": 83554633476,
+          "total_freed_bytes": 10485760,
+          "active_allocations": 1645,
+          "peak_allocations": 1645
+        },
+        "after_close": {
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 83544147716,
+          "total_allocated_bytes": 83554633476,
+          "total_freed_bytes": 83554633476,
+          "active_allocations": 0,
+          "peak_allocations": 1645
+        },
+        "steady_allocation_growth": 0,
+        "steady_allocated_byte_growth": 0,
+        "passed": true
+      },
+      "profile_lifecycle": {
+        "after_warmup": {
+          "current_allocated_bytes": 83544147716,
+          "peak_allocated_bytes": 83544147716,
+          "total_allocated_bytes": 83554633476,
+          "total_freed_bytes": 10485760,
+          "active_allocations": 1645,
+          "peak_allocations": 1645
+        },
+        "after_measurement": {
+          "current_allocated_bytes": 83544147716,
+          "peak_allocated_bytes": 83544147716,
+          "total_allocated_bytes": 83554633476,
+          "total_freed_bytes": 10485760,
+          "active_allocations": 1645,
+          "peak_allocations": 1645
+        },
+        "after_close": {
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 83544147716,
+          "total_allocated_bytes": 83554633476,
+          "total_freed_bytes": 83554633476,
+          "active_allocations": 0,
+          "peak_allocations": 1645
+        },
+        "steady_allocation_growth": 0,
+        "steady_allocated_byte_growth": 0,
+        "passed": true
+      },
+      "role_coverage_pct": 100.0,
+      "kernel_rows": 24900,
+      "roles": [
+        {
+          "name": "moe:layers.*.expert_gate",
+          "ms": 19023.674593,
+          "rows": 6440,
+          "symbols": 24
+        },
+        {
+          "name": "qsa_prefill:layers.*.attn_q",
+          "ms": 8982.811029,
+          "rows": 1232,
+          "symbols": 13
+        },
+        {
+          "name": "gdn:layers.*.attn_qkv",
+          "ms": 3906.452867,
+          "rows": 984,
+          "symbols": 5
+        },
+        {
+          "name": "linear:layers.*.attn_gate",
+          "ms": 1831.157826,
+          "rows": 288,
+          "symbols": 1
+        },
+        {
+          "name": "linear:layers.*.attn_qkv",
+          "ms": 1624.328843,
+          "rows": 1152,
+          "symbols": 4
+        },
+        {
+          "name": "gr_read:layers.*.hc_attn_down",
+          "ms": 1326.29893,
+          "rows": 1152,
+          "symbols": 3
+        },
+        {
+          "name": "gr_read:layers.*.hc_ffn_down",
+          "ms": 1312.436045,
+          "rows": 1152,
+          "symbols": 3
+        },
+        {
+          "name": "linear:layers.*.ssm_out",
+          "ms": 910.59642,
+          "rows": 1152,
+          "symbols": 4
+        },
+        {
+          "name": "linear:layers.*.hc_attn_down",
+          "ms": 833.648463,
+          "rows": 1536,
+          "symbols": 4
+        },
+        {
+          "name": "linear:layers.*.hc_ffn_down",
+          "ms": 818.730993,
+          "rows": 1536,
+          "symbols": 4
+        },
+        {
+          "name": "linear:layers.*.attn_q",
+          "ms": 614.164191,
+          "rows": 384,
+          "symbols": 4
+        },
+        {
+          "name": "linear:layers.*.shared_down",
+          "ms": 354.98752,
+          "rows": 384,
+          "symbols": 1
+        },
+        {
+          "name": "linear:layers.*.attn_output",
+          "ms": 296.432867,
+          "rows": 384,
+          "symbols": 4
+        },
+        {
+          "name": "linear:layers.*.index_q",
+          "ms": 225.398951,
+          "rows": 96,
+          "symbols": 1
+        },
+        {
+          "name": "linear:layers.*.shared_gate",
+          "ms": 199.233953,
+          "rows": 1536,
+          "symbols": 4
+        },
+        {
+          "name": "linear:layers.*.shared_up",
+          "ms": 192.111199,
+          "rows": 1536,
+          "symbols": 4
+        },
+        {
+          "name": "prefill_boundary",
+          "ms": 76.563385,
+          "rows": 1229,
+          "symbols": 6
+        },
+        {
+          "name": "linear:layers.*.ssm_alpha",
+          "ms": 63.232879,
+          "rows": 288,
+          "symbols": 1
+        },
+        {
+          "name": "linear:layers.*.ssm_beta",
+          "ms": 62.044164,
+          "rows": 288,
+          "symbols": 1
+        },
+        {
+          "name": "linear:layers.*.index_k",
+          "ms": 47.922376,
+          "rows": 96,
+          "symbols": 1
+        },
+        {
+          "name": "linear:layers.*.attn_k",
+          "ms": 47.05138,
+          "rows": 384,
+          "symbols": 4
+        },
+        {
+          "name": "linear:layers.*.attn_v",
+          "ms": 46.671348,
+          "rows": 384,
+          "symbols": 4
+        },
+        {
+          "name": "linear:layers.*.ple_key",
+          "ms": 46.323939,
+          "rows": 32,
+          "symbols": 4
+        },
+        {
+          "name": "linear:layers.*.hc_attn_inject",
+          "ms": 30.232968,
+          "rows": 384,
+          "symbols": 1
+        },
+        {
+          "name": "linear:layers.*.hc_ffn_inject",
+          "ms": 29.982308,
+          "rows": 384,
+          "symbols": 1
+        },
+        {
+          "name": "ple:layers.*.ple_key",
+          "ms": 14.224254,
+          "rows": 64,
+          "symbols": 7
+        },
+        {
+          "name": "linear:layers.*.ple_value",
+          "ms": 9.835736,
+          "rows": 32,
+          "symbols": 4
+        },
+        {
+          "name": "linear:layers.*.shared_expert_gate",
+          "ms": 3.686717,
+          "rows": 384,
+          "symbols": 1
+        },
+        {
+          "name": "linear:root.lm_head",
+          "ms": 3.057979,
+          "rows": 1,
+          "symbols": 1
+        },
+        {
+          "name": "linear:root.head_hc_down",
+          "ms": 0.039234,
+          "rows": 1,
+          "symbols": 1
+        },
+        {
+          "name": "linear:root.head_hc_up",
+          "ms": 0.024686,
+          "rows": 1,
+          "symbols": 1
+        },
+        {
+          "name": "gr_read:root.head_hc_down",
+          "ms": 0.0105,
+          "rows": 4,
+          "symbols": 4
+        }
+      ],
+      "layer2_kernels": [
+        {
+          "role": "moe:layers.2.expert_gate",
+          "kernel": "void (anonymous namespace)::gguf_k_selected_prefill_out_kernel<unsigned short, unsigned short, 5>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+          "api": "hipLaunchKernel",
+          "ms": 1830.384003,
+          "rows": 16
+        },
+        {
+          "role": "moe:layers.2.expert_gate",
+          "kernel": "void (anonymous namespace)::gguf_k_selected_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+          "api": "hipLaunchKernel",
+          "ms": 627.41773,
+          "rows": 8
+        },
+        {
+          "role": "moe:layers.2.expert_gate",
+          "kernel": "void (anonymous namespace)::qwen35_router_logits_f32_token_tile_dense_exact_kernel<4>(float const*, float const*, float*, long, long, long)",
+          "api": "hipLaunchKernel",
+          "ms": 13.051095,
+          "rows": 8
+        },
+        {
+          "role": "moe:layers.2.expert_gate",
+          "kernel": "void (anonymous namespace)::weighted_sum_batch_out_kernel<unsigned short, float>(unsigned short const*, float const*, unsigned short*, long, long, long)",
+          "api": "hipLaunchKernel",
+          "ms": 1.093965,
+          "rows": 8
+        },
+        {
+          "role": "moe:layers.2.expert_gate",
+          "kernel": "void (anonymous namespace)::silu_mul_separate_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long)",
+          "api": "hipLaunchKernel",
+          "ms": 0.496123,
+          "rows": 8
+        },
+        {
+          "role": "moe:layers.2.expert_gate",
+          "kernel": "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)",
+          "api": "hipLaunchKernel",
+          "ms": 0.409408,
+          "rows": 8
+        },
+        {
+          "role": "moe:layers.2.expert_gate",
+          "kernel": "(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)",
+          "api": "hipLaunchKernel",
+          "ms": 0.222456,
+          "rows": 16
+        },
+        {
+          "role": "moe:layers.2.expert_gate",
+          "kernel": "void (anonymous namespace)::shared_gate_combine_batch_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, float const*, unsigned short*, long, long)",
+          "api": "hipLaunchKernel",
+          "ms": 0.173768,
+          "rows": 8
+        },
+        {
+          "role": "moe:layers.2.expert_gate",
+          "kernel": "(anonymous namespace)::silu_mul_f32_kernel(float const*, float const*, float*, long)",
+          "api": "hipLaunchKernel",
+          "ms": 0.051775,
+          "rows": 8
+        }
+      ],
+      "runtime_census": {
+        "calls": {
+          "memset": 2343,
+          "memcpy": 1782,
+          "memset_async": 7536,
+          "memcpy_async": 288,
+          "device_synchronize": 6
+        },
+        "bytes": {
+          "memset": 684085296,
+          "memcpy": 131337216,
+          "memset_async": 30144,
+          "memcpy_async": 2363328
+        },
+        "sizes": {
+          "memset": {
+            "2048": 2256,
+            "4456448": 72,
+            "113246208": 3,
+            "5898240": 3,
+            "368640": 3,
+            "20480": 3,
+            "16": 3
+          },
+          "memcpy": {
+            "8": 1152,
+            "4096": 600,
+            "5242880": 24,
+            "20480": 3,
+            "993280": 3
+          },
+          "memset_async": {
+            "4": 7536
+          },
+          "memcpy_async": {
+            "16408": 144,
+            "4": 144
+          }
+        },
+        "memcpy_kinds": {
+          "memcpy": {
+            "1": 1272,
+            "2": 507,
+            "3": 3
+          },
+          "memcpy_async": {
+            "3": 288
+          }
+        },
+        "memcpy_size_kinds": {
+          "memcpy": {
+            "8:1": 648,
+            "4096:1": 600,
+            "8:2": 504,
+            "5242880:1": 24,
+            "20480:3": 3,
+            "993280:2": 3
+          },
+          "memcpy_async": {
+            "16408:3": 144,
+            "4:3": 144
+          }
+        }
+      }
+    }
+  ],
+  "comparator": {
+    "artifact": "benchmarks/results/2026-09-05-framework-gfx1151-qwen38-flash-next-current-comparators.json",
+    "lane": "halobox-vulkan",
+    "source": {
+      "path": "/home/lhl/halo-box-strix-llama",
+      "head": "b212548e0ddbf0a14e5a1d81b6ffcf8e4d098faf",
+      "tracked_clean": true
+    },
+    "paired_with_this_capture": false
+  },
+  "remote_reference": {
+    "requested_model": "local/Qwen3.8-Flash-Next",
+    "reported_model": "qwen38-flash-next-nvfp4",
+    "system_fingerprint": "vllm-0.1.dev20073+g8e685d198-tp2-589c1a47",
+    "top_logprobs_returned": 5,
+    "fp8_identity_verified": false,
+    "qualification_status": "deployment_identity_unresolved_not_an_FP8_oracle",
+    "full_kl_available": false
+  },
+  "limitations": [
+    "Diagnostic code-case endpoint profiles only; no new 12-case performance or qualification claim.",
+    "Owner durations are profiler device sums, not independently synchronized owner wall; no wall-minus-device overhead inference.",
+    "Profile and unprofiled final full logits match; the harness stores only the last repetition logits, not per-repeat trajectories.",
+    "Historical Framework comparator is a same-host screening target, not a newly counterbalanced paired arm.",
+    "rocm package metadata unavailable in project venv; pinned HIP compiler and runtime paths are recorded.",
+    "Remote alias response reports nvfp4; native FP8 deployment identity must be confirmed before reference-quality use."
+  ],
+  "next_candidate": {
+    "owner": "routed MoE, starting with selected Q5_K gate/up and Q8 down at layer 2",
+    "classification": "T0 hypothesis",
+    "mechanism": "expert-grouped traversal preserving per-output K/reduction order",
+    "measured_speedup": null,
+    "stop_rule": "exact owner and complete-chain microbenchmark before runtime wiring; same-residency all-category A/B before promotion"
+  }
+}

@@ -1,0 +1,179 @@
+{
+  "schema": 1,
+  "status": "rejected_removed_consumer_regression",
+  "performance_claim": false,
+  "raw_sha256": "8f954fb3cac82e132b53075e39d757b83e7e438e13f79473c92986dc35ec0948",
+  "parent_mean_ms": 17.470327124465257,
+  "candidate_mean_ms": 22.93751419056207,
+  "mean_order_speedups": [0.7630904627618644,0.7602100329022085],
+  "candidate_recipe": {
+    "base_commit": "6f6202df1a8248c470358e5537e6b36a426e34cf",
+    "layout": "Input [rows,K/256,2,128] uint16 transposed to [rows,K/256,128,2], same bytes.",
+    "producer": "For word in0..rows*K/2: source=(word/128)*256+word%128; dst32[word]=src16[source] | (uint32(src16[source+128])<<16). 256 threads, capped4096 blocks, grid-stride loop. Host wrapper rejects invalid geometry/alignment/overlap.",
+    "consumer": "Template pair2 on INPUT_PAIR=false. For candidate read uint32 input[(base+row)*(K/2)+block*128+tid]; x0=bf16_bits_to_float(uint16(packed)); x1=uint_as_float(packed&0xffff0000). Original metadata,weights,FMAs,reductions,output unchanged.",
+    "harness": "--input-pair times packing on every candidate invocation plus gate/up and identical SiLU; parent consumes original layout. Distinct temporary buffer,not in-place.",
+    "removal": "Producer/consumer/registry/wrappers/screen option/candidate-only tests removed; tracked code matches base."
+  },
+  "validation": {
+    "red": "Missing candidate registry key",
+    "candidate_bundle_tests": 17,
+    "contracts": "Raw BF16 bit packing including signed zero/infinities/NaN payloads; overlap/alignment bounds; exact parent gate/up outputs at odd tails and K256/512/2560/4096; existing CPU-reference floors",
+    "trace_prefix": "HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen4exp-q4-input-pair-trace --",
+    "trace_arguments": "Screen command with --pairs 2 --output /tmp/qwen4exp-q4-input-pair-trace.json",
+    "trace_path": "/tmp/qwen4exp-q4-input-pair-trace/gfx1151/3495071_kernel_trace.csv",
+    "trace_calls_each": 3,
+    "trace_parent_consumer_ms": 17.333027333333334,
+    "trace_candidate_consumer_ms": 22.657480333333332,
+    "trace_pack_ms": 0.184172,
+    "trace_silu_mean_ms": 0.05789483333333333,
+    "parent_vgpr": 88, "candidate_vgpr": 72,
+    "consumer_lds_bytes_both": 4608, "scratch_bytes_both": 0,
+    "interpretation": "Consumer itself regresses; eliminating the small packer cost cannot rescue the measured layout. Lower VGPR count is not a throughput win.",
+    "cleanup_tests": 9
+  },
+  "environment": {
+    "PATH_prefix": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin",
+    "LD_LIBRARY_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib",
+    "HIPENGINE_HIP_ARCH": "gfx1151",
+    "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-hipcc-version.txt",
+    "clock_policy": "unchanged high/requested2900MHz"
+  },
+  "kind": "qwen4exp_q4_bundle_gate_up_silu",
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "6f6202df1a8248c470358e5537e6b36a426e34cf",
+    "tracked_clean": false
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "command": [
+    "scripts/qwen4exp_q4_bundle_screen.py",
+    "--model-root",
+    "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--require-cached-build",
+    "--input-pair",
+    "--rows",
+    "512",
+    "--pairs",
+    "20",
+    "--layer",
+    "0",
+    "--routing-capture",
+    "/tmp/qwen4exp-routing-categories.json",
+    "--routing-case",
+    "code-p4096",
+    "--routing-chunk",
+    "0",
+    "--output",
+    "/tmp/qwen4exp-q4-input-pair-code.json"
+  ],
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "weights": [
+    {
+      "tensor": "blk.0.ffn_gate_exps.weight",
+      "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "sha256": "c52d2ded80cdbdb92f75c08ecfdd0ae3e2bc97198edda3d62ef8645df19a6947"
+    },
+    {
+      "tensor": "blk.0.ffn_up_exps.weight",
+      "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "sha256": "92e1eb072ea457687ae6b531c9402817c1d8ac6043a70ceed7986fd0e4997450"
+    }
+  ],
+  "arithmetic_class": "T0",
+  "runtime_default_changed": false,
+  "boundary": "Parent grouped Q4_K gate/up+SiLU versus candidate pair128 packing+packed-input gate/up+same SiLU; no routing/down/combine",
+  "parent_variant": "gguf_q4_k_selected_dual_grouped_pair2_bf16_bf16_out",
+  "candidate_variant": "gguf_q4_k_selected_dual_grouped_pair2_input_pair_bf16_bf16_out",
+  "routing": "captured_counts_synthetic_activations",
+  "layer": 0,
+  "cases": [
+    {
+      "tokens": 512,
+      "compact_rows": 5120,
+      "active_experts": 343,
+      "seconds": {
+        "parent": [
+          0.017412818036973476,
+          0.017445980105549097,
+          0.017622841987758875,
+          0.017519999062642455,
+          0.017403280129656196,
+          0.017350721172988415,
+          0.017500262008979917,
+          0.017454356886446476,
+          0.01743437792174518,
+          0.017437194008380175,
+          0.017443075077608228,
+          0.017331546172499657,
+          0.017359939171001315,
+          0.0173849668353796,
+          0.01746820192784071,
+          0.01754277292639017,
+          0.017646797001361847,
+          0.017554233083501458,
+          0.017550355987623334,
+          0.017542822984978557
+        ],
+        "candidate": [
+          0.02292521996423602,
+          0.023131777998059988,
+          0.023055483819916844,
+          0.022343158954754472,
+          0.022710116114467382,
+          0.02308563096448779,
+          0.022540468024089932,
+          0.022810395108535886,
+          0.023025417933240533,
+          0.022998106898739934,
+          0.022564292885363102,
+          0.02305328007787466,
+          0.023060033097863197,
+          0.023074660915881395,
+          0.02305919211357832,
+          0.02274150517769158,
+          0.023055575089529157,
+          0.023189264815300703,
+          0.023127689957618713,
+          0.023199013900011778
+        ]
+      },
+      "max_expert_rows": 100,
+      "median_active_expert_rows": 11.0,
+      "weight_passes_by_row_batch": {
+        "8": 806,
+        "16": 510,
+        "32": 389
+      },
+      "speedup": 0.7569133076167156,
+      "all_pairs_exact": true
+    }
+  ],
+  "routing_capture_sha256": "d34381f22f85fc5603b87b32dd1487ad41246b32ca76d5355e24bee4f4f34766",
+  "routing_case": "code-p4096",
+  "routing_chunk": 0
+}

@@ -21,20 +21,24 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_mmq_prefill import (
     Q8_MMQ_PREFILL_POLICY_KEY,
+    QWEN4EXP_Q8_MMQ_PREFILL_POLICY,
     UD_Q3_K_M_Q8_MMQ_PREFILL_POLICY,
     build_gguf_q8_0_mmq_prefill,
     gguf_q8_0_mmq128_prefill_q8_1_d4_bf16_bf16_out,
     gguf_q8_0_mmq128_prefill_q8_1_d4x2_bf16_bf16_out,
     gguf_q8_0_mmq128_prefill_q8_1_d4x3_bf16_bf16_out,
     gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_bf16_bf16_out,
+    gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out,
     gguf_q8_0_mmq128_quantize_bf16_d4,
     gguf_q8_0_mmq128_quantize_bf16_d4x2,
     gguf_q8_0_mmq128_quantize_bf16_d4x3,
+    gguf_q8_0_mmq128_quantize_f32_d4x3,
     plan_gguf_q8_0_mmq_prefill_build,
     q8_mmq_d4_nbytes,
     q8_mmq_d4x2_nbytes,
     q8_mmq_d4x3_nbytes,
     gguf_q8_0_mmq128_sparse_exact_correct_bf16,
+    gguf_q8_0_mmq128_sparse_exact_correct_f32,
     ud_q3_k_m_q8_mmq_prefill_policy,
 )
 from hipengine.kernels.registry import resolve
@@ -420,3 +424,92 @@ def test_raw_q8_mmq_guarded_sparse_correction_matches_exact_tile() -> None:
 
     assert int(risk_count[0]) == rows * out_features
     np.testing.assert_array_equal(out, exact)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_qwen4exp_f32_mmq_chain_bounded_against_exact_f32_owner() -> None:
+    """The F32 in/out MMQ chain stays near the exact coltile owner.
+
+    Qwen4Exp prefill launches Q8_0 projections with F32 activations and
+    outputs; the guarded chain quantizes to D4x3, multiplies via MMQ128, and
+    (at the Qwen4Exp risk threshold of zero) repairs nothing. The result must
+    be deterministic, top-1 equal to the exact owner, and within a small
+    relative envelope of it.
+    """
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
+        gguf_q8_0_gemv_coltile8_rowbatch4_f32_f32_out,
+    )
+
+    rows, hidden, out_features = 128, 2560, 1024
+    rng = np.random.default_rng(21)
+    qweight = np.ascontiguousarray(
+        make_q8_0_weight(out_features, hidden), dtype=np.uint8
+    )
+    x = (rng.standard_normal((rows, hidden)) * 0.5).astype(np.float32)
+    runtime = get_hip_runtime()
+    library = build_gguf_q8_0_mmq_prefill(load=True)
+    bufs = []
+
+    def alloc(nbytes: int):
+        buf = malloc(nbytes, runtime=runtime)
+        bufs.append(buf)
+        return buf
+
+    try:
+        weight_dev = alloc(qweight.nbytes)
+        x_dev = alloc(x.nbytes)
+        exact_dev = alloc(rows * out_features * 4)
+        mmq_dev = alloc(rows * out_features * 4)
+        d4_dev = alloc(q8_mmq_d4x3_nbytes(rows, hidden))
+        count_dev = alloc(4)
+        indices_dev = alloc(rows * out_features * 4)
+        copy_host_to_device(
+            weight_dev, host_array_ptr(qweight), runtime=runtime
+        )
+        copy_host_to_device(x_dev, host_array_ptr(x), runtime=runtime)
+
+        def run_mmq() -> np.ndarray:
+            gguf_q8_0_mmq128_quantize_f32_d4x3(
+                x_dev.ptr, d4_dev.ptr, rows, hidden,
+                library=library, runtime=runtime,
+            )
+            gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out(
+                d4_dev.ptr, weight_dev.ptr, mmq_dev.ptr,
+                count_dev.ptr, indices_dev.ptr,
+                rows * out_features,
+                QWEN4EXP_Q8_MMQ_PREFILL_POLICY.risk_threshold,
+                rows, hidden, out_features,
+                library=library, runtime=runtime,
+            )
+            gguf_q8_0_mmq128_sparse_exact_correct_f32(
+                x_dev.ptr, weight_dev.ptr, mmq_dev.ptr,
+                count_dev.ptr, indices_dev.ptr,
+                rows * out_features, rows, hidden, out_features,
+                library=library, runtime=runtime,
+            )
+            runtime.device_synchronize()
+            out = np.empty((rows, out_features), dtype=np.float32)
+            copy_device_to_host(host_array_ptr(out), mmq_dev, runtime=runtime)
+            return out
+
+        gguf_q8_0_gemv_coltile8_rowbatch4_f32_f32_out(
+            x_dev.ptr, weight_dev.ptr, exact_dev.ptr,
+            rows, hidden, out_features, runtime=runtime,
+        )
+        runtime.device_synchronize()
+        exact = np.empty((rows, out_features), dtype=np.float32)
+        copy_device_to_host(host_array_ptr(exact), exact_dev, runtime=runtime)
+        first = run_mmq()
+        second = run_mmq()
+    finally:
+        for buf in reversed(bufs):
+            free(buf, runtime=runtime)
+
+    np.testing.assert_array_equal(first, second)
+    diff = np.abs(first - exact)
+    scale = np.maximum(np.abs(exact), 1e-6)
+    assert float(diff.max()) < 2e-3
+    assert float((diff / scale).mean()) < 1e-4
+    np.testing.assert_array_equal(first.argmax(1), exact.argmax(1))

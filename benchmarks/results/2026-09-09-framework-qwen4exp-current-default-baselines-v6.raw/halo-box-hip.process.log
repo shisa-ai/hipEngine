@@ -1,0 +1,53 @@
+[warmup] halo-box-hip code-p512 pp=243.621 tg=21.078
+[warmup] halo-box-hip general_en-p512 pp=286.938 tg=21.173
+[warmup] halo-box-hip general_ja-p512 pp=292.695 tg=21.162
+[warmup] halo-box-hip mixed_ja_en-p512 pp=260.106 tg=21.408
+[warmup] halo-box-hip code-p1024 pp=376.368 tg=20.877
+[warmup] halo-box-hip general_en-p1024 pp=387.922 tg=20.493
+[warmup] halo-box-hip general_ja-p1024 pp=394.173 tg=20.512
+[warmup] halo-box-hip mixed_ja_en-p1024 pp=380.199 tg=20.606
+[warmup] halo-box-hip code-p4096 pp=349.951 tg=19.033
+[warmup] halo-box-hip general_en-p4096 pp=354.537 tg=18.987
+[warmup] halo-box-hip general_ja-p4096 pp=356.360 tg=18.981
+[warmup] halo-box-hip mixed_ja_en-p4096 pp=352.584 tg=19.285
+[measure 0] halo-box-hip code-p512 pp=312.385 tg=22.168
+[measure 0] halo-box-hip general_en-p512 pp=316.747 tg=22.132
+[measure 0] halo-box-hip general_ja-p512 pp=326.952 tg=22.187
+[measure 0] halo-box-hip mixed_ja_en-p512 pp=310.020 tg=22.175
+[measure 0] halo-box-hip code-p1024 pp=381.842 tg=21.143
+[measure 0] halo-box-hip general_en-p1024 pp=391.279 tg=21.205
+[measure 0] halo-box-hip general_ja-p1024 pp=398.768 tg=21.188
+[measure 0] halo-box-hip mixed_ja_en-p1024 pp=378.230 tg=21.136
+[measure 0] halo-box-hip code-p4096 pp=351.291 tg=19.498
+[measure 0] halo-box-hip general_en-p4096 pp=354.312 tg=19.484
+[measure 0] halo-box-hip general_ja-p4096 pp=358.333 tg=19.430
+[measure 0] halo-box-hip mixed_ja_en-p4096 pp=352.529 tg=19.481
+[measure 1] halo-box-hip general_ja-p4096 pp=356.697 tg=19.475
+[measure 1] halo-box-hip general_en-p4096 pp=356.506 tg=19.471
+[measure 1] halo-box-hip code-p4096 pp=350.084 tg=19.483
+[measure 1] halo-box-hip mixed_ja_en-p1024 pp=380.649 tg=21.151
+[measure 1] halo-box-hip general_ja-p1024 pp=399.196 tg=21.184
+[measure 1] halo-box-hip general_en-p1024 pp=391.122 tg=21.171
+[measure 1] halo-box-hip code-p1024 pp=379.268 tg=21.197
+[measure 1] halo-box-hip mixed_ja_en-p512 pp=309.093 tg=22.187
+[measure 1] halo-box-hip general_ja-p512 pp=327.179 tg=22.155
+[measure 1] halo-box-hip general_en-p512 pp=316.611 tg=22.181
+[measure 1] halo-box-hip code-p512 pp=313.841 tg=22.181
+[measure 1] halo-box-hip mixed_ja_en-p4096 pp=350.654 tg=19.428
+[measure 2] halo-box-hip general_ja-p512 pp=328.022 tg=22.177
+[measure 2] halo-box-hip mixed_ja_en-p512 pp=309.600 tg=22.162
+[measure 2] halo-box-hip code-p1024 pp=382.434 tg=21.114
+[measure 2] halo-box-hip general_en-p1024 pp=390.464 tg=21.179
+[measure 2] halo-box-hip general_ja-p1024 pp=397.896 tg=21.183
+[measure 2] halo-box-hip mixed_ja_en-p1024 pp=377.666 tg=21.219
+[measure 2] halo-box-hip code-p4096 pp=352.143 tg=19.506
+[measure 2] halo-box-hip general_en-p4096 pp=356.572 tg=19.474
+[measure 2] halo-box-hip general_ja-p4096 pp=357.775 tg=19.450
+[measure 2] halo-box-hip mixed_ja_en-p4096 pp=353.611 tg=19.493
+[measure 2] halo-box-hip code-p512 pp=314.177 tg=22.180
+[measure 2] halo-box-hip general_en-p512 pp=317.043 tg=22.160
+{
+  "kind": "qwen4exp_canonical_ar_engine_run",
+  "status": "completed",
+  "output": "/home/lhl/hipEngine/benchmarks/results/2026-09-09-framework-qwen4exp-current-default-baselines-v6.raw/halo-box-hip.json"
+}

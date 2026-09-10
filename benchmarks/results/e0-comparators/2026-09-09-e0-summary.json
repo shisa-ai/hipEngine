@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_e0_comparator_qualification",
+  "date": "2026-09-09",
+  "protocol": "same host, exact UD-Q4_K_XL/BF16-KV payload, canonical p512/p1024/p4096-TG128 fixture, logger off, 1 warmup + 3 repetitions, identical server args to the baseline queue",
+  "engines": {
+    "halobox-vulkan-5f851647f": {
+      "pp": [
+        404.6,
+        411.0,
+        546.6
+      ],
+      "tg": [
+        26.3,
+        26.03,
+        24.55
+      ]
+    },
+    "halobox-hip-5f851647f": {
+      "pp": [
+        466.4,
+        614.3,
+        709.5
+      ],
+      "tg": [
+        20.06,
+        19.94,
+        18.42
+      ]
+    },
+    "myhacsint-vulkan-2dff8596": {
+      "pp": [
+        489.4,
+        577.6,
+        573.5
+      ],
+      "tg": [
+        25.21,
+        24.74,
+        24.01
+      ]
+    }
+  },
+  "findings": [
+    "Myhacsint's user-reported ~60 TG headline is NOT reproduced under our exact payload: TG measures 24.0-25.2 at all sizes (no MTP in our protocol; their headline includes MTP and an unpublished deployment preset). Their PP 489/578/574 is real under our protocol.",
+    "Myhacsint 2dff8596 is NOT deterministic across repeated identical requests on our host (within-engine digest disagreement across repetitions), consistent with the reviewed stale-union-count performance-path selection.",
+    "The refreshed halo-box master (5f851647f, rocmfpx Vulkan-stack line) is substantially faster than the pinned b212548e0: HIP PP 466/614/709 vs the pin's 283/361/352; Vulkan PP 405/411/547 vs the pin's 334/392/413. Both engines are deterministic within engine; cross-backend digests disagree (seeded sampling semantics), so a greedy-mode correctness cross-check is required before freezing 5f851647f as the campaign comparison target."
+  ],
+  "artifacts": [
+    "e0-comparators/2026-09-09-e0-halobox-vulkan-5f851647f.json",
+    "e0-comparators/2026-09-09-e0-halobox-hip-5f851647f.json",
+    "e0-comparators/2026-09-09-e0-myhacsint-vulkan-2dff8596.json"
+  ]
+}

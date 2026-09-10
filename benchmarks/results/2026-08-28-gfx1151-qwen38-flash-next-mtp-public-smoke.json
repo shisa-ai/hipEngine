@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "date": "2026-08-28",
+  "status": "accepted_public_component_smoke",
+  "scope": "Public LLM AR-versus-MTP exact smoke at prompt 16 / output 4",
+  "host": {"identity": "zbook", "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8", "gpu": "AMD Radeon 8060S Graphics", "arch": "gfx1151"},
+  "target": {"model": "Qwen/Qwen3.8-Flash-Next", "quant": "Unsloth UD-Q4_K_XL", "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5"},
+  "draft": {"provider": "qwen4_exp_mtp", "quant": "Q8_0", "sha256": "9db03a687670608286e99b563fcc86d0ee76c8dd863f64b2afc0b54eb0eb975d", "candidate_budget": 2},
+  "workload": {"prompt_token_id": 264, "prompt_tokens": 16, "generated_tokens": 4, "temperature": 0, "top_k": 1, "ignore_eos": true},
+  "result": {"ar_generated_ids": [264, 264, 264, 264], "mtp_generated_ids": [264, 264, 264, 264], "generated_ids_exact": true, "supports_speculative": true, "stream_chunks": 1, "stream_generated_ids_exact": true, "streaming_mode": "buffered_public"},
+  "ownership": {"target_verify": "serial exact", "draft_rollback": "cursor trim to target committed position", "strict_fallback": "target_ar"},
+  "validation": {"unit_command": "uv run pytest -q tests/test_qwen4_exp_mtp_provider.py tests/test_generation_qwen4_exp_gguf.py tests/test_speculative_provider_registry.py -x", "unit_result": "10 passed", "public_command": "uv run python /tmp/qwen4exp_mtp_public_smoke.py", "public_exit_code": 0},
+  "claims": {"basic_public_mtp": true, "natural_512_gate": false, "server_http_gate": false, "performance_claim": false, "note": "Synthetic repeated-token integration smoke only. Timings are cold/warm ordered and are not a speed comparison."}
+}

@@ -1,0 +1,110 @@
+{
+  "schema": 1,
+  "kind": "hipengine_qwen4exp_q5_1_m2_same_residency_ab",
+  "status": "rejected",
+  "performance_claim": false,
+  "created": "2026-09-05",
+  "candidate": "T0 Q5_1 grouped prefill M2: register-local strict stride-128 reduction with LDS stride-64/32 and wave-shuffle stride-16..1 tail",
+  "conclusion": "M2 is output-exact and its leaf kernel is faster, but the representative operation-complete whole-model A/B regresses weighted prefill at p1024 and p4096. It therefore fails the all-shape non-regression gate and is removed; the retained M1 owner remains production.",
+  "hardware": {
+    "hostname": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "device": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S",
+    "arch": "gfx1151",
+    "kernel": "6.18.42-1-cachyos-lts",
+    "rocm_platform": "10.0.0",
+    "cpu_governors": {"performance": 32},
+    "gpu_clock_policy": "auto"
+  },
+  "software": {
+    "candidate_commit": "acc6ee0bd031f3388eb1ef516e4da7423bf50c48",
+    "tracked_clean_during_run": true,
+    "hip_version": "7.15.26333-0000000",
+    "clang_version": "23.0.0git 8f497e0992fb7513f7f78a6f6b6f1056c375e961"
+  },
+  "model": {
+    "family": "Qwen3.8-Flash-Next / qwen4exp",
+    "quant": "UD-Q4_K_XL",
+    "kv_dtype": "BF16",
+    "model_root": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "first_part_sha256": "4448186216b3af4cc558bbce2c3213f01608f8f8b2e5267a9767971dd3ec8082"
+  },
+  "profile": {
+    "requested": "production",
+    "manifest_sha256": "86e5c619d932ca7fe6e0edfd4eb524c54e6a678defc9d7d5546f847d351ab7a3",
+    "strict_manifest_sha256": "0499701275d719398a1426a5922768394045f0b23b427c0b8dd7e4ee134bc92b",
+    "fell_back_to_strict": false,
+    "arithmetic_class": "T0",
+    "fallback": "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m1_bf16_bf16_out"
+  },
+  "protocol": {
+    "boundary": "synchronized runner.prefill including first greedy output, followed by exactly 128 runner.step transitions and a final device synchronize",
+    "one_python_process": true,
+    "one_model_residency": true,
+    "fixture": "benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+    "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "prompt_tokens": [512, 1024, 4096],
+    "case_count": 12,
+    "warmups_per_mode_per_case": 1,
+    "measured_repetitions_per_mode_per_case": 3,
+    "measured_samples": 72,
+    "prefill_chunk_size": 512,
+    "arm_order_even_case": ["before", "after", "after", "before", "before", "after"],
+    "arm_order_odd_case": ["after", "before", "before", "after", "after", "before"],
+    "before_variant": "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m1_bf16_bf16_out",
+    "after_variant": "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m2_bf16_bf16_out",
+    "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-halo-prefill-loop/hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 env -u HIPENGINE_HIP_ARCH uv run python /tmp/q5_m2_wall_ab.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --fixture benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json --output /tmp/qwen4exp-q5-m2-wall-ab.json --warmups-per-mode 1 --repetitions-per-mode 3 --prefill-chunk-size 512 --compiler-version-file /tmp/hipengine-halo-prefill-loop/hipcc-version.txt --require-cached-build",
+    "raw_artifact": "/tmp/qwen4exp-q5-m2-wall-ab.json",
+    "raw_artifact_sha256": "0fcc3b933c4634ee18b30c1e0e1fde0fd43aef7e0f9774199765cceff0c94e8f"
+  },
+  "correctness": {
+    "within_mode_deterministic": true,
+    "cross_mode_output_exact": true,
+    "mismatched_case_ids": [],
+    "max_prefill_cv_before": 0.018037749319575816,
+    "max_prefill_cv_after": 0.016136477491966426,
+    "all_per_case_prefill_cv_le_0_02": true
+  },
+  "results_by_shape": {
+    "p512": {
+      "m1_prefill_tok_s_weighted": 89.09270989813628,
+      "m2_prefill_tok_s_weighted": 89.16635944041234,
+      "m2_over_m1": 1.0008266618263184,
+      "delta_pct": 0.08266618263184
+    },
+    "p1024": {
+      "m1_prefill_tok_s_weighted": 88.20089162283065,
+      "m2_prefill_tok_s_weighted": 88.06689201723293,
+      "m2_over_m1": 0.9984807454535637,
+      "delta_pct": -0.15192545464363
+    },
+    "p4096": {
+      "m1_prefill_tok_s_weighted": 72.333142344877,
+      "m2_prefill_tok_s_weighted": 72.26466913178402,
+      "m2_over_m1": 0.999053363218115,
+      "delta_pct": -0.0946636781885
+    }
+  },
+  "aggregate": {
+    "geometric_mean_shape_ratio_m2_over_m1": 0.9994530914158267,
+    "negative_cases": 8,
+    "total_cases": 12,
+    "code_only_geometric_mean_ratio_m2_over_m1": 0.9992091511405413,
+    "code_only_geometric_mean_ratio_m2_to_frozen_halo_pr11": 0.29751990914069143
+  },
+  "prior_leaf_evidence": {
+    "kind": "interleaved alternating-order 20-pair kernel A/B",
+    "rows_16": {"m1_us": 193.9, "m2_us": 174.4, "delta_pct": -10.07},
+    "rows_64": {"m1_us": 587.1, "m2_us": 383.9, "delta_pct": -34.60},
+    "rows_512": {"m1_us": 8363.9, "m2_us": 7779.6, "delta_pct": -6.99},
+    "parity": "bit-exact to M1 at rows 16 and 512",
+    "rocprof": "cached trace recorded q5_1_selected_grouped_prefill_logical256_m2_bf16_bf16_kernel<8, 8>"
+  },
+  "disposition": {
+    "default_changed": false,
+    "candidate_removed": true,
+    "m1_remains_production": true,
+    "reason": "Complete-wall weighted prefill is negative at p1024 and p4096 and in 8/12 cases; microbenchmark-only wins cannot promote or retain this candidate."
+  }
+}

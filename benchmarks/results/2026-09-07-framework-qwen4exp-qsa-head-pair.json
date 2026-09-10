@@ -1,0 +1,315 @@
+{
+  "mechanism": "Two adjacent query heads per wave share K/V loads; independent score tree,softmax and accumulator states. Require even GQA ratio and page256.",
+  "validation": {
+    "tests_passed": 23,
+    "all30_screen_pairs_exact": true,
+    "trace": "/tmp/qwen4exp-qsa-head-pair-trace/gfx1151/22794_kernel_trace.csv",
+    "vgpr_parent": 40,
+    "vgpr_candidate": 72,
+    "scratch_and_lds_bytes": 0,
+    "head_blocks_ratio": 0.5
+  },
+  "limits": [
+    "Synthetic Q/BF16 KV and selected positions; selected attention only,not full QSA or model throughput.",
+    "Initial prototype failed exactness;explicit fma(acc,old_scale,score_scale*value) restores parent's accumulator contraction.",
+    "First screen baseline label strict_rows is stale: timed parent was page256_h256_wave; strict output reference separately checked. Later label corrected.",
+    "Candidate cold first sample retained;no candidate warmup exclusion in these screens.",
+    "No runtime/default change;full model state/KV and throughput qualification pending."
+  ],
+  "schema": 1,
+  "status": "kernel_candidate",
+  "default_changed": false,
+  "screens": [
+    {
+      "schema": 1,
+      "kind": "qwen4exp_h256_wave_attention_screen",
+      "command": [
+        "scripts/qwen4exp_qsa_h256_wave_screen.py",
+        "--head-pair",
+        "--rows",
+        "64",
+        "512",
+        "--selected",
+        "2051",
+        "--pairs",
+        "10",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--require-cached-build",
+        "--output",
+        "/tmp/qwen4exp-qsa-head-pair.json"
+      ],
+      "source": {
+        "path": "/home/lhl/hipEngine",
+        "head": "c859ee2e0c8240e50850b6e7e61665f8691ca4a8",
+        "tracked_clean": false
+      },
+      "host": {
+        "hostname": "gfx1151",
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "kernel": "7.1.6-1-cachyos",
+        "tuned_active": "Current active profile: accelerator-performance",
+        "cpu_governors": {
+          "performance": 32
+        },
+        "gpu_clock_policies": {
+          "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+        },
+        "rocm_platform": null,
+        "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+      },
+      "arithmetic_class": "T0",
+      "runtime_default_changed": false,
+      "boundary": "selected paged BF16 K/V attention to F32 output; selection and KV publication excluded",
+      "geometry": {
+        "query_heads": 24,
+        "kv_heads": 2,
+        "head_dim": 256,
+        "capacity": 4352,
+        "block_size": 256
+      },
+      "fixture": "seed506 random Q/BF16 KV, per-row page permutations and sorted unique selected positions",
+      "cases": [
+        {
+          "rows": 64,
+          "selected_stride": 2051,
+          "selected_sha256": "ab452f6f88b385f70efc6e85088891c52bb7cdeb3239692f5f32ef9455b38975",
+          "counts_sha256": "3fb073bf7d25ddc33b79a349f19b59b15eaebf51e6369ff908bb2985e592ec61",
+          "seconds": {
+            "parent": [
+              0.004997618030756712,
+              0.005004601087421179,
+              0.005023495992645621,
+              0.0049806160386651754,
+              0.005006344988942146,
+              0.004975797142833471,
+              0.004980365047231317,
+              0.004985655192285776,
+              0.004992327885702252,
+              0.004977719858288765
+            ],
+            "candidate": [
+              0.005383811891078949,
+              0.0016613081097602844,
+              0.001654013991355896,
+              0.0017336630262434483,
+              0.001587619073688984,
+              0.001590765081346035,
+              0.0016216628719121218,
+              0.0015866581816226244,
+              0.001582880038768053,
+              0.0016011449042707682
+            ]
+          },
+          "all_pairs_exact": true,
+          "speedup": 3.0960528120004733
+        },
+        {
+          "rows": 512,
+          "selected_stride": 2051,
+          "selected_sha256": "0ce1bdd7a29a87f0189385fc07336728032bdc83c3f53955115b71ed3f07da5e",
+          "counts_sha256": "60e731104c86957c0dace2aeda901761435eedf57d34212469b6f16d33d9caf3",
+          "seconds": {
+            "parent": [
+              0.0273345320019871,
+              0.027385217137634754,
+              0.027596623869612813,
+              0.027405595872551203,
+              0.027493710163980722,
+              0.027332889148965478,
+              0.027518807910382748,
+              0.02738693985156715,
+              0.027568330988287926,
+              0.027401136932894588
+            ],
+            "candidate": [
+              0.010876288870349526,
+              0.01240624999627471,
+              0.010720014804974198,
+              0.010770029854029417,
+              0.010752187110483646,
+              0.01075644395314157,
+              0.010710929054766893,
+              0.010860739974305034,
+              0.010770669905468822,
+              0.010787100996822119
+            ]
+          },
+          "all_pairs_exact": true,
+          "speedup": 2.5443339082463696
+        }
+      ],
+      "page256": true,
+      "baseline": "strict_rows",
+      "head_pair": true
+    },
+    {
+      "schema": 1,
+      "kind": "qwen4exp_h256_wave_attention_screen",
+      "command": [
+        "scripts/qwen4exp_qsa_h256_wave_screen.py",
+        "--head-pair",
+        "--rows",
+        "1024",
+        "--selected",
+        "2051",
+        "--pairs",
+        "10",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--require-cached-build",
+        "--output",
+        "/tmp/qwen4exp-qsa-head-pair-1024.json"
+      ],
+      "source": {
+        "path": "/home/lhl/hipEngine",
+        "head": "c859ee2e0c8240e50850b6e7e61665f8691ca4a8",
+        "tracked_clean": false
+      },
+      "host": {
+        "hostname": "gfx1151",
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "kernel": "7.1.6-1-cachyos",
+        "tuned_active": "Current active profile: accelerator-performance",
+        "cpu_governors": {
+          "performance": 32
+        },
+        "gpu_clock_policies": {
+          "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+        },
+        "rocm_platform": null,
+        "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+      },
+      "arithmetic_class": "T0",
+      "runtime_default_changed": false,
+      "boundary": "selected paged BF16 K/V attention to F32 output; selection and KV publication excluded",
+      "geometry": {
+        "query_heads": 24,
+        "kv_heads": 2,
+        "head_dim": 256,
+        "capacity": 4352,
+        "block_size": 256
+      },
+      "fixture": "seed506 random Q/BF16 KV, per-row page permutations and sorted unique selected positions",
+      "cases": [
+        {
+          "rows": 1024,
+          "selected_stride": 2051,
+          "selected_sha256": "ba8bfe5b4df4855dad5353c616e1a62e51aacf36152084be5d2e003f34526f32",
+          "counts_sha256": "b99e996170837517d0dd2b0378c0dc5c36e5d69059796762cfde715cef3243ce",
+          "seconds": {
+            "parent": [
+              0.05472687282599509,
+              0.054898594971746206,
+              0.05490881414152682,
+              0.05493161594495177,
+              0.054863909957930446,
+              0.054872087901458144,
+              0.054956682957708836,
+              0.054843220161274076,
+              0.05489356489852071,
+              0.05490817595273256
+            ],
+            "candidate": [
+              0.022263826802372932,
+              0.021868344862014055,
+              0.020898615941405296,
+              0.021089724032208323,
+              0.020872225984930992,
+              0.020994896069169044,
+              0.020852241897955537,
+              0.021074970019981265,
+              0.02092636004090309,
+              0.02112017315812409
+            ]
+          },
+          "all_pairs_exact": true,
+          "speedup": 2.609757769078851,
+          "order_speedups": [
+            2.5927735061096744,
+            2.5855731179524417
+          ]
+        }
+      ],
+      "page256": true,
+      "baseline": "page256_h256_wave",
+      "head_pair": true
+    }
+  ],
+  "trace_screen": {
+    "schema": 1,
+    "kind": "qwen4exp_h256_wave_attention_screen",
+    "command": [
+      "scripts/qwen4exp_qsa_h256_wave_screen.py",
+      "--head-pair",
+      "--rows",
+      "512",
+      "--selected",
+      "2051",
+      "--pairs",
+      "2",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--require-cached-build",
+      "--output",
+      "/tmp/qwen4exp-qsa-head-pair-trace.json"
+    ],
+    "source": {
+      "path": "/home/lhl/hipEngine",
+      "head": "c859ee2e0c8240e50850b6e7e61665f8691ca4a8",
+      "tracked_clean": false
+    },
+    "host": {
+      "hostname": "gfx1151",
+      "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+      "kernel": "7.1.6-1-cachyos",
+      "tuned_active": "Current active profile: accelerator-performance",
+      "cpu_governors": {
+        "performance": 32
+      },
+      "gpu_clock_policies": {
+        "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+      },
+      "rocm_platform": null,
+      "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+    },
+    "arithmetic_class": "T0",
+    "runtime_default_changed": false,
+    "boundary": "selected paged BF16 K/V attention to F32 output; selection and KV publication excluded",
+    "geometry": {
+      "query_heads": 24,
+      "kv_heads": 2,
+      "head_dim": 256,
+      "capacity": 4352,
+      "block_size": 256
+    },
+    "fixture": "seed506 random Q/BF16 KV, per-row page permutations and sorted unique selected positions",
+    "cases": [
+      {
+        "rows": 512,
+        "selected_stride": 2051,
+        "selected_sha256": "0ce1bdd7a29a87f0189385fc07336728032bdc83c3f53955115b71ed3f07da5e",
+        "counts_sha256": "60e731104c86957c0dace2aeda901761435eedf57d34212469b6f16d33d9caf3",
+        "seconds": {
+          "parent": [
+            0.027310425182804465,
+            0.027347785187885165
+          ],
+          "candidate": [
+            0.012055509025231004,
+            0.01076300092972815
+          ]
+        },
+        "all_pairs_exact": true,
+        "speedup": 2.395345291107001,
+        "order_speedups": [
+          2.2653896343693503,
+          2.5409070728916037
+        ]
+      }
+    ],
+    "page256": true,
+    "baseline": "page256_h256_wave",
+    "head_pair": true
+  }
+}

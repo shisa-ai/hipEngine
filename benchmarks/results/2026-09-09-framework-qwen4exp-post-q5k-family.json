@@ -1,0 +1,1326 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_semantic_owner_comparison",
+  "taxonomy": "qwen4exp-semantic-owners-v2-complete-gr",
+  "performance_claim": false,
+  "comparisons": [
+    {
+      "id": "code-p512",
+      "phase": "prefill",
+      "owners": [
+        {
+          "owner": "boundary",
+          "hipengine_ms": 10.690763,
+          "vulkan_ms": 51.77415500000026,
+          "hip_over_vulkan": 0.2064884110614639
+        },
+        {
+          "owner": "gdn",
+          "hipengine_ms": 95.855767,
+          "vulkan_ms": 83.72638099999968,
+          "hip_over_vulkan": 1.1448693453022933
+        },
+        {
+          "owner": "gr_read",
+          "hipengine_ms": 155.417925,
+          "vulkan_ms": 248.7378100000001,
+          "hip_over_vulkan": 0.6248262980203931
+        },
+        {
+          "owner": "linear",
+          "hipengine_ms": 438.83777599999996,
+          "vulkan_ms": 140.63860799999995,
+          "hip_over_vulkan": 3.1203222375466066
+        },
+        {
+          "owner": "moe",
+          "hipengine_ms": 1077.049876,
+          "vulkan_ms": 909.772077999998,
+          "hip_over_vulkan": 1.1838678082621947
+        },
+        {
+          "owner": "ple",
+          "hipengine_ms": 1.772483,
+          "vulkan_ms": 6.4936579999999955,
+          "hip_over_vulkan": 0.2729560133902958
+        },
+        {
+          "owner": "qsa",
+          "hipengine_ms": 41.997963,
+          "vulkan_ms": 20.611796000000066,
+          "hip_over_vulkan": 2.037569312252065
+        }
+      ],
+      "hipengine_device_ms": 1821.622553,
+      "vulkan_device_ms": 1461.7577999999999,
+      "hipengine_profiled_window_ms": 1881.808252
+    },
+    {
+      "id": "code-p512",
+      "phase": "decode",
+      "owners": [
+        {
+          "owner": "boundary",
+          "hipengine_ms": 0.4553723333333333,
+          "vulkan_ms": 1.3801910000000004,
+          "hip_over_vulkan": 0.3299342868728554
+        },
+        {
+          "owner": "gdn",
+          "hipengine_ms": 2.3485923333333334,
+          "vulkan_ms": 2.776340000000013,
+          "hip_over_vulkan": 0.8459310939342164
+        },
+        {
+          "owner": "gr_read",
+          "hipengine_ms": 6.638089999999999,
+          "vulkan_ms": 6.093317999999974,
+          "hip_over_vulkan": 1.0894048201653068
+        },
+        {
+          "owner": "linear",
+          "hipengine_ms": 17.110412333333333,
+          "vulkan_ms": 16.340629999999997,
+          "hip_over_vulkan": 1.0471084856173438
+        },
+        {
+          "owner": "moe",
+          "hipengine_ms": 17.349727333333334,
+          "vulkan_ms": 12.256286999999997,
+          "hip_over_vulkan": 1.4155777629336959
+        },
+        {
+          "owner": "ple",
+          "hipengine_ms": 0.03183266666666667,
+          "vulkan_ms": 0.11660599999999999,
+          "hip_over_vulkan": 0.2729933851316971
+        },
+        {
+          "owner": "qsa",
+          "hipengine_ms": 1.8987620000000003,
+          "vulkan_ms": 1.4175429999999989,
+          "hip_over_vulkan": 1.3394740053740886
+        }
+      ],
+      "hipengine_device_ms": 45.832789,
+      "vulkan_device_ms": 40.380900000000004,
+      "hipengine_profiled_window_ms": 54.72517933333334
+    },
+    {
+      "id": "code-p1024",
+      "phase": "prefill",
+      "owners": [
+        {
+          "owner": "boundary",
+          "hipengine_ms": 25.662251,
+          "vulkan_ms": 130.34861599999877,
+          "hip_over_vulkan": 0.19687398138542755
+        },
+        {
+          "owner": "gdn",
+          "hipengine_ms": 206.944282,
+          "vulkan_ms": 265.37010800000195,
+          "hip_over_vulkan": 0.77983267806485
+        },
+        {
+          "owner": "gr_read",
+          "hipengine_ms": 364.206675,
+          "vulkan_ms": 479.2936749999981,
+          "hip_over_vulkan": 0.7598820806471136
+        },
+        {
+          "owner": "linear",
+          "hipengine_ms": 865.8428690000001,
+          "vulkan_ms": 265.7878889999999,
+          "hip_over_vulkan": 3.257646058507957
+        },
+        {
+          "owner": "moe",
+          "hipengine_ms": 1892.078189,
+          "vulkan_ms": 1395.4609189999935,
+          "hip_over_vulkan": 1.355880457301441
+        },
+        {
+          "owner": "ple",
+          "hipengine_ms": 3.917667,
+          "vulkan_ms": 16.504126000000007,
+          "hip_over_vulkan": 0.2373750054986249
+        },
+        {
+          "owner": "qsa",
+          "hipengine_ms": 157.931525,
+          "vulkan_ms": 57.120762000000035,
+          "hip_over_vulkan": 2.764870766254832
+        }
+      ],
+      "hipengine_device_ms": 3516.583458,
+      "vulkan_device_ms": 2609.8881,
+      "hipengine_profiled_window_ms": 3575.565878
+    },
+    {
+      "id": "code-p1024",
+      "phase": "decode",
+      "owners": [
+        {
+          "owner": "boundary",
+          "hipengine_ms": 0.456218,
+          "vulkan_ms": 1.3828339999999992,
+          "hip_over_vulkan": 0.32991523205243745
+        },
+        {
+          "owner": "gdn",
+          "hipengine_ms": 2.3629510000000002,
+          "vulkan_ms": 2.770208000000014,
+          "hip_over_vulkan": 0.852986851528834
+        },
+        {
+          "owner": "gr_read",
+          "hipengine_ms": 6.6298873333333335,
+          "vulkan_ms": 6.0743899999999815,
+          "hip_over_vulkan": 1.0914490728012778
+        },
+        {
+          "owner": "linear",
+          "hipengine_ms": 17.118228,
+          "vulkan_ms": 16.350622999999995,
+          "hip_over_vulkan": 1.046946529193414
+        },
+        {
+          "owner": "moe",
+          "hipengine_ms": 17.461968,
+          "vulkan_ms": 12.271454999999989,
+          "hip_over_vulkan": 1.4229745372492515
+        },
+        {
+          "owner": "ple",
+          "hipengine_ms": 0.03349066666666667,
+          "vulkan_ms": 0.11428100000000004,
+          "hip_over_vulkan": 0.29305542186948536
+        },
+        {
+          "owner": "qsa",
+          "hipengine_ms": 3.6499656666666667,
+          "vulkan_ms": 1.997822999999998,
+          "hip_over_vulkan": 1.826971491802162
+        }
+      ],
+      "hipengine_device_ms": 47.712708666666664,
+      "vulkan_device_ms": 40.9616,
+      "hipengine_profiled_window_ms": 56.18717433333333
+    },
+    {
+      "id": "code-p4096",
+      "phase": "prefill",
+      "owners": [
+        {
+          "owner": "boundary",
+          "hipengine_ms": 102.898351,
+          "vulkan_ms": 507.1125429999971,
+          "hip_over_vulkan": 0.2029102857351343
+        },
+        {
+          "owner": "gdn",
+          "hipengine_ms": 825.891106,
+          "vulkan_ms": 1390.0267190000009,
+          "hip_over_vulkan": 0.5941548422854449
+        },
+        {
+          "owner": "gr_read",
+          "hipengine_ms": 1463.2112189999998,
+          "vulkan_ms": 1708.6544500000032,
+          "hip_over_vulkan": 0.8563529150086473
+        },
+        {
+          "owner": "linear",
+          "hipengine_ms": 3458.032368,
+          "vulkan_ms": 1018.843768999998,
+          "hip_over_vulkan": 3.3940751989817652
+        },
+        {
+          "owner": "moe",
+          "hipengine_ms": 7495.616087999999,
+          "vulkan_ms": 4541.955003000009,
+          "hip_over_vulkan": 1.6503061089440705
+        },
+        {
+          "owner": "ple",
+          "hipengine_ms": 16.268475,
+          "vulkan_ms": 75.44247199999995,
+          "hip_over_vulkan": 0.2156407997871545
+        },
+        {
+          "owner": "qsa",
+          "hipengine_ms": 1335.323091,
+          "vulkan_ms": 645.5304549999946,
+          "hip_over_vulkan": 2.068567146069059
+        }
+      ],
+      "hipengine_device_ms": 14697.240698,
+      "vulkan_device_ms": 9887.562,
+      "hipengine_profiled_window_ms": 15459.67354
+    },
+    {
+      "id": "code-p4096",
+      "phase": "decode",
+      "owners": [
+        {
+          "owner": "boundary",
+          "hipengine_ms": 0.45809866666666665,
+          "vulkan_ms": 1.3835930000000016,
+          "hip_over_vulkan": 0.3310935128080773
+        },
+        {
+          "owner": "gdn",
+          "hipengine_ms": 2.3626436666666666,
+          "vulkan_ms": 2.7697640000000088,
+          "hip_over_vulkan": 0.8530126273092794
+        },
+        {
+          "owner": "gr_read",
+          "hipengine_ms": 6.640603333333334,
+          "vulkan_ms": 6.106403999999975,
+          "hip_over_vulkan": 1.0874818196328577
+        },
+        {
+          "owner": "linear",
+          "hipengine_ms": 17.322430999999998,
+          "vulkan_ms": 16.35558800000001,
+          "hip_over_vulkan": 1.0591139248555286
+        },
+        {
+          "owner": "moe",
+          "hipengine_ms": 17.388214666666666,
+          "vulkan_ms": 12.446460999999994,
+          "hip_over_vulkan": 1.397040867011649
+        },
+        {
+          "owner": "ple",
+          "hipengine_ms": 0.03216633333333333,
+          "vulkan_ms": 0.114681,
+          "hip_over_vulkan": 0.28048528817618723
+        },
+        {
+          "owner": "qsa",
+          "hipengine_ms": 2.593347,
+          "vulkan_ms": 3.0811120000000076,
+          "hip_over_vulkan": 0.8416918956532556
+        }
+      ],
+      "hipengine_device_ms": 46.79750466666667,
+      "vulkan_device_ms": 42.2576,
+      "hipengine_profiled_window_ms": 56.493246
+    },
+    {
+      "id": "general_en-p4096",
+      "phase": "prefill",
+      "owners": [
+        {
+          "owner": "boundary",
+          "hipengine_ms": 102.82976,
+          "vulkan_ms": 506.7001779999965,
+          "hip_over_vulkan": 0.20294005106901836
+        },
+        {
+          "owner": "gdn",
+          "hipengine_ms": 837.70452,
+          "vulkan_ms": 1390.6634759999993,
+          "hip_over_vulkan": 0.6023775949085186
+        },
+        {
+          "owner": "gr_read",
+          "hipengine_ms": 1462.4073960000003,
+          "vulkan_ms": 1706.4470890000061,
+          "hip_over_vulkan": 0.8569895928370007
+        },
+        {
+          "owner": "linear",
+          "hipengine_ms": 3481.2469229999997,
+          "vulkan_ms": 1020.6641969999998,
+          "hip_over_vulkan": 3.410766178761143
+        },
+        {
+          "owner": "moe",
+          "hipengine_ms": 7405.491915,
+          "vulkan_ms": 4258.558934999989,
+          "hip_over_vulkan": 1.738966638253186
+        },
+        {
+          "owner": "ple",
+          "hipengine_ms": 16.008189,
+          "vulkan_ms": 75.51139399999995,
+          "hip_over_vulkan": 0.2119970000818686
+        },
+        {
+          "owner": "qsa",
+          "hipengine_ms": 1334.190795,
+          "vulkan_ms": 645.2681599999954,
+          "hip_over_vulkan": 2.067653229627833
+        }
+      ],
+      "hipengine_device_ms": 14639.879498,
+      "vulkan_device_ms": 9603.8177,
+      "hipengine_profiled_window_ms": 15352.272517
+    },
+    {
+      "id": "general_en-p4096",
+      "phase": "decode",
+      "owners": [
+        {
+          "owner": "boundary",
+          "hipengine_ms": 0.45973533333333333,
+          "vulkan_ms": 1.3860370000000022,
+          "hip_over_vulkan": 0.3316905200462416
+        },
+        {
+          "owner": "gdn",
+          "hipengine_ms": 2.381814,
+          "vulkan_ms": 2.780504000000011,
+          "hip_over_vulkan": 0.856612326398376
+        },
+        {
+          "owner": "gr_read",
+          "hipengine_ms": 6.6587293333333335,
+          "vulkan_ms": 6.108525999999988,
+          "hip_over_vulkan": 1.0900713745563737
+        },
+        {
+          "owner": "linear",
+          "hipengine_ms": 17.32623033333334,
+          "vulkan_ms": 16.338469,
+          "hip_over_vulkan": 1.0604561745248797
+        },
+        {
+          "owner": "moe",
+          "hipengine_ms": 17.409752666666666,
+          "vulkan_ms": 12.461570999999996,
+          "hip_over_vulkan": 1.3970752697767137
+        },
+        {
+          "owner": "ple",
+          "hipengine_ms": 0.03174,
+          "vulkan_ms": 0.11508200000000002,
+          "hip_over_vulkan": 0.2758033402269685
+        },
+        {
+          "owner": "qsa",
+          "hipengine_ms": 2.64846,
+          "vulkan_ms": 3.196414000000005,
+          "hip_over_vulkan": 0.8285722687987213
+        }
+      ],
+      "hipengine_device_ms": 46.91646166666667,
+      "vulkan_device_ms": 42.3866,
+      "hipengine_profiled_window_ms": 56.929372
+    },
+    {
+      "id": "general_ja-p4096",
+      "phase": "prefill",
+      "owners": [
+        {
+          "owner": "boundary",
+          "hipengine_ms": 104.828085,
+          "vulkan_ms": 506.7799699999968,
+          "hip_over_vulkan": 0.2068512790669305
+        },
+        {
+          "owner": "gdn",
+          "hipengine_ms": 811.456431,
+          "vulkan_ms": 1391.1975490000013,
+          "hip_over_vulkan": 0.5832790832497357
+        },
+        {
+          "owner": "gr_read",
+          "hipengine_ms": 1449.1761869999998,
+          "vulkan_ms": 1709.0096450000024,
+          "hip_over_vulkan": 0.8479625561153564
+        },
+        {
+          "owner": "linear",
+          "hipengine_ms": 3464.592057,
+          "vulkan_ms": 1017.0929059999997,
+          "hip_over_vulkan": 3.40636734025161
+        },
+        {
+          "owner": "moe",
+          "hipengine_ms": 7325.945414,
+          "vulkan_ms": 4221.527608999983,
+          "hip_over_vulkan": 1.7353778282490984
+        },
+        {
+          "owner": "ple",
+          "hipengine_ms": 15.840912,
+          "vulkan_ms": 75.46021099999997,
+          "hip_over_vulkan": 0.2099240353303545
+        },
+        {
+          "owner": "qsa",
+          "hipengine_ms": 1335.308844,
+          "vulkan_ms": 645.7773429999947,
+          "hip_over_vulkan": 2.067754247612262
+        }
+      ],
+      "hipengine_device_ms": 14507.14793,
+      "vulkan_device_ms": 9566.848,
+      "hipengine_profiled_window_ms": 15251.612918
+    },
+    {
+      "id": "general_ja-p4096",
+      "phase": "decode",
+      "owners": [
+        {
+          "owner": "boundary",
+          "hipengine_ms": 0.458499,
+          "vulkan_ms": 1.3830350000000018,
+          "hip_over_vulkan": 0.3315165559801447
+        },
+        {
+          "owner": "gdn",
+          "hipengine_ms": 2.3639803333333336,
+          "vulkan_ms": 2.777942000000009,
+          "hip_over_vulkan": 0.8509826099080996
+        },
+        {
+          "owner": "gr_read",
+          "hipengine_ms": 6.640644666666667,
+          "vulkan_ms": 6.1340969999999855,
+          "hip_over_vulkan": 1.0825790114937346
+        },
+        {
+          "owner": "linear",
+          "hipengine_ms": 17.19079433333333,
+          "vulkan_ms": 16.530806000000005,
+          "hip_over_vulkan": 1.0399247522070807
+        },
+        {
+          "owner": "moe",
+          "hipengine_ms": 17.397625,
+          "vulkan_ms": 12.520127999999987,
+          "hip_over_vulkan": 1.3895724548503035
+        },
+        {
+          "owner": "ple",
+          "hipengine_ms": 0.031633666666666664,
+          "vulkan_ms": 0.116322,
+          "hip_over_vulkan": 0.2719491297146427
+        },
+        {
+          "owner": "qsa",
+          "hipengine_ms": 2.6094596666666665,
+          "vulkan_ms": 3.1524990000000077,
+          "hip_over_vulkan": 0.8277432178936964
+        }
+      ],
+      "hipengine_device_ms": 46.692636666666665,
+      "vulkan_device_ms": 42.6148,
+      "hipengine_profiled_window_ms": 56.866748333333334
+    },
+    {
+      "id": "mixed_ja_en-p4096",
+      "phase": "prefill",
+      "owners": [
+        {
+          "owner": "boundary",
+          "hipengine_ms": 103.218726,
+          "vulkan_ms": 506.8518619999965,
+          "hip_over_vulkan": 0.20364673337236494
+        },
+        {
+          "owner": "gdn",
+          "hipengine_ms": 840.084175,
+          "vulkan_ms": 1389.7128910000004,
+          "hip_over_vulkan": 0.6045019661546766
+        },
+        {
+          "owner": "gr_read",
+          "hipengine_ms": 1461.4412730000001,
+          "vulkan_ms": 1705.1324249999998,
+          "hip_over_vulkan": 0.8570837382322375
+        },
+        {
+          "owner": "linear",
+          "hipengine_ms": 3459.275976000001,
+          "vulkan_ms": 1020.3471200000006,
+          "hip_over_vulkan": 3.3902932719602314
+        },
+        {
+          "owner": "moe",
+          "hipengine_ms": 7452.674937999999,
+          "vulkan_ms": 4466.093184999987,
+          "hip_over_vulkan": 1.6687235642621328
+        },
+        {
+          "owner": "ple",
+          "hipengine_ms": 15.782087,
+          "vulkan_ms": 75.40918699999996,
+          "hip_over_vulkan": 0.20928599853490013
+        },
+        {
+          "owner": "qsa",
+          "hipengine_ms": 1335.216466,
+          "vulkan_ms": 645.1200089999938,
+          "hip_over_vulkan": 2.0697179553765985
+        }
+      ],
+      "hipengine_device_ms": 14667.693641,
+      "vulkan_device_ms": 9808.672199999999,
+      "hipengine_profiled_window_ms": 15433.936716
+    },
+    {
+      "id": "mixed_ja_en-p4096",
+      "phase": "decode",
+      "owners": [
+        {
+          "owner": "boundary",
+          "hipengine_ms": 0.45504300000000003,
+          "vulkan_ms": 1.3900400000000026,
+          "hip_over_vulkan": 0.3273596443267814
+        },
+        {
+          "owner": "gdn",
+          "hipengine_ms": 2.3558046666666663,
+          "vulkan_ms": 2.7791020000000133,
+          "hip_over_vulkan": 0.8476855713344292
+        },
+        {
+          "owner": "gr_read",
+          "hipengine_ms": 6.655974666666666,
+          "vulkan_ms": 6.110086999999985,
+          "hip_over_vulkan": 1.089342044829588
+        },
+        {
+          "owner": "linear",
+          "hipengine_ms": 17.288821333333335,
+          "vulkan_ms": 16.352255999999997,
+          "hip_over_vulkan": 1.0572743805706892
+        },
+        {
+          "owner": "moe",
+          "hipengine_ms": 17.461386333333333,
+          "vulkan_ms": 12.446252999999995,
+          "hip_over_vulkan": 1.4029432258313679
+        },
+        {
+          "owner": "ple",
+          "hipengine_ms": 0.03199366666666666,
+          "vulkan_ms": 0.11468,
+          "hip_over_vulkan": 0.27898209510522026
+        },
+        {
+          "owner": "qsa",
+          "hipengine_ms": 2.6359733333333337,
+          "vulkan_ms": 3.212084000000005,
+          "hip_over_vulkan": 0.8206427146155983
+        }
+      ],
+      "hipengine_device_ms": 46.884997,
+      "vulkan_device_ms": 42.4045,
+      "hipengine_profiled_window_ms": 55.806028000000005
+    }
+  ],
+  "hipengine_source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "f3899f9947da1e0e2bc42fb0d3b199fefc3e4727",
+    "tracked_clean": true
+  },
+  "hipengine_prefill_chunk_size": 1024,
+  "comparator_source": {
+    "path": "/home/lhl/halo-box-strix-llama",
+    "head": "b212548e0ddbf0a14e5a1d81b6ffcf8e4d098faf",
+    "tracked_clean": true
+  },
+  "hip_raw_sources": [
+    {
+      "id": "code-p512",
+      "phase": "prefill",
+      "raw_path": "/tmp/qwen4exp-post-q5k-family.raw/code-p512-prefill/child.json",
+      "raw_sha256": "99212d2d1cc06da85f386a0435a8a8678c41296154121d27f31d1503acce0005",
+      "command": [
+        "rocprofv3",
+        "--kernel-trace",
+        "--hip-trace",
+        "--marker-trace",
+        "--output-format",
+        "csv",
+        "-d",
+        "/tmp/qwen4exp-post-q5k-family.raw/code-p512-prefill/trace",
+        "--",
+        "/home/lhl/hipEngine/.venv/bin/python",
+        "/home/lhl/hipEngine/scripts/qwen4exp_profile_gap.py",
+        "--model-root",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--case-id",
+        "code-p512",
+        "--profile",
+        "--role-markers",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--require-cached-build",
+        "--output",
+        "/tmp/qwen4exp-post-q5k-family.raw/code-p512-prefill/child.json",
+        "--prefill-chunk-size",
+        "1024",
+        "--mode",
+        "prefill",
+        "--repetitions",
+        "1"
+      ]
+    },
+    {
+      "id": "code-p512",
+      "phase": "decode",
+      "raw_path": "/tmp/qwen4exp-post-q5k-family.raw/code-p512-decode/child.json",
+      "raw_sha256": "04d34c5ab10c2f6340d35338470c1265d4c09189cf222176a55e3b5ce4ffc169",
+      "command": [
+        "rocprofv3",
+        "--kernel-trace",
+        "--hip-trace",
+        "--marker-trace",
+        "--output-format",
+        "csv",
+        "-d",
+        "/tmp/qwen4exp-post-q5k-family.raw/code-p512-decode/trace",
+        "--",
+        "/home/lhl/hipEngine/.venv/bin/python",
+        "/home/lhl/hipEngine/scripts/qwen4exp_context_decode_profile.py",
+        "--model-root",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--case-id",
+        "code-p512",
+        "--profile",
+        "--role-markers",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--require-cached-build",
+        "--output",
+        "/tmp/qwen4exp-post-q5k-family.raw/code-p512-decode/child.json",
+        "--prefill-chunk-size",
+        "1024",
+        "--live-count",
+        "513",
+        "--repetitions",
+        "3"
+      ]
+    },
+    {
+      "id": "code-p1024",
+      "phase": "prefill",
+      "raw_path": "/tmp/qwen4exp-post-q5k-family.raw/code-p1024-prefill/child.json",
+      "raw_sha256": "680a2de0712944a9b195f1ce606a2b8d7f576a7de8cdecfcb50ef97202affa00",
+      "command": [
+        "rocprofv3",
+        "--kernel-trace",
+        "--hip-trace",
+        "--marker-trace",
+        "--output-format",
+        "csv",
+        "-d",
+        "/tmp/qwen4exp-post-q5k-family.raw/code-p1024-prefill/trace",
+        "--",
+        "/home/lhl/hipEngine/.venv/bin/python",
+        "/home/lhl/hipEngine/scripts/qwen4exp_profile_gap.py",
+        "--model-root",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--case-id",
+        "code-p1024",
+        "--profile",
+        "--role-markers",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--require-cached-build",
+        "--output",
+        "/tmp/qwen4exp-post-q5k-family.raw/code-p1024-prefill/child.json",
+        "--prefill-chunk-size",
+        "1024",
+        "--mode",
+        "prefill",
+        "--repetitions",
+        "1"
+      ]
+    },
+    {
+      "id": "code-p1024",
+      "phase": "decode",
+      "raw_path": "/tmp/qwen4exp-post-q5k-family.raw/code-p1024-decode/child.json",
+      "raw_sha256": "4dc0955cae6b6cfdc35d77f2258ed2b3a7bf564b30e03f3722dd70f6321430db",
+      "command": [
+        "rocprofv3",
+        "--kernel-trace",
+        "--hip-trace",
+        "--marker-trace",
+        "--output-format",
+        "csv",
+        "-d",
+        "/tmp/qwen4exp-post-q5k-family.raw/code-p1024-decode/trace",
+        "--",
+        "/home/lhl/hipEngine/.venv/bin/python",
+        "/home/lhl/hipEngine/scripts/qwen4exp_context_decode_profile.py",
+        "--model-root",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--case-id",
+        "code-p1024",
+        "--profile",
+        "--role-markers",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--require-cached-build",
+        "--output",
+        "/tmp/qwen4exp-post-q5k-family.raw/code-p1024-decode/child.json",
+        "--prefill-chunk-size",
+        "1024",
+        "--live-count",
+        "1025",
+        "--repetitions",
+        "3"
+      ]
+    },
+    {
+      "id": "code-p4096",
+      "phase": "prefill",
+      "raw_path": "/tmp/qwen4exp-post-q5k-family.raw/code-p4096-prefill/child.json",
+      "raw_sha256": "544da3a9142d03efa60ad22c1e5649db424a91191d97bf5ec0297aad1bb26e1a",
+      "command": [
+        "rocprofv3",
+        "--kernel-trace",
+        "--hip-trace",
+        "--marker-trace",
+        "--output-format",
+        "csv",
+        "-d",
+        "/tmp/qwen4exp-post-q5k-family.raw/code-p4096-prefill/trace",
+        "--",
+        "/home/lhl/hipEngine/.venv/bin/python",
+        "/home/lhl/hipEngine/scripts/qwen4exp_profile_gap.py",
+        "--model-root",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--case-id",
+        "code-p4096",
+        "--profile",
+        "--role-markers",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--require-cached-build",
+        "--output",
+        "/tmp/qwen4exp-post-q5k-family.raw/code-p4096-prefill/child.json",
+        "--prefill-chunk-size",
+        "1024",
+        "--mode",
+        "prefill",
+        "--repetitions",
+        "1"
+      ]
+    },
+    {
+      "id": "code-p4096",
+      "phase": "decode",
+      "raw_path": "/tmp/qwen4exp-post-q5k-family.raw/code-p4096-decode/child.json",
+      "raw_sha256": "5a14eddf76b00742a0161784fc32bfb0a544082fafa246b065578a5ce1464547",
+      "command": [
+        "rocprofv3",
+        "--kernel-trace",
+        "--hip-trace",
+        "--marker-trace",
+        "--output-format",
+        "csv",
+        "-d",
+        "/tmp/qwen4exp-post-q5k-family.raw/code-p4096-decode/trace",
+        "--",
+        "/home/lhl/hipEngine/.venv/bin/python",
+        "/home/lhl/hipEngine/scripts/qwen4exp_context_decode_profile.py",
+        "--model-root",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--case-id",
+        "code-p4096",
+        "--profile",
+        "--role-markers",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--require-cached-build",
+        "--output",
+        "/tmp/qwen4exp-post-q5k-family.raw/code-p4096-decode/child.json",
+        "--prefill-chunk-size",
+        "1024",
+        "--live-count",
+        "4097",
+        "--repetitions",
+        "3"
+      ]
+    },
+    {
+      "id": "general_en-p4096",
+      "phase": "prefill",
+      "raw_path": "/tmp/qwen4exp-post-q5k-family.raw/general_en-p4096-prefill/child.json",
+      "raw_sha256": "d4c1a843f092243e05aee4c86cabdec205568d268d758f086cf5739e630109ed",
+      "command": [
+        "rocprofv3",
+        "--kernel-trace",
+        "--hip-trace",
+        "--marker-trace",
+        "--output-format",
+        "csv",
+        "-d",
+        "/tmp/qwen4exp-post-q5k-family.raw/general_en-p4096-prefill/trace",
+        "--",
+        "/home/lhl/hipEngine/.venv/bin/python",
+        "/home/lhl/hipEngine/scripts/qwen4exp_profile_gap.py",
+        "--model-root",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--case-id",
+        "general_en-p4096",
+        "--profile",
+        "--role-markers",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--require-cached-build",
+        "--output",
+        "/tmp/qwen4exp-post-q5k-family.raw/general_en-p4096-prefill/child.json",
+        "--prefill-chunk-size",
+        "1024",
+        "--mode",
+        "prefill",
+        "--repetitions",
+        "1"
+      ]
+    },
+    {
+      "id": "general_en-p4096",
+      "phase": "decode",
+      "raw_path": "/tmp/qwen4exp-post-q5k-family.raw/general_en-p4096-decode/child.json",
+      "raw_sha256": "29e40bf13d07c5c77255b35de6194093a7b8050a153aea37bc242bdcf6720abf",
+      "command": [
+        "rocprofv3",
+        "--kernel-trace",
+        "--hip-trace",
+        "--marker-trace",
+        "--output-format",
+        "csv",
+        "-d",
+        "/tmp/qwen4exp-post-q5k-family.raw/general_en-p4096-decode/trace",
+        "--",
+        "/home/lhl/hipEngine/.venv/bin/python",
+        "/home/lhl/hipEngine/scripts/qwen4exp_context_decode_profile.py",
+        "--model-root",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--case-id",
+        "general_en-p4096",
+        "--profile",
+        "--role-markers",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--require-cached-build",
+        "--output",
+        "/tmp/qwen4exp-post-q5k-family.raw/general_en-p4096-decode/child.json",
+        "--prefill-chunk-size",
+        "1024",
+        "--live-count",
+        "4097",
+        "--repetitions",
+        "3"
+      ]
+    },
+    {
+      "id": "general_ja-p4096",
+      "phase": "prefill",
+      "raw_path": "/tmp/qwen4exp-post-q5k-family.raw/general_ja-p4096-prefill/child.json",
+      "raw_sha256": "c1ed98059f6ffe316e4efb3465b6d3c02121458a7f98742401701ea0292eec56",
+      "command": [
+        "rocprofv3",
+        "--kernel-trace",
+        "--hip-trace",
+        "--marker-trace",
+        "--output-format",
+        "csv",
+        "-d",
+        "/tmp/qwen4exp-post-q5k-family.raw/general_ja-p4096-prefill/trace",
+        "--",
+        "/home/lhl/hipEngine/.venv/bin/python",
+        "/home/lhl/hipEngine/scripts/qwen4exp_profile_gap.py",
+        "--model-root",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--case-id",
+        "general_ja-p4096",
+        "--profile",
+        "--role-markers",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--require-cached-build",
+        "--output",
+        "/tmp/qwen4exp-post-q5k-family.raw/general_ja-p4096-prefill/child.json",
+        "--prefill-chunk-size",
+        "1024",
+        "--mode",
+        "prefill",
+        "--repetitions",
+        "1"
+      ]
+    },
+    {
+      "id": "general_ja-p4096",
+      "phase": "decode",
+      "raw_path": "/tmp/qwen4exp-post-q5k-family.raw/general_ja-p4096-decode/child.json",
+      "raw_sha256": "114489560646da30e5a0160e04b0f388a238810ba5c9425e1c45da20773dfccc",
+      "command": [
+        "rocprofv3",
+        "--kernel-trace",
+        "--hip-trace",
+        "--marker-trace",
+        "--output-format",
+        "csv",
+        "-d",
+        "/tmp/qwen4exp-post-q5k-family.raw/general_ja-p4096-decode/trace",
+        "--",
+        "/home/lhl/hipEngine/.venv/bin/python",
+        "/home/lhl/hipEngine/scripts/qwen4exp_context_decode_profile.py",
+        "--model-root",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--case-id",
+        "general_ja-p4096",
+        "--profile",
+        "--role-markers",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--require-cached-build",
+        "--output",
+        "/tmp/qwen4exp-post-q5k-family.raw/general_ja-p4096-decode/child.json",
+        "--prefill-chunk-size",
+        "1024",
+        "--live-count",
+        "4097",
+        "--repetitions",
+        "3"
+      ]
+    },
+    {
+      "id": "mixed_ja_en-p4096",
+      "phase": "prefill",
+      "raw_path": "/tmp/qwen4exp-post-q5k-family.raw/mixed_ja_en-p4096-prefill/child.json",
+      "raw_sha256": "2d864be038e35147c76cb42813e1a4b4ee459be39d64f7c1874367fb0597d1fb",
+      "command": [
+        "rocprofv3",
+        "--kernel-trace",
+        "--hip-trace",
+        "--marker-trace",
+        "--output-format",
+        "csv",
+        "-d",
+        "/tmp/qwen4exp-post-q5k-family.raw/mixed_ja_en-p4096-prefill/trace",
+        "--",
+        "/home/lhl/hipEngine/.venv/bin/python",
+        "/home/lhl/hipEngine/scripts/qwen4exp_profile_gap.py",
+        "--model-root",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--case-id",
+        "mixed_ja_en-p4096",
+        "--profile",
+        "--role-markers",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--require-cached-build",
+        "--output",
+        "/tmp/qwen4exp-post-q5k-family.raw/mixed_ja_en-p4096-prefill/child.json",
+        "--prefill-chunk-size",
+        "1024",
+        "--mode",
+        "prefill",
+        "--repetitions",
+        "1"
+      ]
+    },
+    {
+      "id": "mixed_ja_en-p4096",
+      "phase": "decode",
+      "raw_path": "/tmp/qwen4exp-post-q5k-family.raw/mixed_ja_en-p4096-decode/child.json",
+      "raw_sha256": "21addaa95bda73c902a773171949b0975ab76d62b82db525ec4925b17d98a6f3",
+      "command": [
+        "rocprofv3",
+        "--kernel-trace",
+        "--hip-trace",
+        "--marker-trace",
+        "--output-format",
+        "csv",
+        "-d",
+        "/tmp/qwen4exp-post-q5k-family.raw/mixed_ja_en-p4096-decode/trace",
+        "--",
+        "/home/lhl/hipEngine/.venv/bin/python",
+        "/home/lhl/hipEngine/scripts/qwen4exp_context_decode_profile.py",
+        "--model-root",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--case-id",
+        "mixed_ja_en-p4096",
+        "--profile",
+        "--role-markers",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--require-cached-build",
+        "--output",
+        "/tmp/qwen4exp-post-q5k-family.raw/mixed_ja_en-p4096-decode/child.json",
+        "--prefill-chunk-size",
+        "1024",
+        "--live-count",
+        "4097",
+        "--repetitions",
+        "3"
+      ]
+    }
+  ],
+  "comparator_capture": {
+    "command": [
+      "/tmp/qwen4exp-owner-build-v1/llama-server",
+      "-m",
+      "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      "18137",
+      "--parallel",
+      "1",
+      "--no-webui",
+      "-ngl",
+      "999",
+      "-fa",
+      "on",
+      "-ctk",
+      "bf16",
+      "-ctv",
+      "bf16",
+      "-c",
+      "4352",
+      "-b",
+      "8192",
+      "-ub",
+      "2048",
+      "-t",
+      "4"
+    ],
+    "server_sha256": "5ddeced52a427b9b1db23ce3ad59f4ea446903451426baa01b5781c7f294c062",
+    "log_sha256": "fed80b469f220518122985051af0fe49be4afb25e2d02ea572d4522099d99f65",
+    "environment": {
+      "GGML_VK_PERF_LOGGER": "1",
+      "GGML_VK_PERF_LOGGER_FREQUENCY": "1",
+      "HIPENGINE_VK_OWNER_TRACE": "1",
+      "GGML_BACKEND_PATH": "/tmp/qwen4exp-owner-build-v1",
+      "LD_LIBRARY_PATH": "/tmp/qwen4exp-owner-build-v1:"
+    }
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": "10.0.0",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "model_identity": {
+    "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+    "fingerprint": {
+      "algorithm": "sha256-directory-manifest-v1",
+      "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+      "size_bytes": 111334654784,
+      "sampled_bytes": 12582912,
+      "file_count": 4,
+      "exists": true,
+      "path_type": "directory"
+    }
+  },
+  "limits": [
+    "HIP kernel durations versus Vulkan query intervals: semantic alignment, not identical instruments.",
+    "MoE is the complete FFN including shared projections and router; fine source roles remain available.",
+    "GR includes down/up/inject projections plus read/mixing; residual combine remains boundary.",
+    "Unprofiled canonical AR remains the throughput source of truth.",
+    "Fixed-live decode profiles are not tg128-average family costs."
+  ],
+  "sources": {
+    "/tmp/qwen4exp-post-q5k-family.json": "34b22dc3dbaf7fd7bc2b6b9f260b2a1c41af9cdec1bd27665a215f3ca30dddbd",
+    "/tmp/qwen4exp-refresh-vk-profile.json": "4e02e1c8e486832c1aa3607c15ceda1313e7077c5093fbac2e5b50c2f498736d",
+    "/tmp/qwen4exp-refresh-vk-reference.json": "34df157a294753098e4d5d8a982ebf65965cb2ef2ade3f2d9961c199c92a819f",
+    "benchmarks/results/2026-09-05-framework-gfx1151-qwen38-flash-next-owner-refresh.json": "7716878b18dcef9ef82ccc8c2fe3a3125dd498a25e172c095b42c2a2d26308a7"
+  },
+  "overview": {
+    "history_code_p4096": [
+      {
+        "owner": "boundary",
+        "starting_ms": 76.563385,
+        "current_ms": 102.898351,
+        "device_share": 0.007001202002087536,
+        "device_zero_cost_ceiling": 1.0070505644278758,
+        "wall_zero_cost_ceiling": 1.0067005181578554
+      },
+      {
+        "owner": "gdn",
+        "starting_ms": 3906.452867,
+        "current_ms": 825.891106,
+        "device_share": 0.05619361640531527,
+        "device_zero_cost_ceiling": 1.0595393476692647,
+        "wall_zero_cost_ceiling": 1.0564372956701291
+      },
+      {
+        "owner": "gr_read",
+        "starting_ms": 4351.404127,
+        "current_ms": 1463.2112189999998,
+        "device_share": 0.09955686574549423,
+        "device_zero_cost_ceiling": 1.1105643010182082,
+        "wall_zero_cost_ceiling": 1.104541503805903
+      },
+      {
+        "owner": "linear",
+        "starting_ms": 5828.2188989999995,
+        "current_ms": 3458.032368,
+        "device_share": 0.235284461828986,
+        "device_zero_cost_ceiling": 1.307675795880545,
+        "wall_zero_cost_ceiling": 1.2881299580983674
+      },
+      {
+        "owner": "moe",
+        "starting_ms": 19773.693981999997,
+        "current_ms": 7495.616087999999,
+        "device_share": 0.5100015875102326,
+        "device_zero_cost_ceiling": 2.0408229384230565,
+        "wall_zero_cost_ceiling": 1.9411805644518092
+      },
+      {
+        "owner": "ple",
+        "starting_ms": 14.224254,
+        "current_ms": 16.268475,
+        "device_share": 0.0011069067544232172,
+        "device_zero_cost_ceiling": 1.0011081333547185,
+        "wall_zero_cost_ceiling": 1.0010534253897718
+      },
+      {
+        "owner": "qsa",
+        "starting_ms": 8982.811029,
+        "current_ms": 1335.323091,
+        "device_share": 0.09085535975346112,
+        "device_zero_cost_ceiling": 1.0999349891441073,
+        "wall_zero_cost_ceiling": 1.094540495566261
+      }
+    ],
+    "starting_source": {
+      "path": "/home/lhl/hipEngine",
+      "head": "cf9c559203f66680a28ae3bf2cbd3b8e897200a5",
+      "tracked_clean": true
+    },
+    "current_code_device_ms": 14697.240698,
+    "current_code_profiled_wall_ms": 15459.67354,
+    "four_category_p4096": {
+      "prefill": {
+        "owners": [
+          {
+            "owner": "boundary",
+            "hipengine_ms": 103.4437305,
+            "vulkan_ms": 506.86113824999677,
+            "hip_over_vulkan": 0.20408692380156185,
+            "difference_ms": -403.41740774999676
+          },
+          {
+            "owner": "gdn",
+            "hipengine_ms": 828.784058,
+            "vulkan_ms": 1390.4001587500004,
+            "hip_over_vulkan": 0.5960759230242714,
+            "difference_ms": -561.6161007500004
+          },
+          {
+            "owner": "gr_read",
+            "hipengine_ms": 1459.05901875,
+            "vulkan_ms": 1707.310902250003,
+            "hip_over_vulkan": 0.8545947998265337,
+            "difference_ms": -248.25188350000303
+          },
+          {
+            "owner": "linear",
+            "hipengine_ms": 3465.7868310000003,
+            "vulkan_ms": 1019.2369979999995,
+            "hip_over_vulkan": 3.400373846122884,
+            "difference_ms": 2446.549833000001
+          },
+          {
+            "owner": "moe",
+            "hipengine_ms": 7419.93208875,
+            "vulkan_ms": 4372.033682999992,
+            "hip_over_vulkan": 1.6971351610581846,
+            "difference_ms": 3047.8984057500074
+          },
+          {
+            "owner": "ple",
+            "hipengine_ms": 15.974915750000001,
+            "vulkan_ms": 75.45581599999996,
+            "hip_over_vulkan": 0.21171218597649266,
+            "difference_ms": -59.480900249999955
+          },
+          {
+            "owner": "qsa",
+            "hipengine_ms": 1335.009799,
+            "vulkan_ms": 645.4239917499947,
+            "hip_over_vulkan": 2.068422953073484,
+            "difference_ms": 689.5858072500052
+          }
+        ],
+        "case_count": 4,
+        "hipengine_device_ms": 14627.99044175,
+        "vulkan_device_ms": 9716.722687999987
+      },
+      "decode": {
+        "owners": [
+          {
+            "owner": "boundary",
+            "hipengine_ms": 0.45784400000000003,
+            "vulkan_ms": 1.3856762500000022,
+            "hip_over_vulkan": 0.33041195589518063,
+            "difference_ms": -0.9278322500000021
+          },
+          {
+            "owner": "gdn",
+            "hipengine_ms": 2.366060666666667,
+            "vulkan_ms": 2.7768280000000107,
+            "hip_over_vulkan": 0.8520731808619971,
+            "difference_ms": -0.4107673333333439
+          },
+          {
+            "owner": "gr_read",
+            "hipengine_ms": 6.648988,
+            "vulkan_ms": 6.114778499999983,
+            "hip_over_vulkan": 1.087363671472322,
+            "difference_ms": 0.5342095000000171
+          },
+          {
+            "owner": "linear",
+            "hipengine_ms": 17.28206925,
+            "vulkan_ms": 16.394279750000003,
+            "hip_over_vulkan": 1.054152394221527,
+            "difference_ms": 0.8877894999999967
+          },
+          {
+            "owner": "moe",
+            "hipengine_ms": 17.41424466666667,
+            "vulkan_ms": 12.468603249999994,
+            "hip_over_vulkan": 1.3966475889483994,
+            "difference_ms": 4.945641416666675
+          },
+          {
+            "owner": "ple",
+            "hipengine_ms": 0.031883416666666664,
+            "vulkan_ms": 0.11519125000000001,
+            "hip_over_vulkan": 0.27678679297834397,
+            "difference_ms": -0.08330783333333334
+          },
+          {
+            "owner": "qsa",
+            "hipengine_ms": 2.62181,
+            "vulkan_ms": 3.1605272500000066,
+            "hip_over_vulkan": 0.8295482976772292,
+            "difference_ms": -0.5387172500000066
+          }
+        ],
+        "case_count": 4,
+        "hipengine_device_ms": 46.822900000000004,
+        "vulkan_device_ms": 42.41588425
+      }
+    }
+  }
+}

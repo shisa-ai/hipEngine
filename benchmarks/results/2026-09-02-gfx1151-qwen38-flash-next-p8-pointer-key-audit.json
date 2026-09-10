@@ -1,0 +1,38 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_p8_pointer_key_audit",
+  "status": "partial_research_only",
+  "performance_claim": false,
+  "scope": "P8 stable-pointer and graph-key prerequisite audit",
+  "amdahl": {
+    "W_C_O_s": "unknown for named production",
+    "overlap_exclusions": "strict-probe graph timing is excluded from production evidence",
+    "arithmetic_class": "strict",
+    "mechanism": "capture one transition against resident model/state/scratch allocations and update values in place between replays",
+    "strict_fallback": "forced eager transition remains available"
+  },
+  "evidence": [
+    "2026-09-01-gfx1151-qwen38-flash-next-p8-full-transition-graph.json",
+    "2026-09-01-gfx1151-qwen38-flash-next-p8-all48-graph.json",
+    "2026-09-01-gfx1151-qwen38-flash-next-p8-advancing-segment8-graph.json"
+  ],
+  "proven": {
+    "resident_weight_state_scratch_addresses_reused_by_single_graph_exec": true,
+    "token_and_ple_staging_values_updated_in_place_between_replays": true,
+    "device_allocations_at_or_after_first_graph_launch": 0,
+    "profile_manifest_hash_recorded": "e93c8fa47bf2804a781bade0939c617563531ce5436e3281c2ab869209875dca",
+    "positions": [8, 9, 10, 11],
+    "full_transition_state_output_token_exact": true,
+    "forced_eager_then_graph_resume_exact": true,
+    "after_close_bytes": 0
+  },
+  "not_proven": {
+    "request_owned_production_graph_cache": true,
+    "graph_key_includes_profile_manifest_hash_shape_context_bucket_and_fallback": true,
+    "pointer_stability_across_request_reset_context_bucket_and_fallback_transitions": true,
+    "c2_isolation": true,
+    "cancellation": true
+  },
+  "decision": "Mark the campaign item partial, not complete. The strict research probe establishes fixed captured allocations and in-place token/PLE updates for one short request, but it has no production graph cache or composite cache key. Production admission remains blocked until the named-production A/B justifies implementing that owner."
+}

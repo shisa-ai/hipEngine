@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "date": "2026-08-29",
+  "status": "accepted_exact_default",
+  "scope": "Qwen4Exp c1 raw-Q4 selected dual gate/up plus BF16-boundary SiLU/product",
+  "host": {"identity":"zbook","machine_id":"87c566d30a5645cf8d12ed7ef6b6e1e8","gpu":"AMD Radeon 8060S Graphics","arch":"gfx1151"},
+  "model": {"id":"Qwen/Qwen3.8-Flash-Next","quant":"Unsloth UD-Q4_K_XL","quant_revision":"8bdc666649440e9bdc97e16f3f75782c98478ff5"},
+  "change": "Extend the registered raw selected dual gate/up owner with the exact standalone SiLU/product boundary. Each projection is rounded to BF16 bits, converted back to F32, then evaluates gate * sigmoid(gate) * up and rounds the result to BF16 in the same output workgroup. Registry misses retain dual+standalone or singleton+standalone chains.",
+  "correctness": {"primitive_bf16_bits_exact_to_dual_plus_silu":true,"generated_ids_exact":true,"generated_tokens":32,"focused_tests_passed":4,"strict_fallback_registered":true,"new_resident_bytes":0},
+  "paired_complete_model": {"command":"uv run python /tmp/qwen4exp_decode_q4silu_paired.py","protocol":"one residency after Q8 F32 pack/Q4 dual defaults; discard one control+candidate warm pair; counterbalanced S/C/C/S/S/C; reset + 8 warm + 32 measured tokens per row","control_seconds":[5.443898140001693,4.917592384008458,5.000110342007247],"candidate_seconds":[5.005896707007196,4.967909867002163,4.984774254990043],"control_median_seconds":5.000110342007247,"candidate_median_seconds":4.984774254990043,"reduction_percent":0.30671497163494904,"speedup":1.0030765860664306,"control_tok_s":6.399858765347547,"candidate_tok_s":6.419548481652138},
+  "kernel_trace": {"command":"HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace -f csv -o qwen4exp-decode32-q4silu -d /tmp -- uv run python /tmp/qwen4exp_decode32_profile.py","tokens_in_trace":41,"expected_kernel":"gguf_q4_k_selected_dual_prefill_out_kernel<unsigned short,unsigned short,true>","fused_launches":1927,"standalone_silu_launches_before":1968,"standalone_silu_launches_after":41,"net_launch_reduction":1927,"launch_reduction_per_token":47,"total_launches_before":78672,"total_launches_after":76745,"compiler_spawned_under_profiler":false,"comparison_policy":"Cross-profile frequency shifted globally; expected symbol and launch counts are mechanical evidence, paired wall is the speed claim."},
+  "decision":"Promote as T0 operation-complete default. This compounds exact decode work but does not substitute for wider selected-expert/grid dataflow or direct host/submission measurement."
+}

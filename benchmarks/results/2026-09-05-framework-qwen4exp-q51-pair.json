@@ -1,0 +1,455 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_q51_pair_screen",
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "671a27afa83d8442ef5432c8ab4303a45f687991",
+    "tracked_clean": false
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "command": [
+    "scripts/qwen4exp_q51_pair_screen.py",
+    "--model-root",
+    "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--rows",
+    "64",
+    "512",
+    "--pairs",
+    "10",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--require-cached-build",
+    "--output",
+    "/tmp/qwen4exp-q51-pair-screen.json"
+  ],
+  "weights": [
+    {
+      "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+      "name": "blk.0.ffn_down_exps.weight",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "sha256": "b8182533b10a398040d86f4026f4cdbee23b5b666414c37b4c6f73bcfa3f5663"
+    },
+    {
+      "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+      "name": "blk.1.ffn_down_exps.weight",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "sha256": "74b2d0bdc9090ab85924b670c079cf6d93bbee0a764d37c519f1a14e17831c95"
+    }
+  ],
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "arithmetic_class": "T0",
+  "boundary": "two rotating grouped Q5_1 down banks; maps supplied, no routing or combine",
+  "runtime_default_changed": false,
+  "cases": [
+    {
+      "tokens": 64,
+      "compact_rows": 640,
+      "seconds": {
+        "parent": [
+          0.017405542079359293,
+          0.01742590987123549,
+          0.018889826955273747,
+          0.017467608908191323,
+          0.01885987096466124,
+          0.017528722994029522,
+          0.0191084670368582,
+          0.017475832952186465,
+          0.019182627089321613,
+          0.01752936514094472
+        ],
+        "candidate": [
+          0.014912753831595182,
+          0.01785657904110849,
+          0.01493231114000082,
+          0.017066705971956253,
+          0.01493297191336751,
+          0.01675240695476532,
+          0.014962989138439298,
+          0.016838537994772196,
+          0.014952108031138778,
+          0.016915021929889917
+        ]
+      },
+      "all_pairs_exact": true,
+      "speedup": 1.105396509378164
+    },
+    {
+      "tokens": 512,
+      "compact_rows": 5120,
+      "seconds": {
+        "parent": [
+          0.054443053901195526,
+          0.05447134701535106,
+          0.054433726938441396,
+          0.054391536861658096,
+          0.05439708800986409,
+          0.05458502005785704,
+          0.054738798877224326,
+          0.05462407390587032,
+          0.0547145230229944,
+          0.0545808020979166
+        ],
+        "candidate": [
+          0.04349492001347244,
+          0.04342170199379325,
+          0.0434844100382179,
+          0.04349426808767021,
+          0.043480132007971406,
+          0.04366294504143298,
+          0.043531917966902256,
+          0.04375113104470074,
+          0.043650491163134575,
+          0.04372941912151873
+        ]
+      },
+      "all_pairs_exact": true,
+      "speedup": 1.2530864230395211
+    }
+  ],
+  "date": "2026-09-05",
+  "status": "accepted_standalone_runtime_pending",
+  "performance_claim": false,
+  "environment": {
+    "LD_LIBRARY_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib",
+    "HIPENGINE_HIP_ARCH": "gfx1151"
+  },
+  "cwd": "/home/lhl/hipEngine",
+  "python": ".venv/bin/python",
+  "source_sha256": {
+    "hipengine/kernels/hip_gfx1100/quant/qwen4_exp_q5_1.hip": "5601f8e16f1818d29c1fde7794c9aa3d39d5cd5015beb7ccb7f34291068da948",
+    "hipengine/kernels/hip_gfx1100/quant/qwen4_exp_q5_1.py": "e7867cadd466e32ff78691a56e9e908d352539ce0722eadbd781ea28c98b5e2b"
+  },
+  "raw_sha256": "3f9ce66337854184f71fa2d7c4de477b0db5263a8923462d2f4764cc6c211fb8",
+  "correctness": "11 focused tests: parent bits, CPU-reference, paired row/output tails, uneven and empty experts, binding512-expert640->2560, registry fallback and bound rejection",
+  "trace": {
+    "path": "/tmp/qwen4exp-q51-pair-trace/gfx1151/2305655_kernel_trace.csv",
+    "sha256": "a91479a34c7f6a05d2b7de20de19977cc9d181fdf980a83761b5c84fe9ed193b",
+    "symbol": "q5_1_selected_grouped_prefill_pair2_bf16_kernel",
+    "duration_ns": [
+      21719454,
+      21706188,
+      21751034,
+      21783574
+    ],
+    "vgpr": 72,
+    "scratch": 0,
+    "dynamic_lds_bytes": 8672,
+    "command": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/bin/rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen4exp-q51-pair-trace -- .venv/bin/python scripts/qwen4exp_q51_pair_screen.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --rows 512 --pairs 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --output /tmp/qwen4exp-q51-pair-traced.json"
+  },
+  "combined_default_profile": {
+    "source": {
+      "path": "/home/lhl/hipEngine",
+      "head": "671a27afa83d8442ef5432c8ab4303a45f687991",
+      "tracked_clean": true
+    },
+    "case": {
+      "id": "code-p4096",
+      "category": "code",
+      "prompt_tokens": 4096,
+      "prompt_token_ids_sha256": "72a815ea3e4758bfc8f026ca51dec5c64e5aa7f3b7947a0c6cd0dd8f2ad83c75"
+    },
+    "wall_seconds": [
+      33.821216710144654,
+      33.8349937540479,
+      33.77797733899206
+    ],
+    "wall_summary": {
+      "count": 3,
+      "sum": 101.43418780318461,
+      "mean": 33.811395934394874,
+      "median": 33.821216710144654,
+      "min": 33.77797733899206,
+      "max": 33.8349937540479,
+      "tok_s": 121.14258778157445
+    },
+    "command": [
+      "qwen4exp_profile_gap.py",
+      "--model-root",
+      "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "--mode",
+      "prefill",
+      "--case-id",
+      "code-p4096",
+      "--repetitions",
+      "3",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--require-cached-build",
+      "--output",
+      "/tmp/qwen4exp-combined-warm-p4096.json"
+    ],
+    "manifest_sha256": "b309495d5546dec297080116ff04a5ecb7cb3d7ba39e93488166a82cb3d62963",
+    "logits_sha256": "0b361e7db968b63ae88a78a87f0f7139ef62a61e351d7ca062640e75abfb3087",
+    "profile_logits_exact": true,
+    "lifecycle": {
+      "after_warmup": {
+        "current_allocated_bytes": 83544147716,
+        "peak_allocated_bytes": 83544147716,
+        "total_allocated_bytes": 83554633476,
+        "total_freed_bytes": 10485760,
+        "active_allocations": 1645,
+        "peak_allocations": 1645
+      },
+      "after_measurement": {
+        "current_allocated_bytes": 83544147716,
+        "peak_allocated_bytes": 83544147716,
+        "total_allocated_bytes": 83554633476,
+        "total_freed_bytes": 10485760,
+        "active_allocations": 1645,
+        "peak_allocations": 1645
+      },
+      "after_close": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 83544147716,
+        "total_allocated_bytes": 83554633476,
+        "total_freed_bytes": 83554633476,
+        "active_allocations": 0,
+        "peak_allocations": 1645
+      },
+      "steady_allocation_growth": 0,
+      "steady_allocated_byte_growth": 0,
+      "passed": true
+    },
+    "role_coverage_pct": 100.0,
+    "roles": [
+      {
+        "name": "moe:layers.*.expert_gate",
+        "ms": 16768.391,
+        "rows": 6480,
+        "symbols": 25
+      },
+      {
+        "name": "gdn:layers.*.attn_qkv",
+        "ms": 3861.877717,
+        "rows": 984,
+        "symbols": 5
+      },
+      {
+        "name": "qsa_prefill:layers.*.attn_q",
+        "ms": 1920.498047,
+        "rows": 1232,
+        "symbols": 13
+      },
+      {
+        "name": "linear:layers.*.attn_gate",
+        "ms": 1775.402717,
+        "rows": 288,
+        "symbols": 1
+      },
+      {
+        "name": "linear:layers.*.attn_qkv",
+        "ms": 1616.81203,
+        "rows": 1152,
+        "symbols": 4
+      },
+      {
+        "name": "gr_read:layers.*.hc_ffn_down",
+        "ms": 1322.289132,
+        "rows": 1152,
+        "symbols": 3
+      },
+      {
+        "name": "gr_read:layers.*.hc_attn_down",
+        "ms": 1320.5254,
+        "rows": 1152,
+        "symbols": 3
+      },
+      {
+        "name": "linear:layers.*.ssm_out",
+        "ms": 889.83402,
+        "rows": 1152,
+        "symbols": 4
+      },
+      {
+        "name": "linear:layers.*.hc_attn_down",
+        "ms": 829.622627,
+        "rows": 1536,
+        "symbols": 4
+      },
+      {
+        "name": "linear:layers.*.hc_ffn_down",
+        "ms": 822.413703,
+        "rows": 1536,
+        "symbols": 4
+      },
+      {
+        "name": "linear:layers.*.attn_q",
+        "ms": 608.901588,
+        "rows": 384,
+        "symbols": 4
+      },
+      {
+        "name": "linear:layers.*.shared_down",
+        "ms": 347.005945,
+        "rows": 384,
+        "symbols": 1
+      },
+      {
+        "name": "linear:layers.*.attn_output",
+        "ms": 295.109004,
+        "rows": 384,
+        "symbols": 4
+      },
+      {
+        "name": "linear:layers.*.index_q",
+        "ms": 221.933174,
+        "rows": 96,
+        "symbols": 1
+      },
+      {
+        "name": "linear:layers.*.shared_gate",
+        "ms": 195.627207,
+        "rows": 1536,
+        "symbols": 4
+      },
+      {
+        "name": "linear:layers.*.shared_up",
+        "ms": 188.237387,
+        "rows": 1536,
+        "symbols": 4
+      },
+      {
+        "name": "prefill_boundary",
+        "ms": 76.551141,
+        "rows": 1229,
+        "symbols": 6
+      },
+      {
+        "name": "linear:layers.*.ssm_alpha",
+        "ms": 59.453546,
+        "rows": 288,
+        "symbols": 1
+      },
+      {
+        "name": "linear:layers.*.ssm_beta",
+        "ms": 56.845953,
+        "rows": 288,
+        "symbols": 1
+      },
+      {
+        "name": "linear:layers.*.index_k",
+        "ms": 47.897438,
+        "rows": 96,
+        "symbols": 1
+      },
+      {
+        "name": "linear:layers.*.attn_k",
+        "ms": 46.937843,
+        "rows": 384,
+        "symbols": 4
+      },
+      {
+        "name": "linear:layers.*.attn_v",
+        "ms": 46.630576,
+        "rows": 384,
+        "symbols": 4
+      },
+      {
+        "name": "linear:layers.*.ple_key",
+        "ms": 46.233996,
+        "rows": 32,
+        "symbols": 4
+      },
+      {
+        "name": "linear:layers.*.hc_attn_inject",
+        "ms": 30.674227,
+        "rows": 384,
+        "symbols": 1
+      },
+      {
+        "name": "linear:layers.*.hc_ffn_inject",
+        "ms": 30.126689,
+        "rows": 384,
+        "symbols": 1
+      },
+      {
+        "name": "ple:layers.*.ple_key",
+        "ms": 14.221972,
+        "rows": 64,
+        "symbols": 7
+      },
+      {
+        "name": "linear:layers.*.ple_value",
+        "ms": 9.824195,
+        "rows": 32,
+        "symbols": 4
+      },
+      {
+        "name": "linear:layers.*.shared_expert_gate",
+        "ms": 3.740621,
+        "rows": 384,
+        "symbols": 1
+      },
+      {
+        "name": "linear:root.lm_head",
+        "ms": 3.059741,
+        "rows": 1,
+        "symbols": 1
+      },
+      {
+        "name": "linear:root.head_hc_down",
+        "ms": 0.039995,
+        "rows": 1,
+        "symbols": 1
+      },
+      {
+        "name": "linear:root.head_hc_up",
+        "ms": 0.025889,
+        "rows": 1,
+        "symbols": 1
+      },
+      {
+        "name": "gr_read:root.head_hc_down",
+        "ms": 0.01094,
+        "rows": 4,
+        "symbols": 4
+      }
+    ],
+    "profile_command": [
+      "qwen4exp_profile_gap.py",
+      "--model-root",
+      "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "--mode",
+      "prefill",
+      "--case-id",
+      "code-p4096",
+      "--repetitions",
+      "1",
+      "--profile",
+      "--role-markers",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--require-cached-build",
+      "--output",
+      "/tmp/qwen4exp-combined-profile.json"
+    ],
+    "profile_raw_sha256": "a48ec983ad97186d92f088c613901e452bc16646433f9f13332c4b3772a555ef",
+    "warm_raw_sha256": "e01afb46bdb5a91b10b110353e35d9f468fa08d6781ad24af8c4f6eee889a697"
+  },
+  "limitations": [
+    "Standalone actual-weight down boundary; routing/combine and full model performance not measured for candidate.",
+    "Short-shape timings depend on arm order; preserve balanced samples, do not select fastest.",
+    "Combined-default121.14 pp/s is code-p4096 only, not an all-category refresh or same-session old/new comparison."
+  ]
+}

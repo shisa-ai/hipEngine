@@ -50,6 +50,11 @@
       "path": "/home/lhl/dflash",
       "baseline_ref": "07ebd93db9f472af339b644bb70221ad8428328a",
       "baseline_note": "z-lab/dflash reference implementation head (DFlash/DFlash2) when Qwen3.8-27B DFlash2 GGUF bring-up lineage was registered."
+    },
+    "halo-box": {
+      "path": "/home/lhl/halo-box-strix-llama/hb-pr11",
+      "baseline_ref": "a7ad7b7f508746870e03d0da60cca420295a04b9",
+      "baseline_note": "Frozen halo-box PR11 tree (base 6c84c7d5) used as the PF dense/MMQ tile-geometry reference for the Qwen3.8-Flash-Next prefill campaign."
     }
   },
   "files": [
@@ -423,6 +428,41 @@
       "kind": "source",
       "family": "DFlash2 quantized-target MLX variant (comparator lane for GGUF target)",
       "baseline_ref": "07ebd93"
+    },
+    {
+      "repo": "halo-box",
+      "path": "ggml/src/ggml-cuda/mmq-config-rdna3-5.cuh",
+      "kind": "kernel",
+      "family": "RDNA3.5 MMQ tile table (nthreads/occupancy/I/J) retuned 256-wide to 128-wide for Q4_K/Q5_K/Q6_K/Q8_0; PF-1 dense Q8_0 tile-geometry reference",
+      "baseline_ref": "a7ad7b7f"
+    },
+    {
+      "repo": "halo-box",
+      "path": "ggml/src/ggml-cuda/mmq-q8.cu",
+      "kind": "kernel",
+      "family": "Q8_0 MMQ dispatch specialization added by PR11; PF-1d reference",
+      "baseline_ref": "a7ad7b7f"
+    },
+    {
+      "repo": "halo-box",
+      "path": "ggml/src/ggml-cuda/mmq.cu",
+      "kind": "kernel",
+      "family": "MMQ core incl. routed-compact descriptors and J48 dispatch (M2/M3/M4); PF-1d/PF-3 reference",
+      "baseline_ref": "a7ad7b7f"
+    },
+    {
+      "repo": "halo-box",
+      "path": "ggml/src/ggml-cuda/mmq.cuh",
+      "kind": "kernel",
+      "family": "MMQ config CASE macro and SRAM layout plumbing; PF-1d reference",
+      "baseline_ref": "a7ad7b7f"
+    },
+    {
+      "repo": "halo-box",
+      "path": "ggml/src/ggml-cuda/quantize.cu",
+      "kind": "kernel",
+      "family": "M8 gfx1151 quantize specializations; PF-1d activation-quantize reference",
+      "baseline_ref": "a7ad7b7f"
     }
   ],
   "external_artifacts": [

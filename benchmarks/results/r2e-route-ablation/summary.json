@@ -1,0 +1,71 @@
+{
+ "schema": 1,
+ "kind": "r2e_route_drift_ablation_summary",
+ "date": "2026-09-10",
+ "method": "leave-one-route-out vs the frozen strict teacher (/tmp/r11-strict-teacher-996.npz, emitted at 58a27ff70); teacher-forced 82-step chains, 12 canonical cases; env override applied post-construction (launch-time reads). Driver: scripts/qwen4exp_r2e_route_ablation.py",
+ "control": {
+  "kl_mean": 0.0012760646965530602,
+  "kl_p95": 0.007078475132733285,
+  "kl_p99": 0.016884552647935928,
+  "kl_max": 0.05256923892437648,
+  "top1_overall": 0.9849397590361446
+ },
+ "sanity": "strict_baseline arm reproduces the teacher BIT-EXACTLY (KL 0.000000, top1 1.0 on all cases)",
+ "arms": {
+  "decode_dp4a": {
+   "kl_mean": 0.00137876,
+   "kl_max": 0.075957,
+   "top1_overall": 0.983936
+  },
+  "forkb_grouped_down": {
+   "kl_mean": 0.001276065,
+   "kl_max": 0.052569,
+   "top1_overall": 0.98494
+  },
+  "moe_wmma_27_47": {
+   "kl_mean": 0.00134115,
+   "kl_max": 0.069852,
+   "top1_overall": 0.985944
+  },
+  "q4_iu8": {
+   "kl_mean": 0.054774695,
+   "kl_max": 2.090312,
+   "top1_overall": 0.924699
+  },
+  "q51_down_m1": {
+   "kl_mean": 0.001276065,
+   "kl_max": 0.052569,
+   "top1_overall": 0.98494
+  },
+  "q8_mmq": {
+   "kl_mean": 0.00156808,
+   "kl_max": 0.136695,
+   "top1_overall": 0.983936
+  },
+  "qsa_h256_quad": {
+   "kl_mean": 0.001276065,
+   "kl_max": 0.052569,
+   "top1_overall": 0.98494
+  },
+  "row4_gemv": {
+   "kl_mean": 0.001276065,
+   "kl_max": 0.052569,
+   "top1_overall": 0.98494
+  },
+  "strict_baseline": {
+   "kl_mean": 0.0,
+   "kl_max": 0.0,
+   "top1_overall": 1.0
+  }
+ },
+ "conclusion": {
+  "single_route_attribution": "REFUTED - no promoted route's removal reduces the control drift. Four routes bit-identical to the control on this workload (qsa_h256_quad, q51_down_m1, forkb_grouped_down, row4_gemv - exact/weight-exact classes); four removals INCREASE drift (moe_wmma_27_47 +5%, decode_dp4a +8%, q8_mmq +23% mean / 2.6x max, q4_iu8 43x - their fallback paths drift as much or more)",
+  "mechanism_hypothesis_replacement": "the 0.001276 mean / 0.0526 max budget is NOT consumed by any single route: it is compounded micro-drift. Documented per-route bounds are <= ~1e-7 (T1) or bit-exact (T0), but teacher-forced step KLs grow from ~1e-9 to ~1e-2 along chains - perturbations amplify through the 48-layer recurrent/state path. The budget is a property of the production COMPOSITION under amplification, not of a dominant route",
+  "policy_implication_6_1": "envelope recalibration cannot proceed by 'fixing the worst route' - there is none. The fork: (a) recalibrate bars to the compounded-reality level (mean ~1.3e-3), or (b) bounded-drift admission with per-route micro-bounds PLUS an amplification-aware cumulative cap",
+  "engagement_caveats": "arms with changed KL prove the flip engaged. The four bit-identical arms are ambiguous between 'route is bit-exact here' and 'route never engaged at these shapes' - kernel-sentinel engagement verification remains a refinement; either way the attribution conclusion holds (a non-engaging route contributes zero by definition)",
+  "follow_ups": [
+   "micro-drift source attribution: which T1 seeds dominate the amplification (many-routes-off arm or sum-of-squares decomposition over the ~25 remaining promoted envs)",
+   "interaction testing for budget-consumer search is MOOTED (no implicated routes); redirects to amplification seeding"
+  ]
+ }
+}

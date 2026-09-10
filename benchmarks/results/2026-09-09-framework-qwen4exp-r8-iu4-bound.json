@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_r8_iu4_feasibility_bound",
+  "date": "2026-09-09",
+  "host_gpu": "gfx1151 (Radeon 8060S)",
+  "instruction_control": {
+    "method": "hipEvent microbenchmark, 160x64 threads, 2M dependent wmma i32_16x16x16 instructions per lane path, identical instruction counts for iu8 and iu4",
+    "iu8_ms": 98.9,
+    "iu4_ms": 52.3,
+    "throughput_ratio_iu4_over_iu8": 1.892
+  },
+  "precision_matched_split_verdict": {
+    "arithmetic": "2 iu4 products per iu8 product at 1.892x rate = 0.945x",
+    "verdict": "REJECTED as a speed route: the exact integer split q8 = low4 + 16*high4 loses ~5% on arithmetic alone, before recombination/correction overhead"
+  },
+  "residual_iu4_fewer_plane_verdict": {
+    "arithmetic_ceiling": "2 iu4 planes vs 3 iu8 planes = 1.06x ceiling",
+    "verdict": "REJECTED per the R8 stop criteria: a <=6% arithmetic ceiling on the expert-GEMV subowner cannot fund the numerical risk (4-bit residual planes vs 8-bit; the Q5_K precedent shows the BF16-publication envelope sits within 18% of rejection at 8-bit-adjacent precision) or the qualification cost"
+  },
+  "stop_rule": "Advance only a complete-chain win; the measured instruction-level control consumes the gain, so the bounded screen closes without a kernel build"
+}

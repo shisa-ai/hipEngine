@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "status": "rejected_removed",
+  "source": "5e51e21c8 plus uncommitted candidate; all runtime edits removed",
+  "host": "gfx1151",
+  "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+  "hardware": "Framework Ryzen AI Max+395 Radeon8060S gfx1151",
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "boundary": "Two actual Q5_1 down banks layer0/1; synthetic BF16 activations and distinct-top10 routing. Grouping/combine not timed.",
+  "mechanism": "Template DUAL_REDUCE; expand partial arena from8*256 to2*8*256 floats. Publish both output-column partials, reduce all16 rows through unchanged strides128..1 with one barrier per stride, then publish16 outputs in parallel. Metadata after enlarged arena; parent serial-pair path preserved during A/B.",
+  "command": ".venv/bin/python scripts/qwen4exp_q51_pair_screen.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --dual-reduce --rows 64 512 --pairs 20 --output /tmp/qwen4exp-q51-dual-reduce.json",
+  "environment": "Established therock SDK devel/bin PATH,devel/lib:core/lib LD_LIBRARY_PATH,HIPENGINE_HIP_ARCH=gfx1151; unchanged high/2900-requested GPU policy. Compiler HIP7.15.26333-0000000 clang23.0.0git 8f497e0992fb7513f7f78a6f6b6f1056c375e961.",
+  "cases": [
+    {"tokens":64,"compact_rows":640,"parent_ms":15.0163150392,"candidate_ms":22.8720969753,"speedup":0.6565342502,"exact":true},
+    {"tokens":512,"compact_rows":5120,"parent_ms":43.7212029938,"candidate_ms":66.1685286323,"speedup":0.6607552548,"exact":true}
+  ],
+  "correctness": "Missing-registry RED; seven GPU tests pass, exact repeated BF16 outputs versus M1 at reduced/tail/full shapes and reduced dequantized CPU allclose. Forty two-bank A/B pairs exact. No new numerical-default admission.",
+  "trace": {
+    "prefix": "HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen4exp-q51-dual-reduce-trace --",
+    "arguments": "same command with --rows 512 --pairs 2 --output /tmp/qwen4exp-q51-dual-reduce-trace.json",
+    "symbols": "q5_1_selected_grouped_prefill_pair2_bf16_kernel<false>/<true>",
+    "last_parent_bank_ns":[21758655,21739465],
+    "last_candidate_bank_ns":[32954898,32826456],
+    "both_vgpr":72,"both_scratch_bytes":0,
+    "dynamic_lds_launch_bytes":{"parent":8672,"candidate":16864},
+    "note":"CSV LDS_Block_Size is0 for this extern-shared kernel; launch expression supplies actual dynamic allocation."
+  },
+  "raw_path":"/tmp/qwen4exp-q51-dual-reduce.json",
+  "raw_sha256":"b99e38807011760aeb1572940a1baf4e86aba8df67c27aa0d1693d6e8ecb3ad7",
+  "disposition":"Remove simultaneous full-LDS pair reduction; fewer barriers did not compensate for enlarged scratch/access scheduling. Precise cause not isolated. No model A/B warranted, no speedup retained."
+}

@@ -1,0 +1,111 @@
+{
+  "amdahl": {
+    "comparator_c_seconds": 2.129,
+    "note": "This candidate addresses only the production WMMA suffix host-size boundary, not the complete MoE owner.",
+    "operation_complete_moe_o_seconds": 3.408,
+    "overlap_exclusions": [
+      "early exact grouped layers already have no tile-count D2H",
+      "projection and activation kernels",
+      "routing and reduction tails",
+      "PLE and non-MoE roles"
+    ],
+    "prefill_w_seconds": 5.939,
+    "zero_cost_gap_coverage": 0.894
+  },
+  "candidate": {
+    "candidate_removed": true,
+    "classification": "T0",
+    "mechanism": "initialize fixed-capacity tile map to -1, build compact map on device, launch the maximum guarded WMMA grid, and remove group_wmma_total stream synchronization/D2H",
+    "strict_fallback": "current exact/production grouped paths with host-sized WMMA grid"
+  },
+  "correctness": {
+    "all_bound_repeat_exact": true,
+    "all_candidate_repeat_exact": true,
+    "all_cross_route_logits_exact": true,
+    "reduced_cpu_oracle_passed": true,
+    "runner_d2h_calls_in_candidate": 0,
+    "teardown": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 83543106308,
+      "peak_allocations": 1645,
+      "total_allocated_bytes": 83543106308,
+      "total_freed_bytes": 83543106308
+    }
+  },
+  "date": "2026-09-02",
+  "decision": {
+    "blocker": "A paying device-only route needs indirect/device-sized dispatch or a compact graph mechanism that does not launch the worst-case padded grid. Existing HIP wrappers expose host-sized grids; no such in-tree primitive is available.",
+    "next": "Treat early exact-MoE projection reuse as requiring a new mechanism; proceed to the independently measured dense/GR boundary.",
+    "promoted": false,
+    "reason": "The maximum guarded grid removes the D2H boundary but extra invalid CTAs offset the saving; aggregate ratio 95% CI includes 1.0 and code regresses."
+  },
+  "kind": "qwen4exp_moe_device_tile_grid_screen",
+  "performance_claim": false,
+  "same_session_ab": {
+    "aggregate_ratio_95ci": [
+      0.9994358991003893,
+      1.0022079403978386
+    ],
+    "aggregate_ratio_mean": 1.000821919749114,
+    "candidate_wins": 8,
+    "cases": {
+      "code-p512": {
+        "bound_tok_s": 92.31690054673078,
+        "candidate_tok_s": 92.16257659820518,
+        "cross_route_logits_exact": true,
+        "ratio_95ci": [
+          0.9940890632059254,
+          1.002566606128925
+        ],
+        "ratio_mean": 0.9983278346674251
+      },
+      "general_en-p512": {
+        "bound_tok_s": 91.8342789943947,
+        "candidate_tok_s": 91.98468997044456,
+        "cross_route_logits_exact": true,
+        "ratio_95ci": [
+          1.001254235562263,
+          1.0020211024663843
+        ],
+        "ratio_mean": 1.0016376690143236
+      },
+      "general_ja-p512": {
+        "bound_tok_s": 92.15554584963543,
+        "candidate_tok_s": 92.23423183819904,
+        "cross_route_logits_exact": true,
+        "ratio_95ci": [
+          0.9948712536536978,
+          1.0068397827701183
+        ],
+        "ratio_mean": 1.000855518211908
+      },
+      "mixed_ja_en-p512": {
+        "bound_tok_s": 91.32250686533155,
+        "candidate_tok_s": 91.54766386648491,
+        "cross_route_logits_exact": true,
+        "ratio_95ci": [
+          0.9981315371144893,
+          1.0068017770911093
+        ],
+        "ratio_mean": 1.0024666571027994
+      }
+    },
+    "pair_count": 12,
+    "protocol": "three counterbalanced pairs per category after warmup",
+    "raw_sha256": "add894f6b20a6fbb5ef4b77bb23949aca42c69a654c15abcee367a4d96fb9cf8"
+  },
+  "schema": 1,
+  "scope": {
+    "arch": "gfx1151",
+    "clock_policy": "auto",
+    "gpu": "AMD Radeon 8060S",
+    "host": "zbook",
+    "kv": "BF16",
+    "model": "Qwen/Qwen3.8-Flash-Next",
+    "profile": "production",
+    "quant": "Unsloth UD-Q4_K_XL",
+    "shape": "four canonical p512 categories"
+  },
+  "status": "blocked_neutral_removed"
+}

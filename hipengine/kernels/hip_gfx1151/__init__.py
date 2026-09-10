@@ -2307,6 +2307,18 @@ GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS = 65536
 # independently admitted Q4_K_M/T16 matrix schedules and must not inherit their
 # rowbatch or output-column selectors.
 GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED = False
+# Qwen4Exp independently qualifies the exact F32-input raw-Q8 rowbatch family;
+# this does not admit the W7900 Q5/Q6 policies above.
+GGUF_RAW_Q8_F32_PREFILL_ROWBATCH_SUPPORTED = True
+GGUF_RAW_Q8_F32_PREFILL_COLTILE_SUPPORTED = True
+# Qwen4Exp MoE is stateless between layer boundaries. Per-layer graph replay
+# self-validates BF16 output before admission and leaves GDN/QSA eager.
+QWEN4_EXP_MOE_GRAPH = True
+# Profile-certified T2 cooperative MoE prefill is confined to late layers where
+# the full 450-row/three-repeat envelope and task/c2 gates pass.
+QWEN4_EXP_PRODUCTION_MOE_PREFILL_LAYERS = tuple(range(27, 48))
+QWEN4_EXP_PRODUCTION_Q8_PREFILL_LAYERS = tuple(range(32, 48))
+QWEN4_EXP_PRODUCTION_Q8_PREFILL_TILE = (64, 32)
 GGUF_RAW_K_PREFILL_ROWBATCH = 0
 GGUF_RAW_K_PREFILL_COLTILE_SUPPORTED = False
 GGUF_RAW_K_PREFILL_COLTILE2_SHAPES = frozenset()
@@ -3272,6 +3284,9 @@ _GFX1100_MODULES = (
     "hipengine.kernels.hip_gfx1100.moe.maple_moe",
     "hipengine.kernels.hip_gfx1100.norm",
     "hipengine.kernels.hip_gfx1100.quant",
+    "hipengine.kernels.hip_gfx1100.quant.gguf_k_selected_prefill",
+    "hipengine.kernels.hip_gfx1100.quant.gguf_q5_k_q8_1_selected_prefill",
+    "hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_mmq_prefill",
     "hipengine.kernels.hip_gfx1100.quant.maple_ternary",
     "hipengine.kernels.hip_gfx1100.rotary",
     "hipengine.kernels.hip_gfx1100.runtime",
@@ -3547,7 +3562,13 @@ __all__ = [
     "GGUF_RAW_K_PREFILL_COLTILE_SUPPORTED",
     "GGUF_RAW_K_PREFILL_ROWBATCH",
     "GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED",
+    "GGUF_RAW_Q8_F32_PREFILL_ROWBATCH_SUPPORTED",
+    "GGUF_RAW_Q8_F32_PREFILL_COLTILE_SUPPORTED",
     "GGUF_RAW_K_PREFILL_VARIANT",
+    "QWEN4_EXP_MOE_GRAPH",
+    "QWEN4_EXP_PRODUCTION_MOE_PREFILL_LAYERS",
+    "QWEN4_EXP_PRODUCTION_Q8_PREFILL_LAYERS",
+    "QWEN4_EXP_PRODUCTION_Q8_PREFILL_TILE",
     "GGUF_ROUTER_F32_BF16_HIDDEN_THREADS",
     "LAGUNA_DENSE_Q4_PREFILL_MODE",
     "LAGUNA_F16_BOUNDARY_FUSION",

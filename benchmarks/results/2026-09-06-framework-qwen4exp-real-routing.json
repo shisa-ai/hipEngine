@@ -1,0 +1,379 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_real_routing",
+  "performance_claim": false,
+  "summary_command": [
+    "scripts/qwen4exp_routing_capture.py",
+    "--summarize",
+    "/tmp/qwen4exp-routing-smoke.json",
+    "/tmp/qwen4exp-routing-categories.json",
+    "--output",
+    "benchmarks/results/2026-09-06-framework-qwen4exp-real-routing.json"
+  ],
+  "limitations": "Counts at exact Q4/Q5_1 pair boundaries only; no timed speedup. Replay activations remain synthetic. Row-batch passes are arithmetic estimates, not measured memory traffic. State digest does not hash full KV contents.",
+  "captures": [
+    {
+      "schema": 1,
+      "status": "captured_exact",
+      "performance_claim": false,
+      "source": {
+        "path": "/home/lhl/hipEngine",
+        "head": "90ffa9cf1c341556249c7ec94651324c25155dfb",
+        "tracked_clean": true
+      },
+      "host": {
+        "hostname": "gfx1151",
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "kernel": "7.1.6-1-cachyos",
+        "tuned_active": "Current active profile: accelerator-performance",
+        "cpu_governors": {
+          "performance": 32
+        },
+        "gpu_clock_policies": {
+          "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+        },
+        "rocm_platform": null,
+        "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+      },
+      "model_identity": {
+        "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+        "fingerprint": {
+          "algorithm": "sha256-directory-manifest-v1",
+          "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+          "size_bytes": 111334654784,
+          "sampled_bytes": 12582912,
+          "file_count": 4,
+          "exists": true,
+          "path_type": "directory"
+        }
+      },
+      "model_root": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+      "command": [
+        "scripts/qwen4exp_routing_capture.py",
+        "--model-root",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--case-id",
+        "code-p512",
+        "--output",
+        "/tmp/qwen4exp-routing-smoke.json"
+      ],
+      "manifest_sha256": "ca88fce0444e9e2737dfc724d7936685d7dfc23c047481294a9bc3676f7a82a8",
+      "scope": "Exact Q4/Q5_1 pair-prefill calls only, not WMMA/Q5_K/Q8-down routes",
+      "memory_after_close": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 85336171268,
+        "total_allocated_bytes": 85336171268,
+        "total_freed_bytes": 85336171268,
+        "active_allocations": 0,
+        "peak_allocations": 1717
+      },
+      "cases": [
+        {
+          "id": "code-p512",
+          "exact": true,
+          "prefill_logits_sha256": "e9483d7456ed2643377c6d9701231a99fd6e06ebb2e88d86683ada03cec89c99",
+          "next_logits_sha256": "5c079c1681494d59508d051cfbfe246e26872ef657d98bf96981038d507f299e",
+          "state_sha256": "9821d3f20988bba3ab8a04151aa9337491c6ac0275213adbba6ef615e8f2f7d6"
+        }
+      ],
+      "raw_path": "/tmp/qwen4exp-routing-smoke.json",
+      "raw_sha256": "f3a63c16d56ff339e6da49187447dc438bca11835c772abd102af499382275f2",
+      "summary": [
+        {
+          "case_id": "code-p512",
+          "family": "q4",
+          "boundaries": 26,
+          "active_expert_instances": 8524,
+          "compact_rows": 133120,
+          "active_rows_percentiles": {
+            "p50": 8.0,
+            "p90": 38.0,
+            "p99": 116.0,
+            "max": 352.0
+          },
+          "rows_in_experts_gt8_share": 0.8845928485576923,
+          "weight_passes_by_row_batch": {
+            "8": 21165,
+            "16": 13557,
+            "32": 10220
+          }
+        },
+        {
+          "case_id": "code-p512",
+          "family": "q51",
+          "boundaries": 25,
+          "active_expert_instances": 8217,
+          "compact_rows": 128000,
+          "active_rows_percentiles": {
+            "p50": 8.0,
+            "p90": 37.400000000000546,
+            "p99": 115.84000000000015,
+            "max": 352.0
+          },
+          "rows_in_experts_gt8_share": 0.8841796875,
+          "weight_passes_by_row_batch": {
+            "8": 20355,
+            "16": 13041,
+            "32": 9840
+          }
+        }
+      ]
+    },
+    {
+      "schema": 1,
+      "status": "captured_exact",
+      "performance_claim": false,
+      "source": {
+        "path": "/home/lhl/hipEngine",
+        "head": "90ffa9cf1c341556249c7ec94651324c25155dfb",
+        "tracked_clean": false
+      },
+      "host": {
+        "hostname": "gfx1151",
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "kernel": "7.1.6-1-cachyos",
+        "tuned_active": "Current active profile: accelerator-performance",
+        "cpu_governors": {
+          "performance": 32
+        },
+        "gpu_clock_policies": {
+          "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+        },
+        "rocm_platform": null,
+        "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+      },
+      "model_identity": {
+        "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+        "fingerprint": {
+          "algorithm": "sha256-directory-manifest-v1",
+          "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+          "size_bytes": 111334654784,
+          "sampled_bytes": 12582912,
+          "file_count": 4,
+          "exists": true,
+          "path_type": "directory"
+        }
+      },
+      "model_root": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+      "command": [
+        "scripts/qwen4exp_routing_capture.py",
+        "--model-root",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--case-id",
+        "code-p4096",
+        "--case-id",
+        "general_en-p4096",
+        "--case-id",
+        "general_ja-p4096",
+        "--case-id",
+        "mixed_ja_en-p4096",
+        "--output",
+        "/tmp/qwen4exp-routing-categories.json"
+      ],
+      "manifest_sha256": "ca88fce0444e9e2737dfc724d7936685d7dfc23c047481294a9bc3676f7a82a8",
+      "scope": "Exact Q4/Q5_1 pair-prefill calls only, not WMMA/Q5_K/Q8-down routes",
+      "memory_after_close": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 85339323140,
+        "total_allocated_bytes": 85349808900,
+        "total_freed_bytes": 85349808900,
+        "active_allocations": 0,
+        "peak_allocations": 1717
+      },
+      "cases": [
+        {
+          "id": "code-p4096",
+          "exact": true,
+          "prefill_logits_sha256": "0b361e7db968b63ae88a78a87f0f7139ef62a61e351d7ca062640e75abfb3087",
+          "next_logits_sha256": "def91ca6373e27e526b1637e436e3d9afe9850b7e93b0f209b05c9d56bc9826e",
+          "state_sha256": "cc9aea4b3518d5c3d30525dfd35d2c4d577b22bf3cc01eb0d5d7ebe7b09ee4fd"
+        },
+        {
+          "id": "general_en-p4096",
+          "exact": true,
+          "prefill_logits_sha256": "7a64a6acde93ea31b13d0e7c44380b595e6a2d00bf8eddd1490d24ab3698fb7b",
+          "next_logits_sha256": "a6570c1207d79b5ae2852f1a2e7184b29fe73be9623063f3a676e8767be63e6e",
+          "state_sha256": "015fade4f3222e739290be9213acd4a71004dc9e58339a2aa8bb845282a51eca"
+        },
+        {
+          "id": "general_ja-p4096",
+          "exact": true,
+          "prefill_logits_sha256": "f335799090215763ee3ce1924681230091468e52ee90353fae02f1a715b1bb4b",
+          "next_logits_sha256": "4be1be4675fd8091735ead11806e911122a0cc80d1750330135ec394796a7af1",
+          "state_sha256": "7862ecbd1969492a9d78defd72256ee7523d4fc5c0ed9fa30fd0ce4b88b3d1f1"
+        },
+        {
+          "id": "mixed_ja_en-p4096",
+          "exact": true,
+          "prefill_logits_sha256": "55fb30246551138e17789989afea2923cc90d23c992e8ae528ae28386304b9f0",
+          "next_logits_sha256": "1e8ebb10ba8e25086b536823a81446e61f4249069b705655f00c6864449c655d",
+          "state_sha256": "715e2a35130def87a338f2b634f053457ed04b64fe459d5f3996d0ca8db81c10"
+        }
+      ],
+      "raw_path": "/tmp/qwen4exp-routing-categories.json",
+      "raw_sha256": "d34381f22f85fc5603b87b32dd1487ad41246b32ca76d5355e24bee4f4f34766",
+      "summary": [
+        {
+          "case_id": "code-p4096",
+          "family": "q4",
+          "boundaries": 208,
+          "active_expert_instances": 63757,
+          "compact_rows": 1064960,
+          "active_rows_percentiles": {
+            "p50": 9.0,
+            "p90": 41.0,
+            "p99": 116.0,
+            "max": 351.0
+          },
+          "rows_in_experts_gt8_share": 0.8911545973557692,
+          "weight_passes_by_row_batch": {
+            "8": 165486,
+            "16": 104060,
+            "32": 77202
+          }
+        },
+        {
+          "case_id": "code-p4096",
+          "family": "q51",
+          "boundaries": 200,
+          "active_expert_instances": 61556,
+          "compact_rows": 1024000,
+          "active_rows_percentiles": {
+            "p50": 9.0,
+            "p90": 40.0,
+            "p99": 114.0,
+            "max": 351.0
+          },
+          "rows_in_experts_gt8_share": 0.8904228515625,
+          "weight_passes_by_row_batch": {
+            "8": 159251,
+            "16": 100256,
+            "32": 74448
+          }
+        },
+        {
+          "case_id": "general_en-p4096",
+          "family": "q4",
+          "boundaries": 208,
+          "active_expert_instances": 52439,
+          "compact_rows": 1064960,
+          "active_rows_percentiles": {
+            "p50": 12.0,
+            "p90": 47.0,
+            "p99": 140.0,
+            "max": 358.0
+          },
+          "rows_in_experts_gt8_share": 0.9100614107572116,
+          "weight_passes_by_row_batch": {
+            "8": 157182,
+            "16": 95419,
+            "32": 67502
+          }
+        },
+        {
+          "case_id": "general_en-p4096",
+          "family": "q51",
+          "boundaries": 200,
+          "active_expert_instances": 50750,
+          "compact_rows": 1024000,
+          "active_rows_percentiles": {
+            "p50": 11.0,
+            "p90": 47.0,
+            "p99": 138.0,
+            "max": 328.0
+          },
+          "rows_in_experts_gt8_share": 0.909640625,
+          "weight_passes_by_row_batch": {
+            "8": 151416,
+            "16": 92055,
+            "32": 65198
+          }
+        },
+        {
+          "case_id": "general_ja-p4096",
+          "family": "q4",
+          "boundaries": 208,
+          "active_expert_instances": 51179,
+          "compact_rows": 1064960,
+          "active_rows_percentiles": {
+            "p50": 12.0,
+            "p90": 49.200000000004366,
+            "p99": 154.0,
+            "max": 343.0
+          },
+          "rows_in_experts_gt8_share": 0.9164644681490385,
+          "weight_passes_by_row_batch": {
+            "8": 157778,
+            "16": 95688,
+            "32": 66879
+          }
+        },
+        {
+          "case_id": "general_ja-p4096",
+          "family": "q51",
+          "boundaries": 200,
+          "active_expert_instances": 49634,
+          "compact_rows": 1024000,
+          "active_rows_percentiles": {
+            "p50": 12.0,
+            "p90": 49.0,
+            "p99": 150.0,
+            "max": 317.0
+          },
+          "rows_in_experts_gt8_share": 0.9161845703125,
+          "weight_passes_by_row_batch": {
+            "8": 151979,
+            "16": 92282,
+            "32": 64624
+          }
+        },
+        {
+          "case_id": "mixed_ja_en-p4096",
+          "family": "q4",
+          "boundaries": 208,
+          "active_expert_instances": 61141,
+          "compact_rows": 1064960,
+          "active_rows_percentiles": {
+            "p50": 9.0,
+            "p90": 41.0,
+            "p99": 125.0,
+            "max": 291.0
+          },
+          "rows_in_experts_gt8_share": 0.8873920147235577,
+          "weight_passes_by_row_batch": {
+            "8": 162165,
+            "16": 101794,
+            "32": 74784
+          }
+        },
+        {
+          "case_id": "mixed_ja_en-p4096",
+          "family": "q51",
+          "boundaries": 200,
+          "active_expert_instances": 59161,
+          "compact_rows": 1024000,
+          "active_rows_percentiles": {
+            "p50": 9.0,
+            "p90": 41.0,
+            "p99": 123.0,
+            "max": 291.0
+          },
+          "rows_in_experts_gt8_share": 0.8870234375,
+          "weight_passes_by_row_batch": {
+            "8": 156234,
+            "16": 98182,
+            "32": 72230
+          }
+        }
+      ]
+    }
+  ]
+}
