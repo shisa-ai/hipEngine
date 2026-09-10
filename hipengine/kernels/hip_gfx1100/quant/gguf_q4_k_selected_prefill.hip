@@ -1538,7 +1538,7 @@ __global__ void gguf_q4_k_selected_dual_wmma_iu8_prefill_kernel(
     int64_t out_features_b,
     int64_t num_experts,
     int64_t wmma_total_rows) {
-  constexpr int IU8_ACT_PLANES = ACT_PLANES;  // residual quantization planes (ds4 class)
+  constexpr int IU8_ACT_PLANES = 3;  // residual quantization planes (ds4 class)
   __shared__ int8_t lds_q8a[IU8_ACT_PLANES * 16 * IU8_LDS_ROW_STRIDE];
   __shared__ float lds_da[IU8_ACT_PLANES * 16 * Q4_K_SUBBLOCKS];
   __shared__ int lds_sumq8a[IU8_ACT_PLANES * 16 * Q4_K_SUBBLOCKS];
@@ -1828,9 +1828,8 @@ __device__ inline float q4_pair_bf16_rounding_boundary_distance(float value) {
   return fmaxf(0.0f, fminf(value - lower_boundary, upper_boundary - value));
 }
 
-template <typename scalar_t>
+template <typename scalar_t, int ACT_PLANES = 3>
 __launch_bounds__(128, 2)
-template <int ACT_PLANES = 3>
 __global__ void gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_kernel(
     const scalar_t* __restrict__ x,
     const int64_t* __restrict__ expert_start_compact,
@@ -1849,7 +1848,7 @@ __global__ void gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_kernel(
     int64_t out_features_b,
     int64_t num_experts,
     int64_t wmma_total_rows) {
-  constexpr int IU8_ACT_PLANES = 3;  // residual quantization planes (ds4 class)
+  constexpr int IU8_ACT_PLANES = ACT_PLANES;  // residual quantization planes (ds4 class)
   // Rows whose raw 32-element activation subblock amax falls below this
   // floor are always queued: at tiny activation scales the fp32
   // intermediates of the iu8 chain enter the subnormal range and the Kahan
