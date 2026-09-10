@@ -115,6 +115,7 @@ CPU oracles favor clarity and deterministic boundaries over speed. They are the 
 | Moonshine decoder | `cpu_reference/moonshine.py` | projection, LayerNorm, partial RoPE, self/cross attention, fixed cache, MLP, residual, tied head/argmax |
 | Moonshine encoder | `cpu_reference/moonshine_encoder.py` | convolution, group norm, encoder attention/RoPE, GELU, layout transformations |
 | TimesFM 2.5 | `cpu_reference/timesfm.py` | multiplicative-scale RMSNorm, ResidualBlock heads, fused-QKV RoPE (pre-norm), QK norm, per-dim softplus scaling, unscaled masked attention, patch running stats/revin, AR patch decode; oracle fixture from the vendored torch reference |
+| TimesFM 3.0 | `cpu_reference/timesfm3.py` | non-autoregressive multivariate forward+decode: seq + non-causal variate attention (SDPA semantics: scores x sqrt(head_dim), fully-masked rows -> zeros), 192-dim ReLU tokenizer, stitching, linear detrending, CPM iterative RevIN refine, freeze_after post-hoc mean/std; nn.RMSNorm eps = finfo(float32).eps; oracle fixtures (base/edge/covmask incl. long horizon) from the vendored torch reference |
 | Fixtures | `cpu_reference/fixtures.py` | fixture load/save/run and tolerance contracts |
 
 `register_cpu_reference_kernels()` registers the primitive subset exposed through the four-axis registry. Additional plain NumPy functions remain direct test oracles even when they do not have a registry key.
@@ -248,6 +249,24 @@ Model contract, loader, NumPy oracle, and GPU orchestration live in
 `models/timesfm.py`, `loading/timesfm.py`, `kernels/cpu_reference/timesfm.py`,
 and `runtime/timesfm_decode.py` respectively. The TimesFM RMSNorm is a
 different contract from the Qwen family (multiplicative `scale`, no +1).
+
+### TimesFM 3.0 path
+
+Single non-autoregressive forward pass (no AR loop, no persistent KV cache);
+sequence attention runs over `batch * variates` independent sequences with one
+scratch cache pair reused across layers.
+
+| Functional family | Source / wrapper | Principal registry layers | Notes |
+| --- | --- | --- | --- |
+| Variate attention | `timesfm3/timesfm3.{hip,py}` | `timesfm3_var_attention` | Non-causal attention across up to 32 variates, one block per (b, n, h) with per-warp query rows; per-(b, v) leading-mask counts exclude variate keys; scores x sqrt(head_dim); fully-masked query rows -> zeros (CPU SDPA semantics). FP16/FP32 templated. |
+| QK norm + scatter (3.0) | `timesfm3/timesfm3.{hip,py}` | `timesfm3_qkv_norm_scatter_f16` | 2.5's fused kernel with runtime epsilon (torch `nn.RMSNorm` finfo(float32).eps, not 1e-6). |
+| ReLU elementwise | `timesfm3/timesfm3.{hip,py}` | `timesfm3_relu` | 3.0 FFN/tokenizer activation (2.5 uses Swish). |
+| Everything else | `timesfm/timesfm.{hip,py}` | reused 2.5 layers | rmsnorm/norm_add/bias/add (eps-parameterized), rope (absolute patch positions, host-supplied), flash attention, head rmsnorm/per-dim scale (also on var q/k via B=rows, N=1), scatter, transpose. The SDPA sqrt(head_dim) score scale is folded into the K-side norm weight; the 2.5 uniform fully-masked-row fallback differs from the oracle zeros only at leading-pad rows that decode() slices away (verified end-to-end on all fixtures). |
+
+Model contract, loader, NumPy oracle, GPU orchestration, and bench live in
+`models/timesfm3.py`, `loading/timesfm3.py`, `kernels/cpu_reference/timesfm3.py`,
+`runtime/timesfm3_decode.py`, and `scripts/timesfm3_gpu_bench.py`; the
+per-model record is `MODEL-TIMESFM3.md`.
 
 ### Speculative decoding path
 
