@@ -114,19 +114,21 @@ using Q8_0. These are synthetic execution-capacity observations, not serving
 reserve recommendations.
 
 Single-request capacity ladder on this card, Qwen3.8-27B `Q4_K_M`: BF16 KV
-server 40,960; INT8 KV server 54,272 — **unqualified**: measured before a
-long-prompt prefill correctness repair on that route (2026-09-10), and the
-repaired route transiently holds one BF16 oracle pair per INT8 layer when a
-prompt spans multiple prefill chunks, so the old number is optimistic and a
-fresh ceiling is required; DMS BF16 73,728; INT8 KV direct engine
-131,072; single hidden plane 155,648; DMS INT8 merged lane 172,288; direct
-INT8 prefill or DMS INT8 + single hidden plane 232,448. The repaired route's
-16-pair oracle transient collapses to one shared pair (2.0 GiB to 0.125 GiB
-at 16,384 declared context) under the layer-outer packed executor
-(`HIPENGINE_GGUF_PACKED_LAYER_OUTER`, parity-gated 2026-09-10), so the fresh
-ceiling should be measured with that executor enabled. Default-route prefill
-at 8,192 tokens: 766.0 tok/s, decode 33.9; direct-INT8 wmma prefill 735.6
-(96%); repaired packed slot-local server route 677 tok/s (2026-09-10,
+server 40,960; **INT8 KV server 155,648+ (re-qualified 2026-09-10, lease
+removed + layer-outer executor)** — the old 54,272 was measured before the
+prefill correctness repair and with the duplicate packed-KV reservation
+pinned; the repaired C1 route (slot-local prefill, singleton decode, prefix
+cache and MTP off) removes the second full-context reservation and holds
+one shared oracle pair, and the fresh bracket passes 65,536 / 98,304 /
+131,072 / 155,648 declared contexts with clean teardown
+([65,536](results/2026-09-10-w7900-server-alloc-probe-64k.json),
+[131,072](results/2026-09-10-w7900-server-alloc-probe-128k.json),
+[155,648](results/2026-09-10-w7900-server-alloc-probe-152k.json)) — the
+server route now exceeds the plain direct-engine INT8 ceiling (131,072);
+DMS BF16 73,728; single hidden plane 155,648; DMS INT8 merged lane 172,288;
+direct INT8 prefill or DMS INT8 + single hidden plane 232,448. Default-route
+prefill at 8,192 tokens: 766.0 tok/s, decode 33.9; direct-INT8 wmma prefill
+735.6 (96%); repaired packed slot-local server route 677 tok/s (2026-09-10,
 [gate](results/2026-09-10-w7900-int8-slot-local-aotriton-gate-corrected.json)). [Direct-route capacity](results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-capacity.json),
 [DMS alias ladder](results/2026-09-08-rx7900xtx-dms-int8-hidden-alias-ladder.json),
 [speed evidence](results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-wmma-oracle-control-8192.json).
