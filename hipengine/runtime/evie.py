@@ -179,6 +179,9 @@ class EvieRunner:
         self._pos_embed_table: np.ndarray | None = None
 
     def close(self) -> None:
+        if getattr(self, "_closed", False):
+            return
+        self._closed = True
         for scratch in self._scratch.values():
             scratch.free()
         self._scratch.clear()
@@ -196,7 +199,11 @@ class EvieRunner:
         if self._gemm16_out is not None:
             hip_free(self._gemm16_out)
             self._gemm16_out = None
-        for bufs in (getattr(self, "_scores_bufs", None), getattr(self, "_plane16_bufs", None)):
+        for bufs in (
+            getattr(self, "_scores_bufs", None),
+            getattr(self, "_plane16_bufs", None),
+            getattr(self, "_ptr_array_bufs", None),
+        ):
             if bufs:
                 for buf in bufs.values():
                     hip_free(buf)
@@ -320,6 +327,20 @@ class EvieRunner:
         copy_host_to_device(buf, host_array_ptr(host), nbytes)
         return buf.ptr
 
+    def _evict_caches(self, keep: tuple) -> None:
+        """Bound every lazily-grown scratch cache to 4 entries."""
+
+        for cache_name in ("_scores_bufs", "_plane16_bufs"):
+            cache = getattr(self, cache_name, None)
+            if not isinstance(cache, dict) or len(cache) < 4:
+                continue
+            keepers = set(keep)
+            while len(cache) >= 4:
+                oldest = next(iter(cache))
+                if oldest in keepers:
+                    break
+                hip_free(cache.pop(oldest))
+
     def _scores16_scratch(self, rows: int, heads: int) -> tuple[DeviceBuffer, int]:
         """f16 scores buffer plus the per-head element stride (256B aligned)."""
 
@@ -328,6 +349,7 @@ class EvieRunner:
         if not hasattr(self, "_scores_bufs"):
             self._scores_bufs: dict[Any, DeviceBuffer] = {}
         if key not in self._scores_bufs:
+            self._evict_caches((key,))
             self._scores_bufs[key] = _malloc_committed(
                 heads * stride * 2 + _GEMM_PAD_BYTES
             )
@@ -340,6 +362,7 @@ class EvieRunner:
         if not hasattr(self, "_plane16_bufs"):
             self._plane16_bufs: dict[Any, DeviceBuffer] = {}
         if k not in self._plane16_bufs:
+            self._evict_caches((k,))
             self._plane16_bufs[k] = _malloc_committed(n * 2 + _GEMM_PAD_BYTES)
         return self._plane16_bufs[k]
 
@@ -351,6 +374,7 @@ class EvieRunner:
         if not hasattr(self, "_scores_bufs"):
             self._scores_bufs: dict[Any, DeviceBuffer] = {}
         if key not in self._scores_bufs:
+            self._evict_caches((key,))
             self._scores_bufs[key] = _malloc_committed(
                 heads * stride * 4 + _GEMM_PAD_BYTES
             )

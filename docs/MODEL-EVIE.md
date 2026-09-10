@@ -79,7 +79,8 @@ host during load).
 
   **Profile classification: T1** (local implementation drift — fp16
   intermediates with unchanged algorithm; `docs/EXECUTION-PROFILES.md`
-  sec 5), strict fp32 fallback registered. This is fixture-gated evidence,
+  sec 5); the strict fp32 path remains the reference mode. This is
+  fixture-gated evidence,
   not a registered production-profile certification: no resolved EVIE
   variant manifest exists in `docs/EXECUTION-PROFILES.md` and the
   retrieval-ranking qualification remains open. The committed fixture
@@ -118,8 +119,10 @@ ratios are approximate: the two benches do not share a protocol — hipEngine
 uses torch-free synthetic preprocessing inside the timing loop (12-token
 templated queries, 8 zipped query/doc pairs) while the torch reference uses
 the real processor with preprocessing outside the timing loop (20-token
-queries, 64 scored pairs). Same shapes and hardware, so the comparison is
-indicative for compute cost, not a matched retrieval workload.
+queries, 64 scored pairs). The engines differ in query length, scored
+pairs, and preprocessing, so this comparison is indicative for compute
+cost, not a matched retrieval workload; see the matched-protocol section
+below for the controlled version.
 Reproduce with
 `python3 scripts/evie_hip_bench.py --precision fp16 --pages 8 --queries 8`.
 
