@@ -534,6 +534,59 @@ now) plus the shared-expert block (6.19 ms/token) plus wrapper work
 but every bucket needs its own measured mechanism and gates; R11 alone
 moves 53.5 to ~47.8, still above target.
 
+### Wrapper-host retention and maximum-speed configuration (September 10)
+
+Post wrapper-host arc retention (same protocol family as the v6 packet
+above; clean window v7b at the batched-positions-promoted default,
+three-promotion v8 in a degraded 19 GB-swap window with comparators down
+5-10% corroborating):
+
+| Engine | p512 PP / TG | p1024 PP / TG | p4096 PP / TG |
+| --- | ---: | ---: | ---: |
+| hipEngine (v7b clean) | 296.28 / 20.02 | 294.99 / 19.53 | 262.21 / 19.14 |
+| hipEngine (v8 degraded) | 288.87 / 19.96 | 283.68 / 19.30 | 259.07 / 19.21 |
+| halo-box Vulkan `b212548e0` (v7) | 344.40 / 26.02 | 393.59 / 25.59 | 413.23 / 24.73 |
+| halo-box HIP (v7b recapture) | 305.44 / 22.01 | 385.74 / 21.18 | 349.59 / 19.49 |
+
+Positions: versus the pinned baseline, HE is at PP 0.86x/0.75x/0.63x and
+TG 0.77x/0.76x/0.77x; versus the refreshed frontier `5f851647f`, PP4096
+is 0.37x of best HIP (709.5) and TG4096 is 0.78x of best Vulkan (24.55).
+Corrected wrapper-host attribution with a TRUE all-off arm (git worktree
+at `8a770b782` vs HEAD, 4 arms x 3 interleaved reps, fresh process per
+arm-rep, all bit-exact, median basis): combined **-13.05% TG latency =
++15.01% throughput**; PLE warm -7.35 ms (-12.2% = +13.9%) but DEMOTED to
+opt-in; batched positions -0.54 ms (-0.9% = +0.9%); compiler-version cache
+~0 ms TG (correctness/robustness only; the earlier -1.9 ms claim was
+measured with the buggy compiler-only cache key and is withdrawn).
+Evidence: `2026-09-10-r7-baseline-retention-v8.md` (both windows),
+`2026-09-10-r7-combined-tg-attribution.json`.
+
+**Maximum speed and why it is not the default.** The fastest *qualified*
+configuration adds `HIPENGINE_QWEN4_EXP_PLE_WARM=1` to the current
+defaults: the true all-off-arm attribution measures the full promoted set
+at -13.05% TG latency (+15.01% throughput), bit-exact. It is opt-in, not
+default, because its cost is **resource-shaped, not numerical**: the warm
+sweep costs +15.4 s and +6,015 major faults per runner construction (28.8
+GB page-cache read), amortizes only after 577-15,400 generated tokens
+(median ~2,050; canonical benches at ~576 tokens per construction never
+amortize it), and its 28.8 GB residency is unqualified on memory-
+constrained shared hosts. Long-lived serving may enable it; short-lived
+runners should not.
+
+Faster still are configurations the **quality gates reject**: the two-plane
+dense d4x2 variant (+1.39-1.44x per leg) and the MoE 2-plane iu8 screens
+fail the 996-row canonical envelope on every bar (mean 1.60e-3, max
+7.18e-2, top-1 0.983 versus the declared limits), and the strict-teacher
+control already places the promoted production stack beyond the frozen
+bars through compounded micro-drift of the seven R2e prefill routes (mean
+KL 0.001276, max 0.05257, top-1 98.494%). No threshold relaxation is
+justified by current evidence; widening the envelope is the 6.1
+bounded-drift admission policy decision, not an engineering step. The
+A/B-harness digest `ea0412231532bc7b` used in the wrapper-host gates is
+the harness digest, not the canonical-contract digest (`19045b7c9fd442e5`);
+arm-equality conclusions are unaffected - see the digest-mismatch worklog
+(`20260910T094500.000000Z-lhl-qwen4exp-digest-mismatch-repro.md`).
+
 **Execution order (prefill-first, GPU serialized):** R11 qualification
 is CLOSED (not promoted, evidence recorded). The newer-engine windowed
 attribution (2026-09-10-halobox5f-hip-prefill-attribution-windowed.json)
@@ -543,6 +596,15 @@ hipEngine's 6.01 s whole-MoE block; 6x) while dense linear is nearly at
 parity (~3.0 s external MMQ+GEMM versus 3.84 s; the old-pin-based
 "+2.45 s linear excess" overstated dense for the newer engine). Order:
 ~~MoE expert-row utilization/pipelining~~ -> bounded QSA D256 sweep.
+**Hot-expert reuse / next-K pipelining REFUTATED (September 10, task #35):**
+screen over 28,800 layer captures reproducing the R13 routing distribution -
+no small hot set exists (top-16/512 experts cover 25.3% of pairs; ~65% of
+the pool streamed per layer-chunk; top-8 hot set = 1.2 GB vs MB-class
+caches; cross-case top-32 Jaccard 0.316), and decode weight fetch is not
+the TG bottleneck (~29 GB/s at 52.3 ms/token). Residual recorded not
+promoted: within-expert weight-tile reuse, ceiling 2.32x, gated on rocprof
+memory counters. Evidence:
+`2026-09-10-qwen4exp-hot-expert-reuse-screen.json`.
 **QSA D256 sweep GATE-EVALUATED, NOT RUN (September 10, task #36):** all
 tree gate branches closed - no complete-owner savings since the deferral,
 the ~40 us floor / 3x headroom claim remains a serial-chain estimate, and
