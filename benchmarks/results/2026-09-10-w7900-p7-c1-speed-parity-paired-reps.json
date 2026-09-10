@@ -1,0 +1,60 @@
+{
+  "kind": "p7_c1_speed_parity_paired_repetitions",
+  "date": "2026-09-10",
+  "acceptance": "warm C1 prefill model-stage median at least 95% of matched R0 throughput, paired repetitions and noise reported",
+  "config": {
+    "model": "Qwen3.8-27B Q4_K_M",
+    "kv": "int8_per_token_head + fp32 scales",
+    "prompt_rows": 8192,
+    "max_sequence_length": 16384,
+    "decode_tokens": 8,
+    "executor": "layer-outer packed (default since c6288b9b0)",
+    "host_note": "W7900 GPU0; GPU1 concurrently used by another agent - cross-rep variance reflects host contention"
+  },
+  "repetitions": [
+    {
+      "rep": 1,
+      "scalar_bulk_tok_s": 685.38,
+      "packed_slot_local_tok_s": 609.79,
+      "bitwise_identical_logits": true,
+      "generated_ids_match": true,
+      "executor_mode": "layer_outer_packed",
+      "packed_over_scalar": 0.8897
+    },
+    {
+      "rep": 2,
+      "scalar_bulk_tok_s": 548.57,
+      "packed_slot_local_tok_s": 570.13,
+      "bitwise_identical_logits": true,
+      "generated_ids_match": true,
+      "executor_mode": "layer_outer_packed",
+      "packed_over_scalar": 1.0393
+    },
+    {
+      "rep": 3,
+      "scalar_bulk_tok_s": 684.03,
+      "packed_slot_local_tok_s": 686.9,
+      "bitwise_identical_logits": true,
+      "generated_ids_match": true,
+      "executor_mode": "layer_outer_packed",
+      "packed_over_scalar": 1.0042
+    }
+  ],
+  "summary": {
+    "paired_ratio_median": 1.0042,
+    "paired_ratio_mean": 0.9777,
+    "paired_ratio_min": 0.8897,
+    "scalar_median_tok_s": 684.03,
+    "packed_median_tok_s": 609.79,
+    "scalar_range_tok_s": [
+      548.57,
+      685.38
+    ],
+    "packed_range_tok_s": [
+      570.13,
+      686.9
+    ],
+    "all_bitwise_identical": true,
+    "gate_95pct_pass": true
+  }
+}
