@@ -2060,6 +2060,7 @@ def main() -> None:
   parser.add_argument("--batch", type=int, default=2)
   parser.add_argument("--context", type=int, default=512)
   parser.add_argument("--horizon", type=int, default=96)
+  parser.add_argument("--case", default="base", choices=["base", "edge"])
   args = parser.parse_args()
 
   import json
@@ -2103,55 +2104,107 @@ def main() -> None:
   rng = np.random.default_rng(args.seed)
   batch, context, horizon = args.batch, args.context, args.horizon
 
-  # Batch 0: two targets + one past-only + one past-future covariate
-  # (multivariate mode).  Batch 1: a single target with front padding
-  # (univariate mode + the left-pad mask path).
-  t = np.arange(context, dtype=np.float64)
-  series0 = np.sin(2 * np.pi * t / 48.0) * 3.0 + 0.5 * rng.standard_normal(context)
-  series1 = np.cumsum(rng.standard_normal(context) * 0.25) + 10.0
-  target = np.zeros((batch, 2, context), dtype=np.float32)
-  target[0, 0] = series0
-  target[0, 1] = series1
-  pad = 32 * 2
-  target[1, 0] = np.concatenate(
-      [np.zeros(pad, dtype=np.float32), series1[: context - pad]]
-  )
-  target[1, 1] = target[1, 0]  # duplicate so batch 1 is also 2-target
-  target_mask = np.zeros_like(target, dtype=bool)
-  target_mask[1, :, :pad] = True
+  global_mask = None
+  if args.case == "edge":
+    # Edge fixture: unaligned context (500 -> pad 12) and horizon (100 -> pad
+    # 28), an explicit global mask with interior masked region, a strongly
+    # linear series (linear detrending applies), and a TRUE univariate batch
+    # element (single target, no covariates).
+    batch, context, horizon = 2, 500, 100
+    t = np.arange(context, dtype=np.float64)
+    linear = 3.0 + 0.05 * t + 0.1 * rng.standard_normal(context)
+    wavy = np.sin(2 * np.pi * t / 13.0) * 2.0 + 0.2 * rng.standard_normal(context)
+    target = np.zeros((batch, 1, context), dtype=np.float32)
+    target[0, 0] = linear
+    target[1, 0] = wavy
+    target_mask = np.zeros_like(target, dtype=bool)
+    target_mask[1, 0, 100:132] = True  # interior fully-masked patch
+    global_mask = np.zeros((batch, context), dtype=bool)
+    global_mask[0, :17] = True  # sub-patch-scale leading mask (unaligned)
+    past_only = None
+    past_future = None
+  else:
+    # Batch 0: two targets + one past-only + one past-future covariate
+    # (multivariate mode).  Batch 1: front-padded targets (left-pad path).
+    t = np.arange(context, dtype=np.float64)
+    series0 = np.sin(2 * np.pi * t / 48.0) * 3.0 + 0.5 * rng.standard_normal(context)
+    series1 = np.cumsum(rng.standard_normal(context) * 0.25) + 10.0
+    target = np.zeros((batch, 2, context), dtype=np.float32)
+    target[0, 0] = series0
+    target[0, 1] = series1
+    pad = 32 * 2
+    target[1, 0] = np.concatenate(
+        [np.zeros(pad, dtype=np.float32), series1[: context - pad]]
+    )
+    target[1, 1] = target[1, 0]  # duplicate so batch 1 is also 2-target
+    target_mask = np.zeros_like(target, dtype=bool)
+    target_mask[1, :, :pad] = True
 
-  # Past-only covariate: a lagged copy of series0 (batch 0 only meaningful).
-  past_only = np.zeros((batch, 1, context), dtype=np.float32)
-  past_only[0, 0] = np.concatenate(
-      [np.zeros(4, dtype=np.float32), series0[:-4]]
-  )
+    # Past-only covariate: a lagged copy of series0 (batch 0 only meaningful).
+    past_only = np.zeros((batch, 1, context), dtype=np.float32)
+    past_only[0, 0] = np.concatenate(
+        [np.zeros(4, dtype=np.float32), series0[:-4]]
+    )
 
-  # Past-future covariate: day-of-week style periodic signal known over the
-  # horizon as well.
-  dow = np.sin(2 * np.pi * np.arange(context + horizon) / 7.0)
-  past_future = np.zeros((batch, 1, context + horizon), dtype=np.float32)
-  past_future[0, 0] = dow.astype(np.float32)
-  past_future[1, 0] = dow.astype(np.float32)
+    # Past-future covariate: day-of-week style periodic signal known over the
+    # horizon as well.
+    dow = np.sin(2 * np.pi * np.arange(context + horizon) / 7.0)
+    past_future = np.zeros((batch, 1, context + horizon), dtype=np.float32)
+    past_future[0, 0] = dow.astype(np.float32)
+    past_future[1, 0] = dow.astype(np.float32)
 
   with torch.no_grad():
-    logits = model.decode(
-        torch.from_numpy(target),
+    decode_kwargs = dict(
         horizon=horizon,
-        past_only_covariates=torch.from_numpy(past_only),
-        past_future_covariates=torch.from_numpy(past_future),
         target_mask=torch.from_numpy(target_mask),
     )
+    if global_mask is not None:
+      decode_kwargs["mask"] = torch.from_numpy(global_mask)
+    if past_only is not None:
+      decode_kwargs["past_only_covariates"] = torch.from_numpy(past_only)
+    if past_future is not None:
+      decode_kwargs["past_future_covariates"] = torch.from_numpy(past_future)
+    logits = model.decode(torch.from_numpy(target), **decode_kwargs)
 
   payload = {
       "schema": np.asarray(1, dtype=np.int64),
       "seed": np.asarray(args.seed, dtype=np.int64),
       "target": target,
       "target_mask": target_mask,
-      "past_only_covariates": past_only,
-      "past_future_covariates": past_future,
       "horizon": np.asarray(horizon, dtype=np.int64),
       "decode_logits": logits.detach().cpu().numpy(),
   }
+  if past_only is not None:
+    payload["past_only_covariates"] = past_only
+  if past_future is not None:
+    payload["past_future_covariates"] = past_future
+  if global_mask is not None:
+    payload["global_mask"] = global_mask
+
+  # Forward-with-freeze case (edge fixture only): oracle-grounded check of
+  # freeze_after semantics (mean/std frozen post-hoc, counts accumulate).
+  if args.case == "edge":
+    rng2 = np.random.default_rng(args.seed + 1)
+    b, v, n, p = 1, 2, 6, 32
+    fwd_values = rng2.standard_normal((b, v, n, p)).astype(np.float32) * 3.0
+    fwd_masks = np.zeros((b, v, n, p), dtype=bool)
+    fwd_masks[:, 0, 0, :] = True  # leading fully-masked patch on variate 0
+    fwd_is_target = np.zeros((b, v, n), dtype=bool)
+    fwd_is_target[:, 0, :] = True
+    with torch.no_grad():
+      fwd_logits = model.forward(
+          {
+              "values": torch.from_numpy(fwd_values),
+              "masks": torch.from_numpy(fwd_masks),
+              "patch_is_target": torch.from_numpy(fwd_is_target),
+          },
+          freeze_after=2,
+      )["logits"]
+    payload["forward_values"] = fwd_values
+    payload["forward_masks"] = fwd_masks
+    payload["forward_is_target"] = fwd_is_target
+    payload["forward_freeze_after"] = np.asarray(2, dtype=np.int64)
+    payload["forward_logits"] = fwd_logits.detach().cpu().numpy()
   output = Path(args.output)
   output.parent.mkdir(parents=True, exist_ok=True)
   np.savez_compressed(output, **payload)

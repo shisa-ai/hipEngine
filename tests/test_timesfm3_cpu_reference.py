@@ -99,3 +99,50 @@ def test_numpy_decode_covariate_invariance(host_weights) -> None:
         target_mask=fixture["target_mask"][:1],
     )
     assert not np.allclose(out, with_cov[:, :2], atol=1e-3)
+
+EDGE_FIXTURE = Path(__file__).parent / "fixtures" / "cpu_reference" / "timesfm_3p0_decode_edge.npz"
+
+
+@pytest.mark.skipif(not EDGE_FIXTURE.is_file(), reason="edge fixture not present")
+def test_numpy_decode_edge_cases_match_torch_oracle(host_weights) -> None:
+    """Unaligned context/horizon, rank-2 global mask, true univariate, detrend."""
+
+    from hipengine.kernels.cpu_reference.timesfm3 import timesfm3_decode
+
+    fixture = np.load(EDGE_FIXTURE)
+    horizon = int(fixture["horizon"])
+    assert fixture["target"].shape == (2, 1, 500)  # true univariate, unaligned
+    assert horizon == 100
+
+    out = timesfm3_decode(
+        host_weights,
+        fixture["target"],
+        horizon,
+        target_mask=fixture["target_mask"],
+        mask=fixture["global_mask"],
+    )
+    ref = fixture["decode_logits"]
+    assert out.shape == ref.shape == (2, 1, horizon, 9)
+    np.testing.assert_allclose(out, ref, atol=1.0e-4, rtol=1.0e-3)
+    assert np.abs(out - ref).max() < 2.0e-5  # measured 1.1e-5
+
+
+@pytest.mark.skipif(not EDGE_FIXTURE.is_file(), reason="edge fixture not present")
+def test_numpy_forward_freeze_after_matches_torch_oracle(host_weights) -> None:
+    """freeze_after freezes mean/std post-hoc while counts accumulate."""
+
+    from hipengine.kernels.cpu_reference.timesfm3 import timesfm3_forward
+
+    fixture = np.load(EDGE_FIXTURE)
+    out = timesfm3_forward(
+        host_weights,
+        fixture["forward_values"],
+        fixture["forward_masks"],
+        fixture["forward_is_target"],
+        None,
+        freeze_after=int(fixture["forward_freeze_after"]),
+    )
+    ref = fixture["forward_logits"]
+    assert out.shape == ref.shape
+    np.testing.assert_allclose(out, ref, atol=1.0e-4, rtol=1.0e-3)
+    assert np.abs(out - ref).max() < 1.0e-4  # measured 4.1e-5
