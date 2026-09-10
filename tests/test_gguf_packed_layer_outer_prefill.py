@@ -21,8 +21,9 @@ Contracts under test (CPU, fake device):
 - the executor resets ``_int8_prefill_oracle_per_layer`` on every session
   before any layer runs, so the shared key is used - packed execution cannot
   silently realize per-layer pairs while the plan promises one;
-- the feature flag defaults OFF (chunk-outer remains the default route until
-  the P3 gates pass).
+- the feature flag defaults ON (promoted 2026-09-10 after the parity, wall
+  A/B, trace-identity, and server-probe gates passed); the env var rolls
+  back to the corrected chunk-outer executor.
 """
 
 from __future__ import annotations
@@ -286,7 +287,7 @@ def test_impl_falls_back_when_the_executor_declines(
 
 
 def test_impl_keeps_chunk_outer_when_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("HIPENGINE_GGUF_PACKED_LAYER_OUTER", raising=False)
+    monkeypatch.setenv("HIPENGINE_GGUF_PACKED_LAYER_OUTER", "0")
     gguf_runner._gguf_packed_layer_outer_enabled_cache = None
     layer_outer_calls, slab_calls = _dispatch_recorder(monkeypatch)
     owner = _bare_owner(row_capacity=8)
@@ -400,8 +401,13 @@ def test_executor_resets_per_layer_ownership_before_layers(
     )
 
 
-def test_feature_flag_defaults_off(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_feature_flag_defaults_on_and_rolls_back(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Promoted to default ON 2026-09-10; the env var rolls back to chunk-outer."""
+
     monkeypatch.delenv("HIPENGINE_GGUF_PACKED_LAYER_OUTER", raising=False)
+    gguf_runner._gguf_packed_layer_outer_enabled_cache = None
+    assert _gguf_packed_layer_outer_enabled() is True
+    monkeypatch.setenv("HIPENGINE_GGUF_PACKED_LAYER_OUTER", "0")
     gguf_runner._gguf_packed_layer_outer_enabled_cache = None
     assert _gguf_packed_layer_outer_enabled() is False
 
@@ -424,9 +430,9 @@ def test_shared_oracle_binding_records_executor_mode(
 
 
 def test_env_flag_cache_resets(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("HIPENGINE_GGUF_PACKED_LAYER_OUTER", "1")
-    gguf_runner._gguf_packed_layer_outer_enabled_cache = None
-    assert _gguf_packed_layer_outer_enabled() is True
-    monkeypatch.delenv("HIPENGINE_GGUF_PACKED_LAYER_OUTER", raising=False)
+    monkeypatch.setenv("HIPENGINE_GGUF_PACKED_LAYER_OUTER", "0")
     gguf_runner._gguf_packed_layer_outer_enabled_cache = None
     assert _gguf_packed_layer_outer_enabled() is False
+    monkeypatch.delenv("HIPENGINE_GGUF_PACKED_LAYER_OUTER", raising=False)
+    gguf_runner._gguf_packed_layer_outer_enabled_cache = None
+    assert _gguf_packed_layer_outer_enabled() is True
