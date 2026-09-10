@@ -248,6 +248,9 @@ def parse_timesfm3_model_spec(config: Mapping[str, Any]) -> TimesFM3ModelSpec:
         "causal_attention": True,
         "max_variates": TIMESFM3_MAX_VARIATES,
         "use_memory_efficient_attention": True,
+        # The NumPy reference implements SDPA semantics (fully-masked rows ->
+        # zeros); the reference's manual path instead attends uniformly there.
+        "use_sdpa": True,
     }
     for name, expected_value in expected_transformer.items():
         if transformer.get(name) != expected_value:

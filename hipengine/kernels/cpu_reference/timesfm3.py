@@ -176,10 +176,6 @@ def _get_running_stats(
     all_mu: list[np.ndarray] = []
     all_sigma: list[np.ndarray] = []
     for i in range(n):
-        if freeze_after is not None and 0 <= freeze_after < n - 1 and i > freeze_after:
-            cur_n = all_n[freeze_after]
-            cur_mu = all_mu[freeze_after]
-            cur_sigma = all_sigma[freeze_after]
         cur_n, cur_mu, cur_sigma = _update_running_stats(
             cur_n, cur_mu, cur_sigma, values[:, :, i, :], masks[:, :, i, :]
         )
@@ -187,10 +183,20 @@ def _get_running_stats(
         all_mu.append(cur_mu)
         all_sigma.append(cur_sigma)
 
+    running_n = np.stack(all_n, axis=2)
+    running_mu = np.stack(all_mu, axis=2)
+    running_sigma = np.stack(all_sigma, axis=2)
+    # The oracle freezes mean/std (post-hoc, on the stacked outputs) at the
+    # freeze_after patch; counts keep accumulating normally.
+    if freeze_after is not None and 0 <= freeze_after < n - 1:
+        running_mu[:, :, freeze_after + 1 :] = running_mu[:, :, freeze_after : freeze_after + 1]
+        running_sigma[:, :, freeze_after + 1 :] = running_sigma[
+            :, :, freeze_after : freeze_after + 1
+        ]
     return (
-        np.stack(all_n, axis=2),
-        np.stack(all_mu, axis=2),
-        np.stack(all_sigma, axis=2),
+        running_n,
+        running_mu,
+        running_sigma,
     )
 
 
@@ -528,7 +534,7 @@ def timesfm3_forward(
     values: np.ndarray,
     masks: np.ndarray,
     patch_is_target: np.ndarray,
-    patch_cpm_mask: np.ndarray,
+    patch_cpm_mask: np.ndarray | None,
     freeze_after: int | None = None,
 ) -> np.ndarray:
     """Mirror ``TimesFM3Torch.forward`` (single-segment, no aux outputs).
@@ -556,9 +562,10 @@ def timesfm3_forward(
     )
 
     # CPM mask: mask target variates at CPM positions.
-    cpm_bvnp = patch_cpm_mask[:, None, :, None]
-    cpm_target_only = cpm_bvnp & patch_is_target[..., None]
-    masks = masks | cpm_target_only
+    if patch_cpm_mask is not None:
+        cpm_bvnp = patch_cpm_mask[:, None, :, None]
+        cpm_target_only = cpm_bvnp & patch_is_target[..., None]
+        masks = masks | cpm_target_only
 
     values_bvnp = _revin(values, running_mean, running_std, reverse=False)
     values_bvnp = np.where(masks, np.float32(0.0), values_bvnp)
@@ -599,7 +606,7 @@ def timesfm3_forward(
         output, tensors["output_head.weight"], tensors["output_head.bias"]
     )
 
-    if spec.use_iterative_cpm_revin:
+    if spec.use_iterative_cpm_revin and patch_cpm_mask is not None:
         refined_mu, refined_sigma = _cpm_iterative_revin_refine(
             raw_logits,
             revin_n=running_n,
@@ -717,13 +724,14 @@ def timesfm3_decode(
     if horizon <= 0:
         raise ValueError("Decode requires horizon > 0.")
 
-    # 1. Pad context to a multiple of input_patch_len.
+    # 1. Pad context to a multiple of input_patch_len.  Rank-agnostic: the
+    # global ``mask`` is (batch, context) while everything else is
+    # (batch, variates, context).
     ctx_padding = (-context) % p
     if ctx_padding > 0:
-        def _pad_left(x, fill=None):
-            out = np.full((x.shape[0], x.shape[1], ctx_padding + x.shape[2]), fill, dtype=x.dtype)
-            out[:, :, ctx_padding:] = x
-            return out
+        def _pad_left(x: np.ndarray, fill) -> np.ndarray:
+            pad_width = [(0, 0)] * (x.ndim - 1) + [(ctx_padding, 0)]
+            return np.pad(x, pad_width, mode="constant", constant_values=fill)
 
         target = _pad_left(target, 0.0)
         if mask is not None:

@@ -119,6 +119,8 @@ def test_parse_timesfm3_model_spec_rejects_drift() -> None:
             cfg["output_patch_len"] = value
         elif name == "ff_activation":
             cfg["transformer_config"]["transformer"]["ff_activation"] = value
+        elif name == "use_sdpa":
+            cfg["transformer_config"]["transformer"]["use_sdpa"] = value
         else:
             cfg[name] = value
         return cfg
@@ -131,6 +133,8 @@ def test_parse_timesfm3_model_spec_rejects_drift() -> None:
         parse_timesfm3_model_spec(mutate("output_patch_len", 33))  # not a multiple
     with pytest.raises(ValueError):
         parse_timesfm3_model_spec(mutate("ff_activation", "swish"))
+    with pytest.raises(ValueError):
+        parse_timesfm3_model_spec(mutate("use_sdpa", False))
     with pytest.raises(TypeError):
         parse_timesfm3_model_spec(mutate("quantiles", [0.1, 0.5, 0.9]))
 
