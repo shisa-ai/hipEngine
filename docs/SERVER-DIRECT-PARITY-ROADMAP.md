@@ -63,15 +63,18 @@ unless noted):
 | P4 lease removal | 677-732 | - | lease 0/0; pinned 0/0; pool high-water 0.07; chunk-outer oracle halves to 1.0 GiB (pool-backing coupling); determinism verified | `b959c83fe` |
 | P5 t1 decode ladder | - | R0 35.15 ms; R1 35.22 ms (ratio 1.002); R3 wrapper ~2% | - | `9ace7cb91` |
 | P7 t1 capacity | - | - | fresh C1 ceiling 155,648+ declared (2.87x the old 54,272); exceeds the plain direct-engine INT8 ceiling | `f2ff6fdf6` |
-| P3 promotion | - | - | trace identity passed (AOTriton + native, as predicted); executor default ON | `c6288b9b0` |
+| P3 promotion | - | - | trace identity passed (AOTriton + native, as predicted); default reverted to OFF pending the packet gates (reviewer F4) | `c6288b9b0` + corrective |
 | P7 t2 publish | - | - | paired reps: ratio median 1.004 (>=95% gate); SSE transport sub-ms/token; kernel-family attribution landed | `882446e45`, `e7545ec45` |
 
 Combined P3+P4 at 32K declared: ~1.6 GiB of route transients vs ~6.4 GiB at
-the P0 baseline (-75%). The layer-outer executor is default ON since
-`c6288b9b0` (all promotion gates passed: bitwise parity at 2,048/1,500 rows,
-wall A/B at 1K/2K/4K/8K within 2%, trace identity, server probe, decode
-handoff); `HIPENGINE_GGUF_PACKED_LAYER_OUTER=0` rolls back to the corrected
-chunk-outer executor. The lease removal is default
+the P0 baseline (-75%), measured with the executor flag enabled. The
+layer-outer executor's diagnostics all passed (bitwise parity at 2,048/1,500
+rows, wall A/B at 1K/2K/4K/8K within 2%, trace identity, server probe,
+decode handoff) but the full packet gates are outstanding
+(layer-boundary/state comparison, exact KV/control fixtures, shifted/ragged
+GPU coverage, aliasing on this executor, cancellation cleanup), so the
+default is OFF (reviewer finding 4); `HIPENGINE_GGUF_PACKED_LAYER_OUTER=1`
+enables it. The lease removal is default
 on for the C1/prefix-off/MTP-off route with `HIPENGINE_GGUF_PACKED_KV_LEASE=1`
 as the rollback.
 

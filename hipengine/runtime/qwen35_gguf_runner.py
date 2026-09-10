@@ -1212,24 +1212,30 @@ _gguf_packed_layer_outer_enabled_cache: bool | None = None
 
 
 def _gguf_packed_layer_outer_enabled() -> bool:
-    """Default ON since 2026-09-10 (all promotion gates passed).
+    """Default OFF: diagnostics passed, the full packet gates have not.
 
-    Gates: bitwise parity vs the scalar bulk control at 2,048-row (two full
-    rounds) and 1,500-row (476-row tail round) prompts; wall A/B at
-    1K/2K/4K/8K within 2% of scalar; the server allocation probe (one shared
-    oracle owner, -94% transient); decode handoff with clean teardown; and
-    the rocprofv3 trace identity (AOTriton attn_fwd for >=512-row rounds,
-    native qwen35_paged_full_attn_prefill for <512-row tails - two kernel
-    identities, exactly as the roadmap's F1 correction predicted). Set
-    HIPENGINE_GGUF_PACKED_LAYER_OUTER=0 to roll back to the corrected
-    chunk-outer executor.
+    Passed diagnostics (2026-09-10): bitwise parity vs the scalar bulk
+    control at 2,048-row (two full rounds) and 1,500-row (476-row tail
+    round) prompts; wall A/B at 1K/2K/4K/8K within 2% of scalar; the
+    server allocation probe (one shared oracle owner, -94% transient);
+    decode handoff with clean teardown; and the rocprofv3 trace identity
+    (AOTriton attn_fwd for >=512-row rounds, native
+    qwen35_paged_full_attn_prefill for <512-row tails - two kernel
+    identities, exactly as the roadmap's F1 correction predicted).
+
+    Outstanding packet gates (reviewer finding 4): layer-boundary/hidden
+    state comparison, exact KV/control fixtures, shifted/ragged GPU
+    coverage, aliasing validation on this executor, and cancellation
+    cleanup. Set HIPENGINE_GGUF_PACKED_LAYER_OUTER=1 to enable the
+    layer-outer route; the corrected chunk-outer executor remains the
+    default.
     """
 
     global _gguf_packed_layer_outer_enabled_cache
     if _gguf_packed_layer_outer_enabled_cache is None:
         _gguf_packed_layer_outer_enabled_cache = (
-            os.environ.get(_GGUF_PACKED_LAYER_OUTER_ENV, "1").strip().lower()
-            not in {"", "0", "false", "off", "no"}
+            os.environ.get(_GGUF_PACKED_LAYER_OUTER_ENV, "0").strip().lower()
+            in {"1", "true", "yes", "on"}
         )
     return _gguf_packed_layer_outer_enabled_cache
 
@@ -1947,13 +1953,13 @@ class _GGUFPackedTargetState:
                 # reservation removal); any later non-slot-local call
                 # reallocates this state WITH planes via the ensure growth
                 # path (fail closed in full_cache/copy_planes until then).
-                full_layer_indices = tuple(
-                    layer_id
-                    for layer_id, storage in enumerate(kv_layout.layer_storage_dtypes)
-                    if storage is not None
-                )
+                # Layer-indexed geometry: every cache tuple spans the full
+                # layer count with None at LINEAR positions, exactly like
+                # the private/leased branches, so full_cache(layer_id)
+                # raises its clean ValueError instead of an IndexError and
+                # any future consumer sees the same indexing contract.
                 empty_caches = tuple(
-                    None for _ in full_layer_indices
+                    None for _ in kv_layout.layer_storage_dtypes
                 )
                 kv_cache_fields = {
                     "full_key_caches": empty_caches,
@@ -1967,47 +1973,50 @@ class _GGUFPackedTargetState:
                 page_ids = ()
                 backing_kind = "unleased"
                 owned_buffers = tuple(state_buffers)
-            elif kv_pool is not None:
-                workspace_pages_fn = getattr(kv_pool, "workspace_pages", None)
-                if callable(workspace_pages_fn):
-                    lease_pages = workspace_pages_fn(_GGUF_PACKED_WORKSPACE_LEASE_KEY)
-            if lease_pages is not None:
-                # Pool-leased backing: the arena planes back the workspace and
-                # page_ids select this state's pages inside them. The lease
-                # pages stay pinned by the pool; this state never frees them.
-                arena_backing = getattr(kv_pool, "backing", None)
-                if arena_backing is None or getattr(arena_backing, "layout", None) != kv_layout:
-                    raise RuntimeError(
-                        "packed workspace lease has no layout-compatible KV backing"
-                    )
-                if len(lease_pages) < total_pages:
-                    raise RuntimeError(
-                        f"packed workspace lease holds {len(lease_pages)} pages but the workspace needs {total_pages}"
-                    )
-                kv_cache_fields = {
-                    "full_key_caches": arena_backing.full_key_caches,
-                    "full_value_caches": arena_backing.full_value_caches,
-                    "full_bf16_mirror_key_caches": arena_backing.full_bf16_mirror_key_caches,
-                    "full_bf16_mirror_value_caches": arena_backing.full_bf16_mirror_value_caches,
-                    "full_k_scale_caches": arena_backing.full_k_scale_caches,
-                    "full_v_scale_caches": arena_backing.full_v_scale_caches,
-                    "full_kv_scale_metadata": arena_backing.full_kv_scale_metadata,
-                }
-                kv_backing = arena_backing
-                page_ids = tuple(int(page) for page in lease_pages[:total_pages])
-                backing_kind = "pool_lease"
-                owned_buffers = tuple(state_buffers)
+                lease_pages = None
             else:
-                kv_backing = _allocate_qwen35_gguf_kv_chunk(
-                    runner,
-                    runtime=runtime,
-                    start_block_id=0,
-                    pages=total_pages,
-                    layout=kv_layout,
-                )
-                page_ids = ()
-                backing_kind = "private"
-                owned_buffers = (*tuple(state_buffers), *kv_backing.buffers)
+                if kv_pool is not None:
+                    workspace_pages_fn = getattr(kv_pool, "workspace_pages", None)
+                    if callable(workspace_pages_fn):
+                        lease_pages = workspace_pages_fn(_GGUF_PACKED_WORKSPACE_LEASE_KEY)
+                    if lease_pages is not None:
+                        # Pool-leased backing: the arena planes back the
+                        # workspace and page_ids select this state's pages
+                        # inside them. The lease pages stay pinned by the
+                        # pool; this state never frees them.
+                        arena_backing = getattr(kv_pool, "backing", None)
+                        if arena_backing is None or getattr(arena_backing, "layout", None) != kv_layout:
+                            raise RuntimeError(
+                                "packed workspace lease has no layout-compatible KV backing"
+                            )
+                        if len(lease_pages) < total_pages:
+                            raise RuntimeError(
+                                f"packed workspace lease holds {len(lease_pages)} pages but the workspace needs {total_pages}"
+                            )
+                        kv_cache_fields = {
+                            "full_key_caches": arena_backing.full_key_caches,
+                            "full_value_caches": arena_backing.full_value_caches,
+                            "full_bf16_mirror_key_caches": arena_backing.full_bf16_mirror_key_caches,
+                            "full_bf16_mirror_value_caches": arena_backing.full_bf16_mirror_value_caches,
+                            "full_k_scale_caches": arena_backing.full_k_scale_caches,
+                            "full_v_scale_caches": arena_backing.full_v_scale_caches,
+                            "full_kv_scale_metadata": arena_backing.full_kv_scale_metadata,
+                        }
+                        kv_backing = arena_backing
+                        page_ids = tuple(int(page) for page in lease_pages[:total_pages])
+                        backing_kind = "pool_lease"
+                        owned_buffers = tuple(state_buffers)
+                    else:
+                        kv_backing = _allocate_qwen35_gguf_kv_chunk(
+                            runner,
+                            runtime=runtime,
+                            start_block_id=0,
+                            pages=total_pages,
+                            layout=kv_layout,
+                        )
+                        page_ids = ()
+                        backing_kind = "private"
+                        owned_buffers = (*tuple(state_buffers), *kv_backing.buffers)
         except Exception:
             for buffer in reversed(state_buffers):
                 free(buffer, runtime=runtime)
