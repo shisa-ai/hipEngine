@@ -1,7 +1,8 @@
 # MODEL-EVIE.md — EVIE-4.5B on hipEngine
 
 Status: **complete (strict fp32 + fp16 production; perf sprint 15.6 s →
-2.46 s; INT8/FP8 evaluated and not applicable)**. This file is the
+2.16 s; vision f16-stream, INT8/FP8, and cluster8 all evaluated — cluster8
+adopted as exact, the other two rejected on measurement)**. This file is the
 per-model record: what the model is, how hipEngine runs it, the measured
 performance against reference implementations, and the optimization history
 with exact gains. It follows the format of `MODEL-TIMESFM.md`.
@@ -59,13 +60,14 @@ host during load).
 | CPU reference + oracle | `hipengine/kernels/cpu_reference/evie.py` |
 | Torch oracle fixture generator | `scripts/evie_oracle_torch.py` |
 | Bench | `scripts/evie_hip_bench.py` |
-| Tests | `tests/test_evie_model_contract.py`, `tests/test_evie_cpu_reference.py`, `tests/test_evie_gpu_runtime.py` |
+| Tests | `tests/test_evie_model_contract.py`, `tests/test_evie_cpu_reference.py`, `tests/test_evie_gpu_runtime.py` (strict), `tests/test_evie_gpu_runtime_fp16.py` (production manifest gate) |
 
 **Precision modes:**
 
 - **`fp32` (strict):** FP32 SGEMM everywhere; strict parity to the torch
-  FP32 oracle fixture (query embeddings max 1.9e-06, document embeddings max
-  3.0e-05, MaxSim 8e-06, bit-repeatable).
+  FP32 oracle fixture (query embeddings max 2.6e-06, document embeddings max
+  4.4e-05, MaxSim 1e-05, bit-repeatable; measured with the cluster8
+  recurrence — the default since step 11).
 - **`fp16` (production):** FP16 storage / FP32 accumulate / FP16 output
   GEMMs on the matrix cores (14–26 TF/s vs ~2 TF/s SGEMM on this APU);
   activations cast fp32→fp16→fp32 around each GEMM, residual stream and all
@@ -113,7 +115,8 @@ Torch rows are doc + query + maxsim totals (best of 3). Reproduce with
 
 hipEngine beats the torch fp32 baseline by 1.9× and is 1.6× from the torch
 bf16 deployment baseline. In-pipeline instrumentation of one document page
-(231 ms): dense projection GEMMs 16.3 ms, batched attention GEMMs 2.3 ms —
+(231 ms, pre-cluster8 measurement): dense projection GEMMs 16.3 ms, batched
+attention GEMMs 2.3 ms —
 **212 ms is launch/dispatch overhead, elementwise kernels, and the GDN
 recurrence**. The path to the bf16 baseline is launch-count reduction and
 host-dispatch work, not more GEMM arithmetic (see the quant evaluation
@@ -160,7 +163,12 @@ Evaluated and rejected for this stack, on two independent grounds:
 
 A custom WMMA-INT8 kernel campaign (like the gfx1100 timesfm flash
 kernels) would remove blocker 1 but not blocker 2; it is not worth the
-effort at the current profile.
+effort at the current profile. Weight-only INT8 (bandwidth) was also
+considered: dequantizing into an fp16 staging buffer adds a full extra
+pass over the weights per page, and dequant-in-GEMM-epilogue requires the
+same custom-kernel campaign — no viable middle ground. After the
+cluster8 promotion (step 11) the non-recurrent GEMM share of a page is
+even smaller, so both blockers hold with more margin.
 
 **Accuracy-gate design for any future quant path** (recorded for reuse):
 the metric is retrieval, not distributional KL. Gate on (a) per-token
@@ -177,10 +185,10 @@ degenerate and are not a valid (c).
 The port and its optimization campaign are complete. Open follow-ups, in
 impact order:
 
-1. **Launch/dispatch reduction (the measured frontier):** 212 of 231 ms per
-   page is non-GEMM — kernel-launch count, Python/ctypes dispatch, and the
-   GDN recurrence. Candidates: fused multi-op kernels, batched launches,
-   moving per-layer host logic into fewer dispatches.
+1. **Launch/dispatch reduction (the measured frontier):** ~190 of ~200 ms
+   per page is non-GEMM (the 231 ms figure predates cluster8; the recurrence
+   is no longer the top line item). Candidates: fused multi-op kernels,
+   batched launches, moving per-layer host logic into fewer dispatches.
 2. ~~**Vision full-f16 stream**~~ — evaluated 2026-09-09 and rejected:
    instrumenting the cast kernels in a full document-page encode gives
    **4.97 ms total cast overhead (2.1% of the 233 ms page)** — f32→f16
@@ -209,10 +217,14 @@ impact order:
   the gather kernel has a `-tp` variant for it.
 - Never pass a temporary numpy array to `host_array_ptr()` — the buffer is
   freed before the H2D copy reads it. Runner uploads hold named references.
-- `gemm_strided_batched_ex` (f16) requires **256-byte-aligned per-batch
-  pointers**: packed head strides of 64 f16 elements (128 B) silently produce
-  garbage for heads ≥ 1 — head 0 checks out, which makes it look almost
-  correct. Head-plane strides are padded to 128 elements.
+- `gemm_strided_batched_ex` (f16) with packed head strides of 64 f16
+  elements (128 B) silently produces garbage for heads ≥ 1 — head 0 checks
+  out, which makes it look almost correct. Padding head-plane strides to
+  128 elements (making each head base 256-byte aligned) fixed it. This is
+  consistent with a per-batch pointer alignment requirement, but the fix
+  changed stride and alignment together and no isolated reproducer has
+  pinned the exact threshold; treat 256-byte-aligned batch bases as the
+  safe operating point.
 - Two "findings" from the sprint were retracted after clean re-verification
   as stale-edit artifacts (the GDN f16-out drift wall; two silently no-op'd
   doc edits). Every precision decision in this file is backed by a
