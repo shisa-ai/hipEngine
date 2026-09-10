@@ -5953,11 +5953,17 @@ class Qwen4ExpGGUFResidentModelRunner:
         # decode-step row gathers hit warm pages instead of storage faults
         # (measured 1.4-27.7 ms/step cold, case-dependent). Pure cache hint;
         # opt-in via env until gated.
-        # Promoted (R7 wrapper-host route): one-time mmap-touch sweep
-        # (~15 s) removes the cold-cache PLE gather fault cost (measured
-        # 1.4-27.7 ms/step, case-dependent; TG median -4.8 ms/token ~ 8.4%).
-        # Bit-exact. Set HIPENGINE_QWEN4_EXP_PLE_WARM=0 to opt out.
-        if os.environ.get("HIPENGINE_QWEN4_EXP_PLE_WARM", "1") != "0":
+        # OPT-IN (R7 wrapper-host route, demoted from default per resource
+        # qualification 2026-09-10): one mmap-touch sweep (~28.8 GB, +15.4 s
+        # and ~6,015 major faults per runner construction) removes the
+        # cold-cache PLE gather fault cost (measured 1.4-27.7 ms/step,
+        # case-dependent; TG median -4.8 ms/token). Bit-exact. Amortization
+        # is 577-15,400 generated tokens (median ~2,050) - short-lived
+        # runners never amortize, and the 28.8 GB page-cache residency is
+        # unqualified on memory-constrained shared hosts (capture windows
+        # showed reclaim pressure). Enable via HIPENGINE_QWEN4_EXP_PLE_WARM=1
+        # for long-lived serving.
+        if os.environ.get("HIPENGINE_QWEN4_EXP_PLE_WARM", "0") == "1":
             self.resident.ple_table.warm_page_cache()
         self.max_sequence_length = int(max_sequence_length)
         self.prefill_chunk_size = int(prefill_chunk_size)

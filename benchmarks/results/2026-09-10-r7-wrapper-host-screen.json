@@ -59,5 +59,48 @@
   "promotion": "warm_page_cache() = mmap-touch sweep at runner init (chunked uint64 sum through the byte view); default ON via HIPENGINE_QWEN4_EXP_PLE_WARM, opt-out =0",
   "gates": "bit-exact digest ea0412231532bc7b both arms (cold-cache A/B with POSIX_FADV_DONTNEED reset); TG median 57.14 (off) vs 52.33 (on) ms/token = -4.8 ms (~8.4%), mean 61.86 -> 52.68",
   "cost": "one-time ~15 s sequential pass at generator construction (28.8 GB at ~1.9 GB/s); long-lived serving amortizes instantly"
+ },
+ "ple_resource_qualification": {
+  "date": "2026-09-10",
+  "trigger": "review findings 1+4: promoted before resource qualification",
+  "measurements": {
+   "method": "fresh-process counterbalanced arms, POSIX_FADV_DONTNEED reset of all GGUF shards before each arm, current HEAD, GPU otherwise idle",
+   "construction_off": "48.23 s, 594 major faults",
+   "construction_on": "63.67 s, 6,609 major faults",
+   "warm_sweep_cost": "+15.4 s and +6,015 major faults PER RUNNER CONSTRUCTION (28.8 GB read from storage; re-construction in a warm process re-touches at memory speed but is not free)",
+   "page_cache_delta": "Cached grew 23.8 GB (off) vs 27.1 GB (on) at construction end - the sweep's residency competes with weight-load streaming; standing host state during qualification: 19 GB swap in use, 110 GB available",
+   "per_case_tg_ms_off": {
+    "code-p512": 82.53,
+    "code-p1024": 75.03,
+    "code-p4096": 69.96,
+    "general_en-p512": 57.52,
+    "general_en-p1024": 61.63,
+    "general_en-p4096": 64.26,
+    "general_ja-p512": 57.68,
+    "general_ja-p1024": 52.74,
+    "general_ja-p4096": 58.75,
+    "mixed_ja_en-p512": 52.58,
+    "mixed_ja_en-p1024": 53.84,
+    "mixed_ja_en-p4096": 58.27
+   },
+   "per_case_tg_ms_on": {
+    "code-p512": 55.84,
+    "code-p1024": 52.45,
+    "code-p4096": 55.65,
+    "general_en-p512": 50.3,
+    "general_en-p1024": 52.82,
+    "general_en-p4096": 56.55,
+    "general_ja-p512": 50.5,
+    "general_ja-p1024": 51.7,
+    "general_ja-p4096": 55.85,
+    "mixed_ja_en-p512": 50.0,
+    "mixed_ja_en-p1024": 52.16,
+    "mixed_ja_en-p4096": 55.65
+   }
+  },
+  "amortization_tokens": "15.4 s / per-case saving: code-p512 577, code-p1024 681, code-p4096 1,077, general_en-p512 2,139, general_en-p1024 1,750, general_en-p4096 2,000, general_ja-p512 2,139, general_ja-p1024 15,400, general_ja-p4096 5,310, mixed-p512 5,923, mixed-p1024 9,059, mixed-p4096 5,923; median ~2,050",
+  "comparator_confound_finding_4": "the sweep's 28.8 GB clean-page residency is reclaimable but competes with co-resident engines' host staging; the v8b2 capture memwatch recorded free=0 GB and PSI 1.65 mid-capture with warm-on (multi-cause). 'Comparators cannot be affected' retracted; the mechanism is shared page-cache pressure, quantified as the residency above",
+  "long_context_finding": "PLE staging is per-token and context-independent; the p4096 cases in both arms exercise the 4352-context admission with no interaction",
+  "decision": "DEMOTED TO OPT-IN (default off, HIPENGINE_QWEN4_EXP_PLE_WARM=1 to enable). Blocker: amortization (median ~2,050 tokens; benches at ~576 tokens/construction never amortize) plus unqualified memory behavior on constrained shared hosts. The optimization is preserved and recommended for long-lived serving deployments"
  }
 }
