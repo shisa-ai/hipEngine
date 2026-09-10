@@ -162,11 +162,12 @@ def main() -> int:
     parser.add_argument(
         "--graph-replay-decode",
         action=argparse.BooleanOptionalAction,
-        default=False,
+        default=True,
         help=(
-            "Explicitly benchmark the production state-bound GGUF decode graph. "
-            "If the session cannot capture it, record the disabled reason and "
-            "fall back to eager decode."
+            "Benchmark the production state-bound GGUF decode graph (the "
+            "generation layer's default; use --no-graph-replay-decode for "
+            "eager diagnostics). If the session cannot capture it, record the "
+            "disabled reason and fall back to eager decode."
         ),
     )
     parser.add_argument("--graph-steps-per-replay", type=int, default=1)
