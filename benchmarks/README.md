@@ -49,7 +49,7 @@ row, not across them.
 Blank cells are shapes we have not measured yet, not failures. Max context is
 published only where a dedicated ceiling run exists.
 
-- **Qwen3.8-27B `Q4_K_M` holds 232,448 tokens of context on a 24 GB `gfx1100` card.** The ceiling depends on the KV format and route — eight measured configurations, 40,960 to 232,448; see Long context with DMS for what each applies to. The model's full 262,144 context needs a predicted 24.8 GiB and does not fit. [Capacity evidence](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-capacity.json)
+- **Qwen3.8-27B `Q4_K_M` holds 232,448 tokens of context on a 24 GB `gfx1100` card.** The ceiling depends on the KV format and route — six measured configurations, 40,960 to 232,448; see Long context with DMS for what each applies to. The model's full 262,144 context needs a predicted 24.8 GiB and does not fit. [Capacity evidence](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-capacity.json)
 
 ### Serving several requests at once
 
@@ -120,9 +120,14 @@ repaired route transiently holds one BF16 oracle pair per INT8 layer when a
 prompt spans multiple prefill chunks, so the old number is optimistic and a
 fresh ceiling is required; DMS BF16 73,728; INT8 KV direct engine
 131,072; single hidden plane 155,648; DMS INT8 merged lane 172,288; direct
-INT8 prefill or DMS INT8 + single hidden plane 232,448. Default-route prefill
+INT8 prefill or DMS INT8 + single hidden plane 232,448. The repaired route's
+16-pair oracle transient collapses to one shared pair (2.0 GiB to 0.125 GiB
+at 16,384 declared context) under the layer-outer packed executor
+(`HIPENGINE_GGUF_PACKED_LAYER_OUTER`, parity-gated 2026-09-10), so the fresh
+ceiling should be measured with that executor enabled. Default-route prefill
 at 8,192 tokens: 766.0 tok/s, decode 33.9; direct-INT8 wmma prefill 735.6
-(96%). [Direct-route capacity](results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-capacity.json),
+(96%); repaired packed slot-local server route 677 tok/s (2026-09-10,
+[gate](results/2026-09-10-w7900-int8-slot-local-aotriton-gate-corrected.json)). [Direct-route capacity](results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-capacity.json),
 [DMS alias ladder](results/2026-09-08-rx7900xtx-dms-int8-hidden-alias-ladder.json),
 [speed evidence](results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-wmma-oracle-control-8192.json).
 
