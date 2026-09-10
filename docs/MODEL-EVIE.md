@@ -141,13 +141,15 @@ to 1e-4; hip-fp16 is closer to the fp32 teacher than torch's own bf16
 Artifact:
 [`gfx1151-evie-4p5b-matched-protocol-2026-09-10.json`](../benchmarks/results/gfx1151-evie-4p5b-matched-protocol-2026-09-10.json).
 
-In-pipeline instrumentation of one document page
-(231 ms, pre-cluster8 measurement): dense projection GEMMs 16.3 ms, batched
-attention GEMMs 2.3 ms —
-**212 ms is launch/dispatch overhead, elementwise kernels, and the GDN
-recurrence**. The path to the bf16 baseline is launch-count reduction and
-host-dispatch work, not more GEMM arithmetic (see the quant evaluation
-below). Benchmark artifact with the full history:
+**Corrected profile (2026-09-10, HIP-event timing):** a document page is
+**device-bound — GPU-busy 196 of 216 ms (91%)** across ~1,800 launches;
+the earlier "212 of 231 ms is launch/dispatch overhead" claim (async
+wrapper timing) is retracted. The torch gap is batching, not dispatch:
+torch batch-1 runs 270.7 ms/page versus our sequential ~204 ms/page
+(1.33x faster unbatched), and torch gains 1.99x from batching eight
+pages (135.8 ms/page). A batched hipEngine encode is therefore the
+dominant lever; HIP graphs are bounded by the 9% host gap. Benchmark
+artifact with the full history:
 [`gfx1151-evie-4p5b-fp16-perf-sprint-2026-09-09.json`](../benchmarks/results/gfx1151-evie-4p5b-fp16-perf-sprint-2026-09-09.json).
 
 ## Optimization history
@@ -212,10 +214,11 @@ degenerate and are not a valid (c).
 The port and its optimization campaign are complete. Open follow-ups, in
 impact order:
 
-1. **Launch/dispatch reduction (the measured frontier):** ~190 of ~200 ms
-   per page is non-GEMM (the 231 ms figure predates cluster8; the recurrence
-   is no longer the top line item). Candidates: fused multi-op kernels,
-   batched launches, moving per-layer host logic into fewer dispatches.
+1. **Batched encode (the measured frontier):** the page is device-bound
+   (91% GPU-busy) and torch's whole advantage is its 1.99x batching gain;
+   our sequential path already beats torch's sequential by 1.33x. Batch
+   queries first, then pages (pad to max length; segment-aware GDN state
+   via the shared qwen35 segments kernels).
 2. ~~**Vision full-f16 stream**~~ — evaluated 2026-09-09 and rejected:
    instrumenting the cast kernels in a full document-page encode gives
    **4.97 ms total cast overhead (2.1% of the 233 ms page)** — f32→f16
