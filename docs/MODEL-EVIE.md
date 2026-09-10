@@ -123,8 +123,22 @@ indicative for compute cost, not a matched retrieval workload.
 Reproduce with
 `python3 scripts/evie_hip_bench.py --precision fp16 --pages 8 --queries 8`.
 
-hipEngine beats the torch fp32 baseline by 1.9× and is 1.6× from the torch
-bf16 deployment baseline. In-pipeline instrumentation of one document page
+**Matched-protocol comparison** (2026-09-10, same processor outputs fed to
+both engines — real ColQwen3_5Processor preprocessing outside the timing
+loop, 20-token padded queries, full 8×8 scoring): at matched precision
+torch leads — fp32 3991 vs 7602 ms (1.9×), production precision 1300 (bf16,
+batched) vs 2134 ms (fp16, sequential pages; 1.64×) — because the torch
+reference batches all 8 pages into one forward while the hipEngine v1
+runtime is single-page sequential. The headline "fp16 beats torch fp32
+(2163 vs 4148 ms)" is a cross-precision statement, not a matched one.
+Retrieval quality under this protocol: hip-fp32 matches torch-fp32 scores
+to 1e-4; hip-fp16 is closer to the fp32 teacher than torch's own bf16
+(max rel 0.23% vs 3.5%) and preserves the fp32 argmax ranking 8/8
+(torch bf16: 6/8; Kendall τ vs bf16 0.91).
+Artifact:
+[`gfx1151-evie-4p5b-matched-protocol-2026-09-10.json`](../benchmarks/results/gfx1151-evie-4p5b-matched-protocol-2026-09-10.json).
+
+In-pipeline instrumentation of one document page
 (231 ms, pre-cluster8 measurement): dense projection GEMMs 16.3 ms, batched
 attention GEMMs 2.3 ms —
 **212 ms is launch/dispatch overhead, elementwise kernels, and the GDN
