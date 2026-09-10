@@ -1,0 +1,33 @@
+{
+  "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+  "seed": 7,
+  "scopes": {
+    "code": {
+      "positions": 390,
+      "kl_mean": 0.00026762218396758966,
+      "kl_max": 0.01670761837027098,
+      "top1": 0.9974358974358974
+    },
+    "general_en": {
+      "positions": 260,
+      "kl_mean": 0.00039706829286549595,
+      "kl_max": 0.019453307076658533,
+      "top1": 1.0
+    },
+    "general_ja": {
+      "positions": 260,
+      "kl_mean": 0.000303159484539293,
+      "kl_max": 0.027460081302906465,
+      "top1": 1.0
+    },
+    "mixed_ja_en": {
+      "positions": 260,
+      "kl_mean": 0.00012194603361141464,
+      "kl_max": 0.0032718394380564105,
+      "top1": 1.0
+    }
+  },
+  "overall_kl_mean": 0.0002724489987459483,
+  "overall_kl_max": 0.027460081302906465,
+  "gate_pass": true
+}

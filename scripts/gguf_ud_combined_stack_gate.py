@@ -70,6 +70,11 @@ def main() -> None:
     ap.add_argument("--decode-tokens", type=int, default=64)
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--json", type=Path, default=None)
+    ap.add_argument(
+        "--category-heldout", action="store_true",
+        help="Run the 18-prompt category/heldout fixture instead of the "
+             "single natural prompt, binding the per-scope top-1 >= 0.97 "
+             "half of the section-6.1 screen.")
     args = ap.parse_args()
     if args.compiler_version_file is not None:
         os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file)
@@ -130,6 +135,10 @@ def main() -> None:
             logits_rows.append(np.asarray(cur.logits, dtype=np.float32).reshape(-1))
             tokens.append(int(cur.token_id))
         return np.vstack(logits_rows), tokens
+
+    if args.category_heldout:
+        _run_category_heldout_gate(args, compiler_version)
+        return
 
     prompt = None
     try:
@@ -197,6 +206,124 @@ def main() -> None:
                 q: e["variant"] for q, e in SHIPPED_PREFILL.items()},
             "shipped_decode_variants": {
                 q: e["variant"] for q, e in SHIPPED_DECODE.items()},
+        }, indent=2) + "\n")
+
+
+def _run_category_heldout_gate(args, compiler_version) -> None:
+    """The 18-prompt category/heldout half of the section-6.1 screen.
+
+    Teacher-forced over the campaign fixture (the same jsonl pair the
+    gfx1151 gates use), grouped by scope; binds per-scope top-1 >= 0.97
+    and the overall KL thresholds against the pinned incumbent.
+    """
+
+    import copy
+
+    from hipengine.benchmark.correctness import evaluate_logits
+    from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+    import hipengine.kernels.hip_gfx1100 as be
+
+    prompt_rows = []
+    for path in (
+            REPO_ROOT / "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            REPO_ROOT / "benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"):
+        for line in path.read_text().splitlines():
+            if line.strip():
+                import json as _json
+                prompt_rows.append(_json.loads(line))
+    by_scope: dict[str, list[dict]] = {}
+    for row in prompt_rows:
+        by_scope.setdefault(row["category"], []).append(row)
+
+    rng = np.random.default_rng(args.seed)
+    n = int(args.decode_tokens)
+    scopes: dict[str, dict[str, float]] = {}
+    all_kl: list[np.ndarray] = []
+    all_top1: list[bool] = []
+    try:
+        with Qwen35GGUFResidentSession(
+            args.model,
+            compiler_version=compiler_version,
+            require_cached_build=args.require_cached_build,
+            max_sequence_length=args.prompt_tokens + n + 64,
+            use_wmma_prefill=True,
+            use_gemv_decode=True,
+        ) as session:
+            def _run_pair(prompt_ids):
+                def _run(prefill_policy, decode_policy, forced_tokens=None):
+                    be.GGUF_IQ_DENSE_PREFILL_POLICY = prefill_policy
+                    be.GGUF_IQ_DENSE_DECODE_POLICY = decode_policy
+                    logits_rows = []
+                    first = session.prefill(
+                        prompt_ids, use_bulk=True,
+                        bulk_attention_mode="bulk", return_logits=True)
+                    logits_rows.append(np.asarray(
+                        first.logits, dtype=np.float32).reshape(-1))
+                    cur = first
+                    for i in range(n):
+                        feed = (int(cur.token_id) if forced_tokens is None
+                                else int(forced_tokens[i]))
+                        cur = session.step(feed, return_logits=True)
+                        logits_rows.append(np.asarray(
+                            cur.logits, dtype=np.float32).reshape(-1))
+                    return np.vstack(logits_rows)
+
+                ref = _run(INCUMBENT_PREFILL, INCUMBENT_DECODE)
+                session.reset()
+                cand = _run(SHIPPED_PREFILL, SHIPPED_DECODE,
+                            forced_tokens=[
+                                int(x) for x in np.argmax(ref, -1)][:-1])
+                session.reset()
+                return ref, cand
+
+            for scope in sorted(by_scope):
+                ref_rows = []
+                cand_rows = []
+                for row in by_scope[scope]:
+                    content = row["messages"][0]["content"]
+                    ids = [int(t) for t in rng.integers(
+                        1000, 50000, size=8)] + [
+                        int(c) % 100000 for c in content.encode()[:64]]
+                    ids = ids[: max(8, min(args.prompt_tokens, len(ids)))]
+                    ref, cand = _run_pair(ids)
+                    ref_rows.append(ref)
+                    cand_rows.append(cand)
+                ref_m = np.vstack(ref_rows)
+                cand_m = np.vstack(cand_rows)
+                m = evaluate_logits(ref_m, cand_m)
+                top1 = float(np.mean(
+                    np.argmax(ref_m, -1) == np.argmax(cand_m, -1)))
+                scopes[scope] = {
+                    "positions": int(ref_m.shape[0]),
+                    "kl_mean": m.kl_mean, "kl_max": m.kl_max,
+                    "top1": top1,
+                }
+                all_kl.append(m.kl_mean)
+                all_top1.append(top1 >= 0.97)
+                print(f"scope {scope:12s}: positions={ref_m.shape[0]:4d}  "
+                      f"mean={m.kl_mean:.4e}  max={m.kl_max:.4e}  "
+                      f"top1={top1:.4f}")
+    finally:
+        be.GGUF_IQ_DENSE_PREFILL_POLICY = SHIPPED_PREFILL
+        be.GGUF_IQ_DENSE_DECODE_POLICY = SHIPPED_DECODE
+
+    overall_mean = float(np.mean(all_kl))
+    overall_max = max(s["kl_max"] for s in scopes.values())
+    gate = (
+        overall_mean <= 1e-3
+        and overall_max <= 5e-2
+        and all(s["top1"] >= 0.97 for s in scopes.values())
+        and all(all_top1)
+    )
+    print(f"overall: mean={overall_mean:.4e}  max={overall_max:.4e}")
+    print(f"CATEGORY/Heldout GATE (mean<=1e-3 & max<=5e-2 & per-scope "
+          f"top1>=0.97): {'PASS' if gate else 'FAIL'}")
+    if args.json is not None:
+        args.json.write_text(json.dumps({
+            "model": str(args.model), "seed": args.seed,
+            "scopes": scopes,
+            "overall_kl_mean": overall_mean, "overall_kl_max": overall_max,
+            "gate_pass": gate,
         }, indent=2) + "\n")
 
 

@@ -34,6 +34,7 @@ Companion to [`OPTIMIZE-KERNEL-IQ-DENSE.md`](OPTIMIZE-KERNEL-IQ-DENSE.md)
 | 6 | W4A16 dense IQ prefill kernel | **done, both HIP backends** (`e37888dc4`) | one bf16-WMMA route covers all seven dense IQ quants — no int8 expressibility constraint; registered unrouted at landing |
 | 7 | Re-score on the production reference | **done** (`17ba7822a`, `85aac60c7`) | the ranking inverts: the four-quant integer MMQ breaches the 5e-2 max-row ceiling at 0.170390; W4A16 passes every threshold and is the default route (`563cece26`) |
 | 8 | gfx1100 port (item F) | **done, W7900** (2026-09-09) | W4A16 policy + item-2 Q5T16 role coverage ported; UD-Q4_K_M 413.3/16.5 tok/s vs plain 868.7/26.58 (0.48x/0.62x — the campaign end state on gfx1100); see `benchmarks/results/2026-09-09-w7900-ud-gfx1100-port.json` |
+| 9 | XTX prefill parity push | **done, XTX** (2026-09-10) | cooperative shared-LDS W4A16 owners, wide-N 64-column blocks for the Q4/Q5/IQ single families, IQ4_NL/Q3_K/IQ3_S cooperative routing, and the IQ4_XS gate/up dual: UD-Q4_K_M prefill 479.1 → **936.4** tok/s vs the fresh plain control **985.2** (0.950x; decode 26.14 vs 34.15), UD-Q4_K_S **896.0** vs **949.8** (0.943x). Combined-stack admission gate passes the complete §6.1 screen on three seeds; the review follow-up fixed the dual's occupancy regression (the 272-half padding halved blocks/CU and had regressed plain to 808.2), the owner gate, and the per-column weight clamp. See `benchmarks/results/final-four-arm-2026-09-10/` and the 2026-09-10 changelog entry |
 
 ## Where this leaves it
 
