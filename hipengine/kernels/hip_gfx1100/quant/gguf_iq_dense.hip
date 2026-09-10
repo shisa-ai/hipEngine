@@ -579,6 +579,120 @@ void gguf_iq4_xs_local32_dual_silu_kernel(
     }
 }
 
+// Local32 IQ4_NL decode GEMV: the sibling of the IQ4_XS owner above.
+// IQ4_NL packs one f16 scale and 16 payload bytes per 32-element block
+// (18 bytes, K%32), with the SAME element-to-byte/nibble mapping as
+// IQ4_XS (byte 2+(k&15), nibble (k>>4)&1), so the local32 geometry
+// transfers directly: each lane's 8 contiguous k values span exactly one
+// nibble half and one 8-byte payload window per column per 256-window,
+// and the byte-indexed fused codebook LUT is shared. The block scale is
+// the plain f16 d (no hi/scale header). Same accumulation-order contract
+// as the IQ4_XS owner: lane-grouped contiguous k, wave32 shuffle tree,
+// fixed-order cross-wave sum - a gated approximate owner, not a strict
+// replacement.
+template<int WAVES>
+__global__ __launch_bounds__(32 * WAVES, 16 / WAVES > 0 ? 16 / WAVES : 1)
+void gguf_iq4_nl_local32_gemv_kernel(
+    const uint16_t* __restrict__ x, const uint8_t* __restrict__ w,
+    uint16_t* __restrict__ out, int64_t K, int64_t N) {
+    constexpr int COLS = 8;
+    const int tid = threadIdx.x;
+    const int wave = tid >> 5;
+    const int lane = tid & 31;
+    const int64_t n0 = int64_t(blockIdx.x) * COLS;
+    const int64_t blocks_per_row = K / 256;
+    const int64_t col_bytes = (K / 32) * 18;
+
+    const int g = lane >> 2;                // this lane's 32-element block
+    const int nib = (lane >> 1) & 1;         // its nibble half
+    const int byteoff = 2 + (lane & 1) * 8; // payload window base
+
+    __shared__ float s_cb[512];
+    for (int i = tid; i < 512; i += 32 * WAVES)
+        s_cb[i] = float(iq4_values[i >= 256 ? ((i & 255) >> 4) : (i & 15)]);
+    __syncthreads();
+
+    float acc[COLS];
+#pragma unroll
+    for (int t = 0; t < COLS; ++t) acc[t] = 0.0f;
+
+    for (int64_t blk = wave; blk < blocks_per_row; blk += WAVES) {
+        const uint16_t* xp = x + blk * 256 + lane * 8;
+        float xv[8];
+#pragma unroll
+        for (int j = 0; j < 8; ++j) xv[j] = bf16_load(xp[j]);
+#pragma unroll
+        for (int t = 0; t < COLS; ++t) {
+            if (n0 + t >= N) break;
+            const uint8_t* b =
+                w + (n0 + t) * col_bytes + (blk * 8 + g) * 18;
+            const float s_d = half_load(b);
+            // The 18-byte block stride leaves the payload only 2-aligned
+            // (unlike the XS owner's 136-byte stride), so the window is
+            // read as four u16s - each 2-aligned by construction - instead
+            // of two u32s.
+            const uint16_t q[4] = {
+                *reinterpret_cast<const uint16_t*>(b + byteoff),
+                *reinterpret_cast<const uint16_t*>(b + byteoff + 2),
+                *reinterpret_cast<const uint16_t*>(b + byteoff + 4),
+                *reinterpret_cast<const uint16_t*>(b + byteoff + 6)};
+#pragma unroll
+            for (int j = 0; j < 8; ++j) {
+                const int code_byte = int((q[j >> 1] >> (8 * (j & 1))) & 0xffu);
+                acc[t] += xv[j] * (s_d * s_cb[code_byte + (nib << 8)]);
+            }
+        }
+    }
+#pragma unroll
+    for (int t = 0; t < COLS; ++t)
+        for (int delta = 16; delta; delta >>= 1)
+            acc[t] += __shfl_down(acc[t], delta);
+    __shared__ float xwave[WAVES > 1 ? WAVES : 1][COLS];
+    if (lane == 0) {
+#pragma unroll
+        for (int t = 0; t < COLS; ++t) xwave[wave][t] = acc[t];
+    }
+    __syncthreads();
+    if (tid < COLS) {
+        const int t = tid;
+        if (n0 + t < N) {
+            float total = 0.0f;
+#pragma unroll
+            for (int wv2 = 0; wv2 < WAVES; ++wv2) total += xwave[wv2][t];
+            out[n0 + t] = bf16_store(total);
+        }
+    }
+}
+
+extern "C" int hipengine_gguf_iq4_nl_local32_gemv(const void* x,
+    const void* w, void* out, int64_t rows, int64_t K, int64_t N,
+    int waves, void* stream) {
+    if (!x || !w || !out || rows != 1 || K <= 0 || K % 256 || N <= 0 || N % 8)
+        return int(hipErrorInvalidValue);
+    const dim3 grid(unsigned(N / 8));
+    const hipStream_t s = (hipStream_t)stream;
+    int err;
+    switch (waves) {
+        case 1:
+            err = (gguf_iq4_nl_local32_gemv_kernel<1><<<grid, 32, 0, s>>>(
+                (const uint16_t*)x, (const uint8_t*)w, (uint16_t*)out, K, N),
+                int(hipGetLastError()));
+            return err;
+        case 2:
+            err = (gguf_iq4_nl_local32_gemv_kernel<2><<<grid, 64, 0, s>>>(
+                (const uint16_t*)x, (const uint8_t*)w, (uint16_t*)out, K, N),
+                int(hipGetLastError()));
+            return err;
+        case 4:
+            err = (gguf_iq4_nl_local32_gemv_kernel<4><<<grid, 128, 0, s>>>(
+                (const uint16_t*)x, (const uint8_t*)w, (uint16_t*)out, K, N),
+                int(hipGetLastError()));
+            return err;
+        default:
+            return int(hipErrorInvalidValue);
+    }
+}
+
 extern "C" int hipengine_gguf_iq4_xs_local32_dual_silu(const void* x,
     const void* wa, const void* wb, void* out, int64_t rows,
     int64_t K, int64_t N, int waves, void* stream) {
