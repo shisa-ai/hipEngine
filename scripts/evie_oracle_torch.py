@@ -30,14 +30,17 @@ from pathlib import Path
 
 import numpy as np
 
-SNAPSHOT = sorted(
-    glob.glob(
-        str(
-            Path.home()
-            / ".cache/huggingface/hub/models--tencent--EVIE-4.5B/snapshots/*/model.safetensors"
+def _snapshots(model_id: str) -> list[str]:
+    return sorted(
+        glob.glob(
+            str(
+                Path.home()
+                / f".cache/huggingface/hub/models--tencent--{model_id}/snapshots/*/model.safetensors"
+            )
         )
     )
-)
+
+
 DEFAULT_OUT = Path("tests/fixtures/evie/evie_4p5b_doc_query.npz")
 
 
@@ -57,6 +60,11 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--head", type=int, default=128)
+    parser.add_argument(
+        "--model",
+        default="EVIE-4.5B",
+        help="tencent model id (EVIE-4.5B or EVIE-8B)",
+    )
     parser.add_argument(
         "--image",
         type=Path,
@@ -78,7 +86,7 @@ def main() -> None:
         set_active_head,
     )
 
-    snapshot = Path(SNAPSHOT[0]).parent
+    snapshot = Path(_snapshots(args.model)[0]).parent
     print(f"loading {snapshot} on {args.device} (float32)...")
     model = ColQwen3_5.from_pretrained(
         str(snapshot),

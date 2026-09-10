@@ -167,6 +167,33 @@ class EvieSpec:
     def is_full_attention(self, layer: int) -> bool:
         return (layer + 1) % self.full_attention_interval == 0
 
+    @classmethod
+    def from_model_spec(cls, spec) -> "EvieSpec":
+        """Build a reference spec from hipengine.models.evie.EvieModelSpec."""
+
+        return cls(
+            hidden_size=spec.hidden_size,
+            num_layers=spec.num_layers,
+            full_attention_interval=spec.full_attention_interval,
+            num_attention_heads=spec.num_attention_heads,
+            num_key_value_heads=spec.num_key_value_heads,
+            head_dim=spec.head_dim,
+            rope_theta=spec.rope_theta,
+            partial_rotary_factor=spec.partial_rotary_factor,
+            mrope_section=spec.mrope_section,
+            intermediate_size=spec.intermediate_size,
+            vocab_size=spec.vocab_size,
+            image_token_id=spec.image_token_id,
+            vision_hidden=spec.vision_hidden_size,
+            vision_depth=spec.vision_depth,
+            vision_heads=spec.vision_num_heads,
+            vision_patch=spec.vision_patch_size,
+            vision_merge=spec.vision_spatial_merge_size,
+            vision_intermediate=spec.vision_intermediate_size,
+            vision_out_hidden=spec.vision_out_hidden_size,
+            proj_dim=spec.proj_dim,
+        )
+
 
 # ---------------------------------------------------------------------------
 # mRoPE (text) and 2D RoPE (vision)

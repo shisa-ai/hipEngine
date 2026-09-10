@@ -236,26 +236,55 @@ def parse_evie_model_spec(config: Mapping[str, Any]) -> EvieModelSpec:
         vision_num_position_embeddings=int(
             _require(vision, "num_position_embeddings")
         ),
+        # 4.5B is Prefix-MRL (head_dims ladder, d128 deployment head);
+        # 8B is a single-head model (config "dim", no head_dims) whose
+        # custom_text_proj is Linear(hidden, dim) with full-dim embeddings
         proj_dim=int(_require(config, "dim")) if "dim" in config else 2048,
-        head_dims=tuple(int(d) for d in _require(config, "head_dims")),
-        default_head=EVIE_DEFAULT_HEAD,
+        head_dims=(
+            tuple(int(d) for d in _require(config, "head_dims"))
+            if "head_dims" in config
+            else (int(config["dim"]),)
+        ),
+        default_head=(
+            EVIE_DEFAULT_HEAD if "head_dims" in config else int(config["dim"])
+        ),
     )
 
-    expected = {
-        "hidden_size": 2_560,
-        "num_layers": 32,
-        "num_attention_heads": 16,
-        "num_key_value_heads": 4,
-        "head_dim": 256,
-        "intermediate_size": 9_216,
-        "vocab_size": 248_320,
-        "vision_hidden_size": 1_024,
-        "vision_depth": 24,
-        "vision_num_heads": 16,
-        "vision_patch_size": 16,
-        "vision_spatial_merge_size": 2,
-        "vision_num_position_embeddings": 2_304,
-    }
+    # per-checkpoint geometry tables; the shared GDN contract (32 value
+    # heads x 128, 16 key heads x 128, conv 4) and the attention contract
+    # (16 q heads x 256, GQA 4, interval 4) are common to the family
+    if spec.head_dims != EVIE_HEAD_DIMS:
+        expected = {
+            "hidden_size": 4_096,
+            "num_layers": 32,
+            "num_attention_heads": 16,
+            "num_key_value_heads": 4,
+            "head_dim": 256,
+            "intermediate_size": 12_288,
+            "vocab_size": 248_320,
+            "vision_hidden_size": 1_152,
+            "vision_depth": 27,
+            "vision_num_heads": 16,
+            "vision_patch_size": 16,
+            "vision_spatial_merge_size": 2,
+            "vision_num_position_embeddings": 2_304,
+        }
+    else:
+        expected = {
+            "hidden_size": 2_560,
+            "num_layers": 32,
+            "num_attention_heads": 16,
+            "num_key_value_heads": 4,
+            "head_dim": 256,
+            "intermediate_size": 9_216,
+            "vocab_size": 248_320,
+            "vision_hidden_size": 1_024,
+            "vision_depth": 24,
+            "vision_num_heads": 16,
+            "vision_patch_size": 16,
+            "vision_spatial_merge_size": 2,
+            "vision_num_position_embeddings": 2_304,
+        }
     for name, want in expected.items():
         got = getattr(spec, name)
         if got != want:
