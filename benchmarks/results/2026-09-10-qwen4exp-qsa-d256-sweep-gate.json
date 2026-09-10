@@ -37,5 +37,7 @@
  "source": {
   "head": "eb13017f396e",
   "path": "/home/lhl/hipEngine"
- }
+ },
+ "labeling_correction": "Reviewer follow-up (2026-09-10): this artifact and the #36 worklog entry cite 'batched QSA positions +0.9% TG'. That figure is from the TRUE all-off-arm attribution (2026-09-10-r7-combined-tg-attribution.json: -0.54 ms median = -0.9% latency = +0.9% throughput). The ORIGINAL promotion screen measured -0.77 ms/token (~+1.3% TG) on a different protocol (flags-only OFF arm, compiler cache active). Both numbers are retained with their protocols; neither supersedes the other, and the difference is protocol scope, not a silent change. See also docs/KERNELS.md source-lineage audit, which carries both figures labeled.",
+ "scope_clarification": "'All three gate branches evaluated and closed' refers to the QSA D256 SWEEP decision only, not the broader QSA optimization space: the predeclared experiment is properly recorded and pending its opening conditions, not technically rejected."
 }
