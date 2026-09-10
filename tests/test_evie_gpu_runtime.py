@@ -105,3 +105,4 @@ def test_doc_embeddings_and_maxsim_match_oracle(runner, fixture) -> None:
         fixture["image_grid_thw"],
     )
     np.testing.assert_array_equal(doc, doc2)
+
