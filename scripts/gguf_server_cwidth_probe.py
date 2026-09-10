@@ -10,11 +10,15 @@ reference (N x C1 rate) for the honest comparison the roadmap requires.
 
 Protocol: one server launch per width; the width-N requests are fired
 concurrently after readiness; walls are measured from first-request send to
-last-response completion. Prefill and decode are separated by a second
-isolated C1 run with max_tokens=1 per width (prefill wall), so the decode
-rate is (tokens - prompt) / (wall - prefill share) per request.
+last-response completion. The reported usage completion_tokens give the
+ACTUAL per-request decode counts. Decode-only rates are reported as
+explicitly-labeled estimates (concurrent wall minus the serialized prefill
+share); a clean model-step-timed split and a real same-GPU serial reference
+are future harness work - do not read the estimates as isolated decode
+efficiency.
 
-Output: JSON artifact with per-width rows and the serial-aggregate ratios.
+Output: JSON artifact with per-width complete-request throughput and the
+labeled decode estimates.
 """
 
 from __future__ import annotations
@@ -155,25 +159,39 @@ def main() -> int:
                     "errors": errors[:4],
                 }
                 continue
-            # Prefill isolation: one lane alone with max_tokens=1 measures the
-            # single-lane prefill wall under the same server.
-            prefill_wall, _ = one_request(prompts[0], 1)
+            # Isolation probes under the SAME server: a single lane alone
+            # with max_tokens=1 gives one prefill wall, and the reported
+            # per-request completion_tokens give the ACTUAL decode counts.
+            prefill_wall, prefill_payload = one_request(prompts[0], 1)
             decode_tokens = int(args.max_tokens) - 1
-            # Aggregate decode rate: total decode tokens over the concurrent
-            # wall minus each lane's prefill share (prefills serialize at
-            # C<=4 with the 1024-row chunk cap under protect_decode).
-            decode_wall = max(wall - prefill_wall, 1e-6)
-            aggregate = width * decode_tokens / decode_wall
-            per_request_latency_ms = [
-                1000.0 * w for (w, _) in results
-            ]
+            usage = (results[0][1].get("usage") or {})
+            actual_completion = int(usage.get("completion_tokens") or 0)
+            # Honest decode-only estimate: subtract every lane's serialized
+            # prefill share from the concurrent wall (at these widths the
+            # 1024-row chunk cap serializes prefills under protect_decode).
+            # This is an ESTIMATE, not an isolated decode measurement; the
+            # model-step timing needed for a clean split is future work.
+            decode_wall_est = max(wall - width * prefill_wall, 1e-6)
+            aggregate_est = width * decode_tokens / decode_wall_est
             out["widths"][str(width)] = {
                 "status": "pass",
                 "concurrent_wall_s": round(wall, 3),
                 "single_lane_prefill_wall_s": round(prefill_wall, 3),
-                "aggregate_decode_tok_s": round(aggregate, 3),
+                "completion_tokens_reported": actual_completion,
+                "aggregate_decode_tok_s_est": round(aggregate_est, 3),
+                "aggregate_decode_tok_s_est_note": (
+                    "ESTIMATE: concurrent wall minus width x single-lane "
+                    "prefill wall; prefills serialize at these widths, so "
+                    "the residual is the decode phase, but prefill/decode "
+                    "overlap and batching make this an upper-bound style "
+                    "approximation, not an isolated decode measurement"
+                ),
                 "per_request_wall_s": [round(w, 3) for (w, _) in results],
-                "per_request_latency_ms": [round(x, 2) for x in per_request_latency_ms],
+                # Complete-request throughput: every token (prompt +
+                # completion) of every lane over the concurrent wall.
+                "complete_request_throughput_tok_s": round(
+                    width * (args.prompt_rows + actual_completion) / wall, 3
+                ),
                 "teardown": "pending",
             }
             print(
@@ -191,18 +209,16 @@ def main() -> int:
             except Exception:
                 srv.kill()
 
+    # Same-GPU serial reference: a REAL serial run fires the width-N lanes
+    # one at a time (not N x the concurrent C1 rate, which one GPU cannot
+    # multiply). Reported for complete-request throughput only.
     c1 = out["widths"].get("1", {})
     if c1.get("status") == "pass":
         for width in widths:
             row = out["widths"].get(str(width), {})
             if row.get("status") == "pass":
-                row["serial_aggregate_reference_tok_s"] = round(
-                    width * c1["aggregate_decode_tok_s"], 3
-                )
-                row["efficiency_vs_serial"] = round(
-                    row["aggregate_decode_tok_s"]
-                    / (width * c1["aggregate_decode_tok_s"]),
-                    4,
+                row["c1_complete_request_rate_tok_s"] = c1.get(
+                    "complete_request_throughput_tok_s"
                 )
 
     payload = json.dumps(out, indent=2, default=str)

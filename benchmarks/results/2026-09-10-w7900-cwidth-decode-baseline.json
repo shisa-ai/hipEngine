@@ -1,65 +1,92 @@
 {
   "kind": "gguf_server_cwidth_decode_baseline",
-  "protocol_tier": 1,
-  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
-  "kv": "int8_per_token_head + fp32 scales",
-  "route": "repaired C1 route (slot-local layer-outer prefill, packed batch decode above 1 slot, per-width pool lease)",
-  "prompt_rows": 2048,
-  "max_tokens": 64,
-  "prompt_kind": "deterministic_varied_rng20260909_lanes",
-  "widths": {
-    "1": {
-      "status": "pass",
-      "concurrent_wall_s": 4.978,
-      "single_lane_prefill_wall_s": 2.761,
-      "aggregate_decode_tok_s": 28.411,
-      "per_request_wall_s": [
+  "corrections_applied": "2026-09-10 reviewer finding 2: the original artifact's 'aggregate_decode_tok_s' subtracted ONE isolated prefill from a wall containing width prefills, and compared against N x C1 (a rate one GPU cannot multiply). Those fields and the 31%/13%-of-serial conclusions are WITHDRAWN as invalid.",
+  "valid_observations": {
+    "note": "complete-request walls only; decode-only rates are NOT established by this artifact",
+    "c1_concurrent_wall_s": 4.978,
+    "c2_concurrent_wall_s": 9.938,
+    "c4_concurrent_wall_s": 20.004,
+    "per_request_walls_s": {
+      "1": [
         4.978
       ],
-      "per_request_latency_ms": [
-        4977.62
-      ],
-      "teardown": "clean",
-      "serial_aggregate_reference_tok_s": 28.411,
-      "efficiency_vs_serial": 1.0
-    },
-    "2": {
-      "status": "pass",
-      "concurrent_wall_s": 9.938,
-      "single_lane_prefill_wall_s": 2.778,
-      "aggregate_decode_tok_s": 17.597,
-      "per_request_wall_s": [
+      "2": [
         9.936,
         9.937
       ],
-      "per_request_latency_ms": [
-        9936.3,
-        9937.45
-      ],
-      "teardown": "clean",
-      "serial_aggregate_reference_tok_s": 56.822,
-      "efficiency_vs_serial": 0.3097
-    },
-    "4": {
-      "status": "pass",
-      "concurrent_wall_s": 20.004,
-      "single_lane_prefill_wall_s": 2.803,
-      "aggregate_decode_tok_s": 14.651,
-      "per_request_wall_s": [
+      "4": [
         19.888,
         19.964,
         20.002,
         20.003
-      ],
-      "per_request_latency_ms": [
-        19888.42,
-        19963.99,
-        20002.05,
-        20002.91
-      ],
-      "teardown": "clean",
-      "serial_aggregate_reference_tok_s": 113.644,
-      "efficiency_vs_serial": 0.1289
+      ]
+    },
+    "single_lane_prefill_wall_s": 2.761,
+    "interpretation": "Complete-request throughput is approximately serial at C1/C2/C4 on this route (C2 wall ~2.0x C1, C4 ~4.0x): concurrent requests do not yet gain aggregate throughput. Reliable decode-only tok/s at C>1 is unknown and needs the corrected harness (model-step timing, per-request prefill completion, actual token counts) plus a real same-GPU serial reference."
+  },
+  "original_measurements_preserved": {
+    "kind": "gguf_server_cwidth_decode_baseline",
+    "protocol_tier": 1,
+    "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "kv": "int8_per_token_head + fp32 scales",
+    "route": "repaired C1 route (slot-local layer-outer prefill, packed batch decode above 1 slot, per-width pool lease)",
+    "prompt_rows": 2048,
+    "max_tokens": 64,
+    "prompt_kind": "deterministic_varied_rng20260909_lanes",
+    "widths": {
+      "1": {
+        "status": "pass",
+        "concurrent_wall_s": 4.978,
+        "single_lane_prefill_wall_s": 2.761,
+        "aggregate_decode_tok_s": 28.411,
+        "per_request_wall_s": [
+          4.978
+        ],
+        "per_request_latency_ms": [
+          4977.62
+        ],
+        "teardown": "clean",
+        "serial_aggregate_reference_tok_s": 28.411,
+        "efficiency_vs_serial": 1.0
+      },
+      "2": {
+        "status": "pass",
+        "concurrent_wall_s": 9.938,
+        "single_lane_prefill_wall_s": 2.778,
+        "aggregate_decode_tok_s": 17.597,
+        "per_request_wall_s": [
+          9.936,
+          9.937
+        ],
+        "per_request_latency_ms": [
+          9936.3,
+          9937.45
+        ],
+        "teardown": "clean",
+        "serial_aggregate_reference_tok_s": 56.822,
+        "efficiency_vs_serial": 0.3097
+      },
+      "4": {
+        "status": "pass",
+        "concurrent_wall_s": 20.004,
+        "single_lane_prefill_wall_s": 2.803,
+        "aggregate_decode_tok_s": 14.651,
+        "per_request_wall_s": [
+          19.888,
+          19.964,
+          20.002,
+          20.003
+        ],
+        "per_request_latency_ms": [
+          19888.42,
+          19963.99,
+          20002.05,
+          20002.91
+        ],
+        "teardown": "clean",
+        "serial_aggregate_reference_tok_s": 113.644,
+        "efficiency_vs_serial": 0.1289
+      }
     }
   }
 }

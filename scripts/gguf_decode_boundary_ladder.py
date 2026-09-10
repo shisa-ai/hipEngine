@@ -7,14 +7,16 @@ execution mode:
 
 - R0: raw ``Qwen35GGUFResidentSession.prefill`` + ``step`` loop with the
   shipping low-level selectors (direct compute reference).
-- R1: the server's executor route on the same session class:
-  ``prefill_batch_native`` + ``step`` (the packed slot-local entry every
-  int8_direct server prefill takes). The full pool-binding variant of R1
-  and the HTTP arms (R4) are measured by the server allocation probe and
-  the engine-comparison harnesses; this script records the in-process
-  reference points.
+- R1: the same PRIVATE session class running ``prefill_batch_native`` +
+  ``step`` - the packed slot-local ENTRY the server's prefill takes, but
+  WITHOUT the server's pool binding, slot views, or scheduler. It isolates
+  the executor-entry cost only; it is NOT the roadmap's R1 (server
+  pool/scheduler execution), which the server allocation probe and
+  engine-comparison harnesses approximate at the HTTP boundary.
 - R3: the public ``LLM.generate`` token-ID path (EngineService, commands,
-  collectors, per-token host processing).
+  collectors). Whole-request wall only: prefill and decode are not
+  separated inside this arm, so decode-only figures must be derived
+  against R0's step median with that caveat stated.
 
 Protocol notes:
 - One process, arms run sequentially, each with a fresh session/LLM.

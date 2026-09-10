@@ -120,19 +120,22 @@ DMS INT8 + single hidden plane 232,448.
 [Direct-route capacity](results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-capacity.json),
 [DMS alias ladder](results/2026-09-08-rx7900xtx-dms-int8-hidden-alias-ladder.json),
 [speed evidence](results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-wmma-oracle-control-8192.json).
-**W7900, INT8 KV server (2026-09-10, repaired route — lease removed +
-layer-outer executor)**: tier-1 allocation-validity ceiling **155,648+
-declared contexts** — the bracket passes 65,536 / 98,304 / 131,072 /
-155,648 with clean teardown
+**W7900, INT8 KV server (2026-09-10, repaired route — lease removed;
+layer-outer executor via env flag)**: tier-1 allocation-validity bracket
+**passes 65,536 / 98,304 / 131,072 / 155,648 DECLARED contexts** with clean
+teardown
 ([65,536](results/2026-09-10-w7900-server-alloc-probe-64k.json),
 [131,072](results/2026-09-10-w7900-server-alloc-probe-128k.json),
-[155,648](results/2026-09-10-w7900-server-alloc-probe-152k.json)) —
-exceeding the plain direct-engine INT8 ceiling (131,072). This is the
-capacity protocol's tier-1 sense (every allocation succeeding plus one
-multi-slab prefill and decode with finite logits at the declared context);
-admission-safety qualification under load (allocation failure with a live
-survivor, operational reserve) remains open. The old unqualified 54,272
-was measured pre-repair with the duplicate reservation pinned. W7900
+[155,648](results/2026-09-10-w7900-server-alloc-probe-152k.json)) — each
+point is one 2,048-row request at that declared context, NOT a
+full-length-prompt completion. Tier-1 in the capacity protocol's sense:
+every allocation succeeding plus one multi-slab prefill and decode with
+finite logits. No cross-card comparison to the RX 7900 XTX direct ceiling
+(131,072) is claimed - that number is a different card's route.
+Admission-safety qualification under load (allocation failure with a live
+survivor, operational reserve) remains open, as does a full-length tier-2
+confirmation. The old unqualified 54,272 was measured pre-repair with the
+duplicate reservation pinned. W7900
 default-route prefill at 8,192 tokens: 766.0 tok/s, decode 33.9;
 direct-INT8 wmma prefill 735.6 (96%); repaired packed slot-local server
 route 677 tok/s — a diagnostic gate run with intermittent competing GPU
@@ -244,9 +247,10 @@ Strix Halo `Q4_K_M`: strict C1/K3 automatic at **18.191 tok/s (1.6445x AR)**; pr
 #### Server/direct parity result (2026-09-10, roadmap P0-P7)
 
 The [server-direct parity campaign](../../docs/SERVER-DIRECT-PARITY-ROADMAP.md)
-section 1.1 has the full stage table. The qualification headline on the
-repaired C1 INT8 route (slot-local AOTriton prefill, layer-outer packed
-executor default, duplicate packed-KV reservation removed):
+section 1.1 has the full stage table and status levels. The diagnostic
+headline on the repaired C1 INT8 route (slot-local AOTriton prefill;
+layer-outer packed executor available via env flag, default OFF pending
+packet gates; duplicate packed-KV reservation removed):
 
 - **Speed** (layer-outer executor enabled via its env flag — default OFF
   pending the remaining packet gates): packed prefill 677-732 tok/s at
@@ -254,9 +258,11 @@ executor default, duplicate packed-KV reservation removed):
   repetitions: ratio median 1.004, mean 0.978, min 0.890 under shared-host
   contention; all bitwise-identical logits and IDs)
   ([paired reps](results/2026-09-10-w7900-p7-c1-speed-parity-paired-reps.json)).
-- **Decode boundary**: R0 raw session 35.15 ms/token median; R1 the packed
-  server entry 35.22 ms (ratio 1.002); R3 the public LLM service wrapper
-  ~2% per request
+- **Decode boundary** (private-session executor-entry comparison, not
+  server pool/scheduler execution): R0 raw session 35.15 ms/token median;
+  R1 the same session class through the packed entry 35.22 ms (ratio
+  1.002). The public LLM arm's whole-request wall (5.00 s incl. prefill)
+  is consistent with a small service cost but does not isolate it
   ([ladder](results/2026-09-10-w7900-decode-boundary-ladder-16k.json)).
 - **Memory**: canonical 32.5 KiB/L-token KV exactly (2 x 16 x 4 x (256+4));
   zero server-only linear context term on the scoped route (lease 0,
@@ -269,10 +275,12 @@ executor default, duplicate packed-KV reservation removed):
 - **Trace identity**: AOTriton `attn_fwd` for >=512-row rounds, native paged
   prefill for <512-row tails - two kernel identities, as predicted
   ([trace](results/2026-09-10-w7900-layer-outer-trace-identity-1500.csv.gz)).
-- **HTTP transport budget**: SSE chunk-gap median 34.7 ms vs the raw 35.1 ms
-  decode boundary (sub-ms/token transport overhead; first chunk at 2.76 s
-  = prefill-bound TTFT); kernel-family attribution: FFN/WMMA 72%, native
-  tail attention 18%, AOTriton round 1%
+- **HTTP observation**: blocking 3.895 s vs SSE 3.839 s whole-request walls;
+  SSE first chunk at 2.76 s (prefill-bound) and chunk-gap median 34.7 ms.
+  These measure delivery cadence and whole-request difference, NOT an
+  isolated per-token transport cost (chunks need not map one-to-one to
+  tokens); no sub-ms/token transport claim is made. Kernel-family
+  attribution: FFN/WMMA 72%, native tail attention 18%, AOTriton round 1%
   ([SSE](results/2026-09-10-w7900-p7-http-transport-budget.json),
   [attribution](results/2026-09-10-w7900-p5-kernel-family-attribution-1500.json)).
 

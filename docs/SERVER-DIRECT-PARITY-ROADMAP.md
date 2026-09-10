@@ -48,8 +48,12 @@ reasonable requirements.
 
 ## 1.1 Execution status (2026-09-10, end of day)
 
-Packets P0-P4 are landed with their gates; P5's C1 baseline and P7's capacity
-re-qualification are landed. Stage table (W7900 GPU0, 27B Q4_K_M,
+Status levels are distinguished per the review: implementation landed /
+diagnostic passed / qualified. P0 (telemetry) and P4 (lease removal,
+allocator corrected) are landed; P1-P3 have diagnostics passed with packet
+gates outstanding; P2 is an observation harness, not an admission preflight;
+P5's C1 baseline is landed and P7's capacity bracket is tier-1
+allocation-validity only. Stage table (W7900 GPU0, 27B Q4_K_M,
 int8_per_token_head + FP32 scales, C1, real server route, 2,048-row prompt
 unless noted):
 
@@ -61,10 +65,10 @@ unless noted):
 | P2 server-faithful probe | 677 | - | same, now measured while-live on the real route (in-process oracle peak capture) | `8941b9d15` |
 | P3 layer-outer executor | 732 | - | oracle 0.125/0.25 GiB (1 owner); bitwise parity vs scalar at 2,048 and 1,500 rows | `a58cc4169` |
 | P4 lease removal | 677-732 | - | lease 0/0; pinned 0/0; pool high-water 0.07; chunk-outer oracle halves to 1.0 GiB (pool-backing coupling); determinism verified | `b959c83fe` |
-| P5 t1 decode ladder | - | R0 35.15 ms; R1 35.22 ms (ratio 1.002); R3 wrapper ~2% | - | `9ace7cb91` |
-| P7 t1 capacity | - | - | fresh C1 ceiling 155,648+ declared (2.87x the old 54,272); exceeds the plain direct-engine INT8 ceiling | `f2ff6fdf6` |
+| P5 t1 decode ladder | - | R0 35.15 ms; packed-entry R1 35.22 ms (ratio 1.002, private sessions - executor-entry cost only, not server pool/scheduler execution) | - | `9ace7cb91` |
+| P7 t1 capacity | - | - | tier-1 allocation-validity bracket passes 65,536-155,648 DECLARED contexts (one 2,048-row request each; not full-length completions; no cross-card direct comparison) | `f2ff6fdf6` |
 | P3 promotion | - | - | trace identity passed (AOTriton + native, as predicted); default reverted to OFF pending the packet gates (reviewer F4) | `c6288b9b0` + corrective |
-| P7 t2 publish | - | - | paired reps: ratio median 1.004 (>=95% gate); SSE transport sub-ms/token; kernel-family attribution landed | `882446e45`, `e7545ec45` |
+| P7 t2 publish | - | - | paired reps: ratio median 1.004 (one matched 8K diagnostic; cross-rep variance 89-104% under shared-host contention, so 'consistently within 5%' is not established); SSE observation is delivery cadence, not isolated transport cost; kernel-family attribution landed | `882446e45`, `e7545ec45` |
 
 Combined P3+P4 at 32K declared: ~1.6 GiB of route transients vs ~6.4 GiB at
 the P0 baseline (-75%), measured with the executor flag enabled. The
