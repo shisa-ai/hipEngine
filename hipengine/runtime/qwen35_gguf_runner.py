@@ -14881,6 +14881,11 @@ class Qwen35GGUFResidentSession:
     _prefill_aotriton_input_ready_event: int = field(default=0, init=False)
     _prefill_aotriton_output_ready_event: int = field(default=0, init=False)
     _int8_prefill_oracle_buffers: dict[int, tuple[DeviceBuffer, DeviceBuffer]] = field(default_factory=dict, init=False)
+    # Monotonic while-live peaks of the oracle owners, sampled in
+    # prefill_batch_native's finally before the release (see the comment
+    # there): scrape-based polling cannot observe these buffers mid-call.
+    _int8_prefill_oracle_observed_peak_bytes: int = field(default=0, init=False)
+    _int8_prefill_oracle_observed_peak_owners: int = field(default=0, init=False)
     _int8_prefill_retained_block_table: DeviceBuffer | None = field(default=None, init=False)
     _int8_prefill_lifetime_plan: _GGUFInt8PrefillLifetimePlan | None = field(default=None, init=False)
     _linear_state_snapshot_backups: tuple[object, ...] = field(default=(), init=False)
@@ -22058,6 +22063,44 @@ class Qwen35GGUFResidentSession:
                     None,
                 )
                 if callable(release):
+                    # Record the live oracle peak before the release clears the
+                    # owners: /metrics scrapes block on the loop lock while a
+                    # synchronous prefill runs, so out-of-process polling can
+                    # never observe these buffers while live (F4 in the
+                    # server/direct parity roadmap). This is the while-live
+                    # capture.
+                    live_pairs = getattr(session, "_int8_prefill_oracle_buffers", None)
+                    if isinstance(live_pairs, dict) and live_pairs:
+                        live_bytes = 0
+                        for key_cache, value_cache in live_pairs.values():
+                            try:
+                                live_bytes += int(key_cache.nbytes) + int(
+                                    value_cache.nbytes
+                                )
+                            except (AttributeError, TypeError):
+                                live_bytes = 0
+                                break
+                        if live_bytes:
+                            session._int8_prefill_oracle_observed_peak_bytes = max(
+                                int(
+                                    getattr(
+                                        session,
+                                        "_int8_prefill_oracle_observed_peak_bytes",
+                                        0,
+                                    )
+                                ),
+                                live_bytes,
+                            )
+                        session._int8_prefill_oracle_observed_peak_owners = max(
+                            int(
+                                getattr(
+                                    session,
+                                    "_int8_prefill_oracle_observed_peak_owners",
+                                    0,
+                                )
+                            ),
+                            len(live_pairs),
+                        )
                     release()
                 # Never let a multi-chunk call's per-layer keying leak into a
                 # later single-chunk call, which would read an unwritten pair.

@@ -8601,11 +8601,34 @@ def _resident_loop_metric_values(snapshot: Mapping[str, Any] | None) -> dict[str
             "current_bytes": _non_negative_metric_value(
                 model_runner.get("packed_workspace_current_bytes")
             ),
+            "owner_sessions": _non_negative_metric_value(
+                model_runner.get("packed_workspace_owner_sessions")
+            ),
+            "leased_pool_bytes": _non_negative_metric_value(
+                model_runner.get("packed_workspace_leased_pool_bytes")
+            ),
             "release_events": _non_negative_metric_value(
                 model_runner.get("packed_workspace_release_events")
             ),
             "released_bytes": _non_negative_metric_value(
                 model_runner.get("packed_workspace_released_bytes")
+            ),
+        },
+        "prefill_transients": {
+            "oracle_owner_bytes": _non_negative_metric_value(
+                (model_runner.get("prefill_transients") or {}).get("oracle_owner_bytes")
+            ),
+            "oracle_owner_count_total": _non_negative_metric_value(
+                (model_runner.get("prefill_transients") or {}).get("oracle_owner_count_total")
+            ),
+            "oracle_observed_peak_bytes": _non_negative_metric_value(
+                (model_runner.get("prefill_transients") or {}).get("oracle_observed_peak_bytes")
+            ),
+            "oracle_observed_peak_owners": _non_negative_metric_value(
+                (model_runner.get("prefill_transients") or {}).get("oracle_observed_peak_owners")
+            ),
+            "hidden_and_bulk_owner_bytes": _non_negative_metric_value(
+                (model_runner.get("prefill_transients") or {}).get("hidden_and_bulk_owner_bytes")
             ),
         },
         "persistent_kv": {
@@ -8703,6 +8726,13 @@ def _render_prometheus_metrics(
         "hipengine_resident_fair_prefill_burst_chunks": resident["policy"]["fair_prefill_burst_chunks"],
         "hipengine_resident_consecutive_prefill_chunks": resident["policy"]["consecutive_prefill_chunks"],
         "hipengine_resident_packed_workspace_current_bytes": resident["packed_workspace"]["current_bytes"],
+        "hipengine_resident_packed_workspace_owner_sessions": resident["packed_workspace"]["owner_sessions"],
+        "hipengine_resident_packed_workspace_leased_pool_bytes": resident["packed_workspace"]["leased_pool_bytes"],
+        "hipengine_resident_prefill_oracle_owner_bytes": resident["prefill_transients"]["oracle_owner_bytes"],
+        "hipengine_resident_prefill_oracle_owners": resident["prefill_transients"]["oracle_owner_count_total"],
+        "hipengine_resident_prefill_oracle_observed_peak_bytes": resident["prefill_transients"]["oracle_observed_peak_bytes"],
+        "hipengine_resident_prefill_oracle_observed_peak_owners": resident["prefill_transients"]["oracle_observed_peak_owners"],
+        "hipengine_resident_prefill_hidden_owner_bytes": resident["prefill_transients"]["hidden_and_bulk_owner_bytes"],
         "hipengine_resident_packed_workspace_release_events_total": resident["packed_workspace"]["release_events"],
         "hipengine_resident_packed_workspace_released_bytes_total": resident["packed_workspace"]["released_bytes"],
         "hipengine_resident_kv_int8_payload_bytes": resident["persistent_kv"]["int8_payload_bytes"],
@@ -8771,7 +8801,14 @@ def _render_prometheus_metrics(
         "hipengine_resident_prefill_chunk_tokens": "Configured maximum tokens in one resident prefill work item.",
         "hipengine_resident_fair_prefill_burst_chunks": "Configured maximum consecutive prefill chunks while fair scheduling also has decode work.",
         "hipengine_resident_consecutive_prefill_chunks": "Current consecutive resident prefill chunks since the last decode work item.",
-        "hipengine_resident_packed_workspace_current_bytes": "Current owner-only packed GGUF workspace bytes.",
+        "hipengine_resident_packed_workspace_current_bytes": "Current owner-only packed GGUF workspace bytes (owner-deduplicated: shared slot views counted once, split-growth owners included).",
+        "hipengine_resident_packed_workspace_owner_sessions": "Resident sessions whose views contributed to the packed workspace inventory (aliasing diagnostic).",
+        "hipengine_resident_packed_workspace_leased_pool_bytes": "Pool-plane bytes pinned by workspace leases (a distinct accounting domain from workspace allocation bytes).",
+        "hipengine_resident_prefill_oracle_owner_bytes": "Live BF16 prefill oracle pair bytes across resident sessions (per-layer during multi-slab packed calls).",
+        "hipengine_resident_prefill_oracle_owners": "Live BF16 prefill oracle owners (pairs) across resident sessions.",
+        "hipengine_resident_prefill_oracle_observed_peak_bytes": "Monotonic while-live peak of BF16 prefill oracle pair bytes, sampled at release time (scrapes cannot observe mid-call).",
+        "hipengine_resident_prefill_oracle_observed_peak_owners": "Monotonic while-live peak of BF16 prefill oracle owners, sampled at release time.",
+        "hipengine_resident_prefill_hidden_owner_bytes": "Bulk prefill hidden/scratch/token owner bytes across resident sessions.",
         "hipengine_resident_packed_workspace_release_events_total": "Reclaimed packed GGUF workspace owners.",
         "hipengine_resident_packed_workspace_released_bytes_total": "Cumulative owner-only packed GGUF workspace bytes reclaimed.",
         "hipengine_resident_kv_int8_payload_bytes": "Current resident request-owned INT8 KV payload bytes.",

@@ -21338,8 +21338,17 @@ def test_metrics_endpoint_exports_resident_loop_d5_observability() -> None:
                 "active_requests": 2,
                 "available_sessions": 2,
                 "packed_workspace_current_bytes": 0,
+                "packed_workspace_owner_sessions": 3,
+                "packed_workspace_leased_pool_bytes": 2097152,
                 "packed_workspace_release_events": 4,
                 "packed_workspace_released_bytes": 3330000000,
+                "prefill_transients": {
+                    "oracle_owner_bytes": 1048576,
+                    "oracle_owner_count_total": 16,
+                    "oracle_observed_peak_bytes": 17179869184,
+                    "oracle_observed_peak_owners": 16,
+                    "hidden_and_bulk_owner_bytes": 5242880,
+                },
                 "persistent_int8_payload_bytes": 8388608,
                 "persistent_bf16_payload_bytes": 0,
                 "persistent_scale_bytes": 65536,
@@ -21428,6 +21437,13 @@ def test_metrics_endpoint_exports_resident_loop_d5_observability() -> None:
     assert _metric_value(body, "hipengine_resident_fair_prefill_burst_chunks") == 1
     assert _metric_value(body, "hipengine_resident_consecutive_prefill_chunks") == 0
     assert _metric_value(body, "hipengine_resident_packed_workspace_current_bytes") == 0
+    assert _metric_value(body, "hipengine_resident_packed_workspace_owner_sessions") == 3
+    assert _metric_value(body, "hipengine_resident_packed_workspace_leased_pool_bytes") == 2097152
+    assert _metric_value(body, "hipengine_resident_prefill_oracle_owner_bytes") == 1048576
+    assert _metric_value(body, "hipengine_resident_prefill_oracle_owners") == 16
+    assert _metric_value(body, "hipengine_resident_prefill_oracle_observed_peak_bytes") == 17179869184
+    assert _metric_value(body, "hipengine_resident_prefill_oracle_observed_peak_owners") == 16
+    assert _metric_value(body, "hipengine_resident_prefill_hidden_owner_bytes") == 5242880
     assert _metric_value(body, "hipengine_resident_packed_workspace_release_events_total") == 4
     assert _metric_value(body, "hipengine_resident_packed_workspace_released_bytes_total") == 3330000000
     assert _metric_value(body, "hipengine_resident_kv_int8_payload_bytes") == 8388608
