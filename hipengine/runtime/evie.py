@@ -136,6 +136,12 @@ class EvieRunner:
         if precision not in ("fp32", "fp16"):
             raise ValueError("precision must be 'fp32' or 'fp16'")
         self.precision = precision
+        if loaded.precision != precision:
+            raise ValueError(
+                "runner precision does not match the loaded weights "
+                f"({precision!r} runner vs {loaded.precision!r} weights); "
+                "reload with load_evie_model(precision=...)"
+            )
         self.loaded = loaded
         self.spec: EvieModelSpec = loaded.spec
         self.runtime = runtime or get_hip_runtime()
@@ -188,7 +194,15 @@ class EvieRunner:
         if self._gemm16_out is not None:
             hip_free(self._gemm16_out)
             self._gemm16_out = None
+        for bufs in (getattr(self, "_scores_bufs", None), getattr(self, "_plane16_bufs", None)):
+            if bufs:
+                for buf in bufs.values():
+                    hip_free(buf)
+                bufs.clear()
         self._rope_cache.clear()
+        # release the resident weight set so sequential runners in one
+        # process are truly single-model-resident
+        self.loaded.free(runtime=self.runtime)
 
     def _release_call_buffers(self) -> None:
         """Free per-call scratch; keep persistent state alive."""
@@ -1117,8 +1131,14 @@ class EvieRunner:
     # -- top-level API ---------------------------------------------------------------
 
     def _scratch_for(self, tokens: int) -> _Scratch:
+        # bucket to 64-token multiples so a stream of distinct input
+        # lengths does not grow the cache unboundedly
+        tokens = max(1, (tokens + 63) & ~63)
         if tokens in self._scratch:
             return self._scratch[tokens]
+        while len(self._scratch) >= 4:
+            oldest = next(iter(self._scratch))
+            self._scratch.pop(oldest).free()
         h = self.spec.hidden_size
         inter = self.spec.intermediate_size
 
@@ -1175,7 +1195,13 @@ class EvieRunner:
 
         spec = self.spec
         ids = np.asarray(input_ids, dtype=np.int64).reshape(-1)
-        positions = lm_rope_positions(ids, attention_mask.reshape(-1), np.zeros((0, 3), dtype=int), spec)
+        mask = attention_mask.reshape(-1).astype(bool)
+        if not mask.all():
+            # positions are valid-token-ordered; drop padding so the
+            # execution sequence matches (otherwise rope misaligns and
+            # the positions table reads out of bounds)
+            ids = ids[mask]
+        positions = lm_rope_positions(ids, np.ones(len(ids), dtype=attention_mask.dtype), np.zeros((0, 3), dtype=int), spec)
         scratch = self._scratch_for(len(ids))
         hidden_ptr = self.text_forward(ids, positions, scratch)
         emb_ptr = self.project(hidden_ptr, len(ids), scratch)
@@ -1196,6 +1222,9 @@ class EvieRunner:
 
         spec = self.spec
         ids = np.asarray(input_ids, dtype=np.int64).reshape(-1)
+        mask = attention_mask.reshape(-1).astype(bool)
+        if not mask.all():
+            ids = ids[mask]
         grid = np.asarray(image_grid_thw, dtype=int)
         image_tokens = int((ids == spec.image_token_id).sum())
         n_merged = image_tokens  # one merged token per image pad token
@@ -1203,7 +1232,9 @@ class EvieRunner:
         visual = self.vision_forward(
             np.asarray(pixel_values, dtype=np.float32), grid, scratch
         )
-        positions = lm_rope_positions(ids, attention_mask.reshape(-1), grid, spec)
+        positions = lm_rope_positions(
+            ids, np.ones(len(ids), dtype=attention_mask.dtype), grid, spec
+        )
         hidden_ptr = self.text_forward(ids, positions, scratch, visual_ptr=visual.ptr)
         emb_ptr = self.project(hidden_ptr, len(ids), scratch)
         emb = self._to_host(emb_ptr, len(ids) * 128).reshape(len(ids), 128)

@@ -79,7 +79,10 @@ host during load).
 
   **Profile classification: T1** (local implementation drift — fp16
   intermediates with unchanged algorithm; `docs/EXECUTION-PROFILES.md`
-  sec 5), strict fp32 fallback registered. The committed manifest-pinned
+  sec 5), strict fp32 fallback registered. This is fixture-gated evidence,
+  not a registered production-profile certification: no resolved EVIE
+  variant manifest exists in `docs/EXECUTION-PROFILES.md` and the
+  retrieval-ranking qualification remains open. The committed fixture
   gate is `tests/test_evie_gpu_runtime_fp16.py`: per-token embedding
   cosine versus the fp32 oracle (query mean/min
   `0.9999986/0.9999884`, document mean/min `0.9999500/0.9985462`),
@@ -110,7 +113,14 @@ PRO 395, gfx1151).
 | Torch reference, same GPU | bf16 (deployment) | — | — | — | 1356 ms |
 | Torch reference, same GPU | fp32 | — | — | — | 4148 ms |
 
-Torch rows are doc + query + maxsim totals (best of 3). Reproduce with
+Torch rows are doc + query + maxsim totals (best of 3). The cross-engine
+ratios are approximate: the two benches do not share a protocol — hipEngine
+uses torch-free synthetic preprocessing inside the timing loop (12-token
+templated queries, 8 zipped query/doc pairs) while the torch reference uses
+the real processor with preprocessing outside the timing loop (20-token
+queries, 64 scored pairs). Same shapes and hardware, so the comparison is
+indicative for compute cost, not a matched retrieval workload.
+Reproduce with
 `python3 scripts/evie_hip_bench.py --precision fp16 --pages 8 --queries 8`.
 
 hipEngine beats the torch fp32 baseline by 1.9× and is 1.6× from the torch
