@@ -571,6 +571,40 @@ def gguf_q8_0_mmq128_quantize_f32_d4x3(
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
 
+def gguf_q8_0_mmq128_quantize_f32_d4x1(
+    x_ptr: int,
+    out_d4_ptr: int,
+    rows: int,
+    hidden: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Pack F32 rows into single-plane D4 MMQ blocks (#28 R12 screen)."""
+
+    if rows <= 0:
+        raise ValueError("rows must be positive")
+    if hidden <= 0 or hidden % 128 != 0:
+        raise ValueError("hidden must be a positive multiple of 128")
+    library = library or build_gguf_q8_0_mmq_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, "hipengine_gguf_q8_0_mmq128_quantize_f32_d4x1")
+    fn.argtypes = [ctypes.c_void_p, ctypes.c_void_p] + [ctypes.c_int64] * 2 + [
+        ctypes.c_void_p
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(out_d4_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(hidden),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def gguf_q8_0_mmq128_quantize_f32_d4x2(
     x_ptr: int,
     out_d4_ptr: int,
@@ -622,6 +656,7 @@ def gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out(
     _prepacked: bool = False,
     _vector_activation: bool = False,
     _token64: bool = False,
+    _tile: str = "",
 ) -> None:
     """Launch D4x3 MMQ (F32 output) and enqueue near-boundary outputs."""
 
@@ -645,6 +680,8 @@ def gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out(
                   if _prepacked else "hipengine_gguf_q8_0_mmq128_raw_vec4_q8_1_d4x3_guarded_f32_f32_out")
     if _token64:
         symbol="hipengine_gguf_q8_0_mmq128_token64_q8_1_d4x3_guarded_f32_f32_out"
+    if _tile:
+        symbol = "hipengine_gguf_q8_0_mmq128_tile%s_raw_vec4_q8_1_d4x3_guarded_f32_f32_out" % _tile
     fn = getattr(library, symbol)
     fn.argtypes = [
         ctypes.c_void_p,
@@ -692,9 +729,75 @@ def gguf_q8_0_mmq128_raw_vec4_q8_1_d4x3_guarded_f32_f32_out(*args, **kwargs):
     gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out(
         *args, **kwargs, _vector_activation=True)
 
+
+def gguf_q8_0_mmq128_raw_vec4_q8_1_d4x2_guarded_f32_f32_out(
+        x_d4_ptr, qweight_ptr, out_ptr, risk_count_ptr, risk_indices_ptr,
+        max_risks, risk_threshold, rows, hidden, out_features, *,
+        stream=0, library=None, runtime=None):
+    """Two-plane raw-vec4 MMQ (#28 R12 plane-count screen)."""
+    if rows <= 0:
+        raise ValueError("rows must be positive")
+    if hidden <= 0 or hidden % 256 != 0:
+        raise ValueError("hidden must be a positive multiple of 256")
+    if out_features <= 0 or out_features % 16 != 0:
+        raise ValueError("out_features must be a positive multiple of 16")
+    library = library or build_gguf_q8_0_mmq_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, "hipengine_gguf_q8_0_mmq128_raw_vec4_q8_1_d4x2_guarded_f32_f32_out")
+    fn.argtypes = [ctypes.c_void_p] * 5 + [ctypes.c_int64, ctypes.c_float] + [ctypes.c_int64] * 3 + [ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_d4_ptr), ctypes.c_void_p(qweight_ptr),
+        ctypes.c_void_p(out_ptr), ctypes.c_void_p(risk_count_ptr),
+        ctypes.c_void_p(risk_indices_ptr),
+        ctypes.c_int64(max_risks), ctypes.c_float(risk_threshold),
+        ctypes.c_int64(rows), ctypes.c_int64(hidden),
+        ctypes.c_int64(out_features), ctypes.c_void_p(stream))
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def gguf_q8_0_mmq128_raw_vec4_q8_1_d4x1_guarded_f32_f32_out(
+        x_d4_ptr, qweight_ptr, out_ptr, risk_count_ptr, risk_indices_ptr,
+        max_risks, risk_threshold, rows, hidden, out_features, *,
+        stream=0, library=None, runtime=None):
+    """Single-plane raw-vec4 MMQ (#28 R12 plane-count screen)."""
+    if rows <= 0:
+        raise ValueError("rows must be positive")
+    if hidden <= 0 or hidden % 256 != 0:
+        raise ValueError("hidden must be a positive multiple of 256")
+    if out_features <= 0 or out_features % 16 != 0:
+        raise ValueError("out_features must be a positive multiple of 16")
+    library = library or build_gguf_q8_0_mmq_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, "hipengine_gguf_q8_0_mmq128_raw_vec4_q8_1_d4x1_guarded_f32_f32_out")
+    fn.argtypes = [ctypes.c_void_p] * 5 + [ctypes.c_int64, ctypes.c_float] + [ctypes.c_int64] * 3 + [ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_d4_ptr), ctypes.c_void_p(qweight_ptr),
+        ctypes.c_void_p(out_ptr), ctypes.c_void_p(risk_count_ptr),
+        ctypes.c_void_p(risk_indices_ptr),
+        ctypes.c_int64(max_risks), ctypes.c_float(risk_threshold),
+        ctypes.c_int64(rows), ctypes.c_int64(hidden),
+        ctypes.c_int64(out_features), ctypes.c_void_p(stream))
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
 def gguf_q8_0_mmq128_token64_q8_1_d4x3_guarded_f32_f32_out(*args, **kwargs):
     gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out(
         *args, **kwargs, _vector_activation=True, _token64=True)
+
+
+def gguf_q8_0_mmq128_tile_raw_vec4_q8_1_d4x3_guarded_f32_f32_out(
+        *args, _tile: str = "", **kwargs):
+    """#28 R12 geometry-sweep entry: raw-vec4 MMQ at an alternate tile.
+
+    ``_tile`` is one of "64x64", "64x128", "128x64". Any tile publishes
+    bit-identical outputs to the retained 128x128 kernel.
+    """
+
+    gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out(
+        *args, **kwargs, _vector_activation=True, _tile=_tile)
 
 
 def q8_mmq_prepacked_weight_nbytes(hidden: int, out_features: int) -> int:
@@ -942,6 +1045,16 @@ def register_gguf_q8_0_mmq_prefill_kernels(*, replace: bool = True) -> None:
             "mmq128_prefill_q8_1_d4x2_guarded_f32_f32_out",
         ),
         gguf_q8_0_mmq128_prefill_q8_1_d4x2_guarded_f32_f32_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q8_0",
+            "mmq128_raw_vec4_q8_1_d4x2_guarded_f32_f32_out",
+        ),
+        gguf_q8_0_mmq128_raw_vec4_q8_1_d4x2_guarded_f32_f32_out,
         replace=replace,
     )
     register(

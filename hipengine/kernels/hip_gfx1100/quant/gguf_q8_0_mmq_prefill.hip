@@ -853,6 +853,29 @@ extern "C" int hipengine_gguf_q8_0_mmq128_quantize_f32_d4x3(
   return static_cast<int>(hipGetLastError());
 }
 
+// #28 R12 plane-count screen: single-plane f32 quantize.
+extern "C" int hipengine_gguf_q8_0_mmq128_quantize_f32_d4x1(
+    const float* x,
+    void* out_d4,
+    int64_t rows,
+    int64_t hidden,
+    hipStream_t stream) {
+  if (x == nullptr || out_d4 == nullptr || rows <= 0 || hidden <= 0 ||
+      (hidden % 128) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(256);
+  const dim3 grid(
+      static_cast<unsigned int>(rows),
+      static_cast<unsigned int>((hidden + 1023) / 1024));
+  hipLaunchKernelGGL(
+      (q8_0_mmq128_quantize_f32_residual_d4_kernel<1>),
+      grid, block, 0, stream, x,
+      reinterpret_cast<block_q8_1_mmq_d4*>(out_d4),
+      static_cast<int>(rows), static_cast<int>(hidden));
+  return static_cast<int>(hipGetLastError());
+}
+
 // PF-1d plane-reduction candidate: double-plane f32 residual quantize.
 extern "C" int hipengine_gguf_q8_0_mmq128_quantize_f32_d4x2(
     const float* x,
@@ -944,6 +967,57 @@ extern "C" int hipengine_gguf_q8_0_mmq128_token64_q8_1_d4x3_guarded_f32_f32_out(
     int64_t capacity, float threshold, int64_t rows, int64_t k,
     int64_t n, hipStream_t stream) {
   return launch_mmq_tile<128,64,3,float,true,false,true>(
+      reinterpret_cast<const block_q8_1_mmq_d4*>(x),w,y,rows,k,n,stream,
+      count,indices,capacity,threshold);
+}
+
+// #28 R12 geometry sweep: raw-vec4 tile variants at the dense-leg
+// geometries. Any (MMQ_M_T, MMQ_N_T) instantiation publishes bit-identical
+// outputs to the 128x128 retained kernel; only the block geometry (and LDS
+// footprint -> occupancy) changes.
+extern "C" int hipengine_gguf_q8_0_mmq128_tile64x64_raw_vec4_q8_1_d4x3_guarded_f32_f32_out(
+    const void* x, const uint8_t* w, float* y, int* count, int* indices,
+    int64_t capacity, float threshold, int64_t rows, int64_t k,
+    int64_t n, hipStream_t stream) {
+  return launch_mmq_tile<64, 64, 3, float, true, false, true>(
+      reinterpret_cast<const block_q8_1_mmq_d4*>(x),w,y,rows,k,n,stream,
+      count,indices,capacity,threshold);
+}
+
+extern "C" int hipengine_gguf_q8_0_mmq128_tile64x128_raw_vec4_q8_1_d4x3_guarded_f32_f32_out(
+    const void* x, const uint8_t* w, float* y, int* count, int* indices,
+    int64_t capacity, float threshold, int64_t rows, int64_t k,
+    int64_t n, hipStream_t stream) {
+  return launch_mmq_tile<64, 128, 3, float, true, false, true>(
+      reinterpret_cast<const block_q8_1_mmq_d4*>(x),w,y,rows,k,n,stream,
+      count,indices,capacity,threshold);
+}
+
+// #28 R12 plane-count screen: two-plane raw-vec4 MMQ (guarded f32).
+extern "C" int hipengine_gguf_q8_0_mmq128_raw_vec4_q8_1_d4x2_guarded_f32_f32_out(
+    const void* x, const uint8_t* w, float* y, int* count, int* indices,
+    int64_t capacity, float threshold, int64_t rows, int64_t k,
+    int64_t n, hipStream_t stream) {
+  return launch_mmq_tile<128, 128, 2, float, true, false, true>(
+      reinterpret_cast<const block_q8_1_mmq_d4*>(x),w,y,rows,k,n,stream,
+      count,indices,capacity,threshold);
+}
+
+// #28 R12 plane-count screen: single-plane raw-vec4 MMQ (guarded f32).
+extern "C" int hipengine_gguf_q8_0_mmq128_raw_vec4_q8_1_d4x1_guarded_f32_f32_out(
+    const void* x, const uint8_t* w, float* y, int* count, int* indices,
+    int64_t capacity, float threshold, int64_t rows, int64_t k,
+    int64_t n, hipStream_t stream) {
+  return launch_mmq_tile<128, 128, 1, float, true, false, true>(
+      reinterpret_cast<const block_q8_1_mmq_d4*>(x),w,y,rows,k,n,stream,
+      count,indices,capacity,threshold);
+}
+
+extern "C" int hipengine_gguf_q8_0_mmq128_tile128x64_raw_vec4_q8_1_d4x3_guarded_f32_f32_out(
+    const void* x, const uint8_t* w, float* y, int* count, int* indices,
+    int64_t capacity, float threshold, int64_t rows, int64_t k,
+    int64_t n, hipStream_t stream) {
+  return launch_mmq_tile<128, 64, 3, float, true, false, true>(
       reinterpret_cast<const block_q8_1_mmq_d4*>(x),w,y,rows,k,n,stream,
       count,indices,capacity,threshold);
 }
