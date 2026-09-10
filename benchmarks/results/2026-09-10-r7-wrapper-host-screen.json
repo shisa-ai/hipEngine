@@ -17,5 +17,15 @@
   "447 individual launches + 20 graph launches per step carry the 31-49ms device work (R6/R2e); R10's negative on launch restructuring stands - the launches overlap device execution.",
   "Genuine host levers: consolidate the ~10 small blocking state readbacks per step into fewer async/pinned copies or resident mirrors (est. 0.5-1 ms/token), and the Python wrapper bookkeeping between calls (the remainder of the R6 5.3ms host bucket)."
  ],
- "queue_item_6_handoff": "the wrapper trace confirms the direction is copy/mirror consolidation + Python bookkeeping, not launch restructuring and not a logits-copy fix (already optimized)."
+ "queue_item_6_handoff": "the wrapper trace confirms the direction is copy/mirror consolidation + Python bookkeeping, not launch restructuring and not a logits-copy fix (already optimized).",
+ "copy_mechanism": {
+  "verified_by": "python-boundary probe with traceback capture (3 steps, code-p512 decode)",
+  "per_step": "24 x 8-byte blocking H2D (median 23.1us each, ~0.55ms/step genuine) + 2 x 8B D2H (token + scalar) + 1 x 10240B H2D (PLE staged row)",
+  "source": "Qwen4ExpAttentionDeviceState.set_position (qwen4_exp_runner.py:756) called per QSA layer via run_qwen4_exp_dense_qsa_layer -> run_qwen4_exp_qsa_decode_token_mixer (line 2281): 12 QSA layers x 2 copies (position + context), each layer owning a UNIQUE state index (line 2177) so call-site dedup cannot help",
+  "fix_directions": [
+   "device-side position advance: position increments deterministically by 1 per step; one tiny kernel (or fold into an existing one) updates all 12 position/context buffers - zero host copies, integer-exact, +1 launch",
+   "pinned host staging + async copies if the launch budget matters more than the copy latency"
+  ],
+  "estimated_gain": "~0.5 ms/token (~1% TG), plus restoring CPU/GPU overlap (the blocking copies serialize the stream at step start)"
+ }
 }
