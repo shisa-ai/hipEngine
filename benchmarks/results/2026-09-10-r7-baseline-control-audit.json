@@ -1,0 +1,24 @@
+{
+ "schema": 1,
+ "kind": "r7_baseline_control_audit",
+ "date": "2026-09-10",
+ "trigger": "review finding #2: strict-teacher control fails declared bars before R11 (mean KL 0.001276, max 0.05257, top1 98.494%)",
+ "provenance_verification": {
+  "status": "PASS - aligned",
+  "teacher_emit": "2026-09-10-qwen4exp-strict-teacher-emit-996.json: head 58a27ff70, clean, strict profile, decode-steps 82",
+  "control": "2026-09-10-qwen4exp-moe-decode-warp-pair-vs-strict-996.json: head 58a27ff70, clean, production profile, decode-steps 82, teacher-forced from the emitted npz",
+  "conclusion": "same commit/model/steps/host; the control KL is genuine production-vs-strict divergence, not teacher misalignment"
+ },
+ "control_vs_bars": {
+  "declared": "mean<=1e-3, p95<=5e-3, p99<=2e-2, max<=5e-2, top1_overall>=0.99",
+  "incumbent_control": "mean 0.001276 (FAIL), p95 0.007078 (FAIL), p99 0.016885 (pass), max 0.052569 (FAIL), top1 0.98494 (FAIL)",
+  "candidate_envelope": "mean 0.001289, max 0.047718, top1 0.98494 - nearly identical to the control: the R11 pair candidate adds almost nothing; the budget is consumed by the production baseline itself"
+ },
+ "mechanism_hypothesis": "the seven R2e promotions are PREFILL routes (moe_linear q4/q5_1/q5_k selections, qsa sparse h256 quad, ungrouped q5k); their prefill arithmetic divergence propagates into KV/hidden state and thus into decode logits under teacher-forcing. Each route passed its own admission gate, but drift accumulates across routes - the bars were calibrated per-candidate, not for the cumulative envelope",
+ "isolation_plan_gpu": [
+  "re-verify the control on the current tree (post batched-position + version-cache + PLE-warm promotions; expected unchanged since all three are bit-exact vs prior production)",
+  "bisect: disable each promoted prefill route (profile selection opt-outs) and measure control KL contribution; identify the route(s) consuming the mean/max/top1 budget",
+  "decide per the recorded 6.1 policy fork: envelope recalibration (bars reflect cumulative reality) vs bounded-drift admission (per-route drift accounting with a cumulative cap)"
+ ],
+ "reviewer_note_honored": "this is not treated as a reason to loosen thresholds to admit candidates; qualification repair precedes any further numeric-affecting work"
+}
