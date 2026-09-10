@@ -1,0 +1,4 @@
+c=1  aggregate  16.07 tok/s   per-request 16.73 tok/s (min 16.73)   wall 15.9s  accept 72.9%
+c=2  aggregate  17.48 tok/s   per-request  9.26 tok/s (min 9.17)   wall 29.3s  accept 71.4%
+c=3  aggregate  18.21 tok/s   per-request  6.46 tok/s (min 6.38)   wall 42.2s  accept 71.6%
+c=4  aggregate  17.58 tok/s   per-request  4.89 tok/s (min 4.61)   wall 58.2s  accept 66.4%

@@ -1,0 +1,4 @@
+c=1  aggregate   7.21 tok/s   per-request  7.32 tok/s (min 7.32)   wall 35.5s
+c=2  aggregate  13.35 tok/s   per-request  6.93 tok/s (min 6.93)   wall 38.4s
+c=3  aggregate  18.00 tok/s   per-request  6.64 tok/s (min 6.60)   wall 40.2s
+c=4  aggregate  21.03 tok/s   per-request  5.87 tok/s (min 5.72)   wall 47.1s
