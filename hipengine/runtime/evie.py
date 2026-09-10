@@ -23,6 +23,7 @@ the torch fp32 oracle fixture, not speed.
 from __future__ import annotations
 
 import ctypes
+import os
 import math
 from dataclasses import dataclass, field
 from typing import Any
@@ -47,6 +48,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     build_qwen35_linear_attn_gdn,
     qwen35_gdn_prefill_recurrent_k2_f32,
+    qwen35_gdn_prefill_recurrent_normalized_cluster8_f32,
 )
 from hipengine.loading.evie import EvieLoadedModel
 from hipengine.models.evie import EvieModelSpec
@@ -156,6 +158,17 @@ class EvieRunner:
         self._zero_conv_state: DeviceBuffer | None = None
         self._zero_gdn_state: DeviceBuffer | None = None
         self._gdn_state_zero: DeviceBuffer | None = None
+        # GDN prefill recurrence. cluster8 is algebraically exact for this
+        # block (the 1/sqrt(d_k) q scale is applied at its output via
+        # kOutputScale instead of on the input): single-layer max diff vs
+        # k2 is 3e-08, end-to-end strict parity doc 4.4e-05 / query 2.6e-06
+        # vs the torch oracle, bit-repeatable, and ~9%/page faster. k2
+        # remains the opt-out for rollback/bisection.
+        self._gdn_recurrence = (
+            qwen35_gdn_prefill_recurrent_k2_f32
+            if os.environ.get("HIPENGINE_EVIE_GDN_RECURRENCE") == "k2"
+            else qwen35_gdn_prefill_recurrent_normalized_cluster8_f32
+        )
         self._pos_embed_table: np.ndarray | None = None
 
     def close(self) -> None:
@@ -987,7 +1000,16 @@ class EvieRunner:
             [_P, _P, _P, _F, _I, _I, _I, _I, _I, _S],
         )(
             _P(conv_ptr), _P(q_ptr), _P(k_ptr),
-            _F(1.0 / math.sqrt(self.GDN_HEAD_DIM)), _I(tokens),
+            # cluster8 applies the 1/sqrt(d_k) q scale at its output
+            # (kOutputScale) instead of on the input, so feed it the
+            # unscaled l2-normalized q to avoid double-scaling
+            _F(
+                1.0
+                if self._gdn_recurrence
+                is qwen35_gdn_prefill_recurrent_normalized_cluster8_f32
+                else 1.0 / math.sqrt(self.GDN_HEAD_DIM)
+            ),
+            _I(tokens),
             _I(self.GDN_KV_HEADS), _I(self.GDN_HEAD_DIM),
             _I(self.GDN_QKV_DIM), _I(2048), _S(0),
         )
@@ -1026,7 +1048,7 @@ class EvieRunner:
         )
         self._check(err, "zero gdn state")
         state_zero = self._gdn_state_zero
-        qwen35_gdn_prefill_recurrent_k2_f32(
+        self._gdn_recurrence(
             q_ptr,
             k_ptr,
             v_ptr,

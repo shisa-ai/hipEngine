@@ -108,13 +108,14 @@ FP16 GEMMs use shape-keyed rocBLAS solution autotuning
 ([artifact](results/gfx1151-timesfm-quadtile-flash-2026-09-09.json)).
 
 EVIE-4.5B multimodal retrieval encode (8 pages 448x336 + 8 queries, fp16
-production path): **2.46 s total** (doc 1.92 s, query 0.54 s, MaxSim 0.4 ms)
+production path): **2.16 s total** (doc 1.67 s, query 0.50 s, MaxSim 0.4 ms)
 — beats torch fp32 on the same GPU (4.148 s); torch bf16 is 1.356 s. The
 fp16 path is fixture-gated against the torch fp32 oracle (query embedding
 cos 0.9999986, MaxSim within 0.01%); a strict fp32 path passes the same
-oracle at 1e-5 tolerances. Full optimization history (15.62 s -> 2.46 s)
-in the artifact
-([artifact](results/gfx1151-evie-4p5b-fp16-perf-sprint-2026-09-09.json)).
+oracle at 1e-5 tolerances. Full optimization history (15.62 s -> 2.16 s)
+in the artifacts
+([sprint](results/gfx1151-evie-4p5b-fp16-perf-sprint-2026-09-09.json),
+[cluster8](results/gfx1151-evie-4p5b-cluster8-recurrence-2026-09-10.json)).
 
 ### W7900 Qwen3.8 `Q4_K_M` C1-C8
 

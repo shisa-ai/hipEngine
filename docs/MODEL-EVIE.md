@@ -103,15 +103,15 @@ PRO 395, gfx1151).
 
 | Path | Precision | Doc (8 pages) | Query (8) | MaxSim | Total |
 | --- | --- | ---: | ---: | ---: | ---: |
-| **hipEngine GPU (current)** | fp16 (production) | 1918 ms | 541 ms | 0.4 ms | **2460 ms** |
-| hipEngine GPU | fp32 (strict) | 12589 ms | 2101 ms | 1.2 ms | 14692 ms |
+| **hipEngine GPU (current)** | fp16 (production) | 1667 ms | 496 ms | 0.4 ms | **2163 ms** |
+| hipEngine GPU | fp32 (strict) | 6538 ms | 1178 ms | 0.5 ms | 7717 ms |
 | Torch reference, same GPU | bf16 (deployment) | — | — | — | 1356 ms |
 | Torch reference, same GPU | fp32 | — | — | — | 4148 ms |
 
 Torch rows are doc + query + maxsim totals (best of 3). Reproduce with
 `python3 scripts/evie_hip_bench.py --precision fp16 --pages 8 --queries 8`.
 
-hipEngine beats the torch fp32 baseline by 1.7× and is 1.8× from the torch
+hipEngine beats the torch fp32 baseline by 1.9× and is 1.6× from the torch
 bf16 deployment baseline. In-pipeline instrumentation of one document page
 (231 ms): dense projection GEMMs 16.3 ms, batched attention GEMMs 2.3 ms —
 **212 ms is launch/dispatch overhead, elementwise kernels, and the GDN
@@ -136,6 +136,7 @@ Same workload/host throughout; each step is cumulative.
 | 8 | GDN full f16-out — steps 5–6's "needs f32-out" finding was retracted after clean re-verification (stale-edit artifact, not numerics) | 2.69 | −10% |
 | 9 | text GQA attention f16 (repeat-fused gather) | 2.66 | −1% |
 | 10 | query-path fixed costs (persistent state-zero, pos-table cache) | 2.46 | −8% |
+| 11 | GDN recurrence k2 → normalized_cluster8 — algebraically exact (q scale folded to the output; the prior "max err 0.39, not numerically equivalent" finding was a double-applied scale in the comparison harness and is retracted); strict fp32 path 14.69 → 7.72 s (−47%) | 2.16 | −12% |
 
 ## INT8/FP8 quantization evaluation (2026-09-09): not applicable
 
@@ -186,9 +187,12 @@ impact order:
    2.51 ms + f16→f32 2.46 ms across every GEMM in the model. The vision
    share bounds the full-f16 campaign at ~3-4 ms/page, not the ~20-30 ms
    estimated before the launch-bound profile was known.
-3. **cluster8 GDN recurrence** (0.25 vs 1.02 ms/layer, not numerically
-   equivalent) behind the full production-profile gate
-   (`docs/EXECUTION-PROFILES.md`).
+3. ~~**cluster8 GDN recurrence**~~ — **adopted as the default (2026-09-10)**:
+   algebraically exact for this block (the 1/√d_k q scale is applied at the
+   recurrence output instead of the input); single-layer max diff vs k2
+   3.0e-08, strict oracle parity doc 4.4e-05 / query 2.6e-06, bit-repeatable.
+   fp16 2.46 → 2.163 s (−12%), strict fp32 14.69 → 7.72 s (−47%). k2 remains
+   the `HIPENGINE_EVIE_GDN_RECURRENCE=k2` opt-out.
 4. **INT8/FP8 re-evaluation** only if a ROCm build ships gfx1151 int8/fp8
    matmul kernels (see the evaluation above).
 
