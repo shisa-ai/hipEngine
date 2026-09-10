@@ -2211,25 +2211,23 @@ def _q4_t16_physical_dual_silu_variant(
     return None
 
 
+# The admitted IQ4_XS prefill owner the fused pair is authorized to
+# replace. This is an explicit contract, not a live-policy lookup:
+# reading the live policy would let a pinned policy (an admission-gate
+# incumbent arm) move both sides of the comparison and re-engage the
+# dual in an arm that declares one-wave singles. The dual is bit-exact
+# with that owner's single path (and, transitively, with the one-wave
+# owner); it is NOT authorized to replace the strict GEMV or any other
+# owner. Update in lockstep if the admitted prefill owner changes.
+_IQ4_XS_ADMITTED_PREFILL_VARIANT = "dense_wmma_w4a16_prefill_coop64_bf16_bf16_out"
+
+
 def _iq4_xs_admitted_prefill_variant(backend: str) -> str | None:
-    """Return the backend's admitted IQ4_XS prefill owner variant.
+    """Return the admitted IQ4_XS prefill owner variant for the backend."""
 
-    The fused IQ4_XS pair may only replace the admitted cooperative
-    single owner (it is bit-exact with that path); if the dispatch
-    resolves to any other owner (e.g. the strict GEMV without a
-    dense-IQ session), the pair must fall through to two singles.
-    """
-
-    policy = backend_package_capability(
-        backend, "GGUF_IQ_DENSE_PREFILL_POLICY", {}
-    )
-    if not isinstance(policy, Mapping):
+    if backend != "hip_gfx1100":
         return None
-    entry = policy.get("gguf_iq4_xs")
-    if not isinstance(entry, Mapping):
-        return None
-    variant = entry.get("variant")
-    return variant if isinstance(variant, str) else None
+    return _IQ4_XS_ADMITTED_PREFILL_VARIANT
 
 
 def _q4_t16_grouped_pair_rows6_variant(
@@ -5470,18 +5468,33 @@ def launch_gguf_linear_pair_silu(
                 **kwargs,
             )
             return True
+        # Apply the same prefill-owner rewrite the two singles would get
+        # (the raw resolve above does not consult the dense-IQ session or
+        # the prefill policy), then gate the fusion on both operands
+        # actually taking the admitted cooperative owner: the fused pair
+        # is only bit-exact with (and only authorized by) that path.
+        # Without a dense-IQ session, or under a pinned incumbent policy,
+        # the singles keep the strict/one-wave owner and the pair must
+        # fall through to two singles.
+        dispatch_a_prefill = _iq_dense_prefill_dispatch(
+            dispatch_a,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+        )
+        dispatch_b_prefill = _iq_dense_prefill_dispatch(
+            dispatch_b,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+        )
         iq4_xs_dual = (
             dispatch_a.key.quant == dispatch_b.key.quant == "gguf_iq4_xs"
             and int(rows) >= 129
             and in_features % 256 == 0
             and out_features % 16 == 0
-            # Execution-owner gate: the fused pair is only bit-exact with
-            # (and only authorized by) the admitted cooperative prefill
-            # owner. Both operands must resolve to that owner - without
-            # the dense-IQ session the singles take the strict GEMV and
-            # the fused pair must not replace that arithmetic.
-            and dispatch_a.key.variant == dispatch_b.key.variant
-            and dispatch_a.key.variant
+            and dispatch_a_prefill.key.variant == dispatch_b_prefill.key.variant
+            and dispatch_a_prefill.key.variant
             == _iq4_xs_admitted_prefill_variant(resolved_backend)
         )
         if iq4_xs_dual:
