@@ -1,0 +1,96 @@
+{
+ "schema": 1,
+ "kind": "r2e_route_drift_ablation",
+ "route": "decode_dp4a",
+ "ablated_envs": [
+  "HIPENGINE_QWEN4_EXP_Q4_DP4A64"
+ ],
+ "env_values_at_end": {
+  "HIPENGINE_QWEN4_EXP_Q4_DP4A64": "0"
+ },
+ "decode_steps": 82,
+ "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+ "manifest_sha256": "2de9d9196f376580487a1f71b28e117eae3e4d8f371b4f1017e0b19ef80274d4",
+ "envelope": {
+  "rows": 996,
+  "kl_mean": 0.0013787604650611926,
+  "kl_p95": 0.00739956074978575,
+  "kl_p99": 0.017033538244149493,
+  "kl_max": 0.07595712566819682,
+  "top1_overall": 0.9839357429718876
+ },
+ "per_case": {
+  "code-p512": {
+   "kl_mean": 0.0016847523168115385,
+   "kl_max": 0.02178727596901925,
+   "top1": 0.9518072289156626,
+   "chain_matches_teacher": false
+  },
+  "code-p1024": {
+   "kl_mean": 0.0022121027197050305,
+   "kl_max": 0.04766030130700876,
+   "top1": 0.9879518072289156,
+   "chain_matches_teacher": false
+  },
+  "code-p4096": {
+   "kl_mean": 0.0014008068792159,
+   "kl_max": 0.020835307859189293,
+   "top1": 1.0,
+   "chain_matches_teacher": true
+  },
+  "general_en-p512": {
+   "kl_mean": 0.0013598241296433966,
+   "kl_max": 0.021849855955575547,
+   "top1": 0.963855421686747,
+   "chain_matches_teacher": false
+  },
+  "general_en-p1024": {
+   "kl_mean": 0.0030036286960938717,
+   "kl_max": 0.07595712566819682,
+   "top1": 0.9397590361445783,
+   "chain_matches_teacher": false
+  },
+  "general_en-p4096": {
+   "kl_mean": 0.0013486417405890552,
+   "kl_max": 0.012787546770368464,
+   "top1": 0.9879518072289156,
+   "chain_matches_teacher": false
+  },
+  "general_ja-p512": {
+   "kl_mean": 0.0007709854486444682,
+   "kl_max": 0.01197685339533335,
+   "top1": 1.0,
+   "chain_matches_teacher": true
+  },
+  "general_ja-p1024": {
+   "kl_mean": 0.0010690456297305232,
+   "kl_max": 0.014293098898652682,
+   "top1": 1.0,
+   "chain_matches_teacher": true
+  },
+  "general_ja-p4096": {
+   "kl_mean": 0.0016132324064058292,
+   "kl_max": 0.049106377763971996,
+   "top1": 1.0,
+   "chain_matches_teacher": true
+  },
+  "mixed_ja_en-p512": {
+   "kl_mean": 0.000886073659908595,
+   "kl_max": 0.015420409330256995,
+   "top1": 0.9879518072289156,
+   "chain_matches_teacher": false
+  },
+  "mixed_ja_en-p1024": {
+   "kl_mean": 0.000609406824057706,
+   "kl_max": 0.007260353100345394,
+   "top1": 1.0,
+   "chain_matches_teacher": true
+  },
+  "mixed_ja_en-p4096": {
+   "kl_mean": 0.0005866251299283959,
+   "kl_max": 0.007377886687805463,
+   "top1": 0.9879518072289156,
+   "chain_matches_teacher": false
+  }
+ }
+}
