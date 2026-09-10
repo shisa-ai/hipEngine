@@ -39,7 +39,7 @@
  "compiler_version_cache_fix": {
   "finding": "cProfile screen of 64 decode steps exposed 919 _resolve_compiler_version calls per step (one per build_hip on the per-launch path); the env/file branch _compiler_version_from_environment ran BEFORE the _COMPILER_VERSION_CACHE check and re-read the version file from disk every call - measured 8.845 ms/step un-instrumented",
   "fix": "non-None env-version cache in hipengine/core/build.py (env/file version is process-static; unset-env path stays dynamic); 9.6us -> 0.09us per resolve",
-  "gates": "bit-exact token digest ea0412231532bc7b (all fixture cases, separate incumbent/candidate processes); TG median 59.31 (incumbent) vs 57.40/57.48/57.39 (candidate) ms/token = -1.9 ms/token (~3.2%), stable across 3 runs",
+  "gates": "bit-exact token digest ea0412231532bc7b (all fixture cases, separate incumbent/candidate processes); TG median 59.31 (incumbent) vs 57.40/57.48/57.39 (candidate) ms/token = -1.9 ms/token (~3.2%), stable across 3 runs - TG claim WITHDRAWN (measured with the buggy compiler-only cache key; corrected override-identity cache shows ~0 ms TG): see supersessions_and_corrections",
   "note": "prefill also pays per-launch resolves (~1700/prefill, ~16ms at p1024) - sub-1% of prefill wall, not separately gated"
  },
  "ple_staging_open_finding": {
@@ -56,7 +56,7 @@
    "pread sweep": "PARTIAL (28.8GB in 14.4s at 2.0GB/s; stage 28.2 -> 7.8 ms/step, residual 3.3 faults/step)",
    "mmap-touch sweep": "COMPLETE (15.1s one-time; stage 28.2 -> 0.11 ms/step, wall 83 -> 54.4 ms/step on code-p512)"
   },
-  "promotion": "warm_page_cache() = mmap-touch sweep at runner init (chunked uint64 sum through the byte view); default ON via HIPENGINE_QWEN4_EXP_PLE_WARM, opt-out =0",
+  "promotion": "warm_page_cache() = mmap-touch sweep at runner init (chunked uint64 sum through the byte view); promoted default ON via HIPENGINE_QWEN4_EXP_PLE_WARM with opt-out =0 (5b816d12c) - SUPERSEDED by 0211fe125: DEMOTED to opt-in, default OFF, enable with HIPENGINE_QWEN4_EXP_PLE_WARM=1 (see ple_resource_qualification and supersessions_and_corrections)",
   "gates": "bit-exact digest ea0412231532bc7b both arms (cold-cache A/B with POSIX_FADV_DONTNEED reset); TG median 57.14 (off) vs 52.33 (on) ms/token = -4.8 ms (~8.4%), mean 61.86 -> 52.68",
   "cost": "one-time ~15 s sequential pass at generator construction (28.8 GB at ~1.9 GB/s); long-lived serving amortizes instantly"
  },
@@ -102,5 +102,16 @@
   "comparator_confound_finding_4": "the sweep's 28.8 GB clean-page residency is reclaimable but competes with co-resident engines' host staging; the v8b2 capture memwatch recorded free=0 GB and PSI 1.65 mid-capture with warm-on (multi-cause). 'Comparators cannot be affected' retracted; the mechanism is shared page-cache pressure, quantified as the residency above",
   "long_context_finding": "PLE staging is per-token and context-independent; the p4096 cases in both arms exercise the 4352-context admission with no interaction",
   "decision": "DEMOTED TO OPT-IN (default off, HIPENGINE_QWEN4_EXP_PLE_WARM=1 to enable). Blocker: amortization (median ~2,050 tokens; benches at ~576 tokens/construction never amortize) plus unqualified memory behavior on constrained shared hosts. The optimization is preserved and recommended for long-lived serving deployments"
+ },
+ "supersessions_and_corrections": {
+  "date": "2026-09-10",
+  "attribution_units_corrected": {
+   "supersedes": "the -1.9 ms/token (~3.2%) TG claim in compiler_version_cache_fix.gates and the v8 packet-level '-7.62 ms / -12.8% TG' claims",
+   "corrected": "combined TG attribution with a TRUE all-off arm (git worktree at 8a770b782 vs HEAD, 4 arms x 3 interleaved reps, fresh process per arm-rep, all bit-exact, median basis): combined -7.89 ms (-13.05% latency = +15.01% throughput); PLE warm -7.35 ms (-12.2% latency = +13.9% throughput); batched QSA positions -0.54 ms (-0.9% = +0.9%); compiler-version cache ~0 ms TG",
+   "evidence": "2026-09-10-r7-combined-tg-attribution.json (commit 0bf43f1d7)"
+  },
+  "compiler_cache_tg_claim_withdrawn": "the -1.9 ms/token claim was measured with the BUGGY compiler-only cache key (later env changes reused the first resolved version); the corrected override-identity cache (compiler + raw values of all four override vars; f70c7b75d, refined bb0c78afa) shows no measurable TG effect. Retained as a correctness/robustness fix: order-independent resolution, ~7x cheaper than uncached.",
+  "ple_warm_resource_profile": "per runner construction the warm sweep costs +15.4 s and +6,015 major faults (28.8 GB read from storage); amortization 577-15,400 tokens (median ~2,050; canonical benches at ~576 tokens per construction never amortize); 28.8 GB page-cache residency unqualified on constrained shared hosts (qualification-window host state: 19 GB swap in use). Optimization preserved for long-lived serving via opt-in. Evidence: ple_resource_qualification above; commit 0211fe125.",
+  "digest_relabel": "all 'bit-exact digest ea0412231532bc7b' gates in this artifact used the A/B-harness contract (capture_logits=True prefill + token_id_resident steps). Per the 2026-09-10 digest-mismatch investigation (task #33), ea0412231532bc7b is the A/B-harness digest, not the canonical-contract digest (19045b7c9fd442e5); arm-equality conclusions are unaffected because every fresh-process arm-rep shared the identical deterministic buffer history. See worklog 20260910T094500.000000Z-lhl-qwen4exp-digest-mismatch-repro.md."
  }
 }

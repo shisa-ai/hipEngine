@@ -788,12 +788,51 @@ Fallback requirements:
 
 ## Source-lineage audit
 
+R7 compiler-version override-identity cache (2026-09-10): the env compiler-
+version cache in `hipengine/core/build.py` is keyed by override identity - compiler
+plus the raw values of all four override vars - not compiler alone (f70c7b75d,
+prefix-memoized public-API resolution refined in bb0c78afa after a bytes-key
+`_data` fast path silently missed str keys). Fixes order-dependent stale
+resolution where a compiler-only key reused the first version after environment
+changes and selected the wrong build artifact (tests/test_build.py 11/12 ->
+12/12, order-dependent state leakage). Corrected cache resolves in 1.32us
+(~7x cheaper than uncached; 0.03us with the original fix), order-independent.
+No measurable TG effect: the earlier -1.9 ms/token claim was measured with the
+buggy compiler-only cache and is WITHDRAWN (TRUE all-off-arm attribution shows
+~0 ms; retained as correctness/robustness). Evidence:
+`2026-09-10-r7-wrapper-host-screen.json` (supersessions_and_corrections),
+`2026-09-10-r7-combined-tg-attribution.json`.
+
+R7 PLE page-cache warm sweep, opt-in `HIPENGINE_QWEN4_EXP_PLE_WARM` (2026-09-10):
+one-time 15.1s mmap-touch sweep (chunked uint64 sum through the byte view) of
+the 28.8 GB PLE weight mapping at runner init, eliminating cold-cache PLE
+staging gather faults (1.4-27.7 ms/step, case-dependent, ~10 major faults/step
+on btrfs-compressed NVMe; stage 28.2 -> 0.11 ms/step on code-p512). fadvise/
+madvise WILLNEED measured ineffective, POPULATE_READ EINVAL on this kernel.
+Gates: bit-exact (A/B-harness digest ea0412231532bc7b, cold-cache A/B with
+POSIX_FADV_DONTNEED reset); TG median 57.14 -> 52.33 ms/token (-4.8 ms,
+~8.4%) standalone; -7.35 ms (-12.2% latency = +13.9% throughput) in the TRUE
+all-off-arm attribution. Resource profile (demotion trigger): +15.4 s and
++6,015 major faults PER RUNNER CONSTRUCTION (28.8 GB read from storage);
+amortization 577-15,400 tokens (median ~2,050 - canonical benches at ~576
+tokens per construction never amortize); 28.8 GB page-cache residency
+unqualified on constrained shared hosts (comparator-confound retraction
+recorded: shared page-cache pressure, not immunity). DEFAULT OFF since
+0211fe125; enable with `HIPENGINE_QWEN4_EXP_PLE_WARM=1` for long-lived
+serving. Evidence: `2026-09-10-r7-wrapper-host-screen.json`
+(ple_page_cache_promotion, ple_resource_qualification),
+`2026-09-10-r7-baseline-retention-v8.md`, `2026-09-10-r7-combined-tg-attribution.json`.
+
 R7 wrapper-host promote (2026-09-10): `HIPENGINE_QWEN4_EXP_BATCHED_POSITION`
 default ON replaces 24 per-layer 8B blocking `set_position` H2D copies per
 decode step (12 QSA layers x position+context, unique states) with one shared
 interleaved [position,context] int64 region and a single 192B H2D via
 `position_prepared`. Bit-exact token streams (digest ea0412231532bc7b, all
-fixture cases, 3 reps/arm), TG median -0.77ms/token (~1.3%); copy surface
+fixture cases, 3 reps/arm - the A/B-harness digest per the 2026-09-10
+digest-mismatch investigation; canonical-contract digest 19045b7c9fd442e5,
+arm-equality unaffected), TG median -0.77ms/token (~1.3%) at the original screen; -0.54 ms (-0.9%
+latency = +0.9% throughput) in the TRUE all-off-arm attribution
+(`2026-09-10-r7-combined-tg-attribution.json`); copy surface
 27->4 per step. Opt-out via `=0`. Evidence: `2026-09-10-r7-wrapper-host-screen.json`,
 retention v7 `2026-09-10-r7-baseline-retention-v7.json` (TG +1.6/+1.4/+3.6%
 at p512/p1024/p4096; packet PP deltas environmental, direct interleaved PP A/B
@@ -1338,6 +1377,12 @@ Stable porting rules:
 Wave32 is the gfx11 default. Use wave32 shuffles within a wave and LDS for cross-wave exchange. Wave64 is an isolated experiment only and requires explicit flags, probes, ISA checks, correctness fixtures, and end-to-end evidence.
 
 ### JIT cache and profiling
+
+The env compiler-version cache in `hipengine/core/build.py` is keyed by override
+identity (compiler plus the raw values of all four override vars), not compiler
+alone: later environment changes re-resolve instead of reusing the first
+version's build artifact. Resolution is order-independent and ~7x cheaper than
+uncached.
 
 A stale object can present as a kernel call hanging with the GPU idle. Remove only the affected family cache when known:
 
