@@ -113,25 +113,33 @@ Each engine completed a 112K BF16 prompt. With compact KV, hipEngine completed
 using Q8_0. These are synthetic execution-capacity observations, not serving
 reserve recommendations.
 
-Single-request capacity ladder on this card, Qwen3.8-27B `Q4_K_M`: BF16 KV
-server 40,960; **INT8 KV server 155,648+ (re-qualified 2026-09-10, lease
-removed + layer-outer executor)** — the old 54,272 was measured before the
-prefill correctness repair and with the duplicate packed-KV reservation
-pinned; the repaired C1 route (slot-local prefill, singleton decode, prefix
-cache and MTP off) removes the second full-context reservation and holds
-one shared oracle pair, and the fresh bracket passes 65,536 / 98,304 /
-131,072 / 155,648 declared contexts with clean teardown
-([65,536](results/2026-09-10-w7900-server-alloc-probe-64k.json),
-[131,072](results/2026-09-10-w7900-server-alloc-probe-128k.json),
-[155,648](results/2026-09-10-w7900-server-alloc-probe-152k.json)) — the
-server route now exceeds the plain direct-engine INT8 ceiling (131,072);
-DMS BF16 73,728; single hidden plane 155,648; DMS INT8 merged lane 172,288;
-direct INT8 prefill or DMS INT8 + single hidden plane 232,448. Default-route
-prefill at 8,192 tokens: 766.0 tok/s, decode 33.9; direct-INT8 wmma prefill
-735.6 (96%); repaired packed slot-local server route 677 tok/s (2026-09-10,
-[gate](results/2026-09-10-w7900-int8-slot-local-aotriton-gate-corrected.json)). [Direct-route capacity](results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-capacity.json),
+Single-request capacity ladder, Qwen3.8-27B `Q4_K_M`. **RX 7900 XTX**: BF16
+KV server 40,960; DMS BF16 73,728; INT8 KV direct engine 131,072; single
+hidden plane 155,648; DMS INT8 merged lane 172,288; direct INT8 prefill or
+DMS INT8 + single hidden plane 232,448.
+[Direct-route capacity](results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-capacity.json),
 [DMS alias ladder](results/2026-09-08-rx7900xtx-dms-int8-hidden-alias-ladder.json),
 [speed evidence](results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-wmma-oracle-control-8192.json).
+**W7900, INT8 KV server (2026-09-10, repaired route — lease removed +
+layer-outer executor)**: tier-1 allocation-validity ceiling **155,648+
+declared contexts** — the bracket passes 65,536 / 98,304 / 131,072 /
+155,648 with clean teardown
+([65,536](results/2026-09-10-w7900-server-alloc-probe-64k.json),
+[131,072](results/2026-09-10-w7900-server-alloc-probe-128k.json),
+[155,648](results/2026-09-10-w7900-server-alloc-probe-152k.json)) —
+exceeding the plain direct-engine INT8 ceiling (131,072). This is the
+capacity protocol's tier-1 sense (every allocation succeeding plus one
+multi-slab prefill and decode with finite logits at the declared context);
+admission-safety qualification under load (allocation failure with a live
+survivor, operational reserve) remains open. The old unqualified 54,272
+was measured pre-repair with the duplicate reservation pinned. W7900
+default-route prefill at 8,192 tokens: 766.0 tok/s, decode 33.9;
+direct-INT8 wmma prefill 735.6 (96%); repaired packed slot-local server
+route 677 tok/s — a diagnostic gate run with intermittent competing GPU
+work, not a certified throughput claim
+([gate](results/2026-09-10-w7900-int8-slot-local-aotriton-gate-corrected.json));
+the paired-repetition qualification lives in the W7900 parity section
+below.
 
 [Full comparison and source review](results/2026-09-08-rx7900xtx-engine-comparison.md)
 and [commands, samples and checks](results/2026-09-08-rx7900xtx-engine-comparison.json).
@@ -240,10 +248,11 @@ section 1.1 has the full stage table. The qualification headline on the
 repaired C1 INT8 route (slot-local AOTriton prefill, layer-outer packed
 executor default, duplicate packed-KV reservation removed):
 
-- **Speed**: packed prefill 677-732 tok/s at 2K-8K rows vs the direct scalar
-  control's 685-756 (paired 8,192-row repetitions: ratio median 1.004,
-  mean 0.978, min 0.890 under shared-host contention; all bitwise-identical
-  logits and IDs)
+- **Speed** (layer-outer executor enabled via its env flag — default OFF
+  pending the remaining packet gates): packed prefill 677-732 tok/s at
+  2K-8K rows vs the direct scalar control's 685-756 (paired 8,192-row
+  repetitions: ratio median 1.004, mean 0.978, min 0.890 under shared-host
+  contention; all bitwise-identical logits and IDs)
   ([paired reps](results/2026-09-10-w7900-p7-c1-speed-parity-paired-reps.json)).
 - **Decode boundary**: R0 raw session 35.15 ms/token median; R1 the packed
   server entry 35.22 ms (ratio 1.002); R3 the public LLM service wrapper
@@ -267,10 +276,16 @@ executor default, duplicate packed-KV reservation removed):
   ([SSE](results/2026-09-10-w7900-p7-http-transport-budget.json),
   [attribution](results/2026-09-10-w7900-p5-kernel-family-attribution-1500.json)).
 
-Rollbacks: `HIPENGINE_GGUF_PACKED_LAYER_OUTER=0` (chunk-outer executor),
-`HIPENGINE_GGUF_PACKED_KV_LEASE=1` (eager pool lease). Remaining open
-packets: C>1 INT8 (IKV-C2), resumable prefill (P6), and the paired
-publish for those once they land.
+Status levels: the layer-outer executor is implementation-landed with
+parity/wall/trace/probe diagnostics passed (enable:
+`HIPENGINE_GGUF_PACKED_LAYER_OUTER=1`); its packet gates
+(layer-boundary/state comparison, exact KV/control fixtures,
+shifted/ragged GPU coverage, aliasing, cancellation cleanup) are
+outstanding, so it is not yet a qualified default. The lease removal is
+default on for the C1/prefix-off/MTP-off route
+(`HIPENGINE_GGUF_PACKED_KV_LEASE=1` rolls back). Remaining open packets:
+C>1 INT8 (IKV-C2), resumable prefill (P6), and their gated acceptance
+items.
 
 These are aggregate tokens per second across all active requests under the
 standardized complete-wall server protocol.

@@ -163,6 +163,7 @@ def prefill_transient_owner_inventory(sessions: Sequence[Any]) -> dict[str, Any]
     oracle_capacity_positions: list[int] = []
     lifetime_modes: list[str] = []
     executor_routes: list[str] = []
+    executor_modes: list[str] = []
     per_layer_flags: list[bool] = []
     for session in sessions:
         oracle_buffers_by_session = getattr(
@@ -189,6 +190,12 @@ def prefill_transient_owner_inventory(sessions: Sequence[Any]) -> dict[str, Any]
         last_plan = getattr(session, "last_packed_prefill_plan", None)
         executor_routes.append(
             str(last_plan.get("route")) if isinstance(last_plan, dict) else None
+        )
+        # The layer-outer executor records its distinction in executor_mode;
+        # route alone cannot distinguish it from the chunk-outer fallback
+        # (reviewer finding 4, 2026-09-10).
+        executor_modes.append(
+            str(last_plan.get("executor_mode")) if isinstance(last_plan, dict) else None
         )
         per_layer_flags.append(
             bool(getattr(session, "_int8_prefill_oracle_per_layer", False))
@@ -227,6 +234,7 @@ def prefill_transient_owner_inventory(sessions: Sequence[Any]) -> dict[str, Any]
         "hidden_and_bulk_owner_bytes": sum(hidden_buffers.values()),
         "int8_prefill_lifetime_plan_modes": lifetime_modes,
         "last_packed_executor_routes": executor_routes,
+        "last_packed_executor_modes": executor_modes,
         "oracle_per_layer_flags": per_layer_flags,
         "note": (
             "oracle_owner_bytes is the live per-layer/shared BF16 oracle pair"

@@ -20,6 +20,9 @@ from types import MethodType, SimpleNamespace
 import pytest
 
 import hipengine.runtime.qwen35_gguf_runner as gguf_runner
+from tests.test_qwen35_gguf_prefill_scratch_liveness import (
+    _install_fake_device,
+)
 
 
 class _AllocRecorder:
@@ -711,3 +714,223 @@ def test_ensure_packed_workspace_upgrades_unleased_for_plane_consumers(
             require_kv_planes=True,
         )
     assert state.kv_backing_kind == "pool_lease"
+
+
+# ---------------------------------------------------------------------------
+# P4 allocator: real allocate + real upgrade, only device operations mocked
+# (reviewer corrective unit, 2026-09-10)
+# ---------------------------------------------------------------------------
+
+
+def _allocator_fake_runner():
+    """Minimal runner satisfying _GGUFPackedTargetState.allocate's reads."""
+
+    cfg = SimpleNamespace(
+        layer_types=("linear_attention", "full_attention", "linear_attention", "full_attention"),
+        ssm_time_step_rank=48,
+        ssm_state_size=128,
+        ssm_value_dim=128,
+        ssm_conv_kernel=4,
+        ssm_inner_size=6144,
+        ssm_group_count=16,
+        is_moe=False,
+        expert_count=0,
+        expert_used_count=0,
+        expert_shared_feed_forward_length=0,
+        head_count_kv=4,
+        key_length=256,
+        value_length=256,
+        full_attention_interval=2,
+        head_count=24,
+        rope_dimension_count=64,
+        rope_freq_base=10_000_000.0,
+        feed_forward_length=17408,
+    )
+    return SimpleNamespace(
+        backend="hip_gfx1100",
+        hidden_size=5120,
+        q_width=6144,
+        kv_width=1024,
+        ffn_size=17408,
+        vocab_size=248320,
+        linear_qkv_width=10240,
+        ssm_value_dim=128,
+        fp16_recurrent_state=False,
+        weights=SimpleNamespace(config=cfg),
+    )
+
+
+def _int8_kv_layout() -> "gguf_runner.Qwen35GGUFKVChunkLayout":
+    return gguf_runner.Qwen35GGUFKVChunkLayout(
+        storage_dtype=gguf_runner.DType.INT8_PER_TOKEN_HEAD,
+        storage_layout="uniform",
+        scale_dtype=gguf_runner.DType.FP32,
+        scale_granularity="per_token_head",
+        int8_kv_value_bf16=False,
+        layer_storage_dtypes=(
+            None,
+            gguf_runner.DType.INT8_PER_TOKEN_HEAD,
+            None,
+            gguf_runner.DType.INT8_PER_TOKEN_HEAD,
+        ),
+    )
+
+
+def _fake_kv_pool(layout, pages):
+    full = tuple(SimpleNamespace(ptr=0x2000 + i, nbytes=4096) for i in range(4))
+    backing = SimpleNamespace(
+        layout=layout,
+        full_key_caches=full,
+        full_value_caches=full,
+        full_bf16_mirror_key_caches=(None,) * 4,
+        full_bf16_mirror_value_caches=(None,) * 4,
+        full_k_scale_caches=full,
+        full_v_scale_caches=full,
+        full_kv_scale_metadata=full,
+        buffers=(),
+    )
+    return SimpleNamespace(
+        workspace_pages=lambda key: tuple(pages),
+        backing=backing,
+    )
+
+
+def test_real_allocate_unleased_makes_zero_private_allocations(
+    monkeypatch,
+) -> None:
+    """The unleased branch must be terminal: no private KV chunk, ever."""
+
+    from hipengine.runtime.qwen35_gguf_runner import _GGUFPackedTargetState
+
+    _install_fake_device(monkeypatch)
+    private_calls: list[int] = []
+
+    def fake_private_chunk(*args, **kwargs):
+        private_calls.append(1)
+        raise AssertionError("unleased allocate must not touch the private KV chunk allocator")
+
+    monkeypatch.setattr(
+        gguf_runner, "_allocate_qwen35_gguf_kv_chunk", fake_private_chunk
+    )
+    runtime = SimpleNamespace(memset=lambda ptr, value, nbytes: None)
+
+    state = _GGUFPackedTargetState.allocate(
+        _allocator_fake_runner(),
+        slot_count=1,
+        max_sequence_length=1024,
+        runtime=runtime,
+        kv_layout=_int8_kv_layout(),
+        kv_pool=_fake_kv_pool(_int8_kv_layout(), pages=(0, 1, 2, 3)),
+        lease_kv_planes=False,
+    )
+    assert private_calls == []
+    assert state.kv_backing_kind == "unleased"
+    # page_ids keep the class invariant's derived identity mapping (never
+    # consumed on the unleased route: the layout rebind early-returns and
+    # full_cache fails closed).
+    assert state.page_ids == (0, 1, 2, 3)
+    # Layer-indexed geometry: full-length tuples, None at LINEAR positions.
+    assert len(state.full_key_caches) == 4
+    assert state.full_key_caches[0] is None and state.full_key_caches[2] is None
+    with pytest.raises(ValueError, match="no packed full-attention KV cache"):
+        state.full_cache(1)
+    with pytest.raises(ValueError, match="no packed full-attention KV cache"):
+        state.full_cache(3)
+    # Only the conv/recurrent state buffers are owned.
+    assert len(state.buffers) == 4  # two LINEAR layers x (conv, recurrent)
+
+
+def test_real_allocate_leased_uses_the_pool_planes(monkeypatch) -> None:
+    from hipengine.runtime.qwen35_gguf_runner import _GGUFPackedTargetState
+
+    _install_fake_device(monkeypatch)
+    monkeypatch.setattr(
+        gguf_runner,
+        "_allocate_qwen35_gguf_kv_chunk",
+        lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("leased allocate must not use the private allocator")
+        ),
+    )
+    runtime = SimpleNamespace(memset=lambda ptr, value, nbytes: None)
+    layout = _int8_kv_layout()
+    pool = _fake_kv_pool(layout, pages=(7, 8, 9, 10))
+
+    state = _GGUFPackedTargetState.allocate(
+        _allocator_fake_runner(),
+        slot_count=1,
+        max_sequence_length=1024,
+        runtime=runtime,
+        kv_layout=layout,
+        kv_pool=pool,
+        lease_kv_planes=True,
+    )
+    assert state.kv_backing_kind == "pool_lease"
+    assert state.page_ids == (7, 8, 9, 10)
+    # The caches are the arena planes, layer-indexed.
+    assert state.full_key_caches[1] is pool.backing.full_key_caches[1]
+
+
+def test_real_ensure_upgrades_unleased_for_plane_consumers(monkeypatch) -> None:
+    """The REAL ensure growth path upgrades an unleased state with planes."""
+
+    from hipengine.runtime.qwen35_gguf_runner import _GGUFPackedTargetState
+
+    _install_fake_device(monkeypatch)
+    monkeypatch.setattr(
+        gguf_runner,
+        "_allocate_qwen35_gguf_kv_chunk",
+        lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("upgrade must lease pool planes, not allocate privately")
+        ),
+    )
+    layout = _int8_kv_layout()
+    pool = _fake_kv_pool(layout, pages=(0, 1, 2, 3))
+
+    owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.__dict__.update(
+        runner=_allocator_fake_runner(),
+        runtime=SimpleNamespace(memset=lambda ptr, value, nbytes: None),
+        scratch=SimpleNamespace(max_positions=1024),
+        _packed_verify_state=None,
+        _packed_verify_scratch=None,
+        _workspace_kv_pool=pool,
+        # Pin the device KV layout so the ensure path uses this exact
+        # layout object (the fake pool's backing carries it).
+        _device_kv_layout=layout,
+        _packed_decode_state_dirty=False,
+        _invalidate_live_packed_decode_graphs=lambda: None,
+    )
+
+    def fake_free(**kwargs):
+        # Mirror the real free: clear the cached state so the growth path
+        # reallocates instead of returning the stale object.
+        owner._packed_verify_state = None
+        owner._packed_verify_scratch = None
+
+    owner._free_packed_verify_workspace = fake_free
+    runtime_arg = owner.runtime
+
+    def union_geometry(**kwargs):
+        return (kwargs["slot_count"], kwargs["rows"], kwargs["max_sequence_length"], kwargs["slot_count"])
+
+    owner._packed_verify_union_geometry = union_geometry
+
+    state, _ = owner._ensure_packed_verify_workspace(
+        slot_count=1,
+        rows=8,
+        max_sequence_length=1024,
+        runtime=runtime_arg,
+        require_kv_planes=False,
+    )
+    assert state.kv_backing_kind == "unleased"
+
+    upgraded, _ = owner._ensure_packed_verify_workspace(
+        slot_count=1,
+        rows=8,
+        max_sequence_length=1024,
+        runtime=runtime_arg,
+        require_kv_planes=True,
+    )
+    assert upgraded.kv_backing_kind == "pool_lease"
+    assert upgraded.page_ids == (0, 1, 2, 3)
+    assert upgraded.full_key_caches[1] is pool.backing.full_key_caches[1]
