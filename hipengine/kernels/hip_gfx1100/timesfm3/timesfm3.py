@@ -34,7 +34,9 @@ _QKV_SCATTER = (
 
 _VAR_ATTENTION = (
     ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
-    ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_float,
+    ctypes.c_void_p,
     ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32,
     ctypes.c_int32,
     ctypes.c_void_p,
@@ -144,6 +146,9 @@ def timesfm3_var_attention(
     k_ptr: int,
     v_ptr: int,
     front_masked_ptr: int,
+    qscale_ptr: int,
+    k_ln_ptr: int,
+    eps: float,
     out_ptr: int,
     batch: int,
     variates: int,
@@ -156,11 +161,14 @@ def timesfm3_var_attention(
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Non-causal variate attention over the variate axis.
+    """Fused non-causal variate attention with in-kernel QK norm + scaling.
 
-    q/k/v/out are [batch*variates, n, heads*head_dim] row-major with row
-    index ((b*V + v)*N + n); ``front_masked`` is [batch*variates] int32.
-    Fully-masked query rows produce zeros.
+    q/k/v/out are RAW GEMM outputs, [batch*variates, n, heads*head_dim]
+    row-major with row index ((b*V + v)*N + n); ``front_masked`` is
+    [batch*variates] int32.  q rows are RMS-normalized and scaled by the
+    folded ``qscale`` (= q_ln * log2(e)/sqrt(D) * softplus(per_dim)); k
+    rows are RMS-normalized with ``k_ln``.  Fully-masked query rows
+    produce zeros.
     """
 
     if dtype not in ("f16", "f32"):
@@ -171,7 +179,7 @@ def timesfm3_var_attention(
         library, f"timesfm3_var_attention_{dtype}", _VAR_ATTENTION, ctypes.c_int
     )
     err = fn(
-        q_ptr, k_ptr, v_ptr, front_masked_ptr, out_ptr,
+        q_ptr, k_ptr, v_ptr, front_masked_ptr, qscale_ptr, k_ln_ptr, eps, out_ptr,
         batch, variates, n, heads, head_dim, stream,
     )
     _check_launch(runtime, err)

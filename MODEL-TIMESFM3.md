@@ -79,21 +79,26 @@ PRO 395, Radeon 8060S).
 
 | Path | Precision | Decode time | Speed vs hipEngine fp16 |
 | --- | --- | ---: | ---: |
-| **hipEngine GPU** | fp16 (production) | **0.397 s** | 1× |
-| hipEngine GPU | fp32 (strict) | 3.39 s | 8.5× slower |
-| Torch reference, same GPU | fp32 | 1.33 s | **3.36× slower than hipEngine fp16** |
+| **hipEngine GPU** | fp16 (production) | **0.319 s** | 1× |
+| hipEngine GPU (pre var-norm fusion) | fp16 | 0.397 s | 1.24× slower |
+| hipEngine GPU | fp32 (strict) | 3.39 s | 10.6× slower |
+| Torch reference, same GPU | fp32 | 1.33 s | **4.17× slower than hipEngine fp16** |
 
-rocprofv3 kernel breakdown (fp16, one decode, ~345 ms of device time):
-GEMMs 134 ms, var-q/k head_rmsnorm 61 ms, head_perdim 39 ms, sequence flash
-attention 39 ms, var_attention 21 ms, norms/elementwise ~45 ms, qkv scatter
-10 ms.
+rocprofv3 kernel breakdown (fp16, one decode, ~252 ms of device time):
+GEMMs 135 ms, sequence flash attention 38 ms, fused var_attention 34 ms
+(includes the in-kernel QK norms + per-dim scaling), norms/elementwise
+~29 ms, qkv scatter 10 ms, ReLU 3 ms.
 
-**Known optimization headroom (not yet chased):** the var-q/k normalization
-path (`head_rmsnorm` ×2 + `head_perdim` = 100 ms, 29% of decode) runs as
-three separate generic kernels; fusing them into `var_attention` (the 2.5
-`qkv_norm_scatter` pattern) is the first target. The fp32 strict path is
-slower than torch fp32 (the naive per-row `attention_f32` kernel at
-prefill scale) — acceptable for a rollback-only path.
+**Optimization history:**
+
+| # | Change | Decode (s) | Δ (ms) | Δ (%) |
+| --- | --- | ---: | ---: | ---: |
+| 1 | First working GPU path (fp16, separate var q/k norm kernels) | 0.397 | — | — |
+| 2 | QK norms + per-dim scale fused into var_attention (2.5 qkv_norm_scatter pattern; deterministic warp-per-row sumsq — a first atomicAdd version was run-to-run nondeterministic and reverted) | 0.319 | −78 | −20% |
+
+The fp32 strict path is slower than torch fp32 (the naive per-row
+`attention_f32` kernel at prefill scale) — acceptable for a rollback-only
+path.
 
 ## Notes
 
