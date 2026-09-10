@@ -1201,6 +1201,26 @@ class _GGUFPackedARPrefillChunk:
         return sum(len(tokens) for tokens in self.prompt_token_ids)
 
 
+# P3: layer-outer packed AR prefill executor. When enabled, multi-chunk
+# slot-local packed prefills execute layer-outer (all chunks of a layer
+# complete before the next layer), so the per-layer BF16 oracle is shared
+# (one pair per session) instead of per-layer-keyed (16 pairs on the 27B).
+# Default OFF until the P3 gates (parity, tail/ragged fixtures, decode
+# handoff) pass; the corrected chunk-outer executor remains the fallback.
+_GGUF_PACKED_LAYER_OUTER_ENV = "HIPENGINE_GGUF_PACKED_LAYER_OUTER"
+_gguf_packed_layer_outer_enabled_cache: bool | None = None
+
+
+def _gguf_packed_layer_outer_enabled() -> bool:
+    global _gguf_packed_layer_outer_enabled_cache
+    if _gguf_packed_layer_outer_enabled_cache is None:
+        _gguf_packed_layer_outer_enabled_cache = (
+            os.environ.get(_GGUF_PACKED_LAYER_OUTER_ENV, "0").strip().lower()
+            in {"1", "true", "yes", "on"}
+        )
+    return _gguf_packed_layer_outer_enabled_cache
+
+
 def _plan_packed_ar_prefill_chunks(
     prompt_token_ids: tuple[tuple[int, ...], ...],
     *,
@@ -22298,6 +22318,31 @@ class Qwen35GGUFResidentSession:
             )
 
         initial_positions = tuple(int(session.position) for session in session_tuple)
+        # P3 layer-outer route: multi-chunk slot-local prefills with one shared
+        # oracle pair per session. Falls back to the corrected chunk-outer
+        # executor for every unsupported shape.
+        if (
+            _gguf_packed_layer_outer_enabled()
+            and not return_hidden_seeds
+            and not capture_layer_output_hidden
+            and all(sink is None for sink in sink_tuple)
+        ):
+            try:
+                layer_outer_results = self._prefill_batch_native_layer_outer(
+                    prompt_tuple,
+                    sessions=session_tuple,
+                    chunks=chunks,
+                    sample_output=sample_output,
+                    return_logits=return_logits,
+                    require_logits=require_logits,
+                    stream=stream,
+                )
+                return [
+                    result if sample_output else None
+                    for result in layer_outer_results
+                ]
+            except NotImplementedError:
+                pass
         final_results: list[Qwen35GGUFNextTokenProbeResult | Qwen35GGUFPackedPrefillResult | None] = [
             None for _ in prompt_tuple
         ]
@@ -22417,6 +22462,379 @@ class Qwen35GGUFResidentSession:
                 )
             )
         return combined
+
+    def _prefill_batch_native_layer_outer(
+        self,
+        prompt_token_ids: list[list[int] | tuple[int, ...]] | tuple[list[int] | tuple[int, ...], ...],
+        *,
+        sessions: list["Qwen35GGUFResidentSession"] | tuple["Qwen35GGUFResidentSession", ...],
+        chunks: tuple[_GGUFPackedARPrefillChunk, ...],
+        sample_output: bool = True,
+        return_logits: bool = False,
+        require_logits: bool = False,
+        stream: int = 0,
+    ) -> list[Qwen35GGUFNextTokenProbeResult | None]:
+        """Execute a multi-chunk packed prompt layer-outer with one shared oracle.
+
+        Every chunk of a layer completes before the next layer starts, so the
+        per-layer transient BF16 oracle is shared (key ``-1``) instead of
+        per-layer-keyed: the 16-owner peak the chunk-outer executor realizes
+        collapses to one pair per session. Requires the
+        ``layer_outer_shared_oracle`` lifetime plan (full-position hidden
+        planes, already allocated by ``_allocate_bulk_prefill_workspace``) and
+        slot-stable chunks (the planner's fair rounds give this whenever the
+        active slot set does not shrink mid-prompt).
+
+        Scope: the serving shape only - greedy samples per slot, no hidden
+        seeds, no target-hidden sinks, no layer-output capture. Everything
+        else falls back to the corrected chunk-outer executor.
+        """
+
+        prompt_tuple = tuple(tuple(int(token) for token in prompt) for prompt in prompt_token_ids)
+        session_tuple = tuple(sessions)
+        if len(prompt_tuple) != len(session_tuple):
+            raise ValueError("prompt_token_ids and sessions must have the same length")
+        if len(chunks) <= 1:
+            raise ValueError("layer-outer packed prefill requires multiple chunks")
+        # Slot stability: every chunk must address the same sessions in the
+        # same order, so packed_state slot j is session j for the whole call.
+        reference_slots = tuple(int(index) for index in chunks[0].slot_indices)
+        if any(
+            tuple(int(index) for index in chunk.slot_indices) != reference_slots
+            for chunk in chunks[1:]
+        ):
+            raise NotImplementedError(
+                "layer-outer packed prefill requires slot-stable chunks"
+            )
+        plan = self._int8_prefill_lifetime_plan
+        total_rows = sum(len(prompt) for prompt in prompt_tuple)
+        if plan is None or plan.mode != "layer_outer_shared_oracle":
+            raise NotImplementedError(
+                "layer-outer packed prefill requires the shared-oracle lifetime plan"
+            )
+        if int(plan.required_hidden_capacity) < total_rows:
+            raise NotImplementedError(
+                "layer-outer packed prefill hidden capacity is too small for the prompt"
+            )
+        if self._prefill_token_buf is None or self._prefill_hidden_a is None or self._prefill_hidden_b is None:
+            raise RuntimeError("GGUF resident packed prefill buffers are closed")
+        kv_layout = self._packed_ar_kv_layout_for_sessions(
+            session_tuple,
+            allow_direct_int8_prefill=True,
+        )
+        if _gguf_kv_attention_source(kv_layout) != "int8_direct":
+            raise NotImplementedError(
+                "layer-outer packed prefill requires the direct INT8 route"
+            )
+        if any(
+            _gguf_device_kv_contiguous_base_row(session) is None
+            for session in session_tuple
+        ):
+            raise NotImplementedError(
+                "layer-outer packed prefill requires contiguous device KV"
+            )
+        for session in session_tuple:
+            if session.scratch is None or session._bulk_prefill_scratch is None:
+                session._ensure_bulk_prefill_workspace()
+
+        runtime = self.runtime or get_hip_runtime()
+        # One chunk record per planner round: layout over that round's rows,
+# the global row base of the round inside the full-position hidden planes.
+        chunk_plans = []
+        global_row_base = 0
+        max_live_count = 0
+        for chunk in chunks:
+            chunk_sessions = tuple(
+                session_tuple[index] for index in chunk.slot_indices
+            )
+            slot_blocks = tuple(
+                _GGUFPackedVerifySlotBlock(
+                    input_token_ids=tuple(int(token) for token in tokens),
+                    start_position=int(session.position) + int(offset),
+                )
+                for offset, session, tokens in zip(
+                    chunk.start_offsets,
+                    chunk_sessions,
+                    chunk.prompt_token_ids,
+                    strict=True,
+                )
+            )
+            chunk_max_live = max(
+                int(block.start_position) + len(block.input_token_ids)
+                for block in slot_blocks
+            )
+            max_live_count = max(max_live_count, chunk_max_live)
+            chunk_layout = _build_gguf_packed_verify_layout(
+                slot_blocks,
+                slot_capacity=max(1024, chunk_max_live),
+            )
+            chunk_plans.append(
+                {
+                    "layout": chunk_layout,
+                    "sessions": chunk_sessions,
+                    "base": global_row_base,
+                }
+            )
+            global_row_base += int(chunk_layout.rows)
+        max_chunk_rows = max(int(entry["layout"].rows) for entry in chunk_plans)
+        packed_state, packed_scratch_base = self._ensure_packed_verify_workspace(
+            slot_count=len(session_tuple),
+            rows=max_chunk_rows,
+            max_sequence_length=max(1024, max_live_count),
+            runtime=runtime,
+        )
+        # The shared oracle key is sound here: within one layer, its chunks
+        # run back-to-back and positions never overlap across rounds.
+        for session in session_tuple:
+            session._int8_prefill_oracle_per_layer = False
+        self._sync_packed_decode_initial_state(
+            session_tuple,
+            chunk_plans[0]["layout"],
+            packed_state,
+            runtime=runtime,
+            stream=stream,
+            copy_kv=False,
+        )
+        # Embeddings: one launch per round into the global hidden plane.
+        token_itemsize = DType.INT64.itemsize
+        for entry in chunk_plans:
+            layout = entry["layout"]
+            rows = int(layout.rows)
+            token_array = np.ascontiguousarray(
+                layout.input_token_ids, dtype=np.int64
+            )
+            copy_host_to_device(
+                DeviceBuffer(
+                    self._prefill_token_buf.ptr + entry["base"] * token_itemsize,
+                    token_array.nbytes,
+                ),
+                host_array_ptr(token_array),
+                token_array.nbytes,
+                runtime=runtime,
+            )
+            launch_gguf_embedding(
+                self._device_token_embedding_weight(reason="packed_ar_prefill"),
+                self._prefill_token_buf.ptr + entry["base"] * token_itemsize,
+                self._prefill_hidden_a.ptr + entry["base"] * self.runner.hidden_size * DType.BF16.itemsize,
+                rows=rows,
+                hidden_size=self.runner.hidden_size,
+                vocab_size=self.runner.vocab_size,
+                stream=stream,
+                runtime=runtime,
+            )
+        self.last_packed_prefill_plan["executor_mode"] = "layer_outer_packed"
+        self.last_packed_prefill_plan["layer_outer_rounds"] = len(chunk_plans)
+        self.last_packed_prefill_plan["layer_outer_rows"] = total_rows
+        src = self._prefill_hidden_a
+        dst = self._prefill_hidden_b
+        linear_decode_scratch = replace(
+            self.scratch,
+            layer_conv_states=packed_state.layer_conv_states,
+            layer_recurrent_states=packed_state.layer_recurrent_states,
+        )
+        full_kv_row_nbytes = self._packed_full_kv_row_nbytes()
+        with wmma_prefill_session(self.use_wmma_prefill), gemv_decode_session(self.use_gemv_decode):
+            for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
+                for entry in chunk_plans:
+                    layout = entry["layout"]
+                    rows = int(layout.rows)
+                    base = int(entry["base"])
+                    # Rebind and materialize the round's packed scratch at
+                    # use time, matching the chunk-outer executor's temporal
+                    # pattern exactly.
+                    bound_layout = _rebind_packed_verify_layout_pages(
+                        layout, packed_state
+                    )
+                    packed_scratch = packed_scratch_base.for_packed_verify_layout(
+                        bound_layout, runtime=runtime, stream=stream
+                    )
+                    if layer_type == LINEAR_ATTENTION:
+                        self.runner._run_linear_attention_prefill_layer_rows(
+                            layer_id,
+                            src.ptr + base * self.runner.hidden_size * DType.BF16.itemsize,
+                            dst.ptr + base * self.runner.hidden_size * DType.BF16.itemsize,
+                            packed_scratch,
+                            rows=rows,
+                            stream=stream,
+                            decode_scratch=linear_decode_scratch,
+                            expert_sidecar=None,
+                            linear_state_rows=None,
+                            commit_final_linear_state=False,
+                            hidden_f32_ptr=None,
+                            out_f32_ptr=None,
+                            stage_timings=None,
+                            sync_stage_timings=False,
+                            stage_prefix="ar_prefill_layer_outer_linear_attn",
+                        )
+                    elif layer_type == FULL_ATTENTION:
+                        for slot_index, session in enumerate(entry["sessions"]):
+                            if session.scratch is None:
+                                raise RuntimeError("packed prefill slot scratch is closed")
+                            if session._bulk_prefill_scratch is None:
+                                session._ensure_bulk_prefill_workspace()
+                            row_start = int(bound_layout.cu_seqlens[slot_index])
+                            row_end = int(bound_layout.cu_seqlens[slot_index + 1])
+                            slot_rows = row_end - row_start
+                            start_position = int(bound_layout.row_positions[row_start])
+                            end_position = start_position + slot_rows
+                            slot_scratch = session._bulk_prefill_scratch.for_chunk(
+                                start_position,
+                                slot_rows,
+                                total_tokens=end_position,
+                                runtime=runtime,
+                                stream=stream,
+                            )
+                            layer_scratch = session._full_attention_prefill_scratch_for_layer(
+                                slot_scratch,
+                                layer_id,
+                            )
+                            transient_direct_oracle = bool(
+                                layer_scratch.retained_key_cache is not None
+                                and session.scratch.full_bf16_mirror_cache(layer_id)
+                                is None
+                            )
+                            layer_scratch = _gguf_slot_local_prefill_cache_views(
+                                session,
+                                layer_scratch,
+                                row_nbytes=full_kv_row_nbytes,
+                                direct_int8=transient_direct_oracle,
+                            )
+                            row_nbytes = self.runner.hidden_size * DType.BF16.itemsize
+                            self.runner._run_full_attention_prefill_layer_aotriton(
+                                layer_id,
+                                src.ptr + (base + row_start) * row_nbytes,
+                                dst.ptr + (base + row_start) * row_nbytes,
+                                layer_scratch,
+                                cos_table_ptr=int(session.scratch.cos_table.ptr),
+                                sin_table_ptr=int(session.scratch.sin_table.ptr),
+                                max_positions=int(session.scratch.max_positions),
+                                stream=stream,
+                                expert_sidecar=None,
+                                allow_aotriton=(
+                                    _gguf_slot_local_prefill_allow_aotriton(
+                                        transient_direct_oracle=(
+                                            transient_direct_oracle
+                                        ),
+                                    )
+                                ),
+                                aotriton_min_tokens=None,
+                            )
+                    else:
+                        raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+                # One ping-pong swap per layer, not per chunk: a layer's input
+                # rows for every round are complete before it runs.
+                src, dst = dst, src
+
+            # Sampling tail: only each slot's final row (last round).
+            last_entry = chunk_plans[-1]
+            last_layout = last_entry["layout"]
+            last_scratch = packed_scratch_base.for_packed_verify_layout(
+                _rebind_packed_verify_layout_pages(last_layout, packed_state),
+                runtime=runtime,
+                stream=stream,
+            )
+            output_norm_weight_ptr = (
+                self.runner.weights.root("output_norm").allocation().tensor.ptr
+            )
+            row_nbytes = self.runner.hidden_size * DType.BF16.itemsize
+            sample_output_rows = len(session_tuple)
+            for slot_index in range(len(session_tuple)):
+                final_row = int(last_layout.cu_seqlens[slot_index + 1]) - 1
+                if final_row < int(last_layout.cu_seqlens[slot_index]):
+                    raise RuntimeError(
+                        "layer-outer packed prefill slot has no final row to sample"
+                    )
+                runtime.memcpy_async(
+                    last_scratch.norm.ptr + slot_index * row_nbytes,
+                    src.ptr + (int(last_entry["base"]) + final_row) * row_nbytes,
+                    row_nbytes,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+            gguf_rmsnorm_bf16_f32_weight(
+                last_scratch.norm.ptr,
+                output_norm_weight_ptr,
+                self._prefill_hidden_a.ptr,
+                rows=sample_output_rows,
+                hidden_size=self.runner.hidden_size,
+                eps=self.runner.weights.config.rms_norm_eps,
+                stream=stream,
+                runtime=runtime,
+            )
+            self.last_packed_prefill_plan["output_norm_rows"] += sample_output_rows
+            self.last_packed_prefill_plan["lm_head_sample_rows"] += sample_output_rows
+            self._enqueue_target_block_rows_from_hidden(
+                self._prefill_hidden_a.ptr,
+                sample_output_rows,
+                activation_dtype=GGUF_ACTIVATION_BF16,
+                stream=stream,
+                require_logits=bool(return_logits or require_logits),
+            )
+            token_host = self._read_target_block_row_tokens(
+                sample_output_rows,
+                stream=stream,
+            )
+        logits_host = None
+        if return_logits and sample_output_rows:
+            if self._verify_logits_buf is None:
+                raise RuntimeError("GGUF packed AR prefill logits buffer is closed")
+            logits_host = np.empty(
+                (sample_output_rows, self.runner.vocab_size),
+                dtype=np.float32,
+            )
+            copy_device_to_host(
+                host_array_ptr(logits_host),
+                DeviceBuffer(self._verify_logits_buf.ptr, logits_host.nbytes),
+                logits_host.nbytes,
+                runtime=runtime,
+            )
+            if not np.all(np.isfinite(logits_host)):
+                raise FloatingPointError(
+                    "GGUF layer-outer packed AR prefill lm-head logits contain NaN or Inf"
+                )
+        self.last_packed_prefill_plan["host_logits_d2h"] = bool(return_logits)
+        self.last_packed_prefill_plan["host_logits_d2h_bytes"] = (
+            0 if logits_host is None else int(logits_host.nbytes)
+        )
+        self._scatter_packed_decode_state(
+            session_tuple,
+            last_layout,
+            packed_state,
+            runtime=runtime,
+            stream=stream,
+            copy_kv=False,
+        )
+        self._packed_decode_state_dirty = False
+        self._packed_decode_last_layout = None
+        self._packed_decode_sessions = ()
+        self._packed_decode_session_ids = ()
+        self._packed_decode_positions = ()
+        if stream:
+            runtime.stream_synchronize(stream)
+        else:
+            runtime.device_synchronize()
+        if not sample_output:
+            return [None for _ in session_tuple]
+        if token_host is None:
+            raise RuntimeError("layer-outer packed prefill sampling did not produce token IDs")
+        return [
+            Qwen35GGUFNextTokenProbeResult(
+                token_id=int(token_host[slot_index]),
+                logit=(
+                    0.0
+                    if logits_host is None
+                    else float(logits_host[slot_index, int(token_host[slot_index])])
+                ),
+                logits=(
+                    np.empty((0,), dtype=np.float32)
+                    if logits_host is None
+                    else np.ascontiguousarray(
+                        logits_host[slot_index : slot_index + 1]
+                    )
+                ),
+            )
+            for slot_index in range(len(session_tuple))
+        ]
 
     def _prefill_batch_native_single_slab(
         self,
