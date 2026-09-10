@@ -1,0 +1,18 @@
+{
+  "arm": "mtp-k12",
+  "valid_count_1_to_30": true,
+  "content": "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30",
+  "timings": {
+    "cache_n": 23,
+    "prompt_n": 4,
+    "prompt_ms": 138.51,
+    "prompt_per_token_ms": 34.6275,
+    "prompt_per_second": 28.87878131542849,
+    "predicted_n": 110,
+    "predicted_ms": 1832.281,
+    "predicted_per_token_ms": 16.80991743119266,
+    "predicted_per_second": 59.48869196373264,
+    "draft_n": 108,
+    "draft_n_accepted": 104
+  }
+}

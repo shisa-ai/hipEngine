@@ -1,0 +1,140 @@
+{
+  "arm": "bare",
+  "rows": [
+    {
+      "id": "code_merge_intervals",
+      "category": "code",
+      "wall_s": 9.444708108901978,
+      "predicted_n": 128,
+      "predicted_per_second": 14.178061492820374,
+      "draft_n": null,
+      "draft_n_accepted": null,
+      "unique_char30_fraction": 1,
+      "max_word_trigram_repeats": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "content": ""
+    },
+    {
+      "id": "code_topological_sort",
+      "category": "code",
+      "wall_s": 9.4936683177948,
+      "predicted_n": 128,
+      "predicted_per_second": 14.174124544126114,
+      "draft_n": null,
+      "draft_n_accepted": null,
+      "unique_char30_fraction": 1,
+      "max_word_trigram_repeats": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "content": ""
+    },
+    {
+      "id": "code_lru_cache",
+      "category": "code",
+      "wall_s": 9.481805086135864,
+      "predicted_n": 128,
+      "predicted_per_second": 14.188612465422239,
+      "draft_n": null,
+      "draft_n_accepted": null,
+      "unique_char30_fraction": 1,
+      "max_word_trigram_repeats": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "content": ""
+    },
+    {
+      "id": "code_markdown_table",
+      "category": "code",
+      "wall_s": 9.497353792190552,
+      "predicted_n": 128,
+      "predicted_per_second": 14.169268084783546,
+      "draft_n": null,
+      "draft_n_accepted": null,
+      "unique_char30_fraction": 1,
+      "max_word_trigram_repeats": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "content": ""
+    },
+    {
+      "id": "general_en_plan",
+      "category": "general_en",
+      "wall_s": 9.491222858428955,
+      "predicted_n": 128,
+      "predicted_per_second": 14.167756951794821,
+      "draft_n": null,
+      "draft_n_accepted": null,
+      "unique_char30_fraction": 1,
+      "max_word_trigram_repeats": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "content": ""
+    },
+    {
+      "id": "general_en_explain",
+      "category": "general_en",
+      "wall_s": 9.504812717437744,
+      "predicted_n": 128,
+      "predicted_per_second": 14.150275930380642,
+      "draft_n": null,
+      "draft_n_accepted": null,
+      "unique_char30_fraction": 1,
+      "max_word_trigram_repeats": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "content": ""
+    },
+    {
+      "id": "general_ja_plan",
+      "category": "general_ja",
+      "wall_s": 9.488309621810913,
+      "predicted_n": 128,
+      "predicted_per_second": 14.175186102335022,
+      "draft_n": null,
+      "draft_n_accepted": null,
+      "unique_char30_fraction": 1,
+      "max_word_trigram_repeats": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "content": ""
+    },
+    {
+      "id": "general_ja_explain",
+      "category": "general_ja",
+      "wall_s": 9.49781847000122,
+      "predicted_n": 128,
+      "predicted_per_second": 14.160973472148042,
+      "draft_n": null,
+      "draft_n_accepted": null,
+      "unique_char30_fraction": 1,
+      "max_word_trigram_repeats": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "content": ""
+    },
+    {
+      "id": "mixed_ja_en_translate",
+      "category": "mixed_ja_en",
+      "wall_s": 9.514118671417236,
+      "predicted_n": 128,
+      "predicted_per_second": 14.153458258219704,
+      "draft_n": null,
+      "draft_n_accepted": null,
+      "unique_char30_fraction": 1,
+      "max_word_trigram_repeats": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "content": ""
+    },
+    {
+      "id": "mixed_ja_en_review",
+      "category": "mixed_ja_en",
+      "wall_s": 9.61219310760498,
+      "predicted_n": 128,
+      "predicted_per_second": 14.138938112309258,
+      "draft_n": null,
+      "draft_n_accepted": null,
+      "unique_char30_fraction": 1,
+      "max_word_trigram_repeats": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "content": ""
+    }
+  ],
+  "aggregate": {
+    "total_tokens": 1280,
+    "wall_s": 95.02601075172424,
+    "complete_wall_tok_s": 13.469996160780372
+  }
+}

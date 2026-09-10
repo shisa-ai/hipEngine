@@ -1,0 +1,210 @@
+0.00.035.122 I log_info: verbosity = 3 (adjust with the `-lv N` CLI arg)
+0.00.035.124 I device_info:
+0.00.035.165 I   - ROCm0   : AMD Radeon 8060S Graphics (122880 MiB, 116344 MiB free)
+0.00.035.194 I   - Vulkan0 : AMD Radeon 8060S Graphics (RADV STRIX_HALO) (123392 MiB, 123190 MiB free)
+0.00.035.195 I   - CPU     : AMD RYZEN AI MAX+ 395 w/ Radeon 8060S (128082 MiB, 128082 MiB free)
+0.00.035.208 I system_info: n_threads = 16 (n_threads_batch = 16) / 32 | ROCm : NO_VMM = 1 | PEER_MAX_BATCH_SIZE = 128 | FA_ALL_QUANTS = 1 | CPU : SSE3 = 1 | SSSE3 = 1 | AVX = 1 | AVX_VNNI = 1 | AVX2 = 1 | F16C = 1 | FMA = 1 | BMI2 = 1 | AVX512 = 1 | AVX512_VBMI = 1 | AVX512_VNNI = 1 | AVX512_BF16 = 1 | LLAMAFILE = 1 | OPENMP = 1 | REPACK = 1 | 
+0.00.035.234 I srv          init: running without SSL
+0.00.035.268 I srv          init: using 31 threads for HTTP server
+0.00.035.269 I srv          init: the WebUI is disabled
+0.00.035.346 I srv         start: binding port with default address family
+0.00.036.474 I srv          main: loading model
+0.00.036.477 I srv    load_model: loading model '/home/lhl/.local/state/hipengine-external-survey/models/rocmfpx/Qwen3.8-27B-ROCmFP4-FAST.gguf'
+0.00.036.493 I common_init_result: fitting params to device memory ...
+0.00.036.493 I common_init_result: (for bugs during this step try to reproduce them with -fit off, or provide --verbose logs if the bug only occurs with -fit on)
+0.02.558.255 W llama_context: n_ctx_seq (65536) < n_ctx_train (262144) -- the full capacity of the model will not be utilized
+0.02.716.836 W llama_kv_cache: attention rotation disabled for fp3 ROCmFPX/TurboQuant KV cache (K=q8_0, V=turbo4)
+0.02.856.847 W common_init_from_params: warming up the model with an empty run - please wait ... (--no-warmup to disable)
+0.02.948.893 W srv    load_model: Qwen strict MTP: boundary-safe multi-row verification with bounded recurrent rollback is enabled for exact greedy output
+0.02.948.895 I srv    load_model: creating MTP draft context against the target model '/home/lhl/.local/state/hipengine-external-survey/models/rocmfpx/Qwen3.8-27B-ROCmFP4-FAST.gguf'
+0.02.948.916 W llama_context: n_ctx_seq (65536) < n_ctx_train (262144) -- the full capacity of the model will not be utilized
+0.03.234.186 I srv    load_model: initializing slots, n_slots = 1
+0.03.258.991 I common_context_can_seq_rm: the context supports bounded partial sequence removal
+0.03.340.433 I common_speculative_init: adding speculative implementation 'draft-mtp'
+0.03.340.435 I common_speculative_state_draft_mtp: adding speculative implementation 'draft-mtp'
+0.03.340.439 I common_speculative_state_draft_mtp: - n_max=4, n_min=0, p_min=0.00, n_embd=5120, backend_sampling=1
+0.03.340.440 I common_speculative_state_draft_mtp: - gpu_layers=-1, cache_k=f16, cache_v=f16, ctx_tgt=yes, ctx_dft=yes
+0.03.340.546 I srv    load_model: speculative decoding context initialized
+0.03.340.547 I slot   load_model: id  0 | task -1 | new slot, n_ctx = 65536
+0.03.340.583 I srv    load_model: prompt cache is disabled - use `--cache-ram N` or `--cache-disk PATH` to enable it
+0.03.340.584 I srv    load_model: for more info see https://github.com/ggml-org/llama.cpp/pull/16391
+0.03.349.691 I init: chat template, example_format: '<|im_start|>system
+You are a helpful assistant<|im_end|>
+<|im_start|>user
+Hello<|im_end|>
+<|im_start|>assistant
+<think>
+
+</think>
+
+Hi there<|im_end|>
+<|im_start|>user
+How are you?<|im_end|>
+<|im_start|>assistant
+<think>
+
+</think>
+
+'
+0.03.356.578 I srv          init: init: chat template, thinking = 0
+0.03.356.587 I srv          main: model loaded
+0.03.356.589 I srv          main: server is listening on http://127.0.0.1:8000
+0.03.356.591 I srv  update_slots: all slots are idle
+0.03.995.752 I srv  params_from_: Chat format: peg-native
+0.03.995.868 I slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = -1
+0.03.995.918 I slot launch_slot_: id  0 | task 0 | processing task, is_child = 0
+0.06.831.143 I slot print_timing: id  0 | task 0 | n_decoded =    100, tg =  39.37 t/s
+0.09.117.758 I slot print_timing: id  0 | task 0 | 
+prompt eval time =     295.04 ms /    31 tokens (    9.52 ms per token,   105.07 tokens per second)
+       eval time =    4826.70 ms /   200 tokens (   24.13 ms per token,    41.44 tokens per second)
+      total time =    5121.74 ms /   231 tokens
+0.09.117.765 I slot print_timing: id  0 | task 0 | draft acceptance = 0.88571 (  155 accepted /   175 generated), mean acceptance length =  4.52, acceptance rate per position = (0.977, 0.932, 0.864, 0.750)
+0.09.117.790 I statistics        draft-mtp: #calls(b,g,a) =    1     44     44, #gen drafts =     44, #acc drafts =    43, #gen tokens =    175, #acc tokens =   155, #mean acc len = 4.52, #acc rate/pos = (0.977, 0.932, 0.864, 0.750), dur(b,g,a) = 0.001, 839.538, 0.093 ms
+0.09.117.810 I slot      release: id  0 | task 0 | stop processing: n_tokens = 230, truncated = 0
+0.09.117.820 I srv  update_slots: all slots are idle
+0.09.127.340 I srv  params_from_: Chat format: peg-native
+0.09.127.445 I slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = 1178772180355
+0.09.127.502 I slot launch_slot_: id  0 | task 46 | processing task, is_child = 0
+0.11.794.002 I slot print_timing: id  0 | task 46 | n_decoded =    103, tg =  42.79 t/s
+0.13.260.370 I slot print_timing: id  0 | task 46 | 
+prompt eval time =     259.37 ms /    50 tokens (    5.19 ms per token,   192.78 tokens per second)
+       eval time =    3873.41 ms /   150 tokens (   25.82 ms per token,    38.73 tokens per second)
+      total time =    4132.78 ms /   200 tokens
+0.13.260.378 I slot print_timing: id  0 | task 46 | draft acceptance = 0.75676 (  112 accepted /   148 generated), mean acceptance length =  4.03, acceptance rate per position = (0.865, 0.811, 0.730, 0.622)
+0.13.260.398 I statistics        draft-mtp: #calls(b,g,a) =    2     81     81, #gen drafts =     81, #acc drafts =    75, #gen tokens =    323, #acc tokens =   267, #mean acc len = 4.30, #acc rate/pos = (0.926, 0.877, 0.802, 0.691), dur(b,g,a) = 0.001, 1540.287, 0.174 ms
+0.13.260.431 I slot      release: id  0 | task 46 | stop processing: n_tokens = 199, truncated = 0
+0.13.260.459 I srv  update_slots: all slots are idle
+0.13.269.511 I srv  params_from_: Chat format: peg-native
+0.13.269.601 I slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = 1178776322976
+0.13.269.637 I slot launch_slot_: id  0 | task 85 | processing task, is_child = 0
+0.14.446.138 I slot print_timing: id  0 | task 85 | 
+prompt eval time =     227.72 ms /    47 tokens (    4.85 ms per token,   206.39 tokens per second)
+       eval time =     948.70 ms /    46 tokens (   20.62 ms per token,    48.49 tokens per second)
+      total time =    1176.42 ms /    93 tokens
+0.14.446.145 I slot print_timing: id  0 | task 85 | draft acceptance = 1.00000 (   36 accepted /    36 generated), mean acceptance length =  5.00, acceptance rate per position = (1.000, 1.000, 1.000, 1.000)
+0.14.446.164 I statistics        draft-mtp: #calls(b,g,a) =    3     90     90, #gen drafts =     90, #acc drafts =    84, #gen tokens =    359, #acc tokens =   303, #mean acc len = 4.37, #acc rate/pos = (0.933, 0.889, 0.822, 0.722), dur(b,g,a) = 0.002, 1710.712, 0.187 ms
+0.14.446.181 I slot      release: id  0 | task 85 | stop processing: n_tokens = 92, truncated = 0
+0.14.446.194 I srv  update_slots: all slots are idle
+0.14.456.762 I srv  params_from_: Chat format: peg-native
+0.14.456.857 I slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = 1178777508727
+0.14.456.895 I slot launch_slot_: id  0 | task 96 | processing task, is_child = 0
+0.17.890.207 I slot print_timing: id  0 | task 96 | n_decoded =    100, tg =  31.15 t/s
+0.20.287.916 I slot print_timing: id  0 | task 96 | 
+prompt eval time =     222.49 ms /    34 tokens (    6.54 ms per token,   152.82 tokens per second)
+       eval time =    5608.51 ms /   150 tokens (   37.39 ms per token,    26.75 tokens per second)
+      total time =    5830.99 ms /   184 tokens
+0.20.287.923 I slot print_timing: id  0 | task 96 | draft acceptance = 0.48020 (   97 accepted /   202 generated), mean acceptance length =  2.90, acceptance rate per position = (0.765, 0.569, 0.333, 0.235)
+0.20.287.947 I statistics        draft-mtp: #calls(b,g,a) =    4    141    141, #gen drafts =    141, #acc drafts =   123, #gen tokens =    561, #acc tokens =   400, #mean acc len = 3.84, #acc rate/pos = (0.872, 0.773, 0.645, 0.546), dur(b,g,a) = 0.003, 2700.319, 0.382 ms
+0.20.287.979 I slot      release: id  0 | task 96 | stop processing: n_tokens = 183, truncated = 0
+0.20.288.006 I srv  update_slots: all slots are idle
+0.20.646.023 I srv  params_from_: Chat format: peg-native
+0.20.646.121 I slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = 1178783350524
+0.20.646.175 I slot launch_slot_: id  0 | task 150 | processing task, is_child = 0
+0.21.384.987 I slot print_timing: id  0 | task 150 | 
+prompt eval time =     225.47 ms /    40 tokens (    5.64 ms per token,   177.41 tokens per second)
+       eval time =     513.27 ms /    24 tokens (   21.39 ms per token,    46.76 tokens per second)
+      total time =     738.74 ms /    64 tokens
+0.21.384.997 I slot print_timing: id  0 | task 150 | draft acceptance = 1.00000 (   18 accepted /    18 generated), mean acceptance length =  4.60, acceptance rate per position = (1.000, 1.000, 0.800, 0.800)
+0.21.385.020 I statistics        draft-mtp: #calls(b,g,a) =    5    146    146, #gen drafts =    146, #acc drafts =   128, #gen tokens =    579, #acc tokens =   418, #mean acc len = 3.86, #acc rate/pos = (0.877, 0.781, 0.651, 0.555), dur(b,g,a) = 0.004, 2786.908, 0.394 ms
+0.21.385.048 I slot      release: id  0 | task 150 | stop processing: n_tokens = 63, truncated = 0
+0.21.385.069 I srv  update_slots: all slots are idle
+0.21.393.830 I srv  params_from_: Chat format: peg-native
+0.21.393.920 I slot get_availabl: id  0 | task -1 | selected slot by LCP similarity, sim_best = 0.140 (> 0.100 thold), f_keep = 0.111
+0.21.393.956 I slot launch_slot_: id  0 | task 157 | processing task, is_child = 0
+0.22.230.222 I slot print_timing: id  0 | task 157 | 
+prompt eval time =     228.25 ms /    50 tokens (    4.56 ms per token,   219.06 tokens per second)
+       eval time =     607.95 ms /    24 tokens (   25.33 ms per token,    39.48 tokens per second)
+      total time =     836.20 ms /    74 tokens
+0.22.230.228 I slot print_timing: id  0 | task 157 | draft acceptance = 0.80952 (   17 accepted /    21 generated), mean acceptance length =  3.83, acceptance rate per position = (0.833, 0.667, 0.667, 0.667)
+0.22.230.247 I statistics        draft-mtp: #calls(b,g,a) =    6    152    152, #gen drafts =    152, #acc drafts =   133, #gen tokens =    600, #acc tokens =   435, #mean acc len = 3.86, #acc rate/pos = (0.875, 0.776, 0.651, 0.559), dur(b,g,a) = 0.005, 2888.390, 0.407 ms
+0.22.230.263 I slot      release: id  0 | task 157 | stop processing: n_tokens = 73, truncated = 0
+0.22.230.279 I srv  update_slots: all slots are idle
+0.22.238.733 I srv  params_from_: Chat format: peg-native
+0.22.238.836 I slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = 1178785292808
+0.22.238.870 I slot launch_slot_: id  0 | task 165 | processing task, is_child = 0
+0.22.978.071 I slot print_timing: id  0 | task 165 | 
+prompt eval time =     227.32 ms /    47 tokens (    4.84 ms per token,   206.75 tokens per second)
+       eval time =     511.80 ms /    24 tokens (   21.32 ms per token,    46.89 tokens per second)
+      total time =     739.12 ms /    71 tokens
+0.22.978.079 I slot print_timing: id  0 | task 165 | draft acceptance = 1.00000 (   18 accepted /    18 generated), mean acceptance length =  4.60, acceptance rate per position = (1.000, 1.000, 0.800, 0.800)
+0.22.978.103 I statistics        draft-mtp: #calls(b,g,a) =    7    157    157, #gen drafts =    157, #acc drafts =   138, #gen tokens =    618, #acc tokens =   453, #mean acc len = 3.89, #acc rate/pos = (0.879, 0.783, 0.656, 0.567), dur(b,g,a) = 0.006, 2975.448, 0.417 ms
+0.22.978.130 I slot      release: id  0 | task 165 | stop processing: n_tokens = 70, truncated = 0
+0.22.978.151 I srv  update_slots: all slots are idle
+0.22.986.886 I srv  params_from_: Chat format: peg-native
+0.22.986.973 I slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = 1178786040677
+0.22.987.005 I slot launch_slot_: id  0 | task 172 | processing task, is_child = 0
+0.23.752.251 I slot print_timing: id  0 | task 172 | 
+prompt eval time =     243.77 ms /    52 tokens (    4.69 ms per token,   213.32 tokens per second)
+       eval time =     521.41 ms /    24 tokens (   21.73 ms per token,    46.03 tokens per second)
+      total time =     765.17 ms /    76 tokens
+0.23.752.260 I slot print_timing: id  0 | task 172 | draft acceptance = 0.94737 (   18 accepted /    19 generated), mean acceptance length =  4.60, acceptance rate per position = (1.000, 1.000, 1.000, 0.600)
+0.23.752.283 I statistics        draft-mtp: #calls(b,g,a) =    8    162    162, #gen drafts =    162, #acc drafts =   143, #gen tokens =    637, #acc tokens =   471, #mean acc len = 3.91, #acc rate/pos = (0.883, 0.790, 0.667, 0.568), dur(b,g,a) = 0.007, 3068.059, 0.429 ms
+0.23.752.312 I slot      release: id  0 | task 172 | stop processing: n_tokens = 75, truncated = 0
+0.23.752.334 I srv  update_slots: all slots are idle
+0.23.760.657 I srv  params_from_: Chat format: peg-native
+0.23.760.746 I slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = 1178786814859
+0.23.760.776 I slot launch_slot_: id  0 | task 179 | processing task, is_child = 0
+0.25.003.991 I slot print_timing: id  0 | task 179 | 
+prompt eval time =     224.04 ms /    39 tokens (    5.74 ms per token,   174.08 tokens per second)
+       eval time =    1019.16 ms /    24 tokens (   42.46 ms per token,    23.55 tokens per second)
+      total time =    1243.20 ms /    63 tokens
+0.25.004.001 I slot print_timing: id  0 | task 179 | draft acceptance = 0.36111 (   13 accepted /    36 generated), mean acceptance length =  2.44, acceptance rate per position = (0.556, 0.444, 0.222, 0.222)
+0.25.004.024 I statistics        draft-mtp: #calls(b,g,a) =    9    171    171, #gen drafts =    171, #acc drafts =   148, #gen tokens =    673, #acc tokens =   484, #mean acc len = 3.83, #acc rate/pos = (0.865, 0.772, 0.643, 0.550), dur(b,g,a) = 0.008, 3242.429, 0.455 ms
+0.25.004.051 I slot      release: id  0 | task 179 | stop processing: n_tokens = 62, truncated = 0
+0.25.004.070 I srv  update_slots: all slots are idle
+0.25.013.877 I srv  params_from_: Chat format: peg-native
+0.25.013.971 I slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = 1178788066597
+0.25.014.004 I slot launch_slot_: id  0 | task 191 | processing task, is_child = 0
+0.25.960.222 I slot print_timing: id  0 | task 191 | 
+prompt eval time =     224.56 ms /    40 tokens (    5.61 ms per token,   178.13 tokens per second)
+       eval time =     721.58 ms /    24 tokens (   30.07 ms per token,    33.26 tokens per second)
+      total time =     946.13 ms /    64 tokens
+0.25.960.230 I slot print_timing: id  0 | task 191 | draft acceptance = 0.61538 (   16 accepted /    26 generated), mean acceptance length =  3.29, acceptance rate per position = (0.857, 0.714, 0.429, 0.286)
+0.25.960.254 I statistics        draft-mtp: #calls(b,g,a) =   10    178    178, #gen drafts =    178, #acc drafts =   154, #gen tokens =    699, #acc tokens =   500, #mean acc len = 3.81, #acc rate/pos = (0.865, 0.770, 0.635, 0.539), dur(b,g,a) = 0.009, 3367.313, 0.473 ms
+0.25.960.283 I slot      release: id  0 | task 191 | stop processing: n_tokens = 63, truncated = 0
+0.25.960.306 I srv  update_slots: all slots are idle
+0.25.969.269 I srv  params_from_: Chat format: peg-native
+0.25.969.365 I slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = 1178789022829
+0.25.969.395 I slot launch_slot_: id  0 | task 200 | processing task, is_child = 0
+0.26.913.129 I slot print_timing: id  0 | task 200 | 
+prompt eval time =     225.70 ms /    43 tokens (    5.25 ms per token,   190.52 tokens per second)
+       eval time =     717.97 ms /    24 tokens (   29.92 ms per token,    33.43 tokens per second)
+      total time =     943.67 ms /    67 tokens
+0.26.913.136 I slot print_timing: id  0 | task 200 | draft acceptance = 0.64000 (   16 accepted /    25 generated), mean acceptance length =  3.29, acceptance rate per position = (1.000, 0.571, 0.429, 0.286)
+0.26.913.157 I statistics        draft-mtp: #calls(b,g,a) =   11    185    185, #gen drafts =    185, #acc drafts =   161, #gen tokens =    724, #acc tokens =   516, #mean acc len = 3.79, #acc rate/pos = (0.870, 0.762, 0.627, 0.530), dur(b,g,a) = 0.010, 3487.667, 0.494 ms
+0.26.913.184 I slot      release: id  0 | task 200 | stop processing: n_tokens = 66, truncated = 0
+0.26.913.196 I srv  update_slots: all slots are idle
+0.26.922.078 I srv  params_from_: Chat format: peg-native
+0.26.922.174 I slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = 1178789975729
+0.26.922.204 I slot launch_slot_: id  0 | task 209 | processing task, is_child = 0
+0.28.378.203 I slot print_timing: id  0 | task 209 | 
+prompt eval time =     225.66 ms /    43 tokens (    5.25 ms per token,   190.55 tokens per second)
+       eval time =    1230.31 ms /    24 tokens (   51.26 ms per token,    19.51 tokens per second)
+      total time =    1455.97 ms /    67 tokens
+0.28.378.212 I slot print_timing: id  0 | task 209 | draft acceptance = 0.26190 (   11 accepted /    42 generated), mean acceptance length =  2.00, acceptance rate per position = (0.545, 0.364, 0.091, 0.000)
+0.28.378.235 I statistics        draft-mtp: #calls(b,g,a) =   12    196    196, #gen drafts =    196, #acc drafts =   167, #gen tokens =    766, #acc tokens =   527, #mean acc len = 3.69, #acc rate/pos = (0.852, 0.740, 0.597, 0.500), dur(b,g,a) = 0.011, 3694.470, 0.543 ms
+0.28.378.264 I slot      release: id  0 | task 209 | stop processing: n_tokens = 66, truncated = 0
+0.28.378.287 I srv  update_slots: all slots are idle
+0.28.387.049 I srv  params_from_: Chat format: peg-native
+0.28.387.159 I slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = 1178791440810
+0.28.387.211 I slot launch_slot_: id  0 | task 223 | processing task, is_child = 0
+0.29.364.396 I slot print_timing: id  0 | task 223 | 
+prompt eval time =     249.17 ms /    64 tokens (    3.89 ms per token,   256.85 tokens per second)
+       eval time =     727.93 ms /    24 tokens (   30.33 ms per token,    32.97 tokens per second)
+      total time =     977.10 ms /    88 tokens
+0.29.364.403 I slot print_timing: id  0 | task 223 | draft acceptance = 0.61538 (   16 accepted /    26 generated), mean acceptance length =  3.29, acceptance rate per position = (1.000, 0.714, 0.286, 0.286)
+0.29.364.426 I statistics        draft-mtp: #calls(b,g,a) =   13    203    203, #gen drafts =    203, #acc drafts =   174, #gen tokens =    792, #acc tokens =   543, #mean acc len = 3.67, #acc rate/pos = (0.857, 0.739, 0.586, 0.493), dur(b,g,a) = 0.012, 3819.115, 0.570 ms
+0.29.364.445 I slot      release: id  0 | task 223 | stop processing: n_tokens = 87, truncated = 0
+0.29.364.460 I srv  update_slots: all slots are idle
+0.29.373.718 I srv  params_from_: Chat format: peg-native
+0.29.373.810 I slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = 1178792426991
+0.29.373.843 I slot launch_slot_: id  0 | task 232 | processing task, is_child = 0
+0.30.512.058 I slot print_timing: id  0 | task 232 | 
+prompt eval time =     429.65 ms /    71 tokens (    6.05 ms per token,   165.25 tokens per second)
+       eval time =     708.55 ms /    24 tokens (   29.52 ms per token,    33.87 tokens per second)
+      total time =    1138.20 ms /    95 tokens
+0.30.512.063 I slot print_timing: id  0 | task 232 | draft acceptance = 0.66667 (   16 accepted /    24 generated), mean acceptance length =  3.67, acceptance rate per position = (1.000, 0.667, 0.667, 0.333)
+0.30.512.087 I statistics        draft-mtp: #calls(b,g,a) =   14    209    209, #gen drafts =    209, #acc drafts =   180, #gen tokens =    816, #acc tokens =   559, #mean acc len = 3.67, #acc rate/pos = (0.861, 0.737, 0.589, 0.488), dur(b,g,a) = 0.012, 3938.218, 0.592 ms
+0.30.512.124 I slot      release: id  0 | task 232 | stop processing: n_tokens = 94, truncated = 0
+0.30.512.140 I srv  update_slots: all slots are idle
+0.30.548.261 I srv    operator(): operator(): cleaning up before exit...
