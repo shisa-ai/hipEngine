@@ -507,10 +507,18 @@ def _compiler_version_from_environment(compiler: str) -> str | None:
     return None
 
 
+_COMPILER_ENV_PREFIX_CACHE: dict[str, str] = {}
+
+
 def _compiler_env_prefix(compiler: str) -> str:
+    cached = _COMPILER_ENV_PREFIX_CACHE.get(compiler)
+    if cached is not None:
+        return cached
     basename = Path(compiler).name or compiler
     safe = "".join(char if char.isalnum() else "_" for char in basename).upper()
-    return f"HIPENGINE_{safe}"
+    prefix = f"HIPENGINE_{safe}"
+    _COMPILER_ENV_PREFIX_CACHE[compiler] = prefix
+    return prefix
 
 
 def _target_arch_from_environment() -> str | None:
