@@ -799,7 +799,11 @@ class Qwen4ExpDenseAttentionState:
 
 
 def _qwen4_exp_batched_position_enabled() -> bool:
-    return os.environ.get("HIPENGINE_QWEN4_EXP_BATCHED_POSITION", "0") == "1"
+    # Promoted (R7 wrapper-host route): one shared 192B H2D replaces the 24
+    # per-layer 8B blocking set_position copies per decode step. Bit-exact
+    # token streams; TG median -0.77 ms/token (~1.3%). Set
+    # HIPENGINE_QWEN4_EXP_BATCHED_POSITION=0 to restore per-layer copies.
+    return os.environ.get("HIPENGINE_QWEN4_EXP_BATCHED_POSITION", "1") != "0"
 
 
 @dataclass
