@@ -20,5 +20,15 @@
   "bisect: disable each promoted prefill route (profile selection opt-outs) and measure control KL contribution; identify the route(s) consuming the mean/max/top1 budget",
   "decide per the recorded 6.1 policy fork: envelope recalibration (bars reflect cumulative reality) vs bounded-drift admission (per-route drift accounting with a cumulative cap)"
  ],
- "reviewer_note_honored": "this is not treated as a reason to loosen thresholds to admit candidates; qualification repair precedes any further numeric-affecting work"
+ "reviewer_note_honored": "this is not treated as a reason to loosen thresholds to admit candidates; qualification repair precedes any further numeric-affecting work",
+ "current_tree_reverification": {
+  "status": "PASS - bit-identical",
+  "detail": "production-vs-strict control re-run at the promoted HEAD ef0625e4c (three wrapper-host promotions + override-identity cache fix): every statistic matches the pre-promotion recorded control to the last digit (kl_mean 0.0012760646965530602, kl_max 0.05256923892437648, top1 0.9849397590361446)",
+  "conclusions": [
+   "the three R7 wrapper-host promotions are numerically inert vs the strict teacher, as designed (bit-exact)",
+   "the control's failure of the declared bars is entirely the pre-existing accumulated drift of the seven R2e promoted prefill routes - unchanged by this session's decode-side work",
+   "qualification repair proceeds to route-level isolation (bisection via profile-env surgery), which requires multi-run GPU work in a calm window"
+  ],
+  "evidence": "benchmarks/results/2026-09-10-r7-control-reverify-996.json"
+ }
 }
