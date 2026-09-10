@@ -227,6 +227,15 @@ class TimesFM3GPUDecoder:
             qscale_buf = malloc(qscale_h.nbytes)
             copy_host_to_device(qscale_buf, host_array_ptr(qscale_h))
             self._fp16_weights[f"__qscale.{i}"] = qscale_buf
+            # Folded per-dim scale for the variate-attention queries.
+            var_q_ln_h = _read_f32(raw[f"{prefix}.var_attn.query_ln.weight"], hd)
+            var_per_dim_h = _read_f32(raw[f"{prefix}.var_attn.per_dim_scale.per_dim_scale"], hd)
+            var_qscale_h = (
+                var_q_ln_h * qscale_factor * np.logaddexp(var_per_dim_h, np.zeros_like(var_per_dim_h))
+            ).astype(np.float32)
+            var_qscale_buf = malloc(var_qscale_h.nbytes)
+            copy_host_to_device(var_qscale_buf, host_array_ptr(var_qscale_h))
+            self._fp16_weights[f"__var_qscale.{i}"] = var_qscale_buf
             self._layers.append({
                 # q/k/v projections concatenated into one [3d, d] GEMM weight.
                 "qkv": _gemm_weight_qkv(f"{prefix}.seq_attn"),
@@ -244,9 +253,8 @@ class TimesFM3GPUDecoder:
                 "pre_seq": raw[f"{prefix}.pre_seq_attn_ln.weight"],
                 "post_seq": raw[f"{prefix}.post_seq_attn_ln.weight"],
                 "pre_var": raw[f"{prefix}.pre_var_attn_ln.weight"],
-                "var_q_ln": raw[f"{prefix}.var_attn.query_ln.weight"],
+                "var_qscale": var_qscale_buf.ptr,
                 "var_k_ln": raw[f"{prefix}.var_attn.key_ln.weight"],
-                "var_perdim": raw[f"{prefix}.var_attn.per_dim_scale.per_dim_scale"],
                 "post_var": raw[f"{prefix}.post_var_attn_ln.weight"],
                 "pre_ff": raw[f"{prefix}.pre_ff_ln.weight"],
                 "post_ff": raw[f"{prefix}.post_ff_ln.weight"],
@@ -398,15 +406,13 @@ class TimesFM3GPUDecoder:
             self._gemm(bufs.normed.ptr, w["var_q"], bufs.var_q.ptr, rows, d, d)
             self._gemm(bufs.normed.ptr, w["var_k"], bufs.var_k.ptr, rows, d, d)
             self._gemm(bufs.normed.ptr, w["var_v"], bufs.var_v.ptr, rows, d, d)
-            # Variate attention applies QK RMSNorm + per-dim query scaling
-            # (the var_attention kernel's internal sqrt(D) score scale covers
-            # the SDPA scaling; no fold into the K-side weight here).
-            timesfm_head_rmsnorm_f32(bufs.var_q.ptr, w["var_q_ln"], rows, 1, heads, hd, d, 0, _RMS_EPS, dtype=dt)
-            timesfm_head_rmsnorm_f32(bufs.var_k.ptr, w["var_k_ln"], rows, 1, heads, hd, d, 0, _RMS_EPS, dtype=dt)
-            timesfm_head_perdim_scale_f32(bufs.var_q.ptr, w["var_perdim"], rows, 1, heads, hd, d, 0, dtype=dt)
+            # Fused var attention: raw GEMM outputs; the kernel applies QK
+            # RMSNorm + the folded per-dim query scale and the sqrt(D) score
+            # scale internally.
             timesfm3_var_attention(
                 bufs.var_q.ptr, bufs.var_k.ptr, bufs.var_v.ptr,
-                bufs.front_masked.ptr, bufs.var_out.ptr,
+                bufs.front_masked.ptr, w["var_qscale"], w["var_k_ln"], _RMS_EPS,
+                bufs.var_out.ptr,
                 batch, variates, n, heads, hd, dtype=dt,
             )
             self._gemm(bufs.var_out.ptr, w["var_out"], bufs.hidden.ptr, rows, d, d)

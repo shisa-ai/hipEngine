@@ -132,13 +132,18 @@ __global__ void qkv_norm_scatter_eps_kernel(
 }
 
 // ---------------------------------------------------------------------------
-// Variate attention (non-causal, no RoPE).
+// Variate attention (non-causal, no RoPE), with the QK RMSNorm and the
+// per-dim query scaling fused in.
 //
-// q/k/v are [B*V, N, H*D] row-major with row index ((b*V + v)*N + n); the
-// per-(b,v) leading-mask counts front_masked[b*V + v] exclude a variate as a
-// key at patch n when n < front_masked.  Scores are q.k * sqrt(D); query rows
-// whose keys are all masked produce zeros (CPU SDPA semantics).  Output is
-// written back into the same [B*V, N, H*D] layout.
+// q/k/v are RAW GEMM outputs, [B*V, N, H*D] row-major with row index
+// ((b*V + v)*N + n); the per-(b,v) leading-mask counts
+// front_masked[b*V + v] exclude a variate as a key at patch n when
+// n < front_masked.  In-kernel normalization (2.5 qkv_norm_scatter
+// pattern): q rows are RMS-normalized then scaled by the folded
+// qscale = q_ln * log2(e)/sqrt(D) * softplus(per_dim); k rows are
+// RMS-normalized with k_ln.  Scores are q.k * sqrt(D); query rows
+// whose keys are all masked produce zeros (CPU SDPA semantics).
+// Output is written back into the same [B*V, N, H*D] layout.
 // ---------------------------------------------------------------------------
 
 template <typename T>
@@ -147,6 +152,9 @@ __global__ void var_attention_kernel(
     const T* __restrict__ k,
     const T* __restrict__ v,
     const int* __restrict__ front_masked,
+    const float* __restrict__ qscale,  // q_ln * log2(e)/sqrt(D) * softplus(per_dim)
+    const float* __restrict__ k_ln,
+    float eps,
     T* __restrict__ out,
     int B,          // batch
     int V,          // variates (<= kVarMaxV)
@@ -155,11 +163,12 @@ __global__ void var_attention_kernel(
     int D) {        // head dim
   // NOTE: D is a runtime parameter; stage via dynamically sized LDS.
   extern __shared__ float lds[];
-  // Layout of lds: q [V][D], k [V][D], v [V][D], w [4 warps][V].
+  // Layout of lds: q [V][D], k [V][D], v [V][D], rowsum [2V], w [4 warps][V].
   float* q_s = lds;
   float* k_s = lds + (size_t)V * D;
   float* v_s = lds + 2 * (size_t)V * D;
-  float* w_s = lds + 3 * (size_t)V * D;  // per-warp rows: w_s[warp*V + vk]
+  float* rowsum = lds + 3 * (size_t)V * D;        // [2V] q-then-k row sumsq
+  float* w_s = rowsum + 2 * V;                    // per-warp rows: w_s[warp*V + vk]
 
   const int b = blockIdx.x / N;
   const int n = blockIdx.x % N;
@@ -167,7 +176,8 @@ __global__ void var_attention_kernel(
   const int warp = threadIdx.x >> 5;
   const int lane = threadIdx.x & 31;
 
-  // Cooperative load of q/k/v for this (b, n, h) into LDS.
+  // Cooperative load of raw q/k/v for this (b, n, h) into LDS, accumulating
+  // per-row squared sums for the q and k normalization.
   const size_t elems = (size_t)V * D;
   const T* base_q = q + (((size_t)b * V) * N + n) * (size_t)(H * D) + (size_t)h * D;
   const T* base_k = k + (((size_t)b * V) * N + n) * (size_t)(H * D) + (size_t)h * D;
@@ -184,6 +194,33 @@ __global__ void var_attention_kernel(
     if (which == 0) q_s[vi * D + d] = val;
     else if (which == 1) k_s[vi * D + d] = val;
     else v_s[vi * D + d] = val;
+  }
+  __syncthreads();
+
+  // Deterministic per-row squared sums (warp-per-row, lane-strided): no
+  // atomics, so the reduction order — and therefore the output — is
+  // identical across launches.  Rows are q then k (2V total).
+  for (int row = warp; row < 2 * V; row += (blockDim.x >> 5)) {
+    const float* rowp = row < V ? q_s + row * D : k_s + (row - V) * D;
+    float sumsq = 0.0f;
+    for (int d = lane; d < D; d += 32) sumsq += rowp[d] * rowp[d];
+#pragma unroll
+    for (int w = 16; w > 0; w >>= 1) sumsq += __shfl_xor(sumsq, w);
+    if (lane == 0) rowsum[row] = sumsq;
+  }
+  __syncthreads();
+
+  // In-place RMS normalization of the staged q/k rows.  q rows carry the
+  // folded per-dim scale (qscale), k rows the key_ln weight.
+  for (size_t i = threadIdx.x; i < 2 * elems; i += blockDim.x) {
+    const size_t r = i % elems;
+    const int which = (int)(i / elems);
+    const int vi = (int)(r / D);
+    const int d = (int)(r % D);
+    const float inv = rsqrtf(rowsum[which * V + vi] / (float)D + eps);
+    const float scale = which == 0 ? qscale[d] : k_ln[d];
+    if (which == 0) q_s[vi * D + d] *= inv * scale;
+    else k_s[vi * D + d] *= inv * scale;
   }
   __syncthreads();
 
@@ -281,17 +318,20 @@ extern "C" int timesfm3_var_attention_f16(
     const half_t* k,
     const half_t* v,
     const int* front_masked,
+    const float* qscale,
+    const float* k_ln,
+    float eps,
     half_t* out,
     int B, int V, int N, int H, int D,
     hipStream_t stream) {
   if (B <= 0 || V <= 0 || N <= 0 || H <= 0 || D <= 0) return (int)hipErrorInvalidValue;
   if (V > kVarMaxV) return (int)hipErrorInvalidValue;
   const size_t lds_bytes =
-      3 * (size_t)V * D * sizeof(float) + 4 * (size_t)V * sizeof(float);
+      3 * (size_t)V * D * sizeof(float) + 6 * (size_t)V * sizeof(float);
   dim3 grid((unsigned)((int64_t)B * N), (unsigned)H);
   hipLaunchKernelGGL(var_attention_kernel<half_t>, grid, dim3(kVarBlock),
                      lds_bytes, stream,
-                     q, k, v, front_masked, out, B, V, N, H, D);
+                     q, k, v, front_masked, qscale, k_ln, eps, out, B, V, N, H, D);
   return (int)hipGetLastError();
 }
 
@@ -300,16 +340,19 @@ extern "C" int timesfm3_var_attention_f32(
     const float* k,
     const float* v,
     const int* front_masked,
+    const float* qscale,
+    const float* k_ln,
+    float eps,
     float* out,
     int B, int V, int N, int H, int D,
     hipStream_t stream) {
   if (B <= 0 || V <= 0 || N <= 0 || H <= 0 || D <= 0) return (int)hipErrorInvalidValue;
   if (V > kVarMaxV) return (int)hipErrorInvalidValue;
   const size_t lds_bytes =
-      3 * (size_t)V * D * sizeof(float) + 4 * (size_t)V * sizeof(float);
+      3 * (size_t)V * D * sizeof(float) + 6 * (size_t)V * sizeof(float);
   dim3 grid((unsigned)((int64_t)B * N), (unsigned)H);
   hipLaunchKernelGGL(var_attention_kernel<float>, grid, dim3(kVarBlock),
                      lds_bytes, stream,
-                     q, k, v, front_masked, out, B, V, N, H, D);
+                     q, k, v, front_masked, qscale, k_ln, eps, out, B, V, N, H, D);
   return (int)hipGetLastError();
 }
