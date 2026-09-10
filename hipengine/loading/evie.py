@@ -37,13 +37,14 @@ from hipengine.models.evie import (
 
 @dataclass(frozen=True)
 class EvieLoadedModel:
-    """Validated model metadata plus all resident FP32 device weights."""
+    """Validated model metadata plus all resident device weights."""
 
     spec: EvieModelSpec
     index: WeightIndex
     weights: DeviceWeightMap
     baseline_allocated_bytes: int
     baseline_active_allocations: int
+    precision: str = "fp32"
 
     @property
     def fp32_weight_bytes(self) -> int:
@@ -129,8 +130,11 @@ def materialize_evie_weights(
                 host16 = np.ascontiguousarray(
                     host.reshape(-1).astype(np.float16)
                 )
+                # weight_pad is bytes of tail slack for rocBLAS tile
+                # over-reads; convert to element counts (a byte count
+                # passed as an element count silently allocates 2x/4x)
                 padded16 = np.zeros(
-                    host16.nbytes + weight_pad, dtype=np.float16
+                    host16.size + weight_pad // 2, dtype=np.float16
                 )
                 padded16[: host16.size] = host16
                 prepared = load_host_array_to_device(
@@ -146,7 +150,9 @@ def materialize_evie_weights(
                     tensor=prepared.tensor,
                 )
                 continue
-            padded = np.empty(host.nbytes + weight_pad, dtype=np.float32)
+            padded = np.empty(
+                host.size + weight_pad // 4, dtype=np.float32
+            )
             padded[: host.size] = host.reshape(-1)
             prepared = load_host_array_to_device(
                 name,
@@ -196,6 +202,7 @@ def load_evie_model(
         weights=weights,
         baseline_allocated_bytes=baseline["current_allocated_bytes"],
         baseline_active_allocations=baseline["active_allocations"],
+        precision=precision,
     )
 
 
