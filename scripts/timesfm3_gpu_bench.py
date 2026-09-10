@@ -99,14 +99,17 @@ def _fixture_kwargs(fixture) -> dict:
 
 
 def _signal_scales(fixture) -> np.ndarray:
+    """Per-(batch, target) signal scales, shape (batch, num_targets)."""
+
     target = fixture["target"]
     mask = fixture["target_mask"] if "target_mask" in fixture.files else None
-    scales = []
+    scales = np.zeros((target.shape[0], target.shape[1]))
     for b in range(target.shape[0]):
         for u in range(target.shape[1]):
-            m = mask[b, u] if mask is not None else np.zeros(target.shape[2], bool)
-            scales.append(float(np.std(target[b, u][~m])))
-    return np.array(scales)
+            m = mask[b, u] if mask is not None else None
+            series = target[b, u] if m is None else target[b, u][~m]
+            scales[b, u] = float(np.std(series))
+    return scales
 
 
 def run_check() -> int:
@@ -145,17 +148,17 @@ def run_check() -> int:
         if not bool(np.isfinite(error).all()):
             failures.append(f"{fixture_path.name} fp16: non-finite output")
             continue
-        num_targets = fixture["target"].shape[1]
         scales = _signal_scales(fixture)
-        for b in range(fixture["target"].shape[0]):
-            series_error = error[b, :num_targets]
-            max_rel = float(series_error.max()) / scales[b]
-            mean_rel = float(series_error.mean()) / scales[b]
-            if max_rel > 0.02 or mean_rel > 0.005:
-                failures.append(
-                    f"{fixture_path.name} fp16 b{b}: max {100 * max_rel:.2f}% / mean "
-                    f"{100 * mean_rel:.3f}% of signal scale exceeds production gate (2% / 0.5%)"
-                )
+        for b in range(scales.shape[0]):
+            for u in range(scales.shape[1]):
+                series_error = error[b, u]
+                max_rel = float(series_error.max()) / scales[b, u]
+                mean_rel = float(series_error.mean()) / scales[b, u]
+                if max_rel > 0.02 or mean_rel > 0.005:
+                    failures.append(
+                        f"{fixture_path.name} fp16 b{b} u{u}: max {100 * max_rel:.2f}% / mean "
+                        f"{100 * mean_rel:.3f}% of signal scale exceeds production gate (2% / 0.5%)"
+                    )
 
     if failures:
         print("GUARD FAILED:", "; ".join(failures))

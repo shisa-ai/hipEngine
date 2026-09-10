@@ -78,9 +78,12 @@ def _run_decode(precision: str, fixture_path: Path):
 def test_gpu_decode_fp32_strict_parity(fixture_path) -> None:
     out, fixture = _run_decode("fp32", fixture_path)
     assert bool(np.isfinite(out).all())
+    # Absolute bound only (measured max 1.3e-5): a relative component would
+    # loosen the gate near large forecast values.
     np.testing.assert_allclose(
-        out, fixture["decode_logits"], atol=1.0e-4, rtol=1.0e-2
+        out, fixture["decode_logits"], atol=1.0e-4, rtol=0.0
     )
+    assert np.abs(out - fixture["decode_logits"]).max() < 5.0e-5
 
 
 @pytest.mark.parametrize("fixture_path", FIXTURES, ids=["base", "edge", "covmask"])
@@ -92,20 +95,23 @@ def test_gpu_decode_fp16_production_gate(fixture_path) -> None:
     assert bool(np.isfinite(error).all())
     target = fixture["target"]
     mask = fixture["target_mask"] if "target_mask" in fixture.files else None
-    num_targets = target.shape[1]
     for b in range(target.shape[0]):
-        scale = float(
-            np.std(
-                target[b, 0][
-                    ~mask[b, 0] if mask is not None else np.ones(target.shape[2], bool)
-                ]
-            )
-        )
-        for u in range(num_targets):
+        for u in range(target.shape[1]):
             m = mask[b, u] if mask is not None else None
-            s = scale if m is None else float(np.std(target[b, u][~m]))
-            assert error[b, u].max() / s <= 0.02, f"b{b} u{u} exceeds 2% of signal scale"
-            assert error[b, u].mean() / s <= 0.005, f"b{b} u{u} exceeds 0.5% mean"
+            series = target[b, u] if m is None else target[b, u][~m]
+            scale = float(np.std(series))
+            assert error[b, u].max() / scale <= 0.02, f"b{b} u{u} exceeds 2% of signal scale"
+            assert error[b, u].mean() / scale <= 0.005, f"b{b} u{u} exceeds 0.5% mean"
+
+
+@pytest.mark.parametrize("precision", ["fp32", "fp16"])
+@pytest.mark.parametrize("fixture_path", FIXTURES, ids=["base", "edge", "covmask"])
+def test_gpu_decode_deterministic(precision, fixture_path) -> None:
+    """Repeated decodes must be bitwise identical (same launch schedule)."""
+
+    (out1, fixture) = _run_decode(precision, fixture_path)
+    (out2, _) = _run_decode(precision, fixture_path)
+    np.testing.assert_array_equal(out1, out2)
 
 
 def test_gpu_decode_rejects_unknown_precision() -> None:
