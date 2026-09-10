@@ -38,9 +38,26 @@ unit recorded the per-slab import as "the real cause of the slow long-prompt
 server path". Disproven at these shapes: with the import fully removed, wall
 time does not move at 1/2/4/8 chunks. The import was 910 MiB of dead copy work
 at 8 chunks — worth removing — but the multi-chunk slowdown lives elsewhere.
-Candidate (unprofiled): the slot-local full-attention path runs the native
-split-K paged kernel with AOTriton hard-disabled on transient-oracle layers,
-while the scalar parent runs the WMMA bulk kernels.
+
+**The slowdown is now attributed (same day, kernel trace).** With the
+cache-only `rocprofv3` recipe,
+[`qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel`](../hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip)
+is **91% of prefill device time at 8 chunks** (110.989 of 121.385 s), while
+every other kernel family stays flat at ~1.25–1.34 s per slab. Its per-launch
+cost grows ~quadratically with the slab's end context — 33.7 ms at ctx 1,024
+→ 3,042.1 ms at ctx 8,192 (~90× for 8× context) where the algorithmic
+requirement is linear — and the route is 99.6% device-bound. The kernel runs
+one block per (q\_head, query row) that serially walks the whole visible
+context, and its score buffer is dynamic LDS sized by the whole context
+(`(max_context_len + threads + head_dim) × 4` bytes: ~4.6 KB at ctx 1,024 →
+~33.5 KB at ctx 8,192 per block), so occupancy collapses as the slab's end
+context grows. Escape hatches: AOTriton admission on transient-oracle layers
+(built, default OFF, gate to re-run on the corrected route) or the WMMA
+score-GEMM structure the scalar parent's bulk path already uses. The
+layer-outer packed executor would fix the oracle memory but not this — every
+schedule still attends over the full history per chunk.
+
+[`Attribution evidence`](../benchmarks/results/2026-09-10-w7900-int8-packed-paged-attn-attribution.json)
 
 Evidence caveats recorded with the artifact: the sync-neutralized CPU pass is
 an upper bound on host enqueue (a full command queue still blocks), so it

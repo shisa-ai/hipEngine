@@ -1,0 +1,69 @@
+{
+ "schema": 1,
+ "kind": "w7900_int8_packed_slot_local_paged_attn_attribution",
+ "date": "2026-09-10",
+ "status": "measured_attribution",
+ "performance_claim": false,
+ "capacity_claim": false,
+ "question": "What accounts for the multi-chunk packed slot-local prefill slowdown (67 tok/s at 8 chunks vs the scalar parent's 692), now that the per-slab KV import is removed and proven not to be it?",
+ "answer": "The native paged prefill attention kernel. qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel is 91% of prefill device time at 8 chunks (110.989 of 121.385 s), while every other kernel family (WMMA projections, GDN, norm, MoE, embedding) stays flat at ~1.25-1.34 s per slab. Its per-launch cost grows ~quadratically with the slab's end context (33.7 ms at ctx 1024 -> 3,042.1 ms at ctx 8192, ~90x for 8x context) where the algorithmic requirement is linear (rows x context). The route is 99.6% device-bound (121.385 s device time vs 121.86 s uninstrumented wall), so this is kernel efficiency, not host overhead and not copies.",
+ "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+ "model_sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+ "hardware": {
+  "host": "epyc",
+  "gpu": "AMD Radeon Pro W7900",
+  "arch": "gfx1100",
+  "physical_gpu_index": 0
+ },
+ "protocol": {
+  "harness": "scripts/gguf_packed_kv_import_profile.py --rows 8192 --skip-cpu-submission, wrapped in rocprofv3 --kernel-trace --memory-copy-trace --output-format csv",
+  "profiler_recipe": "cache-only, per benchmarks/HARNESSES.md: HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipcc-version.txt and HIPENGINE_REQUIRE_CACHED_BUILD=1 (bare rocprofv3 attempts stall in hipcc --version compiler discovery under the profiler)",
+  "analysis": "kernel trace segmented on embedding launches (one per slab); per-slab per-family device-time rollup; attention kernel identified by name",
+  "prompt": "deterministic varied prompt, numpy default_rng(20260910)",
+  "kv": "int8_per_token_head, FP32 per-token/head scales, max_sequence_length 16384 (route int8_direct, slot-local full attention, AOTriton hard-disabled on transient-oracle layers)",
+  "selectors": "use_wmma_prefill=True, use_gemv_decode=True (shipping)",
+  "env": {
+   "HIP_VISIBLE_DEVICES": "0",
+   "GPU_MAX_HW_QUEUES": "1",
+   "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG": "1",
+   "HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS": "none"
+  },
+  "cross_check": "2048-row (2-chunk) profile of the same protocol reproduces the slab-1/slab-2 per-launch costs (33.7 / 89.9 ms) and shows the same flat non-attention floor (~1.23 s/slab); decode steps cost ~0.03 s each"
+ },
+ "evidence": {
+  "prefill_device_time_seconds": 121.385,
+  "uninstrumented_wall_seconds": 121.862,
+  "device_bound_fraction": 0.996,
+  "paged_attn_total_seconds": 110.989,
+  "paged_attn_share_of_prefill": 0.91,
+  "paged_attn_per_launch_ms_by_slab_context": {
+   "1024": 33.7,
+   "2048": 89.9,
+   "3072": 236.5,
+   "4096": 442.9,
+   "5120": 842.9,
+   "6144": 1030.4,
+   "7168": 1218.3,
+   "8192": 3042.1
+  },
+  "paged_attn_per_slab_total_ms": [539.6, 1437.9, 3784.5, 7087.2, 13485.6, 16486.6, 19493.1, 48674.1],
+  "other_kernels_per_slab_ms": [1247.1, 1237.5, 1243.8, 1271.7, 1283.9, 1290.8, 1296.8, 1335.8],
+  "per_launch_growth_note": "33.7 -> 3042.1 ms over 8x context = ~90x, i.e. ~context^2 where the requirement is linear; total attention is then ~cubic in chunk count at fixed chunk size, matching the observed 6.8x wall from 4 to 8 chunks",
+  "top_kernels_after_attention": [
+   ["gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel", 0.851],
+   ["gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel", 0.504],
+   ["q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel", 0.485]
+  ]
+ },
+ "mechanism": {
+  "kernel": "hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip: qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel",
+  "shape": "one block per (q_head, query row) (blockIdx.x/y); each block serially walks the whole visible context with threads = 32 (ctx<=1024) or 64",
+  "score_storage": "dynamic LDS sized (max_context_len + threads + head_dim) * 4 bytes by the launcher (paged_attn_decode.py qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans): ~4.6 KB at ctx 1024 -> ~33.5 KB at ctx 8192 per block, so wave occupancy collapses as the slab's end context grows; the serial page-walk then cannot hide latency",
+  "escape_hatches": [
+   "AOTriton admission on transient-oracle layers (built, default OFF; its 2026-09-09 gate ran on the corrupted multi-chunk history and must be re-qualified on the corrected route)",
+   "the WMMA score-GEMM approach the scalar parent's bulk path already uses"
+  ]
+ },
+ "not_a_perf_claim": "No code changed in this measurement; the numbers attribute the existing slowdown.",
+ "created_utc": "2026-09-10T05:30:00Z"
+}
