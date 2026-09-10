@@ -11,6 +11,7 @@ from hipengine.loading.hf_cache import resolve_model_path
 FIXTURES = (
     Path(__file__).parent / "fixtures" / "cpu_reference" / "timesfm_3p0_decode.npz",
     Path(__file__).parent / "fixtures" / "cpu_reference" / "timesfm_3p0_decode_edge.npz",
+    Path(__file__).parent / "fixtures" / "cpu_reference" / "timesfm_3p0_decode_covmask.npz",
 )
 PINNED_MODEL_ID = "google/timesfm-3.0-pytorch"
 
@@ -47,6 +48,10 @@ def _fixture_kwargs(fixture) -> dict:
         kw["target_mask"] = fixture["target_mask"]
     if "global_mask" in fixture.files:
         kw["mask"] = fixture["global_mask"]
+    if "past_only_mask" in fixture.files:
+        kw["past_only_mask"] = fixture["past_only_mask"]
+    if "past_future_mask" in fixture.files:
+        kw["past_future_mask"] = fixture["past_future_mask"]
     return kw
 
 
@@ -69,7 +74,7 @@ def _run_decode(precision: str, fixture_path: Path):
         local.free()
 
 
-@pytest.mark.parametrize("fixture_path", FIXTURES, ids=["base", "edge"])
+@pytest.mark.parametrize("fixture_path", FIXTURES, ids=["base", "edge", "covmask"])
 def test_gpu_decode_fp32_strict_parity(fixture_path) -> None:
     out, fixture = _run_decode("fp32", fixture_path)
     assert bool(np.isfinite(out).all())
@@ -78,7 +83,7 @@ def test_gpu_decode_fp32_strict_parity(fixture_path) -> None:
     )
 
 
-@pytest.mark.parametrize("fixture_path", FIXTURES, ids=["base", "edge"])
+@pytest.mark.parametrize("fixture_path", FIXTURES, ids=["base", "edge", "covmask"])
 def test_gpu_decode_fp16_production_gate(fixture_path) -> None:
     """FP16: max <= 2%, mean <= 0.5% of per-series signal scale vs the oracle."""
 

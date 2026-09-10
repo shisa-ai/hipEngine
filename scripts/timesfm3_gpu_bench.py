@@ -23,6 +23,7 @@ REPO = Path(__file__).resolve().parent.parent
 FIXTURES = (
     REPO / "tests" / "fixtures" / "cpu_reference" / "timesfm_3p0_decode.npz",
     REPO / "tests" / "fixtures" / "cpu_reference" / "timesfm_3p0_decode_edge.npz",
+    REPO / "tests" / "fixtures" / "cpu_reference" / "timesfm_3p0_decode_covmask.npz",
 )
 PINNED_MODEL_ID = "google/timesfm-3.0-pytorch"
 
@@ -90,6 +91,10 @@ def _fixture_kwargs(fixture) -> dict:
         kw["target_mask"] = fixture["target_mask"]
     if "global_mask" in fixture.files:
         kw["mask"] = fixture["global_mask"]
+    if "past_only_mask" in fixture.files:
+        kw["past_only_mask"] = fixture["past_only_mask"]
+    if "past_future_mask" in fixture.files:
+        kw["past_future_mask"] = fixture["past_future_mask"]
     return kw
 
 
@@ -155,7 +160,7 @@ def run_check() -> int:
     if failures:
         print("GUARD FAILED:", "; ".join(failures))
         return 1
-    print("guard ok: fp32 strict parity + fp16 production gate pass on both fixtures")
+    print(f"guard ok: fp32 strict parity + fp16 production gate pass on {len(FIXTURES)} fixtures")
     return 0
 
 
