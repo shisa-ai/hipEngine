@@ -556,6 +556,29 @@ class Qwen4ExpPLEMMapTable:
             self._telemetry["major_faults_proxy"] += int(after_faults.ru_majflt - before_faults.ru_majflt)
         return values
 
+    def warm_page_cache(self, *, chunk_rows: int = 8_000_000) -> float:
+        """Fault the whole PLE region into page cache by touching the mmap.
+
+        Reads the byte view in chunks so every page the decode-step row
+        gathers fault on becomes resident. POSIX_FADV_WILLNEED and
+        MADV_WILLNEED are both ineffective on this btrfs/compressed
+        configuration (measured: queued but never materialized); explicit
+        reads through the mapping are the only working mechanism. Cost is a
+        one-time sequential pass (~15 s for 28.8 GB, 2026-09-10 measurement);
+        the payoff is the full removal of the measured 1.4-27.7 ms/step
+        cold-cache gather cost (R7 wrapper-host screen). Returns elapsed
+        seconds. Pure page-cache population - no data change.
+        """
+        if self._raw is None:
+            raise RuntimeError("PLE mmap table is closed")
+        started = time.perf_counter()
+        total = int(self._raw.shape[0])
+        offset = 0
+        while offset < total:
+            _ = self._raw[offset : offset + chunk_rows].sum(dtype=np.uint64)
+            offset += chunk_rows
+        return time.perf_counter() - started
+
     def configure_random_access(self, mode: str) -> None:
         """Configure default-off per-gather sparse prefetch advice."""
 
