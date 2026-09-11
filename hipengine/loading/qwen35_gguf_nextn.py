@@ -229,7 +229,11 @@ def required_qwen35_gguf_nextn_tensor_names(
     return tuple(prefix + suffix for suffix in (*layer_slots.values(), *_NEXTN_SLOTS.values()))
 
 
-def validate_qwen35_gguf_nextn_tensor_map(info: GGUFModelInfo) -> Qwen35GGUFNextNValidation:
+def validate_qwen35_gguf_nextn_tensor_map(
+    info: GGUFModelInfo,
+    *,
+    pinned_qtypes: Mapping[str, GGMLQuantizationType] | None = None,
+) -> Qwen35GGUFNextNValidation:
     config = qwen35_gguf_config_from_metadata(info)
     if len(config.ignored_block_ids) != 1:
         block_id = config.block_count
@@ -288,11 +292,31 @@ def validate_qwen35_gguf_nextn_tensor_map(info: GGUFModelInfo) -> Qwen35GGUFNext
                 f"manifest: expected {QWEN38_NATIVE_XL_OUTPUT_TYPE_MANIFEST_SHA256}, "
                 f"recomputed {actual_manifest}"
             )
-    for slot, expected in _expected_qtypes(
+    expected_qtypes = _expected_qtypes(
         config,
         file_type_name=info.file_type_name,
         quant_variant=quant_variant,
-    ).items():
+    )
+    if pinned_qtypes is not None:
+        # U6: an artifact-pinned draft dtype manifest.  The caller resolves it
+        # from the *admitted artifact identity* (an admission preset bound to a
+        # role-manifest fingerprint), never from file metadata and never from a
+        # caller-supplied variant, so a foreign file that merely coincides with
+        # the same qtypes cannot claim it.  The pin must cover exactly the
+        # validated slots: a partial pin would silently fall back to the plain
+        # control's expectation for the rest of the draft block.
+        unknown = sorted(set(pinned_qtypes) - set(expected_qtypes))
+        uncovered = sorted(set(expected_qtypes) - set(pinned_qtypes))
+        if unknown or uncovered:
+            dtype_errors.append(
+                "pinned draft dtype manifest must cover exactly the validated "
+                f"slots: unknown={unknown}, missing={uncovered}"
+            )
+        expected_qtypes = {
+            **expected_qtypes,
+            **{slot: qtype for slot, qtype in pinned_qtypes.items() if slot in expected_qtypes},
+        }
+    for slot, expected in expected_qtypes.items():
         tensor = actual.get(slot_names[slot])
         if tensor is not None and int(tensor.ggml_type) != int(expected):
             dtype_errors.append(
@@ -334,8 +358,9 @@ def build_qwen35_gguf_nextn_tensor_map(
     info: GGUFModelInfo,
     *,
     strict: bool = True,
+    pinned_qtypes: Mapping[str, GGMLQuantizationType] | None = None,
 ) -> Qwen35GGUFNextNMap:
-    validation = validate_qwen35_gguf_nextn_tensor_map(info)
+    validation = validate_qwen35_gguf_nextn_tensor_map(info, pinned_qtypes=pinned_qtypes)
     if strict:
         validation.raise_for_errors()
     actual = {tensor.name: tensor for tensor in info.tensors}

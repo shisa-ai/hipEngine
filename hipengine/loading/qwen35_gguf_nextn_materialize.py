@@ -308,11 +308,13 @@ def materialize_qwen35_gguf_nextn_weights(
         GGUF_PRESET_SCOPE_MTP,
         Qwen35GGUFAdmissionError,
         resolve_qwen35_gguf_artifact_preset,
+        resolve_qwen35_gguf_nextn_draft_qtypes,
         qwen35_gguf_artifact_preset_key,
     )
 
     artifact_preset = None
     artifact_preset_key = None
+    draft_qtypes = None
     if isinstance(getattr(reader, "info", None), GGUFModelInfo):
         structural_map = build_qwen35_gguf_nextn_tensor_map(reader.info, strict=False)
         main_map = build_qwen35_gguf_tensor_map(reader.info)
@@ -331,6 +333,10 @@ def materialize_qwen35_gguf_nextn_weights(
                 "require an explicitly certified MTP scope (AR-only and AR+MTP "
                 "admission are distinct)"
             )
+        # U6: the draft dtype manifest is resolved from the admitted preset
+        # identity, never from file metadata or a caller-supplied variant, so
+        # only the pinned artifact can obtain it.
+        draft_qtypes = resolve_qwen35_gguf_nextn_draft_qtypes(artifact_preset)
         # Plain-control qualification: a pinned qualified plain control keeps
         # the historical plain (stamp + tokenizer) hot-vocabulary identity;
         # an unknown manifest gets the unqualified sentinel so the packaged
@@ -341,7 +347,7 @@ def materialize_qwen35_gguf_nextn_weights(
             file_type_stamp=getattr(reader.info, "file_type_name", None),
             preset=artifact_preset,
         )
-    model_map = build_qwen35_gguf_nextn_tensor_map(reader.info)
+    model_map = build_qwen35_gguf_nextn_tensor_map(reader.info, pinned_qtypes=draft_qtypes)
     plan = plan_qwen35_gguf_nextn_materialization(
         model_map,
         decode_repack=decode_repack,

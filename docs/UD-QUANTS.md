@@ -1574,6 +1574,57 @@ Exit: both artifacts have complete declared AR coverage; no one-tensor omission.
 Dependencies: U4/U5 per artifact.
 Files: existing row/bulk-prefill, NextN, resident runner, profile and server tests.
 
+UD MTP admission is a **separate certification unit** from UD AR admission. The
+AR certificates pin scope `("ar",)` per role-manifest fingerprint. MTP scope is
+granted only by `_UD_MTP_PRESET_FINGERPRINTS` in
+`hipengine/loading/qwen35_gguf_admission.py`, keyed by that same fingerprint and
+carrying its qualification evidence, so a new AR certificate can never widen MTP
+admission and an MTP certificate can be revoked without touching AR. That table
+is **empty**: no UD artifact is certified for MTP yet, and the draft
+materializer still refuses UD MTP before any allocation.
+
+Enabling work landed and gated (this is mechanism, not a certificate):
+
+- The UD NextN draft block is quantized Q6_K (`eh_proj`, `attn_q`,
+  `attn_output`, `ffn_gate`, `ffn_up`, `ffn_down`) with Q8_0 `attn_k`/`attn_v`.
+  That signature coincides with the Qwen3.8 native-XL expectation, but the
+  native-XL map is selected by a **caller-claimed** `hipengine.quant.variant`
+  and is therefore unusable here. Each UD preset instead carries a pinned
+  per-slot draft dtype manifest resolved from the admitted preset identity
+  (`resolve_qwen35_gguf_nextn_draft_qtypes`); the validator refuses a manifest
+  that does not cover exactly the validated draft slots, so no slot silently
+  falls back to the plain control's expectation.
+- The speculative accept chain is quant-agnostic (int32 accept buffers) and is
+  registered once per session quant identity that reaches it. The UD
+  `gguf_ud_q4_k_m` / `gguf_ud_q4_k_s` identities were added alongside the
+  pre-existing `gguf_ud_q3_k_m` entry.
+- `scripts/ud_mtp_certification.py` runs the qualification. It refuses to start
+  unless both conditions above hold, grants the MTP scope in-process (candidate
+  mode — it never writes a pin), and runs the full category suite with a true
+  no-MTP AR denominator.
+- `tests/test_ud_mtp_certification.py` gates the mechanism: identity binding,
+  exact slot coverage, the AR-only default, and scope composition once a pin
+  exists.
+
+A candidate run on both pinned artifacts (c1, natural25 B3, all four published
+categories, two repeats, true no-MTP AR denominator) separates them:
+
+- **K_M is `complete_exact`**: all ten prompts exact in both runs, GPU/CPU
+  acceptance agreement, deterministic token IDs.
+- **K_S is `correctness_failed`**: `general_ja_plan` diverges from its own AR
+  reference at output position 12 in both runs with identical accepted counts.
+  The divergence is the *AR* path, not the MTP path: K_S MTP continues with the
+  same tokens K_M and the plain control produce there, while K_S AR continues
+  differently. All other K_S prompts are exact. This is a near-tie argmax flip
+  between the K_S AR path and the K_S MTP-verify path, and it blocks the K_S pin
+  until it is localized.
+
+Both outcomes are evidence for a pin rather than a pin, and neither is
+automatic admission. See the `ud-mtp-certification-u6` result artifact and its
+worklog entry.
+
+Remaining before `_UD_MTP_PRESET_FINGERPRINTS` may be populated:
+
 - [ ] Caller ABI coverage for rows 1/2/3/4/5/7/8, verifier rows such as
   6/9/12/16/28/32, prefill tile/chunk boundaries. Raw dense leaf tests cover
   those row counts at N3 with exact/repeat/outer gates and output canaries on
@@ -1591,14 +1642,17 @@ Files: existing row/bulk-prefill, NextN, resident runner, profile and server tes
   F32 logits, sampling, eager/graph repeat parity. Replace or exclude the direct
   BF16 alpha/beta calls in `_run_linear_attention_decode_rows_native`.
 - [ ] Block64 Q6 `eh_proj`, attention/FFN, aliases/teardown, exact speculative
-  accept/reject commit/rollback; exact UD NextN admission must not use the
-  unrelated native-XL manifest exception.
+  accept/reject commit/rollback. The identity-bound draft dtype pin and the
+  accept-chain registration above cover the quantization and resolution halves;
+  aliases/teardown and exact commit/rollback control remain open. Exact UD NextN
+  admission does not use the unrelated native-XL manifest exception.
 - [ ] c1/c2/c4/c8, ragged/sparse rows, neighbor replacement, permutations,
   delayed arrivals, cancellation/reclaim and width transitions.
 - [ ] Artifact-scoped strict manifest first; production requires section 9.
   Unknown identity/profile/shape uses only certified fallback or rejects.
 - [ ] Complete category/heldout suite and true no-MTP AR denominator before
-  automatic speculative admission.
+  automatic speculative admission. The suite and denominator are wired into
+  `scripts/ud_mtp_certification.py`; heldout categories are still outstanding.
 
 Exit: explicit AR/MTP/serving/profile/backend/context records, no stamp inheritance.
 

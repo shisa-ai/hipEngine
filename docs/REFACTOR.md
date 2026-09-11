@@ -6948,3 +6948,22 @@ runtime call site to registry resolution, and drop the
   initial-state-only journal for a session whose position range can reach the
   serial route, and do not widen the capability value without the
   corresponding native-target qualification.
+
+## 2026-09-11 U6 — UD MTP scope pin is withheld
+
+- `_UD_MTP_PRESET_FINGERPRINTS` (`hipengine/loading/qwen35_gguf_admission.py`)
+  is the separate MTP certification table. It is empty on purpose: the UD
+  draft dtype pin and the UD accept-chain registrations are landed and gated,
+  but the complete U6 MTP scope (declared profile/context/width envelope,
+  c1..c8 serving paths, aliases/teardown, exact commit/rollback control,
+  category heldouts) is not.
+- Population trigger: a passing `scripts/ud_mtp_certification.py` run on the
+  pinned artifact **plus** the remaining `docs/UD-QUANTS.md` U6 checklist items.
+  The pin entry carries that evidence in its note string.
+- Do not populate the pin from a single-prompt or single-width result, and do
+  not widen `_UD_PRESET_FINGERPRINTS` (the AR table) to grant MTP scope: the
+  two tables exist precisely so an AR certificate cannot imply MTP admission.
+- The UD draft dtype manifest (`_UD_NEXTN_DRAFT_QTYPES`) is inert until the pin
+  lands. It is not dead code to delete: it is the identity-bound replacement
+  for the caller-claimed native-XL variant exception, and its coverage
+  contract is enforced and tested.
