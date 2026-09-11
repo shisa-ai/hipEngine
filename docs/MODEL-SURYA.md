@@ -20,6 +20,7 @@ vision tower and text decoder on gfx1151.
 | Registered HIP generator (`surya_ocr2`/`hip_gfx1151`/fp32) | done | `hipengine/generation/surya_gpu.py` |
 | Request/resource contracts (greedy-only, capacity, EOS) | done | `hipengine/generation/surya_contract.py`, `tests/test_surya_generation_contract.py` |
 | GPU `rocprofv3` kernel-trace evidence | done | `benchmarks/results/2026-09-11-gfx1151-surya-kernel-trace.json` |
+| Multi-prompt `generate` isolation | done | `tests/test_surya_gpu.py::test_gpu_generator_multi_prompt_isolation` |
 | Rectangular-page coverage | done (vision + isolation) | `tests/test_surya_gpu.py` rect vision vs `oracle_rect` `vision_merged` |
 | Full-page coverage (1024x1024, real text) | done | `tests/fixtures/surya/page_full.png`, `scripts/surya_oracle_greedy.py`, `tests/test_surya_gpu.py::test_gpu_full_page_layout_matches_oracle` |
 | OCR output quality check (labels + bboxes vs drawn geometry) | done | `tests/test_surya_gpu.py::test_gpu_full_page_layout_matches_oracle` second half |
