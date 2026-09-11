@@ -2786,6 +2786,18 @@ _PAIR_DISPATCH_RESOLVE_CACHE: dict[tuple, str] = {}
 _Q8_1_DISPATCH_RESOLVE_CACHE: dict[tuple, tuple | bool] = {}
 
 
+def _iq_dense_dispatch_cache_state() -> tuple | None:
+    """Return the semantic dense-IQ owner state used by dispatch resolution."""
+
+    if iq_dense_mmq_workspace() is None:
+        return None
+    return (
+        bool(iq_dense_mmq_has_workspace()),
+        iq_dense_mmq_strict_slots(),
+        iq_dense_decode_strict_slots(),
+    )
+
+
 def clear_gguf_linear_dispatch_cache() -> None:
     """Drop all memoized GGUF linear dispatch resolutions.
 
@@ -3310,11 +3322,7 @@ def launch_gguf_linear(
             is None
             else id(q6_integer_workspace)
         ),
-        (
-            None
-            if (iq_mmq_workspace := iq_dense_mmq_workspace()) is None
-            else id(iq_mmq_workspace)
-        ),
+        _iq_dense_dispatch_cache_state(),
         raw_weight_ptr,
         has_raw_weight_sidecar,
     )
