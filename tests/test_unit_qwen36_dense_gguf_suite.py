@@ -12,6 +12,7 @@ from scripts.qwen36_dense_gguf_suite import (
     _TimedDraftProvider,
     _TimedVerifier,
     _borrowed_nextn_fallback_weights,
+    _run_ar,
     _resolved_target_identity,
     aggregate_scopes,
     build_parser,
@@ -186,6 +187,77 @@ def test_dense_suite_defaults_to_native_target_verify_with_serial_rollback() -> 
         ).target_verify_mode
         == "serial-exact"
     )
+
+
+def test_dense_suite_defaults_true_ar_to_recorded_graph_replay() -> None:
+    parser = build_parser()
+    assert parser.parse_args(["--output", "/tmp/out.json"]).ar_decode_mode == "graph"
+    assert (
+        parser.parse_args(
+            ["--ar-decode-mode", "eager", "--output", "/tmp/out.json"]
+        ).ar_decode_mode
+        == "eager"
+    )
+
+
+def test_run_ar_graph_records_every_transition_and_closes_graph() -> None:
+    calls: list[object] = []
+
+    class Graph:
+        def replay(self, steps: int) -> None:
+            calls.append(("replay", steps))
+
+        def read_generated_token_ids(self, count: int) -> list[int]:
+            calls.append(("read", count))
+            return [12, 13, 14]
+
+        def transport_provenance(self) -> dict[str, object]:
+            return {"transport": "hipgraph", "replayed_steps": 3}
+
+        def close(self) -> None:
+            calls.append(("close",))
+
+    class Target:
+        position = 3
+
+        def reset(self) -> None:
+            calls.append(("reset",))
+
+        def prefill(self, prompt_tokens, *, use_bulk, return_logits):
+            calls.append(("prefill", tuple(prompt_tokens), use_bulk, return_logits))
+            return SimpleNamespace(token_id=11)
+
+        def capture_decode_graph(self, **kwargs):
+            calls.append(("capture", kwargs))
+            return Graph()
+
+        def step(self, *args, **kwargs):
+            raise AssertionError("graph AR must not call scalar step")
+
+    result = _run_ar(
+        Target(),  # type: ignore[arg-type]
+        (1, 2, 3),
+        max_new_tokens=4,
+        ar_decode_mode="graph",
+    )
+
+    assert result["token_ids"] == [11, 12, 13, 14]
+    assert result["timed_transitions"] == 3
+    assert result["target_forward_rows"] == 3
+    assert result["ar_decode_mode"] == "graph"
+    assert result["decode_graph_transport"] == {
+        "transport": "hipgraph",
+        "replayed_steps": 3,
+    }
+    capture = next(call for call in calls if call[0] == "capture")
+    assert capture[1] == {
+        "position": 3,
+        "steps_per_replay": 1,
+        "max_replay_steps": 3,
+        "record_steps": 3,
+        "input_token_id": 11,
+    }
+    assert calls[-1] == ("close",)
 
 
 def test_native_speed_claim_hardware_accepts_independently_qualified_gfx1151() -> None:
