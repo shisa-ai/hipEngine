@@ -2511,6 +2511,135 @@ void q4_k_t16_dense_single_local32_gemv_kernel(
   }
 }
 
+// Decode-only dense Q5T16 single-output local32 owner (decode lever 3).
+// The retained Q4 local32 geometry, one superblock of eight contiguous K per
+// lane, applied to the Q5 tile: the unpack (per-column d/dmin and the lane's
+// superblock scale/min bytes) is hoisted out of the K loop - the direct GEMV
+// re-reads and re-decodes all four per (k, column) MAC, which is the 2.3x
+// cost the study attributes - and the packed nibbles load as one aligned u32
+// per lane-row with the fifth (high) bit as one u8 per lane-row. Same FMA
+// shape as the Q4 owner: value = scale * q - min, lane-grouped contiguous k,
+// wave32 shuffle tree.
+template <typename scalar_t>
+__global__ __launch_bounds__(32, 8)
+void q5_k_t16_dense_single_local32_gemv_kernel(
+    const scalar_t* __restrict__ x,
+    const uint8_t* __restrict__ tiles,
+    scalar_t* __restrict__ out,
+    int64_t in_features,
+    int64_t out_features) {
+  constexpr int kTileCols = 8;
+  const int64_t out_group = blockIdx.x;
+  const int tid = threadIdx.x;
+  const int64_t blocks_per_row = in_features / QK_K;
+  const int64_t out_tile = out_group >> 1;
+  const int col_base = static_cast<int>(out_group & 1) * kTileCols;
+
+  float acc[kTileCols];
+#pragma unroll
+  for (int local_col = 0; local_col < kTileCols; ++local_col) {
+    acc[local_col] = 0.0f;
+  }
+
+  const int k_lane_base = tid * 8;
+  const int sb = k_lane_base >> 5;
+  const int lane32 = k_lane_base & 31;
+  for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
+    const uint8_t* __restrict__ tile =
+        tiles + (out_tile * blocks_per_row + blk) *
+                    Q5_T16_BLOCK_BYTES;
+
+    float scale[kTileCols];
+    float min_value[kTileCols];
+#pragma unroll
+    for (int local_pair = 0;
+         local_pair < kTileCols / 2;
+         ++local_pair) {
+      const int local_col0 = local_pair * 2;
+      const int local_col1 = local_col0 + 1;
+      const int col0 = col_base + local_col0;
+      const uint32_t d = *reinterpret_cast<const uint32_t*>(
+          tile + Q5_T16_D_OFFSET + col0 * 2);
+      const uint32_t dmin = *reinterpret_cast<const uint32_t*>(
+          tile + Q5_T16_DMIN_OFFSET + col0 * 2);
+      const uint16_t coeff_scale =
+          *reinterpret_cast<const uint16_t*>(
+              tile + Q5_T16_SCALE_OFFSET + sb * T16_COLS + col0);
+      const uint16_t coeff_min =
+          *reinterpret_cast<const uint16_t*>(
+              tile + Q5_T16_MIN_OFFSET + sb * T16_COLS + col0);
+      scale[local_col0] =
+          fp16_bits_to_float(static_cast<uint16_t>(d)) *
+          static_cast<float>(coeff_scale & 0xFFu);
+      scale[local_col1] =
+          fp16_bits_to_float(static_cast<uint16_t>(d >> 16)) *
+          static_cast<float>(coeff_scale >> 8);
+      min_value[local_col0] =
+          fp16_bits_to_float(static_cast<uint16_t>(dmin)) *
+          static_cast<float>(coeff_min & 0xFFu);
+      min_value[local_col1] =
+          fp16_bits_to_float(static_cast<uint16_t>(dmin >> 16)) *
+          static_cast<float>(coeff_min >> 8);
+    }
+
+    const int ql_word = Q5_T16_QL_OFFSET +
+                        (sb * Q4_SUBBLOCK + lane32) * (T16_COLS / 2) +
+                        (col_base >> 1);
+    const int qh_byte = Q5_T16_QH_OFFSET +
+                        (sb * Q4_SUBBLOCK + lane32) * (T16_COLS / 8) +
+                        (col_base >> 3);
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      const int k_in_block = k_lane_base + j;
+      const float xv =
+          scalar_to_float<scalar_t>(x[blk * QK_K + k_in_block]);
+      // Same aligned-u32 nibble window as the Q4 owner: byte i of the
+      // word carries columns col_base+2i (low nibble) and col_base+2i+1
+      // (high nibble) for this lane's k.
+      const uint32_t packed_word = *reinterpret_cast<const uint32_t*>(
+          tile + ql_word + j * (T16_COLS / 2));
+      // One byte of high bits for the eight columns at this lane's k.
+      const uint8_t high_bits = tile[qh_byte + j * (T16_COLS / 8)];
+#pragma unroll
+      for (int local_pair = 0;
+           local_pair < kTileCols / 2;
+           ++local_pair) {
+        const int local_col0 = local_pair * 2;
+        const int local_col1 = local_col0 + 1;
+        const uint8_t packed = static_cast<uint8_t>(
+            (packed_word >> (8 * local_pair)) & 0xFFu);
+        const uint32_t q0 = (packed & 0x0Fu) |
+            (((high_bits >> (2 * local_pair)) & 1u) << 4);
+        const uint32_t q1 = (packed >> 4) |
+            (((high_bits >> (2 * local_pair + 1)) & 1u) << 4);
+        acc[local_col0] = fmaf(
+            xv,
+            static_cast<float>(q0) * scale[local_col0] -
+                min_value[local_col0],
+            acc[local_col0]);
+        acc[local_col1] = fmaf(
+            xv,
+            static_cast<float>(q1) * scale[local_col1] -
+                min_value[local_col1],
+            acc[local_col1]);
+      }
+    }
+  }
+
+#pragma unroll
+  for (int local_col = 0; local_col < kTileCols; ++local_col) {
+    GGUF_T16_WAVE_REDUCE(acc[local_col]);
+  }
+  if (tid == 0) {
+    const int64_t out_base = out_group * kTileCols;
+#pragma unroll
+    for (int local_col = 0; local_col < kTileCols; ++local_col) {
+      out[out_base + local_col] =
+          float_to_scalar<scalar_t>(0.0f + acc[local_col]);
+    }
+  }
+}
+
 // Exact serial-c1 sibling of the local32 Q4 owner. The dot and wave reduction
 // are intentionally duplicated so the unfused producer's code generation stays
 // frozen; only the two rounded-BF16 residual operations are folded into its
@@ -7763,6 +7892,45 @@ hipengine_gguf_q4_k_t16_dense_single_local32_gemv_bf16_bf16_out(
     int64_t rows, int64_t in_features, int64_t out_features,
     hipStream_t stream) {
   return launch_q4_dense_single_local32<uint16_t>(
+      x, tiles, out, rows, in_features, out_features, stream);
+}
+
+template <typename scalar_t>
+int launch_q5_dense_single_local32(
+    const void* x,
+    const void* tiles,
+    void* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (!x || !tiles || !out || rows != 1 ||
+      in_features <= 0 || (in_features % QK_K) != 0 ||
+      out_features <= 0 || (out_features % T16_COLS) != 0) {
+    return hipErrorInvalidValue;
+  }
+  const dim3 block(32);
+  const dim3 grid(static_cast<unsigned int>(out_features / 8));
+  hipLaunchKernelGGL(
+      (q5_k_t16_dense_single_local32_gemv_kernel<scalar_t>),
+      grid,
+      block,
+      0,
+      stream,
+      reinterpret_cast<const scalar_t*>(x),
+      reinterpret_cast<const uint8_t*>(tiles),
+      reinterpret_cast<scalar_t*>(out),
+      in_features,
+      out_features);
+  return hipGetLastError();
+}
+
+extern "C" int
+hipengine_gguf_q5_k_t16_dense_single_local32_gemv_bf16_bf16_out(
+    const void* x, const void* tiles, void* out,
+    int64_t rows, int64_t in_features, int64_t out_features,
+    hipStream_t stream) {
+  return launch_q5_dense_single_local32<uint16_t>(
       x, tiles, out, rows, in_features, out_features, stream);
 }
 

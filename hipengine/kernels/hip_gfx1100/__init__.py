@@ -509,7 +509,29 @@ GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT = {
 }
 # Exact c1 sibling selection is architecture/shape qualified. W7900 retains
 # the established direct owners until an independent device gate admits one.
-GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE = {}
+GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE = {
+    # Q5 dense decode singles route to the local32 owner (decode lever 3,
+    # 2026-09-11). The direct GEMV re-decodes the per-column d/dmin and the
+    # superblock scale/min bytes inside the K loop - four redundant byte
+    # loads plus two fp16 decodes per MAC - which the admission microbench
+    # attributes as the 2.3x cost: the local32 owner hoists the unpack per
+    # 256-block (one superblock of eight contiguous K per lane) and reads
+    # the packed nibbles as one aligned u32 per lane-row, with the fifth
+    # (high) bit as one u8. Measured 2.3-2.6x per launch on every production
+    # Q5 shape (91.8->39.6 us at 5120x6144, 191.5->77.5 at 17408x5120).
+    # Rows>1 keeps the existing direct/rowtile/WMMA family: this table only
+    # speaks at rows == 1, and the Q5 gate/up dual condition (which keys on
+    # the direct variant) is untouched, so pairs keep their current owner.
+    "gguf_q5_k_t16_v1": {
+        (5_120, 6_144): "dense_single_local32_bf16_bf16_out",
+        (5_120, 17_408): "dense_single_local32_bf16_bf16_out",
+        (17_408, 5_120): "dense_single_local32_bf16_bf16_out",
+        (6_144, 5_120): "dense_single_local32_bf16_bf16_out",
+        (1_024, 5_120): "dense_single_local32_bf16_bf16_out",
+        (5_120, 10_240): "dense_single_local32_bf16_bf16_out",
+        (5_120, 12_288): "dense_single_local32_bf16_bf16_out",
+    },
+}
 # Full-suite row policy for exact FFN-down plus residual composites. Rotating
 # row-4 planar-Q6 loses despite positive isolated leaves, while compact Q4 wins;
 # rows 2-3 retain both independently qualified owners.
