@@ -1621,9 +1621,24 @@ artifacts are
 
 `scripts/ud_mtp_paired.py` now requires an explicit `--device-index`, verifies
 `--expect-device`, and pins recorded graph replay as the true-AR performance
-denominator. A fresh GPU1 run is required before any UD/plain MTP rate is
-quoted. Non-timing evidence survives: token-ID determinism, GPU/CPU acceptance
-agreement, the K_S near tie, and the state-disjointness pointer comparison.
+denominator. The replacement run on physical GPU1 / RX 7900 XTX is valid
+(c1, natural25, B3, ten prompts, two repeats):
+
+| Tier | UD AR | Plain AR | UD / plain AR | UD MTP B3 | Plain MTP B3 | UD / plain MTP | UD MTP / AR |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `Q4_K_M` | 31.993 | 37.186 | 0.860x | 35.541 | 63.465 | 0.560x | 1.1109x |
+| `Q4_K_S` | 31.311 | 39.565 | 0.791x | 33.061 | 64.094 | 0.516x | 1.0559x |
+
+Every arm passes evidence completeness, timing validity, deterministic-repeat,
+GPU/CPU acceptance, true-AR-denominator, and faster-than-AR gates. K_M and both
+plain controls are generated-ID exact. UD K_S repeats the same two
+`general_ja_plan` near-tie divergences, so its suite provenance remains
+`speed_claim_eligible=false` pending the section 6.1 teacher-forced gate even
+though free-running ID equality is not a production-profile binding gate.
+The artifact is
+`benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-graph-xtx.json`.
+It records the cross-family parity mechanically and regenerates byte-identically
+from the four raw payloads.
 
 Item 5's contract is the **production** one. `docs/EXECUTION-PROFILES.md`
 section 6 states that free-running generated-ID equality "is recorded but is not
@@ -1728,8 +1743,9 @@ Remaining before `_UD_MTP_PRESET_FINGERPRINTS` may be populated:
 - [ ] Artifact-scoped strict manifest first; production requires section 9.
   Unknown identity/profile/shape uses only certified fallback or rejects.
 - [ ] Complete category/heldout suite and true no-MTP AR denominator before
-  automatic speculative admission. The suite and denominator are wired into
-  `scripts/ud_mtp_certification.py`; heldout categories are still outstanding.
+  automatic speculative admission. The ten-prompt published category suite and
+  graph-replay denominator are complete at c1/natural25; category-heldouts are
+  still outstanding.
 - [ ] Section 6.1 calibrated teacher-forced gate between the single-row AR route
   and the multi-row verify route: mean/p95/p99/max row KL and per-category top-1
   agreement. This is what remains of U6 item 5 under the production profile;
@@ -1740,8 +1756,11 @@ inheritance. The `_UD_MTP_CERTIFICATIONS` records are the AR/MTP/profile/backend
 carriers and are written; the context and width fields stay undeclared until
 their points are measured, which keeps the derived pin empty. The four
 `pre_measurement` items are qualified, so
-`scripts/ud_mtp_paired.py --runs 2 --output <artifact>` may run; the two
-`paired_run` items stay open until that run and the section 6.1 gate are done.
+`scripts/ud_mtp_paired.py` has completed the c1/natural25 paired run. The two
+`paired_run` items remain incomplete: exact AR/MTP control still needs the
+section 6.1 teacher-forced gate, and the supported scope still needs the
+c2/c4/c8, context, heldout, and lifecycle envelope. The derived admission pin
+therefore remains empty.
 
 ### U7. Measured Optimization
 

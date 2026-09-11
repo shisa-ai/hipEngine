@@ -601,6 +601,42 @@ def _verdict(
     }
 
 
+def _paired_comparisons(pairs: list[dict[str, object]]) -> dict[str, object]:
+    """Derive the UD/plain parity ratios from the validated pair evidence."""
+
+    by_label = {str(pair["label"]): pair for pair in pairs}
+    comparisons: dict[str, object] = {}
+    for tier, ud_label, plain_label in (
+        ("q4_k_m", "ud-q4-k-m", "plain-q4-k-m"),
+        ("q4_k_s", "ud-q4-k-s", "plain-q4-k-s"),
+    ):
+        ud_evidence = by_label[ud_label]["evidence"]
+        plain_evidence = by_label[plain_label]["evidence"]
+        if not isinstance(ud_evidence, dict) or not isinstance(plain_evidence, dict):
+            raise TypeError("paired evidence must be a mapping")
+        ud_ar = float(ud_evidence["true_ar_tok_s"])
+        plain_ar = float(plain_evidence["true_ar_tok_s"])
+        ud_mtp = float(ud_evidence["best_mtp_tok_s"])
+        plain_mtp = float(plain_evidence["best_mtp_tok_s"])
+        if plain_ar <= 0.0 or plain_mtp <= 0.0:
+            raise ValueError("plain rates must be positive before deriving parity")
+        ar_ratio = ud_ar / plain_ar
+        mtp_ratio = ud_mtp / plain_mtp
+        comparisons[tier] = {
+            "ud_label": ud_label,
+            "plain_label": plain_label,
+            "ud_over_plain": {
+                "true_ar": ar_ratio,
+                "mtp_b3": mtp_ratio,
+            },
+            "gap_to_plain_pct": {
+                "true_ar": 100.0 * (1.0 - ar_ratio),
+                "mtp_b3": 100.0 * (1.0 - mtp_ratio),
+            },
+        }
+    return comparisons
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--output", type=Path)
@@ -704,6 +740,12 @@ def main() -> int:
         "device": {
             "device_index": args.device_index,
             "expect_device": args.expect_device,
+            "selected_environment": {
+                "HIP_VISIBLE_DEVICES": (
+                    None if args.device_index is None else str(int(args.device_index))
+                ),
+                "ROCR_VISIBLE_DEVICES": None,
+            },
             "note": (
                 "The device is declared, never inferred. A rate measured while another "
                 "worker shares the card is not evidence."
@@ -714,12 +756,13 @@ def main() -> int:
     # The selection is scoped, not global: it is restored when the block exits so
     # a later in-process run cannot inherit it.
     device_context = (
-        contextlib.nullcontext({})
+        contextlib.nullcontext()
         if args.from_raw
         else device_selected(int(args.device_index))
     )
-    with mtp_scope_granted({quant for _, quant, family in PAIRS.values() if family == "ud"}), device_context as device_prior:
-        report["device"]["prior_environment"] = device_prior
+    with mtp_scope_granted(
+        {quant for _, quant, family in PAIRS.values() if family == "ud"}
+    ), device_context:
         for command in commands:
             label = str(command["label"])
             output = Path(str(command["argv"][command["argv"].index("--output") + 1]))
@@ -787,6 +830,11 @@ def main() -> int:
         "an invalidated run may not satisfy a performance gate. Token-ID "
         "exactness and determinism are unaffected and stay recorded."
     )
+    if not args.invalidate and all(
+        bool(pair["evidence"]["binding_passed"])
+        for pair in report["pairs"]
+    ):
+        report["comparisons"] = _paired_comparisons(report["pairs"])
 
     args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     print(f"[paired] wrote {args.output}")
