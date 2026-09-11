@@ -1,8 +1,9 @@
 """P6e cancel/refill service proof: the gate logic.
 
-The five gates only pass on a healthy service run, so their failure paths are
-driven here with synthetic measurements. A gate that cannot fail is not evidence,
-and the failure paths are exactly what a broken cancel would produce.
+The gates only pass on a healthy service run, so their failure paths are driven
+here with synthetic measurements. A gate that cannot fail is not evidence, and
+the failure paths are exactly what a broken cancel or a stalled yield would
+produce.
 """
 
 from __future__ import annotations
@@ -28,6 +29,11 @@ _HEALTHY = {
     "reference_gaps_ms": _REFERENCE_GAPS,
     "drained": True,
     "prefill_owner_released": True,
+    # The blocking and slow-consumer arms submit the same short prompt as the
+    # reference arm, so the healthy expectation is the same text.
+    "blocking_survivor_text": _REFERENCE_TEXT,
+    "slow_consumer_survivor_text": _REFERENCE_TEXT,
+    "slow_consumer_completed": True,
 }
 
 
@@ -37,17 +43,59 @@ def _gates(**overrides: object) -> dict:
     return evaluate_gates(**payload)  # type: ignore[arg-type]
 
 
-def test_all_five_gates_pass_on_a_healthy_run() -> None:
+def test_all_gates_pass_on_a_healthy_run() -> None:
     gates = _gates()
 
     assert set(gates) == {
         "cancellation_reached_backend",
         "survivors_exact",
+        "blocking_survivor_exact",
+        "slow_consumer_survivor_exact",
         "bounded_acknowledgement",
         "bounded_decode_gap",
         "cleanup",
     }
     assert all(gate["passed"] for gate in gates.values())
+
+
+def test_blocking_survivor_gate_fails_when_the_blocking_arm_perturbs_it() -> None:
+    """A blocking long request must not perturb the short survivor either."""
+
+    gates = _gates(blocking_survivor_text=_REFERENCE_TEXT.replace("rests", "sleeps"))
+
+    assert gates["blocking_survivor_exact"]["passed"] is False
+    assert gates["blocking_survivor_exact"]["sha256"] != gates["survivors_exact"][
+        "reference_sha256"
+    ]
+
+
+def test_blocking_survivor_gate_fails_when_the_arm_never_ran() -> None:
+    # An empty survivor means the blocking arm did not produce a completion, which
+    # must fail rather than pass vacuously.
+    gates = _gates(blocking_survivor_text="")
+
+    assert gates["blocking_survivor_exact"]["passed"] is False
+
+
+def test_slow_consumer_gate_fails_when_the_slow_reader_stalls_the_engine() -> None:
+    gates = _gates(slow_consumer_survivor_text=_REFERENCE_TEXT[:12])
+
+    assert gates["slow_consumer_survivor_exact"]["passed"] is False
+
+
+def test_slow_consumer_gate_reports_whether_the_reader_finished() -> None:
+    # The survivor can be exact while the slow reader itself never completed; the
+    # gate must surface that separately rather than hiding it behind a pass.
+    gates = _gates(slow_consumer_completed=False)
+
+    assert gates["slow_consumer_survivor_exact"]["passed"] is True
+    assert gates["slow_consumer_survivor_exact"]["slow_consumer_completed"] is False
+
+
+def test_slow_consumer_gate_fails_when_the_slow_reader_stalls_and_truncates() -> None:
+    gates = _gates(slow_consumer_survivor_text="", slow_consumer_completed=False)
+
+    assert gates["slow_consumer_survivor_exact"]["passed"] is False
 
 
 def test_cancellation_gate_fails_when_the_counter_did_not_move() -> None:

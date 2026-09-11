@@ -99,6 +99,7 @@ class _StreamOutcome:
         self.status_code = 0
         self.error: str | None = None
         self.raw_lines: list[str] = []
+        self.wall_ms: float | None = None
 
     @property
     def text(self) -> str:
@@ -109,17 +110,46 @@ class _StreamOutcome:
         return hashlib.sha256(self.text.encode("utf-8")).hexdigest()
 
 
-def _completion_payload(*, model_name: str, prompt: str, max_tokens: int) -> dict[str, Any]:
-    return {
+def _completion_payload(
+    *, model_name: str, prompt: str, max_tokens: int, stream: bool = True
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
         "model": model_name,
         "prompt": prompt,
         "max_tokens": int(max_tokens),
         "temperature": 0.0,
         "top_p": 1.0,
         "ignore_eos": True,
-        "stream": True,
-        "stream_options": {"include_hipengine": True},
+        "stream": bool(stream),
     }
+    if stream:
+        payload["stream_options"] = {"include_hipengine": True}
+    return payload
+
+
+def _consume_sse_line(outcome: _StreamOutcome, raw_line: str, observed: float) -> None:
+    """Fold one SSE line into an outcome. Shared by every streaming arm."""
+
+    if len(outcome.raw_lines) < 8 and raw_line.strip():
+        outcome.raw_lines.append(str(raw_line)[:200])
+    payload = _parse_sse_data_line(raw_line)
+    if payload is None or payload == "[DONE]" or not isinstance(payload, dict):
+        return
+    choices = payload.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return
+    choice = choices[0]
+    if not isinstance(choice, dict):
+        return
+    if choice.get("finish_reason") is None:
+        # The stream carries text deltas, not token IDs; the text is
+        # the survivor truth a cancelled prefill must not perturb.
+        if outcome.first_token_at is None:
+            outcome.first_token_at = observed
+        outcome.delta_times.append(observed)
+        outcome.text_parts.append(str(choice.get("text", "")))
+    else:
+        outcome.finish_reason = str(choice.get("finish_reason"))
 
 
 def _stream_completion(
@@ -129,8 +159,13 @@ def _stream_completion(
     model_name: str,
     prompt: str,
     max_tokens: int,
+    per_line_delay_s: float = 0.0,
 ) -> _StreamOutcome:
-    """Stream one completion to completion and record tokens and timing."""
+    """Stream one completion to completion and record tokens and timing.
+
+    ``per_line_delay_s`` throttles the reader to model a slow consumer, which
+    must not stall the engine for other requests.
+    """
 
     outcome = _StreamOutcome()
     try:
@@ -146,27 +181,54 @@ def _stream_completion(
                 outcome.error = response.read().decode("utf-8", errors="replace")
                 return outcome
             for raw_line in response.iter_lines():
-                observed = time.perf_counter()
-                if len(outcome.raw_lines) < 8 and raw_line.strip():
-                    outcome.raw_lines.append(str(raw_line)[:200])
-                payload = _parse_sse_data_line(raw_line)
-                if payload is None or payload == "[DONE]" or not isinstance(payload, dict):
-                    continue
-                choices = payload.get("choices")
-                if not isinstance(choices, list) or not choices:
-                    continue
-                choice = choices[0]
-                if not isinstance(choice, dict):
-                    continue
-                if choice.get("finish_reason") is None:
-                    # The stream carries text deltas, not token IDs; the text is
-                    # the survivor truth a cancelled prefill must not perturb.
-                    if outcome.first_token_at is None:
-                        outcome.first_token_at = observed
-                    outcome.delta_times.append(observed)
-                    outcome.text_parts.append(str(choice.get("text", "")))
-                else:
-                    outcome.finish_reason = str(choice.get("finish_reason"))
+                if per_line_delay_s:
+                    time.sleep(per_line_delay_s)
+                _consume_sse_line(outcome, raw_line, time.perf_counter())
+    except Exception as error:  # noqa: BLE001 - recorded in the artifact
+        outcome.error = f"{type(error).__name__}: {error}"
+    return outcome
+
+
+def _blocking_completion(
+    client: httpx.Client,
+    *,
+    base_url: str,
+    model_name: str,
+    prompt: str,
+    max_tokens: int,
+) -> _StreamOutcome:
+    """POST a non-streaming completion, covering the blocking request mode.
+
+    The resumable yield lives in the scheduler rather than the transport, so a
+    blocking request must still hand control back between layer segments. This
+    arm is what proves it: a short request issued while the long blocking prefill
+    is in flight must be admitted and answered on time.
+    """
+
+    outcome = _StreamOutcome()
+    started = time.perf_counter()
+    try:
+        response = client.post(
+            f"{base_url}/v1/completions",
+            json=_completion_payload(
+                model_name=model_name,
+                prompt=prompt,
+                max_tokens=max_tokens,
+                stream=False,
+            ),
+        )
+        outcome.status_code = int(response.status_code)
+        outcome.wall_ms = (time.perf_counter() - started) * 1e3
+        if outcome.status_code != 200:
+            outcome.error = response.text
+            return outcome
+        body = response.json()
+        choices = body.get("choices") if isinstance(body, dict) else None
+        if isinstance(choices, list) and choices and isinstance(choices[0], dict):
+            choice = choices[0]
+            outcome.text_parts.append(str(choice.get("text", "")))
+            outcome.finish_reason = choice.get("finish_reason")
+        outcome.first_token_at = started
     except Exception as error:  # noqa: BLE001 - recorded in the artifact
         outcome.error = f"{type(error).__name__}: {error}"
     return outcome
@@ -349,8 +411,11 @@ def evaluate_gates(
     reference_gaps_ms: Sequence[float],
     drained: bool,
     prefill_owner_released: bool,
+    blocking_survivor_text: str = "",
+    slow_consumer_survivor_text: str = "",
+    slow_consumer_completed: bool = False,
 ) -> dict[str, Any]:
-    """Evaluate the five service gates. Split out so the failure paths are testable."""
+    """Evaluate the service gates. Split out so the failure paths are testable."""
 
     gates: dict[str, Any] = {}
     gates["cancellation_reached_backend"] = {
@@ -371,6 +436,33 @@ def evaluate_gates(
         "detail": (
             "the refill request must reproduce the reference completion text "
             "exactly, so a cancelled prefill left no trace in the surviving path"
+        ),
+    }
+    # The yield lives in the scheduler rather than the transport, so the same
+    # guarantee must hold when the long request is blocking (non-streaming) and
+    # when the concurrent reader consumes its stream slowly. Both arms submit the
+    # same short prompt as the reference arm, so the same text is the expectation.
+    gates["blocking_survivor_exact"] = {
+        "passed": bool(blocking_survivor_text)
+        and blocking_survivor_text == reference_text,
+        "chars": len(blocking_survivor_text),
+        "sha256": hashlib.sha256(blocking_survivor_text.encode()).hexdigest(),
+        "detail": (
+            "a short request issued while a long blocking (non-streaming) prefill "
+            "is in flight must reproduce the reference text exactly, which is what "
+            "shows the yield also serves the blocking request mode"
+        ),
+    }
+    gates["slow_consumer_survivor_exact"] = {
+        "passed": bool(slow_consumer_survivor_text)
+        and slow_consumer_survivor_text == reference_text,
+        "chars": len(slow_consumer_survivor_text),
+        "sha256": hashlib.sha256(slow_consumer_survivor_text.encode()).hexdigest(),
+        "slow_consumer_completed": slow_consumer_completed,
+        "detail": (
+            "a reader that consumes its stream slowly must not stall the engine: "
+            "a short request issued while the slow reader is mid-stream must still "
+            "reproduce the reference text exactly"
         ),
     }
     gates["bounded_acknowledgement"] = {
@@ -591,6 +683,64 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 and oracle_bytes_baseline is not None
                 and oracle_bytes_final <= oracle_bytes_baseline
             )
+
+            # --- 5. blocking request mode ----------------------------------------
+            # The yield lives in the scheduler, not the transport, so a blocking
+            # (non-streaming) long prompt must also hand control back between
+            # layer segments. A short request issued while that prefill is in
+            # flight is what proves it.
+            lead_seconds = float(args.concurrent_lead_seconds)
+            join_seconds = float(args.concurrent_join_timeout_seconds)
+            blocking: dict[str, Any] = {}
+
+            def _run_blocking() -> None:
+                blocking["outcome"] = _blocking_completion(
+                    client,
+                    base_url=base_url,
+                    model_name=model_name,
+                    prompt=str(long_row["text"]),
+                    max_tokens=max_tokens,
+                )
+
+            blocking_thread = threading.Thread(target=_run_blocking, daemon=True)
+            blocking_thread.start()
+            time.sleep(lead_seconds)
+            blocking_survivor = _stream_completion(
+                client,
+                base_url=base_url,
+                model_name=model_name,
+                prompt=short_text,
+                max_tokens=max_tokens,
+            )
+            blocking_thread.join(timeout=join_seconds)
+            blocking_outcome = blocking.get("outcome")
+
+            # --- 6. slow consumer ------------------------------------------------
+            # A reader that consumes its stream slowly must not stall the engine.
+            slow: dict[str, Any] = {}
+
+            def _run_slow() -> None:
+                slow["outcome"] = _stream_completion(
+                    client,
+                    base_url=base_url,
+                    model_name=model_name,
+                    prompt=str(long_row["text"]),
+                    max_tokens=max_tokens,
+                    per_line_delay_s=float(args.slow_consumer_line_delay_ms) / 1e3,
+                )
+
+            slow_thread = threading.Thread(target=_run_slow, daemon=True)
+            slow_thread.start()
+            time.sleep(lead_seconds)
+            slow_survivor = _stream_completion(
+                client,
+                base_url=base_url,
+                model_name=model_name,
+                prompt=short_text,
+                max_tokens=max_tokens,
+            )
+            slow_thread.join(timeout=join_seconds)
+            slow_outcome = slow.get("outcome")
     finally:
         if server is not None:
             server.should_exit = True
@@ -605,6 +755,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         reference_gaps_ms=reference_gaps,
         drained=drained,
         prefill_owner_released=prefill_owner_released,
+        blocking_survivor_text=blocking_survivor.text,
+        slow_consumer_survivor_text=slow_survivor.text,
+        slow_consumer_completed=(
+            slow_outcome is not None
+            and slow_outcome.error is None
+            and bool(slow_outcome.text)
+            and slow_outcome.finish_reason is not None
+        ),
     )
 
     return {
@@ -655,6 +813,49 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             },
             "cancellation_counter_before": cancelled_before,
             "cancellation_counter_after": cancelled_after,
+            "blocking": {
+                "long_request": {
+                    "chars": len(blocking_outcome.text)
+                    if blocking_outcome is not None
+                    else 0,
+                    "finish_reason": (
+                        blocking_outcome.finish_reason
+                        if blocking_outcome is not None
+                        else None
+                    ),
+                    "wall_ms": (
+                        round(blocking_outcome.wall_ms, 3)
+                        if blocking_outcome is not None
+                        and blocking_outcome.wall_ms is not None
+                        else None
+                    ),
+                    "error": (
+                        blocking_outcome.error if blocking_outcome is not None else None
+                    ),
+                },
+                "survivor": {
+                    "chars": len(blocking_survivor.text),
+                    "text_sha256": blocking_survivor.text_sha256,
+                    "finish_reason": blocking_survivor.finish_reason,
+                    "error": blocking_survivor.error,
+                },
+            },
+            "slow_consumer": {
+                "reader_line_delay_ms": float(args.slow_consumer_line_delay_ms),
+                "long_request": {
+                    "chars": len(slow_outcome.text) if slow_outcome is not None else 0,
+                    "finish_reason": (
+                        slow_outcome.finish_reason if slow_outcome is not None else None
+                    ),
+                    "error": slow_outcome.error if slow_outcome is not None else None,
+                },
+                "survivor": {
+                    "chars": len(slow_survivor.text),
+                    "text_sha256": slow_survivor.text_sha256,
+                    "finish_reason": slow_survivor.finish_reason,
+                    "error": slow_survivor.error,
+                },
+            },
             "prefill_work_total_delta": work_delta,
             "request_failed_total_delta": failure_delta,
             "metrics_baseline": {
@@ -714,6 +915,22 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--admit-timeout-seconds", type=float, default=60.0)
     parser.add_argument("--cancel-observe-timeout-seconds", type=float, default=30.0)
     parser.add_argument("--drain-timeout-seconds", type=float, default=60.0)
+    parser.add_argument(
+        "--concurrent-lead-seconds",
+        type=float,
+        default=0.5,
+        help=(
+            "how long the long blocking/slow request runs before the short "
+            "survivor is submitted, so the survivor lands inside the prefill"
+        ),
+    )
+    parser.add_argument("--concurrent-join-timeout-seconds", type=float, default=180.0)
+    parser.add_argument(
+        "--slow-consumer-line-delay-ms",
+        type=float,
+        default=40.0,
+        help="per-SSE-line reader delay, which is what models a slow consumer",
+    )
     parser.add_argument("--batch-window-ms", type=float, default=20.0)
     parser.add_argument(
         "--compiler-version-file", type=Path, default=DEFAULT_COMPILER_VERSION_FILE
