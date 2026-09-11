@@ -1587,11 +1587,35 @@ envelope (backend, execution profile, `context_max`, serving widths) and six
 gated items — NextN residency and `eh_proj`/head ownership, the blk.64 draft
 operation set, draft/verifier state ownership, UD journal requirements, exact
 AR/MTP control, and the supported scope. Each item carries its `contract`, the
-in-tree `evidence`, a `qualified` flag, and — when open — a concrete `blocker`.
-`_UD_MTP_PRESET_FINGERPRINTS` is **derived** from that table and admits only a
-complete unit, so MTP scope cannot be hand-granted and an incomplete unit cannot
-leak admission. Both records currently exist and are incomplete, so the pin is
-empty: no UD artifact is certified for MTP yet.
+in-tree `evidence`, a `qualified` flag, a `phase`, and — when open — a concrete
+`blocker`. `_UD_MTP_PRESET_FINGERPRINTS` is **derived** from that table and
+admits only a complete unit, so MTP scope cannot be hand-granted and an
+incomplete unit cannot leak admission. Both records currently exist and are
+incomplete, so the pin is empty: no UD artifact is certified for MTP yet.
+
+The `phase` field separates the two kinds of item, because gating the paired
+measurement on the whole unit would be circular:
+
+- `pre_measurement` — structural and control items, verifiable without the run
+  and required before it may start: NextN residency and `eh_proj`/head
+  ownership, the blk.64 draft operation set, draft/verifier state ownership,
+  and the UD journal requirement. All four are qualified.
+- `paired_run` — items the run itself establishes: the control/determinism
+  evidence, and the backend/profile/context/width envelope it measures.
+
+`is_complete()` (the pin) requires every item in both phases;
+`measurement_ready()` requires only the pre-measurement items. Both UD records
+are currently `measurement_ready()` while incomplete, so the paired
+measurement may run while the pin stays withheld.
+
+Item 5's contract is the **production** one. `docs/EXECUTION-PROFILES.md`
+section 6 states that free-running generated-ID equality "is recorded but is not
+the denominator", and section 4.1 lists "logits and generated IDs at near ties"
+as permitted production drift. The binding requirement is therefore control-
+plane exactness — accepted-token and speculative-transaction accounting, GPU/CPU
+acceptance agreement, and deterministic repeats — with ID equality recorded.
+Requiring exact IDs here would have applied the strict contract to a record that
+declares `execution_profile="production"`.
 
 Enabling work landed and gated (this is mechanism, not a certificate):
 
@@ -1636,9 +1660,9 @@ categories, two repeats, true no-MTP AR denominator) separates them:
 
 - **K_M is `complete_exact`**: all ten prompts exact in both runs, GPU/CPU
   acceptance agreement, deterministic token IDs.
-- **K_S is `correctness_failed`**: `general_ja_plan` diverges from its own AR
-  reference at output position 12 in both runs with identical accepted counts.
-  All other K_S prompts are exact. The failure is localized
+- **K_S differs from its AR reference on one prompt**: `general_ja_plan`
+  diverges at output position 12 in both runs with identical accepted counts.
+  All other K_S prompts are exact. The difference is localized
   (`benchmarks/results/ud-mtp-ks-near-tie-localization.json`): at that position
   the AR path picks token 99720 at logit 21.181459 over token 211768 at
   21.171841 — a 0.0096 spread — and the MTP verifier picks the AR rank-1 token
@@ -1647,15 +1671,14 @@ categories, two repeats, true no-MTP AR denominator) separates them:
   while the AR path evaluates it as a single row. That is a
   batch-composition-invariance deviation, which `docs/EXECUTION-PROFILES.md`
   treats as a gate separate from arithmetic equality; the plain K_S control and
-  both K_M artifacts agree exactly on this prompt. The remaining work is a
-  profile decision, not a measurement: under a strict profile K_S cannot carry
-  MTP scope, and under the production profile the calibrated mean/tail/max KL
-  and top-1 gates replace exact-ID equality and this near-tie is recorded as a
-  known batch-composition deviation.
+  both K_M artifacts agree exactly on this prompt. Because the record declares
+  the production profile, and section 4.1 permits ID differences at near ties,
+  this is recorded rather than binding — see the item-5 contract above.
 
 Both outcomes are evidence for a pin rather than a pin, and neither is
-automatic admission. See the `ud-mtp-certification-u6` and
-`ud-mtp-ks-near-tie-localization` result artifacts and their worklog entries.
+automatic admission. See the `ud-mtp-certification-u6`,
+`ud-mtp-state-disjointness`, and `ud-mtp-ks-near-tie-localization` result
+artifacts and their worklog entries.
 
 Remaining before `_UD_MTP_PRESET_FINGERPRINTS` may be populated:
 
@@ -1677,10 +1700,12 @@ Remaining before `_UD_MTP_PRESET_FINGERPRINTS` may be populated:
   BF16 alpha/beta calls in `_run_linear_attention_decode_rows_native`.
 - [ ] Block64 Q6 `eh_proj`, attention/FFN, aliases/teardown, exact speculative
   accept/reject commit/rollback. The draft operation set, the residency and
-  `eh_proj`/head ownership contract, and the identity-bound draft dtype pin are
-  landed and gated; aliases/teardown, draft/verifier state disjointness, and
-  exact commit/rollback control remain open. Exact UD NextN admission does not
-  use the unrelated native-XL manifest exception.
+  `eh_proj`/head ownership contract, the identity-bound draft dtype pin, and
+  draft/verifier state disjointness are landed and gated (the draft executor's
+  62 device buffers intersect neither the target session's 188 nor the
+  verifier journal's 381); aliases/teardown and exact commit/rollback control
+  remain open. Exact UD NextN admission does not use the unrelated native-XL
+  manifest exception.
 - [ ] c1/c2/c4/c8, ragged/sparse rows, neighbor replacement, permutations,
   delayed arrivals, cancellation/reclaim and width transitions.
 - [ ] Artifact-scoped strict manifest first; production requires section 9.
@@ -1688,11 +1713,18 @@ Remaining before `_UD_MTP_PRESET_FINGERPRINTS` may be populated:
 - [ ] Complete category/heldout suite and true no-MTP AR denominator before
   automatic speculative admission. The suite and denominator are wired into
   `scripts/ud_mtp_certification.py`; heldout categories are still outstanding.
+- [ ] Section 6.1 calibrated teacher-forced gate between the single-row AR route
+  and the multi-row verify route: mean/p95/p99/max row KL and per-category top-1
+  agreement. This is what remains of U6 item 5 under the production profile;
+  free-running ID equality is recorded but is not the denominator.
 
 Exit: explicit AR/MTP/serving/profile/backend/context records, no stamp
 inheritance. The `_UD_MTP_CERTIFICATIONS` records are the AR/MTP/profile/backend
 carriers and are written; the context and width fields stay undeclared until
-their points are measured, which keeps the derived pin empty.
+their points are measured, which keeps the derived pin empty. The four
+`pre_measurement` items are qualified, so
+`scripts/ud_mtp_paired.py --runs 2 --output <artifact>` may run; the two
+`paired_run` items stay open until that run and the section 6.1 gate are done.
 
 ### U7. Measured Optimization
 
