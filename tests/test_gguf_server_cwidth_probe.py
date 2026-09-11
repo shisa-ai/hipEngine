@@ -265,3 +265,54 @@ def test_harness_has_no_removed_variable_reference(harness) -> None:
     # an expression. Check the f-string print block specifically.
     assert "f\"{aggregate:" not in source
     assert "aggregate_est" not in source
+
+
+def test_vram_free_gib_reads_the_selected_card(harness, monkeypatch) -> None:
+    payload = json.dumps(
+        {
+            "card0": {
+                "VRAM Total Memory (B)": str(48 * 1024**3),
+                "VRAM Total Used Memory (B)": str(8 * 1024**3),
+            },
+            "card1": {
+                "VRAM Total Memory (B)": str(24 * 1024**3),
+                "VRAM Total Used Memory (B)": str(24 * 1024**3),
+            },
+        }
+    )
+
+    def fake_run(cmd, **kwargs):
+        return type("R", (), {"returncode": 0, "stdout": payload})()
+
+    monkeypatch.setattr(harness.subprocess, "run", fake_run)
+    assert harness.vram_free_gib("0") == pytest.approx(40.0, abs=0.01)
+    assert harness.vram_free_gib("1") == pytest.approx(0.0, abs=0.01)
+    assert harness.vram_free_gib(None) == pytest.approx(40.0, abs=0.01)
+
+
+def test_vram_free_gib_returns_none_when_unavailable(harness, monkeypatch) -> None:
+    def fake_run(cmd, **kwargs):
+        raise OSError("rocm-smi missing")
+
+    monkeypatch.setattr(harness.subprocess, "run", fake_run)
+    assert harness.vram_free_gib("0") is None
+
+    def fake_bad_json(cmd, **kwargs):
+        return type("R", (), {"returncode": 0, "stdout": "not json"})()
+
+    monkeypatch.setattr(harness.subprocess, "run", fake_bad_json)
+    assert harness.vram_free_gib("0") is None
+
+
+def test_harness_guards_against_a_device_still_held_by_another_process(harness) -> None:
+    """A phase measured with no VRAM headroom must be skipped, not published."""
+
+    source = (REPO_ROOT / "scripts" / "gguf_server_cwidth_probe.py").read_text(
+        encoding="utf-8"
+    )
+    assert "insufficient_vram" in source
+    assert "min_vram_free_gib" in source
+    # The guard must run before the server is launched for that width.
+    guard = source.index("insufficient_vram")
+    launch = source.index("srv = launch_server(width)")
+    assert guard < launch

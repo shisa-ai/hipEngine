@@ -518,17 +518,20 @@ _QWEN38_GGUF_KV_CAPABILITY_EVIDENCE = (
             scale_granularity="per_token_head",
         ),
         decision="qualified",
-        scope="explicit_no_mirror_c1_direct_c4_serial",
+        scope="explicit_no_mirror_direct_c4",
         quality_artifact=(
             "benchmarks/results/"
             "2026-08-16-qwen38-27b-actual-context-quality-w7900.json"
         ),
         reason=(
             "complete 512/8 and 4K/16 plus bounded 129024/16 quality pass on "
-            "gfx1100; direct compact execution is qualified at physical c1, with "
-            "artifact-scoped serial c1-per-row residency through logical c4"
+            "gfx1100; direct compact row-batched decode is qualified to physical "
+            "c4 because the row-batched 24Q/4KV/D256 producer and its strided "
+            "reducer are bit-identical to the already-qualified c1 leaf at fixed "
+            "width and across retire/admit transitions, so the retained quality "
+            "artifact stays the applicable quality basis"
         ),
-        max_direct_rows=1,
+        max_direct_rows=4,
         max_serial_resident_rows=4,
         persistent_bf16_mirror=False,
         decode_batch_variant=(

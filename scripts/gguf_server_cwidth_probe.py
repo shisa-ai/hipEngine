@@ -54,6 +54,48 @@ _PROM_LINE = re.compile(
 _PROM_LABEL = re.compile(r'([a-zA-Z_][a-zA-Z0-9_]*)="((?:[^"\\]|\\.)*)"')
 
 
+def vram_free_gib(visible_devices: str | None = None) -> float | None:
+    """Free VRAM in GiB for the selected device, or None when unavailable.
+
+    A phase measured while another process still holds VRAM is not a throughput
+    result: the server starts with no headroom and fails requests with a HIP
+    out-of-memory error.  Recording free VRAM lets a caller reject such a phase
+    instead of publishing it.
+    """
+    try:
+        completed = subprocess.run(
+            ["rocm-smi", "--showmeminfo", "vram", "--json"],
+            capture_output=True,
+            text=True,
+            timeout=15.0,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if completed.returncode != 0:
+        return None
+    try:
+        payload = json.loads(completed.stdout)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    index = 0
+    if visible_devices:
+        first = str(visible_devices).split(",")[0].strip()
+        if first.isdigit():
+            index = int(first)
+    entry = payload.get(f"card{index}")
+    if not isinstance(entry, dict):
+        return None
+    try:
+        total = float(entry["VRAM Total Memory (B)"])
+        used = float(entry["VRAM Total Used Memory (B)"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    return round((total - used) / (1024.0**3), 3)
+
+
 def parse_prometheus(text: str) -> dict[str, float]:
     """Flatten Prometheus text into ``name`` and ``name{labels}`` keys.
 
@@ -308,6 +350,21 @@ def main() -> int:
         action="store_true",
         help="skip the measured same-server serial control phase",
     )
+    ap.add_argument(
+        "--server-log-dir",
+        type=Path,
+        default=None,
+        help="capture each width's server stdout/stderr to server_c<width>.log",
+    )
+    ap.add_argument(
+        "--min-vram-free-gib",
+        type=float,
+        default=32.0,
+        help=(
+            "skip a width whose pre-launch free VRAM is below this, so a device "
+            "still held by another process cannot produce an OOM rate"
+        ),
+    )
     args = ap.parse_args()
 
     import numpy as np
@@ -320,6 +377,12 @@ def main() -> int:
         for _ in range(max(int(w) for w in str(args.widths).split(",")))
     ]
     model_id = Path(args.model).name
+
+    def server_log_handle(width: int):
+        if not args.server_log_dir:
+            return subprocess.DEVNULL
+        args.server_log_dir.mkdir(parents=True, exist_ok=True)
+        return open(args.server_log_dir / f"server_c{width}.log", "wb")
 
     def launch_server(width: int) -> subprocess.Popen:
         env = os.environ.copy()
@@ -342,9 +405,11 @@ def main() -> int:
             "--metrics", "prometheus",
             "--port", str(int(args.port)),
         ]
+        handle = server_log_handle(width)
         return subprocess.Popen(
             cmd, env=env, cwd=str(REPO_ROOT),
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            stdout=handle,
+            stderr=subprocess.STDOUT if handle is not subprocess.DEVNULL else subprocess.DEVNULL,
         )
 
     def wait_ready(srv: subprocess.Popen, timeout: float = 600.0) -> bool:
@@ -439,6 +504,26 @@ def main() -> int:
 
     widths = [int(w) for w in str(args.widths).split(",") if w.strip()]
     for width in widths:
+        free_before = vram_free_gib(os.environ.get("HIP_VISIBLE_DEVICES"))
+        if free_before is not None and free_before < float(args.min_vram_free_gib):
+            # Another process still holds VRAM.  The server would start with no
+            # headroom and fail requests with a HIP out-of-memory error, so
+            # refuse to measure rather than publish a poisoned rate.
+            out["widths"][str(width)] = {
+                "status": "insufficient_vram",
+                "vram_free_gib_before_launch": free_before,
+                "min_vram_free_gib": float(args.min_vram_free_gib),
+                "note": (
+                    "free VRAM before server launch was below the threshold; "
+                    "another process is likely still holding the device"
+                ),
+            }
+            print(
+                f"[C{width}] skipped: only {free_before} GiB VRAM free "
+                f"(need {args.min_vram_free_gib})",
+                flush=True,
+            )
+            continue
         srv = launch_server(width)
         try:
             if not wait_ready(srv):
@@ -474,6 +559,7 @@ def main() -> int:
                 "status": concurrent.get("status"),
                 "concurrent": concurrent,
                 "serial_control": serial,
+                "vram_free_gib_before_launch": free_before,
             }
             record.update(serial_reference(serial, concurrent))
             record["teardown"] = "pending"

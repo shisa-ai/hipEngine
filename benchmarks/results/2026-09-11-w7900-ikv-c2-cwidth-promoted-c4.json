@@ -1,0 +1,417 @@
+{
+  "kind": "gguf_server_cwidth_decode_baseline",
+  "protocol_tier": 1,
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "kv": "int8_per_token_head + fp32 scales",
+  "route": "repaired C1 route (slot-local prefill, packed batch decode above 1 slot, per-width pool lease)",
+  "prompt_rows": 2048,
+  "max_tokens": 64,
+  "prompt_kind": "deterministic_varied_rng20260909_lanes",
+  "withdrawn": "aggregate_decode_tok_s_est and the 31%/13%-of-serial conclusions from the 2026-09-10 artifact are withdrawn as invalid: they subtracted one isolated prefill from a wall containing width prefills and compared against N x C1, a rate one GPU cannot multiply.",
+  "widths": {
+    "1": {
+      "status": "pass",
+      "concurrent": {
+        "phase": "concurrent",
+        "wall_s": 4.952,
+        "status": "pass",
+        "per_request_wall_s": [
+          4.951
+        ],
+        "prompt_tokens_reported": [
+          2048
+        ],
+        "completion_tokens_reported": [
+          64
+        ],
+        "prompt_tokens_total": 2048,
+        "completion_tokens_total": 64,
+        "complete_request_throughput_tok_s": 426.51,
+        "measured_decode_steps": 64,
+        "measured_prefill_steps": 8,
+        "measured_decode_steps_per_s": 12.925,
+        "measured_decode_steps_note": "measured model decode steps over the phase wall; a scheduling-rate observation, not isolated decode efficiency",
+        "fallback_reasons_delta": {
+          "incremental_prefill_unsupported": 1.0,
+          "int8_direct_full_prompt_prefill": 1.0
+        },
+        "route_counts_delta": {
+          "host_sampler_requests": 0.0,
+          "native_c1_decode_steps": 63.0,
+          "native_full_prefill_groups": 0.0,
+          "native_full_prefill_rows": 1.0,
+          "native_incremental_prefill_chunks": 0.0,
+          "native_incremental_prefill_unsampled_chunks": 0.0,
+          "native_packed_decode_steps": 0.0,
+          "native_packed_graph_captures": 0.0,
+          "native_packed_graph_replays": 0.0,
+          "native_sampled_prefill_rows": 0.0,
+          "native_sampler_batch_launches": 0.0,
+          "native_sampler_requests": 0.0,
+          "native_sampler_row_launches": 0.0,
+          "resident_fallback_requests": 0.0,
+          "serial_c1_row_steps": 0.0,
+          "serial_decode_fallback_steps": 0.0
+        },
+        "execution_manifest": {
+          "claim_level": "unavailable",
+          "kind": "gguf_ar_c1_execution_manifest",
+          "kv_attention_source": "unavailable",
+          "logical_c": "1",
+          "mode": "native_c1_eager",
+          "physical_execution_width": "1",
+          "rows": "1",
+          "serial_decode_fallback": "false",
+          "throughput_claim_eligible": "false"
+        }
+      },
+      "serial_control": {
+        "phase": "serial",
+        "wall_s": 4.924,
+        "status": "pass",
+        "per_request_wall_s": [
+          4.924
+        ],
+        "prompt_tokens_reported": [
+          2048
+        ],
+        "completion_tokens_reported": [
+          64
+        ],
+        "prompt_tokens_total": 2048,
+        "completion_tokens_total": 64,
+        "complete_request_throughput_tok_s": 428.929,
+        "measured_decode_steps": 64,
+        "measured_prefill_steps": 8,
+        "measured_decode_steps_per_s": 12.998,
+        "measured_decode_steps_note": "measured model decode steps over the phase wall; a scheduling-rate observation, not isolated decode efficiency",
+        "fallback_reasons_delta": {
+          "incremental_prefill_unsupported": 1.0,
+          "int8_direct_full_prompt_prefill": 1.0
+        },
+        "route_counts_delta": {
+          "host_sampler_requests": 0.0,
+          "native_c1_decode_steps": 63.0,
+          "native_full_prefill_groups": 0.0,
+          "native_full_prefill_rows": 1.0,
+          "native_incremental_prefill_chunks": 0.0,
+          "native_incremental_prefill_unsampled_chunks": 0.0,
+          "native_packed_decode_steps": 0.0,
+          "native_packed_graph_captures": 0.0,
+          "native_packed_graph_replays": 0.0,
+          "native_sampled_prefill_rows": 0.0,
+          "native_sampler_batch_launches": 0.0,
+          "native_sampler_requests": 0.0,
+          "native_sampler_row_launches": 0.0,
+          "resident_fallback_requests": 0.0,
+          "serial_c1_row_steps": 0.0,
+          "serial_decode_fallback_steps": 0.0
+        },
+        "execution_manifest": {
+          "claim_level": "unavailable",
+          "kind": "gguf_ar_c1_execution_manifest",
+          "kv_attention_source": "unavailable",
+          "logical_c": "1",
+          "mode": "native_c1_eager",
+          "physical_execution_width": "1",
+          "rows": "1",
+          "serial_decode_fallback": "false",
+          "throughput_claim_eligible": "false"
+        }
+      },
+      "vram_free_gib_before_launch": 44.958,
+      "serial_complete_request_rate_tok_s": 428.929,
+      "concurrent_over_serial_ratio": 0.9944,
+      "concurrent_over_serial_note": "same server, same card, same prompts: concurrent complete-request rate divided by the measured serial rate. A ratio near 1 means the width buys no aggregate throughput on this route.",
+      "teardown": "clean"
+    },
+    "2": {
+      "status": "pass",
+      "concurrent": {
+        "phase": "concurrent",
+        "wall_s": 7.973,
+        "status": "pass",
+        "per_request_wall_s": [
+          7.971,
+          7.973
+        ],
+        "prompt_tokens_reported": [
+          2048,
+          2048
+        ],
+        "completion_tokens_reported": [
+          64,
+          64
+        ],
+        "prompt_tokens_total": 4096,
+        "completion_tokens_total": 128,
+        "complete_request_throughput_tok_s": 529.772,
+        "measured_decode_steps": 65,
+        "measured_prefill_steps": 9,
+        "measured_decode_steps_per_s": 8.152,
+        "measured_decode_steps_note": "measured model decode steps over the phase wall; a scheduling-rate observation, not isolated decode efficiency",
+        "fallback_reasons_delta": {
+          "incremental_prefill_unsupported": 2.0,
+          "int8_direct_full_prompt_prefill": 2.0
+        },
+        "route_counts_delta": {
+          "host_sampler_requests": 0.0,
+          "native_c1_decode_steps": 2.0,
+          "native_full_prefill_groups": 0.0,
+          "native_full_prefill_rows": 2.0,
+          "native_incremental_prefill_chunks": 0.0,
+          "native_incremental_prefill_unsampled_chunks": 0.0,
+          "native_packed_decode_steps": 62.0,
+          "native_packed_graph_captures": 0.0,
+          "native_packed_graph_replays": 0.0,
+          "native_sampled_prefill_rows": 0.0,
+          "native_sampler_batch_launches": 0.0,
+          "native_sampler_requests": 0.0,
+          "native_sampler_row_launches": 0.0,
+          "resident_fallback_requests": 0.0,
+          "serial_c1_row_steps": 0.0,
+          "serial_decode_fallback_steps": 0.0
+        },
+        "execution_manifest": {
+          "claim_level": "unavailable",
+          "kind": "gguf_ar_c1_execution_manifest",
+          "kv_attention_source": "unavailable",
+          "logical_c": "1",
+          "mode": "native_c1_eager",
+          "physical_execution_width": "1",
+          "rows": "1",
+          "serial_decode_fallback": "false",
+          "throughput_claim_eligible": "false"
+        }
+      },
+      "serial_control": {
+        "phase": "serial",
+        "wall_s": 9.941,
+        "status": "pass",
+        "per_request_wall_s": [
+          4.963,
+          4.978
+        ],
+        "prompt_tokens_reported": [
+          2048,
+          2048
+        ],
+        "completion_tokens_reported": [
+          64,
+          64
+        ],
+        "prompt_tokens_total": 4096,
+        "completion_tokens_total": 128,
+        "complete_request_throughput_tok_s": 424.907,
+        "measured_decode_steps": 128,
+        "measured_prefill_steps": 16,
+        "measured_decode_steps_per_s": 12.876,
+        "measured_decode_steps_note": "measured model decode steps over the phase wall; a scheduling-rate observation, not isolated decode efficiency",
+        "fallback_reasons_delta": {
+          "incremental_prefill_unsupported": 2.0,
+          "int8_direct_full_prompt_prefill": 2.0
+        },
+        "route_counts_delta": {
+          "host_sampler_requests": 0.0,
+          "native_c1_decode_steps": 126.0,
+          "native_full_prefill_groups": 0.0,
+          "native_full_prefill_rows": 2.0,
+          "native_incremental_prefill_chunks": 0.0,
+          "native_incremental_prefill_unsampled_chunks": 0.0,
+          "native_packed_decode_steps": 0.0,
+          "native_packed_graph_captures": 0.0,
+          "native_packed_graph_replays": 0.0,
+          "native_sampled_prefill_rows": 0.0,
+          "native_sampler_batch_launches": 0.0,
+          "native_sampler_requests": 0.0,
+          "native_sampler_row_launches": 0.0,
+          "resident_fallback_requests": 0.0,
+          "serial_c1_row_steps": 0.0,
+          "serial_decode_fallback_steps": 0.0
+        },
+        "execution_manifest": {
+          "claim_level": "unavailable",
+          "kind": "gguf_ar_c1_execution_manifest",
+          "kv_attention_source": "unavailable",
+          "logical_c": "1",
+          "mode": "native_c1_eager",
+          "physical_execution_width": "1",
+          "rows": "1",
+          "serial_decode_fallback": "false",
+          "throughput_claim_eligible": "false"
+        }
+      },
+      "vram_free_gib_before_launch": 44.871,
+      "serial_complete_request_rate_tok_s": 424.907,
+      "concurrent_over_serial_ratio": 1.2468,
+      "concurrent_over_serial_note": "same server, same card, same prompts: concurrent complete-request rate divided by the measured serial rate. A ratio near 1 means the width buys no aggregate throughput on this route.",
+      "teardown": "clean"
+    },
+    "4": {
+      "status": "pass",
+      "concurrent": {
+        "phase": "concurrent",
+        "wall_s": 14.15,
+        "status": "pass",
+        "per_request_wall_s": [
+          14.109,
+          14.148,
+          14.149,
+          14.149
+        ],
+        "prompt_tokens_reported": [
+          2048,
+          2048,
+          2048,
+          2048
+        ],
+        "completion_tokens_reported": [
+          64,
+          64,
+          64,
+          64
+        ],
+        "prompt_tokens_total": 8192,
+        "completion_tokens_total": 256,
+        "complete_request_throughput_tok_s": 597.019,
+        "measured_decode_steps": 66,
+        "measured_prefill_steps": 10,
+        "measured_decode_steps_per_s": 4.664,
+        "measured_decode_steps_note": "measured model decode steps over the phase wall; a scheduling-rate observation, not isolated decode efficiency",
+        "fallback_reasons_delta": {
+          "incremental_prefill_unsupported": 4.0,
+          "int8_direct_full_prompt_prefill": 4.0
+        },
+        "route_counts_delta": {
+          "host_sampler_requests": 0.0,
+          "native_c1_decode_steps": 2.0,
+          "native_full_prefill_groups": 0.0,
+          "native_full_prefill_rows": 4.0,
+          "native_incremental_prefill_chunks": 0.0,
+          "native_incremental_prefill_unsampled_chunks": 0.0,
+          "native_packed_decode_steps": 63.0,
+          "native_packed_graph_captures": 0.0,
+          "native_packed_graph_replays": 0.0,
+          "native_sampled_prefill_rows": 0.0,
+          "native_sampler_batch_launches": 0.0,
+          "native_sampler_requests": 0.0,
+          "native_sampler_row_launches": 0.0,
+          "resident_fallback_requests": 0.0,
+          "serial_c1_row_steps": 0.0,
+          "serial_decode_fallback_steps": 0.0
+        },
+        "execution_manifest": {
+          "claim_level": "unavailable",
+          "kind": "gguf_ar_c1_execution_manifest",
+          "kv_attention_source": "unavailable",
+          "logical_c": "1",
+          "mode": "native_c1_eager",
+          "physical_execution_width": "1",
+          "rows": "1",
+          "serial_decode_fallback": "false",
+          "throughput_claim_eligible": "false"
+        }
+      },
+      "serial_control": {
+        "phase": "serial",
+        "wall_s": 20.15,
+        "status": "pass",
+        "per_request_wall_s": [
+          5.014,
+          5.029,
+          5.049,
+          5.057
+        ],
+        "prompt_tokens_reported": [
+          2048,
+          2048,
+          2048,
+          2048
+        ],
+        "completion_tokens_reported": [
+          64,
+          64,
+          64,
+          64
+        ],
+        "prompt_tokens_total": 8192,
+        "completion_tokens_total": 256,
+        "complete_request_throughput_tok_s": 419.266,
+        "measured_decode_steps": 256,
+        "measured_prefill_steps": 32,
+        "measured_decode_steps_per_s": 12.705,
+        "measured_decode_steps_note": "measured model decode steps over the phase wall; a scheduling-rate observation, not isolated decode efficiency",
+        "fallback_reasons_delta": {
+          "incremental_prefill_unsupported": 4.0,
+          "int8_direct_full_prompt_prefill": 4.0
+        },
+        "route_counts_delta": {
+          "host_sampler_requests": 0.0,
+          "native_c1_decode_steps": 252.0,
+          "native_full_prefill_groups": 0.0,
+          "native_full_prefill_rows": 4.0,
+          "native_incremental_prefill_chunks": 0.0,
+          "native_incremental_prefill_unsampled_chunks": 0.0,
+          "native_packed_decode_steps": 0.0,
+          "native_packed_graph_captures": 0.0,
+          "native_packed_graph_replays": 0.0,
+          "native_sampled_prefill_rows": 0.0,
+          "native_sampler_batch_launches": 0.0,
+          "native_sampler_requests": 0.0,
+          "native_sampler_row_launches": 0.0,
+          "resident_fallback_requests": 0.0,
+          "serial_c1_row_steps": 0.0,
+          "serial_decode_fallback_steps": 0.0
+        },
+        "execution_manifest": {
+          "claim_level": "unavailable",
+          "kind": "gguf_ar_c1_execution_manifest",
+          "kv_attention_source": "unavailable",
+          "logical_c": "1",
+          "mode": "native_c1_eager",
+          "physical_execution_width": "1",
+          "rows": "1",
+          "serial_decode_fallback": "false",
+          "throughput_claim_eligible": "false"
+        }
+      },
+      "vram_free_gib_before_launch": 44.871,
+      "serial_complete_request_rate_tok_s": 419.266,
+      "concurrent_over_serial_ratio": 1.424,
+      "concurrent_over_serial_note": "same server, same card, same prompts: concurrent complete-request rate divided by the measured serial rate. A ratio near 1 means the width buys no aggregate throughput on this route.",
+      "teardown": "clean"
+    }
+  },
+  "promotion": {
+    "capability_scope": "explicit_no_mirror_direct_c4",
+    "capability_id": "4b0e936f4b65f3a37d4362a9ee5faea9bf9aa1376a703693531ddd20bcf41548",
+    "max_direct_rows": 4,
+    "pre_promotion_baseline_artifact": "benchmarks/results/2026-09-11-w7900-ikv-c2-cwidth-baseline-pre-promotion.json"
+  },
+  "repetitions": [
+    {
+      "run": 1,
+      "vram_guard": "not present in this run",
+      "concurrent_over_serial_ratio": {
+        "1": 0.9741,
+        "2": 1.2274,
+        "4": 1.395
+      },
+      "note": "first promoted run; C4 failed once with a HIP out-of-memory error while a previous probe's server still held ~16 GiB, which is why --min-vram-free-gib and --server-log-dir were added"
+    },
+    {
+      "run": 2,
+      "vram_free_gib_before_launch": {
+        "1": 44.958,
+        "2": 44.871,
+        "4": 44.871
+      },
+      "concurrent_over_serial_ratio": {
+        "1": 0.9944,
+        "2": 1.2468,
+        "4": 1.424
+      },
+      "note": "clean-device repeat; this is the record of the run in widths below"
+    }
+  ]
+}

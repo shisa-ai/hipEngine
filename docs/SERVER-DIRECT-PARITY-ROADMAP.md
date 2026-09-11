@@ -89,12 +89,15 @@ Remaining open packets: P6 (P6a/P6b/P6c landed opt-in - the resumable layer-oute
 checkpoint, its suspended-state ownership, and the CPU tests; P6e GPU proof on
 the serial INT8 route and P6f P3/P2 gates are outstanding, and the route stays
 behind `HIPENGINE_GGUF_PACKED_LAYER_OUTER` until P6f closes), P5
-remainder (HIP-API/queue-gap attribution, graph-capture amortization, then the
-IKV-C2 C>1 row-batched consumer - the capacity>1 lease gate stays until it
-lands), and P7 remainder (the C>1 and P6-gated acceptance items). The C-width
+remainder (HIP-API/queue-gap attribution and graph-capture amortization; the
+IKV-C2 C>1 row-batched consumer landed and is promoted to physical c4 on the
+W7900 gfx1100 Qwen3.8-27B INT8 artifact as of 2026-09-11, so the capacity>1
+lease gate is no longer waiting on it), and P7 remainder (the C>1 and P6-gated
+acceptance items). The C-width
 baseline harness is repaired (per-lane measured counts, measured model-step and
 route/fallback deltas, a real same-server serial control, no decode-only rate)
-but has not been re-run live. The C1-scoped publish is landed: paired speed
+and has now been run live before and after the IKV-C2 promotion. The C1-scoped
+publish is landed: paired speed
 parity, decode boundary, memory exactness, capacity ceiling, trace identity,
 and the HTTP/SSE transport budget.
 
@@ -604,6 +607,21 @@ eager parity.
 Gate: same compute route and numerical contract; no unexplained model-step
 gap; exact cancellation/refill and C1<->C2/C4 transitions. Report per-request
 latency and aggregate throughput separately.
+
+Status 2026-09-11: landed and promoted on the W7900 gfx1100 Qwen3.8-27B INT8
+artifact. The primitive gate is bit-exact against the CPU reference and
+independent c1 for c1/c2/c4/c8; the packed-AR model gate is token-exact with
+max KL 0.0 and top-1 1.0 over four rows by four steps; the transition gate
+holds a 4 -> 2 -> 4 lane schedule exact per row at every step with excluded
+retired lanes byte-frozen; and a cache-only `rocprofv3` trace shows one batch
+producer plus one strided reducer launch for all four rows. On the live server
+the measured same-server serial control shows aggregate complete-request
+throughput of ~1.23x (C2) and ~1.40x (C4) over the serial rate, with
+`serial_decode_fallback_steps` at zero. Per-request latency still grows with
+width and is reported separately from aggregate throughput.
+
+Still open in this packet: exact cancellation during an in-flight packed
+prefill/decode mix, and per-request latency at C>N as a published figure.
 
 ### P6 - Restore bounded prefill/decode service and cover public modes
 

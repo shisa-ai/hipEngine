@@ -1,11 +1,12 @@
 # Qwen3.8 INT8 KV Continuous-Batching Campaign
 
-Status: **active; `IKV-C0` and `IKV-C1` completed on 2026-08-16; `IKV-C2` is next.**
+Status: **active; `IKV-C0` and `IKV-C1` completed on 2026-08-16; `IKV-C2` is
+completed and promoted on 2026-09-11.**
 Planning baseline was local commit `c791ca3c9`; merge commit `6cff90213`
 integrated the 94 tracked `origin/main` commits before runtime implementation.
 Artifact/backend/target capability identity fails closed, and the exact gfx1100
-artifact now admits compact logical c2/c4 residency through an explicit
-physical-c1 serial fallback with no native-c>N or throughput claim.
+artifact now admits compact logical c2/c4 residency as native row-batched direct
+INT8 decode up to physical c4.
 
 This campaign turns the retained Qwen3.8 c1 capacity result into an honest,
 compact, no-BF16-mirror c>N serving route. It does **not** build a second
@@ -245,7 +246,9 @@ Retained result:
 
 - The exact `7b2aec...` gfx1100 capability admits logical c2/c4 residency while
   keeping `max_direct_rows=1`; every c>N model step reports physical execution
-  width 1, serial fallback, and no throughput eligibility.
+  width 1, serial fallback, and no throughput eligibility. (IKV-C2 superseded
+  this on 2026-09-11: the same artifact now declares `max_direct_rows=4` and
+  runs c>N as packed direct rows. The C1 milestone record above is unchanged.)
 - Base-zero and shifted direct-INT8 sessions use one block-table-aware single-row
   prefill contract. A shifted p512 gate is exact for token, full-vocabulary
   logits, all 48 Conv/GDN state pairs, and all 16 retained INT8 K/V plus FP32
@@ -474,16 +477,45 @@ failure in a completed broad run, follow the focused-repair rule in
 | --- | --- | --- | --- |
 | IKV-C0 integration + capability identity | `completed` | approved campaign | passing/rejected/unknown identities resolve correctly |
 | IKV-C1 compact serial c>N | `completed` | C0 | no-mirror c2/c4 lifecycle exact |
-| IKV-C2 row-batched INT8 attention | `model gate passed (pre-promotion)` | C0, C1 oracle | CPU/model/trace gates pass |
+| IKV-C2 row-batched INT8 attention | `completed and promoted` | C0, C1 oracle | CPU/model/trace gates pass |
 | IKV-C3 shared prefill ownership | `blocked` | C1/C2 measured ownership | c2/c4 remains memory-positive |
 | IKV-C4 complete admission | `blocked` | C3 byte plan | pressure rejects before OOM and recovers |
 | IKV-C5 lifecycle/telemetry | `blocked` | C2-C4 | cancellation/grow/shrink/overload matrix passes |
 | IKV-C6 quality/capacity | `blocked` | C2-C5 | artifact-scoped complete gates pass |
 | IKV-C7 economics/promotion | `blocked` | C6 | retained decision and cleanup published |
 
-The next executable unit is **IKV-C2**: row-batched direct INT8 split-K
-attention for the qualified 24Q/4KV/D256 shape, retaining c1 and unfused
-fallbacks and requiring CPU-reference, model, and `rocprofv3` ownership gates.
+The **IKV-C2** kernel and its runtime integration already existed in-tree:
+row-batched direct INT8 split-K attention for the qualified 24Q/4KV/D256 shape,
+with the c1 leaf retained as the registered numerical fallback. It was added on
+2026-08-17 (`5da8d5bf4`) with the CPU-reference and independent-c1 c1-c8 gates
+plus a cache-only `rocprofv3` trace, and the model gate passed on RX 7900 XTX on
+2026-09-07 (see the coordination note below).
+
+On 2026-09-11 the missing piece was the **qualification and promotion
+decision**, not the implementation. The gfx1100 capability entry now declares
+`max_direct_rows = 4` with scope `explicit_no_mirror_direct_c4`, which makes the
+packed direct INT8 decode the default serving route through logical c4. The
+basis is a declared-hardware (W7900 / gfx1100) requalification:
+
+- the primitive gate matches the CPU reference and independent c1 bit-exactly
+  for c1/c2/c4/c8;
+- the packed-AR model gate is token-exact with max KL 0.0 and top-1 1.0 over
+  four rows and four steps, with zero hidden and zero state/KV-scale mismatches;
+- a new transition gate replays a 4 -> 2 -> 4 lane schedule (two lanes retired,
+  two newcomers admitted into the freed lanes) and holds every active row exact
+  against its own c1 trajectory at every step, while excluded retired lanes stay
+  byte-frozen;
+- a cache-only `rocprofv3` trace shows one batch producer plus one strided
+  reducer launch covering all four rows against four c1 leaf producer/reducer
+  pairs;
+- the live server moves from `serial_decode_fallback_steps` 62/64 (C2/C4) with
+  zero packed steps to zero serial fallback with 62/63 packed steps, and the
+  same-server serial control shows aggregate complete-request throughput rising
+  from ~1.00x to ~1.23x (C2) and ~1.40x (C4).
+
+Because the row-batched producer and its strided reducer are bit-identical to
+the already-qualified c1 leaf at the qualified shape, the retained quality
+artifact stays the applicable quality basis for the promoted width.
 
 Coordination note (2026-09-07, capacity campaign): the model-level XTX
 pre-promotion gate now passes exactly — token-exact, max KL 0.0, top-1 1.0,
@@ -492,12 +524,13 @@ independent c1 oracles, every step routed `kv_live_spans_int8_batch` at
 physical_rows 4 with zero host row iterations under
 `per_token_head_gqa_splitk_gate_bf16_batch_strided_spans`
 ([artifact](../benchmarks/results/2026-09-07-rx7900xtx-ikv-c2-batch-decode-gate.json)).
-The artifact capability still admits c1, so capability promotion to direct
-rows remains this campaign's decision under its own protocol. Still not
-integrated, per the capacity-campaign inspection: packed decode graphs
-hard-require BF16 KV; c=1 decode graphs admit INT8 only in the
-tail4-Hadamard-group32 layout; batched prefill remains IKV-C3-blocked; and
-the MTP native spec target graph N1 requires BF16 KV. The capacity campaign
-holds the item-level details in
+The artifact capability has since been promoted to direct rows (2026-09-11,
+see above), so this XTX pre-promotion gate is now the earlier half of the
+evidence rather than the open decision. The row-batched decode route is
+integrated and is what that gate exercised; the remaining integration gaps are
+elsewhere: packed decode **graphs** hard-require BF16 KV; c=1 decode graphs
+admit INT8 only in the tail4-Hadamard-group32 layout; batched prefill remains
+IKV-C3-blocked; and the MTP native spec target graph N1 requires BF16 KV. The
+capacity campaign holds the item-level details in
 [`QWEN38-27B-GFX1100-24GB-CAPACITY.md`](QWEN38-27B-GFX1100-24GB-CAPACITY.md)
 Packet 3.
