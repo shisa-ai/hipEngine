@@ -19,6 +19,7 @@ from scripts.gguf_p6e_cancel_refill_proof import (
     _assert_resumable_configuration,
     _labeled_metric_values,
     _metric_sample_labels,
+    _parse_cancel_delays,
     _split_prometheus_labels,
     evaluate_gates,
 )
@@ -50,6 +51,24 @@ _HEALTHY = {
     "oracle_observed_peak_owners": 1.0,
     "oracle_observed_peak_bytes": 912907308.0,
     "live_oracle_owners": 0.0,
+    # Every swept cancellation point must cancel a live prefill and be
+    # acknowledged in bound, so the delay gate is a bound rather than one point.
+    "cancel_sweep": [
+        {
+            "delay_ms": 200.0,
+            "admitted": True,
+            "bytes_before_close": 0,
+            "cancellation_delta": 1.0,
+            "acknowledgement_ms": 110.0,
+        },
+        {
+            "delay_ms": 600.0,
+            "admitted": True,
+            "bytes_before_close": 0,
+            "cancellation_delta": 1.0,
+            "acknowledgement_ms": 120.0,
+        },
+    ],
 }
 
 
@@ -64,6 +83,7 @@ def test_all_gates_pass_on_a_healthy_run() -> None:
 
     assert set(gates) == {
         "cancellation_reached_backend",
+        "cancellation_sweep_bounded",
         "resumable_path_engaged",
         "survivors_exact",
         "blocking_survivor_exact",
@@ -529,3 +549,91 @@ def test_abort_path_returns_an_artifact_not_an_exit_code() -> None:
     abort_block = source.split("aborted_before_workload", 1)[1]
     assert "return {" in abort_block.split("return 2", 1)[0]
     assert "return 2" not in abort_block.split("\n\n")[0]
+
+
+def test_cancel_sweep_gate_fails_when_one_point_never_cancelled() -> None:
+    """A bound needs every point, not most of them."""
+
+    gates = _gates(
+        cancel_sweep=[
+            {"delay_ms": 200.0, "admitted": True, "bytes_before_close": 0,
+             "cancellation_delta": 1.0, "acknowledgement_ms": 110.0},
+            {"delay_ms": 3000.0, "admitted": True, "bytes_before_close": 0,
+             "cancellation_delta": 0.0, "acknowledgement_ms": 120.0},
+        ]
+    )
+
+    gate = gates["cancellation_sweep_bounded"]
+    assert gate["passed"] is False
+    assert any("3000.0 ms" in f for f in gate["failures"])
+
+
+def test_cancel_sweep_gate_rejects_a_point_that_cancelled_after_output() -> None:
+    """Bytes before close mean the cancel did not land during the prefill."""
+
+    gates = _gates(
+        cancel_sweep=[
+            {"delay_ms": 600.0, "admitted": True, "bytes_before_close": 12,
+             "cancellation_delta": 1.0, "acknowledgement_ms": 110.0},
+        ]
+    )
+
+    gate = gates["cancellation_sweep_bounded"]
+    assert gate["passed"] is False
+    assert any("did not cancel a live prefill" in f for f in gate["failures"])
+
+
+def test_cancel_sweep_gate_rejects_an_unbounded_acknowledgement() -> None:
+    gates = _gates(
+        cancel_sweep=[
+            {"delay_ms": 600.0, "admitted": True, "bytes_before_close": 0,
+             "cancellation_delta": 1.0,
+             "acknowledgement_ms": DECLARED_ACK_P95_LIMIT_MS + 1.0},
+        ]
+    )
+
+    gate = gates["cancellation_sweep_bounded"]
+    assert gate["passed"] is False
+    assert any("exceeds" in f for f in gate["failures"])
+
+
+def test_cancel_sweep_gate_fails_on_an_empty_sweep() -> None:
+    """No points is not a passing sweep."""
+
+    assert _gates(cancel_sweep=[])["cancellation_sweep_bounded"]["passed"] is False
+    assert _gates(cancel_sweep=None)["cancellation_sweep_bounded"]["passed"] is False
+
+
+def test_cancel_delay_parsing_accepts_lists_and_rejects_nonsense() -> None:
+    assert _parse_cancel_delays("600") == [600.0]
+    assert _parse_cancel_delays("600,200,1200") == [200.0, 600.0, 1200.0]
+    assert _parse_cancel_delays(600.0) == [600.0]
+    # A sweep must read in ascending order or the artifact implies a
+    # non-monotonic prefill.
+    assert _parse_cancel_delays("900;300") == [300.0, 900.0]
+    with pytest.raises(ValueError):
+        _parse_cancel_delays("")
+    with pytest.raises(ValueError):
+        _parse_cancel_delays("0")
+    with pytest.raises(ValueError):
+        _parse_cancel_delays("-5")
+
+
+def test_stream_outcome_exposes_the_attributes_the_artifact_reads() -> None:
+    """A rename here crashed a full GPU run at artifact-write time.
+
+    The sweep crashed with AttributeError after completing the whole workload,
+    because it read text_chars. These are the attributes the artifact assembly
+    depends on, so a rename is caught here instead of ten minutes into a run.
+    """
+
+    from scripts.gguf_p6e_cancel_refill_proof import _StreamOutcome
+
+    outcome = _StreamOutcome()
+    outcome.text_parts.append("hello")
+
+    assert outcome.text == "hello"
+    assert len(outcome.text) == 5
+    assert isinstance(outcome.text_sha256, str) and len(outcome.text_sha256) == 64
+    assert outcome.first_token_at is None
+    assert not hasattr(outcome, "text_chars")

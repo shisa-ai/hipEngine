@@ -556,6 +556,70 @@ def _assert_resumable_configuration(
     }
 
 
+def _parse_cancel_delays(raw: Any) -> list[float]:
+    """Parse the cancellation sweep, rejecting anything that is not positive."""
+
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+        values = [float(raw)]
+    else:
+        values = [
+            float(part) for part in str(raw).replace(";", ",").split(",") if part.strip()
+        ]
+    if not values:
+        raise ValueError("at least one cancel delay is required")
+    for value in values:
+        if not value > 0:
+            raise ValueError(f"cancel delays must be positive, got {value!r}")
+    # A sweep is only meaningful in ascending order: a later point must not be
+    # reported before an earlier one, or the artifact reads as a non-monotonic
+    # prefill.
+    return sorted(values)
+
+
+def _evaluate_cancel_sweep_gate(sweep: Sequence[Mapping[str, Any]] | None) -> dict[str, Any]:
+    """Every swept cancellation point must cancel and be acknowledged in bound.
+
+    One delay point cannot establish P6's "bounded command acknowledgement/cancel
+    delay" gate. Each point lands elsewhere in the resumable segment loop, so the
+    sweep is what makes the bound a claim rather than an anecdote.
+    """
+
+    points = list(sweep or [])
+    failures: list[str] = []
+    for point in points:
+        delay = point.get("delay_ms")
+        delta = point.get("cancellation_delta")
+        if not point.get("admitted"):
+            failures.append(f"{delay} ms: request was never admitted")
+        if not isinstance(delta, (int, float)) or delta < 1:
+            failures.append(f"{delay} ms: cancellation counter did not move ({delta!r})")
+        # Bytes before close prove the prefill was still in flight rather than the
+        # cancel landing after the response had already started.
+        if point.get("bytes_before_close") not in (0, 0.0):
+            failures.append(
+                f"{delay} ms: {point.get('bytes_before_close')!r} bytes arrived "
+                "before close, so this point did not cancel a live prefill"
+            )
+        ack = point.get("acknowledgement_ms")
+        if not isinstance(ack, (int, float)) or ack > DECLARED_ACK_P95_LIMIT_MS:
+            failures.append(
+                f"{delay} ms: acknowledgement {ack!r} ms exceeds "
+                f"{DECLARED_ACK_P95_LIMIT_MS} ms"
+            )
+    return {
+        "passed": bool(points) and not failures,
+        "points": len(points),
+        "delays_ms": [point.get("delay_ms") for point in points],
+        "failures": failures,
+        "limit_ms": DECLARED_ACK_P95_LIMIT_MS,
+        "detail": (
+            "every swept cancellation point must be admitted, cancel the backend "
+            "while the prefill is still in flight, and be acknowledged within the "
+            "declared limit; a single delay point cannot establish that bound"
+        ),
+    }
+
+
 def _wait_for(predicate: Any, *, timeout: float, interval: float = 0.05) -> bool:
     deadline = time.perf_counter() + timeout
     while time.perf_counter() < deadline:
@@ -584,6 +648,7 @@ def evaluate_gates(
     executor_modes: dict[str, float] | None = None,
     kv_attention_sources: dict[str, float] | None = None,
     manifest_kv_attention_source: str | None = None,
+    cancel_sweep: Sequence[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Evaluate the service gates. Split out so the failure paths are testable."""
 
@@ -597,6 +662,7 @@ def evaluate_gates(
             "merely stop the client reading"
         ),
     }
+    gates["cancellation_sweep_bounded"] = _evaluate_cancel_sweep_gate(cancel_sweep)
     gates["resumable_path_engaged"] = {
         # Without this the other gates can all pass on the default chunk-outer
         # path, which does not contain the deliverable at all. The indicator must
@@ -876,58 +942,100 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             owner_bytes_baseline = _metric(baseline_metrics, PREFILL_OWNER_BYTES_METRIC)
             oracle_bytes_baseline = _metric(baseline_metrics, ORACLE_OWNER_BYTES_METRIC)
 
-            # --- 2. cancel a real prefill ----------------------------------------
-            cancel_result = _cancel_probe(
-                port=port,
-                model_name=model_name,
-                prompt=str(long_row["text"]),
-                max_tokens=max_tokens,
-                admit_timeout=float(args.admit_timeout_seconds),
-                hold_seconds=float(args.cancel_delay_ms) / 1e3,
+            # --- 2/3. cancel a real prefill, then refill, at each swept delay ----
+            # P6's gate is "bounded command acknowledgement/cancel delay", and one
+            # delay point cannot establish a bound. Each delay lands at a different
+            # place in the resumable segment loop, so the sweep is what turns a
+            # single observation into a bound across the prefill.
+            cancel_sweep: list[dict[str, Any]] = []
+            cancel_delays_ms = getattr(args, "cancel_delays_ms", None) or (
+                _parse_cancel_delays(args.cancel_delay_ms)
             )
-            # Give the server a moment to observe the disconnect and cancel. A
-            # disconnect is only noticed when the server next touches the
-            # connection, which for a streaming completion is the first write
-            # after the prefill, so this waits past the prefill duration.
-            _wait_for(
-                lambda: (
-                    _metric(_metrics_values(client, base_url), CANCELLATION_COUNTER) or 0
-                )
-                > (cancelled_before or 0),
-                timeout=float(args.cancel_observe_timeout_seconds),
-            )
-            after_cancel_metrics = _metrics_values(client, base_url)
-            cancelled_after = _metric(after_cancel_metrics, CANCELLATION_COUNTER)
-            cancellation_delta = (
-                None
-                if cancelled_before is None or cancelled_after is None
-                else cancelled_after - cancelled_before
-            )
-            # If the disconnect was ignored, the cancelled request's prefill work
-            # still runs to completion. These counters distinguish "cancelled"
-            # from "silently kept working".
-            work_delta = _metric_delta(
-                after_cancel_metrics, baseline_metrics, WORK_PREFILL_METRIC
-            )
-            failure_delta = _metric_delta(
-                after_cancel_metrics, baseline_metrics, REQUEST_FAILED_METRIC
-            )
+            cancel_result: dict[str, Any] = {}
+            cancellation_delta: float | None = None
+            work_delta: float | None = None
+            failure_delta: float | None = None
+            refill: Any = None
+            refill_submit_to_first_ms: float | None = None
+            refill_gaps: list[float] = []
 
-            # --- 3. refill --------------------------------------------------------
-            refill_started = time.perf_counter()
-            refill = _stream_completion(
-                client,
-                base_url=base_url,
-                model_name=model_name,
-                prompt=short_text,
-                max_tokens=max_tokens,
-            )
-            refill_submit_to_first_ms = (
-                (refill.first_token_at - refill_started) * 1e3
-                if refill.first_token_at
-                else None
-            )
-            refill_gaps = _inter_token_gaps_ms(refill)
+            for sweep_index, delay_ms in enumerate(cancel_delays_ms):
+                cancelled_prior = _metric(
+                    _metrics_values(client, base_url), CANCELLATION_COUNTER
+                )
+                sweep_cancel = _cancel_probe(
+                    port=port,
+                    model_name=model_name,
+                    prompt=str(long_row["text"]),
+                    max_tokens=max_tokens,
+                    admit_timeout=float(args.admit_timeout_seconds),
+                    hold_seconds=float(delay_ms) / 1e3,
+                )
+                # Give the server a moment to observe the disconnect and cancel. A
+                # disconnect is only noticed when the server next touches the
+                # connection, which for a streaming completion is the first write
+                # after the prefill, so this waits past the prefill duration.
+                _wait_for(
+                    lambda: (
+                        _metric(_metrics_values(client, base_url), CANCELLATION_COUNTER)
+                        or 0
+                    )
+                    > (cancelled_prior or 0),
+                    timeout=float(args.cancel_observe_timeout_seconds),
+                )
+                sweep_after_cancel = _metrics_values(client, base_url)
+                cancelled_now = _metric(sweep_after_cancel, CANCELLATION_COUNTER)
+                sweep_delta = (
+                    None
+                    if cancelled_prior is None or cancelled_now is None
+                    else cancelled_now - cancelled_prior
+                )
+                sweep_work_delta = _metric_delta(
+                    sweep_after_cancel, baseline_metrics, WORK_PREFILL_METRIC
+                )
+                sweep_failure_delta = _metric_delta(
+                    sweep_after_cancel, baseline_metrics, REQUEST_FAILED_METRIC
+                )
+
+                sweep_refill_started = time.perf_counter()
+                sweep_refill = _stream_completion(
+                    client,
+                    base_url=base_url,
+                    model_name=model_name,
+                    prompt=short_text,
+                    max_tokens=max_tokens,
+                )
+                sweep_ack_ms = (
+                    (sweep_refill.first_token_at - sweep_refill_started) * 1e3
+                    if sweep_refill.first_token_at
+                    else None
+                )
+
+                cancel_sweep.append(
+                    {
+                        "index": sweep_index,
+                        "delay_ms": float(delay_ms),
+                        "admitted": bool(sweep_cancel.get("admitted")),
+                        "bytes_before_close": sweep_cancel.get("bytes_before_close"),
+                        "cancellation_delta": sweep_delta,
+                        "work_prefill_delta": sweep_work_delta,
+                        "request_failed_delta": sweep_failure_delta,
+                        "acknowledgement_ms": sweep_ack_ms,
+                        "survivor_sha256": sweep_refill.text_sha256,
+                        "survivor_chars": len(sweep_refill.text),
+                    }
+                )
+
+                # The single-delay gates below report the final sweep point, which
+                # is the one closest to prefill completion and therefore the least
+                # likely to have yielded; the sweep gate covers every point.
+                cancel_result = sweep_cancel
+                cancellation_delta = sweep_delta
+                work_delta = sweep_work_delta
+                failure_delta = sweep_failure_delta
+                refill = sweep_refill
+                refill_submit_to_first_ms = sweep_ack_ms
+                refill_gaps = _inter_token_gaps_ms(sweep_refill)
 
             # --- 4. drain and confirm the cancelled request released its state ----
             drained = _wait_for(
@@ -1057,6 +1165,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         executor_modes=executor_modes,
         kv_attention_sources=kv_attention_sources,
         manifest_kv_attention_source=manifest_kv_attention_source,
+        cancel_sweep=cancel_sweep,
     )
 
     return {
@@ -1109,7 +1218,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "gaps_ms": _stats(refill_gaps),
             },
             "cancellation_counter_before": cancelled_before,
-            "cancellation_counter_after": cancelled_after,
+            "cancellation_counter_after": (
+                cancelled_before + cancellation_delta
+                if cancelled_before is not None and cancellation_delta is not None
+                else None
+            ),
+            "cancel_delays_ms": list(cancel_delays_ms),
+            "cancel_sweep": cancel_sweep,
             "packed_layer_outer_enabled": bool(args.packed_layer_outer),
             "packed_layer_outer_env_seen": layer_outer_env_seen,
             "kv_storage_requested": args.kv_storage,
@@ -1218,9 +1333,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--decode-tokens", type=int, default=24)
     parser.add_argument(
         "--cancel-delay-ms",
-        type=float,
-        default=600.0,
-        help="how long to hold the admitted long request open before closing it",
+        default="600",
+        help=(
+            "comma-separated cancellation points in milliseconds. More than one "
+            "sweeps early/mid/late so the bounded-delay gate is a bound rather "
+            "than a single observation"
+        ),
     )
     parser.add_argument("--admit-timeout-seconds", type=float, default=60.0)
     parser.add_argument("--cancel-observe-timeout-seconds", type=float, default=30.0)
@@ -1285,6 +1403,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    cancel_delays_ms = _parse_cancel_delays(args.cancel_delay_ms)
+    args.cancel_delays_ms = cancel_delays_ms
+    # Keep the scalar meaningful for anything that still reads it: the last sweep
+    # point is the one closest to prefill completion.
+    args.cancel_delay_ms = cancel_delays_ms[-1]
     try:
         artifact = run(args)
     except (ValueError, RuntimeError) as error:
