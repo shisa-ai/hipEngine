@@ -1,0 +1,260 @@
+"""GPU (hip_gfx1151) Surya OCR pipeline tests: vision tower, end-to-end OCR.
+
+Correctness contract: the HIP vision tower matches the CPU reference
+fp32 vision forward within calibrated fp32-GEMM tolerances, and the full
+GPU pipeline (GPU vision features + GPU prefill/decode) reproduces the
+torch fp32 oracle greedy IDs exactly. Skips without ROCm or the model
+checkpoint.
+"""
+
+from __future__ import annotations
+
+import ctypes
+import json
+from pathlib import Path
+
+import numpy as np
+import pytest
+
+
+def _hip_available() -> bool:
+    try:
+        ctypes.CDLL("libamdhip64.so")
+        return True
+    except OSError:
+        return False
+
+
+pytestmark = [
+    pytest.mark.skipif(not _hip_available(), reason="ROCm/HIP not available"),
+]
+
+FIXTURES = Path("tests/fixtures/surya")
+MODEL_ID = "datalab-to/surya-ocr-2"
+
+
+def _model_dir() -> Path:
+    from hipengine.loading.surya import resolve_surya_path
+
+    try:
+        return resolve_surya_path(MODEL_ID)
+    except FileNotFoundError:
+        pytest.skip(f"{MODEL_ID} not in local HF cache")
+
+
+@pytest.fixture(scope="module")
+def runner():
+    from hipengine.loading.surya import load_surya_spec, load_surya_weights
+    from hipengine.runtime.surya import SuryaGpuRunner
+
+    model_dir = _model_dir()
+    spec = load_surya_spec(model_dir)
+    weights = load_surya_weights(model_dir)
+    r = SuryaGpuRunner(weights, spec)
+    yield r, weights, spec
+    r.close()
+
+
+def _page_inputs():
+    from hipengine.loading.surya import preprocess_image_surya
+    from PIL import Image
+
+    page = FIXTURES / "page_small.png"
+    if not page.exists():
+        pytest.skip("page_small.png fixture not present")
+    return preprocess_image_surya(Image.open(page).convert("RGB"))
+
+
+def test_gpu_vision_matches_cpu_reference(runner) -> None:
+    r, weights, spec = runner
+    from hipengine.kernels.cpu_reference.surya import vision_forward
+
+    pixel_rows, grid = _page_inputs()
+    _, _, merged_cpu = vision_forward(weights, spec, pixel_rows, [grid])
+    merged_gpu = r.vision_forward(pixel_rows, [grid])
+
+    assert merged_gpu.shape == merged_cpu.shape
+    d = np.abs(merged_gpu - merged_cpu)
+    # fp32 GEMM reassociation through a 12-block tower; the tight gate is
+    # end-to-end greedy-ID equality below
+    assert d.max() < 0.5, f"vision merger diverged: max|d|={d.max():.3e}"
+    assert d.mean() < 0.05, f"vision merger drift: mean|d|={d.mean():.3e}"
+    # no NaN/Inf anywhere
+    assert np.isfinite(merged_gpu).all()
+
+
+def test_gpu_vision_matches_oracle_features(runner) -> None:
+    """Compare against the torch fp32 oracle's merged features if captured."""
+
+    r, weights, spec = runner
+    from hipengine.kernels.cpu_reference.surya import vision_forward
+
+    path = FIXTURES / "oracle_image.npz"
+    if not path.exists():
+        pytest.skip("oracle_image.npz not present; run scripts/surya_oracle_torch.py")
+    with np.load(path) as z:
+        if "vision_merged" not in z.files:
+            pytest.skip("oracle_image.npz has no vision_merged features")
+        merged_oracle = z["vision_merged"]
+
+    pixel_rows, grid = _page_inputs()
+    _, _, merged_cpu = vision_forward(weights, spec, pixel_rows, [grid])
+    merged_gpu = r.vision_forward(pixel_rows, [grid])
+    d_gpu = np.abs(merged_gpu - merged_oracle)
+    d_cpu = np.abs(merged_cpu - merged_oracle)
+    # the GPU lane must sit in the same noise band as the (oracle-gated)
+    # CPU reference, not merely be finite
+    assert d_gpu.max() <= d_cpu.max() + 1e-3, (
+        f"GPU vision deviates beyond CPU-reference band: "
+        f"gpu max={d_gpu.max():.3e} cpu max={d_cpu.max():.3e}"
+    )
+
+
+def test_gpu_end_to_end_ocr_matches_oracle(runner) -> None:
+    """Full GPU pipeline: vision + prefill + decode reproduce oracle IDs."""
+
+    r, weights, spec = runner
+    from hipengine.loading.surya import (
+        compute_mrope_positions,
+        render_chat_prompt,
+    )
+    from hipengine.loading.surya import SuryaTokenizer, resolve_surya_path
+
+    ref_path = FIXTURES / "oracle_greedy.json"
+    if not ref_path.exists():
+        pytest.skip("oracle_greedy.json not present; capture with transformers")
+    ref = json.loads(ref_path.read_text())
+
+    pixel_rows, grid = _page_inputs()
+    merged = r.vision_forward(pixel_rows, [grid])
+    n_img = (grid[1] // 2) * (grid[2] // 2)
+    tokenizer = SuryaTokenizer(resolve_surya_path(MODEL_ID))
+    ids, mm = render_chat_prompt(tokenizer, "Transcribe this page.", n_img)
+    pos = compute_mrope_positions(mm, grid, spec.vision_spatial_merge_size)
+
+    logits = r.prefill(np.asarray(ids, dtype=np.int64), pos,
+                       visual_features=merged)
+    generated: list[int] = []
+    p = int(pos[:, -1].max())
+    for step in range(64):
+        nxt = int(np.argmax(logits))
+        if nxt == spec.eos_token_id:
+            break
+        generated.append(nxt)
+        logits = r.decode_step(nxt, p + 1 + step)
+
+    assert generated == ref["ids"], (
+        "GPU pipeline greedy decode diverged from the torch fp32 reference"
+    )
+
+
+def test_gpu_runner_repeated_create_use_close_releases_memory(runner) -> None:
+    """Repeated create/use/close must not leak tracked device allocations.
+
+    Regression guard for the constructor clobbering ``_head_bias_bufs``
+    after persistent state/staging allocations populated it, and for the
+    untracked cached pointer-array buffers.
+    """
+
+    _, weights, spec = runner
+    from hipengine.core.memory import memory_stats
+    from hipengine.loading.surya import (
+        SuryaTokenizer,
+        compute_mrope_positions,
+        render_chat_prompt,
+        resolve_surya_path,
+    )
+    from hipengine.runtime.surya import SuryaGpuRunner
+
+    pixel_rows, grid = _page_inputs()
+    tokenizer = SuryaTokenizer(resolve_surya_path(MODEL_ID))
+    n_img = (grid[1] // 2) * (grid[2] // 2)
+    ids, mm = render_chat_prompt(tokenizer, "Transcribe this page.", n_img)
+    pos = compute_mrope_positions(mm, grid, spec.vision_spatial_merge_size)
+    baseline = memory_stats()["active_allocations"]
+    baseline_bytes = memory_stats()["current_allocated_bytes"]
+
+    for _ in range(2):
+        r = SuryaGpuRunner(weights, spec)
+        try:
+            merged = r.vision_forward(pixel_rows, [grid])
+            assert np.isfinite(merged).all()
+            # text prefill + decode exercise the cached pointer-array buffers
+            logits = r.prefill(np.asarray(ids, dtype=np.int64), pos,
+                               visual_features=merged)
+            nxt = int(np.argmax(logits))
+            r.decode_step(nxt, int(pos[:, -1].max()) + 1)
+            assert len(r._ptr_array_bufs) > 0, (
+                "decode path did not populate the pointer-array cache"
+            )
+        finally:
+            r.close()
+        stats = memory_stats()
+        assert stats["active_allocations"] == baseline, (
+            f"device allocations leaked across close(): "
+            f"active={stats['active_allocations']} baseline={baseline}"
+        )
+        assert stats["current_allocated_bytes"] == baseline_bytes
+
+
+def test_gpu_generator_public_api_matches_oracle() -> None:
+    """The registered (surya_ocr2, hip_gfx1151, fp32) generator path."""
+
+    from hipengine.generation.registry import GenerationRequest
+    from hipengine.generation.surya_contract import SuryaRequestError
+    from hipengine.generation.surya_gpu import SuryaOCRGeneratorGPU
+
+    ref_path = FIXTURES / "oracle_greedy.json"
+    if not ref_path.exists():
+        pytest.skip("oracle_greedy.json not present; capture with transformers")
+    ref = json.loads(ref_path.read_text())
+    page = FIXTURES / "page_small.png"
+    if not page.exists():
+        pytest.skip("page_small.png fixture not present")
+
+    gen = SuryaOCRGeneratorGPU(model_path=_model_dir())
+    try:
+        request = GenerationRequest(
+            prompts=["Transcribe this page."],
+            max_tokens=64,
+            temperature=0.0,
+            top_p=1.0,
+            ignore_eos=False,
+        )
+        out = gen.generate_multimodal_detailed(
+            "Transcribe this page.", str(page), request
+        )
+        assert out.text == ref["text"]
+        assert out.generated_token_ids is not None
+        assert out.finish_details is not None
+        assert out.finish_details.reason in {"eos", "stop", "length"}
+
+        # prompt + output must fit the runner context, checked before device work
+        with pytest.raises(SuryaRequestError, match="exceeds"):
+            gen.generate_multimodal_detailed(
+                "Transcribe this page.",
+                str(page),
+                GenerationRequest(
+                    prompts=["Transcribe this page."],
+                    max_tokens=gen.runner.max_seq + 1,
+                    temperature=0.0,
+                    top_p=1.0,
+                    ignore_eos=False,
+                ),
+            )
+
+        # unsupported sampling controls are rejected, not silently ignored
+        with pytest.raises(SuryaRequestError, match="temperature"):
+            gen.generate_multimodal_detailed(
+                "Transcribe this page.",
+                str(page),
+                GenerationRequest(
+                    prompts=["Transcribe this page."],
+                    max_tokens=8,
+                    temperature=0.7,
+                    top_p=1.0,
+                    ignore_eos=False,
+                ),
+            )
+    finally:
+        gen.close()
