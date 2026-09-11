@@ -6,6 +6,7 @@ import concurrent.futures
 import copy
 import os
 import socket
+import sys
 import threading
 import time
 import uuid
@@ -183,7 +184,15 @@ def prefill_transient_owner_inventory(sessions: Sequence[Any]) -> dict[str, Any]
     executor_routes: list[str] = []
     executor_modes: list[str] = []
     per_layer_flags: list[bool] = []
+    kv_attention_sources: list[str | None] = []
     for session in sessions:
+        # The session's own KV layout, read here because it gates whether the
+        # resumable executor is even attempted (qwen35_gguf.py:8084). The last
+        # execution manifest cannot answer this: by scrape time it is a decode
+        # manifest, whose builder does not populate kv_attention_source.
+        kv_attention_sources.append(
+            getattr(session, "kv_attention_source", None)
+        )
         oracle_buffers_by_session = getattr(
             session, "_int8_prefill_oracle_buffers", None
         )
@@ -262,6 +271,7 @@ def prefill_transient_owner_inventory(sessions: Sequence[Any]) -> dict[str, Any]
         "int8_prefill_lifetime_plan_modes": lifetime_modes,
         "last_packed_executor_routes": executor_routes,
         "last_packed_executor_modes": executor_modes,
+        "kv_attention_sources": kv_attention_sources,
         "oracle_per_layer_flags": per_layer_flags,
         "note": (
             "oracle_owner_bytes is the live per-layer/shared BF16 oracle pair"
