@@ -197,6 +197,60 @@ def test_gpu_vision_matches_cpu_reference(runner) -> None:
     assert np.isfinite(merged_gpu).all()
 
 
+@pytest.mark.parametrize(
+    ("size", "expected_grid"),
+    [
+        # both below SURYA_MIN_PIXELS: smart_resize rounds *up* to 256x256,
+        # exercising the ceil branch rather than the plain factor rounding
+        ((64, 64), (1, 16, 16)),
+        ((100, 100), (1, 16, 16)),
+        # non-square, both orientations: the same patch count through a 22x12
+        # and a 12x22 grid, so a row/column mix-up cannot cancel out
+        ((128, 256), (1, 22, 12)),
+        ((256, 128), (1, 12, 22)),
+    ],
+)
+def test_gpu_vision_geometry_sweep_matches_cpu_reference(
+    runner, size: tuple[int, int], expected_grid: tuple[int, int, int]
+) -> None:
+    """Resize and grid-geometry branches of the vision tower.
+
+    The rect bring-up exposed a tile-addressing bug that only appeared on a
+    non-square grid, so the geometry axes are worth pinning explicitly. These
+    four cases stay cheap enough for the suite; 3:1 aspect ratios
+    (512x1536 / 1536x512 / 1024x192 / 192x1024) also pass but cost 12.8 s of
+    CPU vision each.
+    """
+
+    r, weights, spec = runner
+    from hipengine.kernels.cpu_reference.surya import vision_forward
+    from hipengine.loading.surya import preprocess_image_surya
+    from PIL import Image, ImageDraw
+
+    width, height = size
+    img = Image.new("RGB", (width, height), (255, 255, 255))
+    draw = ImageDraw.Draw(img)
+    y = 8
+    while y < height - 12:
+        draw.rectangle([8, y, max(9, width - 8), y + 4], fill=(40, 40, 40))
+        y += 14
+    draw.rectangle([8, 8, max(9, width // 2), 20], fill=(10, 10, 10))
+
+    pixel_rows, grid = preprocess_image_surya(img)
+    assert tuple(grid) == expected_grid, (
+        f"{width}x{height} resized to grid {tuple(grid)}, expected "
+        f"{expected_grid}; the resize branch under test changed"
+    )
+
+    _, _, merged_cpu = vision_forward(weights, spec, pixel_rows, [grid])
+    merged_gpu = r.vision_forward(pixel_rows, [grid])
+    assert merged_gpu.shape == merged_cpu.shape
+    d = np.abs(merged_gpu - merged_cpu)
+    assert d.max() < 0.5, f"{width}x{height} vision diverged: max|d|={d.max():.3e}"
+    assert d.mean() < 0.05, f"{width}x{height} vision drift: mean|d|={d.mean():.3e}"
+    assert np.isfinite(merged_gpu).all()
+
+
 def test_gpu_vision_matches_oracle_features(runner) -> None:
     """Compare against the torch fp32 oracle's merged features if captured."""
 
