@@ -17,6 +17,7 @@ from scripts.gguf_p6e_cancel_refill_proof import (
     DECLARED_ACK_P95_LIMIT_MS,
     DECLARED_GAP_MAX_FACTOR,
     _assert_resumable_configuration,
+    _host_sampling_payload,
     _labeled_metric_values,
     _metric_sample_labels,
     _parse_cancel_delays,
@@ -69,6 +70,17 @@ _HEALTHY = {
             "acknowledgement_ms": 120.0,
         },
     ],
+    # P6 names "native and host sampling"; the rest of the harness is greedy.
+    "host_sampling": {
+        "enabled": True,
+        "seed": 1234,
+        "reference_text": _REFERENCE_TEXT,
+        "survivor_text": _REFERENCE_TEXT,
+        "reference_status": 200,
+        "survivor_status": 200,
+        "host_sampler_requests_delta": 2.0,
+        "native_sampler_requests_delta": 0.0,
+    },
 }
 
 
@@ -84,6 +96,7 @@ def test_all_gates_pass_on_a_healthy_run() -> None:
     assert set(gates) == {
         "cancellation_reached_backend",
         "cancellation_sweep_bounded",
+        "host_sampling_survivor_exact",
         "resumable_path_engaged",
         "survivors_exact",
         "blocking_survivor_exact",
@@ -637,3 +650,101 @@ def test_stream_outcome_exposes_the_attributes_the_artifact_reads() -> None:
     assert isinstance(outcome.text_sha256, str) and len(outcome.text_sha256) == 64
     assert outcome.first_token_at is None
     assert not hasattr(outcome, "text_chars")
+
+
+def test_host_sampling_gate_passes_only_when_the_host_route_engaged() -> None:
+    """Text equality alone would also pass on the native sampler."""
+
+    gates = _gates(
+        host_sampling={
+            "enabled": True,
+            "seed": 1234,
+            "reference_text": _REFERENCE_TEXT,
+            "survivor_text": _REFERENCE_TEXT,
+            "reference_status": 200,
+            "survivor_status": 200,
+            "host_sampler_requests_delta": 0.0,
+            "native_sampler_requests_delta": 2.0,
+        }
+    )
+
+    gate = gates["host_sampling_survivor_exact"]
+    assert gate["passed"] is False
+    assert any("did not exercise the host sampler" in f for f in gate["failures"])
+    assert gate["native_sampler_requests_delta"] == 2.0
+
+
+def test_host_sampling_gate_fails_when_the_survivor_text_differs() -> None:
+    gates = _gates(
+        host_sampling={
+            "enabled": True,
+            "reference_text": _REFERENCE_TEXT,
+            "survivor_text": "something else entirely",
+            "reference_status": 200,
+            "survivor_status": 200,
+            "host_sampler_requests_delta": 2.0,
+        }
+    )
+
+    gate = gates["host_sampling_survivor_exact"]
+    assert gate["passed"] is False
+    assert any("preserve the sampled result" in f for f in gate["failures"])
+
+
+def test_host_sampling_gate_fails_on_an_empty_reference() -> None:
+    """A reference with no text cannot certify anything."""
+
+    gates = _gates(
+        host_sampling={
+            "enabled": True,
+            "reference_text": "",
+            "survivor_text": "",
+            "reference_status": 200,
+            "survivor_status": 200,
+            "host_sampler_requests_delta": 1.0,
+        }
+    )
+
+    assert gates["host_sampling_survivor_exact"]["passed"] is False
+
+
+def test_host_sampling_gate_fails_when_the_arm_did_not_run() -> None:
+    for value in ({}, None):
+        gate = _gates(host_sampling=value)["host_sampling_survivor_exact"]
+        assert gate["passed"] is False
+        assert gate["enabled"] is False
+
+
+def test_host_sampling_gate_reports_request_errors() -> None:
+    gates = _gates(
+        host_sampling={
+            "enabled": True,
+            "reference_text": _REFERENCE_TEXT,
+            "survivor_text": _REFERENCE_TEXT,
+            "reference_status": 200,
+            "survivor_status": 500,
+            "survivor_error": "boom",
+            "host_sampler_requests_delta": 1.0,
+        }
+    )
+
+    gate = gates["host_sampling_survivor_exact"]
+    assert gate["passed"] is False
+    assert any("boom" in f for f in gate["failures"])
+
+
+def test_host_sampling_payload_forces_the_host_route_deterministically() -> None:
+    """top_logprobs > top_k > 0 is what makes native GPU sampling decline."""
+
+    payload = _host_sampling_payload(
+        model_name="m", prompt="p", max_tokens=4, seed=99
+    )
+
+    assert payload["temperature"] > 0
+    # Above _MAX_NATIVE_GPU_TOP_K (64) is what makes native GPU sampling decline.
+    assert payload["top_k"] > 64
+    # top_logprobs would also block native sampling but is not an accepted
+    # request parameter, so it must not be sent.
+    assert "top_logprobs" not in payload
+    # The seed is what makes a survivor comparable at temperature above zero.
+    assert payload["seed"] == 99

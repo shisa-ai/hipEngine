@@ -114,6 +114,7 @@ DECLARED_GAP_MAX_FACTOR = 2.5
 CANCELLATION_COUNTER = "hipengine_request_cancelled_total"
 REQUEST_FAILED_METRIC = "hipengine_request_failed_total"
 WORK_PREFILL_METRIC = "hipengine_resident_work_prefill_total"
+ROUTE_TOTAL_METRIC = "hipengine_resident_route_total"
 ACTIVE_REQUESTS_METRIC = "hipengine_resident_requests_active"
 PREFILL_OWNER_BYTES_METRIC = "hipengine_resident_prefill_hidden_owner_bytes"
 ORACLE_OWNER_BYTES_METRIC = "hipengine_resident_prefill_oracle_owner_bytes"
@@ -156,6 +157,34 @@ def _completion_payload(
     return payload
 
 
+def _host_sampling_payload(
+    *, model_name: str, prompt: str, max_tokens: int, seed: int = 1234
+) -> dict[str, Any]:
+    """A payload that must take the host sampler rather than the native one.
+
+    P6 names "native and host sampling" as modes to cover, and the rest of this
+    harness runs greedy, which is a third path again (GREEDY_FAST). Native GPU
+    sampling declines above ``_MAX_NATIVE_GPU_TOP_K`` (64), so ``top_k`` above that
+    with temperature above zero forces ``HOST_LOGITS_SAMPLE``. ``top_logprobs``
+    would also do it but is not an accepted request parameter. The seed keeps the
+    arm deterministic, which is what lets a survivor be compared to a reference at
+    all with temperature above zero.
+    """
+
+    return {
+        "model": model_name,
+        "prompt": prompt,
+        "max_tokens": int(max_tokens),
+        "temperature": 1.0,
+        "top_p": 1.0,
+        "top_k": 100,
+        "seed": int(seed),
+        "ignore_eos": True,
+        "stream": True,
+        "stream_options": {"include_hipengine": True},
+    }
+
+
 def _consume_sse_line(outcome: _StreamOutcome, raw_line: str, observed: float) -> None:
     """Fold one SSE line into an outcome. Shared by every streaming arm."""
 
@@ -189,11 +218,13 @@ def _stream_completion(
     prompt: str,
     max_tokens: int,
     per_line_delay_s: float = 0.0,
+    payload: dict[str, Any] | None = None,
 ) -> _StreamOutcome:
     """Stream one completion to completion and record tokens and timing.
 
     ``per_line_delay_s`` throttles the reader to model a slow consumer, which
-    must not stall the engine for other requests.
+    must not stall the engine for other requests. ``payload`` overrides the
+    default greedy body so an arm can select a different sampling route.
     """
 
     outcome = _StreamOutcome()
@@ -201,8 +232,12 @@ def _stream_completion(
         with client.stream(
             "POST",
             f"{base_url}/v1/completions",
-            json=_completion_payload(
-                model_name=model_name, prompt=prompt, max_tokens=max_tokens
+            json=(
+                payload
+                if payload is not None
+                else _completion_payload(
+                    model_name=model_name, prompt=prompt, max_tokens=max_tokens
+                )
             ),
         ) as response:
             outcome.status_code = int(response.status_code)
@@ -620,6 +655,67 @@ def _evaluate_cancel_sweep_gate(sweep: Sequence[Mapping[str, Any]] | None) -> di
     }
 
 
+def _evaluate_host_sampling_gate(
+    host_sampling: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """The host-sampling route must engage and still yield to a survivor.
+
+    P6 names "native and host sampling" as modes to cover. Checking only the text
+    would pass on the native route, so the route counter is asserted too: a green
+    result on the wrong sampler is the same false positive this proof exists to
+    prevent.
+    """
+
+    record = dict(host_sampling or {})
+    if not record:
+        return {
+            "passed": False,
+            "enabled": False,
+            "detail": "the host-sampling arm did not run",
+        }
+    failures: list[str] = []
+    delta = record.get("host_sampler_requests_delta")
+    if not isinstance(delta, (int, float)) or delta < 1:
+        failures.append(
+            "host_sampler_requests did not move "
+            f"({delta!r}), so this arm did not exercise the host sampler"
+        )
+    if record.get("reference_status") != 200:
+        failures.append(
+            f"reference returned {record.get('reference_status')!r}: "
+            f"{record.get('reference_error')!r}"
+        )
+    if record.get("survivor_status") != 200:
+        failures.append(
+            f"survivor returned {record.get('survivor_status')!r}: "
+            f"{record.get('survivor_error')!r}"
+        )
+    reference_text = record.get("reference_text") or ""
+    if not reference_text:
+        failures.append("reference produced no text to compare against")
+    elif record.get("survivor_text") != reference_text:
+        failures.append(
+            "survivor text differs from the seeded reference, so the yield did "
+            "not preserve the sampled result"
+        )
+    return {
+        "passed": not failures,
+        "enabled": bool(record.get("enabled")),
+        "seed": record.get("seed"),
+        "host_sampler_requests_delta": delta,
+        "native_sampler_requests_delta": record.get("native_sampler_requests_delta"),
+        "reference_sha256": record.get("reference_sha256"),
+        "survivor_sha256": record.get("survivor_sha256"),
+        "failures": failures,
+        "detail": (
+            "a seeded host-sampling request must be served while a long "
+            "host-sampling prefill is in flight, and the sampled result must be "
+            "unchanged by the yield. The route counter is asserted because text "
+            "equality alone would also pass on the native sampler"
+        ),
+    }
+
+
 def _wait_for(predicate: Any, *, timeout: float, interval: float = 0.05) -> bool:
     deadline = time.perf_counter() + timeout
     while time.perf_counter() < deadline:
@@ -649,6 +745,7 @@ def evaluate_gates(
     kv_attention_sources: dict[str, float] | None = None,
     manifest_kv_attention_source: str | None = None,
     cancel_sweep: Sequence[Mapping[str, Any]] | None = None,
+    host_sampling: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Evaluate the service gates. Split out so the failure paths are testable."""
 
@@ -663,6 +760,7 @@ def evaluate_gates(
         ),
     }
     gates["cancellation_sweep_bounded"] = _evaluate_cancel_sweep_gate(cancel_sweep)
+    gates["host_sampling_survivor_exact"] = _evaluate_host_sampling_gate(host_sampling)
     gates["resumable_path_engaged"] = {
         # Without this the other gates can all pass on the default chunk-outer
         # path, which does not contain the deliverable at all. The indicator must
@@ -1137,6 +1235,94 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             kv_attention_sources = _labeled_metric_values(
                 client, base_url, KV_ATTENTION_SOURCE_METRIC
             )
+
+            # --- 7. host sampling ------------------------------------------------
+            # P6 names "native and host sampling" as modes to cover, and every arm
+            # above runs greedy, which is a third path (GREEDY_FAST). These
+            # requests force HOST_LOGITS_SAMPLE via top_logprobs > top_k > 0, and a
+            # seed makes the arm deterministic so a survivor can be compared to a
+            # reference at temperature above zero.
+            host_sampling: dict[str, Any] = {}
+            if bool(args.host_sampling):
+                routes_before = _labeled_metric_values(
+                    client, base_url, ROUTE_TOTAL_METRIC
+                )
+                host_reference = _stream_completion(
+                    client,
+                    base_url=base_url,
+                    model_name=model_name,
+                    prompt=short_text,
+                    max_tokens=max_tokens,
+                    payload=_host_sampling_payload(
+                        model_name=model_name,
+                        prompt=short_text,
+                        max_tokens=max_tokens,
+                        seed=int(args.host_sampling_seed),
+                    ),
+                )
+
+                host_long: dict[str, Any] = {}
+
+                def _run_host_long() -> None:
+                    host_long["outcome"] = _stream_completion(
+                        client,
+                        base_url=base_url,
+                        model_name=model_name,
+                        prompt=str(long_row["text"]),
+                        max_tokens=max_tokens,
+                        payload=_host_sampling_payload(
+                            model_name=model_name,
+                            prompt=str(long_row["text"]),
+                            max_tokens=max_tokens,
+                            seed=int(args.host_sampling_seed),
+                        ),
+                    )
+
+                host_thread = threading.Thread(target=_run_host_long, daemon=True)
+                host_thread.start()
+                time.sleep(float(args.concurrent_lead_seconds))
+                host_survivor = _stream_completion(
+                    client,
+                    base_url=base_url,
+                    model_name=model_name,
+                    prompt=short_text,
+                    max_tokens=max_tokens,
+                    payload=_host_sampling_payload(
+                        model_name=model_name,
+                        prompt=short_text,
+                        max_tokens=max_tokens,
+                        seed=int(args.host_sampling_seed),
+                    ),
+                )
+                host_thread.join(timeout=join_seconds)
+                routes_after = _labeled_metric_values(
+                    client, base_url, ROUTE_TOTAL_METRIC
+                )
+                host_sampling = {
+                    "enabled": True,
+                    "seed": int(args.host_sampling_seed),
+                    "reference_text": host_reference.text,
+                    "survivor_text": host_survivor.text,
+                    "reference_error": host_reference.error,
+                    "survivor_error": host_survivor.error,
+                    "reference_status": host_reference.status_code,
+                    "survivor_status": host_survivor.status_code,
+                    "long_wall_ms": (
+                        host_long.get("outcome").wall_ms
+                        if host_long.get("outcome") is not None
+                        else None
+                    ),
+                    "host_sampler_requests_delta": (
+                        (routes_after.get("host_sampler_requests") or 0.0)
+                        - (routes_before.get("host_sampler_requests") or 0.0)
+                    ),
+                    "native_sampler_requests_delta": (
+                        (routes_after.get("native_sampler_requests") or 0.0)
+                        - (routes_before.get("native_sampler_requests") or 0.0)
+                    ),
+                    "reference_sha256": host_reference.text_sha256,
+                    "survivor_sha256": host_survivor.text_sha256,
+                }
     finally:
         if server is not None:
             server.should_exit = True
@@ -1166,6 +1352,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         kv_attention_sources=kv_attention_sources,
         manifest_kv_attention_source=manifest_kv_attention_source,
         cancel_sweep=cancel_sweep,
+        host_sampling=host_sampling,
     )
 
     return {
@@ -1225,6 +1412,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ),
             "cancel_delays_ms": list(cancel_delays_ms),
             "cancel_sweep": cancel_sweep,
+            "host_sampling": host_sampling,
             "packed_layer_outer_enabled": bool(args.packed_layer_outer),
             "packed_layer_outer_env_seen": layer_outer_env_seen,
             "kv_storage_requested": args.kv_storage,
@@ -1396,6 +1584,17 @@ def build_parser() -> argparse.ArgumentParser:
             "while describing a different route"
         ),
     )
+    parser.add_argument(
+        "--host-sampling",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "add an arm that forces HOST_LOGITS_SAMPLE (top_logprobs > top_k > 0 "
+            "with a seed). Every other arm is greedy, which is a third path, so "
+            "without this P6's named 'host sampling' mode is uncovered"
+        ),
+    )
+    parser.add_argument("--host-sampling-seed", type=int, default=1234)
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--json", type=Path, default=None)
     return parser
