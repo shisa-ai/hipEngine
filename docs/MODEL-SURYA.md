@@ -25,8 +25,8 @@ vision tower and text decoder on gfx1151.
 | Rectangular-page coverage | done (vision + isolation) | `tests/test_surya_gpu.py` rect vision vs `oracle_rect` `vision_merged` |
 | Full-page coverage (1024x1024, real text) | done | `tests/fixtures/surya/page_full.png`, `scripts/surya_oracle_greedy.py`, `tests/test_surya_gpu.py::test_gpu_full_page_layout_matches_oracle` |
 | OCR output quality check (labels + bboxes vs drawn geometry) | done | `tests/test_surya_gpu.py::test_gpu_full_page_layout_matches_oracle` second half |
-| Greedy reference fixtures are reproducible | done | `scripts/surya_oracle_greedy.py --case all` regenerates `oracle_greedy.json` and `oracle_fullpage_greedy.json` |
-| Multi-page held-out OCR corpus | pending | only `page_small.png` (256x256), `page_rect.png` (320x192) and `page_full.png` (1024x1024) are exercised |
+| Greedy reference fixtures are reproducible | done | `scripts/surya_oracle_greedy.py --case all` regenerates `oracle_greedy.json`, `oracle_fullpage_greedy.json` and `oracle_corpus.json` byte-for-byte |
+| Multi-page held-out OCR corpus | done | `page_columns.png` (two-column) and `page_list.png` (numbered list) via `tests/test_surya_gpu.py::test_gpu_ocr_corpus_matches_oracle` |
 | Registry migration + `KVLiveSpans` KV ABI | pending | tracked in `docs/REFACTOR.md` |
 | Quantized (GGUF) Surya decoder | pending | safetensors fp32 is the implementation target |
 | MTP / speculative decoding | pending | 15 MTP tensors inventoried, unused |
@@ -45,6 +45,15 @@ page that was drawn, not merely that the lanes agree: the output parses as
 JSON, the label sequence is `Section-Header, Text, Text, Caption, Table`, every
 bbox is in range and ordered, and the header/caption/table boxes match the
 drawn geometry (heading at y=50, caption at y=458, table below it).
+
+Two held-out layouts cover structure the single-column fixtures cannot
+produce. `page_columns.png` (512x512) has a spanning title and two prose
+columns; the oracle keeps them apart as a left-column pair (x 65-419) and a
+right-column pair (x 543-897), so column detection is exercised rather than
+just text finding. `page_list.png` (512x512) decodes to
+`Section-Header` + `List-Group` + `Text`, and is the only fixture that reaches
+the list label. Both are 1x32x32 grids and both reach a natural EOS (94 and 46
+tokens).
 
 ### Measured inventory (2026-09-11, revision `3b3d4cdf`)
 
