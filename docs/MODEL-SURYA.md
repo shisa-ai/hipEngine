@@ -22,6 +22,7 @@ vision tower and text decoder on gfx1151.
 | GPU `rocprofv3` kernel-trace evidence | done | `benchmarks/results/2026-09-11-gfx1151-surya-kernel-trace.json` |
 | Rectangular-page coverage | done (vision + isolation) | `tests/test_surya_gpu.py` rect vision vs `oracle_rect` `vision_merged` |
 | Full-page coverage (1024x1024, real text) | done | `tests/fixtures/surya/page_full.png`, `scripts/surya_oracle_fullpage.py`, `tests/test_surya_gpu.py::test_gpu_full_page_layout_matches_oracle` |
+| OCR output quality check (labels + bboxes vs drawn geometry) | done | `tests/test_surya_gpu.py::test_gpu_full_page_layout_matches_oracle` second half |
 | Multi-page held-out OCR corpus | pending | only `page_small.png` (256x256), `page_rect.png` (320x192) and `page_full.png` (1024x1024) are exercised |
 | Registry migration + `KVLiveSpans` KV ABI | pending | tracked in `docs/REFACTOR.md` |
 | Quantized (GGUF) Surya decoder | pending | safetensors fp32 is the implementation target |
@@ -35,6 +36,12 @@ oracle greedy IDs exactly. On the full-size page the torch fp32 oracle, the
 NumPy CPU reference, and the gfx1151 HIP lane all produce the same 78-token
 layout-JSON output for `page_full.png` (grid 1x64x64, 1024 merged visual
 tokens). All HIP tests carry a ROCm-availability guard.
+
+The full-page gate also checks the decoded text is the *right answer* for the
+page that was drawn, not merely that the lanes agree: the output parses as
+JSON, the label sequence is `Section-Header, Text, Text, Caption, Table`, every
+bbox is in range and ordered, and the header/caption/table boxes match the
+drawn geometry (heading at y=50, caption at y=458, table below it).
 
 ### Measured inventory (2026-09-11, revision `3b3d4cdf`)
 

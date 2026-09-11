@@ -359,6 +359,33 @@ def test_gpu_full_page_layout_matches_oracle(runner) -> None:
             f"(gpu len={len(generated)}, ref len={len(ref['ids'])})"
         )
 
+    # Parity alone only shows the lanes agree. Also check the decoded text is
+    # the right answer for the page that was drawn: `_make_synthetic_page_full`
+    # puts a 40 pt heading at (60, 50), a horizontal rule at y=105, two prose
+    # blocks from y=140, a "Table 1: Regional breakdown" caption at y=458 and
+    # four table rows from y=498.
+    records = json.loads(tokenizer.decode(generated))
+    assert isinstance(records, list) and records, "OCR output is not a JSON list"
+    for rec in records:
+        assert set(rec) >= {"label", "bbox", "count"}, f"bad record {rec}"
+        x1, y1, x2, y2 = (int(v) for v in rec["bbox"].split())
+        assert 0 <= x1 < x2 <= 1024 and 0 <= y1 < y2 <= 1024, f"bbox out of range {rec}"
+
+    labels = [rec["label"] for rec in records]
+    assert labels == ["Section-Header", "Text", "Text", "Caption", "Table"], (
+        f"unexpected layout labels: {labels}"
+    )
+    header = next(r for r in records if r["label"] == "Section-Header")
+    _, hy1, _, hy2 = (int(v) for v in header["bbox"].split())
+    assert abs(hy1 - 50) <= 12, f"header top {hy1} does not match the drawn heading"
+    assert abs(hy2 - 94) <= 15, f"header bottom {hy2} does not match the drawn heading"
+    caption = next(r for r in records if r["label"] == "Caption")
+    table = next(r for r in records if r["label"] == "Table")
+    _, cy1, _, _ = (int(v) for v in caption["bbox"].split())
+    _, ty1, _, _ = (int(v) for v in table["bbox"].split())
+    assert 440 <= cy1 <= 480, f"caption top {cy1} does not match the drawn caption"
+    assert ty1 >= cy1, f"table top {ty1} should not be above the caption {cy1}"
+
 
 def test_gpu_full_page_vision_matches_oracle(runner) -> None:
     """Vision tower at full-page scale (4096 patches) vs the torch oracle.
