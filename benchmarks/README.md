@@ -357,10 +357,25 @@ in the artifacts
 medians of 3, all four arms same-conditions): the UD artifacts vs their plain
 counterparts. Prefill is tokens/s.
 
-| Model | Prefill plain | Prefill UD | Ratio | Decode plain | Decode UD |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| `UD-Q4_K_M` | 980.7 | **904.1** | **0.922x** | 34.12 | 26.20 |
-| `UD-Q4_K_S` | 944.5 | **893.2** | **0.946x** | 30.55 | 25.53 |
+| Model | Prefill plain | Prefill UD | Ratio | Decode plain | Decode UD | Decode ratio |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `UD-Q4_K_M` | 986.0 | **905.6** | **0.918x** | 35.37 | **29.98** | **0.848x** |
+| `UD-Q4_K_S` | 946.0 | **893.7** | **0.944x** | 36.66 | **29.49** | **0.804x** |
+
+2026-09-11 decode-parity campaign final re-measure (same conditions; the
+plain arms also gained from the shared Q5 local32 owner — plain K_M
+34.12 -> 35.37, plain K_S 30.55 -> 36.66): the four levers — IQ4_XS
+gate/up dual+SiLU, IQ4_NL local32, the split/scale IQ (IQ3_S/IQ3_XXS/
+IQ2_S/IQ2_XS) local32 family, and the Q5 dense local32 single — took UD
+decode 26.20 -> **29.98** (K_M, +14.4%) and 25.53 -> **29.49** (K_S,
++15.5%), pure-kernel 35.23 -> 30.26 and 36.16 -> 30.02 ms/tok, 898 ->
+831 and 918 -> 839 launches/tok. Both artifacts pass the tokenized
+category gate on the final stack (K_M max 1.484e-2, K_S max 2.014e-2,
+top-1 99.91%); K_M's local32-family tail is pinned at its admitted
+state (all four IQ3_S decode slots strict). Remaining decode levers:
+the Q5 MoE selected-expert path (2.22 ms/tok K_M on the direct GEMV),
+Q3_K strict decode (1.43/2.43 ms/tok), and the Q5 gate/up dual.
+([final rollup](results/final-decode-campaign-2026-09-11/).)
 
 Both artifacts pass the tokenized 18-prompt category/heldout screen
 (`scripts/gguf_ud_combined_stack_gate.py --category-heldout`, real tokenizer
