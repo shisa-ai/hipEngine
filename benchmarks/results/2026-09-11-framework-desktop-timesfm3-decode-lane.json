@@ -1,0 +1,67 @@
+{
+  "schema": "timesfm3-gpu-decode-bench/1",
+  "date": "2026-09-11",
+  "model": "google/timesfm-3.0-pytorch",
+  "task": "time-series-forecast decode (non-autoregressive single pass)",
+  "lane": "framework-desktop-gfx1151",
+  "host": "framework-desktop",
+  "host_identity": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "product": "Desktop (AMD Ryzen AI Max 300 Series)",
+    "vendor": "Framework",
+    "board": "FRANMFCP06",
+    "cpu": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S (gfx1151, Strix Halo iGPU), 40 CU",
+    "memory": "125.1 GiB shared LPDDR5X",
+    "kernel": "7.1.6-1-cachyos"
+  },
+  "hardware": "AMD Radeon 8060S (gfx1151, Strix Halo iGPU), Ryzen AI MAX+ 395 host, 125.1 GiB shared LPDDR5X",
+  "software": {
+    "python": "3.12.13",
+    "rocm": "10.0.0",
+    "env_prefix": "/home/lhl/miniforge3/envs/therock (symlink to envs/therock10-staging-20260828)"
+  },
+  "workload": {
+    "batch": 8,
+    "variates": 3,
+    "variates_detail": "2 targets + 1 past-future covariate",
+    "context": 8192,
+    "horizon": 512,
+    "patches": 272,
+    "rows": 6528,
+    "masks": "none"
+  },
+  "command": "python3 scripts/timesfm3_gpu_bench.py --metric",
+  "change": "none - new independent physical-host lane baseline; no code change",
+  "protocol": "--metric prints the best decode wall-clock over --repeats (default 5) within one process. Five independent process invocations, JIT-warm within each, machine otherwise idle. Reported value is the median of the five invocation bests. Run in a clean `env -i` process with HIPENGINE_HIP_ARCH=gfx1151 and PYTHONPATH=.",
+  "baseline": {
+    "note": "No same-host baseline exists: this is the first recorded Framework Desktop row for this model. The zbook row is a different physical machine and must not be read as an old->new delta.",
+    "other_lane_zbook": {
+      "host": "zbook",
+      "decode_seconds_b8_v3_ctx8192_h512": 0.3213,
+      "artifact": "results/gfx1151-timesfm3-varnorm-fusion-2026-09-10.json"
+    }
+  },
+  "measurements": {
+    "decode_seconds_b8_v3_ctx8192_h512": [
+      0.219962,
+      0.219751,
+      0.219694,
+      0.219690,
+      0.219409
+    ],
+    "median": 0.219694,
+    "note": "5 independent process invocations of the metric command"
+  },
+  "cross_lane": {
+    "zbook_median_seconds": 0.3213,
+    "framework_lower_by_pct": 31.6,
+    "speedup_vs_zbook": 1.463,
+    "interpretation": "Absolute rate difference between two physical gfx1151 hosts (power- and heat-limited zbook vs Framework Desktop). This is a host/thermal lane difference, not a code improvement, and is not retainable as an old->new metric delta. No same-host A/B was performed because no code changed."
+  },
+  "correctness": {
+    "guard": "fp32 strict parity + fp16 production gate pass on 3 fixtures",
+    "command": "python3 scripts/timesfm3_gpu_bench.py --check"
+  }
+}
