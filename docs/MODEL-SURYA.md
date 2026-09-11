@@ -19,8 +19,9 @@ vision tower and text decoder on gfx1151.
 | HIP vision tower on gfx1151 | done | `tests/test_surya_gpu.py::test_gpu_vision_matches_oracle_features` |
 | Registered HIP generator (`surya_ocr2`/`hip_gfx1151`/fp32) | done | `hipengine/generation/surya_gpu.py` |
 | Request/resource contracts (greedy-only, capacity, EOS) | done | `hipengine/generation/surya_contract.py`, `tests/test_surya_generation_contract.py` |
-| Rectangular/full-page corpus and held-out quality | pending | only `page_small.png` (256x256) and `page_rect.png` are exercised |
-| GPU `rocprofv3` kernel-trace evidence | pending | required before any retained kernel-performance claim |
+| GPU `rocprofv3` kernel-trace evidence | done | `benchmarks/results/2026-09-11-gfx1151-surya-kernel-trace.json` |
+| Rectangular-page coverage | done (vision + isolation) | `tests/test_surya_gpu.py` rect vision vs `oracle_rect` `vision_merged` |
+| Full-page corpus and held-out OCR quality | pending | only `page_small.png` (256x256) and `page_rect.png` are exercised |
 | Registry migration + `KVLiveSpans` KV ABI | pending | tracked in `docs/REFACTOR.md` |
 | Quantized (GGUF) Surya decoder | pending | safetensors fp32 is the implementation target |
 | MTP / speculative decoding | pending | 15 MTP tensors inventoried, unused |
