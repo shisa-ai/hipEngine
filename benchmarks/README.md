@@ -351,7 +351,11 @@ in the artifacts
 ([sprint](results/gfx1151-evie-4p5b-fp16-perf-sprint-2026-09-09.json),
 [cluster8](results/gfx1151-evie-4p5b-cluster8-recurrence-2026-09-10.json)).
 
-### W7900 Qwen3.8 `UD-Q4_K_M` / `UD-Q4_K_S` dynamic-routing stack
+### XTX (RX 7900 XTX) Qwen3.8 `UD-Q4_K_M` / `UD-Q4_K_S` dynamic-routing stack
+
+No valid final W7900 parity row exists: the four-arm A/B below was measured on
+the XTX, and the W7900 paired MTP run is withdrawn as invalid (see the dated
+retraction in [`CHANGELOG.md`](CHANGELOG.md)).
 
 2026-09-11 four-arm A/B (hipEngine direct, p512/d128, graph-replay decode,
 medians of 3, all four arms same-conditions): the UD artifacts vs their plain
