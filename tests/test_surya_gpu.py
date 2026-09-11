@@ -327,7 +327,7 @@ def test_gpu_full_page_layout_matches_oracle(runner) -> None:
     if not ref_path.exists():
         pytest.skip(
             "oracle_fullpage_greedy.json not present; "
-            "run scripts/surya_oracle_fullpage.py"
+            "run scripts/surya_oracle_greedy.py"
         )
     ref = json.loads(ref_path.read_text())
 
@@ -403,7 +403,7 @@ def test_gpu_full_page_vision_matches_oracle(runner) -> None:
     if not path.exists():
         pytest.skip(
             "oracle_fullpage.npz not present; "
-            "run scripts/surya_oracle_fullpage.py"
+            "run scripts/surya_oracle_greedy.py"
         )
     with np.load(path) as z:
         if "vision_merged" not in z.files:
