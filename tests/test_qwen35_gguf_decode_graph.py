@@ -295,7 +295,10 @@ def test_decode_graph_key_serializes_complete_shape_state_axes() -> None:
     assert len(payload["key_sha256"]) == 64
 
 
-def test_decode_graph_admits_bf16_and_tail4_hadamard_only() -> None:
+def test_decode_graph_admits_bf16_and_tail4_hadamard_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH", raising=False)
     session = _session()
     assert _decode_graph_kv_layout_admitted(session) is True
 
@@ -305,6 +308,28 @@ def test_decode_graph_admits_bf16_and_tail4_hadamard_only() -> None:
     assert _decode_graph_kv_layout_admitted(session) is True
 
     session.kv_storage_layout = "uniform"
+    assert _decode_graph_kv_layout_admitted(session) is False
+
+
+def test_decode_graph_int8_per_token_head_layout_needs_the_opt_in(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The IKV-C2 production layout is off by default and on behind the flag."""
+
+    session = _session()
+    session.kv_storage_dtype = DType.INT8_PER_TOKEN_HEAD
+    session.kv_storage_layout = "uniform"
+    session.kv_scale_granularity = "per_token_head"
+
+    monkeypatch.delenv("HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH", raising=False)
+    assert _decode_graph_kv_layout_admitted(session) is False
+
+    monkeypatch.setenv("HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH", "1")
+    assert _decode_graph_kv_layout_admitted(session) is True
+
+    # The flag admits only the layout it names: a different granularity under
+    # uniform layout stays rejected, so the opt-in cannot widen by accident.
+    session.kv_scale_granularity = "block16"
     assert _decode_graph_kv_layout_admitted(session) is False
 
 
@@ -557,6 +582,65 @@ def test_decode_graph_capability_uses_runner_resolved_backend(monkeypatch) -> No
 
     assert session._resolve_decode_graph_min_replay_steps() == 128
     assert observed == ["hip_gfx1151"]
+
+
+def test_decode_graph_eligibility_rejects_int8_kv_unless_opted_in(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pin the gate that has always kept the IKV-C2 C1 decode eager."""
+
+    monkeypatch.setattr(
+        gguf_runner, "backend_package_capability", lambda backend, name, default=None: 128
+    )
+    monkeypatch.delenv("HIPENGINE_GGUF_MOE_GRAPH", raising=False)
+    session = object.__new__(Qwen35GGUFResidentSession)
+    session.backend = "auto"
+    session.runner = SimpleNamespace(
+        backend="hip_gfx1100",
+        weights=SimpleNamespace(
+            weights=[SimpleNamespace(spec=SimpleNamespace(quant_key="gguf_q4_k_m_t16_v1"))]
+        ),
+    )
+    session.scratch = SimpleNamespace()
+    session.host_token_embedding_enabled = False
+    session.use_gemv_decode = True
+    session.kv_storage_dtype = DType.INT8_PER_TOKEN_HEAD
+    session.kv_storage_layout = "uniform"
+    session.kv_scale_granularity = "per_token_head"
+
+    monkeypatch.delenv("HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH", raising=False)
+    assert session._resolve_decode_graph_min_replay_steps() is None
+
+    monkeypatch.setenv("HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH", "1")
+    assert session._resolve_decode_graph_min_replay_steps() == 128
+
+
+def test_decode_graph_eligibility_still_rejects_unadmitted_int8_layout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The opt-in must not admit a layout the capture path would reject."""
+
+    monkeypatch.setattr(
+        gguf_runner, "backend_package_capability", lambda backend, name, default=None: 128
+    )
+    monkeypatch.delenv("HIPENGINE_GGUF_MOE_GRAPH", raising=False)
+    monkeypatch.setenv("HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH", "1")
+    session = object.__new__(Qwen35GGUFResidentSession)
+    session.backend = "auto"
+    session.runner = SimpleNamespace(
+        backend="hip_gfx1100",
+        weights=SimpleNamespace(
+            weights=[SimpleNamespace(spec=SimpleNamespace(quant_key="gguf_q4_k_m_t16_v1"))]
+        ),
+    )
+    session.scratch = SimpleNamespace()
+    session.host_token_embedding_enabled = False
+    session.use_gemv_decode = True
+    session.kv_storage_dtype = DType.INT8_PER_TOKEN_HEAD
+    session.kv_storage_layout = "uniform"
+    session.kv_scale_granularity = "block16"
+
+    assert session._resolve_decode_graph_min_replay_steps() is None
 
 
 def test_packed_decode_graph_minimum_uses_model_width_policy(monkeypatch) -> None:

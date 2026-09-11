@@ -1,5 +1,29 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## `HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH` (INT8 KV C1 decode graph)
+
+- Admitted 2026-09-11 so the INT8 KV C1 decode graph could be measured instead
+  of assumed unusable. The graph itself was never missing: it was gated by
+  `_resolve_decode_graph_min_replay_steps` (BF16 storage only) and by
+  `_decode_graph_kv_layout_admitted` (INT8 admitted only for
+  `tail4_hadamard_group32`), so the IKV-C2 production layout
+  (`int8_per_token_head` + uniform + `per_token_head` FP32 scales) always decoded
+  eagerly.
+- Measured on the W7900, 27B `Q4_K_M`, full 10-prompt mtp-bench category suite,
+  128 decode tokens: numerically exact (10/10 prompts, all 129 generated tokens
+  sha256-identical to eager) and non-regressive but small, -0.53% decode wall
+  with capture cost included and -2.48% replay-only. Artifacts:
+  `benchmarks/results/2026-09-11-w7900-ikv-c2-c1-decode-graph-int8-{eager,replay}.json`.
+- Removal condition: fix `_resolve_decode_graph_min_replay_steps` so the scalar
+  C1 path applies the model/width policy floor the packed path already applies
+  (`packed_decode_graph_min_replay_steps` returns 128 for dense H5120 `Q4_K_M`
+  at one row, while the scalar resolver returns the backend default 24), then
+  re-measure with repeats at that floor. Capture costs ~70-82 ms per request, so
+  a 24-step horizon pays roughly 9% and would regress; the flag must not default
+  on before that floor is corrected. If the corrected floor holds a repeatable
+  win, promote to default and delete this flag; if it does not, delete the flag
+  and the INT8 admission with it.
+
 ## Qwen4Exp Q8 expanded F32 cache: removed
 
 - Exact dequantized row-major sidecar with unchanged coltile8/row4
