@@ -33,6 +33,12 @@ Gates, all of which must pass for the artifact to report a pass:
    the reviewer's "layer-boundary/state comparison" gate: the resumable path
    yields only at layer boundaries, so every boundary's K/V commit and state
    hand-off must be exact.
+6. **Ragged final round** - the declared prompt shape must actually reach the
+   executor. `--prompt-extra-rows` appends rows beyond a whole number of rounds
+   so the final planner round is short, which exercises the executor's per-round
+   row bases; the gate asserts a ragged prompt produced a short final round and a
+   whole number of rounds did not, so neither shape can be silently padded into
+   the other.
 
 The route is eager, greedy, prefix-off, MTP-off, and artifact-scoped. Nothing
 here is a throughput claim: it is a control-and-liveness proof, and the artifact
@@ -328,6 +334,9 @@ def evaluate_gates(
     peak_suspended_bytes: int,
     state_layers_compared: int = 0,
     state_mismatches: Sequence[Mapping[str, Any]] = (),
+    final_round_rows: int = 0,
+    row_capacity: int = 0,
+    ragged_declared: bool = False,
 ) -> dict[str, Any]:
     """Evaluate the four P6e gates from measurements.
 
@@ -394,13 +403,30 @@ def evaluate_gates(
             "reference over the committed prefix"
         ),
     }
+    gates["ragged_final_round"] = {
+        "passed": int(final_round_rows) > 0
+        and int(final_round_rows) <= int(row_capacity)
+        and (int(final_round_rows) < int(row_capacity)) == bool(ragged_declared),
+        "final_round_rows": int(final_round_rows),
+        "row_capacity": int(row_capacity),
+        "declared_ragged": bool(ragged_declared),
+        "detail": (
+            "the declared prompt shape must actually reach the executor: a "
+            "ragged prompt must produce a short final round and a whole number "
+            "of rounds must not, so neither shape can silently be padded into "
+            "the other"
+        ),
+    }
     return gates
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
     from hipengine.kvcache import resolve_kv_policy
     from hipengine.runtime.prefill import PrefillConfig
-    from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+    from hipengine.runtime.qwen35_gguf_runner import (
+        Qwen35GGUFResidentSession,
+        _plan_packed_ar_prefill_chunks,
+    )
 
     model = args.model.expanduser().resolve()
     if not model.is_file():
@@ -462,7 +488,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             raise RuntimeError(f"unusable bulk prefill row capacity: {row_capacity}")
 
         rounds = max(2, int(args.prompt_rounds))
-        prompt_rows = row_capacity * rounds
+        extra_rows = max(0, int(args.prompt_extra_rows))
+        prompt_rows = row_capacity * rounds + extra_rows
         headroom = max_sequence_length - prompt_rows - int(args.decode_tokens) - 8
         if headroom < 0:
             raise ValueError(
@@ -471,6 +498,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "--max-sequence-length"
             )
         prompt = _prompt_tokens(prompt_rows)
+        # The planner is deterministic, so the declared shape can be checked
+        # against what the executor will actually be asked to run. A ragged
+        # prompt (extra rows beyond a whole number of rounds) must produce a
+        # short final round; a multiple of the row capacity must not.
+        chunk_plan = _plan_packed_ar_prefill_chunks(
+            (tuple(prompt),), row_capacity=row_capacity
+        )
+        planned_rounds = len(chunk_plan)
+        final_round_rows = len(chunk_plan[-1].prompt_token_ids[0])
+        ragged_declared = extra_rows > 0
 
         # --- decoder session gets its own short context to decode from --------
         decoder_prompt = _prompt_tokens(max(8, row_capacity // 8))
@@ -577,6 +614,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         peak_suspended_bytes=peak_suspended_bytes,
         state_layers_compared=state_layers_compared,
         state_mismatches=state_mismatches,
+        final_round_rows=final_round_rows,
+        row_capacity=row_capacity,
+        ragged_declared=ragged_declared,
     )
 
     return {
@@ -598,7 +638,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "workload": {
             "prompt_rows": prompt_rows,
             "bulk_prefill_row_capacity": row_capacity,
-            "planned_rounds": rounds,
+            "planned_rounds": planned_rounds,
+            "final_round_rows": final_round_rows,
+            "ragged_final_round": ragged_declared,
             "layer_budget": layer_budget,
             "decode_tokens": int(args.decode_tokens),
             "max_sequence_length": max_sequence_length,
@@ -637,6 +679,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "per-layer direct INT8 K/V and linear state for exact equality.",
             "The interleaved decoder runs while the prefill is suspended, which is "
             "the case P6b's dedicated suspended buffers exist to protect.",
+            "--prompt-extra-rows makes the final planner round short (ragged). The "
+            "layer_boundary_state gate must still pass: the committed-prefix "
+            "comparison covers whatever rows the ragged round actually wrote.",
         ],
     }
 
@@ -652,6 +697,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="prompt length as a multiple of the bulk prefill row capacity",
     )
     parser.add_argument("--layer-budget", type=int, default=4)
+    parser.add_argument(
+        "--prompt-extra-rows",
+        type=int,
+        default=0,
+        help=(
+            "rows appended beyond --prompt-rounds whole rounds, making the "
+            "final planner round short (ragged); 0 keeps every round full"
+        ),
+    )
     parser.add_argument("--decode-tokens", type=int, default=24)
     parser.add_argument("--max-sequence-length", type=int, default=32768)
     parser.add_argument(
