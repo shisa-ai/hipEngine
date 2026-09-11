@@ -43,6 +43,7 @@ from hipengine.models.registry import (
     registered_models,
     resolve_model,
 )
+from hipengine.models.surya import SURYA, SuryaModel, SuryaModelSpec
 from hipengine.models.toy import TOY_ONE_LAYER, ToyOneLayerModel
 from hipengine.models.evie import (
     EVIE,

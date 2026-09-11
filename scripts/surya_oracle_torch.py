@@ -46,6 +46,24 @@ PROMPT_TEXT = "Transcribe this page."
 DECODE_STEP_IDS = [100, 5000, 20000, 42]
 
 
+def _make_synthetic_page_rect(path: Path, width: int = 320, height: int = 192) -> None:
+    """Non-square synthetic page: crosses the min-pixels edge and a
+    different (12, 20) merged interpolation grid."""
+
+    from PIL import Image, ImageDraw
+
+    img = Image.new("RGB", (width, height), (255, 255, 255))
+    d = ImageDraw.Draw(img)
+    d.rectangle([12, 12, 300, 24], fill=(20, 20, 20))
+    y = 36
+    while y < 150:
+        d.rectangle([12, y, 150, y + 5], fill=(40, 40, 40))
+        d.rectangle([164, y, 308, y + 5], fill=(60, 60, 60))
+        y += 14
+    d.rectangle([12, 160, 200, 184], fill=(120, 120, 120))
+    img.save(path)
+
+
 def _make_synthetic_page(path: Path, size: int = 256) -> None:
     """Deterministic synthetic page: white ground, heading bar, text lines,
     a gray rule, and a small block — geometry multiple of 32 (256/32=8)."""
@@ -148,6 +166,8 @@ def main() -> None:
     args = parser.parse_args()
     args.out_dir.mkdir(parents=True, exist_ok=True)
 
+    from PIL import Image  # noqa: F401  (used by the image cases)
+
     page_path = args.out_dir / "page_small.png"
     if not page_path.exists():
         _make_synthetic_page(page_path)
@@ -248,6 +268,58 @@ def main() -> None:
     text_caps.update(_run_case(model, processor, inputs_t, args.steps))
     np.savez_compressed(args.out_dir / "oracle_text.npz", **text_caps)
 
+    # ---- rect (non-square) case -------------------------------------------
+    rect_path = args.out_dir / "page_rect.png"
+    if not rect_path.exists():
+        _make_synthetic_page_rect(rect_path)
+    messages_r = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "image", "image": str(rect_path)},
+                {"type": "text", "text": PROMPT_TEXT},
+            ],
+        }
+    ]
+    prompt_r = processor.apply_chat_template(messages_r, add_generation_prompt=True)
+    rect_img = Image.open(rect_path).convert("RGB")
+    proc_r = processor(text=[prompt_r], images=[rect_img], return_tensors="pt").to(args.device)
+    inputs_r = {
+        "input_ids": proc_r["input_ids"],
+        "attention_mask": proc_r["attention_mask"],
+        "pixel_values": proc_r["pixel_values"],
+        "image_grid_thw": proc_r["image_grid_thw"],
+        "mm_token_type_ids": proc_r["mm_token_type_ids"],
+    }
+    meta["rect_grid_thw"] = proc_r["image_grid_thw"].tolist()
+    meta["rect_input_ids_len"] = int(proc_r["input_ids"].shape[1])
+    rect_caps: dict[str, np.ndarray] = {
+        "input_ids": proc_r["input_ids"].numpy(),
+        "attention_mask": proc_r["attention_mask"].numpy(),
+        "pixel_values": proc_r["pixel_values"].numpy(),
+        "image_grid_thw": proc_r["image_grid_thw"].numpy(),
+        "mm_token_type_ids": proc_r["mm_token_type_ids"].numpy(),
+    }
+    rv: dict[str, np.ndarray] = {}
+
+    def _rhook(name):
+        def hook(_m, _i, output):
+            t = output[0] if isinstance(output, tuple) else output
+            if hasattr(t, "last_hidden_state"):
+                t = t.last_hidden_state
+            rv[name] = t.detach().float().numpy()
+        return hook
+
+    h1 = model.model.visual.patch_embed.register_forward_hook(_rhook("vision_patch_embed"))
+    h2 = model.model.visual.register_forward_hook(_rhook("vision_tower_out"))
+    h3 = model.model.visual.merger.register_forward_hook(_rhook("vision_merged"))
+    rcaps = _run_case(model, processor, inputs_r, args.steps)
+    for h in (h1, h2, h3):
+        h.remove()
+    rect_caps.update(rv)
+    rect_caps.update(rcaps)
+    np.savez_compressed(args.out_dir / "oracle_rect.npz", **rect_caps)
+
     # ---- meta ------------------------------------------------------------
     tok = processor.tokenizer
     meta["prompt_image"] = prompt
@@ -256,7 +328,10 @@ def main() -> None:
     meta["image_token_id"] = 11
     meta["decode_step_token_strings"] = tok.convert_ids_to_tokens(DECODE_STEP_IDS)
     (args.out_dir / "meta.json").write_text(json.dumps(meta, indent=1))
-    print(f"wrote {args.out_dir}/oracle_image.npz, oracle_text.npz, meta.json")
+    print(
+        f"wrote {args.out_dir}/oracle_image.npz, oracle_text.npz, "
+        "oracle_rect.npz, meta.json"
+    )
 
 
 if __name__ == "__main__":
