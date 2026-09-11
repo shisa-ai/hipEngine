@@ -144,7 +144,24 @@ gfx1100 is declared closed; each then enters this audit as a row above.
 ## H. Status after the 2026-09-12 review
 
 Reviewed at commit `f3b20c1f2` on the physical gfx1151 host (Ryzen AI MAX+ 395 /
-Radeon 8060S, ROCm `10.0.0`, `GPU_MAX_HW_QUEUES=2`), clean tracked tree.
+Radeon 8060S, ROCm `10.0.0`, `GPU_MAX_HW_QUEUES=2`).
+
+What this review settled:
+
+- **A1 (decode GEMV floor) is closed by measurement.** Dense decode streams about
+  89% of the practical read roof, so the row no longer gates anything.
+- **C4 (INT8 KV) is closed as a rejection, reproduced.** The `2026-08-15`
+  gfx1151 quality failure reproduces to the full printed precision of that
+  artifact on today's kernels, so it is representation-owned and no gfx1151
+  kernel work can be expected to clear it.
+- **B2 (integer MMQ) is reversed.** gfx1151 is the donor, and the open item is
+  on the gfx1100 side.
+- **D1 narrowed to one named key**, and the whole gfx1100-only surface on the
+  Qwen3.8-27B dense path is five enumerated variants.
+- **New finding:** the PARO runtime pins its KV/attention resolution to the
+  gfx1100 backend key, so on gfx1151 it cannot reach the one gfx1151 override
+  that changes the reduction rather than the geometry. Tracked in
+  `docs/REFACTOR.md`.
 
 ### The gfx1100-only inventory is mechanical, not a reading exercise
 
@@ -210,7 +227,7 @@ Evidence: [`Q4_K_M AR/prefill refresh`](../benchmarks/results/2026-09-12-gfx1151
 The published `Q4_K_S` lane lands in the same place (13.069 tok/s over a
 16.12 GB file ≈ 95% of roof).
 
-### C4 (INT8 KV re-qualification) — elevated; this is the largest gfx1151 lever
+### C4 (INT8 KV re-qualification) — re-checked on current kernels, rejection confirmed
 
 On gfx1151 the INT8 KV value proposition is **bandwidth, not capacity** (there
 is no 24 GiB wall), and the lane currently has none of it:
@@ -225,17 +242,34 @@ is no 24 GiB wall), and the lane currently has none of it:
   scope `explicit_no_mirror_direct_c4` (`max_direct_rows=4`), and the gfx1100
   route has since been through the per-layer oracle repair (`2026-09-10`) and
   the physical-c4 promotion (`2026-09-11`).
-- The gfx1151 rejection predates the gfx1151 paged-attention geometry pins and
-  the current small-row owners, so it is not known whether today's kernels
-  reproduce it. The re-check is runnable without a plugin change via
-  `scripts/qwen35_native_mixed_kv_suite.py --backend hip_gfx1151
+- **Re-checked on 2026-09-12 and the rejection holds.** The run used the same
+  artifact (the rejection's recorded `artifact_sha256` is the file present on
+  this host) and the same suite (its recorded `prompts_sha256` is the current
+  suite), through `scripts/qwen35_native_mixed_kv_suite.py --backend hip_gfx1151
   --diagnostic-kv-capability --candidate-kv-storage int8_per_token_head
-  --kv-scale-dtype fp32 --require-no-bf16-mirror`, which takes the real compact
-  route and records the injection as diagnostic.
-- Caveat that must travel with any re-run: the two lanes measured **different
-  model files** for the same nominal quant (`7e78da5d…c6fe169`, 17,106,775,008
-  bytes on gfx1151 versus `7b2aec3b…cc89f1b`, 17,106,773,984 bytes on
-  gfx1100), so a pass on one lane does not by itself transfer.
+  --kv-scale-dtype fp32 --require-no-bf16-mirror`. 512/8 passes (mean KL
+  2.19e-04, max KL 1.23e-02, top-1 1.0, all 11 prompts). 1024/8 fails, and it
+  fails with **every aggregate and per-prompt statistic reproducing the
+  `2026-08-15` rejection to that artifact's full printed precision** — same two
+  failing prompts (`mixed_ja_en_review`, `mixed_v1`), same mean KL
+  `0.041977959056962555`, same max KL `3.446476164561575`, same minimum top-1
+  `0.7777777777777778`. That is across the paged-attention geometry pins and
+  small-row owner work landed since August, and across a compiler change from
+  AMD clang 23.0.0git to HIP 7.15.26333.
+- The failure is **representation-owned, not kernel-owned**, and it is
+  localized: nine of eleven prompts pass with a worst max-KL of 9.37e-04, and
+  the whole failure sits in one mixed-language review prompt and one synthetic
+  mixed prompt. The `2026-08-15` protocol declares those prompts
+  heldout/control for map selection, so this is not clearable by reselecting a
+  layer map. Leave the capability rejected and re-open only on a materially new
+  input-independent representation signal. Artifact:
+  [`INT8-KV re-check`](../benchmarks/results/2026-09-12-gfx1151-qwen38-27b-int8-kv-recheck-rejected.json).
+- INT8 K/V is therefore **not** a gfx1151 lever for this artifact, and the
+  remaining decode-bandwidth headroom stays where A1 put it.
+- The two lanes also measured **different model files** for the same nominal
+  quant (`7e78da5d…c6fe169`, 17,106,775,008 bytes on gfx1151 versus
+  `7b2aec3b…cc89f1b`, 17,106,773,984 bytes on gfx1100), so a gfx1100 result
+  does not by itself transfer to gfx1151.
 
 ### D1 (MTP graph-bucket admission) — narrowed to one named key
 
