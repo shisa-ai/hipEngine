@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "kind": "w7900_p6e_cancel_refill_service_proof",
-  "timestamp": "2026-09-11T18:06:30.335255+00:00",
+  "timestamp": "2026-09-11T18:32:37.154012+00:00",
   "performance_claim": false,
   "passed": true,
   "host": {
@@ -36,18 +36,31 @@
       "refill_sha256": "118cf54787fe2a9c931d0e8ed4eddf2235fdcd64abe1b1e253ee908d6797f19d",
       "detail": "the refill request must reproduce the reference completion text exactly, so a cancelled prefill left no trace in the surviving path"
     },
+    "blocking_survivor_exact": {
+      "passed": true,
+      "chars": 48,
+      "sha256": "118cf54787fe2a9c931d0e8ed4eddf2235fdcd64abe1b1e253ee908d6797f19d",
+      "detail": "a short request issued while a long blocking (non-streaming) prefill is in flight must reproduce the reference text exactly, which is what shows the yield also serves the blocking request mode"
+    },
+    "slow_consumer_survivor_exact": {
+      "passed": true,
+      "chars": 48,
+      "sha256": "118cf54787fe2a9c931d0e8ed4eddf2235fdcd64abe1b1e253ee908d6797f19d",
+      "slow_consumer_completed": true,
+      "detail": "a reader that consumes its stream slowly must not stall the engine: a short request issued while the slow reader is mid-stream must still reproduce the reference text exactly"
+    },
     "bounded_acknowledgement": {
       "passed": true,
-      "acknowledgement_ms": 825.8134853094816,
+      "acknowledgement_ms": 825.8869657292962,
       "p95_limit_ms": 3000.0,
       "p99_limit_ms": 6000.0,
       "detail": "a refill admitted right after a cancelled prefill must be acknowledged within the declared limit"
     },
     "bounded_decode_gap": {
       "passed": true,
-      "refill_max_gap_ms": 39.566,
-      "reference_max_gap_ms": 42.43,
-      "limit_ms": 106.074,
+      "refill_max_gap_ms": 40.184,
+      "reference_max_gap_ms": 42.418,
+      "limit_ms": 106.046,
       "declared_factor": 2.5,
       "detail": "the surviving request's worst inter-token gap must stay within the declared factor of its own reference run"
     },
@@ -65,57 +78,57 @@
       "finish_reason": "length",
       "error": null,
       "raw_lines": [
-        "data: {\"id\":\"cmpl-8cd21de0c0484569b0435a4ce7c2d3a5\",\"object\":\"text_completion\",\"created\":1789149985,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
-        "data: {\"id\":\"cmpl-8cd21de0c0484569b0435a4ce7c2d3a5\",\"object\":\"text_completion\",\"created\":1789149985,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
-        "data: {\"id\":\"cmpl-8cd21de0c0484569b0435a4ce7c2d3a5\",\"object\":\"text_completion\",\"created\":1789149985,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
-        "data: {\"id\":\"cmpl-8cd21de0c0484569b0435a4ce7c2d3a5\",\"object\":\"text_completion\",\"created\":1789149985,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
-        "data: {\"id\":\"cmpl-8cd21de0c0484569b0435a4ce7c2d3a5\",\"object\":\"text_completion\",\"created\":1789149985,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
-        "data: {\"id\":\"cmpl-8cd21de0c0484569b0435a4ce7c2d3a5\",\"object\":\"text_completion\",\"created\":1789149985,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
-        "data: {\"id\":\"cmpl-8cd21de0c0484569b0435a4ce7c2d3a5\",\"object\":\"text_completion\",\"created\":1789149985,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
-        "data: {\"id\":\"cmpl-8cd21de0c0484569b0435a4ce7c2d3a5\",\"object\":\"text_completion\",\"created\":1789149985,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi"
+        "data: {\"id\":\"cmpl-22d26a32511c4efda09e40aa22cdf65b\",\"object\":\"text_completion\",\"created\":1789151536,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
+        "data: {\"id\":\"cmpl-22d26a32511c4efda09e40aa22cdf65b\",\"object\":\"text_completion\",\"created\":1789151536,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
+        "data: {\"id\":\"cmpl-22d26a32511c4efda09e40aa22cdf65b\",\"object\":\"text_completion\",\"created\":1789151536,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
+        "data: {\"id\":\"cmpl-22d26a32511c4efda09e40aa22cdf65b\",\"object\":\"text_completion\",\"created\":1789151536,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
+        "data: {\"id\":\"cmpl-22d26a32511c4efda09e40aa22cdf65b\",\"object\":\"text_completion\",\"created\":1789151536,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
+        "data: {\"id\":\"cmpl-22d26a32511c4efda09e40aa22cdf65b\",\"object\":\"text_completion\",\"created\":1789151536,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
+        "data: {\"id\":\"cmpl-22d26a32511c4efda09e40aa22cdf65b\",\"object\":\"text_completion\",\"created\":1789151536,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
+        "data: {\"id\":\"cmpl-22d26a32511c4efda09e40aa22cdf65b\",\"object\":\"text_completion\",\"created\":1789151536,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi"
       ],
       "gaps_ms": {
         "samples": [
-          42.429760098457336,
-          35.562457516789436,
-          35.82556080073118,
-          36.17038577795029,
-          35.695020109415054,
-          36.140414886176586,
-          35.15537269413471,
-          35.776530392467976,
-          35.784581676125526,
-          35.88573168963194,
-          35.506077110767365,
-          35.540358163416386,
-          36.347527988255024,
-          35.12673173099756,
-          35.232302732765675,
-          35.504487343132496,
-          36.17121558636427,
-          35.162683576345444,
-          36.1916059628129,
-          35.18132213503122,
-          35.44273693114519,
-          35.59405729174614,
-          38.684580475091934
+          42.41837654262781,
+          35.63022147864103,
+          34.71042029559612,
+          35.75063403695822,
+          36.11067682504654,
+          35.86983494460583,
+          35.89480649679899,
+          35.988896153867245,
+          35.87647434324026,
+          35.28161719441414,
+          35.998497158288956,
+          35.75868345797062,
+          34.9494032561779,
+          35.842434503138065,
+          36.141758784651756,
+          35.02150345593691,
+          35.94725672155619,
+          35.4429492726922,
+          35.89828498661518,
+          35.36533936858177,
+          36.60686407238245,
+          36.16570774465799,
+          39.48052041232586
         ],
         "count": 23,
-        "median": 35.695020109415054,
-        "p95": 38.684580475091934,
-        "min": 35.12673173099756,
-        "max": 42.429760098457336,
-        "stdev": 1.56128673548616,
-        "stdev_pct_of_median": 4.373962336203725
+        "median": 35.87647434324026,
+        "p95": 39.48052041232586,
+        "min": 34.71042029559612,
+        "max": 42.41837654262781,
+        "stdev": 1.627607602251541,
+        "stdev_pct_of_median": 4.536698859201615
       }
     },
     "cancel_probe": {
       "admitted": true,
-      "admission_ms": 2.906,
-      "held_open_ms": 600.062,
+      "admission_ms": 5.18,
+      "held_open_ms": 600.066,
       "bytes_before_close": 0,
       "closed_by_server": false,
-      "response_head": "HTTP/1.1 200 OK\r\ndate: Fri, 11 Sep 2026 18:06:26 GMT\r\nserver: uvicorn\r\ncontent-type: text/event-stream; charset=utf-8\r\nconnection: close\r\ntransfer-encoding: chunked\r\n\r\n",
+      "response_head": "HTTP/1.1 200 OK\r\ndate: Fri, 11 Sep 2026 18:32:17 GMT\r\nserver: uvicorn\r\ncontent-type: text/event-stream; charset=utf-8\r\nconnection: close\r\ntransfer-encoding: chunked\r\n\r\n",
       "error": null
     },
     "refill": {
@@ -123,44 +136,72 @@
       "text_sha256": "118cf54787fe2a9c931d0e8ed4eddf2235fdcd64abe1b1e253ee908d6797f19d",
       "finish_reason": "length",
       "error": null,
-      "submit_to_first_token_ms": 825.813,
+      "submit_to_first_token_ms": 825.887,
       "gaps_ms": {
         "samples": [
-          35.4323647916317,
-          36.05103585869074,
-          35.62128730118275,
-          35.53451783955097,
-          35.993004217743874,
-          35.15810240060091,
-          35.54016724228859,
-          36.18638589978218,
-          35.10927129536867,
-          36.31256800144911,
-          35.53969878703356,
-          35.53335648030043,
-          35.029930993914604,
-          35.195822827517986,
-          35.53157765418291,
-          36.03729326277971,
-          36.14454623311758,
-          35.79012118279934,
-          35.77069006860256,
-          35.457996651530266,
-          35.767899826169014,
-          36.06652561575174,
-          39.56647124141455
+          36.00356727838516,
+          35.1861659437418,
+          36.014837212860584,
+          35.558550618588924,
+          35.86121555417776,
+          35.84104496985674,
+          35.87861452251673,
+          35.957866348326206,
+          35.552410408854485,
+          35.7868941500783,
+          35.91522667557001,
+          35.208066925406456,
+          35.62938142567873,
+          35.68378370255232,
+          36.133027635514736,
+          34.98492389917374,
+          35.57975124567747,
+          36.09700780361891,
+          35.95598600804806,
+          36.17263864725828,
+          35.30634846538305,
+          35.94578616321087,
+          40.18385894596577
         ],
         "count": 23,
-        "median": 35.62128730118275,
-        "p95": 36.31256800144911,
-        "min": 35.029930993914604,
-        "max": 39.56647124141455,
-        "stdev": 0.8889680219536595,
-        "stdev_pct_of_median": 2.4956089162003496
+        "median": 35.86121555417776,
+        "p95": 36.17263864725828,
+        "min": 34.98492389917374,
+        "max": 40.18385894596577,
+        "stdev": 0.9812862960481726,
+        "stdev_pct_of_median": 2.736344211661433
       }
     },
     "cancellation_counter_before": 0.0,
     "cancellation_counter_after": 1.0,
+    "blocking": {
+      "long_request": {
+        "chars": 48,
+        "finish_reason": "length",
+        "wall_ms": 6063.237,
+        "error": null
+      },
+      "survivor": {
+        "chars": 48,
+        "text_sha256": "118cf54787fe2a9c931d0e8ed4eddf2235fdcd64abe1b1e253ee908d6797f19d",
+        "finish_reason": "length",
+        "error": null
+      }
+    },
+    "slow_consumer": {
+      "reader_line_delay_ms": 40.0,
+      "long_request": {
+        "chars": 48,
+        "finish_reason": "length",
+        "error": null
+      },
+      "survivor": {
+        "chars": 48,
+        "text_sha256": "118cf54787fe2a9c931d0e8ed4eddf2235fdcd64abe1b1e253ee908d6797f19d",
+        "finish_reason": "length",
+        "error": null
+      }
+    },
     "prefill_work_total_delta": 3.0,
     "request_failed_total_delta": 1.0,
     "metrics_baseline": {
@@ -228,10 +269,10 @@
       "hipengine_resident_prefill_oracle_observed_peak_owners": 0.0,
       "hipengine_resident_prefill_oracle_owner_bytes": 0.0,
       "hipengine_resident_prefill_oracle_owners": 0.0,
-      "hipengine_resident_request_latency_max_seconds": 4.270523616112769,
-      "hipengine_resident_request_latency_seconds": 8.52756413007155,
+      "hipengine_resident_request_latency_max_seconds": 4.273059224709868,
+      "hipengine_resident_request_latency_seconds": 8.533392173424364,
       "hipengine_resident_request_latency_seconds_count": 27.0,
-      "hipengine_resident_request_latency_seconds_sum": 5.054787122644484,
+      "hipengine_resident_request_latency_seconds_sum": 5.059654920361936,
       "hipengine_resident_requests_active": 0.0,
       "hipengine_resident_requests_admitted": 0.0,
       "hipengine_resident_requests_admitted_total": 1.0,
@@ -248,7 +289,7 @@
     "oracle_owner_bytes_baseline": 0.0,
     "oracle_owner_bytes_final": 0.0
   },
-  "command": "/home/lhl/mambaforge/envs/therock/bin/python3 /home/lhl/hipEngine-main/scripts/gguf_p6e_cancel_refill_proof.py --long-prompt-rows 3072 --short-prompt-rows 512 --decode-tokens 24 --cancel-delay-ms 600 --cancel-observe-timeout-seconds 60 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p6e-service.json",
+  "command": "/home/lhl/mambaforge/envs/therock/bin/python3 /home/lhl/hipEngine-main/scripts/gguf_p6e_cancel_refill_proof.py --long-prompt-rows 3072 --short-prompt-rows 512 --decode-tokens 24 --cancel-delay-ms 600 --cancel-observe-timeout-seconds 60 --concurrent-lead-seconds 0.6 --slow-consumer-line-delay-ms 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p6e-service.json",
   "trace_environment": {
     "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-hipcc-version.txt",
     "HIPENGINE_REQUIRE_CACHED_BUILD": "1"
