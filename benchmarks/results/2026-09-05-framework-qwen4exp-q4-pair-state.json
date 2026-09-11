@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "date": "2026-09-05",
+  "date_basis": "UTC",
+  "kind": "qwen4exp_q4_pair_state_gate",
+  "status": "passed_opt_in_integration",
+  "performance_claim": false,
+  "base_commit": "b0c333ee2",
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "hardware": "Framework Desktop Ryzen AI Max+395 / Radeon 8060S"
+  },
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL, BF16 KV",
+  "profile": "production with Q4 output-pair opt-in at rows>=64",
+  "raw_path": "/tmp/qwen4exp-q4-pair-state.json",
+  "raw_sha256": "e436a9ec70970153d6978f20064b2ea30532a15b0c283399f5f7eb28df3265e7",
+  "command": ".venv/bin/python scripts/qwen4exp_row4_state_gate.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --compiler-version-file /tmp/hipengine-hipcc-version.txt --route-package q4-pair --full-kv --output /tmp/qwen4exp-q4-pair-state.json",
+  "environment_reference": "2026-09-05-framework-qwen4exp-gdn-register.json",
+  "protocol": "parent/candidate/parent, full prefill and one decode transition logits, recurrent/Conv/PLE state, positions/index counts, full BF16 K/V",
+  "cases": [
+    {"id": "code-p512", "exact": true, "calls": [0, 26, 0]},
+    {"id": "code-p4096", "exact": true, "calls": [0, 208, 0]},
+    {"id": "general_en-p512", "exact": true, "calls": [0, 26, 0]},
+    {"id": "general_ja-p512", "exact": true, "calls": [0, 26, 0]},
+    {"id": "mixed_ja_en-p512", "exact": true, "calls": [0, 26, 0]}
+  ],
+  "final_allocations": 0,
+  "next": "Clean full12-case72-sample A/B before production promotion."
+}

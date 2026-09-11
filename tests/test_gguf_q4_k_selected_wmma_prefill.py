@@ -33,8 +33,22 @@ from hipengine.core.memory import (
     malloc,
 )
 from hipengine.kernels.cpu_reference import gguf_quant_gemv
+from hipengine.kernels.hip_gfx1100.fused.paro_silu import (
+    silu_mul_separate_out_bf16,
+)
+from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
+    gguf_q4_k_quantize_bf16_q8_1,
+    gguf_q4_k_selected_dual_gemv_bf16_bf16_out,
+    gguf_q4_k_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out,
+    gguf_q4_k_selected_dual_q8_1_dp4a_silu_logical128_t64_gemv_bf16_bf16_out,
+    gguf_q4_k_selected_dual_silu_gemv_bf16_bf16_out,
+    gguf_q4_k_selected_dual_silu_logical128_t64_gemv_bf16_bf16_out,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill import (
     build_gguf_q4_k_selected_prefill,
+    gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out,
+    gguf_q4_k_selected_dual_grouped_rowbatch8_out4_bf16_bf16_out,
+    gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out,
     gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out,
     gguf_q4_k_selected_dual_wmma_prefill_compact_fp16_fp16_out,
     gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile_bf16_bf16_out,
@@ -65,6 +79,42 @@ def _hip_available() -> bool:
 
 def test_gguf_q4_k_selected_wmma_registry_and_build_plan(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("HIPENGINE_GGUF_SELECTED_WMMA_LAUNCH_BOUNDS", raising=False)
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="linear",
+            quant="gguf_q4_k",
+            variant="selected_dual_silu_gemv_bf16_bf16_out",
+        )
+        is gguf_q4_k_selected_dual_silu_gemv_bf16_bf16_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_linear",
+            quant="gguf_q4_k",
+            variant="selected_dual_grouped_rowbatch8_bf16_bf16_out",
+        )
+        is gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_linear",
+            quant="gguf_q4_k",
+            variant="selected_dual_grouped_rowbatch8_out4_bf16_bf16_out",
+        )
+        is gguf_q4_k_selected_dual_grouped_rowbatch8_out4_bf16_bf16_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_linear",
+            quant="gguf_q4_k",
+            variant="selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
+        )
+        is gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out
+    )
     assert (
         resolve(
             backend="hip_gfx1100",
@@ -355,6 +405,213 @@ def _build_compact_fixture(
         out_features_b=out_features_b,
         num_experts=num_experts,
     )
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_selected_dual_silu_matches_unfused_bf16_boundaries() -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.loading.materialize import float_array_to_bf16_bits
+
+    runtime = get_hip_runtime()
+    rng = np.random.default_rng(1901)
+    x_rows, selected_rows, experts = 1, 10, 4
+    in_features, out_features = 256, 32
+    x = float_array_to_bf16_bits(
+        rng.normal(0.0, 0.2, size=(x_rows, in_features)).astype(np.float32)
+    )
+    selected = np.asarray([0, 2, 1, 3, 0, 1, 2, 3, 1, 0], dtype=np.int64)
+    weight_a = np.stack(
+        [make_q4_k_weight(out_features, in_features) for _ in range(experts)]
+    )
+    weight_b = np.stack(
+        [np.roll(make_q4_k_weight(out_features, in_features), e + 1, axis=0)
+         for e in range(experts)]
+    )
+    allocations = []
+    try:
+        hosts = (x, selected, weight_a, weight_b)
+        devices = []
+        for host in hosts:
+            device = malloc(host.nbytes, runtime=runtime)
+            copy_host_to_device(device, host_array_ptr(host), runtime=runtime)
+            allocations.append(device)
+            devices.append(device)
+        outputs = [
+            malloc(selected_rows * out_features * 2, runtime=runtime)
+            for _ in range(9)
+        ]
+        allocations.extend(outputs)
+        q8 = malloc(x_rows * (in_features // 32) * 36, runtime=runtime)
+        allocations.append(q8)
+        gguf_q4_k_selected_dual_gemv_bf16_bf16_out(
+            devices[0].ptr, devices[1].ptr, devices[2].ptr, devices[3].ptr,
+            outputs[0].ptr, outputs[1].ptr, x_rows, selected_rows, experts,
+            in_features, out_features, threads=128, runtime=runtime,
+        )
+        silu_mul_separate_out_bf16(
+            outputs[0].ptr, outputs[1].ptr, outputs[2].ptr,
+            selected_rows, out_features, runtime=runtime,
+        )
+        gguf_q4_k_selected_dual_silu_gemv_bf16_bf16_out(
+            devices[0].ptr, devices[1].ptr, devices[2].ptr, devices[3].ptr,
+            outputs[3].ptr, x_rows, selected_rows, experts, in_features,
+            out_features, threads=128, runtime=runtime,
+        )
+        gguf_q4_k_selected_dual_silu_logical128_t64_gemv_bf16_bf16_out(
+            devices[0].ptr, devices[1].ptr, devices[2].ptr, devices[3].ptr,
+            outputs[4].ptr, x_rows, selected_rows, experts, in_features,
+            out_features, runtime=runtime,
+        )
+        gguf_q4_k_quantize_bf16_q8_1(
+            devices[0].ptr, q8.ptr, x_rows, in_features, runtime=runtime,
+        )
+        gguf_q4_k_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out(
+            q8.ptr, devices[1].ptr, devices[2].ptr, devices[3].ptr,
+            outputs[5].ptr, outputs[6].ptr, x_rows, selected_rows, experts,
+            in_features, out_features, threads=128, runtime=runtime,
+        )
+        silu_mul_separate_out_bf16(
+            outputs[5].ptr, outputs[6].ptr, outputs[7].ptr,
+            selected_rows, out_features, runtime=runtime,
+        )
+        gguf_q4_k_selected_dual_q8_1_dp4a_silu_logical128_t64_gemv_bf16_bf16_out(
+            q8.ptr, devices[1].ptr, devices[2].ptr, devices[3].ptr,
+            outputs[8].ptr, x_rows, selected_rows, experts, in_features,
+            out_features, runtime=runtime,
+        )
+        runtime.device_synchronize()
+        expected = np.empty((selected_rows, out_features), dtype=np.uint16)
+        actual = np.empty_like(expected)
+        exact64 = np.empty_like(expected)
+        q8_expected = np.empty_like(expected)
+        q8_actual = np.empty_like(expected)
+        copy_device_to_host(host_array_ptr(expected), outputs[2], runtime=runtime)
+        copy_device_to_host(host_array_ptr(actual), outputs[3], runtime=runtime)
+        copy_device_to_host(host_array_ptr(exact64), outputs[4], runtime=runtime)
+        copy_device_to_host(host_array_ptr(q8_expected), outputs[7], runtime=runtime)
+        copy_device_to_host(host_array_ptr(q8_actual), outputs[8], runtime=runtime)
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+    np.testing.assert_array_equal(actual, expected)
+    np.testing.assert_array_equal(exact64, expected)
+    np.testing.assert_array_equal(q8_actual, q8_expected)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_grouped_rowbatch8_matches_strict_selected_dual_bits() -> None:
+    from hipengine.core.hip import get_hip_runtime
+
+    fixture = _build_compact_fixture(
+        counts=[9, 0, 17, 3] + [0] * 63 + [5],
+        in_features=256,
+        out_features_a=32,
+        out_features_b=32,
+        dtype="bf16",
+        seed=19,
+    )
+    selected = np.repeat(
+        np.arange(fixture.num_experts, dtype=np.int64),
+        np.diff(fixture.expert_start_compact),
+    )
+    runtime = get_hip_runtime()
+    hosts = (
+        fixture.x_host,
+        fixture.expert_start_compact,
+        fixture.qweight_a,
+        fixture.qweight_b,
+        selected,
+    )
+    devices = []
+    outputs = []
+    try:
+        for host in hosts:
+            device = malloc(host.nbytes, runtime=runtime)
+            copy_host_to_device(device, host_array_ptr(host), runtime=runtime)
+            devices.append(device)
+        for _ in range(8):
+            outputs.append(
+                malloc(
+                    fixture.compact_rows
+                    * fixture.out_features_a
+                    * np.dtype(np.uint16).itemsize,
+                    runtime=runtime,
+                )
+            )
+        gguf_q4_k_selected_dual_gemv_bf16_bf16_out(
+            devices[0].ptr,
+            devices[4].ptr,
+            devices[2].ptr,
+            devices[3].ptr,
+            outputs[0].ptr,
+            outputs[1].ptr,
+            fixture.compact_rows,
+            fixture.compact_rows,
+            fixture.num_experts,
+            fixture.in_features,
+            fixture.out_features_a,
+            threads=128,
+            runtime=runtime,
+        )
+        gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out(
+            devices[0].ptr,
+            devices[1].ptr,
+            devices[2].ptr,
+            devices[3].ptr,
+            outputs[2].ptr,
+            outputs[3].ptr,
+            fixture.compact_rows,
+            fixture.num_experts,
+            fixture.in_features,
+            fixture.out_features_a,
+            runtime=runtime,
+        )
+        gguf_q4_k_selected_dual_grouped_rowbatch8_out4_bf16_bf16_out(
+            devices[0].ptr,
+            devices[1].ptr,
+            devices[2].ptr,
+            devices[3].ptr,
+            outputs[4].ptr,
+            outputs[5].ptr,
+            fixture.compact_rows,
+            fixture.num_experts,
+            fixture.in_features,
+            fixture.out_features_a,
+            runtime=runtime,
+        )
+        gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out(
+            devices[0].ptr,
+            devices[1].ptr,
+            devices[2].ptr,
+            devices[3].ptr,
+            outputs[6].ptr,
+            outputs[7].ptr,
+            fixture.compact_rows,
+            fixture.num_experts,
+            fixture.in_features,
+            fixture.out_features_a,
+            runtime=runtime,
+        )
+        got = []
+        for output in outputs:
+            host = np.empty(
+                (fixture.compact_rows, fixture.out_features_a), dtype=np.uint16
+            )
+            copy_device_to_host(
+                host_array_ptr(host), output, host.nbytes, runtime=runtime
+            )
+            got.append(host)
+        np.testing.assert_array_equal(got[2], got[0])
+        np.testing.assert_array_equal(got[3], got[1])
+        np.testing.assert_array_equal(got[4], got[0])
+        np.testing.assert_array_equal(got[5], got[1])
+        np.testing.assert_array_equal(got[6], got[0])
+        np.testing.assert_array_equal(got[7], got[1])
+    finally:
+        for output in reversed(outputs):
+            free(output, runtime=runtime)
+        for device in reversed(devices):
+            free(device, runtime=runtime)
 
 
 def _run_selected_dual_gpu(

@@ -1,0 +1,330 @@
+{
+  "amdahl_declaration": {
+    "C_seconds": 49.383127938017424,
+    "O_ms_per_serial_target_row": 87.65228492640225,
+    "W_seconds": 51.711070590004965,
+    "arithmetic_class": "T0 strict control/state",
+    "mechanism": "pooled full-state transaction; deferred-head block; rollback and serial replay of only the consumed rejection prefix",
+    "overlap_exclusions": [
+      "correctness grid only",
+      "no provider or full-suite timing",
+      "replay occurs only when consumed rows are shorter than the verify width"
+    ],
+    "s": null
+  },
+  "binding_checks": [
+    "committed token IDs",
+    "committed hidden rows",
+    "committed full logits",
+    "GDN matrix",
+    "GDN convolution",
+    "PLE convolution",
+    "residual state",
+    "runner position",
+    "PLE hashes",
+    "next token",
+    "next full logits",
+    "next hidden row"
+  ],
+  "date": "2026-09-02",
+  "decision": {
+    "promoted": false,
+    "reason": "All rejection depths, shorter widths, full acceptance, and the post-transaction next step are bit-exact. Cached B2 tracing proves the retained serial-body/deferred-head route. Public provider wiring and whole-model economics remain separate gates.",
+    "rejection_depth_red_passed": true
+  },
+  "host": {
+    "arch": "gfx1151",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "gpu_clock_policy": "auto",
+    "identity": "zbook"
+  },
+  "kind": "qwen4exp_p11_rejection_depth_grid",
+  "performance_claim": false,
+  "result": {
+    "all_passed": true,
+    "rows": [
+      {
+        "accepted": 0,
+        "budget": 2,
+        "consumed": 1,
+        "hidden_exact": true,
+        "logits_exact": true,
+        "next_hidden_exact": true,
+        "next_logits_exact": true,
+        "next_token_exact": true,
+        "ple_hash_exact": true,
+        "position_exact": true,
+        "rejection_depth": 0,
+        "replayed": true,
+        "state_exact": {
+          "gdn_conv": true,
+          "gdn_matrix": true,
+          "ple_conv": true,
+          "residual": true
+        },
+        "tokens_exact": true
+      },
+      {
+        "accepted": 1,
+        "budget": 2,
+        "consumed": 2,
+        "hidden_exact": true,
+        "logits_exact": true,
+        "next_hidden_exact": true,
+        "next_logits_exact": true,
+        "next_token_exact": true,
+        "ple_hash_exact": true,
+        "position_exact": true,
+        "rejection_depth": 1,
+        "replayed": false,
+        "state_exact": {
+          "gdn_conv": true,
+          "gdn_matrix": true,
+          "ple_conv": true,
+          "residual": true
+        },
+        "tokens_exact": true
+      },
+      {
+        "accepted": 2,
+        "budget": 2,
+        "consumed": 2,
+        "hidden_exact": true,
+        "logits_exact": true,
+        "next_hidden_exact": true,
+        "next_logits_exact": true,
+        "next_token_exact": true,
+        "ple_hash_exact": true,
+        "position_exact": true,
+        "rejection_depth": null,
+        "replayed": false,
+        "state_exact": {
+          "gdn_conv": true,
+          "gdn_matrix": true,
+          "ple_conv": true,
+          "residual": true
+        },
+        "tokens_exact": true
+      },
+      {
+        "accepted": 0,
+        "budget": 3,
+        "consumed": 1,
+        "hidden_exact": true,
+        "logits_exact": true,
+        "next_hidden_exact": true,
+        "next_logits_exact": true,
+        "next_token_exact": true,
+        "ple_hash_exact": true,
+        "position_exact": true,
+        "rejection_depth": 0,
+        "replayed": true,
+        "state_exact": {
+          "gdn_conv": true,
+          "gdn_matrix": true,
+          "ple_conv": true,
+          "residual": true
+        },
+        "tokens_exact": true
+      },
+      {
+        "accepted": 1,
+        "budget": 3,
+        "consumed": 2,
+        "hidden_exact": true,
+        "logits_exact": true,
+        "next_hidden_exact": true,
+        "next_logits_exact": true,
+        "next_token_exact": true,
+        "ple_hash_exact": true,
+        "position_exact": true,
+        "rejection_depth": 1,
+        "replayed": true,
+        "state_exact": {
+          "gdn_conv": true,
+          "gdn_matrix": true,
+          "ple_conv": true,
+          "residual": true
+        },
+        "tokens_exact": true
+      },
+      {
+        "accepted": 2,
+        "budget": 3,
+        "consumed": 3,
+        "hidden_exact": true,
+        "logits_exact": true,
+        "next_hidden_exact": true,
+        "next_logits_exact": true,
+        "next_token_exact": true,
+        "ple_hash_exact": true,
+        "position_exact": true,
+        "rejection_depth": 2,
+        "replayed": false,
+        "state_exact": {
+          "gdn_conv": true,
+          "gdn_matrix": true,
+          "ple_conv": true,
+          "residual": true
+        },
+        "tokens_exact": true
+      },
+      {
+        "accepted": 3,
+        "budget": 3,
+        "consumed": 3,
+        "hidden_exact": true,
+        "logits_exact": true,
+        "next_hidden_exact": true,
+        "next_logits_exact": true,
+        "next_token_exact": true,
+        "ple_hash_exact": true,
+        "position_exact": true,
+        "rejection_depth": null,
+        "replayed": false,
+        "state_exact": {
+          "gdn_conv": true,
+          "gdn_matrix": true,
+          "ple_conv": true,
+          "residual": true
+        },
+        "tokens_exact": true
+      },
+      {
+        "accepted": 0,
+        "budget": 4,
+        "consumed": 1,
+        "hidden_exact": true,
+        "logits_exact": true,
+        "next_hidden_exact": true,
+        "next_logits_exact": true,
+        "next_token_exact": true,
+        "ple_hash_exact": true,
+        "position_exact": true,
+        "rejection_depth": 0,
+        "replayed": true,
+        "state_exact": {
+          "gdn_conv": true,
+          "gdn_matrix": true,
+          "ple_conv": true,
+          "residual": true
+        },
+        "tokens_exact": true
+      },
+      {
+        "accepted": 1,
+        "budget": 4,
+        "consumed": 2,
+        "hidden_exact": true,
+        "logits_exact": true,
+        "next_hidden_exact": true,
+        "next_logits_exact": true,
+        "next_token_exact": true,
+        "ple_hash_exact": true,
+        "position_exact": true,
+        "rejection_depth": 1,
+        "replayed": true,
+        "state_exact": {
+          "gdn_conv": true,
+          "gdn_matrix": true,
+          "ple_conv": true,
+          "residual": true
+        },
+        "tokens_exact": true
+      },
+      {
+        "accepted": 2,
+        "budget": 4,
+        "consumed": 3,
+        "hidden_exact": true,
+        "logits_exact": true,
+        "next_hidden_exact": true,
+        "next_logits_exact": true,
+        "next_token_exact": true,
+        "ple_hash_exact": true,
+        "position_exact": true,
+        "rejection_depth": 2,
+        "replayed": true,
+        "state_exact": {
+          "gdn_conv": true,
+          "gdn_matrix": true,
+          "ple_conv": true,
+          "residual": true
+        },
+        "tokens_exact": true
+      },
+      {
+        "accepted": 3,
+        "budget": 4,
+        "consumed": 4,
+        "hidden_exact": true,
+        "logits_exact": true,
+        "next_hidden_exact": true,
+        "next_logits_exact": true,
+        "next_token_exact": true,
+        "ple_hash_exact": true,
+        "position_exact": true,
+        "rejection_depth": 3,
+        "replayed": false,
+        "state_exact": {
+          "gdn_conv": true,
+          "gdn_matrix": true,
+          "ple_conv": true,
+          "residual": true
+        },
+        "tokens_exact": true
+      },
+      {
+        "accepted": 4,
+        "budget": 4,
+        "consumed": 4,
+        "hidden_exact": true,
+        "logits_exact": true,
+        "next_hidden_exact": true,
+        "next_logits_exact": true,
+        "next_token_exact": true,
+        "ple_hash_exact": true,
+        "position_exact": true,
+        "rejection_depth": null,
+        "replayed": false,
+        "state_exact": {
+          "gdn_conv": true,
+          "gdn_matrix": true,
+          "ple_conv": true,
+          "residual": true
+        },
+        "tokens_exact": true
+      }
+    ]
+  },
+  "route_proof": {
+    "command": "cached rocprofv3 /tmp/qwen4exp_acceptance_trace.py, B2 full acceptance",
+    "expected_route_passed": true,
+    "kernel_dispatches": 6882,
+    "note": "Three rowtile launches include one rows=2 deferred final-head route plus prompt work; trace was cache-warmed and require_cached.",
+    "raw_trace_sha256": "7828a2c6aa64caba4b731c1ae84700d3ecbf64c9b7afd970e3f2b48707cdd4f1",
+    "selected_symbol_counts": {
+      "gguf_k_prefill_out_rowtile_kernel<float, float, 8, 2>": 3,
+      "qsa_split_norm_rope_f32_kernel": 24,
+      "qwen35_router_select_kernel": 192,
+      "qwen4_exp_gdn_decode_f32_kernel": 72
+    }
+  },
+  "schema": 1,
+  "scope": {
+    "budgets": [
+      2,
+      3,
+      4
+    ],
+    "execution_profile": "production",
+    "prefix": "code-p512 first 16 tokens",
+    "rejection_depths": "every depth plus full acceptance",
+    "strict_fallback": "verify_target_block_serial_exact"
+  },
+  "source": {
+    "base_head": "a19f08cd6",
+    "tracked_clean": false
+  },
+  "status": "passed"
+}

@@ -1,0 +1,47 @@
+{
+  "schema": "timesfm-gpu-decode-bench/1",
+  "date": "2026-09-08",
+  "model": "google/timesfm-2.5-200m-pytorch",
+  "task": "time-series-forecast decode",
+  "hardware": "AMD Radeon 8060S (gfx1151, Strix Halo iGPU), Ryzen AI MAX+ PRO 395 host, 120 GB shared LPDDR5X",
+  "host": "zbook",
+  "workload": {"batch": 8, "context": 8192, "horizon": 512, "masks": "none"},
+  "command": "python3 scripts/timesfm_gpu_bench.py --metric",
+  "repeats": "best of 5, plus 3 confirmation runs",
+  "results": {
+    "hipengine_gpu_fp16_production": {
+      "decode_seconds": [0.09827, 0.09827, 0.098522, 0.098728, 0.099039],
+      "best": 0.09827,
+      "median": 0.098522
+    },
+    "torch_reference_gpu_fp32": {"decode_seconds_best": 0.707},
+    "numpy_cpu_reference_fp32": {"decode_seconds_best": 9.13}
+  },
+  "speedup": {
+    "vs_torch_gpu_reference": 7.2,
+    "vs_numpy_cpu_reference": 93.0,
+    "vs_first_gpu_fp32_implementation": 11.1
+  },
+  "correctness_gate": {
+    "fp32_strict": "atol 5e-4 / rtol 1e-2 vs committed torch oracle fixture: pass",
+    "fp16_production": "max 0.86% / mean 0.06% of per-series signal scale (gate: 2% / 0.5%): pass",
+    "command": "python3 scripts/timesfm_gpu_bench.py --check"
+  },
+  "rocprof_kernel_table_ms_per_3_decodes_at_0.174s_checkpoint": {
+    "note": "representative breakdown captured during optimization; final path shifted work into the merged qkv kernel",
+    "gemm_projection": 87.97,
+    "gemm_attention_and_small": 92.66,
+    "mask_softmax": 39.32,
+    "q_norm_transpose": 18.37,
+    "k_norm_scatter": 15.15,
+    "rope": 11.08,
+    "v_scatter": 10.88,
+    "transpose_heads": 8.95,
+    "norm_add": 8.7,
+    "rmsnorm": 6.95
+  },
+  "reverted_experiments": [
+    "rope+norm+scatter fusion with 256-float register arrays: 110.7 vs 90.1 ms per 3 decodes (register spills)"
+  ],
+  "source_commits": ["445295627", "56653ca10", "9d045db48", "9d8b0a292", "6a567545a", "60856e9af", "aad6151b0", "bf418e88f", "00167897f", "a9ec7360d"]
+}

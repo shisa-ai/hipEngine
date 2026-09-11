@@ -1,6 +1,6 @@
 # gfx1151 / Strix Halo Tuning Plan
 
-Last updated: 2026-06-15
+Last updated: 2026-08-30
 
 This is the tuning and validation playbook for native Strix Halo / `gfx1151`
 runs. It exists because gfx1151 is not just a smaller W7900. Strix Halo is an
@@ -206,31 +206,38 @@ Concrete audit questions for the gfx1151 pass:
 Reference setup lives in [`THEROCK.md`](THEROCK.md). Current local gfx1151 stack:
 
 - Hardware: AMD Ryzen AI MAX+ 395 / Radeon 8060S, `gfx1151`.
-- ROCm/TheRock: HIP `7.13.60980-c76140fa27` from
-  `/home/lhl/miniforge3/envs/therock`.
-- TheRock package lane: `https://rocm.nightlies.amd.com/v2/gfx1151/`.
-- PyTorch/ROCm install is pinned to one ROCm nightly tag; do not use floating
-  `rocm[libraries,devel]` for this host.
+- ROCm platform: stable TheRock `10.0.0` from `/home/lhl/miniforge3`.
+- HIP component/compiler: `7.15.26333-0000000`, AMD clang 23 commit
+  `8f497e0992f`; the HIP component version is expected inside ROCm 10.
+- TheRock package lane: `https://stable.repo.amd.com/rocm/whl-next/`, with the
+  `device-gfx1151` extras.
+- PyTorch/reference stack: `2.13.0+rocm10.0.0`; hipEngine's generation hot path
+  remains torch-free.
+- ROCm 10 has SDK, fresh-JIT, graph-replay, framework, and profiler smoke
+  coverage. Historical ROCm 7.15 model-performance rows remain attributed to
+  that old stack until they are rerun; do not treat this setup refresh as a
+  performance promotion.
 - For hipEngine JIT/profiling, set:
 
 ```bash
-PYSDK=/home/lhl/miniforge3/envs/therock/bin/python
-ROOT=$($PYSDK -m rocm_sdk path --root)
-SITE=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages
+ENV_PREFIX=/home/lhl/miniforge3
+PYSDK=$ENV_PREFIX/bin/python
+ROOT=$("$PYSDK" -m rocm_sdk path --root)
+SITE=$ENV_PREFIX/lib/python3.13/site-packages
 
-export PATH="/home/lhl/miniforge3/envs/therock/bin:$ROOT/bin:$PATH"
-export LD_LIBRARY_PATH="$ROOT/lib:$ROOT/lib64:$ROOT/lib/llvm/lib:$SITE/_rocm_sdk_core/lib:$SITE/_rocm_sdk_libraries_gfx1151/lib:${LD_LIBRARY_PATH:-}"
+export PATH="$ENV_PREFIX/bin:$ROOT/bin:$PATH"
+export LD_LIBRARY_PATH="$SITE/_rocm_sdk_core/lib:$SITE/_rocm_sdk_devel/lib:$SITE/_rocm_sdk_libraries/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export HIP_PATH="$ROOT"
 export ROCM_PATH="$ROOT"
 export HIP_DEVICE_LIB_PATH="$ROOT/lib/llvm/amdgcn/bitcode"
 export HIPENGINE_HIP_ARCH=gfx1151
 ```
 
-Before any retained profile, write a compiler-version file and use cached builds
-inside profiled processes:
+Before any retained profile, write a new ROCm 10 compiler-version file, build
+outside the profiler, and require that matching cache inside profiled processes:
 
 ```bash
-hipcc --version > /tmp/hipengine-gfx1151-hipcc-version.txt
+"$ROOT/bin/hipcc" --version > /tmp/hipengine-gfx1151-rocm10-hipcc-version.txt
 ```
 
 When using a detached worktree, run `git lfs install --local && git lfs pull` in

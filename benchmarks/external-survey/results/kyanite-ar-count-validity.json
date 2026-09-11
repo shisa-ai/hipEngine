@@ -1,0 +1,16 @@
+{
+  "arm": "ar",
+  "valid_count_1_to_30": true,
+  "content": "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30",
+  "timings": {
+    "cache_n": 23,
+    "prompt_n": 4,
+    "prompt_ms": 132.44,
+    "prompt_per_token_ms": 33.11,
+    "prompt_per_second": 30.202355783751134,
+    "predicted_n": 110,
+    "predicted_ms": 9115.235,
+    "predicted_per_token_ms": 83.62600917431193,
+    "predicted_per_second": 11.958002179867004
+  }
+}

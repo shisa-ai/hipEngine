@@ -1,0 +1,120 @@
+{
+  "acceptance": {
+    "deferred_total": 117,
+    "identical": true,
+    "serial_total": 117
+  },
+  "aggregate": {
+    "deferred_mtp_over_ar": 0.6463766270205277,
+    "exact_vs_ar": {
+      "deferred_mtp": true,
+      "serial_mtp": true
+    },
+    "serial_mtp_over_ar": 0.7407306167361402,
+    "serial_over_deferred": 0.8726203729348171,
+    "total_seconds": {
+      "deferred_mtp": 26.151964343036525,
+      "serial_mtp": 22.82073687799857,
+      "true_ar": 16.90401850201306
+    }
+  },
+  "amdahl_declaration": {
+    "C_seconds": 26.151964343036525,
+    "O_ms": 128.46436550898943,
+    "W_seconds": 22.82073687799857,
+    "arithmetic_class": "T0 strict",
+    "mechanism": "pooled serial-body/deferred-head verify with rollback/replay of consumed prefix",
+    "overlap_exclusions": [
+      "complete request wall includes prefill, draft, target verify, replay, and host control",
+      "per-prompt/per-mode warmups excluded",
+      "three-way order rotates by prompt"
+    ],
+    "s": 0.8726203729348171,
+    "scope": "public Qwen4Exp B2 full ten-prompt category+heldout tg16",
+    "strict_fallback": "serial per-candidate target.step",
+    "true_ar_seconds": 16.90401850201306
+  },
+  "categories": {
+    "code": {
+      "deferred_mtp": 10.68804286699742,
+      "deferred_mtp_over_ar": 0.6431645893969126,
+      "serial_mtp": 9.067288140999153,
+      "serial_mtp_over_ar": 0.7581286262346031,
+      "serial_over_deferred": 0.8483581375779433,
+      "true_ar": 6.874170702008996
+    },
+    "general_en": {
+      "deferred_mtp": 4.824495089997072,
+      "deferred_mtp_over_ar": 0.6313426021135602,
+      "serial_mtp": 4.1416017610172275,
+      "serial_mtp_over_ar": 0.7354423384383374,
+      "serial_over_deferred": 0.85845289170348,
+      "true_ar": 3.045909284002846
+    },
+    "general_ja": {
+      "deferred_mtp": 4.977458085020771,
+      "deferred_mtp_over_ar": 0.6361195063696855,
+      "serial_mtp": 4.242934206995415,
+      "serial_mtp_over_ar": 0.74624258250315,
+      "serial_over_deferred": 0.8524299219644174,
+      "true_ar": 3.166258180019213
+    },
+    "mixed_ja_en": {
+      "deferred_mtp": 5.661968301021261,
+      "deferred_mtp_over_ar": 0.6742673453847139,
+      "serial_mtp": 5.368912768986775,
+      "serial_mtp_over_ar": 0.7110714031404313,
+      "serial_over_deferred": 0.9482414036154834,
+      "true_ar": 3.817680335982004
+    }
+  },
+  "configuration": {
+    "candidate_budget": 2,
+    "draft_output": "full_debug",
+    "max_tokens": 16,
+    "order": "three-way rotation by prompt after per-prompt/per-mode warmup",
+    "prompt_count": 10
+  },
+  "date": "2026-09-02",
+  "decision": {
+    "default": "serial target.step",
+    "next": "A viable target verifier must batch operation-complete target body work or avoid executing/replaying rejected suffix rows; do not wire final-head-only deferral.",
+    "promoted": false,
+    "reason": "Both MTP arms are 10/10 exact with identical acceptance, but deferred MTP is 26.152 s versus serial 22.821 s (0.8726x) and regresses every category. Full-width target execution plus replay on early mismatch overwhelms pooled/head savings.",
+    "rocprof_new_run": false
+  },
+  "host": {
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+    },
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "hostname": "zbook",
+    "kernel": "6.18.42-1-cachyos-lts",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "rocm_platform": "10.0.0",
+    "tuned_active": "Current active profile: accelerator-performance"
+  },
+  "kind": "qwen4exp_p11_public_deferred_verifier",
+  "lifecycle": {
+    "after_close": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 88681510784,
+      "peak_allocations": 2197,
+      "total_allocated_bytes": 88682157952,
+      "total_freed_bytes": 88682157952
+    },
+    "passed": true
+  },
+  "performance_claim": false,
+  "schema": 1,
+  "source": {
+    "base_head": "5c00f94ee",
+    "candidate_committed": false,
+    "provider_branch_removed": true
+  },
+  "status": "rejected_complete_wall_regression"
+}

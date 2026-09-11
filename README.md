@@ -38,6 +38,7 @@ hipEngine is a from-scratch project and does not inherit any unvetted code or le
 | --- | --- | :---: | :---: | :---: |
 | Qwen3.x Dense | **0.8B:** [GGUF](docs/GGUF.md) `Q4_K_M`, `Q8_0`, `Q4_1`, `UD-Q4_K_XL`<br>**27B:** [GGUF](docs/GGUF.md) [`Q4_K_M`](https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/blob/65ca473/Qwen3.8-27B-Q4_K_M.gguf); Qwen3.8-27B `Q4_K_S` on `gfx1151` | Yes | Yes | — |
 | Qwen3.x MoE | **35B-A3B:** [GGUF](docs/GGUF.md) `Q4_K_M`, `Q4_K_S`, `UD-Q3_K_M`, `UD-Q4_K_M`<br>[ParoQuant W4](https://huggingface.co/shisa-ai/Qwen3.6-35B-A3B-PARO-packed) | Yes | Yes | — |
+| Qwen3.8 Flash-Next | **125B-A6B + sparse PLE:** GGUF `UD-Q4_K_XL`; optional Q8 MTP and BF16 mmproj | — | Yes — text/QSA, opt-in MTP, ≤1K image/video, c2 serving | — |
 | Laguna S 2.1 | [GGUF `Q4_K_M`](https://huggingface.co/poolside/Laguna-S-2.1-GGUF) | — | Yes | — |
 | Maple-Preview 20B-A1B | [2-bit MLX](https://huggingface.co/deepgrove/maple-preview-2bit-mlx) | Yes | Yes | Python API only |
 
@@ -49,45 +50,6 @@ Support is specific to the listed model families and formats. hipEngine does
 not yet run every GGUF model. See the [GGUF](docs/GGUF.md),
 [Laguna](docs/LAGUNA.md), and [Maple](docs/MAPLE.md) guides for model-specific
 limits.
-
-### Long context with DMS
-
-Qwen3.8-27B `Q4_K_M` can run with [Dynamic Memory Sparsification](https://arxiv.org/abs/2506.05345) (DMS):
-a trained eviction policy compacts the KV cache so a **single 24 GB card
-holds 232K tokens of context** (~3X BF16 with practically zero quality loss). It is significantly *more* accurate than direct-INT8 KV.
-
-| | DMS, INT8 KV | INT8 KV, direct prefill |
-| --- | --- | --- |
-| Prefill reads | BF16 oracle planes | the INT8 cache directly |
-| Mean row-KL vs dense-BF16 teacher | 0.001 | 0.188 (max 6.46) |
-| Top-1 agreement | 100% | 91.4% |
-| KL ≤ 0.05 / top-1 ≥ 90% gate | passes | fails |
-
-See [DMS analysis](docs/DMS-ANALYSIS.md) for the quality bar and evidence plan,
-and the [FastDMS reference implementation](https://github.com/shisa-ai/FastDMS)
-for the method's lineage. DMS is opt-in and currently requires the model's
-[eviction sidecar artifacts](https://huggingface.co/shisa-ai/Qwen3.8-27B-Q4_K_M-DMS-W8192).
-
-How much context fits on a singl 24 GB card depends on the KV format and the
-route. Measured one-request ceilings for Qwen3.8-27B `Q4_K_M` (the model
-itself weighs 16.25 GiB):
-
-| KV Type     | Max context |
-| ----------- | ----------: |
-| BF16        |      40,960 |
-| INT8        | 54,272 (re-measuring) |
-| BF16 DMS    |      73,728 |
-| INT8 DMS    |     232,448 |
-| direct-INT8 |     232,448 |
-
-The INT8 server-route ceiling is being re-measured: long-prompt prefill on
-that route was repaired and the fixed route transiently uses more memory, so
-54,272 is optimistic rather than a current ceiling.
-
-The model's full 262,144-token context needs a predicted 24.8 GiB (use `Q4_K_S` if you want full context)
-
-When it exists, DMS has higher accuracy, but pure INT8 KV is available as well.
-
 ### GGUF or ParoQuant for Qwen?
 
 For Qwen3.6 35B-A3B on RDNA3, the optimized ParoQuant W4 checkpoint currently
@@ -107,8 +69,8 @@ checkpoint or GGUF for broader compatibility.
 | NVIDIA Blackwell | Linux x86-64, Python 3.11+ and the CUDA toolkit with `nvcc`; Maple only |
 | Published wheel | glibc 2.39 or newer, such as Ubuntu 24.04 |
 
-ROCm 7.x is the safest choice for the current wheel (ROCm 10.0 has been tested and works fine as well). 
-
+ROCm 7.x is the safest choice for the current wheel (ROCm 10.0 has been tested and works fine as well).
+See the [TheRock setup guide](docs/THEROCK.md) for retained ROCm 7.13 and gfx1151 ROCm 10 setup/JIT validation.
 The first model load compiles and caches kernels, so it takes longer than later starts.
 
 Install from PyPI:
@@ -229,6 +191,10 @@ row, not across them.
 | Qwen3.8-27B Dense | GGUF `Q4_K_S` | **396.1** | **13.1** | **23.9** | — |
 | Qwen3.8-27B Dense | GGUF `Q4_K_M` | — | — | **15.6** | — |
 
+**Time-series forecasting (TimesFM 2.5 200M).** batch=8/context 8192/
+horizon 512 forecasts in **0.082 s** - 8.6x the official torch reference on
+the same GPU; FP16 production within 0.86% max error of the FP32 oracle.
+
 #### NVIDIA RTX PRO 6000 Blackwell — 96 GB (`sm_120a`)
 
 | Model | Quant | Prompt processing | Text generation | With MTP | Max context |
@@ -238,7 +204,11 @@ row, not across them.
 Blank cells are shapes we have not measured yet, not failures. Max context is
 published only where a dedicated ceiling run exists.
 
-- **Qwen3.8-27B `Q4_K_M` holds 232,448 tokens of context on a 24 GB `gfx1100` card.** The ceiling depends on the KV format and route — six measured configurations, 40,960 to 232,448; see Long context with DMS for what each applies to. The model's full 262,144 context needs a predicted 24.8 GiB and does not fit. [Capacity evidence](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-capacity.json)
+- **Qwen3.8-27B `Q4_K_M` context ceilings on 24 GB `gfx1100`:** six measured
+  configurations, 40,960 to 232,448 tokens depending on the KV format and
+  route; the full 262,144 context needs a predicted 24.8 GiB and does not
+  fit. [Capacity
+  evidence](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-capacity.json)
 
 ### Serving several requests at once
 

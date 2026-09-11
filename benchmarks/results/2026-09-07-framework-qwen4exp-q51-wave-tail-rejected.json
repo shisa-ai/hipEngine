@@ -1,0 +1,199 @@
+{
+  "disposition": "rejected_removed_kernel_loss",
+  "performance_claim": false,
+  "mechanism": "Preserve folded stride64/32 tree by first-wave LDS reads, then shfl_down stride16/8/4/2/1; one wave computes all16 row/output reductions.",
+  "limits": "Actual layer0/1 weights, synthetic activations and routing at512/1024 tokens. Kernel projection screen only, not model or captured-routing evidence. No full-model A/B justified by clear kernel loss.",
+  "validation": {
+    "tests_passed": 21,
+    "all40_pairs_exact": true,
+    "both_orders_lose": true,
+    "trace_path": "/tmp/qwen4exp-q51-wave-tail-trace/gfx1151/3915903_kernel_trace.csv",
+    "vgpr_both": 96,
+    "parent_scratch_bytes": 36,
+    "candidate_scratch_bytes": 24,
+    "dynamic_lds_bytes_both": 8672,
+    "note": "Trace LDS_Block_Size reports0 for dynamic LDS; launch formula is8192+480 bytes."
+  },
+  "cleanup": "Candidate kernel/wrapper/registry/screen changes and candidate-only tests removed; tracked code matches4ae418e35.",
+  "schema": 1,
+  "kind": "qwen4exp_q51_pair_screen",
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "4ae418e3516e4a0beba02d8c42d97ac452a67e73",
+    "tracked_clean": false
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "command": [
+    "scripts/qwen4exp_q51_pair_screen.py",
+    "--model-root",
+    "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--require-cached-build",
+    "--wave-tail",
+    "--rows",
+    "512",
+    "1024",
+    "--pairs",
+    "20",
+    "--output",
+    "/tmp/qwen4exp-q51-wave-tail.json"
+  ],
+  "weights": [
+    {
+      "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+      "name": "blk.0.ffn_down_exps.weight",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "sha256": "b8182533b10a398040d86f4026f4cdbee23b5b666414c37b4c6f73bcfa3f5663"
+    },
+    {
+      "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+      "name": "blk.1.ffn_down_exps.weight",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "sha256": "74b2d0bdc9090ab85924b670c079cf6d93bbee0a764d37c519f1a14e17831c95"
+    }
+  ],
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "arithmetic_class": "T0",
+  "boundary": "two rotating grouped Q5_1 down banks; maps supplied, no routing or combine",
+  "runtime_default_changed": false,
+  "parent_variant": "qwen4_exp_q5_1_selected_grouped_prefill_pair2_register_cache_bf16_bf16_out",
+  "candidate_variant": "qwen4_exp_q5_1_selected_grouped_prefill_pair2_wave_tail_bf16_bf16_out",
+  "cases": [
+    {
+      "tokens": 512,
+      "compact_rows": 5120,
+      "seconds": {
+        "parent": [
+          0.031264263205230236,
+          0.03125972393900156,
+          0.03147773281671107,
+          0.03143953112885356,
+          0.03149075713008642,
+          0.0313571160659194,
+          0.03149034711532295,
+          0.031443197978660464,
+          0.03151662601158023,
+          0.03137622191570699,
+          0.03138885600492358,
+          0.03141638822853565,
+          0.031511585926637053,
+          0.03139167092740536,
+          0.0314311848487705,
+          0.03147216304205358,
+          0.03148325299844146,
+          0.03144734492525458,
+          0.03150094603188336,
+          0.03150439285673201
+        ],
+        "candidate": [
+          0.03868670086376369,
+          0.038757093949243426,
+          0.038864865899086,
+          0.03892850503325462,
+          0.03880065609700978,
+          0.038870997028425336,
+          0.038779005175456405,
+          0.038935909047722816,
+          0.03888240898959339,
+          0.038939316058531404,
+          0.038857653038576245,
+          0.038993027061223984,
+          0.03887921292334795,
+          0.03894318290986121,
+          0.03883812599815428,
+          0.03902050806209445,
+          0.03885762207210064,
+          0.03898632409982383,
+          0.03881754702888429,
+          0.03898222604766488
+        ]
+      },
+      "all_pairs_exact": true,
+      "speedup": 0.8088793965048409,
+      "mean_speedup": 0.8084444660594796,
+      "order_speedups": [
+        0.8105153972753014,
+        0.8070608954509575
+      ]
+    },
+    {
+      "tokens": 1024,
+      "compact_rows": 10240,
+      "seconds": {
+        "parent": [
+          0.052575767040252686,
+          0.05259960098192096,
+          0.05260772700421512,
+          0.052566378843039274,
+          0.05244210618548095,
+          0.05267840996384621,
+          0.05259486194700003,
+          0.052574244095012546,
+          0.0525524930562824,
+          0.052604119991883636,
+          0.05261657293885946,
+          0.05259420187212527,
+          0.052479496225714684,
+          0.05258002504706383,
+          0.052496738033369184,
+          0.05262651201337576,
+          0.05261665303260088,
+          0.052582740085199475,
+          0.052743952022865415,
+          0.052478624042123556
+        ],
+        "candidate": [
+          0.0657810780685395,
+          0.06596713792532682,
+          0.06581326900050044,
+          0.0658489849884063,
+          0.06595251010730863,
+          0.06572830001823604,
+          0.06580550409853458,
+          0.06599031202495098,
+          0.06587694794870913,
+          0.06595533504150808,
+          0.06584748299792409,
+          0.06588223786093295,
+          0.06603998388163745,
+          0.0658954840619117,
+          0.06569812190718949,
+          0.06590533186681569,
+          0.06610587798058987,
+          0.06611514510586858,
+          0.06589248799718916,
+          0.06564657599665225
+        ]
+      },
+      "all_pairs_exact": true,
+      "speedup": 0.7981571676390024,
+      "mean_speedup": 0.7980366030022569,
+      "order_speedups": [
+        0.7984139937553535,
+        0.7979991718275874
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1388 @@
+{
+  "schema": 1,
+  "date": "2026-09-05",
+  "date_basis": "UTC",
+  "kind": "qwen4exp_q8_wave_scale_screen",
+  "status": "retained_conditioned_kernel_screen_pending_model_admission",
+  "performance_claim": true,
+  "hipengine_artifact_provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 2,
+    "collected_at": "2026-09-05T22:40:32.861292+00:00",
+    "host_name": "gfx1151",
+    "repo_root": "/home/lhl/hipEngine",
+    "hipengine_commit": "e6f950f6ae71d2aaef22c30f0d23c6ef643033d2",
+    "git_branch": "qwen3.8-flash-next",
+    "staged_dirty": false,
+    "unstaged_dirty": true,
+    "untracked_dirty": true,
+    "untracked_count": 79,
+    "dirty": true,
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S",
+    "model_path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "model_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+    "model_fingerprint": {
+      "algorithm": "sha256-directory-manifest-v1",
+      "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+      "size_bytes": 111334654784,
+      "sampled_bytes": 12582912,
+      "file_count": 4,
+      "exists": true,
+      "path_type": "directory"
+    },
+    "quant": "UD-Q4_K_XL",
+    "kv_dtype": "BF16",
+    "command": [
+      ".venv/bin/python",
+      "scripts/qwen4exp_q8_wave_scale_screen.py",
+      "--model-root",
+      "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--output",
+      "/tmp/qwen4exp-q8-wave-scale-screen.json"
+    ],
+    "environment": {
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-hipcc-version.txt",
+      "HIPENGINE_REQUIRE_CACHED_BUILD": "1"
+    },
+    "rocm_version": "HIP version: 7.15.26333-0000000",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+    "build_profile": null,
+    "timing_protocol": "Alternating actual-weight Q8 projection pairs, synchronize then verify F32 output bits after every pair",
+    "warmups": 1,
+    "repetitions": 15,
+    "profiler": null
+  },
+  "screen": {
+    "schema": 1,
+    "source": {
+      "path": "/home/lhl/hipEngine",
+      "head": "e6f950f6ae71d2aaef22c30f0d23c6ef643033d2",
+      "tracked_clean": false
+    },
+    "host": {
+      "hostname": "gfx1151",
+      "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+      "kernel": "7.1.6-1-cachyos",
+      "tuned_active": "Current active profile: accelerator-performance",
+      "cpu_governors": {
+        "performance": 32
+      },
+      "gpu_clock_policies": {
+        "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+      },
+      "rocm_platform": null,
+      "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+    },
+    "command": [
+      "scripts/qwen4exp_q8_wave_scale_screen.py",
+      "--model-root",
+      "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--output",
+      "/tmp/qwen4exp-q8-wave-scale-screen.json"
+    ],
+    "cases": [
+      {
+        "tensor": "blk.0.attn_gate.weight",
+        "shape": [
+          64,
+          2560,
+          6144
+        ],
+        "weight_sha256": "07d0602265cac070edf0fea0c188a3a06ed5f6bdecd4860d78b0a9fcaf7eff95",
+        "parent_ms": 0.816762913018465,
+        "candidate_ms": 0.6994630675762892,
+        "speedup": 1.1676998413206172,
+        "samples_ms": [
+          [
+            0.8013339247554541,
+            0.9162288624793291,
+            0.9466058108955622,
+            0.8016549982130527,
+            0.8222030010074377,
+            0.809498829767108,
+            0.8559559937566519,
+            0.7767379283905029,
+            0.816762913018465,
+            0.8108911570161581,
+            0.8083968423306942,
+            0.9996558073908091,
+            0.8291760459542274,
+            0.7841119077056646,
+            0.8467989973723888
+          ],
+          [
+            0.6655389443039894,
+            3.8323018234223127,
+            0.6994630675762892,
+            0.987473875284195,
+            0.6755481008440256,
+            1.739775063470006,
+            0.670338049530983,
+            1.1055250652134418,
+            0.6687550339847803,
+            5.607564002275467,
+            0.670969020575285,
+            6.362260086461902,
+            0.6713899783790112,
+            3.8132171612232924,
+            0.6727529689669609
+          ]
+        ],
+        "exact": true
+      },
+      {
+        "tensor": "blk.0.attn_gate.weight",
+        "shape": [
+          512,
+          2560,
+          6144
+        ],
+        "weight_sha256": "07d0602265cac070edf0fea0c188a3a06ed5f6bdecd4860d78b0a9fcaf7eff95",
+        "parent_ms": 6.048751994967461,
+        "candidate_ms": 5.032435059547424,
+        "speedup": 1.2019533135339526,
+        "samples_ms": [
+          [
+            5.726617062464356,
+            5.911925109103322,
+            6.4450460486114025,
+            5.860769189894199,
+            6.483818171545863,
+            5.836053052917123,
+            6.4732281025499105,
+            5.922734970226884,
+            6.528001045808196,
+            5.887588951736689,
+            6.452209083363414,
+            6.048751994967461,
+            6.447148974984884,
+            5.922414129599929,
+            6.458319956436753
+          ],
+          [
+            4.9746360164135695,
+            5.79167902469635,
+            4.909224109724164,
+            7.417539833113551,
+            4.958075005561113,
+            7.936764974147081,
+            4.984293831512332,
+            7.168082054704428,
+            4.975778050720692,
+            7.6342080719769,
+            4.9788139294832945,
+            6.893106969073415,
+            4.935503005981445,
+            8.961959043517709,
+            5.032435059547424
+          ]
+        ],
+        "exact": true
+      },
+      {
+        "tensor": "blk.0.ffn_down_shexp.weight",
+        "shape": [
+          64,
+          640,
+          2560
+        ],
+        "weight_sha256": "fbceb852995394a22008c15d36f6ae0adaad88e26bf5a892120e271edd14d296",
+        "parent_ms": 0.19688904285430908,
+        "candidate_ms": 0.1863189972937107,
+        "speedup": 1.0567309062099335,
+        "samples_ms": [
+          [
+            0.16998895443975925,
+            0.2013880293816328,
+            0.21292897872626781,
+            0.1637670211493969,
+            0.22880895994603634,
+            0.1804879866540432,
+            0.20500505343079567,
+            0.16772490926086903,
+            0.20032585598528385,
+            0.16368716023862362,
+            0.19799103029072285,
+            0.17796293832361698,
+            0.2148030325770378,
+            0.16443803906440735,
+            0.19688904285430908
+          ],
+          [
+            0.15225610695779324,
+            0.2508610486984253,
+            0.15553180128335953,
+            0.1883439254015684,
+            0.24667312391102314,
+            0.21705683320760727,
+            0.15257694758474827,
+            0.18699117936193943,
+            0.15100277960300446,
+            0.18752203322947025,
+            0.15172502025961876,
+            0.2557199914008379,
+            0.15291711315512657,
+            0.1863189972937107,
+            0.15040207654237747
+          ]
+        ],
+        "exact": true
+      },
+      {
+        "tensor": "blk.0.ffn_down_shexp.weight",
+        "shape": [
+          512,
+          640,
+          2560
+        ],
+        "weight_sha256": "fbceb852995394a22008c15d36f6ae0adaad88e26bf5a892120e271edd14d296",
+        "parent_ms": 0.9747098665684462,
+        "candidate_ms": 0.8376208133995533,
+        "speedup": 1.1636648122585511,
+        "samples_ms": [
+          [
+            0.933873001486063,
+            0.9430090431123972,
+            0.9922930039465427,
+            0.9747098665684462,
+            1.011247979477048,
+            0.9347840677946806,
+            0.9865008760243654,
+            0.9316480718553066,
+            0.9960290044546127,
+            0.9376690723001957,
+            0.9888061322271824,
+            0.9383009746670723,
+            1.02817895822227,
+            0.9442719165235758,
+            1.0018409229815006
+          ],
+          [
+            0.8264919742941856,
+            0.9145669173449278,
+            0.8211010135710239,
+            0.9623761288821697,
+            0.8299069013446569,
+            0.8835678454488516,
+            0.8301879279315472,
+            0.8773468434810638,
+            0.8276528678834438,
+            0.8813841268420219,
+            0.8280440233647823,
+            0.8781780488789082,
+            0.8376208133995533,
+            0.8837778586894274,
+            0.8252088446170092
+          ]
+        ],
+        "exact": true
+      }
+    ],
+    "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+    "contract": "T0 F32 output bits",
+    "default_changed": false,
+    "validity": "superseded_odd_pair_order_biased_median_not_retained_as_general_win"
+  },
+  "independent_bank": {
+    "schema": 1,
+    "source": {
+      "path": "/home/lhl/hipEngine",
+      "head": "e6f950f6ae71d2aaef22c30f0d23c6ef643033d2",
+      "tracked_clean": false
+    },
+    "host": {
+      "hostname": "gfx1151",
+      "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+      "kernel": "7.1.6-1-cachyos",
+      "tuned_active": "Current active profile: accelerator-performance",
+      "cpu_governors": {
+        "performance": 32
+      },
+      "gpu_clock_policies": {
+        "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+      },
+      "rocm_platform": null,
+      "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+    },
+    "command": [
+      "scripts/qwen4exp_q8_wave_scale_screen.py",
+      "--model-root",
+      "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--rows",
+      "1",
+      "4",
+      "64",
+      "512",
+      "--tensor",
+      "blk.4.attn_gate.weight",
+      "--output",
+      "/tmp/qwen4exp-q8-wave-scale-layer4.json"
+    ],
+    "cases": [
+      {
+        "tensor": "blk.4.attn_gate.weight",
+        "shape": [
+          1,
+          2560,
+          6144
+        ],
+        "weight_sha256": "3dcced565028df769f41cc5fce97ef59fd9a27f749cae62d7161e723594ca252",
+        "parent_ms": 0.10559801012277603,
+        "candidate_ms": 0.0803610309958458,
+        "speedup": 1.3140449893958535,
+        "samples_ms": [
+          [
+            0.15519117005169392,
+            0.1160681713372469,
+            0.12403307482600212,
+            0.11047697626054287,
+            0.10826298967003822,
+            0.10813283734023571,
+            0.1080420333892107,
+            0.07698405534029007,
+            0.10559801012277603,
+            0.08095195516943932,
+            0.07376796565949917,
+            0.08742394857108593,
+            0.07398799061775208,
+            0.08051097393035889,
+            0.07495004683732986
+          ],
+          [
+            0.09791413322091103,
+            0.15712506137788296,
+            0.09267404675483704,
+            0.10515796020627022,
+            0.08221389725804329,
+            0.08091190829873085,
+            0.0842479057610035,
+            0.0803610309958458,
+            0.07406901568174362,
+            0.06810692138969898,
+            0.07337704300880432,
+            0.0678368378430605,
+            0.07274607196450233,
+            0.06724684499204159,
+            0.07292698137462139
+          ]
+        ],
+        "exact": true
+      },
+      {
+        "tensor": "blk.4.attn_gate.weight",
+        "shape": [
+          4,
+          2560,
+          6144
+        ],
+        "weight_sha256": "3dcced565028df769f41cc5fce97ef59fd9a27f749cae62d7161e723594ca252",
+        "parent_ms": 0.11212006211280823,
+        "candidate_ms": 0.10173092596232891,
+        "speedup": 1.1021236762784055,
+        "samples_ms": [
+          [
+            0.10020798072218895,
+            0.10289321653544903,
+            0.10941503569483757,
+            0.10222196578979492,
+            0.12100790627300739,
+            0.11086813174188137,
+            0.12166798114776611,
+            0.11016707867383957,
+            0.12267008423805237,
+            0.11212006211280823,
+            0.1215978991240263,
+            0.11016707867383957,
+            0.12108706869184971,
+            0.12287101708352566,
+            0.12129801325500011
+          ],
+          [
+            0.0890770461410284,
+            0.13045500963926315,
+            0.09370502084493637,
+            0.10173092596232891,
+            0.09276415221393108,
+            0.10667112655937672,
+            0.11161994189023972,
+            0.10692095384001732,
+            0.09459792636334896,
+            0.1057889312505722,
+            0.09446707554161549,
+            0.10553817264735699,
+            0.09481818415224552,
+            0.10520685464143753,
+            0.09515904821455479
+          ]
+        ],
+        "exact": true
+      },
+      {
+        "tensor": "blk.4.attn_gate.weight",
+        "shape": [
+          64,
+          2560,
+          6144
+        ],
+        "weight_sha256": "3dcced565028df769f41cc5fce97ef59fd9a27f749cae62d7161e723594ca252",
+        "parent_ms": 0.8313201833516359,
+        "candidate_ms": 0.7947918493300676,
+        "speedup": 1.0459596233307602,
+        "samples_ms": [
+          [
+            0.7654759101569653,
+            0.9158281609416008,
+            0.8211210370063782,
+            0.8580698631703854,
+            0.8305490482598543,
+            0.7742729503661394,
+            0.8198090363293886,
+            0.849724980071187,
+            0.8313201833516359,
+            0.7859349716454744,
+            0.9015919640660286,
+            0.8527510799467564,
+            0.9088958613574505,
+            0.8134269155561924,
+            0.8476111106574535
+          ],
+          [
+            0.6657999474555254,
+            3.573426976799965,
+            0.6722321268171072,
+            3.0748911667615175,
+            0.677390955388546,
+            2.9335760045796633,
+            0.6718311924487352,
+            2.2712519858032465,
+            0.6772109773010015,
+            7.092460058629513,
+            0.7123670075088739,
+            3.961003152653575,
+            0.7947918493300676,
+            1.2230449356138706,
+            0.6906259804964066
+          ]
+        ],
+        "exact": true
+      },
+      {
+        "tensor": "blk.4.attn_gate.weight",
+        "shape": [
+          512,
+          2560,
+          6144
+        ],
+        "weight_sha256": "3dcced565028df769f41cc5fce97ef59fd9a27f749cae62d7161e723594ca252",
+        "parent_ms": 6.003857823088765,
+        "candidate_ms": 4.982741083949804,
+        "speedup": 1.2049307242610174,
+        "samples_ms": [
+          [
+            5.727990064769983,
+            5.987956887111068,
+            6.4377321396023035,
+            5.898449802771211,
+            6.494297878816724,
+            6.003857823088765,
+            6.592130986973643,
+            5.941781215369701,
+            6.467778002843261,
+            5.89678599499166,
+            6.436359137296677,
+            5.890114000067115,
+            6.423554848879576,
+            5.935780005529523,
+            6.48680399172008
+          ],
+          [
+            4.975667921826243,
+            5.811205832287669,
+            4.957923898473382,
+            7.518650032579899,
+            4.957734141498804,
+            9.85143892467022,
+            4.982741083949804,
+            7.660998031497002,
+            4.9415938556194305,
+            7.194902980700135,
+            4.922779044136405,
+            7.000617915764451,
+            4.929400980472565,
+            7.1733929216861725,
+            4.9462830647826195
+          ]
+        ],
+        "exact": true
+      }
+    ],
+    "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+    "contract": "T0 F32 output bits",
+    "default_changed": false,
+    "validity": "superseded_odd_pair_order_biased_median_not_retained_as_general_win"
+  },
+  "raw_sha256": {
+    "/tmp/qwen4exp-q8-wave-scale-screen.json": "a8a829aac2d6f7c3f67aa68dcc30de981a87b8a651f2dea50d8b8190d47e9b99",
+    "/tmp/qwen4exp-q8-wave-scale-layer4.json": "fb2dae37092489dc397c7b506b5f33a5fb756a9adada6f9611b183a573c7cc4d",
+    "/tmp/qwen4exp-q8-wave-scale-trace.json": "17c288526cf40389445792268e0a767d6465c09c2897207ea1fd2e5fadd30f40",
+    "/tmp/qwen4exp-q8-wave-scale-balanced.json": "660c3dc24da809207d4f689141a3a5ac13fe3c61de8346e9093cb10d1d5a22ca",
+    "/tmp/qwen4exp-q8-wave-scale-pressure.json": "9d1216a24753ed45a5c43ec00fd9bbccc0219a2e67b4e64a6a023f1c14d8be39",
+    "/tmp/qwen4exp-q8-wave-scale-pressure-layer4.json": "e9d89924a839c878b123ac30cd1999c4637164599abc5d74f9ce3cd2c83ba6e6"
+  },
+  "source_sha256": {
+    "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.hip": "6386f7b3dbcf073fa1456e00e8000bcab09be1bff5e44ba0642d75bae3ac2b66",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py": "d9592c7949dfe3c6813243c86612850fdf3b40d27fdae96e4c2b89271471600f"
+  },
+  "trace": {
+    "path": "/tmp/qwen4exp-q8-wave-scale-trace/gfx1151/2645507_kernel_trace.csv",
+    "symbol": "gguf_k_prefill_out_coltile_rowbatch_kernel<float,float,8,8,4,true>",
+    "candidate_duration_ns": 4860988,
+    "parent_duration_ns": 5661369,
+    "vgpr_both": 72,
+    "lds_bytes_both": 512,
+    "scratch_bytes_both": 0,
+    "workgroup": 128
+  },
+  "correctness": {
+    "focused_tests_passed": 15,
+    "F32_output_bits_exact": true,
+    "repeat_exact": true,
+    "cpu_gate": "Reduced fixture allclose rtol1e-4/atol1e-5, max output-channel KL<=0.05, top1>=90%",
+    "scope": "Primitive value/output safety and T0 parent equality, not full-model D1 qualification"
+  },
+  "mechanism": "Explicit wave-uniform Q8 block index using readfirstlane; preserve original FMA and reduction order without layout or scratch changes.",
+  "promotion_blocker": "Require full model cache/workload behavior with invocation-verified state/KV/logit gate and12-case A/B; do not promote solely from conditioned kernel speed.",
+  "default_changed": false,
+  "unconditioned_balanced": {
+    "schema": 1,
+    "source": {
+      "path": "/home/lhl/hipEngine",
+      "head": "e6f950f6ae71d2aaef22c30f0d23c6ef643033d2",
+      "tracked_clean": false
+    },
+    "host": {
+      "hostname": "gfx1151",
+      "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+      "kernel": "7.1.6-1-cachyos",
+      "tuned_active": "Current active profile: accelerator-performance",
+      "cpu_governors": {
+        "performance": 32
+      },
+      "gpu_clock_policies": {
+        "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+      },
+      "rocm_platform": null,
+      "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+    },
+    "command": [
+      "scripts/qwen4exp_q8_wave_scale_screen.py",
+      "--model-root",
+      "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--output",
+      "/tmp/qwen4exp-q8-wave-scale-balanced.json"
+    ],
+    "cases": [
+      {
+        "tensor": "blk.0.attn_gate.weight",
+        "shape": [
+          64,
+          2560,
+          6144
+        ],
+        "weight_sha256": "07d0602265cac070edf0fea0c188a3a06ed5f6bdecd4860d78b0a9fcaf7eff95",
+        "parent_ms": 0.7918961346149445,
+        "candidate_ms": 0.9227108675986528,
+        "speedup": 0.8582278180768017,
+        "mean_speedup": 0.6096783233605847,
+        "speedup_by_order": {
+          "parent_first": 1.2141156027696913,
+          "candidate_first": 0.4064245871127277
+        },
+        "samples_ms": [
+          [
+            0.7550371810793877,
+            0.7994901388883591,
+            0.8319108746945858,
+            0.7958130445331335,
+            0.7963140960782766,
+            0.8420399390161037,
+            0.796114094555378,
+            0.771096907556057,
+            0.7919161580502987,
+            0.7697939872741699,
+            0.7918761111795902,
+            0.7666880264878273,
+            0.79499208368361,
+            0.7598160300403833,
+            0.7968251593410969,
+            0.7531740702688694,
+            0.792456790804863,
+            0.7543959654867649,
+            0.7908439729362726,
+            0.754977110773325
+          ],
+          [
+            0.6397010292857885,
+            2.745441859588027,
+            0.6793139036744833,
+            1.2499750591814518,
+            0.6550799589604139,
+            2.231447957456112,
+            0.653787050396204,
+            1.6923658549785614,
+            0.6537069566547871,
+            2.0881190430372953,
+            0.6602490320801735,
+            1.6581520903855562,
+            0.6577251479029655,
+            2.3337698075920343,
+            0.6488969083875418,
+            1.1661078315228224,
+            0.6533770356327295,
+            2.456619869917631,
+            0.6510920356959105,
+            1.5854949597269297
+          ]
+        ],
+        "exact": true
+      },
+      {
+        "tensor": "blk.0.attn_gate.weight",
+        "shape": [
+          512,
+          2560,
+          6144
+        ],
+        "weight_sha256": "07d0602265cac070edf0fea0c188a3a06ed5f6bdecd4860d78b0a9fcaf7eff95",
+        "parent_ms": 5.913984030485153,
+        "candidate_ms": 5.30325248837471,
+        "speedup": 1.1151616943468619,
+        "mean_speedup": 1.0006775918585031,
+        "speedup_by_order": {
+          "parent_first": 1.2723876638819505,
+          "candidate_first": 0.8153586713025812
+        },
+        "samples_ms": [
+          [
+            5.703533999621868,
+            5.908318096771836,
+            6.298471009358764,
+            5.885115126147866,
+            6.254397798329592,
+            5.881428020074964,
+            6.3280160538852215,
+            5.882700905203819,
+            6.283773109316826,
+            5.855108145624399,
+            6.272300845012069,
+            5.842484999448061,
+            6.268254015594721,
+            5.878251977264881,
+            6.302618887275457,
+            5.857993150129914,
+            6.303469883278012,
+            5.91964996419847,
+            6.2619608361274,
+            5.832104943692684
+          ],
+          [
+            4.948806948959827,
+            5.657698027789593,
+            4.9428860656917095,
+            7.447347044944763,
+            4.927827976644039,
+            6.975360913202167,
+            4.930723924189806,
+            8.186543127521873,
+            4.937395919114351,
+            7.560438942164183,
+            4.910967079922557,
+            6.872147088870406,
+            4.937425954267383,
+            6.819858914241195,
+            4.94061317294836,
+            6.830638973042369,
+            4.916296107694507,
+            7.580125937238336,
+            4.9260740634053946,
+            7.68882897682488
+          ]
+        ],
+        "exact": true
+      },
+      {
+        "tensor": "blk.0.ffn_down_shexp.weight",
+        "shape": [
+          64,
+          640,
+          2560
+        ],
+        "weight_sha256": "fbceb852995394a22008c15d36f6ae0adaad88e26bf5a892120e271edd14d296",
+        "parent_ms": 0.1596095971763134,
+        "candidate_ms": 0.15733996406197548,
+        "speedup": 1.0144250262663332,
+        "mean_speedup": 1.1304667508686035,
+        "speedup_by_order": {
+          "parent_first": 1.340765097582525,
+          "candidate_first": 0.9040577352946221
+        },
+        "samples_ms": [
+          [
+            0.14840904623270035,
+            0.14771707355976105,
+            0.32747420482337475,
+            0.16848603263497353,
+            0.18465612083673477,
+            0.14739693142473698,
+            0.1877620816230774,
+            0.15073316171765327,
+            0.17961720004677773,
+            0.1383798662573099,
+            0.1776630524545908,
+            0.14681601896882057,
+            0.17267395742237568,
+            0.14650379307568073,
+            0.1777831930667162,
+            0.14830823056399822,
+            0.17728307284414768,
+            0.14715595170855522,
+            0.17747306264936924,
+            0.14702603220939636
+          ],
+          [
+            0.13367109932005405,
+            0.16996916383504868,
+            0.13931095600128174,
+            0.17729285173118114,
+            0.13583502732217312,
+            0.16500987112522125,
+            0.1533369068056345,
+            0.16939803026616573,
+            0.1332100946456194,
+            0.16163312830030918,
+            0.13073603622615337,
+            0.16219494864344597,
+            0.1318568829447031,
+            0.16265502199530602,
+            0.13189692981541157,
+            0.16134302131831646,
+            0.13153697364032269,
+            0.16315700486302376,
+            0.13142707757651806,
+            0.16153301112353802
+          ]
+        ],
+        "exact": true
+      },
+      {
+        "tensor": "blk.0.ffn_down_shexp.weight",
+        "shape": [
+          512,
+          640,
+          2560
+        ],
+        "weight_sha256": "fbceb852995394a22008c15d36f6ae0adaad88e26bf5a892120e271edd14d296",
+        "parent_ms": 0.9478384163230658,
+        "candidate_ms": 0.8310499833896756,
+        "speedup": 1.1405311777482203,
+        "mean_speedup": 1.1295772366721284,
+        "speedup_by_order": {
+          "parent_first": 1.1848791496117805,
+          "candidate_first": 1.0828779872580396
+        },
+        "samples_ms": [
+          [
+            0.9190849959850311,
+            0.922932056710124,
+            0.9594510775059462,
+            0.928492983803153,
+            0.965191051363945,
+            0.9248149581253529,
+            0.9536589495837688,
+            0.9212188888341188,
+            0.9590298868715763,
+            0.9298350196331739,
+            0.9650911670178175,
+            0.9926229249686003,
+            0.9588301181793213,
+            0.9235430043190718,
+            0.9640487842261791,
+            0.9420178830623627,
+            0.9633779991418123,
+            0.9170109406113625,
+            0.9898580610752106,
+            0.9207678958773613
+          ],
+          [
+            0.8063528221100569,
+            0.8562169969081879,
+            0.8160520810633898,
+            0.8753230795264244,
+            0.8126948960125446,
+            0.8485328871756792,
+            0.8093379437923431,
+            0.8503859862685204,
+            0.8133570663630962,
+            0.881123123690486,
+            0.8119530975818634,
+            0.925036147236824,
+            0.8114730007946491,
+            0.8469100575894117,
+            0.8093789219856262,
+            0.8574291132390499,
+            0.8113330695778131,
+            0.8506770245730877,
+            0.8107919711619616,
+            0.8460478857159615
+          ]
+        ],
+        "exact": true
+      }
+    ],
+    "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+    "contract": "T0 F32 output bits",
+    "default_changed": false,
+    "library_prebound": true,
+    "order_balanced": true
+  },
+  "primary_conditioned": {
+    "schema": 1,
+    "source": {
+      "path": "/home/lhl/hipEngine",
+      "head": "e6f950f6ae71d2aaef22c30f0d23c6ef643033d2",
+      "tracked_clean": false
+    },
+    "host": {
+      "hostname": "gfx1151",
+      "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+      "kernel": "7.1.6-1-cachyos",
+      "tuned_active": "Current active profile: accelerator-performance",
+      "cpu_governors": {
+        "performance": 32
+      },
+      "gpu_clock_policies": {
+        "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+      },
+      "rocm_platform": null,
+      "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+    },
+    "command": [
+      "scripts/qwen4exp_q8_wave_scale_screen.py",
+      "--model-root",
+      "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--pressure-mib",
+      "256",
+      "--output",
+      "/tmp/qwen4exp-q8-wave-scale-pressure.json"
+    ],
+    "cases": [
+      {
+        "tensor": "blk.0.attn_gate.weight",
+        "shape": [
+          64,
+          2560,
+          6144
+        ],
+        "weight_sha256": "07d0602265cac070edf0fea0c188a3a06ed5f6bdecd4860d78b0a9fcaf7eff95",
+        "parent_ms": 0.9608890395611525,
+        "candidate_ms": 0.8852274622768164,
+        "speedup": 1.0854713398630151,
+        "mean_speedup": 1.0837293197494031,
+        "speedup_by_order": {
+          "parent_first": 1.0938868374605242,
+          "candidate_first": 1.0787331377930682
+        },
+        "samples_ms": [
+          [
+            1.0086640249937773,
+            1.0015510488301516,
+            0.996351009234786,
+            0.9584189392626286,
+            0.9622569195926189,
+            0.9608939290046692,
+            0.9721058886498213,
+            0.9534598793834448,
+            0.9727459400892258,
+            0.9630280546844006,
+            0.9602729696780443,
+            0.952848931774497,
+            0.9521578904241323,
+            0.9607239626348019,
+            0.9608841501176357,
+            0.966605031862855,
+            0.964730978012085,
+            0.9556841105222702,
+            0.9584599174559116,
+            0.9542619809508324
+          ],
+          [
+            0.9030359797179699,
+            0.9191650897264481,
+            0.9007221087813377,
+            0.9735070634633303,
+            0.8780278731137514,
+            0.8904619608074427,
+            0.8781689684838057,
+            0.8844109252095222,
+            0.8813440799713135,
+            0.8793810848146677,
+            0.8798828348517418,
+            0.8903718553483486,
+            0.8860439993441105,
+            0.9030550718307495,
+            0.8802530355751514,
+            0.8811450097709894,
+            0.8884379640221596,
+            0.8886992000043392,
+            0.8774879388511181,
+            0.8785889949649572
+          ]
+        ],
+        "exact": true
+      },
+      {
+        "tensor": "blk.0.attn_gate.weight",
+        "shape": [
+          512,
+          2560,
+          6144
+        ],
+        "weight_sha256": "07d0602265cac070edf0fea0c188a3a06ed5f6bdecd4860d78b0a9fcaf7eff95",
+        "parent_ms": 6.2991168815642595,
+        "candidate_ms": 5.678026122041047,
+        "speedup": 1.1093849774857945,
+        "mean_speedup": 1.1092017008331447,
+        "speedup_by_order": {
+          "parent_first": 1.1173581394729528,
+          "candidate_first": 1.101231295283086
+        },
+        "samples_ms": [
+          [
+            6.280533038079739,
+            6.304997950792313,
+            6.330675911158323,
+            6.282364949584007,
+            6.361344130709767,
+            6.29498902708292,
+            6.325687980279326,
+            6.272327154874802,
+            6.314166123047471,
+            6.294259103015065,
+            6.334593985229731,
+            6.27455092035234,
+            6.302713882178068,
+            6.2887780368328094,
+            6.330125965178013,
+            6.295519880950451,
+            6.355592980980873,
+            6.273159058764577,
+            6.341808009892702,
+            6.280353059992194
+          ],
+          [
+            5.655848886817694,
+            5.712264915928245,
+            5.673101870343089,
+            5.7388050481677055,
+            5.6751861702650785,
+            5.715582054108381,
+            5.657031899318099,
+            5.688450066372752,
+            5.665807984769344,
+            5.639719078317285,
+            5.738635081797838,
+            5.681597860530019,
+            5.665207048878074,
+            5.680866073817015,
+            5.666469922289252,
+            5.737202940508723,
+            5.64710283651948,
+            5.714239086955786,
+            5.6637239176779985,
+            5.703268805518746
+          ]
+        ],
+        "exact": true
+      },
+      {
+        "tensor": "blk.0.ffn_down_shexp.weight",
+        "shape": [
+          64,
+          640,
+          2560
+        ],
+        "weight_sha256": "fbceb852995394a22008c15d36f6ae0adaad88e26bf5a892120e271edd14d296",
+        "parent_ms": 0.17513905186206102,
+        "candidate_ms": 0.16405805945396423,
+        "speedup": 1.0675431151933514,
+        "mean_speedup": 1.0670428963343594,
+        "speedup_by_order": {
+          "parent_first": 1.086439766517812,
+          "candidate_first": 1.0471354469704182
+        },
+        "samples_ms": [
+          [
+            0.1803289633244276,
+            0.17827493138611317,
+            0.1813909038901329,
+            0.17229304648935795,
+            0.1727051567286253,
+            0.1721640583127737,
+            0.17881602980196476,
+            0.17291493713855743,
+            0.17785397358238697,
+            0.17575989477336407,
+            0.17443695105612278,
+            0.18049916252493858,
+            0.17776386812329292,
+            0.18118019215762615,
+            0.1661619171500206,
+            0.17236382700502872,
+            0.17451820895075798,
+            0.17157196998596191,
+            0.17945701256394386,
+            0.17278501763939857
+          ],
+          [
+            0.16232486814260483,
+            0.1659519039094448,
+            0.16366690397262573,
+            0.16569090075790882,
+            0.1621549017727375,
+            0.16543990932404995,
+            0.16378797590732574,
+            0.16275490634143353,
+            0.1745079644024372,
+            0.16469880938529968,
+            0.16432814300060272,
+            0.16438798047602177,
+            0.16275583766400814,
+            0.16282591968774796,
+            0.16268598847091198,
+            0.16647297888994217,
+            0.16487902030348778,
+            0.1624850556254387,
+            0.16365712508559227,
+            0.1670441124588251
+          ]
+        ],
+        "exact": true
+      },
+      {
+        "tensor": "blk.0.ffn_down_shexp.weight",
+        "shape": [
+          512,
+          640,
+          2560
+        ],
+        "weight_sha256": "fbceb852995394a22008c15d36f6ae0adaad88e26bf5a892120e271edd14d296",
+        "parent_ms": 1.0211676126345992,
+        "candidate_ms": 0.9380409028381109,
+        "speedup": 1.0886173615084187,
+        "mean_speedup": 1.0923772568749779,
+        "speedup_by_order": {
+          "parent_first": 1.096309421158306,
+          "candidate_first": 1.085807292844685
+        },
+        "samples_ms": [
+          [
+            1.0088449344038963,
+            1.0161479003727436,
+            1.0462049394845963,
+            1.0269079357385635,
+            1.0265980381518602,
+            1.0327990166842937,
+            1.0072309523820877,
+            1.0343920439481735,
+            1.0525661054998636,
+            1.0130221489816904,
+            1.0515439789742231,
+            1.0209970641881227,
+            1.0155369527637959,
+            1.012902008369565,
+            1.0108679998666048,
+            1.012261025607586,
+            1.030605984851718,
+            1.0213381610810757,
+            1.023382181301713,
+            1.0188731830567122
+          ],
+          [
+            0.9459161665290594,
+            0.935256015509367,
+            0.9394939988851547,
+            0.9459569118916988,
+            0.9277819190174341,
+            0.9404760785400867,
+            0.9301069658249617,
+            0.9302869439125061,
+            0.9543518535792828,
+            0.9467368945479393,
+            0.9312490001320839,
+            0.9404360316693783,
+            0.929816160351038,
+            0.9427899494767189,
+            0.939022982493043,
+            0.9382308926433325,
+            0.9320410899817944,
+            0.929123954847455,
+            0.9378509130328894,
+            0.9339440148323774
+          ]
+        ],
+        "exact": true
+      }
+    ],
+    "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+    "contract": "T0 F32 output bits",
+    "default_changed": false,
+    "library_prebound": true,
+    "order_balanced": true,
+    "device_fill_precondition_mib": 256
+  },
+  "independent_conditioned": {
+    "schema": 1,
+    "source": {
+      "path": "/home/lhl/hipEngine",
+      "head": "e6f950f6ae71d2aaef22c30f0d23c6ef643033d2",
+      "tracked_clean": false
+    },
+    "host": {
+      "hostname": "gfx1151",
+      "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+      "kernel": "7.1.6-1-cachyos",
+      "tuned_active": "Current active profile: accelerator-performance",
+      "cpu_governors": {
+        "performance": 32
+      },
+      "gpu_clock_policies": {
+        "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+      },
+      "rocm_platform": null,
+      "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+    },
+    "command": [
+      "scripts/qwen4exp_q8_wave_scale_screen.py",
+      "--model-root",
+      "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--pressure-mib",
+      "256",
+      "--rows",
+      "64",
+      "512",
+      "--tensor",
+      "blk.4.attn_gate.weight",
+      "--output",
+      "/tmp/qwen4exp-q8-wave-scale-pressure-layer4.json"
+    ],
+    "cases": [
+      {
+        "tensor": "blk.4.attn_gate.weight",
+        "shape": [
+          64,
+          2560,
+          6144
+        ],
+        "weight_sha256": "3dcced565028df769f41cc5fce97ef59fd9a27f749cae62d7161e723594ca252",
+        "parent_ms": 0.9771744953468442,
+        "candidate_ms": 0.897359917871654,
+        "speedup": 1.0889437737140002,
+        "mean_speedup": 1.0870351741951074,
+        "speedup_by_order": {
+          "parent_first": 1.0963235495182748,
+          "candidate_first": 1.0834762255863042
+        },
+        "samples_ms": [
+          [
+            1.0095459874719381,
+            0.9915009140968323,
+            1.0035950690507889,
+            0.9864019230008125,
+            0.988667132332921,
+            1.0024320799857378,
+            0.9571269620209932,
+            0.9769939351826906,
+            0.9942972101271152,
+            0.9759319946169853,
+            0.9780460968613625,
+            0.9743289556354284,
+            0.9822540450841188,
+            0.9753110352903605,
+            0.9773550555109978,
+            0.9503739420324564,
+            0.9588799439370632,
+            0.9567260276526213,
+            0.9762730915099382,
+            0.9565760847181082
+          ],
+          [
+            0.96925999969244,
+            0.9230331052094698,
+            0.8986268658190966,
+            0.9072530083358288,
+            0.8950610645115376,
+            0.8994389791041613,
+            0.8776779286563396,
+            0.9008608758449554,
+            0.8961530402302742,
+            0.9000489953905344,
+            0.8930061012506485,
+            0.9017027914524078,
+            0.8912640623748302,
+            0.8985667955130339,
+            0.8955108933150768,
+            0.9271709714084864,
+            0.8792609442025423,
+            0.8884379640221596,
+            0.8812048472464085,
+            0.881965970620513
+          ]
+        ],
+        "exact": true
+      },
+      {
+        "tensor": "blk.4.attn_gate.weight",
+        "shape": [
+          512,
+          2560,
+          6144
+        ],
+        "weight_sha256": "3dcced565028df769f41cc5fce97ef59fd9a27f749cae62d7161e723594ca252",
+        "parent_ms": 6.304256967268884,
+        "candidate_ms": 5.673566949553788,
+        "speedup": 1.1111628757222471,
+        "mean_speedup": 1.1095199487856586,
+        "speedup_by_order": {
+          "parent_first": 1.114468734434356,
+          "candidate_first": 1.1035178504312226
+        },
+        "samples_ms": [
+          [
+            6.303785834461451,
+            6.273248000070453,
+            6.304728100076318,
+            6.277255015447736,
+            6.310797994956374,
+            6.276845000684261,
+            6.352938013151288,
+            6.3187540508806705,
+            6.312502082437277,
+            6.297643994912505,
+            6.375270197167993,
+            6.281193112954497,
+            6.318944040685892,
+            6.298285908997059,
+            6.338069913908839,
+            6.272306898608804,
+            6.3191549852490425,
+            6.2842289917171,
+            6.3374990131706,
+            6.276884814724326
+          ],
+          [
+            5.672319093719125,
+            5.690824007615447,
+            5.669565172865987,
+            5.73134096339345,
+            5.687678931280971,
+            5.681397160515189,
+            5.669424077495933,
+            5.705102114006877,
+            5.658393958583474,
+            5.714208818972111,
+            5.659606074914336,
+            5.689552053809166,
+            5.6721000000834465,
+            5.674022948369384,
+            5.6704559829086065,
+            5.768320057541132,
+            5.673110950738192,
+            5.65720209851861,
+            5.658334121108055,
+            5.6771389208734035
+          ]
+        ],
+        "exact": true
+      }
+    ],
+    "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+    "contract": "T0 F32 output bits",
+    "default_changed": false,
+    "library_prebound": true,
+    "order_balanced": true,
+    "device_fill_precondition_mib": 256
+  },
+  "retention_scope": "Exact kernel with positive means and both order strata under symmetric256MiB device-fill preconditioning. Unconditioned attention-gate timing reverses by order and is not a general non-regression claim. Full model admission remains binding.",
+  "screen_script_sha256": "4044305717f8d1e4fbc7920953f9eaa8b69af723fd76d2e35f78ea49258c50dd",
+  "conditioned_provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 2,
+    "collected_at": "2026-09-05T22:52:29.719247+00:00",
+    "host_name": "gfx1151",
+    "repo_root": "/home/lhl/hipEngine",
+    "hipengine_commit": "e6f950f6ae71d2aaef22c30f0d23c6ef643033d2",
+    "git_branch": "qwen3.8-flash-next",
+    "staged_dirty": true,
+    "unstaged_dirty": true,
+    "untracked_dirty": true,
+    "untracked_count": 75,
+    "dirty": true,
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S",
+    "model_path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "model_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+    "model_fingerprint": {
+      "algorithm": "sha256-directory-manifest-v1",
+      "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+      "size_bytes": 111334654784,
+      "sampled_bytes": 12582912,
+      "file_count": 4,
+      "exists": true,
+      "path_type": "directory"
+    },
+    "quant": "UD-Q4_K_XL",
+    "kv_dtype": "BF16",
+    "command": [
+      ".venv/bin/python",
+      "scripts/qwen4exp_q8_wave_scale_screen.py",
+      "--model-root",
+      "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--pressure-mib",
+      "256",
+      "--output",
+      "/tmp/qwen4exp-q8-wave-scale-pressure.json"
+    ],
+    "environment": {
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-hipcc-version.txt",
+      "HIPENGINE_REQUIRE_CACHED_BUILD": "1"
+    },
+    "rocm_version": "HIP version: 7.15.26333-0000000",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+    "build_profile": null,
+    "timing_protocol": "Even20 pairs, prebound library, symmetric256MiB device-fill outside each timed projection, per-order and mean statistics, exact F32 checks",
+    "warmups": 1,
+    "repetitions": 20,
+    "profiler": null
+  }
+}

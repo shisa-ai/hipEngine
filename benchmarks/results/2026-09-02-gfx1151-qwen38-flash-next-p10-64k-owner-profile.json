@@ -1,0 +1,109 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_p10_64k_owner_profile",
+  "status": "diagnostic_profile_retained_owner_item_closed",
+  "performance_claim": false,
+  "baseline_claim": false,
+  "finding": "At exact live-65536 production decode, clean wall is 82.459 ms/token. Marker-scoped ordered selected attention remains the largest named P10 path at 19.584 ms/token; compressed-key score/top-k is 2.490 ms/token (3.02% of clean wall). The complete QSA role is 22.132 ms/token, 1.062x its 16K value. No graph/context-bucket or score/top-k implementation outranks the already-promoted ordered selected-attention route, whose next exact col4 leaf was rejected. Close the depth-owner item without opening another candidate.",
+  "scope": {
+    "host": "zbook",
+    "gpu": "AMD Radeon 8060S",
+    "arch": "gfx1151",
+    "model": "Qwen/Qwen3.8-Flash-Next",
+    "weight_artifact": "Unsloth UD-Q4_K_XL split GGUF",
+    "kv": "BF16",
+    "execution_profile": "production",
+    "production_manifest_sha256": "37d595645b376083c2c2045687b76fa51b3bdf3c74e511af4f7831a180e16779",
+    "strict_manifest_sha256": "ec1c7828611b055014df9f5e5eb8a6c814e283606227cdfc6b33bfcaeeb0109b",
+    "clock_policy": "auto",
+    "mechanism": "diagnostic snapshot-restored exact decode transition with marker-scoped kernel and role attribution",
+    "arithmetic_class": "no arithmetic change",
+    "strict_fallback": "unchanged",
+    "w_c_o_s": {
+      "W_ms_per_token": 22.132437,
+      "C_ms_per_token": 0.0,
+      "O_ms_per_token": 0.0,
+      "s": "not applicable; this unit ranks owners and changes no implementation"
+    },
+    "overlap_exclusions": [
+      "dense Q8 projection work",
+      "MoE kernels",
+      "HIP API time, which overlaps kernel execution and is not added to kernel time",
+      "prefill and PLE publication outside the snapshot-restored decode marker"
+    ]
+  },
+  "protocol": {
+    "fixture": "/tmp/qwen4exp-canonical-p65536.json",
+    "fixture_sha256": "0c94b9c60a5c1367f2797e887d3e1e09a637c92a1636793f5be1758f84f03974",
+    "case": "code-p65536",
+    "live_count": 65536,
+    "prefill_chunk_size": 512,
+    "repetitions": 3,
+    "snapshot_restore_between_repeats": true,
+    "resident_input_token": true,
+    "require_cached_build": true,
+    "clean_command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen4exp-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 uv run python scripts/qwen4exp_context_decode_profile.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --fixture /tmp/qwen4exp-canonical-p65536.json --case-id code-p65536 --live-count 65536 --repetitions 3 --prefill-chunk-size 512 --compiler-version-file /tmp/hipengine-qwen4exp-hipcc-version.txt --require-cached-build --output /tmp/qwen4exp-p10-context64k-927208ed0/clean.json",
+    "rocprof_command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen4exp-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --hip-trace --memory-copy-trace --marker-trace --output-format csv --output-directory /tmp/qwen4exp-p10-context64k-927208ed0/trace -- python3 scripts/qwen4exp_context_decode_profile.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --fixture /tmp/qwen4exp-canonical-p65536.json --case-id code-p65536 --live-count 65536 --repetitions 3 --prefill-chunk-size 512 --profile --role-markers --compiler-version-file /tmp/hipengine-qwen4exp-hipcc-version.txt --require-cached-build --output /tmp/qwen4exp-p10-context64k-927208ed0/profiled.json"
+  },
+  "correctness": {
+    "clean_status": "passed",
+    "profiled_status": "passed",
+    "token_exact": true,
+    "state_exact": true,
+    "finite": true,
+    "steady_lifecycle_passed": true,
+    "teardown_passed": true,
+    "profile_fell_back_to_strict": false
+  },
+  "timing_ms_per_token": {
+    "clean_wall_samples": [82.40542499697767, 83.165051008109, 82.45917499880306],
+    "clean_wall_median": 82.45917499880306,
+    "profiled_wall_samples": [80.37053002044559, 82.99158100271598, 83.27084701159038],
+    "profiled_wall_median": 82.99158100271598,
+    "ordered_attention_family_median": 19.583971,
+    "ordered_scores_median": 6.076143,
+    "ordered_coefficients_median": 2.561012,
+    "ordered_values_median": 10.929864,
+    "qsa_index_selection_family_median": 2.490241,
+    "compressed_key_score_median": 1.538691,
+    "topk_expand_median": 0.789929,
+    "qsa_role_median": 22.132437,
+    "dense_quant_q8_median": 25.549511,
+    "moe_gate_up_q4_median": 8.08123,
+    "moe_down_q5_median": 6.93956
+  },
+  "route_proof": {
+    "expected_symbols": [
+      "qsa_sparse_attention_paged_bf16_ordered_scores_f32_kernel",
+      "qsa_sparse_attention_paged_bf16_ordered_coefficients_f32_kernel",
+      "qsa_sparse_attention_paged_bf16_ordered_values_f32_kernel",
+      "qsa_score_f32_kernel",
+      "qsa_topk_expand_f32_i64_kernel"
+    ],
+    "expected_symbols_observed_each_repeat": true,
+    "ordered_attention_rows_per_transition": 48,
+    "index_selection_rows_per_transition": 72
+  },
+  "depth_comparison": {
+    "p6_4k_qsa_role_ms": 20.913345,
+    "p10_16k_qsa_role_ms": 20.833838,
+    "p10_64k_qsa_role_ms": 22.132437,
+    "64k_to_16k_qsa_role_ratio": 1.0623312420879916,
+    "64k_index_selection_share_of_clean_wall": 0.030199683662080628,
+    "interpretation": "Selected attention remains fixed-budget and dominant among named P10 paths. Score/top-k grows with depth but reaches only 3.02% of clean wall at 64K. API timing is not summed with kernel timing."
+  },
+  "raw_evidence": {
+    "/tmp/qwen4exp-p10-context64k-927208ed0/clean.json": "7a1c00f5d982564beab7ea0f831b3c071da1d10d30b7b14da1a6500deda560ae",
+    "/tmp/qwen4exp-p10-context64k-927208ed0/profiled.json": "0e2be421cb3cec6b0a57ff8781eba61cf9acb936e6a819aa6b6ef8696b0d0102",
+    "/tmp/qwen4exp-p10-context64k-927208ed0/summary-0.json": "435bb3c17d8d3aa05706bd842e8150171948c86880a41fe672a534852a57ea8a",
+    "/tmp/qwen4exp-p10-context64k-927208ed0/summary-1.json": "0e2305d10f39a6f5fb2201bf197bdee560eea0ccf93fced007133f44ba03c113",
+    "/tmp/qwen4exp-p10-context64k-927208ed0/summary-2.json": "bb520587eefed9939ce4e8bd4a58cfab7f7171dca327456126bdf71b0c40e016",
+    "/tmp/qwen4exp-p10-context64k-927208ed0/roles-0.json": "110046bde09766268541e576e09f8f62c6677bda7fc95f551401566f792536d7",
+    "/tmp/qwen4exp-p10-context64k-927208ed0/roles-1.json": "0405a9e33cc91e6ecdf691400688cd89e6d8ce948e0df2de48dd7cb7bcf31d86",
+    "/tmp/qwen4exp-p10-context64k-927208ed0/roles-2.json": "2f380da667cd7389419ef5277d30b444d1dd4cd64f4ea71aaf1b6deb240e195c",
+    "/tmp/qwen4exp-p10-context64k-927208ed0/trace/zbook/2100141_kernel_trace.csv": "783cb1443f368615c2312440725e84e8ddc8929aae080970a8436da648292201",
+    "/tmp/qwen4exp-p10-context64k-927208ed0/trace/zbook/2100141_marker_api_trace.csv": "96acf80a4f1ff02374d3b045389894a3cc70cd1cb89d12f5b0ebee4197d7efb8"
+  },
+  "decision": "Close the named P10 depth-owner item. Do not open score/top-k or graph/context-bucket work from the measured 4K/16K/64K ladder. Ordered selected attention remains the largest named owner, but its exact route is already promoted and its next exact col4 leaf is rejected. Continue to the independent Q8-KV product-configuration item or P11 economics work."
+}

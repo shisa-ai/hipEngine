@@ -1,0 +1,1342 @@
+{
+  "schema": 1,
+  "date": "2026-09-05",
+  "date_basis": "UTC",
+  "kind": "qwen4exp_q4_rowbatch_chunk_screen",
+  "status": "rejected_variants_removed",
+  "performance_claim": false,
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL; BF16 activations/intermediates",
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "scope": "Actual model weights, synthetic uniform/skewed routing and activations; complete gate/up+BF16 SiLU only. Tokens512/1024/2048 emulate chunk-sized work, not a full-model chunk sweep.",
+  "runs": [
+    {
+      "raw_path": "/tmp/qwen4exp-q4-row16-skewed.json",
+      "raw_sha256": "479f27500004e63b15a32c0b65a4a6053de88e6b141971f7fcf1e4027dfe1abd",
+      "routing": "skewed",
+      "layer": 4,
+      "row_batch": 16,
+      "masked_padding": false,
+      "command": [
+        "scripts/qwen4exp_q4_bundle_screen.py",
+        "--model-root",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--require-cached-build",
+        "--row-batch",
+        "16",
+        "--rows",
+        "512",
+        "1024",
+        "2048",
+        "--routing",
+        "skewed",
+        "--layer",
+        "4",
+        "--output",
+        "/tmp/qwen4exp-q4-row16-skewed.json"
+      ],
+      "source": {
+        "path": "/home/lhl/hipEngine",
+        "head": "54a25f75f26d25046101bf36301f415df80e0aaf",
+        "tracked_clean": false
+      },
+      "weights": [
+        {
+          "tensor": "blk.4.ffn_gate_exps.weight",
+          "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+          "shape": [
+            512,
+            640,
+            2560
+          ],
+          "sha256": "4276edca4d2c0a3de06d99f708fbe9369a45da0a319f719667b1bd7b1eba3e46"
+        },
+        {
+          "tensor": "blk.4.ffn_up_exps.weight",
+          "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+          "shape": [
+            512,
+            640,
+            2560
+          ],
+          "sha256": "4286135c3cd2974de46146b489da0d2f7d8a7b9d1fa38fe5b31a0fbc3ee4e084"
+        }
+      ],
+      "cases": [
+        {
+          "tokens": 512,
+          "compact_rows": 5120,
+          "active_experts": 432,
+          "seconds": {
+            "parent": [
+              0.018289522966369987,
+              0.01827581599354744,
+              0.018435375997796655,
+              0.01830352912656963,
+              0.01839694380760193,
+              0.018331410828977823,
+              0.01829315908253193,
+              0.018357069930061698,
+              0.018372648861259222,
+              0.018476102966815233
+            ],
+            "candidate": [
+              0.022023500176146626,
+              0.02186511317268014,
+              0.021967263892292976,
+              0.021868628915399313,
+              0.02198206214234233,
+              0.022061391035094857,
+              0.02208794094622135,
+              0.022179081104695797,
+              0.021836629137396812,
+              0.021999364951625466
+            ]
+          },
+          "max_expert_rows": 172,
+          "median_active_expert_rows": 6.0,
+          "weight_passes_by_row_batch": {
+            "8": 882,
+            "16": 601,
+            "32": 480
+          },
+          "speedup": 0.8341812256490302,
+          "all_pairs_exact": true,
+          "parent_ms": 18.34424037951976,
+          "candidate_ms": 21.990713546983898
+        },
+        {
+          "tokens": 1024,
+          "compact_rows": 10240,
+          "active_experts": 467,
+          "seconds": {
+            "parent": [
+              0.03468851698562503,
+              0.03470044885762036,
+              0.03473470383323729,
+              0.03512097895145416,
+              0.035189297050237656,
+              0.03497489518485963,
+              0.03499537310563028,
+              0.03495123004540801,
+              0.0350069550331682,
+              0.034931001951918006
+            ],
+            "candidate": [
+              0.039590645814314485,
+              0.03948899614624679,
+              0.03937762719579041,
+              0.03981402609497309,
+              0.040076278150081635,
+              0.03964068088680506,
+              0.0398563661146909,
+              0.03952846000902355,
+              0.03964883601292968,
+              0.04003804596140981
+            ]
+          },
+          "max_expert_rows": 650,
+          "median_active_expert_rows": 8.0,
+          "weight_passes_by_row_batch": {
+            "8": 1507,
+            "16": 917,
+            "32": 647
+          },
+          "speedup": 0.8819088318912633,
+          "all_pairs_exact": true,
+          "parent_ms": 34.96306261513382,
+          "candidate_ms": 39.64475844986737
+        },
+        {
+          "tokens": 2048,
+          "compact_rows": 20480,
+          "active_experts": 494,
+          "seconds": {
+            "parent": [
+              0.06478617899119854,
+              0.06470187101513147,
+              0.06471482594497502,
+              0.06477826391346753,
+              0.06461785384453833,
+              0.0644026999361813,
+              0.06486876402050257,
+              0.06481302995234728,
+              0.06489550392143428,
+              0.06448704819194973
+            ],
+            "candidate": [
+              0.07443308318033814,
+              0.07445359090343118,
+              0.07463228702545166,
+              0.07440951885655522,
+              0.07512519112788141,
+              0.07499288395047188,
+              0.0746486778371036,
+              0.07448182394728065,
+              0.07526419311761856,
+              0.07461311109364033
+            ]
+          },
+          "max_expert_rows": 881,
+          "median_active_expert_rows": 16.0,
+          "weight_passes_by_row_batch": {
+            "8": 2801,
+            "16": 1557,
+            "32": 946
+          },
+          "speedup": 0.8676521453285422,
+          "all_pairs_exact": true,
+          "parent_ms": 64.74654492922127,
+          "candidate_ms": 74.622699059546
+        }
+      ]
+    },
+    {
+      "raw_path": "/tmp/qwen4exp-q4-row32-skewed.json",
+      "raw_sha256": "16fcdcd51bf70bba843d7f900605c1edc95e4c2521cc6c51aecdb57662d5eee5",
+      "routing": "skewed",
+      "layer": 4,
+      "row_batch": 32,
+      "masked_padding": false,
+      "command": [
+        "scripts/qwen4exp_q4_bundle_screen.py",
+        "--model-root",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--require-cached-build",
+        "--row-batch",
+        "32",
+        "--rows",
+        "512",
+        "1024",
+        "2048",
+        "--routing",
+        "skewed",
+        "--layer",
+        "4",
+        "--output",
+        "/tmp/qwen4exp-q4-row32-skewed.json"
+      ],
+      "source": {
+        "path": "/home/lhl/hipEngine",
+        "head": "54a25f75f26d25046101bf36301f415df80e0aaf",
+        "tracked_clean": false
+      },
+      "weights": [
+        {
+          "tensor": "blk.4.ffn_gate_exps.weight",
+          "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+          "shape": [
+            512,
+            640,
+            2560
+          ],
+          "sha256": "4276edca4d2c0a3de06d99f708fbe9369a45da0a319f719667b1bd7b1eba3e46"
+        },
+        {
+          "tensor": "blk.4.ffn_up_exps.weight",
+          "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+          "shape": [
+            512,
+            640,
+            2560
+          ],
+          "sha256": "4286135c3cd2974de46146b489da0d2f7d8a7b9d1fa38fe5b31a0fbc3ee4e084"
+        }
+      ],
+      "cases": [
+        {
+          "tokens": 512,
+          "compact_rows": 5120,
+          "active_experts": 432,
+          "seconds": {
+            "parent": [
+              0.018291215179488063,
+              0.01829327899031341,
+              0.01844350202009082,
+              0.01823824690654874,
+              0.018330388935282826,
+              0.01826190110296011,
+              0.01839958899654448,
+              0.018291515996679664,
+              0.018344445852562785,
+              0.018267510924488306
+            ],
+            "candidate": [
+              0.03724805102683604,
+              0.037200882099568844,
+              0.037292784079909325,
+              0.03727157483808696,
+              0.037218204932287335,
+              0.03736481978558004,
+              0.037378564942628145,
+              0.03721947711892426,
+              0.03720545116811991,
+              0.037283476907759905
+            ]
+          },
+          "max_expert_rows": 172,
+          "median_active_expert_rows": 6.0,
+          "weight_passes_by_row_batch": {
+            "8": 882,
+            "16": 601,
+            "32": 480
+          },
+          "speedup": 0.49094174269350216,
+          "all_pairs_exact": true,
+          "parent_ms": 18.292397493496537,
+          "candidate_ms": 37.2598129324615
+        },
+        {
+          "tokens": 1024,
+          "compact_rows": 10240,
+          "active_experts": 467,
+          "seconds": {
+            "parent": [
+              0.03480219095945358,
+              0.035051950020715594,
+              0.03509135404601693,
+              0.03500907914713025,
+              0.03514567599631846,
+              0.03488466492854059,
+              0.03497028606943786,
+              0.035058961948379874,
+              0.03510466800071299,
+              0.03490540408529341
+            ],
+            "candidate": [
+              0.06356957601383328,
+              0.0635991720482707,
+              0.06565626291558146,
+              0.0653140910435468,
+              0.06324537796899676,
+              0.06545762997120619,
+              0.06554242898710072,
+              0.06552617787383497,
+              0.06332897488027811,
+              0.0638536789920181
+            ]
+          },
+          "max_expert_rows": 650,
+          "median_active_expert_rows": 8.0,
+          "weight_passes_by_row_batch": {
+            "8": 1507,
+            "16": 917,
+            "32": 647
+          },
+          "speedup": 0.5424033344274297,
+          "all_pairs_exact": true,
+          "parent_ms": 35.03051458392292,
+          "candidate_ms": 64.58388501778245
+        },
+        {
+          "tokens": 2048,
+          "compact_rows": 20480,
+          "active_experts": 494,
+          "seconds": {
+            "parent": [
+              0.0643774529453367,
+              0.0648500700481236,
+              0.06499118404462934,
+              0.06439096806570888,
+              0.06463554594665766,
+              0.06500575202517211,
+              0.0647297240793705,
+              0.06466278783045709,
+              0.06479246099479496,
+              0.0648134311195463
+            ],
+            "candidate": [
+              0.11625280301086605,
+              0.1165971199516207,
+              0.11606542207300663,
+              0.1165383500047028,
+              0.11628353199921548,
+              0.11700887209735811,
+              0.11673585022799671,
+              0.11665726196952164,
+              0.11609624000266194,
+              0.11634421488270164
+            ]
+          },
+          "max_expert_rows": 881,
+          "median_active_expert_rows": 16.0,
+          "weight_passes_by_row_batch": {
+            "8": 2801,
+            "16": 1557,
+            "32": 946
+          },
+          "speedup": 0.5561695231963272,
+          "all_pairs_exact": true,
+          "parent_ms": 64.76109253708273,
+          "candidate_ms": 116.44128244370222
+        }
+      ]
+    },
+    {
+      "raw_path": "/tmp/qwen4exp-q4-row16-uniform.json",
+      "raw_sha256": "94fec0b938745eb987994ab8635cceb4182c45b120dd23fdad01c6aa94280b35",
+      "routing": "uniform",
+      "layer": 0,
+      "row_batch": 16,
+      "masked_padding": false,
+      "command": [
+        "scripts/qwen4exp_q4_bundle_screen.py",
+        "--model-root",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--require-cached-build",
+        "--row-batch",
+        "16",
+        "--rows",
+        "512",
+        "1024",
+        "2048",
+        "--routing",
+        "uniform",
+        "--layer",
+        "0",
+        "--output",
+        "/tmp/qwen4exp-q4-row16-uniform.json"
+      ],
+      "source": {
+        "path": "/home/lhl/hipEngine",
+        "head": "54a25f75f26d25046101bf36301f415df80e0aaf",
+        "tracked_clean": false
+      },
+      "weights": [
+        {
+          "tensor": "blk.0.ffn_gate_exps.weight",
+          "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+          "shape": [
+            512,
+            640,
+            2560
+          ],
+          "sha256": "c52d2ded80cdbdb92f75c08ecfdd0ae3e2bc97198edda3d62ef8645df19a6947"
+        },
+        {
+          "tensor": "blk.0.ffn_up_exps.weight",
+          "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+          "shape": [
+            512,
+            640,
+            2560
+          ],
+          "sha256": "92e1eb072ea457687ae6b531c9402817c1d8ac6043a70ceed7986fd0e4997450"
+        }
+      ],
+      "cases": [
+        {
+          "tokens": 512,
+          "compact_rows": 5120,
+          "active_experts": 512,
+          "seconds": {
+            "parent": [
+              0.018588413950055838,
+              0.018653806066140532,
+              0.018452719086781144,
+              0.01853784895502031,
+              0.018645751988515258,
+              0.018767539877444506,
+              0.0186331479344517,
+              0.01842176099307835,
+              0.018534591887146235,
+              0.018642636016011238
+            ],
+            "candidate": [
+              0.02055702800862491,
+              0.020461919950321317,
+              0.0203580551315099,
+              0.020573840010911226,
+              0.02046893280930817,
+              0.020582916913554072,
+              0.02048337017185986,
+              0.020497225923463702,
+              0.020449736854061484,
+              0.020709663862362504
+            ]
+          },
+          "max_expert_rows": 21,
+          "median_active_expert_rows": 10.0,
+          "weight_passes_by_row_batch": {
+            "8": 867,
+            "16": 528,
+            "32": 512
+          },
+          "speedup": 0.9082728274114836,
+          "all_pairs_exact": true,
+          "parent_ms": 18.61078094225377,
+          "candidate_ms": 20.49029804766178
+        },
+        {
+          "tokens": 1024,
+          "compact_rows": 10240,
+          "active_experts": 512,
+          "seconds": {
+            "parent": [
+              0.033624129835516214,
+              0.033662692876532674,
+              0.033762800972908735,
+              0.03364377794787288,
+              0.034122055163607,
+              0.033975879894569516,
+              0.03398736193776131,
+              0.033975819824263453,
+              0.03400730900466442,
+              0.03393948217853904
+            ],
+            "candidate": [
+              0.037363218143582344,
+              0.03745134314522147,
+              0.03716291184537113,
+              0.03737975819967687,
+              0.03769045090302825,
+              0.03802437800914049,
+              0.037404173985123634,
+              0.03742360998876393,
+              0.03747456707060337,
+              0.03760289680212736
+            ]
+          },
+          "max_expert_rows": 33,
+          "median_active_expert_rows": 20.0,
+          "weight_passes_by_row_batch": {
+            "8": 1497,
+            "16": 911,
+            "32": 513
+          },
+          "speedup": 0.9070496762952369,
+          "all_pairs_exact": true,
+          "parent_ms": 33.957651001401246,
+          "candidate_ms": 37.4374765669927
+        },
+        {
+          "tokens": 2048,
+          "compact_rows": 20480,
+          "active_experts": 512,
+          "seconds": {
+            "parent": [
+              0.06496963510289788,
+              0.0647771640215069,
+              0.06453669210895896,
+              0.06482433201745152,
+              0.06507498305290937,
+              0.06546759884804487,
+              0.0649082800373435,
+              0.0647258679382503,
+              0.06504003703594208,
+              0.06508920900523663
+            ],
+            "candidate": [
+              0.07202846207655966,
+              0.07175582996569574,
+              0.07182775484398007,
+              0.0717812180519104,
+              0.07176842400804162,
+              0.0722005139105022,
+              0.07202840107493103,
+              0.07212079502642155,
+              0.07171571510843933,
+              0.07235727901570499
+            ]
+          },
+          "max_expert_rows": 58,
+          "median_active_expert_rows": 40.0,
+          "weight_passes_by_row_batch": {
+            "8": 2785,
+            "16": 1522,
+            "32": 961
+          },
+          "speedup": 0.9028318205127838,
+          "all_pairs_exact": true,
+          "parent_ms": 64.93895757012069,
+          "candidate_ms": 71.92807795945555
+        }
+      ]
+    },
+    {
+      "raw_path": "/tmp/qwen4exp-q4-row16-masked.json",
+      "raw_sha256": "7d5c4a715680d24bab58980e3bd8359576bbba713627ea876eb0df15b621d4de",
+      "routing": "skewed",
+      "layer": 4,
+      "row_batch": 16,
+      "masked_padding": true,
+      "command": [
+        "scripts/qwen4exp_q4_bundle_screen.py",
+        "--model-root",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--require-cached-build",
+        "--row-batch",
+        "16",
+        "--rows",
+        "512",
+        "1024",
+        "2048",
+        "--routing",
+        "skewed",
+        "--layer",
+        "4",
+        "--output",
+        "/tmp/qwen4exp-q4-row16-masked.json"
+      ],
+      "source": {
+        "path": "/home/lhl/hipEngine",
+        "head": "54a25f75f26d25046101bf36301f415df80e0aaf",
+        "tracked_clean": false
+      },
+      "weights": [
+        {
+          "tensor": "blk.4.ffn_gate_exps.weight",
+          "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+          "shape": [
+            512,
+            640,
+            2560
+          ],
+          "sha256": "4276edca4d2c0a3de06d99f708fbe9369a45da0a319f719667b1bd7b1eba3e46"
+        },
+        {
+          "tensor": "blk.4.ffn_up_exps.weight",
+          "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+          "shape": [
+            512,
+            640,
+            2560
+          ],
+          "sha256": "4286135c3cd2974de46146b489da0d2f7d8a7b9d1fa38fe5b31a0fbc3ee4e084"
+        }
+      ],
+      "cases": [
+        {
+          "tokens": 512,
+          "compact_rows": 5120,
+          "active_experts": 432,
+          "seconds": {
+            "parent": [
+              0.01823919895105064,
+              0.018356057815253735,
+              0.018284664023667574,
+              0.018367598997429013,
+              0.018429705873131752,
+              0.018262953031808138,
+              0.01843409496359527,
+              0.0183430640026927,
+              0.01827048696577549,
+              0.018411382101476192
+            ],
+            "candidate": [
+              0.019687616964802146,
+              0.019812431884929538,
+              0.02011089096777141,
+              0.01978791505098343,
+              0.01991379098035395,
+              0.0198732849676162,
+              0.020044367061927915,
+              0.019923610147088766,
+              0.01993847801350057,
+              0.0199527139775455
+            ]
+          },
+          "max_expert_rows": 172,
+          "median_active_expert_rows": 6.0,
+          "weight_passes_by_row_batch": {
+            "8": 882,
+            "16": 601,
+            "32": 480
+          },
+          "speedup": 0.9212227901248703,
+          "all_pairs_exact": true,
+          "parent_ms": 18.349560908973217,
+          "candidate_ms": 19.91870056372136
+        },
+        {
+          "tokens": 1024,
+          "compact_rows": 10240,
+          "active_experts": 467,
+          "seconds": {
+            "parent": [
+              0.034935211995616555,
+              0.03454449796117842,
+              0.03467090497724712,
+              0.03508175699971616,
+              0.03512037894688547,
+              0.03526169387623668,
+              0.035157829988747835,
+              0.03519225399941206,
+              0.03506753989495337,
+              0.03509300807490945
+            ],
+            "candidate": [
+              0.03773546707816422,
+              0.037801249884068966,
+              0.037890446837991476,
+              0.03825592412613332,
+              0.037938297959044576,
+              0.03826896799728274,
+              0.03823054605163634,
+              0.03819903591647744,
+              0.037940881913527846,
+              0.03798643802292645
+            ]
+          },
+          "max_expert_rows": 650,
+          "median_active_expert_rows": 8.0,
+          "weight_passes_by_row_batch": {
+            "8": 1507,
+            "16": 917,
+            "32": 647
+          },
+          "speedup": 0.9242360343201478,
+          "all_pairs_exact": true,
+          "parent_ms": 35.087382537312806,
+          "candidate_ms": 37.96365996822715
+        },
+        {
+          "tokens": 2048,
+          "compact_rows": 20480,
+          "active_experts": 494,
+          "seconds": {
+            "parent": [
+              0.06474752887152135,
+              0.06501700496301055,
+              0.06467340001836419,
+              0.0646253100130707,
+              0.0647310281638056,
+              0.06432847213000059,
+              0.06468798802234232,
+              0.06494799605570734,
+              0.06481019710190594,
+              0.06458254880271852
+            ],
+            "candidate": [
+              0.07304595201276243,
+              0.07337655313313007,
+              0.07355179195292294,
+              0.07406693790107965,
+              0.07369095319882035,
+              0.07347101997584105,
+              0.07459181314334273,
+              0.07313475897535682,
+              0.07332362397573888,
+              0.07364545692689717
+            ]
+          },
+          "max_expert_rows": 881,
+          "median_active_expert_rows": 16.0,
+          "weight_passes_by_row_batch": {
+            "8": 2801,
+            "16": 1557,
+            "32": 946
+          },
+          "speedup": 0.880264868344747,
+          "all_pairs_exact": true,
+          "parent_ms": 64.70950809307396,
+          "candidate_ms": 73.51140596438199
+        }
+      ]
+    },
+    {
+      "raw_path": "/tmp/qwen4exp-q4-row32-masked.json",
+      "raw_sha256": "50a7fecd96da8719db74aabd89d65c9917dc41d3f93d26bdc6885b6a08361807",
+      "routing": "skewed",
+      "layer": 4,
+      "row_batch": 32,
+      "masked_padding": true,
+      "command": [
+        "scripts/qwen4exp_q4_bundle_screen.py",
+        "--model-root",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--require-cached-build",
+        "--row-batch",
+        "32",
+        "--rows",
+        "512",
+        "1024",
+        "2048",
+        "--routing",
+        "skewed",
+        "--layer",
+        "4",
+        "--output",
+        "/tmp/qwen4exp-q4-row32-masked.json"
+      ],
+      "source": {
+        "path": "/home/lhl/hipEngine",
+        "head": "54a25f75f26d25046101bf36301f415df80e0aaf",
+        "tracked_clean": false
+      },
+      "weights": [
+        {
+          "tensor": "blk.4.ffn_gate_exps.weight",
+          "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+          "shape": [
+            512,
+            640,
+            2560
+          ],
+          "sha256": "4276edca4d2c0a3de06d99f708fbe9369a45da0a319f719667b1bd7b1eba3e46"
+        },
+        {
+          "tensor": "blk.4.ffn_up_exps.weight",
+          "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+          "shape": [
+            512,
+            640,
+            2560
+          ],
+          "sha256": "4286135c3cd2974de46146b489da0d2f7d8a7b9d1fa38fe5b31a0fbc3ee4e084"
+        }
+      ],
+      "cases": [
+        {
+          "tokens": 512,
+          "compact_rows": 5120,
+          "active_experts": 432,
+          "seconds": {
+            "parent": [
+              0.018395442981272936,
+              0.018244469072669744,
+              0.018303490011021495,
+              0.01828901213593781,
+              0.018395622028037906,
+              0.018400039989501238,
+              0.01834568800404668,
+              0.018190877977758646,
+              0.018313609063625336,
+              0.01835382403805852
+            ],
+            "candidate": [
+              0.030142598086968064,
+              0.029940568143501878,
+              0.029851520899683237,
+              0.030083075165748596,
+              0.030020267935469747,
+              0.030027722008526325,
+              0.03017578017897904,
+              0.030386745929718018,
+              0.0299675390124321,
+              0.02997462311759591
+            ]
+          },
+          "max_expert_rows": 172,
+          "median_active_expert_rows": 6.0,
+          "weight_passes_by_row_batch": {
+            "8": 882,
+            "16": 601,
+            "32": 480
+          },
+          "speedup": 0.6104999867916047,
+          "all_pairs_exact": true,
+          "parent_ms": 18.329648533836007,
+          "candidate_ms": 30.023994971998036
+        },
+        {
+          "tokens": 1024,
+          "compact_rows": 10240,
+          "active_experts": 467,
+          "seconds": {
+            "parent": [
+              0.034731909865513444,
+              0.034724244847893715,
+              0.03488329402171075,
+              0.03503790497779846,
+              0.03495169198140502,
+              0.03499948210082948,
+              0.03501431015320122,
+              0.03517017303965986,
+              0.035338879097253084,
+              0.03491704701445997
+            ],
+            "candidate": [
+              0.058206964982673526,
+              0.05864567798562348,
+              0.05848009814508259,
+              0.05874764989130199,
+              0.058670524042099714,
+              0.05846732296049595,
+              0.05841739987954497,
+              0.05648539401590824,
+              0.05809536506421864,
+              0.056581234093755484
+            ]
+          },
+          "max_expert_rows": 650,
+          "median_active_expert_rows": 8.0,
+          "weight_passes_by_row_batch": {
+            "8": 1507,
+            "16": 917,
+            "32": 647
+          },
+          "speedup": 0.5984629332437574,
+          "all_pairs_exact": true,
+          "parent_ms": 34.97558704111725,
+          "candidate_ms": 58.44236142002046
+        },
+        {
+          "tokens": 2048,
+          "compact_rows": 20480,
+          "active_experts": 494,
+          "seconds": {
+            "parent": [
+              0.06512813293375075,
+              0.06479358579963446,
+              0.06507432297803462,
+              0.0645544771105051,
+              0.06466838088817894,
+              0.06474984413944185,
+              0.0647050489205867,
+              0.06503701210021973,
+              0.06481106812134385,
+              0.06474294001236558
+            ],
+            "candidate": [
+              0.11069234204478562,
+              0.11041861795820296,
+              0.11059146304614842,
+              0.11062827194109559,
+              0.11042429995723069,
+              0.11022070702165365,
+              0.11045828298665583,
+              0.11005371413193643,
+              0.11032980214804411,
+              0.11053323303349316
+            ]
+          },
+          "max_expert_rows": 881,
+          "median_active_expert_rows": 16.0,
+          "weight_passes_by_row_batch": {
+            "8": 2801,
+            "16": 1557,
+            "32": 946
+          },
+          "speedup": 0.5864809629285519,
+          "all_pairs_exact": true,
+          "parent_ms": 64.77171496953815,
+          "candidate_ms": 110.44129147194326
+        }
+      ]
+    },
+    {
+      "raw_path": "/tmp/qwen4exp-q4-row16-masked-uniform.json",
+      "raw_sha256": "91a667b3a077c234ebaeea565aa77c1ba31c49fe5475eb0c74ef807d4c916d50",
+      "routing": "uniform",
+      "layer": 0,
+      "row_batch": 16,
+      "masked_padding": true,
+      "command": [
+        "scripts/qwen4exp_q4_bundle_screen.py",
+        "--model-root",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--require-cached-build",
+        "--row-batch",
+        "16",
+        "--rows",
+        "512",
+        "1024",
+        "2048",
+        "--routing",
+        "uniform",
+        "--layer",
+        "0",
+        "--output",
+        "/tmp/qwen4exp-q4-row16-masked-uniform.json"
+      ],
+      "source": {
+        "path": "/home/lhl/hipEngine",
+        "head": "54a25f75f26d25046101bf36301f415df80e0aaf",
+        "tracked_clean": false
+      },
+      "weights": [
+        {
+          "tensor": "blk.0.ffn_gate_exps.weight",
+          "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+          "shape": [
+            512,
+            640,
+            2560
+          ],
+          "sha256": "c52d2ded80cdbdb92f75c08ecfdd0ae3e2bc97198edda3d62ef8645df19a6947"
+        },
+        {
+          "tensor": "blk.0.ffn_up_exps.weight",
+          "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+          "shape": [
+            512,
+            640,
+            2560
+          ],
+          "sha256": "92e1eb072ea457687ae6b531c9402817c1d8ac6043a70ceed7986fd0e4997450"
+        }
+      ],
+      "cases": [
+        {
+          "tokens": 512,
+          "compact_rows": 5120,
+          "active_experts": 512,
+          "seconds": {
+            "parent": [
+              0.018701235996559262,
+              0.01859394507482648,
+              0.01869734888896346,
+              0.018463911022990942,
+              0.018624182092025876,
+              0.018689924851059914,
+              0.01865647197701037,
+              0.01860123802907765,
+              0.018469111062586308,
+              0.018485512118786573
+            ],
+            "candidate": [
+              0.0189748490229249,
+              0.0189675260335207,
+              0.018895179964601994,
+              0.018920087022706866,
+              0.018869142048060894,
+              0.018966324161738157,
+              0.01898706192150712,
+              0.01908959518186748,
+              0.018955153180286288,
+              0.01908064796589315
+            ]
+          },
+          "max_expert_rows": 21,
+          "median_active_expert_rows": 10.0,
+          "weight_passes_by_row_batch": {
+            "8": 867,
+            "16": 528,
+            "32": 512
+          },
+          "speedup": 0.9813245934565358,
+          "all_pairs_exact": true,
+          "parent_ms": 18.612710060551763,
+          "candidate_ms": 18.966925097629428
+        },
+        {
+          "tokens": 1024,
+          "compact_rows": 10240,
+          "active_experts": 512,
+          "seconds": {
+            "parent": [
+              0.033708699978888035,
+              0.033778632059693336,
+              0.03389088180847466,
+              0.03417094796895981,
+              0.03403789806179702,
+              0.03398986789397895,
+              0.03394176810979843,
+              0.03401068691164255,
+              0.03389957803301513,
+              0.03375396504998207
+            ],
+            "candidate": [
+              0.03569174208678305,
+              0.035746044013649225,
+              0.03586952481418848,
+              0.035620037000626326,
+              0.035774237010627985,
+              0.035865327110514045,
+              0.03580135805532336,
+              0.035980414133518934,
+              0.03595595806837082,
+              0.03582202596589923
+            ]
+          },
+          "max_expert_rows": 33,
+          "median_active_expert_rows": 20.0,
+          "weight_passes_by_row_batch": {
+            "8": 1497,
+            "16": 911,
+            "32": 513
+          },
+          "speedup": 0.9471954874781066,
+          "all_pairs_exact": true,
+          "parent_ms": 33.92067307140678,
+          "candidate_ms": 35.811692010611296
+        },
+        {
+          "tokens": 2048,
+          "compact_rows": 20480,
+          "active_experts": 512,
+          "seconds": {
+            "parent": [
+              0.06526651396416128,
+              0.06496449722908437,
+              0.0647635399363935,
+              0.06530449516139925,
+              0.0650285070296377,
+              0.06531115807592869,
+              0.06519179395399988,
+              0.06522382399998605,
+              0.06483858008868992,
+              0.06483228807337582
+            ],
+            "candidate": [
+              0.07088393601588905,
+              0.07082981383427978,
+              0.07107771909795702,
+              0.07121048821136355,
+              0.07113032811321318,
+              0.07076688599772751,
+              0.07098528603091836,
+              0.07147147785872221,
+              0.07103857584297657,
+              0.07156869117170572
+            ]
+          },
+          "max_expert_rows": 58,
+          "median_active_expert_rows": 40.0,
+          "weight_passes_by_row_batch": {
+            "8": 2785,
+            "16": 1522,
+            "32": 961
+          },
+          "speedup": 0.916293948120163,
+          "all_pairs_exact": true,
+          "parent_ms": 65.11015049181879,
+          "candidate_ms": 71.05814747046679
+        }
+      ]
+    },
+    {
+      "raw_path": "/tmp/qwen4exp-q4-row32-masked-uniform.json",
+      "raw_sha256": "3445ada33e94e08ed29d4ed0a0719c317782ce663177e45d922922006c409112",
+      "routing": "uniform",
+      "layer": 0,
+      "row_batch": 32,
+      "masked_padding": true,
+      "command": [
+        "scripts/qwen4exp_q4_bundle_screen.py",
+        "--model-root",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--require-cached-build",
+        "--row-batch",
+        "32",
+        "--rows",
+        "512",
+        "1024",
+        "2048",
+        "--routing",
+        "uniform",
+        "--layer",
+        "0",
+        "--output",
+        "/tmp/qwen4exp-q4-row32-masked-uniform.json"
+      ],
+      "source": {
+        "path": "/home/lhl/hipEngine",
+        "head": "54a25f75f26d25046101bf36301f415df80e0aaf",
+        "tracked_clean": false
+      },
+      "weights": [
+        {
+          "tensor": "blk.0.ffn_gate_exps.weight",
+          "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+          "shape": [
+            512,
+            640,
+            2560
+          ],
+          "sha256": "c52d2ded80cdbdb92f75c08ecfdd0ae3e2bc97198edda3d62ef8645df19a6947"
+        },
+        {
+          "tensor": "blk.0.ffn_up_exps.weight",
+          "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+          "shape": [
+            512,
+            640,
+            2560
+          ],
+          "sha256": "92e1eb072ea457687ae6b531c9402817c1d8ac6043a70ceed7986fd0e4997450"
+        }
+      ],
+      "cases": [
+        {
+          "tokens": 512,
+          "compact_rows": 5120,
+          "active_experts": 512,
+          "seconds": {
+            "parent": [
+              0.018663134891539812,
+              0.01849211403168738,
+              0.018594476161524653,
+              0.0184756419621408,
+              0.018576923059299588,
+              0.01858898508362472,
+              0.018716505030170083,
+              0.018530735978856683,
+              0.018525075865909457,
+              0.018647664925083518
+            ],
+            "candidate": [
+              0.030576952965930104,
+              0.030636885901913047,
+              0.030648207059130073,
+              0.030790584161877632,
+              0.03049999801442027,
+              0.030703229131177068,
+              0.03076041699387133,
+              0.0306614909786731,
+              0.030645943013951182,
+              0.030714642023667693
+            ]
+          },
+          "max_expert_rows": 21,
+          "median_active_expert_rows": 10.0,
+          "weight_passes_by_row_batch": {
+            "8": 867,
+            "16": 528,
+            "32": 512
+          },
+          "speedup": 0.6061994975086656,
+          "all_pairs_exact": true,
+          "parent_ms": 18.582954071462154,
+          "candidate_ms": 30.654849018901587
+        },
+        {
+          "tokens": 1024,
+          "compact_rows": 10240,
+          "active_experts": 512,
+          "seconds": {
+            "parent": [
+              0.03376240096986294,
+              0.033896592911332846,
+              0.03370206686668098,
+              0.03391745197586715,
+              0.03410021495074034,
+              0.03414352610707283,
+              0.034042335813865066,
+              0.0339156580157578,
+              0.03404683410190046,
+              0.03396308794617653
+            ],
+            "candidate": [
+              0.0541037549264729,
+              0.05431907996535301,
+              0.053806187119334936,
+              0.054363934090361,
+              0.05454933107830584,
+              0.05448980978690088,
+              0.05451231193728745,
+              0.054591439897194505,
+              0.05445449403487146,
+              0.05465205409564078
+            ]
+          },
+          "max_expert_rows": 33,
+          "median_active_expert_rows": 20.0,
+          "weight_passes_by_row_batch": {
+            "8": 1497,
+            "16": 911,
+            "32": 513
+          },
+          "speedup": 0.6230756225042567,
+          "all_pairs_exact": true,
+          "parent_ms": 33.94026996102184,
+          "candidate_ms": 54.47215191088617
+        },
+        {
+          "tokens": 2048,
+          "compact_rows": 20480,
+          "active_experts": 512,
+          "seconds": {
+            "parent": [
+              0.06549379997886717,
+              0.06453648395836353,
+              0.06497498718090355,
+              0.06501820893026888,
+              0.06517932005226612,
+              0.0647590218577534,
+              0.06496345507912338,
+              0.06471807486377656,
+              0.0650127581320703,
+              0.06483136699534953
+            ],
+            "candidate": [
+              0.10988429677672684,
+              0.11054960615001619,
+              0.11022906401194632,
+              0.1097196179907769,
+              0.10993785690516233,
+              0.11044891597703099,
+              0.11014087894000113,
+              0.10997161106206477,
+              0.11022724001668394,
+              0.11054855398833752
+            ]
+          },
+          "max_expert_rows": 58,
+          "median_active_expert_rows": 40.0,
+          "weight_passes_by_row_batch": {
+            "8": 2785,
+            "16": 1522,
+            "32": 961
+          },
+          "speedup": 0.5896426528265972,
+          "all_pairs_exact": true,
+          "parent_ms": 64.96922113001347,
+          "candidate_ms": 110.18405947834253
+        }
+      ]
+    }
+  ],
+  "resources": {
+    "rb8": {
+      "vgpr": 88,
+      "lds_bytes": 4608,
+      "scratch_bytes": 0
+    },
+    "rb16_masked": {
+      "vgpr": 120,
+      "lds_bytes": 5120,
+      "scratch_bytes": 0,
+      "trace": "/tmp/qwen4exp-q4-row16-masked-trace/gfx1151/2634206_kernel_trace.csv",
+      "duration_ns": 19707987
+    },
+    "rb32_unmasked": {
+      "vgpr": 176,
+      "lds_bytes": 6144,
+      "scratch_bytes": 0,
+      "trace": "/tmp/qwen4exp-q4-row32-trace/gfx1151/2629219_kernel_trace.csv",
+      "duration_ns": 37128523
+    }
+  },
+  "correctness": {
+    "exact_parent_outputs": true,
+    "candidate_tests_passed": 17,
+    "cpu_gate": "Existing reduced Q4 gate/up allclose, KL<=0.05 and top1>=90% fixture gates pass; both variants preserve BF16 outputs at full geometry and K4096 tails."
+  },
+  "rejected_source_patch": "diff --git a/hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_selected_prefill.hip b/hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_selected_prefill.hip\nindex 8a6d029d2..7d243daa7 100644\n--- a/hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_selected_prefill.hip\n+++ b/hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_selected_prefill.hip\n@@ -334,6 +334,7 @@ void gguf_q4_k_selected_dual_grouped_rowbatch_bf16_kernel(\n   }\n }\n \n+template <int ROW_BATCH = 8>\n __global__ __launch_bounds__(128, 2)\n void gguf_q4_k_selected_dual_grouped_pair2_bf16_kernel(\n     const uint16_t* __restrict__ input,\n@@ -346,7 +347,7 @@ void gguf_q4_k_selected_dual_grouped_pair2_bf16_kernel(\n     int64_t in_features, int64_t out_features) {\n   __shared__ float scales[4][128];\n   __shared__ float mins[4][128];\n-  __shared__ float sums[4][8][4];\n+  __shared__ float sums[4][ROW_BATCH][4];\n   const int blocks = in_features / QK_K;\n   const int metadata_count = blocks * Q4_K_SUBBLOCKS;\n   const int64_t row_bytes = blocks * Q4_K_BLOCK_BYTES;\n@@ -379,8 +380,8 @@ void gguf_q4_k_selected_dual_grouped_pair2_bf16_kernel(\n             static_cast<float>(gguf_q4_k_min(block + 4, subblock));\n       }\n       __syncthreads();\n-      for (int64_t base = start; base < end; base += 8) {\n-        float acc[4][8] = {};\n+      for (int64_t base = start; base < end; base += ROW_BATCH) {\n+        float acc[4][ROW_BATCH] = {};\n         for (int block = 0; block < blocks; ++block) {\n           q4_k_weight_pair w[4];\n #pragma unroll\n@@ -388,7 +389,7 @@ void gguf_q4_k_selected_dual_grouped_pair2_bf16_kernel(\n             w[bank] = gguf_q4_k_weight_pair128(\n                 weights[bank], block, threadIdx.x, scales[bank], mins[bank]);\n #pragma unroll\n-          for (int row = 0; row < 8; ++row) {\n+          for (int row = 0; row < ROW_BATCH; ++row) {\n             if (base + row < end) {\n               const int64_t offset = (base + row) * in_features +\n                   block * QK_K + threadIdx.x;\n@@ -405,7 +406,10 @@ void gguf_q4_k_selected_dual_grouped_pair2_bf16_kernel(\n #pragma unroll\n         for (int bank = 0; bank < 4; ++bank) {\n #pragma unroll\n-          for (int row = 0; row < 8; ++row) {\n+          for (int row = 0; row < ROW_BATCH; ++row) {\n+            if constexpr (ROW_BATCH > 8) {\n+              if (base + row >= end) continue;\n+            }\n #pragma unroll\n             for (int delta = 16; delta > 0; delta >>= 1)\n               acc[bank][row] += __shfl_down(acc[bank][row], delta);\n@@ -414,9 +418,10 @@ void gguf_q4_k_selected_dual_grouped_pair2_bf16_kernel(\n           }\n         }\n         __syncthreads();\n-        if (threadIdx.x < 32) {\n-          const int bank = threadIdx.x / 8;\n-          const int row = threadIdx.x % 8;\n+        if (threadIdx.x < 4 * ROW_BATCH &&\n+            (ROW_BATCH == 8 || base + threadIdx.x % ROW_BATCH < end)) {\n+          const int bank = threadIdx.x / ROW_BATCH;\n+          const int row = threadIdx.x % ROW_BATCH;\n           float total = 0.0f;\n #pragma unroll\n           for (int wave = 0; wave < 4; ++wave)\n@@ -1925,7 +1930,8 @@ extern \"C\" int hipengine_gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgr\n   return static_cast<int>(hipGetLastError());\n }\n \n-extern \"C\" int hipengine_gguf_q4_k_selected_dual_grouped_pair2_bf16_bf16_out(\n+template <int ROW_BATCH>\n+int launch_q4_pair_rows(\n     const void* input, const void* expert_start,\n     const void* qweight_a, const void* qweight_b, void* output_a, void* output_b,\n     int64_t compact_rows, int64_t num_experts, int64_t in_features,\n@@ -1934,7 +1940,7 @@ extern \"C\" int hipengine_gguf_q4_k_selected_dual_grouped_pair2_bf16_bf16_out(\n       !output_b || compact_rows <= 0 || num_experts <= 0 || in_features <= 0 ||\n       in_features % QK_K || in_features > 4096 || out_features <= 0)\n     return static_cast<int>(hipErrorInvalidValue);\n-  hipLaunchKernelGGL(gguf_q4_k_selected_dual_grouped_pair2_bf16_kernel,\n+  hipLaunchKernelGGL((gguf_q4_k_selected_dual_grouped_pair2_bf16_kernel<ROW_BATCH>),\n       dim3(static_cast<uint32_t>((out_features + 3) / 4),\n            static_cast<uint32_t>(num_experts < 64 ? num_experts : 64)),\n       dim3(128), 0, stream, static_cast<const uint16_t*>(input),\n@@ -1944,6 +1950,19 @@ extern \"C\" int hipengine_gguf_q4_k_selected_dual_grouped_pair2_bf16_bf16_out(\n   return static_cast<int>(hipGetLastError());\n }\n \n+#define Q4_PAIR_ROW_ENTRY(NAME, ROWS) \\\n+extern \"C\" int NAME(const void* input, const void* expert_start, \\\n+    const void* qweight_a, const void* qweight_b, void* output_a, void* output_b, \\\n+    int64_t compact_rows, int64_t num_experts, int64_t in_features, \\\n+    int64_t out_features, hipStream_t stream) { \\\n+  return launch_q4_pair_rows<ROWS>(input, expert_start, qweight_a, qweight_b, \\\n+      output_a, output_b, compact_rows, num_experts, in_features, out_features, stream); \\\n+}\n+Q4_PAIR_ROW_ENTRY(hipengine_gguf_q4_k_selected_dual_grouped_pair2_bf16_bf16_out, 8)\n+Q4_PAIR_ROW_ENTRY(hipengine_gguf_q4_k_selected_dual_grouped_pair2_row16_bf16_bf16_out, 16)\n+Q4_PAIR_ROW_ENTRY(hipengine_gguf_q4_k_selected_dual_grouped_pair2_row32_bf16_bf16_out, 32)\n+#undef Q4_PAIR_ROW_ENTRY\n+\n extern \"C\" int hipengine_gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_m1_bf16_bf16_out(\n     const void* input,\n     const void* expert_start,\ndiff --git a/hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_selected_prefill.py b/hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_selected_prefill.py\nindex 1da444fce..b44ea6f60 100644\n--- a/hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_selected_prefill.py\n+++ b/hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_selected_prefill.py\n@@ -256,6 +256,7 @@ def gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out(\n     runtime: HipRuntime | None = None,\n     _bundle: bool = False,\n     _pair: bool = False,\n+    _pair_rows: int = 8,\n ) -> None:\n     \"\"\"Launch exact row8/output4 Q4_K over a fixed 64-CTA expert grid.\"\"\"\n \n@@ -268,10 +269,14 @@ def gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out(\n         _check_positive(value, name)\n     if in_features % _Q4_K_BLOCK:\n         raise ValueError(\"in_features must be divisible by GGUF Q4_K block size 256\")\n+    if _pair_rows not in (8, 16, 32):\n+        raise ValueError(\"pair row batch must be 8,16,32\")\n     library = library or build_gguf_q4_k_selected_prefill(load=True)\n     runtime = runtime or get_hip_runtime()\n     fn = getattr(library, (\n-        \"hipengine_gguf_q4_k_selected_dual_grouped_pair2_bf16_bf16_out\"\n+        (\"hipengine_gguf_q4_k_selected_dual_grouped_pair2_bf16_bf16_out\"\n+         if _pair_rows == 8 else\n+         f\"hipengine_gguf_q4_k_selected_dual_grouped_pair2_row{_pair_rows}_bf16_bf16_out\")\n         if _pair else\n         \"hipengine_gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out\"\n         if _bundle else _SYMBOL_GROUPED_ROW8_OUT4_EXPERTGRID64_BF16))\n@@ -303,6 +308,13 @@ def gguf_q4_k_selected_dual_grouped_pair2_bf16_bf16_out(*args, **kwargs):\n     gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out(\n         *args, **kwargs, _pair=True)\n \n+def gguf_q4_k_selected_dual_grouped_pair2_row16_bf16_bf16_out(*args, **kwargs):\n+    gguf_q4_k_selected_dual_grouped_pair2_bf16_bf16_out(*args, **kwargs, _pair_rows=16)\n+\n+\n+def gguf_q4_k_selected_dual_grouped_pair2_row32_bf16_bf16_out(*args, **kwargs):\n+    gguf_q4_k_selected_dual_grouped_pair2_bf16_bf16_out(*args, **kwargs, _pair_rows=32)\n+\n \n def gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_m1_bf16_bf16_out(\n     x_ptr: int,\n@@ -1061,6 +1073,13 @@ def register_gguf_q4_k_selected_prefill_kernels(*, replace: bool = True) -> None\n         replace=replace,\n     )\n     # Primary P8.4 key: compact ABI, row-major concatenated gate+up output.\n+    for rows, fn in (\n+        (16, gguf_q4_k_selected_dual_grouped_pair2_row16_bf16_bf16_out),\n+        (32, gguf_q4_k_selected_dual_grouped_pair2_row32_bf16_bf16_out),\n+    ):\n+        register(KernelKey(\"hip_gfx1100\", \"moe_linear\", \"gguf_q4_k\",\n+                          f\"selected_dual_grouped_pair2_row{rows}_bf16_bf16_out\"),\n+                 fn, replace=replace)\n     register(\n         KernelKey(\"hip_gfx1100\", \"moe_linear\", \"gguf_q4_k\",\n                   \"selected_dual_grouped_pair2_bf16_bf16_out\"),\n@@ -1179,6 +1198,8 @@ __all__ = [\n     \"gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out\",\n     \"gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out\",\n     \"gguf_q4_k_selected_dual_grouped_pair2_bf16_bf16_out\",\n+    \"gguf_q4_k_selected_dual_grouped_pair2_row16_bf16_bf16_out\",\n+    \"gguf_q4_k_selected_dual_grouped_pair2_row32_bf16_bf16_out\",\n     \"gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_m1_bf16_bf16_out\",\n     \"gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out\",\n     \"gguf_q4_k_selected_dual_wmma_prefill_compact_fp16_fp16_out\",\ndiff --git a/scripts/qwen4exp_q4_bundle_screen.py b/scripts/qwen4exp_q4_bundle_screen.py\nindex 9493c666e..30ef9dbd8 100644\n--- a/scripts/qwen4exp_q4_bundle_screen.py\n+++ b/scripts/qwen4exp_q4_bundle_screen.py\n@@ -19,7 +19,7 @@ from hipengine.loading.gguf import GGUFReader, discover_gguf_files\n from hipengine.kernels.hip_gfx1100.quant import gguf_q4_k_selected_prefill as q4\n from hipengine.kernels.hip_gfx1100.fused.paro_silu import silu_mul_separate_out_bf16\n from scripts.qwen4exp_canonical_ar_bench import _host_metadata, _git_metadata\n-from tests.test_qwen4exp_q4_bundle import PARENT, CANDIDATE, PAIR\n+from tests.test_qwen4exp_q4_bundle import PARENT, CANDIDATE, PAIR, PAIR16, PAIR32\n from tests.test_qwen4_exp_pf3_moe_schedules import _upload, _alloc, _download, _make_activation\n \n \n@@ -34,8 +34,11 @@ def main():\n     p.add_argument(\"--pair-reuse\", action=\"store_true\")\n     p.add_argument(\"--routing\", choices=(\"uniform\", \"skewed\"), default=\"uniform\")\n     p.add_argument(\"--layer\", type=int, default=0)\n+    p.add_argument(\"--row-batch\", type=int, choices=(8,16,32), default=8)\n     a=p.parse_args()\n     parent_name, candidate_name = (CANDIDATE, PAIR) if a.pair_reuse else (PARENT, CANDIDATE)\n+    if a.row_batch != 8:\n+        parent_name, candidate_name = PAIR, {16:PAIR16,32:PAIR32}[a.row_batch]\n     if a.pairs<1 or any(r<1 for r in a.rows):\n         p.error(\"positive rows and pairs required\")\n     os.environ[\"HIPENGINE_COMPILER_VERSION_FILE\"]=str(a.compiler_version_file)\n@@ -61,6 +64,7 @@ def main():\n             \"boundary\":\"grouped Q4_K gate/up plus unchanged BF16 SiLU, no routing/down/combine\",\n             \"parent_variant\": parent_name, \"candidate_variant\": candidate_name,\n             \"routing\": a.routing, \"layer\": a.layer,\n+            \"candidate_row_batch\": a.row_batch,\n             \"cases\":[]}\n     allocations=[]\n     try:\n@@ -104,6 +108,8 @@ def main():\n                 \"active_experts\":int(np.count_nonzero(counts)),\"seconds\":times,\n                 \"max_expert_rows\":int(counts.max()),\n                 \"median_active_expert_rows\":float(np.median(counts[counts>0])),\n+                \"weight_passes_by_row_batch\":{\n+                    str(rb):int(np.sum((counts+rb-1)//rb)) for rb in (8,16,32)},\n                 \"speedup\":statistics.median(times[\"parent\"])/statistics.median(times[\"candidate\"]),\n                 \"all_pairs_exact\":True})\n             for ptr in reversed(allocations[mark:]):\ndiff --git a/tests/test_qwen4exp_q4_bundle.py b/tests/test_qwen4exp_q4_bundle.py\nindex 9dce57c2d..3d4a49087 100644\n--- a/tests/test_qwen4exp_q4_bundle.py\n+++ b/tests/test_qwen4exp_q4_bundle.py\n@@ -14,6 +14,8 @@ from hipengine.quant.gguf import bf16_to_float32\n PARENT = \"gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out\"\n CANDIDATE = \"gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out\"\n PAIR = \"gguf_q4_k_selected_dual_grouped_pair2_bf16_bf16_out\"\n+PAIR16 = \"gguf_q4_k_selected_dual_grouped_pair2_row16_bf16_bf16_out\"\n+PAIR32 = \"gguf_q4_k_selected_dual_grouped_pair2_row32_bf16_bf16_out\"\n \n \n def hip_available():\n@@ -36,7 +38,7 @@ def test_bundle_registry_preserves_parent():\n     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels\n     from hipengine.kernels.registry import resolve\n     register_gfx1151_kernels(replace=True)\n-    for name in (PARENT,CANDIDATE,PAIR):\n+    for name in (PARENT,CANDIDATE,PAIR,PAIR16,PAIR32):\n         assert resolve(\n             backend=\"hip_gfx1151\",layer=\"moe_linear\",quant=\"gguf_q4_k\",\n             variant=name.removeprefix(\"gguf_q4_k_\")) is getattr(q4,name)\n@@ -44,7 +46,7 @@ def test_bundle_registry_preserves_parent():\n \n @pytest.mark.skipif(not hip_available(), reason=\"HIP unavailable\")\n @pytest.mark.parametrize(\"rows,experts,k,n\", [(17,8,256,7),(17,8,4096,7),(65,64,512,33),(5120,512,2560,640)])\n-@pytest.mark.parametrize(\"parent_name,candidate_name\", [(PARENT,CANDIDATE),(CANDIDATE,PAIR)])\n+@pytest.mark.parametrize(\"parent_name,candidate_name\", [(PARENT,CANDIDATE),(CANDIDATE,PAIR),(PAIR,PAIR16),(PAIR,PAIR32)])\n def test_bundle_exact(rows, experts, k, n, parent_name, candidate_name):\n     candidate = getattr(q4, candidate_name)\n     runtime = get_hip_runtime()\n",
+  "rejected_source_patch_sha256": "073f736b702074e1994f93f511c8ee6bf871eb652c0c58b4c8785073c0757689",
+  "disposition": "All12 masked routing/shape/RB cells lose toRB8. Remove larger-RB kernels, wrappers, registry keys and selectors; keep only weight-pass telemetry. No model default changed, no whole-model A/B spent.",
+  "limitations": [
+    "Weight-pass counts are inferred from counts, not DRAM/MALL traffic measurements.",
+    "Higher VGPR usage is measured but not proven to be the sole slowdown cause.",
+    "This rejects the straightforward larger-RB instantiation, not all adaptive/heavy-expert or changed-layout reuse designs.",
+    "Full-model chunk x rowbatch admission was not run because every candidate leaf-chain screen regressed."
+  ]
+}

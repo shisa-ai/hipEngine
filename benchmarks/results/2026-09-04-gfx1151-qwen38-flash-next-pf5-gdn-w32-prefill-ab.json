@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "kind": "hipengine_qwen4exp_pf5_gdn_w32_prefill_ab",
+  "status": "rejected",
+  "performance_claim": false,
+  "candidate": "PF-5 GDN M6 lever 1: 32 warps/block (1024-thread) multi-row prefill kernel",
+  "conclusion": "The 32-warp/block geometry is slower than the production columnwarps <4,4> owner at every shape >= 64 rows (+1.6% to +6.8%) with only a noise-level -1.6% at rows=16, at bit-exact parity. On this gfx1151 host (32-wide wavefronts), 1024-thread blocks reduce occupancy to 1 block/CU and the 8x block-count reduction does not recover the loss; the halo-box M6 mechanism does not transfer. Lever closed; incumbent columnwarps route stays production.",
+  "hardware": {
+    "device": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S",
+    "arch": "gfx1151"
+  },
+  "software": {
+    "control_commit": "1dc23d6f3e5e33717305443e2aa822df22d9ab88",
+    "candidate_dirty": true
+  },
+  "model": {
+    "family": "qwen4exp GDN linear attention (synthetic fixture, kernel-level A/B)",
+    "dtype": "float32"
+  },
+  "protocol": {
+    "kind": "kernel-level interleaved counterbalanced A/B",
+    "pairs_per_shape": 24,
+    "statistic": "per-shape representative interleaved pair (median behavior confirmed across repeats)",
+    "rows": [16, 64, 256, 1024, 4096],
+    "kernel_heads": {"k": 16, "v": 32, "head_dim": 128},
+    "command": "python3 /tmp/pf5_w32_ab.py 16 64 256 1024 4096",
+    "parity_check": "w32 == colwarps bit-exact after timing; separate informational strict-serial diff printed",
+    "default_changed": false,
+    "rocprof_smoke": "rocprofv3 --kernel-trace traced qwen4_exp_gdn_prefill_columnwarps_f32_kernel<32, 4> at block=1024 with the norm-gate tail (prebuilt .so + require_cached)"
+  },
+  "results_us": {
+    "rows_16": {"colwarps": 202.9, "w32": 199.7, "delta_pct": -1.6},
+    "rows_64": {"colwarps": 527.1, "w32": 535.6, "delta_pct": 1.6},
+    "rows_256": {"colwarps": 1599.9, "w32": 1701.7, "delta_pct": 6.4},
+    "rows_1024": {"colwarps": 7266.8, "w32": 7382.7, "delta_pct": 4.0},
+    "rows_4096": {"colwarps": 32509.7, "w32": 33582.4, "delta_pct": 3.4}
+  },
+  "notes": [
+    "delta_pct = (w32 - colwarps) / colwarps * 100; positive = w32 slower.",
+    "rows=4096 re-measured fresh after the interleaved suite: colwarps 32397.8 vs w32 33488.9 (+3.4%), consistent.",
+    "No whole-model A/B: not required for a rejected lever (nothing promoted).",
+    "Lineage: narrowed scripts/check_lineage.py --file run aborted on the missing manifest-tracked reference repo ~/amd-gpu-tuning/reference/atlas (named environment blocker, same as PF-1a); external mechanism source is halo-box PR11 gated_delta_net.cu."
+  ],
+  "created": "2026-09-04"
+}

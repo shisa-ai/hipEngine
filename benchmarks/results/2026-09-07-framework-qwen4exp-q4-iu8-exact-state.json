@@ -1,0 +1,355 @@
+{
+  "status": "passed",
+  "allocated_chunk_size": 1024,
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "8367a2d202fa91b7687b646e8103f77a54bcdcf9",
+    "tracked_clean": false
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "command": [
+    "scripts/qwen4exp_row4_state_gate.py",
+    "--model-root",
+    "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--route-package",
+    "q4-iu8-exact",
+    "--decode-steps",
+    "4",
+    "--full-kv",
+    "--output",
+    "/tmp/qwen4exp-q4-iu8-exact-state.json"
+  ],
+  "manifest_sha256": "0574bf6157e368e1ed29138280b3d608c32c46c809ca4bbdbd994f3cb04024f7",
+  "strict_manifest_sha256": "6e67e73657803dd9823f243a63446727125b319e70d1d17a32d8c360331e7f69",
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "cases": [
+    {
+      "id": "code-p512",
+      "exact": true,
+      "captures": [
+        {
+          "enabled": "0",
+          "state_sha256": "00140ddb86fcfb894c506f393d7010e1f558d7fa23c631096991b6b628ab8be3",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "e9483d7456ed2643377c6d9701231a99fd6e06ebb2e88d86683ada03cec89c99",
+          "step_logits_sha256": "7cfc9cd4d1ddb92fd8bbc3137a4141be0d671014c45bd6c1456c18022f1c0646",
+          "candidate_calls": 0,
+          "candidate_prefill_calls": 0,
+          "candidate_decode_calls": 0,
+          "qsa_candidate_calls": 0,
+          "step_seconds": [
+            0.33094143704511225,
+            0.08287769183516502,
+            0.08160224696621299,
+            0.08239475404843688
+          ],
+          "full_kv_sha256": "58e17fddd3ccb8fa364f696577eecf29d45c33d9f734fc9e03fe0c4246a81de7"
+        },
+        {
+          "enabled": "1",
+          "state_sha256": "00140ddb86fcfb894c506f393d7010e1f558d7fa23c631096991b6b628ab8be3",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "e9483d7456ed2643377c6d9701231a99fd6e06ebb2e88d86683ada03cec89c99",
+          "step_logits_sha256": "7cfc9cd4d1ddb92fd8bbc3137a4141be0d671014c45bd6c1456c18022f1c0646",
+          "candidate_calls": 26,
+          "candidate_prefill_calls": 26,
+          "candidate_decode_calls": 0,
+          "qsa_candidate_calls": 0,
+          "step_seconds": [
+            0.05029490892775357,
+            0.049861925886943936,
+            0.050493892980739474,
+            0.049951846012845635
+          ],
+          "full_kv_sha256": "58e17fddd3ccb8fa364f696577eecf29d45c33d9f734fc9e03fe0c4246a81de7"
+        },
+        {
+          "enabled": "0",
+          "state_sha256": "00140ddb86fcfb894c506f393d7010e1f558d7fa23c631096991b6b628ab8be3",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "e9483d7456ed2643377c6d9701231a99fd6e06ebb2e88d86683ada03cec89c99",
+          "step_logits_sha256": "7cfc9cd4d1ddb92fd8bbc3137a4141be0d671014c45bd6c1456c18022f1c0646",
+          "candidate_calls": 0,
+          "candidate_prefill_calls": 0,
+          "candidate_decode_calls": 0,
+          "qsa_candidate_calls": 0,
+          "step_seconds": [
+            0.05050702719017863,
+            0.049836439080536366,
+            0.049996057990938425,
+            0.05006698099896312
+          ],
+          "full_kv_sha256": "58e17fddd3ccb8fa364f696577eecf29d45c33d9f734fc9e03fe0c4246a81de7"
+        }
+      ]
+    },
+    {
+      "id": "code-p4096",
+      "exact": true,
+      "captures": [
+        {
+          "enabled": "0",
+          "state_sha256": "5e97c299ddd2f4ddfbc84f95656ef2315a9d8d630cf6f51af129770ceef6d157",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "0b361e7db968b63ae88a78a87f0f7139ef62a61e351d7ca062640e75abfb3087",
+          "step_logits_sha256": "3b1e30212d24085b7110f7285d02ac75ecb88aef99e82cd7ba2dd89f5a39ca92",
+          "candidate_calls": 0,
+          "candidate_prefill_calls": 0,
+          "candidate_decode_calls": 0,
+          "qsa_candidate_calls": 0,
+          "step_seconds": [
+            0.19153817696496844,
+            0.18312210007570684,
+            0.09421819797717035,
+            0.08566397987306118
+          ],
+          "full_kv_sha256": "7746491a2fa1636e9ea2d17f690598768a28640a00ec3b8640c261f4af284648"
+        },
+        {
+          "enabled": "1",
+          "state_sha256": "5e97c299ddd2f4ddfbc84f95656ef2315a9d8d630cf6f51af129770ceef6d157",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "0b361e7db968b63ae88a78a87f0f7139ef62a61e351d7ca062640e75abfb3087",
+          "step_logits_sha256": "3b1e30212d24085b7110f7285d02ac75ecb88aef99e82cd7ba2dd89f5a39ca92",
+          "candidate_calls": 104,
+          "candidate_prefill_calls": 104,
+          "candidate_decode_calls": 0,
+          "qsa_candidate_calls": 0,
+          "step_seconds": [
+            0.2034542029723525,
+            0.2006372050382197,
+            0.09640565305016935,
+            0.08894182206131518
+          ],
+          "full_kv_sha256": "7746491a2fa1636e9ea2d17f690598768a28640a00ec3b8640c261f4af284648"
+        },
+        {
+          "enabled": "0",
+          "state_sha256": "5e97c299ddd2f4ddfbc84f95656ef2315a9d8d630cf6f51af129770ceef6d157",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "0b361e7db968b63ae88a78a87f0f7139ef62a61e351d7ca062640e75abfb3087",
+          "step_logits_sha256": "3b1e30212d24085b7110f7285d02ac75ecb88aef99e82cd7ba2dd89f5a39ca92",
+          "candidate_calls": 0,
+          "candidate_prefill_calls": 0,
+          "candidate_decode_calls": 0,
+          "qsa_candidate_calls": 0,
+          "step_seconds": [
+            0.18676642701029778,
+            0.17278110492043197,
+            0.09269568813033402,
+            0.08388526015914977
+          ],
+          "full_kv_sha256": "7746491a2fa1636e9ea2d17f690598768a28640a00ec3b8640c261f4af284648"
+        }
+      ]
+    },
+    {
+      "id": "general_en-p512",
+      "exact": true,
+      "captures": [
+        {
+          "enabled": "0",
+          "state_sha256": "5575088c74c4ab632111b9e4a862a016c5574bec75af4a66ac61eaff07c8fb65",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "bad3a801bb659414e46f2265f77277776e6c2c4c259b7e74cd5ac385027d7d2b",
+          "step_logits_sha256": "864929babc9a15caa5fd01bb14b1a67acd64faa27286a47b91228b6621353eb2",
+          "candidate_calls": 0,
+          "candidate_prefill_calls": 0,
+          "candidate_decode_calls": 0,
+          "qsa_candidate_calls": 0,
+          "step_seconds": [
+            0.05029408587142825,
+            0.05002049193717539,
+            0.05032388214021921,
+            0.04984883079305291
+          ],
+          "full_kv_sha256": "5087befe9c65fd167dd121d8bf7674cc83811a3f05cf57f4a633b7d277f460ae"
+        },
+        {
+          "enabled": "1",
+          "state_sha256": "5575088c74c4ab632111b9e4a862a016c5574bec75af4a66ac61eaff07c8fb65",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "bad3a801bb659414e46f2265f77277776e6c2c4c259b7e74cd5ac385027d7d2b",
+          "step_logits_sha256": "864929babc9a15caa5fd01bb14b1a67acd64faa27286a47b91228b6621353eb2",
+          "candidate_calls": 26,
+          "candidate_prefill_calls": 26,
+          "candidate_decode_calls": 0,
+          "qsa_candidate_calls": 0,
+          "step_seconds": [
+            0.050058533903211355,
+            0.05000216793268919,
+            0.049807433038949966,
+            0.05002823704853654
+          ],
+          "full_kv_sha256": "5087befe9c65fd167dd121d8bf7674cc83811a3f05cf57f4a633b7d277f460ae"
+        },
+        {
+          "enabled": "0",
+          "state_sha256": "5575088c74c4ab632111b9e4a862a016c5574bec75af4a66ac61eaff07c8fb65",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "bad3a801bb659414e46f2265f77277776e6c2c4c259b7e74cd5ac385027d7d2b",
+          "step_logits_sha256": "864929babc9a15caa5fd01bb14b1a67acd64faa27286a47b91228b6621353eb2",
+          "candidate_calls": 0,
+          "candidate_prefill_calls": 0,
+          "candidate_decode_calls": 0,
+          "qsa_candidate_calls": 0,
+          "step_seconds": [
+            0.050188238034024835,
+            0.049989023944363,
+            0.05008535389788449,
+            0.049929971806705
+          ],
+          "full_kv_sha256": "5087befe9c65fd167dd121d8bf7674cc83811a3f05cf57f4a633b7d277f460ae"
+        }
+      ]
+    },
+    {
+      "id": "general_ja-p512",
+      "exact": true,
+      "captures": [
+        {
+          "enabled": "0",
+          "state_sha256": "79f8ca5a09efd88bfc5cc4ebd38a0af17cb641c224585bf04bdcce6ce0523449",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "3f32adcf69b30a3e2908b5b3ecf527f4a264547ce601b0dc936e1700dba68c04",
+          "step_logits_sha256": "7f63381512d403d4fb07fb17b83599db6f80467f5ae23b5c20e0c654fd292a6d",
+          "candidate_calls": 0,
+          "candidate_prefill_calls": 0,
+          "candidate_decode_calls": 0,
+          "qsa_candidate_calls": 0,
+          "step_seconds": [
+            0.049971851985901594,
+            0.050275641959160566,
+            0.0499007070902735,
+            0.049981439020484686
+          ],
+          "full_kv_sha256": "6444c25978a864f5e2ce63f53c74b73a3e6bfa653a6b94311b72b80f305ccefc"
+        },
+        {
+          "enabled": "1",
+          "state_sha256": "79f8ca5a09efd88bfc5cc4ebd38a0af17cb641c224585bf04bdcce6ce0523449",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "3f32adcf69b30a3e2908b5b3ecf527f4a264547ce601b0dc936e1700dba68c04",
+          "step_logits_sha256": "7f63381512d403d4fb07fb17b83599db6f80467f5ae23b5c20e0c654fd292a6d",
+          "candidate_calls": 26,
+          "candidate_prefill_calls": 26,
+          "candidate_decode_calls": 0,
+          "qsa_candidate_calls": 0,
+          "step_seconds": [
+            0.05032543512061238,
+            0.04986570216715336,
+            0.04987113201059401,
+            0.04989857319742441
+          ],
+          "full_kv_sha256": "6444c25978a864f5e2ce63f53c74b73a3e6bfa653a6b94311b72b80f305ccefc"
+        },
+        {
+          "enabled": "0",
+          "state_sha256": "79f8ca5a09efd88bfc5cc4ebd38a0af17cb641c224585bf04bdcce6ce0523449",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "3f32adcf69b30a3e2908b5b3ecf527f4a264547ce601b0dc936e1700dba68c04",
+          "step_logits_sha256": "7f63381512d403d4fb07fb17b83599db6f80467f5ae23b5c20e0c654fd292a6d",
+          "candidate_calls": 0,
+          "candidate_prefill_calls": 0,
+          "candidate_decode_calls": 0,
+          "qsa_candidate_calls": 0,
+          "step_seconds": [
+            0.04998939414508641,
+            0.049853008007630706,
+            0.049979675794020295,
+            0.05025145597755909
+          ],
+          "full_kv_sha256": "6444c25978a864f5e2ce63f53c74b73a3e6bfa653a6b94311b72b80f305ccefc"
+        }
+      ]
+    },
+    {
+      "id": "mixed_ja_en-p512",
+      "exact": true,
+      "captures": [
+        {
+          "enabled": "0",
+          "state_sha256": "804fc219404846c064354cb62a0859fbf871e5dfc1e2f85155bdc4595733ce94",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "24e1e8f68397a6de8a527bab000868962394242087951e1bf233c09dca8c38dc",
+          "step_logits_sha256": "e0483bafec4db854b335d9fc09b8b92cb7ea5c4dcb6a5edf7ec558c07fa5bfe3",
+          "candidate_calls": 0,
+          "candidate_prefill_calls": 0,
+          "candidate_decode_calls": 0,
+          "qsa_candidate_calls": 0,
+          "step_seconds": [
+            0.05031771003268659,
+            0.04995988798327744,
+            0.04983972292393446,
+            0.04995957715436816
+          ],
+          "full_kv_sha256": "5b2923db6810f6280e6f809e4db2cfb461e08ad9ebe1f00ddd5aefdd26c21a6c"
+        },
+        {
+          "enabled": "1",
+          "state_sha256": "804fc219404846c064354cb62a0859fbf871e5dfc1e2f85155bdc4595733ce94",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "24e1e8f68397a6de8a527bab000868962394242087951e1bf233c09dca8c38dc",
+          "step_logits_sha256": "e0483bafec4db854b335d9fc09b8b92cb7ea5c4dcb6a5edf7ec558c07fa5bfe3",
+          "candidate_calls": 26,
+          "candidate_prefill_calls": 26,
+          "candidate_decode_calls": 0,
+          "qsa_candidate_calls": 0,
+          "step_seconds": [
+            0.05011807498522103,
+            0.04981008684262633,
+            0.05004306393675506,
+            0.04989512707106769
+          ],
+          "full_kv_sha256": "5b2923db6810f6280e6f809e4db2cfb461e08ad9ebe1f00ddd5aefdd26c21a6c"
+        },
+        {
+          "enabled": "0",
+          "state_sha256": "804fc219404846c064354cb62a0859fbf871e5dfc1e2f85155bdc4595733ce94",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "24e1e8f68397a6de8a527bab000868962394242087951e1bf233c09dca8c38dc",
+          "step_logits_sha256": "e0483bafec4db854b335d9fc09b8b92cb7ea5c4dcb6a5edf7ec558c07fa5bfe3",
+          "candidate_calls": 0,
+          "candidate_prefill_calls": 0,
+          "candidate_decode_calls": 0,
+          "qsa_candidate_calls": 0,
+          "step_seconds": [
+            0.05020643095485866,
+            0.04998176987282932,
+            0.050248960964381695,
+            0.05024139699526131
+          ],
+          "full_kv_sha256": "5b2923db6810f6280e6f809e4db2cfb461e08ad9ebe1f00ddd5aefdd26c21a6c"
+        }
+      ]
+    }
+  ],
+  "route_package": "q4-iu8-exact",
+  "decode_steps": 4,
+  "full_kv": true,
+  "scope": "full logits and snapshot decode buffers/PLE/attention positions/index counts; full KV payload included",
+  "timing_scope": "diagnostic per-step wall; host logit copies between steps; first arm not warmed",
+  "memory_after_close": {
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 86199099148,
+    "total_allocated_bytes": 86258867988,
+    "total_freed_bytes": 86258867988,
+    "active_allocations": 0,
+    "peak_allocations": 1721
+  }
+}

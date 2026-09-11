@@ -1,0 +1,877 @@
+{
+  "schema": 1,
+  "date": "2026-09-06",
+  "date_basis": "UTC",
+  "kind": "qwen4exp_gr_wave_scale_screen",
+  "status": "retained_standalone_pending_model_admission",
+  "performance_claim": true,
+  "hipengine_artifact_provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 2,
+    "collected_at": "2026-09-06T00:30:49.375889+00:00",
+    "host_name": "gfx1151",
+    "repo_root": "/home/lhl/hipEngine",
+    "hipengine_commit": "88406b65e1526631f3eec8190b0c79549f7fd883",
+    "git_branch": "qwen3.8-flash-next",
+    "staged_dirty": false,
+    "unstaged_dirty": true,
+    "untracked_dirty": true,
+    "untracked_count": 78,
+    "dirty": true,
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S",
+    "model_path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "model_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+    "model_fingerprint": {
+      "algorithm": "sha256-directory-manifest-v1",
+      "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+      "size_bytes": 111334654784,
+      "sampled_bytes": 12582912,
+      "file_count": 4,
+      "exists": true,
+      "path_type": "directory"
+    },
+    "quant": "UD-Q4_K_XL",
+    "kv_dtype": "BF16",
+    "command": [
+      ".venv/bin/python",
+      "scripts/qwen4exp_q8_wave_scale_screen.py",
+      "--model-root",
+      "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--gr-composite",
+      "--rows",
+      "64",
+      "512",
+      "--output",
+      "/tmp/qwen4exp-gr-wave-unconditioned.json"
+    ],
+    "environment": {
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-hipcc-version.txt",
+      "HIPENGINE_REQUIRE_CACHED_BUILD": "1"
+    },
+    "rocm_version": "HIP version: 7.15.26333-0000000",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+    "build_profile": null,
+    "timing_protocol": "Actual GR up weights, synthetic F32 inputs/normalized state, complete up+sigmoid+branch-mean; even20 alternating pairs and exact gate/mixed checks each pair",
+    "warmups": 1,
+    "repetitions": 20,
+    "profiler": null
+  },
+  "unconditioned": {
+    "schema": 1,
+    "source": {
+      "path": "/home/lhl/hipEngine",
+      "head": "88406b65e1526631f3eec8190b0c79549f7fd883",
+      "tracked_clean": false
+    },
+    "host": {
+      "hostname": "gfx1151",
+      "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+      "kernel": "7.1.6-1-cachyos",
+      "tuned_active": "Current active profile: accelerator-performance",
+      "cpu_governors": {
+        "performance": 32
+      },
+      "gpu_clock_policies": {
+        "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+      },
+      "rocm_platform": null,
+      "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+    },
+    "command": [
+      "scripts/qwen4exp_q8_wave_scale_screen.py",
+      "--model-root",
+      "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--gr-composite",
+      "--rows",
+      "64",
+      "512",
+      "--output",
+      "/tmp/qwen4exp-gr-wave-unconditioned.json"
+    ],
+    "cases": [
+      {
+        "tensor": "blk.0.hc_attn_up.weight",
+        "shape": [
+          64,
+          320,
+          10240
+        ],
+        "weight_sha256": "0c4e6b67f422051842c2c63b6137570cb0a743b1478c8968547b696b6d930dbf",
+        "parent_ms": 0.4627590533345938,
+        "candidate_ms": 0.4460818599909544,
+        "speedup": 1.0373859482741072,
+        "mean_speedup": 1.0584761528639326,
+        "speedup_by_order": {
+          "parent_first": 1.1312373487769147,
+          "candidate_first": 0.986134743823091
+        },
+        "samples_ms": [
+          [
+            0.615786062553525,
+            0.45429286547005177,
+            0.49042003229260445,
+            0.4557559732347727,
+            0.49457792192697525,
+            0.4528991412371397,
+            0.4847301170229912,
+            0.45559508726000786,
+            0.48326700925827026,
+            0.4506560508161783,
+            0.48361695371568203,
+            0.45347120612859726,
+            0.4851000849157572,
+            0.45206909999251366,
+            0.48144301399588585,
+            0.448751961812377,
+            0.4788490477949381,
+            0.4574891645461321,
+            0.46802894212305546,
+            0.44962414540350437
+          ],
+          [
+            0.44034584425389767,
+            0.45181787572801113,
+            0.4373108968138695,
+            0.4635599907487631,
+            0.43277302756905556,
+            0.4607541486620903,
+            0.4335439298301935,
+            0.4630789626389742,
+            0.427482184022665,
+            0.4588109441101551,
+            0.42843399569392204,
+            0.46030315570533276,
+            0.4265708848834038,
+            0.4580800887197256,
+            0.42757298797369003,
+            0.5450230091810226,
+            0.42658112943172455,
+            0.45559508726000786,
+            0.4156799986958504,
+            0.45847008004784584
+          ]
+        ],
+        "exact": true
+      },
+      {
+        "tensor": "blk.0.hc_attn_up.weight",
+        "shape": [
+          512,
+          320,
+          10240
+        ],
+        "weight_sha256": "0c4e6b67f422051842c2c63b6137570cb0a743b1478c8968547b696b6d930dbf",
+        "parent_ms": 3.33752844016999,
+        "candidate_ms": 3.2342695631086826,
+        "speedup": 1.0319264906794157,
+        "mean_speedup": 1.0315351283527443,
+        "speedup_by_order": {
+          "parent_first": 1.0585940129927034,
+          "candidate_first": 1.0103055570389607
+        },
+        "samples_ms": [
+          [
+            3.308509010821581,
+            3.3694941084831953,
+            3.3855729270726442,
+            3.3061651047319174,
+            3.4149079583585262,
+            3.2957051880657673,
+            3.3724179957062006,
+            3.2456701155751944,
+            3.3508180640637875,
+            3.29394219443202,
+            3.344536991789937,
+            3.2491269521415234,
+            3.370113903656602,
+            3.279285039752722,
+            3.386405063793063,
+            3.32529004663229,
+            3.402754897251725,
+            3.2862969674170017,
+            3.413737053051591,
+            3.330519888550043
+          ],
+          [
+            3.273552982136607,
+            3.261591074988246,
+            3.189404960721731,
+            3.260839032009244,
+            3.1867101788520813,
+            3.310452913865447,
+            3.167905146256089,
+            3.182391868904233,
+            3.1812600791454315,
+            3.2489970326423645,
+            3.1929519027471542,
+            3.253866918385029,
+            3.1909788958728313,
+            3.2552089542150497,
+            3.2097031362354755,
+            3.306285012513399,
+            3.2195420935750008,
+            3.2911670859903097,
+            3.209694055840373,
+            3.2987201120704412
+          ]
+        ],
+        "exact": true
+      },
+      {
+        "tensor": "blk.0.hc_ffn_up.weight",
+        "shape": [
+          64,
+          320,
+          10240
+        ],
+        "weight_sha256": "da4122603eb260bff3388db04373ef9e5ba7207ebede1fe710d8d49fa5549630",
+        "parent_ms": 0.440997420810163,
+        "candidate_ms": 0.4327818751335144,
+        "speedup": 1.0189831093876427,
+        "mean_speedup": 1.0326722498989085,
+        "speedup_by_order": {
+          "parent_first": 1.1239182681579205,
+          "candidate_first": 0.9793772320121014
+        },
+        "samples_ms": [
+          [
+            0.44120801612734795,
+            0.44066691771149635,
+            0.4672869108617306,
+            0.4407868254929781,
+            0.4694410599768162,
+            0.4403369966894388,
+            0.46838889829814434,
+            0.438423128798604,
+            0.47114421613514423,
+            0.43981499038636684,
+            0.4699421115219593,
+            0.439023831859231,
+            0.47133397310972214,
+            0.4405970685184002,
+            0.46823895536363125,
+            0.43761078268289566,
+            0.47065410763025284,
+            0.43943501077592373,
+            0.4686890169978142,
+            0.43993606232106686
+          ],
+          [
+            0.41769398376345634,
+            0.4585001152008772,
+            0.4193768836557865,
+            0.44894288294017315,
+            0.418154988437891,
+            0.5096460226923227,
+            0.4177440423518419,
+            0.4478711634874344,
+            0.41849585250020027,
+            0.44832215644419193,
+            0.41684205643832684,
+            0.4504849202930927,
+            0.41700201109051704,
+            0.49661193042993546,
+            0.4162909463047981,
+            0.44933310709893703,
+            0.4157600924372673,
+            0.4461868666112423,
+            0.41550002060830593,
+            0.44745998457074165
+          ]
+        ],
+        "exact": true
+      },
+      {
+        "tensor": "blk.0.hc_ffn_up.weight",
+        "shape": [
+          512,
+          320,
+          10240
+        ],
+        "weight_sha256": "da4122603eb260bff3388db04373ef9e5ba7207ebede1fe710d8d49fa5549630",
+        "parent_ms": 3.3314264146611094,
+        "candidate_ms": 3.2074045157060027,
+        "speedup": 1.0386673705632692,
+        "mean_speedup": 1.0334550247656527,
+        "speedup_by_order": {
+          "parent_first": 1.0584120687546201,
+          "candidate_first": 1.0039869940262696
+        },
+        "samples_ms": [
+          [
+            3.414647886529565,
+            3.3390861935913563,
+            3.3635820727795362,
+            3.3281848300248384,
+            3.3482429571449757,
+            3.2513518817722797,
+            3.338725073263049,
+            3.2448889687657356,
+            3.4043181221932173,
+            3.318697912618518,
+            3.4211210440844297,
+            3.312787041068077,
+            3.402614966034889,
+            3.278963966295123,
+            3.3205519430339336,
+            3.258184064179659,
+            3.3346679992973804,
+            3.2550489995628595,
+            3.3834287896752357,
+            3.273273119702935
+          ],
+          [
+            3.218970960006118,
+            3.3002730924636126,
+            3.197951940819621,
+            3.32295591942966,
+            3.184487111866474,
+            3.2589659094810486,
+            3.1856789719313383,
+            3.2672511879354715,
+            3.2168570905923843,
+            3.1755201052874327,
+            3.118692897260189,
+            3.293880959972739,
+            3.1716020312160254,
+            3.184196073561907,
+            3.188975155353546,
+            3.2553288619965315,
+            3.1939640175551176,
+            3.249919041991234,
+            3.177784150466323,
+            3.27338301576674
+          ]
+        ],
+        "exact": true
+      }
+    ],
+    "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+    "contract": "T0 F32 output bits",
+    "default_changed": false,
+    "library_prebound": true,
+    "order_balanced": true,
+    "device_fill_precondition_mib": 0,
+    "boundary": "GR up+sigmoid+branch mean"
+  },
+  "conditioned": {
+    "schema": 1,
+    "source": {
+      "path": "/home/lhl/hipEngine",
+      "head": "88406b65e1526631f3eec8190b0c79549f7fd883",
+      "tracked_clean": false
+    },
+    "host": {
+      "hostname": "gfx1151",
+      "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+      "kernel": "7.1.6-1-cachyos",
+      "tuned_active": "Current active profile: accelerator-performance",
+      "cpu_governors": {
+        "performance": 32
+      },
+      "gpu_clock_policies": {
+        "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+      },
+      "rocm_platform": null,
+      "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+    },
+    "command": [
+      "scripts/qwen4exp_q8_wave_scale_screen.py",
+      "--model-root",
+      "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--gr-composite",
+      "--pressure-mib",
+      "256",
+      "--rows",
+      "64",
+      "512",
+      "--output",
+      "/tmp/qwen4exp-gr-wave-pressure.json"
+    ],
+    "cases": [
+      {
+        "tensor": "blk.0.hc_attn_up.weight",
+        "shape": [
+          64,
+          320,
+          10240
+        ],
+        "weight_sha256": "0c4e6b67f422051842c2c63b6137570cb0a743b1478c8968547b696b6d930dbf",
+        "parent_ms": 0.49215846229344606,
+        "candidate_ms": 0.4746865015476942,
+        "speedup": 1.036807367997163,
+        "mean_speedup": 1.0277875031970687,
+        "speedup_by_order": {
+          "parent_first": 1.0495345289986502,
+          "candidate_first": 1.027196831117344
+        },
+        "samples_ms": [
+          [
+            0.47166505828499794,
+            0.47305808402597904,
+            0.47530210576951504,
+            0.47663389705121517,
+            0.47077308408915997,
+            0.4947488196194172,
+            0.4948088899254799,
+            0.49031106755137444,
+            0.4997868090867996,
+            0.4913120064884424,
+            0.49322587437927723,
+            0.4957800265401602,
+            0.49405801109969616,
+            0.49820495769381523,
+            0.5026829894632101,
+            0.4940170329064131,
+            0.4930049180984497,
+            0.48780511133372784,
+            0.48709497787058353,
+            0.46025379560887814
+          ],
+          [
+            0.46749715693295,
+            0.4656838718801737,
+            0.4520581569522619,
+            0.4595720674842596,
+            0.44617801904678345,
+            0.5003290716558695,
+            0.4799710586667061,
+            0.47626299783587456,
+            0.4744310863316059,
+            0.4793698899447918,
+            0.4777258727699518,
+            0.4988759756088257,
+            0.466515077278018,
+            0.4749419167637825,
+            0.4815529100596905,
+            0.4913720767945051,
+            0.47218683175742626,
+            0.4684391897171736,
+            0.4618358798325062,
+            0.4862730856984854
+          ]
+        ],
+        "exact": true
+      },
+      {
+        "tensor": "blk.0.hc_attn_up.weight",
+        "shape": [
+          512,
+          320,
+          10240
+        ],
+        "weight_sha256": "0c4e6b67f422051842c2c63b6137570cb0a743b1478c8968547b696b6d930dbf",
+        "parent_ms": 3.420194028876722,
+        "candidate_ms": 3.289592918008566,
+        "speedup": 1.0397012986479854,
+        "mean_speedup": 1.038307078956741,
+        "speedup_by_order": {
+          "parent_first": 1.0431610579298067,
+          "candidate_first": 1.0281202658178052
+        },
+        "samples_ms": [
+          [
+            3.4798900596797466,
+            3.389521036297083,
+            3.392406040802598,
+            3.422403009608388,
+            3.4154700115323067,
+            3.375524887815118,
+            3.4253480844199657,
+            3.2956849317997694,
+            3.421040019020438,
+            3.426751121878624,
+            3.453450044617057,
+            3.305243095383048,
+            3.3943098969757557,
+            3.402014961466193,
+            3.3478219993412495,
+            3.429646138101816,
+            3.4460369497537613,
+            3.4193480387330055,
+            3.436099039390683,
+            3.422503126785159
+          ],
+          [
+            3.2814580481499434,
+            3.309550927951932,
+            3.272420959547162,
+            3.3363408874720335,
+            3.2850850839167833,
+            3.2934199552983046,
+            3.252123948186636,
+            3.3177558798342943,
+            3.2783520873636007,
+            3.327484941110015,
+            3.2981489785015583,
+            3.334829118102789,
+            3.3121260348707438,
+            3.3195100259035826,
+            3.1678250525146723,
+            3.317035036161542,
+            3.2857658807188272,
+            3.1657509971410036,
+            3.2816589809954166,
+            3.151383949443698
+          ]
+        ],
+        "exact": true
+      },
+      {
+        "tensor": "blk.0.hc_ffn_up.weight",
+        "shape": [
+          64,
+          320,
+          10240
+        ],
+        "weight_sha256": "da4122603eb260bff3388db04373ef9e5ba7207ebede1fe710d8d49fa5549630",
+        "parent_ms": 0.47555204946547747,
+        "candidate_ms": 0.4631041083484888,
+        "speedup": 1.0268793579944264,
+        "mean_speedup": 1.0330191184310606,
+        "speedup_by_order": {
+          "parent_first": 1.044281299621008,
+          "candidate_first": 1.0240216491901877
+        },
+        "samples_ms": [
+          [
+            0.48641301691532135,
+            0.47668395563960075,
+            0.47924998216331005,
+            0.47568301670253277,
+            0.4807421937584877,
+            0.47541200183331966,
+            0.4818148445338011,
+            0.47488207928836346,
+            0.4755421541631222,
+            0.4705130122601986,
+            0.47551211901009083,
+            0.47336798161268234,
+            0.4755030386149883,
+            0.4631390329450369,
+            0.4743600729852915,
+            0.46829902566969395,
+            0.4773261025547981,
+            0.47906883992254734,
+            0.47556194476783276,
+            0.47616311348974705
+          ],
+          [
+            0.4531801678240299,
+            0.47399988397955894,
+            0.4430508706718683,
+            0.47728605568408966,
+            0.4624081775546074,
+            0.4642009735107422,
+            0.4676980897784233,
+            0.46948110684752464,
+            0.4529999569058418,
+            0.46380097046494484,
+            0.4593019839376211,
+            0.4568768199533224,
+            0.4529401194304228,
+            0.4658640827983618,
+            0.46467198990285397,
+            0.44907210394740105,
+            0.44529582373797894,
+            0.45885099098086357,
+            0.4663150757551193,
+            0.4638000391423702
+          ]
+        ],
+        "exact": true
+      },
+      {
+        "tensor": "blk.0.hc_ffn_up.weight",
+        "shape": [
+          512,
+          320,
+          10240
+        ],
+        "weight_sha256": "da4122603eb260bff3388db04373ef9e5ba7207ebede1fe710d8d49fa5549630",
+        "parent_ms": 3.394094528630376,
+        "candidate_ms": 3.2870785798877478,
+        "speedup": 1.032556553225534,
+        "mean_speedup": 1.0346855124789303,
+        "speedup_by_order": {
+          "parent_first": 1.0377541021178718,
+          "candidate_first": 1.0252508505535365
+        },
+        "samples_ms": [
+          [
+            3.382036928087473,
+            3.3942200243473053,
+            3.4076848533004522,
+            3.3936190884560347,
+            3.4657539799809456,
+            3.3998701255768538,
+            3.414546838030219,
+            3.3567489590495825,
+            3.4032471012324095,
+            3.4026659559458494,
+            3.426620038226247,
+            3.3674798905849457,
+            3.351829946041107,
+            3.378510009497404,
+            3.409016877412796,
+            3.3681709319353104,
+            3.3939690329134464,
+            3.3892099745571613,
+            3.424476832151413,
+            3.363833064213395
+          ],
+          [
+            3.2863179221749306,
+            3.3376531209796667,
+            3.1106779351830482,
+            3.399570006877184,
+            3.289553802460432,
+            3.350097220391035,
+            3.120476147159934,
+            3.2936311326920986,
+            3.294052090495825,
+            3.2860268838703632,
+            3.28313116915524,
+            3.270186949521303,
+            3.2461921218782663,
+            3.307407023385167,
+            3.276668954640627,
+            3.286598017439246,
+            3.2875591423362494,
+            3.3162639010697603,
+            3.285574959591031,
+            3.289894200861454
+          ]
+        ],
+        "exact": true
+      }
+    ],
+    "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+    "contract": "T0 F32 output bits",
+    "default_changed": false,
+    "library_prebound": true,
+    "order_balanced": true,
+    "device_fill_precondition_mib": 256,
+    "boundary": "GR up+sigmoid+branch mean"
+  },
+  "independent_layer4": {
+    "schema": 1,
+    "source": {
+      "path": "/home/lhl/hipEngine",
+      "head": "88406b65e1526631f3eec8190b0c79549f7fd883",
+      "tracked_clean": false
+    },
+    "host": {
+      "hostname": "gfx1151",
+      "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+      "kernel": "7.1.6-1-cachyos",
+      "tuned_active": "Current active profile: accelerator-performance",
+      "cpu_governors": {
+        "performance": 32
+      },
+      "gpu_clock_policies": {
+        "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+      },
+      "rocm_platform": null,
+      "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+    },
+    "command": [
+      "scripts/qwen4exp_q8_wave_scale_screen.py",
+      "--model-root",
+      "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--gr-composite",
+      "--rows",
+      "512",
+      "--tensor",
+      "blk.4.hc_attn_up.weight",
+      "--tensor",
+      "blk.4.hc_ffn_up.weight",
+      "--output",
+      "/tmp/qwen4exp-gr-wave-layer4.json"
+    ],
+    "cases": [
+      {
+        "tensor": "blk.4.hc_attn_up.weight",
+        "shape": [
+          512,
+          320,
+          10240
+        ],
+        "weight_sha256": "3887c0476370accb640c61a518c41df9f8b046c3ead7d8a847e96de4e0552054",
+        "parent_ms": 3.3198120072484016,
+        "candidate_ms": 3.2035489566624165,
+        "speedup": 1.036291953754661,
+        "mean_speedup": 1.0333602577091738,
+        "speedup_by_order": {
+          "parent_first": 1.0594548132552257,
+          "candidate_first": 1.0106727734166492
+        },
+        "samples_ms": [
+          [
+            3.3823801204562187,
+            3.2967489678412676,
+            3.404662013053894,
+            3.3074591774493456,
+            3.32530215382576,
+            3.2389808911830187,
+            3.383861854672432,
+            3.248468041419983,
+            3.3530339132994413,
+            3.2962181139737368,
+            3.3320740330964327,
+            3.2527060247957706,
+            3.360878909006715,
+            3.2966388389468193,
+            3.3762778621166945,
+            3.2824219670146704,
+            3.3974971156567335,
+            3.3082012087106705,
+            3.355668857693672,
+            3.3143218606710434
+          ],
+          [
+            3.2111078035086393,
+            3.3080601133406162,
+            3.1795399263501167,
+            3.185630775988102,
+            3.166736103594303,
+            3.2846059184521437,
+            3.179538995027542,
+            3.172054886817932,
+            3.167365910485387,
+            3.254408948123455,
+            3.2489788718521595,
+            3.268826985731721,
+            3.181873820722103,
+            3.251104149967432,
+            3.09994095005095,
+            3.1959901098161936,
+            3.1732069328427315,
+            3.290116088464856,
+            3.2114090863615274,
+            3.3360219094902277
+          ]
+        ],
+        "exact": true
+      },
+      {
+        "tensor": "blk.4.hc_ffn_up.weight",
+        "shape": [
+          512,
+          320,
+          10240
+        ],
+        "weight_sha256": "376d7bb97211ad32552b4d0129ace87b1780500b995181b55c615051b50de82a",
+        "parent_ms": 3.313469933345914,
+        "candidate_ms": 3.2092095352709293,
+        "speedup": 1.0324878749514816,
+        "mean_speedup": 1.0340606405243586,
+        "speedup_by_order": {
+          "parent_first": 1.0514963102491233,
+          "candidate_first": 1.012923195793382
+        },
+        "samples_ms": [
+          [
+            3.2853970769792795,
+            3.298552008345723,
+            3.364676143974066,
+            3.308600978925824,
+            3.4100410994142294,
+            3.2968989107757807,
+            3.3763879910111427,
+            3.313389839604497,
+            3.350229933857918,
+            3.3052549697458744,
+            3.3908048644661903,
+            3.333608154207468,
+            3.3833009656518698,
+            3.2843260560184717,
+            3.3451190683990717,
+            3.283143974840641,
+            3.3427251037210226,
+            3.2711608801037073,
+            3.313550027087331,
+            3.2589479815214872
+          ],
+          [
+            3.087467048317194,
+            3.293593181297183,
+            3.2031130976974964,
+            3.216027980670333,
+            3.228641115128994,
+            3.3085509203374386,
+            3.209976013749838,
+            3.210097085684538,
+            3.208443056792021,
+            3.2033941242843866,
+            3.191762138158083,
+            3.2800971530377865,
+            3.184738103300333,
+            3.298120805993676,
+            3.187665017321706,
+            3.183998167514801,
+            3.1238847877830267,
+            3.2450819853693247,
+            3.194286022335291,
+            3.2662220764905214
+          ]
+        ],
+        "exact": true
+      }
+    ],
+    "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+    "contract": "T0 F32 output bits",
+    "default_changed": false,
+    "library_prebound": true,
+    "order_balanced": true,
+    "device_fill_precondition_mib": 0,
+    "boundary": "GR up+sigmoid+branch mean"
+  },
+  "raw_sha256": {
+    "/tmp/qwen4exp-gr-wave-unconditioned.json": "41dbb9ccb3846a7b734e47896c8d5fd7255a41ca92f39367372232cab87f1931",
+    "/tmp/qwen4exp-gr-wave-pressure.json": "ec0e27dea66d318c86d008dee130c5e9e8da13c2f19c981d7f8198340ca9d79c",
+    "/tmp/qwen4exp-gr-wave-layer4.json": "9e6614dfad08015abadedb8eec102ee41ccbf53665e7d5399b42895432da12b3"
+  },
+  "source_sha256": {
+    "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.hip": "2b00596b3050ecb91359f69326764056ca01524f507820daa54df8b8cba5e342",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py": "ae9e7e7793a36d1c028bb8dc5e55f9fdf24969487abc923847b0619b072eee29",
+    "scripts/qwen4exp_q8_wave_scale_screen.py": "70566c398c44614bf0e1df83d57bb33e7f77eafac773074c0d48f3947cb80e45"
+  },
+  "correctness": {
+    "focused_tests_passed": 20,
+    "gate_and_mixed_F32_bits_exact": true,
+    "repeat_exact": true,
+    "cpu_floor": "Reduced gate and mixed outputs pass value allclose, KL<=0.05 and top1>=90%; existing unfused-chain parity also passes.",
+    "scope": "T0 primitive/parent gate, not full-model D1 qualification"
+  },
+  "trace": {
+    "path": "/tmp/qwen4exp-gr-wave-trace/gfx1151/2726887_kernel_trace.csv",
+    "symbol": "q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel<true>",
+    "parent_ns": 3275418,
+    "candidate_ns": 3169259,
+    "vgpr_both": 72,
+    "lds_bytes_both": 512,
+    "scratch_bytes_both": 0,
+    "workgroup": 128
+  },
+  "default_changed": false,
+  "promotion_blocker": "Require live registry invocation, full logits/state/KV and12-case normal-model A/B for rows>256 GR composite scope.",
+  "limitations": [
+    "Rows64 unconditioned timings reverse slightly by order; do not promote small-row use from these medians.",
+    "Rows512 unconditioned means and both order strata improve on layer0 and layer4 banks.",
+    "Memory preconditioning is declared separately and outside timed projection; it is not proof of model cache state.",
+    "No intrinsic decode or end-to-end speedup claim yet."
+  ]
+}

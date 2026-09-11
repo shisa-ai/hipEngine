@@ -1,0 +1,244 @@
+{
+  "schema": 1,
+  "date": "2026-08-29",
+  "status": "accepted_targeting_evidence",
+  "scope": "Qwen4Exp gfx1151 pp508 strict kernel family budget plus Q8_0 dense MMQ128 microbench targeting",
+  "host": {
+    "identity": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "id": "Qwen/Qwen3.8-Flash-Next",
+    "quant": "Unsloth UD-Q4_K_XL",
+    "quant_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5"
+  },
+  "trace": {
+    "kernel_rows": 2669,
+    "prefill_kernel_seconds_excluding_load": 8.329646057,
+    "family_seconds": {
+      "other": 3.673578266,
+      "q5": 1.812162842,
+      "q4": 1.796223369,
+      "gdn": 1.007551332,
+      "router": 0.022768129,
+      "ple": 0.011557153,
+      "qsa": 0.00570065,
+      "load_copy": 0.002940374,
+      "q8": 0.000104316
+    },
+    "family_launches": {
+      "load_copy": 541,
+      "q8": 1,
+      "other": 1398,
+      "router": 479,
+      "q4": 47,
+      "q5": 43,
+      "ple": 76,
+      "gdn": 36,
+      "qsa": 48
+    },
+    "top_symbols": [
+      {
+        "name": "void (anonymous namespace)::gguf_k_prefill_out_coltile_rowbatch_kernel<float, float, 8, 8, 4>(float const*, unsigned cha",
+        "seconds": 2.459762688,
+        "launches": 494
+      },
+      {
+        "name": "void (anonymous namespace)::q5_1_selected_grouped_prefill_logical256_bf16_bf16_kernel<8, 8>(unsigned short const*, long ",
+        "seconds": 1.812162842,
+        "launches": 43
+      },
+      {
+        "name": "void (anonymous namespace)::gguf_q4_k_selected_dual_grouped_rowbatch_bf16_kernel<8, 4, true>(unsigned short const*, long",
+        "seconds": 1.796223369,
+        "launches": 47
+      },
+      {
+        "name": "(anonymous namespace)::qwen4_exp_gdn_prefill_f32_kernel(float const*, float const*, float const*, float const*, float co",
+        "seconds": 1.007551332,
+        "launches": 36
+      },
+      {
+        "name": "void (anonymous namespace)::gguf_k_selected_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*,",
+        "seconds": 0.402471108,
+        "launches": 5
+      },
+      {
+        "name": "void (anonymous namespace)::gguf_k_selected_prefill_out_kernel<unsigned short, unsigned short, 5>(unsigned short const*,",
+        "seconds": 0.309520236,
+        "launches": 2
+      },
+      {
+        "name": "void (anonymous namespace)::dense_gemv_out_kernel<float, float, false>(float const*, float const*, float const*, float*,",
+        "seconds": 0.23202988,
+        "launches": 264
+      },
+      {
+        "name": "void (anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel<false, 1, false>(float const*, uns",
+        "seconds": 0.154727535,
+        "launches": 12
+      },
+      {
+        "name": "(anonymous namespace)::dense_gemv_f32_bf16w_f32_out_kernel(float const*, unsigned short const*, float*, long, long, long",
+        "seconds": 0.056987,
+        "launches": 24
+      },
+      {
+        "name": "(anonymous namespace)::gated_mean_f32_kernel(float const*, float const*, float*, long, long)",
+        "seconds": 0.02308676,
+        "launches": 97
+      },
+      {
+        "name": "(anonymous namespace)::grouped_rmsnorm_bf16_f32_kernel(unsigned short const*, float const*, float*, long, long, float)",
+        "seconds": 0.010464258,
+        "launches": 98
+      },
+      {
+        "name": "(anonymous namespace)::qwen4_exp_linear_attn_conv_prefill_exact_kernel(float const*, float const*, float const*, float*,",
+        "seconds": 0.009815034,
+        "launches": 36
+      },
+      {
+        "name": "(anonymous namespace)::gr_write_bf16_f32_kernel(unsigned short const*, float const*, float const*, unsigned short*, long",
+        "seconds": 0.009064339,
+        "launches": 96
+      },
+      {
+        "name": "(anonymous namespace)::sigmoid_f32_kernel(float const*, float*, long)",
+        "seconds": 0.008637133,
+        "launches": 97
+      },
+      {
+        "name": "void (anonymous namespace)::weighted_lanes_sum_out_kernel<unsigned short>(unsigned short const*, float const*, long cons",
+        "seconds": 0.007665745,
+        "launches": 47
+      },
+      {
+        "name": "(anonymous namespace)::qwen35_moe_group_scatter_gather_kernel(unsigned short const*, long const*, float const*, long con",
+        "seconds": 0.00605139,
+        "launches": 47
+      },
+      {
+        "name": "void (anonymous namespace)::qsa_split_norm_rope_rows_f32_kernel<false>(float const*, float const*, float const*, float c",
+        "seconds": 0.0039532,
+        "launches": 12
+      },
+      {
+        "name": "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)",
+        "seconds": 0.003450851,
+        "launches": 48
+      },
+      {
+        "name": "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<float, float, 8>(float const*, unsigned char const*, float*,",
+        "seconds": 0.003202225,
+        "launches": 3
+      },
+      {
+        "name": "void (anonymous namespace)::silu_mul_separate_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, u",
+        "seconds": 0.003151612,
+        "launches": 48
+      },
+      {
+        "name": "(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)",
+        "seconds": 0.001774865,
+        "launches": 96
+      },
+      {
+        "name": "__amd_rocclr_copyBuffer",
+        "seconds": 0.001535199,
+        "launches": 378
+      },
+      {
+        "name": "__amd_rocclr_fillBufferUnAligned",
+        "seconds": 0.001405175,
+        "launches": 163
+      },
+      {
+        "name": "(anonymous namespace)::qsa_gate_context_f32_kernel(float const*, float const*, float*, long)",
+        "seconds": 0.001287102,
+        "launches": 12
+      },
+      {
+        "name": "void (anonymous namespace)::shared_gate_combine_batch_out_kernel<unsigned short>(unsigned short const*, unsigned short c",
+        "seconds": 0.0012205,
+        "launches": 48
+      },
+      {
+        "name": "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)",
+        "seconds": 0.000991589,
+        "launches": 48
+      },
+      {
+        "name": "(anonymous namespace)::ple_dilated_depthwise_conv_f32_kernel(float const*, float const*, float*, float*, long, long, lon",
+        "seconds": 0.000877652,
+        "launches": 1
+      },
+      {
+        "name": "(anonymous namespace)::scaled_silu_f32_kernel(float const*, float*, long, float)",
+        "seconds": 0.000511639,
+        "launches": 98
+      },
+      {
+        "name": "void (anonymous namespace)::qsa_norm_rope_rows_f32_kernel<false>(float const*, float const*, long const*, float*, long, ",
+        "seconds": 0.000386808,
+        "launches": 12
+      },
+      {
+        "name": "(anonymous namespace)::grouped_rmsnorm_f32_kernel(float const*, float const*, float*, long, long, float)",
+        "seconds": 0.000349017,
+        "launches": 2
+      }
+    ]
+  },
+  "microbench": {
+    "512x6144x2560": {
+      "seconds": {
+        "coltile4_rowbatch8": 0.010466918000020087,
+        "coltile8_rowbatch4": 0.009335512004327029,
+        "coltile8_rowbatch8": 0.01003181999840308,
+        "d4_quantize_plus_mmq128": 0.0012670210126088932
+      },
+      "gflops": {
+        "coltile4_rowbatch8": 1538.7650271043578,
+        "coltile8_rowbatch4": 1725.253778532423,
+        "coltile8_rowbatch8": 1605.5040224569282,
+        "d4_quantize_plus_mmq128": 12711.807617804421
+      }
+    },
+    "512x2560x12288": {
+      "seconds": {
+        "coltile4_rowbatch8": 0.021293603000231087,
+        "coltile8_rowbatch4": 0.020326414000010118,
+        "coltile8_rowbatch8": 0.022891604996402748,
+        "d4_quantize_plus_mmq128": 0.003173904013237916
+      },
+      "gflops": {
+        "coltile4_rowbatch8": 1512.7667553325953,
+        "coltile8_rowbatch4": 1584.7485306549381,
+        "coltile8_rowbatch8": 1407.1645358663984,
+        "d4_quantize_plus_mmq128": 10149.095431256625
+      }
+    },
+    "512x2560x10240": {
+      "seconds": {
+        "coltile4_rowbatch8": 0.0174852160125738,
+        "coltile8_rowbatch4": 0.016353088009054773,
+        "coltile8_rowbatch8": 0.018451431998983026,
+        "d4_quantize_plus_mmq128": 0.0022655369975836948
+      },
+      "gflops": {
+        "coltile4_rowbatch8": 1535.2138389766833,
+        "coltile8_rowbatch4": 1641.4970423406648,
+        "coltile8_rowbatch8": 1454.8218046967584,
+        "d4_quantize_plus_mmq128": 11848.645874523323
+      }
+    }
+  },
+  "commands": {
+    "trace": "rocprofv3 --kernel-trace -f csv -o pp508 -d /tmp/pp508-trace -- uv run python /tmp/qwen4exp_pp508_trace_child.py (HIPENGINE_REQUIRE_CACHED_BUILD=1, single prefill, chunk 512 strict)",
+    "microbench": "uv run python /tmp/qwen4exp_q8_dense_microbench.py (5 warmup, best of 20, device-synchronized)"
+  },
+  "prior_rejection_context": "2026-07-15 gfx1100 raw-Q8 MMQ128 rejection compared against a Q8T16 FP16-WMMA owner on W7900/Qwen3.6; that owner is not resident in this configuration and the current Q8_0 dense owner is the ~1.5-TFLOPS float coltile."
+}

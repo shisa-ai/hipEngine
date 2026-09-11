@@ -1,0 +1,55 @@
+{
+  "schema": "timesfm-gpu-decode-bench/1",
+  "date": "2026-09-09",
+  "model": "google/timesfm-2.5-200m-pytorch",
+  "task": "time-series-forecast decode",
+  "hardware": "AMD Radeon 8060S (gfx1151, Strix Halo iGPU), Ryzen AI MAX+ PRO 395 host, 120 GB shared LPDDR5X",
+  "host": "zbook",
+  "workload": {
+    "batch": 8,
+    "context": 8192,
+    "horizon": 512,
+    "masks": "none"
+  },
+  "command": "python3 scripts/timesfm_gpu_bench.py --metric",
+  "change": "flash_short (4-wave kv-split AR attention) + warp-per-head qkv_norm_scatter",
+  "baseline": {
+    "decode_seconds_b8_ctx8192_h512": 0.0913,
+    "note": "transpose+autotune build, 11-run median"
+  },
+  "measurements": {
+    "decode_seconds_b8_ctx8192_h512": [
+      0.0923,
+      0.0884,
+      0.0885,
+      0.0897,
+      0.0948,
+      0.0911,
+      0.0906,
+      0.0921,
+      0.0893,
+      0.0921
+    ],
+    "median": 0.0909
+  },
+  "subwindow": {
+    "ar_attention_us_per_call": [
+      113.0,
+      107.9
+    ],
+    "qkv_norm_scatter_us_per_call_prefill": [
+      309.0,
+      246.0
+    ],
+    "qkv_norm_scatter_total_ms_per_decode": [
+      8.0,
+      6.3
+    ],
+    "note": "rocprofv3 kernel traces; wall aggregate flat within thermal noise"
+  },
+  "correctness": {
+    "guard": "fp32 strict parity (atol 5e-4) + fp16 production gate pass",
+    "pytest": "tests/test_timesfm_gpu_decode.py 3/3"
+  },
+  "retention": "kept as verified sub-window wins per AGENTS.md (multiloop wall-significance test conservative)"
+}

@@ -7,6 +7,7 @@ through a registry at call time so backend/quant choices do not become engine br
 from __future__ import annotations
 
 import os
+import inspect
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from numbers import Integral
@@ -16,6 +17,20 @@ from typing import Any
 from hipengine.speculative.serving import SpeculativeMTPStaticEligibility
 
 AUTO_QUANT = "auto"
+
+
+def _factory_capacity_kwargs(factory, *, max_sequence_length, resident_capacity):
+    """Forward configured limits only to factories that explicitly declare them."""
+    try:
+        parameters = inspect.signature(factory).parameters
+    except (TypeError, ValueError):
+        return {}
+    return {
+        name: value for name,value in (
+            ("max_sequence_length",max_sequence_length),("resident_capacity",resident_capacity))
+        if value is not None and name in parameters and parameters[name].kind in (
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,inspect.Parameter.KEYWORD_ONLY)
+    }
 
 _ENGINE_LOOP_GENERATOR_DEFAULT_ENVS = {
     "prefill_decode_policy": "HIPENGINE_PREFILL_DECODE_POLICY",
@@ -113,6 +128,7 @@ class SamplingParams:
     force_sequence_completion_reason: str | None = None
     json_object_close_forcing: bool = False
     tool_call_constraint: Any | None = None
+    grammar: Mapping[str, Any] | None = None
     thinking_close_token_ids: tuple[int, ...] = ()
     thinking_hard_token_cap: int | None = None
     thinking_soft_close_window: int = 0
@@ -253,6 +269,7 @@ class LLM:
         kv_storage: str | None = None,
         kv_scale_dtype: str | None = None,
         kv_scale_granularity: str | None = None,
+        vision_model: str | None = None,
     ) -> None:
         if max_active_requests is not None and int(max_active_requests) <= 0:
             raise ValueError("max_active_requests must be positive when set")
@@ -298,6 +315,11 @@ class LLM:
         self.kv_scale_granularity = (
             None if kv_scale_granularity is None else str(kv_scale_granularity)
         )
+        self.vision_model = (
+            None if vision_model is None else str(vision_model).strip()
+        )
+        if self.vision_model == "":
+            raise ValueError("vision_model must be non-empty when set")
         if prefix_cache is None:
             self.prefix_cache = None
         else:
@@ -379,6 +401,30 @@ class LLM:
                 "independent batch submission requires EngineService ownership"
             )
         return tuple(tuple(handles) for handles in submit(requests))
+
+    def generate_multimodal_detailed(
+        self,
+        prompt: str,
+        image: Any,
+        sampling_params: SamplingParams | None = None,
+    ):
+        """Generate one basic image+text request through a model-owned vision path."""
+
+        from hipengine.generation import GenerationOutput
+
+        generator = self._get_text_generator()
+        detailed = getattr(generator, "generate_multimodal_detailed", None)
+        if not callable(detailed):
+            raise NotImplementedError("multimodal generation is not supported")
+        params = sampling_params or SamplingParams()
+        request = _generation_request((str(prompt),), params)
+        output = detailed(str(prompt), image, request)
+        return output if isinstance(output, GenerationOutput) else GenerationOutput(text=str(output))
+
+    @property
+    def supports_vision(self) -> bool:
+        generator = self._text_generator
+        return bool(generator is not None and getattr(generator, "supports_vision", False))
 
     def generate_speculative_mtp_detailed(
         self,
@@ -871,11 +917,19 @@ class LLM:
             backend=backend,
             quant=quant,
         )
+        base_loop_config = engine_loop_config_from_env()
         factory_kwargs = {
             "model_path": self.model,
             "weight_index": weight_index,
             "model_plugin": model_plugin,
         }
+        if self.vision_model is not None:
+            factory_kwargs["vision_model_path"] = self.vision_model
+        effective_factory = factory if profile_resolution is None else (profile_resolution.factory or factory)
+        factory_kwargs.update(_factory_capacity_kwargs(
+            effective_factory,max_sequence_length=self.max_sequence_length,
+            resident_capacity=(self.max_active_requests if self.max_active_requests is not None
+                               else base_loop_config.max_active_requests)))
         generator = (
             factory(**factory_kwargs)
             if profile_resolution is None
@@ -1090,8 +1144,9 @@ class LLM:
 
         model_path = resolve_model_path(self.model)
         if _looks_like_gguf_path(model_path):
-            index = load_gguf_index(discover_gguf_files(model_path)[0])
-            self.model = str(index.path)
+            gguf_files = discover_gguf_files(model_path)
+            index = load_gguf_index(gguf_files[0])
+            self.model = str(model_path if len(gguf_files) > 1 else index.path)
             plugin = resolve_model(index.architecture or "")
         else:
             index = load_weight_index(self.model)
@@ -1131,6 +1186,7 @@ def _generation_request(prompt_tuple: tuple[Any, ...], params: SamplingParams):
         force_sequence_completion_reason=params.force_sequence_completion_reason,
         json_object_close_forcing=params.json_object_close_forcing,
         tool_call_constraint=params.tool_call_constraint,
+        grammar=params.grammar,
         thinking_close_token_ids=params.thinking_close_token_ids,
         thinking_hard_token_cap=params.thinking_hard_token_cap,
         thinking_soft_close_window=params.thinking_soft_close_window,

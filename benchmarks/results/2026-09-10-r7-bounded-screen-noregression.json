@@ -1,0 +1,15 @@
+{
+ "schema": 1,
+ "kind": "r7_bounded_secondary_screen",
+ "date": "2026-09-10",
+ "trigger": "no promotions this session; Q4_K kernel binary rebuilt with the ACT_PLANES templating refactor (dbccd0fec) - bounded no-regression screen run",
+ "screen": "production prefill logits vs the pre-refactor R12 envelope incumbent reference (r12-planes-envelope-996.incumbent.npz) on code-p512, code-p4096, general_ja-p4096",
+ "result": "PASS - all three cases BIT-EXACT",
+ "candidate_routes_default_off": [
+  "HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP (R11 pair - rejected at admission suite)",
+  "HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_DOWN (R11 fast down - rejected)",
+  "HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES (R12 d4x2 - rejected at canonical envelope)",
+  "HIPENGINE_QWEN4_EXP_Q4_IU8_PLANES (R13 MoE 2-plane - rejected at screen)"
+ ],
+ "conclusion": "production profile unchanged; no full secondary-screen packet required (no promotion trigger); standing task returns to pending"
+}

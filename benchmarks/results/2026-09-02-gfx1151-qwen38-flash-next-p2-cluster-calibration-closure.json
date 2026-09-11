@@ -1,0 +1,83 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_p2_cluster_calibration_closure",
+  "status": "closed_from_retained_and_rejected_profile_packets",
+  "performance_claim": false,
+  "scope": "Audit whether P2 T1/T2 WMMA work was restricted to independently calibrated layer clusters with complete promotion gates",
+  "amdahl": {
+    "W_C_O_s": "unchanged from the cited original candidate packets; this audit credits no new wall saving",
+    "overlap_exclusions": "no new Q4/Q5/Q8, routing, submission, QSA, GDN, or graph timing is combined",
+    "arithmetic_class": "historical T2 profile decisions; documentation-only closure",
+    "strict_fallback": "omitted or rejected layer clusters remain on exact grouped Q4/Q5/Q8 owners"
+  },
+  "cluster_packets": {
+    "moe_suffix_27_47": {
+      "artifact": "2026-08-29-gfx1151-qwen38-flash-next-late-moe27-production.json",
+      "status": "retained",
+      "selection": {
+        "layers_0_26": "each failed an individual final-prompt mean/p95 gate",
+        "layer_27_mean_kl": 0.0009974072225194198,
+        "suffix_27_mean_kl": 0.0006435615117925926,
+        "suffix_27_passed": true
+      },
+      "complete_gate": {
+        "rows": 450,
+        "mean_kl": 0.0001049659094647347,
+        "p95_kl": 0.0003809508325678896,
+        "top1_rate": 0.9955555555555555,
+        "repeat_determinism": true,
+        "state_repeat_exact": true,
+        "task_prompts": 18,
+        "task_verdict": "pass deterministic task non-inferiority",
+        "physical_c2_ids_exact": true,
+        "teardown_bytes": 0
+      },
+      "whole_model": {
+        "p508_speedup": 1.132015654505996,
+        "p1012_speedup": 1.1284905334648445,
+        "top1_exact": true
+      },
+      "manifest_sha256": "fcd96b73026ccc1ded4d959be19aa860837e68d4ef9f0435aae5fae290ea145f",
+      "strict_manifest_sha256": "d4bf4f8af5196e2cae2fd9c09e0c4ca1b1c8911629f142db77872f9b4e0ffccb"
+    },
+    "q8_suffix_32_47": {
+      "artifact": "2026-08-29-gfx1151-qwen38-flash-next-moe27-q8-32-production.json",
+      "status": "retained",
+      "selection": {
+        "suffix_27_mean_kl": 0.0012588672559360305,
+        "suffix_27_passed": false,
+        "suffix_32_mean_kl": 0.0000726064770458028,
+        "suffix_32_passed": true
+      },
+      "complete_gate": {
+        "rows": 450,
+        "mean_kl": 0.00011966379077871192,
+        "p95_kl": 0.0004932223199405193,
+        "top1_rate": 0.9977777777777778,
+        "repeat_determinism": true,
+        "state_repeat_exact": true,
+        "task_prompts": 18,
+        "task_verdict": "pass deterministic task non-inferiority",
+        "physical_c2_ids_exact": true,
+        "teardown_bytes": 0,
+        "expected_kernel_symbols_traced": true
+      },
+      "whole_model": {
+        "p508_speedup": 1.2341007559972397,
+        "p1012_speedup": 1.220287458263046,
+        "top1_exact": true
+      },
+      "manifest_sha256": "1be08e5c33587a6f8c469275d0dda168b6d5b1058a76adb43e9ac6f5bfda99b7",
+      "strict_manifest_sha256": "a1dda611b25aab0210a232b25232509becdc77a294aa5cf8eded9141cabe62fc"
+    },
+    "layer_2_q5_grouped": {
+      "artifact": "2026-08-31-gfx1151-qwen38-flash-next-p1-layer2-grouped-profile-rejected.json",
+      "status": "rejected_default_off",
+      "binding_failure": "prefill-last/prefill-to-c1 mean KL 0.0011790983497016077 exceeds 0.001",
+      "later_gates_skipped": "physical c2 and depth timing cannot compensate for the binding numerical failure"
+    }
+  },
+  "bf16_relative": "not applicable in the original packets because no qualified full-BF16 Qwen4Exp target runtime existed; same-quant strict remained binding",
+  "decision": "Close the P2 cluster-calibration item. The retained suffixes were admitted only after independent boundary screens and complete numerical/category/task/determinism/state/c2/lifecycle/manifest/whole-model gates; the failing layer-2 cluster remained default-off. Future changed arithmetic must repeat the same packet."
+}

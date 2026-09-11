@@ -26,7 +26,26 @@ from hipengine.kernels.registry import KernelKey, register
 
 _SOURCE = Path(__file__).with_name("gguf_q4_k_selected_prefill.hip")
 _OUTPUT_NAME = "gguf_q4_k_selected_prefill.so"
+_SYMBOL_GROUPED_ROW8_BF16 = (
+    "hipengine_gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out"
+)
+_SYMBOL_GROUPED_ROW8_OUT4_BF16 = (
+    "hipengine_gguf_q4_k_selected_dual_grouped_rowbatch8_out4_bf16_bf16_out"
+)
+_SYMBOL_GROUPED_ROW8_OUT4_EXPERTGRID64_BF16 = (
+    "hipengine_gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out"
+)
+_SYMBOL_GROUPED_ROW8_OUT4_EXPERTGRID64_M1_BF16 = (
+    "hipengine_gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_m1_bf16_bf16_out"
+)
 _SYMBOL_DUAL_BF16 = "hipengine_gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out"
+_SYMBOL_IU8_BF16 = "hipengine_gguf_q4_k_selected_dual_wmma_iu8_prefill_bf16_bf16_out"
+_SYMBOL_IU8_RISK_BF16 = (
+    "hipengine_gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out"
+)
+_SYMBOL_SPARSE_EXACT_REPAIR_BF16 = (
+    "hipengine_gguf_q4_k_selected_dual_sparse_exact_repair_bf16"
+)
 _SYMBOL_DUAL_FP16 = "hipengine_gguf_q4_k_selected_dual_wmma_prefill_compact_fp16_fp16_out"
 _SYMBOL_HOT_BF16 = "hipengine_gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile_bf16_bf16_out"
 _SYMBOL_HOT_FP16 = "hipengine_gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile_fp16_fp16_out"
@@ -128,6 +147,220 @@ def _extra_flags() -> tuple[str, ...]:
     return ("-mcumode", f"-DHIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS={min_blocks}")
 
 
+def gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out(
+    x_ptr: int,
+    expert_start_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    output_a_ptr: int,
+    output_b_ptr: int,
+    compact_rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the exact grouped row-batched BF16 Q4_K gate+up kernel."""
+
+    for value, name in (
+        (compact_rows, "compact_rows"),
+        (num_experts, "num_experts"),
+        (in_features, "in_features"),
+        (out_features, "out_features"),
+    ):
+        _check_positive(value, name)
+    if in_features % _Q4_K_BLOCK:
+        raise ValueError("in_features must be divisible by GGUF Q4_K block size 256")
+    library = library or build_gguf_q4_k_selected_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_GROUPED_ROW8_BF16)
+    fn.argtypes = [ctypes.c_void_p] * 6 + [ctypes.c_int64] * 4 + [ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    err = fn(
+        x_ptr,
+        expert_start_ptr,
+        qweight_a_ptr,
+        qweight_b_ptr,
+        output_a_ptr,
+        output_b_ptr,
+        compact_rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream,
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def gguf_q4_k_selected_dual_grouped_rowbatch8_out4_bf16_bf16_out(
+    x_ptr: int,
+    expert_start_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    output_a_ptr: int,
+    output_b_ptr: int,
+    compact_rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact grouped row8/output4 BF16 Q4_K gate+up."""
+
+    for value, name in (
+        (compact_rows, "compact_rows"),
+        (num_experts, "num_experts"),
+        (in_features, "in_features"),
+        (out_features, "out_features"),
+    ):
+        _check_positive(value, name)
+    if in_features % _Q4_K_BLOCK:
+        raise ValueError("in_features must be divisible by GGUF Q4_K block size 256")
+    library = library or build_gguf_q4_k_selected_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_GROUPED_ROW8_OUT4_BF16)
+    fn.argtypes = [ctypes.c_void_p] * 6 + [ctypes.c_int64] * 4 + [ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    err = fn(
+        x_ptr,
+        expert_start_ptr,
+        qweight_a_ptr,
+        qweight_b_ptr,
+        output_a_ptr,
+        output_b_ptr,
+        compact_rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream,
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out(
+    x_ptr: int,
+    expert_start_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    output_a_ptr: int,
+    output_b_ptr: int,
+    compact_rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+    _bundle: bool = False,
+    _pair: bool = False,
+) -> None:
+    """Launch exact row8/output4 Q4_K over a fixed 64-CTA expert grid."""
+
+    for value, name in (
+        (compact_rows, "compact_rows"),
+        (num_experts, "num_experts"),
+        (in_features, "in_features"),
+        (out_features, "out_features"),
+    ):
+        _check_positive(value, name)
+    if in_features % _Q4_K_BLOCK:
+        raise ValueError("in_features must be divisible by GGUF Q4_K block size 256")
+    library = library or build_gguf_q4_k_selected_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, (
+        "hipengine_gguf_q4_k_selected_dual_grouped_pair2_bf16_bf16_out"
+        if _pair else
+        "hipengine_gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out"
+        if _bundle else _SYMBOL_GROUPED_ROW8_OUT4_EXPERTGRID64_BF16))
+    fn.argtypes = [ctypes.c_void_p] * 6 + [ctypes.c_int64] * 4 + [ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    err = fn(
+        x_ptr,
+        expert_start_ptr,
+        qweight_a_ptr,
+        qweight_b_ptr,
+        output_a_ptr,
+        output_b_ptr,
+        compact_rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream,
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out(*args, **kwargs):
+    gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out(
+        *args, **kwargs, _bundle=True)
+
+
+def gguf_q4_k_selected_dual_grouped_pair2_bf16_bf16_out(*args, **kwargs):
+    gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out(
+        *args, **kwargs, _pair=True)
+
+
+def gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_m1_bf16_bf16_out(
+    x_ptr: int,
+    expert_start_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    output_a_ptr: int,
+    output_b_ptr: int,
+    compact_rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the PF-3 M1 candidate: PAIR=false row8/output4 Q4_K on the
+    fixed 64-CTA expert grid (strict fallback:
+    ``..._expertgrid64_bf16_bf16_out`` stays production and untouched)."""
+
+    for value, name in (
+        (compact_rows, "compact_rows"),
+        (num_experts, "num_experts"),
+        (in_features, "in_features"),
+        (out_features, "out_features"),
+    ):
+        _check_positive(value, name)
+    if in_features % _Q4_K_BLOCK:
+        raise ValueError("in_features must be divisible by GGUF Q4_K block size 256")
+    library = library or build_gguf_q4_k_selected_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_GROUPED_ROW8_OUT4_EXPERTGRID64_M1_BF16)
+    fn.argtypes = [ctypes.c_void_p] * 6 + [ctypes.c_int64] * 4 + [ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    err = fn(
+        x_ptr,
+        expert_start_ptr,
+        qweight_a_ptr,
+        qweight_b_ptr,
+        output_a_ptr,
+        output_b_ptr,
+        compact_rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream,
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out(
     x_ptr: int,
     expert_start_compact_ptr: int,
@@ -168,6 +401,208 @@ def gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out(
         wmma_total_rows,
         tile_m=tile_m,
         tile_n=tile_n,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out(
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_wmma_ptr: int,
+    tile_expert_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    out_ptr: int,
+    risk_count_ptr: int,
+    risk_indices_ptr: int,
+    max_risks: int,
+    risk_multiplier: float,
+    compact_rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    num_experts: int,
+    wmma_total_rows: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the risk-collecting iu8-WMMA selected dual prefill.
+
+    Identical published arithmetic to the plain iu8 kernel; outputs whose
+    F32 value lies within ``risk_multiplier * (|kahan_err| +
+    FLT_EPSILON * sum|term|)`` of a BF16 rounding boundary are queued by
+    linear output index for the sparse exact repair pass. The caller must
+    zero ``risk_count`` before every launch.
+    """
+
+    _launch_wmma_iu8_risk(
+        3,
+        x_ptr,
+        expert_start_compact_ptr,
+        expert_start_wmma_ptr,
+        tile_expert_ptr,
+        qweight_a_ptr,
+        qweight_b_ptr,
+        out_ptr,
+        risk_count_ptr,
+        risk_indices_ptr,
+        max_risks,
+        risk_multiplier,
+        compact_rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        num_experts,
+        wmma_total_rows,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q4_k_selected_dual_wmma_iu8_risk_p2_prefill_bf16_bf16_out(
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_wmma_ptr: int,
+    tile_expert_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    out_ptr: int,
+    risk_count_ptr: int,
+    risk_indices_ptr: int,
+    max_risks: int,
+    risk_multiplier: float,
+    compact_rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    num_experts: int,
+    wmma_total_rows: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """#29 R13 screen: two-plane iu8-WMMA selected dual prefill.
+
+    Same kernel, same risk criterion and repair path as the retained
+    three-plane chain; fewer WMMA passes, more rows queued for the
+    sparse exact repair.
+    """
+
+    _launch_wmma_iu8_risk(
+        2,
+        x_ptr,
+        expert_start_compact_ptr,
+        expert_start_wmma_ptr,
+        tile_expert_ptr,
+        qweight_a_ptr,
+        qweight_b_ptr,
+        out_ptr,
+        risk_count_ptr,
+        risk_indices_ptr,
+        max_risks,
+        risk_multiplier,
+        compact_rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        num_experts,
+        wmma_total_rows,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q4_k_selected_dual_sparse_exact_repair_bf16(
+    input_ptr: int,
+    expert_start_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    out_ptr: int,
+    risk_count_ptr: int,
+    risk_indices_ptr: int,
+    max_risks: int,
+    compact_rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    num_experts: int,
+    *,
+    grid_blocks: int = 1024,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Repair queued at-risk iu8-WMMA selected dual outputs exactly.
+
+    Each queued index is recomputed with the grouped pair2 parent's exact
+    arithmetic and reduction tree, overwriting the published BF16 value in
+    the combined gate/up output buffer.
+    """
+
+    _launch_sparse_exact_repair(
+        input_ptr,
+        expert_start_ptr,
+        qweight_a_ptr,
+        qweight_b_ptr,
+        out_ptr,
+        risk_count_ptr,
+        risk_indices_ptr,
+        max_risks,
+        compact_rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        num_experts,
+        grid_blocks=grid_blocks,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q4_k_selected_dual_wmma_iu8_prefill_bf16_bf16_out(
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_wmma_ptr: int,
+    tile_expert_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    num_experts: int,
+    wmma_total_rows: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the iu8-WMMA (llama mul_mat_q class) selected dual prefill."""
+
+    _launch_wmma_iu8(
+        _SYMBOL_IU8_BF16,
+        x_ptr,
+        expert_start_compact_ptr,
+        expert_start_wmma_ptr,
+        tile_expert_ptr,
+        qweight_a_ptr,
+        qweight_b_ptr,
+        out_ptr,
+        compact_rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        num_experts,
+        wmma_total_rows,
         stream=stream,
         library=library,
         runtime=runtime,
@@ -475,6 +910,228 @@ def _launch_dual(
         runtime.check(int(err))
 
 
+def _launch_wmma_iu8(
+    symbol: str,
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_wmma_ptr: int,
+    tile_expert_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    num_experts: int,
+    wmma_total_rows: int,
+    *,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _check_common(
+        compact_rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        num_experts,
+        wmma_total_rows,
+    )
+    if in_features % 256 != 0:
+        raise ValueError("iu8 selected dual prefill requires in_features % 256 == 0")
+    library = library or build_gguf_q4_k_selected_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(expert_start_compact_ptr),
+        ctypes.c_void_p(expert_start_wmma_ptr),
+        ctypes.c_void_p(tile_expert_ptr),
+        ctypes.c_void_p(qweight_a_ptr),
+        ctypes.c_void_p(qweight_b_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(compact_rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features_a),
+        ctypes.c_int64(out_features_b),
+        ctypes.c_int64(num_experts),
+        ctypes.c_int64(wmma_total_rows),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def _launch_wmma_iu8_risk(
+    planes: int,
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_wmma_ptr: int,
+    tile_expert_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    out_ptr: int,
+    risk_count_ptr: int,
+    risk_indices_ptr: int,
+    max_risks: int,
+    risk_multiplier: float,
+    compact_rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    num_experts: int,
+    wmma_total_rows: int,
+    *,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _check_common(
+        compact_rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        num_experts,
+        wmma_total_rows,
+    )
+    if in_features % 256 != 0:
+        raise ValueError("iu8 selected dual prefill requires in_features % 256 == 0")
+    if int(risk_count_ptr) <= 0 or int(risk_indices_ptr) <= 0:
+        raise ValueError("iu8 risk prefill requires risk counter and index buffers")
+    if int(max_risks) < 0 or int(max_risks) > 2**31 - 1:
+        raise ValueError("max_risks must be a non-negative int32 count")
+    if not (risk_multiplier >= 0.0):
+        raise ValueError("risk_multiplier must be non-negative")
+    library = library or build_gguf_q4_k_selected_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    symbol = _SYMBOL_IU8_RISK_BF16
+    if planes == 2:
+        symbol = "hipengine_gguf_q4_k_selected_dual_wmma_iu8_risk_p2_prefill_bf16_bf16_out"
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_float,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(expert_start_compact_ptr),
+        ctypes.c_void_p(expert_start_wmma_ptr),
+        ctypes.c_void_p(tile_expert_ptr),
+        ctypes.c_void_p(qweight_a_ptr),
+        ctypes.c_void_p(qweight_b_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(risk_count_ptr),
+        ctypes.c_void_p(risk_indices_ptr),
+        ctypes.c_int64(max_risks),
+        ctypes.c_float(risk_multiplier),
+        ctypes.c_int64(compact_rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features_a),
+        ctypes.c_int64(out_features_b),
+        ctypes.c_int64(num_experts),
+        ctypes.c_int64(wmma_total_rows),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def _launch_sparse_exact_repair(
+    input_ptr: int,
+    expert_start_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    out_ptr: int,
+    risk_count_ptr: int,
+    risk_indices_ptr: int,
+    max_risks: int,
+    compact_rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    num_experts: int,
+    *,
+    grid_blocks: int = 1024,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    for value, name in (
+        (compact_rows, "compact_rows"),
+        (in_features, "in_features"),
+        (out_features_a, "out_features_a"),
+        (out_features_b, "out_features_b"),
+        (num_experts, "num_experts"),
+    ):
+        if int(value) <= 0:
+            raise ValueError(f"{name} must be positive")
+    if in_features % 256 != 0:
+        raise ValueError("sparse exact repair requires in_features % 256 == 0")
+    if int(risk_count_ptr) <= 0 or int(risk_indices_ptr) <= 0:
+        raise ValueError("sparse exact repair requires risk buffers")
+    if int(max_risks) < 0 or int(grid_blocks) <= 0:
+        raise ValueError("max_risks must be non-negative and grid_blocks positive")
+    library = library or build_gguf_q4_k_selected_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_SPARSE_EXACT_REPAIR_BF16)
+    fn.argtypes = [ctypes.c_void_p] * 7 + [ctypes.c_int64] * 7 + [ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(input_ptr),
+        ctypes.c_void_p(expert_start_ptr),
+        ctypes.c_void_p(qweight_a_ptr),
+        ctypes.c_void_p(qweight_b_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(risk_count_ptr),
+        ctypes.c_void_p(risk_indices_ptr),
+        ctypes.c_int64(max_risks),
+        ctypes.c_int64(compact_rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features_a),
+        ctypes.c_int64(out_features_b),
+        ctypes.c_int64(num_experts),
+        ctypes.c_int64(grid_blocks),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def _launch_sidemeta(
     symbol: str,
     x_ptr: int,
@@ -681,7 +1338,59 @@ def _check_positive(value: int, name: str) -> None:
 def register_gguf_q4_k_selected_prefill_kernels(*, replace: bool = True) -> None:
     """Register P8.4 compact selected raw-Q4_K WMMA kernels."""
 
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q4_k",
+            "selected_dual_grouped_rowbatch8_bf16_bf16_out",
+        ),
+        gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q4_k",
+            "selected_dual_grouped_rowbatch8_out4_bf16_bf16_out",
+        ),
+        gguf_q4_k_selected_dual_grouped_rowbatch8_out4_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q4_k",
+            "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
+        ),
+        gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q4_k",
+            "selected_dual_grouped_rowbatch8_out4_expertgrid64_m1_bf16_bf16_out",
+        ),
+        gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_m1_bf16_bf16_out,
+        replace=replace,
+    )
     # Primary P8.4 key: compact ABI, row-major concatenated gate+up output.
+    register(
+        KernelKey("hip_gfx1100", "moe_linear", "gguf_q4_k",
+                  "selected_dual_grouped_pair2_bf16_bf16_out"),
+        gguf_q4_k_selected_dual_grouped_pair2_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "moe_linear", "gguf_q4_k",
+                  "selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out"),
+        gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out,
+        replace=replace,
+    )
     register(
         KernelKey(
             "hip_gfx1100",
@@ -690,6 +1399,46 @@ def register_gguf_q4_k_selected_prefill_kernels(*, replace: bool = True) -> None
             "selected_dual_wmma_prefill_compact_bf16_bf16_out",
         ),
         gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q4_k",
+            "selected_dual_wmma_iu8_prefill_bf16_bf16_out",
+        ),
+        gguf_q4_k_selected_dual_wmma_iu8_prefill_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q4_k",
+            "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out",
+        ),
+        gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q4_k",
+            "selected_dual_wmma_iu8_risk_p2_prefill_bf16_bf16_out",
+        ),
+        gguf_q4_k_selected_dual_wmma_iu8_risk_p2_prefill_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q4_k",
+            "selected_dual_sparse_exact_repair_bf16",
+        ),
+        gguf_q4_k_selected_dual_sparse_exact_repair_bf16,
         replace=replace,
     )
     register(
@@ -771,7 +1520,16 @@ register_gguf_q4_k_selected_prefill_kernels()
 
 
 __all__ = [
+    "gguf_q4_k_selected_dual_wmma_iu8_prefill_bf16_bf16_out",
+    "gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out",
+    "gguf_q4_k_selected_dual_sparse_exact_repair_bf16",
     "build_gguf_q4_k_selected_prefill",
+    "gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out",
+    "gguf_q4_k_selected_dual_grouped_rowbatch8_out4_bf16_bf16_out",
+    "gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
+    "gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out",
+    "gguf_q4_k_selected_dual_grouped_pair2_bf16_bf16_out",
+    "gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_m1_bf16_bf16_out",
     "gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out",
     "gguf_q4_k_selected_dual_wmma_prefill_compact_fp16_fp16_out",
     "gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile_bf16_bf16_out",

@@ -1,0 +1,181 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_q51_pair_screen",
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "6915586a1db3e90352a8c4399244548356983d72",
+    "tracked_clean": false
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "command": [
+    "scripts/qwen4exp_q51_pair_screen.py",
+    "--model-root",
+    "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--require-cached-build",
+    "--wave-reduce",
+    "--rows",
+    "64",
+    "512",
+    "--pairs",
+    "20",
+    "--output",
+    "/tmp/qwen4exp-q51-wave-reduce.json"
+  ],
+  "weights": [
+    {
+      "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+      "name": "blk.0.ffn_down_exps.weight",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "sha256": "b8182533b10a398040d86f4026f4cdbee23b5b666414c37b4c6f73bcfa3f5663"
+    },
+    {
+      "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+      "name": "blk.1.ffn_down_exps.weight",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "sha256": "74b2d0bdc9090ab85924b670c079cf6d93bbee0a764d37c519f1a14e17831c95"
+    }
+  ],
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "arithmetic_class": "T0",
+  "boundary": "two rotating grouped Q5_1 down banks; maps supplied, no routing or combine",
+  "runtime_default_changed": false,
+  "cases": [
+    {
+      "tokens": 64,
+      "compact_rows": 640,
+      "seconds": {
+        "parent": [
+          0.014952857047319412,
+          0.014970179880037904,
+          0.017133738845586777,
+          0.014954200014472008,
+          0.019823516020551324,
+          0.015025483909994364,
+          0.01612053904682398,
+          0.015015545068308711,
+          0.0167762681376189,
+          0.014956213999539614,
+          0.016680438071489334,
+          0.015024551888927817,
+          0.01678538601845503,
+          0.014946985989809036,
+          0.016590098850429058,
+          0.014943079091608524,
+          0.017684762831777334,
+          0.015025733970105648,
+          0.017379850847646594,
+          0.015062362886965275
+        ],
+        "candidate": [
+          0.015146281104534864,
+          0.016898807836696506,
+          0.01514159212820232,
+          0.017478135880082846,
+          0.015188388992100954,
+          0.017062164843082428,
+          0.015165816992521286,
+          0.017306583002209663,
+          0.01521585090085864,
+          0.017270676093176007,
+          0.015246236929669976,
+          0.017103363061323762,
+          0.015263309003785253,
+          0.01698388811200857,
+          0.015232441946864128,
+          0.0164264221675694,
+          0.015221672132611275,
+          0.017173374071717262,
+          0.01525335106998682,
+          0.016826994018629193
+        ]
+      },
+      "all_pairs_exact": true,
+      "speedup": 0.9494588860466101
+    },
+    {
+      "tokens": 512,
+      "compact_rows": 5120,
+      "seconds": {
+        "parent": [
+          0.04363988502882421,
+          0.04380928282625973,
+          0.043743378948420286,
+          0.0436785570345819,
+          0.043718812987208366,
+          0.043674379820004106,
+          0.04357807897031307,
+          0.04365539411082864,
+          0.04370383499190211,
+          0.04371386393904686,
+          0.04363218997605145,
+          0.04365270910784602,
+          0.04378039902076125,
+          0.04361573001369834,
+          0.0437434590421617,
+          0.04367822711355984,
+          0.04364283103495836,
+          0.04357534390874207,
+          0.04388798004947603,
+          0.043690530117601156
+        ],
+        "candidate": [
+          0.04486775887198746,
+          0.04474211321212351,
+          0.044864442897960544,
+          0.04486611601896584,
+          0.04477332206442952,
+          0.04489796608686447,
+          0.04474605992436409,
+          0.044934713980183005,
+          0.04481859691441059,
+          0.04484460595995188,
+          0.04483664012514055,
+          0.04492459609173238,
+          0.04489051201380789,
+          0.044865303905680776,
+          0.04473612201400101,
+          0.04492012714035809,
+          0.04480978986248374,
+          0.04465049086138606,
+          0.04488715482875705,
+          0.04493452492170036
+        ]
+      },
+      "all_pairs_exact": true,
+      "speedup": 0.9735543368834818
+    }
+  ],
+  "date": "2026-09-06",
+  "status": "rejected_variants_removed",
+  "performance_claim": false,
+  "rejected_source_patch": "diff --git a/hipengine/kernels/hip_gfx1100/quant/qwen4_exp_q5_1.hip b/hipengine/kernels/hip_gfx1100/quant/qwen4_exp_q5_1.hip\nindex 8005fcb8b..f11bbef10 100644\n--- a/hipengine/kernels/hip_gfx1100/quant/qwen4_exp_q5_1.hip\n+++ b/hipengine/kernels/hip_gfx1100/quant/qwen4_exp_q5_1.hip\n@@ -388,6 +388,7 @@ __device__ inline float q51_cached_weight(\n   return d[block] * static_cast<float>(low | (high << 4)) + m[block];\n }\n \n+template <bool WAVE_REDUCE = false>\n __global__ void q5_1_selected_grouped_prefill_pair2_bf16_kernel(\n     const uint16_t* __restrict__ input, const int64_t* __restrict__ starts,\n     const uint8_t* __restrict__ weights, uint16_t* __restrict__ output,\n@@ -446,6 +447,28 @@ __global__ void q5_1_selected_grouped_prefill_pair2_bf16_kernel(\n #pragma unroll\n         for (int p = 0; p < 2; ++p) {\n           if (out_base + offset + p >= n) continue;\n+          if constexpr (WAVE_REDUCE) {\n+            // Preserve logical256 strides128/64/32, then the original wave tail.\n+#pragma unroll\n+            for (int r = 0; r < R; ++r)\n+              partial[r * 128 + threadIdx.x] = acc0[p][r] + acc1[p][r];\n+            __syncthreads();\n+            if (threadIdx.x < 32) {\n+#pragma unroll\n+              for (int r = 0; r < R; ++r) {\n+                const int index = r * 128 + threadIdx.x;\n+                float value = (partial[index] + partial[index + 64]) +\n+                    (partial[index + 32] + partial[index + 96]);\n+#pragma unroll\n+                for (int stride = 16; stride > 0; stride >>= 1)\n+                  value += __shfl_down(value, stride);\n+                if (threadIdx.x == 0 && base + r < end)\n+                  output[(base + r) * n + out_base + offset + p] =\n+                      float_to_bf16_bits(value);\n+              }\n+            }\n+            __syncthreads();\n+          } else {\n #pragma unroll\n           for (int r = 0; r < R; ++r) {\n             partial[r*L+threadIdx.x] = acc0[p][r];\n@@ -466,6 +489,7 @@ __global__ void q5_1_selected_grouped_prefill_pair2_bf16_kernel(\n               if (base+r < end) output[(base+r)*n+out_base+offset+p] = float_to_bf16_bits(partial[r*L]);\n           }\n           __syncthreads();\n+          }\n         }\n       }\n     }\n@@ -979,7 +1003,22 @@ extern \"C\" int hipengine_qwen4_exp_q5_1_selected_grouped_prefill_pair2_bf16_bf16\n   if (!input || !starts || !weights || !output || rows <= 0 || experts <= 0 ||\n       k <= 0 || k % 32 || k > 4096 || n <= 0)\n     return static_cast<int>(hipErrorInvalidValue);\n-  hipLaunchKernelGGL(q5_1_selected_grouped_prefill_pair2_bf16_kernel,\n+  hipLaunchKernelGGL((q5_1_selected_grouped_prefill_pair2_bf16_kernel<false>),\n+      dim3(static_cast<uint32_t>((n+7)/8), static_cast<uint32_t>(experts < 64 ? experts : 64)),\n+      dim3(128), 8*256*sizeof(float)+(k/32)*24, stream,\n+      static_cast<const uint16_t*>(input), static_cast<const int64_t*>(starts),\n+      static_cast<const uint8_t*>(weights), static_cast<uint16_t*>(output),\n+      rows, experts, k, n);\n+  return static_cast<int>(hipGetLastError());\n+}\n+\n+extern \"C\" int hipengine_qwen4_exp_q5_1_selected_grouped_prefill_pair2_wave_reduce_bf16_bf16_out(\n+    const void* input, const void* starts, const void* weights, void* output,\n+    int64_t rows, int64_t experts, int64_t k, int64_t n, hipStream_t stream) {\n+  if (!input || !starts || !weights || !output || rows <= 0 || experts <= 0 ||\n+      k <= 0 || k % 32 || k > 4096 || n <= 0)\n+    return static_cast<int>(hipErrorInvalidValue);\n+  hipLaunchKernelGGL((q5_1_selected_grouped_prefill_pair2_bf16_kernel<true>),\n       dim3(static_cast<uint32_t>((n+7)/8), static_cast<uint32_t>(experts < 64 ? experts : 64)),\n       dim3(128), 8*256*sizeof(float)+(k/32)*24, stream,\n       static_cast<const uint16_t*>(input), static_cast<const int64_t*>(starts),\ndiff --git a/hipengine/kernels/hip_gfx1100/quant/qwen4_exp_q5_1.py b/hipengine/kernels/hip_gfx1100/quant/qwen4_exp_q5_1.py\nindex e02c9cab7..ce5a68c2b 100644\n--- a/hipengine/kernels/hip_gfx1100/quant/qwen4_exp_q5_1.py\n+++ b/hipengine/kernels/hip_gfx1100/quant/qwen4_exp_q5_1.py\n@@ -329,6 +329,7 @@ def qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_\n     library: ctypes.CDLL | None = None,\n     runtime: HipRuntime | None = None,\n     _pair: bool = False,\n+    _wave_reduce: bool = False,\n ) -> None:\n     \"\"\"Run the PF-3 M1 candidate: fused single-loop logical256 Q5_1 row8/\n     output8 over a fixed 64-CTA expert grid (strict fallback:\n@@ -344,7 +345,8 @@ def qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_\n     runtime = runtime or get_hip_runtime()\n     fn = signed_kernel_fn(\n         library,\n-        (\"hipengine_qwen4_exp_q5_1_selected_grouped_prefill_pair2_bf16_bf16_out\" if _pair else\n+        (\"hipengine_qwen4_exp_q5_1_selected_grouped_prefill_pair2_wave_reduce_bf16_bf16_out\" if _wave_reduce else\n+         \"hipengine_qwen4_exp_q5_1_selected_grouped_prefill_pair2_bf16_bf16_out\" if _pair else\n          \"hipengine_qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m1_bf16_bf16_out\"),\n         _ARGS_GROUPED,\n         ctypes.c_int,\n@@ -368,6 +370,10 @@ def qwen4_exp_q5_1_selected_grouped_prefill_pair2_bf16_bf16_out(*args, **kwargs)\n     qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m1_bf16_bf16_out(\n         *args, **kwargs, _pair=True)\n \n+def qwen4_exp_q5_1_selected_grouped_prefill_pair2_wave_reduce_bf16_bf16_out(*args, **kwargs):\n+    qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m1_bf16_bf16_out(\n+        *args, **kwargs, _pair=True, _wave_reduce=True)\n+\n \n def qwen4_exp_q5_1_selected_weighted_sum_logical256_t64_bf16_bf16_out(\n     input_ptr: int,\n@@ -574,6 +580,12 @@ def qwen4_exp_q5_1_selected_gemv_bf16_bf16_out(\n \n \n def register_qwen4_exp_q5_1_kernels(*, replace: bool = True) -> None:\n+    register(\n+        KernelKey(\"hip_gfx1100\", \"moe_linear\", \"gguf_q5_1\",\n+                  \"selected_grouped_prefill_pair2_wave_reduce_bf16_bf16_out\"),\n+        qwen4_exp_q5_1_selected_grouped_prefill_pair2_wave_reduce_bf16_bf16_out,\n+        replace=replace,\n+    )\n     register(\n         KernelKey(\"hip_gfx1100\", \"moe_linear\", \"gguf_q5_1\",\n                   \"selected_grouped_prefill_pair2_bf16_bf16_out\"),\ndiff --git a/scripts/qwen4exp_q51_pair_screen.py b/scripts/qwen4exp_q51_pair_screen.py\nindex af0d7a4d4..1b46dad17 100644\n--- a/scripts/qwen4exp_q51_pair_screen.py\n+++ b/scripts/qwen4exp_q51_pair_screen.py\n@@ -17,7 +17,7 @@ from hipengine.core.memory import free\n from hipengine.loading.gguf import GGUFReader, discover_gguf_files\n from hipengine.kernels.hip_gfx1100.quant import qwen4_exp_q5_1 as q5\n from scripts.qwen4exp_canonical_ar_bench import _git_metadata, _host_metadata\n-from tests.test_qwen4exp_q51_pair import PARENT,CANDIDATE\n+from tests.test_qwen4exp_q51_pair import PARENT,CANDIDATE,WAVE_REDUCE\n from tests.test_qwen4_exp_pf3_moe_schedules import _upload,_alloc,_download,_make_activation\n \n \n@@ -29,6 +29,7 @@ def main():\n     p.add_argument(\"--compiler-version-file\",type=Path,required=True)\n     p.add_argument(\"--require-cached-build\",action=\"store_true\")\n     p.add_argument(\"--output\",type=Path,required=True)\n+    p.add_argument(\"--wave-reduce\",action=\"store_true\")\n     a=p.parse_args()\n     if a.pairs<1 or any(r<1 for r in a.rows):\n         p.error(\"positive rows/pairs required\")\n@@ -67,7 +68,8 @@ def main():\n             dx,ds=[_upload(v,runtime,allocations) for v in (x,starts)]\n             out=[_alloc((compact,2560),np.uint16,runtime,allocations) for _ in range(4)]\n             def run(candidate):\n-                fn=getattr(q5,CANDIDATE if candidate else PARENT)\n+                fn=getattr(q5,(WAVE_REDUCE if candidate else CANDIDATE)\n+                           if a.wave_reduce else (CANDIDATE if candidate else PARENT))\n                 for i,w in enumerate(weights):\n                     fn(dx.ptr,ds.ptr,w.ptr,out[(2 if candidate else 0)+i].ptr,\n                        compact,512,640,2560,library=library,runtime=runtime)\ndiff --git a/tests/test_qwen4exp_q51_pair.py b/tests/test_qwen4exp_q51_pair.py\nindex 68095df5f..5e2d81f18 100644\n--- a/tests/test_qwen4exp_q51_pair.py\n+++ b/tests/test_qwen4exp_q51_pair.py\n@@ -10,6 +10,7 @@ from tests.test_qwen4_exp_pf3_moe_schedules import (\n \n PARENT=\"qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m1_bf16_bf16_out\"\n CANDIDATE=\"qwen4_exp_q5_1_selected_grouped_prefill_pair2_bf16_bf16_out\"\n+WAVE_REDUCE=\"qwen4_exp_q5_1_selected_grouped_prefill_pair2_wave_reduce_bf16_bf16_out\"\n \n \n def hip_available():\n@@ -20,14 +21,15 @@ def hip_available():\n         return False\n \n \n-def test_pair_registry_and_bounds():\n+@pytest.mark.parametrize(\"candidate_name\", [CANDIDATE, WAVE_REDUCE])\n+def test_pair_registry_and_bounds(candidate_name):\n     from types import SimpleNamespace\n     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels\n     from hipengine.kernels.registry import resolve\n     register_gfx1151_kernels(replace=True)\n     fn=resolve(backend=\"hip_gfx1151\",layer=\"moe_linear\",quant=\"gguf_q5_1\",\n-               variant=\"selected_grouped_prefill_pair2_bf16_bf16_out\")\n-    assert fn is getattr(q5,CANDIDATE)\n+               variant=candidate_name.removeprefix(\"qwen4_exp_q5_1_\"))\n+    assert fn is getattr(q5,candidate_name)\n     assert callable(resolve(backend=\"hip_gfx1151\",layer=\"moe_linear\",quant=\"gguf_q5_1\",\n         variant=\"selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m1_bf16_bf16_out\"))\n     with pytest.raises(ValueError,match=\"4096\"):\n@@ -35,9 +37,10 @@ def test_pair_registry_and_bounds():\n \n \n @pytest.mark.skipif(not hip_available(),reason=\"HIP unavailable\")\n+@pytest.mark.parametrize(\"candidate_name\", [CANDIDATE, WAVE_REDUCE])\n @pytest.mark.parametrize(\"rows,experts,k,n\",[(17,8,96,7),(65,64,640,33),(5120,512,640,2560)])\n-def test_pair_exact(rows,experts,k,n):\n-    candidate=getattr(q5,CANDIDATE)\n+def test_pair_exact(rows,experts,k,n,candidate_name):\n+    candidate=getattr(q5,candidate_name)\n     runtime=get_hip_runtime()\n     library=q5.build_qwen4_exp_q5_1(load=True)\n     rng=np.random.default_rng(5151)\n",
+  "tests_passed": 8,
+  "disposition": "Exact wave-tail pair2 variant loses at both tested token counts; no model admission or default change.",
+  "limitations": [
+    "Actual weights, synthetic routing and activations; kernel-only rotating two-bank screen.",
+    "No profiler resource claim; rejected before further expensive validation."
+  ]
+}

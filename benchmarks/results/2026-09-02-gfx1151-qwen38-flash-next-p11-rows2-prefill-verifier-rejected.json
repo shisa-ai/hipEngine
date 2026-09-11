@@ -1,0 +1,69 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_p11_rows2_prefill_verifier_red",
+  "status": "rejected_strict_state_and_arithmetic_parity",
+  "performance_claim": false,
+  "source": {
+    "head_before_candidate": "bf3186b83",
+    "candidate_committed": false,
+    "candidate_removed": true
+  },
+  "host": {
+    "identity": "zbook",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "gpu_clock_policy": "auto"
+  },
+  "workload": {
+    "fixture": "benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+    "case": "code-p512",
+    "prefix_tokens": 16,
+    "verify_rows": 2,
+    "input_token_ids": [248046, 271],
+    "execution_profile": "production"
+  },
+  "amdahl_declaration": {
+    "W_seconds": 51.711070590004965,
+    "C_seconds": 49.383127938017424,
+    "O_ms_per_serial_target_row": 87.65228492640225,
+    "s": null,
+    "zero_cost_ceiling": "not assigned because correctness RED failed before timing",
+    "arithmetic_class": "candidate claimed T0 strict and failed",
+    "scope": "rows=2 Qwen4Exp target verification via prompt _prefill_chunk arithmetic",
+    "mechanism": "reuse multirow prompt prefill, then rows-capable GR/head/logit output",
+    "strict_fallback": "verify_target_block_serial_exact / serial target.step",
+    "overlap_exclusions": ["no performance measurement", "no provider wiring", "no graph trace"]
+  },
+  "result": {
+    "serial_token_ids": [198, 248045],
+    "bulk_token_ids": [198, 248045],
+    "token_ids_exact": true,
+    "hidden_rows_exact": false,
+    "hidden_max_abs": 0.40625,
+    "logit_rows_exact": [false, false],
+    "logit_max_abs": [0.18033313751220703, 1.3686113357543945],
+    "state_exact": {
+      "gdn_matrix": false,
+      "gdn_conv": false,
+      "ple_conv": false,
+      "residual": false
+    },
+    "position_exact": true,
+    "ple_hash_exact": true
+  },
+  "retained_groundwork": [
+    "lazy rows<=8 output storage",
+    "byte-exact D2D mutable-state snapshots",
+    "all-or-nothing state/cursor/hash transactions",
+    "rows1-8 serial verifier oracle"
+  ],
+  "decision": {
+    "promoted": false,
+    "provider_wired": false,
+    "rocprof_run": false,
+    "reason": "Matching top-1 IDs is insufficient: hidden, logits, and all mutable recurrent/residual state owners fail strict parity. Prompt-prefill arithmetic cannot be reused as the batch-invariant verifier.",
+    "next": "Implement verifier-specific serial-order arithmetic or a declared production numerical candidate with binding state/control gates; do not relax this RED based on top-1 agreement."
+  },
+  "command": "HIPENGINE_HIP_ARCH=gfx1151 uv run python /tmp/qwen4exp_verify_red_probe.py"
+}

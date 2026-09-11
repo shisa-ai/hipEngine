@@ -125,6 +125,52 @@ class Qwen35GGUFTokenizer:
 
 
 @dataclass
+class Qwen4ExpGGUFTokenizer(Qwen35GGUFTokenizer):
+    """Qwen4Exp byte-BPE plus frozen chat-template ownership."""
+
+    bos_token_id: int | None = None
+    add_bos_token: bool = False
+    chat_template: str = ""
+
+    @classmethod
+    def from_gguf_info(cls, info: GGUFModelInfo) -> "Qwen4ExpGGUFTokenizer":
+        metadata = info.metadata
+        if metadata.get("general.architecture") != "qwen4exp":
+            raise ValueError("Qwen4Exp tokenizer requires general.architecture='qwen4exp'")
+        model = metadata.get("tokenizer.ggml.model")
+        pre = metadata.get("tokenizer.ggml.pre")
+        if model != "gpt2" or pre != "qwen35":
+            raise ValueError(
+                "Qwen4Exp GGUF tokenizer expected 'gpt2'/'qwen35', "
+                f"got {model!r}/{pre!r}"
+            )
+        return cls(
+            tokens=tuple(str(token) for token in metadata["tokenizer.ggml.tokens"]),
+            merges=tuple(str(merge) for merge in metadata["tokenizer.ggml.merges"]),
+            token_types=tuple(int(kind) for kind in metadata["tokenizer.ggml.token_type"]),
+            bos_token_id=_optional_int(metadata.get("tokenizer.ggml.bos_token_id")),
+            eos_token_id=_optional_int(metadata.get("tokenizer.ggml.eos_token_id")),
+            padding_token_id=_optional_int(metadata.get("tokenizer.ggml.padding_token_id")),
+            add_bos_token=bool(metadata.get("tokenizer.ggml.add_bos_token", False)),
+            chat_template=str(metadata.get("tokenizer.chat_template", "")),
+        )
+
+    @property
+    def stop_token_ids(self) -> tuple[int, ...]:
+        return () if self.eos_token_id is None else (int(self.eos_token_id),)
+
+    def encode(self, text: str, *, add_special_tokens: bool = False) -> list[int]:
+        ids = super().encode(text)
+        if add_special_tokens and self.add_bos_token:
+            if self.bos_token_id is None:
+                raise ValueError(
+                    "Qwen4Exp tokenizer requests BOS insertion but has no BOS token ID"
+                )
+            ids.insert(0, self.bos_token_id)
+        return ids
+
+
+@dataclass
 class LagunaGGUFTokenizer(Qwen35GGUFTokenizer):
     """HF byte-BPE tokenizer reconstructed entirely from Laguna GGUF metadata."""
 
@@ -316,4 +362,9 @@ def _optional_int(value) -> int | None:
     return None if value is None else int(value)
 
 
-__all__ = ["LagunaGGUFTokenizer", "Qwen35GGUFTokenizer", "bytes_to_unicode"]
+__all__ = [
+    "LagunaGGUFTokenizer",
+    "Qwen35GGUFTokenizer",
+    "Qwen4ExpGGUFTokenizer",
+    "bytes_to_unicode",
+]

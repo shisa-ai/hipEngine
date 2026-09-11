@@ -1,0 +1,749 @@
+{
+  "schema": 1,
+  "date": "2026-09-01",
+  "kind": "gfx1151_qwen38_w1_target_window_family_launch_attribution",
+  "status": "diagnostic_complete",
+  "performance_claim": false,
+  "source": "/tmp/wy-w0-rowcurve-trace raw.json + w0-trace_kernel_trace.csv",
+  "classification": "family substring in kernel name; dispatch wholly contained in recorded target-pass [start,end]",
+  "widths": {
+    "2": {
+      "q4": {
+        "passes": [
+          {
+            "launches": 48,
+            "ms": 12.754331
+          },
+          {
+            "launches": 55,
+            "ms": 14.595589
+          },
+          {
+            "launches": 47,
+            "ms": 12.624289
+          },
+          {
+            "launches": 57,
+            "ms": 14.845617
+          },
+          {
+            "launches": 47,
+            "ms": 12.510874
+          },
+          {
+            "launches": 47,
+            "ms": 12.564139
+          },
+          {
+            "launches": 54,
+            "ms": 14.020471
+          },
+          {
+            "launches": 77,
+            "ms": 26.132596
+          }
+        ],
+        "launches_median": 51.0,
+        "ms_median": 13.387401,
+        "launches_mean": 54,
+        "ms_mean": 15.00598825
+      },
+      "q5": {
+        "passes": [
+          {
+            "launches": 12,
+            "ms": 2.086754
+          },
+          {
+            "launches": 13,
+            "ms": 2.268856
+          },
+          {
+            "launches": 12,
+            "ms": 2.123383
+          },
+          {
+            "launches": 13,
+            "ms": 2.26056
+          },
+          {
+            "launches": 12,
+            "ms": 2.091042
+          },
+          {
+            "launches": 12,
+            "ms": 2.098939
+          },
+          {
+            "launches": 12,
+            "ms": 2.082588
+          },
+          {
+            "launches": 14,
+            "ms": 1.790437
+          }
+        ],
+        "launches_median": 12.0,
+        "ms_median": 2.0949904999999998,
+        "launches_mean": 12.5,
+        "ms_mean": 2.100319875
+      },
+      "q6": {
+        "passes": [
+          {
+            "launches": 20,
+            "ms": 7.146368
+          },
+          {
+            "launches": 22,
+            "ms": 7.957493
+          },
+          {
+            "launches": 20,
+            "ms": 7.201917
+          },
+          {
+            "launches": 22,
+            "ms": 7.881152
+          },
+          {
+            "launches": 20,
+            "ms": 7.129499
+          },
+          {
+            "launches": 20,
+            "ms": 7.128697
+          },
+          {
+            "launches": 21,
+            "ms": 7.481077
+          },
+          {
+            "launches": 22,
+            "ms": 5.819039
+          }
+        ],
+        "launches_median": 20.5,
+        "ms_median": 7.1741425,
+        "launches_mean": 20.875,
+        "ms_mean": 7.21815525
+      }
+    },
+    "3": {
+      "q4": {
+        "passes": [
+          {
+            "launches": 67,
+            "ms": 17.991279
+          },
+          {
+            "launches": 71,
+            "ms": 18.399399
+          },
+          {
+            "launches": 62,
+            "ms": 16.74655
+          },
+          {
+            "launches": 61,
+            "ms": 15.704225
+          },
+          {
+            "launches": 66,
+            "ms": 17.506292
+          },
+          {
+            "launches": 69,
+            "ms": 18.327987
+          },
+          {
+            "launches": 75,
+            "ms": 19.970362
+          },
+          {
+            "launches": 54,
+            "ms": 13.45902
+          }
+        ],
+        "launches_median": 66.5,
+        "ms_median": 17.748785499999997,
+        "launches_mean": 65.625,
+        "ms_mean": 17.26313925
+      },
+      "q5": {
+        "passes": [
+          {
+            "launches": 11,
+            "ms": 2.555516
+          },
+          {
+            "launches": 11,
+            "ms": 2.557882
+          },
+          {
+            "launches": 10,
+            "ms": 2.338428
+          },
+          {
+            "launches": 9,
+            "ms": 2.097977
+          },
+          {
+            "launches": 10,
+            "ms": 2.352052
+          },
+          {
+            "launches": 11,
+            "ms": 2.574472
+          },
+          {
+            "launches": 12,
+            "ms": 2.791277
+          },
+          {
+            "launches": 13,
+            "ms": 1.848911
+          }
+        ],
+        "launches_median": 11.0,
+        "ms_median": 2.4537839999999997,
+        "launches_mean": 10.875,
+        "ms_mean": 2.389564375
+      },
+      "q6": {
+        "passes": [
+          {
+            "launches": 30,
+            "ms": 10.375631
+          },
+          {
+            "launches": 32,
+            "ms": 11.148921
+          },
+          {
+            "launches": 29,
+            "ms": 10.085164
+          },
+          {
+            "launches": 29,
+            "ms": 9.979892
+          },
+          {
+            "launches": 30,
+            "ms": 10.472653
+          },
+          {
+            "launches": 32,
+            "ms": 11.155572
+          },
+          {
+            "launches": 32,
+            "ms": 11.19777
+          },
+          {
+            "launches": 21,
+            "ms": 7.322699
+          }
+        ],
+        "launches_median": 30.0,
+        "ms_median": 10.424142,
+        "launches_mean": 29.375,
+        "ms_mean": 10.21728775
+      }
+    },
+    "4": {
+      "q4": {
+        "passes": [
+          {
+            "launches": 57,
+            "ms": 18.259703
+          },
+          {
+            "launches": 59,
+            "ms": 18.714923
+          },
+          {
+            "launches": 69,
+            "ms": 21.998482
+          },
+          {
+            "launches": 70,
+            "ms": 22.251993
+          },
+          {
+            "launches": 69,
+            "ms": 21.961733
+          },
+          {
+            "launches": 85,
+            "ms": 27.09356
+          },
+          {
+            "launches": 72,
+            "ms": 22.891678
+          },
+          {
+            "launches": 59,
+            "ms": 15.518485
+          }
+        ],
+        "launches_median": 69.0,
+        "ms_median": 21.9801075,
+        "launches_mean": 67.5,
+        "ms_mean": 21.086319624999998
+      },
+      "q5": {
+        "passes": [
+          {
+            "launches": 11,
+            "ms": 4.139407
+          },
+          {
+            "launches": 11,
+            "ms": 4.13552
+          },
+          {
+            "launches": 12,
+            "ms": 4.502449
+          },
+          {
+            "launches": 12,
+            "ms": 4.519401
+          },
+          {
+            "launches": 12,
+            "ms": 4.510383
+          },
+          {
+            "launches": 15,
+            "ms": 5.626998
+          },
+          {
+            "launches": 13,
+            "ms": 4.888131
+          },
+          {
+            "launches": 14,
+            "ms": 2.513279
+          }
+        ],
+        "launches_median": 12.0,
+        "ms_median": 4.506416,
+        "launches_mean": 12.5,
+        "ms_mean": 4.354446
+      },
+      "q6": {
+        "passes": [
+          {
+            "launches": 40,
+            "ms": 14.26517
+          },
+          {
+            "launches": 40,
+            "ms": 14.189672
+          },
+          {
+            "launches": 40,
+            "ms": 14.171872
+          },
+          {
+            "launches": 42,
+            "ms": 14.949089
+          },
+          {
+            "launches": 40,
+            "ms": 14.170909
+          },
+          {
+            "launches": 46,
+            "ms": 15.772959
+          },
+          {
+            "launches": 42,
+            "ms": 14.928377
+          },
+          {
+            "launches": 22,
+            "ms": 7.917937
+          }
+        ],
+        "launches_median": 40.0,
+        "ms_median": 14.227421,
+        "launches_mean": 39,
+        "ms_mean": 13.795748125
+      }
+    },
+    "5": {
+      "q4": {
+        "passes": [
+          {
+            "launches": 15,
+            "ms": 5.773993
+          },
+          {
+            "launches": 15,
+            "ms": 5.79339
+          },
+          {
+            "launches": 15,
+            "ms": 5.7536
+          },
+          {
+            "launches": 15,
+            "ms": 5.789745
+          },
+          {
+            "launches": 15,
+            "ms": 5.734681
+          },
+          {
+            "launches": 15,
+            "ms": 5.731916
+          },
+          {
+            "launches": 15,
+            "ms": 5.777161
+          },
+          {
+            "launches": 24,
+            "ms": 7.448377
+          }
+        ],
+        "launches_median": 15.0,
+        "ms_median": 5.775577,
+        "launches_mean": 16.125,
+        "ms_mean": 5.975357875
+      },
+      "q5": {
+        "passes": [
+          {
+            "launches": 0,
+            "ms": 0.0
+          },
+          {
+            "launches": 0,
+            "ms": 0.0
+          },
+          {
+            "launches": 0,
+            "ms": 0.0
+          },
+          {
+            "launches": 0,
+            "ms": 0.0
+          },
+          {
+            "launches": 0,
+            "ms": 0.0
+          },
+          {
+            "launches": 0,
+            "ms": 0.0
+          },
+          {
+            "launches": 0,
+            "ms": 0.0
+          },
+          {
+            "launches": 0,
+            "ms": 0.0
+          }
+        ],
+        "launches_median": 0.0,
+        "ms_median": 0.0,
+        "launches_mean": 0,
+        "ms_mean": 0.0
+      },
+      "q6": {
+        "passes": [
+          {
+            "launches": 7,
+            "ms": 31.076035
+          },
+          {
+            "launches": 7,
+            "ms": 30.921144
+          },
+          {
+            "launches": 7,
+            "ms": 30.845604
+          },
+          {
+            "launches": 8,
+            "ms": 37.255711
+          },
+          {
+            "launches": 8,
+            "ms": 37.44719
+          },
+          {
+            "launches": 8,
+            "ms": 37.165744
+          },
+          {
+            "launches": 7,
+            "ms": 30.72698
+          },
+          {
+            "launches": 13,
+            "ms": 30.989914
+          }
+        ],
+        "launches_median": 7.5,
+        "ms_median": 31.0329745,
+        "launches_mean": 8.125,
+        "ms_mean": 33.30354025
+      }
+    },
+    "6": {
+      "q4": {
+        "passes": [
+          {
+            "launches": 10,
+            "ms": 3.865614
+          },
+          {
+            "launches": 15,
+            "ms": 5.778803
+          },
+          {
+            "launches": 10,
+            "ms": 3.87956
+          },
+          {
+            "launches": 15,
+            "ms": 5.801446
+          },
+          {
+            "launches": 15,
+            "ms": 5.784655
+          },
+          {
+            "launches": 10,
+            "ms": 3.874673
+          },
+          {
+            "launches": 10,
+            "ms": 3.890821
+          },
+          {
+            "launches": 71,
+            "ms": 18.331648
+          }
+        ],
+        "launches_median": 12.5,
+        "ms_median": 4.834811999999999,
+        "launches_mean": 19.5,
+        "ms_mean": 6.4009025
+      },
+      "q5": {
+        "passes": [
+          {
+            "launches": 0,
+            "ms": 0.0
+          },
+          {
+            "launches": 0,
+            "ms": 0.0
+          },
+          {
+            "launches": 0,
+            "ms": 0.0
+          },
+          {
+            "launches": 0,
+            "ms": 0.0
+          },
+          {
+            "launches": 0,
+            "ms": 0.0
+          },
+          {
+            "launches": 0,
+            "ms": 0.0
+          },
+          {
+            "launches": 0,
+            "ms": 0.0
+          },
+          {
+            "launches": 12,
+            "ms": 2.842252
+          }
+        ],
+        "launches_median": 0.0,
+        "ms_median": 0.0,
+        "launches_mean": 1.5,
+        "ms_mean": 0.3552815
+      },
+      "q6": {
+        "passes": [
+          {
+            "launches": 5,
+            "ms": 29.201157
+          },
+          {
+            "launches": 7,
+            "ms": 36.960717
+          },
+          {
+            "launches": 6,
+            "ms": 36.728963
+          },
+          {
+            "launches": 7,
+            "ms": 36.968973
+          },
+          {
+            "launches": 7,
+            "ms": 36.825624
+          },
+          {
+            "launches": 5,
+            "ms": 28.947882
+          },
+          {
+            "launches": 5,
+            "ms": 29.03729
+          },
+          {
+            "launches": 32,
+            "ms": 11.11674
+          }
+        ],
+        "launches_median": 6.5,
+        "ms_median": 32.96506,
+        "launches_mean": 9.25,
+        "ms_mean": 30.723418249999998
+      }
+    },
+    "8": {
+      "q4": {
+        "passes": [
+          {
+            "launches": 10,
+            "ms": 3.868659
+          },
+          {
+            "launches": 8,
+            "ms": 2.911141
+          },
+          {
+            "launches": 7,
+            "ms": 2.583527
+          },
+          {
+            "launches": 10,
+            "ms": 3.898395
+          },
+          {
+            "launches": 10,
+            "ms": 3.88553
+          },
+          {
+            "launches": 10,
+            "ms": 3.898876
+          },
+          {
+            "launches": 8,
+            "ms": 2.911584
+          },
+          {
+            "launches": 89,
+            "ms": 28.27197
+          }
+        ],
+        "launches_median": 10.0,
+        "ms_median": 3.8770945,
+        "launches_mean": 19,
+        "ms_mean": 6.52871025
+      },
+      "q5": {
+        "passes": [
+          {
+            "launches": 0,
+            "ms": 0.0
+          },
+          {
+            "launches": 0,
+            "ms": 0.0
+          },
+          {
+            "launches": 0,
+            "ms": 0.0
+          },
+          {
+            "launches": 0,
+            "ms": 0.0
+          },
+          {
+            "launches": 0,
+            "ms": 0.0
+          },
+          {
+            "launches": 0,
+            "ms": 0.0
+          },
+          {
+            "launches": 0,
+            "ms": 0.0
+          },
+          {
+            "launches": 16,
+            "ms": 5.979102
+          }
+        ],
+        "launches_median": 0.0,
+        "ms_median": 0.0,
+        "launches_mean": 2,
+        "ms_mean": 0.74738775
+      },
+      "q6": {
+        "passes": [
+          {
+            "launches": 5,
+            "ms": 38.843692
+          },
+          {
+            "launches": 5,
+            "ms": 38.513111
+          },
+          {
+            "launches": 5,
+            "ms": 38.604562
+          },
+          {
+            "launches": 5,
+            "ms": 38.693649
+          },
+          {
+            "launches": 5,
+            "ms": 38.754564
+          },
+          {
+            "launches": 5,
+            "ms": 38.564486
+          },
+          {
+            "launches": 5,
+            "ms": 38.554268
+          },
+          {
+            "launches": 48,
+            "ms": 16.600552
+          }
+        ],
+        "launches_median": 5.0,
+        "ms_median": 38.584524,
+        "launches_mean": 10.375,
+        "ms_mean": 35.8911105
+      }
+    }
+  },
+  "flatness_r32_over_r8_median_ms": {
+    "q4": 0.2896077065294451,
+    "q5": 0.0,
+    "q6": 5.37827677663219
+  },
+  "finding": "Operation-complete target windows contradict the whole-cell W0 aggregate attribution: width8/width2 median family time is below 1.25x for Q4/Q5/Q6. The apparent aggregate row-scaling wall is outside the target-pass window/caused by cell composition, so another isolated W1 leaf cannot cover it; existing Q4/Q5/Q6 B-stationary leaves were screened and their valid-route combinations were complete-wall neutral."
+}

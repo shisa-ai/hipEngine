@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "date": "2026-08-28",
+  "status": "accepted_same_host_reference_gap",
+  "scope": "Same-host same-artifact Flash-Next Q4 performance reference before focused parity work",
+  "host": {"identity":"zbook","machine_id":"87c566d30a5645cf8d12ed7ef6b6e1e8","cpu":"AMD Ryzen AI Max+ Pro 395","gpu":"AMD Radeon 8060S Graphics","arch":"gfx1151"},
+  "model": {"id":"Qwen/Qwen3.8-Flash-Next","quant":"Unsloth UD-Q4_K_XL","revision":"8bdc666649440e9bdc97e16f3f75782c98478ff5","first_part":"/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf","total_bytes":111334654784},
+  "llama_cpp": {"commit":"bea3b12daee45876b0129a3602dc8f534ce30bf0","vulkan_binary_sha256":"16fff318f3983c34d95b3b53526865f51e0bf274ac7f7693751113c12f24b8bf","hip_binary_sha256":"ba322fb4584839fa2938dbab69501253334da8658ef3a18b6be806f118285f05","builds":"out-of-tree Release, native gfx1151/RADV; HIP uses AMDGPU_TARGETS=gfx1151, HIP graphs/MMQ MFMA/no-VMM","parameters":{"repetitions":3,"n_batch":2048,"n_ubatch":512,"gpu_layers":999,"kv_key":"bf16","kv_value":"bf16","flash_attention":"auto"}},
+  "commands": {"vulkan":"/tmp/qwen4exp-vulkan-build/bin/llama-bench -m <first-part> -p 508,1006 -n 32 -r 3 -o json -ngl 999 -ctk bf16 -ctv bf16 -fa auto","hip":"/tmp/qwen4exp-hip-bench-build/bin/llama-bench -m <first-part> -p 508,1006 -n 32 -r 3 -o json -ngl 999 -ctk bf16 -ctv bf16 -fa auto","hipengine_random508":"uv run python /tmp/qwen4exp_hip_matched_llamabench.py"},
+  "standard_shape_matrix": {
+    "vulkan": {"pp508_tok_s":316.379678,"pp508_stddev":1.470223,"pp1006_tok_s":290.45029,"pp1006_stddev":7.187088,"tg32_tok_s":18.716255,"tg32_stddev":0.51813},
+    "hip": {"pp508_tok_s":274.996036,"pp508_stddev":29.472884,"pp1006_tok_s":284.485107,"pp1006_stddev":2.387739,"tg32_tok_s":15.847834,"tg32_stddev":0.213069},
+    "hipengine_retained_exact": {"pp508_steady_tok_s":58.466266604826316,"pp1006_tok_s":55.04618012527664,"decode32_tok_s":5.89,"sources":["benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-exact-q4-metadata-chunk256.json","benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-q5-wave-tail.json"]},
+    "vulkan_over_hipengine": {"pp508":5.411320003351869,"pp1006":5.27648402375932,"tg32":3.177632427843803},
+    "hip_over_hipengine": {"pp508":4.703499162323791,"pp1006":5.168117140055053,"tg32":2.6906339558573857}
+  },
+  "deterministic_random508_no_warmup": {
+    "protocol":"llama-bench std::rand()%248320; hipEngine reproduces glibc srand(1) streams; three repetitions, no warmup",
+    "token_checksums":[16487537937,16588158050,16513448315],
+    "hipengine_tok_s":[29.097431967827717,51.96984853510515,56.74478564181564],
+    "vulkan_tok_s":[318.214,334.417,334.123],
+    "hip_tok_s":[275.62,267.883,310.71],
+    "steady_last_two": {"hipengine_tok_s":54.35731708846039,"vulkan_tok_s":334.27,"vulkan_over_hipengine":6.149494086619716,"hip_tok_s":289.2965,"hip_over_hipengine":5.322126173541689}
+  },
+  "correctness_reference": {"artifact":"benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-text-bringup.json","same_artifact_llama_full_logits_passed":true,"canonical_top1":"10/10","max_kl":0.049310431044258356},
+  "comparison_policy":"Same physical host, same GGUF, source lineage, KV types, offload, shape, timing tool, and repetition count. Standard llama-bench uses deterministic synthetic token IDs while retained hipEngine p508/p1006 rows use the campaign natural prompt; therefore the standard matrix is a shape-matched reference gap, not a token-identical old-to-new claim. The separate random508 protocol reproduces llama-bench token streams for routing-sensitive diagnosis.",
+  "decision":"The Q4 performance gap is binding: prioritize prefill kernel families and launch composition before optional quant or broader feature work."
+}

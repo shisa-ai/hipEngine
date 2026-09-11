@@ -1,0 +1,221 @@
+{
+  "schema": 1,
+  "disposition": "diagnostic_numerical_reference_only_performance_unqualified",
+  "performance_claim": false,
+  "promotion_blocker": "All three tested output widths lose to exact pair2; no model route or full-profile qualification. Retained only to validate a different cooperative weight-loading implementation.",
+  "tile_screens": [
+    {"tile_m": 16, "tile_n": 16, "repetitions_per_arm": 12, "exact_ms": 17.43019275, "single_plane_ms": 18.000113083333332, "two_plane_ms": 19.398885333333332},
+    {"tile_m": 32, "tile_n": 16, "repetitions_per_arm": 12, "exact_ms": 17.405065583333332, "single_plane_ms": 18.189220249999998, "two_plane_ms": 18.236706916666666},
+    {"tile_m": 64, "tile_n": 16, "repetitions_per_arm": 12, "exact_ms": 17.391592, "single_plane_ms": 18.7703215, "two_plane_ms": 17.823459}
+  ],
+  "validation": {
+    "red": "Missing candidate registry key; CPU reconstruction floor declared before implementation",
+    "tests": "30 focused tests pass: residual WMMA, exact Q4 bundle, existing selected-WMMA regression bundle excluding W7900-named exported-symbol probe",
+    "numerical_contract": "Finite/deterministic outputs, >=98% parent BF16 agreement on fixtures, CPU max row KL<=0.05/top1>=90%; stronger production gates unchanged and unrun",
+    "tile_parity": "Two-plane outputs equal across16/32/64 output widths on fixture shapes",
+    "control_followup": "Final harness verifies padded starts,tile IDs,padded total and before/after gate/up as well as SiLU determinism",
+    "top1_scope": "Feature argmax of a projection/SiLU row, not language-model token top1",
+    "trace16": "/tmp/qwen4exp-q4-residual-wmma-trace/gfx1151/3511242_kernel_trace.csv",
+    "trace64": "/tmp/qwen4exp-q4-residual-wmma-m64-trace/gfx1151/3522550_kernel_trace.csv",
+    "trace_command_prefix": "HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv -d OUTPUT_DIRECTORY --",
+    "trace_arguments": "Recorded screen command with --repetitions 3, matching --tile-m16 or64 and corresponding output path",
+    "tile16_vgpr_single_two": [56,80],
+    "tile64_vgpr_single_two": [112,168],
+    "scratch_bytes": 0,
+    "lds_bytes": 0,
+    "tile64_kernel_mean_ms_single_two": [18.61116625,17.72894425],
+    "strict_pair2_registered_fallback": true
+  },
+  "raw_sha256": {
+    "/tmp/qwen4exp-q4-residual-wmma-code.json": "fc27183110b913f99b2dfdb2af356d64d47f3b3652f4434cd5c9322bcca2eb2d",
+    "/tmp/qwen4exp-q4-residual-wmma-m32-code.json": "4ba7277a47ef1e3450bf36fe2cb88df2f698902cdaa0f64ebbb3e7893c3a7839",
+    "/tmp/qwen4exp-q4-residual-wmma-m64-code.json": "7ee9f0a79c8de337da0098a267d7296c63f1b4d426cc9aa53a402bcf0cda1687"
+  },
+  "environment": {
+    "PATH_prefix": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin",
+    "LD_LIBRARY_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib",
+    "HIPENGINE_HIP_ARCH": "gfx1151",
+    "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-hipcc-version.txt",
+    "clock_power_controls_changed": false
+  },
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "24934b69202f29c83b11c89e8b1b06b35df4f148",
+    "tracked_clean": false
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "command": [
+    "scripts/qwen4exp_q4_residual_wmma_screen.py",
+    "--model-root",
+    "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--routing-capture",
+    "/tmp/qwen4exp-routing-categories.json",
+    "--output",
+    "/tmp/qwen4exp-q4-residual-wmma-code.json"
+  ],
+  "model_identity": {
+    "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+    "fingerprint": {
+      "algorithm": "sha256-directory-manifest-v1",
+      "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+      "size_bytes": 111334654784,
+      "sampled_bytes": 12582912,
+      "file_count": 4,
+      "exists": true,
+      "path_type": "directory"
+    }
+  },
+  "weights": [
+    {
+      "name": "blk.0.ffn_gate_exps.weight",
+      "sha256": "c52d2ded80cdbdb92f75c08ecfdd0ae3e2bc97198edda3d62ef8645df19a6947"
+    },
+    {
+      "name": "blk.0.ffn_up_exps.weight",
+      "sha256": "92e1eb072ea457687ae6b531c9402817c1d8ac6043a70ceed7986fd0e4997450"
+    }
+  ],
+  "arithmetic": "T2,not parent exact",
+  "runtime_default_changed": false,
+  "shape": [
+    5120,
+    2560,
+    640,
+    512
+  ],
+  "routing": {
+    "case_id": "code-p4096",
+    "chunk": 0,
+    "layer": 0,
+    "sha256": "d34381f22f85fc5603b87b32dd1487ad41246b32ca76d5355e24bee4f4f34766"
+  },
+  "boundary": "WMMA arms: GPU tile-map + concatenated gate/up + BF16 SiLU; exact arm: separate gate/up + same BF16 SiLU. Routing counts/compact input supplied.",
+  "limits": "Synthetic activations; known fixture padded launch count avoids D2H,so this is not a model-path latency claim or production numerical qualification.",
+  "arms": {
+    "exact_pair2": {
+      "ms": [
+        17.336521,
+        17.480831,
+        17.46419,
+        17.456055,
+        17.407874,
+        17.424946,
+        17.450644,
+        17.468749,
+        17.45929,
+        17.383789,
+        17.440896,
+        17.388528
+      ],
+      "mean_ms": 17.43019275,
+      "median_ms": 17.44577,
+      "order_mean_ms": [
+        17.40675225,
+        17.4495875,
+        17.4342385
+      ],
+      "gate_up": {
+        "bf16_element_agreement": 1.0,
+        "max_abs": 0.0,
+        "relative_l2": 0.0,
+        "row_top1_agreement": 1.0
+      },
+      "silu": {
+        "bf16_element_agreement": 1.0,
+        "max_abs": 0.0,
+        "relative_l2": 0.0,
+        "row_top1_agreement": 1.0
+      },
+      "deterministic": true
+    },
+    "wmma_f16": {
+      "ms": [
+        13.505973,
+        19.741613,
+        19.67039,
+        19.883259,
+        19.8731,
+        14.390452,
+        19.581352,
+        15.628987,
+        14.494247,
+        19.632348,
+        19.741824,
+        19.857812
+      ],
+      "mean_ms": 18.000113083333332,
+      "median_ms": 19.651369000000003,
+      "order_mean_ms": [
+        18.150733,
+        18.746381,
+        17.10322525
+      ],
+      "gate_up": {
+        "bf16_element_agreement": 0.8965966796875,
+        "max_abs": 0.00390625,
+        "relative_l2": 0.0008642534958198667,
+        "row_top1_agreement": 0.9994140625
+      },
+      "silu": {
+        "bf16_element_agreement": 0.8245651245117187,
+        "max_abs": 0.0009765625,
+        "relative_l2": 0.001249021734111011,
+        "row_top1_agreement": 0.9994140625
+      },
+      "deterministic": true
+    },
+    "wmma_f16x2": {
+      "ms": [
+        19.667144,
+        19.971745,
+        19.601921,
+        19.650884,
+        19.692932,
+        19.761831,
+        19.841631,
+        16.502345,
+        19.216248,
+        19.69189,
+        19.732326,
+        19.455727
+      ],
+      "mean_ms": 19.398885333333332,
+      "median_ms": 19.679517,
+      "order_mean_ms": [
+        19.71288725,
+        18.974837,
+        19.508931750000002
+      ],
+      "gate_up": {
+        "bf16_element_agreement": 0.9964692687988281,
+        "max_abs": 0.001953125,
+        "relative_l2": 0.00018706433183979243,
+        "row_top1_agreement": 1.0
+      },
+      "silu": {
+        "bf16_element_agreement": 0.9937078857421875,
+        "max_abs": 0.00048828125,
+        "relative_l2": 0.00028018857119604945,
+        "row_top1_agreement": 1.0
+      },
+      "deterministic": true
+    }
+  },
+  "status": "screen_complete_not_model_qualified"
+}

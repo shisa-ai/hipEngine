@@ -193,7 +193,7 @@ curl -H 'Authorization: Bearer local-secret' http://127.0.0.1:8000/v1/models
 | `POST /v1/hipengine/count_tokens` | Built in | Counts raw text or rendered chat messages after applying the server chat template, tool markup, thinking controls, and optional app-local `session.id` transcript prefix. Chat diagnostics include lowered thinking-budget close-token metadata when tokenizer support is available. |
 | `POST /v1/hipengine/fit_context` | Built in | Reports prompt tokens, effective max tokens, max allowed/recommended `max_tokens`, required/overflow context, and clear/truncation policy using the same admission arithmetic as generation, including optional app-local `session.id` transcript prefixes plus `session.context_overflow_policy` for chat. Chat diagnostics include the same thinking-budget close-token metadata as `count_tokens`. |
 | `POST /v1/completions` | Built in | Text prompt(s), one token-ID row, or token-ID rows to `LLM.generate()`. Exact-token prompts support live SSE for one row and buffered SSE for multiple rows; they do not support `echo`, continuations, or sessions. For a single prompt with `n=1` and `echo=false`, `stream=true` uses token/chunk SSE from `LLM.stream()` when available; multi-prompt, `n>1`, and echo streaming fall back to buffered SSE. |
-| `POST /v1/chat/completions` | Built in | Renders text-only messages with roles `system`, `developer`, `user`, `assistant`, or `tool` to a Qwen-style prompt and calls `LLM.generate()` / `LLM.stream()`. Supports token-level `stream=true` SSE for `n=1`; `n>1` streaming returns buffered per-choice chunks. `<think>` spans are separated into `reasoning_content` (non-streaming) or `delta.reasoning_content` chunks (streaming). Accepts OpenAI `tools` / `tool_choice` and returns `tool_calls` from Qwen-style `<tool_call>{...}</tool_call>` output. |
+| `POST /v1/chat/completions` | Built in | Renders text messages with roles `system`, `developer`, `user`, `assistant`, or `tool` to a Qwen-style prompt and calls `LLM.generate()` / `LLM.stream()`. With Qwen4Exp `--vision-model`, one multipart user message may include bounded base64 `image/png` `image_url` parts and uses the model-owned multimodal path (`n=1`, non-streaming, no tools/session/continuation). Text supports token-level `stream=true` SSE for `n=1`; `n>1` streaming returns buffered per-choice chunks. `<think>` spans are separated into `reasoning_content` (non-streaming) or `delta.reasoning_content` chunks (streaming). Accepts OpenAI `tools` / `tool_choice` and returns `tool_calls` from Qwen-style `<tool_call>{...}</tool_call>` output. |
 
 ## Examples
 
@@ -254,6 +254,21 @@ IDs, the final SSE done choice also includes
 omitted rather than retokenized when unavailable. Capabilities advertise the
 prompt contract under `features.exact_token_prompts` and the SSE surface under
 `features.stream_metadata.choice_generated_token_ids`.
+
+### Qwen4Exp bounded multimodal chat
+
+Start the server with the separate mmproj artifact:
+
+```bash
+hipengine serve --model /path/to/UD-Q4_K_XL \
+  --backend hip_gfx1151 --vision-model /path/to/Qwen3.8-Flash-Next-BF16.gguf
+```
+
+A non-streaming `n=1` chat request may contain `text` and `image_url` parts.
+The image URL must be an inline base64 `data:image/png` payload; remote URL
+fetching is rejected. Current Qwen4Exp HTTP scope is <=1K, one user message,
+8-bit non-interlaced RGB/RGBA PNG, and no tools/session/continuation. Library
+calls additionally support multiple images and temporal frame arrays.
 
 ### Chat completion
 

@@ -1,0 +1,277 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_q4_iu8_flip_probe",
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "1633801b00d07de5cca6dfc5040fe2d3396345ed",
+    "tracked_clean": true
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "command": [
+    "scripts/qwen4exp_q4_iu8_flip_probe.py",
+    "--model-root",
+    "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--rows",
+    "512",
+    "1024",
+    "--pairs",
+    "10",
+    "--layer",
+    "0",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--require-cached-build",
+    "--output",
+    "/tmp/qwen4exp-q4-iu8-flip-probe.json"
+  ],
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "weights": [
+    {
+      "tensor": "blk.0.ffn_gate_exps.weight",
+      "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "sha256": "c52d2ded80cdbdb92f75c08ecfdd0ae3e2bc97198edda3d62ef8645df19a6947"
+    },
+    {
+      "tensor": "blk.0.ffn_up_exps.weight",
+      "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "sha256": "92e1eb072ea457687ae6b531c9402817c1d8ac6043a70ceed7986fd0e4997450"
+    }
+  ],
+  "arithmetic_class": "diagnostic",
+  "runtime_default_changed": false,
+  "boundary": "grouped Q4_K gate/up only: exact pair2 parent versus production iu8-WMMA; no routing/silu/down/combine",
+  "parent_variant": "gguf_q4_k_selected_dual_grouped_pair2_bf16_bf16_out",
+  "candidate_variant": "gguf_q4_k_selected_dual_wmma_iu8_prefill_bf16_bf16_out",
+  "routing": "uniform",
+  "layer": 0,
+  "cases": [
+    {
+      "tokens": 512,
+      "compact_rows": 5120,
+      "active_experts": 512,
+      "median_active_expert_rows": 10.0,
+      "max_expert_rows": 21,
+      "wmma_total_rows": 8448,
+      "static_upper_bound_rows": 12800,
+      "flips": {
+        "gate": 1013,
+        "up": 984
+      },
+      "flip_fraction": 0.000304718017578125,
+      "flip_ulp_distribution": {
+        "gate": {
+          "-19": 1,
+          "-17": 1,
+          "-11": 1,
+          "-9": 1,
+          "-7": 4,
+          "-6": 2,
+          "-4": 1,
+          "-3": 4,
+          "-2": 13,
+          "-1": 485,
+          "1": 466,
+          "2": 15,
+          "3": 7,
+          "4": 2,
+          "5": 1,
+          "6": 1,
+          "9": 2,
+          "11": 1,
+          "12": 1,
+          "14": 3,
+          "30": 1
+        },
+        "up": {
+          "-96": 1,
+          "-39": 1,
+          "-13": 1,
+          "-12": 2,
+          "-8": 1,
+          "-6": 3,
+          "-5": 3,
+          "-4": 4,
+          "-3": 5,
+          "-2": 9,
+          "-1": 450,
+          "1": 473,
+          "2": 9,
+          "3": 7,
+          "4": 5,
+          "5": 1,
+          "6": 2,
+          "7": 1,
+          "9": 3,
+          "11": 1,
+          "26": 1,
+          "28": 1
+        }
+      },
+      "seconds": {
+        "pair2": [
+          0.0185650740750134,
+          0.01855302113108337,
+          0.01859644311480224,
+          0.018446881789714098,
+          0.01853907387703657,
+          0.018553452100604773,
+          0.018725494854152203,
+          0.01846075803041458,
+          0.018499120138585567,
+          0.018615849083289504
+        ],
+        "iu8": [
+          0.008233395172283053,
+          0.008256358094513416,
+          0.008259593974798918,
+          0.008253732929006219,
+          0.00825485517270863,
+          0.008272849023342133,
+          0.008247812045738101,
+          0.008230638923123479,
+          0.008270915830507874,
+          0.008238974958658218
+        ]
+      },
+      "pair2_median_ms": 18.55323661584407,
+      "iu8_median_ms": 8.254294050857425,
+      "speedup": 2.2477072541311793
+    },
+    {
+      "tokens": 1024,
+      "compact_rows": 10240,
+      "active_experts": 512,
+      "median_active_expert_rows": 20.0,
+      "max_expert_rows": 33,
+      "wmma_total_rows": 14576,
+      "static_upper_bound_rows": 17920,
+      "flips": {
+        "gate": 1939,
+        "up": 1913
+      },
+      "flip_fraction": 0.00029388427734375,
+      "flip_ulp_distribution": {
+        "gate": {
+          "-320": 1,
+          "-72": 1,
+          "-21": 1,
+          "-19": 1,
+          "-11": 1,
+          "-9": 1,
+          "-8": 1,
+          "-7": 1,
+          "-6": 3,
+          "-5": 4,
+          "-4": 4,
+          "-3": 11,
+          "-2": 20,
+          "-1": 922,
+          "1": 917,
+          "2": 22,
+          "3": 9,
+          "4": 4,
+          "5": 3,
+          "6": 1,
+          "7": 2,
+          "8": 2,
+          "18": 1,
+          "20": 1,
+          "50": 1,
+          "84": 1,
+          "104": 1,
+          "113": 1,
+          "124": 1
+        },
+        "up": {
+          "-96": 1,
+          "-52": 1,
+          "-18": 1,
+          "-9": 1,
+          "-8": 1,
+          "-7": 2,
+          "-6": 7,
+          "-5": 1,
+          "-4": 12,
+          "-3": 11,
+          "-2": 27,
+          "-1": 843,
+          "1": 941,
+          "2": 24,
+          "3": 8,
+          "4": 8,
+          "5": 2,
+          "6": 2,
+          "7": 3,
+          "8": 2,
+          "10": 1,
+          "11": 1,
+          "12": 1,
+          "13": 1,
+          "14": 1,
+          "15": 1,
+          "16": 1,
+          "17": 1,
+          "18": 1,
+          "24": 1,
+          "29": 1,
+          "32": 1,
+          "44": 1,
+          "112": 1,
+          "240": 1
+        }
+      },
+      "seconds": {
+        "pair2": [
+          0.03387029003351927,
+          0.0335994609631598,
+          0.033617143984884024,
+          0.033630960155278444,
+          0.03359776805154979,
+          0.033429892966523767,
+          0.03342970204539597,
+          0.03354019997641444,
+          0.03353110211901367,
+          0.03370634187012911
+        ],
+        "iu8": [
+          0.01377775613218546,
+          0.013792403042316437,
+          0.013818152016028762,
+          0.013792252168059349,
+          0.013802120927721262,
+          0.013806118862703443,
+          0.01384044298902154,
+          0.013796349987387657,
+          0.013838989892974496,
+          0.013825135072693229
+        ]
+      },
+      "pair2_median_ms": 33.598614507354796,
+      "iu8_median_ms": 13.804119895212352,
+      "speedup": 2.43395556996051
+    }
+  ]
+}

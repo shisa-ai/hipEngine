@@ -69,6 +69,7 @@ from hipengine.generation.constraints import JsonObjectConstraintState, ToolCall
 from hipengine.generation.registry import normalize_prompt_input
 from hipengine.kernels.backends import backend_package_capability
 from hipengine.kvcache import resolve_prefix_cache_mode
+from hipengine.server.multimodal import extract_qwen4_exp_chat_media
 from hipengine.speculative.policy import (
     DEFAULT_AUTO_DEPTH_POLICY,
     select_offline_speculative_depth,
@@ -344,6 +345,7 @@ class ServerConfig:
     speculative_provider: str | None = None
     draft_model: str | None = None
     speculative_candidate_budget: int = 4
+    vision_model: str | None = None
     created: int = field(default_factory=lambda: int(time.time()))
     execution_profile: str | None = None
 
@@ -390,6 +392,12 @@ class ServerConfig:
         object.__setattr__(self, "speculative_provider", provider)
         object.__setattr__(self, "draft_model", drafter)
         object.__setattr__(self, "speculative_candidate_budget", candidate_budget)
+        vision_model = (
+            None if self.vision_model is None else str(self.vision_model).strip()
+        )
+        if vision_model == "":
+            raise ValueError("vision_model must be non-empty when set")
+        object.__setattr__(self, "vision_model", vision_model)
         if int(self.stream_queue_max_chunks) < 2:
             raise ValueError("stream_queue_max_chunks must be at least 2")
         if float(self.shutdown_grace_seconds) < 0.0:
@@ -1257,7 +1265,8 @@ def _tools_capability(
     return capability
 
 
-def _structured_outputs_capability(*, tokenizer_backed: bool) -> dict[str, Any]:
+def _structured_outputs_capability(*, tokenizer_backed: bool, engine=None) -> dict[str, Any]:
+    grammar_backed = bool(getattr(_model_chat_protocol_target(engine),"supports_grammar",False))
     return {
         "response_format": True,
         "json_object": True,
@@ -1277,8 +1286,9 @@ def _structured_outputs_capability(*, tokenizer_backed: bool) -> dict[str, Any]:
         "guided_diff_default_fenced_policy": "optional",
         "guided_patch_fence_labels": list(_GUIDED_PATCH_FENCE_LABELS),
         "guided_diff_fence_labels": list(_GUIDED_PATCH_FENCE_LABELS),
-        "strict_decoding": tokenizer_backed,
-        "strict_decoding_scope": "root_object_json_syntax" if tokenizer_backed else "none",
+        "strict_decoding": grammar_backed or tokenizer_backed,
+        "strict_decoding_scope": ("json_schema_regex_choice_grammar" if grammar_backed
+                                 else "root_object_json_syntax" if tokenizer_backed else "none"),
         "strict_result_validation": True,
         "decode_time_close_forcing": (
             "host_json_object_parse_validated_suffix" if tokenizer_backed else "none"
@@ -1294,13 +1304,15 @@ def _structured_outputs_capability(*, tokenizer_backed: bool) -> dict[str, Any]:
     }
 
 
-def _grammar_capability() -> dict[str, Any]:
+def _grammar_capability(engine=None) -> dict[str, Any]:
+    enabled = bool(getattr(_model_chat_protocol_target(engine),"supports_grammar",False))
     return {
-        "enabled": False,
-        "strict_decoding": False,
-        "supported": [],
-        "unsupported_fields": list(_UNSUPPORTED_GRAMMAR_FIELDS),
-        "result_validation_only": [
+        "enabled": enabled,
+        "strict_decoding": enabled,
+        "supported": (["json_object","json_schema","guided_json","guided_regex","guided_choice","model_tool_grammar","grammar","guided_grammar"]
+                      if enabled else []),
+        "unsupported_fields": (["guided_decoding_backend"] if enabled else list(_UNSUPPORTED_GRAMMAR_FIELDS)),
+        "result_validation_only": list(_GUIDED_PATCH_FIELDS) if enabled else [
             "json_object",
             "json_schema",
             _GUIDED_JSON_FIELD,
@@ -1338,8 +1350,8 @@ def _parallelism_capability() -> dict[str, Any]:
     }
 
 
-def _known_unsupported_fields() -> list[str]:
-    return list(_UNSUPPORTED_GRAMMAR_FIELDS)
+def _known_unsupported_fields(engine=None) -> list[str]:
+    return _grammar_capability(engine)["unsupported_fields"]
 
 
 def _admission_capability(config: ServerConfig, *, engine: Any | None = None) -> dict[str, Any]:
@@ -1547,12 +1559,13 @@ def _replay_capability_snapshot(config: ServerConfig, *, engine: Any | None = No
             "streaming": True,
             "choice_telemetry": _choice_telemetry_capability(),
             "structured_outputs": _structured_outputs_capability(
-                tokenizer_backed=strict_decoding_backed
+                tokenizer_backed=strict_decoding_backed,engine=engine
             ),
-            "grammars": _grammar_capability(),
+            "grammars": _grammar_capability(engine),
             "tools": _tools_capability(
                 tokenizer_backed=tokenizer_backed,
                 strict_decoding_backed=strict_decoding_backed,
+                tool_parser=getattr(_model_chat_protocol_target(engine),"chat_tool_parser",None),
             ),
             "reasoning_controls": {
                 "enabled": True,
@@ -1615,7 +1628,7 @@ def _replay_capability_snapshot(config: ServerConfig, *, engine: Any | None = No
         },
         "admission": _admission_capability(config, engine=engine),
         "parallelism": _parallelism_capability(),
-        "unsupported_fields": _known_unsupported_fields(),
+        "unsupported_fields": _known_unsupported_fields(engine),
     }
 
 
@@ -4621,6 +4634,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 kv_storage=config.kv_storage,
                 kv_scale_dtype=config.kv_scale_dtype,
                 kv_scale_granularity=config.kv_scale_granularity,
+                vision_model=config.vision_model,
             )
             _log_effective_mtp_config(config, engine=app.state.hipengine_llm)
         mtp_circuit_breaker.attach(app.state.hipengine_llm)
@@ -5274,6 +5288,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             ),
             json_object_close_forcing=_json_object_close_forcing(request),
             tool_call_constraint=tool_call_constraint,
+            grammar=_grammar_sampling_spec(request,engine),
             ignore_eos=bool(request.ignore_eos),
             kv_storage=request.kv_storage or config.kv_storage,
             kv_scale_dtype=request.kv_scale_dtype or config.kv_scale_dtype,
@@ -6531,9 +6546,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "structured_outputs": _structured_outputs_capability(
                     tokenizer_backed=(
                         tokenizer_caps["tokenize"] and tokenizer_caps["detokenize"]
-                    )
+                    ),engine=engine
                 ),
-                "grammars": _grammar_capability(),
+                "grammars": _grammar_capability(engine),
                 "finish_details": True,
                 "token_diagnostics": {
                     "tokenize": tokenizer_caps["tokenize"],
@@ -6638,7 +6653,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             },
             "parallelism": _parallelism_capability(),
             "errors": _error_taxonomy_manifest(),
-            "unsupported_fields": _known_unsupported_fields(),
+            "unsupported_fields": _known_unsupported_fields(engine),
         }
 
     @app.post("/v1/hipengine/speculative_mtp/rollback")
@@ -6995,6 +7010,115 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             route_unsupported_grammar=True,
         )
         _validate_continuation_resume_request(request)
+        attached_engine = getattr(app.state, "hipengine_llm", None)
+        multimodal_capable = bool(
+            config.vision_model is not None
+            or (
+                attached_engine is not None
+                and getattr(attached_engine, "supports_vision", False)
+            )
+        )
+        try:
+            multimodal_input = (
+                extract_qwen4_exp_chat_media(request.messages)
+                if multimodal_capable
+                else None
+            )
+        except ValueError as exc:
+            raise OpenAIHTTPError(
+                400, str(exc), code="invalid_request", param="messages"
+            ) from exc
+        if multimodal_input is not None:
+            if (_structured_result_validation(request) or getattr(request,"grammar",None) is not None
+                or getattr(request,"guided_grammar",None) is not None):
+                raise OpenAIHTTPError(400,"multimodal grammar decoding is not supported",
+                                      code="unsupported_parameter",param="grammar")
+            if request.stream:
+                raise OpenAIHTTPError(
+                    400,
+                    "Qwen4Exp HTTP multimodal streaming is not yet supported",
+                    code="unsupported_parameter",
+                    param="stream",
+                )
+            if _request_n(request) != 1:
+                raise OpenAIHTTPError(
+                    400,
+                    "Qwen4Exp HTTP multimodal generation requires n=1",
+                    code="unsupported_parameter",
+                    param="n",
+                )
+            if request.tools or request.continuation_id or request.session:
+                raise OpenAIHTTPError(
+                    400,
+                    "Qwen4Exp HTTP multimodal generation does not combine with "
+                    "tools, continuation, or sessions",
+                    code="unsupported_parameter",
+                )
+            prompt, media = multimodal_input
+            engine = get_llm()
+            control = _request_control(config, request, raw_request)
+            maximum = (
+                request.max_completion_tokens
+                if request.max_completion_tokens is not None
+                else request.max_tokens
+                if request.max_tokens is not None
+                else config.chat_default_max_tokens
+                if config.chat_default_max_tokens is not None
+                else 16
+            )
+            sampling = SamplingParams(
+                max_tokens=int(maximum),
+                temperature=float(
+                    request.temperature if request.temperature is not None else 0.0
+                ),
+                top_p=float(request.top_p if request.top_p is not None else 1.0),
+                top_k=int(request.top_k if request.top_k is not None else 0),
+                ignore_eos=bool(request.ignore_eos),
+                deadline_at=control.deadline_at,
+                cancellation_token=control.cancellation_token,
+            )
+            try:
+                detail = await _await_with_request_control(
+                    run_in_threadpool(
+                        engine.generate_multimodal_detailed,
+                        prompt,
+                        media,
+                        sampling,
+                    ),
+                    control,
+                )
+            except (ValueError, NotImplementedError) as exc:
+                raise OpenAIHTTPError(
+                    400, str(exc), code="invalid_request", param="messages"
+                ) from exc
+            generated_ids = tuple(detail.generated_token_ids or ())
+            finish = getattr(detail, "finish_details", None)
+            finish_reason = (
+                "length"
+                if finish is not None and finish.reason == "length"
+                else "stop"
+            )
+            prompt_tokens = int(engine.count_tokens(prompt))
+            completion_tokens = len(generated_ids)
+            return {
+                "id": f"chatcmpl-{uuid.uuid4().hex}",
+                "object": "chat.completion",
+                "created": int(time.time()),
+                "model": config.model_id,
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": detail.text},
+                        "finish_reason": finish_reason,
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": prompt_tokens + completion_tokens,
+                },
+                "hipengine": {"multimodal": True, "transport": "png_data_url"},
+            }
         admitted_session_id = await reserve_chat_session_if_needed(request)
         try:
             continuation = await pop_continuation(
@@ -7119,6 +7243,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     getattr(app.state, "hipengine_llm", None),
                     text,
                     tools=request.tools,
+                    reasoning_initially_open=reasoning_initially_open,
+                    allow_bare_json_tools=not _structured_result_validation(request),
                 )
                 tool_validation = _validate_chat_tool_result(request, raw_parsed, text)
                 parsed = replace(
@@ -7527,6 +7653,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     getattr(app.state, "hipengine_llm", None),
                     text,
                     tools=request.tools,
+                    reasoning_initially_open=_reasoning_initially_open_for_prompt(
+                        getattr(app.state,"hipengine_llm",None),prompts[index]),
+                    allow_bare_json_tools=not _structured_result_validation(request),
                 )
                 tool_validation = _validate_chat_tool_result(request, raw_parsed, text)
                 reasoning_initially_open = _reasoning_initially_open_for_prompt(
@@ -8369,6 +8498,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 engine,
                 text,
                 tools=request.tools,
+                reasoning_initially_open=_reasoning_initially_open_for_prompt(engine,generation_prompt),
+                allow_bare_json_tools=not _structured_result_validation(request),
             )
             tool_validation = _validate_chat_tool_result(request, parsed, text)
             parsed = replace(
@@ -9476,10 +9607,15 @@ def _thinking_control_from_request(
     return control
 
 
-def _model_chat_protocol_target(engine: Any | None) -> Any | None:
+def _model_chat_protocol_target(engine: Any | None, *, initialize: bool = False) -> Any | None:
     if engine is None:
         return None
-    return getattr(engine, "_text_generator", None) or engine
+    generator = getattr(engine, "_text_generator", None)
+    if generator is None and initialize:
+        loader = getattr(engine,"_get_text_generator",None)
+        if callable(loader):
+            generator = loader()
+    return generator or engine
 
 
 def _model_template_thinking_enabled(thinking: _ThinkingControl) -> bool:
@@ -9504,7 +9640,7 @@ def _render_chat_prompt_with_model_protocol(
     engine: Any | None,
     validate_tool_transcript: bool,
 ) -> str:
-    target = _model_chat_protocol_target(engine)
+    target = _model_chat_protocol_target(engine,initialize=True)
     renderer = getattr(target, "render_chat_prompt", None)
     if not callable(renderer):
         return render_chat_prompt(
@@ -9538,12 +9674,26 @@ def _render_chat_prompt_with_model_protocol(
             validate_tool_transcript=True,
         )
     tools = request.tools if _tool_choice_name(request.tool_choice) != "none" else None
+    messages = list(request.messages)
+    controls = [value for value in (
+        _render_response_format_prompt(request.response_format),
+        _render_guided_json_prompt(request.guided_json),
+        _render_guided_regex_prompt(request.guided_regex),
+        _render_guided_choice_prompt(request.guided_choice),
+        _render_guided_patch_prompt(request.guided_patch,request.guided_diff),
+    ) if value]
+    if controls and getattr(target,"supports_grammar",False):
+        messages.insert(0,{"role":"system","content":"\n\n".join(controls)})
+    renderer_kwargs = {}
+    if getattr(target,"chat_template_reasoning_effort",False) and thinking.effort is not None:
+        renderer_kwargs["reasoning_effort"] = thinking.effort
     return str(
         renderer(
-            request.messages,
+            messages,
             tools=tools,
             enable_thinking=_model_template_thinking_enabled(thinking),
             add_generation_prompt=True,
+            **renderer_kwargs,
         )
     )
 
@@ -11413,6 +11563,9 @@ def _validate_generation_request(
                     param=param,
                 )
     extra_keys = _request_extra_keys(request)
+    if getattr(_model_chat_protocol_target(
+        engine,initialize=bool(extra_keys & {"grammar","guided_grammar"})),"supports_grammar",False):
+        extra_keys = extra_keys - {"grammar","guided_grammar"}
     if extra_keys:
         param = sorted(extra_keys)[0]
         extra = None
@@ -12020,12 +12173,60 @@ def _no_tool_sampling_suppress_token_ids(
     return (int(token_ids[0]),)
 
 
+def _grammar_sampling_spec(request, engine):
+    target = _model_chat_protocol_target(engine)
+    if not getattr(target,"supports_grammar",False):
+        return None
+    spec = None
+    explicit = getattr(request,"grammar",None)
+    guided = getattr(request,"guided_grammar",None)
+    if explicit is not None and guided is not None:
+        raise OpenAIHTTPError(400,"choose grammar or guided_grammar",param="grammar")
+    grammar_text = explicit if explicit is not None else guided
+    if _response_format_mode(request) in {"json_object","json_schema"}:
+        spec = {"format":"json_schema","value":_response_format_json_schema(request) or {"type":"object"}}
+    elif _guided_json_mode(request) in {"json_object","json_schema"}:
+        spec = {"format":"json_schema","value":_guided_json_schema(request) or {"type":"object"}}
+    elif getattr(request,"guided_regex",None) is not None:
+        spec = {"format":"regex","value":_guided_regex_pattern(request.guided_regex,validate=True)}
+    elif getattr(request,"guided_choice",None) is not None:
+        spec = {"format":"choice","value":list(_guided_choice_values(request.guided_choice,validate=True))}
+    if grammar_text is not None:
+        if spec is not None or not isinstance(grammar_text,str) or not grammar_text.strip():
+            raise OpenAIHTTPError(400,"grammar must be a nonempty string and cannot combine with other formats",param="grammar")
+        spec = {"format":"grammar","value":grammar_text}
+    tools = getattr(request,"tools",None)
+    if tools:
+        mode,name = _tool_choice_mode(request.tool_choice)
+        if mode!="none" and getattr(target,"model_owned_tool_grammar",False):
+            spec = {"format":"qwen4exp_tools","tools":tools,
+                    "mode":"required" if mode in {"required","function"} else "auto",
+                    "name":name,"answer":spec,"parallel":bool(request.parallel_tool_calls)}
+    if spec is not None:
+        if isinstance(request,ChatCompletionRequest):
+            thinking = _thinking_control_from_request(request,chat_default_max_tokens=None)
+            spec["reasoning_open"] = _model_template_thinking_enabled(thinking)
+        from hipengine.generation.grammar import compile_spec
+        from llguidance import LLMatcher
+        try:
+            grammar = compile_spec(spec)
+            error,warnings = LLMatcher.validate_grammar_with_warnings(
+                grammar,tokenizer=getattr(target,"grammar_tokenizer",None))
+            if error or warnings:
+                raise ValueError("; ".join(warnings))
+        except (ValueError,AssertionError,TypeError) as exc:
+            raise OpenAIHTTPError(400,str(exc),code="invalid_request",param="grammar") from exc
+    return spec
+
+
 def _tool_call_sampling_constraint(
     request: ChatCompletionRequest,
     engine: Any,
     *,
     chat_default_max_tokens: int | None,
 ) -> ToolCallConstraintSpec | None:
+    if getattr(_model_chat_protocol_target(engine),"model_owned_tool_grammar",False):
+        return None
     tokenizer_caps = _tokenizer_capability_flags(engine)
     if not request.tools or not tokenizer_caps["tokenize"] or not tokenizer_caps["detokenize"]:
         return None
@@ -12063,6 +12264,8 @@ def _required_tool_sampling_forced_prefix(
     request: ChatCompletionRequest,
     engine: Any,
 ) -> tuple[tuple[int, ...], bool]:
+    if getattr(_model_chat_protocol_target(engine),"model_owned_tool_grammar",False):
+        return (), False
     if not request.tools:
         return (), False
     mode, _name = _tool_choice_mode(request.tool_choice)
@@ -12103,6 +12306,8 @@ def _tool_call_sequence_completion_token_sequences(
     *,
     include_object_close: bool,
 ) -> tuple[tuple[int, ...], ...]:
+    if getattr(_model_chat_protocol_target(engine),"model_owned_tool_grammar",False):
+        return ()
     return _tool_call_close_repair_token_sequences(
         request,
         engine,
@@ -14089,6 +14294,8 @@ def _structured_output_failure_reason(
     text: str,
     finish_reason: str,
 ) -> str | None:
+    if str(finish_reason).strip().lower()=="tool_calls":
+        return None
     response_format_failure = _response_format_failure_reason(request, text, finish_reason)
     if response_format_failure is not None:
         return response_format_failure
@@ -14378,6 +14585,7 @@ def _sampling_key(
     include_cancellation_token: bool = True,
 ) -> tuple[Any, ...]:
     return (
+        json.dumps(sampling.grammar,sort_keys=True,ensure_ascii=False) if sampling.grammar else None,
         int(sampling.max_tokens),
         float(sampling.temperature),
         float(sampling.top_p),
@@ -15377,6 +15585,8 @@ def _parse_chat_tool_calls_for_engine(
     text: str,
     *,
     tools: Sequence[Mapping[str, Any]] | None,
+    reasoning_initially_open: bool = False,
+    allow_bare_json_tools: bool = True,
 ) -> _ParsedChatOutput:
     target = _model_chat_protocol_target(engine)
     parser = getattr(target, "chat_tool_parser", None)
@@ -15384,11 +15594,21 @@ def _parse_chat_tool_calls_for_engine(
     if not callable(parse):
         return _parse_chat_tool_calls(text, tools=tools)
     parser_name = str(getattr(parser, "name", type(parser).__name__))
+    if not tools and getattr(parser,"requires_declared_tools",False):
+        return _ParsedChatOutput(text=str(text),tool_calls=(),tool_parser_name=parser_name)
     try:
-        result = parse(str(text), tools=tools)
+        contextual = getattr(parser,"parse_with_initial_reasoning",None)
+        result = (contextual(str(text),tools=tools,initially_open=reasoning_initially_open)
+                  if callable(contextual) else parse(str(text),tools=tools))
         content = getattr(result, "content")
         raw_calls = getattr(result, "tool_calls")
         invalid_blocks = getattr(result, "invalid_blocks", ())
+        if (tools and allow_bare_json_tools and not raw_calls and not invalid_blocks and
+            getattr(parser,"capabilities",{}).get("json_compatibility")):
+            legacy = _parse_chat_tool_calls(content)
+            names = {_tool_function(tool).get("name") for tool in tools}
+            if legacy.tool_calls and all(call.name in names for call in legacy.tool_calls):
+                return legacy
         if not isinstance(content, str):
             raise TypeError("model tool parser content must be a string")
         calls: list[_ParsedToolCall] = []

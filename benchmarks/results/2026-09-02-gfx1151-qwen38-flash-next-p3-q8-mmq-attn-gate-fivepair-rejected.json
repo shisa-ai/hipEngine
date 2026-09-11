@@ -1,0 +1,144 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_q8_mmq_attn_gate_fivepair_closure",
+  "status": "rejected_noisy_default_off",
+  "performance_claim": false,
+  "host": {
+    "hostname": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "kernel": "6.18.42-1-cachyos-lts",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+    },
+    "rocm_platform": "10.0.0",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "scope": "Current named-production four-category p512 Q8 MMQ attention-gate extension, five counterbalanced pairs/category after warmup",
+  "amdahl": {
+    "W": "5.939 s current p512 authority",
+    "C": "2.129 s refreshed comparator diagnostic denominator",
+    "O": "1.839 s dense/GR owner; overlap excludes MoE, QSA, GDN recurrence, copies, and host stages",
+    "s": "measured only by this same-session whole-model candidate A/B",
+    "classification": "T2",
+    "mechanism": "guarded Q8 MMQ F32 prefill for GDN attn_gate K2560/N6144",
+    "strict_fallback": "coltile8_rowbatch4_f32_f32_out"
+  },
+  "profiles": {
+    "manifest_sha256": "37d595645b376083c2c2045687b76fa51b3bdf3c74e511af4f7831a180e16779",
+    "strict_manifest_sha256": "ec1c7828611b055014df9f5e5eb8a6c814e283606227cdfc6b33bfcaeeb0109b",
+    "named_profile_intact": false,
+    "fell_back_to_strict": false
+  },
+  "protocol": {
+    "pairs": 5,
+    "warmups_per_route": 1,
+    "prefill_chunk_size": 512,
+    "decode_transitions": null,
+    "timing_boundary": "synchronized runner.prefill including first greedy output",
+    "override_stage": "post_profile_binder_pre_warmup_and_measurement"
+  },
+  "performance": {
+    "pair_count": 20,
+    "cases": {
+      "code-p512": {
+        "ratio": {
+          "count": 5,
+          "mean": 1.0066548417953327,
+          "mean_95ci": [
+            0.986188894250418,
+            1.0271207893402474
+          ],
+          "median": 0.9998719193173138,
+          "min": 0.9982822745570036,
+          "max": 1.0361061903820536
+        },
+        "bound_cv_percent": 2.190216438941828,
+        "candidate_cv_percent": 2.3014324853240358,
+        "cross_route_logits_exact": true,
+        "bound_repeat_exact": true,
+        "candidate_repeat_exact": true
+      },
+      "general_en-p512": {
+        "ratio": {
+          "count": 5,
+          "mean": 1.030864003196354,
+          "mean_95ci": [
+            1.011317130206836,
+            1.0504108761858721
+          ],
+          "median": 1.037449577954506,
+          "min": 1.0027342745413066,
+          "max": 1.0387182136801827
+        },
+        "bound_cv_percent": 1.5192386532786808,
+        "candidate_cv_percent": 0.10308809320961143,
+        "cross_route_logits_exact": true,
+        "bound_repeat_exact": true,
+        "candidate_repeat_exact": true
+      },
+      "general_ja-p512": {
+        "ratio": {
+          "count": 5,
+          "mean": 1.00017277240572,
+          "mean_95ci": [
+            0.9982164052021075,
+            1.0021291396093321
+          ],
+          "median": 1.000019204583272,
+          "min": 0.9980344157869347,
+          "max": 1.00194172395913
+        },
+        "bound_cv_percent": 0.1547711540689412,
+        "candidate_cv_percent": 0.1877823613677528,
+        "cross_route_logits_exact": true,
+        "bound_repeat_exact": true,
+        "candidate_repeat_exact": true
+      },
+      "mixed_ja_en-p512": {
+        "ratio": {
+          "count": 5,
+          "mean": 0.9997618646674151,
+          "mean_95ci": [
+            0.9970764786824575,
+            1.0024472506523727
+          ],
+          "median": 1.0004713605817233,
+          "min": 0.9967535906234982,
+          "max": 1.0023609643165832
+        },
+        "bound_cv_percent": 0.20621054911494602,
+        "candidate_cv_percent": 0.2779926930176018,
+        "cross_route_logits_exact": true,
+        "bound_repeat_exact": true,
+        "candidate_repeat_exact": true
+      }
+    },
+    "all_cross_route_logits_exact": true,
+    "all_candidate_repeat_exact": true
+  },
+  "prior_complete_gate": {
+    "artifact": "2026-09-02-gfx1151-qwen38-flash-next-p3-q8-mmq-attn-gate-current-blocked.json",
+    "rows": 450,
+    "mean_kl": 0.0003162396841455167,
+    "p95_kl": 0.0017986799845486944,
+    "top1_rate": 0.9933333333333333,
+    "state_repeat_passed": true,
+    "semantic_task_review_passed": true,
+    "lifecycle_passed": true
+  },
+  "memory_after_close": {
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 83543106308,
+    "total_allocated_bytes": 83543106308,
+    "total_freed_bytes": 83543106308,
+    "active_allocations": 0,
+    "peak_allocations": 1645
+  },
+  "raw_sha256": "a5bd8913a640a634677419eb0ec66bae1137438b0b85f26f48e4ec7bee0b3fe2",
+  "decision": "Reject and keep default off. general_en beats, general_ja and mixed match, but code remains noisy with both arms above 2% CV and its interval includes 1. Section 6 forbids averaging categories; the route is not promotable. The broader output-projection+GR-write item remains partial because GR down+inject is still independent and untested as an operation-complete candidate."
+}

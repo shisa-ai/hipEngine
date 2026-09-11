@@ -1,0 +1,78 @@
+{
+  "schema": 1,
+  "date": "2026-08-29",
+  "status": "accepted_certified_production_opt_in",
+  "scope": "Qwen4Exp gfx1151 guarded raw-Q8 MMQ128 dense-prefill (F32 in/out, D4x3 Q8_1 activations) via HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL=1",
+  "host": {
+    "identity": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "cpu": "AMD Ryzen AI Max+ Pro 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "id": "Qwen/Qwen3.8-Flash-Next",
+    "quant": "Unsloth UD-Q4_K_XL",
+    "quant_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5"
+  },
+  "commands": {
+    "execution_gate": "uv run python /tmp/qwen4exp_q8mmq_execution_gate.py",
+    "free_generation": "uv run python /tmp/qwen4exp_q8mmq_free_generation.py",
+    "c2_physical": "uv run python /tmp/qwen4exp_q8mmq_c2_physical.py",
+    "p508": "uv run python /tmp/qwen4exp_p508_mmq_candidate.py",
+    "p1012": "uv run python /tmp/qwen4exp_p1012_mmq_candidate.py"
+  },
+  "numerical_gate": {
+    "rows": 450,
+    "repeats": 3,
+    "kl_mean": 0.00010116268550301964,
+    "kl_p95": 0.00010365494430950977,
+    "kl_p99": 0.002227781349381053,
+    "kl_max": 0.010498688039489723,
+    "top1_matches": 450,
+    "top1_agreement": 1.0,
+    "bit_exact_categories": [
+      "code",
+      "general_en",
+      "general_ja"
+    ],
+    "state_repeat_passed": true,
+    "repeat_determinism_passed": true,
+    "eligible_for_automatic_admission": true
+  },
+  "free_generation": {
+    "strict_candidate_exact": 18,
+    "candidate_repeat_exact": 18,
+    "prompts": 18
+  },
+  "c2_physical": {
+    "exact": [
+      true,
+      true
+    ],
+    "stream_chunks": 6,
+    "teardown_zero": true
+  },
+  "performance": {
+    "p508": {
+      "strict_median_seconds": 8.270210139991832,
+      "candidate_median_seconds": 7.393099818000337,
+      "candidate_median_tok_s": 68.71272030754243,
+      "delta_percent": -10.605659434820137,
+      "logits_sha256": [
+        "1887fc28d37f4ca6422e937d580a15f510a9fe1f5c04274f1b59d4f0a5ea18cc"
+      ]
+    },
+    "p1012": {
+      "strict_median_seconds": 16.750571366006625,
+      "candidate_median_seconds": 15.16739054399659,
+      "candidate_median_tok_s": 66.72209020163723,
+      "delta_percent": -9.451503398999995,
+      "logits_sha256": [
+        "cf7616c244c9a493aa1e04b3fb9acf634e84232bc1f387039041fa02328c705b"
+      ]
+    }
+  },
+  "stacking_note": "Orthogonal to the MoE cooperative/W MMA production layers: the WMMA session takes precedence over MMQ where certified (layers 32-47), MMQ covers the remaining dense Q8_0 shapes; combined-profile measurement is a follow-up.",
+  "next": "Fold the env bridge into the named production profile manifest; then Q5_1/Q4_K selected MMQ consumers and the GDN scan."
+}

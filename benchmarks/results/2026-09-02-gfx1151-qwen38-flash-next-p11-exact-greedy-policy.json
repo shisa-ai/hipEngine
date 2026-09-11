@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_p11_exact_greedy_policy",
+  "status": "passed_policy_no_performance_promotion",
+  "performance_claim": false,
+  "source_artifact": "benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-mtp-fullsuite-short.json",
+  "scope": {
+    "provider": "qwen4_exp_mtp",
+    "target_verify": "serial exact",
+    "candidate_budget": 2,
+    "prompt_count": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "generated_tokens_per_prompt": 16,
+    "sampler": "greedy temperature=0 top_k=1 ignore_eos=true"
+  },
+  "result": {
+    "exact_rows": 10,
+    "total_rows": 10,
+    "all_generated_ids_exact": true,
+    "accepted_draft_tokens": 134,
+    "proposed_draft_tokens": 159,
+    "draft_acceptance": 0.8427672955974843,
+    "mtp_seconds": 51.711070590004965,
+    "true_ar_seconds": 49.383127938017424,
+    "mtp_over_ar": 0.9549817355272954
+  },
+  "amdahl_declaration": {
+    "W_seconds": 51.711070590004965,
+    "C_seconds": 49.383127938017424,
+    "O": null,
+    "s": null,
+    "arithmetic_class": "policy audit; no arithmetic change",
+    "mechanism": "require full generated-ID equality against true target AR on every category and heldout row",
+    "strict_fallback": "target_ar",
+    "overlap_exclusions": ["no implementation candidate", "no owner timing or speedup attribution"]
+  },
+  "external_counterexample": {
+    "lane": "EngramHalo",
+    "reported_ratio": 1.128,
+    "exact_rows": 9,
+    "total_rows": 10,
+    "binding_precedent": false,
+    "reason": "speed cannot override failed generated-ID equality"
+  },
+  "decision": {
+    "exact_greedy_requirement_passed": true,
+    "promoted_default": false,
+    "reason": "The public serial provider satisfies its exact greedy contract on all ten category+heldout rows, but remains slower than true AR. This closes correctness policy only."
+  }
+}

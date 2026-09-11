@@ -1,0 +1,372 @@
+{
+  "schema": 1,
+  "date": "2026-09-05",
+  "kind": "qwen4exp_qsa_original_order_followup",
+  "status": "decode_regression_persists_default_off",
+  "performance_claim": false,
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "511d8f83394e767a78e590924ae1a1f3006d77d1",
+    "tracked_clean": true
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "profile": {
+    "requested": "production",
+    "manifest_sha256": "b3afcd551017d40f792ad5f9d4564098c0cd9cd74e92a2c6b7f144a3782b4510",
+    "strict_manifest_sha256": "204f20b6426b67a9145c0d30e1ec8c17a4b1217ec515075751c64b49921400f7",
+    "fell_back_to_strict": false
+  },
+  "protocol": {
+    "one_model_residency": true,
+    "one_python_process": true,
+    "case_ids": [
+      "general_en-p4096",
+      "general_ja-p4096",
+      "mixed_ja_en-p4096"
+    ],
+    "case_order": "fixture order",
+    "case_counterbalance_indices": {
+      "general_en-p4096": 5,
+      "general_ja-p4096": 8,
+      "mixed_ja_en-p4096": 11
+    },
+    "arm_order_even_case": [
+      "before",
+      "after",
+      "after",
+      "before",
+      "before",
+      "after"
+    ],
+    "arm_order_odd_case": [
+      "after",
+      "before",
+      "before",
+      "after",
+      "after",
+      "before"
+    ],
+    "warmups_per_mode_per_case": 1,
+    "measured_repetitions_per_mode_per_case": 3,
+    "decode_transitions": 128,
+    "visible_output_tokens": 129,
+    "prefill_chunk_size": 512,
+    "timing_boundary": "synchronized runner.prefill including first greedy output, then exactly 128 runner.step transitions and a final device synchronize"
+  },
+  "arms": {
+    "before": {
+      "sparse_prefill": "strict_rows_spans"
+    },
+    "after": {
+      "sparse_prefill": "strict_h256_wave_rows_spans"
+    }
+  },
+  "commands": {
+    "argv": [
+      "/home/lhl/hipEngine/.venv/bin/python",
+      "/home/lhl/hipEngine/scripts/qwen4exp_halo_box_campaign_ab.py",
+      "--model-root",
+      "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "--route-package",
+      "qsa-h256-wave",
+      "--case-id",
+      "general_en-p4096",
+      "--case-id",
+      "general_ja-p4096",
+      "--case-id",
+      "mixed_ja_en-p4096",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--require-cached-build",
+      "--output",
+      "/tmp/qwen4exp-qsa-corrected-affected-cases.json"
+    ],
+    "shell": "/home/lhl/hipEngine/.venv/bin/python /home/lhl/hipEngine/scripts/qwen4exp_halo_box_campaign_ab.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --route-package qsa-h256-wave --case-id general_en-p4096 --case-id general_ja-p4096 --case-id mixed_ja_en-p4096 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --output /tmp/qwen4exp-qsa-corrected-affected-cases.json"
+  },
+  "correctness": {
+    "within_mode_deterministic": true,
+    "cross_mode_output_exact": true,
+    "mismatched_case_ids": []
+  },
+  "by_case": {
+    "general_en-p4096": {
+      "category": "general_en",
+      "prompt_tokens": 4096,
+      "samples_per_mode": 3,
+      "before_prefill_tok_s_weighted": 98.28871432078638,
+      "after_prefill_tok_s_weighted": 118.18385133480719,
+      "after_over_before_prefill": 1.202415273732127,
+      "before_decode_tok_s_weighted": 15.287712435774775,
+      "after_decode_tok_s_weighted": 15.28026744224423,
+      "after_over_before_decode": 0.9995130080081097,
+      "within_mode_deterministic": true,
+      "cross_mode_output_exact": true,
+      "output_token_ids_sha256": {
+        "before": [
+          "74b2716677053cba3663304e2c654694d9f951b3916d01734c26daed2c0c2af6"
+        ],
+        "after": [
+          "74b2716677053cba3663304e2c654694d9f951b3916d01734c26daed2c0c2af6"
+        ]
+      }
+    },
+    "general_ja-p4096": {
+      "category": "general_ja",
+      "prompt_tokens": 4096,
+      "samples_per_mode": 3,
+      "before_prefill_tok_s_weighted": 98.29066298082904,
+      "after_prefill_tok_s_weighted": 118.23737968249185,
+      "after_over_before_prefill": 1.2029360276627017,
+      "before_decode_tok_s_weighted": 15.281346594891605,
+      "after_decode_tok_s_weighted": 15.281301157229793,
+      "after_over_before_decode": 0.9999970265930734,
+      "within_mode_deterministic": true,
+      "cross_mode_output_exact": true,
+      "output_token_ids_sha256": {
+        "before": [
+          "3550671c83d9dfcaaf451b6ae1a9032a995d585e28dc3512e1c102dfa3d7096a"
+        ],
+        "after": [
+          "3550671c83d9dfcaaf451b6ae1a9032a995d585e28dc3512e1c102dfa3d7096a"
+        ]
+      }
+    },
+    "mixed_ja_en-p4096": {
+      "category": "mixed_ja_en",
+      "prompt_tokens": 4096,
+      "samples_per_mode": 3,
+      "before_prefill_tok_s_weighted": 97.4279057825048,
+      "after_prefill_tok_s_weighted": 116.24564973274964,
+      "after_over_before_prefill": 1.1931453190860226,
+      "before_decode_tok_s_weighted": 15.285586532774039,
+      "after_decode_tok_s_weighted": 15.18763110457064,
+      "after_over_before_decode": 0.9935916473997664,
+      "within_mode_deterministic": true,
+      "cross_mode_output_exact": true,
+      "output_token_ids_sha256": {
+        "before": [
+          "0bc2b0d5ebdc843170a56ed2dc5ff5664dc37ce386c27e0fd7104fdcdf5ab658"
+        ],
+        "after": [
+          "0bc2b0d5ebdc843170a56ed2dc5ff5664dc37ce386c27e0fd7104fdcdf5ab658"
+        ]
+      }
+    }
+  },
+  "by_shape": {
+    "4096": {
+      "case_count": 3,
+      "samples_per_mode": 9,
+      "before_prefill_tok_s_weighted": 98.00073872108275,
+      "after_prefill_tok_s_weighted": 117.54828318356398,
+      "after_over_before_prefill": 1.1994632358651394,
+      "before_decode_tok_s_weighted": 15.284881396332304,
+      "after_decode_tok_s_weighted": 15.249606514515627,
+      "after_over_before_decode": 0.9976921717020885
+    }
+  },
+  "memory_after_close": {
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 83545265060,
+    "total_allocated_bytes": 83555750820,
+    "total_freed_bytes": 83555750820,
+    "active_allocations": 0,
+    "peak_allocations": 1645
+  },
+  "samples": [
+    {
+      "case_id": "general_en-p4096",
+      "mode": "after",
+      "sequence_slot": 0,
+      "prefill_ms": 34641.788111,
+      "decode_ms": 8377.660855,
+      "output_token_ids_sha256": "74b2716677053cba3663304e2c654694d9f951b3916d01734c26daed2c0c2af6",
+      "candidate_calls": 48
+    },
+    {
+      "case_id": "general_en-p4096",
+      "mode": "before",
+      "sequence_slot": 1,
+      "prefill_ms": 41672.706962,
+      "decode_ms": 8374.466889,
+      "output_token_ids_sha256": "74b2716677053cba3663304e2c654694d9f951b3916d01734c26daed2c0c2af6",
+      "candidate_calls": 0
+    },
+    {
+      "case_id": "general_en-p4096",
+      "mode": "before",
+      "sequence_slot": 2,
+      "prefill_ms": 41668.247984,
+      "decode_ms": 8370.62983,
+      "output_token_ids_sha256": "74b2716677053cba3663304e2c654694d9f951b3916d01734c26daed2c0c2af6",
+      "candidate_calls": 0
+    },
+    {
+      "case_id": "general_en-p4096",
+      "mode": "after",
+      "sequence_slot": 3,
+      "prefill_ms": 34660.921998,
+      "decode_ms": 8377.840418,
+      "output_token_ids_sha256": "74b2716677053cba3663304e2c654694d9f951b3916d01734c26daed2c0c2af6",
+      "candidate_calls": 48
+    },
+    {
+      "case_id": "general_en-p4096",
+      "mode": "after",
+      "sequence_slot": 4,
+      "prefill_ms": 34670.885786,
+      "decode_ms": 8374.948927,
+      "output_token_ids_sha256": "74b2716677053cba3663304e2c654694d9f951b3916d01734c26daed2c0c2af6",
+      "candidate_calls": 48
+    },
+    {
+      "case_id": "general_en-p4096",
+      "mode": "before",
+      "sequence_slot": 5,
+      "prefill_ms": 41678.484823,
+      "decode_ms": 8373.115153,
+      "output_token_ids_sha256": "74b2716677053cba3663304e2c654694d9f951b3916d01734c26daed2c0c2af6",
+      "candidate_calls": 0
+    },
+    {
+      "case_id": "general_ja-p4096",
+      "mode": "before",
+      "sequence_slot": 0,
+      "prefill_ms": 41672.833223,
+      "decode_ms": 8377.150259,
+      "output_token_ids_sha256": "3550671c83d9dfcaaf451b6ae1a9032a995d585e28dc3512e1c102dfa3d7096a",
+      "candidate_calls": 0
+    },
+    {
+      "case_id": "general_ja-p4096",
+      "mode": "after",
+      "sequence_slot": 1,
+      "prefill_ms": 34651.310939,
+      "decode_ms": 8374.76459,
+      "output_token_ids_sha256": "3550671c83d9dfcaaf451b6ae1a9032a995d585e28dc3512e1c102dfa3d7096a",
+      "candidate_calls": 48
+    },
+    {
+      "case_id": "general_ja-p4096",
+      "mode": "after",
+      "sequence_slot": 2,
+      "prefill_ms": 34626.820991,
+      "decode_ms": 8380.683532,
+      "output_token_ids_sha256": "3550671c83d9dfcaaf451b6ae1a9032a995d585e28dc3512e1c102dfa3d7096a",
+      "candidate_calls": 48
+    },
+    {
+      "case_id": "general_ja-p4096",
+      "mode": "before",
+      "sequence_slot": 3,
+      "prefill_ms": 41660.283611,
+      "decode_ms": 8375.101454,
+      "output_token_ids_sha256": "3550671c83d9dfcaaf451b6ae1a9032a995d585e28dc3512e1c102dfa3d7096a",
+      "candidate_calls": 0
+    },
+    {
+      "case_id": "general_ja-p4096",
+      "mode": "before",
+      "sequence_slot": 4,
+      "prefill_ms": 41683.844364,
+      "decode_ms": 8376.423801,
+      "output_token_ids_sha256": "3550671c83d9dfcaaf451b6ae1a9032a995d585e28dc3512e1c102dfa3d7096a",
+      "candidate_calls": 0
+    },
+    {
+      "case_id": "general_ja-p4096",
+      "mode": "after",
+      "sequence_slot": 5,
+      "prefill_ms": 34648.393108,
+      "decode_ms": 8373.30211,
+      "output_token_ids_sha256": "3550671c83d9dfcaaf451b6ae1a9032a995d585e28dc3512e1c102dfa3d7096a",
+      "candidate_calls": 48
+    },
+    {
+      "case_id": "mixed_ja_en-p4096",
+      "mode": "after",
+      "sequence_slot": 0,
+      "prefill_ms": 34920.120912,
+      "decode_ms": 8420.072252,
+      "output_token_ids_sha256": "0bc2b0d5ebdc843170a56ed2dc5ff5664dc37ce386c27e0fd7104fdcdf5ab658",
+      "candidate_calls": 48
+    },
+    {
+      "case_id": "mixed_ja_en-p4096",
+      "mode": "before",
+      "sequence_slot": 1,
+      "prefill_ms": 41977.099639,
+      "decode_ms": 8369.894505,
+      "output_token_ids_sha256": "0bc2b0d5ebdc843170a56ed2dc5ff5664dc37ce386c27e0fd7104fdcdf5ab658",
+      "candidate_calls": 0
+    },
+    {
+      "case_id": "mixed_ja_en-p4096",
+      "mode": "before",
+      "sequence_slot": 2,
+      "prefill_ms": 42019.959654,
+      "decode_ms": 8374.448435,
+      "output_token_ids_sha256": "0bc2b0d5ebdc843170a56ed2dc5ff5664dc37ce386c27e0fd7104fdcdf5ab658",
+      "candidate_calls": 0
+    },
+    {
+      "case_id": "mixed_ja_en-p4096",
+      "mode": "after",
+      "sequence_slot": 3,
+      "prefill_ms": 35345.30612,
+      "decode_ms": 8431.966223,
+      "output_token_ids_sha256": "0bc2b0d5ebdc843170a56ed2dc5ff5664dc37ce386c27e0fd7104fdcdf5ab658",
+      "candidate_calls": 48
+    },
+    {
+      "case_id": "mixed_ja_en-p4096",
+      "mode": "after",
+      "sequence_slot": 4,
+      "prefill_ms": 35441.754512,
+      "decode_ms": 8431.693883,
+      "output_token_ids_sha256": "0bc2b0d5ebdc843170a56ed2dc5ff5664dc37ce386c27e0fd7104fdcdf5ab658",
+      "candidate_calls": 48
+    },
+    {
+      "case_id": "mixed_ja_en-p4096",
+      "mode": "before",
+      "sequence_slot": 5,
+      "prefill_ms": 42126.96956,
+      "decode_ms": 8377.362346,
+      "output_token_ids_sha256": "0bc2b0d5ebdc843170a56ed2dc5ff5664dc37ce386c27e0fd7104fdcdf5ab658",
+      "candidate_calls": 0
+    }
+  ],
+  "raw_path": "/tmp/qwen4exp-qsa-corrected-affected-cases.json",
+  "raw_sha256": "9764c19f1d71d232ef92a12ad776a4b9558a050a3c39fafd4c93fe48563b9f84",
+  "environment": {
+    "LD_LIBRARY_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib",
+    "HIPENGINE_HIP_ARCH": "gfx1151"
+  },
+  "clock_snapshot": {
+    "when": "During mixed-language section, not phase-correlated",
+    "sclk_mhz": 2880,
+    "sclk_ceiling_mhz": 2900,
+    "fclk_mhz": 2000,
+    "mclk_mhz": 1000,
+    "socclk_mhz": 1472,
+    "temperature_c": 77,
+    "power1_average_w": 126.053,
+    "causation_established": false
+  },
+  "finding": "English/Japanese original-order decode is effectively flat; mixed-language repeats -0.641%. Preserve original fullsuite and both followups. Clock drop is consistent in magnitude but not a causal proof; do not promote yet.",
+  "next_mechanism": "Specialize binding page-size address arithmetic to remove software 64-bit division in attention key loop; evaluate exactness, power/clock and full request performance, no artificial delays."
+}

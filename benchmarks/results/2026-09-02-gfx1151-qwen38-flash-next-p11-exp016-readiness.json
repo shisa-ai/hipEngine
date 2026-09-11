@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_p11_exp016_readiness",
+  "status": "blocked_external_patch_unavailable_and_local_batch_abi_missing",
+  "performance_claim": false,
+  "source": {
+    "head": "dff80c52b",
+    "cited_repository": "https://github.com/Pat1entZ3r0/strix-qwen-next-flash-optimization",
+    "cited_repository_fetch_status": 404,
+    "cited_patch": "patches/hybrid-03-mtp/0006",
+    "cited_program_commit": "413c33c",
+    "cited_parent_commit": "32af70900"
+  },
+  "amdahl_declaration": {
+    "W_seconds": 51.711070590004965,
+    "C_seconds": 49.383127938017424,
+    "O_ms_per_target_row": 87.65228492640225,
+    "s": null,
+    "arithmetic_class": "no candidate; future rollback change is state/control exact",
+    "scope": "Qwen4Exp MTP rejection-depth and external comparator diagnosis",
+    "mechanism": "audit target/draft transaction ownership and availability of the cited EXP-016 patch",
+    "strict_fallback": "serial truth-only target.step plus draft cursor trim",
+    "overlap_exclusions": [
+      "current target path has no speculative target ring or rollback",
+      "draft cursor trim does not restore target GDN, QSA, PLE, KV, or index state",
+      "no external build or speed row is produced"
+    ]
+  },
+  "local_audit": {
+    "target_verification": "serial target.step; only authoritative target tokens are committed",
+    "target_snapshot_or_rollback_in_provider": false,
+    "draft_rollback": "cursor trim only",
+    "target_batch_or_ring": false,
+    "exp016_failure_class_expressible_today": false,
+    "rejection_depth_grid_blocked_by": "missing Qwen4Exp rows<=8 verifier/device-state transaction ABI"
+  },
+  "external_audit": {
+    "searched_local_repositories": [
+      "/home/lhl/EngramHalo.cpp",
+      "/home/lhl/EngramHalo.cpp-patched",
+      "/home/lhl/strix-halo-llamacpp",
+      "/home/lhl/llama.cpp-nathan",
+      "/home/lhl/llama.cpp"
+    ],
+    "program_commit_found": false,
+    "parent_commit_found": false,
+    "patch_path_found": false,
+    "cited_repository_available": false,
+    "clean_candidate_lanes": [
+      "/home/lhl/EngramHalo.cpp",
+      "/home/lhl/strix-halo-llamacpp",
+      "/home/lhl/llama.cpp-nathan"
+    ],
+    "modified_lane_excluded": "/home/lhl/EngramHalo.cpp-patched"
+  },
+  "decision": {
+    "external_build_run": false,
+    "reason": "The exact patch/source commits needed by the declared one-build falsification are unavailable. Reconstructing the change from prose would not test EXP-016 and modifying pinned comparator trees would violate repository policy.",
+    "unblock": "Obtain an immutable patch or reachable source commit, then apply it in a separate disposable clone of c589f0ed plus PR #27879 and rerun the exact section-5.3 prompt identities.",
+    "local_next": "Build the Qwen4Exp verifier/device transaction ABI before running the rejection-depth RED grid."
+  }
+}

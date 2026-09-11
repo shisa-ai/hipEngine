@@ -1,0 +1,38 @@
+{
+  "schema": 1,
+  "date": "2026-08-28",
+  "status": "accepted_exact_default",
+  "scope": "Exact Qwen4Exp Q4/Q5 expert scheduling and Q8 coltile8 short prefill",
+  "host": {"identity": "zbook", "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8", "gpu": "AMD Radeon 8060S Graphics", "arch": "gfx1151"},
+  "model": {"id": "Qwen/Qwen3.8-Flash-Next", "quant": "Unsloth UD-Q4_K_XL", "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5"},
+  "implementation": {
+    "q4": "64 expert-worker CTAs iterate the 512 expert prefix map; each 128-thread logical lane loads paired columns from one Q4_K block while preserving ordered per-column FMAs and the strict wave/block reduction tree",
+    "q5_1": "128 physical threads materialize the same 256 logical partials, then execute the original stride-128-to-1 reduction; 64 expert-worker CTAs iterate the expert map",
+    "q8_0": "coltile8/rowbatch4 retains local128 K ownership, ordered FMAs, wave32 shuffle tree, and serial four-wave accumulation",
+    "fallback": "HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID=0 plus HIPENGINE_QWEN4_EXP_RAW_VARIANT=coltile restores the preceding exact default"
+  },
+  "timing": {
+    "p508": {"prior_seconds": 14.717505849002919, "candidate_seconds": 11.988005520994193, "reduction_percent": 18.545943558729036, "speedup": 1.2276859418548518, "candidate_prompt_tokens_per_second": 42.37568952653188},
+    "p1012_paired_same_residency": {"prior_seconds": 31.346130591002293, "candidate_seconds": 24.43173083399597, "reduction_percent": 22.058224178364956, "speedup": 1.283009001858565, "candidate_prompt_tokens_per_second": 41.421543437759}
+  },
+  "correctness": {"primitive_q4_bits_exact": true, "primitive_q5_1_bits_exact": true, "primitive_q8_bits_exact": true, "p508_full_logits_exact": true, "p1012_mean_kl": 0.0, "p1012_max_logit_error": 0.0, "p1012_top1_exact": true},
+  "profiler": {
+    "prior_total_kernel_seconds": 14.230379234,
+    "candidate_total_kernel_seconds": 11.691799753,
+    "total_kernel_reduction_percent": 17.83915550848208,
+    "launches": 42261,
+    "q4_prior_seconds": 3.970999,
+    "q4_candidate_seconds": 2.8698,
+    "q5_prior_seconds": 3.4699,
+    "q5_candidate_seconds": 2.5343,
+    "q8_prior_seconds": 3.1208,
+    "q8_candidate_seconds": 2.4824,
+    "q4_kernel": "gguf_q4_k_selected_dual_grouped_rowbatch_bf16_kernel<8,4,true>",
+    "q5_kernel": "q5_1_selected_grouped_prefill_logical256_bf16_bf16_kernel<8,8>",
+    "q8_kernel": "gguf_k_prefill_out_coltile_rowbatch_kernel<float,float,8,8,4>",
+    "profile_command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID=64 HIPENGINE_QWEN4_EXP_RAW_VARIANT=coltile8 rocprofv3 --kernel-trace -f csv -o qwen4exp-prefill512-exactnext -d /tmp -- uv run python /tmp/qwen4exp_prefill512_profile.py",
+    "compiler_spawned_under_profiler": false
+  },
+  "validation": {"focused_command": "uv run pytest -q tests/test_gguf_k_gemv.py tests/test_gguf_q4_k_selected_wmma_prefill.py tests/test_qwen4_exp_q5_1_selected.py tests/test_qwen4_exp_runner_moe.py -x", "focused_passed": 29},
+  "decision": {"promoted": true, "target_50_tok_s_met": false, "next": "Continue 512/1K optimization; 16K remains blocked."}
+}

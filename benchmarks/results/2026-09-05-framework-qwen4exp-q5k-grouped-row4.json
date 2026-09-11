@@ -1,0 +1,78 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_q5k_grouped_row4_leaf",
+  "date": "2026-09-05",
+  "status": "accepted_standalone_candidate_runtime_pending",
+  "performance_claim": false,
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "hardware": "Framework Desktop Ryzen AI Max+ 395 Radeon 8060S",
+    "cpu_policy": "performance",
+    "gpu_policy": "high",
+    "profile": "accelerator-performance",
+    "kernel": "7.1.6-1-cachyos"
+  },
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "arithmetic_class": "T0",
+  "runtime_default_changed": false,
+  "source_base": "177e669c61240a373e485be932297caa5450d773",
+  "source_clean": false,
+  "source_sha256": {
+    "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.hip": "ce2911670a7563941cd681bf68e88a7c172da910191295e295aa978ff8b1b905",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py": "8c1ca94d5f3eaeb46aed2e5c0af8a9e919fc169b1752cae76050d85d05f6f726",
+    "scripts/qwen4exp_q5k_grouped_row4_screen.py": "25c734207673fe0e53d4cfc8029b8ac40baa5f0c9ca0230693d34a02220985d0"
+  },
+  "boundary": "Actual layer-2 gate and up Q5_K projections, including device count/prefix/scatter and zeroing for candidate; no SiLU/down/combine",
+  "weights": [
+    {"name": "blk.2.ffn_gate_exps.weight", "shape": [512,640,2560], "bytes": 576716800, "sha256": "3503441ba264295aa56cdbe538db7cac53fc715f8d976467c7b6e261f41ed7bd"},
+    {"name": "blk.2.ffn_up_exps.weight", "shape": [512,640,2560], "bytes": 576716800, "sha256": "317d4b8bb01646e3877c51224af0c601b710bb4e2d7e3b391bf30437ad9ef194"}
+  ],
+  "command": "env PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin:$PATH LD_LIBRARY_PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python scripts/qwen4exp_q5k_grouped_row4_screen.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --rows 64 512 --pairs 10 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --output /tmp/qwen4exp-q5k-grouped-row4-screen.json",
+  "compiler": "HIP 7.15.26333-0000000 AMD clang 23.0.0git 8f497e0992fb7513f7f78a6f6b6f1056c375e961",
+  "samples": [
+    {
+      "rows": 64, "top_k": 10, "active_experts": 367,
+      "parent_seconds": [0.03000580589286983,0.030016978038474917,0.03007014701142907,0.030021967133507133,0.030055709881708026,0.030021094949916005,0.02997468807734549,0.029932438163086772,0.03006075997836888,0.030037445947527885],
+      "candidate_seconds": [0.024319283897057176,0.024374437052756548,0.024390066973865032,0.024420424131676555,0.0243694381788373,0.02440391294658184,0.024413871811702847,0.02442219713702798,0.02435876801609993,0.024392290972173214],
+      "speedup": 1.2308355850662485,
+      "all_pairs_exact": true
+    },
+    {
+      "rows": 512, "top_k": 10, "active_experts": 512,
+      "parent_seconds": [0.23938181600533426,0.2395146549679339,0.2410656160209328,0.23956990893930197,0.2394930140580982,0.2394892070442438,0.23955315700732172,0.23923025093972683,0.23945904104039073,0.2394744090270251],
+      "candidate_seconds": [0.10740233887918293,0.10722971498034894,0.10772238997742534,0.10790942120365798,0.10791324800811708,0.10806296905502677,0.1073486979585141,0.10817634197883308,0.10798004316166043,0.10819864319637418],
+      "speedup": 2.219332301151103,
+      "all_pairs_exact": true
+    }
+  ],
+  "correctness": {
+    "primitive_cases": 4,
+    "cpu_oracle": "independent GGUF dequantization plus float64 dot on sampled rows",
+    "parent_bits": "all primitive outputs and all actual-weight paired outputs exact",
+    "registry_parent": "hip_gfx1151/linear/gguf_q5_k/selected_gemv_bf16_bf16_out",
+    "registry_candidate": "hip_gfx1151/linear/gguf_q5_k/selected_grouped_row4_gemv_bf16_bf16_out",
+    "focused_initial": "17 passed, 1 existing runner test missing backend registration",
+    "focused_repair": "9 passed after local backend registration in existing test",
+    "whole_model": "pending"
+  },
+  "trace": {
+    "path": "/tmp/qwen4exp-q5k-row4-trace/gfx1151/2070156_kernel_trace.csv",
+    "sha256": "e5d2a781f663fd3be057d81bc7d4fc1ec83a63f0c7e9a8f71d805d40152b6b8a",
+    "symbol": "gguf_q5_k_selected_grouped_row4_bf16_kernel",
+    "calls": 4,
+    "duration_ns": [53238911,53151637,53255447,53182593],
+    "vgpr": 24,
+    "scratch_bytes": 0,
+    "lds_bytes": 512,
+    "threads": 128,
+    "blocks": [640,512,1],
+    "command_suffix": "rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen4exp-q5k-row4-trace -- .venv/bin/python scripts/qwen4exp_q5k_grouped_row4_screen.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --rows 512 --pairs 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --output /tmp/qwen4exp-q5k-row4-traced.json"
+  },
+  "limitations": [
+    "Development-tree standalone screen, source hashes pinned; clean whole-model candidate A/B still required.",
+    "Synthetic non-prompt-tuned routing and BF16 activations with actual rotating gate/up weight banks.",
+    "Not an operation-matched halo-box microbenchmark and not a product speedup.",
+    "Runtime wiring, SiLU/down/combine, all-category trajectory and lifecycle gates remain pending."
+  ]
+}

@@ -298,6 +298,14 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--vision-model",
+        default=os.environ.get("HIPENGINE_VISION_MODEL"),
+        help=(
+            "Optional Qwen4Exp mmproj GGUF for bounded HTTP multimodal input "
+            "(env HIPENGINE_VISION_MODEL)"
+        ),
+    )
+    parser.add_argument(
         "--speculative-candidate-budget",
         type=_positive_int,
         default=int(os.environ.get("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", "4")),
@@ -384,6 +392,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         speculative_provider=args.speculative_provider,
         draft_model=args.draft_model,
         speculative_candidate_budget=args.speculative_candidate_budget,
+        vision_model=args.vision_model,
     )
     app = create_app(config)
     try:

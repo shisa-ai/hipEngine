@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_p4096_dense_other_subowner_audit",
+  "status": "diagnostic_re_rank",
+  "source": "/tmp/qwen4exp-canonical-profile-3ddb748d4/p4096/roles.json",
+  "scope": "code-p4096 named-production prefill on zbook/gfx1151",
+  "amdahl": {"wall_seconds": 57.730, "comparator_seconds": 13.910, "dense_other_seconds": 8.767},
+  "subowners": [
+    {"seconds": 3.086243214, "kernel": "gguf_k_selected_prefill_out<quant8>", "roles": {"layer2": 0.758, "layer4": 0.569, "layer30": 0.581, "layer46": 0.592, "layer47": 0.586}, "interpretation": "strict selected Q8_0 down"},
+    {"seconds": 2.775459126, "kernel": "gguf_k_prefill_out_coltile_rowbatch<float,float,8,8,4>", "interpretation": "dense F32 projection family led by 48 attention-gate roles near 0.06-0.067 s each"},
+    {"seconds": 2.337231775, "kernel": "gguf_k_selected_prefill_out<quant5>", "roles": {"layer2": 2.337231775}, "interpretation": "strict selected layer-2 Q5_K gate/up"}
+  ],
+  "decision": "The family is not one mechanism. Re-rank strict selected Q8_0 down first (3.086 s), then the dense F32 projection family (2.775 s), then layer-2 Q5_K (2.337 s). The existing grouped Q8 owner was measured perf-negative; do not extend it unchanged to layers 4/30/46/47. Layer-2 Q5 WMMA remains rejected on the binding production-numerics gate.",
+  "overlap_exclusions": ["routed Q4/Q5_1 families", "QSA", "GDN", "explicit dense_quant_q8 family", "copies", "host stages"]
+}

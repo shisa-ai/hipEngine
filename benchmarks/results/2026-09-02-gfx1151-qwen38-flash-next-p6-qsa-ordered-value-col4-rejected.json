@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_qsa_ordered_value_schedule_screen",
+  "status": "rejected",
+  "date": "2026-09-02",
+  "scope": {
+    "host": "zbook",
+    "gpu": "AMD Radeon 8060S",
+    "arch": "gfx1151",
+    "model_geometry": "24 query heads / 2 KV heads / H256 / 2051 selected tokens",
+    "clock_policy": "auto"
+  },
+  "candidate": {
+    "classification": "T0",
+    "mechanism": "64-thread weighted-V kernel with four independent output-column recurrences per thread",
+    "strict_fallback": "strict_spans",
+    "retained_incumbent": "strict_ordered_three_pass_spans with one output column per thread"
+  },
+  "amdahl": {
+    "complete_wall_ms_per_token": 80.061,
+    "comparator_wall_ms_per_token": 55.325,
+    "qsa_role_ms_per_token": 20.913,
+    "weighted_value_role_ms_per_token_estimate": 11.1,
+    "plausible_speedup": 1.2,
+    "projected_saved_ms_per_token": 1.85,
+    "projected_gap_coverage": 0.075,
+    "overlap_exclusions": [
+      "ordered QK score pass",
+      "ordered softmax coefficient pass",
+      "QSA score/top-k",
+      "graphs, copies, PLE, and non-QSA kernels"
+    ]
+  },
+  "correctness": {
+    "initial_red_detected_inverse_denominator_reassociation": true,
+    "corrected_candidate_bit_exact_to_strict": true,
+    "test": "tests/test_qwen4_exp_qsa_sparse_hip.py::test_qwen4_exp_sparse_ordered_three_pass_is_bit_exact_to_strict"
+  },
+  "leaf_screen": {
+    "protocol": "same actual-shape harness and immutable random K/V payload; separate cached builds",
+    "incumbent_median_ms": 1.1797110055340454,
+    "candidate_median_ms": 1.4691415126435459,
+    "candidate_vs_incumbent": 0.8030,
+    "candidate_samples_ms": [
+      1.7641220183577389,
+      1.616914989426732,
+      1.6562689852435142,
+      1.6723890148568898,
+      1.6072560101747513,
+      1.2963009939994663,
+      1.2231339933350682,
+      1.2289340083952993,
+      1.3310270151123405,
+      1.2454650131985545
+    ],
+    "limitation": "The incumbent and candidate were cached-build runs in separate processes, so the magnitude is diagnostic. The candidate clearly fails the cheap leaf admission screen and was not advanced to whole-model timing."
+  },
+  "decision": {
+    "promoted": false,
+    "candidate_removed": true,
+    "reason": "Grouping four output recurrences per thread reduces active waves and increases register work; it does not beat the retained one-column-per-thread owner.",
+    "next": "Require a new exact QSA data-reuse mechanism or a fresh profile before another value-pass schedule. Re-rank against operation-complete prefill MoE."
+  }
+}

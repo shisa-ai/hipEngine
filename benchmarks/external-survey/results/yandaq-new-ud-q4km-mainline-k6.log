@@ -1,0 +1,8 @@
+[new-unsloth-UD-Q4_K_M-mainline-k6] server log: /tmp/qwen38-bench.server.log
+
+=== new-unsloth-UD-Q4_K_M-mainline-k6 (n-max 6, thinking OFF, natural stop, GTT 35358MB) ===
+prompt  decode t/s  gen tok prefill s   gen s  eff t/s   uniq reason_ch  accept
+prose        24.43     1024      0.17   41.90    24.34  0.975         0    0.43
+code         32.62      973      0.23   29.80    32.40  0.938         0    0.64
+json         29.20      848      0.25   29.01    28.97  0.944         0    0.56
+MEAN         28.75

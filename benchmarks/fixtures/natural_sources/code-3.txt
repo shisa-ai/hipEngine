@@ -1,0 +1,76 @@
+else:
+            # typing objects, e.g. List[int]
+            type_name = repr(self.type)
+        return f'dataclasses.InitVar[{type_name}]'
+
+    def __class_getitem__(cls, type):
+        return InitVar(type)
+
+# Instances of Field are only ever created from within this module,
+# and only from the field() function, although Field instances are
+# exposed externally as (conceptually) read-only objects.
+#
+
+# name and type are filled in after the fact, not in __init__.
+# They're not known at the time this class is instantiated, but it's
+# convenient if they're available later.
+#
+# When cls._FIELDS is filled in with a list of Field objects, the name
+# and type fields will have been populated.
+class Field:
+    __slots__ = ('name',
+                 'type',
+                 'default',
+                 'default_factory',
+                 'repr',
+
+'hash',
+                 'init',
+                 'compare',
+                 'metadata',
+                 'kw_only',
+                 '_field_type',  # Private: not to be used by user code.
+                 )
+
+    def __init__(self, default, default_factory, init, repr, hash, compare,
+                 metadata, kw_only):
+        self.name = None
+        self.type = None
+
+self.default = default
+        self.default_factory = default_factory
+        self.init = init
+        self.repr = repr
+        self.hash = hash
+        self.compare = compare
+        self.metadata = (_EMPTY_METADATA
+                         if metadata is None else
+                         types.MappingProxyType(metadata))
+        self.kw_only = kw_only
+        self._field_type = None
+
+@_recursive_repr
+    def __repr__(self):
+        return ('Field('
+                f'name={self.name!r},'
+                f'type={self.type!r},'
+                f'default={self.default!r},'
+                f'default_factory={self.default_factory!r},'
+                f'init={self.init!r},'
+                f'repr={self.repr!r},'
+                f'hash={self.hash!r},'
+                f'compare={self.compare!r},'
+                f'metadata={self.metadata!r},'
+
+f'kw_only={self.kw_only!r},'
+                f'_field_type={self._field_type}'
+                ')')
+
+    # This is used to support the PEP 487 __set_name__ protocol in the
+    # case where we're using a field that contains a descriptor as a
+    # default value.  For details on __set_name__, see
+    # https://peps.python.org/pep-0487/#implementation-details.
+    #
+    # Note that in _process_class, this Field object is overwritten
+    # with the default value, so the end result is a descriptor that
+    # had __set_name__ called on it at the right time.

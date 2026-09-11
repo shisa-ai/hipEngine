@@ -1,0 +1,140 @@
+{
+  "arm": "mtp-k12",
+  "rows": [
+    {
+      "id": "code_merge_intervals",
+      "category": "code",
+      "wall_s": 4.072777986526489,
+      "predicted_n": 128,
+      "predicted_per_second": 33.930446858641744,
+      "draft_n": 208,
+      "draft_n_accepted": 108,
+      "unique_char30_fraction": 1.0,
+      "max_word_trigram_repeats": 1,
+      "sha256": "01d27f0b58c3a41a1fb7bdaada9ba6125d1ca29dda8bd688ab9361da1059b46b",
+      "content": "```python\ndef merge_intervals(intervals):\n    if not intervals:\n        return []\n    sorted_intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [sorted_intervals[0]]\n    for start, end in sorted_intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1] = (last_start, max(last_end, end))\n        else:\n            merged.append((start, end))\n    return merged\n\n\nimport pytest\n\ndef test_merge_intervals():\n    assert merge_intervals([]"
+    },
+    {
+      "id": "code_topological_sort",
+      "category": "code",
+      "wall_s": 4.516774892807007,
+      "predicted_n": 128,
+      "predicted_per_second": 30.365362255185243,
+      "draft_n": 252,
+      "draft_n_accepted": 106,
+      "unique_char30_fraction": 1.0,
+      "max_word_trigram_repeats": 2,
+      "sha256": "a2d93a5fc6484faccdb57b89573df5eaaa1506a13373c5e7a6438cfe3a2645c1",
+      "content": "```python\ndef topo_sort(nodes, edges):\n    \"\"\"\n    Perform topological sort on a directed graph.\n    \n    Args:\n        nodes: list of node identifiers\n        edges: list of (u, v) tuples representing directed edges u -> v\n    \n    Returns:\n        A list of nodes in topological order.\n    \n    Raises:\n        ValueError: If the graph contains a cycle.\n    \"\"\"\n    # Build adjacency list and in-degree map\n    adj = {node: [] for node in nodes}\n    in_degree = {node: 0 for node in nodes}\n"
+    },
+    {
+      "id": "code_lru_cache",
+      "category": "code",
+      "wall_s": 3.804412841796875,
+      "predicted_n": 128,
+      "predicted_per_second": 36.585485299260625,
+      "draft_n": 191,
+      "draft_n_accepted": 110,
+      "unique_char30_fraction": 0.978401727861771,
+      "max_word_trigram_repeats": 1,
+      "sha256": "7913f29a62b9951f6604b9c708e071ce7cea69115538ff8cd6e7eab2efab0cc0",
+      "content": "```python\nclass LRUCache:\n    def __init__(self, capacity: int):\n        self.capacity = capacity\n        self.cache = {}\n        self.order = []\n\n    def get(self, key: int) -> int:\n        if key not in self.cache:\n            return -1\n        self.order.remove(key)\n        self.order.append(key)\n        return self.cache[key]\n\n    def put(self, key: int, value: int) -> None:\n        if key in self.cache:\n            self.order.remove(key)\n        elif len(self.cache) >= self.capacity"
+    },
+    {
+      "id": "code_markdown_table",
+      "category": "code",
+      "wall_s": 3.5646376609802246,
+      "predicted_n": 128,
+      "predicted_per_second": 39.328309632091404,
+      "draft_n": 167,
+      "draft_n_accepted": 111,
+      "unique_char30_fraction": 1.0,
+      "max_word_trigram_repeats": 1,
+      "sha256": "f986789ef70ffaf25fb88464b125bf9114ac64beb85e4edb5198849ca4d40481",
+      "content": "```python\ndef markdown_table(rows):\n    \"\"\"\n    Convert a list of dictionaries to a GitHub-flavored markdown table.\n    \n    Args:\n        rows: A list of dictionaries. Each dictionary represents a row.\n        \n    Returns:\n        A string representing the markdown table.\n    \"\"\"\n    if not rows:\n        return \"\"\n    \n    # Determine column order from first appearance\n    columns = []\n    for row in rows:\n        for key in row:\n            if key not in columns:\n                columns.append(key)\n    \n    # Build the table\n    lines = []"
+    },
+    {
+      "id": "general_en_plan",
+      "category": "general_en",
+      "wall_s": 8.8634512424469,
+      "predicted_n": 128,
+      "predicted_per_second": 14.884379429787629,
+      "draft_n": 502,
+      "draft_n_accepted": 84,
+      "unique_char30_fraction": 1.0,
+      "max_word_trigram_repeats": 1,
+      "sha256": "46ffe323998491a669523712a38808029b18ae0ebf016b408540c5460f629ccf",
+      "content": "# Flask SQLite → PostgreSQL Migration Plan\n\n## 1. Pre-Migration Assessment\n\n### Inventory\n- List all models, relationships, and custom SQL queries\n- Identify SQLite-specific features in use:\n  - `AUTOINCREMENT` vs `SERIAL`/`IDENTITY`\n  - `PRAGMA` statements\n  - Type affinity quirks (SQLite is dynamically typed)\n  - `json` column handling\n  - `datetime` storage format (string vs native)\n\n### Risks\n\n| Risk | Likelihood | Impact | Mitigation |\n|------|-----------|--------|------------|\n| Type"
+    },
+    {
+      "id": "general_en_explain",
+      "category": "general_en",
+      "wall_s": 7.276824712753296,
+      "predicted_n": 128,
+      "predicted_per_second": 18.284136050096805,
+      "draft_n": 393,
+      "draft_n_accepted": 92,
+      "unique_char30_fraction": 1.0,
+      "max_word_trigram_repeats": 1,
+      "sha256": "364d40f0e7fc08e575071e90e5fe3f588bbe144562e7492a0e894f2aeb8443ff",
+      "content": "Transformer inference on local GPUs is primarily **memory-bandwidth limited** (also known as \"memory-bound\") rather than compute-bound, particularly during the **inference phase** (specifically the autoregressive decoding step). This is in stark contrast to the training phase, which is typically compute-bound.\n\nHere’s a technical breakdown of why this happens, with concrete examples of what changes throughput.\n\n### 1. The Core Reason: Arithmetic Intensity\n\nThe key metric is **Arithmetic Intensity (AI)**, defined as:\n\\[\n\\text{AI} = \\frac{\\text{FLOPs (Floating Point Operations)}}"
+    },
+    {
+      "id": "general_ja_plan",
+      "category": "general_ja",
+      "wall_s": 8.822342157363892,
+      "predicted_n": 128,
+      "predicted_per_second": 14.958419128308138,
+      "draft_n": 489,
+      "draft_n_accepted": 84,
+      "unique_char30_fraction": 1.0,
+      "max_word_trigram_repeats": 1,
+      "sha256": "557c61db629526027397d6c74289f857e30a680112b7352340c7aaffd7934ddc",
+      "content": "小規模な社内Pythonツールを運用環境へ移行する際、最も重要なのは「開発環境と本番環境の乖離」をなくし、再現性のあるデプロイを実現することです。以下に、リスク管理、具体的な手順、検証方法を含む実践的な計画案を提示します。\n\n---\n\n# 小規模社内Pythonツールの運用環境移行計画\n\n## 1. 前提条件と目標\n*   **対象**: 小規模なPythonスクリプト/アプリケーション（CLIツール、バッチ処理、簡易Web APIなど）\n*   **目標**:\n    *   "
+    },
+    {
+      "id": "general_ja_explain",
+      "category": "general_ja",
+      "wall_s": 8.301034927368164,
+      "predicted_n": 128,
+      "predicted_per_second": 15.937424901159732,
+      "draft_n": 454,
+      "draft_n_accepted": 87,
+      "unique_char30_fraction": 1.0,
+      "max_word_trigram_repeats": 1,
+      "sha256": "4aea41fd3fc7570cab3ba4239a9def9b52ded914713cee12df69dee6a718c355",
+      "content": "ローカルGPU（特にコンシューマー向けGPU）でLLMの推論速度がメモリ帯域幅（Memory Bandwidth）に制約される主な理由は、**「計算密度（Arithmetic Intensity）」が極めて低い**ことと、**モデルの重みパラメータがGPUのメモリに常駐している必要がある**ことにあります。\n\n以下に、技術的かつ具体的にそのメカニズムを説明します。\n\n---\n\n### 1. 根本原因：計算密度（Arithmetic Intensity）の低さ\n\nLLMの推論（特にデコーディングフェーズ）は、"
+    },
+    {
+      "id": "mixed_ja_en_translate",
+      "category": "mixed_ja_en",
+      "wall_s": 3.562366247177124,
+      "predicted_n": 63,
+      "predicted_per_second": 19.39507996873013,
+      "draft_n": 192,
+      "draft_n_accepted": 50,
+      "unique_char30_fraction": 1.0,
+      "max_word_trigram_repeats": 1,
+      "sha256": "63966ea149ccb537f944b89aebd009bb799c9b2149adfdef69946f5c7535c86e",
+      "content": "**English Summary:**\nFor next week's release, the focus will be on verifying the changes to log output formatting, the cache invalidation option, and the backward compatibility of API responses.\n\n**Japanese Reply:**\n承知いたしました。来週のリリースでは、それらの項目を重点的に確認いたします。"
+    },
+    {
+      "id": "mixed_ja_en_review",
+      "category": "mixed_ja_en",
+      "wall_s": 2.0331180095672607,
+      "predicted_n": 34,
+      "predicted_per_second": 20.230244706266042,
+      "draft_n": 96,
+      "draft_n_accepted": 25,
+      "unique_char30_fraction": 1.0,
+      "max_word_trigram_repeats": 1,
+      "sha256": "ea96e9e9b3cfa6030479854848e7447e3f360d8dd5c6ae52d98bc2473816a879",
+      "content": "*   Enabling MTP in the new inference mode improves generation speed.\n*   However, long contexts increase KV cache usage, so memory monitoring is recommended."
+    }
+  ],
+  "aggregate": {
+    "total_tokens": 1121,
+    "wall_s": 54.81774067878723,
+    "complete_wall_tok_s": 20.449584133148928
+  }
+}

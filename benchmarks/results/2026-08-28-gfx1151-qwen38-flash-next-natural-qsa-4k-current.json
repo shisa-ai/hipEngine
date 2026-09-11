@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "date": "2026-08-28",
+  "status": "accepted_current_default_4k",
+  "scope": "Current exact-default natural 4K archive retrieval after implementation-first short optimization",
+  "host": {"identity": "zbook", "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8", "cpu": "AMD Ryzen AI Max+ Pro 395", "gpu": "AMD Radeon 8060S Graphics", "arch": "gfx1151"},
+  "model": {"id": "Qwen/Qwen3.8-Flash-Next", "quant": "Unsloth UD-Q4_K_XL", "quant_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5"},
+  "workload": {"kind": "natural chat archive retrieval", "tokens": 4096, "needle_token_offset": 720, "qsa_layers": 12, "chunk_size": 64, "generated_tokens": 100},
+  "command": "uv run python scripts/qwen4_exp_qsa_retrieval_gate.py /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --target-tokens 4096 --max-tokens 128 --json-out /tmp/qwen4exp-qsa-retrieval-4k-current-shortopt.json",
+  "result": {"prefill_seconds": 146.88276657999813, "prompt_tokens_per_second": 27.886184985283194, "final_answer": "VIOLET-7391", "retrieval_exact": true, "needle_selected_layers": 12},
+  "comparison": {"prior_artifact": "benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-exact-grouped-q5-1-out8.json", "prior_seconds": 222.22829147899938, "reduction_percent": 33.90456021488219, "speedup": 1.5129636828971702, "reason": "exact raw-Q8 F32 coltile4/rowbatch8 short-prefill default"},
+  "cpu_index_oracle": {"source": "huggingface/transformers@fc5c5bde8e656dad91cbf34e61940d984b1c7b91", "layer": 47, "selected_count": 2048, "exact_positions": true, "position_mismatches": 0, "score_mean_abs": 0.000007066875696182251, "score_max_abs": 0.0000400543212890625, "cutoff_margin": 0.002354145050048828},
+  "transactional": {"repeat_exact": true, "abandoned_token": 248085, "rollback_isolation_exact": true},
+  "memory": {"tracked_peak_bytes": 82874580720, "tracked_after_close_bytes": 0, "tracked_after_close_allocations": 0},
+  "context_ladder": {"4k_prerequisite_tok_s": 20, "4k_unlocked": true, "16k_prerequisite_tok_s": 50, "current_tok_s": 27.886184985283194, "16k_blocked": true, "action": "Do not run 16K; return to 512/1K optimization."}
+}

@@ -1,0 +1,263 @@
+{
+  "capture_nonexecuting": true,
+  "command": [
+    "qwen4exp_stateful_layer_graph_probe.py",
+    "--model-root",
+    "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--prompt-file",
+    "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "--segment-length",
+    "4",
+    "--output",
+    "/tmp/qwen4exp-stateful-mixed4-graph-clean.json"
+  ],
+  "decision": {
+    "blocker": "captured scalar position, attention live-counts, and host QSA index cursor do not advance across replay",
+    "dynamic_control_gate": false,
+    "fixed_position_device_state_gate": true,
+    "next_rung": "device-owned paired QSA attention/index position advance and dynamic graph replay",
+    "production_binding": false
+  },
+  "first_mismatch": null,
+  "fixed_position": 8,
+  "gdn_state_indices": [
+    0,
+    1,
+    2
+  ],
+  "host": {
+    "cpu_governors": {
+      "performance": 32
+    },
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "hostname": "zbook",
+    "kernel": "6.18.42-1-cachyos-lts",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "rocm_platform": "10.0.0",
+    "tuned_active": "Current active profile: accelerator-performance"
+  },
+  "host_cursor_replay_safe": false,
+  "kind": "qwen4exp_stateful_layer_graph_probe",
+  "layer_kinds": [
+    "gdn",
+    "gdn",
+    "gdn",
+    "qsa"
+  ],
+  "layers": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "lifecycle": {
+    "after_close": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 82741321248,
+      "peak_allocations": 1638,
+      "total_allocated_bytes": 82741321248,
+      "total_freed_bytes": 82741321248
+    },
+    "passed": true
+  },
+  "model": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "profile": {
+    "manifest_sha256": "e93c8fa47bf2804a781bade0939c617563531ce5436e3281c2ab869209875dca",
+    "name": "strict"
+  },
+  "profiler": {
+    "device_allocations_at_or_after_first_graph_launch": 0,
+    "graph_launches": 7,
+    "kernel_dispatches_per_graph_launch": [
+      142,
+      142,
+      142,
+      142,
+      142,
+      142,
+      142
+    ],
+    "profiled_timing": {
+      "eager_median_ms": 14.846505990135483,
+      "graph_median_ms": 5.665935008437373,
+      "speedup": 2.62030996967437
+    },
+    "trace_sha256": {
+      "hip_api": "95b2d0ddbb21f97c97846fc2103291f39c73548657663725a0d6462d8a41fefc",
+      "kernel": "91c4109901a2c01b9c986538b60cd3c54b7c786248755dafae08910b6fac3968",
+      "memory_allocation": "e1cb9b96a3ffd4d3fdb73da1543ef4f2c8ff313403c69d9c80dba8c83cd8b155"
+    }
+  },
+  "prompt_tokens": 8,
+  "qsa_state_indices": [
+    0
+  ],
+  "rows": [
+    {
+      "output_exact": true,
+      "replay": 1,
+      "state_exact": true,
+      "state_owners": {
+        "decode.gdn_conv": true,
+        "decode.gdn_matrix": true,
+        "decode.ple_conv": true,
+        "decode.residual": true,
+        "qsa.0.attention.context": true,
+        "qsa.0.attention.key_cache": true,
+        "qsa.0.attention.position": true,
+        "qsa.0.attention.value_cache": true,
+        "qsa.0.index.pooled_keys": true,
+        "qsa.0.index.query_position": true,
+        "qsa.0.index.raw_keys": true,
+        "qsa.0.index.scores": true,
+        "qsa.0.index.selected_count": true,
+        "qsa.0.index.selected_positions": true,
+        "qsa.0.index.selected_starts": true
+      }
+    },
+    {
+      "output_exact": true,
+      "replay": 2,
+      "state_exact": true,
+      "state_owners": {
+        "decode.gdn_conv": true,
+        "decode.gdn_matrix": true,
+        "decode.ple_conv": true,
+        "decode.residual": true,
+        "qsa.0.attention.context": true,
+        "qsa.0.attention.key_cache": true,
+        "qsa.0.attention.position": true,
+        "qsa.0.attention.value_cache": true,
+        "qsa.0.index.pooled_keys": true,
+        "qsa.0.index.query_position": true,
+        "qsa.0.index.raw_keys": true,
+        "qsa.0.index.scores": true,
+        "qsa.0.index.selected_count": true,
+        "qsa.0.index.selected_positions": true,
+        "qsa.0.index.selected_starts": true
+      }
+    },
+    {
+      "output_exact": true,
+      "replay": 3,
+      "state_exact": true,
+      "state_owners": {
+        "decode.gdn_conv": true,
+        "decode.gdn_matrix": true,
+        "decode.ple_conv": true,
+        "decode.residual": true,
+        "qsa.0.attention.context": true,
+        "qsa.0.attention.key_cache": true,
+        "qsa.0.attention.position": true,
+        "qsa.0.attention.value_cache": true,
+        "qsa.0.index.pooled_keys": true,
+        "qsa.0.index.query_position": true,
+        "qsa.0.index.raw_keys": true,
+        "qsa.0.index.scores": true,
+        "qsa.0.index.selected_count": true,
+        "qsa.0.index.selected_positions": true,
+        "qsa.0.index.selected_starts": true
+      }
+    },
+    {
+      "output_exact": true,
+      "replay": 4,
+      "state_exact": true,
+      "state_owners": {
+        "decode.gdn_conv": true,
+        "decode.gdn_matrix": true,
+        "decode.ple_conv": true,
+        "decode.residual": true,
+        "qsa.0.attention.context": true,
+        "qsa.0.attention.key_cache": true,
+        "qsa.0.attention.position": true,
+        "qsa.0.attention.value_cache": true,
+        "qsa.0.index.pooled_keys": true,
+        "qsa.0.index.query_position": true,
+        "qsa.0.index.raw_keys": true,
+        "qsa.0.index.scores": true,
+        "qsa.0.index.selected_count": true,
+        "qsa.0.index.selected_positions": true,
+        "qsa.0.index.selected_starts": true
+      }
+    }
+  ],
+  "schema": 1,
+  "source": {
+    "head": "ed0636b956a746307ffa0ff952cc0a3890d32f54",
+    "path": "/home/lhl/hipEngine",
+    "tracked_clean": true
+  },
+  "status": "diagnostic_passed",
+  "timing": {
+    "eager_median_ms": 12.160253500042018,
+    "eager_ms": [
+      13.91891400271561,
+      11.979545000940561,
+      11.820558007457294,
+      11.676287002046593,
+      12.402887005009688,
+      12.17026199446991,
+      12.24695600103587,
+      11.680205003358424,
+      12.095862999558449,
+      12.115510005969554,
+      12.161045000539161,
+      12.115959994844161,
+      12.112324009649456,
+      12.094410005374812,
+      12.208574000396766,
+      11.926306004170328,
+      12.185790998046286,
+      12.246664991835132,
+      11.998069996479899,
+      12.449363988707773,
+      12.266161997104064,
+      12.24387000547722,
+      12.159461999544874,
+      11.991677994956262,
+      11.814445999334566,
+      12.17957898916211,
+      12.05400499748066,
+      13.196462008636445,
+      12.400461986544542,
+      13.005835993681103
+    ],
+    "graph_median_ms": 4.954901502060238,
+    "graph_ms": [
+      5.816824006615207,
+      5.401296992204152,
+      5.335912996088155,
+      5.379444992286153,
+      5.155867998837493,
+      5.031934997532517,
+      5.0857260066550225,
+      5.054366993135773,
+      4.936356999678537,
+      4.977753997081891,
+      5.050969994044863,
+      5.155327002285048,
+      5.009833999793045,
+      4.943821011693217,
+      4.9539600004209206,
+      4.926629000692628,
+      4.914836012176238,
+      4.955843003699556,
+      4.968526991433464,
+      4.7650759952375665,
+      4.946635992382653,
+      4.9181229987880215,
+      4.788459002156742,
+      4.797076006070711,
+      4.681470003561117,
+      4.956384000252001,
+      4.804279000381939,
+      4.884709996986203,
+      4.761399002745748,
+      4.856537998421118
+    ],
+    "samples": 30,
+    "speedup": 2.4541867270188535
+  }
+}

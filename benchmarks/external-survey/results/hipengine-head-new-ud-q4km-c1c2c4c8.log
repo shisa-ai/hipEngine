@@ -1,0 +1,11 @@
+/home/lhl/hipEngine/.venv/lib/python3.13/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+  from starlette.testclient import TestClient as TestClient  # noqa
+Traceback (most recent call last):
+  File "/home/lhl/hipEngine/scripts/gguf_mtp_c1c8_server_bench.py", line 870, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/home/lhl/hipEngine/scripts/gguf_mtp_c1c8_server_bench.py", line 864, in main
+    payload = run(args)
+  File "/home/lhl/hipEngine/scripts/gguf_mtp_c1c8_server_bench.py", line 639, in run
+    raise RuntimeError("benchmark requires tracked-clean source")
+RuntimeError: benchmark requires tracked-clean source
