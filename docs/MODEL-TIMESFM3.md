@@ -77,8 +77,15 @@ Both validated by
 
 Workload: batch 8, 3 variates (2 targets + 1 past-future covariate), context
 8192, horizon 512 — one non-autoregressive forward pass (256 context + 16
-horizon patches = 272 patches; 6,528 rows). Same host throughout (zbook,
-Ryzen AI MAX+ PRO 395, Radeon 8060S).
+horizon patches = 272 patches; 6,528 rows).
+
+Two physical Strix Halo hosts are recorded as separate lanes. They run the
+same `gfx1151` backend, the same code, and the same workload; the difference
+is host power/thermal headroom, so their absolute rates must not be read as an
+old→new delta. The torch reference row exists only on the zbook lane (the
+Framework Desktop ROCm environment has no torch install).
+
+**HP ZBook Ultra G1a lane** (power/thermal limited; same host throughout):
 
 | Path | Precision | Decode time | Speed vs hipEngine fp16 |
 | --- | --- | ---: | ---: |
@@ -86,6 +93,23 @@ Ryzen AI MAX+ PRO 395, Radeon 8060S).
 | hipEngine GPU (pre var-norm fusion) | fp16 | 0.397 s | 1.24× slower |
 | hipEngine GPU | fp32 (strict) | 3.39 s | 10.6× slower |
 | Torch reference, same GPU | fp32 | 1.33 s | **4.17× slower than hipEngine fp16** |
+
+**Framework Desktop lane** (host `gfx1151`, machine ID
+`55ea6c509d0b49eea8de7094a1023668`; median of five independent process
+invocations, 0.219962 / 0.219751 / 0.219694 / 0.219690 / 0.219409 s):
+
+| Path | Precision | Decode time | Speed vs hipEngine fp16 |
+| --- | --- | ---: | ---: |
+| **hipEngine GPU** | fp16 (production) | **0.220 s** | 1× |
+
+The Framework Desktop runs this workload 32% faster than the zbook (0.220 s
+vs 0.319 s). That is a host-level difference between two machines with the
+same GPU, not a code improvement.
+
+Lane baselines: zbook
+[`gfx1151-timesfm3-varnorm-fusion-2026-09-10.json`](../benchmarks/results/gfx1151-timesfm3-varnorm-fusion-2026-09-10.json),
+Framework Desktop
+[`2026-09-11-framework-desktop-timesfm3-decode-lane.json`](../benchmarks/results/2026-09-11-framework-desktop-timesfm3-decode-lane.json).
 
 rocprofv3 kernel breakdown (fp16, one decode, ~252 ms of device time):
 GEMMs 135 ms, sequence flash attention 38 ms, fused var_attention 34 ms

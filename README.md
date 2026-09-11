@@ -193,10 +193,12 @@ row, not across them.
 | Qwen3.8-27B Dense | GGUF `Q4_K_M` | — | — | **15.6** | — |
 
 **Time-series forecasting (TimesFM 2.5 200M).** hipEngine decodes batch=8,
-context 8192, horizon 512 forecasts in **0.082 s** on this GPU — 8.6x the
-official torch reference on the same hardware and 111x the NumPy CPU
-reference. The FP16 production path is within 0.86% max error of the FP32
-oracle (gate: 2%); a strict FP32 parity path is one flag away.
+context 8192, horizon 512 forecasts in **0.082 s** on the power-limited HP ZBook
+Strix Halo host (8.6x the official torch reference there) and **0.062 s** on a
+Framework Desktop Strix Halo host — the same `gfx1151` GPU on two physical
+machines, so the gap is host power/thermal headroom, not a code change. The FP16
+production path is within 0.86% max error of the FP32 oracle (gate: 2%); a
+strict FP32 parity path is one flag away.
 
 #### NVIDIA RTX PRO 6000 Blackwell — 96 GB (`sm_120a`)
 

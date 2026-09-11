@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-10**
+Last updated: **2026-09-11**
 
 Non-GR linear structural floor measured on Framework gfx1151:
 the GDN-gate (2560,6144) exact coltile is 1.94x/1.86x slower than the
@@ -774,10 +774,12 @@ row, not across them.
 | Qwen3.8-27B Dense | GGUF `Q4_K_M` | — | — | **15.6** | — |
 
 **Time-series forecasting (TimesFM 2.5 200M).** hipEngine decodes batch=8,
-context 8192, horizon 512 forecasts in **0.082 s** on this GPU — 8.6x the
-official torch reference on the same hardware and 111x the NumPy CPU
-reference. The FP16 production path is within 0.86% max error of the FP32
-oracle (gate: 2%); a strict FP32 parity path is one flag away.
+context 8192, horizon 512 forecasts in **0.082 s** on the power-limited HP ZBook
+Strix Halo host (8.6x the official torch reference there) and **0.062 s** on a
+Framework Desktop Strix Halo host — the same `gfx1151` GPU on two physical
+machines, so the gap is host power/thermal headroom, not a code change. The FP16
+production path is within 0.86% max error of the FP32 oracle (gate: 2%); a
+strict FP32 parity path is one flag away.
 
 #### NVIDIA RTX PRO 6000 Blackwell — 96 GB (`sm_120a`)
 
@@ -834,19 +836,28 @@ Earlier published C2/K2 and C8/K3 speedups are withdrawn
 
 Strix Halo `Q4_K_M`: strict C1/K3 automatic at **18.191 tok/s (1.6445x AR)**; production explicit/K0. Production C8/K3 is **52.103 vs 52.025 AR tok/s**. Detailed gfx1151 evidence remains in result artifacts.
 
-TimesFM 2.5 200M GPU decode (batch 8, context 8192, horizon 512): **0.082 s**
-with the double correctness gate described above. Attention runs as fused
-WMMA flash kernels (long-prefill and split-kv short-query variants) and the
-FP16 GEMMs use shape-keyed rocBLAS solution autotuning
-([artifact](results/gfx1151-timesfm-quadtile-flash-2026-09-09.json)).
+TimesFM 2.5 200M GPU decode (batch 8, context 8192, horizon 512) — **two
+physical Strix Halo `gfx1151` hosts, recorded as separate lanes**: **0.082 s**
+on the power-limited **HP ZBook Ultra G1a** and **0.062 s** on the **Framework
+Desktop** (median of five independent process invocations each). Both pass the
+double correctness gate described above. The 25% gap is host power/thermal
+headroom, not a code difference, and is not an old→new delta. Attention runs as
+fused WMMA flash kernels (long-prefill and split-kv short-query variants) and
+the FP16 GEMMs use shape-keyed rocBLAS solution autotuning
+([zbook artifact](results/gfx1151-timesfm-quadtile-flash-2026-09-09.json),
+[Framework artifact](results/2026-09-11-framework-desktop-timesfm-2p5-decode-lane.json)).
 
 TimesFM 3.0 500M GPU decode (batch 8, 3 variates, context 8192, horizon 512,
-one non-autoregressive pass): **0.319 s median, 4.17x the torch fp32 reference
-on the same GPU**. The same double gate on three oracle fixtures (multivariate,
-unaligned/univariate, covariate-mask + 640-horizon); the fp16 production path
-fuses the variate-attention QK norms in-kernel with a strict unfused fp32
-fallback. Torch comparison protocol in the artifact
-([artifact](results/gfx1151-timesfm3-varnorm-fusion-2026-09-10.json)).
+one non-autoregressive pass) — same two lanes: **0.319 s median** on the
+power-limited **HP ZBook Ultra G1a** (4.17x the torch fp32 reference on that
+host) and **0.220 s median** on the **Framework Desktop**. The same double gate
+on three oracle fixtures (multivariate, unaligned/univariate, covariate-mask +
+640-horizon); the fp16 production path fuses the variate-attention QK norms
+in-kernel with a strict unfused fp32 fallback. Torch comparison protocol in the
+artifact; the Framework lane has no torch install, so no torch ratio is claimed
+there. The 32% gap is host power/thermal headroom, not a code difference
+([zbook artifact](results/gfx1151-timesfm3-varnorm-fusion-2026-09-10.json),
+[Framework artifact](results/2026-09-11-framework-desktop-timesfm3-decode-lane.json)).
 
 EVIE-4.5B multimodal retrieval encode (8 pages 448x336 + 8 queries): the
 batched segment-isolated runtime (encode_documents/encode_queries, ragged
