@@ -362,14 +362,21 @@ def test_from_raw_refuses_incomplete_evidence(tmp_path: Path, capsys):
     assert "incomplete evidence" in err
 
 
-def test_committed_artifact_is_complete_evidence():
-    """The retained paired artifact must be complete evidence for its command.
+@pytest.mark.parametrize(
+    "name",
+    [
+        "paired-ud-plain-mtp-c1-natural25-b3.json",
+        "paired-ud-plain-mtp-c1-natural25-b3-xtx.json",
+    ],
+)
+def test_committed_artifact_is_complete_evidence(name: str):
+    """Every retained paired artifact must be complete evidence for its command.
 
     Guards the artifact itself, not just the validator: if someone regenerates
     it from a truncated or mismatched raw payload, this fails.
     """
 
-    artifact = paired.REPO_ROOT / "benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3.json"
+    artifact = paired.REPO_ROOT / "benchmarks/results" / name
     if not artifact.exists():
         pytest.skip("paired artifact not present")
     report = json.loads(artifact.read_text())
@@ -382,6 +389,8 @@ def test_committed_artifact_is_complete_evidence():
     prompt_ids = _prompt_ids()
     invalidated = bool((report.get("invalidation") or {}).get("invalid"))
     assert {pair["label"] for pair in report["pairs"]} == set(paired.PAIRS)
+    # Every artifact states its timing verdict explicitly.
+    assert report.get("timing_evidence_valid") is not invalidated
     for pair in report["pairs"]:
         command = commands[pair["label"]]
         evidence = pair["evidence"]
@@ -391,6 +400,8 @@ def test_committed_artifact_is_complete_evidence():
         )
         assert evidence["binding_gates"]["evidence_complete"] is True
         assert evidence["binding_gates"]["deterministic_repeats"] is True
+        # Every pair's evidence records which protocol produced it.
+        assert pair["provenance"]["device_name"]
         if invalidated:
             # An invalidated artifact keeps its identity evidence (contention
             # changes timing, not token identity) but may not claim a rate:
@@ -401,6 +412,8 @@ def test_committed_artifact_is_complete_evidence():
             assert evidence["binding_gates"]["true_ar_denominator_present"] is False
             assert evidence["binding_passed"] is False
         else:
+            assert evidence["timing_evidence_valid"] is True
+            assert evidence["binding_gates"]["timing_evidence_valid"] is True
             assert evidence["binding_passed"] is True
         # The command recorded in the artifact is the command the protocol
         # resolves today, so the artifact cannot silently drift from the script.
