@@ -395,19 +395,19 @@ def test_engagement_gate_reports_whether_the_resumable_path_was_even_attempted()
     """The outer int8_direct gate must be visible, not inferred.
 
     An empty fallback counter only implies the int8_direct branch was not
-    entered. Recording kv_attention_source states it.
+    entered. Recording the session's own kv_attention_source states it.
     """
 
     gates = _gates(
         oracle_observed_peak_owners=0.0,
         oracle_observed_peak_bytes=0.0,
         executor_modes={"None": 2.0},
-        kv_attention_source="bf16_mirror",
+        kv_attention_sources={"bf16_mirror": 2.0},
     )
 
     gate = gates["resumable_path_engaged"]
     assert gate["passed"] is False
-    assert gate["kv_attention_source"] == "bf16_mirror"
+    assert gate["kv_attention_sources"] == {"bf16_mirror": 2.0}
     assert gate["resumable_kv_source"] == "int8_direct"
     assert "whether the resumable path was even attempted" in gate["detail"]
 
@@ -417,7 +417,29 @@ def test_engagement_gate_still_passes_when_the_source_is_int8_direct() -> None:
         oracle_observed_peak_owners=1.0,
         oracle_observed_peak_bytes=912907308.0,
         executor_modes={"layer_outer_packed": 1.0},
-        kv_attention_source="int8_direct",
+        kv_attention_sources={"int8_direct": 2.0},
     )
 
     assert gates["resumable_path_engaged"]["passed"] is True
+
+
+def test_gate_keeps_the_session_source_separate_from_the_manifest_source() -> None:
+    """Two different measurements that a careless reader would conflate.
+
+    kv_attention_sources is the session's own layout and gates the resumable
+    path. manifest_kv_attention_source describes the last execution, which by
+    scrape time is a decode manifest whose builder leaves the field unset. An
+    earlier iteration read the manifest as if it were the session layout.
+    """
+
+    gates = _gates(
+        oracle_observed_peak_owners=0.0,
+        oracle_observed_peak_bytes=0.0,
+        executor_modes={"None": 2.0},
+        kv_attention_sources={"bf16_mirror": 2.0},
+        manifest_kv_attention_source="unavailable",
+    )
+
+    gate = gates["resumable_path_engaged"]
+    assert gate["kv_attention_sources"] == {"bf16_mirror": 2.0}
+    assert gate["manifest_kv_attention_source"] == "unavailable"

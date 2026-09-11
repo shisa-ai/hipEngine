@@ -21356,6 +21356,7 @@ def test_metrics_endpoint_exports_resident_loop_d5_observability() -> None:
                     "oracle_observed_peak_owners": 16,
                     "hidden_and_bulk_owner_bytes": 5242880,
                     "last_packed_executor_modes": ["layer_outer_packed", None],
+                    "kv_attention_sources": ["int8_direct", "bf16_mirror"],
                 },
                 "persistent_int8_payload_bytes": 8388608,
                 "persistent_bf16_payload_bytes": 0,
@@ -21527,6 +21528,18 @@ def test_metrics_endpoint_exports_resident_loop_d5_observability() -> None:
         body,
         "hipengine_resident_prefill_executor_mode_total",
         mode="none",
+    ) == 1
+    # The session's own KV layout, which gates whether the resumable prefill is
+    # attempted at all. Distinct from the route manifest's kv_attention_source.
+    assert _labeled_metric_value(
+        body,
+        "hipengine_resident_kv_attention_source_total",
+        source="int8_direct",
+    ) == 1
+    assert _labeled_metric_value(
+        body,
+        "hipengine_resident_kv_attention_source_total",
+        source="bf16_mirror",
     ) == 1
     assert _labeled_metric_value(
         body,

@@ -8772,6 +8772,14 @@ def _resident_loop_metric_values(snapshot: Mapping[str, Any] | None) -> dict[str
                     "last_packed_executor_modes"
                 )
             ),
+            # The session's own KV layout, which gates whether the resumable
+            # executor is attempted at all. Distinct from the route manifest's
+            # kv_attention_source label, which describes the last decode.
+            "kv_attention_sources": _string_value_counts(
+                (model_runner.get("prefill_transients") or {}).get(
+                    "kv_attention_sources"
+                )
+            ),
         },
         "persistent_kv": {
             "int8_payload_bytes": _non_negative_metric_value(
@@ -9079,6 +9087,13 @@ def _render_prometheus_metrics(
         "Packed-prefill executor that ran per resident session, by executor mode.",
         "mode",
         resident["prefill_transients"]["executor_modes"],
+    )
+    _append_labeled_counter_metrics(
+        lines,
+        "hipengine_resident_kv_attention_source_total",
+        "Resident session KV attention source, which gates the resumable prefill.",
+        "source",
+        resident["prefill_transients"]["kv_attention_sources"],
     )
     _append_labeled_counter_metrics(
         lines,
