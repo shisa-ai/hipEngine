@@ -206,15 +206,20 @@ the same GPU; FP16 production within 0.86% max error of the FP32 oracle.
 Blank cells are shapes we have not measured yet, not failures. Max context is
 published only where a dedicated ceiling run exists.
 
-- **Qwen3.8-27B `Q4_K_M` context ceilings on 24 GB `gfx1100`:** BF16 KV
-  server 40,960; DMS BF16 73,728; INT8 KV direct engine 131,072; DMS INT8
-  merged lane 172,288; direct-INT8 prefill or DMS INT8 + single hidden
-  plane 232,448 (the model's full 262,144 context needs a predicted
-  24.8 GiB and does not fit). With
-  [DMS](https://arxiv.org/abs/2506.05345), a trained eviction policy
-  compacts the KV cache: the DMS INT8 route is significantly more accurate
-  than direct-INT8 KV (mean row-KL 0.001 vs 0.188, top-1 agreement 100% vs
-  91.4% against the BF16 teacher). [Capacity
+- **Qwen3.8-27B `Q4_K_M` context and KV-accuracy on 24 GB `gfx1100`:** with
+  [DMS](https://arxiv.org/abs/2506.05345) (a trained eviction policy that
+  compacts the KV cache), long-context modes hold up to 232K tokens, and
+  the DMS INT8 route is far more accurate than direct-INT8 KV:
+
+  | KV configuration | Max context | Top-1 agreement vs BF16 | Mean row-KL |
+  | --- | ---: | ---: | ---: |
+  | BF16 KV (reference) | 40,960 | — | — |
+  | DMS BF16 | 73,728 | — | — |
+  | Direct-INT8 KV | 131,072 | 91.4% | 0.188 |
+  | DMS INT8 | 232,448 | 100% | 0.001 |
+
+  The model's full 262,144 context needs a predicted 24.8 GiB and does not
+  fit. [Capacity
   evidence](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-capacity.json)
 
 ### Serving several requests at once

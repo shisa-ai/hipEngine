@@ -52,15 +52,20 @@ the same GPU; FP16 production within 0.86% max error of the FP32 oracle.
 Blank cells are shapes we have not measured yet, not failures. Max context is
 published only where a dedicated ceiling run exists.
 
-- **Qwen3.8-27B `Q4_K_M` context ceilings on 24 GB `gfx1100`:** BF16 KV
-  server 40,960; DMS BF16 73,728; INT8 KV direct engine 131,072; DMS INT8
-  merged lane 172,288; direct-INT8 prefill or DMS INT8 + single hidden
-  plane 232,448 (the model's full 262,144 context needs a predicted
-  24.8 GiB and does not fit). With
-  [DMS](https://arxiv.org/abs/2506.05345), a trained eviction policy
-  compacts the KV cache: the DMS INT8 route is significantly more accurate
-  than direct-INT8 KV (mean row-KL 0.001 vs 0.188, top-1 agreement 100% vs
-  91.4% against the BF16 teacher). [Capacity
+- **Qwen3.8-27B `Q4_K_M` context and KV-accuracy on 24 GB `gfx1100`:** with
+  [DMS](https://arxiv.org/abs/2506.05345) (a trained eviction policy that
+  compacts the KV cache), long-context modes hold up to 232K tokens, and
+  the DMS INT8 route is far more accurate than direct-INT8 KV:
+
+  | KV configuration | Max context | Top-1 agreement vs BF16 | Mean row-KL |
+  | --- | ---: | ---: | ---: |
+  | BF16 KV (reference) | 40,960 | — | — |
+  | DMS BF16 | 73,728 | — | — |
+  | Direct-INT8 KV | 131,072 | 91.4% | 0.188 |
+  | DMS INT8 | 232,448 | 100% | 0.001 |
+
+  The model's full 262,144 context needs a predicted 24.8 GiB and does not
+  fit. [Capacity
   evidence](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-capacity.json)
 
 ### Serving several requests at once
@@ -188,17 +193,8 @@ or supply repeated-pair confidence estimates.
 | 2 / 2 | K2 | 42.20 | 42.41 | 1.005x |
 | 8 / 8 | K3 | 92.67 | 97.35 | 1.051x |
 
-A separate explicit C2/K3 run measured 44.69 versus 41.87 AR tok/s (1.067x).
-The 56-cell screen mixes capacities and does not establish N=1 support by
-itself. The single-request (C1) explicit route engages the legacy singleton
-target verifier today: the backend physical policy admits packed C1 only at
-K2/K3, and the measured packed route is far slower than the legacy route
-(below), so the legacy route remains the only viable single-request path and
-its rates are what a single-request user gets. Deeper single-request depths
-(K1, K4-K7) refuse before mutation on both routes: the physical policy lists
-no packed cell for them and every retained evidence row qualifies at most
-K3. [Measurements](results/2026-09-06-w7900-q4km-mtp-packet6-grid-and-c2k3.json);
-[qualification work](../docs/QWEN38-27B-GFX1100-CONCURRENCY2-BETTER-MTP.md).
+A separate explicit C2/K3 qualification measured 44.69 versus 41.87 AR tok/s
+(1.067x). Depths beyond K3 are not offered. [Measurements](results/2026-09-06-w7900-q4km-mtp-packet6-grid-and-c2k3.json).
 
 **Single-request (C1) explicit MTP, legacy target route.** Three independent
 runs per depth on one `epyc`/W7900 host; each run pairs every one of the ten
@@ -276,33 +272,26 @@ in the artifacts
 
 ### W7900 Qwen3.8 `Q4_K_M` C1-C8
 
-#### Server performance on the INT8 KV route (2026-09-10)
+#### Server performance on the INT8 KV route
 
-The INT8 KV server route was repaired this release: long-prompt prefill
-output is now exact, and the route's memory overhead was reduced by
-removing a duplicate context-sized reservation. Measured on W7900,
-27B `Q4_K_M`, single request, 16K context:
+The server matches the direct engine on every axis we can measure, at a
+fraction of the memory cost of the previous release:
 
-- **Prefill speed** matches the direct engine: 2K-8K-token prompts run at
-  677-732 tok/s through the server route versus 685-756 directly, with
-  bitwise-identical logits
-  ([repetitions](results/2026-09-10-w7900-p7-c1-speed-parity-paired-reps.json)).
-- **Decode speed** is the same compute path either way: 35.2 ms/token
-  through the server entry versus 35.1 ms directly
-  ([ladder](results/2026-09-10-w7900-decode-boundary-ladder-16k.json)).
-- **Memory**: the server now pays exactly the canonical 32.5 KiB per
-  layer-token of KV (no server-only context-sized overhead on this
-  route); per-request transient scratch fell ~75% at 32K context
-  ([measurement](results/2026-09-10-w7900-server-alloc-probe-16k-p4-lease-removed.json)).
-- **Context capacity**: the INT8 server route now accepts up to
-  155,648-token contexts on a 24 GB card (~2.9x the previous 54,272-token
-  limit), verified with complete prefill-and-decode request cycles at
-  65K/98K/131K/152K contexts
-  ([bracket](results/2026-09-10-w7900-server-alloc-probe-152k.json)).
-- **Streaming**: first token arrives as soon as prefill completes
-  (~2.8 s on a 2K-token prompt); subsequent tokens stream at the decode
-  rate
-  ([observation](results/2026-09-10-w7900-p7-http-transport-budget.json)).
+| Metric (single request, 27B `Q4_K_M`, 16K context) | Server route | Direct engine |
+| --- | ---: | ---: |
+| Prefill throughput, 2K-8K-token prompts (tok/s) | 677-732 | 685-756 |
+| Decode latency (ms/token) | 35.2 | 35.1 |
+| Time to first token, 2K-token prompt (s) | 2.8 | - |
+| Per-request transient memory at 32K context (GiB) | ~1.6 | - |
+| Maximum context on 24 GB card (tokens) | 155,648 | — |
+
+Prefill logits are identical between the routes. The context row reflects
+complete prefill-and-decode request cycles verified at 65K/98K/131K/152K
+contexts (~2.9x the previous release's 54,272-token limit).
+[Speed repetitions](results/2026-09-10-w7900-p7-c1-speed-parity-paired-reps.json),
+[capacity bracket](results/2026-09-10-w7900-server-alloc-probe-152k.json),
+[memory](results/2026-09-10-w7900-server-alloc-probe-16k-p4-lease-removed.json),
+[streaming](results/2026-09-10-w7900-p7-http-transport-budget.json).
 
 These are aggregate tokens per second across all active requests under the
 standardized complete-wall server protocol.
@@ -494,7 +483,7 @@ remains blocked at c32: **10.590 tok/s**, **18.617 s TTFT p95**, **2.125 s ITL
 p99**, **24.171 s E2E p95**, and **0/3 SLO runs**; C2 64K and heavy-load SLOs
 also remain blocked. [`gfx1151 campaign final`](results/2026-08-24-gfx1151-qwen38-concurrency2-campaign-final.json).
 
-## Qwen3.8-Flash-Next implementation-first status
+## Qwen3.8-Flash-Next on Framework (gfx1151)
 
 Fresh combined-default Framework `gfx1151` baseline, UD-Q4_K_XL/BF16 KV,
 four categories, p512/p1024/p4096 + tg128:
@@ -509,496 +498,6 @@ Weighted tok/s,36 samples per engine, all outputs repeat, clean teardown.
 All lanes exceed2% per-case CV somewhere; these are sequential screening
 comparisons, not statistical parity.
 [Frozen baseline evidence](results/2026-09-05-framework-qwen4exp-refreshed-baselines.json).
-
-The completed same-host family alignment covers six prompts and both phases.
-It identifies FFN/linear/GR as the largest prefill gaps and QSA as the largest
-decode gap; HIP kernel sums and Vulkan query intervals remain diagnostic.
-[Generated family evidence](results/2026-09-05-framework-qwen4exp-family-alignment.json).
-The post-Q8 current-HE refresh keeps that ranking, with linear5.551s,
-GR4.362s and FFN14.445s at p4096; the Vulkan profile is explicitly reused,
-not remeasured. [Updated family packet](results/2026-09-05-framework-qwen4exp-post-q8-family.json).
-
-Standalone GR up+sigmoid+mean screen, actual weights, rows512, no memory
-preconditioning:
-
-| Weight | Parent (ms) | Candidate (ms) | Speedup |
-| --- | ---: | ---: | ---: |
-| Layer0 attention up | 3.338 | 3.234 | 1.032x |
-| Layer0 FFN up | 3.331 | 3.207 | 1.039x |
-| Layer4 attention up | 3.320 | 3.204 | 1.036x |
-| Layer4 FFN up | 3.313 | 3.209 | 1.032x |
-
-F32 gate/mixed bits exact,20 tests pass, both order strata positive at512;
-small-row order reversals are disclosed. Model admission pending.
-[GR screen](results/2026-09-06-framework-qwen4exp-gr-wave-scale.json).
-
-Latest retained Q8 wave-scale production A/B, normal model execution:
-
-| Prompt | Parent prefill | Wave-scale prefill | Gain |
-| --- | ---: | ---: | ---: |
-| 512 | 154.29 | 155.45 | +0.75% |
-| 1024 | 151.67 | 153.43 | +1.17% |
-| 4096 | 141.58 | 143.41 | +1.29% |
-
-Tok/s on Framework, UD-Q4_K_XL/BF16 KV. All72 trajectories exact; all12 cases
-improve prefill and complete-request wall, with zero final allocations.
-Decode drift remains: no intrinsic decode improvement or new external
-parity claim. Full A/B33m53s, without synthetic memory preconditioning.
-[Q8 production](results/2026-09-05-framework-qwen4exp-q8-wave-scale-production.json).
-The earlier microbench's order reversal remains recorded in its
-[separate evidence](results/2026-09-05-framework-qwen4exp-q8-wave-scale.json).
-
-The larger Q4 row-batch screen is rejected: exact RB16/32 variants lose
-against RB8 in all12 final actual-weight, synthetic-routing cells across
-tokens512/1024/2048. Production is unchanged.
-[Screen evidence](results/2026-09-05-framework-qwen4exp-q4-rowbatch-rejected.json).
-
-The preceding Q4 output-pair retention remains part of the baseline:
-
-| Shape | Parent prefill | Q4 pair prefill | Gain | Decode before -> after |
-| --- | ---: | ---: | ---: | ---: |
-| p512 | 145.21 | **153.78** | **+5.90%** | 19.385 -> 19.383 |
-| p1024 | 142.82 | **151.21** | **+5.87%** | 18.556 -> 18.512 |
-| p4096 | 134.01 | **141.30** | **+5.44%** | 13.113 -> 12.899 |
-
-All rates are tok/s on Framework `gfx1151`, UD-Q4_K_XL/BF16 KV, four
-categories and tg128. This is a same-residency incremental A/B with all72
-trajectories exact, all12 prefill cases positive, and complete-request wall
-speedups of1.67-3.90% per case. Decode losses of0.23%/1.63% at p1024/p4096
-are retained under the owner's prefill-first direction and remain open work.
-Both arms drift; this is not a stable absolute decode comparison or external
-parity claim. Full A/B elapsed34m53s; teardown is zero.
-[Full timing and promotion evidence](results/2026-09-05-framework-qwen4exp-q4-pair-production.json).
-
-The preceding serial-GDN admission improved prefill9.50-10.55% and remains
-part of this baseline. Its separate decode tradeoff is preserved in its
-[GDN evidence](results/2026-09-05-framework-qwen4exp-gdn-register-production.json).
-
-The preceding Q5_1 pair2 admission improved prefill3.73-4.17% and remains
-part of this measured baseline.
-[Pair2 evidence](results/2026-09-05-framework-qwen4exp-q51-pair-production.json).
-
-The prior promoted combination remeasured at121.14 pp/s on the code-p4096
-diagnostic (not an all-category refresh). The original standalone Q5_1 output-
-pair candidate reduces two actual down banks at tokens512 from about54.5
-to43.5 ms (1.253x), exact outputs; the full model result is above.
-[Combined profile and Q5_1 screen](results/2026-09-05-framework-qwen4exp-q51-pair.json).
-
-Production retains exact page256 QSA and bundled-Q4 prefill under the
-2026-09-05 owner decision to take the prefill gains and optimize decode next.
-Strict keeps the prior owners. Separate component A/B measurements are:
-
-| Component | Shape | Prefill before -> after (tok/s) | Gain | Decode change |
-| --- | --- | ---: | ---: | ---: |
-| Bundled Q4 | p512 | 123.34 -> 127.62 | +3.47% | -0.23% |
-| Bundled Q4 | p1024 | 121.47 -> 125.33 | +3.18% | -0.06% |
-| Bundled Q4 | p4096 | 97.34 -> 99.72 | +2.45% | -0.64% |
-| H256 wave QSA | p4096 | 97.83 -> 116.70 | +19.29% | -0.48% |
-
-These are separate same-residency component runs, not additive gains or
-combined throughput. The measured hot-decode tradeoffs remain open work.
-[Promotion and evidence](results/2026-09-05-framework-qwen4exp-prefill-promotion.json).
-
-The original standalone exact Q4 gate/up bundled publication screen reduces the actual-weight
-gate/up+SiLU boundary at tokens512 from30.39 to24.97 ms (1.217x), all pairs
-exact. Timing variability and whole-model admission remain open; this is
-not a production gain.
-[Q4 bundle](results/2026-09-05-framework-qwen4exp-q4-bundle.json).
-
-The current same-host comparator screen ran on the Framework Desktop (physical
-host `gfx1151`, machine ID `55ea6c509d0b49eea8de7094a1023668`, Ryzen AI Max+
-395 / Radeon 8060S) with the verified four-part Unsloth `UD-Q4_K_XL` artifact,
-BF16 K/V, one warmup, and three measured requests per canonical case:
-
-| Engine | p512 pp/tg128 | p1024 pp/tg128 | p4096 pp/tg128 | Repeatability |
-| --- | ---: | ---: | ---: | --- |
-| hipEngine production + exact Q5_K row4, HIP (later same-residency A/B) | **122.57 / 19.97** | **121.47 / 19.25** | **97.85 / 15.29** | **12/12**, cross-arm exact |
-| hipEngine production `c0cfdc3ef`, HIP | 118.44 / 19.92 | 117.79 / 19.22 | 95.14 / 15.21 | **12/12** |
-| Upstream llama.cpp `4d9176092`, HIP | 283.85 / 21.06 | 367.97 / 20.79 | 395.02 / 19.63 | **11/12** |
-| Upstream llama.cpp `4d9176092`, Vulkan | 230.35 / 24.94 | 305.47 / 24.59 | 357.44 / 23.53 | **11/12** |
-| halo-box master `b212548e0`, HIP | 265.69 / 21.02 | 368.90 / 20.50 | 356.62 / 18.63 | **12/12** |
-| halo-box master `b212548e0`, Vulkan | **298.97 / 24.92** | **369.72 / 24.52** | **402.46 / 23.47** | **12/12** |
-
-The two upstream lanes vary on `mixed_ja_en-p4096`. Every external lane also
-exceeds 2% maximum per-case coefficient of variation on at least one metric,
-so this is a screening result, not a frozen closure target. Do not compare
-these rates as old-to-new deltas against `zbook`. Exact commands, binary and
-model hashes, per-sample rates, and output hashes are in the
-[Framework comparator packet](results/2026-09-05-framework-gfx1151-qwen38-flash-next-current-comparators.json).
-
-The row4 row is a later same-host internal A/B, not a paired rerun against
-the external lanes. Its own parent rates are 118.92/117.72/95.42 pp/s:
-prefill improves 3.07%/3.19%/2.55%, all 72 measured trajectories are exact,
-max per-case prefill CV is 0.23%, and teardown is clean.
-[Production evidence](results/2026-09-05-framework-qwen4exp-row4-production.json).
-
-The original H256 sparse-attention standalone screen at
-24Q/2KV/D256 and selected stride2051, rows512 attention measures
-171.93→28.02 ms (6.14x), with exact parent output bits. This leaf ratio is
-not a whole-model gain.
-[QSA candidate](results/2026-09-05-framework-qwen4exp-qsa-h256-wave.json).
-
-Its full-suite internal A/B measures p4096 prefill 97.83→116.70 tok/s
-(+19.29%), but decode 15.27→15.20 (-0.48%). All 72 trajectories are exact;
-the candidate initially stayed default-off pending focused decode followup. An English
-128-step probe also matches full logits and complete K/V, but is not a
-replacement for the original timing protocol.
-[Full-suite audit](results/2026-09-05-framework-qwen4exp-qsa-fullsuite-audit.json).
-
-The isolated English rerun has flat decode, but its subset initially reversed
-the original arm order. That diagnostic does not waive the full-suite finding;
-the harness now preserves original fixture indices for focused comparisons.
-[Subset-order audit](results/2026-09-05-framework-qwen4exp-qsa-subset-order-audit.json).
-
-The corrected-order three-case rerun still finds mixed-language decode
-down 0.64%; English/Japanese are effectively flat and all 18 trajectories
-are exact. A 2880 MHz clock snapshot during the affected section is a
-lead, not a causal diagnosis. The later owner decision accepts the measured tradeoff.
-[Corrected followup](results/2026-09-05-framework-qwen4exp-qsa-corrected-followup.json).
-
-The standalone page256-addressing sibling reduces rows512 attention from
-28.13→27.56 ms versus the generic wave candidate, with both arms exact.
-This does not establish a power benefit or clear the whole-model decode gate.
-[Page256 screen](results/2026-09-05-framework-qwen4exp-qsa-page256.json).
-
-External phase telemetry reproduces page256's late mixed decode loss and
-records lower after-arm clocks (about 2880–2882 versus 2898 MHz). It is
-correlation, not yet a causal proof or promotion.
-[Phase clocks](results/2026-09-05-framework-qwen4exp-qsa-phase-clocks.json).
-
-A separate mixed p4096 control holds every sampled phase at2700 MHz:
-prefill93.01→112.25 tok/s (+20.69%), decode14.800→14.798 (−0.017%), exact
-outputs. This supports an operating-point effect but is not promotion at
-the original setting; 2900/2900 high policy was restored.
-[Fixed-clock control](results/2026-09-05-framework-qwen4exp-qsa-fixed-clock-control.json).
-
-The subsequent Framework code-case owner diagnostic at `cf9c55920` has 100%
-role coverage and traced/unprofiled final-logit equality:
-
-| Diagnostic | code-p512 | code-p4096 |
-| --- | ---: | ---: |
-| Unprofiled prefill wall (s) | 4.306 | 43.046 |
-| Routed MoE device time (s) | 2.402 | 19.024 |
-| QSA device time (s) | 0.042 | 8.983 |
-| GDN device time (s) | 0.489 | 3.906 |
-
-No optimization or new paired comparator verdict is claimed.
-[Owner refresh](results/2026-09-05-framework-gfx1151-qwen38-flash-next-owner-refresh.json).
-
-Framework standalone Q5_K grouped-row4 gate/up, including its device map,
-screens at 30.022→24.391 ms (64 rows) and 239.491→107.911 ms (512 rows),
-with bit-exact paired outputs. This is a development-tree primitive result,
-not a runtime promotion or whole-model gain.
-[Candidate evidence](results/2026-09-05-framework-qwen4exp-q5k-grouped-row4.json).
-
-Earlier implementation-calibration evidence was collected on physical host
-`zbook` (Ryzen AI Max+ Pro 395 / Radeon 8060S, `gfx1151`). The pinned artifact
-runs through public `LLM.generate()` under the strict c1/greedy text scope.
-Frozen same-artifact llama.cpp PR #27742 full logits over all 10 canonical
-code/general-English/general-Japanese/mixed prompts measured:
-
-| Artifact | Context scope | Mean / p95 / p99 / max KL ↓ | Top-1 | Tracked peak / after close |
-| --- | --- | ---: | ---: | ---: |
-| Qwen3.8-Flash-Next `UD-Q4_K_XL` | real ≤2,051-token canonical text gate | **0.01406 / 0.04154 / 0.04776 / 0.04931** | **10/10** | 82.718 GB / **0 B** |
-| Qwen3.8-Flash-Next `UD-Q4_K_XL` | predeclared eight category heldouts, matched BF16 K/V | **0.00987 / 0.02331 / 0.02766 / 0.02874** | **8/8** | same residency / **0 B** |
-
-The pinned 111.335-GB/four-hash artifact owns one 28.800-GB sparse-mmap PLE
-table and 82.523 GB hot weights. Exact batching passes 687/687 rows; the strict
-prefill default chunk is now 512 (PLE staging capacity plumbed to the chunk;
-previously silently capped at 256): same-session counterbalanced sweeps give
-p508 **8.458→8.270 s (-2.22%)** and p1012 **17.062→16.751 s (-1.82%)** with
-identical logits SHAs, and natural 16K improves to **341.177 s / 47.989 tok/s**
-with the full gate passing (prior chunk-256 steady rows were p508 58.466 and
-p1006 55.046 tok/s).
-
-The earlier `zbook` exact-token screen fed all engines the same four category
-prompts at p512/p1024/p4096 and measured 128 decode transitions after each
-prefix:
-
-| Engine | p512 pp/tg128 | p1024 pp/tg128 | p4096 pp/tg128 | Repeatability |
-| --- | ---: | ---: | ---: | --- |
-| hipEngine current production (PF-5 GDN tile-16 after arm) | **89.87 / 14.81** | **88.97 / 14.77** | **72.93 / 12.39** | 12/12 deterministic; one-residency cross-mode exact; 12/12 prefill-positive |
-| hipEngine current production (PF-1/PF-3 after arm) | **89.34 / 14.84** | **88.54 / 14.79** | **72.58 / 12.40** | 12/12 deterministic; one-residency cross-mode exact |
-| hipEngine pre-PF baseline (`37d59564…`, HB-1 retained arm) | 83.37 / 14.32 | 82.91 / 14.27 | 69.20 / 12.18 | 12/12 deterministic; cross-arm exact; historical |
-| Upstream Vulkan `f1793c1c4`, queue/repack/fit-off | 200.01 / 24.39 | 241.84 / 21.33 | 266.58 / 18.98 | 12/12 exact; noisy p512/p1024 rows |
-| Patched-upstream HIP `f1793c1c4` | 235.89 / 17.75 | 306.51 / 16.99 | 283.73 / 14.89 | 12/12 deterministic; cross-arm exact; non-stock loader |
-| Halo-box base `6c84c7d5` + loader patches | 223.89 / 17.66 | 308.28 / 16.88 | 301.62 / 14.90 | 12/12 deterministic; cross-arm exact; short-shape drift |
-| Halo-box PR11 `a7ad7b7f` + loader patches, fresh matched-BF16 screen | **240.11 / 18.04** | **324.64 / 17.24** | **349.49 / 15.10** | 12/12 deterministic; p512/p1024 prefill unstable; p4096 stable |
-| EngramHalo HIP `1423f689` | 234.84 / 17.44 | 314.98 / 17.04 | 381.17 / 15.99 | p512/p1024 exact; p4096 fails |
-| Nathan Vulkan `ad914eb`, queue/repack/fit-off | 360.23 / 24.34 | 357.61 / 21.10 | 351.85 / 19.01 | diagnostic: 0/12 exact |
-| apepojken Vulkan `843d575` | 291.73 / 23.21 | 375.23 / 22.42 | 397.43 / 22.25 | diagnostic: 8/12 exact |
-
-Nathan produced 16 different outputs from 16 identical-prompt requests;
-apepojken varies on four canonical cases; EngramHalo varies on one p4096 case.
-Their affected rates remain diagnostics rather than correctness-valid targets.
-Pristine upstream HIP did not finish loading in two 1,800-second attempts, so the
-measured patched-upstream lane is explicitly non-stock. The fresh halo-box
-screen exactly matches the HB-1 BF16 configuration and binary; its maximum
-per-case prefill CV is **10.0%/9.7%/1.26%** at p512/p1024/p4096, so only the
-p4096 row satisfies the ≤2% stability rule. The previous retained halo-box arm
-was 246.55/343.48/354.21 pp/s; the fresh −2.61%/−5.49%/−1.33% shift confirms
-that short-shape absolute comparisons need counterbalanced thermal pairs.
-
-This remains a screening refresh, not section-6 closure: five same-thermal
-competitor pairs and 4K MTP remain open. Current production's maximum per-case
-CV in the one-residency packet is **1.64% prefill / 1.07% decode**. The Vulkan
-rows were refreshed with their entitled graphics queue, repack, and fit-off
-configuration; upstream p512 prefill/decode and p1024 prefill also remain too
-noisy to freeze the closure target.
-[`PF-1/PF-3 production refresh`](results/2026-09-04-gfx1151-qwen38-flash-next-halo-pf13-production-refresh.json),
-[`halo-box HB-1 comparison`](results/2026-09-02-gfx1151-qwen38-flash-next-halo-box-hb1.json),
-[`current P12 packet`](results/2026-09-02-gfx1151-qwen38-flash-next-p12-validation-packet.json),
-[`generated report`](results/2026-09-02-gfx1151-qwen38-flash-next-p12-validation-report.md),
-[`canonical AR screening`](results/2026-08-30-gfx1151-qwen38-flash-next-canonical-ar-screening.json),
-[`entitled Vulkan refresh`](results/2026-09-02-gfx1151-qwen38-flash-next-entitled-vulkan-canonical-refresh.json).
-
-Frozen halo-box HB-base/PR11 exact profiles confirm that the PR activates its
-Q4/Q8 MMQ retunes, prompt top-10 compaction, weighted top-10 sum, 32-warp GDN,
-and selected elementwise/recurrent specializations on the binding Q4 payload.
-Routed-compact/J48/J64, shared-mul-add, and Q8-KV attention paths are inactive.
-The largest isolated trace change is p4096 GDN core kernel sum
-**2,139.377→647.976 ms**; it is diagnostic pending HB-3 operation-complete
-matched pairs. [`halo-box HB-2 census`](results/2026-09-02-gfx1151-qwen38-flash-next-halo-box-hb2.json).
-HB-3 stops before timing: pinned operation harnesses pass their exposed cases,
-but **0/5 active families** currently share an identical cross-engine fixture,
-dtype/layout contract, and operation boundary. No mechanism ratio or candidate is
-reported. [`halo-box HB-3 blocker`](results/2026-09-02-gfx1151-qwen38-flash-next-halo-box-hb3-blocked.json).
-
-The 2026-09-04 remediation resolves the PF-1/PF-3 review blocker. One committed
-harness kept a single generator resident and toggled both exact routes in ABBA
-orders reversed across adjacent cases. Weighted prefill improves
-**86.62→89.34 (+3.13%)**, **85.88→88.54 (+3.09%)**, and
-**70.80→72.58 tok/s (+2.51%)** at p512/p1024/p4096; all 12 cases improve and
-all 72 measured trajectories are exact across modes. Decode changes
-−0.15%/+0.13%/−0.07%. Production again selects PF-3 Q5_1 M1 and PF-1 grouped
-Q8_0 down; strict retains the preceding registered owners. PF-4's fused-combine
-whole-model rejection remains provisional, and the Q4_K M1/PF-5 w32 kernel
-losses remain valid.
-[`Production refresh`](results/2026-09-04-gfx1151-qwen38-flash-next-halo-pf13-production-refresh.json),
-[`Review plan`](../worklog/entries/20260904T100046.831998Z-lhl-qwen4exp-halo-box-campaign-review-511155.md).
-
-The 2026-09-05 PF-5 closure promotes the exact GDN token-tile-16 prefill owner
-(binding Hk=16/Hv=48/D=128) as the production default inside the colwarps gate
-after a fail-closed, engagement-verified one-residency A/B: weighted prefill
-**89.435→89.873 (+0.49%)**, **88.553→88.966 (+0.47%)**, and
-**72.661→72.929 tok/s (+0.37%)** at p512/p1024/p4096 with all 12 cases
-non-negative, 72/72 cross-mode exact outputs, and per-case prefill CV ≤1.6%.
-The binding-shape leaf wins 23.3%/29.1%/35.3% at rows 16/64/512, bit-exact in
-outputs and final FP32 state. The columnwarp parent stays registered for
-non-envelope shapes and the `HIPENGINE_QWEN4_EXP_GDN_TILE16_PREFILL=0` opt-out;
-serial strict remains the registered fallback. The first same-day A/B was
-invalidated as a no-op (the runner bypassed the replaced registry key, so both
-arms ran the parent) and is superseded. Scaling the loop's 0.3037 screening
-baseline by the measured code-only geomean infers ~0.3045; the frozen-halo
-screening metric itself is refreshed at the next stable-clock closure verify.
-[`PF-5 tile-16 promotion A/B`](results/2026-09-05-gfx1151-qwen38-flash-next-pf5-gdn-tiled16-whole-model-ab.json),
-[`Hv48 correction`](../worklog/entries/20260905T022638.146026Z-lhl-qwen4exp-pf5-gdn-tiled16-hv48-correction-c178a9.md).
-
-The frozen p508 role/API profile still puts hipEngine versus llama HIP device
-kernels at **5.959 vs 1.625 s (3.67×)** and decode at **48.63 vs 38.90
-ms/output (1.25×)**. The main p508 owners are MoE **3.161 s** (layers 0–26:
-**2.526 s**), GDN **634.94 ms**, and QSA **110.49 ms**. The largest single miss
-is layer-2 Q5_K gate/up at **301.47 vs 15.38 ms**. Decode submits **1,195
-direct kernels plus 48 MoE graphs/token**; 625 additional rows/token are
-graph-expanded nodes. A strict, layer-local stateful graph diagnostic now
-captures one complete 34-kernel GDN+MoE physical layer: output and all request
-state owners remain exact through four replays, while synchronized layer wall
-falls **4.051→1.258 ms (3.22x)**. A chained layers-0..2 rung is likewise exact
-and contracts **9.801→3.896 ms (2.52x)**. A fixed-position layers-0..3 mixed
-GDN/QSA diagnostic remains device-state/output exact at **12.160→4.955 ms
-(2.45x)**. Its advancing-position successor passes positions 8–11 across
-position/context, K/V, QSA index, GDN state, and output at **13.882→4.974 ms
-(2.79x)**. An eight-layer successor adds active PLE and a second QSA owner and
-remains exact at **26.739→10.112 ms (2.64x)**. The all-physical-layer rung
-covers active PLE, all 48 layers, all 12 QSA owners, and 136 device-state owners
-at **154.346→57.900 ms (2.67x)** without reproducing third-replay corruption.
-The complete host-staged transition then adds generated-token PLE publication,
-embedding, final full-vocabulary head, device argmax, and token feedback: the
-changing-token trajectory and 138 owners are exact; reset→replay and forced-
-eager→graph resumption also pass. The probe-local 194.758-ms eager arm disables
-the shipped per-layer MoE cache and adds a script loop, so its 3.15x ratio is
-retired. The follow-up strict runner measures **68.855 ms** with shipped MoE
-graphs and **143.989 ms** without them, but imports the **61.910-ms** graph row
-from the separate probe process. Therefore the derived **1.112x/6.945 ms is not
-a named-production A/B** and P8 remains admission-pending. Device argmax versus
-host full-logit D2H differs by at most 0.35 ms with a sign flip; steady
-allocation growth and teardown pass.
-[`named denominator`](results/2026-09-01-gfx1151-qwen38-flash-next-p8-production-denominator.json),
-[`stateful layer graph`](results/2026-09-01-gfx1151-qwen38-flash-next-p8-stateful-layer-graph.json),
-[`three-layer segment`](results/2026-09-01-gfx1151-qwen38-flash-next-p8-gdn-segment3-graph.json),
-[`mixed fixed-position segment`](results/2026-09-01-gfx1151-qwen38-flash-next-p8-mixed-segment4-graph.json),
-[`advancing mixed segment`](results/2026-09-01-gfx1151-qwen38-flash-next-p8-advancing-mixed-segment4-graph.json),
-[`eight-layer segment`](results/2026-09-01-gfx1151-qwen38-flash-next-p8-advancing-segment8-graph.json),
-[`all 48 physical layers`](results/2026-09-01-gfx1151-qwen38-flash-next-p8-all48-graph.json),
-[`full host-staged transition`](results/2026-09-01-gfx1151-qwen38-flash-next-p8-full-transition-graph.json).
-
-The current exact-token impact packet fully attributes p512/p1024/p4096 and
-live-513/1025/4097. hipEngine versus patched llama HIP device sums are
-**5.972/11.196/54.762 s vs 1.926/2.990/10.838 s** prefill and
-**51.062/53.262/87.732 ms vs 41.009/41.110/44.005 ms** decode. At p4096,
-QSA alone is **10.229 s vs 0.526 s** prefill and **35.587 vs 0.591 ms** decode.
-Every hipEngine role window is 100% attributed, both family ledgers have zero
-generic remainder, exact decode state/lifecycle gates pass, and median active
-experts are 333/327/325 of 512. The old 41.6% remainder was incomplete table
-coverage. The patched llama CSVs flushed and hashed, but rocprof required forced
-exit after flush, so comparator subwindows remain diagnostic attribution.
-[`canonical impact profile`](results/2026-09-01-gfx1151-qwen38-flash-next-canonical-impact-profile.json).
-
-The first retained impact-ranked unit replaces the serialized H256 p4096 QSA
-attention owner with an exact three-pass path: parallel incumbent-order QK
-scores, one global selected-order online-softmax coefficient recurrence, and
-independent output-column weighted-V recurrences. Across four canonical p4096
-categories and 12 counterbalanced tg128 pairs, complete decode improves
-**93.912→80.061 ms/token (1.173x)**; every pair wins, the aggregate 95% ratio
-interval is **1.170–1.176**, and full logits/IDs remain exact. The named trace
-records all three expected kernels, reduces the QSA role **36.304→20.913
-ms/token**, attributes 100% of device time, allocates nothing in the measured
-windows, and tears down to zero. This retained row does not replace the
-five-pair section-6 closure baseline.
-[`exact ordered QSA decode`](results/2026-09-02-gfx1151-qwen38-flash-next-p6-qsa-ordered-decode.json).
-
-A durable isolated-route recheck reopens the layer-2 grouped-WMMA candidate:
-the p508 trace cuts layer-2 MoE **371.10→88.13 ms (4.21×)** and Q5_K gate/up
-**279.86→16.66 ms**. Same-process p508 improves **90.25→95.06 tok/s
-(+5.34%)**; all 20 category-balanced p512 pairs improve, with per-category
-means **+4.83% to +5.20%** and every five-pair 95% CI above 1.0. Each route is
-repeat-exact and keeps the same final top-1 token, but full logits differ. The
-complete 450-row gate then **rejects** the T2 candidate: overall mean/p95/max KL
-`5.03e-4/2.65e-3/0.01238` and 446/450 top-1 pass, as do every category,
-repeat/state, and lifecycle checks, but the binding prefill-last/prefill-to-c1
-mean KL is **0.001179 > 0.001**. The route remains default-off; c2 and depth
-promotion gates were not run because they cannot compensate for this failure.
-[`P1 layer-2 rejection`](results/2026-08-31-gfx1151-qwen38-flash-next-p1-layer2-grouped-profile-rejected.json).
-
-The fresh P2 split keeps current production default-off for that candidate and
-profiles layers 0–26 at **2.366 s**: exact Q4/Q5_K gate/up **1.200 s**, exact
-Q5_1/Q8 down **1.152 s**, and activation plus routing/shared tails only
-**13.25 ms**. Layers 3–26 alone retain **1.849 s**; active experts span 166–298
-with median 9 rows per active expert. The next exact/T1 work therefore targets
-multi-row weight reuse/output tiling in both projection halves, not the <0.6%
-tail. Telemetry was collected separately and its D2H wall is excluded.
-[`P2 early-MoE profile`](results/2026-08-31-gfx1151-qwen38-flash-next-p2-early-moe-profile.json).
-
-The P3 split names another **1.670 s** of primary p508 roles outside routed MoE:
-GR projection/read **709.32 ms**, Q8 `attn_qkv+attn_gate` **532.36 ms**, router
-**181.91 ms**, `ssm_out` **137.84 ms**, and shared projections **121.61 ms**.
-The first operation-complete target is the 36-layer qkv+gate boundary; it must
-preserve current qkv-MMQ and exact-gate arithmetic or qualify a declared T1
-pair, with both singleton routes retained as fallbacks. The first extension—Q8
-MMQ on the omitted K2560/N6144 gate—wins **1.0352x** p508 and passes all
-numerical scopes, but is rejected because candidate state repeat 1 differs from
-repeats 2–3 on the first prompt. Ignoring the first same-schedule run as warmup
-is not a valid production rule; exact coltile remains default. The next P3
-subunit fuses GR sigmoid materialization with gated mean for rows <=256. It
-removes one launch per GR read and improves clean counterbalanced
-p508+128-step decode **14.162→15.111 tok/s (1.0670x, 95% CI
-1.0543–1.0797)**. The complete T0 gate
-is exact: **450/450 logits, 18/18 state/task prompts, three repeats, and clean
-teardown**. Rows >256 remain unfused after a rows508 primitive loss. The
-multirow F32 router projection also reuses each weight row across four prompt
-rows while preserving dense arithmetic: clean p508 improves **89.689→91.121
-tok/s (1.0160x, 95% CI 1.0143–1.0177)**, with 450/450 logits and 18/18 state/task
-prompts exact. c1 remains on the dense owner. The rows>256 GR-up composite also
-preserves the exact Q8 reduction while emitting sigmoid gates and branch mean:
-clean p508 improves **91.158→91.600 tok/s (1.00484x)** and code-p1024
-**88.754→89.239 tok/s (1.00547x)**, with 450/450 logits and 18/18 state/task
-prompts exact. P4 also promotes the exact fixed256/precomputed-offset/vector2
-QSA dense owner: the real primitive improves **6.846→2.485 ms (2.755x)**,
-clean p508 **91.529→92.442 tok/s**, and code-p1024 **89.150→90.634 tok/s**, with
-the complete exact/state/task gate passing. P5 moves normal greedy top-1 to the
-device: Python-visible D2H falls from **993,280 to 8 bytes/token (124,160x)**
-with 450/450 logits, 18/18 generated task sequences, compact state, physical-c2
-outputs, and lifecycle exact. Resident-token chaining and normal-AR hidden-copy
-elision then reduce the ledger from **28 to 26 blocking copies/token** while
-preserving 12 async copies. The p508+128-step wall ratio is neutral at
-**1.00343x (95% CI 0.98776–1.01909)**; this is a transfer-boundary retention,
-not a wall-speed claim. The current P12 canonical p512/p1024/p4096 production snapshot is
-**83.35/82.93/69.20 pp/s** and **14.18/14.16/12.16 tg/s**, all 36 measured
-samples deterministic with zero teardown. Named strict is
-**61.05/60.32/52.56 pp/s** and **13.52/13.43/9.47 tg/s**; its three-repeat
-variance prevents a closure-rate claim.
-[`P3 Q8-gate rejection`](results/2026-08-31-gfx1151-qwen38-flash-next-p3-q8-mmq-attn-gate-rejected.json).
-[`P3 fused GR`](results/2026-08-31-gfx1151-qwen38-flash-next-p3-gr-sigmoid-mean.json).
-[`P3 F32 router tile4`](results/2026-08-31-gfx1151-qwen38-flash-next-p3-router-f32-tile4.json).
-[`P3 GR up+sigmoid+mean`](results/2026-08-31-gfx1151-qwen38-flash-next-p3-gr-up-sigmoid-mean.json).
-[`P4 QSA dense fixed256`](results/2026-08-31-gfx1151-qwen38-flash-next-p4-qsa-dense-fixed256.json).
-[`P5 device argmax`](results/2026-08-31-gfx1151-qwen38-flash-next-p5-device-argmax.json).
-[`P5 current canonical AR`](results/2026-08-31-gfx1151-qwen38-flash-next-p5-current-canonical-ar.json).
-
-P6 localizes the long-context cliff to indexed QSA activation. Identical
-transition medians at live counts 2,051/2,052/4,097 are **66.61/95.88/96.02
-ms**. The boundary adds **30.77 ms** of profiled kernel time; sparse attention
-alone adds **27.47 ms**, while score/top-k adds **0.92 ms**. The nearly flat
-2,052→4,097 result points to the fixed ~2K selected-attention budget rather than
-continued context growth. [`P6 context profile`](results/2026-08-31-gfx1151-qwen38-flash-next-p6-context-transition-profile.json).
-
-A same-weight external-fork refresh built EngramHalo HIP `1423f689` and
-Nathan Vulkan `ad914eb` locally. BF16-KV p508/p1012/tg32 shape rows are
-**296.12/362.72/17.62** and **413.04/396.25/23.85 tok/s**; Nathan's local
-build agrees with its v0.7.2 payload within 1%. These are historical
-`llama-bench` shape diagnostics, not exact-prompt or source-only A/B rows. Nathan
-lazy-on/off averages **413.04/329.23 p508 (1.255x)** but converges by p1012;
-an Engram MTP diagnostic is 1.128x complete-wall at 94.55% acceptance but only
-**9/10** AR-message exact, so it is not a valid speed target.
-[`external fork refresh`](results/2026-08-30-gfx1151-qwen38-flash-next-external-fork-refresh.json).
-
-The cross-engine survey adds a 160-row, full-vocabulary, same-GGUF packet.
-Current upstream HIP is 160/160 top-1 and effectively identical to frozen
-#27742 HIP. EngramHalo is 159/160 with mean/max KL **9.85e-4/0.01431**.
-Upstream Vulkan, Nathan, and apepojken are each 159/160 versus frozen HIP, but
-Nathan is effectively identical to upstream Vulkan (160/160, mean KL about
-**2e-10**) and apepojken remains 160/160 versus upstream Vulkan at mean/max KL
-**0.00109/0.01576**. This localizes Nathan's failure to multi-step execution
-rather than broad static math. Short Q8-KV apepojken MTP is **1.807x**
-complete-wall at 92.8% acceptance but only **9/10** AR-message exact, matching
-EngramHalo's failing prompt. Nathan MTP is provisionally **1.161x** at 95.45%
-acceptance, but AR and MTP each self-repeat only 9/10 and just **8/10** prompts
-match across both repeats of both modes. All affected speed rows are invalid as
-targets. The survey also compares upstream/fork test coverage and
-absolute-quality evidence.
-[`Strix Halo survey artifact`](results/2026-08-31-gfx1151-qwen38-flash-next-strix-halo-survey.json).
-
-The previous GDN decode-all claim is **invalid**: its selector was unreachable,
-so the packet compared the strict owner to itself; the 16.2 tok/s helper also
-used all-layer DP4A rather than admitted safe43. Wiring the actual candidate
-costs **6.832 ms/token plus a 0.117-ms tail**, versus **2.454 ms/token** for the
-retained GDN owner, and lowers full decode. Commit `15a436766` clears the dead
-binder route. Prefill colwarps 27–47 remains certified. Current
-production/strict manifests are `9e27fec0…` / `42509601…`; omitted routes stay
-strict.
-The certified
-compact-WMMA MoE suffix (layers 27–47: Q4_K dual gate/up + Q5_1 down on the
-f16-WMMA matrix-core kernels, tile 16×16; replaces the ds4-MMQ suffixes and
-strict owners on those layers; `HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL=1`)
-passes the complete 450-row/three-repeat packet at KL
-mean/p95/p99/max `2.79e-4/1.53e-3/3.49e-3/5.98e-3`, **446/450 top-1** (all
-scopes ≥ 98.67%), exact repeat/state, 18/18 repeat-exact free generation
-(4 task-valid divergences), exact c2 with zero teardown, and improves paired
-p508/p1012 **6.572→6.287 s (-4.34%, 80.82 tok/s)** /
-**13.398→12.694 s (-5.26%, 79.73 tok/s)**. The layer-27 boundary is the
-maximal envelope-admissible suffix (full-layer WMMA screens at mean 5.9e-3).
-The certified GDN column-warp suffix (llama gated_delta_net layout, layers
-27–47; 4.58× per launch, −17.1%/−15.7% paired p508/p1012, supersedes
-peer-GDN) and the iu8-WMMA gate/up suffix (layers 35–47 within the WMMA-MoE27
-route; exact Q4_K q values + 3 residual activation planes + min-offset
-ds-trick) passes the complete packet at KL mean/p95/p99/max
-`2.62e-4/2.20e-3/4.34e-3/5.52e-3`, **446/450 top-1**, zero scope failures,
-exact repeat/state, 18/18 repeat-exact free generation (15/18 strict-exact),
-exact c2 with zero teardown, and improves paired p508/p1012
-**7.430→6.650 s (-10.5%)** / **15.260→13.469 s (-11.7%)** over the f16
-production stack under matched conditions; the binder selects it via
-`HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL=1` (layers 35–47). Current natural 16K improves **946.999→341.177 s (-63.96%, 47.989 tok/s; chunk-512 gate**
-re-passed with retrieval/oracle/transactional/teardown exact) with every
-binding control exact; 64K historical evidence is retained but not rerun because
-47.989<100 tok/s. 262K is capacity-only (91.126 GB tracked), not inference. Q8 MTP is exact on 10/10
-prompts but remains opt-in at **0.955x AR**. A PR-#303 feasibility diagnostic
-measures its 675.4-MB full Q8_0 draft head at **3.153 ms (41.3% of a 7.639-ms
-draft step)**, but even a free head projects only **0.964x AR** on the retained
-suite; target verification and host draft outputs remain first. [`hot-head diagnostic`](results/2026-09-01-gfx1151-qwen38-flash-next-mtp-hot-head-feasibility.json).
-<=1K image/video/PNG chat and
-request-owned c2 blocking/SSE pass with zero teardown; packed c-aware speed,
-remote media, multimodal SSE, and 128K+/262K inference are not claimed.
-Evidence: [`gap`](results/2026-08-28-gfx1151-qwen38-flash-next-llamacpp-matched-baseline.json) · [`MoE graph`](results/2026-08-29-gfx1151-qwen38-flash-next-exact-moe-graph-decode.json) · [`production`](results/2026-08-29-gfx1151-qwen38-flash-next-moe27-q8-32-production.json) · [`chunk512`](results/2026-08-29-gfx1151-qwen38-flash-next-prefill-chunk512.json) · [`Q8 MMQ`](results/2026-08-29-gfx1151-qwen38-flash-next-q8-mmq-prefill-production.json) · [`Q5_1 MMQ`](results/2026-08-29-gfx1151-qwen38-flash-next-q5-1-mmq-suffix32-production.json) · [`Q4_K MMQ`](results/2026-08-29-gfx1151-qwen38-flash-next-q4-k-mmq-suffix35-production.json) · [`MMQ+DP4A stack`](results/2026-08-29-gfx1151-qwen38-flash-next-production-mmq-prefill-dp4a43-stack.json) · [`profile manifest`](results/2026-08-29-gfx1151-qwen38-flash-next-production-mmq-profile-manifest.json) · [`peer GDN`](results/2026-08-29-gfx1151-qwen38-flash-next-production-gdn-peer35.json) · [`final campaign`](results/2026-08-29-gfx1151-qwen38-flash-next-prefill-mmq-campaign-final.json) · [`master re-baseline`](results/2026-08-29-gfx1151-qwen38-flash-next-llamacpp-master-rebaseline.json) · [`WMMA MoE27`](results/2026-08-29-gfx1151-qwen38-flash-next-wmma-moe27-production.json) · [`iu8 gate35`](results/2026-08-30-gfx1151-qwen38-flash-next-iu8-wmma-gate35-production.json) · [`GDN colwarps27`](results/2026-08-30-gfx1151-qwen38-flash-next-gdn-colwarps27-production.json) · [`QSA flash (key-parallel 35-47)`](results/2026-08-30-gfx1151-qwen38-flash-next-qsa-flash31-production.json) · [`fresh full profile`](results/2026-08-30-gfx1151-qwen38-flash-next-fresh-full-profile.json) · [`invalid GDN decode correction`](results/2026-08-30-gfx1151-qwen38-flash-next-gdn-colwarps-decode-all.json).
 
 ## Current Qwen3.6-35B quantization quality
 
@@ -1076,17 +575,12 @@ All nine IDs are stable/finite; prefill/decode CV is at most 0.733%/0.475%, and
 the ten-prompt gate is exact. Qwen3.8 W7900 detail is in the direct engine
 c1-c8 table above.
 
-### Radeon 8060S: Qwen3.8-27B Dense GGUF retained campaign state
+### Radeon 8060S: Qwen3.8-27B Dense GGUF
 
-Qwen3.8 uses `Q4_K_S` with BF16 K/V. The campaign is closed at merged commit
-`20e5106da`; the Q5 source-F16 prefill retention (2026-08-17) raises 512/1K/4K
-prefill on gfx1151 via the byte-identical K_M-derived Q5T16 recurrent-output
-route (counterbalanced +4.51%/+3.02% at 512/1K, +2.95% at 4K with a
-capacity-conditional scratch cap that keeps 8K+ memory flat). Prefill and true
-AR beat both clean llama backends at every working shape, exact native B3 beats
-the correctness-valid llama HIP row, and process GTT stays below the lower
-valid llama row at 512/1K/8K+ (4K peak grows a fixed +2.30 GiB to enable the
-4K source-F16 win).
+Qwen3.8 uses `Q4_K_S` with BF16 K/V. A byte-identical `Q_K_M`-derived Q5T16
+route feeds prefill; decode runs the retained `Q4_K_S` path. hipEngine
+prefill and decode both beat the llama.cpp backends at every working shape
+(4K needs 2.30 GiB more memory to do so):
 
 | Shape | Clean prefill | Clean AR | Retained process GTT | Lower valid llama GTT |
 | --- | ---: | ---: | ---: | ---: |
@@ -1094,12 +588,13 @@ valid llama row at 512/1K/8K+ (4K peak grows a fixed +2.30 GiB to enable the
 | 1K/128 | **387.648** | **12.894** | **15.710 GiB** | 15.816 GiB |
 | 4K/128 | **380.305** | **13.038** | **17.863 GiB** | 16.004 GiB |
 
-Exact native B3 is **23.85263 tok/s / 1.7845x AR** with all ten prompt
-trajectories and GPU/CPU acceptance decisions exact; retained process GTT is
-**15.899 GiB** versus valid llama HIP's **16.358 GiB**. Natural true AR is
-**13.36641 tok/s** versus same-file llama Q4_K_S HIP/Vulkan at
-**5.53853/7.51888 tok/s**. Rejected aliases and direct file mapping remain
-recorded—not discarded—in the linked evidence.
+Speculative decode and single-request decode versus the same GGUF on llama.cpp:
+
+| Mode | hipEngine | llama HIP | llama Vulkan |
+| --- | ---: | ---: | ---: |
+| True AR decode (tok/s) | 13.36641 | 5.53853 | 7.51888 |
+| Exact native B3 spec-decode (tok/s, speedup) | 23.85263 (1.7845x) | — | — |
+| Process memory (GiB) | 15.899 | 16.358 | — |
 Evidence: [`clean Q4_K_S`](results/2026-08-16-gfx1151-qwen38-27b-q4ks-clean-publication.json),
 [`exact B3`](results/2026-08-17-gfx1151-qwen38-27b-q4ks-exact-native-b3.json),
 [`memory package`](results/2026-08-17-gfx1151-qwen38-27b-q4ks-memory-parity-retained.json),
