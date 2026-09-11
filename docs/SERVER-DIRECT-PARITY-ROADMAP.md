@@ -1,11 +1,11 @@
 # Server/direct parity: review and implementation roadmap
 
-Review date: 2026-09-10. Reviewed source: `026b77db8`, including the oracle
+Review date: 2026-09-10. Reviewed source: `ff217c9d1`, including the oracle
 repair, its regression tests, and the dead KV-import removal. This is a
 code/evidence review and proposed execution order, not new GPU qualification.
 
 Amended 2026-09-10 with a follow-up read-only code trace at the same base
-(`648e99ae2` is docs-only over `026b77db8`, so the runtime is unchanged). The
+(`be99b8cce` is docs-only over `ff217c9d1`, so the runtime is unchanged). The
 amendment answers this review's open direct-arm question in F1, names the
 second AOTriton admission site, and records the slab-count and oracle-lifetime
 mechanisms in F3/F5. It adds no measurement.
@@ -60,15 +60,15 @@ unless noted):
 | Stage | Packed prefill | Decode boundary | Server-route transients @16K/32K declared | Commit |
 | --- | ---: | ---: | --- | --- |
 | Session start | 67 tok/s | unmeasured | unmeasured | - |
-| P1 slot-local AOTriton | 677 tok/s (10.1x) | - | unmeasured | `18ebfabd8` |
-| P0 telemetry freeze | 677 | - | oracle 2.0/4.0 GiB (16 owners); lease 0.51/1.02; workspace 0.95; hidden 0.27/0.43; pool high-water 0.58/1.09 | `ab517a6df` |
-| P2 server-faithful probe | 677 | - | same, now measured while-live on the real route (in-process oracle peak capture) | `8941b9d15` |
-| P3 layer-outer executor | 732 | - | oracle 0.125/0.25 GiB (1 owner); bitwise parity vs scalar at 2,048 and 1,500 rows | `a58cc4169` |
-| P4 lease removal | 677-732 | - | lease 0/0; pinned 0/0; pool high-water 0.07; chunk-outer oracle halves to 1.0 GiB (pool-backing coupling); determinism verified | `b959c83fe` |
-| P5 t1 decode ladder | - | R0 35.15 ms; packed-entry R1 35.22 ms (ratio 1.002, private sessions - executor-entry cost only, not server pool/scheduler execution) | - | `9ace7cb91` |
-| P7 t1 capacity | - | - | tier-1 allocation-validity bracket passes 65,536-155,648 DECLARED contexts (one 2,048-row request each; not full-length completions; no cross-card direct comparison) | `f2ff6fdf6` |
-| P3 promotion | - | - | trace identity passed (AOTriton + native, as predicted); default reverted to OFF pending the packet gates (reviewer F4) | `c6288b9b0` + corrective |
-| P7 t2 publish | - | - | paired reps: ratio median 1.004 (one matched 8K diagnostic; cross-rep variance 89-104% under shared-host contention, so 'consistently within 5%' is not established); SSE observation is delivery cadence, not isolated transport cost; kernel-family attribution landed | `882446e45`, `e7545ec45` |
+| P1 slot-local AOTriton | 677 tok/s (10.1x) | - | unmeasured | `04b2fccf5` |
+| P0 telemetry freeze | 677 | - | oracle 2.0/4.0 GiB (16 owners); lease 0.51/1.02; workspace 0.95; hidden 0.27/0.43; pool high-water 0.58/1.09 | `664298f84` |
+| P2 server-faithful probe | 677 | - | same, now measured while-live on the real route (in-process oracle peak capture) | `5a49e5bbe` |
+| P3 layer-outer executor | 732 | - | oracle 0.125/0.25 GiB (1 owner); bitwise parity vs scalar at 2,048 and 1,500 rows | `117ca5cab` |
+| P4 lease removal | 677-732 | - | lease 0/0; pinned 0/0; pool high-water 0.07; chunk-outer oracle halves to 1.0 GiB (pool-backing coupling); determinism verified | `0aded03b1` |
+| P5 t1 decode ladder | - | R0 35.15 ms; packed-entry R1 35.22 ms (ratio 1.002, private sessions - executor-entry cost only, not server pool/scheduler execution) | - | `2cc99ad75` |
+| P7 t1 capacity | - | - | tier-1 allocation-validity bracket passes 65,536-155,648 DECLARED contexts (one 2,048-row request each; not full-length completions; no cross-card direct comparison) | `c7eb76b88` |
+| P3 promotion | - | - | trace identity passed (AOTriton + native, as predicted); default reverted to OFF pending the packet gates (reviewer F4) | `bf2267029` + corrective |
+| P7 t2 publish | - | - | paired reps: ratio median 1.004 (one matched 8K diagnostic; cross-rep variance 89-104% under shared-host contention, so 'consistently within 5%' is not established); SSE observation is delivery cadence, not isolated transport cost; kernel-family attribution landed | `9e28487cb`, `131d4219d` |
 
 Combined P3+P4 at 32K declared: ~1.6 GiB of route transients vs ~6.4 GiB at
 the P0 baseline (-75%), measured with the executor flag enabled. The
