@@ -503,6 +503,19 @@ def _in_windows(start_ns: int, end_ns: int, windows: Sequence[Mapping[str, int]]
     )
 
 
+def _merge_intervals(intervals: Iterable[tuple[int, int]]) -> list[tuple[int, int]]:
+    """Merge overlapping or touching intervals into a sorted disjoint list."""
+
+    merged: list[tuple[int, int]] = []
+    for start, end in sorted(intervals):
+        if merged and start <= merged[-1][1]:
+            last_start, last_end = merged[-1]
+            merged[-1] = (last_start, max(last_end, end))
+        else:
+            merged.append((start, end))
+    return merged
+
+
 def _union_ns(intervals: Iterable[tuple[int, int]]) -> int:
     """Total length covered by a set of intervals, counting overlaps once."""
 
@@ -663,6 +676,15 @@ def summarize(
     leading_ns: list[int] = []
     trailing_ns: list[int] = []
     busy_ns: list[int] = []
+    # Interior gaps are additionally split by whether a HIP API call is actually
+    # in flight inside them. A gap covered by an API interval is the host inside
+    # the runtime (launch latency and call overhead); a gap with no API in flight
+    # is host Python between launches. Which dominates decides between fusion
+    # (fewer launch points, less Python between them) and a graph replay (same
+    # kernels, no per-launch host cost at all).
+    gap_total_ns = 0
+    gap_with_api_ns = 0
+    gap_entries = 0
     for window in windows:
         inside = _clip_to_windows(
             [
@@ -681,6 +703,25 @@ def summarize(
         trailing_ns.append(int(window["end_ns"]) - last)
         busy_ns.append(_union_ns(inside))
 
+        merged = _merge_intervals(inside)
+        window_api = [
+            (int(row["start_ns"]), int(row["end_ns"]))
+            for row in hip_api
+            if _in_windows(row["start_ns"], row["end_ns"], [window])
+        ]
+        for (_prev_start, prev_end), (next_start, _next_end) in zip(
+            merged, merged[1:], strict=False
+        ):
+            if next_start <= prev_end:
+                continue
+            gap_entries += 1
+            gap_total_ns += next_start - prev_end
+            gap_with_api_ns += _union_ns(
+                (max(start, prev_end), min(end, next_start))
+                for start, end in window_api
+                if end > prev_end and start < next_start
+            )
+
     def _median_ms(values: Sequence[int]) -> float | None:
         return round(statistics.median(values) / 1e6, 3) if values else None
 
@@ -696,6 +737,28 @@ def summarize(
             round(statistics.median(busy_ns) / statistics.median(span_ns), 4)
             if span_ns and statistics.median(span_ns)
             else None
+        ),
+        "interior_gap_entries": gap_entries,
+        "interior_gap_entries_per_step": (
+            round(gap_entries / len(windows), 2) if windows else None
+        ),
+        "interior_gap_per_step_ms": (
+            round(gap_total_ns / 1e6 / len(windows), 3) if windows else None
+        ),
+        "interior_gap_with_api_per_step_ms": (
+            round(gap_with_api_ns / 1e6 / len(windows), 3) if windows else None
+        ),
+        "interior_gap_without_api_per_step_ms": (
+            round((gap_total_ns - gap_with_api_ns) / 1e6 / len(windows), 3)
+            if windows
+            else None
+        ),
+        "interior_gap_split_note": (
+            "with_api is gap time covered by a HIP API interval (host inside the "
+            "runtime: launch latency and call overhead); without_api is gap time "
+            "with no API call in flight (host Python between launches). Fusion "
+            "reduces launch points and the Python between them; a graph replay "
+            "removes the per-launch host cost entirely"
         ),
         "note": (
             "span is first kernel start to last kernel end within each step window; "
