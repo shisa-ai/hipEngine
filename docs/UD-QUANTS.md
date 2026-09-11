@@ -1579,12 +1579,37 @@ AR certificates pin scope `("ar",)` per role-manifest fingerprint. MTP scope is
 granted only by `_UD_MTP_PRESET_FINGERPRINTS` in
 `hipengine/loading/qwen35_gguf_admission.py`, keyed by that same fingerprint and
 carrying its qualification evidence, so a new AR certificate can never widen MTP
-admission and an MTP certificate can be revoked without touching AR. That table
-is **empty**: no UD artifact is certified for MTP yet, and the draft
-materializer still refuses UD MTP before any allocation.
+admission and an MTP certificate can be revoked without touching AR.
+
+The unit is defined by `_UD_MTP_CERTIFICATIONS`: one
+`Qwen35GGUFUDMTPCertification` per pinned artifact, carrying the declared
+envelope (backend, execution profile, `context_max`, serving widths) and six
+gated items — NextN residency and `eh_proj`/head ownership, the blk.64 draft
+operation set, draft/verifier state ownership, UD journal requirements, exact
+AR/MTP control, and the supported scope. Each item carries its `contract`, the
+in-tree `evidence`, a `qualified` flag, and — when open — a concrete `blocker`.
+`_UD_MTP_PRESET_FINGERPRINTS` is **derived** from that table and admits only a
+complete unit, so MTP scope cannot be hand-granted and an incomplete unit cannot
+leak admission. Both records currently exist and are incomplete, so the pin is
+empty: no UD artifact is certified for MTP yet.
 
 Enabling work landed and gated (this is mechanism, not a certificate):
 
+- The blk.64 draft operation set is now enforced.
+  `QWEN35_GGUF_OP_MTP_NEXTN_DRAFT` is **slot-scoped**: every `nextn_block.*`
+  slot must resolve a certified record in `_draft_coverage()` (raw
+  `Q6_K`/`Q8_0` projections through the shared `launch_gguf_linear` dispatch,
+  and the registered F32-weight RMSNorm wrapper for the draft's norms), while
+  the AR slot scope is unchanged. Another artifact's draft layout — for example
+  the plain control's `Q4_K` pack8 attention — is refused rather than silently
+  certified.
+- Draft residency and `eh_proj`/head ownership are declared and checked. The
+draft owns its blk.N layer slots plus the NextN slots (including `eh_proj`); the
+token embedding and head are borrowed target root residents, and every fallback
+must name a resident this artifact already plans with the identical source
+tensor (the draft's output norm is its own `shared_head_norm`). A fallback
+naming an unplanned tensor refuses with stage `fallback_unowned` instead of
+materializing a silent extra resident.
 - The UD NextN draft block is quantized Q6_K (`eh_proj`, `attn_q`,
   `attn_output`, `ffn_gate`, `ffn_up`, `ffn_down`) with Q8_0 `attn_k`/`attn_v`.
   That signature coincides with the Qwen3.8 native-XL expectation, but the
@@ -1642,10 +1667,11 @@ Remaining before `_UD_MTP_PRESET_FINGERPRINTS` may be populated:
   F32 logits, sampling, eager/graph repeat parity. Replace or exclude the direct
   BF16 alpha/beta calls in `_run_linear_attention_decode_rows_native`.
 - [ ] Block64 Q6 `eh_proj`, attention/FFN, aliases/teardown, exact speculative
-  accept/reject commit/rollback. The identity-bound draft dtype pin and the
-  accept-chain registration above cover the quantization and resolution halves;
-  aliases/teardown and exact commit/rollback control remain open. Exact UD NextN
-  admission does not use the unrelated native-XL manifest exception.
+  accept/reject commit/rollback. The draft operation set, the residency and
+  `eh_proj`/head ownership contract, and the identity-bound draft dtype pin are
+  landed and gated; aliases/teardown, draft/verifier state disjointness, and
+  exact commit/rollback control remain open. Exact UD NextN admission does not
+  use the unrelated native-XL manifest exception.
 - [ ] c1/c2/c4/c8, ragged/sparse rows, neighbor replacement, permutations,
   delayed arrivals, cancellation/reclaim and width transitions.
 - [ ] Artifact-scoped strict manifest first; production requires section 9.
@@ -1654,7 +1680,10 @@ Remaining before `_UD_MTP_PRESET_FINGERPRINTS` may be populated:
   automatic speculative admission. The suite and denominator are wired into
   `scripts/ud_mtp_certification.py`; heldout categories are still outstanding.
 
-Exit: explicit AR/MTP/serving/profile/backend/context records, no stamp inheritance.
+Exit: explicit AR/MTP/serving/profile/backend/context records, no stamp
+inheritance. The `_UD_MTP_CERTIFICATIONS` records are the AR/MTP/profile/backend
+carriers and are written; the context and width fields stay undeclared until
+their points are measured, which keeps the derived pin empty.
 
 ### U7. Measured Optimization
 

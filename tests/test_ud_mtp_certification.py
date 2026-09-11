@@ -24,6 +24,7 @@ for the default suite.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -31,6 +32,7 @@ import pytest
 # Import-time kernel registration: the accept chain registers itself when its
 # module is imported, so the registry assertions below need this import.
 import hipengine.kernels.hip_gfx1100.speculative.dflash_accept  # noqa: F401
+from hipengine.kernels.backends import HIP_BACKEND_TARGET_ARCH
 from hipengine.kernels.registry import KernelKey, registered_keys, resolve
 from hipengine.loading.qwen35_gguf import build_qwen35_gguf_tensor_map
 from hipengine.loading.qwen35_gguf_admission import (
@@ -177,6 +179,201 @@ def test_partial_pinned_manifest_is_refused():
     assert any("must cover exactly the validated slots" in e for e in validation.dtype_errors)
 
 
+# ---------------------------------------------------------------------------
+# U6 unit: the six gated elements
+# ---------------------------------------------------------------------------
+
+
+def _grant_mtp_scope(monkeypatch) -> None:
+    """Grant MTP scope in-process for the pinned UD presets (candidate mode)."""
+
+    from hipengine.loading import qwen35_gguf_admission as admission
+
+    original = admission.resolve_qwen35_gguf_artifact_preset
+
+    def patched(*args, **kwargs):
+        preset = original(*args, **kwargs)
+        if preset is not None and preset.preset_key in UD_SESSION_QUANTS:
+            return admission.replace(
+                preset, scopes=(*preset.scopes, GGUF_PRESET_SCOPE_MTP)
+            )
+        return preset
+
+    monkeypatch.setattr(admission, "resolve_qwen35_gguf_artifact_preset", patched)
+
+
+def test_u6_certification_records_define_all_six_items():
+    """U6 defines every required element, and an incomplete unit mints no pin."""
+
+    from hipengine.loading import qwen35_gguf_admission as admission
+
+    required = {
+        "nextn_residency_and_eh_proj_head_ownership",
+        "blk64_draft_operation_set",
+        "draft_and_verifier_state_ownership",
+        "ud_specific_journal_requirements",
+        "exact_ar_mtp_control_behavior",
+        "supported_backend_quant_profile_context_width_scope",
+    }
+    assert set(admission._UD_MTP_CERTIFICATIONS) == set(admission._UD_PRESET_FINGERPRINTS)
+    for fingerprint, certification in admission._UD_MTP_CERTIFICATIONS.items():
+        assert certification.fingerprint == fingerprint
+        # The declared envelope names a real backend and profile.
+        assert certification.backend in HIP_BACKEND_TARGET_ARCH
+        assert certification.execution_profile in {"strict", "production"}
+        assert certification.widths and all(w >= 1 for w in certification.widths)
+        assert {item.item for item in certification.items} == required
+        # Every open item names concrete missing evidence, never a plan.
+        for item in certification.items:
+            assert item.contract and item.evidence
+            assert bool(item.blocker) != bool(item.qualified), item.item
+        # The derived pin can only contain complete units.
+        if certification.is_complete():
+            assert fingerprint in admission._UD_MTP_PRESET_FINGERPRINTS
+        else:
+            assert fingerprint not in admission._UD_MTP_PRESET_FINGERPRINTS
+            assert certification.blocked_items
+    # Both pinned UD artifacts are defined but not yet certified for MTP.
+    assert admission._UD_MTP_PRESET_FINGERPRINTS == {}
+
+
+@pytest.mark.parametrize("path", [UD_Q4_K_M, UD_Q4_K_S])
+def test_nextn_draft_owns_block_and_borrows_embedding_and_head(path: Path):
+    """U6 item 1: draft residency and eh_proj/head ownership."""
+
+    if not path.exists():
+        pytest.skip(f"pinned artifact missing: {path}")
+    reader, model_map, nextn_map = _real_map(path)
+    assert nextn_map is not None
+
+    owned = {tensor.name for tensor in (*nextn_map.layer_tensors.values(), *nextn_map.nextn_tensors.values())}
+    root_names = {tensor.name for tensor in model_map.root_tensors.values()}
+    # eh_proj is draft-owned, never borrowed.
+    assert "eh_proj" in nextn_map.nextn_tensors
+    # Every fallback resolves to a resident this artifact already plans, with
+    # the identical source tensor: the target's root embedding/head, or a
+    # draft-owned NextN slot (the shared head norm doubles as output norm).
+    for slot, tensor in nextn_map.fallback_tensors.items():
+        assert tensor.name in owned or tensor.name in root_names, (slot, tensor.name)
+    assert nextn_map.fallback_tensors["token_embedding"].name == model_map.root_tensors["token_embedding"].name
+    assert nextn_map.fallback_tensors["lm_head"].name == model_map.root_tensors["lm_head"].name
+    assert nextn_map.fallback_tensors["output_norm"].name == nextn_map.nextn_tensors["shared_head_norm"].name
+    # The draft does NOT own an embedding table or a head.
+    assert not any(name == "token_embd.weight" for name in owned)
+    assert not any(name == "output.weight" for name in owned)
+
+
+def test_unplanned_nextn_fallback_is_refused(monkeypatch):
+    """U6 item 1: a fallback naming no planned resident refuses."""
+
+    from hipengine.loading import qwen35_gguf_admission as admission
+    from hipengine.loading.qwen35_gguf_nextn import Qwen35GGUFNextNMap
+
+    if not UD_Q4_K_M.exists():
+        pytest.skip(f"pinned artifact missing: {UD_Q4_K_M}")
+    _grant_mtp_scope(monkeypatch)
+    reader, model_map, nextn_map = _real_map(UD_Q4_K_M)
+    assert nextn_map is not None
+    original = nextn_map.fallback_tensors["lm_head"]
+    foreign = replace(original, name="blk.0.not_a_resident.weight")
+    forged = replace(
+        nextn_map,
+        fallback_tensors={**dict(nextn_map.fallback_tensors), "lm_head": foreign},
+    )
+    assert isinstance(forged, Qwen35GGUFNextNMap)
+    report = admission.preflight_qwen35_gguf_artifact(
+        model_map,
+        backend="hip_gfx1100",
+        operations=(admission.QWEN35_GGUF_OP_MTP_NEXTN_DRAFT,),
+        nextn_map=forged,
+    )
+    # The MTP scope is granted, so the borrow check is the only refusal: the
+    # forged fallback must be what makes the contract incomplete.
+    assert [item.stage for item in report.unsupported] == ["fallback_unowned"]
+    assert not report.plan_contract.is_complete()
+    assert "nextn_block.64.fallback:lm_head" in report.plan_contract.required_plan_slots
+
+
+@pytest.mark.parametrize("path", [UD_Q4_K_M, UD_Q4_K_S])
+def test_draft_operation_set_is_slot_scoped_and_certified(path: Path, monkeypatch):
+    """U6 item 2: the blk.64 draft operation set is certified and slot-scoped."""
+
+    from hipengine.loading import qwen35_gguf_admission as admission
+
+    if not path.exists():
+        pytest.skip(f"pinned artifact missing: {path}")
+    reader, model_map, nextn_map = _real_map(path)
+    draft = admission.QWEN35_GGUF_OP_MTP_NEXTN_DRAFT
+
+    # Without the MTP scope the whole operation refuses.
+    scoped = admission.preflight_qwen35_gguf_artifact(
+        model_map, backend="hip_gfx1100", operations=(draft,), nextn_map=nextn_map
+    )
+    assert any(item.stage == "scope_refused" for item in scoped.unsupported)
+
+    _grant_mtp_scope(monkeypatch)
+    report = admission.preflight_qwen35_gguf_artifact(
+        model_map, backend="hip_gfx1100", operations=(draft,), nextn_map=nextn_map
+    )
+    assert report.supported, report.render_refusals()
+    assert report.plan_contract.is_complete()
+    # Exactly the draft block's owned slots are covered; the borrowed root
+    # residents stay outside the draft scope.
+    expected = len(nextn_map.layer_tensors) + len(nextn_map.nextn_tensors)
+    assert report.covered_slots == expected
+    assert all(record.operation == draft for record in report.qualified_records)
+    assert all(record.kernel_layer for record in report.qualified_records)
+
+
+def test_foreign_draft_signature_is_not_silently_certified():
+    """U6 item 2: another artifact's draft layout is not certified by accident."""
+
+    from hipengine.loading import qwen35_gguf_admission as admission
+
+    if not PLAIN_Q4_K_M.exists():
+        pytest.skip(f"pinned artifact missing: {PLAIN_Q4_K_M}")
+    reader, model_map, nextn_map = _real_map(PLAIN_Q4_K_M)
+    draft = admission.QWEN35_GGUF_OP_MTP_NEXTN_DRAFT
+    report = admission.preflight_qwen35_gguf_artifact(
+        model_map, backend="hip_gfx1100", operations=(draft,), nextn_map=nextn_map
+    )
+    assert not report.supported
+    assert not report.plan_contract.is_complete()
+
+
+def test_ud_journal_is_row_capable_across_the_declared_context():
+    """U6 item 4: the UD journal must own rows whenever serial is reachable."""
+
+    from hipengine.kernels.backends import backend_package_capability
+    from hipengine.runtime.qwen35_gguf_mtp import _verify_journal_plan
+
+    backend = "hip_gfx1100"
+    native_limit = int(
+        backend_package_capability(backend, "GGUF_SPECDEC2_NATIVE_TARGET_MAX_CONTEXT", 0)
+    )
+    assert native_limit > 0
+    # The serial route is reachable beyond the backend's native row context, so
+    # a row-capable journal is mandatory: producer capture may not be paired
+    # with a bounded journal.
+    initial_state_only, producer_capture = _verify_journal_plan(
+        "native",
+        max_candidate_budget=2,
+        backend=backend,
+        max_end_position=native_limit + 1,
+    )
+    assert initial_state_only is False
+    assert producer_capture is False
+    # Within the native row context the initial-state-only journal is legal.
+    initial_state_only, producer_capture = _verify_journal_plan(
+        "native",
+        max_candidate_budget=2,
+        backend=backend,
+        max_end_position=native_limit,
+    )
+    assert initial_state_only is True
+    assert producer_capture is True
+
+
 @pytest.mark.parametrize("path", [UD_Q4_K_M, UD_Q4_K_S])
 def test_ud_presets_stay_ar_only_until_the_mtp_pin_lands(path: Path):
     """U6 gate: AR certificates never imply MTP admission."""
@@ -210,10 +407,10 @@ def test_mtp_pin_composes_the_scope_and_evidence(monkeypatch):
     )
     assert base is not None and base.scopes == (GGUF_PRESET_SCOPE_AR,)
 
-    monkeypatch.setitem(
-        admission._UD_MTP_PRESET_FINGERPRINTS,
-        base.manifest_fingerprint,
-        "Test-only MTP qualification evidence.",
+    monkeypatch.setattr(
+        admission,
+        "_UD_MTP_PRESET_FINGERPRINTS",
+        {base.manifest_fingerprint: "Test-only MTP qualification evidence."},
     )
     certified = resolve_qwen35_gguf_artifact_preset(
         model_map, nextn_map=nextn_map, file_type_stamp=reader.info.file_type_name

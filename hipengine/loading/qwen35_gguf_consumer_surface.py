@@ -385,6 +385,9 @@ OPERATION_ROW_LIMITS = MappingProxyType({
     "ar_decode_c1": (1, 1), "ar_decode_rows": (1, 8),
     "ar_decode_native_rows": (2, 8), "ar_prefill": (1, None),
     "lm_head_f32_logits": (1, 8), "embedding_lookup": (1, None),
+    # U6: the NextN draft block runs one row per candidate slot; the serving
+    # batch width is bounded by the same c8 envelope as the AR rows.
+    "mtp_nextn_draft": (1, 8),
 })
 
 
