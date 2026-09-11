@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from types import SimpleNamespace
 
 import numpy as np
@@ -11,7 +12,11 @@ from hipengine.kernels.policy import (
     QWEN35_DENSE_H5120_GEOMETRY,
     QWEN35_MOE_H2048_E256_GEOMETRY,
 )
-from scripts.gguf_true_ar_category_bench import run_prompt_true_ar
+from hipengine.core.dtype import DType
+from scripts.gguf_true_ar_category_bench import (
+    resolve_kv_selection,
+    run_prompt_true_ar,
+)
 
 
 class _Tokenizer:
@@ -180,3 +185,70 @@ def test_true_ar_falls_back_to_eager_below_admitted_horizon() -> None:
     assert row["graph_replay_min_steps"] == 24
     assert session.step_calls == 23
     assert session.graph is None
+
+
+def _sequence_sha(tokens) -> str:
+    return hashlib.sha256(
+        ",".join(str(int(token)) for token in tokens).encode("ascii")
+    ).hexdigest()
+
+
+def test_true_ar_records_a_full_generated_sequence_hash() -> None:
+    """The graph/eager identity check must cover every generated token."""
+
+    session = _Session(minimum=24)
+    row = run_prompt_true_ar(
+        session=session,
+        tokenizer=_Tokenizer(),
+        prompt_row={"id": "p", "category": "code", "prompt": "x"},
+        decode_tokens=3,
+        warmup_decode_tokens=0,
+        use_bulk_prefill=True,
+        bulk_attention_mode="bulk",
+        graph_replay_decode=True,
+        graph_steps_per_replay=1,
+    )
+
+    generated = row["generated_token_ids"]
+    # The prefill token plus one entry per decode step.
+    assert len(generated) == 4
+    assert row["generated_sha256"] == _sequence_sha(generated)
+    # A sequence differing only in its LAST token must hash differently, so the
+    # digest covers the whole sequence rather than a prefix or a preview.
+    assert row["generated_sha256"] != _sequence_sha(generated[:-1] + [generated[-1] + 1])
+
+
+def test_true_ar_graph_and_eager_paths_share_the_hash_schema() -> None:
+    """Both decode paths must record the same full-sequence fields."""
+
+    def run(minimum: int | None, decode_tokens: int) -> dict:
+        return run_prompt_true_ar(
+            session=_Session(minimum=minimum),
+            tokenizer=_Tokenizer(),
+            prompt_row={"id": "p", "category": "code", "prompt": "x"},
+            decode_tokens=decode_tokens,
+            warmup_decode_tokens=0,
+            use_bulk_prefill=True,
+            bulk_attention_mode="bulk",
+            graph_replay_decode=True,
+            graph_steps_per_replay=1,
+        )
+
+    eager = run(minimum=None, decode_tokens=4)
+    graph = run(minimum=4, decode_tokens=4)
+    assert eager["graph_replay_decode"] is False
+    assert graph["graph_replay_decode"] is True
+    for row in (eager, graph):
+        assert len(row["generated_token_ids"]) == 5
+        assert row["generated_sha256"] == _sequence_sha(row["generated_token_ids"])
+
+
+def test_true_ar_kv_selection_defaults_to_bf16() -> None:
+    """The harness must not silently change the KV layout it measures."""
+
+    assert resolve_kv_selection("bf16") == (None, None, None)
+
+    policy, scale_dtype, granularity = resolve_kv_selection("int8_per_token_head")
+    assert policy.storage_dtype == DType.INT8_PER_TOKEN_HEAD
+    assert scale_dtype == "fp32"
+    assert granularity == "per_token_head"

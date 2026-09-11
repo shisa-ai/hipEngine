@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -51,15 +52,50 @@ def _enum_value(value: Any) -> str:
     return str(getattr(value, "value", value))
 
 
+_GGUF_INT8_KV_DECODE_GRAPH_ENV = "HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH"
+
+
+def _gguf_int8_kv_decode_graph_enabled() -> bool:
+    """Admit the IKV-C2 INT8 KV layout to the C1 decode graph (default off).
+
+    The C1 decode graph is admitted for BF16 KV and for the
+    ``tail4_hadamard_group32`` INT8 layout. The IKV-C2 production default
+    (``int8_per_token_head`` storage, ``uniform`` layout, ``per_token_head``
+    fp32 scales) is not admitted, and the resident loop's eligibility resolver
+    rejects every non-BF16 KV storage dtype, so this route has always decoded
+    eagerly. That gate was introduced as a conservative scope restriction
+    ("keep eager for unmeasured shapes") rather than from a measured
+    capture-safety limit, so this flag exists to measure the INT8 route in the
+    graph instead of assuming it cannot work.
+
+    Env "1" opts the INT8 layouts into capture; the eager step is the
+    registered fallback and remains the default.
+    """
+
+    return os.environ.get(_GGUF_INT8_KV_DECODE_GRAPH_ENV, "0").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
 def _decode_graph_kv_layout_admitted(session: Any) -> bool:
     storage = _enum_value(session.kv_storage_dtype)
     if storage == DType.BF16.value:
         return True
-    return bool(
+    if (
         storage == DType.INT8_PER_TOKEN_HEAD.value
         and str(getattr(session, "kv_storage_layout", "uniform"))
         == KV_STORAGE_TAIL4_HADAMARD_GROUP32
         and str(getattr(session, "kv_scale_granularity", "")) == "hadamard_group32"
+    ):
+        return True
+    return bool(
+        _gguf_int8_kv_decode_graph_enabled()
+        and storage == DType.INT8_PER_TOKEN_HEAD.value
+        and str(getattr(session, "kv_storage_layout", "uniform")) == "uniform"
+        and str(getattr(session, "kv_scale_granularity", "")) == "per_token_head"
     )
 
 
