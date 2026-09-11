@@ -227,6 +227,26 @@ def test_u6_certification_records_define_all_six_items():
         for item in certification.items:
             assert item.contract and item.evidence
             assert bool(item.blocker) != bool(item.qualified), item.item
+            assert item.phase in {"pre_measurement", "paired_run"}, item.item
+        # Phase split: the structural/control items gate the paired run, the
+        # items the run establishes do not (gating on them would be circular).
+        assert certification.measurement_ready() == all(
+            item.qualified for item in certification.items if item.phase == "pre_measurement"
+        )
+        assert certification.measurement_blockers == tuple(
+            item.item
+            for item in certification.items
+            if item.phase == "pre_measurement" and not item.qualified
+        )
+        # The measurement gate is strictly weaker than the pin.
+        if not certification.measurement_ready():
+            assert not certification.is_complete()
+        assert {
+            item.item for item in certification.items if item.phase == "paired_run"
+        } == {
+            "exact_ar_mtp_control_behavior",
+            "supported_backend_quant_profile_context_width_scope",
+        }
         # The derived pin can only contain complete units.
         if certification.is_complete():
             assert fingerprint in admission._UD_MTP_PRESET_FINGERPRINTS
