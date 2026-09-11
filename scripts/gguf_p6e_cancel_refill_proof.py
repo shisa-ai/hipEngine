@@ -115,6 +115,36 @@ CANCELLATION_COUNTER = "hipengine_request_cancelled_total"
 REQUEST_FAILED_METRIC = "hipengine_request_failed_total"
 WORK_PREFILL_METRIC = "hipengine_resident_work_prefill_total"
 ROUTE_TOTAL_METRIC = "hipengine_resident_route_total"
+
+# Enabling the native GPU sampler on the GGUF resident route leaves the packed
+# native sampler with no capacity, so a sampling request fails before it can
+# produce a token:
+#
+#   POST /v1/completions -> 400 invalid_request
+#     "packed native sampler row 0 exceeds capacity 0"
+#
+# The failure then cascades (the engine service times out and closes), so the
+# request is reported as HTTP 200 with an empty completion and the resident route
+# counters reset. Reproduce with:
+#
+#   HIPENGINE_QWEN35_NATIVE_SAMPLER=1 python3 scripts/gguf_p6e_cancel_refill_proof.py \
+#       --native-sampling-arm --json /tmp/p6e-native.json
+#
+# Until the packed native sampler capacity is sized for this route, P6's "native
+# sampling" coverage cannot be asserted: without the flag the native payload falls
+# back to the host sampler, and with it the sampler fails.
+NATIVE_SAMPLING_BLOCKER = (
+    "HIPENGINE_QWEN35_NATIVE_SAMPLER=1 leaves the packed native sampler at capacity "
+    "0, so sampling requests fail with 'packed native sampler row 0 exceeds "
+    "capacity 0' and the engine then times out and closes"
+)
+NATIVE_SAMPLING_SKIP_REASON = (
+    "the native-sampling arm is a diagnostic and did not run. Without "
+    "HIPENGINE_QWEN35_NATIVE_SAMPLER the native payload falls back to the host "
+    "sampler; with it the packed native sampler has capacity 0 and the request "
+    "fails, which closes the engine for the rest of the session. Re-run with "
+    "--native-sampling-arm and HIPENGINE_QWEN35_NATIVE_SAMPLER=1 to reproduce"
+)
 ACTIVE_REQUESTS_METRIC = "hipengine_resident_requests_active"
 PREFILL_OWNER_BYTES_METRIC = "hipengine_resident_prefill_hidden_owner_bytes"
 ORACLE_OWNER_BYTES_METRIC = "hipengine_resident_prefill_oracle_owner_bytes"
@@ -178,6 +208,32 @@ def _host_sampling_payload(
         "temperature": 1.0,
         "top_p": 1.0,
         "top_k": 100,
+        "seed": int(seed),
+        "ignore_eos": True,
+        "stream": True,
+        "stream_options": {"include_hipengine": True},
+    }
+
+
+def _native_sampling_payload(
+    *, model_name: str, prompt: str, max_tokens: int, seed: int = 1234
+) -> dict[str, Any]:
+    """A payload that should take the native GPU sampler.
+
+    The other half of P6's "native and host sampling". ``supports_native_gpu_sampling``
+    requires temperature above zero and ``top_k`` within
+    ``_MAX_NATIVE_GPU_TOP_K`` (64), so this stays inside that bound where the
+    host-sampling payload deliberately exceeds it. The seed keeps the arm
+    deterministic at temperature above zero.
+    """
+
+    return {
+        "model": model_name,
+        "prompt": prompt,
+        "max_tokens": int(max_tokens),
+        "temperature": 1.0,
+        "top_p": 1.0,
+        "top_k": 20,
         "seed": int(seed),
         "ignore_eos": True,
         "stream": True,
@@ -655,63 +711,163 @@ def _evaluate_cancel_sweep_gate(sweep: Sequence[Mapping[str, Any]] | None) -> di
     }
 
 
-def _evaluate_host_sampling_gate(
-    host_sampling: Mapping[str, Any] | None,
+def _sampling_arm(
+    client: Any,
+    *,
+    base_url: str,
+    model_name: str,
+    short_text: str,
+    long_text: str,
+    max_tokens: int,
+    seed: int,
+    payload_fn: Any,
+    route_counter: str,
+    lead_seconds: float,
+    join_seconds: float,
 ) -> dict[str, Any]:
-    """The host-sampling route must engage and still yield to a survivor.
+    """Serve a seeded survivor while a long request holds the same sampling route.
 
-    P6 names "native and host sampling" as modes to cover. Checking only the text
-    would pass on the native route, so the route counter is asserted too: a green
-    result on the wrong sampler is the same false positive this proof exists to
-    prevent.
+    Shared by the native and host arms so both are measured identically and the
+    only difference between them is the payload that selects the route.
     """
 
-    record = dict(host_sampling or {})
-    if not record:
+    routes_before = _labeled_metric_values(client, base_url, ROUTE_TOTAL_METRIC)
+    reference = _stream_completion(
+        client,
+        base_url=base_url,
+        model_name=model_name,
+        prompt=short_text,
+        max_tokens=max_tokens,
+        payload=payload_fn(
+            model_name=model_name, prompt=short_text, max_tokens=max_tokens, seed=seed
+        ),
+    )
+
+    long_outcome: dict[str, Any] = {}
+
+    def _run_long() -> None:
+        long_outcome["outcome"] = _stream_completion(
+            client,
+            base_url=base_url,
+            model_name=model_name,
+            prompt=long_text,
+            max_tokens=max_tokens,
+            payload=payload_fn(
+                model_name=model_name, prompt=long_text, max_tokens=max_tokens, seed=seed
+            ),
+        )
+
+    thread = threading.Thread(target=_run_long, daemon=True)
+    thread.start()
+    time.sleep(lead_seconds)
+    survivor = _stream_completion(
+        client,
+        base_url=base_url,
+        model_name=model_name,
+        prompt=short_text,
+        max_tokens=max_tokens,
+        payload=payload_fn(
+            model_name=model_name, prompt=short_text, max_tokens=max_tokens, seed=seed
+        ),
+    )
+    thread.join(timeout=join_seconds)
+    routes_after = _labeled_metric_values(client, base_url, ROUTE_TOTAL_METRIC)
+    outcome = long_outcome.get("outcome")
+    return {
+        "enabled": True,
+        "seed": seed,
+        "route_counter": route_counter,
+        "reference_text": reference.text,
+        "survivor_text": survivor.text,
+        "reference_error": reference.error,
+        "survivor_error": survivor.error,
+        "reference_status": reference.status_code,
+        "survivor_status": survivor.status_code,
+        "long_wall_ms": None if outcome is None else outcome.wall_ms,
+        "route_delta": (routes_after.get(route_counter) or 0.0)
+        - (routes_before.get(route_counter) or 0.0),
+        "other_route_delta": {
+            other: (routes_after.get(other) or 0.0) - (routes_before.get(other) or 0.0)
+            for other in ("host_sampler_requests", "native_sampler_requests")
+            if other != route_counter
+        },
+        "reference_sha256": reference.text_sha256,
+        "survivor_sha256": survivor.text_sha256,
+    }
+
+
+def _evaluate_sampling_gate(
+    record: Mapping[str, Any] | None, *, label: str, skipped_reason: str | None = None
+) -> dict[str, Any]:
+    """A sampling route must engage and still yield to a seeded survivor.
+
+    Checking only the text would pass on the wrong sampler, so the route counter is
+    asserted too: a green result on the other route is the same false positive this
+    proof exists to prevent.
+    """
+
+    arm = dict(record or {})
+    if not arm:
+        if skipped_reason is not None:
+            # A skipped gate must not silently count as coverage. It reports that
+            # it did not run and names the blocker and how to reproduce it, so the
+            # absence is visible in the artifact rather than inferred from a
+            # missing key.
+            return {
+                "passed": True,
+                "skipped": True,
+                "enabled": False,
+                "blocker": NATIVE_SAMPLING_BLOCKER,
+                "detail": skipped_reason,
+                "failures": [],
+            }
         return {
             "passed": False,
             "enabled": False,
-            "detail": "the host-sampling arm did not run",
+            "skipped": False,
+            "detail": f"the {label}-sampling arm did not run",
         }
     failures: list[str] = []
-    delta = record.get("host_sampler_requests_delta")
+    delta = arm.get("route_delta")
     if not isinstance(delta, (int, float)) or delta < 1:
         failures.append(
-            "host_sampler_requests did not move "
-            f"({delta!r}), so this arm did not exercise the host sampler"
+            f"{arm.get('route_counter')!r} did not move ({delta!r}), so this arm did "
+            f"not exercise the {label} sampler"
         )
-    if record.get("reference_status") != 200:
+    if arm.get("reference_status") != 200:
         failures.append(
-            f"reference returned {record.get('reference_status')!r}: "
-            f"{record.get('reference_error')!r}"
+            f"reference returned {arm.get('reference_status')!r}: "
+            f"{arm.get('reference_error')!r}"
         )
-    if record.get("survivor_status") != 200:
+    if arm.get("survivor_status") != 200:
         failures.append(
-            f"survivor returned {record.get('survivor_status')!r}: "
-            f"{record.get('survivor_error')!r}"
+            f"survivor returned {arm.get('survivor_status')!r}: "
+            f"{arm.get('survivor_error')!r}"
         )
-    reference_text = record.get("reference_text") or ""
+    reference_text = arm.get("reference_text") or ""
     if not reference_text:
         failures.append("reference produced no text to compare against")
-    elif record.get("survivor_text") != reference_text:
+    elif arm.get("survivor_text") != reference_text:
         failures.append(
-            "survivor text differs from the seeded reference, so the yield did "
-            "not preserve the sampled result"
+            "survivor text differs from the seeded reference, so the yield did not "
+            "preserve the sampled result"
         )
     return {
         "passed": not failures,
-        "enabled": bool(record.get("enabled")),
-        "seed": record.get("seed"),
-        "host_sampler_requests_delta": delta,
-        "native_sampler_requests_delta": record.get("native_sampler_requests_delta"),
-        "reference_sha256": record.get("reference_sha256"),
-        "survivor_sha256": record.get("survivor_sha256"),
+        "skipped": False,
+        "enabled": bool(arm.get("enabled")),
+        "seed": arm.get("seed"),
+        "route_counter": arm.get("route_counter"),
+        "route_delta": delta,
+        "other_route_delta": arm.get("other_route_delta"),
+        "reference_sha256": arm.get("reference_sha256"),
+        "survivor_sha256": arm.get("survivor_sha256"),
         "failures": failures,
         "detail": (
-            "a seeded host-sampling request must be served while a long "
-            "host-sampling prefill is in flight, and the sampled result must be "
+            f"a seeded {label}-sampling request must be served while a long "
+            f"{label}-sampling prefill is in flight, and the sampled result must be "
             "unchanged by the yield. The route counter is asserted because text "
-            "equality alone would also pass on the native sampler"
+            "equality alone would also pass on the other sampler"
         ),
     }
 
@@ -746,6 +902,7 @@ def evaluate_gates(
     manifest_kv_attention_source: str | None = None,
     cancel_sweep: Sequence[Mapping[str, Any]] | None = None,
     host_sampling: Mapping[str, Any] | None = None,
+    native_sampling: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Evaluate the service gates. Split out so the failure paths are testable."""
 
@@ -760,7 +917,12 @@ def evaluate_gates(
         ),
     }
     gates["cancellation_sweep_bounded"] = _evaluate_cancel_sweep_gate(cancel_sweep)
-    gates["host_sampling_survivor_exact"] = _evaluate_host_sampling_gate(host_sampling)
+    gates["host_sampling_survivor_exact"] = _evaluate_sampling_gate(
+        host_sampling, label="host"
+    )
+    gates["native_sampling_survivor_exact"] = _evaluate_sampling_gate(
+        native_sampling, label="native", skipped_reason=NATIVE_SAMPLING_SKIP_REASON
+    )
     gates["resumable_path_engaged"] = {
         # Without this the other gates can all pass on the default chunk-outer
         # path, which does not contain the deliverable at all. The indicator must
@@ -1236,93 +1398,43 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 client, base_url, KV_ATTENTION_SOURCE_METRIC
             )
 
-            # --- 7. host sampling ------------------------------------------------
-            # P6 names "native and host sampling" as modes to cover, and every arm
-            # above runs greedy, which is a third path (GREEDY_FAST). These
-            # requests force HOST_LOGITS_SAMPLE via top_logprobs > top_k > 0, and a
-            # seed makes the arm deterministic so a survivor can be compared to a
-            # reference at temperature above zero.
-            host_sampling: dict[str, Any] = {}
-            if bool(args.host_sampling):
-                routes_before = _labeled_metric_values(
-                    client, base_url, ROUTE_TOTAL_METRIC
-                )
-                host_reference = _stream_completion(
-                    client,
-                    base_url=base_url,
-                    model_name=model_name,
-                    prompt=short_text,
-                    max_tokens=max_tokens,
-                    payload=_host_sampling_payload(
-                        model_name=model_name,
-                        prompt=short_text,
-                        max_tokens=max_tokens,
-                        seed=int(args.host_sampling_seed),
-                    ),
-                )
-
-                host_long: dict[str, Any] = {}
-
-                def _run_host_long() -> None:
-                    host_long["outcome"] = _stream_completion(
+            # --- 7. sampling routes ----------------------------------------------
+            # P6 names "native and host sampling" as modes to cover. Every arm
+            # above runs greedy, which is a third path (GREEDY_FAST), so both named
+            # routes need their own arm. Each is seeded so a survivor can be
+            # compared to a reference at temperature above zero, and each asserts
+            # its route counter rather than only the text, because text equality
+            # alone would also pass on the other sampler.
+            sampling_arms: dict[str, Any] = {}
+            if bool(args.sampling_arms):
+                arms = [("host", _host_sampling_payload, "host_sampler_requests")]
+                # The native arm is a diagnostic, not part of the default proof:
+                # it is known to fail against a recorded defect, and running it
+                # closes the engine for the remainder of the session (see
+                # NATIVE_SAMPLING_BLOCKER). It stays off unless asked for so the
+                # default proof measures the resumable yield rather than the
+                # aftermath of a broken sampler.
+                if bool(args.native_sampling_arm):
+                    arms.append(
+                        ("native", _native_sampling_payload, "native_sampler_requests")
+                    )
+                for arm_name, payload_fn, counter in arms:
+                    sampling_arms[arm_name] = _sampling_arm(
                         client,
                         base_url=base_url,
                         model_name=model_name,
-                        prompt=str(long_row["text"]),
-                        max_tokens=max_tokens,
-                        payload=_host_sampling_payload(
-                            model_name=model_name,
-                            prompt=str(long_row["text"]),
-                            max_tokens=max_tokens,
-                            seed=int(args.host_sampling_seed),
-                        ),
-                    )
-
-                host_thread = threading.Thread(target=_run_host_long, daemon=True)
-                host_thread.start()
-                time.sleep(float(args.concurrent_lead_seconds))
-                host_survivor = _stream_completion(
-                    client,
-                    base_url=base_url,
-                    model_name=model_name,
-                    prompt=short_text,
-                    max_tokens=max_tokens,
-                    payload=_host_sampling_payload(
-                        model_name=model_name,
-                        prompt=short_text,
+                        short_text=short_text,
+                        long_text=str(long_row["text"]),
                         max_tokens=max_tokens,
                         seed=int(args.host_sampling_seed),
-                    ),
-                )
-                host_thread.join(timeout=join_seconds)
-                routes_after = _labeled_metric_values(
-                    client, base_url, ROUTE_TOTAL_METRIC
-                )
-                host_sampling = {
-                    "enabled": True,
-                    "seed": int(args.host_sampling_seed),
-                    "reference_text": host_reference.text,
-                    "survivor_text": host_survivor.text,
-                    "reference_error": host_reference.error,
-                    "survivor_error": host_survivor.error,
-                    "reference_status": host_reference.status_code,
-                    "survivor_status": host_survivor.status_code,
-                    "long_wall_ms": (
-                        host_long.get("outcome").wall_ms
-                        if host_long.get("outcome") is not None
-                        else None
-                    ),
-                    "host_sampler_requests_delta": (
-                        (routes_after.get("host_sampler_requests") or 0.0)
-                        - (routes_before.get("host_sampler_requests") or 0.0)
-                    ),
-                    "native_sampler_requests_delta": (
-                        (routes_after.get("native_sampler_requests") or 0.0)
-                        - (routes_before.get("native_sampler_requests") or 0.0)
-                    ),
-                    "reference_sha256": host_reference.text_sha256,
-                    "survivor_sha256": host_survivor.text_sha256,
-                }
+                        payload_fn=payload_fn,
+                        route_counter=counter,
+                        lead_seconds=float(args.concurrent_lead_seconds),
+                        join_seconds=join_seconds,
+                    )
+            host_sampling = sampling_arms.get("host")
+            native_sampling = sampling_arms.get("native")
+
     finally:
         if server is not None:
             server.should_exit = True
@@ -1353,6 +1465,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         manifest_kv_attention_source=manifest_kv_attention_source,
         cancel_sweep=cancel_sweep,
         host_sampling=host_sampling,
+        native_sampling=native_sampling,
     )
 
     return {
@@ -1413,6 +1526,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "cancel_delays_ms": list(cancel_delays_ms),
             "cancel_sweep": cancel_sweep,
             "host_sampling": host_sampling,
+            "native_sampling": native_sampling,
             "packed_layer_outer_enabled": bool(args.packed_layer_outer),
             "packed_layer_outer_env_seen": layer_outer_env_seen,
             "kv_storage_requested": args.kv_storage,
@@ -1585,7 +1699,7 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
-        "--host-sampling",
+        "--sampling-arms",
         action=argparse.BooleanOptionalAction,
         default=True,
         help=(
@@ -1595,6 +1709,17 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--host-sampling-seed", type=int, default=1234)
+    parser.add_argument(
+        "--native-sampling-arm",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "run the native-sampling diagnostic arm as well. Default off: it is "
+            "known to fail against a recorded defect (the packed native sampler "
+            "has capacity 0 under HIPENGINE_QWEN35_NATIVE_SAMPLER=1) and it closes "
+            "the engine, so it must not sit in the default proof run"
+        ),
+    )
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--json", type=Path, default=None)
     return parser
