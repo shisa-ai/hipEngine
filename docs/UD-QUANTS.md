@@ -1608,6 +1608,18 @@ measurement on the whole unit would be circular:
 are currently `measurement_ready()` while incomplete, so the paired
 measurement may run while the pin stays withheld.
 
+One paired run was attempted and is **invalid**. It executed on HIP device 0
+with `HIP_VISIBLE_DEVICES` unset while another worker owned that card, so none
+of its rates are evidence; the artifact
+(`benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3.json`) is kept only as
+a marked-invalid record. `scripts/ud_mtp_paired.py` now requires an explicit
+`--device-index`, sets `HIP_VISIBLE_DEVICES` from it, and refuses to run if the
+reported `device_name` does not match `--expect-device`. A GPU1 re-run is
+required before any UD/plain MTP rate is quoted. See the retraction in
+`benchmarks/CHANGELOG.md` for the withdrawn numbers and for what survives
+(token-ID exactness and determinism, and the state-disjointness pointer
+comparison, which contention cannot change).
+
 Item 5's contract is the **production** one. `docs/EXECUTION-PROFILES.md`
 section 6 states that free-running generated-ID equality "is recorded but is not
 the denominator", and section 4.1 lists "logits and generated IDs at near ties"

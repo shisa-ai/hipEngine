@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from contextlib import contextmanager
 from pathlib import Path
@@ -477,6 +478,33 @@ def main() -> int:
             "and are not modified"
         ),
     )
+    parser.add_argument(
+        "--device-index",
+        type=int,
+        default=None,
+        help=(
+            "HIP device index to run on. Required for a real run: this host has more "
+            "than one gfx1100 card and another worker may own one of them, so the "
+            "device is never inferred. Sets HIP_VISIBLE_DEVICES for the child suite."
+        ),
+    )
+    parser.add_argument(
+        "--expect-device",
+        default=None,
+        help=(
+            "substring the suite's reported device_name must contain; a mismatch "
+            "fails the run instead of publishing numbers from the wrong card"
+        ),
+    )
+    parser.add_argument(
+        "--invalidate",
+        default=None,
+        help=(
+            "record this artifact as invalid evidence with the given reason; used when "
+            "a run is known to have been taken under conditions that make its rates "
+            "unusable (for example a device owned by another worker)"
+        ),
+    )
     args = parser.parse_args()
 
     gate = u6_gate_state()
@@ -508,6 +536,16 @@ def main() -> int:
     if args.output is None:
         parser.error("--output is required unless --dry-run is given")
 
+    # Never infer the device.  A previous run of this harness used device 0 by
+    # default and published rates taken while another worker owned that card.
+    if not args.from_raw:
+        if args.device_index is None:
+            parser.error(
+                "--device-index is required for a real run: this host has more than "
+                "one gfx1100 card and the device is never inferred"
+            )
+        os.environ["HIP_VISIBLE_DEVICES"] = str(int(args.device_index))
+
     prompt_ids = expected_prompt_ids(REPO_ROOT / str(PAIRED_PROTOCOL["prompts"]))
     report: dict[str, object] = {
         "unit": "paired-ud-plain-mtp",
@@ -522,6 +560,14 @@ def main() -> int:
             "single host/GPU by construction; no concurrent GPU work is enforced by "
             "the operator, not by this script"
         ),
+        "device": {
+            "device_index": args.device_index,
+            "expect_device": args.expect_device,
+            "note": (
+                "The device is declared, never inferred. A rate measured while another "
+                "worker shares the card is not evidence."
+            ),
+        },
         "pairs": [],
     }
     with mtp_scope_granted({quant for _, quant, family in PAIRS.values() if family == "ud"}):
@@ -543,6 +589,16 @@ def main() -> int:
             evidence = _verdict(
                 payload, args.runs, command=command, prompt_ids=prompt_ids
             )
+            if args.expect_device:
+                reported = str((payload.get("provenance") or {}).get("device_name") or "")
+                if args.expect_device not in reported:
+                    print(
+                        f"[paired] {label}: device mismatch: reported {reported!r} does "
+                        f"not contain {args.expect_device!r}; refusing to publish numbers "
+                        f"from an undeclared card.",
+                        file=sys.stderr,
+                    )
+                    return 1
             if not evidence["evidence_completeness"]["complete"]:
                 print(
                     f"[paired] {label}: incomplete evidence for the resolved command:",
@@ -562,6 +618,16 @@ def main() -> int:
                     "evidence": evidence,
                 }
             )
+
+    if args.invalidate:
+        report["invalidation"] = {
+            "invalid": True,
+            "reason": str(args.invalidate),
+            "scope": (
+                "Every rate in this artifact. Contention does not affect the token-ID "
+                "exactness or determinism observations, which stay valid."
+            ),
+        }
 
     args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     print(f"[paired] wrote {args.output}")

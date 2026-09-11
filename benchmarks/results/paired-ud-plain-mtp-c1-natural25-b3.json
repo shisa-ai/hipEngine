@@ -1,6 +1,16 @@
 {
   "candidate_mode": "the U6 admission pin is empty (the two paired_run items are still open), so MTP scope is granted in-process and this artifact is diagnostic evidence for those items, not a retained admission.",
+  "device": {
+    "device_index": null,
+    "expect_device": null,
+    "note": "The device is declared, never inferred. A rate measured while another worker shares the card is not evidence."
+  },
   "host_note": "single host/GPU by construction; no concurrent GPU work is enforced by the operator, not by this script",
+  "invalidation": {
+    "invalid": true,
+    "reason": "Ran on HIP device 0 (AMD Radeon Pro W7900) with HIP_VISIBLE_DEVICES unset, while another worker owned that card. The device was never declared or verified, so the AR and MTP rates are not evidence.",
+    "scope": "Every rate in this artifact. Contention does not affect the token-ID exactness or determinism observations, which stay valid."
+  },
   "pairs": [
     {
       "command": "scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf --quant gguf_ud_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --candidate-budgets 3 --runs 2 --max-new-tokens 25 --target-verify-mode native --draft-hidden-variant pre_output_norm --output /tmp/paired-ud-q4-k-m.json",
