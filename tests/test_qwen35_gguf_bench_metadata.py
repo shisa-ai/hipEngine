@@ -226,3 +226,57 @@ def test_gguf_tensor_inventory_summary_exposes_baseline_artifact_fields() -> Non
     assert summary["tensor_data_offset"] == 4096
     assert summary["tensor_inventory_hash_algorithm"] == "sha256"
     assert summary["tensor_inventory_hash"] == bench._gguf_tensor_inventory_hash(info)
+
+
+def test_default_decode_graph_request_mirrors_engine_admission(monkeypatch) -> None:
+    """An unset sweep flag must reproduce the engine's own graph decision."""
+
+    class Session:
+        def __init__(self, minimum: int | None) -> None:
+            self._minimum = minimum
+
+        def decode_graph_min_replay_steps(self) -> int | None:
+            return self._minimum
+
+    monkeypatch.delenv("HIPENGINE_GGUF_DECODE_GRAPH", raising=False)
+    # Backend publishes no break-even: the engine never captures a graph.
+    assert bench._default_decode_graph_request(Session(None), 4096) is False
+    # Below the published floor the engine stays eager, at or above it captures.
+    assert bench._default_decode_graph_request(Session(128), 127) is False
+    assert bench._default_decode_graph_request(Session(128), 128) is True
+    assert bench._default_decode_graph_request(Session(128), 4096) is True
+    # The explicit opt-out disables the graph regardless of the floor.
+    monkeypatch.setenv("HIPENGINE_GGUF_DECODE_GRAPH", "0")
+    assert bench._default_decode_graph_request(Session(128), 4096) is False
+    monkeypatch.setenv("HIPENGINE_GGUF_DECODE_GRAPH", "1")
+    assert bench._default_decode_graph_request(Session(128), 4096) is True
+
+
+def test_default_decode_graph_request_tolerates_absent_capability() -> None:
+    class Bare:
+        pass
+
+    assert bench._default_decode_graph_request(Bare(), 512) is False
+
+
+def test_decode_graph_disabled_reason_reports_backend_floor() -> None:
+    class GraphSession:
+        def __init__(self, minimum: int | None) -> None:
+            self._minimum = minimum
+
+        def capture_decode_graph(self) -> None:  # pragma: no cover - capability probe only
+            raise AssertionError("helper should not call capture_decode_graph")
+
+        def decode_graph_min_replay_steps(self) -> int | None:
+            return self._minimum
+
+    session = GraphSession(128)
+    # Without a decode length the floor is not evaluated (existing callers).
+    assert bench._decode_graph_disabled_reason(session, requested=True) is None
+    assert (
+        bench._decode_graph_disabled_reason(session, requested=True, decode_tokens=64)
+        == "below_backend_min_replay_steps"
+    )
+    assert bench._decode_graph_disabled_reason(session, requested=True, decode_tokens=128) is None
+    # A backend without a floor keeps the previous behaviour.
+    assert bench._decode_graph_disabled_reason(GraphSession(None), requested=True, decode_tokens=8) is None
