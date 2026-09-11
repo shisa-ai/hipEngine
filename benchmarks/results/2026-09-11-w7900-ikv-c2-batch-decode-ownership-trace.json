@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "kind": "qwen38_int8_row_batched_decode_ownership_trace",
-  "timestamp": "2026-09-11T16:31:52.064735+00:00",
+  "timestamp": "2026-09-11T16:37:48.302040+00:00",
   "performance_claim": false,
   "host": {
     "observed_device": "AMD Radeon Pro W7900",
@@ -37,19 +37,19 @@
     "per_row_serial_c1_launches": 4
   },
   "kernel_time_ns": {
-    "batch_path_total": 75562,
-    "serial_c1_path_total": 245921,
-    "ratio_serial_over_batch": 3.255,
-    "batch_producer": 73175,
-    "batch_reducer": 2387,
-    "c1_producer": 225001,
-    "c1_reducer": 20920
+    "batch_path_total": 75694,
+    "serial_c1_path_total": 240574,
+    "ratio_serial_over_batch": 3.178,
+    "batch_producer": 73413,
+    "batch_reducer": 2281,
+    "c1_producer": 219628,
+    "c1_reducer": 20946
   },
   "launches": [
     {
       "kind": "batch_producer",
       "kernel_name": "void (anonymous namespace)::qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_batch_kernel<float, 6l, 24l, 4l>(float const*, signed char const*, signed char const*, float const*, float const*, int const*, long const*, float*, float*, float*, long, long, long, long, long, float)",
-      "duration_ns": 73175,
+      "duration_ns": 73413,
       "grid": [
         "1024",
         "5",
@@ -65,7 +65,7 @@
     {
       "kind": "batch_reducer",
       "kernel_name": "void (anonymous namespace)::qwen35_paged_full_attn_decode_split_k_reduce_gate_batch_strided_kernel<hip_bfloat16>(float const*, float const*, float const*, hip_bfloat16 const*, hip_bfloat16*, long, long, long, long, long, long, long, long, long)",
-      "duration_ns": 2387,
+      "duration_ns": 2281,
       "grid": [
         "6144",
         "4",
@@ -81,7 +81,7 @@
     {
       "kind": "c1_producer",
       "kernel_name": "void (anonymous namespace)::qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_kernel<float, 6l, 24l, 4l>(float const*, signed char const*, signed char const*, float const*, float const*, int const*, long const*, float*, float*, float*, long, long, float)",
-      "duration_ns": 12694,
+      "duration_ns": 12040,
       "grid": [
         "1024",
         "5",
@@ -97,7 +97,7 @@
     {
       "kind": "c1_reducer",
       "kernel_name": "void (anonymous namespace)::qwen35_paged_full_attn_decode_split_k_reduce_gate_kernel<hip_bfloat16>(float const*, float const*, float const*, hip_bfloat16 const*, hip_bfloat16*, long, long, long, long)",
-      "duration_ns": 6200,
+      "duration_ns": 5987,
       "grid": [
         "6144",
         "1",
@@ -113,7 +113,7 @@
     {
       "kind": "c1_producer",
       "kernel_name": "void (anonymous namespace)::qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_kernel<float, 6l, 24l, 4l>(float const*, signed char const*, signed char const*, float const*, float const*, int const*, long const*, float*, float*, float*, long, long, float)",
-      "duration_ns": 71986,
+      "duration_ns": 72360,
       "grid": [
         "1024",
         "5",
@@ -129,7 +129,7 @@
     {
       "kind": "c1_reducer",
       "kernel_name": "void (anonymous namespace)::qwen35_paged_full_attn_decode_split_k_reduce_gate_kernel<hip_bfloat16>(float const*, float const*, float const*, hip_bfloat16 const*, hip_bfloat16*, long, long, long, long)",
-      "duration_ns": 4880,
+      "duration_ns": 5040,
       "grid": [
         "6144",
         "1",
@@ -145,7 +145,7 @@
     {
       "kind": "c1_producer",
       "kernel_name": "void (anonymous namespace)::qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_kernel<float, 6l, 24l, 4l>(float const*, signed char const*, signed char const*, float const*, float const*, int const*, long const*, float*, float*, float*, long, long, float)",
-      "duration_ns": 72627,
+      "duration_ns": 67654,
       "grid": [
         "1024",
         "5",
@@ -161,7 +161,7 @@
     {
       "kind": "c1_reducer",
       "kernel_name": "void (anonymous namespace)::qwen35_paged_full_attn_decode_split_k_reduce_gate_kernel<hip_bfloat16>(float const*, float const*, float const*, hip_bfloat16 const*, hip_bfloat16*, long, long, long, long)",
-      "duration_ns": 4867,
+      "duration_ns": 4894,
       "grid": [
         "6144",
         "1",
@@ -177,7 +177,7 @@
     {
       "kind": "c1_producer",
       "kernel_name": "void (anonymous namespace)::qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_kernel<float, 6l, 24l, 4l>(float const*, signed char const*, signed char const*, float const*, float const*, int const*, long const*, float*, float*, float*, long, long, float)",
-      "duration_ns": 67694,
+      "duration_ns": 67574,
       "grid": [
         "1024",
         "5",
@@ -193,7 +193,7 @@
     {
       "kind": "c1_reducer",
       "kernel_name": "void (anonymous namespace)::qwen35_paged_full_attn_decode_split_k_reduce_gate_kernel<hip_bfloat16>(float const*, float const*, float const*, hip_bfloat16 const*, hip_bfloat16*, long, long, long, long)",
-      "duration_ns": 4973,
+      "duration_ns": 5025,
       "grid": [
         "6144",
         "1",
@@ -207,10 +207,16 @@
       "vgpr_count": 16
     }
   ],
-  "command": "env -u ROCR_VISIBLE_DEVICES HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_HIP_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-ikv-c2-w7900-rocprof -- python3 -m pytest -q 'tests/test_qwen38_int8_batch_attention_gpu.py::test_qwen38_int8_batch_attention_matches_cpu_and_independent_c1[c4-ragged]'",
-  "reduction": "parse-only /tmp/hipengine-ikv-c2-w7900-rocprof",
+  "command": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-ikv-c2-w7900-rocprof -- /home/lhl/mambaforge/envs/therock/bin/python3 -m pytest -q 'tests/test_qwen38_int8_batch_attention_gpu.py::test_qwen38_int8_batch_attention_matches_cpu_and_independent_c1[c4-ragged]'",
+  "reduction": "profiled rocprofv3 run",
+  "trace_environment": {
+    "HIP_VISIBLE_DEVICES": "0",
+    "HIPENGINE_HIP_ARCH": "gfx1100",
+    "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-hipcc-version.txt",
+    "HIPENGINE_REQUIRE_CACHED_BUILD": "1"
+  },
   "notes": [
-    "Cache-only trace: the .so was built outside the profiler and HIPENGINE_REQUIRE_CACHED_BUILD=1 prevented hipcc in the profiled process.",
+    "Cache-only trace: the .so was built outside the profiler and HIPENGINE_REQUIRE_CACHED_BUILD=1, with the compiler version pinned by HIPENGINE_COMPILER_VERSION_FILE, prevented hipcc in the profiled process. Both are recorded in trace_environment.",
     "kernel_time_ns is single-shot kernel duration from a correctness gate, not a benchmark; it is launch-count and sub-window evidence.",
     "The batch producer and reducer each launch once for all 4 rows; the c1 leaf producer and reducer each launch once per row."
   ]
