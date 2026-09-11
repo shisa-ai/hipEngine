@@ -377,36 +377,21 @@ the Q5 MoE selected-expert path (2.22 ms/tok K_M on the direct GEMV),
 Q3_K strict decode (1.43/2.43 ms/tok), and the Q5 gate/up dual.
 ([final rollup](results/final-decode-campaign-2026-09-11/).)
 
-MTP for these artifacts is **measured but not admitted** (the U6 certification
-pin is empty, so admission still refuses MTP for both UD presets). The paired
-c1 / natural25 / B3 measurement is therefore diagnostic, and its ratios are
-within-arm only — each arm's MTP rate over that same arm's own AR rate:
+MTP for these artifacts is **refused by admission** (the U6 certification pin is
+empty), and the paired measurement that was meant to characterise it is
+**withdrawn as invalid** — it ran on HIP device 0 with `HIP_VISIBLE_DEVICES`
+unset while another worker owned that card, so none of its rates are evidence.
+See the dated retraction in [`CHANGELOG.md`](CHANGELOG.md) for the full list of
+withdrawn numbers and for what survives (the token-ID exactness and determinism
+observations, and the U6 state-disjointness pointer comparison, none of which
+contention can change). No UD/plain MTP rate is published here. A GPU1 re-run is
+required first.
 
-| Arm (W7900, GPU0) | AR tok/s | MTP B3 tok/s | Ratio |
-| --- | ---: | ---: | ---: |
-| `UD-Q4_K_M` | 15.362 | 30.735 | **2.0007x** |
-| `UD-Q4_K_S` | 15.271 | 27.626 | **1.8091x** |
-| `Q4_K_M` (plain) | 30.442 | 52.342 | **1.7194x** |
-| `Q4_K_S` (plain) | 31.222 | 54.433 | **1.7434x** |
-
-All four arms pass the binding control gates and repeat bit-identically per
-prompt. `UD-Q4_K_S` differs from its own AR reference on one prompt in both
-runs — a 0.0096-logit near tie between the single-row AR route and the 4-row
-verify route — which `docs/EXECUTION-PROFILES.md` §4.1 permits as production
-drift, so it is recorded rather than binding. **The UD/plain AR ratio in this
-protocol (0.505x) is not comparable to the 0.848x above, and the difference is
-GPU-side, not protocol**: the table above was measured on GPU1 (the XTX) and
-this suite ran on the W7900. The W7900's own UD census reports **46,913 µs/token
-pure against the XTX's 30,263 at the identical 831.2 launches/token** — a 1.55x
-device gap with no host work involved. It is localised to two local32 GEMV
-kernels, `q5_k_t16_dense_single_local32_gemv_kernel` (13,380 vs 3,486 µs/token,
-**3.84x**) and `gguf_iq4_xs_local32_gemv_kernel` (8,120 vs 2,436, **3.33x**);
-every other kernel is within 1.06–1.23x, so contention is excluded and those two
-carry ~94% of the gap. What is established is that the W7900/XTX gap is
-localised to two UD local32 kernels; **plain decode on the W7900 is unmeasured**
-(there is no W7900 plain census), so a claim that plain is unaffected is not
-made. Treat the UD ratios as ±10%.
-([artifact](results/paired-ud-plain-mtp-c1-natural25-b3.json).)
+Earlier revisions of this section published a W7900/XTX census comparison
+(46,913 vs 30,263 µs/token pure, localised to two local32 GEMV kernels at 3.84x
+and 3.33x). **That is withdrawn too.** It read a GPU0 census as a clean device
+property while the device was not mine, and GPU contention is a live explanation
+for it.
 
 Both artifacts pass the tokenized 18-prompt category/heldout screen
 (`scripts/gguf_ud_combined_stack_gate.py --category-heldout`, real tokenizer
