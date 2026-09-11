@@ -392,6 +392,113 @@ def test_gpu_full_page_vision_matches_oracle(runner) -> None:
     assert d.mean() < 1e-5, f"full-page vision drift: mean|d|={d.mean():.3e}"
 
 
+def test_gpu_text_only_matches_oracle(runner) -> None:
+    """Text-only (no image) path: GPU prefill logits and greedy ids.
+
+    The GPU lane exposes text-only generation, but every other GPU test goes
+    through the multimodal path. Gate the first-step logits against the torch
+    fp32 oracle (``oracle_text.npz``) and the greedy continuation against the
+    NumPy CPU reference.
+    """
+
+    r, weights, spec = runner
+    from hipengine.kernels.cpu_reference.surya import (
+        text_decode_step,
+        text_prefill,
+    )
+    from hipengine.loading.surya import (
+        compute_mrope_positions,
+        render_chat_prompt,
+    )
+    from hipengine.loading.surya import SuryaTokenizer, resolve_surya_path
+
+    path = FIXTURES / "oracle_text.npz"
+    if not path.exists():
+        pytest.skip("oracle_text.npz not present; run scripts/surya_oracle_torch.py")
+    with np.load(path) as z:
+        ref_ids = z["input_ids"][0]
+        ref_logits = z["logits_first"]
+
+    tokenizer = SuryaTokenizer(resolve_surya_path(MODEL_ID))
+    ids, mm = render_chat_prompt(tokenizer, "Transcribe this page.")
+    assert np.array_equal(np.asarray(ids), ref_ids), (
+        "text-only prompt drifted from the torch oracle"
+    )
+    pos = compute_mrope_positions(mm, None)
+
+    logits = r.prefill(np.asarray(ids, dtype=np.int64), pos, visual_features=None)
+
+    def _prob(x):
+        x = np.asarray(x, dtype=np.float64)
+        e = np.exp(x - x.max())
+        return e / e.sum()
+
+    p, q = _prob(logits), _prob(ref_logits)
+    kl = float((q * (np.log(q + 1e-300) - np.log(p + 1e-300))).sum())
+    assert kl < 1e-4, f"text-only prefill KL vs torch oracle = {kl:.3e}"
+    assert int(np.argmax(logits)) == int(np.argmax(ref_logits)), (
+        "text-only prefill argmax diverged from the torch oracle"
+    )
+
+    emb = weights["model.language_model.embed_tokens.weight"]
+    hidden, state = text_prefill(
+        weights, spec, np.array([ids], dtype=np.int64), pos, visual_features=None
+    )
+    cpu_logits = (hidden[:, -1] @ emb.T)[0]
+    p = int(pos[:, -1].max())
+    cpu_ids: list[int] = []
+    for step in range(16):
+        c = int(np.argmax(cpu_logits))
+        if c == spec.eos_token_id:
+            break
+        cpu_ids.append(c)
+        cpu_logits = text_decode_step(weights, spec, c, state, p + 1 + step)[0]
+    assert cpu_ids, "text-only greedy produced no tokens"
+
+    def _gpu_text_only() -> list[int]:
+        lg = r.prefill(np.asarray(ids, dtype=np.int64), pos, visual_features=None)
+        out: list[int] = []
+        for step in range(16):
+            nx = int(np.argmax(lg))
+            if nx == spec.eos_token_id:
+                break
+            out.append(nx)
+            lg = r.decode_step(nx, p + 1 + step)
+        return out
+
+    gpu_ids = _gpu_text_only()
+    assert gpu_ids == cpu_ids, (
+        f"text-only greedy diverged from the CPU reference: {gpu_ids} vs {cpu_ids}"
+    )
+
+    # Regression: a preceding multimodal request must not perturb a following
+    # text-only request. decode_step used to advance _seq_len before running
+    # the stack, so the KV scatter landed one slot above the next free slot and
+    # attention read a slot this request never wrote -- stale KV left by the
+    # previous, longer request. A fresh runner masked it because the slot held
+    # zeros. The full page is required to expose it: page_small's 256-token
+    # request leaves stale KV at the skipped slot that is close enough to the
+    # correct value not to flip an argmax.
+    pixel_rows, grid = _full_page_inputs()
+    merged = r.vision_forward(pixel_rows, [grid])
+    n_img = (grid[1] // 2) * (grid[2] // 2)
+    m_ids, m_mm = render_chat_prompt(tokenizer, "Transcribe this page.", n_img)
+    m_pos = compute_mrope_positions(m_mm, grid, spec.vision_spatial_merge_size)
+    m_logits = r.prefill(
+        np.asarray(m_ids, dtype=np.int64), m_pos, visual_features=merged
+    )
+    m_p = int(m_pos[:, -1].max())
+    for step in range(8):
+        m_nxt = int(np.argmax(m_logits))
+        m_logits = r.decode_step(m_nxt, m_p + 1 + step)
+
+    after_ids = _gpu_text_only()
+    assert after_ids == cpu_ids, (
+        "text-only decode is not isolated from a preceding multimodal "
+        f"request: {after_ids} vs {cpu_ids}"
+    )
+
+
 def test_gpu_runner_repeated_create_use_close_releases_memory(runner) -> None:
     """Repeated create/use/close must not leak tracked device allocations.
 
