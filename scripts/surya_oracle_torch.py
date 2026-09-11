@@ -87,6 +87,74 @@ def _make_synthetic_page(path: Path, size: int = 256) -> None:
     img.save(path)
 
 
+def _make_synthetic_page_full(path: Path, width: int = 1024, height: int = 1024) -> None:
+    """Full-size realistic page: heading, body prose, rule, and a small table.
+
+    Unlike ``page_small``/``page_rect`` (bar patterns whose oracle output is a
+    degenerate repeated sequence), this renders real words so the decoder
+    produces a rich, non-degenerate layout-JSON sequence. That makes
+    GPU-vs-reference greedy parity a far more discriminative gate: the output
+    is long enough that a small numerical difference flips an argmax.
+
+    Geometry is a multiple of 32 so the smart-resize path is a no-op and the
+    grid is a clean 1x64x64 (4096 patches, 1024 merged tokens).
+    """
+
+    from PIL import Image, ImageDraw, ImageFont
+
+    font_path = None
+    for candidate in (
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/TTF/DejaVuSans.ttf",
+        "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+    ):
+        if Path(candidate).exists():
+            font_path = candidate
+            break
+    if font_path is None:
+        raise RuntimeError("no TrueType font found for the full-page fixture")
+
+    img = Image.new("RGB", (width, height), (255, 255, 255))
+    d = ImageDraw.Draw(img)
+    heading = ImageFont.truetype(font_path, 40)
+    body = ImageFont.truetype(font_path, 22)
+
+    d.text((60, 50), "Quarterly Report", font=heading, fill=(10, 10, 10))
+    d.line([60, 105, width - 60, 105], fill=(120, 120, 120), width=2)
+
+    prose = [
+        "The revenue for the third quarter increased by 18 percent",
+        "compared with the same period in the previous year. This",
+        "growth was driven mainly by strong demand in the eastern",
+        "region and by the launch of two new product families.",
+        "",
+        "Operating costs remained flat, and the gross margin",
+        "improved from 41 percent to 44 percent. Management",
+        "expects the trend to continue into the next quarter.",
+    ]
+    y = 140
+    for line in prose:
+        d.text((60, y), line, font=body, fill=(30, 30, 30))
+        y += 34
+
+    d.rectangle([60, y + 20, width - 60, y + 26], fill=(150, 150, 150))
+    y += 60
+    d.text((60, y), "Table 1: Regional breakdown", font=body, fill=(20, 20, 20))
+    y += 40
+    for name, value in (
+        ("East", "12,480"),
+        ("West", "9,215"),
+        ("North", "7,003"),
+        ("South", "5,642"),
+    ):
+        d.text((80, y), name, font=body, fill=(40, 40, 40))
+        d.text((300, y), value, font=body, fill=(40, 40, 40))
+        y += 30
+
+    img.save(path)
+
+
 def _capture_cache(past: object, layers: tuple[int, ...]) -> dict[str, np.ndarray]:
     """Extract per-layer cache tensors from a transformers Cache object.
 
