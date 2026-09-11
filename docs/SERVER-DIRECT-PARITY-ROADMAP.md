@@ -50,8 +50,10 @@ reasonable requirements.
 
 Status levels are distinguished per the review: implementation landed /
 diagnostic passed / qualified. P0 (telemetry) and P4 (lease removal,
-allocator corrected) are landed; P1-P3 have diagnostics passed with packet
-gates outstanding; P2 is an observation harness, not an admission preflight;
+allocator corrected) are landed; P1-P3 have diagnostics passed, and P3's
+packet gates all closed on GPU 2026-09-11 (so its promotion is now an
+unblocked decision rather than a blocked one); P2 is an observation harness,
+not an admission preflight;
 P5's C1 baseline is landed and P7's capacity bracket is tier-1
 allocation-validity only. Stage table (W7900 GPU0, 27B Q4_K_M,
 int8_per_token_head + FP32 scales, C1, real server route, 2,048-row prompt
@@ -67,25 +69,28 @@ unless noted):
 | P4 lease removal | 677-732 | - | lease 0/0; pinned 0/0; pool high-water 0.07; chunk-outer oracle halves to 1.0 GiB (pool-backing coupling); determinism verified | `0aded03b1` |
 | P5 t1 decode ladder | - | R0 35.15 ms; packed-entry R1 35.22 ms (ratio 1.002, private sessions - executor-entry cost only, not server pool/scheduler execution) | - | `2cc99ad75` |
 | P7 t1 capacity | - | - | tier-1 allocation-validity bracket passes 65,536-155,648 DECLARED contexts (one 2,048-row request each; not full-length completions; no cross-card direct comparison) | `c7eb76b88` |
-| P3 promotion | - | - | trace identity passed (AOTriton + native, as predicted); default reverted to OFF pending the packet gates (reviewer F4) | `bf2267029` + corrective |
+| P3 promotion | - | - | trace identity passed (AOTriton + native, as predicted); default reverted to OFF pending the packet gates (reviewer F4), and those gates all closed on GPU 2026-09-11, so the default is now a decision rather than a blocker | `bf2267029` + corrective |
 | P7 t2 publish | - | - | paired reps: ratio median 1.004 (one matched 8K diagnostic; cross-rep variance 89-104% under shared-host contention, so 'consistently within 5%' is not established); SSE observation is delivery cadence, not isolated transport cost; kernel-family attribution landed | `9e28487cb`, `131d4219d` |
 | P6a/P6c resumable prefill | - | per-poll layer segment; checkpoint `next_layer` + derived ping-pong phase; oracle released at every segment boundary | - | `35b61413b` |
 | P6b suspended-state ownership | - | - | dedicated hidden-plane + linear-state buffers copied out at each yield and back on resume; suspended owner counted in prefill-transient telemetry; freed on completion, failure, and row reclaim | `--` (this unit) |
 | P6d harness repair | - | - | - | `--` (this unit) |
 | P6e service proof | - | bounded command acknowledgement and cancel delay while a long prefill is in flight; survivor text byte-identical over 192 characters | - | `f6578280a`, `53f134a7e`, `1a663ef9a` |
-| P6f layer-boundary state gate | - | GPU proof: the segmented resumable prefill's committed per-layer direct INT8 K/V, its scales, and the linear conv/recurrent state fingerprint identically to the one-shot reference over all 64 layers at 3,072 committed rows, and again at 3,172 rows with a short 100-row final round; the gate's first run exposed an uninitialized-scale-tail comparison defect in the harness itself | - | `dfd31004d` + ragged follow-up |
+| P6f layer-boundary state gate | - | GPU proof: the segmented resumable prefill's committed per-layer direct INT8 K/V, its scales, and the linear conv/recurrent state fingerprint identically to the one-shot reference over all 64 layers at 3,072 committed rows, again at 3,172 rows with a short 100-row final round, and under both the single-plane hidden alias and the two-plane control; the gate's first run exposed an uninitialized-scale-tail comparison defect in the harness itself | - | `dfd31004d`, `a340d93c1`, + alias A/B |
 
 Combined P3+P4 at 32K declared: ~1.6 GiB of route transients vs ~6.4 GiB at
 the P0 baseline (-75%), measured with the executor flag enabled. The
 layer-outer executor's diagnostics all passed (bitwise parity at 2,048/1,500
 rows, wall A/B at 1K/2K/4K/8K within 2%, trace identity, server probe,
 decode handoff) and cancellation cleanup is CPU-tested, but the remaining
-packet gates are outstanding (aliasing on this executor; the
-layer-boundary/state, exact KV/control, and reachable ragged-final-round gates
-were closed on GPU 2026-09-11 by `scripts/gguf_resumable_prefill_gpu_proof.py`,
-whose `layer_boundary_state` gate also passes on a ragged prompt - multi-slot
-unequal prompts decline by the executor's slot-stability guard), so the default
-is OFF (reviewer finding 4);
+packet gates are now all closed on GPU (2026-09-11):
+`scripts/gguf_resumable_prefill_gpu_proof.py`'s `layer_boundary_state` gate
+fingerprints the committed per-layer direct INT8 K/V, its scales, and the linear
+state against the one-shot reference at a full and a ragged shape, and its
+`hidden_plane_alias` gate measures the single-plane hidden configuration with a
+`--hidden-plane-alias off` two-plane control; multi-slot unequal prompts decline
+by the executor's slot-stability guard and are covered by the decline tests. The
+default is still OFF, but promotion is now an unblocked decision rather than one
+waiting on a gate (reviewer finding 4);
 `HIPENGINE_GGUF_PACKED_LAYER_OUTER=1` enables it. The lease removal is default
 on for the C1/prefix-off/MTP-off route with `HIPENGINE_GGUF_PACKED_KV_LEASE=1`
 as the rollback.
@@ -96,10 +101,9 @@ the serial INT8 route **landed 2026-09-11 and now passes on the resumable route
 itself** (eleven gates - ten passing and the native-sampling gate explicitly
 `skipped` with its blocker named - including a cancellation-delay sweep and a
 host-sampling arm; see the coverage table in the P6 section), and P6f's
-layer-boundary/state, exact KV/control, and reachable ragged-final-round gates
-closed on GPU 2026-09-11 while aliasing on this executor remains outstanding, so
-the route stays behind
-`HIPENGINE_GGUF_PACKED_LAYER_OUTER` until P6f closes), P5
+packet gates all closed on GPU 2026-09-11, so the route's promotion is now an
+unblocked decision rather than a blocked one and it stays behind
+`HIPENGINE_GGUF_PACKED_LAYER_OUTER` only until that decision is taken), P5
 remainder (HIP-API/queue-gap attribution and graph-capture amortization; the
 IKV-C2 C>1 row-batched consumer landed and is promoted to physical c4 on the
 W7900 gfx1100 Qwen3.8-27B INT8 artifact as of 2026-09-11, so the capacity>1
@@ -570,6 +574,14 @@ Gate: layer-boundary hidden/state comparisons, full logits under the declared
 profile, exact KV/control and cancellation cleanup, tail/ragged/shifted page
 fixtures, and measured removal of the expected owner bytes. Validate aliasing
 on the new executor itself. Preserve the corrected chunk-outer fallback.
+
+This gate was met on 2026-09-11: `scripts/gguf_resumable_prefill_gpu_proof.py`
+compares per-layer direct INT8 K/V, its scales, and the linear state against the
+one-shot reference at a full and a ragged shape and under both hidden-plane
+alias configurations, and the shift/tail and cancellation-cleanup fixtures are
+in `tests/test_gguf_resumable_layer_outer_prefill.py`. The corrected chunk-outer
+executor remains the registered fallback and the default until promotion is
+decided.
 
 This fixes memory, not automatically F1 or service fairness. Checkpointable
 execution belongs in P6 before broad mixed-serving promotion.

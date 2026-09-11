@@ -39,6 +39,11 @@ Gates, all of which must pass for the artifact to report a pass:
    row bases; the gate asserts a ragged prompt produced a short final round and a
    whole number of rounds did not, so neither shape can be silently padded into
    the other.
+7. **Hidden-plane alias** - the INT8 layer-outer route aliases its two prefill
+   hidden planes by default, and the suspended-state save copies both
+   attributes, so the aliased configuration must be measured rather than
+   assumed. The gate requires the measured configuration of both arms to match
+   the declaration; `--hidden-plane-alias off` runs the two-plane control.
 
 The route is eager, greedy, prefix-off, MTP-off, and artifact-scoped. Nothing
 here is a throughput claim: it is a control-and-liveness proof, and the artifact
@@ -88,6 +93,16 @@ def _prompt_tokens(rows: int) -> list[int]:
 
     rng = np.random.default_rng(20260909)
     return [int(t) for t in rng.integers(1000, 4096, size=int(rows))]
+
+
+def _prefill_hidden_planes_aliased(session: Any) -> bool:
+    """True when a session's two prefill hidden planes are one buffer."""
+
+    hidden_a = getattr(session, "_prefill_hidden_a", None)
+    hidden_b = getattr(session, "_prefill_hidden_b", None)
+    if hidden_a is None or hidden_b is None:
+        return False
+    return int(hidden_a.ptr) == int(hidden_b.ptr)
 
 
 def _percentiles(values: Sequence[float]) -> dict[str, float]:
@@ -337,6 +352,9 @@ def evaluate_gates(
     final_round_rows: int = 0,
     row_capacity: int = 0,
     ragged_declared: bool = False,
+    hidden_planes_aliased: bool = False,
+    hidden_planes_aliased_reference: bool = False,
+    alias_declared: bool = False,
 ) -> dict[str, Any]:
     """Evaluate the four P6e gates from measurements.
 
@@ -417,6 +435,20 @@ def evaluate_gates(
             "the other"
         ),
     }
+    gates["hidden_plane_alias"] = {
+        "passed": bool(hidden_planes_aliased) == bool(alias_declared)
+        and bool(hidden_planes_aliased_reference) == bool(alias_declared),
+        "declared_alias": bool(alias_declared),
+        "resumable_planes_aliased": bool(hidden_planes_aliased),
+        "reference_planes_aliased": bool(hidden_planes_aliased_reference),
+        "detail": (
+            "the INT8 layer-outer route's single-plane hidden alias is on by "
+            "default; this gate asserts the measured run actually used the "
+            "declared configuration in both arms, so the layer_boundary_state "
+            "gate above is evidence under aliasing (or under the two-plane "
+            "control) rather than under an unknown configuration"
+        ),
+    }
     return gates
 
 
@@ -439,6 +471,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     # guard to the interpreter before any kernel build can happen.
     for key, value in environment.items():
         os.environ[key] = value
+    # The INT8 layer-outer hidden-plane alias is read at workspace allocation
+    # time, so it must be set before any session builds its bulk prefill
+    # workspace. The hidden_plane_alias gate checks the measured configuration
+    # against this declaration.
+    alias_on = str(args.hidden_plane_alias) == "on"
+    os.environ["HIPENGINE_INT8_LAYER_OUTER_HIDDEN_ALIAS"] = "1" if alias_on else "0"
 
     policy = resolve_kv_policy("int8_per_token_head", scale_dtype="fp32")
     prefill_config = PrefillConfig()
@@ -597,6 +635,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             int(one_shot_state["position"]),
             int(resumable_state["position"]),
         ]
+        # Aliasing packet gate: the INT8 layer-outer route aliases its two
+        # prefill hidden planes by default, and the suspended-state save copies
+        # both attributes, so the aliased configuration must be measured rather
+        # than assumed. ``--hidden-plane-alias off`` is the two-plane control.
+        resumable_planes_aliased = _prefill_hidden_planes_aliased(resumable)
+        reference_planes_aliased = _prefill_hidden_planes_aliased(one_shot)
     finally:
         stack.close()
 
@@ -617,6 +661,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         final_round_rows=final_round_rows,
         row_capacity=row_capacity,
         ragged_declared=ragged_declared,
+        hidden_planes_aliased=resumable_planes_aliased,
+        hidden_planes_aliased_reference=reference_planes_aliased,
+        alias_declared=alias_on,
     )
 
     return {
@@ -641,6 +688,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "planned_rounds": planned_rounds,
             "final_round_rows": final_round_rows,
             "ragged_final_round": ragged_declared,
+            "hidden_plane_alias": alias_on,
             "layer_budget": layer_budget,
             "decode_tokens": int(args.decode_tokens),
             "max_sequence_length": max_sequence_length,
@@ -665,6 +713,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "trace_environment": {
             "HIP_VISIBLE_DEVICES": environment.get("HIP_VISIBLE_DEVICES", ""),
             "HIPENGINE_HIP_ARCH": environment["HIPENGINE_HIP_ARCH"],
+            "HIPENGINE_INT8_LAYER_OUTER_HIDDEN_ALIAS": (
+                "1" if alias_on else "0"
+            ),
             COMPILER_VERSION_FILE_ENV: environment[COMPILER_VERSION_FILE_ENV],
             REQUIRE_CACHED_BUILD_ENV: environment[REQUIRE_CACHED_BUILD_ENV],
         },
@@ -704,6 +755,16 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "rows appended beyond --prompt-rounds whole rounds, making the "
             "final planner round short (ragged); 0 keeps every round full"
+        ),
+    )
+    parser.add_argument(
+        "--hidden-plane-alias",
+        choices=("on", "off"),
+        default="on",
+        help=(
+            "HIPENGINE_INT8_LAYER_OUTER_HIDDEN_ALIAS for the run; 'off' is the "
+            "two-plane control, and the hidden_plane_alias gate requires the "
+            "measured configuration to match this declaration"
         ),
     )
     parser.add_argument("--decode-tokens", type=int, default=24)
