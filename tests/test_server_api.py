@@ -21355,6 +21355,7 @@ def test_metrics_endpoint_exports_resident_loop_d5_observability() -> None:
                     "oracle_observed_peak_bytes": 17179869184,
                     "oracle_observed_peak_owners": 16,
                     "hidden_and_bulk_owner_bytes": 5242880,
+                    "last_packed_executor_modes": ["layer_outer_packed", None],
                 },
                 "persistent_int8_payload_bytes": 8388608,
                 "persistent_bf16_payload_bytes": 0,
@@ -21514,6 +21515,19 @@ def test_metrics_endpoint_exports_resident_loop_d5_observability() -> None:
         "hipengine_resident_route_total",
         route="native_packed_decode_steps",
     ) == 3
+    # Which packed-prefill executor ran, per session. ``route`` alone cannot tell
+    # the layer-outer executor from the chunk-outer fallback, so a proof keyed on
+    # route can pass while the deliverable route never ran.
+    assert _labeled_metric_value(
+        body,
+        "hipengine_resident_prefill_executor_mode_total",
+        mode="layer_outer_packed",
+    ) == 1
+    assert _labeled_metric_value(
+        body,
+        "hipengine_resident_prefill_executor_mode_total",
+        mode="none",
+    ) == 1
     assert _labeled_metric_value(
         body,
         "hipengine_resident_fallback_total",
@@ -22410,3 +22424,53 @@ def test_generation_batcher_finishes_queued_items_when_worker_raises() -> None:
         assert all(isinstance(result, ValueError) for result in results), results
 
     asyncio.run(run())
+
+
+def test_string_value_counts_counts_paths_and_keeps_unset_visible() -> None:
+    """The executor-mode export counts which path ran, not how much was used."""
+
+    from hipengine.server.api import _string_value_counts
+
+    assert _string_value_counts(["layer_outer_packed", "layer_outer_packed"]) == {
+        "layer_outer_packed": 2.0
+    }
+    # An unset executor_mode is a real observation (the plan never recorded one),
+    # so it must be exported rather than dropped as if the session did not exist.
+    assert _string_value_counts([None, "layer_outer_packed", None]) == {
+        "none": 2.0,
+        "layer_outer_packed": 1.0,
+    }
+    # Absent or non-list values emit nothing rather than inventing a zero.
+    assert _string_value_counts(None) == {}
+    assert _string_value_counts("layer_outer_packed") == {}
+    assert _string_value_counts([]) == {}
+
+
+def test_string_value_counts_escapes_label_values_that_would_break_the_format() -> None:
+    """A mode string containing a quote or newline must not corrupt the export."""
+
+    from hipengine.server.api import (
+        _append_labeled_counter_metrics,
+        _string_value_counts,
+    )
+
+    lines: list[str] = []
+    _append_labeled_counter_metrics(
+        lines,
+        "hipengine_resident_prefill_executor_mode_total",
+        "Packed-prefill executor that ran per resident session, by executor mode.",
+        "mode",
+        _string_value_counts(['we"ird\nmode']),
+    )
+
+    samples = [
+        row
+        for row in lines
+        if row.startswith("hipengine_resident_prefill_executor_mode_total{")
+    ]
+    assert len(samples) == 1
+    # The newline was escaped rather than emitted, so the sample stays one line
+    # and Prometheus does not read the remainder as a malformed sample.
+    assert "\\n" in samples[0]
+    assert '\\"' in samples[0]
+    assert "\n" not in samples[0]
