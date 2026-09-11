@@ -15,6 +15,14 @@
  ],
  "image_input_ids_len": 106,
  "text_input_ids_len": 40,
+ "rect_grid_thw": [
+  [
+   1,
+   14,
+   22
+  ]
+ ],
+ "rect_input_ids_len": 119,
  "prompt_image": "<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>Transcribe this page.<|im_end|>\n<|im_start|>assistant\n",
  "prompt_text": "<|im_start|>user\nTranscribe this page.<|im_end|>\n<|im_start|>assistant\n",
  "eos_token_id": 2,
