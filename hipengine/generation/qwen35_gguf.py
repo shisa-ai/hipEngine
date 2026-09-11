@@ -190,9 +190,13 @@ def prefill_transient_owner_inventory(sessions: Sequence[Any]) -> dict[str, Any]
         # resumable executor is even attempted (qwen35_gguf.py:8084). The last
         # execution manifest cannot answer this: by scrape time it is a decode
         # manifest, whose builder does not populate kv_attention_source.
-        kv_attention_sources.append(
-            getattr(session, "kv_attention_source", None)
-        )
+        # ``kv_attention_source`` is a live-session property that raises for a
+        # closed or partially constructed session; a telemetry scrape must
+        # report that honestly as unknown rather than propagate the error.
+        try:
+            kv_attention_sources.append(session.kv_attention_source)
+        except (RuntimeError, AttributeError):
+            kv_attention_sources.append(None)
         oracle_buffers_by_session = getattr(
             session, "_int8_prefill_oracle_buffers", None
         )
