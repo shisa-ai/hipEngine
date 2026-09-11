@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "kind": "w7900_p6e_resumable_prefill_gpu_proof",
-  "timestamp": "2026-09-11T23:16:22.213026+00:00",
+  "timestamp": "2026-09-11T23:17:58.519912+00:00",
   "performance_claim": false,
   "passed": true,
   "host": {
@@ -20,7 +20,7 @@
     "planned_rounds": 3,
     "final_round_rows": 1024,
     "ragged_final_round": false,
-    "hidden_plane_alias": true,
+    "hidden_plane_alias": false,
     "layer_budget": 4,
     "decode_tokens": 24,
     "max_sequence_length": 16384,
@@ -36,16 +36,16 @@
     "real_yield": {
       "passed": true,
       "segments": 16,
-      "segment_min_ms": 258.864,
+      "segment_min_ms": 258.952,
       "declared_floor_ms": 1.0,
       "detail": "more than one segment proves control returned mid-prefill; every segment above the floor proves each segment did GPU work rather than advancing bookkeeping"
     },
     "bounded_decode_gap": {
       "passed": true,
-      "interleaved_p95_ms": 33.577,
-      "interleaved_max_ms": 33.58,
-      "p95_limit_ms": 67.288,
-      "max_limit_ms": 119.568,
+      "interleaved_p95_ms": 33.561,
+      "interleaved_max_ms": 33.606,
+      "p95_limit_ms": 67.834,
+      "max_limit_ms": 119.502,
       "declared_p95_factor": 2.0,
       "declared_max_factor": 3.0,
       "detail": "decode steps taken while a prefill is suspended must stay within the declared factors of the standalone decode step on the same session"
@@ -71,36 +71,36 @@
     },
     "hidden_plane_alias": {
       "passed": true,
-      "declared_alias": true,
-      "resumable_planes_aliased": true,
-      "reference_planes_aliased": true,
+      "declared_alias": false,
+      "resumable_planes_aliased": false,
+      "reference_planes_aliased": false,
       "detail": "the INT8 layer-outer route's single-plane hidden alias is on by default; this gate asserts the measured run actually used the declared configuration in both arms, so the layer_boundary_state gate above is evidence under aliasing (or under the two-plane control) rather than under an unknown configuration"
     }
   },
   "measurements": {
-    "arm_a_one_shot_wall_s": 4.1615,
-    "arm_b_resumable_wall_s": 4.7674,
+    "arm_a_one_shot_wall_s": 4.1724,
+    "arm_b_resumable_wall_s": 4.7768,
     "segments": {
       "count": 16,
-      "median_ms": 262.371,
-      "p95_ms": 287.629,
-      "min_ms": 258.864,
-      "max_ms": 288.325
+      "median_ms": 262.688,
+      "p95_ms": 288.423,
+      "min_ms": 258.952,
+      "max_ms": 291.965
     },
     "peak_suspended_bytes": 221773824,
     "standalone_decode": {
       "count": 24,
-      "median_ms": 33.488,
-      "p95_ms": 33.644,
-      "min_ms": 32.563,
-      "max_ms": 39.856
+      "median_ms": 33.468,
+      "p95_ms": 33.917,
+      "min_ms": 32.692,
+      "max_ms": 39.834
     },
     "interleaved_decode": {
       "count": 15,
-      "median_ms": 33.41,
-      "p95_ms": 33.577,
-      "min_ms": 32.875,
-      "max_ms": 33.58
+      "median_ms": 33.397,
+      "p95_ms": 33.561,
+      "min_ms": 32.859,
+      "max_ms": 33.606
     },
     "interleaved_steps": 15,
     "state_position": [
@@ -109,11 +109,11 @@
     ],
     "state_layers_compared": 64
   },
-  "command": "/home/lhl/mambaforge/envs/therock/bin/python3 /home/lhl/hipEngine-main/scripts/gguf_resumable_prefill_gpu_proof.py --max-sequence-length 16384 --prompt-rounds 3 --layer-budget 4 --decode-tokens 24 --hidden-plane-alias on --json benchmarks/results/2026-09-11-w7900-p6e-resumable-prefill-state-gate.json",
+  "command": "/home/lhl/mambaforge/envs/therock/bin/python3 /home/lhl/hipEngine-main/scripts/gguf_resumable_prefill_gpu_proof.py --max-sequence-length 16384 --prompt-rounds 3 --layer-budget 4 --decode-tokens 24 --hidden-plane-alias off --json benchmarks/results/2026-09-11-w7900-p6e-hidden-plane-two-plane-control.json",
   "trace_environment": {
     "HIP_VISIBLE_DEVICES": "0",
     "HIPENGINE_HIP_ARCH": "gfx1100",
-    "HIPENGINE_INT8_LAYER_OUTER_HIDDEN_ALIAS": "1",
+    "HIPENGINE_INT8_LAYER_OUTER_HIDDEN_ALIAS": "0",
     "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-hipcc-version.txt",
     "HIPENGINE_REQUIRE_CACHED_BUILD": "1"
   },

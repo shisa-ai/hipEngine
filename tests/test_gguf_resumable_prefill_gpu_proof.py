@@ -45,6 +45,9 @@ _HEALTHY = {
     "final_round_rows": 1024,
     "row_capacity": 1024,
     "ragged_declared": False,
+    "hidden_planes_aliased": True,
+    "hidden_planes_aliased_reference": True,
+    "alias_declared": True,
 }
 
 
@@ -54,7 +57,7 @@ def _gates(**overrides: object) -> dict:
     return evaluate_gates(**payload)  # type: ignore[arg-type]
 
 
-def test_all_six_gates_pass_on_a_healthy_run() -> None:
+def test_all_seven_gates_pass_on_a_healthy_run() -> None:
     gates = _gates()
 
     assert set(gates) == {
@@ -64,8 +67,35 @@ def test_all_six_gates_pass_on_a_healthy_run() -> None:
         "cleanup",
         "layer_boundary_state",
         "ragged_final_round",
+        "hidden_plane_alias",
     }
     assert all(gate["passed"] for gate in gates.values())
+
+
+def test_hidden_plane_alias_passes_for_the_declared_two_plane_control() -> None:
+    gates = _gates(
+        hidden_planes_aliased=False,
+        hidden_planes_aliased_reference=False,
+        alias_declared=False,
+    )
+
+    assert gates["hidden_plane_alias"]["passed"] is True
+
+
+def test_hidden_plane_alias_fails_when_the_alias_did_not_apply() -> None:
+    """Declaring the alias while the run measured two planes is not evidence."""
+
+    gates = _gates(hidden_planes_aliased=False, hidden_planes_aliased_reference=False)
+
+    assert gates["hidden_plane_alias"]["passed"] is False
+
+
+def test_hidden_plane_alias_fails_when_the_arms_disagree() -> None:
+    """One arm aliased and the other not is a configuration defect."""
+
+    gates = _gates(hidden_planes_aliased_reference=False)
+
+    assert gates["hidden_plane_alias"]["passed"] is False
 
 
 def test_ragged_final_round_passes_when_a_short_round_was_declared() -> None:
