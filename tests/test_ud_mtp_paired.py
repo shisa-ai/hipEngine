@@ -383,10 +383,17 @@ def test_committed_artifact_is_complete_evidence(name: str):
     if not artifact.exists():
         pytest.skip("paired artifact not present")
     report = json.loads(artifact.read_text())
+    raw_dirs = {
+        Path(str(pair["raw_payload"])).parent
+        for pair in report["pairs"]
+    }
+    assert len(raw_dirs) == 1, raw_dirs
     commands = {
         command["label"]: command
         for command in paired.resolve_commands(
-            runs=int(paired.PAIRED_PROTOCOL["runs"]), raw_dir=Path("/tmp"), limit=None
+            runs=int(paired.PAIRED_PROTOCOL["runs"]),
+            raw_dir=next(iter(raw_dirs)),
+            limit=None,
         )
     }
     prompt_ids = _prompt_ids()
@@ -424,6 +431,10 @@ def test_committed_artifact_is_complete_evidence(name: str):
             assert pair["command"] == " ".join(str(part) for part in command["argv"])
         assert pair["provenance"]["device_name"]
         assert pair["provenance"]["hipengine_commit"]
+    if not invalidated and all(
+        pair["evidence"]["binding_passed"] for pair in report["pairs"]
+    ):
+        assert report["comparisons"] == paired._paired_comparisons(report["pairs"])
 
 
 # --- protocol identity ------------------------------------------------------
@@ -591,6 +602,7 @@ def test_invalidate_alters_the_exit_verdict(tmp_path: Path, capsys):
     assert invalid["timing_evidence_valid"] is False
     assert invalid["invalidation"]["invalid"] is True
     assert invalid["invalidation"]["reason"] == "device was contended"
+    assert "comparisons" not in invalid
     for pair in invalid["pairs"]:
         evidence = pair["evidence"]
         assert evidence["timing_evidence_valid"] is False
@@ -601,6 +613,16 @@ def test_invalidate_alters_the_exit_verdict(tmp_path: Path, capsys):
         assert evidence["evidence_completeness"]["complete"] is True
         assert evidence["determinism"]["deterministic"] is True
         assert evidence["timing_as_measured"]["faster_than_true_ar"] is True
+
+    first = commands[0]
+    failed_payload = _payload(command=first)
+    failed_payload["correctness"]["all_gpu_accept_match_cpu"] = False
+    (raw_dir / f"paired-{first['label']}.json").write_text(
+        json.dumps(failed_payload)
+    )
+    failed_code, failed = run("failed")
+    assert failed_code == 1
+    assert "comparisons" not in failed
 
 
 # --- scoped device selection ------------------------------------------------
@@ -671,9 +693,24 @@ def test_main_scopes_and_restores_device_selection(tmp_path: Path, capsys, monke
 
     report = json.loads(output.read_text())
     assert report["device"]["device_index"] == 1
-    assert report["device"]["prior_environment"] == {
-        "HIP_VISIBLE_DEVICES": "0",
+    assert report["device"]["selected_environment"] == {
+        "HIP_VISIBLE_DEVICES": "1",
         "ROCR_VISIBLE_DEVICES": None,
+    }
+    assert "prior_environment" not in report["device"]
+    assert report["comparisons"] == {
+        "q4_k_m": {
+            "gap_to_plain_pct": {"mtp_b3": 0.0, "true_ar": 0.0},
+            "plain_label": "plain-q4-k-m",
+            "ud_label": "ud-q4-k-m",
+            "ud_over_plain": {"mtp_b3": 1.0, "true_ar": 1.0},
+        },
+        "q4_k_s": {
+            "gap_to_plain_pct": {"mtp_b3": 0.0, "true_ar": 0.0},
+            "plain_label": "plain-q4-k-s",
+            "ud_label": "ud-q4-k-s",
+            "ud_over_plain": {"mtp_b3": 1.0, "true_ar": 1.0},
+        },
     }
 
 

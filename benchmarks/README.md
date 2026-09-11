@@ -381,22 +381,26 @@ the Q5 MoE selected-expert path (2.22 ms/tok K_M on the direct GEMV),
 Q3_K strict decode (1.43/2.43 ms/tok), and the Q5 gate/up dual.
 ([final rollup](results/final-decode-campaign-2026-09-11/).)
 
-MTP for these artifacts is **refused by admission** (the U6 certification pin is
-empty), and there is currently no valid paired MTP rate. The device-clean XTX
-attempt is withdrawn because its true-AR denominator called synchronous
-`step()` for every token instead of the production decode-graph path. A
-protocol-matched GPU1 trace measured the same device work for eager and graph
-AR (28.77 vs 28.88 ms/transition), but eager wall was 65-69 ms/transition
-against 31 ms for graph replay because the host submitted about 860 kernels per
-transition. The four AR/MTP rates, all MTP/AR ratios, and the derived UD/plain
-MTP ratios are therefore not evidence.
+MTP for these artifacts is still **refused by admission** because the U6
+certification pin is empty. The valid GPU1/XTX paired diagnostic now uses
+recorded production graph replay for the true-AR arm (c1, natural25, B3, ten
+prompts, two repeats):
 
-The non-timing observations remain valid: deterministic repeats, GPU/CPU
-acceptance agreement, the K_S `general_ja_plan` near tie, and the
-draft/verifier state-disjointness result. The paired harness now pins recorded
-production graph replay as a protocol dimension; a fresh GPU1 run is required
-before quoting MTP performance.
-([invalidated XTX attempt](results/paired-ud-plain-mtp-c1-natural25-b3-xtx.json).)
+| Tier | UD AR | Plain AR | UD / plain AR | UD MTP B3 | Plain MTP B3 | UD / plain MTP | UD MTP / AR |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `Q4_K_M` | 31.993 | 37.186 | **0.860x** | 35.541 | 63.465 | **0.560x** | **1.1109x** |
+| `Q4_K_S` | 31.311 | 39.565 | **0.791x** | 33.061 | 64.094 | **0.516x** | **1.0559x** |
+
+All four arms have complete 20-row-per-group evidence, deterministic repeats,
+GPU/CPU acceptance agreement, and a positive MTP/AR ratio. K_M and both plain
+controls are generated-ID exact. UD K_S repeats the two recorded
+`general_ja_plan` near-tie divergences; its suite-level speed-claim flag remains
+false until the section 6.1 teacher-forced production gate is captured. These
+rates are U6 diagnostic evidence, not automatic MTP admission. The remaining
+gap is concentrated in MTP compute: UD trails plain by 14.0%/20.9% in AR but
+44.0%/48.4% in MTP.
+([valid paired diagnostic](results/paired-ud-plain-mtp-c1-natural25-b3-graph-xtx.json),
+[invalidated eager-denominator attempt](results/paired-ud-plain-mtp-c1-natural25-b3-xtx.json).)
 
 Earlier revisions of this section published a W7900/XTX census comparison
 (46,913 vs 30,263 µs/token pure, localised to two local32 GEMV kernels at 3.84x
@@ -1017,7 +1021,7 @@ for the current gfx1151 FP32 production profile.
 
 | Platform / model | Contract | True AR | MTP | MTP / AR | Status and evidence |
 | --- | --- | ---: | ---: | ---: | --- |
-| RX 7900 XTX / Qwen3.8-27B Dense `Q4_K_M` | Exact/default natural25 B3 | 36.782 | **62.845** | **1.7086x** | Current-tree repair of the gfx1100 serial-row route; `complete_exact`, all ten prompts exact across two runs with identical token IDs, GPU/CPU acceptance agree, all four categories positive. Train 1.7450x, heldout 1.6565x. [`artifact`](results/2026-09-11-mtp-journal-repair/) |
+| RX 7900 XTX / Qwen3.8-27B Dense `Q4_K_M` | Exact/default natural25 B3 | 37.186 | **63.465** | **1.7067x** | Current `ud-quants` paired control; `complete_exact`, all ten prompts exact across two runs with identical token IDs, GPU/CPU acceptance agree, and the true-AR arm uses recorded production graph replay. [`artifact`](results/paired-ud-plain-mtp-c1-natural25-b3-graph-xtx.json) |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Historical direct-leaf natural25 B3 | 11.692 | 21.158 | 1.8095x | August 26 direct-leaf protocol, not the public-server headline. [`artifact`](results/2026-08-26-gfx1151-qwen38-current-main-ar-mtp.json) |
 | W7900 / Qwen3.6-35B-A3B `UD-Q4_K_M` | Public production/BF16 resident-C2 K2 D24, automatic | 80.973 | **93.644** | **1.1565x** | Latest-source 10/10 engaged and MTP self-exact; three-run ratio 1.1368x; all categories non-regressive; strict-teacher, blocking/SSE/cancel/drain pass. Shares the artifact linked in the row above. |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Public strict/BF16 cap4 realized-C1 K3, natural25 | 11.150 | **20.985** | **1.882x** | Three full-suite runs; all 30 cells exact, engaged and budget-conformed; every category faster. Blocking/SSE and cancellation/refill pass. Production default is AR. [`artifact`](results/2026-09-12-gfx1151-qwen38-final-headline-refresh.json) |
