@@ -681,9 +681,9 @@ def test_gpu_text_only_matches_oracle(runner) -> None:
 def test_gpu_runner_repeated_create_use_close_releases_memory(runner) -> None:
     """Repeated create/use/close must not leak tracked device allocations.
 
-    Regression guard for the constructor clobbering ``_head_bias_bufs``
-    after persistent state/staging allocations populated it, and for the
-    untracked cached pointer-array buffers.
+    Regression guard for the constructor clobbering the permanent-allocation
+    list (now ``_permanent_bufs``) after persistent state/staging allocations
+    populated it, and for the untracked cached pointer-array buffers.
     """
 
     _, weights, spec = runner
@@ -725,6 +725,126 @@ def test_gpu_runner_repeated_create_use_close_releases_memory(runner) -> None:
             f"active={stats['active_allocations']} baseline={baseline}"
         )
         assert stats["current_allocated_bytes"] == baseline_bytes
+
+
+def test_gpu_vision_scratch_admission_matches_the_allocation(runner) -> None:
+    """The admitted size must match what ``_vis_scores`` actually allocates.
+
+    They are separate computations, so drift between them would let a grid
+    through admission and then allocate more than was admitted.
+    """
+
+    _, weights, spec = runner
+    from hipengine.runtime.surya import SuryaGpuRunner
+
+    r = SuryaGpuRunner(weights, spec)
+    try:
+        for grid in ((1, 16, 16), (1, 22, 12), (1, 32, 32)):
+            n = grid[1] * grid[2]
+            buf, stride = r._vis_scores(n, spec.vision_num_heads)
+            admitted = r.vision_scratch_bytes([grid])
+            assert stride % 4 == 0, "stride must stay 16-byte aligned"
+            assert stride * spec.vision_num_heads * 4 == admitted
+            assert buf.nbytes >= admitted, (
+                f"grid {grid} admitted {admitted} bytes but allocated "
+                f"{buf.nbytes}"
+            )
+    finally:
+        r.close()
+
+
+def test_gpu_vision_admission_rejects_over_budget_grid_before_allocating(runner) -> None:
+    """An over-budget page must be rejected before any device work runs."""
+
+    _, weights, spec = runner
+    from hipengine.runtime.surya import SuryaGpuRunner, SuryaGpuRuntimeError
+
+    # 64x64 = 4096 patches needs ~805 MB; cap well below that
+    r = SuryaGpuRunner(weights, spec, max_vision_scratch_bytes=64 * 1024 * 1024)
+    try:
+        assert r.vision_scratch_bytes([(1, 64, 64)]) > 64 * 1024 * 1024
+        with pytest.raises(SuryaGpuRuntimeError, match="above the .* GB cap"):
+            r.check_vision_capacity([(1, 64, 64)])
+        # a grid inside the cap is admitted
+        r.check_vision_capacity([(1, 16, 16)])
+        assert r.vision_scratch_bytes([(1, 16, 16)]) <= 64 * 1024 * 1024
+        # and the rejected check allocated nothing
+        assert "vis_scores" not in r._scratch
+    finally:
+        r.close()
+
+
+def test_gpu_vision_admission_can_be_disabled(runner) -> None:
+    """``max_vision_scratch_bytes=None`` leaves only the memory check."""
+
+    _, weights, spec = runner
+    from hipengine.runtime.surya import SuryaGpuRunner
+
+    r = SuryaGpuRunner(weights, spec, max_vision_scratch_bytes=None)
+    try:
+        # far past the default cap, but well inside free device memory here
+        r.check_vision_capacity([(1, 64, 64)])
+    finally:
+        r.close()
+
+
+def test_gpu_generator_checks_capacity_before_vision() -> None:
+    """Over-capacity OCR requests must not pay for vision first.
+
+    Regression: ``_generate_ocr`` ran ``vision_forward`` and only then reached
+    ``check_prompt_capacity`` inside ``_decode_greedy``, so a request that could
+    never fit still ran the whole vision tower and could allocate multi-GB
+    scratch before being rejected.
+    """
+
+    from hipengine.generation.registry import GenerationRequest
+    from hipengine.generation.surya_contract import SuryaRequestError
+    from hipengine.generation.surya_gpu import SuryaOCRGeneratorGPU
+
+    page = FIXTURES / "page_small.png"
+    if not page.exists():
+        pytest.skip("page_small.png fixture not present")
+
+    gen = SuryaOCRGeneratorGPU(model_path=_model_dir())
+    ran: list[str] = []
+    real_vision = gen.runner.vision_forward
+    gen.runner.vision_forward = lambda *a, **kw: (ran.append("vision"), real_vision(*a, **kw))[1]
+    try:
+        # prompt + max_tokens cannot fit the runner context
+        with pytest.raises(SuryaRequestError, match="exceeds"):
+            gen.generate_multimodal_detailed(
+                "Transcribe this page.",
+                str(page),
+                GenerationRequest(
+                    prompts=["Transcribe this page."],
+                    max_tokens=gen.max_seq + 1,
+                    temperature=0.0,
+                    top_p=1.0,
+                    ignore_eos=False,
+                ),
+            )
+        assert ran == [], f"vision ran before the capacity rejection: {ran}"
+
+        # a fitting request does run vision, so the spy is not vacuously empty
+        out = gen.generate_multimodal_detailed(
+            "Transcribe this page.",
+            str(page),
+            GenerationRequest(
+                prompts=["Transcribe this page."],
+                max_tokens=4,
+                temperature=0.0,
+                top_p=1.0,
+                ignore_eos=False,
+            ),
+        )
+        assert ran == ["vision"]
+        assert out.text
+        # the advertised budget is the runner's, so callers can admit up front
+        assert gen.max_seq == gen.runner.max_seq
+        assert gen.max_vision_scratch_bytes == gen.runner.max_vision_scratch_bytes
+    finally:
+        gen.runner.vision_forward = real_vision
+        gen.close()
 
 
 def test_gpu_generator_public_api_matches_oracle() -> None:

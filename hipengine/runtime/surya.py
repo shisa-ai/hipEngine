@@ -72,6 +72,15 @@ _S = ctypes.c_void_p
 
 _GEMM_PAD_BYTES = 512
 
+# Vision attention materializes the full score matrix, so its scratch grows as
+# heads * patches^2 * 4 bytes. At the checkpoint's own max_pixels ceiling
+# (16_777_216 px -> 14400 patches) that is ~9.95 GB for one request. This cap
+# admits a 300-DPI A4 page (77x109 grid, ~3.4 GB) and rejects the pathological
+# ceiling with a clear error instead of attempting the allocation. Tiled vision
+# attention removes the need for a large scratch; until then the cap is the
+# admission contract. Pass ``max_vision_scratch_bytes=None`` to disable it.
+DEFAULT_MAX_VISION_SCRATCH_BYTES = 4 * 1024**3
+
 
 class SuryaGpuRuntimeError(RuntimeError):
     pass
@@ -92,6 +101,7 @@ class SuryaGpuRunner:
         spec: SuryaSpec | None = None,
         *,
         max_seq: int = 2048,
+        max_vision_scratch_bytes: int | None = DEFAULT_MAX_VISION_SCRATCH_BYTES,
         rocblas: Rocblas | None = None,
         runtime: HipRuntime | None = None,
         library: ctypes.CDLL | None = None,
@@ -102,6 +112,7 @@ class SuryaGpuRunner:
             weights = SuryaWeights.load(weights)
         self.spec = spec or SuryaSpec()
         self.max_seq = max_seq
+        self.max_vision_scratch_bytes = max_vision_scratch_bytes
         self.runtime = runtime or get_hip_runtime()
         self.rocblas = rocblas or Rocblas.load()
         self.rocblas.set_workspace(0, 0)
@@ -110,7 +121,8 @@ class SuryaGpuRunner:
         self.gdn_library = gdn_library or build_qwen35_linear_attn_gdn(load=True)
         self.surya_library = build_surya_ops(load=True)
         self._w: dict[str, DeviceBuffer] = {}
-        self._head_bias_bufs: list[DeviceBuffer] = []  # persistent allocations
+        # every long-lived allocation, freed by close(); named for what it holds
+        self._permanent_bufs: list[DeviceBuffer] = []
 
         s = self.spec
         self.n_gdn_layers = sum(1 for l in range(s.num_layers) if not s.is_full_attention(l))
@@ -196,7 +208,7 @@ class SuryaGpuRunner:
 
     def _permanent(self, nbytes: int) -> DeviceBuffer:
         buf = malloc(nbytes + _GEMM_PAD_BYTES)
-        self._head_bias_bufs.append(buf)
+        self._permanent_bufs.append(buf)
         return buf
 
     def _buf(self, key: str, nbytes: int) -> DeviceBuffer:
@@ -688,6 +700,11 @@ class SuryaGpuRunner:
             vision_rotary,
         )
 
+        # Admit before any device work: the attention scratch is quadratic in
+        # patch count, so an over-budget page must be rejected here, not after
+        # patch embed and a failed multi-GB allocation.
+        self.check_vision_capacity(grid_thw)
+
         s = self.spec
         vh = s.vision_hidden_size
         nh, hd = s.vision_num_heads, s.vision_head_dim()
@@ -800,9 +817,66 @@ class SuryaGpuRunner:
             ).reshape(pe, vh)
         return self._pos_table_host
 
+    @staticmethod
+    def _vis_score_stride(n: int) -> int:
+        """Per-head score-tile stride in elements, 16-byte aligned."""
+
+        return (n * n + 3) & ~3
+
     def _vis_scores(self, n: int, heads: int) -> tuple[DeviceBuffer, int]:
-        stride = (n * n + 3) & ~3  # per-head tile stride, 16-byte aligned
+        stride = self._vis_score_stride(n)
         return self._buf("vis_scores", heads * stride * 4), stride
+
+    # -- vision admission --------------------------------------------------
+
+    def vision_scratch_bytes(self, grid_thw) -> int:
+        """Device scratch the vision attention scores need for ``grid_thw``.
+
+        Quadratic in patch count. Derived from the same stride helper as
+        ``_vis_scores`` so admission can never disagree with the allocation.
+        """
+
+        n = int(grid_thw[0][1]) * int(grid_thw[0][2])
+        return self.spec.vision_num_heads * self._vis_score_stride(n) * 4
+
+    def check_vision_capacity(self, grid_thw) -> None:
+        """Admit a vision grid before any device work or allocation runs.
+
+        Two independent checks, because they fail for different reasons:
+
+        - the configured cap bounds a single request regardless of how much
+          memory the host happens to have;
+        - free device memory catches the case where the weights plus other
+          live runners have already consumed the budget.
+
+        Called before patch embed so an over-budget page costs nothing.
+        """
+
+        n = int(grid_thw[0][1]) * int(grid_thw[0][2])
+        need = self.vision_scratch_bytes(grid_thw)
+        grid = (int(grid_thw[0][0]), int(grid_thw[0][1]), int(grid_thw[0][2]))
+        cap = self.max_vision_scratch_bytes
+        if cap is not None and need > cap:
+            raise SuryaGpuRuntimeError(
+                f"vision attention scratch for grid {grid} is {need / 1e9:.2f} GB "
+                f"({n} patches), above the {cap / 1e9:.2f} GB cap; reduce the page "
+                f"resolution or construct SuryaGpuRunner(max_vision_scratch_bytes=...)"
+            )
+        # the scratch buffer is cached per key and reused when it is already big
+        # enough, so only the growth is charged against free memory
+        existing = self._scratch.get("vis_scores")
+        growth = max(0, need + _GEMM_PAD_BYTES - (existing.nbytes if existing else 0))
+        if growth == 0:
+            return
+        try:
+            free_bytes, _total = self.runtime.mem_get_info()
+        except Exception:  # runtime without mem_get_info: cap is the only bound
+            return
+        if growth > int(free_bytes):
+            raise SuryaGpuRuntimeError(
+                f"vision attention scratch for grid {grid} needs {growth / 1e9:.2f} GB "
+                f"more device memory but only {int(free_bytes) / 1e9:.2f} GB is free"
+            )
 
     def _add_bias(self, x_ptr: int, bias_ptr: int, n: int, row: int) -> None:
         err = self._k("hipengine_evie_add_bias_f32", [_P, _P, _I, _I, _S])(
@@ -926,9 +1000,9 @@ class SuryaGpuRunner:
         if getattr(self, "_closed", False):
             return
         self._closed = True
-        for buf in self._head_bias_bufs:
+        for buf in self._permanent_bufs:
             hip_free(buf)
-        self._head_bias_bufs.clear()
+        self._permanent_bufs.clear()
         for buf in self._ptr_array_bufs.values():
             hip_free(buf)
         self._ptr_array_bufs.clear()
