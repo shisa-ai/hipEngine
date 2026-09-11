@@ -65,6 +65,110 @@ def _page_inputs():
     return preprocess_image_surya(Image.open(page).convert("RGB"))
 
 
+def _rect_inputs():
+    from hipengine.loading.surya import preprocess_image_surya
+    from PIL import Image
+
+    page = FIXTURES / "page_rect.png"
+    if not page.exists():
+        pytest.skip("page_rect.png fixture not present")
+    return preprocess_image_surya(Image.open(page).convert("RGB"))
+
+
+def _gpu_ocr_ids(r, spec, tokenizer, pixel_rows, grid, max_tokens: int) -> list[int]:
+    from hipengine.loading.surya import compute_mrope_positions, render_chat_prompt
+
+    merged = r.vision_forward(pixel_rows, [grid])
+    n_img = (grid[1] // 2) * (grid[2] // 2)
+    ids, mm = render_chat_prompt(tokenizer, "Transcribe this page.", n_img)
+    pos = compute_mrope_positions(mm, grid, spec.vision_spatial_merge_size)
+    logits = r.prefill(np.asarray(ids, dtype=np.int64), pos, visual_features=merged)
+    generated: list[int] = []
+    p = int(pos[:, -1].max())
+    for step in range(max_tokens):
+        nxt = int(np.argmax(logits))
+        if nxt == spec.eos_token_id:
+            break
+        generated.append(nxt)
+        if step + 1 >= max_tokens:
+            break
+        logits = r.decode_step(nxt, p + 1 + step)
+    return generated
+
+
+def _cpu_ocr_ids(weights, spec, tokenizer, pixel_rows, grid, max_tokens: int) -> list[int]:
+    from hipengine.kernels.cpu_reference.surya import (
+        text_decode_step,
+        text_prefill,
+        vision_forward,
+    )
+    from hipengine.loading.surya import compute_mrope_positions, render_chat_prompt
+
+    _, _, merged = vision_forward(weights, spec, pixel_rows, [grid])
+    n_img = (grid[1] // 2) * (grid[2] // 2)
+    ids, mm = render_chat_prompt(tokenizer, "Transcribe this page.", n_img)
+    pos = compute_mrope_positions(mm, grid, spec.vision_spatial_merge_size)
+    hidden, state = text_prefill(
+        weights, spec, np.array([ids], dtype=np.int64), pos,
+        visual_features=merged[None],
+    )
+    emb = weights["model.language_model.embed_tokens.weight"]
+    logits = hidden[:, -1] @ emb.T
+    generated: list[int] = []
+    p = int(pos[:, -1].max())
+    for step in range(max_tokens):
+        nxt = int(np.argmax(logits[0]))
+        if nxt == spec.eos_token_id:
+            break
+        generated.append(nxt)
+        if step + 1 >= max_tokens:
+            break
+        logits = text_decode_step(weights, spec, nxt, state, p + 1 + step)
+    return generated
+
+
+def test_gpu_vision_matches_oracle_rect(runner) -> None:
+    """Rectangular page (non-square 14x22 grid) against the torch oracle."""
+
+    r, _weights, _spec = runner
+
+    path = FIXTURES / "oracle_rect.npz"
+    if not path.exists():
+        pytest.skip("oracle_rect.npz not present; run scripts/surya_oracle_torch.py")
+    with np.load(path) as z:
+        merged_oracle = z["vision_merged"]
+
+    pixel_rows, grid = _rect_inputs()
+    merged_gpu = r.vision_forward(pixel_rows, [grid])
+    assert merged_gpu.shape == merged_oracle.shape
+    d = np.abs(merged_gpu - merged_oracle)
+    assert np.isfinite(merged_gpu).all()
+    assert d.max() < 0.5, f"rect vision diverged: max|d|={d.max():.3e}"
+    assert d.mean() < 0.05, f"rect vision drift: mean|d|={d.mean():.3e}"
+
+
+def test_gpu_repeated_request_isolation(runner) -> None:
+    """Repeated requests on one runner must not leak state across calls."""
+
+    r, weights, spec = runner
+    from hipengine.loading.surya import SuryaTokenizer, resolve_surya_path
+
+    tokenizer = SuryaTokenizer(resolve_surya_path(MODEL_ID))
+    small = _page_inputs()
+    rect = _rect_inputs()
+    max_tokens = 16
+
+    for label, (pixel_rows, grid) in (("small", small), ("rect", rect)):
+        ref = _cpu_ocr_ids(weights, spec, tokenizer, pixel_rows, grid, max_tokens)
+        assert ref, f"{label}: CPU reference produced no tokens"
+        first = _gpu_ocr_ids(r, spec, tokenizer, pixel_rows, grid, max_tokens)
+        # a different page in between must not perturb the next request
+        _gpu_ocr_ids(r, spec, tokenizer, rect[0], rect[1], max_tokens)
+        second = _gpu_ocr_ids(r, spec, tokenizer, pixel_rows, grid, max_tokens)
+        assert first == ref, f"{label}: GPU ids diverge from CPU reference"
+        assert second == ref, f"{label}: repeated request is not isolated"
+
+
 def test_gpu_vision_matches_cpu_reference(runner) -> None:
     r, weights, spec = runner
     from hipengine.kernels.cpu_reference.surya import vision_forward
