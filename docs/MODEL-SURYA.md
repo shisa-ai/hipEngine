@@ -21,8 +21,9 @@ vision tower and text decoder on gfx1151.
 | Request/resource contracts (greedy-only, capacity, EOS) | done | `hipengine/generation/surya_contract.py`, `tests/test_surya_generation_contract.py` |
 | GPU `rocprofv3` kernel-trace evidence | done | `benchmarks/results/2026-09-11-gfx1151-surya-kernel-trace.json` |
 | Rectangular-page coverage | done (vision + isolation) | `tests/test_surya_gpu.py` rect vision vs `oracle_rect` `vision_merged` |
-| Full-page coverage (1024x1024, real text) | done | `tests/fixtures/surya/page_full.png`, `scripts/surya_oracle_fullpage.py`, `tests/test_surya_gpu.py::test_gpu_full_page_layout_matches_oracle` |
+| Full-page coverage (1024x1024, real text) | done | `tests/fixtures/surya/page_full.png`, `scripts/surya_oracle_greedy.py`, `tests/test_surya_gpu.py::test_gpu_full_page_layout_matches_oracle` |
 | OCR output quality check (labels + bboxes vs drawn geometry) | done | `tests/test_surya_gpu.py::test_gpu_full_page_layout_matches_oracle` second half |
+| Greedy reference fixtures are reproducible | done | `scripts/surya_oracle_greedy.py --case all` regenerates `oracle_greedy.json` and `oracle_fullpage_greedy.json` |
 | Multi-page held-out OCR corpus | pending | only `page_small.png` (256x256), `page_rect.png` (320x192) and `page_full.png` (1024x1024) are exercised |
 | Registry migration + `KVLiveSpans` KV ABI | pending | tracked in `docs/REFACTOR.md` |
 | Quantized (GGUF) Surya decoder | pending | safetensors fp32 is the implementation target |
