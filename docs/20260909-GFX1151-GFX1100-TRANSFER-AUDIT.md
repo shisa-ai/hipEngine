@@ -140,3 +140,163 @@ gfx1100 is declared closed; each then enters this audit as a row above.
    attention decode at long context and GDN decode remain unprofiled for the
    TG128 34.31/29.82 vs 36.67/35.70 deficit (worklog
    `engine-comparison-donor-screen-c608a0` "Next").
+
+## H. Status after the 2026-09-12 review
+
+Reviewed at commit `f3b20c1f2` on the physical gfx1151 host (Ryzen AI MAX+ 395 /
+Radeon 8060S, ROCm `10.0.0`, `GPU_MAX_HW_QUEUES=2`), clean tracked tree.
+
+### The gfx1100-only inventory is mechanical, not a reading exercise
+
+`hipengine/kernels/hip_gfx1151/__init__.py` aliases the whole gfx1100 key space
+and then subtracts an explicit list. At this commit the two backends hold
+**1307 shared variants, 105 gfx1100-only variants, 7 gfx1151-only variants,
+241 declared exclusions (`_GFX1151_ALIAS_EXCLUSIONS`), and 18 body overrides
+(`_GFX1151_OVERRIDES`)**. The declared exclusion list is larger than the
+gfx1100-only set because it also names keys that gfx1151 never had, and because
+the 18 overrides keep their key while replacing the body. Reproduce:
+
+```bash
+python3 - <<'PY'
+import collections, importlib
+from hipengine.kernels.registry import registered_keys
+for m in ("hipengine.kernels.hip_gfx1100", "hipengine.kernels.hip_gfx1151"):
+    importlib.import_module(m)
+by = collections.defaultdict(set)
+for k in registered_keys():
+    by[k.backend].add((k.layer, k.quant, k.variant))
+a, c = by["hip_gfx1100"], by["hip_gfx1151"]
+print(len(a & c), "shared;", len(a - c), "gfx1100-only;", len(c - a), "gfx1151-only")
+PY
+```
+
+The 105 gfx1100-only variants are concentrated off the dense path: by layer they
+are 47 `linear`, 19 `moe_linear`, and 10 `laguna_attention_prefill`; by quant
+they are 24 `gguf_q5_k`, 23 `gguf_q6_k`, 15 `gguf_iq3_xxs`, and 14 `bf16`. Every
+gfx1100-only variant carries a written reason in the gfx1151 file, so this is
+deliberate scope, not drift.
+
+Exactly **five** gfx1100-only variants sit on the Qwen3.8-27B dense path, and
+each one has a named gate that would clear it:
+
+| Key | Recorded reason |
+| --- | --- |
+| `linear / gguf_q4_k_t16_v1 / dense_rowtile_col4_bf16_bf16_out` | W7900-only until gfx1151 receives an independent shape crossover and full-model gate |
+| `linear+residual / gguf_q4_k_t16_v1 / dense_rowtile_bf16_residual_bf16_out` | W7900-only pending independent gfx1151 boundary/model gates |
+| `linear_attn_alpha_beta+chain_conv+snapshot / f32 / bf16_k5120_n48_c10240_k4_exact_state_rows_tloop` | Screened only on gfx1100; gfx1151 keeps three independent leaves |
+| `linear_state_pair_copy / f32 / chunked_i32` | W7900-only until gfx1151 receives independent transaction and launch-overhead gates |
+| `paged_kv_write / gguf_q4_k_m / mixed_bf16_shared_batch_spans` | Qualified only for the W7900 dense-H5120 N1 graph; gfx1151 keeps scalar append aliases |
+
+The 18 overrides are the healthy pattern — gfx1151 keeps the key and swaps in a
+40-CU-tuned body (`gguf_q4_k_t16_wmma_prefill_gfx1151_bf16_bf16_out`,
+`qwen35_gdn_recurrent_rmsnorm_gate_indexed_shared_statecache24_lowp_bf16`,
+`qwen35_router_logits_bf16_f32w_auto_256`, and so on). One override changes the
+*reduction* rather than the geometry, and it is the one PARO cannot reach; see
+the `docs/REFACTOR.md` entry and the note below.
+
+The rows below are the ones whose status changed.
+
+### A1 (decode GEMV floor) — closed by measurement
+
+Dense decode is at the memory roof, so this row no longer gates anything. The
+standard `Q4_K_M` artifact carries 16.091 GB of AR-active weights per token
+(GGUF tensor table: 17.096 GB total, minus the 0.290 GB `blk.64` NextN/MTP
+block, minus the full 0.715 GB embedding table, plus one 5120-row embedding
+read). Measured AR decode is **12.213 tok/s** at 512/128, so the kernel streams
+**196.5 GB/s ≈ 88.9%** of the ~221 GB/s practical read roof in
+`docs/ROOFLINE-gfx1151.md` §3.2. The residual ~11% is shared with attention,
+GDN, sampler, and launch gaps, so it is not recoverable from the GEMV owners.
+Evidence: [`Q4_K_M AR/prefill refresh`](../benchmarks/results/2026-09-12-gfx1151-qwen38-27b-q4km-ar-prefill-refresh.json).
+The published `Q4_K_S` lane lands in the same place (13.069 tok/s over a
+16.12 GB file ≈ 95% of roof).
+
+### C4 (INT8 KV re-qualification) — elevated; this is the largest gfx1151 lever
+
+On gfx1151 the INT8 KV value proposition is **bandwidth, not capacity** (there
+is no 24 GiB wall), and the lane currently has none of it:
+
+- `hipengine/models/qwen35.py` records the gfx1151 `int8_per_token_head`
+  capability as **rejected** on `2026-08-15` ("minimum-prompt top-1 agreement
+  0.7778 is below the 0.90 gate" at 1024/8), so `resolve_kv_capability`
+  resolves the request to `effective_kv_storage="bf16"` with
+  `runtime_action="fallback_bf16"`. The gate is fail-closed and the reason is
+  recorded, which is correct behavior.
+- gfx1100 records the **same** quant/KV/scale contract as **qualified** with
+  scope `explicit_no_mirror_direct_c4` (`max_direct_rows=4`), and the gfx1100
+  route has since been through the per-layer oracle repair (`2026-09-10`) and
+  the physical-c4 promotion (`2026-09-11`).
+- The gfx1151 rejection predates the gfx1151 paged-attention geometry pins and
+  the current small-row owners, so it is not known whether today's kernels
+  reproduce it. The re-check is runnable without a plugin change via
+  `scripts/qwen35_native_mixed_kv_suite.py --backend hip_gfx1151
+  --diagnostic-kv-capability --candidate-kv-storage int8_per_token_head
+  --kv-scale-dtype fp32 --require-no-bf16-mirror`, which takes the real compact
+  route and records the injection as diagnostic.
+- Caveat that must travel with any re-run: the two lanes measured **different
+  model files** for the same nominal quant (`7e78da5d…c6fe169`, 17,106,775,008
+  bytes on gfx1151 versus `7b2aec3b…cc89f1b`, 17,106,773,984 bytes on
+  gfx1100), so a pass on one lane does not by itself transfer.
+
+### D1 (MTP graph-bucket admission) — narrowed to one named key
+
+The transferable gfx1100-only MTP item is a single registration:
+`paged_kv_write / gguf_q4_k_m / mixed_bf16_shared_batch_spans`, the W7900
+dense-H5120 N1 **graph** verifier KV-batching owner (row 5 of the table above).
+gfx1151 excludes it and keeps scalar append aliases. Everything else in the D1
+row is per-backend capability data already read through
+`backend_package_capability` (for example
+`GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS` is `8` on both backends).
+
+### New finding: PARO on gfx1151 cannot reach the gfx1151 paged-attention body
+
+`hipengine/runtime/qwen35_paro.py` pins `_PAGED_KV_REGISTRY_BACKEND =
+"hip_gfx1100"` (line 213) and passes it to all four of its KV/attention resolve
+sites: `resolve_paged_kv_write` (~2122), `resolve_paged_attn_decode` (~2259 and
+~4212), and `resolve_paged_attn_prefill` (~3778). The `Qwen35ParoDecodeState`
+docstring states the assumption outright ("Kernel selection still flows through
+the registry/wrappers added in the gfx1100 backend tree"), and PARO is a live
+gfx1151 lane, so this is on the shipped path.
+
+Concretely it defeats the single semantics-changing override in the table
+above: `paged_attn_decode / w4_paro / bf16_context_batch_c1_exact_spans`
+resolves to the gfx1100 c1-exact kernel, while every other gfx1151
+paged-attention caller gets
+`qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_spans` — the body the
+gfx1151 package pins to "the c4/c8-proven 256-thread shape" on the generic
+reduction. Both bodies are validated, so this is a cross-backend
+arithmetic-consistency risk rather than a known defect, but it is the kind of
+divergence a gfx1151 PARO-vs-GGUF paged-attention gate would flag. Tracked in
+`docs/REFACTOR.md` with its removal condition.
+
+### B2 (integer MMQ) — the direction is reversed, and the gfx1100 side is the open one
+
+gfx1151 owns `GGUF_Q6_DENSE_INTEGER_MMQ_PREFILL_POLICY` (planar Q6,
+`t16_q8_1_planar_integer_mmq64x64`, rows 17-48 on two shapes) and the
+`t16_q8_1_planar_integer_mmq64x64_bf16_bf16_out` registration that gfx1100 does
+not have. The gfx1100 Q8_1-activation MMQ screen therefore remains an
+**open gfx1100 item**, and gfx1151 is the donor rather than the recipient.
+
+### A2 (selected pair-reuse geometry) — still open
+
+gfx1151 admits the Q4 selected-expert pair-reuse dual owner
+(`GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS = 8`) but the owner's geometry
+(`x_rows=8/rows=64`) is shared source pinned by a gfx1100 measurement, and the
+40-CU grid is not the 96-CU grid it was tuned on. This is a MoE
+(Qwen3.6-35B-A3B) item, not a Qwen3.8-27B one, and it stays low priority.
+
+### A3, A4, B1, B3, C1, C2, C3, C5, D2 — unchanged
+
+No new evidence in this review. C1/C2/C3/C5 remain N/A-capacity or
+speed-only rows, and D2 stays governed by the gfx1151 scaling campaign's
+own-AR rule.
+
+### Reproducibility notes for the published gfx1151 rows
+
+- The `Q4_K_M` lane is reproducible on this host: the file at
+  `/models/gguf/Qwen3.8-27B-Q4_K_M.gguf` matches the evidence identity
+  `7e78da5d…c6fe169` exactly.
+- The published `Q4_K_S` row is **not** reproducible here: its artifact
+  (`22200efcd98a7aeeaf83f59b0f1400b055d9e0437900e26b930ef2d42a3eb3f9`,
+  16,121,359,328 bytes) is absent, and the local `UD-Q4_K_S` file is a
+  different artifact (`75bc9c8a…`, 15,358,213,024 bytes). Re-running that row
+  needs the original file re-fetched.

@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-11**
+Last updated: **2026-09-12**
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
@@ -37,7 +37,7 @@ row, not across them.
 | Qwen3.6-35B-A3B | GGUF `UD-Q4_K_M` | **1369.5** | **54.3** | 80.1 (opt-in) | — |
 | Laguna S 2.1 | GGUF `Q4_K_M` | **654.2** | **23.2** | — | — |
 | Qwen3.8-27B Dense | GGUF `Q4_K_S` | **396.1** | **13.1** | **23.9** | — |
-| Qwen3.8-27B Dense | GGUF `Q4_K_M` | — | — | **15.6** | — |
+| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **380.4** | **12.2** | **15.6** | — |
 
 **Time-series forecasting (TimesFM 2.5 200M).** hipEngine decodes batch=8,
 context 8192, horizon 512 forecasts in **0.082 s** on the power-limited HP ZBook
@@ -641,10 +641,29 @@ Speculative decode and single-request decode versus the same GGUF on llama.cpp:
 | Exact native B3 spec-decode (tok/s, speedup) | 23.85263 (1.7845x) | — | — |
 | Process memory (GiB) | 15.899 | 16.358 | — |
 Evidence: [`clean Q4_K_S`](results/2026-08-16-gfx1151-qwen38-27b-q4ks-clean-publication.json),
+[`Q5 source-F16 prefill retention`](results/2026-08-17-gfx1151-qwen38-27b-q4ks-q5-source-f16-prefill-retention.json)
+(the source of the prefill and AR columns above),
 [`exact B3`](results/2026-08-17-gfx1151-qwen38-27b-q4ks-exact-native-b3.json),
 [`memory package`](results/2026-08-17-gfx1151-qwen38-27b-q4ks-memory-parity-retained.json),
 [`G6 closure`](results/2026-08-17-gfx1151-qwen38-27b-q4ks-g6-closure.json), and the
 [`campaign plan`](../docs/QWEN38-27B-GFX1151-CAMPAIGN.md).
+
+The standard (non-UD) `Q4_K_M` file is a separate lane: a different model
+artifact, so its rates are not comparable with the `Q4_K_S` row above. One
+warmup and three measured resident resets per shape, production bulk WMMA
+prefill and HIP graph replay decode:
+
+| Shape | Prefill | AR decode | Tracked peak |
+| --- | ---: | ---: | ---: |
+| 512/128 | **380.366 tok/s** | **12.213 tok/s** | 16.087 GiB |
+| 1K/128 | **377.605 tok/s** | **11.980 tok/s** | 16.510 GiB |
+| 4K/128 | **361.497 tok/s** | **12.130 tok/s** | 18.859 GiB |
+
+Every prefill and decode CV is below 0.15%, all final token IDs are stable and
+finite, and every shape tears its tracked allocation down to zero. Dense decode
+streams about 89% of the documented practical read roof for `gfx1151`, so the
+remaining headroom on this file is small and is not concentrated in the GEMV
+owners. [`Q4_K_M AR/prefill refresh`](results/2026-09-12-gfx1151-qwen38-27b-q4km-ar-prefill-refresh.json).
 
 ### Radeon 8060S: Qwen3.6-35B-A3B GGUF
 
