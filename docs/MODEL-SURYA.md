@@ -21,7 +21,8 @@ vision tower and text decoder on gfx1151.
 | Request/resource contracts (greedy-only, capacity, EOS) | done | `hipengine/generation/surya_contract.py`, `tests/test_surya_generation_contract.py` |
 | GPU `rocprofv3` kernel-trace evidence | done | `benchmarks/results/2026-09-11-gfx1151-surya-kernel-trace.json` |
 | Rectangular-page coverage | done (vision + isolation) | `tests/test_surya_gpu.py` rect vision vs `oracle_rect` `vision_merged` |
-| Full-page corpus and held-out OCR quality | pending | only `page_small.png` (256x256) and `page_rect.png` are exercised |
+| Full-page coverage (1024x1024, real text) | done | `tests/fixtures/surya/page_full.png`, `scripts/surya_oracle_fullpage.py`, `tests/test_surya_gpu.py::test_gpu_full_page_layout_matches_oracle` |
+| Multi-page held-out OCR corpus | pending | only `page_small.png` (256x256), `page_rect.png` (320x192) and `page_full.png` (1024x1024) are exercised |
 | Registry migration + `KVLiveSpans` KV ABI | pending | tracked in `docs/REFACTOR.md` |
 | Quantized (GGUF) Surya decoder | pending | safetensors fp32 is the implementation target |
 | MTP / speculative decoding | pending | 15 MTP tensors inventoried, unused |
@@ -30,7 +31,10 @@ Correctness gates in place: CPU reference matches the torch fp32 oracle on
 greedy token IDs (`tests/fixtures/surya/oracle_greedy.json`), the HIP vision
 tower sits inside the CPU-reference noise band against `vision_merged`, and the
 full HIP pipeline (GPU vision features + GPU prefill/decode) reproduces the
-oracle greedy IDs exactly. All HIP tests carry a ROCm-availability guard.
+oracle greedy IDs exactly. On the full-size page the torch fp32 oracle, the
+NumPy CPU reference, and the gfx1151 HIP lane all produce the same 78-token
+layout-JSON output for `page_full.png` (grid 1x64x64, 1024 merged visual
+tokens). All HIP tests carry a ROCm-availability guard.
 
 ### Measured inventory (2026-09-11, revision `3b3d4cdf`)
 
