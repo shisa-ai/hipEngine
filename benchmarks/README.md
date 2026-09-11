@@ -69,7 +69,9 @@ published only where a dedicated ceiling run exists.
   | DMS INT8 | 232,448 | 100% | 0.001 |
 
   The model's full 262,144 context needs a predicted 24.8 GiB and does not
-  fit. [Capacity
+  fit. The direct-INT8 figures come from a route the suite rejects: 9 of 11
+  prompts fail, so it is an opt-in lever with a measured quality cost, not a
+  default. [Capacity
   evidence](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-capacity.json)
 
 ### Serving several requests at once
@@ -240,7 +242,14 @@ Reducing the packed one-row frontier overhead gates any packed-route
 product registration. Until then the legacy route is the only
 measured single-request MTP path.
 
-Strix Halo `Q4_K_M`: strict C1/K3 automatic at **18.191 tok/s (1.6445x AR)**; production explicit/K0. Production C8/K3 is **52.103 vs 52.025 AR tok/s**. Detailed gfx1151 evidence remains in result artifacts.
+Strix Halo `Q4_K_M`: strict C1/K3 automatic at **15.609 tok/s (1.5916x AR)**
+([d7 closure](results/2026-08-27-gfx1151-qwen38-dynamic-admission-d7-closure.json));
+production explicit/K0. Production C8/K3 is **52.103 vs 52.025 AR tok/s**
+([width policy](results/2026-09-05-gfx1151-qwen38-c8-k3-width-policy-retained.json)).
+The 18.191 tok/s / 1.6445x cell measured on the 2026-08-29 baseline is an
+aspiration target rather than the default: the retained production path
+measured 15.646 tok/s / 1.408x
+([streaming width-1](results/2026-08-31-gfx1151-qwen38-mtp-c1-streaming-width1-retained.json)).
 
 TimesFM 2.5 200M GPU decode (batch 8, context 8192, horizon 512) — **two
 physical Strix Halo `gfx1151` hosts, recorded as separate lanes**: **0.082 s**

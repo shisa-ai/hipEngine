@@ -223,7 +223,9 @@ published only where a dedicated ceiling run exists.
   | DMS INT8 | 232,448 | 100% | 0.001 |
 
   The model's full 262,144 context needs a predicted 24.8 GiB and does not
-  fit. [Capacity
+  fit. The direct-INT8 figures come from a route the suite rejects: 9 of 11
+  prompts fail, so it is an opt-in lever with a measured quality cost, not a
+  default. [Capacity
   evidence](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-capacity.json)
 
 ### Serving several requests at once
