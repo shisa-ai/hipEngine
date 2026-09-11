@@ -904,6 +904,9 @@ __global__ void evie_softmax_rows_kernel(
     __syncthreads();
   }
   const float mx = sm[0];
+  // barrier before reusing sm: every thread must have read the pass-1 max
+  // before any thread overwrites sm with its partial exponential sum.
+  __syncthreads();
   // pass 2: parallel sum of exponentials (write normalized exponentials)
   float denom = 0.0f;
   for (int64_t i = threadIdx.x; i < cols; i += blockDim.x) {
@@ -1342,6 +1345,9 @@ __global__ void evie_scale_softmax_rows_f16_kernel(
     __syncthreads();
   }
   const float mx = sm[0];
+  // barrier before reusing sm: every thread must have read the pass-1 max
+  // before any thread overwrites sm with its partial exponential sum.
+  __syncthreads();
   float denom = 0.0f;
   for (int64_t i = threadIdx.x; i < cols; i += blockDim.x) {
     const float e = expf(__half2float(sr[i]) * scale - mx);
