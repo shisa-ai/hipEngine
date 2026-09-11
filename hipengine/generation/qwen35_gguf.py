@@ -92,9 +92,11 @@ from hipengine.runtime.qwen35_gguf_runner import (
     Qwen35GGUFFullStackRunner,
     Qwen35GGUFResidentSession,
     _GGUF_PACKED_WORKSPACE_LEASE_KEY,
+    _GGUFResumablePrefillState,
     _PACKED_VERIFY_DEFAULT_SLOT_CAPACITY,
     _PACKED_VERIFY_MIN_MAX_SEQUENCE,
     _gguf_device_kv_contiguous_base_row,
+    _gguf_packed_layer_outer_enabled,
     _rope_tables as _gguf_rope_tables,
 )
 from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
@@ -102,6 +104,22 @@ from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
 
 def _new_gguf_timing_batch_id(kind: str) -> str:
     return f"gguf-{str(kind)}-{uuid.uuid4().hex}"
+
+
+_RESUMABLE_PREFILL_DONE = object()
+"""Row marker: the resumable prefill produced its first token already."""
+
+
+def _gguf_resumable_layer_count(session: Any) -> int:
+    """Model layer count for scheduling a resumable prefill's layer budget."""
+
+    config = getattr(
+        getattr(getattr(session, "runner", None), "weights", None),
+        "config",
+        None,
+    )
+    layer_types = getattr(config, "layer_types", None)
+    return 0 if layer_types is None else len(layer_types)
 
 
 def packed_workspace_owner_inventory(
@@ -5113,6 +5131,7 @@ class _GGUFResidentLoopRow:
     native_sampler: bool = False
     prefill_tokens_seen: int = 0
     incremental_prefill: bool | None = None
+    resumable_prefill: Any | None = None
     prefill_chunk_count: int = 0
     prefill_ms: float = 0.0
     lease: _GGUFResidentSessionLease | None = None
@@ -8016,6 +8035,11 @@ class Qwen35GGUFResidentModelRunner:
         *,
         final_chunk: bool,
     ) -> None:
+        if row.resumable_prefill is _RESUMABLE_PREFILL_DONE:
+            # The resumable layer-outer executor already produced this row's
+            # first token; the scheduler's remaining chunks for this prompt are
+            # bookkeeping only.
+            return
         if row.slot is not None:
             raise RuntimeError("GGUF resident row was prefilled more than once")
         lease = row.lease or self._acquire_lease()
@@ -8040,10 +8064,18 @@ class Qwen35GGUFResidentModelRunner:
                 )
             return
         if getattr(lease.session, "kv_attention_source", None) == "int8_direct":
+            if self._prefill_resumable_int8_chunk(
+                row,
+                chunk,
+                final_chunk=final_chunk,
+            ):
+                return
             # Exact no-mirror prefill owns one bounded transient BF16 oracle.
             # Releasing it between scheduler chunks would lose prior BF16 K/V,
             # so IKV-C1 buffers scheduler work and executes the complete prompt
             # once through the shifted block-table-aware single-row route.
+            # (P6 keeps this as the fail-closed path for shapes the resumable
+            # layer-outer executor declines.)
             self._fallback_reasons["int8_direct_full_prompt_prefill"] += 1
             self._disable_incremental_prefill(row, final_chunk=final_chunk)
             return
@@ -8121,6 +8153,105 @@ class Qwen35GGUFResidentModelRunner:
                 result_list[0],
                 native_compact_prefill=True,
             )
+
+    def _prefill_resumable_int8_chunk(
+        self,
+        row: _GGUFResidentLoopRow,
+        chunk: tuple[int, ...],
+        *,
+        final_chunk: bool,
+    ) -> bool:
+        """Advance one bounded layer segment of a compact-INT8 prefill (P6).
+
+        Roadmap F5: the old route did no model work on any chunk but the last,
+        so a long prompt blocked admission, cancellation, and interleaved
+        decode for its whole duration. The layer-outer packed executor already
+        makes every layer boundary a consistent state, so this runs at most
+        ``budget`` layers per scheduler poll and hands control back with real
+        GPU work done. Returns True when the resumable executor owned this
+        chunk (including the segment that completes the prompt); False when the
+        caller must use the fail-closed full-prompt path.
+        """
+
+        if row.prefix_reused_tokens:
+            # Shared-prefix admission requires incremental prefill support that
+            # the layer-outer executor does not provide.
+            return False
+        if not _gguf_packed_layer_outer_enabled():
+            return False
+        lease = row.lease
+        if lease is None:
+            return False
+        owner = self._packed_execution_owner(lease.session)
+        resume = getattr(
+            owner,
+            "prefill_batch_native_layer_outer_resumable",
+            None,
+        )
+        if not callable(resume):
+            return False
+        layer_count = _gguf_resumable_layer_count(owner)
+        if layer_count <= 0:
+            return False
+        state = row.resumable_prefill
+        if state is None:
+            remaining_layers = layer_count
+            prompts: tuple[tuple[int, ...], ...] | None = (
+                tuple(int(token) for token in row.prompt_ids),
+            )
+            sessions = (lease.session,)
+        else:
+            remaining_layers = max(0, layer_count - int(state.next_layer))
+            prompts = None
+            sessions = None
+        chunk_len = max(1, len(chunk))
+        # Polls still to come for this prompt, including this one. Future chunk
+        # sizes are approximated by the current one; the final chunk always
+        # finishes the remainder, so a misestimate only shifts work between
+        # polls rather than dropping it.
+        remaining_tokens = max(
+            0,
+            len(row.prompt_ids) - int(row.prefill_tokens_seen) + len(chunk),
+        )
+        remaining_polls = max(1, -(-remaining_tokens // chunk_len))
+        if final_chunk:
+            budget: int | None = None
+        else:
+            budget = max(1, -(-remaining_layers // remaining_polls))
+        started = time.perf_counter()
+        try:
+            if state is None:
+                result = resume(prompts, sessions=sessions, layer_budget=budget)
+            else:
+                result = resume(state=state, layer_budget=budget)
+        except NotImplementedError:
+            if state is None:
+                # The layer-outer executor declined this shape before doing any
+                # device work; the caller falls back to the full-prompt route.
+                self._fallback_reasons["resumable_int8_prefill_declined"] += 1
+                return False
+            raise
+        row.prefill_ms += _timing_ms_since(started)
+        row.prefill_chunk_count += 1
+        self._refresh_prefix_cache(row)
+        if isinstance(result, _GGUFResumablePrefillState):
+            row.resumable_prefill = result
+            self._route_counts["resumable_int8_prefill_segments"] += 1
+            return True
+        result_list = [] if result is None else list(result)
+        if len(result_list) != 1:
+            raise RuntimeError(
+                "resumable layer-outer prefill returned"
+                f" {len(result_list)} result(s) for one row"
+            )
+        row.resumable_prefill = _RESUMABLE_PREFILL_DONE
+        self._route_counts["resumable_int8_prefill_completions"] += 1
+        self._finish_native_prefill(
+            row,
+            result_list[0],
+            native_compact_prefill=True,
+        )
+        return True
 
     def _disable_incremental_prefill(
         self,

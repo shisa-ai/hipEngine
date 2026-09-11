@@ -1204,6 +1204,52 @@ class _GGUFPackedARPrefillChunk:
         return sum(len(tokens) for tokens in self.prompt_token_ids)
 
 
+@dataclass
+class _GGUFResumablePrefillState:
+    """Cross-poll checkpoint for a suspended layer-outer INT8 prefill.
+
+    P6 (roadmap F5): the compact INT8 prefill path used to defer all work to
+    the final scheduler chunk, so a long prompt blocked admission,
+    cancellation, and interleaved decode for its whole duration. The
+    layer-outer executor already makes every layer boundary a consistent
+    state (all rounds of a layer are complete, that layer's K/V is in the
+    direct INT8 store, and the shared oracle is transient), so the only
+    cross-poll checkpoint needed is the next layer index plus the plan and
+    workspace that the layer loop reads.
+
+    The hidden planes are dedicated session buffers
+    (``_prefill_hidden_a``/``_prefill_hidden_b``); the ping-pong phase is
+    ``next_layer % 2`` because each completed layer swaps the planes once.
+    ``chunk_plans`` and ``packed_state`` are session-owned and stable across
+    the suspension, so they are referenced rather than rebuilt - rebuilding
+    from ``session.position`` after a poll could drift if any other owner
+    touched the session.
+    """
+
+    prompts: tuple[tuple[int, ...], ...]
+    sessions: tuple["Qwen35GGUFResidentSession", ...]
+    chunk_plans: list[dict]
+    packed_state: object
+    packed_scratch_base: object
+    layer_types: tuple[str, ...]
+    next_layer: int
+    total_rows: int
+    sample_output: bool = True
+    return_logits: bool = False
+    require_logits: bool = False
+    runtime: object | None = None
+
+    @property
+    def layer_count(self) -> int:
+        return len(self.layer_types)
+
+    @property
+    def phase(self) -> int:
+        """Ping-pong parity: which hidden plane holds the current activations."""
+
+        return int(self.next_layer) % 2
+
+
 # P3: layer-outer packed AR prefill executor. When enabled, multi-chunk
 # slot-local packed prefills execute layer-outer (all chunks of a layer
 # complete before the next layer), so the per-layer BF16 oracle is shared
@@ -22155,59 +22201,188 @@ class Qwen35GGUFResidentSession:
                     stream=stream,
                 )
         finally:
-            seen: set[int] = set()
-            for session in session_tuple:
-                if id(session) in seen:
-                    continue
-                seen.add(id(session))
-                release = getattr(
-                    session,
-                    "_release_int8_prefill_oracle_buffers",
-                    None,
-                )
-                if callable(release):
-                    # Record the live oracle peak before the release clears the
-                    # owners: /metrics scrapes block on the loop lock while a
-                    # synchronous prefill runs, so out-of-process polling can
-                    # never observe these buffers while live (F4 in the
-                    # server/direct parity roadmap). This is the while-live
-                    # capture.
-                    live_pairs = getattr(session, "_int8_prefill_oracle_buffers", None)
-                    if isinstance(live_pairs, dict) and live_pairs:
-                        live_bytes = 0
-                        for key_cache, value_cache in live_pairs.values():
-                            try:
-                                live_bytes += int(key_cache.nbytes) + int(
-                                    value_cache.nbytes
-                                )
-                            except (AttributeError, TypeError):
-                                live_bytes = 0
-                                break
-                        if live_bytes:
-                            session._int8_prefill_oracle_observed_peak_bytes = max(
-                                int(
-                                    getattr(
-                                        session,
-                                        "_int8_prefill_oracle_observed_peak_bytes",
-                                        0,
-                                    )
-                                ),
-                                live_bytes,
+            self._release_int8_prefill_oracles_after_call(session_tuple)
+
+    def _release_int8_prefill_oracles_after_call(
+        self,
+        session_tuple: tuple["Qwen35GGUFResidentSession", ...],
+    ) -> None:
+        """Release every transient BF16 prefill oracle and clear per-layer keying.
+
+        Shared by the one-shot packed prefill entry and the resumable
+        layer-outer segment entry (P6). The while-live peak capture lives
+        here so both entries record the same observable owners.
+        """
+
+        seen: set[int] = set()
+        for session in session_tuple:
+            if id(session) in seen:
+                continue
+            seen.add(id(session))
+            release = getattr(
+                session,
+                "_release_int8_prefill_oracle_buffers",
+                None,
+            )
+            if callable(release):
+                # Record the live oracle peak before the release clears the
+                # owners: /metrics scrapes block on the loop lock while a
+                # synchronous prefill runs, so out-of-process polling can
+                # never observe these buffers while live (F4 in the
+                # server/direct parity roadmap). This is the while-live
+                # capture.
+                live_pairs = getattr(session, "_int8_prefill_oracle_buffers", None)
+                if isinstance(live_pairs, dict) and live_pairs:
+                    live_bytes = 0
+                    for key_cache, value_cache in live_pairs.values():
+                        try:
+                            live_bytes += int(key_cache.nbytes) + int(
+                                value_cache.nbytes
                             )
-                        session._int8_prefill_oracle_observed_peak_owners = max(
+                        except (AttributeError, TypeError):
+                            live_bytes = 0
+                            break
+                    if live_bytes:
+                        session._int8_prefill_oracle_observed_peak_bytes = max(
                             int(
                                 getattr(
                                     session,
-                                    "_int8_prefill_oracle_observed_peak_owners",
+                                    "_int8_prefill_oracle_observed_peak_bytes",
                                     0,
                                 )
                             ),
-                            len(live_pairs),
+                            live_bytes,
                         )
-                    release()
-                # Never let a multi-chunk call's per-layer keying leak into a
-                # later single-chunk call, which would read an unwritten pair.
-                session._int8_prefill_oracle_per_layer = False
+                    session._int8_prefill_oracle_observed_peak_owners = max(
+                        int(
+                            getattr(
+                                session,
+                                "_int8_prefill_oracle_observed_peak_owners",
+                                0,
+                            )
+                        ),
+                        len(live_pairs),
+                    )
+                release()
+            # Never let a multi-chunk call's per-layer keying leak into a
+            # later single-chunk call, which would read an unwritten pair.
+            session._int8_prefill_oracle_per_layer = False
+
+    def prefill_batch_native_layer_outer_segment(
+        self,
+        state: _GGUFResumablePrefillState,
+        *,
+        layer_budget: int | None = None,
+        stream: int = 0,
+    ) -> list[Qwen35GGUFNextTokenProbeResult | None] | _GGUFResumablePrefillState:
+        """Run one bounded segment of a suspended layer-outer INT8 prefill.
+
+        P6 (roadmap F5) public entry. It carries the same guards as the
+        one-shot ``prefill_batch_native``: packed decode graphs are
+        invalidated before the packed workspace is reused, deferred packed
+        decode state is flushed first, and every transient BF16 prefill oracle
+        is released (with the while-live peak captured) on the way out - so a
+        segment boundary is a real yield point with no prefill scratch left
+        owned by the suspended request beyond its hidden planes, its direct
+        INT8 K/V, and the checkpoint itself.
+        """
+
+        if bool(getattr(self, "_packed_decode_state_dirty", False)):
+            if not self.flush_packed_decode_state(stream=stream):
+                raise RuntimeError(
+                    "resumable packed prefill could not flush deferred packed"
+                    " decode state before reusing the packed workspace slots"
+                )
+        try:
+            return self._prefill_batch_native_layer_outer_segment(
+                state,
+                layer_budget=layer_budget,
+                stream=stream,
+            )
+        finally:
+            self._release_int8_prefill_oracles_after_call(tuple(state.sessions))
+
+    def prefill_batch_native_layer_outer_resumable(
+        self,
+        prompt_token_ids: (
+            list[list[int] | tuple[int, ...]]
+            | tuple[list[int] | tuple[int, ...], ...]
+            | None
+        ) = None,
+        *,
+        sessions: (
+            list["Qwen35GGUFResidentSession"]
+            | tuple["Qwen35GGUFResidentSession", ...]
+            | None
+        ) = None,
+        state: _GGUFResumablePrefillState | None = None,
+        layer_budget: int | None = None,
+        stream: int = 0,
+    ) -> list[Qwen35GGUFNextTokenProbeResult | None] | _GGUFResumablePrefillState:
+        """Start or continue a resumable layer-outer INT8 prefill.
+
+        P6 (roadmap F5) serving entry. The first call plans the full prompt's
+        rounds internally (``_plan_packed_ar_prefill_chunks`` over the session
+        bulk-prefill row capacity - the same plan the one-shot packed entry
+        builds), runs at most ``layer_budget`` layers, and returns the
+        checkpoint. Later calls pass ``state`` back and advance it. The call
+        returns a results list once the layer loop reaches the last layer.
+
+        Every call carries the one-shot entry's guards: live packed decode
+        graphs are invalidated, deferred packed decode state is flushed, and
+        the transient BF16 oracle is released on the way out. Because the
+        layer loop yields only at layer boundaries - where that layer's K/V is
+        already in the direct INT8 store - releasing the oracle per segment is
+        sound and the suspended request owns only its hidden planes, its
+        direct INT8 K/V, and this checkpoint.
+        """
+
+        if state is not None:
+            session_tuple = tuple(state.sessions)
+        else:
+            if prompt_token_ids is None or sessions is None:
+                raise ValueError(
+                    "resumable layer-outer prefill needs prompts and sessions"
+                    " to start, or a checkpoint to continue"
+                )
+            session_tuple = tuple(sessions)
+            prompt_tuple = tuple(
+                tuple(int(token) for token in prompt)
+                for prompt in prompt_token_ids
+            )
+            if self._bulk_prefill_scratch is None:
+                self._ensure_bulk_prefill_workspace()
+            chunks = _plan_packed_ar_prefill_chunks(
+                prompt_tuple,
+                row_capacity=int(self._bulk_prefill_scratch.rows),
+            )
+            if len(chunks) <= 1:
+                raise NotImplementedError(
+                    "resumable layer-outer prefill requires a multi-round prompt"
+                )
+        self._invalidate_live_packed_decode_graphs()
+        if bool(getattr(self, "_packed_decode_state_dirty", False)):
+            if not self.flush_packed_decode_state(stream=stream):
+                raise RuntimeError(
+                    "resumable packed prefill could not flush deferred packed"
+                    " decode state before reusing the packed workspace slots"
+                )
+        try:
+            if state is not None:
+                return self._prefill_batch_native_layer_outer_segment(
+                    state,
+                    layer_budget=layer_budget,
+                    stream=stream,
+                )
+            return self._prefill_batch_native_layer_outer(
+                prompt_tuple,
+                sessions=session_tuple,
+                chunks=chunks,
+                layer_budget=layer_budget,
+                stream=stream,
+            )
+        finally:
+            self._release_int8_prefill_oracles_after_call(session_tuple)
 
     def _prefill_batch_native_impl(
         self,
@@ -22556,7 +22731,9 @@ class Qwen35GGUFResidentSession:
         return_logits: bool = False,
         require_logits: bool = False,
         stream: int = 0,
-    ) -> list[Qwen35GGUFNextTokenProbeResult | None]:
+        resume_state: _GGUFResumablePrefillState | None = None,
+        layer_budget: int | None = None,
+    ) -> list[Qwen35GGUFNextTokenProbeResult | None] | _GGUFResumablePrefillState:
         """Execute a multi-chunk packed prompt layer-outer with one shared oracle.
 
         Every chunk of a layer completes before the next layer starts, so the
@@ -22571,7 +22748,23 @@ class Qwen35GGUFResidentSession:
         Scope: the serving shape only - greedy samples per slot, no hidden
         seeds, no target-hidden sinks, no layer-output capture. Everything
         else falls back to the corrected chunk-outer executor.
+
+        P6 resumable form: pass ``layer_budget`` to execute at most that many
+        layers; the call then returns a ``_GGUFResumablePrefillState`` instead
+        of results. Pass that state back as ``resume_state`` to continue. The
+        setup (round plan, packed workspace, initial sync, embeddings) runs
+        only on the first segment; the sampling tail and the packed-decode
+        scatter run only when the layer loop completes. Every segment boundary
+        is a layer boundary, so the transient oracle is released per segment
+        exactly as it is for a one-shot call.
         """
+
+        if resume_state is not None:
+            return self._prefill_batch_native_layer_outer_segment(
+                resume_state,
+                layer_budget=layer_budget,
+                stream=stream,
+            )
 
         prompt_tuple = tuple(tuple(int(token) for token in prompt) for prompt in prompt_token_ids)
         session_tuple = tuple(sessions)
@@ -22709,8 +22902,77 @@ class Qwen35GGUFResidentSession:
         self.last_packed_prefill_plan["executor_mode"] = "layer_outer_packed"
         self.last_packed_prefill_plan["layer_outer_rounds"] = len(chunk_plans)
         self.last_packed_prefill_plan["layer_outer_rows"] = total_rows
+        state = _GGUFResumablePrefillState(
+            prompts=prompt_tuple,
+            sessions=session_tuple,
+            chunk_plans=chunk_plans,
+            packed_state=packed_state,
+            packed_scratch_base=packed_scratch_base,
+            layer_types=tuple(
+                str(layer_type)
+                for layer_type in self.runner.weights.config.layer_types
+            ),
+            next_layer=0,
+            total_rows=int(total_rows),
+            sample_output=bool(sample_output),
+            return_logits=bool(return_logits),
+            require_logits=bool(require_logits),
+            runtime=runtime,
+        )
+        return self._prefill_batch_native_layer_outer_segment(
+            state,
+            layer_budget=layer_budget,
+            stream=stream,
+        )
+
+
+    def _prefill_batch_native_layer_outer_segment(
+        self,
+        state: _GGUFResumablePrefillState,
+        *,
+        layer_budget: int | None = None,
+        stream: int = 0,
+    ) -> list[Qwen35GGUFNextTokenProbeResult | None] | _GGUFResumablePrefillState:
+        """Run one bounded layer range of a suspended layer-outer prefill.
+
+        P6 (roadmap F5): the return to this method is the service yield point.
+        At most ``layer_budget`` layers run per call; when the loop does not
+        reach the last layer the advanced state is returned and the caller
+        (the scheduler poll) gets control back with real GPU work done, a
+        consistent layer-boundary state, and the transient oracle released.
+        When the last layer completes the sampling tail runs and the packed
+        decode state is scattered exactly as in the one-shot path.
+        """
+
+        session_tuple = state.sessions
+        chunk_plans = state.chunk_plans
+        packed_state = state.packed_state
+        packed_scratch_base = state.packed_scratch_base
+        sample_output = state.sample_output
+        return_logits = state.return_logits
+        require_logits = state.require_logits
+        runtime = state.runtime
+        layer_count = state.layer_count
+        layer_start = int(state.next_layer)
+        if layer_budget is None:
+            layer_end = layer_count
+        else:
+            layer_end = min(layer_count, layer_start + max(1, int(layer_budget)))
+        if layer_start < 0 or layer_start >= layer_count:
+            raise RuntimeError(
+                "resumable layer-outer prefill has no layers left to run"
+            )
+        if layer_end < layer_start:
+            raise RuntimeError("resumable layer-outer prefill layer range is inverted")
+        # Ping-pong phase at the *start* of this segment: each completed layer
+        # swapped the planes once, so an odd layer_start leaves the current
+        # activations in plane B. Capture it before advancing the checkpoint.
+        start_phase = int(layer_start) % 2
+        state.next_layer = layer_end
         src = self._prefill_hidden_a
         dst = self._prefill_hidden_b
+        if start_phase:
+            src, dst = dst, src
         linear_decode_scratch = replace(
             self.scratch,
             layer_conv_states=packed_state.layer_conv_states,
@@ -22718,7 +22980,8 @@ class Qwen35GGUFResidentSession:
         )
         full_kv_row_nbytes = self._packed_full_kv_row_nbytes()
         with wmma_prefill_session(self.use_wmma_prefill), gemv_decode_session(self.use_gemv_decode):
-            for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
+            for layer_id in range(layer_start, layer_end):
+                layer_type = state.layer_types[layer_id]
                 for entry in chunk_plans:
                     layout = entry["layout"]
                     rows = int(layout.rows)
@@ -22808,6 +23071,20 @@ class Qwen35GGUFResidentSession:
                 # One ping-pong swap per layer, not per chunk: a layer's input
                 # rows for every round are complete before it runs.
                 src, dst = dst, src
+
+            if layer_end < layer_count:
+                # P6 yield point: every round of layers [layer_start, layer_end)
+                # is complete, their K/V is in the direct INT8 store, and the
+                # transient oracle is released by the caller's finally. Return
+                # the advanced checkpoint so the scheduler poll can hand
+                # control back to the service driver.
+                self.last_packed_prefill_plan["layer_outer_layers_done"] = int(
+                    layer_end
+                )
+                self.last_packed_prefill_plan["layer_outer_layers_total"] = int(
+                    layer_count
+                )
+                return state
 
             # Sampling tail: only each slot's final row (last round).
             last_entry = chunk_plans[-1]
