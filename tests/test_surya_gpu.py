@@ -521,6 +521,56 @@ def test_gpu_ocr_corpus_matches_oracle(runner, page_name: str) -> None:
     assert json.loads(tokenizer.decode(generated)), "output is not valid JSON"
 
 
+def test_gpu_single_token_gemm_uses_sgemv_and_matches_sgemm(runner) -> None:
+    """Decode is one row: route it to SGEMV, and SGEMV must equal SGEMM.
+
+    rocBLAS SGEMM is tuned for a wide ``n``; with one row it reaches roughly a
+    third of the memory bandwidth SGEMV does, and decode is 187 single-row
+    GEMMs per token, so the dispatch is worth ~1.7x end to end. A wrong
+    transposition here returns wrong numbers silently rather than erroring,
+    which is why the routing and the numerics are both pinned.
+    """
+
+    r, _weights, _spec = runner
+    from hipengine.core.memory import copy_device_to_host, host_array_ptr
+
+    weight = r._w["model.language_model.layers.0.mlp.gate_proj.weight"]
+    in_features = 1152
+    out_features = weight.nbytes // 4 // in_features
+    x = r._buf("probe_x", in_features * 4)
+    out = r._buf("probe_out", out_features * 4)
+    # sized for the rows=3 dispatch probe below, which writes three rows
+    ref = r._buf("probe_ref", 3 * out_features * 4)
+    r._upload(x, np.random.default_rng(0).standard_normal(in_features).astype(np.float32) * 0.05)
+
+    seen: list[str] = []
+    real_gemv = r.rocblas.sgemv_rowmajor_nt
+    real_gemm = r.rocblas.sgemm_rowmajor_nt
+    r.rocblas.sgemv_rowmajor_nt = lambda *a, **kw: (seen.append("gemv"), real_gemv(*a, **kw))[1]
+    r.rocblas.sgemm_rowmajor_nt = lambda *a, **kw: (seen.append("gemm"), real_gemm(*a, **kw))[1]
+    try:
+        r._gemm(x.ptr, weight.ptr, out.ptr, 1, in_features, out_features)
+        r._gemm(x.ptr, weight.ptr, ref.ptr, 3, in_features, out_features)
+    finally:
+        r.rocblas.sgemv_rowmajor_nt = real_gemv
+        r.rocblas.sgemm_rowmajor_nt = real_gemm
+    assert seen == ["gemv", "gemm"], f"rows==1 must route to SGEMV, got {seen}"
+
+    # the GEMV result must equal a one-row SGEMM (fp32 summation order differs)
+    real_gemm(x.ptr, weight.ptr, ref.ptr, rows=1, in_features=in_features, out_features=out_features)
+    r.runtime.device_synchronize()
+    a = np.empty(out_features, dtype=np.float32)
+    b = np.empty(out_features, dtype=np.float32)
+    copy_device_to_host(host_array_ptr(a), out, a.nbytes)
+    copy_device_to_host(host_array_ptr(b), ref, b.nbytes)
+    r.runtime.device_synchronize()
+    d = np.abs(a - b)
+    assert d.max() <= 1e-5 * max(1.0, float(np.abs(a).max())), (
+        f"SGEMV disagrees with SGEMM: max|d|={d.max():.3e}"
+    )
+    assert int(np.argmax(a)) == int(np.argmax(b))
+
+
 def test_gpu_text_only_matches_oracle(runner) -> None:
     """Text-only (no image) path: GPU prefill logits and greedy ids.
 

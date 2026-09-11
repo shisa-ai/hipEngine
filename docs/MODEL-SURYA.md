@@ -55,6 +55,16 @@ just text finding. `page_list.png` (512x512) decodes to
 the list label. Both are 1x32x32 grids and both reach a natural EOS (94 and 46
 tokens).
 
+Decode is one row per step, and rocBLAS SGEMM is tuned for a wide `n`: at
+`n == 1` it reads the weights at roughly a third of the bandwidth SGEMV
+reaches. `SuryaGpuRunner._gemm` therefore routes `rows == 1` to
+`Rocblas.sgemv_rowmajor_nt`. Both accumulate in fp32, so only the summation
+order changes; the greedy oracle gates are unaffected. End-to-end this took a
+full OCR request from 2.051 s to 1.276 s on gfx1151 (decode 32.9 to 55.5
+tok/s). The same fp32 `rows == 1` pattern exists in `runtime/evie.py`,
+`runtime/timesfm_decode.py` and `runtime/timesfm3_decode.py`, which have not
+been converted.
+
 ### Measured inventory (2026-09-11, revision `3b3d4cdf`)
 
 Checkpoint downloaded and inventoried; the geometry table above matches the
