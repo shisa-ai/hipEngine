@@ -592,6 +592,11 @@ class SuryaGpuRunner:
         image_token_id = -1
         if visual_features is not None:
             vf = np.ascontiguousarray(visual_features, dtype=np.float32)
+            n_img = int((np.asarray(input_ids) == s.image_token_id).sum())
+            if vf.ndim != 2 or vf.shape[0] != n_img or vf.shape[1] != s.hidden_size:
+                raise SuryaGpuRuntimeError(
+                    f"visual_features must be (n_image_tokens, hidden) = "
+                    f"({n_img}, {s.hidden_size}); got {vf.shape}")
             if self._visual_buf is None or self._visual_buf.nbytes < vf.nbytes + _GEMM_PAD_BYTES:
                 if self._visual_buf is not None:
                     hip_free(self._visual_buf)
