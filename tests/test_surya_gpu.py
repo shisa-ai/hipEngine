@@ -636,3 +636,58 @@ def test_gpu_generator_public_api_matches_oracle() -> None:
             )
     finally:
         gen.close()
+
+
+def test_gpu_generator_multi_prompt_isolation() -> None:
+    """``generate`` must be invariant to how many prompts share a request.
+
+    ``generate`` loops ``request.prompts`` on one runner, so the prompts run
+    back-to-back over shared KV slots and recurrent state. A leak between them
+    shows up as a result that depends on position within the request, which is
+    what this checks. Nothing else in the suite passes more than one prompt.
+
+    Liveness: with the ``decode_step`` off-by-one from 91bd23576 reintroduced,
+    the long-then-short ordering below fails this test; the single-prompt and
+    multimodal->multimodal tests in the suite do not.
+    """
+
+    from hipengine.generation.registry import GenerationRequest
+    from hipengine.generation.surya_gpu import SuryaOCRGeneratorGPU
+
+    # The first prompt must be much longer than the others. A leak that reads
+    # KV past the current request's own slots only corrupts a *short* prompt
+    # that follows a longer one; three similarly sized prompts did not expose
+    # the decode_step off-by-one fixed in 91bd23576.
+    long_prompt = (
+        "Transcribe every word on this page exactly as it appears, preserving "
+        "all line breaks, headings and table cells. "
+    ) * 4
+    prompts = [long_prompt, "Read.", "Transcribe this page."]
+
+    def request(prompt_list: list[str]) -> GenerationRequest:
+        return GenerationRequest(
+            prompts=prompt_list,
+            max_tokens=16,
+            temperature=0.0,
+            top_p=1.0,
+            ignore_eos=False,
+        )
+
+    gen = SuryaOCRGeneratorGPU(model_path=_model_dir())
+    try:
+        # a lone prompt, then the same prompt as the head of a longer request
+        alone = gen.generate(request([prompts[0]]))
+        multi = gen.generate(request(prompts))
+        assert len(multi) == len(prompts)
+        assert multi[0] == alone[0], (
+            "first prompt changed when later prompts joined the request"
+        )
+
+        # reversing the request must reverse the outputs, not change them
+        rev = gen.generate(request(list(reversed(prompts))))
+        assert rev == list(reversed(multi)), (
+            "generate() is order-dependent: a prompt's output depends on which "
+            "prompts ran before it in the same request"
+        )
+    finally:
+        gen.close()
