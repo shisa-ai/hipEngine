@@ -25,9 +25,9 @@ class PublicExportBudget:
 
 PUBLIC_EXPORT_BUDGETS = {
     "README_HIGHLIGHTS": PublicExportBudget(
-        max_lines=130,
-        max_prose_paragraphs=8,
-        max_prose_chars=2000,
+        max_lines=150,
+        max_prose_paragraphs=10,
+        max_prose_chars=2800,
     ),
 }
 

@@ -8,7 +8,9 @@ model loading, generation, and OpenAI-compatible serving on supported hardware.
 the latest version of hipEngine now supports inference for more model
 families. These include [Laguna S 2.1](https://poolside.ai/blog/introducing-laguna-s-2-1),
 [Maple ternary](https://github.com/deepgrove-ai/mlx-lm-deepgrove), and [Moonshine ASR](https://github.com/moonshine-ai/moonshine).
-It has also undergone extensive tuning for [Qwen 3.8 27B Q4_K_M]().
+It has also undergone extensive tuning for
+[Qwen 3.8 27B Q4_K_M](#performance), including long-context modes that hold
+up to 232K tokens of context on a 24 GB card.
 
 ## Why use hipEngine?
 
@@ -204,10 +206,15 @@ the same GPU; FP16 production within 0.86% max error of the FP32 oracle.
 Blank cells are shapes we have not measured yet, not failures. Max context is
 published only where a dedicated ceiling run exists.
 
-- **Qwen3.8-27B `Q4_K_M` context ceilings on 24 GB `gfx1100`:** six measured
-  configurations, 40,960 to 232,448 tokens depending on the KV format and
-  route; the full 262,144 context needs a predicted 24.8 GiB and does not
-  fit. [Capacity
+- **Qwen3.8-27B `Q4_K_M` context ceilings on 24 GB `gfx1100`:** BF16 KV
+  server 40,960; DMS BF16 73,728; INT8 KV direct engine 131,072; DMS INT8
+  merged lane 172,288; direct-INT8 prefill or DMS INT8 + single hidden
+  plane 232,448 (the model's full 262,144 context needs a predicted
+  24.8 GiB and does not fit). With
+  [DMS](https://arxiv.org/abs/2506.05345), a trained eviction policy
+  compacts the KV cache: the DMS INT8 route is significantly more accurate
+  than direct-INT8 KV (mean row-KL 0.001 vs 0.188, top-1 agreement 100% vs
+  91.4% against the BF16 teacher). [Capacity
   evidence](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-capacity.json)
 
 ### Serving several requests at once
