@@ -463,7 +463,7 @@ non-exact state gate (engagement/isolation/determinism), cross-run
 determinism, and the serving-path A/B all passed; measured serving-path
 gain +6.5% TG (prefill neutral). The warp256 kernels stay default-off
 with complete evidence recorded
-([outcome worklog](../worklog/entries/20260910T083000.000000Z-lhl-qwen4exp-r11-outcome.md));
+([outcome worklog](../worklog/entries/20260910T083000.000000Z-lhl-qwen4exp-r11-qualification-outcome-220afd.md));
 a future revisit needs a reduction-order-preserving gate/up variant or a
 model-class recalibration decision.
 [Family](../benchmarks/results/2026-09-09-framework-qwen4exp-r2e-family.json),
@@ -585,7 +585,7 @@ bounded-drift admission policy decision, not an engineering step. The
 A/B-harness digest `ea0412231532bc7b` used in the wrapper-host gates is
 the harness digest, not the canonical-contract digest (`19045b7c9fd442e5`);
 arm-equality conclusions are unaffected - see the digest-mismatch worklog
-(`20260910T094500.000000Z-lhl-qwen4exp-digest-mismatch-repro.md`).
+(`20260910T094500.000000Z-lhl-qwen4exp-digest-mismatch-repro-af418a.md`).
 
 **Execution order (prefill-first, GPU serialized):** R11 qualification
 is CLOSED (not promoted, evidence recorded). The newer-engine windowed
@@ -620,7 +620,7 @@ WMMA A-fragment), repair 0.75s, legacy layers and router previously
 rejected. Every T0 lever is measured or analytically closed; the
 remaining ~3x requires the bounded-drift admission policy decision
 (same blocker as R12). See the
-[closure worklog](../worklog/entries/20260910T143000.000000Z-lhl-qwen4exp-r13-closure.md). No
+[closure worklog](../worklog/entries/20260910T143000.000000Z-lhl-qwen4exp-r13-ladder-closure-d11e6a.md). No
 IU4, resident-PLE/offload, GDN, or MTP detours for this serial-AR gap.
 **R12 dense-MMQ project CLOSED (September 10):** the tile sweep
 confirmed the retained 128x128 tile optimal; the two-plane d4x2 variant
@@ -630,7 +630,7 @@ canonical envelope on every bar (mean 1.60e-3, max 7.18e-2, top-1
 price, and closing it needs bounded-drift arithmetic the current bars
 reject at whole-model scope. Candidate wiring retained default-off; a
 P2-style layer-cluster continuation is recorded unverified in the
-[rejection worklog](../worklog/entries/20260910T113000.000000Z-lhl-qwen4exp-r12-d4x2-rejection.md).
+[rejection worklog](../worklog/entries/20260910T113000.000000Z-lhl-qwen4exp-r12-d4x2-rejection-d84f30.md).
 
 Post-Q5_K-promotion refresh (clean `771337563`, six promotions active):
 code-p4096 prefill MoE 7.496s, linear 3.458s (dense iu8 took attn_gate +
