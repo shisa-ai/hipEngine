@@ -39,6 +39,7 @@ if str(REPO_ROOT) not in sys.path:
 from hipengine.benchmark.provenance import collect_artifact_provenance
 from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.core.memory import memory_stats, reset_memory_stats
+from hipengine.generation.qwen35_gguf import _gguf_decode_graph_enabled
 from hipengine.loading.gguf import GGUFModelInfo, scan_gguf
 from hipengine.runtime.prefill import PrefillConfig
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
@@ -857,7 +858,9 @@ def _run_existing_session_once(
     prefill_gpu_stage_timings_ms: dict[str, float] = {}
     decode_gpu_stage_timings_ms: dict[str, float] = {}
     decode_graph_transport_provenance = None
-    decode_graph_disabled_reason = _decode_graph_disabled_reason(session, graph_replay_decode)
+    decode_graph_disabled_reason = _decode_graph_disabled_reason(
+        session, graph_replay_decode, decode_tokens=decode_tokens
+    )
     effective_graph_replay_decode = bool(graph_replay_decode and decode_graph_disabled_reason is None)
     try:
         prefill_start = time.perf_counter()
@@ -1081,7 +1084,9 @@ def _run_once(
     graph_capture_seconds = 0.0
     decode_graph_transport_provenance = None
     mapped_host_embedding = _mapped_host_embedding_audit(session)
-    decode_graph_disabled_reason = _decode_graph_disabled_reason(session, graph_replay_decode)
+    decode_graph_disabled_reason = _decode_graph_disabled_reason(
+        session, graph_replay_decode, decode_tokens=decode_tokens
+    )
     effective_graph_replay_decode = bool(graph_replay_decode and decode_graph_disabled_reason is None)
     try:
         prefill_start = time.perf_counter()
@@ -1218,7 +1223,12 @@ def _mapped_host_embedding_audit(session: Any) -> dict[str, Any]:
     }
 
 
-def _decode_graph_disabled_reason(session: Any, requested: bool) -> str | None:
+def _decode_graph_disabled_reason(
+    session: Any,
+    requested: bool,
+    *,
+    decode_tokens: int | None = None,
+) -> str | None:
     if not requested:
         return None
     if not callable(getattr(session, "capture_decode_graph", None)):
@@ -1227,7 +1237,37 @@ def _decode_graph_disabled_reason(session: Any, requested: bool) -> str | None:
         getattr(session, "_device_token_embedding_weight", None)
     ):
         return "host_token_embedding"
+    if decode_tokens is not None:
+        minimum = _backend_min_replay_steps(session)
+        if minimum is not None and int(decode_tokens) < minimum:
+            return "below_backend_min_replay_steps"
     return None
+
+
+def _backend_min_replay_steps(session: Any) -> int | None:
+    """Return the resident session's admitted graph break-even, if any."""
+
+    minimum_fn = getattr(session, "decode_graph_min_replay_steps", None)
+    minimum = minimum_fn() if callable(minimum_fn) else None
+    return None if minimum is None else int(minimum)
+
+
+def _default_decode_graph_request(session: Any, decode_tokens: int) -> bool:
+    """Mirror the engine's own GGUF decode-graph admission for this decode length.
+
+    ``qwen35_gguf`` submits a resident decode through a captured graph only when
+    ``HIPENGINE_GGUF_DECODE_GRAPH`` is enabled, the backend package publishes a
+    graph break-even, and the remaining transitions cover it.  Sweeps that leave
+    the graph unrequested must reproduce that decision, otherwise they measure a
+    configuration production does not run.
+    """
+
+    if not _gguf_decode_graph_enabled():
+        return False
+    minimum = _backend_min_replay_steps(session)
+    if minimum is None:
+        return False
+    return int(decode_tokens) >= minimum
 
 
 def _summary(runs: list[dict[str, Any]]) -> dict[str, Any]:

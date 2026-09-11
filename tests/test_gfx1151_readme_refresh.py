@@ -25,6 +25,7 @@ from scripts.qwen35_readme_sweep import (
     _acquire_paro_readme_graph,
     _gguf_session_identity,
     _measured_graph_replay_requested,
+    _resolve_gguf_graph_request,
     _summarize_runs,
 )
 
@@ -183,6 +184,29 @@ def test_paro_sweep_uses_fresh_measured_graphs() -> None:
     ]
     assert _measured_graph_replay_requested(requested=True, measured=False) is False
     assert _measured_graph_replay_requested(requested=True, measured=True) is True
+
+
+def test_resolve_gguf_graph_request_defers_to_engine_only_when_unset(monkeypatch) -> None:
+    """An explicit sweep flag wins; an unset flag reproduces the engine decision."""
+
+    class Session:
+        def __init__(self, minimum: int | None) -> None:
+            self._minimum = minimum
+
+        def decode_graph_min_replay_steps(self) -> int | None:
+            return self._minimum
+
+    monkeypatch.delenv("HIPENGINE_GGUF_DECODE_GRAPH", raising=False)
+    session = Session(128)
+    # Explicit requests are never second-guessed by the backend floor.
+    assert _resolve_gguf_graph_request(requested=True, session=session, decode_tokens=32) is True
+    assert _resolve_gguf_graph_request(requested=False, session=session, decode_tokens=4096) is False
+    # Unset follows the engine: eager below the floor, graph at or above it.
+    assert _resolve_gguf_graph_request(requested=None, session=session, decode_tokens=127) is False
+    assert _resolve_gguf_graph_request(requested=None, session=session, decode_tokens=128) is True
+    # A gfx1100-class floor resolves differently for the same shape.
+    assert _resolve_gguf_graph_request(requested=None, session=Session(24), decode_tokens=128) is True
+    assert _resolve_gguf_graph_request(requested=None, session=Session(24), decode_tokens=16) is False
 
 
 def _provenance(*, warmups: int = 2, repetitions: int = 5) -> dict[str, object]:
