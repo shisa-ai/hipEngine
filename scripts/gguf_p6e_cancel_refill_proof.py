@@ -77,6 +77,12 @@ DEFAULT_COMPILER_VERSION_FILE = Path("/tmp/hipengine-hipcc-version.txt")
 
 REQUIRE_CACHED_BUILD_ENV = _hipengine_build._ENV_REQUIRE_CACHED_BUILD
 COMPILER_VERSION_FILE_ENV = "HIPENGINE_COMPILER_VERSION_FILE"
+# The layer-outer route that the resumable prefill lives on, and the metric that
+# only that route moves: the shared per-layer oracle owner. A proof that does not
+# assert this can silently measure the default chunk-outer path instead.
+PACKED_LAYER_OUTER_ENV = "HIPENGINE_GGUF_PACKED_LAYER_OUTER"
+ORACLE_OWNER_BYTES_METRIC = "hipengine_resident_prefill_oracle_owner_bytes"
+ORACLE_OWNER_COUNT_METRIC = "hipengine_resident_prefill_oracle_owners"
 
 # Declared before measuring, so no gate can be fitted to the result.
 DECLARED_ACK_P95_LIMIT_MS = 3000.0
@@ -392,6 +398,32 @@ def _metric_delta(
     return new - old
 
 
+def _peak_metric_during(
+    client: httpx.Client,
+    base_url: str,
+    name: str,
+    *,
+    duration_s: float,
+    interval_s: float = 0.05,
+) -> float | None:
+    """Highest value a gauge reaches over a window, or None if it never appears.
+
+    A single scrape cannot prove a transient path ran: the layer-outer oracle
+    owner is allocated during prefill and released by the time the request
+    returns, so the peak is what distinguishes "this route ran" from "it did not
+    and the gates passed for unrelated reasons".
+    """
+
+    deadline = time.perf_counter() + duration_s
+    peak: float | None = None
+    while time.perf_counter() < deadline:
+        value = _metric(_metrics_values(client, base_url), name)
+        if value is not None:
+            peak = value if peak is None else max(peak, value)
+        time.sleep(interval_s)
+    return peak
+
+
 def _wait_for(predicate: Any, *, timeout: float, interval: float = 0.05) -> bool:
     deadline = time.perf_counter() + timeout
     while time.perf_counter() < deadline:
@@ -414,6 +446,8 @@ def evaluate_gates(
     blocking_survivor_text: str = "",
     slow_consumer_survivor_text: str = "",
     slow_consumer_completed: bool = False,
+    oracle_peak_bytes: float | None = None,
+    oracle_peak_owners: float | None = None,
 ) -> dict[str, Any]:
     """Evaluate the service gates. Split out so the failure paths are testable."""
 
@@ -425,6 +459,22 @@ def evaluate_gates(
         "detail": (
             "closing the socket must reach the backend as a cancellation, not "
             "merely stop the client reading"
+        ),
+    }
+    gates["resumable_path_engaged"] = {
+        # Without this the other gates can all pass on the default chunk-outer
+        # path, which does not contain the deliverable at all. The layer-outer
+        # oracle owner is the gauge that only the resumable route moves.
+        "passed": bool(oracle_peak_owners) and bool(oracle_peak_bytes),
+        "oracle_peak_owners": oracle_peak_owners,
+        "oracle_peak_bytes": oracle_peak_bytes,
+        "owners_metric": ORACLE_OWNER_COUNT_METRIC,
+        "bytes_metric": ORACLE_OWNER_BYTES_METRIC,
+        "detail": (
+            "the layer-outer route must actually engage during a long prefill, "
+            "proven by the shared per-layer oracle owner being allocated while the "
+            "prefill is in flight; otherwise every other gate here is evidence "
+            "about the default route rather than about the resumable yield"
         ),
     }
     gates["survivors_exact"] = {
@@ -532,6 +582,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
     environment = {
         **_EXACT_ENV,
+        # P6's resumable yield only exists on the layer-outer route, which is
+        # default OFF (HIPENGINE_GGUF_PACKED_LAYER_OUTER=0). Without this the
+        # harness silently measures the default chunk-outer path and its gates
+        # pass for reasons that have nothing to do with the deliverable. The
+        # resumable_path_engaged gate below is what stops that from recurring.
+        PACKED_LAYER_OUTER_ENV: "1" if args.packed_layer_outer else "0",
         "HIPENGINE_MAX_ACTIVE_REQUESTS": "2",
         # Sized for the long prompt, not for the live bench's 512-token contexts:
         # a 3072-token context needs far more KV pages than the live bench's
@@ -704,6 +760,28 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
             blocking_thread = threading.Thread(target=_run_blocking, daemon=True)
             blocking_thread.start()
+            # Sample the layer-outer oracle owner while the long blocking prefill is
+            # in flight. It is the one gauge that only the resumable route moves, so
+            # its peak is what proves this run exercised the deliverable rather than
+            # the default chunk-outer path.
+            oracle_peak: dict[str, float | None] = {}
+
+            def _poll_oracle_peak() -> None:
+                deadline = time.perf_counter() + join_seconds
+                while time.perf_counter() < deadline and blocking_thread.is_alive():
+                    values = _metrics_values(client, base_url)
+                    for key, metric in (
+                        ("bytes", ORACLE_OWNER_BYTES_METRIC),
+                        ("owners", ORACLE_OWNER_COUNT_METRIC),
+                    ):
+                        value = _metric(values, metric)
+                        if value is not None:
+                            current = oracle_peak.get(key)
+                            oracle_peak[key] = value if current is None else max(current, value)
+                    time.sleep(0.05)
+
+            oracle_thread = threading.Thread(target=_poll_oracle_peak, daemon=True)
+            oracle_thread.start()
             time.sleep(lead_seconds)
             blocking_survivor = _stream_completion(
                 client,
@@ -713,7 +791,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 max_tokens=max_tokens,
             )
             blocking_thread.join(timeout=join_seconds)
+            oracle_thread.join(timeout=join_seconds)
             blocking_outcome = blocking.get("outcome")
+            oracle_peak_bytes = oracle_peak.get("bytes")
+            oracle_peak_owners = oracle_peak.get("owners")
 
             # --- 6. slow consumer ------------------------------------------------
             # A reader that consumes its stream slowly must not stall the engine.
@@ -763,6 +844,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             and bool(slow_outcome.text)
             and slow_outcome.finish_reason is not None
         ),
+        oracle_peak_bytes=oracle_peak_bytes,
+        oracle_peak_owners=oracle_peak_owners,
     )
 
     return {
@@ -813,6 +896,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             },
             "cancellation_counter_before": cancelled_before,
             "cancellation_counter_after": cancelled_after,
+            "packed_layer_outer_enabled": bool(args.packed_layer_outer),
+            "oracle_peak_owners": oracle_peak_owners,
+            "oracle_peak_bytes": oracle_peak_bytes,
             "blocking": {
                 "long_request": {
                     "chars": len(blocking_outcome.text)
@@ -934,6 +1020,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--batch-window-ms", type=float, default=20.0)
     parser.add_argument(
         "--compiler-version-file", type=Path, default=DEFAULT_COMPILER_VERSION_FILE
+    )
+    parser.add_argument(
+        "--packed-layer-outer",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "enable the layer-outer route the resumable prefill lives on; the "
+            "resumable_path_engaged gate fails if it never engages, so this "
+            "cannot silently fall back to the default chunk-outer path"
+        ),
     )
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--json", type=Path, default=None)
