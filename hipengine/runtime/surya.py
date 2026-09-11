@@ -236,6 +236,15 @@ class SuryaGpuRunner:
             raise SuryaGpuRuntimeError(f"{what} failed: hip error {err}")
 
     def _gemm(self, x_ptr: int, w_ptr: int, out_ptr: int, rows: int, fin: int, fout: int) -> None:
+        if rows == 1:
+            # Decode is one row: rocBLAS SGEMM runs at ~128 GB/s there (it is
+            # tuned for a wide n), while SGEMV reads the same weights at
+            # ~316 GB/s. Measured 2.48x on a 3185x1152 fp32 weight on gfx1151.
+            # Both accumulate in fp32; the only difference is summation order.
+            self.rocblas.sgemv_rowmajor_nt(
+                x_ptr, w_ptr, out_ptr, in_features=fin, out_features=fout
+            )
+            return
         self.rocblas.sgemm_rowmajor_nt(
             x_ptr, w_ptr, out_ptr, rows=rows, in_features=fin, out_features=fout
         )

@@ -170,6 +170,50 @@ class Rocblas:
             "rocblas_sgemm",
         )
 
+    def sgemv_rowmajor_nt(
+        self,
+        x_ptr: int,
+        weight_ptr: int,
+        out_ptr: int,
+        *,
+        in_features: int,
+        out_features: int,
+        stream: int = 0,
+    ) -> None:
+        """Single-vector F32 ``out[out_features] = weight[out,in] @ x[in]``.
+
+        The ``rows == 1`` case of :meth:`sgemm_rowmajor_nt`. rocBLAS SGEMM is
+        tuned for a wide ``n``, and with ``n == 1`` it runs far below memory
+        bandwidth; SGEMV reads the same weight bytes several times faster
+        (measured 2.5x on a 3185x1152 fp32 weight on gfx1151).
+
+        Column-major, so the call computes the transposed view: ``y`` has
+        ``out_features`` entries and ``x`` has ``in_features``.
+        """
+
+        if in_features <= 0 or out_features <= 0:
+            _check_shape(rows=1, in_features=in_features, out_features=out_features)
+        self.set_stream(stream)
+        alpha = ctypes.c_float(1.0)
+        beta = ctypes.c_float(0.0)
+        _check(
+            self.library.rocblas_sgemv(
+                ctypes.c_void_p(self.handle),
+                ctypes.c_int(ROCBLAS_OPERATION_TRANSPOSE),
+                ctypes.c_int(in_features),
+                ctypes.c_int(out_features),
+                ctypes.byref(alpha),
+                ctypes.c_void_p(weight_ptr),
+                ctypes.c_int(in_features),
+                ctypes.c_void_p(x_ptr),
+                ctypes.c_int(1),
+                ctypes.byref(beta),
+                ctypes.c_void_p(out_ptr),
+                ctypes.c_int(1),
+            ),
+            "rocblas_sgemv",
+        )
+
     def sgemm_strided_batched(
         self,
         a_ptr: int,
@@ -751,6 +795,21 @@ def _configure(library: ctypes.CDLL) -> None:
         ctypes.c_int,
     ]
     library.rocblas_sgemm.restype = ctypes.c_int
+    library.rocblas_sgemv.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.POINTER(ctypes.c_float),
+        ctypes.c_void_p,
+        ctypes.c_int,
+        ctypes.c_void_p,
+        ctypes.c_int,
+        ctypes.POINTER(ctypes.c_float),
+        ctypes.c_void_p,
+        ctypes.c_int,
+    ]
+    library.rocblas_sgemv.restype = ctypes.c_int
     library.rocblas_sgemm_strided_batched.argtypes = [
         ctypes.c_void_p,
         ctypes.c_int,
