@@ -6343,18 +6343,24 @@ records the gap.
 ## 2026-09-11 Surya vision attention: quadratic score scratch — open
 
 `hipengine/runtime/surya.py` `_vis_scores` materializes the full vision
-attention score matrix, `vision_num_heads * n^2 * 4` bytes for `n` patches
-(`vision_num_heads` = 12, and the resize factor is 32, so `n` = page pixels /
-1024): 50 MB for 1024x1024 (32x32 grid), 805 MB for 2048x2048 (64x64),
-4.08 GB for 3072x3072 (96x96), and 12.88 GB at the checkpoint's own
-`SURYA_MAX_PIXELS` ceiling of 16,777,216 px (16384 patches, 128x128 grid).
+attention score matrix, `vision_num_heads * n^2 * 4` bytes for `n` patches.
+`vision_num_heads` is 12 and patches are 16 px (`SURYA_RESIZE_FACTOR` 32 is
+patch size times spatial merge), and attention runs *before* the merger, so `n`
+is the full patch grid `h * w` — four times the merged vision token count.
+Scratch is therefore quadratic in page area: 3.15 MB for the 256x256 fixture
+(16x16 grid, 256 patches), 805 MB for the 1024x1024 fixture (64x64, 4096),
+4.08 GB for 1536x1536 (96x96, 9216), 12.88 GB for 2048x2048 (128x128, 16384).
+
 Admission now bounds it (`DEFAULT_MAX_VISION_SCRATCH_BYTES`, 4 GiB) so an
-over-budget page fails with a clear error instead of attempting the
-allocation; the cap admits grids up to ~97x97 and rejects beyond. Bounding is
-not a fix: a 300-DPI A4 page resizes to 2496x3520 (110x78 grid, 8580 patches)
-and already needs 3.53 GB, which is inside the cap but leaves little room.
+over-budget page fails with a clear error before any device work or allocation
+rather than attempting the allocation. The cap admits at most ~9459 patches (a
+97x97 grid, 1552 px square). Bounding is not a fix, and the ceiling sits far
+above the cap: `SURYA_MAX_PIXELS` (16,777,216 px) admits a 4096x4096 page whose
+256x256 grid needs **206 GB**. A 300-DPI A4 page is worse than it looks — it
+resizes to 2496x3520 (220x156, 34320 patches) and needs **56.5 GB**, so the cap
+rejects a routine document by 13x, not marginally.
 
 Replace with tiled vision attention, which needs no full score matrix. Until
-then `SURYA_MAX_PIXELS` (16_777_216) admits pages the vision path cannot run,
-so `smart_resize` and the runtime disagree above the cap; resolve that in the
-same change. `docs/MODEL-SURYA.md` records the current envelope.
+then `SURYA_MAX_PIXELS` admits pages the vision path cannot run, so
+`smart_resize` and the runtime disagree above the cap; resolve that in the same
+change. `docs/MODEL-SURYA.md` records the current envelope.
