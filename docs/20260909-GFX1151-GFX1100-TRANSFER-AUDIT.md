@@ -337,6 +337,10 @@ own-AR rule.
 
 ## I. Pin inventory for the Qwen3.8-27B dense path (2026-09-12, commit `7ed5c5559`)
 
+Amended 2026-09-12 at commit `eb7236fb5`: the highest-value target below was
+reframed and closed by a same-file comparator measurement. The pin counts and
+the six-mechanism table are unchanged.
+
 Section H established that the gfx1100-only *registry* surface is mechanical and
 carries a written reason per key. This section does the same for the *capability*
 surface and separates the mechanisms, because they have different clearing costs.
@@ -439,13 +443,29 @@ shared source.
 
 ### Highest-value gfx1151 targets, in order
 
-1. **Give the Q4_K_M lane its own external comparator.** The published
-   `380.366/377.605/361.497` prefill and `12.213/11.980/12.130` AR rows are the
-   only gfx1151 Qwen3.8-27B numbers with no same-artifact external cell. The
-   llama HIP/Vulkan cells (`352.426/364.443/367.993` prefill) come from the
-   Q4_K_S campaign, and the Q4_K_M artifact's own `comparability` field declares
-   the two lanes non-comparable. Until matched llama cells exist for this file,
-   "beats llama.cpp at every working shape" is established for Q4_K_S only.
+1. **Give the Q4_K_M lane its own published comparator — closed 2026-09-12, and
+   the original framing of this item was wrong.** This item previously read that
+   the `352.426/364.443/367.993` prefill cells "come from the Q4_K_S campaign"
+   and that the Q4_K_M lane therefore had no same-artifact external cell. Both
+   statements are false. Those cells come from
+   `benchmarks/results/2026-08-15-gfx1151-qwen38-27b-p0-baseline.json`, whose
+   `model` block is the Q4_K_M file, sha256 `7e78da5d…c6fe169` — the same
+   artifact this section measures. The Q4_K_S campaign borrowed them, and says
+   so in its own key names (`llama_hip_q4km_prefill_tok_s`), while measuring a
+   separate `same_file_llama_prefill_512` for its own file. The P0 rows also
+   carry `true_ar_tok_s` (`12.151/12.065/11.508`) and a uniform
+   `token_sha256_i64`, so the Q4_K_M lane had a token-exact same-file comparator
+   on **both** axes. What it lacked was publication, which the 2026-09-12
+   refresh supplies: [`same-file llama.cpp comparator`](../benchmarks/results/2026-09-12-gfx1151-qwen38-27b-q4km-same-file-llama-comparator.json).
+
+   The real finding is the opposite of a gap. On this file hipEngine does not
+   lead llama.cpp HIP at every working shape: it trails prefill at 4K/128 by
+   1.73% at the explicit-token-array tier and by 3.49% at the `llama-bench`
+   tier, and it trails llama.cpp Vulkan decode at every shape by 4.1-6.4%. The
+   `Q4_K_S` section's "beats the llama.cpp backends at every working shape"
+   prose remains true for `Q4_K_S` against this comparator, which is the harder
+   prefill baseline of the two, but it must not be read as covering the Q4_K_M
+   row.
 2. **Close the 18 undocumented capability gates.** Each needs a recorded gfx1151
    verdict — retune, decline, or N/A — at the same standard the 105 registry
    exclusions already meet. This is a ledger task.

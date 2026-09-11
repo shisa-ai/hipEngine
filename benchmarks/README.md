@@ -677,6 +677,35 @@ streams about 89% of the documented practical read roof for `gfx1151`, so the
 remaining headroom on this file is small and is not concentrated in the GEMV
 owners. [`Q4_K_M AR/prefill refresh`](results/2026-09-12-gfx1151-qwen38-27b-q4km-ar-prefill-refresh.json).
 
+This is the one `gfx1151` Qwen3.8-27B lane measured against llama.cpp on the
+same file. Both engines ran back to back on one host with BF16 K/V:
+
+| Shape | hipEngine prefill | llama.cpp HIP prefill | hipEngine AR | llama.cpp HIP AR |
+| --- | ---: | ---: | ---: | ---: |
+| 512/128 | 380.132 tok/s | **383.191 tok/s** | 12.222 tok/s | **12.230 tok/s** |
+| 1K/128 | 378.444 tok/s | **385.116 tok/s** | 11.989 tok/s | **12.137 tok/s** |
+| 4K/128 | 361.622 tok/s | **374.692 tok/s** | **12.141 tok/s** | 11.592 tok/s |
+
+On this file hipEngine and llama.cpp HIP stay within about 3.5% and neither
+leads everywhere: llama.cpp HIP is ahead on prefill at all three shapes, while
+hipEngine is ahead on decode at 4K/128 and level at 512/128 and 1K/128. Against
+llama.cpp Vulkan, hipEngine leads prefill at 512/128 and 1K/128 by about 0.6%,
+trails prefill at 4K/128 by 1.1%, and trails Vulkan decode at every shape by
+4.1-6.4%. The `Q4_K_S` row above leads its comparator on every axis; this row
+does not, so the two lanes do not carry the same result.
+
+The llama.cpp columns above come from `llama-bench`, which generates its own
+prompts and cannot take the repeated-token prompt hipEngine uses, so that tier
+is a split-timing comparator rather than a token-exact one. A stricter
+explicit-token-array tier on the same file, gated on a uniform token hash, puts
+hipEngine prefill 7.9% ahead of llama.cpp HIP at 512/128 and 3.8% ahead at
+1K/128 but 1.7% behind at 4K/128, with decode 0.6% behind at 512/128, 0.6%
+behind at 1K/128, and 5.5% ahead at 4K/128. The tier changes the prefill
+verdict, so both are recorded. hipEngine `Tracked peak` counts hipEngine
+allocator ownership and the llama.cpp peak is an external whole-process GTT
+delta; the two are different scopes and are not comparable as a memory result.
+[`same-file llama.cpp comparator`](results/2026-09-12-gfx1151-qwen38-27b-q4km-same-file-llama-comparator.json).
+
 ### Radeon 8060S: Qwen3.6-35B-A3B GGUF
 
 This is the latest clean, exact one-queue production snapshot. The artifact is a
