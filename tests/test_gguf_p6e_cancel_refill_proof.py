@@ -36,8 +36,12 @@ _HEALTHY = {
     "slow_consumer_completed": True,
     # The layer-outer route must be seen to engage, or the other gates are
     # evidence about the default chunk-outer path instead of the deliverable.
-    "oracle_peak_owners": 1.0,
-    "oracle_peak_bytes": 912907308.0,
+    # The indicator is the WHILE-LIVE observed peak: the live owner gauge reads
+    # zero even when the route ran, because /metrics scrapes block on the loop
+    # lock during a synchronous prefill.
+    "oracle_observed_peak_owners": 1.0,
+    "oracle_observed_peak_bytes": 912907308.0,
+    "live_oracle_owners": 0.0,
 }
 
 
@@ -66,7 +70,7 @@ def test_all_gates_pass_on_a_healthy_run() -> None:
 def test_resumable_gate_fails_when_the_layer_outer_route_never_engaged() -> None:
     """The gate that stops this proof from silently testing the default route."""
 
-    gates = _gates(oracle_peak_owners=0.0, oracle_peak_bytes=0.0)
+    gates = _gates(oracle_observed_peak_owners=0.0, oracle_observed_peak_bytes=0.0)
 
     assert gates["resumable_path_engaged"]["passed"] is False
     # Every other gate can still pass, which is exactly the hazard: they would be
@@ -75,15 +79,33 @@ def test_resumable_gate_fails_when_the_layer_outer_route_never_engaged() -> None
     assert gates["cancellation_reached_backend"]["passed"] is True
 
 
+def test_resumable_gate_ignores_the_live_gauge_which_always_reads_zero() -> None:
+    """The false negative this gate was rebuilt to avoid.
+
+    The live owner gauge is unobservable from out of process while a synchronous
+    prefill holds the loop lock, so a gate keyed on it fails no matter what the
+    engine did. The while-live observed peak is the indicator that can pass.
+    """
+
+    gates = _gates(
+        oracle_observed_peak_owners=1.0,
+        oracle_observed_peak_bytes=912907308.0,
+        live_oracle_owners=0.0,
+    )
+
+    assert gates["resumable_path_engaged"]["passed"] is True
+    assert gates["resumable_path_engaged"]["live_gauge_owners"] == 0.0
+
+
 def test_resumable_gate_fails_when_the_oracle_metrics_are_absent() -> None:
-    gates = _gates(oracle_peak_owners=None, oracle_peak_bytes=None)
+    gates = _gates(oracle_observed_peak_owners=None, oracle_observed_peak_bytes=None)
 
     assert gates["resumable_path_engaged"]["passed"] is False
 
 
 def test_resumable_gate_fails_when_owners_rose_but_bytes_did_not() -> None:
     # A partial reading must not be accepted as engagement.
-    gates = _gates(oracle_peak_owners=1.0, oracle_peak_bytes=0.0)
+    gates = _gates(oracle_observed_peak_owners=1.0, oracle_observed_peak_bytes=0.0)
 
     assert gates["resumable_path_engaged"]["passed"] is False
 
@@ -219,3 +241,28 @@ def test_a_single_divergent_character_fails_the_survivors_gate() -> None:
     gates = _gates(refill_text=_REFERENCE_TEXT.replace("lazy", "la2y"))
 
     assert gates["survivors_exact"]["passed"] is False
+
+
+def test_layer_outer_flag_helper_reads_the_env_it_is_given(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The engagement gate is only meaningful if the engine can read the flag.
+
+    Without this, a run that passes --packed-layer-outer could still leave the
+    route disabled by plumbing, and the gate would be blamed on the engine.
+    """
+
+    from hipengine.runtime import qwen35_gguf_runner as runner
+
+    monkeypatch.setenv("HIPENGINE_GGUF_PACKED_LAYER_OUTER", "1")
+    monkeypatch.setattr(runner, "_gguf_packed_layer_outer_enabled_cache", None)
+    assert runner._gguf_packed_layer_outer_enabled() is True
+
+    monkeypatch.setenv("HIPENGINE_GGUF_PACKED_LAYER_OUTER", "0")
+    monkeypatch.setattr(runner, "_gguf_packed_layer_outer_enabled_cache", None)
+    assert runner._gguf_packed_layer_outer_enabled() is False
+
+    monkeypatch.delenv("HIPENGINE_GGUF_PACKED_LAYER_OUTER", raising=False)
+    monkeypatch.setattr(runner, "_gguf_packed_layer_outer_enabled_cache", None)
+    # Default OFF: the corrected chunk-outer executor remains the fallback.
+    assert runner._gguf_packed_layer_outer_enabled() is False
