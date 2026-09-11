@@ -68,6 +68,9 @@ class SuryaOCRGeneratorGPU:
         self.model_plugin = model_plugin
         self.supports_vision = True
         self.speculative_candidate_budget = 0
+        # Advertised so a caller can admit a request before submitting it.
+        self.max_seq = self.runner.max_seq
+        self.max_vision_scratch_bytes = self.runner.max_vision_scratch_bytes
 
     # -- TextGenerator protocol (text-only) --------------------------------
 
@@ -146,7 +149,6 @@ class SuryaOCRGeneratorGPU:
         self, prompt: str, image: Any, request: Any, settings: Any
     ) -> tuple[list[int], str]:
         pixel_rows, grid = preprocess_image_surya(image)
-        merged = self.runner.vision_forward(pixel_rows, [grid])
         n_image_tokens = (grid[1] // 2) * (grid[2] // 2)
         input_ids, mm = render_chat_prompt(
             self.tokenizer, prompt, n_image_tokens
@@ -154,6 +156,16 @@ class SuryaOCRGeneratorGPU:
         position_ids = compute_mrope_positions(
             mm, grid, self.spec.vision_spatial_merge_size
         )
+        # Admit before vision, not after. Preprocessing, the prompt and the
+        # mRoPE tables are host-side and cheap; vision is the expensive step and
+        # allocates scratch quadratic in the patch count, so an over-capacity or
+        # over-budget page must be rejected before it runs. `_decode_greedy`
+        # repeats the context check for its own callers; it is O(1).
+        check_prompt_capacity(
+            len(input_ids), settings.max_tokens, self.runner.max_seq
+        )
+        self.runner.check_vision_capacity([grid])
+        merged = self.runner.vision_forward(pixel_rows, [grid])
         return self._decode_greedy(
             np.array([input_ids], dtype=np.int64),
             position_ids,
