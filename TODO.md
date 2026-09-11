@@ -11,7 +11,7 @@ Goal: basic hipEngine support for all of these. Start with models that have **no
 | google/timesfm-2.5-200m | TimesFmModelForPrediction | ❌ (not a token LM) | ✅ `timesfm_2p5_200m` |
 | google/timesfm-3.0-pytorch | TimesFM3Torch | ❌ | ✅ `timesfm_3p0` (GPU decode; 4.17x torch fp32 on gfx1151) |
 | shisa-ai/shisa-realtime-asr-0.92b | MoonshineForConditionalGeneration | ❌ (runtime is sherpa-onnx) | ✅ `moonshine_asr` (native HIP decoder) |
-| datalab-to/surya-ocr-2 | Qwen3_5 (gated DeltaNet) | ✅ official GGUF, documented llama.cpp backend | 🟡 `qwen3_5_gguf` text decoder only; no vision tower |
+| datalab-to/surya-ocr-2 | Qwen3_5 (gated DeltaNet) | ✅ official GGUF, documented llama.cpp backend | 🟡 Qwen3.5 decoder + EVIE vision reuse candidates; Surya integration pending ([plan](docs/MODEL-SURYA.md)) |
 | tencent/EVIE-4.5B / 8B | ColQwen3_5 | ❌ (no multi-vector/MaxSim) | ✅ `evie_4p5b` (both sizes; 4.5B: batched fp16 encode 1.13 s, 1.11x torch bf16; 8B: fp32 parity-gated, fp32 recommended) |
 | microsoft/VibeVoice-ASR | VibeVoiceForASRTraining | ❌ (custom audio tokenizers) | ❌ |
 | microsoft/VibeVoice-1.5B | VibeVoiceForConditionalGeneration | ❌ (TTS diffusion head) | ❌ |
@@ -140,9 +140,14 @@ If hipEngine already runs Gemma 3, **MedGemma 1.5** (4B multimodal; 27B text and
 3. **MinerU 2.5** — Qwen2-VL-2B encoder + Qwen2-0.5B LM, both plain attention, nothing exotic. GGUF and a llama.cpp writeup already exist. The work is the two-stage async pipeline: crop extraction, decoupled stage I/II scheduling, and repetition suppression that spares legitimate table structure.
 4. **PaddleOCR-VL** — ERNIE-4.5-0.3B decoder is trivial; NaViT variable-resolution patching and packing is the real work. The LiteRT port is a gift: it documents that the decoder is a standalone Llama-layout model, bit-exact fp32 vs original, and that 1-D positions substitute fine for M-RoPE on OCR with no quality loss. That's most of your bring-up validation done.
 
-**Correction to what I said earlier about Surya.** The MLX port reveals Surya 2 has **18 Gated-DeltaNet layers** — it's Qwen3-Next-style hybrid linear attention, not plain Qwen3.5. That's a new kernel class, not a weight swap, so it drops from #3 to #5. Also note it needs two auxiliary torch models: the EfficientViT segformer for line detection and a separate `surya_layout2` fast-layout model.
-
-**GDN question resolved (2026-09-10):** EVIE (ColQwen3_5 = Qwen3.5 dense with GDN) is done, so the Gated-DeltaNet kernel class exists and is oracle-validated in-tree — it does **not** gate EVIE, and the same kernels should transfer to Surya's hybrid layers and any Qwen3.5-dense-family port. Surya therefore moves back up the queue on kernel reuse, but still needs the two auxiliary torch models (EfficientViT line detection + `surya_layout2`).
+5. **Surya OCR 2 — next model implementation.** Qwen3.5 hybrid decoder
+   (18 GDN + 6 full-attention layers) plus a 12-block vision tower. Reuse the
+   existing Qwen3.5 generation path and adapt EVIE's vision encoder; remaining
+   work includes weight/tokenizer validation, image preprocessing, image-feature
+   injection, mRoPE continuation, and OCR output handling. The current full-page
+   path uses the VLM alone; text-line detection and RF-DETR fast layout are
+   separate optional capabilities. See [docs/MODEL-SURYA.md](docs/MODEL-SURYA.md)
+   for the 2026-09-11 source review, pitfalls, and implementation gates.
 
 6. **GLM-OCR** — CogViT encoder, connector with token downsampling, GLM-0.5B decoder, MTP head active at inference, plus a PP-DocLayout-V3 dependency for the layout stage. Most new surface, but the MTP path is the most interesting thing here given your spec-dec work.
 7. **VibeVoice-ASR** — Qwen2 decoder over 64K context is easy; the acoustic + semantic tokenizers at 24 kHz are the new front end. Note there's also `VibeVoice-ASR-Streaming-7B` (10 languages) if streaming matters more than the 60-minute single pass.
