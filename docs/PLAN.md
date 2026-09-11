@@ -544,8 +544,11 @@ executing every model transition through an explicit physical-c1 serial
 fallback. Shifted token/logit/state/KV exactness, varied-prompt server parity,
 zero persistent BF16 bytes, staggered cancellation/survivor continuation, and
 zero final ownership pass on RX 7900 XTX. This is not native c>N and carries no
-throughput claim. `IKV-C2` row-batched direct INT8 attention is next; BF16 stays
-supported/default.
+throughput claim. `IKV-C2` row-batched direct INT8 attention is complete and
+promoted to physical c4 on the gfx1100 Qwen3.8-27B artifact (2026-09-11): the
+primitive gate is bit-exact against the CPU reference and independent c1 at
+c1/c2/c4/c8, and a retire/admit transition gate holds a 4 -> 2 -> 4 lane
+schedule exact per row at every step. BF16 stays supported/default.
 
 #### Qwen3.8-27B capacity on the 24 GB RX 7900 XTX
 

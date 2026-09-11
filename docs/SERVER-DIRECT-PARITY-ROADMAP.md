@@ -620,8 +620,20 @@ throughput of ~1.23x (C2) and ~1.40x (C4) over the serial rate, with
 `serial_decode_fallback_steps` at zero. Per-request latency still grows with
 width and is reported separately from aggregate throughput.
 
-Still open in this packet: exact cancellation during an in-flight packed
-prefill/decode mix, and per-request latency at C>N as a published figure.
+Per-request latency at C>N is a published figure (4.95 s at C1, 7.97 s at C2,
+14.1 s at C4 concurrent, against a 5.06 s serial control at C4), so 1.42x
+aggregate throughput costs 2.80x per-request latency and the tradeoff is
+visible rather than implied. Cancellation safety for a formed packed group is
+pinned by tests over the chunk-change flush that writes a group's accumulated
+packed state back before the group re-forms, including a newcomer reusing a
+freed lane at equal width. The packed-ownership trace has a committed generator
+that resolves the capability snapshot live, so the artifact cannot record a
+width the registry has moved past. A cancellation racing an in-flight *packed
+prefill* is the P6 resumable-prefill intersection rather than a separate IKV-C2
+gap.
+
+Still open in this packet: the C1 decode HIP-API/queue-gap, D2H/H2D, telemetry,
+and host-CPU attribution, and explicit graph-capture cost and amortization.
 
 ### P6 - Restore bounded prefill/decode service and cover public modes
 

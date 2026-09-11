@@ -1475,10 +1475,15 @@ These are deliberately after dense INT8 and DMS:
     capacity work; do not confuse this with a fidelity fix.
 15. [x] Complete `IKV-C0`: integrate the divergent Qwen3.8 branches and add
     fail-closed artifact/backend/target/quant/layout/scale capability identity.
-16. [ ] Complete `IKV-C1`: no-mirror c2/c4 through a declared serial c1-per-row
-    fallback with shifted block-table prefill and zero BF16 shadow.
-17. [ ] Complete `IKV-C2`: register and trace row-batched 24Q/4KV/D256 INT8
-    split-K attention plus row-batched gated reduction.
+16. [x] Complete `IKV-C1`: no-mirror c2/c4 through a declared serial c1-per-row
+    fallback with shifted block-table prefill and zero BF16 shadow. Qualified
+    and admitted on 2026-08-16 (`max_serial_resident_rows` 4,
+    `persistent_bf16_mirror` false).
+17. [x] Complete `IKV-C2`: register and trace row-batched 24Q/4KV/D256 INT8
+    split-K attention plus row-batched gated reduction. Completed and promoted
+    to physical c4 on the W7900 gfx1100 Qwen3.8-27B artifact on 2026-09-11; the
+    committed `rocprofv3` ownership trace shows one batch producer plus one
+    strided reducer launch for all four rows.
 18. [ ] Complete `IKV-C3/C4`: shared prefill ownership and complete admission
     accounting for KV, scales, mirrors, workspace, oracle, graphs, and reserve.
 19. [ ] Complete `IKV-C5/C6`: cancellation, compaction, grow/shrink,
