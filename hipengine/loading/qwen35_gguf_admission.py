@@ -81,6 +81,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field, replace
 import hashlib
+from types import MappingProxyType
 from typing import Iterable, Mapping
 
 from hipengine.loading.qwen35_gguf import (
@@ -180,6 +181,7 @@ __all__ = [
     "qwen35_gguf_planned_weight_digest",
     "qwen35_gguf_planned_weight_record",
     "resolve_qwen35_gguf_artifact_preset",
+    "resolve_qwen35_gguf_nextn_draft_qtypes",
 ]
 
 
@@ -236,6 +238,74 @@ _UD_PRESET_FINGERPRINTS: Mapping[str, tuple[str, tuple[str, ...], str]] = {
         GGUF_UD_Q4_K_S_PRESET,
         (GGUF_PRESET_SCOPE_AR,),
         "Pinned Unsloth Dynamic Qwen3.8-27B UD-Q4_K_S role manifest.",
+    ),
+}
+
+# U6: separate MTP-scope certification.  The ``_UD_PRESET_FINGERPRINTS`` table
+# above stays AR-only; MTP scope is granted only by an entry here, keyed by the
+# same role-manifest fingerprint and carrying its qualification evidence.  The
+# two tables are deliberately distinct so a new AR certificate can never widen
+# MTP admission by accident, and so an MTP certificate can be revoked without
+# touching AR.
+#
+# Empty until the complete U6 MTP scope passes.  The scope is not just "MTP
+# runs": it is the declared backend/quant/profile/context/width envelope, the
+# c1..c8 serving paths, draft residency and eh_proj/head ownership, exact
+# accept/commit control, and the full category/heldout suite against a true
+# no-MTP AR denominator.  The enabling work below (draft dtype pin, quant-
+# agnostic accept-chain registration) is landed and gated; only this pin is
+# withheld.
+_UD_MTP_PRESET_FINGERPRINTS: Mapping[str, str] = {}
+
+# Per-artifact NextN draft dtype manifests (U6).  A UD draft block is quantized
+# differently from the plain control's draft: Q6_K for eh_proj/attn_q/
+# attn_output/ffn_gate/ffn_up/ffn_down and Q8_0 for attn_k/attn_v.  Those
+# values happen to coincide with the Qwen3.8 native-XL expectation, but that
+# map is selected by a *caller-claimed* variant and is therefore unusable here
+# (a foreign file could claim it).  These pins are instead resolved from the
+# admitted preset identity, which is itself bound to the role-manifest
+# fingerprint, so a file can only obtain them by being the pinned artifact.
+# Each pin must cover every validated draft slot exactly; the validator
+# refuses a partial manifest rather than silently falling back to the plain
+# expectation for the rest of the block.
+_UD_NEXTN_DRAFT_QTYPES: Mapping[str, Mapping[str, GGMLQuantizationType]] = {
+    GGUF_UD_Q4_K_M_PRESET: MappingProxyType(
+        {
+            "attn_norm": GGMLQuantizationType.F32,
+            "post_attention_norm": GGMLQuantizationType.F32,
+            "attn_q_norm": GGMLQuantizationType.F32,
+            "attn_k_norm": GGMLQuantizationType.F32,
+            "enorm": GGMLQuantizationType.F32,
+            "hnorm": GGMLQuantizationType.F32,
+            "shared_head_norm": GGMLQuantizationType.F32,
+            "eh_proj": GGMLQuantizationType.Q6_K,
+            "attn_q": GGMLQuantizationType.Q6_K,
+            "attn_k": GGMLQuantizationType.Q8_0,
+            "attn_v": GGMLQuantizationType.Q8_0,
+            "attn_output": GGMLQuantizationType.Q6_K,
+            "ffn_gate": GGMLQuantizationType.Q6_K,
+            "ffn_up": GGMLQuantizationType.Q6_K,
+            "ffn_down": GGMLQuantizationType.Q6_K,
+        }
+    ),
+    GGUF_UD_Q4_K_S_PRESET: MappingProxyType(
+        {
+            "attn_norm": GGMLQuantizationType.F32,
+            "post_attention_norm": GGMLQuantizationType.F32,
+            "attn_q_norm": GGMLQuantizationType.F32,
+            "attn_k_norm": GGMLQuantizationType.F32,
+            "enorm": GGMLQuantizationType.F32,
+            "hnorm": GGMLQuantizationType.F32,
+            "shared_head_norm": GGMLQuantizationType.F32,
+            "eh_proj": GGMLQuantizationType.Q6_K,
+            "attn_q": GGMLQuantizationType.Q6_K,
+            "attn_k": GGMLQuantizationType.Q8_0,
+            "attn_v": GGMLQuantizationType.Q8_0,
+            "attn_output": GGMLQuantizationType.Q6_K,
+            "ffn_gate": GGMLQuantizationType.Q6_K,
+            "ffn_up": GGMLQuantizationType.Q6_K,
+            "ffn_down": GGMLQuantizationType.Q6_K,
+        }
     ),
 }
 
@@ -460,6 +530,10 @@ def resolve_qwen35_gguf_artifact_preset(
     if pinned is None:
         return None
     preset_key, scopes, note = pinned
+    mtp_note = _UD_MTP_PRESET_FINGERPRINTS.get(manifest.fingerprint)
+    if mtp_note is not None:
+        scopes = (*scopes, GGUF_PRESET_SCOPE_MTP)
+        note = f"{note} {mtp_note}".strip()
     return Qwen35GGUFArtifactPreset(
         preset_key=preset_key,
         scopes=tuple(scopes),
@@ -467,6 +541,22 @@ def resolve_qwen35_gguf_artifact_preset(
         file_type_stamp=None if file_type_stamp is None else str(file_type_stamp),
         note=note,
     )
+
+
+def resolve_qwen35_gguf_nextn_draft_qtypes(
+    preset: Qwen35GGUFArtifactPreset | None,
+) -> Mapping[str, GGMLQuantizationType] | None:
+    """Pinned NextN draft dtype manifest for one admitted artifact preset.
+
+    ``None`` means the preset carries no artifact-pinned draft manifest, so the
+    NextN validator keeps its default expectation.  This is resolved from the
+    preset identity (fingerprint-bound) and never from file metadata or a
+    caller-supplied variant.
+    """
+
+    if preset is None:
+        return None
+    return _UD_NEXTN_DRAFT_QTYPES.get(preset.preset_key)
 
 
 # ---------------------------------------------------------------------------

@@ -278,7 +278,11 @@ def test_nextn_materialization_borrows_compatible_target_fallbacks_without_ownin
         return weight
 
     monkeypatch.setattr(nextn_materialize, "GGUFReader", _FakeReader)
-    monkeypatch.setattr(nextn_materialize, "build_qwen35_gguf_nextn_tensor_map", lambda info: object())
+    monkeypatch.setattr(
+        nextn_materialize,
+        "build_qwen35_gguf_nextn_tensor_map",
+        lambda info, **kwargs: object(),
+    )
     monkeypatch.setattr(
         nextn_materialize,
         "plan_qwen35_gguf_nextn_materialization",
