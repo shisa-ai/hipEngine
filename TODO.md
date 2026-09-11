@@ -11,7 +11,7 @@ Goal: basic hipEngine support for all of these. Start with models that have **no
 | google/timesfm-2.5-200m | TimesFmModelForPrediction | ❌ (not a token LM) | ✅ `timesfm_2p5_200m` |
 | google/timesfm-3.0-pytorch | TimesFM3Torch | ❌ | ✅ `timesfm_3p0` (GPU decode; 4.17x torch fp32 on gfx1151) |
 | shisa-ai/shisa-realtime-asr-0.92b | MoonshineForConditionalGeneration | ❌ (runtime is sherpa-onnx) | ✅ `moonshine_asr` (native HIP decoder) |
-| datalab-to/surya-ocr-2 | Qwen3_5 (gated DeltaNet) | ✅ official GGUF, documented llama.cpp backend | 🟡 Qwen3.5 decoder + EVIE vision reuse candidates; Surya integration pending ([plan](docs/MODEL-SURYA.md)) |
+| datalab-to/surya-ocr-2 | Qwen3_5 (gated DeltaNet) | ✅ official GGUF, documented llama.cpp backend | ✅ `surya_ocr2` — torch-free CPU-reference OCR pipeline end to end, every stage oracle-gated; OCR output == torch greedy reference ([plan](docs/MODEL-SURYA.md); GPU kernels open) |
 | tencent/EVIE-4.5B / 8B | ColQwen3_5 | ❌ (no multi-vector/MaxSim) | ✅ `evie_4p5b` (both sizes; 4.5B: batched fp16 encode 1.13 s, 1.11x torch bf16; 8B: fp32 parity-gated, fp32 recommended) |
 | microsoft/VibeVoice-ASR | VibeVoiceForASRTraining | ❌ (custom audio tokenizers) | ❌ ([review/plan](docs/MODEL-VIBEVOICE-ASR.md)) |
 | microsoft/VibeVoice-1.5B | VibeVoiceForConditionalGeneration | ❌ (TTS diffusion head) | ❌ ([review/plan](docs/MODEL-VIBEVOICE-TTS.md)) |
