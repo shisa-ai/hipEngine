@@ -380,16 +380,86 @@ def _initial_state_only_journal_applies(
     requested: str,
     *,
     max_candidate_budget: int,
+    backend: str | None = None,
+    max_end_position: int | None = None,
 ) -> bool:
-    """Return whether the native row ladder can use a compact primary journal."""
+    """Return whether every reachable target row uses native session journals.
 
+    The row route is selected per verify cycle from the row count *and* the
+    resulting end position, but the journal is allocated once for the whole
+    request. A row-capable journal is therefore mandatory whenever any position
+    the session can reach selects the serial fallback, and an unbounded position
+    range can always reach it. ``backend`` and ``max_end_position`` are both
+    required for that reason.
+    """
+
+    if backend is None or max_end_position is None:
+        return False
     return (
         _effective_target_verify_mode(
             requested,
             rows=int(max_candidate_budget) + 1,
+            backend=backend,
+            end_position=int(max_end_position),
         )
         == "native"
     )
+
+
+def _verify_journal_plan(
+    requested: str,
+    *,
+    max_candidate_budget: int,
+    backend: str | None,
+    max_end_position: int | None,
+) -> tuple[bool, bool]:
+    """Resolve rollback storage for every row route the session can reach.
+
+    Returns ``(initial_state_only, producer_capture_initial_state)``. Producer
+    capture borrows a single rollback row from the target session, so it is only
+    valid together with an initial-state-only journal; a row-capable journal must
+    own its own multi-row snapshots.
+    """
+
+    initial_state_only = _initial_state_only_journal_applies(
+        requested,
+        max_candidate_budget=max_candidate_budget,
+        backend=backend,
+        max_end_position=max_end_position,
+    )
+    producer_capture = bool(requested == "native" and initial_state_only)
+    return initial_state_only, producer_capture
+
+
+def _journal_position_bound(
+    target: Qwen35GGUFResidentSession,
+    max_candidate_budget: int,
+) -> int:
+    """Return the largest target end position the resident session can reach.
+
+    ``end_position`` is ``initial_position + batch.rows`` and the resident cursor
+    cannot advance past the scratch position capacity, so this bound covers every
+    verify cycle the session can run.
+    """
+
+    scratch = getattr(target, "scratch", None)
+    if scratch is None:
+        raise RuntimeError("GGUF target session is closed")
+    return int(scratch.max_positions) + int(max_candidate_budget) + 1
+
+
+def _require_serial_capable_journal(
+    journal: _StateJournal,
+    effective_verify_mode: str,
+) -> None:
+    """Fail closed before mutation when the serial row route needs row snapshots."""
+
+    if effective_verify_mode != "native" and journal.initial_state_only:
+        raise RuntimeError(
+            "serial target verification requires a row-capable journal; "
+            "allocate initial_state_only=False for sessions whose native target "
+            "context limit can be exceeded"
+        )
 
 
 def _maybe_launch_device_proposal(
@@ -846,20 +916,32 @@ class _StateJournal:
         )
         return True
 
+    @property
+    def state_row_capacity(self) -> int:
+        """Rollback rows the linear-state snapshots can hold."""
+
+        return 1 if self.initial_state_only else int(self.max_rows) + 1
+
     def _capture_state_index(self, index: int, *, stream: int) -> None:
+        index = int(index)
+        if index < 0 or index >= self.state_row_capacity:
+            raise ValueError("verify journal state index outside snapshot capacity")
         for state, snapshots in self.state_rows:
             self._copy_d2d(
-                snapshots.ptr + int(index) * int(state.nbytes),
+                snapshots.ptr + index * int(state.nbytes),
                 state.ptr,
                 int(state.nbytes),
                 stream=stream,
             )
 
     def _restore_state_index(self, index: int, *, stream: int) -> None:
+        index = int(index)
+        if index < 0 or index >= self.state_row_capacity:
+            raise ValueError("verify journal state index outside snapshot capacity")
         for state, snapshots in self.state_rows:
             self._copy_d2d(
                 state.ptr,
-                snapshots.ptr + int(index) * int(state.nbytes),
+                snapshots.ptr + index * int(state.nbytes),
                 int(state.nbytes),
                 stream=stream,
             )
@@ -941,14 +1023,18 @@ class Qwen35GGUFTransactionalVerifier:
         self.quant = str(quant)
         self.target_verify_mode = selected_verify_mode
         self.workspace = RuntimeWorkspace(device=Device("hip", 0), runtime=target.runtime)
+        # Keep main's compact primary journal. _select_journal allocates a
+        # separate consumer-owned journal before any serial fallback executes.
+        initial_state_only = (
+            _effective_target_verify_mode(
+                selected_verify_mode, rows=self.max_candidate_budget + 1
+            ) == "native"
+        )
         self.journal = _StateJournal.allocate(
             target,
             max_rows=self.max_candidate_budget + 1,
-            producer_capture_initial_state=(selected_verify_mode == "native"),
-            initial_state_only=_initial_state_only_journal_applies(
-                selected_verify_mode,
-                max_candidate_budget=self.max_candidate_budget,
-            ),
+            producer_capture_initial_state=initial_state_only,
+            initial_state_only=initial_state_only,
         )
         self._primary_journal = self.journal
         self._serial_journal: _StateJournal | None = None
@@ -1126,6 +1212,7 @@ class Qwen35GGUFTransactionalVerifier:
             target=self.target,
         )
         self._select_journal(effective_verify_mode)
+        _require_serial_capable_journal(self.journal, effective_verify_mode)
         self.journal.capture_initial(
             stream=stream,
             force_consumer_state=(effective_verify_mode == "serial_exact"),

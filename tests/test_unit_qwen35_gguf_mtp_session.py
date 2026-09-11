@@ -183,18 +183,112 @@ def test_native_target_rows_follow_implementation_ladder_and_context_limit(monke
     assert mtp_module._initial_state_only_journal_applies(
         "native",
         max_candidate_budget=3,
+        backend="hip_gfx1151",
+        max_end_position=4096,
     )
     for budget in range(4, 8):
         assert mtp_module._initial_state_only_journal_applies(
             "native", max_candidate_budget=budget,
+            backend="hip_gfx1151", max_end_position=4096,
         )
     assert not mtp_module._initial_state_only_journal_applies(
         "native", max_candidate_budget=8,
+        backend="hip_gfx1151",
+        max_end_position=4096,
     )
     assert not mtp_module._initial_state_only_journal_applies(
         "serial_exact",
         max_candidate_budget=3,
+        backend="hip_gfx1151",
+        max_end_position=4096,
     )
+
+
+def test_initial_state_only_journal_bounds_the_whole_reachable_position_range() -> None:
+    """A serial row route can appear at any decode position, not only by row count.
+
+    gfx1100's native target context limit is 95, so a session that can reach
+    position 96 uses ``serial_exact`` rows and needs row snapshots. The
+    natural25 suite reproduces it: the tenth prompt (71 prompt tokens plus 25
+    generated tokens) crosses 95 and previously failed at ``capture_row``.
+    """
+
+    assert (
+        mtp_module._effective_target_verify_mode(
+            "native", rows=4, backend="hip_gfx1100", end_position=96
+        )
+        == "serial_exact"
+    )
+    assert not mtp_module._initial_state_only_journal_applies(
+        "native",
+        max_candidate_budget=3,
+        backend="hip_gfx1100",
+        max_end_position=96,
+    )
+    assert mtp_module._initial_state_only_journal_applies(
+        "native",
+        max_candidate_budget=3,
+        backend="hip_gfx1100",
+        max_end_position=95,
+    )
+    # An unbounded position range can always reach the serial fallback.
+    assert not mtp_module._initial_state_only_journal_applies(
+        "native", max_candidate_budget=3, backend="hip_gfx1100"
+    )
+    assert not mtp_module._initial_state_only_journal_applies(
+        "native", max_candidate_budget=3, max_end_position=4096
+    )
+
+
+def test_serial_row_route_requires_a_serial_capable_journal_before_mutation() -> None:
+    """The journal route contract fails closed before any state mutation."""
+
+    mtp_module._require_serial_capable_journal(
+        SimpleNamespace(initial_state_only=True), "native"
+    )
+    with pytest.raises(RuntimeError, match="row-capable journal"):
+        mtp_module._require_serial_capable_journal(
+            SimpleNamespace(initial_state_only=True), "serial_exact"
+        )
+    mtp_module._require_serial_capable_journal(
+        SimpleNamespace(initial_state_only=False), "serial_exact"
+    )
+
+
+def test_journal_plan_pairs_producer_capture_with_initial_state_only() -> None:
+    """Producer capture lends one rollback row, so a row-capable journal owns its own.
+
+    A row-capable journal that kept borrowing the single producer row would write
+    past it at ``_capture_state_index(row + 1)``.
+    """
+
+    assert mtp_module._verify_journal_plan(
+        "native",
+        max_candidate_budget=3,
+        backend="hip_gfx1151",
+        max_end_position=4096,
+    ) == (True, True)
+    assert mtp_module._verify_journal_plan(
+        "native",
+        max_candidate_budget=3,
+        backend="hip_gfx1100",
+        max_end_position=260,
+    ) == (False, False)
+    assert mtp_module._verify_journal_plan(
+        "serial_exact",
+        max_candidate_budget=3,
+        backend="hip_gfx1151",
+        max_end_position=4096,
+    ) == (False, False)
+
+
+def test_state_row_capacity_matches_the_allocated_rollback_rows() -> None:
+    journal = mtp_module._StateJournal.__new__(mtp_module._StateJournal)
+    journal.max_rows = 4
+    journal.initial_state_only = True
+    assert journal.state_row_capacity == 1
+    journal.initial_state_only = False
+    assert journal.state_row_capacity == 5
 
 
 def test_serial_fallback_forces_consumer_owned_initial_state_snapshot() -> None:
