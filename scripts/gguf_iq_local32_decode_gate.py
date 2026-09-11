@@ -35,6 +35,11 @@ def main() -> None:
     ap.add_argument("--decode-tokens", type=int, default=64)
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--json", type=Path, default=None)
+    ap.add_argument(
+        "--gate-quants", type=str,
+        default="gguf_iq3_s,gguf_iq3_xxs,gguf_iq2_s,gguf_iq2_xs",
+        help="quants under test: the candidate is the shipped policy, the "
+             "incumbent is the shipped policy minus these")
     args = ap.parse_args()
     if args.compiler_version_file is not None:
         os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file)
@@ -46,6 +51,16 @@ def main() -> None:
     compiler_version = (Path(args.compiler_version_file).read_text()
                         if args.compiler_version_file else None)
     rng = np.random.default_rng(args.seed)
+    # The candidate is the shipped policy; the incumbent is the shipped
+    # policy minus the quants under test. The natural prompt is generated
+    # under the INCUMBENT so the natural text - and the probe itself - is
+    # stable regardless of which routes the candidate adds.
+    ap_gated = [q.strip() for q in args.gate_quants.split(",") if q.strip()]
+    candidate_policy = {
+        q: dict(entry) for q, entry in be.GGUF_IQ_DENSE_DECODE_POLICY.items()}
+    base_policy = {q: dict(entry) for q, entry in candidate_policy.items()
+                  if q not in ap_gated}
+    be.GGUF_IQ_DENSE_DECODE_POLICY = base_policy
     if os.environ.get("HIPENGINE_LOCAL32_GATE_NATURAL") == "1":
         # Self-generated text (the Q3_K gate lesson, 2026-09-10): uniform
         # random token ids measure a prompt-sensitivity floor at ~1e-3 that
@@ -71,15 +86,14 @@ def main() -> None:
         prompt = [int(t) for t in rng.integers(0, 150000, size=int(args.prompt_tokens))]
     n = int(args.decode_tokens)
 
-    # The incumbent is pinned explicitly - the strict per-row GEMV (the
-    # pre-enable shipped default) - because the shipped policy is now the
-    # enabled route: copying the module default would compare the candidate
-    # against itself and falsely certify regressions on rerun. The owner
-    # assertion below fails loudly if the two arms ever resolve to the same
-    # kernel again.
-    base_policy: dict = {}
-    candidate_policy = {"gguf_iq4_xs": {"variant": "local32_gemv_bf16_bf16_out"}}
-
+    # The arms derive from the shipped policy (2026-09-11): the candidate is
+    # the shipped decode policy itself; the incumbent is the shipped policy
+    # minus the quants under test. Copying a stale hardcoded pair instead
+    # compared all-strict against an XS-only candidate - arms that no longer
+    # match any production boundary (and whose all-strict incumbent has a
+    # known NaN fragility on rare self-generated prompts). The owner
+    # assertion fails loudly if the two arms ever resolve to the same
+    # kernel for a gated quant.
     def _assert_owners_differ():
         from hipengine.kernels.backends import load_backend_kernel_package
         from hipengine.kernels.hip_gfx1100.quant import gguf_iq_source_mmq_prefill as iq_mmq
@@ -87,25 +101,26 @@ def main() -> None:
             GGUFLinearDispatch, _iq_dense_decode_dispatch)
         from hipengine.kernels.registry import KernelKey
         load_backend_kernel_package("hip_gfx1100")
-        base = GGUFLinearDispatch(
-            KernelKey("hip_gfx1100", "linear", "gguf_iq4_xs",
-                     "gemv_bf16_bf16_out"), "raw")
         with iq_mmq.iq_dense_mmq_session(True):
             saved = dict(be.GGUF_IQ_DENSE_DECODE_POLICY)
             try:
-                be.GGUF_IQ_DENSE_DECODE_POLICY = base_policy
-                incumbent_owner = _iq_dense_decode_dispatch(
-                    base, rows=1, out_features=17408).key.variant
-                be.GGUF_IQ_DENSE_DECODE_POLICY = candidate_policy
-                candidate_owner = _iq_dense_decode_dispatch(
-                    base, rows=1, out_features=17408).key.variant
+                for gated in ap_gated:
+                    base = GGUFLinearDispatch(
+                        KernelKey("hip_gfx1100", "linear", gated,
+                                 "gemv_bf16_bf16_out"), "raw")
+                    be.GGUF_IQ_DENSE_DECODE_POLICY = base_policy
+                    incumbent_owner = _iq_dense_decode_dispatch(
+                        base, rows=1, out_features=17408).key.variant
+                    be.GGUF_IQ_DENSE_DECODE_POLICY = candidate_policy
+                    candidate_owner = _iq_dense_decode_dispatch(
+                        base, rows=1, out_features=17408).key.variant
+                    if incumbent_owner == candidate_owner:
+                        raise RuntimeError(
+                            "gate arms resolve to the same decode owner "
+                            f"({incumbent_owner}) for {gated}; the incumbent "
+                            "pin has gone stale")
             finally:
                 be.GGUF_IQ_DENSE_DECODE_POLICY = saved
-        if incumbent_owner == candidate_owner:
-            raise RuntimeError(
-                "gate arms resolve to the same decode owner "
-                f"({incumbent_owner}); the incumbent pin has gone stale"
-            )
 
     _assert_owners_differ()
 

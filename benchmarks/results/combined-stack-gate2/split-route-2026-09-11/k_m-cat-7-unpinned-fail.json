@@ -1,0 +1,78 @@
+{
+  "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+  "seed": 7,
+  "prompt_tokens": 512,
+  "tokenized": true,
+  "scopes": {
+    "code": {
+      "positions": 390,
+      "kl_mean": 0.00026450976257906653,
+      "kl_max": 0.02714993525819647,
+      "top1": 0.9974358974358974,
+      "calib_mean": 0.00032371963607147336,
+      "calib_max": 0.03828778862953186
+    },
+    "general_en": {
+      "positions": 260,
+      "kl_mean": 6.764156781970465e-05,
+      "kl_max": 0.0007617073806331729,
+      "top1": 1.0,
+      "calib_mean": 6.921023305039853e-05,
+      "calib_max": 0.001026363461278379
+    },
+    "general_ja": {
+      "positions": 260,
+      "kl_mean": 6.585367002135129e-05,
+      "kl_max": 0.0016296253115959027,
+      "top1": 0.9961538461538462,
+      "calib_mean": 8.70750518515706e-05,
+      "calib_max": 0.0008052987977862358
+    },
+    "mixed_ja_en": {
+      "positions": 260,
+      "kl_mean": 0.00043016949014606273,
+      "kl_max": 0.05190712911978418,
+      "top1": 0.9961538461538462,
+      "calib_mean": 0.0003846492909360677,
+      "calib_max": 0.04241011291742325
+    }
+  },
+  "overall": {
+    "positions": 1170,
+    "kl_mean": 0.00021342361287679523,
+    "kl_p95": 0.00037957492168061435,
+    "kl_p99": 0.002831459743902087,
+    "kl_max": 0.0519072487950325,
+    "top1": 0.9974358974358974
+  },
+  "calibration_incumbent_vs_all_strict": {
+    "positions": 1170,
+    "kl_mean": 0.00022811420785728842,
+    "kl_max": 0.04241011291742325
+  },
+  "diagnostics_above_p99_envelope": [
+    {
+      "scope": "code",
+      "prompt": "code_lru_cache",
+      "position_in_prompt": 49,
+      "is_prefill_row": false,
+      "kl": 0.02714996598660946
+    },
+    {
+      "scope": "code",
+      "prompt": "code_lru_cache",
+      "position_in_prompt": 61,
+      "is_prefill_row": false,
+      "kl": 0.021171903237700462
+    },
+    {
+      "scope": "mixed_ja_en",
+      "prompt": "heldout_mixed_summary",
+      "position_in_prompt": 46,
+      "is_prefill_row": false,
+      "kl": 0.0519072487950325
+    }
+  ],
+  "candidate_finite": true,
+  "gate_pass": false
+}

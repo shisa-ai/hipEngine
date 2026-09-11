@@ -1,0 +1,71 @@
+{
+  "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+  "seed": 11,
+  "prompt_tokens": 512,
+  "tokenized": true,
+  "scopes": {
+    "code": {
+      "positions": 390,
+      "kl_mean": 0.0002767197405398346,
+      "kl_max": 0.03078804638854348,
+      "top1": 0.9974358974358974,
+      "calib_mean": 0.00032371963607147336,
+      "calib_max": 0.03828778862953186
+    },
+    "general_en": {
+      "positions": 260,
+      "kl_mean": 7.43952362961922e-05,
+      "kl_max": 0.0013464349644958828,
+      "top1": 0.9961538461538462,
+      "calib_mean": 6.921023305039853e-05,
+      "calib_max": 0.001026363461278379
+    },
+    "general_ja": {
+      "positions": 260,
+      "kl_mean": 8.08130881057258e-05,
+      "kl_max": 0.0012603528774298711,
+      "top1": 0.9961538461538462,
+      "calib_mean": 8.70750518515706e-05,
+      "calib_max": 0.0008052987977862358
+    },
+    "mixed_ja_en": {
+      "positions": 260,
+      "kl_mean": 0.0008425362993101467,
+      "kl_max": 0.1784811348519192,
+      "top1": 0.9961538461538462,
+      "calib_mean": 0.0003846492909360677,
+      "calib_max": 0.04241011291742325
+    }
+  },
+  "overall": {
+    "positions": 1170,
+    "kl_mean": 0.0003139511391054839,
+    "kl_p95": 0.00036135295522399247,
+    "kl_p99": 0.0034152085427194834,
+    "kl_max": 0.17848093807697296,
+    "top1": 0.9965811965811966
+  },
+  "calibration_incumbent_vs_all_strict": {
+    "positions": 1170,
+    "kl_mean": 0.00022811420785728842,
+    "kl_max": 0.04241011291742325
+  },
+  "diagnostics_above_p99_envelope": [
+    {
+      "scope": "code",
+      "prompt": "code_lru_cache",
+      "position_in_prompt": 49,
+      "is_prefill_row": false,
+      "kl": 0.030788110569119453
+    },
+    {
+      "scope": "mixed_ja_en",
+      "prompt": "heldout_mixed_summary",
+      "position_in_prompt": 46,
+      "is_prefill_row": false,
+      "kl": 0.17848093807697296
+    }
+  ],
+  "candidate_finite": true,
+  "gate_pass": false
+}

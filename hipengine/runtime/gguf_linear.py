@@ -60,6 +60,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import 
     q6_dense_integer_mmq_workspace,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_iq_source_mmq_prefill import (
+    iq_dense_decode_strict_slots,
     iq_dense_mmq_has_workspace,
     iq_dense_mmq_strict_slots,
     iq_dense_mmq_workspace,
@@ -3471,6 +3472,7 @@ def launch_gguf_linear(
             dispatch,
             rows=rows,
             out_features=out_features,
+            slot_path=getattr(getattr(weight, "spec", None), "slot_path", None),
         )
         dispatch = _q4_pack8_wmma_dispatch(
             dispatch,
@@ -8014,6 +8016,7 @@ def _iq_dense_decode_dispatch(
     *,
     rows: int,
     out_features: int,
+    slot_path: str | None = None,
 ) -> GGUFLinearDispatch:
     """Select the backend-declared dense raw-IQ decode owner (rows=1).
 
@@ -8031,6 +8034,13 @@ def _iq_dense_decode_dispatch(
     if dispatch.key.variant != "gemv_bf16_bf16_out":
         return dispatch
     if iq_dense_mmq_workspace() is None:
+        return dispatch
+    # Per-slot quality admission (the decode sibling of the prefill pin):
+    # an owning session may pin specific slots to the strict per-row GEMV
+    # for its artifact when the local32 family's accumulation-order tail
+    # compounds past the gate ceiling (UD-Q4_K_M's IQ3_S ffn_down slots,
+    # 2026-09-11).
+    if slot_path is not None and slot_path in iq_dense_decode_strict_slots():
         return dispatch
     policy = backend_package_capability(
         dispatch.key.backend,
