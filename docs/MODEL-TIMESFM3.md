@@ -70,7 +70,8 @@ K-side norm weight (both precisions).
   + raw var attention) — the strict fallback for the fused fp16 var
   kernel; parity vs the torch oracle fixture at max 1.1e-5, deterministic.
 
-Both validated by `python3 scripts/timesfm3_gpu_bench.py --check`.
+Both validated by
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/timesfm3_gpu_bench.py --check`.
 
 ## Performance (initial implementation, no optimization campaign)
 
