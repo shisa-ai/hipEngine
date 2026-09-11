@@ -87,6 +87,20 @@ def _make_synthetic_page(path: Path, size: int = 256) -> None:
     img.save(path)
 
 
+def _find_font() -> str:
+    """Path to a TrueType font for the synthetic page fixtures."""
+
+    for candidate in (
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/TTF/DejaVuSans.ttf",
+        "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+    ):
+        if Path(candidate).exists():
+            return candidate
+    raise RuntimeError("no TrueType font found for the synthetic page fixtures")
+
+
 def _make_synthetic_page_full(path: Path, width: int = 1024, height: int = 1024) -> None:
     """Full-size realistic page: heading, body prose, rule, and a small table.
 
@@ -102,18 +116,7 @@ def _make_synthetic_page_full(path: Path, width: int = 1024, height: int = 1024)
 
     from PIL import Image, ImageDraw, ImageFont
 
-    font_path = None
-    for candidate in (
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/TTF/DejaVuSans.ttf",
-        "/usr/share/fonts/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
-    ):
-        if Path(candidate).exists():
-            font_path = candidate
-            break
-    if font_path is None:
-        raise RuntimeError("no TrueType font found for the full-page fixture")
+    font_path = _find_font()
 
     img = Image.new("RGB", (width, height), (255, 255, 255))
     d = ImageDraw.Draw(img)
@@ -152,6 +155,91 @@ def _make_synthetic_page_full(path: Path, width: int = 1024, height: int = 1024)
         d.text((300, y), value, font=body, fill=(40, 40, 40))
         y += 30
 
+    img.save(path)
+
+
+def _make_synthetic_page_columns(path: Path, width: int = 512, height: int = 512) -> None:
+    """Two-column page: a spanning title, then two independent prose columns.
+
+    A layout the single-column fixtures cannot produce, so it exercises column
+    detection and reading order. 512x512 is a multiple of the resize factor, so
+    the grid is a clean 1x32x32 (1024 patches, 256 merged tokens) and the test
+    stays cheap.
+    """
+
+    from PIL import Image, ImageDraw, ImageFont
+
+    font_path = _find_font()
+    img = Image.new("RGB", (width, height), (255, 255, 255))
+    d = ImageDraw.Draw(img)
+    title = ImageFont.truetype(font_path, 24)
+    head = ImageFont.truetype(font_path, 18)
+    body = ImageFont.truetype(font_path, 15)
+
+    d.text((36, 30), "Annual Review", font=title, fill=(10, 10, 10))
+    d.line([36, 70, width - 36, 70], fill=(120, 120, 120), width=2)
+
+    columns = (
+        (36, [
+            "Overview",
+            "Revenue rose across all",
+            "four regions this year.",
+            "Margins held steady at",
+            "forty two percent while",
+            "headcount grew slowly.",
+        ]),
+        (280, [
+            "Results",
+            "The eastern region led",
+            "with twelve thousand",
+            "units shipped, ahead of",
+            "the western region by a",
+            "clear and growing gap.",
+        ]),
+    )
+    for x, lines in columns:
+        y = 96
+        for i, line in enumerate(lines):
+            d.text(
+                (x, y), line,
+                font=head if i == 0 else body,
+                fill=(10, 10, 10) if i == 0 else (40, 40, 40),
+            )
+            y += 30
+
+    img.save(path)
+
+
+def _make_synthetic_page_list(path: Path, width: int = 512, height: int = 512) -> None:
+    """Heading, numbered checklist, and a sign-off line.
+
+    Exercises the list grouping label, which none of the prose fixtures reach.
+    Same clean 1x32x32 grid as the columns page.
+    """
+
+    from PIL import Image, ImageDraw, ImageFont
+
+    font_path = _find_font()
+    img = Image.new("RGB", (width, height), (255, 255, 255))
+    d = ImageDraw.Draw(img)
+    head = ImageFont.truetype(font_path, 22)
+    body = ImageFont.truetype(font_path, 16)
+
+    d.text((40, 40), "Inspection Checklist", font=head, fill=(10, 10, 10))
+    d.line([40, 78, width - 40, 78], fill=(120, 120, 120), width=2)
+
+    y = 104
+    for item in (
+        "1. Verify the seal is intact",
+        "2. Record the serial number",
+        "3. Check the pressure gauge",
+        "4. Note any surface damage",
+        "5. Sign and date the form",
+    ):
+        d.text((56, y), item, font=body, fill=(30, 30, 30))
+        y += 36
+
+    d.text((40, y + 16), "Completed by: A. Reviewer", font=body, fill=(30, 30, 30))
     img.save(path)
 
 
