@@ -9,6 +9,7 @@ produce.
 from __future__ import annotations
 
 import sys
+from typing import Any
 
 import pytest
 
@@ -17,8 +18,10 @@ from scripts.gguf_p6e_cancel_refill_proof import (
     DECLARED_ACK_P95_LIMIT_MS,
     DECLARED_GAP_MAX_FACTOR,
     _assert_resumable_configuration,
+    _evaluate_sampling_gate,
     _host_sampling_payload,
     _labeled_metric_values,
+    _native_sampling_payload,
     _metric_sample_labels,
     _parse_cancel_delays,
     _split_prometheus_labels,
@@ -27,6 +30,32 @@ from scripts.gguf_p6e_cancel_refill_proof import (
 
 _REFERENCE_TEXT = "The quick brown fox jumps over the lazy dog, and then it rests."
 _REFERENCE_GAPS = [33.0, 34.0, 35.0, 36.0]
+
+
+def _sampling_arm_fixture(
+    *,
+    counter: str,
+    other: str,
+    delta: float,
+    reference_text: str = _REFERENCE_TEXT,
+    survivor_text: str | None = None,
+    reference_status: int = 200,
+    survivor_status: int = 200,
+    **extra: Any,
+) -> dict[str, Any]:
+    record = {
+        "enabled": True,
+        "seed": 1234,
+        "route_counter": counter,
+        "reference_text": reference_text,
+        "survivor_text": reference_text if survivor_text is None else survivor_text,
+        "reference_status": reference_status,
+        "survivor_status": survivor_status,
+        "route_delta": delta,
+        "other_route_delta": {other: 0.0},
+    }
+    record.update(extra)
+    return record
 
 # A healthy run: the cancel reached the backend, the refill reproduced the
 # reference exactly, and both latency gates are inside their declared limits.
@@ -71,16 +100,9 @@ _HEALTHY = {
         },
     ],
     # P6 names "native and host sampling"; the rest of the harness is greedy.
-    "host_sampling": {
-        "enabled": True,
-        "seed": 1234,
-        "reference_text": _REFERENCE_TEXT,
-        "survivor_text": _REFERENCE_TEXT,
-        "reference_status": 200,
-        "survivor_status": 200,
-        "host_sampler_requests_delta": 2.0,
-        "native_sampler_requests_delta": 0.0,
-    },
+    "host_sampling": _sampling_arm_fixture(
+        counter="host_sampler_requests", other="native_sampler_requests", delta=2.0
+    ),
 }
 
 
@@ -97,6 +119,7 @@ def test_all_gates_pass_on_a_healthy_run() -> None:
         "cancellation_reached_backend",
         "cancellation_sweep_bounded",
         "host_sampling_survivor_exact",
+        "native_sampling_survivor_exact",
         "resumable_path_engaged",
         "survivors_exact",
         "blocking_survivor_exact",
@@ -652,85 +675,150 @@ def test_stream_outcome_exposes_the_attributes_the_artifact_reads() -> None:
     assert not hasattr(outcome, "text_chars")
 
 
-def test_host_sampling_gate_passes_only_when_the_host_route_engaged() -> None:
-    """Text equality alone would also pass on the native sampler."""
+@pytest.mark.parametrize("label", ["host", "native"])
+def test_sampling_gate_passes_only_when_its_own_route_engaged(label: str) -> None:
+    """Text equality alone would also pass on the other sampler."""
 
+    counter = "host_sampler_requests" if label == "host" else "native_sampler_requests"
+    other = "native_sampler_requests" if label == "host" else "host_sampler_requests"
     gates = _gates(
-        host_sampling={
-            "enabled": True,
-            "seed": 1234,
-            "reference_text": _REFERENCE_TEXT,
-            "survivor_text": _REFERENCE_TEXT,
-            "reference_status": 200,
-            "survivor_status": 200,
-            "host_sampler_requests_delta": 0.0,
-            "native_sampler_requests_delta": 2.0,
+        **{
+            f"{label}_sampling": _sampling_arm_fixture(
+                counter=counter, other=other, delta=0.0
+            )
         }
     )
 
-    gate = gates["host_sampling_survivor_exact"]
+    gate = gates[f"{label}_sampling_survivor_exact"]
     assert gate["passed"] is False
-    assert any("did not exercise the host sampler" in f for f in gate["failures"])
-    assert gate["native_sampler_requests_delta"] == 2.0
+    assert any("did not exercise the" in f for f in gate["failures"])
+    assert gate["route_counter"] == counter
 
 
-def test_host_sampling_gate_fails_when_the_survivor_text_differs() -> None:
+@pytest.mark.parametrize("label", ["host", "native"])
+def test_sampling_gate_fails_when_the_survivor_text_differs(label: str) -> None:
+    counter = "host_sampler_requests" if label == "host" else "native_sampler_requests"
     gates = _gates(
-        host_sampling={
-            "enabled": True,
-            "reference_text": _REFERENCE_TEXT,
-            "survivor_text": "something else entirely",
-            "reference_status": 200,
-            "survivor_status": 200,
-            "host_sampler_requests_delta": 2.0,
+        **{
+            f"{label}_sampling": _sampling_arm_fixture(
+                counter=counter,
+                other="",
+                delta=2.0,
+                survivor_text="something else entirely",
+            )
         }
     )
 
-    gate = gates["host_sampling_survivor_exact"]
+    gate = gates[f"{label}_sampling_survivor_exact"]
     assert gate["passed"] is False
     assert any("preserve the sampled result" in f for f in gate["failures"])
 
 
-def test_host_sampling_gate_fails_on_an_empty_reference() -> None:
+@pytest.mark.parametrize("label", ["host", "native"])
+def test_sampling_gate_fails_on_an_empty_reference(label: str) -> None:
     """A reference with no text cannot certify anything."""
 
+    counter = "host_sampler_requests" if label == "host" else "native_sampler_requests"
     gates = _gates(
-        host_sampling={
-            "enabled": True,
-            "reference_text": "",
-            "survivor_text": "",
-            "reference_status": 200,
-            "survivor_status": 200,
-            "host_sampler_requests_delta": 1.0,
+        **{
+            f"{label}_sampling": _sampling_arm_fixture(
+                counter=counter, other="", delta=1.0, reference_text=""
+            )
         }
     )
 
-    assert gates["host_sampling_survivor_exact"]["passed"] is False
+    assert gates[f"{label}_sampling_survivor_exact"]["passed"] is False
 
 
 def test_host_sampling_gate_fails_when_the_arm_did_not_run() -> None:
+    """The host arm is part of the default proof, so its absence is a failure."""
+
     for value in ({}, None):
         gate = _gates(host_sampling=value)["host_sampling_survivor_exact"]
         assert gate["passed"] is False
+        assert gate["skipped"] is False
         assert gate["enabled"] is False
+        assert "did not run" in gate["detail"]
 
 
-def test_host_sampling_gate_reports_request_errors() -> None:
+def test_native_sampling_gate_is_skipped_not_silently_passing() -> None:
+    """A skipped gate must not count as coverage.
+
+    The native arm is a diagnostic against a recorded defect, so it is off by
+    default. It has to say that it did not run and name the blocker, rather than
+    pass quietly or be absent from the artifact.
+    """
+
+    gate = _gates()["native_sampling_survivor_exact"]
+
+    assert gate["skipped"] is True
+    assert gate["passed"] is True  # does not fail the run
+    assert gate["enabled"] is False
+    assert "capacity 0" in gate["blocker"]
+    assert "--native-sampling-arm" in gate["detail"]
+    assert gate["failures"] == []
+
+
+def test_native_sampling_gate_evaluates_normally_when_the_arm_ran() -> None:
+    """With the arm on, the defect surfaces as a real failure."""
+
     gates = _gates(
-        host_sampling={
-            "enabled": True,
-            "reference_text": _REFERENCE_TEXT,
-            "survivor_text": _REFERENCE_TEXT,
-            "reference_status": 200,
-            "survivor_status": 500,
-            "survivor_error": "boom",
-            "host_sampler_requests_delta": 1.0,
+        native_sampling=_sampling_arm_fixture(
+            counter="native_sampler_requests", other="host_sampler_requests", delta=0.0
+        )
+    )
+
+    gate = gates["native_sampling_survivor_exact"]
+    assert gate["skipped"] is False
+    assert gate["passed"] is False
+    assert any("did not exercise the native sampler" in f for f in gate["failures"])
+
+
+def test_sampling_gate_reports_request_errors() -> None:
+    label = "host"
+    counter = "host_sampler_requests" if label == "host" else "native_sampler_requests"
+    gates = _gates(
+        **{
+            f"{label}_sampling": _sampling_arm_fixture(
+                counter=counter,
+                other="",
+                delta=1.0,
+                survivor_status=500,
+                survivor_error="boom",
+            )
         }
     )
 
-    gate = gates["host_sampling_survivor_exact"]
+    gate = gates[f"{label}_sampling_survivor_exact"]
     assert gate["passed"] is False
     assert any("boom" in f for f in gate["failures"])
+
+
+def test_sampling_gate_is_directly_callable_and_names_the_route() -> None:
+    gate = _evaluate_sampling_gate(
+        _sampling_arm_fixture(
+            counter="native_sampler_requests", other="host_sampler_requests", delta=3.0
+        ),
+        label="native",
+        skipped_reason="unused when the arm ran",
+    )
+
+    assert gate["passed"] is True
+    assert gate["route_counter"] == "native_sampler_requests"
+    assert gate["route_delta"] == 3.0
+
+
+def test_native_sampling_payload_stays_within_the_native_top_k_bound() -> None:
+    """top_k above _MAX_NATIVE_GPU_TOP_K (64) is what pushes work to the host."""
+
+    payload = _native_sampling_payload(
+        model_name="m", prompt="p", max_tokens=4, seed=99
+    )
+
+    assert payload["temperature"] > 0
+    assert 0 < payload["top_k"] <= 64
+    assert payload["seed"] == 99
+    assert "top_logprobs" not in payload
 
 
 def test_host_sampling_payload_forces_the_host_route_deterministically() -> None:

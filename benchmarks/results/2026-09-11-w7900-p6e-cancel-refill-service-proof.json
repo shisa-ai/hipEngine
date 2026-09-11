@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "kind": "w7900_p6e_cancel_refill_service_proof",
-  "timestamp": "2026-09-11T20:57:43.548936+00:00",
+  "timestamp": "2026-09-11T21:54:17.933907+00:00",
   "performance_claim": false,
   "passed": true,
   "configuration": {
@@ -53,14 +53,26 @@
     },
     "host_sampling_survivor_exact": {
       "passed": true,
+      "skipped": false,
       "enabled": true,
       "seed": 1234,
-      "host_sampler_requests_delta": 3.0,
-      "native_sampler_requests_delta": 0.0,
+      "route_counter": "host_sampler_requests",
+      "route_delta": 3.0,
+      "other_route_delta": {
+        "native_sampler_requests": 0.0
+      },
       "reference_sha256": "118cf54787fe2a9c931d0e8ed4eddf2235fdcd64abe1b1e253ee908d6797f19d",
       "survivor_sha256": "118cf54787fe2a9c931d0e8ed4eddf2235fdcd64abe1b1e253ee908d6797f19d",
       "failures": [],
-      "detail": "a seeded host-sampling request must be served while a long host-sampling prefill is in flight, and the sampled result must be unchanged by the yield. The route counter is asserted because text equality alone would also pass on the native sampler"
+      "detail": "a seeded host-sampling request must be served while a long host-sampling prefill is in flight, and the sampled result must be unchanged by the yield. The route counter is asserted because text equality alone would also pass on the other sampler"
+    },
+    "native_sampling_survivor_exact": {
+      "passed": true,
+      "skipped": true,
+      "enabled": false,
+      "blocker": "HIPENGINE_QWEN35_NATIVE_SAMPLER=1 leaves the packed native sampler at capacity 0, so sampling requests fail with 'packed native sampler row 0 exceeds capacity 0' and the engine then times out and closes",
+      "detail": "the native-sampling arm is a diagnostic and did not run. Without HIPENGINE_QWEN35_NATIVE_SAMPLER the native payload falls back to the host sampler; with it the packed native sampler has capacity 0 and the request fails, which closes the engine for the rest of the session. Re-run with --native-sampling-arm and HIPENGINE_QWEN35_NATIVE_SAMPLER=1 to reproduce",
+      "failures": []
     },
     "resumable_path_engaged": {
       "passed": true,
@@ -102,16 +114,16 @@
     },
     "bounded_acknowledgement": {
       "passed": true,
-      "acknowledgement_ms": 769.0431484952569,
+      "acknowledgement_ms": 768.0197134613991,
       "p95_limit_ms": 3000.0,
       "p99_limit_ms": 6000.0,
       "detail": "a refill admitted right after a cancelled prefill must be acknowledged within the declared limit"
     },
     "bounded_decode_gap": {
       "passed": true,
-      "refill_max_gap_ms": 38.253,
-      "reference_max_gap_ms": 42.534,
-      "limit_ms": 106.335,
+      "refill_max_gap_ms": 37.836,
+      "reference_max_gap_ms": 40.637,
+      "limit_ms": 101.594,
       "declared_factor": 2.5,
       "detail": "the surviving request's worst inter-token gap must stay within the declared factor of its own reference run"
     },
@@ -129,57 +141,57 @@
       "finish_reason": "length",
       "error": null,
       "raw_lines": [
-        "data: {\"id\":\"cmpl-894edbd95e77409980fc1fb54bd2f81b\",\"object\":\"text_completion\",\"created\":1789160225,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
-        "data: {\"id\":\"cmpl-894edbd95e77409980fc1fb54bd2f81b\",\"object\":\"text_completion\",\"created\":1789160225,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
-        "data: {\"id\":\"cmpl-894edbd95e77409980fc1fb54bd2f81b\",\"object\":\"text_completion\",\"created\":1789160225,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
-        "data: {\"id\":\"cmpl-894edbd95e77409980fc1fb54bd2f81b\",\"object\":\"text_completion\",\"created\":1789160225,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
-        "data: {\"id\":\"cmpl-894edbd95e77409980fc1fb54bd2f81b\",\"object\":\"text_completion\",\"created\":1789160225,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
-        "data: {\"id\":\"cmpl-894edbd95e77409980fc1fb54bd2f81b\",\"object\":\"text_completion\",\"created\":1789160225,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
-        "data: {\"id\":\"cmpl-894edbd95e77409980fc1fb54bd2f81b\",\"object\":\"text_completion\",\"created\":1789160225,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
-        "data: {\"id\":\"cmpl-894edbd95e77409980fc1fb54bd2f81b\",\"object\":\"text_completion\",\"created\":1789160225,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi"
+        "data: {\"id\":\"cmpl-9acfd288a9f1410bb7d587660cbea689\",\"object\":\"text_completion\",\"created\":1789163620,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
+        "data: {\"id\":\"cmpl-9acfd288a9f1410bb7d587660cbea689\",\"object\":\"text_completion\",\"created\":1789163620,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
+        "data: {\"id\":\"cmpl-9acfd288a9f1410bb7d587660cbea689\",\"object\":\"text_completion\",\"created\":1789163620,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
+        "data: {\"id\":\"cmpl-9acfd288a9f1410bb7d587660cbea689\",\"object\":\"text_completion\",\"created\":1789163620,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
+        "data: {\"id\":\"cmpl-9acfd288a9f1410bb7d587660cbea689\",\"object\":\"text_completion\",\"created\":1789163620,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
+        "data: {\"id\":\"cmpl-9acfd288a9f1410bb7d587660cbea689\",\"object\":\"text_completion\",\"created\":1789163620,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
+        "data: {\"id\":\"cmpl-9acfd288a9f1410bb7d587660cbea689\",\"object\":\"text_completion\",\"created\":1789163620,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
+        "data: {\"id\":\"cmpl-9acfd288a9f1410bb7d587660cbea689\",\"object\":\"text_completion\",\"created\":1789163620,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi"
       ],
       "gaps_ms": {
         "samples": [
-          42.533960193395615,
-          34.472729079425335,
-          34.83608178794384,
-          34.75487232208252,
-          34.81121174991131,
-          34.781262278556824,
-          34.77806132286787,
-          34.75148230791092,
-          34.94775388389826,
-          34.800722263753414,
-          34.57938972860575,
-          34.881213679909706,
-          34.79360230267048,
-          34.661440178751945,
-          34.873672761023045,
-          34.63994059711695,
-          34.728231839835644,
-          34.341505728662014,
-          35.258728079497814,
-          34.71636213362217,
-          34.56421848386526,
-          34.51360855251551,
-          38.636431097984314
+          40.63747264444828,
+          34.370784647762775,
+          34.56931933760643,
+          34.74901057779789,
+          33.87284837663174,
+          34.64011941105127,
+          34.28926412016153,
+          34.352934919297695,
+          34.63598992675543,
+          34.06917117536068,
+          34.84312351793051,
+          33.94862823188305,
+          34.633129835128784,
+          34.08889099955559,
+          34.98453460633755,
+          34.42716598510742,
+          34.75760202854872,
+          34.140641801059246,
+          34.43313576281071,
+          34.58452969789505,
+          34.49139650911093,
+          34.10421218723059,
+          37.64813486486673
         ],
         "count": 23,
-        "median": 34.77806132286787,
-        "p95": 38.636431097984314,
-        "min": 34.341505728662014,
-        "max": 42.533960193395615,
-        "stdev": 1.7935512809241843,
-        "stdev_pct_of_median": 5.157134160738447
+        "median": 34.49139650911093,
+        "p95": 37.64813486486673,
+        "min": 33.87284837663174,
+        "max": 40.63747264444828,
+        "stdev": 1.4605732573191825,
+        "stdev_pct_of_median": 4.234601683736902
       }
     },
     "cancel_probe": {
       "admitted": true,
-      "admission_ms": 3.654,
+      "admission_ms": 3.089,
       "held_open_ms": 3500.069,
       "bytes_before_close": 0,
       "closed_by_server": false,
-      "response_head": "HTTP/1.1 200 OK\r\ndate: Fri, 11 Sep 2026 20:57:14 GMT\r\nserver: uvicorn\r\ncontent-type: text/event-stream; charset=utf-8\r\nconnection: close\r\ntransfer-encoding: chunked\r\n\r\n",
+      "response_head": "HTTP/1.1 200 OK\r\ndate: Fri, 11 Sep 2026 21:53:48 GMT\r\nserver: uvicorn\r\ncontent-type: text/event-stream; charset=utf-8\r\nconnection: close\r\ntransfer-encoding: chunked\r\n\r\n",
       "error": null
     },
     "refill": {
@@ -187,40 +199,40 @@
       "text_sha256": "118cf54787fe2a9c931d0e8ed4eddf2235fdcd64abe1b1e253ee908d6797f19d",
       "finish_reason": "length",
       "error": null,
-      "submit_to_first_token_ms": 769.043,
+      "submit_to_first_token_ms": 768.02,
       "gaps_ms": {
         "samples": [
-          34.834932535886765,
-          34.325866028666496,
-          34.840622916817665,
-          35.25725845247507,
-          35.06773617118597,
-          34.81425251811743,
-          34.90090370178223,
-          34.91251356899738,
-          34.96169485151768,
-          34.57767982035875,
-          34.79901235550642,
-          35.01679468899965,
-          34.75488256663084,
-          35.26576794683933,
-          34.30844657123089,
-          34.41921714693308,
-          34.801493398845196,
-          34.4937676563859,
-          34.49667897075415,
-          34.69503112137318,
-          34.50568858534098,
-          34.842222929000854,
-          38.25334645807743
+          34.89029221236706,
+          34.485556185245514,
+          34.04396865516901,
+          34.79431010782719,
+          35.204267129302025,
+          34.563218243420124,
+          34.029808826744556,
+          34.91245210170746,
+          35.45511141419411,
+          34.177450463175774,
+          34.52193643897772,
+          34.46817584335804,
+          34.12865940481424,
+          34.22509226948023,
+          34.69415940344334,
+          33.743725158274174,
+          35.056743770837784,
+          34.62696820497513,
+          35.05515493452549,
+          34.37499329447746,
+          34.727019257843494,
+          34.79430079460144,
+          37.836477160453796
         ],
         "count": 23,
-        "median": 34.81425251811743,
-        "p95": 35.26576794683933,
-        "min": 34.30844657123089,
-        "max": 38.25334645807743,
-        "stdev": 0.7729123359250696,
-        "stdev_pct_of_median": 2.2201032049240292
+        "median": 34.62696820497513,
+        "p95": 35.45511141419411,
+        "min": 33.743725158274174,
+        "max": 37.836477160453796,
+        "stdev": 0.7941114861169459,
+        "stdev_pct_of_median": 2.293332414828191
       }
     },
     "cancellation_counter_before": 0.0,
@@ -239,7 +251,7 @@
         "cancellation_delta": 1.0,
         "work_prefill_delta": 3.0,
         "request_failed_delta": 1.0,
-        "acknowledgement_ms": 763.3526120334864,
+        "acknowledgement_ms": 759.5892595127225,
         "survivor_sha256": "118cf54787fe2a9c931d0e8ed4eddf2235fdcd64abe1b1e253ee908d6797f19d",
         "survivor_chars": 48
       },
@@ -249,9 +261,9 @@
         "admitted": true,
         "bytes_before_close": 0,
         "cancellation_delta": 1.0,
-        "work_prefill_delta": 11.0,
+        "work_prefill_delta": 12.0,
         "request_failed_delta": 2.0,
-        "acknowledgement_ms": 767.5980674102902,
+        "acknowledgement_ms": 764.6124577149749,
         "survivor_sha256": "118cf54787fe2a9c931d0e8ed4eddf2235fdcd64abe1b1e253ee908d6797f19d",
         "survivor_chars": 48
       },
@@ -261,9 +273,9 @@
         "admitted": true,
         "bytes_before_close": 0,
         "cancellation_delta": 1.0,
-        "work_prefill_delta": 24.0,
+        "work_prefill_delta": 25.0,
         "request_failed_delta": 3.0,
-        "acknowledgement_ms": 769.0431484952569,
+        "acknowledgement_ms": 768.0197134613991,
         "survivor_sha256": "118cf54787fe2a9c931d0e8ed4eddf2235fdcd64abe1b1e253ee908d6797f19d",
         "survivor_chars": 48
       }
@@ -271,6 +283,7 @@
     "host_sampling": {
       "enabled": true,
       "seed": 1234,
+      "route_counter": "host_sampler_requests",
       "reference_text": ".Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q",
       "survivor_text": ".Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q",
       "reference_error": null,
@@ -278,11 +291,14 @@
       "reference_status": 200,
       "survivor_status": 200,
       "long_wall_ms": null,
-      "host_sampler_requests_delta": 3.0,
-      "native_sampler_requests_delta": 0.0,
+      "route_delta": 3.0,
+      "other_route_delta": {
+        "native_sampler_requests": 0.0
+      },
       "reference_sha256": "118cf54787fe2a9c931d0e8ed4eddf2235fdcd64abe1b1e253ee908d6797f19d",
       "survivor_sha256": "118cf54787fe2a9c931d0e8ed4eddf2235fdcd64abe1b1e253ee908d6797f19d"
     },
+    "native_sampling": null,
     "packed_layer_outer_enabled": true,
     "packed_layer_outer_env_seen": "1",
     "kv_storage_requested": "int8_per_token_head",
@@ -314,7 +330,7 @@
       "long_request": {
         "chars": 48,
         "finish_reason": "length",
-        "wall_ms": 5270.851,
+        "wall_ms": 5257.163,
         "error": null
       },
       "survivor": {
@@ -338,7 +354,7 @@
         "error": null
       }
     },
-    "prefill_work_total_delta": 24.0,
+    "prefill_work_total_delta": 25.0,
     "request_failed_total_delta": 3.0,
     "metrics_baseline": {
       "hipengine_chat_sessions_active": 0.0,
@@ -408,10 +424,10 @@
       "hipengine_resident_prefill_oracle_observed_peak_owners": 1.0,
       "hipengine_resident_prefill_oracle_owner_bytes": 0.0,
       "hipengine_resident_prefill_oracle_owners": 0.0,
-      "hipengine_resident_request_latency_max_seconds": 4.107856533490121,
-      "hipengine_resident_request_latency_seconds": 8.200594477634876,
+      "hipengine_resident_request_latency_max_seconds": 4.105423823930323,
+      "hipengine_resident_request_latency_seconds": 8.198215438611806,
       "hipengine_resident_request_latency_seconds_count": 27.0,
-      "hipengine_resident_request_latency_seconds_sum": 4.871924922801554,
+      "hipengine_resident_request_latency_seconds_sum": 4.862947264686227,
       "hipengine_resident_requests_active": 0.0,
       "hipengine_resident_requests_admitted": 0.0,
       "hipengine_resident_requests_admitted_total": 1.0,
@@ -428,7 +444,7 @@
     "oracle_owner_bytes_baseline": 0.0,
     "oracle_owner_bytes_final": 0.0
   },
-  "command": "/home/lhl/mambaforge/envs/therock/bin/python3 /home/lhl/hipEngine-main/scripts/gguf_p6e_cancel_refill_proof.py --long-prompt-rows 3072 --short-prompt-rows 512 --decode-tokens 24 --cancel-delay-ms 600,2000,3500 --cancel-observe-timeout-seconds 60 --concurrent-lead-seconds 0.6 --slow-consumer-line-delay-ms 40 --packed-layer-outer --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p6e-host2.json",
+  "command": "/home/lhl/mambaforge/envs/therock/bin/python3 /home/lhl/hipEngine-main/scripts/gguf_p6e_cancel_refill_proof.py --long-prompt-rows 3072 --short-prompt-rows 512 --decode-tokens 24 --cancel-delay-ms 600,2000,3500 --cancel-observe-timeout-seconds 60 --concurrent-lead-seconds 0.6 --slow-consumer-line-delay-ms 40 --packed-layer-outer --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p6e-final.json",
   "trace_environment": {
     "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-hipcc-version.txt",
     "HIPENGINE_REQUIRE_CACHED_BUILD": "1"

@@ -658,7 +658,7 @@ unbounded output queue, and no hidden serial fallback in native claims.
 
 **Coverage status as of 2026-09-11** (evidence:
 `benchmarks/results/2026-09-11-w7900-p6e-cancel-refill-service-proof.json`,
-ten gates, `passed: true`, `performance_claim: false`):
+eleven gates - ten passing and the native-sampling gate explicitly `skipped` with its blocker named - `passed: true`, `performance_claim: false`):
 
 | P6 coverage item | Status |
 | --- | --- |
@@ -669,7 +669,7 @@ ten gates, `passed: true`, `performance_claim: false`):
 | Slow / disconnected consumers | Covered |
 | Compact INT8 | Covered end to end on the resumable route |
 | Host sampling | Covered; the host route is asserted by route counter, not inferred from text |
-| Native sampling | **Not asserted.** The host arm shows the host route ran; no arm asserts the native sampler |
+| Native sampling | **Blocked by a real defect.** `HIPENGINE_QWEN35_NATIVE_SAMPLER` gates the native GPU sampler (`qwen35_gguf.py:10206`) and is off by default; with it off, a native-shaped request silently falls back to the host sampler. With it **on**, the packed native sampler has capacity 0, so the request fails `400 invalid_request: "packed native sampler row 0 exceeds capacity 0"` and the engine then times out and closes. The harness carries the arm as `--native-sampling-arm` (default off, because running it closes the engine) and its gate reports `skipped: true` with this blocker named. Reproduce: `HIPENGINE_QWEN35_NATIVE_SAMPLER=1 python3 scripts/gguf_p6e_cancel_refill_proof.py --native-sampling-arm` |
 | BF16 | **Scope clarification, not a gap.** The resumable executor is only attempted when the session's `kv_attention_source` is `int8_direct` (`qwen35_gguf.py:8094`), so the BF16 route cannot use this mechanism. Its bounded yield comes from the default route and is measured by the seven non-engagement gates, which pass under BF16. "BF16 resumable coverage" therefore has no referent: there is no BF16 resumable path to cover |
 | Long prefix suffixes | **Intentionally fail-closed.** `_prefill_resumable_int8_chunk` returns False for `row.prefix_reused_tokens` (`qwen35_gguf.py:8204`), because shared-prefix admission needs incremental prefill the layer-outer executor does not provide. A qualified chunked path requires proving its state ownership first |
 | Layer budgets other than 4 | **Not a settable knob.** The budget is derived, not configured: `budget = max(1, ceil(remaining_layers / remaining_polls))` with `remaining_polls = ceil(remaining_tokens / chunk_len)` (`qwen35_gguf.py:8244-8248`). What varies it is prompt length and prefill chunk size, so a budget sweep means varying those, not a flag |
