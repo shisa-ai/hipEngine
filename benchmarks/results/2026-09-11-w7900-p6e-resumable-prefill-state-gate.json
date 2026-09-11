@@ -1,0 +1,108 @@
+{
+  "schema": 1,
+  "kind": "w7900_p6e_resumable_prefill_gpu_proof",
+  "timestamp": "2026-09-11T23:02:04.986637+00:00",
+  "performance_claim": false,
+  "passed": true,
+  "host": {
+    "target_arch": "gfx1100",
+    "hip_visible_devices": "0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv": "int8_per_token_head + fp32 scales",
+    "route": "int8_direct layer-outer resumable"
+  },
+  "workload": {
+    "prompt_rows": 3072,
+    "bulk_prefill_row_capacity": 1024,
+    "planned_rounds": 3,
+    "layer_budget": 4,
+    "decode_tokens": 24,
+    "max_sequence_length": 16384,
+    "execution_mode": "eager, greedy, prefix-off, MTP-off"
+  },
+  "gates": {
+    "exact_continuation": {
+      "passed": true,
+      "arm_a_token_id": 265,
+      "arm_b_token_id": 265,
+      "detail": "both arms prefill the same prompt greedily and must sample the same token"
+    },
+    "real_yield": {
+      "passed": true,
+      "segments": 16,
+      "segment_min_ms": 259.373,
+      "declared_floor_ms": 1.0,
+      "detail": "more than one segment proves control returned mid-prefill; every segment above the floor proves each segment did GPU work rather than advancing bookkeeping"
+    },
+    "bounded_decode_gap": {
+      "passed": true,
+      "interleaved_p95_ms": 33.609,
+      "interleaved_max_ms": 33.667,
+      "p95_limit_ms": 67.32,
+      "max_limit_ms": 119.427,
+      "declared_p95_factor": 2.0,
+      "declared_max_factor": 3.0,
+      "detail": "decode steps taken while a prefill is suspended must stay within the declared factors of the standalone decode step on the same session"
+    },
+    "cleanup": {
+      "passed": true,
+      "peak_suspended_bytes": 221773824,
+      "detail": "the suspended-state buffers must not outlive the completing checkpoint; peak_suspended_bytes proves suspension actually happened"
+    },
+    "layer_boundary_state": {
+      "passed": true,
+      "layers_compared": 64,
+      "mismatch_count": 0,
+      "mismatches": [],
+      "detail": "the segmented resumable prefill must commit the same per-layer direct INT8 K/V and linear conv/recurrent state as the one-shot reference over the committed prefix"
+    }
+  },
+  "measurements": {
+    "arm_a_one_shot_wall_s": 4.1656,
+    "arm_b_resumable_wall_s": 4.7739,
+    "segments": {
+      "count": 16,
+      "median_ms": 262.358,
+      "p95_ms": 288.862,
+      "min_ms": 259.373,
+      "max_ms": 289.032
+    },
+    "peak_suspended_bytes": 221773824,
+    "standalone_decode": {
+      "count": 24,
+      "median_ms": 33.447,
+      "p95_ms": 33.66,
+      "min_ms": 32.545,
+      "max_ms": 39.809
+    },
+    "interleaved_decode": {
+      "count": 15,
+      "median_ms": 33.381,
+      "p95_ms": 33.609,
+      "min_ms": 32.916,
+      "max_ms": 33.667
+    },
+    "interleaved_steps": 15,
+    "state_position": [
+      3072,
+      3072
+    ],
+    "state_layers_compared": 64
+  },
+  "command": "/home/lhl/mambaforge/envs/therock/bin/python3 /home/lhl/hipEngine-main/scripts/gguf_resumable_prefill_gpu_proof.py --max-sequence-length 16384 --prompt-rounds 3 --layer-budget 4 --decode-tokens 24 --json benchmarks/results/2026-09-11-w7900-p6e-resumable-prefill-state-gate.json",
+  "trace_environment": {
+    "HIP_VISIBLE_DEVICES": "0",
+    "HIPENGINE_HIP_ARCH": "gfx1100",
+    "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-hipcc-version.txt",
+    "HIPENGINE_REQUIRE_CACHED_BUILD": "1"
+  },
+  "notes": [
+    "This is a control-and-liveness proof, not a throughput claim; it sets performance_claim false and no benchmark scoreboard row changes.",
+    "The decode-gap factors and the segment work floor were declared before measuring, so the gate could not be fitted to the result.",
+    "Arm A and Arm B prefill the same prompt on different sessions of one resident batch; equal sampled tokens is the continuation check, and the layer_boundary_state gate additionally fingerprints the committed per-layer direct INT8 K/V and linear state for exact equality.",
+    "The interleaved decoder runs while the prefill is suspended, which is the case P6b's dedicated suspended buffers exist to protect."
+  ]
+}

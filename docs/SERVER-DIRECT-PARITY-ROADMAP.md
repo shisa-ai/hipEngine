@@ -73,15 +73,18 @@ unless noted):
 | P6b suspended-state ownership | - | - | dedicated hidden-plane + linear-state buffers copied out at each yield and back on resume; suspended owner counted in prefill-transient telemetry; freed on completion, failure, and row reclaim | `--` (this unit) |
 | P6d harness repair | - | - | - | `--` (this unit) |
 | P6e service proof | - | bounded command acknowledgement and cancel delay while a long prefill is in flight; survivor text byte-identical over 192 characters | - | `f6578280a`, `53f134a7e`, `1a663ef9a` |
+| P6f layer-boundary state gate | - | GPU proof: the segmented resumable prefill's committed per-layer direct INT8 K/V, its scales, and the linear conv/recurrent state fingerprint identically to the one-shot reference over all 64 layers at 3,072 committed rows; the gate's first run exposed an uninitialized-scale-tail comparison defect in the harness itself | - | `--` (this unit) |
 
 Combined P3+P4 at 32K declared: ~1.6 GiB of route transients vs ~6.4 GiB at
 the P0 baseline (-75%), measured with the executor flag enabled. The
 layer-outer executor's diagnostics all passed (bitwise parity at 2,048/1,500
 rows, wall A/B at 1K/2K/4K/8K within 2%, trace identity, server probe,
 decode handoff) and cancellation cleanup is CPU-tested, but the remaining
-packet gates are outstanding (layer-boundary/state comparison, exact
-KV/control fixtures, shifted/ragged GPU coverage, aliasing on this
-executor), so the default is OFF (reviewer finding 4);
+packet gates are outstanding (shifted/ragged GPU coverage and aliasing on
+this executor; the layer-boundary/state and exact KV/control gates were
+closed on GPU 2026-09-11 by the `layer_boundary_state` gate in
+`scripts/gguf_resumable_prefill_gpu_proof.py`), so the default is OFF
+(reviewer finding 4);
 `HIPENGINE_GGUF_PACKED_LAYER_OUTER=1` enables it. The lease removal is default
 on for the C1/prefix-off/MTP-off route with `HIPENGINE_GGUF_PACKED_KV_LEASE=1`
 as the rollback.
@@ -91,8 +94,10 @@ checkpoint, its suspended-state ownership, and the CPU tests; P6e GPU proof on
 the serial INT8 route **landed 2026-09-11 and now passes on the resumable route
 itself** (eleven gates - ten passing and the native-sampling gate explicitly
 `skipped` with its blocker named - including a cancellation-delay sweep and a
-host-sampling arm; see the coverage table in the P6 section), and P6f
-P3/P2 gates are outstanding, so the route stays behind
+host-sampling arm; see the coverage table in the P6 section), and P6f's
+layer-boundary/state and exact KV/control gates closed on GPU 2026-09-11 while
+shifted/ragged GPU coverage and aliasing on this executor remain outstanding, so
+the route stays behind
 `HIPENGINE_GGUF_PACKED_LAYER_OUTER` until P6f closes), P5
 remainder (HIP-API/queue-gap attribution and graph-capture amortization; the
 IKV-C2 C>1 row-batched consumer landed and is promoted to physical c4 on the
