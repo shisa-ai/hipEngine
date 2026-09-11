@@ -2,16 +2,17 @@
 
 ## Model support matrix (downloaded 2026-08-29)
 
-llama.cpp column checked against a 2026-08-29 llama.cpp tree; hipEngine column from `hipengine.models.registered_models()` (plugins today: timesfm_2p5_200m, moonshine_asr, qwen3_5_gguf, qwen3_5_moe_gguf, qwen3_5_moe_paro, laguna_gguf, maple, toy).
+llama.cpp column checked against a 2026-08-29 llama.cpp tree; hipEngine column from `hipengine.models.registered_models()` (plugins today: evie_4p5b [also serves EVIE-8B], laguna_gguf, maple, moonshine_asr, qwen3_5_gguf, qwen3_5_moe_gguf, qwen3_5_moe_paro, qwen4_exp_gguf, timesfm_2p5_200m, timesfm_3p0, toy_one_layer).
 
 Goal: basic hipEngine support for all of these. Start with models that have **no llama.cpp oracle either** (EVIE, VibeVoice ×2, shisa-asr) ordered by least new code; models with llama.cpp support get a free GGUF correctness oracle.
 
 | Model | Architecture | llama.cpp | hipEngine |
 |---|---|---|---|
 | google/timesfm-2.5-200m | TimesFmModelForPrediction | ❌ (not a token LM) | ✅ `timesfm_2p5_200m` |
+| google/timesfm-3.0-pytorch | TimesFM3Torch | ❌ | ✅ `timesfm_3p0` (GPU decode; 4.17x torch fp32 on gfx1151) |
 | shisa-ai/shisa-realtime-asr-0.92b | MoonshineForConditionalGeneration | ❌ (runtime is sherpa-onnx) | ✅ `moonshine_asr` (native HIP decoder) |
 | datalab-to/surya-ocr-2 | Qwen3_5 (gated DeltaNet) | ✅ official GGUF, documented llama.cpp backend | 🟡 `qwen3_5_gguf` text decoder only; no vision tower |
-| tencent/EVIE-4.5B / 8B | ColQwen3_5 | ❌ (no multi-vector/MaxSim) | ❌ |
+| tencent/EVIE-4.5B / 8B | ColQwen3_5 | ❌ (no multi-vector/MaxSim) | ✅ `evie_4p5b` (both sizes; 4.5B: batched fp16 encode 1.13 s, 1.11x torch bf16; 8B: fp32 parity-gated, fp32 recommended) |
 | microsoft/VibeVoice-ASR | VibeVoiceForASRTraining | ❌ (custom audio tokenizers) | ❌ |
 | microsoft/VibeVoice-1.5B | VibeVoiceForConditionalGeneration | ❌ (TTS diffusion head) | ❌ |
 | shisa-ai/shisa-asr-v0.95b (+FP8) | Phi4MMForCausalLM | ❌ (no phi4mm audio) | ❌ |
@@ -24,7 +25,7 @@ Goal: basic hipEngine support for all of these. Start with models that have **no
 | Qwen/Qwen3-Embedding-8B | Qwen3 | ✅ qwen3 `--embeddings` | ❌ |
 | shisa-ai/chotto-e4b-20260515 | Gemma4 (not 3n) | ✅ `gemma4` + gemma4v mtmd | ❌ |
 
-Nowhere-supported (no oracle anywhere — priority, easiest first): EVIE (prefill-only encoder + MaxSim) → shisa-asr (Phi4MM audio front end) → VibeVoice-ASR → VibeVoice-TTS (diffusion head, hardest).
+Nowhere-supported (no oracle anywhere — priority, easiest first): ~~EVIE (prefill-only encoder + MaxSim)~~ ✅ done → shisa-asr (Phi4MM audio front end) → VibeVoice-ASR → VibeVoice-TTS (diffusion head, hardest).
 llama.cpp-oracle-available, likely cheapest: Qwen3-Embedding-8B / bge-m3 (encoder, no decode loop) → medgemma/translategemma (Gemma3 plugin) → chotto-e4b (Gemma4 plugin) → OCR VLMs (MinerU → PaddleOCR-VL → GLM-OCR → surya vision).
 
 
@@ -123,8 +124,8 @@ If hipEngine already runs Gemma 3, **MedGemma 1.5** (4B multimodal; 27B text and
 
 | # | Model | License | Type | Size |
 |---|---|---|---|---|
-| 1 | [google/timesfm-2.5-200m-pytorch](https://huggingface.co/google/timesfm-2.5-200m-pytorch) · [-transformers](https://huggingface.co/google/timesfm-2.5-200m-transformers) · [repo](https://github.com/google-research/timesfm) | Apache-2.0 | Forecasting | 200M |
-| 2 | [tencent/EVIE-4.5B](https://huggingface.co/tencent/EVIE-4.5B) · [8B](https://huggingface.co/tencent/EVIE-8B) · [repo](https://github.com/Tencent/EVIE) | Apache-2.0 | Retrieval encoder | 4.61B / 8.41B |
+| 1 | ✅ [google/timesfm-2.5-200m-pytorch](https://huggingface.co/google/timesfm-2.5-200m-pytorch) · [-transformers](https://huggingface.co/google/timesfm-2.5-200m-transformers) · [repo](https://github.com/google-research/timesfm) — **plus 3.0-500M done** (`timesfm_3p0`) | Apache-2.0 | Forecasting | 200M / 331M |
+| 2 | ✅ [tencent/EVIE-4.5B](https://huggingface.co/tencent/EVIE-4.5B) · [8B](https://huggingface.co/tencent/EVIE-8B) · [repo](https://github.com/Tencent/EVIE) | Apache-2.0 | Retrieval encoder | 4.61B / 8.41B |
 | 3 | [opendatalab/MinerU2.5-2509-1.2B](https://huggingface.co/opendatalab/MinerU2.5-2509-1.2B) · [GGUF](https://huggingface.co/Mungert/MinerU2.5-2509-1.2B-GGUF) | Open | OCR + layout | 1.2B |
 | 4 | [PaddlePaddle/PaddleOCR-VL](https://huggingface.co/PaddlePaddle/PaddleOCR-VL) · [1.6 LiteRT](https://huggingface.co/litert-community/PaddleOCR-VL-1.6) | Apache-2.0 | OCR + layout | 0.9B |
 | 5 | [datalab-to/surya-ocr-2](https://huggingface.co/datalab-to/surya-ocr-2) · [GGUF](https://huggingface.co/datalab-to/surya-ocr-2-gguf) · [repo](https://github.com/datalab-to/surya) | AI Pubs OpenRAIL-M | OCR + layout + table | 650M |
@@ -134,14 +135,14 @@ If hipEngine already runs Gemma 3, **MedGemma 1.5** (4B multimodal; 27B text and
 
 **Work required:**
 
-1. **TimesFM 2.5** — 20 layers, 1280 dims, input patch 32 / output patch 128, QKV already fused for speed. No tokenizer, no vision, no sampler. You get two independent reference impls (native `timesfm` and `TimesFm2_5ModelForPrediction`) to check parity against, and Google explicitly verified conversion parity between them. Half a day.
-2. **EVIE-4.5B** — prefill + linear projection only, no decode loop, so it's compute-bound rather than bandwidth-bound. New work: non-causal attention (`enable_bidirectional_attention()`), Prefix-MRL truncation (trivial slice + renormalize), and MaxSim scoring outside the engine.
+1. ✅ **TimesFM 2.5 + 3.0** — done. 2.5: GPU decode 0.082 s (13.3x over first path). 3.0: non-autoregressive multivariate port, GPU decode 0.319 s (4.17x torch fp32); records in `docs/MODEL-TIMESFM{,3}.md`.
+2. ✅ **EVIE-4.5B + 8B** — done. Batched fp16 encode 1.13 s for 8p+8q (1.11x torch bf16 with better retrieval fidelity); 8B merger-geometry fix landed with fp32 parity gates. Records in `docs/MODEL-EVIE.md`.
 3. **MinerU 2.5** — Qwen2-VL-2B encoder + Qwen2-0.5B LM, both plain attention, nothing exotic. GGUF and a llama.cpp writeup already exist. The work is the two-stage async pipeline: crop extraction, decoupled stage I/II scheduling, and repetition suppression that spares legitimate table structure.
 4. **PaddleOCR-VL** — ERNIE-4.5-0.3B decoder is trivial; NaViT variable-resolution patching and packing is the real work. The LiteRT port is a gift: it documents that the decoder is a standalone Llama-layout model, bit-exact fp32 vs original, and that 1-D positions substitute fine for M-RoPE on OCR with no quality loss. That's most of your bring-up validation done.
 
 **Correction to what I said earlier about Surya.** The MLX port reveals Surya 2 has **18 Gated-DeltaNet layers** — it's Qwen3-Next-style hybrid linear attention, not plain Qwen3.5. That's a new kernel class, not a weight swap, so it drops from #3 to #5. Also note it needs two auxiliary torch models: the EfficientViT segformer for line detection and a separate `surya_layout2` fast-layout model.
 
-Worth checking before you sequence anything: **if Qwen3.5 dense also carries Gated DeltaNet, that kernel gates EVIE too** — and your Qwen3.8 models. One kernel could unlock three of these at once, which would completely reorder the list. I'd confirm that first.
+**GDN question resolved (2026-09-10):** EVIE (ColQwen3_5 = Qwen3.5 dense with GDN) is done, so the Gated-DeltaNet kernel class exists and is oracle-validated in-tree — it does **not** gate EVIE, and the same kernels should transfer to Surya's hybrid layers and any Qwen3.5-dense-family port. Surya therefore moves back up the queue on kernel reuse, but still needs the two auxiliary torch models (EfficientViT line detection + `surya_layout2`).
 
 6. **GLM-OCR** — CogViT encoder, connector with token downsampling, GLM-0.5B decoder, MTP head active at inference, plus a PP-DocLayout-V3 dependency for the layout stage. Most new surface, but the MTP path is the most interesting thing here given your spec-dec work.
 7. **VibeVoice-ASR** — Qwen2 decoder over 64K context is easy; the acoustic + semantic tokenizers at 24 kHz are the new front end. Note there's also `VibeVoice-ASR-Streaming-7B` (10 languages) if streaming matters more than the 60-minute single pass.
