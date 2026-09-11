@@ -456,12 +456,21 @@ _UD_MTP_CERTIFICATIONS: Mapping[str, Qwen35GGUFUDMTPCertification] = {
             control_evidence=(
                 "benchmarks/results/ud-mtp-certification-u6.json: nine of ten "
                 "natural25 B3 category prompts exact in both repeats; "
-                "general_ja_plan is the outlier"
+                "general_ja_plan is the outlier. "
+                "benchmarks/results/ud-mtp-ks-near-tie-localization.json "
+                "localizes it: at output position 12 the AR path picks 99720 "
+                "(logit 21.181459) over 211768 (21.171841), a 0.0096 spread, "
+                "and the MTP verifier picks the AR rank-1 token 211768"
             ),
             control_blocker=(
-                "general_ja_plan diverges from its own AR reference at output "
-                "position 12 in both repeats; the AR path, not the MTP path, "
-                "is the outlier, so exact AR/MTP control is unqualified"
+                "the ud-q4-k-s failure is a near-tie argmax flip on a "
+                "0.0096-logit spread between the single-row AR route and the "
+                "4-row verifier route (batch composition), reproduced "
+                "deterministically. The gate as written requires exact IDs, so "
+                "it is unmet; resolving it needs a profile decision (strict = "
+                "K_S cannot carry MTP scope, production = the calibrated KL / "
+                "top-1 gates replace exact-ID equality), not another "
+                "measurement"
             ),
         ),
     ),

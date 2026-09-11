@@ -1638,15 +1638,24 @@ categories, two repeats, true no-MTP AR denominator) separates them:
   acceptance agreement, deterministic token IDs.
 - **K_S is `correctness_failed`**: `general_ja_plan` diverges from its own AR
   reference at output position 12 in both runs with identical accepted counts.
-  The divergence is the *AR* path, not the MTP path: K_S MTP continues with the
-  same tokens K_M and the plain control produce there, while K_S AR continues
-  differently. All other K_S prompts are exact. This is a near-tie argmax flip
-  between the K_S AR path and the K_S MTP-verify path, and it blocks the K_S pin
-  until it is localized.
+  All other K_S prompts are exact. The failure is localized
+  (`benchmarks/results/ud-mtp-ks-near-tie-localization.json`): at that position
+  the AR path picks token 99720 at logit 21.181459 over token 211768 at
+  21.171841 — a 0.0096 spread — and the MTP verifier picks the AR rank-1 token
+  211768. The AR and MTP routes differ by roughly one part in a thousand in
+  logit space because the verifier evaluates that row inside a 4-row batch
+  while the AR path evaluates it as a single row. That is a
+  batch-composition-invariance deviation, which `docs/EXECUTION-PROFILES.md`
+  treats as a gate separate from arithmetic equality; the plain K_S control and
+  both K_M artifacts agree exactly on this prompt. The remaining work is a
+  profile decision, not a measurement: under a strict profile K_S cannot carry
+  MTP scope, and under the production profile the calibrated mean/tail/max KL
+  and top-1 gates replace exact-ID equality and this near-tie is recorded as a
+  known batch-composition deviation.
 
 Both outcomes are evidence for a pin rather than a pin, and neither is
-automatic admission. See the `ud-mtp-certification-u6` result artifact and its
-worklog entry.
+automatic admission. See the `ud-mtp-certification-u6` and
+`ud-mtp-ks-near-tie-localization` result artifacts and their worklog entries.
 
 Remaining before `_UD_MTP_PRESET_FINGERPRINTS` may be populated:
 
