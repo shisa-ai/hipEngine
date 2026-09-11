@@ -1,0 +1,285 @@
+{
+  "schema": 1,
+  "kind": "w7900_p5_c1_decode_attribution",
+  "timestamp": "2026-09-11T17:08:32.476296+00:00",
+  "performance_claim": false,
+  "host": {
+    "observed_device": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100",
+    "hip_visible_devices": "0",
+    "rocprofv3_version": "1.3.2"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv": "int8_per_token_head + fp32 scales"
+  },
+  "workload": {
+    "arm": "r0_raw_session",
+    "prompt_rows": 2048,
+    "decode_tokens": 63,
+    "warmup_steps": 8,
+    "max_sequence_length": 16384,
+    "sampler": "greedy",
+    "child": {
+      "kind": "gguf_c1_decode_attribution_child",
+      "decode_tokens": 63,
+      "warmup_steps": 8,
+      "prompt_rows": 2048,
+      "measured_steps": 62,
+      "step_walls_ms": [
+        39.495,
+        36.395,
+        36.42,
+        36.578,
+        36.434,
+        36.481,
+        36.534,
+        36.405,
+        36.174,
+        36.248,
+        36.412,
+        36.307,
+        36.492,
+        36.358,
+        36.415,
+        36.422,
+        36.228,
+        36.578,
+        36.476,
+        36.548,
+        36.367,
+        36.35,
+        36.514,
+        36.451,
+        36.373,
+        36.394,
+        36.439,
+        36.549,
+        36.51,
+        38.015,
+        36.587,
+        36.376,
+        36.43,
+        36.371,
+        36.422,
+        36.352,
+        36.495,
+        36.656,
+        36.366,
+        36.296,
+        36.395,
+        36.405,
+        36.862,
+        36.586,
+        36.197,
+        36.394,
+        36.412,
+        36.528,
+        36.78,
+        36.889,
+        36.903,
+        36.9,
+        37.06,
+        36.978,
+        36.937,
+        36.795,
+        36.944,
+        37.236,
+        36.996,
+        36.79,
+        36.802,
+        36.864
+      ],
+      "final_token_id": 510,
+      "sync_memcpy_callsites": [
+        {
+          "site": "qwen35_gguf_runner.py:29221 _read_sample",
+          "calls": 62,
+          "total_ns": 1007173417,
+          "median_us": 16244.73
+        },
+        {
+          "site": "qwen35_gguf_runner.py:18515 _copy_token_embeddings_to_device",
+          "calls": 62,
+          "total_ns": 3182216,
+          "median_us": 51.33
+        }
+      ]
+    }
+  },
+  "attribution": {
+    "windows": {
+      "measured_steps": 62,
+      "window_total_ns": 2269486499,
+      "window_total_ms": 2269.486,
+      "per_step_ms": 36.605,
+      "child_step_wall_median_ms": 36.4785
+    },
+    "device": {
+      "kernel_launches": 50226,
+      "launches_per_step": 810.1,
+      "kernel_time_sum_ns": 1968092107,
+      "device_union_ns": 1075537374,
+      "device_union_ms": 1075.537,
+      "device_union_pct_of_window": 47.39,
+      "dispatch_overlap_ratio": 1.83,
+      "dispatch_overlap_note": "sum of dispatch durations divided by their union; a value above 1 means the trace's dispatch intervals overlap, so per-family shares are reported against kernel time and not against the union",
+      "gpu_idle_ns": 1193949125,
+      "gpu_idle_ms": 1193.949
+    },
+    "kernel_families": [
+      {
+        "family": "gguf_q4_k_t16_gemv_rowtile",
+        "launches": 23343,
+        "duration_ns": 1213131810,
+        "share_pct_of_kernel_time": 61.64
+      },
+      {
+        "family": "gguf_q6_k_t16_gemv_rowtile",
+        "launches": 4177,
+        "duration_ns": 444087383,
+        "share_pct_of_kernel_time": 22.56
+      },
+      {
+        "family": "paged_full_attn_decode",
+        "launches": 2015,
+        "duration_ns": 130999751,
+        "share_pct_of_kernel_time": 6.66
+      },
+      {
+        "family": "other",
+        "launches": 14531,
+        "duration_ns": 118080342,
+        "share_pct_of_kernel_time": 6.0
+      },
+      {
+        "family": "gdn_linear_attention",
+        "launches": 5912,
+        "duration_ns": 60645407,
+        "share_pct_of_kernel_time": 3.08
+      },
+      {
+        "family": "rocclr_copy",
+        "launches": 124,
+        "duration_ns": 579772,
+        "share_pct_of_kernel_time": 0.03
+      },
+      {
+        "family": "sampler_top1",
+        "launches": 124,
+        "duration_ns": 567642,
+        "share_pct_of_kernel_time": 0.03
+      }
+    ],
+    "hip_api": {
+      "calls": 99200,
+      "calls_per_step": 1600.0,
+      "api_union_ns": 1213540558,
+      "api_union_ms": 1213.541,
+      "api_union_pct_of_window": 53.47,
+      "top_functions": [
+        {
+          "function": "hipMemcpy",
+          "calls": 124,
+          "duration_ns": 1009774440
+        },
+        {
+          "function": "hipLaunchKernel",
+          "calls": 49538,
+          "duration_ns": 200705858
+        },
+        {
+          "function": "hipGetLastError",
+          "calls": 49538,
+          "duration_ns": 3060260
+        }
+      ]
+    },
+    "memory_copies": {
+      "copies": 0,
+      "copies_per_step": 0.0,
+      "bytes_available": false,
+      "bytes_note": "rocprofv3's memory-copy and HIP API traces record direction and duration but no transfer size, so no byte figure is reported here",
+      "by_direction": []
+    },
+    "sync_memcpy_stall": {
+      "callsites": [
+        {
+          "site": "qwen35_gguf_runner.py:29221 _read_sample",
+          "calls": 62,
+          "total_ns": 1007173417,
+          "median_us": 16244.73
+        },
+        {
+          "site": "qwen35_gguf_runner.py:18515 _copy_token_embeddings_to_device",
+          "calls": 62,
+          "total_ns": 3182216,
+          "median_us": 51.33
+        }
+      ],
+      "calls": 124,
+      "total_ns": 1010355633,
+      "per_step_calls": 2.0,
+      "per_step_ms": 16.296,
+      "meaning": "synchronous hipMemcpy calls made inside a measured step, timed in the child and attributed to their Python call site"
+    },
+    "decomposition": {
+      "identity": "window = union(device, api) + residual",
+      "window_ns": 2269486499,
+      "device_union_ns": 1075537374,
+      "hip_api_union_ns": 1213540558,
+      "overlap_device_api_ns": 892483583,
+      "combined_union_ns": 1396594349,
+      "residual_ns": 872892150,
+      "residual_ms": 872.892,
+      "residual_pct_of_window": 38.46,
+      "gpu_idle_ns": 1193949125,
+      "api_while_gpu_idle_ns": 321056975,
+      "gpu_idle_split": "gpu_idle = api_while_gpu_idle + residual",
+      "residual_meaning": "time inside the measured window that is neither device-busy nor inside a traced HIP runtime call: Python, telemetry, scheduling, and any queue gap not covered by an API call",
+      "balances": true
+    }
+  },
+  "queue_drain": {
+    "matched_calls": 727,
+    "median_api_ms": 2.134,
+    "median_transfer_ms": 0.665,
+    "api_over_transfer_ratio": 3.2,
+    "max_api_ms": 208.026,
+    "directions": {
+      "MEMORY_COPY_HOST_TO_DEVICE": 727
+    },
+    "note": "a synchronous hipMemcpy waits for the stream to drain, so its API duration includes queue wait that the transfer itself does not; the ratio shows how much of the call is wait rather than data movement"
+  },
+  "graph_capture": {
+    "execution_mode": "eager (no graph capture)",
+    "capture_cost_ns": null,
+    "capture_cost_note": "this route ran eager, so no graph was captured and no capture cost is incurred inside these windows",
+    "amortization_statement": "no comparison here mixes an amortized graph replay with a cold request: both the decode-step windows and the child walls are eager. A graph comparison would have to state replays per capture and exclude the capture cost from the amortized rate, and report the cold request separately.",
+    "cross_reference": "the c8 packed-graph packet records graph_capture_seconds 0.186 with one synchronized replay per logical transition; that is a different route and width and is not reused as a C1 figure here"
+  },
+  "roctx": {
+    "sdk_library": "/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib/librocprofiler-sdk-roctx.so.1",
+    "override_dir": "/tmp/hipengine-roctx-sdk-override-c1-decode-attribution",
+    "dependency_dirs": [
+      "/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib",
+      "/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib/rocm_sysdeps/lib"
+    ]
+  },
+  "command": "rocprofv3 --kernel-trace --marker-trace --hip-runtime-trace --memory-copy-trace --output-format csv -d /tmp/hipengine-p5-c1-decode-attribution -- /home/lhl/mambaforge/envs/therock/bin/python3 /home/lhl/hipEngine-main/scripts/gguf_c1_decode_attribution.py --child-mode run --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --prompt-rows 2048 --decode-tokens 63 --warmup-steps 8 --max-sequence-length 16384",
+  "reduction": "profiled rocprofv3 run",
+  "trace_environment": {
+    "HIP_VISIBLE_DEVICES": "0",
+    "HIPENGINE_HIP_ARCH": "gfx1100",
+    "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-hipcc-version.txt",
+    "HIPENGINE_REQUIRE_CACHED_BUILD": "1"
+  },
+  "notes": [
+    "Cache-only trace: the .so was built outside the profiler and HIPENGINE_REQUIRE_CACHED_BUILD=1, with the compiler version pinned by HIPENGINE_COMPILER_VERSION_FILE, prevented hipcc in the profiled process. Both are recorded in trace_environment.",
+    "Decode-step windows come from per-step ROCTx ranges, so model load, prefill, and warmup are excluded from every attributed total.",
+    "Every interval is clipped to the measured windows before summing, so each total is a subset of the measured span and the additive identity is a real constraint: window = union(device, api) + residual, with residual >= 0.",
+    "Per-family shares are of total kernel time, not of the device union: dispatch intervals on this route overlap, so a share of the union can exceed 100% and misread as a broken table. The overlap factor is reported.",
+    "Copy byte counts are not available from rocprofv3 traces; copies are reported by direction, count, and time only."
+  ]
+}
