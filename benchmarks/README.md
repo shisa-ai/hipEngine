@@ -3,15 +3,22 @@
 Last updated: **2026-09-13**
 
 Surya OCR 2 on Strix Halo gfx1151, hipEngine HIP lane vs transformers fp32 on
-the same host iGPU: end-to-end 1.276 s vs 2.676 s per full OCR request (2.1x
-faster; vision+prefill 0.215 s vs 1.613 s, 7.5x; decode 55.5 vs 68.2 tok/s).
-All four measured lanes (hipEngine CPU, torch CPU, torch HIP, hipEngine GPU)
-greedy-match the torch fp32 CPU oracle. Every lane times the same region —
-page image plus prompt in, greedy token ids out — with checkpoint load and
-runner construction reported separately as `init_s`. The HIP lane runs the
-vision tower on device; its decode rate still trails torch generate on decode
-alone, while the full request is 2.1x faster.
-[Lane compare](results/2026-09-11-gfx1151-surya-lane-compare.json).
+the same host iGPU, over 12 pages covering layout-JSON and markup output,
+Japanese and mixed script, dense small text, a ruled table, a blank page, a
+degraded scan, and long block-heavy pages: decode 51.7-55.4 tok/s vs
+20.4-26.6, a median 2.25x faster (2.03x-2.60x across every page), and
+end-to-end 0.21-9.88 s vs 0.32-20.99 s. Both lanes reproduce the torch fp32
+oracle exactly on all 12 pages, and each decode stage repeats identically.
+Every lane times the same region — page image plus prompt in, greedy token ids
+out — with checkpoint load and runner construction reported separately as
+`init_s`. Decode is weight-bandwidth-bound: one token streams 2342 MB of fp32
+weights at 138 GB/s, and 82-87% of decode kernel time is the projection GEMMs.
+[Suite baseline](results/2026-09-11-gfx1151-surya-suite-baseline.json),
+[post-SGEMV profile](results/2026-09-11-gfx1151-surya-post-sgemv-profile.json).
+Earlier Surya rows here reported decode trailing torch at 55.5 vs 68.2 tok/s;
+that comparison came from a harness defect in which the torch prefill stage was
+timed before its synchronization and decode was derived by subtracting two
+differently-measured runs. Decode is now timed directly.
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
