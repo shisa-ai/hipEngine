@@ -1,0 +1,54 @@
+{
+ "schema": 1,
+ "kind": "w7900_p5_c1_decode_gpu_span_measured",
+ "timestamp": "2026-09-11T18:27:33.516229+00:00",
+ "performance_claim": false,
+ "host": {
+  "observed_device": "AMD Radeon Pro W7900",
+  "target_arch": "gfx1100",
+  "hip_visible_devices": "0",
+  "rocprofv3_version": "1.3.2"
+ },
+ "model": {
+  "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "kv": "int8_per_token_head + fp32 scales"
+ },
+ "question": "The previous unit inferred a ~35 ms GPU span from wall minus host time. Measured directly from the trace, how much of that span is execution and where is the rest?",
+ "answer": "The span is 36.434 ms/step and only 17.110 ms of it is execution: the GPU is idle 19.421 ms/step (53%) between its own kernels. Leading and trailing gaps are both zero, so the host's Python sits between launches rather than outside the span. Interior gap is the recoverable quantity.",
+ "method": {
+  "source": "re-parse of the existing committed trace, no new GPU run: python3 scripts/gguf_c1_decode_attribution.py --trace-dir /tmp/hipengine-p5-c1-decode-attribution",
+  "span_definition": "per step window, first kernel start to last kernel end, clipped to the window",
+  "partition": "span = busy(device union inside the span) + interior gap; window = leading gap + span + trailing gap"
+ },
+ "gpu_span": {
+  "steps": 62,
+  "span_ms": 36.434,
+  "busy_in_span_ms": 17.11,
+  "interior_gap_ms": 19.421,
+  "leading_gap_ms": 0.0,
+  "trailing_gap_ms": 0.0,
+  "duty_cycle": 0.4696,
+  "note": "span is first kernel start to last kernel end within each step window; busy is the device union inside that span; leading is host time before the first launch and trailing is host time after the last kernel ends (which is where the blocking readback waits). Interior gap is the part fusion or a graph replay could remove; leading and trailing gap are not"
+ },
+ "window_ms_per_step": 36.605,
+ "device_union_ms_per_step": 17.347,
+ "conclusion": {
+  "window_is_the_span": true,
+  "window_equals_span_because": "leading and trailing gaps are both 0.0 ms, so the measured step window starts at the first kernel launch and ends at the last kernel's completion; the host's Python is interleaved between launches, not outside them",
+  "recoverable": "interior gap, 19.421 ms/step, 53.3% of the span",
+  "duty_cycle": 0.4696,
+  "lever": "reduce the number of host-in-the-loop launch points between kernels: fusion (fewer, larger kernels) or a captured graph replay (same kernels, no per-launch host cost). Graph capture already exists on the c8 packed route while the C1 route is eager.",
+  "why_this_settles_the_direction": "because leading and trailing gaps are zero, no amount of host-side reordering outside the launch sequence can help; only removing or amortizing the per-launch host work between kernels can"
+ },
+ "limits": [
+  "The span is measured from trace timestamps, whose clock domain is the profiler's; leading and trailing gaps of exactly 0.0 ms are consistent with the ROCTx marker being pushed immediately before the first launch and popped immediately after the last kernel, but a sub-microsecond gap would round to zero at the reported precision.",
+  "This is one trace at one prompt length (2048 rows) and one width (C1). The duty cycle may differ at other depths, where attention kernels grow and the launch mix changes.",
+  "Interior gap is not decomposed into launch latency versus host Python between launches, so this does not yet say how much of the 19.421 ms a graph replay would remove versus how much needs fewer kernels.",
+  "No optimization was attempted."
+ ],
+ "notes": [
+  "performance_claim is false and no scoreboard row changed.",
+  "Confirms and sharpens the inference in 2026-09-11-w7900-p5-c1-decode-step-wall-is-gpu-span-bound.json, which had to infer the span as wall minus pre-first-launch host time."
+ ]
+}
