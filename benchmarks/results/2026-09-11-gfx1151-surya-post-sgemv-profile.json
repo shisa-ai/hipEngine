@@ -1,0 +1,1891 @@
+{
+ "date": "2026-09-12",
+ "generated_utc": "2026-09-11T21:18:06Z",
+ "model": "datalab-to/surya-ocr-2",
+ "protocol": {
+  "profiler": "rocprofv3 --kernel-trace --memory-copy-trace",
+  "jit": "libraries prebuilt outside the profiler; profiled process is cache-only",
+  "attribution": "one process per phase; per-call cost = kernel total / calls the driver made",
+  "durations": "End_Timestamp - Start_Timestamp"
+ },
+ "phases": {
+  "vision-small": {
+   "calls_executed": 21,
+   "kernel_total_ms": 569.034994,
+   "kernel_per_call_ms": 27.096904476190478,
+   "kernel_calls": 5193,
+   "kernel_calls_per_call": 247.28571428571428,
+   "kernel_families": [
+    {
+     "name": "gemm_library",
+     "calls": 1575,
+     "total_ms": 532.026381,
+     "per_call_us": 337.79452761904764,
+     "max_us": 1320.554,
+     "share_pct": 93.49625007420897
+    },
+    {
+     "name": "evie_softmax",
+     "calls": 252,
+     "total_ms": 14.128063,
+     "per_call_us": 56.063742063492064,
+     "max_us": 196.089,
+     "share_pct": 2.4828109253330033
+    },
+    {
+     "name": "evie_elementwise",
+     "calls": 1596,
+     "total_ms": 10.403612,
+     "per_call_us": 6.518553884711779,
+     "max_us": 19.076,
+     "share_pct": 1.828290370486424
+    },
+    {
+     "name": "evie_norm",
+     "calls": 525,
+     "total_ms": 3.457996,
+     "per_call_us": 6.586659047619047,
+     "max_us": 33.143,
+     "share_pct": 0.6076947879237107
+    },
+    {
+     "name": "evie_activation",
+     "calls": 273,
+     "total_ms": 3.287791,
+     "per_call_us": 12.043190476190476,
+     "max_us": 17.633,
+     "share_pct": 0.577783622214278
+    },
+    {
+     "name": "evie_other",
+     "calls": 252,
+     "total_ms": 2.652953,
+     "per_call_us": 10.52759126984127,
+     "max_us": 34.385,
+     "share_pct": 0.4662196574855992
+    },
+    {
+     "name": "evie_rope",
+     "calls": 504,
+     "total_ms": 2.641376,
+     "per_call_us": 5.240825396825397,
+     "max_us": 10.62,
+     "share_pct": 0.46418516046484126
+    },
+    {
+     "name": "copy_fill",
+     "calls": 216,
+     "total_ms": 0.436822,
+     "per_call_us": 2.022324074074074,
+     "max_us": 8.416,
+     "share_pct": 0.07676540188317486
+    }
+   ],
+   "top_kernels": [
+    {
+     "name": "Cijk_Alik_Bljk_SB_MT32x32x8_SN_1LDSB0_AMAS0_BL1_BS1_EPS0_GLVWA1_GLVWB1_GRVW1_GSU1_GSUASB_ISA1151_IU1_K1_KLA_LBSPPA0_LBSPPB0_LPA0_LPB0_LRVW1_MIAV0_MMFGLC_NLCA1_NLCB1_PGR0_PLR1_SIA1_SS0_SU32_SUS256_SVW4_TT2_2_TLDS0_UMLDSA0_UMLDSB0_USFGROn1_VAW1_VSn1_VW1_VWB1_WSGRA0_WSGRB0_WS64_WG16_16_1_WGM8",
+     "calls": 1323,
+     "total_ms": 519.81392,
+     "per_call_us": 392.90545729402874,
+     "max_us": 1320.554,
+     "share_pct": 91.35007960512179
+    },
+    {
+     "name": "evie_softmax_rows_kernel(float*, long, long, long, long)",
+     "calls": 252,
+     "total_ms": 14.128063,
+     "per_call_us": 56.063742063492064,
+     "max_us": 196.089,
+     "share_pct": 2.4828109253330033
+    },
+    {
+     "name": "Cijk_Ailk_Bljk_SB_MT32x32x8_SN_1LDSB0_AMAS0_BL1_BS1_EPS0_GLVWA1_GLVWB1_GRVW1_GSU1_GSUASB_ISA1151_IU1_K1_KLA_LBSPPA0_LBSPPB0_LPA0_LPB0_LRVW1_MIAV0_MMFGLC_NLCA1_NLCB1_PGR0_PLR1_SIA1_SS0_SU32_SUS256_SVW4_TT2_2_TLDS0_UMLDSA0_UMLDSB0_USFGROn1_VAW1_VSn1_VW1_VWB1_WSGRA0_WSGRB0_WS64_WG16_16_1_WGM8",
+     "calls": 252,
+     "total_ms": 12.212461,
+     "per_call_us": 48.46214682539683,
+     "max_us": 166.513,
+     "share_pct": 2.146170469087179
+    },
+    {
+     "name": "evie_add_bias_kernel(float*, float const*, long, long)",
+     "calls": 1071,
+     "total_ms": 8.442762,
+     "per_call_us": 7.883064425770308,
+     "max_us": 17.594,
+     "share_pct": 1.483698206441061
+    },
+    {
+     "name": "evie_layernorm_kernel(float const*, float const*, float const*, float*, long, long, float)",
+     "calls": 525,
+     "total_ms": 3.457996,
+     "per_call_us": 6.586659047619047,
+     "max_us": 33.143,
+     "share_pct": 0.6076947879237107
+    },
+    {
+     "name": "evie_gelu_tanh_kernel(float const*, float*, long)",
+     "calls": 252,
+     "total_ms": 3.215895,
+     "per_call_us": 12.761488095238095,
+     "max_us": 17.633,
+     "share_pct": 0.5651488983821618
+    },
+    {
+     "name": "evie_scale_kernel(float const*, float*, float, long)",
+     "calls": 252,
+     "total_ms": 2.652953,
+     "per_call_us": 10.52759126984127,
+     "max_us": 34.385,
+     "share_pct": 0.4662196574855992
+    },
+    {
+     "name": "evie_rope_kernel(float*, float const*, float const*, long, long, long, long, long)",
+     "calls": 504,
+     "total_ms": 2.641376,
+     "per_call_us": 5.240825396825397,
+     "max_us": 10.62,
+     "share_pct": 0.46418516046484126
+    },
+    {
+     "name": "evie_add_kernel(float const*, float const*, float*, long)",
+     "calls": 525,
+     "total_ms": 1.96085,
+     "per_call_us": 3.7349523809523806,
+     "max_us": 19.076,
+     "share_pct": 0.34459216404536275
+    },
+    {
+     "name": "__amd_rocclr_copyBuffer",
+     "calls": 216,
+     "total_ms": 0.436822,
+     "per_call_us": 2.022324074074074,
+     "max_us": 8.416,
+     "share_pct": 0.07676540188317486
+    },
+    {
+     "name": "evie_gelu_erf_kernel(float const*, float*, long)",
+     "calls": 21,
+     "total_ms": 0.071896,
+     "per_call_us": 3.423619047619048,
+     "max_us": 3.847,
+     "share_pct": 0.012634723832116378
+    }
+   ],
+   "transfers": {
+    "bytes_available": false,
+    "total_mb": null,
+    "total_ms": 58.739368,
+    "ms_per_call": 2.797112761904762,
+    "by_kind": {
+     "host_to_device": {
+      "calls": 349,
+      "ms": 58.471904,
+      "mb": null
+     },
+     "device_to_host": {
+      "calls": 22,
+      "ms": 0.267464,
+      "mb": null
+     }
+    }
+   },
+   "driver": {
+    "phase": "vision",
+    "page": "tests/fixtures/surya/page_small.png",
+    "grid": [
+     1,
+     16,
+     16
+    ],
+    "calls_executed": 21,
+    "vision_tokens": 64
+   }
+  },
+  "vision-full": {
+   "calls_executed": 21,
+   "kernel_total_ms": 21403.263219,
+   "kernel_per_call_ms": 1019.2030104285715,
+   "kernel_calls": 5193,
+   "kernel_calls_per_call": 247.28571428571428,
+   "kernel_families": [
+    {
+     "name": "gemm_library",
+     "calls": 1575,
+     "total_ms": 16594.955409,
+     "per_call_us": 10536.479624761905,
+     "max_us": 23145.756,
+     "share_pct": 77.53469757951866
+    },
+    {
+     "name": "evie_softmax",
+     "calls": 252,
+     "total_ms": 2660.579769,
+     "per_call_us": 10557.856226190475,
+     "max_us": 11878.994,
+     "share_pct": 12.430720221382705
+    },
+    {
+     "name": "evie_other",
+     "calls": 252,
+     "total_ms": 1736.829929,
+     "per_call_us": 6892.182257936508,
+     "max_us": 7332.117,
+     "share_pct": 8.114790306639737
+    },
+    {
+     "name": "evie_elementwise",
+     "calls": 1596,
+     "total_ms": 227.689834,
+     "per_call_us": 142.66280325814537,
+     "max_us": 427.164,
+     "share_pct": 1.0638089700166669
+    },
+    {
+     "name": "evie_activation",
+     "calls": 273,
+     "total_ms": 110.899222,
+     "per_call_us": 406.22425641025643,
+     "max_us": 463.672,
+     "share_pct": 0.5181416537528403
+    },
+    {
+     "name": "evie_rope",
+     "calls": 504,
+     "total_ms": 37.124191,
+     "per_call_us": 73.65910912698413,
+     "max_us": 85.361,
+     "share_pct": 0.17345107902539036
+    },
+    {
+     "name": "evie_norm",
+     "calls": 525,
+     "total_ms": 34.706448,
+     "per_call_us": 66.10752000000001,
+     "max_us": 230.032,
+     "share_pct": 0.16215493705273204
+    },
+    {
+     "name": "copy_fill",
+     "calls": 216,
+     "total_ms": 0.478417,
+     "per_call_us": 2.214893518518519,
+     "max_us": 9.739,
+     "share_pct": 0.0022352526112714532
+    }
+   ],
+   "top_kernels": [
+    {
+     "name": "Cijk_Alik_Bljk_SB_MT32x32x8_SN_1LDSB0_AMAS0_BL1_BS1_EPS0_GLVWA1_GLVWB1_GRVW1_GSU1_GSUASB_ISA1151_IU1_K1_KLA_LBSPPA0_LBSPPB0_LPA0_LPB0_LRVW1_MIAV0_MMFGLC_NLCA1_NLCB1_PGR0_PLR1_SIA1_SS0_SU32_SUS256_SVW4_TT2_2_TLDS0_UMLDSA0_UMLDSB0_USFGROn1_VAW1_VSn1_VW1_VWB1_WSGRA0_WSGRB0_WS64_WG16_16_1_WGM8",
+     "calls": 1323,
+     "total_ms": 12347.656735,
+     "per_call_us": 9333.073873771731,
+     "max_us": 23145.756,
+     "share_pct": 57.6905334885514
+    },
+    {
+     "name": "Cijk_Ailk_Bljk_SB_MT32x32x8_SN_1LDSB0_AMAS0_BL1_BS1_EPS0_GLVWA1_GLVWB1_GRVW1_GSU1_GSUASB_ISA1151_IU1_K1_KLA_LBSPPA0_LBSPPB0_LPA0_LPB0_LRVW1_MIAV0_MMFGLC_NLCA1_NLCB1_PGR0_PLR1_SIA1_SS0_SU32_SUS256_SVW4_TT2_2_TLDS0_UMLDSA0_UMLDSB0_USFGROn1_VAW1_VSn1_VW1_VWB1_WSGRA0_WSGRB0_WS64_WG16_16_1_WGM8",
+     "calls": 252,
+     "total_ms": 4247.298674,
+     "per_call_us": 16854.359817460318,
+     "max_us": 19515.364,
+     "share_pct": 19.844164090967254
+    },
+    {
+     "name": "evie_softmax_rows_kernel(float*, long, long, long, long)",
+     "calls": 252,
+     "total_ms": 2660.579769,
+     "per_call_us": 10557.856226190475,
+     "max_us": 11878.994,
+     "share_pct": 12.430720221382705
+    },
+    {
+     "name": "evie_scale_kernel(float const*, float*, float, long)",
+     "calls": 252,
+     "total_ms": 1736.829929,
+     "per_call_us": 6892.182257936508,
+     "max_us": 7332.117,
+     "share_pct": 8.114790306639737
+    },
+    {
+     "name": "evie_add_bias_kernel(float*, float const*, long, long)",
+     "calls": 1071,
+     "total_ms": 193.117299,
+     "per_call_us": 180.31493837535015,
+     "max_us": 427.164,
+     "share_pct": 0.9022796992402862
+    },
+    {
+     "name": "evie_gelu_tanh_kernel(float const*, float*, long)",
+     "calls": 252,
+     "total_ms": 109.998487,
+     "per_call_us": 436.50193253968257,
+     "max_us": 463.672,
+     "share_pct": 0.513933253422556
+    },
+    {
+     "name": "evie_rope_kernel(float*, float const*, float const*, long, long, long, long, long)",
+     "calls": 504,
+     "total_ms": 37.124191,
+     "per_call_us": 73.65910912698413,
+     "max_us": 85.361,
+     "share_pct": 0.17345107902539036
+    },
+    {
+     "name": "evie_layernorm_kernel(float const*, float const*, float const*, float*, long, long, float)",
+     "calls": 525,
+     "total_ms": 34.706448,
+     "per_call_us": 66.10752000000001,
+     "max_us": 230.032,
+     "share_pct": 0.16215493705273204
+    },
+    {
+     "name": "evie_add_kernel(float const*, float const*, float*, long)",
+     "calls": 525,
+     "total_ms": 34.572535,
+     "per_call_us": 65.85244761904761,
+     "max_us": 153.93,
+     "share_pct": 0.16152927077638068
+    },
+    {
+     "name": "evie_gelu_erf_kernel(float const*, float*, long)",
+     "calls": 21,
+     "total_ms": 0.900735,
+     "per_call_us": 42.89214285714286,
+     "max_us": 45.726,
+     "share_pct": 0.004208400330284234
+    },
+    {
+     "name": "__amd_rocclr_copyBuffer",
+     "calls": 216,
+     "total_ms": 0.478417,
+     "per_call_us": 2.214893518518519,
+     "max_us": 9.739,
+     "share_pct": 0.0022352526112714532
+    }
+   ],
+   "transfers": {
+    "bytes_available": false,
+    "total_mb": null,
+    "total_ms": 81.31434,
+    "ms_per_call": 3.8721114285714284,
+    "by_kind": {
+     "host_to_device": {
+      "calls": 349,
+      "ms": 79.851065,
+      "mb": null
+     },
+     "device_to_host": {
+      "calls": 22,
+      "ms": 1.463275,
+      "mb": null
+     }
+    }
+   },
+   "driver": {
+    "phase": "vision",
+    "page": "tests/fixtures/surya/page_full.png",
+    "grid": [
+     1,
+     64,
+     64
+    ],
+    "calls_executed": 21,
+    "vision_tokens": 1024
+   }
+  },
+  "prefill-small": {
+   "calls_executed": 21,
+   "kernel_total_ms": 2007.583207,
+   "kernel_per_call_ms": 95.59920033333333,
+   "kernel_calls": 12411,
+   "kernel_calls_per_call": 591.0,
+   "kernel_families": [
+    {
+     "name": "gemm_library",
+     "calls": 4179,
+     "total_ms": 1467.026639,
+     "per_call_us": 351.04729337162,
+     "max_us": 2658.521,
+     "share_pct": 73.07426331744566
+    },
+    {
+     "name": "gdn_recurrent",
+     "calls": 1512,
+     "total_ms": 494.469558,
+     "per_call_us": 327.03013095238094,
+     "max_us": 2077.588,
+     "share_pct": 24.630090363173675
+    },
+    {
+     "name": "gdn_conv",
+     "calls": 756,
+     "total_ms": 19.65543,
+     "per_call_us": 25.999246031746033,
+     "max_us": 180.299,
+     "share_pct": 0.979059295349047
+    },
+    {
+     "name": "evie_other",
+     "calls": 1281,
+     "total_ms": 7.385239,
+     "per_call_us": 5.765213895394223,
+     "max_us": 36.629,
+     "share_pct": 0.36786714365059936
+    },
+    {
+     "name": "evie_norm",
+     "calls": 1281,
+     "total_ms": 5.355447,
+     "per_call_us": 4.18067681498829,
+     "max_us": 15.87,
+     "share_pct": 0.26676089844379736
+    },
+    {
+     "name": "evie_activation",
+     "calls": 504,
+     "total_ms": 3.435947,
+     "per_call_us": 6.817355158730159,
+     "max_us": 8.696,
+     "share_pct": 0.17114842304018138
+    },
+    {
+     "name": "evie_elementwise",
+     "calls": 1008,
+     "total_ms": 3.145942,
+     "per_call_us": 3.120974206349206,
+     "max_us": 3.968,
+     "share_pct": 0.15670294456691977
+    },
+    {
+     "name": "copy_fill",
+     "calls": 1008,
+     "total_ms": 2.235961,
+     "per_call_us": 2.218215277777778,
+     "max_us": 9.658,
+     "share_pct": 0.11137575728884845
+    },
+    {
+     "name": "evie_softmax",
+     "calls": 126,
+     "total_ms": 1.876692,
+     "per_call_us": 14.894380952380953,
+     "max_us": 18.314,
+     "share_pct": 0.0934801602970372
+    },
+    {
+     "name": "surya_other",
+     "calls": 252,
+     "total_ms": 1.515166,
+     "per_call_us": 6.012563492063492,
+     "max_us": 14.827,
+     "share_pct": 0.07547213957144841
+    },
+    {
+     "name": "surya_kv_write",
+     "calls": 252,
+     "total_ms": 0.907751,
+     "per_call_us": 3.602186507936508,
+     "max_us": 4.448,
+     "share_pct": 0.045216108444963696
+    },
+    {
+     "name": "evie_rope",
+     "calls": 252,
+     "total_ms": 0.573435,
+     "per_call_us": 2.275535714285714,
+     "max_us": 3.607,
+     "share_pct": 0.028563448727831484
+    }
+   ],
+   "top_kernels": [
+    {
+     "name": "Cijk_Alik_Bljk_SB_MT32x32x8_SN_1LDSB0_AMAS0_BL1_BS1_EPS0_GLVWA1_GLVWB1_GRVW1_GSU1_GSUASB_ISA1151_IU1_K1_KLA_LBSPPA0_LBSPPB0_LPA0_LPB0_LRVW1_MIAV0_MMFGLC_NLCA1_NLCB1_PGR0_PLR1_SIA1_SS0_SU32_SUS256_SVW4_TT2_2_TLDS0_UMLDSA0_UMLDSB0_USFGROn1_VAW1_VSn1_VW1_VWB1_WSGRA0_WSGRB0_WS64_WG16_16_1_WGM8",
+     "calls": 3906,
+     "total_ms": 1427.827673,
+     "per_call_us": 365.54727931387606,
+     "max_us": 2658.521,
+     "share_pct": 71.1217182939905
+    },
+    {
+     "name": "(anonymous namespace)::qwen35_gdn_prefill_recurrent_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long)",
+     "calls": 378,
+     "total_ms": 482.931309,
+     "per_call_us": 1277.5960555555555,
+     "max_us": 2077.588,
+     "share_pct": 24.055357073924757
+    },
+    {
+     "name": "void rocblas_gemvt_warp_reduce_kernel<false, 256, int, float, float, float>(int, int, float, long, float const*, long, int, long, float const*, long, int, long, float, long, float*, long, int, long, int)",
+     "calls": 21,
+     "total_ms": 33.560395,
+     "per_call_us": 1598.1140476190476,
+     "max_us": 1784.999,
+     "share_pct": 1.671681396964385
+    },
+    {
+     "name": "(anonymous namespace)::qwen35_linear_attn_conv_prefill_segments_kernel(float const*, float const*, float const*, float*, int const*, long const*, long, long, long)",
+     "calls": 378,
+     "total_ms": 18.746232,
+     "per_call_us": 49.59320634920635,
+     "max_us": 180.299,
+     "share_pct": 0.9337711101904032
+    },
+    {
+     "name": "evie_gdn_rmsnorm_gate_kernel(float const*, float const*, float const*, float*, long, long, float)",
+     "calls": 378,
+     "total_ms": 6.711215,
+     "per_call_us": 17.754537037037036,
+     "max_us": 22.082,
+     "share_pct": 0.3342932425714398
+    },
+    {
+     "name": "evie_rmsnorm_kernel(float const*, float const*, float*, long, long, float)",
+     "calls": 1281,
+     "total_ms": 5.355447,
+     "per_call_us": 4.18067681498829,
+     "max_us": 15.87,
+     "share_pct": 0.26676089844379736
+    },
+    {
+     "name": "surya_gdn_l2norm_kernel(float const*, float*, float*, float, long, long, long, long, long)",
+     "calls": 378,
+     "total_ms": 4.104843,
+     "per_call_us": 10.859373015873016,
+     "max_us": 34.865,
+     "share_pct": 0.20446689261432938
+    },
+    {
+     "name": "evie_expand_heads_kernel(float const*, float*, long, long, long, long, long, long)",
+     "calls": 378,
+     "total_ms": 3.708141,
+     "per_call_us": 9.809896825396825,
+     "max_us": 36.629,
+     "share_pct": 0.18470671537152383
+    },
+    {
+     "name": "evie_silu_mul_kernel(float*, float const*, long)",
+     "calls": 504,
+     "total_ms": 3.435947,
+     "per_call_us": 6.817355158730159,
+     "max_us": 8.696,
+     "share_pct": 0.17114842304018138
+    },
+    {
+     "name": "Cijk_Alik_Bljk_SB_GB_MT128x64x12_SN_1LDSB0_AMAS0_BL0_BS1_EPS0_GLVWA1_GLVWB1_GRVW1_GSU1_GSUASB_ISA000_IU1_K1_KLS_LBSPPA0_LBSPPB0_LPA0_LPB0_LRVW1_MIAV0_MMFSC_NLCA3_NLCB3_PGR1_PLR1_SIA1_SS0_SU32_SUS256_SVW4_TT8_4_TLDS0_UMLDSA0_UMLDSB0_USFGRO0_VAW1_VS1_VW1_VWB1_WSGRA0_WSGRB0_WS64_WG16_16_1_WGM8",
+     "calls": 126,
+     "total_ms": 3.365815,
+     "per_call_us": 26.71281746031746,
+     "max_us": 32.862,
+     "share_pct": 0.1676550684556508
+    },
+    {
+     "name": "evie_add_kernel(float const*, float const*, float*, long)",
+     "calls": 1008,
+     "total_ms": 3.145942,
+     "per_call_us": 3.120974206349206,
+     "max_us": 3.968,
+     "share_pct": 0.15670294456691977
+    },
+    {
+     "name": "evie_scale_kernel(float const*, float*, float, long)",
+     "calls": 756,
+     "total_ms": 3.042659,
+     "per_call_us": 4.024681216931217,
+     "max_us": 15.95,
+     "share_pct": 0.1515583010154159
+    },
+    {
+     "name": "Cijk_Ailk_Bljk_SB_GB_MT128x64x8_SN_1LDSB0_AMAS0_BL0_BS1_EPS0_GLVWA1_GLVWB1_GRVW1_GSU1_GSUASB_ISA000_IU1_K1_KLS_LBSPPA0_LBSPPB0_LPA0_LPB0_LRVW1_MIAV0_MMFSC_NLCA1_NLCB1_PGR0_PLR0_SIA1_SS0_SU32_SUS256_SVW4_TT8_4_TLDS0_UMLDSA0_UMLDSB0_USFGRO0_VAW1_VS1_VW1_VWB1_WSGRA0_WSGRB0_WS64_WG16_16_1_WGM8",
+     "calls": 126,
+     "total_ms": 2.272756,
+     "per_call_us": 18.037746031746032,
+     "max_us": 22.963,
+     "share_pct": 0.11320855803512407
+    },
+    {
+     "name": "__amd_rocclr_copyBuffer",
+     "calls": 1008,
+     "total_ms": 2.235961,
+     "per_call_us": 2.218215277777778,
+     "max_us": 9.658,
+     "share_pct": 0.11137575728884845
+    },
+    {
+     "name": "evie_softmax_rows_kernel(float*, long, long, long, long)",
+     "calls": 126,
+     "total_ms": 1.876692,
+     "per_call_us": 14.894380952380953,
+     "max_us": 18.314,
+     "share_pct": 0.0934801602970372
+    },
+    {
+     "name": "surya_split_qgate_kernel(float const*, float*, float*, long, long, long)",
+     "calls": 126,
+     "total_ms": 1.099706,
+     "per_call_us": 8.727825396825397,
+     "max_us": 14.827,
+     "share_pct": 0.05477760504100491
+    },
+    {
+     "name": "(anonymous namespace)::qwen35_linear_attn_conv_prefill_segments_state_kernel(float const*, float*, int const*, long const*, long, long, long)",
+     "calls": 378,
+     "total_ms": 0.909198,
+     "per_call_us": 2.4052857142857142,
+     "max_us": 8.176,
+     "share_pct": 0.045288185158643836
+    },
+    {
+     "name": "surya_scatter_kv_kernel(float const*, float*, long, long, long, long, long)",
+     "calls": 252,
+     "total_ms": 0.907751,
+     "per_call_us": 3.602186507936508,
+     "max_us": 4.448,
+     "share_pct": 0.045216108444963696
+    },
+    {
+     "name": "evie_gdn_gates_kernel(float const*, float const*, float const*, float const*, float*, float*, long, long)",
+     "calls": 378,
+     "total_ms": 0.722191,
+     "per_call_us": 1.9105582010582012,
+     "max_us": 6.532,
+     "share_pct": 0.035973154063148126
+    },
+    {
+     "name": "evie_rope_kernel(float*, float const*, float const*, long, long, long, long, long)",
+     "calls": 252,
+     "total_ms": 0.573435,
+     "per_call_us": 2.275535714285714,
+     "max_us": 3.607,
+     "share_pct": 0.028563448727831484
+    }
+   ],
+   "transfers": {
+    "bytes_available": false,
+    "total_mb": null,
+    "total_ms": 56.053323,
+    "ms_per_call": 2.6692058571428574,
+    "by_kind": {
+     "host_to_device": {
+      "calls": 307,
+      "ms": 55.888294,
+      "mb": null
+     },
+     "device_to_host": {
+      "calls": 21,
+      "ms": 0.165029,
+      "mb": null
+     }
+    }
+   },
+   "driver": {
+    "phase": "prefill",
+    "page": "tests/fixtures/surya/page_small.png",
+    "grid": [
+     1,
+     16,
+     16
+    ],
+    "calls_executed": 21,
+    "prompt_tokens": 106
+   }
+  },
+  "prefill-full": {
+   "calls_executed": 21,
+   "kernel_total_ms": 16666.074311,
+   "kernel_per_call_ms": 793.6225862380953,
+   "kernel_calls": 12411,
+   "kernel_calls_per_call": 591.0,
+   "kernel_families": [
+    {
+     "name": "gemm_library",
+     "calls": 4179,
+     "total_ms": 11060.718766,
+     "per_call_us": 2646.7381588896865,
+     "max_us": 8383.532,
+     "share_pct": 66.36667135643135
+    },
+    {
+     "name": "gdn_recurrent",
+     "calls": 1512,
+     "total_ms": 5095.749351,
+     "per_call_us": 3370.204597222222,
+     "max_us": 15391.278,
+     "share_pct": 30.575582803184105
+    },
+    {
+     "name": "gdn_conv",
+     "calls": 756,
+     "total_ms": 212.989642,
+     "per_call_us": 281.7323306878307,
+     "max_us": 684.127,
+     "share_pct": 1.2779832732380285
+    },
+    {
+     "name": "evie_activation",
+     "calls": 504,
+     "total_ms": 78.234666,
+     "per_call_us": 155.22751190476188,
+     "max_us": 175.891,
+     "share_pct": 0.46942467998215565
+    },
+    {
+     "name": "evie_softmax",
+     "calls": 126,
+     "total_ms": 50.570001,
+     "per_call_us": 401.34921428571425,
+     "max_us": 426.362,
+     "share_pct": 0.30343079033688586
+    },
+    {
+     "name": "evie_other",
+     "calls": 1281,
+     "total_ms": 49.591155,
+     "per_call_us": 38.712845433255275,
+     "max_us": 293.833,
+     "share_pct": 0.2975575055924758
+    },
+    {
+     "name": "surya_other",
+     "calls": 252,
+     "total_ms": 45.662432,
+     "per_call_us": 181.200126984127,
+     "max_us": 252.074,
+     "share_pct": 0.273984329770219
+    },
+    {
+     "name": "evie_norm",
+     "calls": 1281,
+     "total_ms": 33.718181,
+     "per_call_us": 26.321765027322403,
+     "max_us": 83.156,
+     "share_pct": 0.20231627659157386
+    },
+    {
+     "name": "evie_elementwise",
+     "calls": 1008,
+     "total_ms": 27.148538,
+     "per_call_us": 26.933073412698413,
+     "max_us": 37.951,
+     "share_pct": 0.16289701757828673
+    },
+    {
+     "name": "surya_kv_write",
+     "calls": 252,
+     "total_ms": 5.22447,
+     "per_call_us": 20.73202380952381,
+     "max_us": 23.765,
+     "share_pct": 0.03134793414758584
+    },
+    {
+     "name": "evie_rope",
+     "calls": 252,
+     "total_ms": 4.233223,
+     "per_call_us": 16.798503968253968,
+     "max_us": 25.729,
+     "share_pct": 0.025400240758592884
+    },
+    {
+     "name": "copy_fill",
+     "calls": 1008,
+     "total_ms": 2.233886,
+     "per_call_us": 2.216156746031746,
+     "max_us": 9.297,
+     "share_pct": 0.013403792388742578
+    }
+   ],
+   "top_kernels": [
+    {
+     "name": "Cijk_Alik_Bljk_SB_MT32x32x8_SN_1LDSB0_AMAS0_BL1_BS1_EPS0_GLVWA1_GLVWB1_GRVW1_GSU1_GSUASB_ISA1151_IU1_K1_KLA_LBSPPA0_LBSPPB0_LPA0_LPB0_LRVW1_MIAV0_MMFGLC_NLCA1_NLCB1_PGR0_PLR1_SIA1_SS0_SU32_SUS256_SVW4_TT2_2_TLDS0_UMLDSA0_UMLDSB0_USFGROn1_VAW1_VSn1_VW1_VWB1_WSGRA0_WSGRB0_WS64_WG16_16_1_WGM8",
+     "calls": 3906,
+     "total_ms": 10791.107952,
+     "per_call_us": 2762.7004485407065,
+     "max_us": 8383.532,
+     "share_pct": 64.74894897641022
+    },
+    {
+     "name": "(anonymous namespace)::qwen35_gdn_prefill_recurrent_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long)",
+     "calls": 378,
+     "total_ms": 4970.134303,
+     "per_call_us": 13148.503447089948,
+     "max_us": 15391.278,
+     "share_pct": 29.82186572706924
+    },
+    {
+     "name": "(anonymous namespace)::qwen35_linear_attn_conv_prefill_segments_kernel(float const*, float const*, float const*, float*, int const*, long const*, long, long, long)",
+     "calls": 378,
+     "total_ms": 211.967233,
+     "per_call_us": 560.7598756613756,
+     "max_us": 684.127,
+     "share_pct": 1.271848601203564
+    },
+    {
+     "name": "Cijk_Alik_Bljk_SB_GB_MT128x64x12_SN_1LDSB0_AMAS0_BL0_BS1_EPS0_GLVWA1_GLVWB1_GRVW1_GSU1_GSUASB_ISA000_IU1_K1_KLS_LBSPPA0_LBSPPB0_LPA0_LPB0_LRVW1_MIAV0_MMFSC_NLCA3_NLCB3_PGR1_PLR1_SIA1_SS0_SU32_SUS256_SVW4_TT8_4_TLDS0_UMLDSA0_UMLDSB0_USFGRO0_VAW1_VS1_VW1_VWB1_WSGRA0_WSGRB0_WS64_WG16_16_1_WGM8",
+     "calls": 126,
+     "total_ms": 117.907065,
+     "per_call_us": 935.7703571428572,
+     "max_us": 997.357,
+     "share_pct": 0.7074675343441771
+    },
+    {
+     "name": "Cijk_Ailk_Bljk_SB_GB_MT128x64x8_SN_1LDSB0_AMAS0_BL0_BS1_EPS0_GLVWA1_GLVWB1_GRVW1_GSU1_GSUASB_ISA000_IU1_K1_KLS_LBSPPA0_LBSPPB0_LPA0_LPB0_LRVW1_MIAV0_MMFSC_NLCA1_NLCB1_PGR0_PLR0_SIA1_SS0_SU32_SUS256_SVW4_TT8_4_TLDS0_UMLDSA0_UMLDSB0_USFGRO0_VAW1_VS1_VW1_VWB1_WSGRA0_WSGRB0_WS64_WG16_16_1_WGM8",
+     "calls": 126,
+     "total_ms": 116.936483,
+     "per_call_us": 928.0673253968255,
+     "max_us": 998.879,
+     "share_pct": 0.7016438353621115
+    },
+    {
+     "name": "evie_silu_mul_kernel(float*, float const*, long)",
+     "calls": 504,
+     "total_ms": 78.234666,
+     "per_call_us": 155.22751190476188,
+     "max_us": 175.891,
+     "share_pct": 0.46942467998215565
+    },
+    {
+     "name": "evie_gdn_rmsnorm_gate_kernel(float const*, float const*, float const*, float*, long, long, float)",
+     "calls": 378,
+     "total_ms": 68.32199,
+     "per_call_us": 180.7460052910053,
+     "max_us": 202.141,
+     "share_pct": 0.40994651004829546
+    },
+    {
+     "name": "surya_gdn_l2norm_kernel(float const*, float*, float*, float, long, long, long, long, long)",
+     "calls": 378,
+     "total_ms": 56.226081,
+     "per_call_us": 148.74624603174604,
+     "max_us": 179.738,
+     "share_pct": 0.33736847652772955
+    },
+    {
+     "name": "evie_softmax_rows_kernel(float*, long, long, long, long)",
+     "calls": 126,
+     "total_ms": 50.570001,
+     "per_call_us": 401.34921428571425,
+     "max_us": 426.362,
+     "share_pct": 0.30343079033688586
+    },
+    {
+     "name": "evie_expand_heads_kernel(float const*, float*, long, long, long, long, long, long)",
+     "calls": 378,
+     "total_ms": 35.309522,
+     "per_call_us": 93.41143386243385,
+     "max_us": 293.833,
+     "share_pct": 0.21186466195398448
+    },
+    {
+     "name": "void rocblas_gemvt_warp_reduce_kernel<false, 256, int, float, float, float>(int, int, float, long, float const*, long, int, long, float const*, long, int, long, float, long, float*, long, int, long, int)",
+     "calls": 21,
+     "total_ms": 34.767266,
+     "per_call_us": 1655.5840952380952,
+     "max_us": 2093.7,
+     "share_pct": 0.20861101031484533
+    },
+    {
+     "name": "evie_rmsnorm_kernel(float const*, float const*, float*, long, long, float)",
+     "calls": 1281,
+     "total_ms": 33.718181,
+     "per_call_us": 26.321765027322403,
+     "max_us": 83.156,
+     "share_pct": 0.20231627659157386
+    },
+    {
+     "name": "surya_causal_mask_scale_kernel(float*, float, long, long, long)",
+     "calls": 126,
+     "total_ms": 29.543268,
+     "per_call_us": 234.47038095238094,
+     "max_us": 252.074,
+     "share_pct": 0.17726590826791616
+    },
+    {
+     "name": "evie_add_kernel(float const*, float const*, float*, long)",
+     "calls": 1008,
+     "total_ms": 27.148538,
+     "per_call_us": 26.933073412698413,
+     "max_us": 37.951,
+     "share_pct": 0.16289701757828673
+    },
+    {
+     "name": "surya_split_qgate_kernel(float const*, float*, float*, long, long, long)",
+     "calls": 126,
+     "total_ms": 16.119164,
+     "per_call_us": 127.92987301587301,
+     "max_us": 147.638,
+     "share_pct": 0.09671842150230288
+    },
+    {
+     "name": "evie_sigmoid_mul_kernel(float const*, float*, long)",
+     "calls": 126,
+     "total_ms": 9.521358,
+     "per_call_us": 75.56633333333333,
+     "max_us": 87.445,
+     "share_pct": 0.057130178483097725
+    },
+    {
+     "name": "surya_scatter_kv_kernel(float const*, float*, long, long, long, long, long)",
+     "calls": 252,
+     "total_ms": 5.22447,
+     "per_call_us": 20.73202380952381,
+     "max_us": 23.765,
+     "share_pct": 0.03134793414758584
+    },
+    {
+     "name": "evie_scale_kernel(float const*, float*, float, long)",
+     "calls": 756,
+     "total_ms": 4.505513,
+     "per_call_us": 5.959673280423281,
+     "max_us": 15.83,
+     "share_pct": 0.027034038825965487
+    },
+    {
+     "name": "evie_rope_kernel(float*, float const*, float const*, long, long, long, long, long)",
+     "calls": 252,
+     "total_ms": 4.233223,
+     "per_call_us": 16.798503968253968,
+     "max_us": 25.729,
+     "share_pct": 0.025400240758592884
+    },
+    {
+     "name": "__amd_rocclr_copyBuffer",
+     "calls": 1008,
+     "total_ms": 2.233886,
+     "per_call_us": 2.216156746031746,
+     "max_us": 9.297,
+     "share_pct": 0.013403792388742578
+    }
+   ],
+   "transfers": {
+    "bytes_available": false,
+    "total_mb": null,
+    "total_ms": 56.347962,
+    "ms_per_call": 2.683236285714286,
+    "by_kind": {
+     "host_to_device": {
+      "calls": 307,
+      "ms": 56.175037,
+      "mb": null
+     },
+     "device_to_host": {
+      "calls": 21,
+      "ms": 0.172925,
+      "mb": null
+     }
+    }
+   },
+   "driver": {
+    "phase": "prefill",
+    "page": "tests/fixtures/surya/page_full.png",
+    "grid": [
+     1,
+     64,
+     64
+    ],
+    "calls_executed": 21,
+    "prompt_tokens": 1066
+   }
+  },
+  "decode-small": {
+   "calls_executed": 200,
+   "kernel_total_ms": 3393.47144,
+   "kernel_per_call_ms": 16.9673572,
+   "kernel_calls": 99451,
+   "kernel_calls_per_call": 497.255,
+   "kernel_families": [
+    {
+     "name": "gemm_library",
+     "calls": 40074,
+     "total_ms": 2959.001678,
+     "per_call_us": 73.83844083445625,
+     "max_us": 2060.078,
+     "share_pct": 87.19689351503722
+    },
+    {
+     "name": "gdn_recurrent",
+     "calls": 14472,
+     "total_ms": 342.198099,
+     "per_call_us": 23.64552922885572,
+     "max_us": 1905.867,
+     "share_pct": 10.084012936322223
+    },
+    {
+     "name": "evie_norm",
+     "calls": 12286,
+     "total_ms": 37.732415,
+     "per_call_us": 3.0711716587986326,
+     "max_us": 10.46,
+     "share_pct": 1.1119119658776324
+    },
+    {
+     "name": "gdn_conv",
+     "calls": 3636,
+     "total_ms": 12.072846,
+     "per_call_us": 3.320364686468647,
+     "max_us": 53.781,
+     "share_pct": 0.35576683680591104
+    },
+    {
+     "name": "evie_elementwise",
+     "calls": 9724,
+     "total_ms": 11.472034,
+     "per_call_us": 1.1797649115590294,
+     "max_us": 16.471,
+     "share_pct": 0.33806189923319346
+    },
+    {
+     "name": "evie_other",
+     "calls": 6273,
+     "total_ms": 9.781813,
+     "per_call_us": 1.5593516658695998,
+     "max_us": 13.426,
+     "share_pct": 0.28825387727441726
+    },
+    {
+     "name": "evie_activation",
+     "calls": 4837,
+     "total_ms": 5.693857,
+     "per_call_us": 1.177146371718007,
+     "max_us": 17.152,
+     "share_pct": 0.1677885640316454
+    },
+    {
+     "name": "evie_softmax",
+     "calls": 1218,
+     "total_ms": 4.47277,
+     "per_call_us": 3.672224958949097,
+     "max_us": 95.66,
+     "share_pct": 0.1318051464137267
+    },
+    {
+     "name": "surya_kv_write",
+     "calls": 2412,
+     "total_ms": 3.645225,
+     "per_call_us": 1.511287313432836,
+     "max_us": 7.494,
+     "share_pct": 0.10741876171499472
+    },
+    {
+     "name": "evie_rope",
+     "calls": 2436,
+     "total_ms": 3.423353,
+     "per_call_us": 1.4053173234811165,
+     "max_us": 7.735,
+     "share_pct": 0.10088056023244445
+    },
+    {
+     "name": "surya_other",
+     "calls": 1212,
+     "total_ms": 2.055373,
+     "per_call_us": 1.695852310231023,
+     "max_us": 9.578,
+     "share_pct": 0.06056844845583848
+    },
+    {
+     "name": "copy_fill",
+     "calls": 871,
+     "total_ms": 1.921977,
+     "per_call_us": 2.2066326061997703,
+     "max_us": 9.578,
+     "share_pct": 0.05663748860075864
+    }
+   ],
+   "top_kernels": [
+    {
+     "name": "void rocblas_gemvt_warp_reduce_kernel<false, 256, int, float, float, float>(int, int, float, long, float const*, long, int, long, float const*, long, int, long, float, long, float*, long, int, long, int)",
+     "calls": 37401,
+     "total_ms": 2800.735327,
+     "per_call_us": 74.88396906499827,
+     "max_us": 2060.078,
+     "share_pct": 82.53304548218034
+    },
+    {
+     "name": "(anonymous namespace)::qwen35_gdn_prefill_recurrent_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long)",
+     "calls": 3618,
+     "total_ms": 274.896223,
+     "per_call_us": 75.98016113875069,
+     "max_us": 1905.867,
+     "share_pct": 8.100737780188892
+    },
+    {
+     "name": "Cijk_Alik_Bljk_SB_MT32x32x8_SN_1LDSB0_AMAS0_BL1_BS1_EPS0_GLVWA1_GLVWB1_GRVW1_GSU1_GSUASB_ISA1151_IU1_K1_KLA_LBSPPA0_LBSPPB0_LPA0_LPB0_LRVW1_MIAV0_MMFGLC_NLCA1_NLCB1_PGR0_PLR1_SIA1_SS0_SU32_SUS256_SVW4_TT2_2_TLDS0_UMLDSA0_UMLDSB0_USFGROn1_VAW1_VSn1_VW1_VWB1_WSGRA0_WSGRB0_WS64_WG16_16_1_WGM8",
+     "calls": 249,
+     "total_ms": 99.555152,
+     "per_call_us": 399.8198875502008,
+     "max_us": 1088.087,
+     "share_pct": 2.9337259428946307
+    },
+    {
+     "name": "evie_gdn_l2norm_scale_kernel(float const*, float const*, float*, float*, float, long, long)",
+     "calls": 3600,
+     "total_ms": 52.913643,
+     "per_call_us": 14.698234166666667,
+     "max_us": 31.86,
+     "share_pct": 1.559277687629515
+    },
+    {
+     "name": "evie_rmsnorm_kernel(float const*, float const*, float*, long, long, float)",
+     "calls": 12261,
+     "total_ms": 37.560572,
+     "per_call_us": 3.0634183182448416,
+     "max_us": 9.178,
+     "share_pct": 1.1068480364166553
+    },
+    {
+     "name": "Cijk_Ailk_Bljk_SB_GB_MT128x64x8_SN_1LDSB0_AMAS0_BL0_BS1_EPS0_GLVWA1_GLVWB1_GRVW1_GSU1_GSUASB_ISA000_IU1_K1_KLS_LBSPPA0_LBSPPB0_LPA0_LPB0_LRVW1_MIAV0_MMFSC_NLCA1_NLCB1_PGR0_PLR0_SIA1_SS0_SU32_SUS256_SVW4_TT8_4_TLDS0_UMLDSA0_UMLDSB0_USFGRO0_VAW1_VS1_VW1_VWB1_WSGRA0_WSGRB0_WS64_WG16_16_1_WGM8",
+     "calls": 1206,
+     "total_ms": 29.544529,
+     "per_call_us": 24.49795107794362,
+     "max_us": 38.352,
+     "share_pct": 0.8706284853836872
+    },
+    {
+     "name": "Cijk_Alik_Bljk_SB_GB_MT128x64x12_SN_1LDSB0_AMAS0_BL0_BS1_EPS0_GLVWA1_GLVWB1_GRVW1_GSU1_GSUASB_ISA000_IU1_K1_KLS_LBSPPA0_LBSPPB0_LPA0_LPB0_LRVW1_MIAV0_MMFSC_NLCA3_NLCB3_PGR1_PLR1_SIA1_SS0_SU32_SUS256_SVW4_TT8_4_TLDS0_UMLDSA0_UMLDSB0_USFGRO0_VAW1_VS1_VW1_VWB1_WSGRA0_WSGRB0_WS64_WG16_16_1_WGM8",
+     "calls": 1206,
+     "total_ms": 28.49609,
+     "per_call_us": 23.628598673300168,
+     "max_us": 40.116,
+     "share_pct": 0.8397327192475208
+    },
+    {
+     "name": "(anonymous namespace)::qwen35_linear_attn_conv_decode_kernel(float const*, float*, float const*, float*, long, long)",
+     "calls": 3600,
+     "total_ms": 11.111316,
+     "per_call_us": 3.0864766666666665,
+     "max_us": 4.809,
+     "share_pct": 0.3274321353946624
+    },
+    {
+     "name": "evie_add_kernel(float const*, float const*, float*, long)",
+     "calls": 9673,
+     "total_ms": 11.020907,
+     "per_call_us": 1.1393473586271063,
+     "max_us": 11.662,
+     "share_pct": 0.3247679314489825
+    },
+    {
+     "name": "evie_gdn_rmsnorm_gate_kernel(float const*, float const*, float const*, float*, long, long, float)",
+     "calls": 3618,
+     "total_ms": 7.936693,
+     "per_call_us": 2.193668601437258,
+     "max_us": 21.721,
+     "share_pct": 0.2338812375565477
+    },
+    {
+     "name": "evie_gdn_gates_kernel(float const*, float const*, float const*, float const*, float*, float*, long, long)",
+     "calls": 3618,
+     "total_ms": 6.253005,
+     "per_call_us": 1.728304311774461,
+     "max_us": 2.766,
+     "share_pct": 0.1842657323204111
+    },
+    {
+     "name": "evie_expand_heads_kernel(float const*, float*, long, long, long, long, long, long)",
+     "calls": 3618,
+     "total_ms": 5.721856,
+     "per_call_us": 1.5814969596462134,
+     "max_us": 10.981,
+     "share_pct": 0.16861364832939332
+    },
+    {
+     "name": "evie_silu_mul_kernel(float*, float const*, long)",
+     "calls": 4824,
+     "total_ms": 5.512556,
+     "per_call_us": 1.1427354892205637,
+     "max_us": 9.057,
+     "share_pct": 0.16244592292782048
+    },
+    {
+     "name": "evie_softmax_rows_kernel(float*, long, long, long, long)",
+     "calls": 1218,
+     "total_ms": 4.47277,
+     "per_call_us": 3.672224958949097,
+     "max_us": 95.66,
+     "share_pct": 0.1318051464137267
+    },
+    {
+     "name": "surya_scatter_kv_kernel(float const*, float*, long, long, long, long, long)",
+     "calls": 2412,
+     "total_ms": 3.645225,
+     "per_call_us": 1.511287313432836,
+     "max_us": 7.494,
+     "share_pct": 0.10741876171499472
+    },
+    {
+     "name": "evie_rope_kernel(float*, float const*, float const*, long, long, long, long, long)",
+     "calls": 2436,
+     "total_ms": 3.423353,
+     "per_call_us": 1.4053173234811165,
+     "max_us": 7.735,
+     "share_pct": 0.10088056023244445
+    },
+    {
+     "name": "evie_scale_kernel(float const*, float*, float, long)",
+     "calls": 1248,
+     "total_ms": 2.096734,
+     "per_call_us": 1.6800753205128205,
+     "max_us": 13.426,
+     "share_pct": 0.06178728883010726
+    },
+    {
+     "name": "surya_split_qgate_kernel(float const*, float*, float*, long, long, long)",
+     "calls": 1206,
+     "total_ms": 2.033851,
+     "per_call_us": 1.6864436152570481,
+     "max_us": 9.578,
+     "share_pct": 0.059934230653198015
+    },
+    {
+     "name": "__amd_rocclr_copyBuffer",
+     "calls": 871,
+     "total_ms": 1.921977,
+     "per_call_us": 2.2066326061997703,
+     "max_us": 9.578,
+     "share_pct": 0.05663748860075864
+    },
+    {
+     "name": "evie_sigmoid_mul_kernel(float const*, float*, long)",
+     "calls": 1206,
+     "total_ms": 1.313185,
+     "per_call_us": 1.0888764510779436,
+     "max_us": 5.049,
+     "share_pct": 0.038697393604703506
+    }
+   ],
+   "transfers": {
+    "bytes_available": false,
+    "total_mb": null,
+    "total_ms": 58.081633,
+    "ms_per_call": 0.290408165,
+    "by_kind": {
+     "host_to_device": {
+      "calls": 272,
+      "ms": 56.56987,
+      "mb": null
+     },
+     "device_to_host": {
+      "calls": 203,
+      "ms": 1.511763,
+      "mb": null
+     }
+    }
+   },
+   "driver": {
+    "phase": "decode",
+    "page": "tests/fixtures/surya/page_small.png",
+    "grid": [
+     1,
+     16,
+     16
+    ],
+    "calls_executed": 200,
+    "prompt_tokens": 106,
+    "decode_steps": 200
+   }
+  },
+  "decode-full": {
+   "calls_executed": 200,
+   "kernel_total_ms": 5347.410887,
+   "kernel_per_call_ms": 26.737054434999997,
+   "kernel_calls": 99451,
+   "kernel_calls_per_call": 497.255,
+   "kernel_families": [
+    {
+     "name": "gemm_library",
+     "calls": 40074,
+     "total_ms": 4422.996752,
+     "per_call_us": 110.3707329440535,
+     "max_us": 22845.789,
+     "share_pct": 82.71286507555783
+    },
+    {
+     "name": "gdn_recurrent",
+     "calls": 14472,
+     "total_ms": 578.494522,
+     "per_call_us": 39.973363875069104,
+     "max_us": 14349.08,
+     "share_pct": 10.818217156388117
+    },
+    {
+     "name": "evie_softmax",
+     "calls": 1218,
+     "total_ms": 134.709472,
+     "per_call_us": 110.59890968801314,
+     "max_us": 11573.538,
+     "share_pct": 2.519153191079629
+    },
+    {
+     "name": "evie_other",
+     "calls": 6273,
+     "total_ms": 94.981665,
+     "per_call_us": 15.141346245815399,
+     "max_us": 7250.242,
+     "share_pct": 1.7762178184382336
+    },
+    {
+     "name": "evie_norm",
+     "calls": 12286,
+     "total_ms": 40.982331,
+     "per_call_us": 3.3356935536382877,
+     "max_us": 86.683,
+     "share_pct": 0.7663957729455848
+    },
+    {
+     "name": "evie_elementwise",
+     "calls": 9724,
+     "total_ms": 22.942295,
+     "per_call_us": 2.35934749074455,
+     "max_us": 384.363,
+     "share_pct": 0.42903557412755816
+    },
+    {
+     "name": "gdn_conv",
+     "calls": 3636,
+     "total_ms": 22.439418,
+     "per_call_us": 6.171457095709571,
+     "max_us": 1058.501,
+     "share_pct": 0.4196314529439301
+    },
+    {
+     "name": "evie_activation",
+     "calls": 4837,
+     "total_ms": 14.452208,
+     "per_call_us": 2.9878453586934053,
+     "max_us": 447.362,
+     "share_pct": 0.2702655229867321
+    },
+    {
+     "name": "evie_rope",
+     "calls": 2436,
+     "total_ms": 5.356828,
+     "per_call_us": 2.1990262725779965,
+     "max_us": 83.558,
+     "share_pct": 0.10017610602960947
+    },
+    {
+     "name": "surya_other",
+     "calls": 1212,
+     "total_ms": 4.271044,
+     "per_call_us": 3.5239636963696372,
+     "max_us": 269.026,
+     "share_pct": 0.07987125153190047
+    },
+    {
+     "name": "surya_kv_write",
+     "calls": 2412,
+     "total_ms": 3.879655,
+     "per_call_us": 1.6084805140961858,
+     "max_us": 25.007,
+     "share_pct": 0.07255202717696078
+    },
+    {
+     "name": "copy_fill",
+     "calls": 871,
+     "total_ms": 1.904697,
+     "per_call_us": 2.186793340987371,
+     "max_us": 8.977,
+     "share_pct": 0.03561905079391742
+    }
+   ],
+   "top_kernels": [
+    {
+     "name": "void rocblas_gemvt_warp_reduce_kernel<false, 256, int, float, float, float>(int, int, float, long, float const*, long, int, long, float const*, long, int, long, float, long, float*, long, int, long, int)",
+     "calls": 37401,
+     "total_ms": 2800.992151,
+     "per_call_us": 74.8908358332665,
+     "max_us": 2138.584,
+     "share_pct": 52.38034275259162
+    },
+    {
+     "name": "Cijk_Alik_Bljk_SB_MT32x32x8_SN_1LDSB0_AMAS0_BL1_BS1_EPS0_GLVWA1_GLVWB1_GRVW1_GSU1_GSUASB_ISA1151_IU1_K1_KLA_LBSPPA0_LBSPPB0_LPA0_LPB0_LRVW1_MIAV0_MMFGLC_NLCA1_NLCB1_PGR0_PLR1_SIA1_SS0_SU32_SUS256_SVW4_TT2_2_TLDS0_UMLDSA0_UMLDSB0_USFGROn1_VAW1_VSn1_VW1_VWB1_WSGRA0_WSGRB0_WS64_WG16_16_1_WGM8",
+     "calls": 249,
+     "total_ms": 1187.022747,
+     "per_call_us": 4767.159626506024,
+     "max_us": 22845.789,
+     "share_pct": 22.198083747141087
+    },
+    {
+     "name": "(anonymous namespace)::qwen35_gdn_prefill_recurrent_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long)",
+     "calls": 3618,
+     "total_ms": 496.815228,
+     "per_call_us": 137.31764179104476,
+     "max_us": 14349.08,
+     "share_pct": 9.290762174416017
+    },
+    {
+     "name": "Cijk_Ailk_Bljk_SB_MT32x32x8_SN_1LDSB0_AMAS0_BL1_BS1_EPS0_GLVWA1_GLVWB1_GRVW1_GSU1_GSUASB_ISA1151_IU1_K1_KLA_LBSPPA0_LBSPPB0_LPA0_LPB0_LRVW1_MIAV0_MMFGLC_NLCA1_NLCB1_PGR0_PLR1_SIA1_SS0_SU32_SUS256_SVW4_TT2_2_TLDS0_UMLDSA0_UMLDSB0_USFGROn1_VAW1_VSn1_VW1_VWB1_WSGRA0_WSGRB0_WS64_WG16_16_1_WGM8",
+     "calls": 12,
+     "total_ms": 203.579719,
+     "per_call_us": 16964.976583333333,
+     "max_us": 18857.725,
+     "share_pct": 3.8070708105658984
+    },
+    {
+     "name": "Cijk_Ailk_Bljk_SB_GB_MT128x64x8_SN_1LDSB0_AMAS0_BL0_BS1_EPS0_GLVWA1_GLVWB1_GRVW1_GSU1_GSUASB_ISA000_IU1_K1_KLS_LBSPPA0_LBSPPB0_LPA0_LPB0_LRVW1_MIAV0_MMFSC_NLCA1_NLCB1_PGR0_PLR0_SIA1_SS0_SU32_SUS256_SVW4_TT8_4_TLDS0_UMLDSA0_UMLDSB0_USFGRO0_VAW1_VS1_VW1_VWB1_WSGRA0_WSGRB0_WS64_WG16_16_1_WGM8",
+     "calls": 1206,
+     "total_ms": 157.802486,
+     "per_call_us": 130.84783250414594,
+     "max_us": 1097.506,
+     "share_pct": 2.9510073068002116
+    },
+    {
+     "name": "evie_softmax_rows_kernel(float*, long, long, long, long)",
+     "calls": 1218,
+     "total_ms": 134.709472,
+     "per_call_us": 110.59890968801314,
+     "max_us": 11573.538,
+     "share_pct": 2.519153191079629
+    },
+    {
+     "name": "evie_scale_kernel(float const*, float*, float, long)",
+     "calls": 1248,
+     "total_ms": 84.681935,
+     "per_call_us": 67.85411458333333,
+     "max_us": 7250.242,
+     "share_pct": 1.5836062870326426
+    },
+    {
+     "name": "Cijk_Alik_Bljk_SB_GB_MT128x64x12_SN_1LDSB0_AMAS0_BL0_BS1_EPS0_GLVWA1_GLVWB1_GRVW1_GSU1_GSUASB_ISA000_IU1_K1_KLS_LBSPPA0_LBSPPB0_LPA0_LPB0_LRVW1_MIAV0_MMFSC_NLCA3_NLCB3_PGR1_PLR1_SIA1_SS0_SU32_SUS256_SVW4_TT8_4_TLDS0_UMLDSA0_UMLDSB0_USFGRO0_VAW1_VS1_VW1_VWB1_WSGRA0_WSGRB0_WS64_WG16_16_1_WGM8",
+     "calls": 1206,
+     "total_ms": 73.599649,
+     "per_call_us": 61.02790132669984,
+     "max_us": 1036.83,
+     "share_pct": 1.3763604584590061
+    },
+    {
+     "name": "evie_gdn_l2norm_scale_kernel(float const*, float const*, float*, float*, float, long, long)",
+     "calls": 3600,
+     "total_ms": 61.910048,
+     "per_call_us": 17.197235555555554,
+     "max_us": 71.334,
+     "share_pct": 1.157757451377235
+    },
+    {
+     "name": "evie_rmsnorm_kernel(float const*, float const*, float*, long, long, float)",
+     "calls": 12261,
+     "total_ms": 39.199214,
+     "per_call_us": 3.1970650028545795,
+     "max_us": 86.683,
+     "share_pct": 0.7330503458280445
+    },
+    {
+     "name": "evie_add_kernel(float const*, float const*, float*, long)",
+     "calls": 9673,
+     "total_ms": 13.582207,
+     "per_call_us": 1.4041359454150728,
+     "max_us": 120.586,
+     "share_pct": 0.2539959484508563
+    },
+    {
+     "name": "(anonymous namespace)::qwen35_linear_attn_conv_prefill_segments_kernel(float const*, float const*, float const*, float*, int const*, long const*, long, long, long)",
+     "calls": 18,
+     "total_ms": 11.230721,
+     "per_call_us": 623.9289444444445,
+     "max_us": 1058.501,
+     "share_pct": 0.21002165790743357
+    },
+    {
+     "name": "(anonymous namespace)::qwen35_linear_attn_conv_decode_kernel(float const*, float*, float const*, float*, long, long)",
+     "calls": 3600,
+     "total_ms": 11.15039,
+     "per_call_us": 3.0973305555555557,
+     "max_us": 11.061,
+     "share_pct": 0.20851941688467449
+    },
+    {
+     "name": "evie_gdn_rmsnorm_gate_kernel(float const*, float const*, float const*, float*, long, long, float)",
+     "calls": 3618,
+     "total_ms": 10.936711,
+     "per_call_us": 3.022860972913212,
+     "max_us": 188.395,
+     "share_pct": 0.20452348306706808
+    },
+    {
+     "name": "evie_add_bias_kernel(float*, float const*, long, long)",
+     "calls": 51,
+     "total_ms": 9.360088,
+     "per_call_us": 183.53113725490195,
+     "max_us": 384.363,
+     "share_pct": 0.1750396256767018
+    },
+    {
+     "name": "evie_silu_mul_kernel(float*, float const*, long)",
+     "calls": 4824,
+     "total_ms": 9.149187,
+     "per_call_us": 1.8965976368159203,
+     "max_us": 187.112,
+     "share_pct": 0.1710956422339348
+    },
+    {
+     "name": "evie_expand_heads_kernel(float const*, float*, long, long, long, long, long, long)",
+     "calls": 3618,
+     "total_ms": 7.388441,
+     "per_call_us": 2.0421340519624103,
+     "max_us": 102.754,
+     "share_pct": 0.1381685671090268
+    },
+    {
+     "name": "evie_gdn_gates_kernel(float const*, float const*, float const*, float const*, float*, float*, long, long)",
+     "calls": 3618,
+     "total_ms": 6.255365,
+     "per_call_us": 1.728956605859591,
+     "max_us": 5.491,
+     "share_pct": 0.11697932199688099
+    },
+    {
+     "name": "evie_rope_kernel(float*, float const*, float const*, long, long, long, long, long)",
+     "calls": 2436,
+     "total_ms": 5.356828,
+     "per_call_us": 2.1990262725779965,
+     "max_us": 83.558,
+     "share_pct": 0.10017610602960947
+    },
+    {
+     "name": "evie_gelu_tanh_kernel(float const*, float*, long)",
+     "calls": 12,
+     "total_ms": 5.256453,
+     "per_call_us": 438.03775,
+     "max_us": 447.362,
+     "share_pct": 0.09829902940091763
+    }
+   ],
+   "transfers": {
+    "bytes_available": false,
+    "total_mb": null,
+    "total_ms": 58.573103,
+    "ms_per_call": 0.292865515,
+    "by_kind": {
+     "host_to_device": {
+      "calls": 272,
+      "ms": 56.962754,
+      "mb": null
+     },
+     "device_to_host": {
+      "calls": 203,
+      "ms": 1.610349,
+      "mb": null
+     }
+    }
+   },
+   "driver": {
+    "phase": "decode",
+    "page": "tests/fixtures/surya/page_full.png",
+    "grid": [
+     1,
+     64,
+     64
+    ],
+    "calls_executed": 200,
+    "prompt_tokens": 1066,
+    "decode_steps": 200
+   }
+  },
+  "request-small": {
+   "calls_executed": 1,
+   "kernel_total_ms": 1161.256107,
+   "kernel_per_call_ms": 1161.256107,
+   "kernel_calls": 32047,
+   "kernel_calls_per_call": 32047.0,
+   "kernel_families": [
+    {
+     "name": "gemm_library",
+     "calls": 12811,
+     "total_ms": 1002.695473,
+     "per_call_us": 78.26832198891577,
+     "max_us": 2207.955,
+     "share_pct": 86.34576532737235
+    },
+    {
+     "name": "gdn_recurrent",
+     "calls": 4608,
+     "total_ms": 125.935302,
+     "per_call_us": 27.329709635416666,
+     "max_us": 1419.631,
+     "share_pct": 10.844748306671338
+    },
+    {
+     "name": "evie_norm",
+     "calls": 3929,
+     "total_ms": 12.48892,
+     "per_call_us": 3.178651056248409,
+     "max_us": 20.118,
+     "share_pct": 1.0754664646943382
+    },
+    {
+     "name": "gdn_conv",
+     "calls": 1170,
+     "total_ms": 4.520701,
+     "per_call_us": 3.8638470085470087,
+     "max_us": 56.065,
+     "share_pct": 0.3892940560440902
+    },
+    {
+     "name": "evie_elementwise",
+     "calls": 3148,
+     "total_ms": 4.172951,
+     "per_call_us": 1.3255879923761118,
+     "max_us": 17.112,
+     "share_pct": 0.3593480348431011
+    },
+    {
+     "name": "evie_other",
+     "calls": 2026,
+     "total_ms": 3.426897,
+     "per_call_us": 1.691459526159921,
+     "max_us": 11.982,
+     "share_pct": 0.2951026030642868
+    },
+    {
+     "name": "evie_activation",
+     "calls": 1549,
+     "total_ms": 2.046844,
+     "per_call_us": 1.3213970303421563,
+     "max_us": 17.232,
+     "share_pct": 0.17626120436841758
+    },
+    {
+     "name": "evie_softmax",
+     "calls": 396,
+     "total_ms": 1.924226,
+     "per_call_us": 4.859156565656566,
+     "max_us": 79.83,
+     "share_pct": 0.16570212103952361
+    },
+    {
+     "name": "evie_rope",
+     "calls": 792,
+     "total_ms": 1.225867,
+     "per_call_us": 1.5478118686868685,
+     "max_us": 6.452,
+     "share_pct": 0.1055638797170175
+    },
+    {
+     "name": "surya_kv_write",
+     "calls": 768,
+     "total_ms": 1.171461,
+     "per_call_us": 1.52533984375,
+     "max_us": 4.048,
+     "share_pct": 0.100878780566878
+    },
+    {
+     "name": "copy_fill",
+     "calls": 460,
+     "total_ms": 0.952837,
+     "per_call_us": 2.0713847826086957,
+     "max_us": 9.017,
+     "share_pct": 0.0820522703180066
+    },
+    {
+     "name": "surya_other",
+     "calls": 390,
+     "total_ms": 0.694628,
+     "per_call_us": 1.7810974358974359,
+     "max_us": 9.498,
+     "share_pct": 0.05981695130064879
+    }
+   ],
+   "top_kernels": [
+    {
+     "name": "void rocblas_gemvt_warp_reduce_kernel<false, 256, int, float, float, float>(int, int, float, long, float const*, long, int, long, float const*, long, int, long, float, long, float*, long, int, long, int)",
+     "calls": 11782,
+     "total_ms": 889.009949,
+     "per_call_us": 75.45492692242404,
+     "max_us": 2207.955,
+     "share_pct": 76.55589009531039
+    },
+    {
+     "name": "(anonymous namespace)::qwen35_gdn_prefill_recurrent_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long)",
+     "calls": 1152,
+     "total_ms": 103.983006,
+     "per_call_us": 90.26302604166668,
+     "max_us": 1419.631,
+     "share_pct": 8.954356009255415
+    },
+    {
+     "name": "Cijk_Alik_Bljk_SB_MT32x32x8_SN_1LDSB0_AMAS0_BL1_BS1_EPS0_GLVWA1_GLVWB1_GRVW1_GSU1_GSUASB_ISA1151_IU1_K1_KLA_LBSPPA0_LBSPPB0_LPA0_LPB0_LRVW1_MIAV0_MMFGLC_NLCA1_NLCB1_PGR0_PLR1_SIA1_SS0_SU32_SUS256_SVW4_TT2_2_TLDS0_UMLDSA0_UMLDSB0_USFGROn1_VAW1_VSn1_VW1_VWB1_WSGRA0_WSGRB0_WS64_WG16_16_1_WGM8",
+     "calls": 249,
+     "total_ms": 97.839501,
+     "per_call_us": 392.92972289156626,
+     "max_us": 1044.325,
+     "share_pct": 8.425316380273728
+    },
+    {
+     "name": "evie_gdn_l2norm_scale_kernel(float const*, float const*, float*, float*, float, long, long)",
+     "calls": 1134,
+     "total_ms": 16.995196,
+     "per_call_us": 14.98694532627866,
+     "max_us": 16.751,
+     "share_pct": 1.4635183313615072
+    },
+    {
+     "name": "evie_rmsnorm_kernel(float const*, float const*, float*, long, long, float)",
+     "calls": 3904,
+     "total_ms": 12.320485,
+     "per_call_us": 3.15586193647541,
+     "max_us": 20.118,
+     "share_pct": 1.0609619123406686
+    },
+    {
+     "name": "Cijk_Alik_Bljk_SB_GB_MT128x64x12_SN_1LDSB0_AMAS0_BL0_BS1_EPS0_GLVWA1_GLVWB1_GRVW1_GSU1_GSUASB_ISA000_IU1_K1_KLS_LBSPPA0_LBSPPB0_LPA0_LPB0_LRVW1_MIAV0_MMFSC_NLCA3_NLCB3_PGR1_PLR1_SIA1_SS0_SU32_SUS256_SVW4_TT8_4_TLDS0_UMLDSA0_UMLDSB0_USFGRO0_VAW1_VS1_VW1_VWB1_WSGRA0_WSGRB0_WS64_WG16_16_1_WGM8",
+     "calls": 384,
+     "total_ms": 8.378966,
+     "per_call_us": 21.820223958333333,
+     "max_us": 30.217,
+     "share_pct": 0.7215433313540369
+    },
+    {
+     "name": "Cijk_Ailk_Bljk_SB_GB_MT128x64x8_SN_1LDSB0_AMAS0_BL0_BS1_EPS0_GLVWA1_GLVWB1_GRVW1_GSU1_GSUASB_ISA000_IU1_K1_KLS_LBSPPA0_LBSPPB0_LPA0_LPB0_LRVW1_MIAV0_MMFSC_NLCA1_NLCB1_PGR0_PLR0_SIA1_SS0_SU32_SUS256_SVW4_TT8_4_TLDS0_UMLDSA0_UMLDSB0_USFGRO0_VAW1_VS1_VW1_VWB1_WSGRA0_WSGRB0_WS64_WG16_16_1_WGM8",
+     "calls": 384,
+     "total_ms": 6.829578,
+     "per_call_us": 17.785359375,
+     "max_us": 22.763,
+     "share_pct": 0.5881198780210161
+    },
+    {
+     "name": "evie_add_kernel(float const*, float const*, float*, long)",
+     "calls": 3097,
+     "total_ms": 3.731524,
+     "per_call_us": 1.2048834355828222,
+     "max_us": 6.012,
+     "share_pct": 0.3213351454090566
+    },
+    {
+     "name": "(anonymous namespace)::qwen35_linear_attn_conv_decode_kernel(float const*, float*, float const*, float*, long, long)",
+     "calls": 1134,
+     "total_ms": 3.554839,
+     "per_call_us": 3.1347786596119933,
+     "max_us": 19.517,
+     "share_pct": 0.3061201554568014
+    },
+    {
+     "name": "evie_gdn_rmsnorm_gate_kernel(float const*, float const*, float const*, float*, long, long, float)",
+     "calls": 1152,
+     "total_ms": 2.770209,
+     "per_call_us": 2.4046953125,
+     "max_us": 21.56,
+     "share_pct": 0.2385528035806489
+    },
+    {
+     "name": "evie_gdn_gates_kernel(float const*, float const*, float const*, float const*, float*, float*, long, long)",
+     "calls": 1152,
+     "total_ms": 1.98491,
+     "per_call_us": 1.7230121527777778,
+     "max_us": 18.675,
+     "share_pct": 0.17092784167377473
+    },
+    {
+     "name": "evie_expand_heads_kernel(float const*, float*, long, long, long, long, long, long)",
+     "calls": 1152,
+     "total_ms": 1.926073,
+     "per_call_us": 1.6719383680555557,
+     "max_us": 11.381,
+     "share_pct": 0.1658611729479585
+    },
+    {
+     "name": "evie_softmax_rows_kernel(float*, long, long, long, long)",
+     "calls": 396,
+     "total_ms": 1.924226,
+     "per_call_us": 4.859156565656566,
+     "max_us": 79.83,
+     "share_pct": 0.16570212103952361
+    },
+    {
+     "name": "evie_silu_mul_kernel(float*, float const*, long)",
+     "calls": 1536,
+     "total_ms": 1.87408,
+     "per_call_us": 1.2201041666666668,
+     "max_us": 7.494,
+     "share_pct": 0.16138386603119925
+    },
+    {
+     "name": "evie_rope_kernel(float*, float const*, float const*, long, long, long, long, long)",
+     "calls": 792,
+     "total_ms": 1.225867,
+     "per_call_us": 1.5478118686868685,
+     "max_us": 6.452,
+     "share_pct": 0.1055638797170175
+    },
+    {
+     "name": "surya_scatter_kv_kernel(float const*, float*, long, long, long, long, long)",
+     "calls": 768,
+     "total_ms": 1.171461,
+     "per_call_us": 1.52533984375,
+     "max_us": 4.048,
+     "share_pct": 0.100878780566878
+    },
+    {
+     "name": "__amd_rocclr_copyBuffer",
+     "calls": 460,
+     "total_ms": 0.952837,
+     "per_call_us": 2.0713847826086957,
+     "max_us": 9.017,
+     "share_pct": 0.0820522703180066
+    },
+    {
+     "name": "(anonymous namespace)::qwen35_linear_attn_conv_prefill_segments_kernel(float const*, float const*, float const*, float*, int const*, long const*, long, long, long)",
+     "calls": 18,
+     "total_ms": 0.922259,
+     "per_call_us": 51.23661111111111,
+     "max_us": 56.065,
+     "share_pct": 0.07941908717987908
+    },
+    {
+     "name": "evie_scale_kernel(float const*, float*, float, long)",
+     "calls": 426,
+     "total_ms": 0.855845,
+     "per_call_us": 2.009025821596244,
+     "max_us": 11.982,
+     "share_pct": 0.07369993534079214
+    },
+    {
+     "name": "surya_split_qgate_kernel(float const*, float*, float*, long, long, long)",
+     "calls": 384,
+     "total_ms": 0.672945,
+     "per_call_us": 1.7524609375,
+     "max_us": 9.498,
+     "share_pct": 0.05794974906426908
+    }
+   ],
+   "transfers": {
+    "bytes_available": false,
+    "total_mb": null,
+    "total_ms": 55.846879,
+    "ms_per_call": 55.846879,
+    "by_kind": {
+     "host_to_device": {
+      "calls": 272,
+      "ms": 55.267548,
+      "mb": null
+     },
+     "device_to_host": {
+      "calls": 66,
+      "ms": 0.579331,
+      "mb": null
+     }
+    }
+   },
+   "driver": {
+    "phase": "request",
+    "page": "tests/fixtures/surya/page_small.png",
+    "grid": [
+     1,
+     16,
+     16
+    ],
+    "calls_executed": 1,
+    "wall_s": 1.4518267030071001,
+    "decode_steps": 64,
+    "first_ids": [
+     1038,
+     1957,
+     1038,
+     1038,
+     1049,
+     1981,
+     1108,
+     1097
+    ]
+   }
+  }
+ },
+ "note": "Decode is weight-bandwidth-bound and the GEMMs are already efficient. One decode token at a 106-token context is 16.967 ms of kernel time over 497 dispatches, of which 187 are single-row SGEMV calls (rocblas_gemvt_warp_reduce_kernel, 74.88 us each) taking 82.5%. The text model is 2342 MB of fp32 weights, so the token streams weights at 138 GB/s aggregate and 167 GB/s inside the GEMMs alone. The ~11 ms/token floor quoted earlier was an estimate assuming ~200 GB/s achievable; measured, the gap to that estimate is ~6 ms/token, split between the 17.5% of decode that is not GEMM (GDN recurrent 10.1%, 1.71 ms) and the ~20% of bandwidth headroom left in the SGEMV calls. Transfers are not a bottleneck: 58 ms over 200 decode steps is 0.29 ms/token, 1.7% of decode. Context length is the other axis: at a 1066-token context decode is 26.737 ms/token (1.58x), driven by attention (Tensile Cijk_ kernels, 22.2%) and evie_softmax (2.5%) rather than by the projections. Vision is superlinear in patch count: 27.097 ms for 256 patches (16x16 grid) versus 1019.203 ms for 4096 patches (64x64 grid), 37.6x for 16x the patches, with gemm_library at 77.5% and evie_softmax at 12.4% on the large page. Prefill is close to linear (95.599 ms at 106 tokens, 793.623 ms at 1066). Candidate directions, in the order this profile supports: (1) cut the 187 per-token dispatches, since 497 launches per token is a launch-overhead and tail-effect cost on top of the bandwidth; (2) the GDN recurrent 10.1%; (3) attention and softmax for long contexts; (4) tiled vision attention, which the superlinear vision scaling and the separate quadratic-scratch admission cap both point at."
+}
