@@ -87,8 +87,12 @@ as the rollback.
 
 Remaining open packets: P6 (P6a/P6b/P6c landed opt-in - the resumable layer-outer
 checkpoint, its suspended-state ownership, and the CPU tests; P6e GPU proof on
-the serial INT8 route and P6f P3/P2 gates are outstanding, and the route stays
-behind `HIPENGINE_GGUF_PACKED_LAYER_OUTER` until P6f closes), P5
+the serial INT8 route **landed 2026-09-11 and now passes on the resumable route
+itself** (ten gates, including a cancellation-delay sweep and a host-sampling arm;
+see the coverage table in the P6 section, which also records native sampling as
+still unasserted and long prefix suffixes as intentionally fail-closed), and P6f
+P3/P2 gates are outstanding, so the route stays behind
+`HIPENGINE_GGUF_PACKED_LAYER_OUTER` until P6f closes), P5
 remainder (HIP-API/queue-gap attribution and graph-capture amortization; the
 IKV-C2 C>1 row-batched consumer landed and is promoted to physical c4 on the
 W7900 gfx1100 Qwen3.8-27B INT8 artifact as of 2026-09-11, so the capacity>1
@@ -651,6 +655,29 @@ ownership is proven. Keep unqualified MTP/DMS combinations separate.
 Gate: unchanged resource conservation, correct survivors, bounded command
 acknowledgement/cancel delay, explicit p95/p99 decode gap/TTFT SLOs, no
 unbounded output queue, and no hidden serial fallback in native claims.
+
+**Coverage status as of 2026-09-11** (evidence:
+`benchmarks/results/2026-09-11-w7900-p6e-cancel-refill-service-proof.json`,
+ten gates, `passed: true`, `performance_claim: false`):
+
+| P6 coverage item | Status |
+| --- | --- |
+| Long arrival while a short request decodes | Covered (blocking and SSE arms) |
+| Cancellation during prefill | Covered; swept at 600/2000/3500 ms, acknowledgement flat within 1% |
+| Refill and sparse survivors | Covered; survivors byte-identical to the reference |
+| Blocking and SSE | Covered |
+| Slow / disconnected consumers | Covered |
+| Compact INT8 | Covered end to end on the resumable route |
+| Host sampling | Covered; the host route is asserted by route counter, not inferred from text |
+| Native sampling | **Not asserted.** The host arm shows the host route ran; no arm asserts the native sampler |
+| BF16 | **Scope clarification, not a gap.** The resumable executor is only attempted when the session's `kv_attention_source` is `int8_direct` (`qwen35_gguf.py:8094`), so the BF16 route cannot use this mechanism. Its bounded yield comes from the default route and is measured by the seven non-engagement gates, which pass under BF16. "BF16 resumable coverage" therefore has no referent: there is no BF16 resumable path to cover |
+| Long prefix suffixes | **Intentionally fail-closed.** `_prefill_resumable_int8_chunk` returns False for `row.prefix_reused_tokens` (`qwen35_gguf.py:8204`), because shared-prefix admission needs incremental prefill the layer-outer executor does not provide. A qualified chunked path requires proving its state ownership first |
+| Layer budgets other than 4 | **Not a settable knob.** The budget is derived, not configured: `budget = max(1, ceil(remaining_layers / remaining_polls))` with `remaining_polls = ceil(remaining_tokens / chunk_len)` (`qwen35_gguf.py:8244-8248`). What varies it is prompt length and prefill chunk size, so a budget sweep means varying those, not a flag |
+
+The service proof must be run with `kv_storage="int8_per_token_head"`; the harness
+defaults to it and refuses to run the workload otherwise, because a run on the
+default `auto` layout resolves to BF16 and produces green gates about a route that
+does not contain the resumable mechanism.
 
 ### P7 - Publish the parity and capacity result
 
