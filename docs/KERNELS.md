@@ -266,7 +266,7 @@ scratch cache pair reused across layers.
 Model contract, loader, NumPy oracle, GPU orchestration, and bench live in
 `models/timesfm3.py`, `loading/timesfm3.py`, `kernels/cpu_reference/timesfm3.py`,
 `runtime/timesfm3_decode.py`, and `scripts/timesfm3_gpu_bench.py`; the
-per-model record is `MODEL-TIMESFM3.md`.
+per-model record is `docs/MODEL-TIMESFM3.md`.
 
 ### Speculative decoding path
 

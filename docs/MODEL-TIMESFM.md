@@ -3,7 +3,7 @@
 Status: **complete (GPU decode, production quality)**. This file is the
 per-model record: what the model is, how hipEngine runs it, the measured
 performance against reference implementations, and the optimization history
-with the exact gains. Future model ports get their own `MODEL-<NAME>.md`
+with the exact gains. Future model ports get their own `docs/MODEL-<NAME>.md`
 following this format.
 
 ## Model
