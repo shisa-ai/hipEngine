@@ -69,6 +69,8 @@ unless noted):
 | P7 t1 capacity | - | - | tier-1 allocation-validity bracket passes 65,536-155,648 DECLARED contexts (one 2,048-row request each; not full-length completions; no cross-card direct comparison) | `c7eb76b88` |
 | P3 promotion | - | - | trace identity passed (AOTriton + native, as predicted); default reverted to OFF pending the packet gates (reviewer F4) | `bf2267029` + corrective |
 | P7 t2 publish | - | - | paired reps: ratio median 1.004 (one matched 8K diagnostic; cross-rep variance 89-104% under shared-host contention, so 'consistently within 5%' is not established); SSE observation is delivery cadence, not isolated transport cost; kernel-family attribution landed | `9e28487cb`, `131d4219d` |
+| P6a/P6c resumable prefill | - | per-poll layer segment; checkpoint `next_layer` + derived ping-pong phase; oracle released at every segment boundary | - | `35b61413b` |
+| P6d harness repair | - | - | - | `--` (this unit) |
 
 Combined P3+P4 at 32K declared: ~1.6 GiB of route transients vs ~6.4 GiB at
 the P0 baseline (-75%), measured with the executor flag enabled. The
@@ -82,13 +84,18 @@ executor), so the default is OFF (reviewer finding 4);
 on for the C1/prefix-off/MTP-off route with `HIPENGINE_GGUF_PACKED_KV_LEASE=1`
 as the rollback.
 
-Remaining open packets: P5 remainder (HIP-API/queue-gap attribution,
-graph-capture amortization, then the IKV-C2 C>1 row-batched consumer - the
-capacity>1 lease gate stays until it lands), P6
-(resumable prefill owner, bounded service yield, cancellation coverage), and
-P7 remainder (the C>1 and P6-gated acceptance items). The C1-scoped publish
-is landed: paired speed parity, decode boundary, memory exactness, capacity
-ceiling, trace identity, and the HTTP/SSE transport budget.
+Remaining open packets: P6 (P6a/P6c landed opt-in - the resumable layer-outer
+checkpoint and its CPU tests; P6b interleaved-decode scratch ownership, P6e GPU
+proof on the serial INT8 route, and P6f P3/P2 gates are outstanding, and the
+route stays behind `HIPENGINE_GGUF_PACKED_LAYER_OUTER` until P6f closes), P5
+remainder (HIP-API/queue-gap attribution, graph-capture amortization, then the
+IKV-C2 C>1 row-batched consumer - the capacity>1 lease gate stays until it
+lands), and P7 remainder (the C>1 and P6-gated acceptance items). The C-width
+baseline harness is repaired (per-lane measured counts, measured model-step and
+route/fallback deltas, a real same-server serial control, no decode-only rate)
+but has not been re-run live. The C1-scoped publish is landed: paired speed
+parity, decode boundary, memory exactness, capacity ceiling, trace identity,
+and the HTTP/SSE transport budget.
 
 ## 2. Findings, ordered by impact
 
