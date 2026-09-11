@@ -36,6 +36,7 @@ from hipengine.runtime.qwen35_gguf_runner import (
     FULL_ATTENTION,
     LINEAR_ATTENTION,
     Qwen35GGUFResidentSession,
+    _GGUFResumablePrefillScratch,
     _GGUFResumablePrefillState,
     _plan_packed_ar_prefill_chunks,
 )
@@ -960,3 +961,114 @@ def test_suspended_owner_appears_in_prefill_transient_inventory(
     assert owner._resumable_prefill_scratch is None
     after = prefill_transient_owner_inventory((owner,))
     assert after["hidden_and_bulk_owner_bytes"] == before["hidden_and_bulk_owner_bytes"]
+
+
+# ---------------------------------------------------------------------------
+# P6f: allocation-failure injection with a live survivor
+# ---------------------------------------------------------------------------
+
+
+def test_scratch_allocation_failure_frees_the_partial_allocation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A mid-allocation failure must not leak the buffers taken so far.
+
+    Roadmap P6f / reviewer item 3. The suspended-state save is the one place a
+    resumable prefill takes new device memory, so it is the realistic injection
+    point. The cleanup path frees in reverse allocation order and re-raises.
+    """
+
+    allocated: list[int] = []
+    freed: list[int] = []
+    calls = {"count": 0}
+
+    def fake_malloc(nbytes: int, *, runtime: object) -> SimpleNamespace:
+        calls["count"] += 1
+        if calls["count"] == 3:
+            raise RuntimeError("injected allocation failure")
+        buffer = SimpleNamespace(ptr=0xC000 + calls["count"], nbytes=int(nbytes))
+        allocated.append(int(buffer.ptr))
+        return buffer
+
+    monkeypatch.setattr(gguf_runner, "malloc", fake_malloc)
+    monkeypatch.setattr(
+        gguf_runner,
+        "free",
+        lambda buffer, *, runtime: freed.append(int(buffer.ptr)),
+    )
+
+    packed_state = SimpleNamespace(
+        layer_conv_states=(SimpleNamespace(ptr=1, nbytes=64),),
+        layer_recurrent_states=(SimpleNamespace(ptr=2, nbytes=128),),
+    )
+    with pytest.raises(RuntimeError, match="injected allocation failure"):
+        _GGUFResumablePrefillScratch.allocate(
+            runtime=SimpleNamespace(),
+            packed_state=packed_state,
+            hidden_bytes=256,
+        )
+    # Two hidden planes were taken before the third allocation failed, and both
+    # were returned in reverse order.
+    assert allocated == [0xC001, 0xC002]
+    assert freed == [0xC002, 0xC001]
+
+
+def test_allocation_failure_at_a_yield_leaves_the_session_usable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The live survivor: a failed yield must not poison the resident session.
+
+    The yield point allocates the suspended-state buffers *after* the segment's
+    layers have run. If that allocation fails the segment must surface the
+    error, leave no suspended owner or leaked buffer behind, and the same
+    session must still run its next prefill to completion.
+    """
+
+    recorder = _Recorder()
+    owner = _resumable_owner(monkeypatch, recorder)
+    prompt = tuple(range(32))
+    chunks = _prompt_rounds(prompt, rows=8)
+
+    healthy_malloc = gguf_runner.malloc
+    freed: list[int] = []
+    calls = {"count": 0}
+
+    def failing_malloc(nbytes: int, *, runtime: object) -> object:
+        calls["count"] += 1
+        if calls["count"] == 2:
+            raise RuntimeError("injected allocation failure")
+        return healthy_malloc(nbytes, runtime=runtime)
+
+    monkeypatch.setattr(gguf_runner, "malloc", failing_malloc)
+    monkeypatch.setattr(
+        gguf_runner,
+        "free",
+        lambda buffer, *, runtime: freed.append(int(buffer.ptr)),
+    )
+
+    with pytest.raises(RuntimeError, match="injected allocation failure"):
+        owner._prefill_batch_native_layer_outer(
+            (prompt,),
+            sessions=(owner,),
+            chunks=chunks,
+            layer_budget=3,
+        )
+    # The budgeted layers really ran before the yield, the first save buffer was
+    # returned, and no suspended owner survived the failure.
+    assert calls["count"] == 2
+    assert _layers_run(recorder) == [0, 1, 2]
+    assert len(freed) == 1
+    assert getattr(owner, "_resumable_prefill_scratch", None) is None
+
+    # The survivor: the same session runs the next prefill to completion.
+    monkeypatch.setattr(gguf_runner, "malloc", healthy_malloc)
+    recorder.layers.clear()
+    results = owner._prefill_batch_native_layer_outer(
+        (prompt,),
+        sessions=(owner,),
+        chunks=chunks,
+        layer_budget=None,
+    )
+    assert isinstance(results, list) and len(results) == 1
+    assert _layers_run(recorder) == list(range(len(_LAYER_TYPES)))
+    assert recorder.scatters == 1

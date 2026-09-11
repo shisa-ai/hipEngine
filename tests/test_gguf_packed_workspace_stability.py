@@ -582,6 +582,10 @@ def test_prefill_transient_inventory_reports_owners_and_modes() -> None:
         "slot_fair_bounded_rounds", "None",
     ]
     assert report["oracle_per_layer_flags"] == [True, False]
+    # A closed/partial session has no live KV layout. The scrape reports that
+    # as unknown (exported as "none") instead of raising out of the telemetry
+    # path, which is what broke this test when the field was first added.
+    assert report["kv_attention_sources"] == [None, None]
 
 
 def test_slot_local_prefill_leases_no_packed_kv_planes(monkeypatch) -> None:
