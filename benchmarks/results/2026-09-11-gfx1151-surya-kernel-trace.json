@@ -1,0 +1,254 @@
+{
+ "date": "2026-09-11",
+ "host": "gfx1151 (AMD Ryzen AI Max+ Pro 395 w/ Radeon 8060S)",
+ "model": "datalab-to/surya-ocr-2",
+ "workload": "one OCR request: page_small.png (16x16 grid, 64 image tokens, 106 prompt tokens) + 8 decode steps",
+ "command": "rocprofv3 --kernel-trace --output-format csv -d /tmp/surya-rocprof -- env HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 python3 scripts/surya_gpu_rocprof_driver.py --decode-steps 8",
+ "note": "Kernel-trace smoke for the Surya HIP family. JIT libraries are prebuilt outside the profiler and the profiled process runs cache-only (HIPENGINE_REQUIRE_CACHED_BUILD=1), so no hipcc time is included. Durations are End_Timestamp - Start_Timestamp, aggregated per kernel name over the whole request. No performance claim is derived from this trace; it establishes kernel identity, launch counts, and plausible durations.",
+ "total_kernel_ns": 323585414,
+ "kernels": {
+  "rocblas_gemm_plain": {
+   "launches": 1571,
+   "total_ns": 277527399,
+   "total_ms": 277.5274,
+   "avg_us": 176.657,
+   "max_vgpr": 24,
+   "max_scratch": 0,
+   "max_lds": 2048
+  },
+  "qwen35_gdn_prefill_recurrent_kernel": {
+   "launches": 144,
+   "total_ns": 33862935,
+   "total_ms": 33.8629,
+   "avg_us": 235.159,
+   "max_vgpr": 16,
+   "max_scratch": 0,
+   "max_lds": 0
+  },
+  "evie_gdn_l2norm_scale_kernel": {
+   "launches": 126,
+   "total_ns": 1780982,
+   "total_ms": 1.781,
+   "avg_us": 14.135,
+   "max_vgpr": 16,
+   "max_scratch": 0,
+   "max_lds": 0
+  },
+  "rocblas_gemm_strided_batched": {
+   "launches": 96,
+   "total_ns": 1735891,
+   "total_ms": 1.7359,
+   "avg_us": 18.082,
+   "max_vgpr": 152,
+   "max_scratch": 0,
+   "max_lds": 25600
+  },
+  "evie_rmsnorm_kernel": {
+   "launches": 488,
+   "total_ns": 1534553,
+   "total_ms": 1.5346,
+   "avg_us": 3.145,
+   "max_vgpr": 16,
+   "max_scratch": 0,
+   "max_lds": 1536
+  },
+  "qwen35_linear_attn_conv_prefill_segments_kernel": {
+   "launches": 18,
+   "total_ns": 1026766,
+   "total_ms": 1.0268,
+   "avg_us": 57.043,
+   "max_vgpr": 32,
+   "max_scratch": 20,
+   "max_lds": 0
+  },
+  "evie_softmax_rows_kernel": {
+   "launches": 60,
+   "total_ns": 910829,
+   "total_ms": 0.9108,
+   "avg_us": 15.18,
+   "max_vgpr": 16,
+   "max_scratch": 0,
+   "max_lds": 1024
+  },
+  "rocclr_copybuffer": {
+   "launches": 292,
+   "total_ns": 620558,
+   "total_ms": 0.6206,
+   "avg_us": 2.125,
+   "max_vgpr": 16,
+   "max_scratch": 0,
+   "max_lds": 0
+  },
+  "evie_add_kernel": {
+   "launches": 409,
+   "total_ns": 603696,
+   "total_ms": 0.6037,
+   "avg_us": 1.476,
+   "max_vgpr": 8,
+   "max_scratch": 0,
+   "max_lds": 0
+  },
+  "evie_gdn_rmsnorm_gate_kernel": {
+   "launches": 144,
+   "total_ns": 575077,
+   "total_ms": 0.5751,
+   "avg_us": 3.994,
+   "max_vgpr": 24,
+   "max_scratch": 0,
+   "max_lds": 1536
+  },
+  "evie_add_bias_kernel": {
+   "launches": 51,
+   "total_ns": 419310,
+   "total_ms": 0.4193,
+   "avg_us": 8.222,
+   "max_vgpr": 16,
+   "max_scratch": 0,
+   "max_lds": 0
+  },
+  "evie_expand_heads_kernel": {
+   "launches": 144,
+   "total_ns": 386088,
+   "total_ms": 0.3861,
+   "avg_us": 2.681,
+   "max_vgpr": 24,
+   "max_scratch": 0,
+   "max_lds": 0
+  },
+  "qwen35_linear_attn_conv_decode_kernel": {
+   "launches": 126,
+   "total_ns": 384921,
+   "total_ms": 0.3849,
+   "avg_us": 3.055,
+   "max_vgpr": 16,
+   "max_scratch": 0,
+   "max_lds": 0
+  },
+  "evie_scale_kernel": {
+   "launches": 90,
+   "total_ns": 352777,
+   "total_ms": 0.3528,
+   "avg_us": 3.92,
+   "max_vgpr": 8,
+   "max_scratch": 0,
+   "max_lds": 0
+  },
+  "evie_silu_mul_kernel": {
+   "launches": 192,
+   "total_ns": 339362,
+   "total_ms": 0.3394,
+   "avg_us": 1.768,
+   "max_vgpr": 16,
+   "max_scratch": 0,
+   "max_lds": 0
+  },
+  "evie_rope_kernel": {
+   "launches": 120,
+   "total_ns": 270549,
+   "total_ms": 0.2705,
+   "avg_us": 2.255,
+   "max_vgpr": 24,
+   "max_scratch": 0,
+   "max_lds": 0
+  },
+  "evie_gdn_gates_kernel": {
+   "launches": 144,
+   "total_ns": 250633,
+   "total_ms": 0.2506,
+   "avg_us": 1.741,
+   "max_vgpr": 16,
+   "max_scratch": 0,
+   "max_lds": 0
+  },
+  "surya_gdn_l2norm_kernel": {
+   "launches": 18,
+   "total_ns": 219131,
+   "total_ms": 0.2191,
+   "avg_us": 12.174,
+   "max_vgpr": 24,
+   "max_scratch": 0,
+   "max_lds": 0
+  },
+  "surya_scatter_kv_kernel": {
+   "launches": 96,
+   "total_ns": 170686,
+   "total_ms": 0.1707,
+   "avg_us": 1.778,
+   "max_vgpr": 24,
+   "max_scratch": 0,
+   "max_lds": 0
+  },
+  "evie_gelu_tanh_kernel": {
+   "launches": 12,
+   "total_ns": 164266,
+   "total_ms": 0.1643,
+   "avg_us": 13.689,
+   "max_vgpr": 8,
+   "max_scratch": 0,
+   "max_lds": 0
+  },
+  "evie_layernorm_kernel": {
+   "launches": 25,
+   "total_ns": 161266,
+   "total_ms": 0.1613,
+   "avg_us": 6.451,
+   "max_vgpr": 24,
+   "max_scratch": 0,
+   "max_lds": 2560
+  },
+  "surya_split_qgate_kernel": {
+   "launches": 48,
+   "total_ns": 115376,
+   "total_ms": 0.1154,
+   "avg_us": 2.404,
+   "max_vgpr": 24,
+   "max_scratch": 0,
+   "max_lds": 0
+  },
+  "evie_sigmoid_mul_kernel": {
+   "launches": 48,
+   "total_ns": 70373,
+   "total_ms": 0.0704,
+   "avg_us": 1.466,
+   "max_vgpr": 16,
+   "max_scratch": 0,
+   "max_lds": 0
+  },
+  "qwen35_linear_attn_conv_prefill_segments_state_kernel": {
+   "launches": 18,
+   "total_ns": 47609,
+   "total_ms": 0.0476,
+   "avg_us": 2.645,
+   "max_vgpr": 16,
+   "max_scratch": 0,
+   "max_lds": 0
+  },
+  "evie_embed_lookup_kernel": {
+   "launches": 8,
+   "total_ns": 30337,
+   "total_ms": 0.0303,
+   "avg_us": 3.792,
+   "max_vgpr": 8,
+   "max_scratch": 0,
+   "max_lds": 0
+  },
+  "surya_causal_mask_scale_kernel": {
+   "launches": 6,
+   "total_ns": 20558,
+   "total_ms": 0.0206,
+   "avg_us": 3.426,
+   "max_vgpr": 8,
+   "max_scratch": 0,
+   "max_lds": 0
+  },
+  "evie_gelu_erf_kernel": {
+   "launches": 1,
+   "total_ns": 3486,
+   "total_ms": 0.0035,
+   "avg_us": 3.486,
+   "max_vgpr": 8,
+   "max_scratch": 0,
+   "max_lds": 0
+  }
+ }
+}
