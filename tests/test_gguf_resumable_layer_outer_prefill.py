@@ -72,6 +72,8 @@ class _Recorder:
         self.embeddings = 0
         self.syncs = 0
         self.scatters = 0
+        self.copies: list[tuple[int, int, int]] = []
+        self.sync_calls = 0
 
 
 def _install_layer_outer_fakes(
@@ -152,8 +154,20 @@ def _install_layer_outer_fakes(
                 slot_count=1,
                 blocks_per_slot=1,
                 page_ids=[0],
-                layer_conv_states=SimpleNamespace(),
-                layer_recurrent_states=SimpleNamespace(),
+                # One conv + recurrent buffer per linear layer, None otherwise,
+                # mirroring the real packed target state's per-layer tuples.
+                layer_conv_states=tuple(
+                    SimpleNamespace(ptr=0xA000 + index, nbytes=4096)
+                    if layer == LINEAR_ATTENTION
+                    else None
+                    for index, layer in enumerate(layers)
+                ),
+                layer_recurrent_states=tuple(
+                    SimpleNamespace(ptr=0xB000 + index, nbytes=8192)
+                    if layer == LINEAR_ATTENTION
+                    else None
+                    for index, layer in enumerate(layers)
+                ),
             ),
             SimpleNamespace(
                 for_packed_verify_layout=lambda *a, **k: SimpleNamespace(
@@ -252,9 +266,15 @@ def _resumable_owner(
     owner.__dict__.update(
         runner=runner,
         runtime=SimpleNamespace(
-            memcpy_async=lambda *a, **k: None,
-            device_synchronize=lambda: None,
-            stream_synchronize=lambda stream=0: None,
+            memcpy_async=lambda dst, src, nbytes, kind, stream: recorder.copies.append(
+                (int(dst), int(src), int(nbytes))
+            ),
+            device_synchronize=lambda: recorder.__setattr__(
+                "sync_calls", recorder.sync_calls + 1
+            ),
+            stream_synchronize=lambda stream=0: recorder.__setattr__(
+                "sync_calls", recorder.sync_calls + 1
+            ),
             free=lambda ptr: None,
         ),
         scratch=SimpleNamespace(
@@ -266,9 +286,9 @@ def _resumable_owner(
         _device_kv_allocation=None,
         _int8_prefill_oracle_buffers={},
         _int8_prefill_oracle_per_layer=True,
-        _prefill_token_buf=SimpleNamespace(ptr=0x1000),
-        _prefill_hidden_a=SimpleNamespace(ptr=0x2000),
-        _prefill_hidden_b=SimpleNamespace(ptr=0x3000),
+        _prefill_token_buf=SimpleNamespace(ptr=0x1000, nbytes=4096),
+        _prefill_hidden_a=SimpleNamespace(ptr=0x2000, nbytes=8192),
+        _prefill_hidden_b=SimpleNamespace(ptr=0x3000, nbytes=8192),
         _int8_prefill_lifetime_plan=SimpleNamespace(
             mode="layer_outer_shared_oracle",
             required_hidden_capacity=1024,
@@ -550,6 +570,7 @@ class _WiringRow:
         self.resumable_prefill = None
         self.prefix_reused_tokens = 0
         self.lease = SimpleNamespace(session=SimpleNamespace())
+        self.kv_allocation = None
         self.slot = None
         self.request = SimpleNamespace()
         self.request_id = 1
@@ -712,3 +733,227 @@ def test_finished_row_ignores_later_scheduler_chunks() -> None:
     gen.Qwen35GGUFResidentModelRunner._prefill_native_chunk(
         SimpleNamespace(), row, tuple(range(8)), final_chunk=False
     )
+
+
+# ---------------------------------------------------------------------------
+# P6b: suspended-state ownership vs interleaved decode
+# ---------------------------------------------------------------------------
+
+
+def test_yield_saves_suspended_state_into_dedicated_buffers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A suspended prefill must copy its live state out of the shared workspace.
+
+    The packed verify workspace and bulk prefill workspace both delegate to
+    ``_resident_batch_owner``, so interleaved packed decode would otherwise
+    overwrite a suspended prefill's hidden planes and linear state.
+    """
+
+    recorder = _Recorder()
+    owner = _resumable_owner(monkeypatch, recorder)
+    prompt = tuple(range(32))
+    chunks = _prompt_rounds(prompt, rows=8)
+
+    state = owner._prefill_batch_native_layer_outer(
+        (prompt,),
+        sessions=(owner,),
+        chunks=chunks,
+        layer_budget=3,
+    )
+    assert isinstance(state, _GGUFResumablePrefillState)
+    assert state.scratch is not None
+    assert state.scratch.nbytes > 0
+    # Two hidden planes plus one conv + one recurrent buffer per linear layer.
+    linear_layers = sum(1 for layer in _LAYER_TYPES if layer == LINEAR_ATTENTION)
+    assert len(state.scratch._allocated) == 2 + 2 * linear_layers
+    # The save copied both hidden planes and the linear state.
+    assert len(recorder.copies) >= 2 + 2 * linear_layers
+    hidden_bytes = len(prompt) * owner.runner.hidden_size * 2
+    assert all(nbytes == hidden_bytes for _, _, nbytes in recorder.copies[:2])
+    # The shared buffers are not reused before the copies retire.
+    assert recorder.sync_calls >= 1
+
+
+def test_resume_restores_suspended_state_before_layers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorder = _Recorder()
+    owner = _resumable_owner(monkeypatch, recorder)
+    prompt = tuple(range(32))
+    chunks = _prompt_rounds(prompt, rows=8)
+
+    state = owner._prefill_batch_native_layer_outer(
+        (prompt,),
+        sessions=(owner,),
+        chunks=chunks,
+        layer_budget=3,
+    )
+    assert isinstance(state, _GGUFResumablePrefillState)
+    saved = len(recorder.copies)
+    recorder.copies.clear()
+    recorder.layers.clear()
+
+    resumed = owner._prefill_batch_native_layer_outer(
+        None,
+        sessions=None,
+        chunks=None,
+        resume_state=state,
+        layer_budget=2,
+    )
+    assert isinstance(resumed, _GGUFResumablePrefillState)
+    # The restore copied the suspended state back before any layer ran.
+    assert len(recorder.copies) >= 2
+    hidden_bytes = len(prompt) * owner.runner.hidden_size * 2
+    assert all(nbytes == hidden_bytes for _, _, nbytes in recorder.copies[:2])
+    assert saved > 0
+    assert _layers_run(recorder) == [3, 4]
+
+
+def test_completion_releases_suspended_buffers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorder = _Recorder()
+    owner = _resumable_owner(monkeypatch, recorder)
+    prompt = tuple(range(32))
+    chunks = _prompt_rounds(prompt, rows=8)
+
+    state = owner._prefill_batch_native_layer_outer(
+        (prompt,),
+        sessions=(owner,),
+        chunks=chunks,
+        layer_budget=3,
+    )
+    assert isinstance(state, _GGUFResumablePrefillState)
+    assert state.scratch is not None
+
+    results = owner._prefill_batch_native_layer_outer(
+        None,
+        sessions=None,
+        chunks=None,
+        resume_state=state,
+        layer_budget=None,
+    )
+    assert isinstance(results, list)
+    # The buffers must not outlive the checkpoint.
+    assert state.scratch is None
+
+
+def test_failed_segment_releases_suspended_buffers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorder = _Recorder()
+    owner = _resumable_owner(monkeypatch, recorder)
+    prompt = tuple(range(32))
+    chunks = _prompt_rounds(prompt, rows=8)
+
+    state = owner._prefill_batch_native_layer_outer(
+        (prompt,),
+        sessions=(owner,),
+        chunks=chunks,
+        layer_budget=3,
+    )
+    assert isinstance(state, _GGUFResumablePrefillState)
+    assert state.scratch is not None
+
+    class _Boom(Exception):
+        pass
+
+    def boom(layer_id, *args, **kwargs):
+        raise _Boom()
+
+    owner.runner._run_full_attention_prefill_layer_aotriton = boom
+    with pytest.raises(_Boom):
+        owner.prefill_batch_native_layer_outer_resumable(
+            state=state,
+            layer_budget=None,
+        )
+    # A failed segment cannot be resumed; its buffers must be freed.
+    assert state.scratch is None
+
+
+def test_resumable_row_release_frees_suspended_buffers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cancellation/reclaim of a suspended row must free its buffers."""
+
+    from hipengine.generation import qwen35_gguf as gen
+
+    recorder = _Recorder()
+    owner = _resumable_owner(monkeypatch, recorder)
+    prompt = tuple(range(32))
+    chunks = _prompt_rounds(prompt, rows=8)
+    state = owner._prefill_batch_native_layer_outer(
+        (prompt,),
+        sessions=(owner,),
+        chunks=chunks,
+        layer_budget=3,
+    )
+    assert isinstance(state, _GGUFResumablePrefillState)
+
+    released: list[int] = []
+    state.scratch.release = lambda: released.append(1)  # type: ignore[method-assign]
+
+    host = SimpleNamespace(
+        _prefix_cache=None,
+        _promote_prefix_snapshots=lambda row: None,
+        _drop_prefix_snapshots_for_row=lambda request_id: None,
+        _close_c1_decode_graph=lambda row: None,
+        _graph_handles_for_sessions=lambda sessions: (),
+        _observe_graph_handles=lambda handles: None,
+        _record_graph_invalidations=lambda handles, invalidated: None,
+        _kv_graph_invalidation_count=0,
+    )
+    row = _WiringRow(prompt)
+    row.resumable_prefill = state
+    row.lease = None
+    # Only the suspended-buffer cleanup runs before the lease check returns.
+    gen.Qwen35GGUFResidentModelRunner._release_row_resources(host, row)
+    assert released == [1]
+    assert row.resumable_prefill is None
+
+
+def test_suspended_owner_appears_in_prefill_transient_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A suspended prefill's copy is real resident memory; telemetry must show it.
+
+    Roadmap P2/P6b: the suspended-prefill owner has to be accounted alongside
+    the other prefill transients, and must disappear once the prefill completes
+    or is abandoned.
+    """
+
+    from hipengine.generation.qwen35_gguf import prefill_transient_owner_inventory
+
+    recorder = _Recorder()
+    owner = _resumable_owner(monkeypatch, recorder)
+    prompt = tuple(range(32))
+    chunks = _prompt_rounds(prompt, rows=8)
+
+    before = prefill_transient_owner_inventory((owner,))
+    state = owner._prefill_batch_native_layer_outer(
+        (prompt,),
+        sessions=(owner,),
+        chunks=chunks,
+        layer_budget=3,
+    )
+    assert isinstance(state, _GGUFResumablePrefillState)
+    suspended = owner._resumable_prefill_scratch
+    assert suspended is state.scratch
+    during = prefill_transient_owner_inventory((owner,))
+    assert (
+        during["hidden_and_bulk_owner_bytes"]
+        > before["hidden_and_bulk_owner_bytes"]
+    )
+
+    # Completing the prefill releases the owner and clears the telemetry slot.
+    owner._prefill_batch_native_layer_outer(
+        None,
+        sessions=None,
+        chunks=None,
+        resume_state=state,
+        layer_budget=None,
+    )
+    assert owner._resumable_prefill_scratch is None
+    after = prefill_transient_owner_inventory((owner,))
+    assert after["hidden_and_bulk_owner_bytes"] == before["hidden_and_bulk_owner_bytes"]

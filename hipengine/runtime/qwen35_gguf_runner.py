@@ -1238,6 +1238,7 @@ class _GGUFResumablePrefillState:
     return_logits: bool = False
     require_logits: bool = False
     runtime: object | None = None
+    scratch: _GGUFResumablePrefillScratch | None = None
 
     @property
     def layer_count(self) -> int:
@@ -1248,6 +1249,202 @@ class _GGUFResumablePrefillState:
         """Ping-pong parity: which hidden plane holds the current activations."""
 
         return int(self.next_layer) % 2
+
+
+@dataclass
+class _GGUFResumablePrefillScratch:
+    """Dedicated buffers holding a suspended prefill's live state (P6b).
+
+    The packed verify workspace and the bulk prefill workspace both delegate to
+    ``_resident_batch_owner``, so in a resident batch every session view shares
+    one set of hidden planes and one set of linear conv/recurrent states. A
+    prefill suspended between scheduler polls would otherwise have its
+    activations overwritten by interleaved packed decode on the same batch
+    owner - the exact ownership hazard roadmap F5 names.
+
+    At each segment boundary the live hidden planes and linear state are copied
+    here; at resume they are copied back. That keeps packed decode free to use
+    the shared workspace while the prefill is suspended, at the cost of one
+    extra hidden-plane and linear-state copy per suspended prefill (the
+    "suspended-prefill owner" the allocation model must account for).
+    """
+
+    runtime: object
+    hidden_a: object | None = None
+    hidden_b: object | None = None
+    conv: tuple[object | None, ...] = ()
+    recurrent: tuple[object | None, ...] = ()
+    owner: object | None = None
+    _allocated: list[object] = field(default_factory=list)
+
+    @classmethod
+    def allocate(
+        cls,
+        *,
+        runtime: object,
+        packed_state: object,
+        hidden_bytes: int,
+        owner: object | None = None,
+    ) -> "_GGUFResumablePrefillScratch":
+        """Allocate the save buffers, freeing everything on a partial failure."""
+
+        allocated: list[object] = []
+        try:
+            hidden_a = malloc(max(1, int(hidden_bytes)), runtime=runtime)
+            allocated.append(hidden_a)
+            hidden_b = malloc(max(1, int(hidden_bytes)), runtime=runtime)
+            allocated.append(hidden_b)
+            conv: list[object | None] = []
+            for source in getattr(packed_state, "layer_conv_states", ()):
+                if source is None:
+                    conv.append(None)
+                    continue
+                buffer = malloc(int(source.nbytes), runtime=runtime)
+                allocated.append(buffer)
+                conv.append(buffer)
+            recurrent: list[object | None] = []
+            for source in getattr(packed_state, "layer_recurrent_states", ()):
+                if source is None:
+                    recurrent.append(None)
+                    continue
+                buffer = malloc(int(source.nbytes), runtime=runtime)
+                allocated.append(buffer)
+                recurrent.append(buffer)
+        except BaseException:
+            for buffer in reversed(allocated):
+                free(buffer, runtime=runtime)
+            raise
+        return cls(
+            runtime=runtime,
+            hidden_a=hidden_a,
+            hidden_b=hidden_b,
+            conv=tuple(conv),
+            recurrent=tuple(recurrent),
+            owner=owner,
+            _allocated=allocated,
+        )
+
+    def _copy(
+        self,
+        destination: object,
+        source: object,
+        *,
+        stream: int,
+    ) -> None:
+        if destination is None or source is None:
+            return
+        runtime = self.runtime
+        runtime.memcpy_async(
+            destination.ptr,
+            source.ptr,
+            int(destination.nbytes),
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+            int(stream),
+        )
+
+    def save(
+        self,
+        *,
+        session: object,
+        packed_state: object,
+        hidden_bytes: int,
+        stream: int = 0,
+    ) -> None:
+        """Copy the live prefill state out of the shared workspace."""
+
+        runtime = self.runtime
+        for destination, attribute in (
+            (self.hidden_a, "_prefill_hidden_a"),
+            (self.hidden_b, "_prefill_hidden_b"),
+        ):
+            source = getattr(session, attribute, None)
+            if destination is None or source is None:
+                continue
+            runtime.memcpy_async(
+                destination.ptr,
+                source.ptr,
+                min(int(hidden_bytes), int(destination.nbytes)),
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                int(stream),
+            )
+        for destination, source in zip(
+            self.conv, getattr(packed_state, "layer_conv_states", ())
+        ):
+            self._copy(destination, source, stream=stream)
+        for destination, source in zip(
+            self.recurrent, getattr(packed_state, "layer_recurrent_states", ())
+        ):
+            self._copy(destination, source, stream=stream)
+        # The shared buffers must not be reused by decode before the copies
+        # retire; the caller's next work item may run on another stream.
+        if stream:
+            runtime.stream_synchronize(int(stream))
+        else:
+            runtime.device_synchronize()
+
+    def restore(
+        self,
+        *,
+        session: object,
+        packed_state: object,
+        hidden_bytes: int,
+        stream: int = 0,
+    ) -> None:
+        """Copy the suspended state back into the shared workspace."""
+
+        runtime = self.runtime
+        for source, attribute in (
+            (self.hidden_a, "_prefill_hidden_a"),
+            (self.hidden_b, "_prefill_hidden_b"),
+        ):
+            destination = getattr(session, attribute, None)
+            if source is None or destination is None:
+                continue
+            runtime.memcpy_async(
+                destination.ptr,
+                source.ptr,
+                min(int(hidden_bytes), int(source.nbytes)),
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                int(stream),
+            )
+        for source, destination in zip(
+            self.conv, getattr(packed_state, "layer_conv_states", ())
+        ):
+            self._copy(destination, source, stream=stream)
+        for source, destination in zip(
+            self.recurrent, getattr(packed_state, "layer_recurrent_states", ())
+        ):
+            self._copy(destination, source, stream=stream)
+
+    def release(self) -> None:
+        """Free every buffer; idempotent so failure paths can call it freely."""
+
+        runtime = self.runtime
+        for buffer in reversed(self._allocated):
+            free(buffer, runtime=runtime)
+        self._allocated = []
+        self.hidden_a = None
+        self.hidden_b = None
+        self.conv = ()
+        self.recurrent = ()
+        # Keep the owning session's telemetry pointer honest: the suspended
+        # owner must appear in the prefill-transient inventory while it is
+        # live and disappear when it is freed.
+        owner = self.owner
+        if owner is not None and getattr(
+            owner, "_resumable_prefill_scratch", None
+        ) is self:
+            owner._resumable_prefill_scratch = None
+
+    @property
+    def buffers(self) -> tuple[object, ...]:
+        """Every allocated buffer, for owner-byte accounting."""
+
+        return tuple(self._allocated)
+
+    @property
+    def nbytes(self) -> int:
+        return sum(int(buffer.nbytes) for buffer in self._allocated)
 
 
 # P3: layer-outer packed AR prefill executor. When enabled, multi-chunk
@@ -22294,7 +22491,7 @@ class Qwen35GGUFResidentSession:
                     " decode state before reusing the packed workspace slots"
                 )
         try:
-            return self._prefill_batch_native_layer_outer_segment(
+            return self._prefill_batch_native_layer_outer_segment_guarded(
                 state,
                 layer_budget=layer_budget,
                 stream=stream,
@@ -22369,7 +22566,7 @@ class Qwen35GGUFResidentSession:
                 )
         try:
             if state is not None:
-                return self._prefill_batch_native_layer_outer_segment(
+                return self._prefill_batch_native_layer_outer_segment_guarded(
                     state,
                     layer_budget=layer_budget,
                     stream=stream,
@@ -22381,6 +22578,15 @@ class Qwen35GGUFResidentSession:
                 layer_budget=layer_budget,
                 stream=stream,
             )
+        except BaseException:
+            # A failed segment cannot be resumed, so its suspended-state
+            # buffers must not be leaked. (A successful segment returns the
+            # checkpoint and keeps them.)
+            suspended = getattr(state, "scratch", None)
+            if suspended is not None:
+                suspended.release()
+                state.scratch = None
+            raise
         finally:
             self._release_int8_prefill_oracles_after_call(session_tuple)
 
@@ -22760,7 +22966,7 @@ class Qwen35GGUFResidentSession:
         """
 
         if resume_state is not None:
-            return self._prefill_batch_native_layer_outer_segment(
+            return self._prefill_batch_native_layer_outer_segment_guarded(
                 resume_state,
                 layer_budget=layer_budget,
                 stream=stream,
@@ -22919,11 +23125,32 @@ class Qwen35GGUFResidentSession:
             require_logits=bool(require_logits),
             runtime=runtime,
         )
-        return self._prefill_batch_native_layer_outer_segment(
+        return self._prefill_batch_native_layer_outer_segment_guarded(
             state,
             layer_budget=layer_budget,
             stream=stream,
         )
+
+    def _prefill_batch_native_layer_outer_segment_guarded(
+        self,
+        state: _GGUFResumablePrefillState,
+        *,
+        layer_budget: int | None = None,
+        stream: int = 0,
+    ) -> list[Qwen35GGUFNextTokenProbeResult | None] | _GGUFResumablePrefillState:
+        """Run a segment, releasing suspended-state buffers if it fails."""
+
+        try:
+            return self._prefill_batch_native_layer_outer_segment(
+                state,
+                layer_budget=layer_budget,
+                stream=stream,
+            )
+        except BaseException:
+            if state.scratch is not None:
+                state.scratch.release()
+                state.scratch = None
+            raise
 
 
     def _prefill_batch_native_layer_outer_segment(
@@ -22969,6 +23196,20 @@ class Qwen35GGUFResidentSession:
         # activations in plane B. Capture it before advancing the checkpoint.
         start_phase = int(layer_start) % 2
         state.next_layer = layer_end
+        # P6b: the shared workspace may have been reused by interleaved decode
+        # (or another prefill) since the last segment, so the suspended state
+        # is copied back before the layer loop reads it.
+        if state.scratch is not None:
+            state.scratch.restore(
+                session=self,
+                packed_state=packed_state,
+                hidden_bytes=(
+                    int(state.total_rows)
+                    * int(self.runner.hidden_size)
+                    * DType.BF16.itemsize
+                ),
+                stream=stream,
+            )
         src = self._prefill_hidden_a
         dst = self._prefill_hidden_b
         if start_phase:
@@ -23075,14 +23316,36 @@ class Qwen35GGUFResidentSession:
             if layer_end < layer_count:
                 # P6 yield point: every round of layers [layer_start, layer_end)
                 # is complete, their K/V is in the direct INT8 store, and the
-                # transient oracle is released by the caller's finally. Return
-                # the advanced checkpoint so the scheduler poll can hand
-                # control back to the service driver.
+                # transient oracle is released by the caller's finally. Copy the
+                # live state out of the shared workspace first, so interleaved
+                # packed decode on the same batch owner cannot overwrite it.
+                hidden_bytes = (
+                    int(state.total_rows)
+                    * int(self.runner.hidden_size)
+                    * DType.BF16.itemsize
+                )
+                if state.scratch is None:
+                    state.scratch = _GGUFResumablePrefillScratch.allocate(
+                        runtime=runtime,
+                        packed_state=packed_state,
+                        hidden_bytes=hidden_bytes,
+                        owner=self,
+                    )
+                    self._resumable_prefill_scratch = state.scratch
+                state.scratch.save(
+                    session=self,
+                    packed_state=packed_state,
+                    hidden_bytes=hidden_bytes,
+                    stream=stream,
+                )
                 self.last_packed_prefill_plan["layer_outer_layers_done"] = int(
                     layer_end
                 )
                 self.last_packed_prefill_plan["layer_outer_layers_total"] = int(
                     layer_count
+                )
+                self.last_packed_prefill_plan["layer_outer_suspended_bytes"] = int(
+                    state.scratch.nbytes
                 )
                 return state
 
@@ -23174,6 +23437,11 @@ class Qwen35GGUFResidentSession:
             runtime.stream_synchronize(stream)
         else:
             runtime.device_synchronize()
+        # The prefill is complete: the suspended-state copy is no longer needed
+        # and its buffers must not outlive the checkpoint.
+        if state.scratch is not None:
+            state.scratch.release()
+            state.scratch = None
         if not sample_output:
             return [None for _ in session_tuple]
         if token_host is None:

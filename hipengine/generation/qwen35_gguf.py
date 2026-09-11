@@ -230,6 +230,15 @@ def prefill_transient_owner_inventory(sessions: Sequence[Any]) -> dict[str, Any]
             for buffer in getattr(bulk_scratch, "buffers", ()):
                 if buffer is not None and int(getattr(buffer, "ptr", 0)):
                     hidden_buffers[int(buffer.ptr)] = int(buffer.nbytes)
+        # P6b: a suspended resumable prefill holds a dedicated copy of its live
+        # hidden planes and linear state so interleaved packed decode cannot
+        # overwrite it. That owner is real resident memory and must be counted
+        # alongside the other prefill transients.
+        suspended = getattr(session, "_resumable_prefill_scratch", None)
+        if suspended is not None:
+            for buffer in getattr(suspended, "buffers", ()):
+                if buffer is not None and int(getattr(buffer, "ptr", 0)):
+                    hidden_buffers[int(buffer.ptr)] = int(buffer.nbytes)
     return {
         "oracle_owner_bytes": sum(oracle_buffers.values()),
         "oracle_owner_counts": oracle_owner_counts,
@@ -7473,6 +7482,15 @@ class Qwen35GGUFResidentModelRunner:
         retain_prefix_snapshots: bool = False,
     ) -> None:
         prefix_cache = getattr(self, "_prefix_cache", None)
+        # A row cancelled or reclaimed mid-prefill owns suspended-state buffers
+        # (P6b); they must not outlive the row. release() is idempotent.
+        suspended = row.resumable_prefill
+        if suspended is not None and suspended is not _RESUMABLE_PREFILL_DONE:
+            scratch = getattr(suspended, "scratch", None)
+            if scratch is not None:
+                scratch.release()
+                suspended.scratch = None
+        row.resumable_prefill = None
         if retain_prefix_snapshots:
             self._promote_prefix_snapshots(row)
         else:

@@ -70,6 +70,7 @@ unless noted):
 | P3 promotion | - | - | trace identity passed (AOTriton + native, as predicted); default reverted to OFF pending the packet gates (reviewer F4) | `bf2267029` + corrective |
 | P7 t2 publish | - | - | paired reps: ratio median 1.004 (one matched 8K diagnostic; cross-rep variance 89-104% under shared-host contention, so 'consistently within 5%' is not established); SSE observation is delivery cadence, not isolated transport cost; kernel-family attribution landed | `9e28487cb`, `131d4219d` |
 | P6a/P6c resumable prefill | - | per-poll layer segment; checkpoint `next_layer` + derived ping-pong phase; oracle released at every segment boundary | - | `35b61413b` |
+| P6b suspended-state ownership | - | - | dedicated hidden-plane + linear-state buffers copied out at each yield and back on resume; suspended owner counted in prefill-transient telemetry; freed on completion, failure, and row reclaim | `--` (this unit) |
 | P6d harness repair | - | - | - | `--` (this unit) |
 
 Combined P3+P4 at 32K declared: ~1.6 GiB of route transients vs ~6.4 GiB at
@@ -84,10 +85,10 @@ executor), so the default is OFF (reviewer finding 4);
 on for the C1/prefix-off/MTP-off route with `HIPENGINE_GGUF_PACKED_KV_LEASE=1`
 as the rollback.
 
-Remaining open packets: P6 (P6a/P6c landed opt-in - the resumable layer-outer
-checkpoint and its CPU tests; P6b interleaved-decode scratch ownership, P6e GPU
-proof on the serial INT8 route, and P6f P3/P2 gates are outstanding, and the
-route stays behind `HIPENGINE_GGUF_PACKED_LAYER_OUTER` until P6f closes), P5
+Remaining open packets: P6 (P6a/P6b/P6c landed opt-in - the resumable layer-outer
+checkpoint, its suspended-state ownership, and the CPU tests; P6e GPU proof on
+the serial INT8 route and P6f P3/P2 gates are outstanding, and the route stays
+behind `HIPENGINE_GGUF_PACKED_LAYER_OUTER` until P6f closes), P5
 remainder (HIP-API/queue-gap attribution, graph-capture amortization, then the
 IKV-C2 C>1 row-batched consumer - the capacity>1 lease gate stays until it
 lands), and P7 remainder (the C>1 and P6-gated acceptance items). The C-width
