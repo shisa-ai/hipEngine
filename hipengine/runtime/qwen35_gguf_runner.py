@@ -23105,6 +23105,20 @@ class Qwen35GGUFResidentSession:
                 stream=stream,
                 runtime=runtime,
             )
+        # The sampling tail and the hidden-seed helpers increment these counters
+        # with ``+=``, but a fresh session's plan is the dataclass default ({}).
+        # The one-shot entry builds a full plan dict; the resumable entry never
+        # runs that setup, so it must seed the counters itself. The CPU fixtures
+        # pre-populated two of them, which is why this only surfaced on the first
+        # real GPU call (a fresh session's first long prompt raised KeyError in
+        # the sampling tail).
+        for _plan_counter in (
+            "output_norm_rows",
+            "lm_head_sample_rows",
+            "target_hidden_norm_rows",
+            "hidden_seed_norm_rows",
+        ):
+            self.last_packed_prefill_plan.setdefault(_plan_counter, 0)
         self.last_packed_prefill_plan["executor_mode"] = "layer_outer_packed"
         self.last_packed_prefill_plan["layer_outer_rounds"] = len(chunk_plans)
         self.last_packed_prefill_plan["layer_outer_rows"] = total_rows

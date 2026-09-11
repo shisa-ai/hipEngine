@@ -293,7 +293,10 @@ def _resumable_owner(
             mode="layer_outer_shared_oracle",
             required_hidden_capacity=1024,
         ),
-        last_packed_prefill_plan={"output_norm_rows": 0, "lm_head_sample_rows": 0},
+        # Deliberately the dataclass default. The resumable entry must seed every
+        # counter its sampling tail increments; a fixture that pre-populates them
+        # hides exactly the defect that crashed the first GPU proof run.
+        last_packed_prefill_plan={},
         _bulk_prefill_scratch=SimpleNamespace(
             rows=int(rows),
             for_chunk=lambda *a, **k: SimpleNamespace(retained_key_cache=None),
