@@ -394,13 +394,16 @@ prompt. `UD-Q4_K_S` differs from its own AR reference on one prompt in both
 runs — a 0.0096-logit near tie between the single-row AR route and the 4-row
 verify route — which `docs/EXECUTION-PROFILES.md` §4.1 permits as production
 drift, so it is recorded rather than binding. **The UD/plain AR ratio in this
-protocol (0.505x) is not comparable to the 0.848x above**: the table above was
-measured with graph-replay decode on GPU1 (the XTX), while this suite's AR path
-is eager. The two artifacts are not compute-different (UD K_M 30.263 ms/token
-pure vs plain K_M 30.478, at 831 vs 796 launches/token), so the eager gap is
-host-side per-launch overhead; the MTP path is less exposed because its
-proposal is graph-captured, which inflates the UD ratios relative to a
-graph-replay protocol. Treat the UD ratios as ±10%.
+protocol (0.505x) is not comparable to the 0.848x above, and the difference is
+GPU-side, not protocol**: the table above was measured on GPU1 (the XTX) and
+this suite ran on the W7900. The W7900's own UD census reports **46,913 µs/token
+pure against the XTX's 30,263 at the identical 831.2 launches/token** — a 1.55x
+device gap with no host work involved. It is localised to two local32 GEMV
+kernels, `q5_k_t16_dense_single_local32_gemv_kernel` (13,380 vs 3,486 µs/token,
+**3.84x**) and `gguf_iq4_xs_local32_gemv_kernel` (8,120 vs 2,436, **3.33x**);
+every other kernel is within 1.06–1.23x, so contention is excluded and those two
+carry ~94% of the gap. Plain decode is unaffected, which is why the UD/plain
+ratio differs by device. Treat the UD ratios as ±10%.
 ([artifact](results/paired-ud-plain-mtp-c1-natural25-b3.json).)
 
 Both artifacts pass the tokenized 18-prompt category/heldout screen
