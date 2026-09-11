@@ -1,0 +1,28 @@
+{
+  "passed": false,
+  "aborted_before_workload": true,
+  "performance_claim": false,
+  "configuration": {
+    "passed": false,
+    "required": true,
+    "effective_kv_sources": {
+      "bf16": 2.0
+    },
+    "resumable_sessions": 0.0,
+    "required_kv_source": "int8_direct",
+    "requested_kv_storage": "auto",
+    "detail": "no resident session reports kv_attention_source='int8_direct'; observed {'bf16': 2.0} with kv_storage requested as 'auto'. The resumable prefill is only attempted on the int8_direct route (qwen35_gguf.py:8084), so every gate below would describe a different route. Set --kv-storage int8_per_token_head (and the matching scale dtype) or pass --no-require-resumable-route to test the default route on purpose."
+  },
+  "gates": {},
+  "measurements": {
+    "kv_storage_requested": "auto",
+    "kv_attention_sources": {
+      "bf16": 2.0
+    },
+    "resumable_kv_source": "int8_direct",
+    "packed_layer_outer_env_seen": "1"
+  },
+  "notes": [
+    "no resident session reports kv_attention_source='int8_direct'; observed {'bf16': 2.0} with kv_storage requested as 'auto'. The resumable prefill is only attempted on the int8_direct route (qwen35_gguf.py:8084), so every gate below would describe a different route. Set --kv-storage int8_per_token_head (and the matching scale dtype) or pass --no-require-resumable-route to test the default route on purpose."
+  ]
+}

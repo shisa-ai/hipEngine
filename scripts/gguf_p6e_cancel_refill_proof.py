@@ -511,6 +511,51 @@ def _split_prometheus_labels(inner: str) -> list[str]:
     return [part for part in parts if part]
 
 
+def _assert_resumable_configuration(
+    effective_kv_sources: Mapping[str, float] | None,
+    *,
+    requested_kv_storage: str,
+    required: bool = True,
+) -> dict[str, Any]:
+    """Fail before the workload when the run is not on the route under test.
+
+    A green result about the wrong route is the failure this proof exists to
+    prevent, so the effective layout is checked as soon as a session exists and
+    before any gate-bearing arm runs. ``required=False`` allows the default route
+    to be exercised deliberately.
+    """
+
+    sources = dict(effective_kv_sources or {})
+    resumable_sessions = float(sources.get(RESUMABLE_KV_SOURCE, 0.0))
+    passed = resumable_sessions > 0 or not required
+    if passed:
+        detail = (
+            f"{int(resumable_sessions)} session(s) report "
+            f"kv_attention_source={RESUMABLE_KV_SOURCE!r}, so the resumable "
+            "prefill route is reachable"
+        )
+    else:
+        detail = (
+            "no resident session reports "
+            f"kv_attention_source={RESUMABLE_KV_SOURCE!r}; observed {sources!r} "
+            f"with kv_storage requested as {requested_kv_storage!r}. The "
+            "resumable prefill is only attempted on the int8_direct route "
+            "(qwen35_gguf.py:8084), so every gate below would describe a "
+            "different route. Set --kv-storage int8_per_token_head (and the "
+            "matching scale dtype) or pass --no-require-resumable-route to test "
+            "the default route on purpose."
+        )
+    return {
+        "passed": passed,
+        "required": required,
+        "effective_kv_sources": sources,
+        "resumable_sessions": resumable_sessions,
+        "required_kv_source": RESUMABLE_KV_SOURCE,
+        "requested_kv_storage": requested_kv_storage,
+        "detail": detail,
+    }
+
+
 def _wait_for(predicate: Any, *, timeout: float, interval: float = 0.05) -> bool:
     deadline = time.perf_counter() + timeout
     while time.perf_counter() < deadline:
@@ -792,7 +837,41 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             )
             reference_gaps = _inter_token_gaps_ms(reference)
 
+            # --- 1b. configuration assertion -------------------------------------
+            # The session exists now that a prefill has run, so the effective KV
+            # layout can be read before any gate-bearing arm runs. Without this a
+            # misconfigured harness produces eight green gates that describe the
+            # default route instead of the resumable one, which is precisely the
+            # false-positive class this proof was rebuilt to catch.
             baseline_metrics = _metrics_values(client, base_url)
+            effective_kv_sources = _labeled_metric_values(
+                client, base_url, KV_ATTENTION_SOURCE_METRIC
+            )
+            configuration = _assert_resumable_configuration(
+                effective_kv_sources,
+                requested_kv_storage=args.kv_storage,
+                required=bool(args.require_resumable_route),
+            )
+            if not configuration["passed"]:
+                print(
+                    "ABORTED before the workload: " + configuration["detail"],
+                    file=sys.stderr,
+                )
+                return {
+                    "passed": False,
+                    "aborted_before_workload": True,
+                    "performance_claim": False,
+                    "configuration": configuration,
+                    "gates": {},
+                    "measurements": {
+                        "kv_storage_requested": args.kv_storage,
+                        "kv_attention_sources": dict(effective_kv_sources),
+                        "resumable_kv_source": RESUMABLE_KV_SOURCE,
+                        "packed_layer_outer_env_seen": layer_outer_env_seen,
+                    },
+                    "notes": [configuration["detail"]],
+                }
+
             cancelled_before = _metric(baseline_metrics, CANCELLATION_COUNTER)
             owner_bytes_baseline = _metric(baseline_metrics, PREFILL_OWNER_BYTES_METRIC)
             oracle_bytes_baseline = _metric(baseline_metrics, ORACLE_OWNER_BYTES_METRIC)
@@ -986,6 +1065,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "performance_claim": False,
         "passed": all(gate["passed"] for gate in gates.values()),
+        # Recorded on the passing run too, so the artifact shows the route was
+        # asserted before the workload rather than only when the assertion fails.
+        "configuration": configuration,
         "host": {
             "target_arch": hip_target_arch_for_backend(backend),
             "hip_visible_devices": environment.get("HIP_VISIBLE_DEVICES", ""),
@@ -1186,6 +1268,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--kv-scale-dtype", default="fp32")
     parser.add_argument("--kv-scale-granularity", default="per_token_head")
+    parser.add_argument(
+        "--require-resumable-route",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "abort before the workload unless a resident session reports "
+            "kv_attention_source=int8_direct; without this the gates can pass "
+            "while describing a different route"
+        ),
+    )
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--json", type=Path, default=None)
     return parser

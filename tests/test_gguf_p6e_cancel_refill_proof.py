@@ -8,12 +8,15 @@ produce.
 
 from __future__ import annotations
 
+import sys
+
 import pytest
 
 from scripts.gguf_p6e_cancel_refill_proof import (
     CANCELLATION_COUNTER,
     DECLARED_ACK_P95_LIMIT_MS,
     DECLARED_GAP_MAX_FACTOR,
+    _assert_resumable_configuration,
     _labeled_metric_values,
     _metric_sample_labels,
     _split_prometheus_labels,
@@ -443,3 +446,86 @@ def test_gate_keeps_the_session_source_separate_from_the_manifest_source() -> No
     gate = gates["resumable_path_engaged"]
     assert gate["kv_attention_sources"] == {"bf16_mirror": 2.0}
     assert gate["manifest_kv_attention_source"] == "unavailable"
+
+
+def test_configuration_assertion_passes_on_the_resumable_route() -> None:
+    result = _assert_resumable_configuration(
+        {"int8_direct": 2.0}, requested_kv_storage="int8_per_token_head"
+    )
+
+    assert result["passed"] is True
+    assert result["resumable_sessions"] == 2.0
+    assert "reachable" in result["detail"]
+
+
+def test_configuration_assertion_aborts_on_the_bf16_default_route() -> None:
+    """The exact misconfiguration that produced eight green gates about nothing.
+
+    The harness ran with kv_storage "auto", which resolve_kv_policy resolves to
+    BF16, so the session source was bf16 and the resumable route was never
+    attempted. This must fail before the workload, not after.
+    """
+
+    result = _assert_resumable_configuration(
+        {"bf16": 2.0}, requested_kv_storage="auto"
+    )
+
+    assert result["passed"] is False
+    assert result["resumable_sessions"] == 0.0
+    assert result["required_kv_source"] == "int8_direct"
+    # The message must name the fix, not merely report a mismatch.
+    assert "int8_per_token_head" in result["detail"]
+    assert "--no-require-resumable-route" in result["detail"]
+
+
+def test_configuration_assertion_can_be_waived_to_test_the_default_route() -> None:
+    result = _assert_resumable_configuration(
+        {"bf16": 2.0}, requested_kv_storage="auto", required=False
+    )
+
+    assert result["passed"] is True
+    assert result["required"] is False
+
+
+def test_configuration_assertion_fails_when_no_session_reports_anything() -> None:
+    """An absent metric must not read as success."""
+
+    assert (
+        _assert_resumable_configuration({}, requested_kv_storage="int8_per_token_head")[
+            "passed"
+        ]
+        is False
+    )
+    assert (
+        _assert_resumable_configuration(
+            None, requested_kv_storage="int8_per_token_head"
+        )["passed"]
+        is False
+    )
+
+
+def test_configuration_assertion_counts_only_the_resumable_source() -> None:
+    """A mixed reading must pass only if at least one session is resumable."""
+
+    mixed = _assert_resumable_configuration(
+        {"int8_direct": 1.0, "bf16": 1.0}, requested_kv_storage="int8_per_token_head"
+    )
+    assert mixed["passed"] is True
+    assert mixed["resumable_sessions"] == 1.0
+
+
+def test_abort_path_returns_an_artifact_not_an_exit_code() -> None:
+    """main() writes the artifact and derives the exit code from it.
+
+    Returning a bare int here raised TypeError inside main, which would have
+    turned a clean fail-fast into a traceback and hidden the reason.
+    """
+
+    import inspect
+
+    source = inspect.getsource(
+        sys.modules[_assert_resumable_configuration.__module__].run
+    )
+    abort_block = source.split("aborted_before_workload", 1)[1]
+    assert "return {" in abort_block.split("return 2", 1)[0]
+    assert "return 2" not in abort_block.split("\n\n")[0]
