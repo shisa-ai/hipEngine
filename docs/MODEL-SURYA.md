@@ -1,9 +1,47 @@
 # MODEL-SURYA.md — Surya OCR 2 on hipEngine
 
-Status: **reviewed; implementation pending** (2026-09-11). This is the
+Status: **reviewed; inventory measured; implementation pending** (2026-09-11). This is the
 per-model architecture and bring-up plan, following `MODEL-EVIE.md` and
 `MODEL-TIMESFM3.md`. No Surya inference, numerical gate, or performance run
 was performed for this review.
+
+### Measured inventory (2026-09-11, revision `3b3d4cdf`)
+
+Checkpoint downloaded and inventoried; the geometry table above matches the
+actual config and tensors on every value checked.
+
+- **Safetensors (canonical):** single BF16 `model.safetensors`, 1.37 GB,
+  488 tensors, 686.2M parameters (language 565.1M + visual 100.6M + MTP
+  20.5M; advertised "650M" excludes MTP). Tied LM head confirmed: no
+  `lm_head` tensor; output uses `model.language_model.embed_tokens.weight`.
+- **Weight namespaces:** `model.language_model.layers.N.*` (GDN layers use
+  `linear_attn.in_proj_qkv/a/b/z`, `conv1d (6144,1,4)`, `A_log (16,)`,
+  `dt_bias (16,)`, `norm (128,)`, `out_proj (1024,2048)`); full-attention
+  layers use fused `q/k/v_proj` with per-head `q_norm`/`k_norm (256,)`;
+  vision uses `model.visual.*` with fused `attn.qkv (2304,768)` **with
+  biases** (EVIE has no vision biases), `patch_embed.proj (768,3,2,16,16)`,
+  learned `pos_embed.weight (2304,768)`, `merger.norm (768,)` +
+  `linear_fc1 (3072,3072)` / `linear_fc2 (1024,3072)` with biases.
+- **MTP tensors present:** 15 tensors (`mtp.fc`, one full-attention layer,
+  `pre_fc_norm_{embedding,hidden}`, `mtp.norm`); shared embeddings
+  (`mtp_use_dedicated_embeddings: false`). Optional follow-up, as above.
+- **Token IDs (trap 1 resolved):** tokenizer + generation_config agree —
+  EOS **2** (`<|im_end|>`), pad 0, vision_start 9 / end 10, image_pad 11,
+  video_pad 12, unk 65424. `text_config.eos_token_id: 248044` is stale
+  metadata outside the 65,425 vocab; never used. Chat template renders
+  `<|im_start|>assistant\n` with no thinking prefix, as documented.
+- **GGUF pair (same repo family, `6a3a4c30`):** `surya-2.gguf` 1.27 GB +
+  `surya-2-mmproj.gguf` 0.20 GB. **Unquantized** (file_type F16/F32 only),
+  so a same-precision cross-oracle rather than a quant question. Metadata
+  matches the safetensors config on all geometry keys
+  (`qwen35.*`, `ssm.*`, `clip.*`, projector `qwen3vl_merger`).
+  Anomalies: `tokenizer.ggml.tokens` holds **130,854** entries against
+  65,425 `token_type` values (doubled vocab array — do not trust GGUF
+  tokenizer contents; use the HF tokenizer files), `merges` is a stub
+  `[1 x 8]`, and `general.finetune = '_patched_ckpt'` records a
+  llama.cpp-conversion patch. EOS=2 / pad=0 confirmed in GGUF metadata.
+- The safetensors path is the implementation target; GGUF is a cross-check
+  oracle only.
 
 Surya needs a vision-to-generation path, but most of its computation already
 has close relatives here: EVIE supplies a Qwen3.5 vision encoder and GDN
