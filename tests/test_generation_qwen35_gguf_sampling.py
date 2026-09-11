@@ -2984,8 +2984,15 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
         "active_requests": 0,
         "available_sessions": 2,
         "packed_workspace_current_bytes": 0,
+        "packed_workspace_owner_sessions": 0,
+        "packed_workspace_leased_pool_bytes": 0,
+        "packed_kv_workspace_lease_skipped": False,
+        "packed_workspace_note": (
+            observability["model_runner"]["packed_workspace_note"]
+        ),
         "packed_workspace_release_events": 0,
         "packed_workspace_released_bytes": 0,
+        "prefill_transients": observability["model_runner"]["prefill_transients"],
         "kv_layout_audits": [],
         "persistent_int8_payload_bytes": 0,
         "persistent_bf16_payload_bytes": 0,
