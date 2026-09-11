@@ -6971,3 +6971,40 @@ runtime call site to registry resolution, and drop the
   lands. It is not dead code to delete: it is the identity-bound replacement
   for the caller-claimed native-XL variant exception, and its coverage
   contract is enforced and tested.
+
+## 2026-09-11 Committed profiler traces and oversized captures under `benchmarks/results/`
+
+**State.** `git ls-files benchmarks/results` totals **159 MB**. Seven raw
+`rocprofv3` trace CSVs carry ~73 MB of it:
+
+| file | size |
+| --- | ---: |
+| `final-decode-campaign-2026-09-11/plainks-trace.csv` | 11.2 MB |
+| `final-decode-campaign-2026-09-11/plainkm-trace.csv` | 10.9 MB |
+| `2026-09-11-q5-local32-decode-study/trace-unrouted.csv` | 10.5 MB |
+| `final-decode-campaign-2026-09-11/ud-k_m-trace.csv` | 10.3 MB |
+| `2026-09-11-q5-local32-decode-study/trace-routed.csv` | 10.3 MB |
+| `final-decode-campaign-2026-09-11/wudkm-trace.csv` | 10.3 MB |
+| `final-decode-campaign-2026-09-11/wudks-trace.csv` | 10.3 MB |
+
+Six further JSON captures are 2.9-10.1 MB
+(`mtp-gguf-iter271-gdn-replay-window-capture.json` is the largest at 10.1 MB).
+The compact census summaries beside them — `{ud-k_m,udks,plainkm,plainks,wudkm,wudks}-census.json`,
+each a few KB — carry the numbers every published claim actually uses, and the
+per-kernel table in this repository's own W7900 correction was derived from
+those, not from the CSVs.
+
+**Why it matters.** `AGENTS.md` "Never Committed" lists "`rocprofv3` dumps, raw
+benchmark logs". These were committed anyway (introduced by `b6cb557f9` and
+`1570712a1`). They are not linked from `benchmarks/README.md`,
+`benchmarks/HISTORY.md`, or the campaign rollup README, so nothing references
+them; a 159 MB result tree also makes the branch expensive to clone and review.
+
+**Removal trigger.** Before the branch is merged, delete the trace CSVs and the
+oversized window captures, or move them to external storage and leave a pointer.
+No claim depends on them: every retained number is in a census or summary
+artifact. Confirm no doc link breaks first — currently none exists.
+
+**Not done here.** These files belong to other agents' committed units, and
+`AGENTS.md` forbids cleaning up another agent's benchmark outputs unless the task
+asks for it. This entry records the debt rather than acting on it.

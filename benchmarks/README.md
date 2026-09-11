@@ -402,8 +402,10 @@ device gap with no host work involved. It is localised to two local32 GEMV
 kernels, `q5_k_t16_dense_single_local32_gemv_kernel` (13,380 vs 3,486 µs/token,
 **3.84x**) and `gguf_iq4_xs_local32_gemv_kernel` (8,120 vs 2,436, **3.33x**);
 every other kernel is within 1.06–1.23x, so contention is excluded and those two
-carry ~94% of the gap. Plain decode is unaffected, which is why the UD/plain
-ratio differs by device. Treat the UD ratios as ±10%.
+carry ~94% of the gap. What is established is that the W7900/XTX gap is
+localised to two UD local32 kernels; **plain decode on the W7900 is unmeasured**
+(there is no W7900 plain census), so a claim that plain is unaffected is not
+made. Treat the UD ratios as ±10%.
 ([artifact](results/paired-ud-plain-mtp-c1-natural25-b3.json).)
 
 Both artifacts pass the tokenized 18-prompt category/heldout screen

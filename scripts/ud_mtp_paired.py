@@ -33,6 +33,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -184,8 +185,12 @@ def resolve_commands(*, runs: int, raw_dir: Path, limit: int | None) -> list[dic
     return commands
 
 
-def _grant_mtp_scope_in_process(preset_keys: set[str]) -> None:
-    """Candidate-mode scope grant: in this process only, never a written pin."""
+def _grant_mtp_scope_in_process(preset_keys: set[str]) -> object:
+    """Candidate-mode scope grant: in this process only, never a written pin.
+
+    Returns the function it replaced so the caller can restore it; use
+    :func:`mtp_scope_granted` rather than calling this directly.
+    """
 
     from hipengine.loading import qwen35_gguf_admission as admission
 
@@ -202,6 +207,25 @@ def _grant_mtp_scope_in_process(preset_keys: set[str]) -> None:
         return preset
 
     admission.resolve_qwen35_gguf_artifact_preset = patched
+    return original
+
+
+@contextmanager
+def mtp_scope_granted(preset_keys: set[str]):
+    """Scope-grant context manager, so the patch never outlives the run.
+
+    ``main()`` is called in-process by the tests; leaving the admission module
+    patched would silently change every later admission assertion in the same
+    interpreter.
+    """
+
+    from hipengine.loading import qwen35_gguf_admission as admission
+
+    original = _grant_mtp_scope_in_process(preset_keys)
+    try:
+        yield
+    finally:
+        admission.resolve_qwen35_gguf_artifact_preset = original
 
 
 def _run_pair(argv: list[str], output: Path) -> dict[str, object]:
@@ -241,6 +265,100 @@ def _provenance_summary(payload: dict) -> dict[str, object]:
         "prompt_file": workload.get("prompt_file"),
         "prompt_file_sha256": workload.get("prompt_file_sha256"),
     }
+
+
+def expected_prompt_ids(prompts_path: Path) -> tuple[str, ...]:
+    """The prompt ids the suite will run, in file order."""
+
+    ids: list[str] = []
+    for line in prompts_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line:
+            ids.append(str(json.loads(line)["id"]))
+    return tuple(ids)
+
+
+def _evidence_completeness(
+    payload: dict,
+    *,
+    command: dict[str, object],
+    runs: int,
+    prompt_ids: tuple[str, ...],
+) -> dict[str, object]:
+    """Whether the payload is the complete evidence the resolved command asked for.
+
+    Without this, a truncated payload passes every downstream gate trivially: a
+    single-run file gives each prompt one token hash, so ``_determinism`` finds
+    no disagreement and reports deterministic repeats.
+    """
+
+    problems: list[str] = []
+    if payload.get("schema") != 1:
+        problems.append(f"schema {payload.get('schema')!r} != 1")
+    if payload.get("kind") != "qwen36_dense_gguf_ar_mtp_suite":
+        problems.append(f"kind {payload.get('kind')!r}")
+
+    model = payload.get("model") or {}
+    if str(model.get("path")) != str(command["model"]):
+        problems.append(f"model.path {model.get('path')!r} != {command['model']!r}")
+
+    workload = payload.get("workload") or {}
+    if Path(str(workload.get("prompt_file"))).resolve() != Path(
+        str(PAIRED_PROTOCOL["prompts"])
+    ).resolve():
+        problems.append(f"workload.prompt_file {workload.get('prompt_file')!r}")
+    if tuple(str(p) for p in (workload.get("prompt_ids") or ())) != prompt_ids:
+        problems.append("workload.prompt_ids does not match the prompt file")
+    if int(workload.get("prompt_count") or 0) != len(prompt_ids):
+        problems.append(f"workload.prompt_count {workload.get('prompt_count')!r}")
+    if int(workload.get("max_new_tokens_visible") or 0) != int(PAIRED_PROTOCOL["max_new_tokens"]):
+        problems.append(f"workload.max_new_tokens_visible {workload.get('max_new_tokens_visible')!r}")
+    if tuple(int(b) for b in (workload.get("candidate_budgets") or ())) != tuple(
+        int(b) for b in PAIRED_PROTOCOL["candidate_budgets"]
+    ):
+        problems.append(f"workload.candidate_budgets {workload.get('candidate_budgets')!r}")
+
+    provenance = payload.get("provenance") or {}
+    for field in ("host_name", "device_name", "resolved_backend", "target_arch", "hipengine_commit"):
+        if not provenance.get(field):
+            problems.append(f"provenance.{field} missing")
+
+    rows = payload.get("rows") or {}
+    groups: dict[str, list[dict]] = {"true_ar": list(rows.get("true_ar") or [])}
+    for budget, budget_rows in (rows.get("mtp") or {}).items():
+        groups[f"mtp_B{budget}"] = list(budget_rows)
+    if "true_ar" not in rows:
+        problems.append("rows.true_ar missing")
+    expected_budgets = {str(int(b)) for b in PAIRED_PROTOCOL["candidate_budgets"]}
+    if {str(b) for b in (rows.get("mtp") or {})} != expected_budgets:
+        problems.append(f"rows.mtp budgets {sorted(rows.get('mtp') or {})} != {sorted(expected_budgets)}")
+
+    for label, group in groups.items():
+        expected_rows = len(prompt_ids) * int(runs)
+        if len(group) != expected_rows:
+            problems.append(f"{label}: {len(group)} rows != {expected_rows} expected")
+            continue
+        seen: dict[str, set[int]] = {}
+        duplicates: set[tuple[str, int]] = set()
+        for row in group:
+            prompt = str(row.get("id"))
+            run = int(row.get("run", -1))
+            if run in seen.setdefault(prompt, set()):
+                duplicates.add((prompt, run))
+            seen[prompt].add(run)
+            if not row.get("token_sha256_i64"):
+                problems.append(f"{label}: {prompt} run {run} has no token_sha256_i64")
+                break
+        if duplicates:
+            problems.append(f"{label}: duplicate (prompt, run) {sorted(duplicates)[:4]}")
+        missing = [p for p in prompt_ids if p not in seen]
+        if missing:
+            problems.append(f"{label}: missing prompts {missing[:4]}")
+        for prompt, seen_runs in seen.items():
+            if seen_runs != set(range(int(runs))):
+                problems.append(f"{label}: {prompt} runs {sorted(seen_runs)} != 0..{int(runs) - 1}")
+                break
+    return {"complete": not problems, "problems": problems, "expected_rows_per_group": len(prompt_ids) * int(runs)}
 
 
 def _determinism(payload: dict, runs: int) -> dict[str, object]:
@@ -289,7 +407,13 @@ def _exactness(payload: dict) -> dict[str, object]:
     }
 
 
-def _verdict(payload: dict, runs: int) -> dict[str, object]:
+def _verdict(
+    payload: dict,
+    runs: int,
+    *,
+    command: dict[str, object],
+    prompt_ids: tuple[str, ...],
+) -> dict[str, object]:
     """Binding control gates plus the recorded-not-binding exactness evidence."""
 
     summary = payload.get("summary", {})
@@ -300,18 +424,24 @@ def _verdict(payload: dict, runs: int) -> dict[str, object]:
         ratio = float(block.get("full", {}).get("mtp_vs_true_ar", 0.0) or 0.0)
         if ratio > best_ratio:
             best_budget, best_ratio = budget, ratio
+    completeness = _evidence_completeness(
+        payload, command=command, runs=runs, prompt_ids=prompt_ids
+    )
     determinism = _determinism(payload, runs)
     correctness = payload.get("correctness", {})
     binding_gates = {
+        "evidence_complete": bool(completeness["complete"]),
         "true_ar_denominator_present": bool(true_ar.get("decode_tok_s_weighted")),
         "all_gpu_accept_match_cpu": bool(correctness.get("all_gpu_accept_match_cpu")),
-        "deterministic_repeats": bool(determinism["deterministic"]),
+        "deterministic_repeats": bool(completeness["complete"])
+        and bool(determinism["deterministic"]),
         "faster_than_true_ar": best_ratio > 1.0,
     }
     return {
         "runs": runs,
         "binding_gates": binding_gates,
         "binding_passed": all(binding_gates.values()),
+        "evidence_completeness": completeness,
         "recorded": {
             "suite_status": payload.get("status"),
             "all_exact_greedy": bool(correctness.get("all_exact_greedy")),
@@ -378,7 +508,7 @@ def main() -> int:
     if args.output is None:
         parser.error("--output is required unless --dry-run is given")
 
-    _grant_mtp_scope_in_process({quant for _, quant, family in PAIRS.values() if family == "ud"})
+    prompt_ids = expected_prompt_ids(REPO_ROOT / str(PAIRED_PROTOCOL["prompts"]))
     report: dict[str, object] = {
         "unit": "paired-ud-plain-mtp",
         "protocol": PAIRED_PROTOCOL,
@@ -394,33 +524,44 @@ def main() -> int:
         ),
         "pairs": [],
     }
-    for command in commands:
-        label = str(command["label"])
-        output = Path(str(command["argv"][command["argv"].index("--output") + 1]))
-        if args.from_raw:
-            if not output.exists():
-                print(f"[paired] {label}: missing raw payload {output}", file=sys.stderr)
-                return 1
-            print(f"[paired] {label}: re-deriving from {output}", flush=True)
-            payload = json.loads(output.read_text())
-        else:
-            print(
-                f"[paired] {label}: {command['model']} (quant={command['quant']}) -> {output}",
-                flush=True,
+    with mtp_scope_granted({quant for _, quant, family in PAIRS.values() if family == "ud"}):
+        for command in commands:
+            label = str(command["label"])
+            output = Path(str(command["argv"][command["argv"].index("--output") + 1]))
+            if args.from_raw:
+                if not output.exists():
+                    print(f"[paired] {label}: missing raw payload {output}", file=sys.stderr)
+                    return 1
+                print(f"[paired] {label}: re-deriving from {output}", flush=True)
+                payload = json.loads(output.read_text())
+            else:
+                print(
+                    f"[paired] {label}: {command['model']} (quant={command['quant']}) -> {output}",
+                    flush=True,
+                )
+                payload = _run_pair([str(part) for part in command["argv"]], output)
+            evidence = _verdict(
+                payload, args.runs, command=command, prompt_ids=prompt_ids
             )
-            payload = _run_pair([str(part) for part in command["argv"]], output)
-        report["pairs"].append(
-            {
-                "label": label,
-                "family": command["family"],
-                "model": command["model"],
-                "quant": command["quant"],
-                "command": " ".join(str(part) for part in command["argv"]),
-                "raw_payload": str(output),
-                "provenance": _provenance_summary(payload),
-                "evidence": _verdict(payload, args.runs),
-            }
-        )
+            if not evidence["evidence_completeness"]["complete"]:
+                print(
+                    f"[paired] {label}: incomplete evidence for the resolved command:",
+                    file=sys.stderr,
+                )
+                for problem in evidence["evidence_completeness"]["problems"][:12]:
+                    print(f"[paired]   {problem}", file=sys.stderr)
+            report["pairs"].append(
+                {
+                    "label": label,
+                    "family": command["family"],
+                    "model": command["model"],
+                    "quant": command["quant"],
+                    "command": " ".join(str(part) for part in command["argv"]),
+                    "raw_payload": str(output),
+                    "provenance": _provenance_summary(payload),
+                    "evidence": evidence,
+                }
+            )
 
     args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     print(f"[paired] wrote {args.output}")

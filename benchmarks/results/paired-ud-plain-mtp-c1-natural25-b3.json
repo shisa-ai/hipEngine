@@ -11,6 +11,7 @@
         "binding_gates": {
           "all_gpu_accept_match_cpu": true,
           "deterministic_repeats": true,
+          "evidence_complete": true,
           "faster_than_true_ar": true,
           "true_ar_denominator_present": true
         },
@@ -19,6 +20,11 @@
           "deterministic": true,
           "runs": 2,
           "unstable": {}
+        },
+        "evidence_completeness": {
+          "complete": true,
+          "expected_rows_per_group": 20,
+          "problems": []
         },
         "recorded": {
           "all_exact_greedy": true,
@@ -66,6 +72,7 @@
         "binding_gates": {
           "all_gpu_accept_match_cpu": true,
           "deterministic_repeats": true,
+          "evidence_complete": true,
           "faster_than_true_ar": true,
           "true_ar_denominator_present": true
         },
@@ -74,6 +81,11 @@
           "deterministic": true,
           "runs": 2,
           "unstable": {}
+        },
+        "evidence_completeness": {
+          "complete": true,
+          "expected_rows_per_group": 20,
+          "problems": []
         },
         "recorded": {
           "all_exact_greedy": false,
@@ -124,6 +136,7 @@
         "binding_gates": {
           "all_gpu_accept_match_cpu": true,
           "deterministic_repeats": true,
+          "evidence_complete": true,
           "faster_than_true_ar": true,
           "true_ar_denominator_present": true
         },
@@ -132,6 +145,11 @@
           "deterministic": true,
           "runs": 2,
           "unstable": {}
+        },
+        "evidence_completeness": {
+          "complete": true,
+          "expected_rows_per_group": 20,
+          "problems": []
         },
         "recorded": {
           "all_exact_greedy": true,
@@ -179,6 +197,7 @@
         "binding_gates": {
           "all_gpu_accept_match_cpu": true,
           "deterministic_repeats": true,
+          "evidence_complete": true,
           "faster_than_true_ar": true,
           "true_ar_denominator_present": true
         },
@@ -187,6 +206,11 @@
           "deterministic": true,
           "runs": 2,
           "unstable": {}
+        },
+        "evidence_completeness": {
+          "complete": true,
+          "expected_rows_per_group": 20,
+          "problems": []
         },
         "recorded": {
           "all_exact_greedy": true,
