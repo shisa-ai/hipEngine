@@ -259,18 +259,28 @@ env -i HOME="$HOME" USER="$USER" LOGNAME="$LOGNAME" \
 
 ## Verify gfx1151 ROCm 10
 
-Run these checks after installation and before a benchmark campaign:
+Run these checks after installation and before a benchmark campaign. The SDK
+keeps its CLI tools (`hipcc`, `hipconfig`, `rocminfo`, `amd-smi`, `rocprofv3`)
+and its shared libraries inside the prefix, so this block establishes `PATH` and
+`LD_LIBRARY_PATH` first — the same exports the shell setup below installs. Both
+matter: without `$ROOT/bin` on `PATH`, `rocm_sdk test` reports a `hipconfig`
+`FileNotFoundError`, and without `LD_LIBRARY_PATH` the `libamdhip64.so` load at
+the end fails.
 
 ```bash
 ENV_PREFIX=/home/lhl/miniforge3/envs/therock
 PY=$ENV_PREFIX/bin/python
 ROOT=$("$PY" -m rocm_sdk path --root)
+SITE=$ENV_PREFIX/lib/python3.12/site-packages
+
+export PATH="$ENV_PREFIX/bin:$ROOT/bin:$ROOT/lib/llvm/bin:$PATH"
+export LD_LIBRARY_PATH="$SITE/_rocm_sdk_core/lib:$SITE/_rocm_sdk_devel/lib:$SITE/_rocm_sdk_libraries/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
 "$PY" -m pip check
 "$PY" -m rocm_sdk version
 "$PY" -m rocm_sdk targets | tr ';' '\n' | grep -x gfx1151
 "$PY" -m rocm_sdk test
-"$ROOT/bin/hipcc" --version
+hipcc --version
 rocminfo | grep -m 8 -E 'Name:|gfx'
 amd-smi version
 amd-smi list
@@ -284,6 +294,10 @@ print("hipGetDeviceCount", rc, count.value)
 assert rc == 0 and count.value >= 1
 PY
 ```
+
+The `PATH` and `LD_LIBRARY_PATH` exports above apply to the remaining checks in
+this section; run them in the same shell. Compiled binaries such as the HIP
+smoke test below need `LD_LIBRARY_PATH` at run time as well as compile time.
 
 ROCm/HIP PyTorch builds expose AMD devices through the CUDA compatibility API;
 there is no separate `torch.hip` device namespace. A minimal framework check is:
