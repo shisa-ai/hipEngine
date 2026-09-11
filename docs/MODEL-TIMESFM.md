@@ -69,7 +69,7 @@ production decoder converts them to FP16 on device at init.
   the rollback path.
 
 Both modes are validated per change by
-`python3 scripts/timesfm_gpu_bench.py --check`.
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/timesfm_gpu_bench.py --check`.
 
 ## Performance
 
@@ -85,8 +85,10 @@ Workload: batch 8, context 8192, horizon 512 (one full decode: prefill of
 | Torch reference, CPU | fp32 | 9.52 s | 116× slower |
 | hipEngine NumPy CPU reference | fp32 | 9.13 s | 111× slower |
 
-Reproduce with `python3 scripts/timesfm_gpu_bench.py --metric` (best of N
-decodes; the same command with `--check` runs the fixture-parity guard).
+Reproduce with
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/timesfm_gpu_bench.py --metric`
+(best of N decodes; the same command with `--check` runs the fixture-parity
+guard).
 Full artifacts per step live in `benchmarks/results/gfx1151-timesfm-*.json`.
 
 ## Optimization history
