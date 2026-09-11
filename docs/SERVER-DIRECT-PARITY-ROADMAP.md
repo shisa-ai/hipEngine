@@ -664,7 +664,7 @@ eleven gates - ten passing and the native-sampling gate explicitly `skipped` wit
 | --- | --- |
 | Long arrival while a short request decodes | Covered (blocking and SSE arms) |
 | Cancellation during prefill | Covered; swept at 600/2000/3500 ms, acknowledgement flat within 1% |
-| Refill and sparse survivors | Covered; survivors byte-identical to the reference |
+| Refill and sparse survivors | Covered; all five survivors byte-identical to the reference across **192 characters** (96 decode tokens), one shared sha256 |
 | Blocking and SSE | Covered |
 | Slow / disconnected consumers | Covered |
 | Compact INT8 | Covered end to end on the resumable route |
