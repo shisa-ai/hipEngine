@@ -314,6 +314,32 @@ Model contract, loader, NumPy oracle, GPU orchestration, and bench live in
 `runtime/timesfm3_decode.py`, and `scripts/timesfm3_gpu_bench.py`; the
 per-model record is `docs/MODEL-TIMESFM3.md`.
 
+### Surya OCR path
+
+Surya OCR 2 (`datalab-to/surya-ocr-2`, Qwen3.5-family tower with a Qwen3-VL-style
+vision encoder) runs torch-free on the fp32 CPU reference and, for gfx11, on a
+HIP lane that reuses the proven EVIE / Qwen3.5 linear-attention kernels plus a
+small Surya-specific op set. These families are direct-launched through their
+Python wrappers with no four-axis registry entries; the runtime-level strict
+fallback is the contract of record (see `docs/REFACTOR.md`).
+
+| Functional family | Source / wrapper | Principal entry points | Notes |
+| --- | --- | --- | --- |
+| Split q / gate | `surya/surya_ops.{hip,py}` | `surya_split_qgate_f32` | Separates the fused q+gate projection into query and gate planes for the GDN output gate. |
+| GDN q/k L2 norm | `surya/surya_ops.{hip,py}` | `surya_gdn_l2norm_f32` | Strided-source, plain-output per-head L2 normalization of the recurrent q/k; the repeat variant in the shared GDN family writes a doubled per-head layout Surya does not use. |
+| Plain-weight RMSNorm | `surya/surya_ops.{hip,py}` | `surya_rmsnorm_f32` | Plain `w` convention. Surya's GDN `RMSNormGated` uses plain weights, unlike the standalone Qwen `(1+w)` norm. |
+| Dense KV scatter | `surya/surya_ops.{hip,py}` | `surya_scatter_kv_f32` | Strided scatter into the contiguous `(nk, max_seq, hd)` cache, replacing the per-head `memcpy` loop in decode. Bespoke dense offsets, not `KVLiveSpans` (see `docs/REFACTOR.md`). |
+| Causal mask + scale | `surya/surya_ops.{hip,py}` | `surya_causal_mask_scale_f32` | Builds the scaled causal score mask for the packed full-attention layers. |
+| Vision tower | `hip_gfx1100/evie/evie_ops.{hip,py}` | `build_evie_ops` symbol set | Reused EVIE JIT library: patch embed, learned position add, bidirectional attention, LayerNorm, GELU, merger GEMMs. Surya vision has biases where EVIE does not. |
+| Linear attention | `hip_gfx1100/linear_attn/conv.{hip,py}`, `gdn.{hip,py}` | `qwen35_linear_attn_conv_*`, `qwen35_gdn_prefill_recurrent_*` | Reused Qwen3.5 GDN prefill/decode kernels; Surya has 12 GDN and 12 full-attention layers. |
+| GEMM | rocBLAS (`hipengine/core/rocblas.py`) | strided-batched / plain GEMM | fp32 throughout; all projections and the tied LM head. |
+
+Model contract, loader, CPU oracle, GPU runtime, and generators live in
+`models/surya.py`, `loading/surya.py`, `kernels/cpu_reference/surya.py`,
+`runtime/surya.py`, and `generation/surya{,_gpu}.py`. The per-model record is
+`docs/MODEL-SURYA.md`; the lane comparison is
+`scripts/surya_perf_compare.py`.
+
 ### Speculative decoding path
 
 | Functional family | Source / wrapper | Principal registry layers/quants | Notes |
@@ -371,14 +397,18 @@ hipengine/kernels/hip_gfx1100/
 │   ├── moonshine_attention.hip
 │   ├── paged_attn_decode.hip
 │   ├── paged_kv_write.hip
+│   ├── qwen4_exp_qsa_flash.hip
 │   └── qwen4_exp_qsa.hip
 ├── convert/
 │   ├── cast.hip
 │   └── gather.hip
 ├── dispatch/
 │   └── moe_c1_dispatch.hip
+├── evie/
+│   └── evie_ops.hip
 ├── fused/
 │   ├── gguf_ops.hip
+│   ├── gguf_q6_q4_pair.hip
 │   ├── laguna_attention.hip
 │   ├── moonshine_glue.hip
 │   ├── moonshine_mlp.hip
@@ -424,10 +454,14 @@ hipengine/kernels/hip_gfx1100/
 │   ├── gguf_q4_k_prefill.hip
 │   ├── gguf_q4_k_q8_1_mmq_prefill.hip
 │   ├── gguf_q4_k_q8_1_selected_prefill.hip
+│   ├── gguf_q4_k_qmicro_dp4a_grouped.hip
 │   ├── gguf_q4_k_selected_pack8_gemv.hip
 │   ├── gguf_q4_k_selected_prefill.hip
 │   ├── gguf_q4_k_t16_selected_prefill.hip
 │   ├── gguf_q5_k_f32_rocblas_prefill.hip
+│   ├── gguf_q5_1_mmq_selected_prefill.hip
+│   ├── gguf_q5_k_q8_1_selected_prefill.hip
+│   ├── gguf_q5_k_qmicro_planar_gemv.hip
 │   ├── gguf_q6_k_embedding.hip
 │   ├── gguf_q6_k_f16_rocblas_prefill.hip
 │   ├── gguf_q6_k_pack8_gemv.hip
@@ -463,6 +497,14 @@ hipengine/kernels/hip_gfx1100/
 │   ├── dflash_drafter.hip
 │   ├── mtp.hip
 │   └── mtp_nextn.hip
+├── surya/
+│   └── surya_ops.hip
+├── timesfm/
+│   └── timesfm.hip
+├── timesfm3/
+│   └── timesfm3.hip
+├── vision/
+│   └── qwen4_exp_vision.hip
 └── wmma/
     └── paro_awq_wmma.hip
 

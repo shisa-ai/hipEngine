@@ -6780,6 +6780,32 @@ four-axis registry with their strict fallback chains when a second consumer
 of the kernels appears; until then the runtime-level fallback is the
 contract of record (see docs/MODEL-TIMESFM3.md).
 
+## 2026-09-11 Surya HIP runtime: direct backend imports and bespoke KV scatter — open
+
+`hipengine/runtime/surya.py` imports its JIT libraries directly from
+`hipengine.kernels.hip_gfx1100` (`evie_ops`, `linear_attn.conv`,
+`linear_attn.gdn`, `surya.surya_ops`) and resolves kernels by symbol name from
+the built `.so`. This is the same pattern the committed EVIE runtime
+(`hipengine/runtime/evie.py`) already uses, so the deviation is repo-wide, not
+Surya-specific: the four-axis registry currently governs engine/dispatch
+kernels, while hand-written runtime runners own their JIT libraries. Migrate
+EVIE and Surya together onto a backend-keyed kernel-library resolver when the
+runtime runners become a second consumer of shared linear-attention kernels;
+until then the direct import is the contract of record.
+
+Separately, the Surya KV write and decode kernels use a bespoke dense scheme:
+`surya_scatter_kv_f32(k, cache, tokens, base_pos, nk, hd, max_seq, row)` writes
+into a contiguous `(nk, max_seq, hd)` plane, and `_attention_decode` builds
+per-head cache pointer arrays from `max_seq * hd` strides. The architectural
+invariant is that every paged-KV-write and attention-decode kernel reads
+`KVLiveSpans` `(base_offsets, live_counts, token_positions, evict_mask)`. Dense
+Surya KV is a uniform fill, so the behaviour is equivalent, but the ABI is not.
+Adopt `KVLiveSpans` for the Surya KV path when a second KV policy (DMS/H2O/
+SnapKV) is wired to the Surya model, or when the Surya attention kernels are
+shared with the Qwen3.5 decode path — whichever comes first. Until then the
+dense offset scheme is the contract of record, and `docs/MODEL-SURYA.md`
+records the gap.
+
 ## 2026-09-12 PARO paged-attention backend pin - removal rejected
 
 `hipengine/runtime/qwen35_paro.py` sets

@@ -8,60 +8,70 @@
   "max_new_tokens": 64,
   "precision": "fp32 everywhere"
  },
- "note": "hipEngine GPU lane = fp32 HIP text decoder (gfx1151); the vision tower still runs the CPU-reference path (EVIE tower kernel transfer is a recorded follow-up), so its e2e includes ~1.3s CPU vision. torch_cuda is the transformers reference on the same host iGPU. All lanes greedy-match the captured torch fp32 CPU oracle (tests/fixtures/surya/oracle_greedy.json).",
+ "protocol": "Every lane times one full OCR request: page image + prompt in, greedy token ids out (preprocessing, vision tower, prefill, decode all inside the timed region). Checkpoint load and engine/runner construction are initialization, reported as init_s and excluded from e2e_*. decode_tokens is the actual generated count. torch lanes cannot separate vision from text prefill, so they report the combined vision_prefill_s stage. hipengine_gpu init_s is measured with a warm JIT cache; a cold-cache first run additionally pays hipcc compile time.",
  "results": [
   {
    "lane": "hipengine_cpu",
    "backend": "cpu_reference/fp32 numpy",
+   "init_s": 0.5800634329934837,
    "stages_s": {
-    "preprocess": 0.0,
-    "vision": 1.2204917710041627,
-    "prefill": 1.3834424810047494,
-    "decode": 18.757336298003793
+    "preprocess": 0.0006380410050041974,
+    "vision": 1.2599230159976287,
+    "prefill": 1.5799384199926862,
+    "vision_prefill": 2.839861435990315,
+    "decode": 18.82591359601065
    },
    "decode_tokens": 64,
-   "decode_tok_per_s": 3.4119983233872633,
-   "e2e_median_s": 21.977029594010673,
-   "e2e_warmup_s": 22.137494046008214,
+   "decode_tok_per_s": 3.399569411258855,
+   "e2e_median_s": 20.449970055997255,
+   "e2e_warmup_s": 19.85120707900205,
    "correctness": "PASS"
   },
   {
    "lane": "torch_cpu",
    "backend": "transformers fp32 cpu",
+   "init_s": 6.364594512007898,
    "stages_s": {
-    "prefill": 19.230158867998398,
-    "decode": 131.2618338589964
+    "preprocess": 0.048224466998362914,
+    "vision_prefill": 17.979226298994035,
+    "decode": 131.67571120901266
    },
    "decode_tokens": 64,
-   "decode_tok_per_s": 0.4875750865156268,
-   "e2e_median_s": 150.77901429099438,
-   "e2e_warmup_s": 150.447992410991,
+   "decode_tok_per_s": 0.4860425617782383,
+   "e2e_median_s": 149.93481674100622,
+   "e2e_warmup_s": 149.20816320599988,
    "correctness": "PASS"
   },
   {
    "lane": "torch_cuda",
    "backend": "transformers fp32 cuda",
+   "init_s": 6.460560252002324,
    "stages_s": {
-    "prefill": 1.6204882729944075,
-    "decode": 0.9411812760081375
+    "preprocess": 0.03336277601192705,
+    "vision_prefill": 1.612395408010343,
+    "decode": 0.9246404619771056
    },
    "decode_tokens": 64,
-   "decode_tok_per_s": 67.99965281018473,
-   "e2e_median_s": 2.6616990070033353,
-   "e2e_warmup_s": 2.6511497639876325,
+   "decode_tok_per_s": 69.21609277529612,
+   "e2e_median_s": 2.57679476699559,
+   "e2e_warmup_s": 2.5160767040069913,
    "correctness": "PASS"
   },
   {
    "lane": "hipengine_gpu",
-   "backend": "HIP fp32 decoder (gfx1151); vision tower on CPU",
+   "backend": "HIP fp32 (gfx1151): GPU vision tower + GPU prefill/decode",
+   "init_s": 0.4311275950021809,
    "stages_s": {
-    "prefill": 0.1223341610020725,
-    "decode": 1.986855901996023
+    "preprocess": 0.0006256759952520952,
+    "vision": 0.03777078099665232,
+    "prefill": 0.1137034879939165,
+    "vision_prefill": 0.15147426899056882,
+    "decode": 1.9466664739884436
    },
    "decode_tokens": 64,
-   "decode_tok_per_s": 32.21169685013629,
-   "e2e_median_s": 2.3947261620050995,
-   "e2e_warmup_s": 2.417479315001401,
+   "decode_tok_per_s": 32.876715582856406,
+   "e2e_median_s": 2.0505150880053407,
+   "e2e_warmup_s": 2.0496764150011586,
    "correctness": "PASS"
   }
  ]

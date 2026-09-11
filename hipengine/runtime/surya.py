@@ -123,6 +123,8 @@ class SuryaGpuRunner:
         self._alloc_state()
         # scratch cache (per-key device buffers grown on demand)
         self._scratch: dict[str, DeviceBuffer] = {}
+        # cached device pointer arrays (keyed by pointer tuple)
+        self._ptr_array_bufs: dict[tuple, DeviceBuffer] = {}
         # persistent tiny staging buffers for per-step scalar/rope uploads
         self._ids_buf = self._permanent(8)
         self._pos_buf = self._permanent(8)
@@ -132,7 +134,6 @@ class SuryaGpuRunner:
         self._rope_sin_buf = self._permanent(256)
         self._visual_buf: DeviceBuffer | None = None
         self._seq_len = 0
-        self._head_bias_bufs: list[DeviceBuffer] = []
 
     # -- setup ------------------------------------------------------------------
 
@@ -155,6 +156,20 @@ class SuryaGpuRunner:
                                            "in_proj_b.weight", "in_proj_a.weight",
                                            "conv1d.weight", "A_log", "dt_bias",
                                            "norm.weight", "out_proj.weight")]
+        # vision tower + merger
+        needed += ["model.visual.patch_embed.proj.weight", "model.visual.patch_embed.proj.bias",
+                   "model.visual.pos_embed.weight",
+                   "model.visual.merger.norm.weight", "model.visual.merger.norm.bias",
+                   "model.visual.merger.linear_fc1.weight", "model.visual.merger.linear_fc1.bias",
+                   "model.visual.merger.linear_fc2.weight", "model.visual.merger.linear_fc2.bias"]
+        for i in range(s.vision_depth):
+            vp = f"model.visual.blocks.{i}."
+            needed += [vp + n for n in ("norm1.weight", "norm1.bias",
+                                        "attn.qkv.weight", "attn.qkv.bias",
+                                        "attn.proj.weight", "attn.proj.bias",
+                                        "norm2.weight", "norm2.bias",
+                                        "mlp.linear_fc1.weight", "mlp.linear_fc1.bias",
+                                        "mlp.linear_fc2.weight", "mlp.linear_fc2.bias")]
         for name in needed:
             arr = np.ascontiguousarray(weights[name].astype(np.float32))
             if name.endswith("conv1d.weight"):
@@ -246,8 +261,6 @@ class SuryaGpuRunner:
         never alias (the EVIE runner made the same fix).
         """
 
-        if not hasattr(self, "_ptr_array_bufs"):
-            self._ptr_array_bufs: dict[tuple, DeviceBuffer] = {}
         key = tuple(ptrs)
         cached = self._ptr_array_bufs.get(key)
         if cached is not None:
@@ -639,15 +652,220 @@ class SuryaGpuRunner:
         self._final_norm_row = norm.ptr + (tokens - 1) * h * 4
 
     def debug_read(self, ptr: int, n: int) -> np.ndarray:
+        # sync first: on this stack a D2H hipMemcpy can complete its call
+        # before the producing kernel does, returning stale destination bytes
+        self.runtime.device_synchronize()
         out = np.empty(n, dtype=np.float32)
         copy_device_to_host(host_array_ptr(out), _raw_buffer(ptr, n * 4))
         return out
+
+    # -- vision tower -------------------------------------------------------------
+
+    def vision_forward(self, pixel_rows: np.ndarray, grid_thw) -> np.ndarray:
+        """Surya vision tower on the HIP device; returns merged features.
+
+        Mirrors ``kernels.cpu_reference.surya.vision_forward``: patch embed
+        (conv-as-matmul) + bias, host bilinear position embed, full-dim
+        half-split 2-axis rotary, bidirectional packed attention, tanh-GELU
+        MLP blocks, then the merger (LayerNorm -> square fc1 -> erf GELU ->
+        fc2). Preprocessing and the small pos-embed/rotary tables stay on
+        the host; every tensor op runs on the device. Returns the merged
+        features (n / merge^2, vision_out_hidden_size) as host fp32.
+        """
+        from hipengine.kernels.cpu_reference.surya import (
+            _merge_block_major_coords,
+            _pixel_rows_to_patches,
+            vision_pos_embed,
+            vision_rotary,
+        )
+
+        s = self.spec
+        vh = s.vision_hidden_size
+        nh, hd = s.vision_num_heads, s.vision_head_dim()
+        merge = s.vision_spatial_merge_size
+        inter = s.vision_intermediate_size
+
+        patches = _pixel_rows_to_patches(pixel_rows, s)
+        n = patches.shape[0]
+        n_merged = n // (merge * merge)
+        vis_inter = merge * merge * vh
+
+        x = self._buf("vis_x", n * vh * 4)
+        norm = self._buf("vis_norm", n * vh * 4)
+        qkv = self._buf("vis_qkv", n * 3 * vh * 4)
+        attn = self._buf("vis_attn", n * vh * 4)
+        out = self._buf("vis_out", n * vh * 4)
+        mlp = self._buf("vis_mlp", n * inter * 4)
+        merged_in = self._buf("vis_merged_in", n_merged * vis_inter * 4)
+        merged = self._buf("vis_merged", n_merged * s.vision_out_hidden_size * 4)
+        scores, head_stride = self._vis_scores(n, nh)
+
+        # patch embed: (n, ch*t*p*p) @ (ch*t*p*p, vh) + bias (separate C —
+        # never alias the GEMM input)
+        patches_flat = patches.reshape(n, -1)
+        patches_buf = self._buf("vis_patches", patches_flat.nbytes)
+        self._upload(patches_buf, patches_flat)
+        self._gemm(patches_buf.ptr, self._w["model.visual.patch_embed.proj.weight"].ptr,
+                   x.ptr, n, patches_flat.shape[1], vh)
+        self._add_bias(x.ptr, self._w["model.visual.patch_embed.proj.bias"].ptr,
+                       n * vh, vh)
+
+        # position embed: host bilinear resample of the learned table
+        coords = _merge_block_major_coords(grid_thw, merge)[:2]
+        pos = vision_pos_embed(
+            {"model.visual.pos_embed.weight": self._pos_embed_table()},
+            s, list(grid_thw), coords,
+        )
+        self._upload(out, pos)
+        self._add(x.ptr, out.ptr, x.ptr, n * vh)
+
+        cos, sin = vision_rotary(s, *coords)
+        cos_buf = self._buf("vis_cos", cos.nbytes)
+        sin_buf = self._buf("vis_sin", sin.nbytes)
+        self._upload(cos_buf, cos)
+        self._upload(sin_buf, sin)
+
+        scale = hd ** -0.5
+        for i in range(s.vision_depth):
+            p = f"model.visual.blocks.{i}."
+            self._layernorm(x.ptr, self._w[p + "norm1.weight"].ptr,
+                            self._w[p + "norm1.bias"].ptr, norm.ptr, n, vh)
+            self._gemm(norm.ptr, self._w[p + "attn.qkv.weight"].ptr, qkv.ptr,
+                       n, vh, 3 * vh)
+            self._add_bias(qkv.ptr, self._w[p + "attn.qkv.bias"].ptr,
+                           n * 3 * vh, 3 * vh)
+            # full-dim half-split rotary on the q and k planes of packed qkv
+            self._rope(qkv.ptr, cos_buf.ptr, sin_buf.ptr, n, nh, hd, hd, 3 * vh)
+            self._rope(qkv.ptr + vh * 4, cos_buf.ptr, sin_buf.ptr, n, nh, hd, hd, 3 * vh)
+            self._vision_attention_packed(
+                qkv.ptr, qkv.ptr + vh * 4, qkv.ptr + 2 * vh * 4,
+                attn.ptr, n, nh, hd, 3 * vh, scores.ptr, head_stride, scale)
+            self._gemm(attn.ptr, self._w[p + "attn.proj.weight"].ptr, out.ptr,
+                       n, vh, vh)
+            self._add_bias(out.ptr, self._w[p + "attn.proj.bias"].ptr, n * vh, vh)
+            self._add(x.ptr, out.ptr, x.ptr, n * vh)
+
+            self._layernorm(x.ptr, self._w[p + "norm2.weight"].ptr,
+                            self._w[p + "norm2.bias"].ptr, norm.ptr, n, vh)
+            self._gemm(norm.ptr, self._w[p + "mlp.linear_fc1.weight"].ptr,
+                       mlp.ptr, n, vh, inter)
+            self._add_bias(mlp.ptr, self._w[p + "mlp.linear_fc1.bias"].ptr,
+                           n * inter, inter)
+            self._gelu_tanh(mlp.ptr, mlp.ptr, n * inter)
+            self._gemm(mlp.ptr, self._w[p + "mlp.linear_fc2.weight"].ptr,
+                       out.ptr, n, inter, vh)
+            self._add_bias(out.ptr, self._w[p + "mlp.linear_fc2.bias"].ptr,
+                           n * vh, vh)
+            self._add(x.ptr, out.ptr, x.ptr, n * vh)
+
+        # merger: LayerNorm -> (n/4, merge^2*vh) -> fc1 -> erf GELU -> fc2
+        self._layernorm(x.ptr, self._w["model.visual.merger.norm.weight"].ptr,
+                        self._w["model.visual.merger.norm.bias"].ptr,
+                        norm.ptr, n, vh)
+        self._gemm(norm.ptr, self._w["model.visual.merger.linear_fc1.weight"].ptr,
+                   merged_in.ptr, n_merged, vis_inter, vis_inter)
+        self._add_bias(merged_in.ptr,
+                       self._w["model.visual.merger.linear_fc1.bias"].ptr,
+                       n_merged * vis_inter, vis_inter)
+        self._gelu_erf(merged_in.ptr, merged_in.ptr, n_merged * vis_inter)
+        self._gemm(merged_in.ptr,
+                   self._w["model.visual.merger.linear_fc2.weight"].ptr,
+                   merged.ptr, n_merged, vis_inter, s.vision_out_hidden_size)
+        self._add_bias(merged.ptr,
+                       self._w["model.visual.merger.linear_fc2.bias"].ptr,
+                       n_merged * s.vision_out_hidden_size,
+                       s.vision_out_hidden_size)
+
+        result = np.empty(n_merged * s.vision_out_hidden_size, dtype=np.float32)
+        self.runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(result),
+                            _raw_buffer(merged.ptr, result.nbytes))
+        return result.reshape(n_merged, s.vision_out_hidden_size)
+
+    def _pos_embed_table(self) -> np.ndarray:
+        if getattr(self, "_pos_table_host", None) is None:
+            pe = self.spec.vision_num_position_embeddings
+            vh = self.spec.vision_hidden_size
+            self._pos_table_host = self.debug_read(
+                self._w["model.visual.pos_embed.weight"].ptr, pe * vh
+            ).reshape(pe, vh)
+        return self._pos_table_host
+
+    def _vis_scores(self, n: int, heads: int) -> tuple[DeviceBuffer, int]:
+        stride = (n * n + 3) & ~3  # per-head tile stride, 16-byte aligned
+        return self._buf("vis_scores", heads * stride * 4), stride
+
+    def _add_bias(self, x_ptr: int, bias_ptr: int, n: int, row: int) -> None:
+        err = self._k("hipengine_evie_add_bias_f32", [_P, _P, _I, _I, _S])(
+            _P(x_ptr), _P(bias_ptr), _I(n), _I(row), _S(0))
+        self._check(err, "add bias")
+
+    def _layernorm(self, x_ptr: int, w_ptr: int, b_ptr: int, out_ptr: int,
+                   rows: int, dim: int) -> None:
+        err = self._k("hipengine_evie_layernorm_f32",
+                      [_P, _P, _P, _P, _I, _I, _F, _S])(
+            _P(x_ptr), _P(w_ptr), _P(b_ptr), _P(out_ptr), _I(rows), _I(dim),
+            _F(1e-6), _S(0))
+        self._check(err, "layernorm")
+
+    def _gelu_tanh(self, x_ptr: int, out_ptr: int, n: int) -> None:
+        err = self._k("hipengine_evie_gelu_tanh_f32", [_P, _P, _I, _S])(
+            _P(x_ptr), _P(out_ptr), _I(n), _S(0))
+        self._check(err, "gelu tanh")
+
+    def _gelu_erf(self, x_ptr: int, out_ptr: int, n: int) -> None:
+        err = self._k("hipengine_evie_gelu_erf_f32", [_P, _P, _I, _S])(
+            _P(x_ptr), _P(out_ptr), _I(n), _S(0))
+        self._check(err, "gelu erf")
+
+    def _rope(self, x_ptr: int, cos_ptr: int, sin_ptr: int, tokens: int,
+              heads: int, head_dim: int, rotary_dim: int, row_stride: int) -> None:
+        err = self._k("hipengine_evie_rope_f32",
+                      [_P, _P, _P, _I, _I, _I, _I, _I, _S])(
+            _P(x_ptr), _P(cos_ptr), _P(sin_ptr), _I(tokens), _I(heads),
+            _I(head_dim), _I(rotary_dim), _I(row_stride), _S(0))
+        self._check(err, "rope")
+
+    def _vision_attention_packed(self, q_ptr: int, k_ptr: int, v_ptr: int,
+                                 out_ptr: int, tokens: int, heads: int,
+                                 head_dim: int, row_stride: int,
+                                 scores_ptr: int, head_stride: int,
+                                 scale: float) -> None:
+        """Bidirectional attention over head planes embedded in packed rows.
+
+        scores tile h is the col-major (tokens x tokens) C of batch h with
+        ldc=tokens, so tile h starts at h*head_stride (== h*tokens^2 for the
+        aligned stride) — the same layout the softmax kernel indexes.
+        """
+        self.rocblas.sgemm_strided_batched(
+            k_ptr, q_ptr, scores_ptr,
+            m=tokens, n=tokens, k=head_dim,
+            lda=row_stride, ldb=row_stride, ldc=tokens,
+            stride_a=head_dim, stride_b=head_dim, stride_c=head_stride,
+            batch=heads, trans_a=True, trans_b=False,
+        )
+        err = self._k("hipengine_evie_scale_f32", [_P, _P, _F, _I, _S])(
+            _P(scores_ptr), _P(scores_ptr), _F(scale),
+            _I(heads * head_stride), _S(0))
+        self._check(err, "vision score scale")
+        err = self._k("hipengine_evie_softmax_rows_f32", [_P, _I, _I, _I, _I, _S])(
+            _P(scores_ptr), _I(heads * tokens), _I(tokens), _I(tokens),
+            _I(head_stride), _S(0))
+        self._check(err, "vision softmax")
+        self.rocblas.sgemm_strided_batched(
+            v_ptr, scores_ptr, out_ptr,
+            m=head_dim, n=tokens, k=tokens,
+            lda=row_stride, ldb=tokens, ldc=heads * head_dim,
+            stride_a=head_dim, stride_b=head_stride, stride_c=head_dim,
+            batch=heads, trans_a=False, trans_b=False,
+        )
 
     def _logits_last(self) -> np.ndarray:
         s = self.spec
         logits = self._buf("logits", s.vocab_size * 4)
         self._gemm(self._final_norm_row, self._w["model.language_model.embed_tokens.weight"].ptr,
                    logits.ptr, 1, s.hidden_size, s.vocab_size)
+        self.runtime.device_synchronize()
         out = np.empty(s.vocab_size, dtype=np.float32)
         copy_device_to_host(host_array_ptr(out), _raw_buffer(logits.ptr, s.vocab_size * 4))
         return out
@@ -697,6 +915,9 @@ class SuryaGpuRunner:
         for buf in self._head_bias_bufs:
             hip_free(buf)
         self._head_bias_bufs.clear()
+        for buf in self._ptr_array_bufs.values():
+            hip_free(buf)
+        self._ptr_array_bufs.clear()
         for buf in self._scratch.values():
             hip_free(buf)
         self._scratch.clear()
