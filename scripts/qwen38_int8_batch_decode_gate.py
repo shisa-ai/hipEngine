@@ -14,6 +14,7 @@ import hashlib
 import json
 import os
 import shlex
+import subprocess
 import sys
 import time
 from contextlib import ExitStack, contextmanager
@@ -59,6 +60,44 @@ def _tensor_nbytes(tensor: Any) -> int:
     return int(tensor.numel) * int(tensor.dtype.itemsize)
 
 
+def _device_product_name(visible_devices: str | None) -> str | None:
+    """Best-effort physical device name for the selected HIP_VISIBLE_DEVICES slot.
+
+    The gate records the declared hardware identity, so a hardcoded model name
+    would mislabel any other physical card (for example a W7900) that happens to
+    share the gfx1100 target arch. Returns None when rocm-smi is unavailable or
+    its output cannot be parsed.
+    """
+    try:
+        completed = subprocess.run(
+            ["rocm-smi", "--showproductname", "--json"],
+            capture_output=True,
+            text=True,
+            timeout=10.0,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if completed.returncode != 0:
+        return None
+    try:
+        payload = json.loads(completed.stdout)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    index = 0
+    if visible_devices:
+        first = visible_devices.split(",")[0].strip()
+        if first.isdigit():
+            index = int(first)
+    entry = payload.get(f"card{index}")
+    if not isinstance(entry, dict):
+        return None
+    name = entry.get("Card Series")
+    return str(name) if name else None
+
+
 def _device_hash(session: Qwen35GGUFResidentSession, ptr: int, nbytes: int) -> str:
     size = int(nbytes)
     raw = np.empty((size,), dtype=np.uint8)
@@ -72,7 +111,31 @@ def _device_hash(session: Qwen35GGUFResidentSession, ptr: int, nbytes: int) -> s
     return _sha256_bytes(raw.tobytes())
 
 
-def _capture_state(session: Qwen35GGUFResidentSession) -> dict[str, Any]:
+def _live_kv_payload_nbytes(session: Qwen35GGUFResidentSession) -> int:
+    """Bytes of each KV plane that hold committed positions.
+
+    The resident KV planes are allocated for the full context, and ``reset()``
+    does not clear them, so the tail beyond the current cursor still holds bytes
+    from earlier work.  Comparing that tail is meaningless when two runs advance
+    a session to different extents, so callers that compare trajectories compare
+    this prefix instead.
+    """
+    if session.runner is None or session.runner.weights is None:
+        raise RuntimeError("resident session is closed")
+    cfg = session.runner.weights.config
+    return (
+        int(session.position)
+        * int(cfg.head_count_kv)
+        * int(cfg.key_length)
+        * DType.INT8_PER_TOKEN_HEAD.itemsize
+    )
+
+
+def _capture_state(
+    session: Qwen35GGUFResidentSession,
+    *,
+    kv_live_nbytes: int | None = None,
+) -> dict[str, Any]:
     if session.runner is None or session.runner.weights is None or session.scratch is None:
         raise RuntimeError("resident session is closed")
     runtime = session.runtime
@@ -99,10 +162,14 @@ def _capture_state(session: Qwen35GGUFResidentSession) -> dict[str, Any]:
         if key is None or value is None:
             continue
         metadata = scratch.full_scale_metadata(layer_id)
+        payload_nbytes = int(key.nbytes)
+        if kv_live_nbytes is not None:
+            payload_nbytes = min(payload_nbytes, int(kv_live_nbytes))
         row: dict[str, Any] = {
             "layer": layer_id,
-            "key_payload": _device_hash(session, key.ptr, key.nbytes),
-            "value_payload": _device_hash(session, value.ptr, value.nbytes),
+            "key_payload": _device_hash(session, key.ptr, payload_nbytes),
+            "value_payload": _device_hash(session, value.ptr, payload_nbytes),
+            "payload_nbytes": payload_nbytes,
         }
         if metadata is not None:
             row["key_scale"] = _device_hash(
@@ -483,6 +550,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             *sys.argv,
         ]
     )
+    visible_devices = os.environ.get("HIP_VISIBLE_DEVICES")
+    observed_device = _device_product_name(visible_devices)
     return {
         "schema": 1,
         "kind": "qwen38_int8_row_batched_decode_correctness",
@@ -493,8 +562,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "backend": {
             "backend": str(args.backend),
             "target_arch": hip_target_arch_for_backend(str(args.backend)),
-            "hip_visible_devices": os.environ.get("HIP_VISIBLE_DEVICES"),
-            "expected_device": "AMD Radeon RX 7900 XTX 24GB when HIP_VISIBLE_DEVICES=1",
+            "hip_visible_devices": visible_devices,
+            "observed_device": observed_device,
+            "expected_device": args.expected_device or observed_device or "unknown",
         },
         "capability": {
             "capability_id": resolution.capability_id,
@@ -551,6 +621,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--decode-steps", type=int, default=4)
     parser.add_argument("--diagnostic-direct-rows", type=int, default=0)
+    parser.add_argument(
+        "--expected-device",
+        default=None,
+        help="Declared physical device name; defaults to the rocm-smi product name for the selected device",
+    )
     parser.add_argument(
         "--compiler-version-file",
         type=Path,

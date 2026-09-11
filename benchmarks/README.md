@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-10**
+Last updated: **2026-09-11**
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
@@ -292,6 +292,38 @@ contexts (~2.9x the previous release's 54,272-token limit).
 [capacity bracket](results/2026-09-10-w7900-server-alloc-probe-152k.json),
 [memory](results/2026-09-10-w7900-server-alloc-probe-16k-p4-lease-removed.json),
 [streaming](results/2026-09-10-w7900-p7-http-transport-budget.json).
+
+#### Several requests at once on the INT8 KV route
+
+Until 2026-09-11 the INT8 KV route served C>1 as physical C1 with one serial
+row per request, so extra concurrency bought no aggregate throughput. The
+row-batched direct INT8 decode consumer is now qualified to four rows on this
+artifact, and concurrent requests share one packed model step.
+
+Measured with `scripts/gguf_server_cwidth_probe.py --widths 1,2,4` on the W7900:
+each width runs N concurrent completions and then the same N requests one at a
+time against the same server, and the ratio is concurrent aggregate
+complete-request throughput over that measured serial rate.
+
+| Concurrent requests | 1 | 2 | 4 |
+| --- | ---: | ---: | ---: |
+| Serial control (tok/s) | 428.9 | 424.9 | 419.3 |
+| Concurrent (tok/s) | 426.5 | **529.8** | **597.0** |
+| Concurrent / serial | 0.99x | **1.25x** | **1.42x** |
+
+2048-token prompts and 64 generated tokens per request, greedy sampling, 16K
+declared context, INT8 per-token/head KV with fp32 scales. The route counters
+show the reason for the change: before promotion every decode step fell back to
+serial rows (`packed_decode_width_unqualified`, 62/64 steps at C2/C4) and no
+packed steps ran; after promotion there are zero serial fallbacks and 62/63
+packed steps. Per-request latency still grows with width (4.95 s at C1, 7.97 s
+at C2, 14.1 s at C4) and is reported separately from aggregate throughput.
+
+[Promoted measurement](results/2026-09-11-w7900-ikv-c2-cwidth-promoted-c4.json),
+[pre-promotion baseline](results/2026-09-11-w7900-ikv-c2-cwidth-baseline-pre-promotion.json),
+[packed-transition correctness](results/2026-09-11-w7900-ikv-c2-packed-transition-gate.json),
+[width-4 model gate](results/2026-09-11-w7900-ikv-c2-batch-decode-gate.json),
+[kernel ownership trace](results/2026-09-11-w7900-ikv-c2-batch-decode-ownership-trace.json).
 
 These are aggregate tokens per second across all active requests under the
 standardized complete-wall server protocol.

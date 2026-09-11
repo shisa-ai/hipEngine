@@ -110,14 +110,15 @@ def test_qwen38_gfx1100_exact_artifact_int8_capability_is_qualified() -> None:
 
     payload = resolution.as_dict()
     assert payload["capability_id"] == (
-        "3a1055955c47e3a1493d63b0ee7485437769c20679a6d0b7f14f863b5d53827b"
+        "4b0e936f4b65f3a37d4362a9ee5faea9bf9aa1376a703693531ddd20bcf41548"
     )
     assert payload["status"] == "qualified"
     assert payload["runtime_action"] == "admit"
     assert payload["promotion_eligible"] is True
     assert payload["effective_kv_storage"] == "int8_per_token_head"
-    assert payload["evidence"]["max_direct_rows"] == 1
+    assert payload["evidence"]["max_direct_rows"] == 4
     assert payload["evidence"]["max_serial_resident_rows"] == 4
+    assert payload["evidence"]["scope"] == "explicit_no_mirror_direct_c4"
     assert payload["evidence"]["decode_batch_variant"] == (
         "per_token_head_gqa_splitk_gate_bf16_batch_strided_spans"
     )
@@ -127,7 +128,7 @@ def test_qwen38_gfx1100_exact_artifact_int8_capability_is_qualified() -> None:
     )
 
 
-def test_qwen38_gfx1100_capability_resolves_exact_batch_kernel_but_keeps_c1_limit() -> None:
+def test_qwen38_gfx1100_capability_resolves_exact_batch_kernel_at_direct_c4() -> None:
     plugin = Qwen35GGUFModel()
     resolution = plugin.resolve_kv_capability(
         key=_key(
@@ -144,7 +145,7 @@ def test_qwen38_gfx1100_capability_resolves_exact_batch_kernel_but_keeps_c1_limi
         resolution.as_dict(),
     )
 
-    assert max_rows == 1
+    assert max_rows == 4
     assert kernel is qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_batch_strided_spans
 
 
