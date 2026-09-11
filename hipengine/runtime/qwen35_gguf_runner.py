@@ -10304,6 +10304,7 @@ class Qwen35GGUFFullStackRunner:
                 num_experts=cfg.expert_count,
                 in_features=cfg.expert_feed_forward_length,
                 out_features=self.hidden_size,
+                backend=self.backend,
                 stream=stream,
                 runtime=runtime,
             )
@@ -12794,6 +12795,42 @@ def _gguf_q5_t16_selected_qwen_tile8_enabled(backend: str | None) -> bool:
             False,
         )
     )
+
+
+def _gguf_t16_selected_c1_variant(
+    backend: str | None,
+    quant_key: str,
+    *,
+    x_rows: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> str | None:
+    """Resolve a backend-qualified selected-expert single-token owner by shape.
+
+    In the selected-expert path ``x_rows == rows == selected_rows`` (top_k) for a
+    single token, and ``x_rows`` counts tokens only when a caller batches several
+    of them. The shape policy is the admission, not ``x_rows``: the row-to-x
+    mapping is the same one the direct selected owner uses, so this resolver only
+    requires the geometry the kernel supports.
+    """
+
+    if backend is None or int(rows) <= 0 or int(x_rows) <= 0:
+        return None
+    if int(rows) % int(x_rows) != 0:
+        return None
+    policies = backend_package_capability(
+        backend,
+        "GGUF_T16_SELECTED_C1_VARIANTS_BY_QUANT_SHAPE",
+        {},
+    )
+    if not isinstance(policies, Mapping):
+        return None
+    quant_policies = policies.get(str(quant_key), {})
+    if not isinstance(quant_policies, Mapping):
+        return None
+    variant = quant_policies.get((int(in_features), int(out_features)))
+    return variant if isinstance(variant, str) and variant else None
 
 
 @contextmanager
@@ -36917,6 +36954,38 @@ def _launch_selected_raw_gguf_moe_linear(
     use_q8_1_input = False
     sync_stages = bool(sync_stage_timings and stage_timings is not None and stage_prefix)
     t_stage = time.perf_counter() if sync_stages else 0.0
+    selected_c1_variant = _gguf_t16_selected_c1_variant(
+        backend,
+        quant_key,
+        x_rows=x_rows,
+        rows=rows,
+        in_features=in_features,
+        out_features=out_features,
+    )
+    if selected_c1_variant is not None:
+        fn = _resolve_exact_selected_moe_kernel(quant_key, selected_c1_variant)
+        if fn is not None:
+            _validate_raw_rank3_expert_weight(
+                weight,
+                num_experts=num_experts,
+                in_features=in_features,
+                out_features=out_features,
+            )
+            selected_abi("single").call(
+                fn,
+                (x_ptr, selected_ptr, _selected_moe_weight_ptr(weight), out_ptr),
+                locals(),
+                stream=stream,
+                runtime=runtime,
+            )
+            _mark_sync_stage(
+                runtime,
+                stage_timings,
+                sync_stages,
+                f"{stage_prefix}_gemv",
+                t_stage,
+            )
+            return
     fn = _resolve_exact_selected_moe_kernel(quant_key, _SELECTED_MOE_SINGLE_VARIANT)
     if fn is not None:
         _validate_raw_rank3_expert_weight(

@@ -2640,6 +2640,276 @@ void q5_k_t16_dense_single_local32_gemv_kernel(
   }
 }
 
+// Selected-expert sibling of the dense Q5 local32 owner. Each block computes
+// eight output columns for one selected row, so the selected index changes only
+// the expert tile base and never the T16 byte contract. The x row mapping is
+// identical to qk_t16_selected_direct_gemv_kernel: one x row per selected row
+// when x_rows == rows, one shared x row when x_rows == 1.
+template <typename scalar_t>
+__global__ __launch_bounds__(32, 8)
+void q5_k_t16_selected_local32_gemv_kernel(
+    const scalar_t* __restrict__ x,
+    const int64_t* __restrict__ selected,
+    const uint8_t* __restrict__ tiles,
+    scalar_t* __restrict__ out,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts) {
+  constexpr int kTileCols = 8;
+  const int64_t out_group = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  const int tid = threadIdx.x;
+  if (row >= rows) return;
+
+  const int64_t expert_id = selected[row];
+  if (expert_id < 0 || expert_id >= num_experts) return;
+
+  const int64_t lanes_per_x_row = rows / x_rows;
+  const int64_t x_row_idx = (x_rows == 1) ? 0 : (row / lanes_per_x_row);
+  const scalar_t* __restrict__ x_row = x + x_row_idx * in_features;
+  const int64_t blocks_per_row = in_features / QK_K;
+  const int64_t out_tile = out_group >> 1;
+  const int col_base = static_cast<int>(out_group & 1) * kTileCols;
+  float acc[kTileCols];
+#pragma unroll
+  for (int local_col = 0; local_col < kTileCols; ++local_col) {
+    acc[local_col] = 0.0f;
+  }
+
+  const int k_lane_base = tid * 8;
+  const int sb = k_lane_base >> 5;
+  const int lane32 = k_lane_base & 31;
+  for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
+    const uint8_t* __restrict__ tile = expert_tile_ptr<Q5_T16_BLOCK_BYTES>(
+        tiles, expert_id, out_tile, blk, out_features / T16_COLS,
+        blocks_per_row);
+
+    float scale[kTileCols];
+    float min_value[kTileCols];
+#pragma unroll
+    for (int local_pair = 0;
+         local_pair < kTileCols / 2;
+         ++local_pair) {
+      const int local_col0 = local_pair * 2;
+      const int local_col1 = local_col0 + 1;
+      const int col0 = col_base + local_col0;
+      const uint32_t d = *reinterpret_cast<const uint32_t*>(
+          tile + Q5_T16_D_OFFSET + col0 * 2);
+      const uint32_t dmin = *reinterpret_cast<const uint32_t*>(
+          tile + Q5_T16_DMIN_OFFSET + col0 * 2);
+      const uint16_t coeff_scale =
+          *reinterpret_cast<const uint16_t*>(
+              tile + Q5_T16_SCALE_OFFSET + sb * T16_COLS + col0);
+      const uint16_t coeff_min =
+          *reinterpret_cast<const uint16_t*>(
+              tile + Q5_T16_MIN_OFFSET + sb * T16_COLS + col0);
+      scale[local_col0] =
+          fp16_bits_to_float(static_cast<uint16_t>(d)) *
+          static_cast<float>(coeff_scale & 0xFFu);
+      scale[local_col1] =
+          fp16_bits_to_float(static_cast<uint16_t>(d >> 16)) *
+          static_cast<float>(coeff_scale >> 8);
+      min_value[local_col0] =
+          fp16_bits_to_float(static_cast<uint16_t>(dmin)) *
+          static_cast<float>(coeff_min & 0xFFu);
+      min_value[local_col1] =
+          fp16_bits_to_float(static_cast<uint16_t>(dmin >> 16)) *
+          static_cast<float>(coeff_min >> 8);
+    }
+
+    const int ql_word = Q5_T16_QL_OFFSET +
+                        (sb * Q4_SUBBLOCK + lane32) * (T16_COLS / 2) +
+                        (col_base >> 1);
+    const int qh_byte = Q5_T16_QH_OFFSET +
+                        (sb * Q4_SUBBLOCK + lane32) * (T16_COLS / 8) +
+                        (col_base >> 3);
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      const int k_in_block = k_lane_base + j;
+      const float xv = scalar_to_float<scalar_t>(
+          x_row[blk * QK_K + k_in_block]);
+      const uint32_t packed_word = *reinterpret_cast<const uint32_t*>(
+          tile + ql_word + j * (T16_COLS / 2));
+      const uint8_t high_bits = tile[qh_byte + j * (T16_COLS / 8)];
+#pragma unroll
+      for (int local_pair = 0;
+           local_pair < kTileCols / 2;
+           ++local_pair) {
+        const int local_col0 = local_pair * 2;
+        const int local_col1 = local_col0 + 1;
+        const uint8_t packed = static_cast<uint8_t>(
+            (packed_word >> (8 * local_pair)) & 0xFFu);
+        const uint32_t q0 = (packed & 0x0Fu) |
+            (((high_bits >> (2 * local_pair)) & 1u) << 4);
+        const uint32_t q1 = (packed >> 4) |
+            (((high_bits >> (2 * local_pair + 1)) & 1u) << 4);
+        acc[local_col0] = fmaf(
+            xv,
+            static_cast<float>(q0) * scale[local_col0] -
+                min_value[local_col0],
+            acc[local_col0]);
+        acc[local_col1] = fmaf(
+            xv,
+            static_cast<float>(q1) * scale[local_col1] -
+                min_value[local_col1],
+            acc[local_col1]);
+      }
+    }
+  }
+
+#pragma unroll
+  for (int local_col = 0; local_col < kTileCols; ++local_col) {
+    GGUF_T16_WAVE_REDUCE(acc[local_col]);
+  }
+  if (tid == 0) {
+    const int64_t out_base = row * out_features + out_group * kTileCols;
+#pragma unroll
+    for (int local_col = 0; local_col < kTileCols; ++local_col) {
+      out[out_base + local_col] =
+          float_to_scalar<scalar_t>(0.0f + acc[local_col]);
+    }
+  }
+}
+
+// Selected-expert Q5 qmicro-planar sibling of the local32 owner above. Same
+// 32-lane, eight-column, single-wave geometry, but it reads the qmicro planar
+// record layout that the MoE decode path actually materializes
+// (gguf_q5_k_qmicro_t16_v1), instead of the plain T16 planes. The production
+// qmicro tile8 owner covers the same eight columns with 128 threads and a
+// cooperative shared-memory metadata unpack; this owner keeps the metadata in
+// registers and gives each lane eight k values, which is the geometry that won
+// on the dense Q5 shape.
+template <typename scalar_t>
+__global__ __launch_bounds__(32, 8)
+void q5_k_qmicro_t16_selected_local32_gemv_kernel(
+    const scalar_t* __restrict__ x,
+    const int64_t* __restrict__ selected,
+    const uint8_t* __restrict__ tiles,
+    scalar_t* __restrict__ out,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts) {
+  constexpr int kTileCols = 8;
+  constexpr int kMetaQuartets = T16_COLS / 4;
+  constexpr int kMinRecordBase = Q4_SUBBLOCKS * kMetaQuartets;
+  const int64_t out_group = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  const int tid = threadIdx.x;
+  if (row >= rows) return;
+
+  const int64_t expert_id = selected[row];
+  if (expert_id < 0 || expert_id >= num_experts) return;
+
+  const int64_t lanes_per_x_row = rows / x_rows;
+  const int64_t x_row_idx = (x_rows == 1) ? 0 : (row / lanes_per_x_row);
+  const scalar_t* __restrict__ x_row = x + x_row_idx * in_features;
+  const int64_t blocks_per_row = in_features / QK_K;
+  const int64_t out_tile = out_group >> 1;
+  const int col_base = static_cast<int>(out_group & 1) * kTileCols;
+  float acc[kTileCols];
+#pragma unroll
+  for (int local_col = 0; local_col < kTileCols; ++local_col) {
+    acc[local_col] = 0.0f;
+  }
+
+  const int k_lane_base = tid * 8;
+  const int sb = k_lane_base >> 5;
+  const int lane32 = k_lane_base & 31;
+  for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
+    const uint8_t* __restrict__ tile = expert_tile_ptr<Q5_QMICRO_T16_BLOCK_BYTES>(
+        tiles, expert_id, out_tile, blk, out_features / T16_COLS,
+        blocks_per_row);
+
+    uint32_t scale_word[2];
+    uint32_t min_word[2];
+#pragma unroll
+    for (int quartet = 0; quartet < 2; ++quartet) {
+      const int record =
+          sb * kMetaQuartets + (col_base >> 2) + quartet;
+      scale_word[quartet] = qmicro_unpack_record(
+          tile + Q5_QMICRO_T16_META_OFFSET + record * 3);
+      min_word[quartet] = qmicro_unpack_record(
+          tile + Q5_QMICRO_T16_META_OFFSET +
+              (kMinRecordBase + record) * 3);
+    }
+
+    float scale[kTileCols];
+    float min_value[kTileCols];
+#pragma unroll
+    for (int local_pair = 0;
+         local_pair < kTileCols / 2;
+         ++local_pair) {
+      const int local_col0 = local_pair * 2;
+      const int local_col1 = local_col0 + 1;
+      const int col0 = col_base + local_col0;
+      const uint32_t d = *reinterpret_cast<const uint32_t*>(
+          tile + Q5_QMICRO_T16_D_OFFSET + col0 * 2);
+      const uint32_t dmin = *reinterpret_cast<const uint32_t*>(
+          tile + Q5_QMICRO_T16_DMIN_OFFSET + col0 * 2);
+      const int quartet = local_col0 >> 2;
+      const int shift = (local_col0 & 3) * 8;
+      const uint16_t coeff_scale = static_cast<uint16_t>(
+          (scale_word[quartet] >> shift) & 0xFFFFu);
+      const uint16_t coeff_min = static_cast<uint16_t>(
+          (min_word[quartet] >> shift) & 0xFFFFu);
+      scale[local_col0] =
+          fp16_bits_to_float(static_cast<uint16_t>(d)) *
+          static_cast<float>(coeff_scale & 0xFFu);
+      scale[local_col1] =
+          fp16_bits_to_float(static_cast<uint16_t>(d >> 16)) *
+          static_cast<float>(coeff_scale >> 8);
+      min_value[local_col0] =
+          fp16_bits_to_float(static_cast<uint16_t>(dmin)) *
+          static_cast<float>(coeff_min & 0xFFu);
+      min_value[local_col1] =
+          fp16_bits_to_float(static_cast<uint16_t>(dmin >> 16)) *
+          static_cast<float>(coeff_min >> 8);
+    }
+
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      const int k_in_block = k_lane_base + j;
+      const float xv = scalar_to_float<scalar_t>(
+          x_row[blk * QK_K + k_in_block]);
+      const int lane_in_block = lane32 + j;
+#pragma unroll
+      for (int local_pair = 0;
+           local_pair < kTileCols / 2;
+           ++local_pair) {
+        const int local_col0 = local_pair * 2;
+        const int local_col1 = local_col0 + 1;
+        const float q0 = static_cast<float>(q5_qmicro_t16_quant(
+            tile, sb, lane_in_block, col_base + local_col0));
+        const float q1 = static_cast<float>(q5_qmicro_t16_quant(
+            tile, sb, lane_in_block, col_base + local_col1));
+        acc[local_col0] = fmaf(
+            xv, q0 * scale[local_col0] - min_value[local_col0],
+            acc[local_col0]);
+        acc[local_col1] = fmaf(
+            xv, q1 * scale[local_col1] - min_value[local_col1],
+            acc[local_col1]);
+      }
+    }
+  }
+
+#pragma unroll
+  for (int local_col = 0; local_col < kTileCols; ++local_col) {
+    GGUF_T16_WAVE_REDUCE(acc[local_col]);
+  }
+  if (tid == 0) {
+    const int64_t out_base = row * out_features + out_group * kTileCols;
+#pragma unroll
+    for (int local_col = 0; local_col < kTileCols; ++local_col) {
+      out[out_base + local_col] =
+          float_to_scalar<scalar_t>(0.0f + acc[local_col]);
+    }
+  }
+}
+
 // Exact serial-c1 sibling of the local32 Q4 owner. The dot and wave reduction
 // are intentionally duplicated so the unfused producer's code generation stays
 // frozen; only the two rounded-BF16 residual operations are folded into its
@@ -7932,6 +8202,106 @@ hipengine_gguf_q5_k_t16_dense_single_local32_gemv_bf16_bf16_out(
     hipStream_t stream) {
   return launch_q5_dense_single_local32<uint16_t>(
       x, tiles, out, rows, in_features, out_features, stream);
+}
+
+template <typename scalar_t>
+int launch_q5_selected_local32(
+    const void* x,
+    const void* selected,
+    const void* tiles,
+    void* out,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (!x || !selected || !tiles || !out || x_rows <= 0 || rows <= 0 ||
+      num_experts <= 0 || in_features <= 0 ||
+      (in_features % QK_K) != 0 || out_features <= 0 ||
+      (out_features % T16_COLS) != 0 || (rows % x_rows) != 0) {
+    return hipErrorInvalidValue;
+  }
+  const dim3 block(32);
+  const dim3 grid(
+      static_cast<unsigned int>(out_features / 8),
+      static_cast<unsigned int>(rows));
+  hipLaunchKernelGGL(
+      (q5_k_t16_selected_local32_gemv_kernel<scalar_t>),
+      grid,
+      block,
+      0,
+      stream,
+      reinterpret_cast<const scalar_t*>(x),
+      reinterpret_cast<const int64_t*>(selected),
+      reinterpret_cast<const uint8_t*>(tiles),
+      reinterpret_cast<scalar_t*>(out),
+      x_rows,
+      rows,
+      in_features,
+      out_features,
+      num_experts);
+  return hipGetLastError();
+}
+
+template <typename scalar_t>
+int launch_q5_qmicro_selected_local32(
+    const void* x,
+    const void* selected,
+    const void* tiles,
+    void* out,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (!x || !selected || !tiles || !out || x_rows <= 0 || rows <= 0 ||
+      num_experts <= 0 || in_features <= 0 ||
+      (in_features % QK_K) != 0 || out_features <= 0 ||
+      (out_features % T16_COLS) != 0 || (rows % x_rows) != 0) {
+    return hipErrorInvalidValue;
+  }
+  const dim3 block(32);
+  const dim3 grid(
+      static_cast<unsigned int>(out_features / 8),
+      static_cast<unsigned int>(rows));
+  hipLaunchKernelGGL(
+      (q5_k_qmicro_t16_selected_local32_gemv_kernel<scalar_t>),
+      grid,
+      block,
+      0,
+      stream,
+      reinterpret_cast<const scalar_t*>(x),
+      reinterpret_cast<const int64_t*>(selected),
+      reinterpret_cast<const uint8_t*>(tiles),
+      reinterpret_cast<scalar_t*>(out),
+      x_rows,
+      rows,
+      in_features,
+      out_features,
+      num_experts);
+  return hipGetLastError();
+}
+
+extern "C" int
+hipengine_gguf_q5_k_qmicro_t16_selected_local32_gemv_bf16_bf16_out(
+    const void* x, const void* selected, const void* tiles, void* out,
+    int64_t x_rows, int64_t rows, int64_t num_experts, int64_t in_features,
+    int64_t out_features, hipStream_t stream) {
+  return launch_q5_qmicro_selected_local32<uint16_t>(
+      x, selected, tiles, out, x_rows, rows, num_experts, in_features,
+      out_features, stream);
+}
+
+extern "C" int
+hipengine_gguf_q5_k_t16_selected_local32_gemv_bf16_bf16_out(
+    const void* x, const void* selected, const void* tiles, void* out,
+    int64_t x_rows, int64_t rows, int64_t num_experts,
+    int64_t in_features, int64_t out_features, hipStream_t stream) {
+  return launch_q5_selected_local32<uint16_t>(
+      x, selected, tiles, out, x_rows, rows, num_experts, in_features,
+      out_features, stream);
 }
 
 extern "C" int

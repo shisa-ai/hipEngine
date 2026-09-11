@@ -532,6 +532,17 @@ GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE = {
         (5_120, 12_288): "dense_single_local32_bf16_bf16_out",
     },
 }
+# Selected-expert owners are a separate contract from rank-2 C1 linear owners.
+# The key is (in_features, out_features) as the selected launcher names them.
+# The Q5 MoE down projection of Qwen3.6-35B-A3B (moe_inter 512 -> hidden 2048)
+# is the measured admission, and the MoE decode path materializes those weights
+# in the qmicro planar layout, so the qmicro quant key is the one that resolves.
+# All other selected rows and shapes retain the exact direct/paired routes.
+GGUF_T16_SELECTED_C1_VARIANTS_BY_QUANT_SHAPE = {
+    "gguf_q5_k_qmicro_t16_v1": {
+        (512, 2_048): "selected_t16_local32_gemv_decode_bf16_bf16_out",
+    },
+}
 # Full-suite row policy for exact FFN-down plus residual composites. Rotating
 # row-4 planar-Q6 loses despite positive isolated leaves, while compact Q4 wins;
 # rows 2-3 retain both independently qualified owners.
@@ -1449,6 +1460,7 @@ __all__ = [
     "GGUF_T16_F16_ROCBLAS_VARIANT_POLICIES",
     "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT",
     "GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE",
+    "GGUF_T16_SELECTED_C1_VARIANTS_BY_QUANT_SHAPE",
     "GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT",
     "GGUF_Q5_T16_SELECTED_QWEN_TILE8",
     "GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS",

@@ -168,6 +168,12 @@ _Q5_DENSE_DIRECT_BF16 = (
 _Q5_DENSE_SINGLE_LOCAL32_BF16 = (
     "hipengine_gguf_q5_k_t16_dense_single_local32_gemv_bf16_bf16_out"
 )
+_Q5_SINGLE_LOCAL32_BF16 = (
+    "hipengine_gguf_q5_k_t16_selected_local32_gemv_bf16_bf16_out"
+)
+_Q5_QMICRO_SINGLE_LOCAL32_BF16 = (
+    "hipengine_gguf_q5_k_qmicro_t16_selected_local32_gemv_bf16_bf16_out"
+)
 _Q5_DENSE_TILE8_BF16 = (
     "hipengine_gguf_q5_k_t16_gemv_decode_tile8_bf16_bf16_out"
 )
@@ -3029,6 +3035,84 @@ def gguf_q5_k_t16_selected_gemv_bf16_bf16_out(
     )
 
 
+def gguf_q5_k_t16_selected_local32_gemv_bf16_bf16_out(
+    x_ptr: int,
+    selected_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the selected Q5T16 local32 GEMV owner.
+
+    ``x_rows`` follows the selected-expert contract: one x row per selected row
+    when ``x_rows == rows``, one shared x row when ``x_rows == 1``. The row
+    mapping matches the direct selected owner exactly.
+    """
+
+    _launch_single_direct(
+        _Q5_SINGLE_LOCAL32_BF16,
+        x_ptr,
+        selected_ptr,
+        tiles_ptr,
+        out_ptr,
+        x_rows,
+        rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q5_k_qmicro_t16_selected_local32_gemv_bf16_bf16_out(
+    x_ptr: int,
+    selected_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the selected Q5 qmicro-planar local32 GEMV owner.
+
+    Reads the qmicro planar record layout that the MoE decode path materializes
+    for ``gguf_q5_k_qmicro_t16_v1`` weights. The ``x_rows`` contract is the same
+    as the plain-T16 selected local32 owner.
+    """
+
+    _launch_single_direct(
+        _Q5_QMICRO_SINGLE_LOCAL32_BF16,
+        x_ptr,
+        selected_ptr,
+        tiles_ptr,
+        out_ptr,
+        x_rows,
+        rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def gguf_q5_k_t16_selected_qwen_tile8_gemv_bf16_bf16_out(
     x_ptr: int,
     selected_ptr: int,
@@ -4489,6 +4573,26 @@ def register_gguf_t16_selected_gemv_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey(
             "hip_gfx1100",
+            "moe_linear",
+            "gguf_q5_k_t16_v1",
+            "selected_t16_local32_gemv_decode_bf16_bf16_out",
+        ),
+        gguf_q5_k_t16_selected_local32_gemv_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q5_k_qmicro_t16_v1",
+            "selected_t16_local32_gemv_decode_bf16_bf16_out",
+        ),
+        gguf_q5_k_qmicro_t16_selected_local32_gemv_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
             "linear",
             "gguf_q4_k_qmicro_t16_v1",
             "dense_single_local32_bf16_bf16_out",
@@ -5158,6 +5262,8 @@ __all__ = [
     "gguf_q5_k_qmicro_t16_selected_gemv_bf16_bf16_out",
     "gguf_q5_k_qmicro_t16_selected_qwen_tile8_gemv_bf16_bf16_out",
     "gguf_q5_k_t16_selected_gemv_bf16_bf16_out",
+    "gguf_q5_k_qmicro_t16_selected_local32_gemv_bf16_bf16_out",
+    "gguf_q5_k_t16_selected_local32_gemv_bf16_bf16_out",
     "gguf_q5_k_t16_selected_qwen_tile8_gemv_bf16_bf16_out",
     "gguf_q5_k_t16_selected_pairreuse_gemv_bf16_bf16_out",
     "gguf_q5_k_t16_selected_q8_1_dp4a_gemv_bf16_bf16_out",
