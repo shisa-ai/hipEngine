@@ -1,13 +1,13 @@
 # TheRock ROCm Environment
 
-Last updated: 2026-08-30
+Last updated: 2026-09-11
 
 This page is the source of truth for hipEngine development and benchmark
 processes that use AMD TheRock Python packages. It covers two independent lanes:
 
 | Lane | Package stack | Status |
 | --- | --- | --- |
-| HP ZBook Ultra G1a / Radeon 8060S (`gfx1151`) | Stable TheRock ROCm `10.0.0` in `/home/lhl/miniforge3` | Current local development stack; SDK, fresh HIP JIT, PyTorch, graph replay, and profiler smoke validated |
+| Strix Halo `gfx1151` (Framework Desktop, HP ZBook Ultra G1a) | Stable TheRock ROCm `10.0.0` in `/home/lhl/miniforge3/envs/therock` | Current local development stack; SDK, fresh HIP JIT, PyTorch, graph replay, and profiler smoke validated |
 | Radeon Pro W7900 / RX 7900 XTX (`gfx1100`) | Legacy per-family TheRock ROCm `7.13.0a20260423` in `/home/lhl/mambaforge/envs/therock` | Retained benchmark stack; do not reinterpret old rates as ROCm 10 results |
 
 A setup being operational does not promote old performance rows to a new ROCm
@@ -22,15 +22,25 @@ stable release used here is
 The validated local prefix and interpreter are:
 
 ```bash
-ENV_PREFIX=/home/lhl/miniforge3
+ENV_PREFIX=/home/lhl/miniforge3/envs/therock
 PY=$ENV_PREFIX/bin/python
 ```
+
+`envs/therock` is a symlink to a dated environment directory
+(`envs/therock10-staging-20260828` on the host where this was last verified).
+The `staging` label is historical: the installed packages are the **production**
+ROCm `10.0.0` release, not a nightly. Keep the symlink stable and repoint it at
+whichever dated directory is current.
+
+The Miniforge base prefix (`/home/lhl/miniforge3`) is a separate Python 3.13
+environment with no ROCm packages installed. Resolve `PY` through `envs/therock`
+or `rocm_sdk` will not import.
 
 The current package set is:
 
 | Package | Version |
 | --- | --- |
-| Python | `3.13.13` |
+| Python | `3.12.13` |
 | `rocm` | `10.0.0` |
 | `rocm-sdk-core` | `10.0.0` |
 | `rocm-sdk-devel` | `10.0.0` |
@@ -76,14 +86,16 @@ component package versions together.
 
 ## Fresh gfx1151 Install
 
-Prefer an isolated environment on a new machine. The current host uses the
-Miniforge base prefix shown above, but a dedicated prefix is easier to replace or
-roll back:
+Prefer an isolated environment on a new machine. The current host keeps ROCm 10
+in the dedicated `envs/therock` prefix shown above, but a freshly created dated
+prefix is easier to replace or roll back:
 
 ```bash
-ENV_PREFIX=$HOME/miniforge3/envs/therock-rocm10
-$HOME/miniforge3/bin/mamba create -y -p "$ENV_PREFIX" python=3.13 pip
-PY=$ENV_PREFIX/bin/python
+# create a dated prefix, then point the stable symlink at it
+ENV_PREFIX=$HOME/miniforge3/envs/therock10-staging-$(date -u +%Y%m%d)
+$HOME/miniforge3/bin/mamba create -y -p "$ENV_PREFIX" python=3.12 pip
+ln -sfn "$ENV_PREFIX" "$HOME/miniforge3/envs/therock"
+PY=$HOME/miniforge3/envs/therock/bin/python
 INDEX=https://stable.repo.amd.com/rocm/whl-next/
 
 "$PY" -m pip install \
@@ -125,7 +137,7 @@ Create a rollback prefix and package manifests before an in-place upgrade. The
 following pattern preserves both conda-managed and pip-installed state:
 
 ```bash
-ENV_PREFIX=/home/lhl/miniforge3
+ENV_PREFIX=/home/lhl/miniforge3/envs/therock
 PY=$ENV_PREFIX/bin/python
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 STATE=$HOME/.local/state/therock-upgrades/$STAMP-rocm10
@@ -161,19 +173,19 @@ INDEX=https://stable.repo.amd.com/rocm/whl-next/
 "$PY" -m pip freeze --all > "$STATE/pip-freeze-after.txt"
 ```
 
-The 2026-08-30 host upgrade retained its known-good ROCm 7.15 clone at:
+The 2026-08-30 host upgrade retained its known-good ROCm 7.15 environment at:
 
 ```text
-/home/lhl/.local/share/therock-backups/miniforge-rocm715-20260727
+/home/lhl/miniforge3/envs/therock-rocm715-backup-20260828
 ```
 
-Its package/install records are under:
+That prefix is Python 3.12.13 with `rocm` / `rocm-sdk-*` `7.15.0a20260711`; it is
+the rollback target used in the "Rollback" section below. The
+`~/.local/share/therock-backups/` and `~/.local/state/therock-upgrades/` paths
+recorded by that upgrade are no longer present on this host.
 
-```text
-/home/lhl/.local/state/therock-upgrades/2026-08-30-rocm715-to-rocm10
-```
-
-Keep that clone until a representative full-model campaign passes on ROCm 10.
+Keep that environment until a representative full-model campaign passes on ROCm
+10.
 The upgrade smoke proves the SDK and hipEngine JIT path, not every model and
 workload shape.
 
@@ -184,18 +196,18 @@ TheRock installs libraries inside the Python environment rather than
 
 ```bash
 export HIPENGINE_HIP_ARCH=gfx1151
-_ROCM_SITE=/home/lhl/miniforge3/lib/python3.13/site-packages
+_ROCM_SITE=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages
 _ROCM_LIBS="$_ROCM_SITE/_rocm_sdk_core/lib:$_ROCM_SITE/_rocm_sdk_devel/lib:$_ROCM_SITE/_rocm_sdk_libraries/lib"
 export LD_LIBRARY_PATH="$_ROCM_LIBS${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 unset _ROCM_SITE _ROCM_LIBS
 ```
 
-`/home/lhl/miniforge3/bin` is already on this host's `PATH`. For another prefix,
-construct paths from its interpreter rather than copying the Python 3.13 path
-literally:
+`/home/lhl/miniforge3/envs/therock/bin` is the canonical prefix for this host.
+For another prefix, construct paths from its interpreter rather than copying the
+Python 3.12 path literally:
 
 ```bash
-ENV_PREFIX=$HOME/miniforge3/envs/therock-rocm10
+ENV_PREFIX=$HOME/miniforge3/envs/therock
 PY=$ENV_PREFIX/bin/python
 ROOT=$("$PY" -m rocm_sdk path --root)
 SITE=$("$PY" - <<'PY'
@@ -224,10 +236,10 @@ Use a clean process for benchmarks and profiling so system ROCm libraries cannot
 leak into the run:
 
 ```bash
-ENV_PREFIX=/home/lhl/miniforge3
+ENV_PREFIX=/home/lhl/miniforge3/envs/therock
 PY=$ENV_PREFIX/bin/python
 ROOT=$("$PY" -m rocm_sdk path --root)
-SITE=$ENV_PREFIX/lib/python3.13/site-packages
+SITE=$ENV_PREFIX/lib/python3.12/site-packages
 ROCM_LIBS="$SITE/_rocm_sdk_core/lib:$SITE/_rocm_sdk_devel/lib:$SITE/_rocm_sdk_libraries/lib"
 
 "$ROOT/bin/hipcc" --version > /tmp/hipengine-gfx1151-rocm10-hipcc-version.txt
@@ -250,7 +262,7 @@ env -i HOME="$HOME" USER="$USER" LOGNAME="$LOGNAME" \
 Run these checks after installation and before a benchmark campaign:
 
 ```bash
-ENV_PREFIX=/home/lhl/miniforge3
+ENV_PREFIX=/home/lhl/miniforge3/envs/therock
 PY=$ENV_PREFIX/bin/python
 ROOT=$("$PY" -m rocm_sdk path --root)
 
@@ -334,6 +346,12 @@ The 2026-08-30 upgrade result was `27` SDK tests and `6` hipEngine tests passed.
 host upgrade and validation record is
 [`20260830T135118.708318Z-pi-therock-rocm10-upgrade-9bad64.md`](../worklog/entries/20260830T135118.708318Z-pi-therock-rocm10-upgrade-9bad64.md).
 
+The prefix layout above was re-verified on 2026-09-11 on the Framework Desktop
+`gfx1151` host (Radeon 8060S, 40 CU, `gfx1151`): `rocm_sdk version` `10.0.0`,
+interpreter `Python 3.12.13`, `amd-smi` ROCm `10.0.0`, `hipcc` HIP
+`7.15.26333-0000000`, `rocprofv3` `1.3.5`, and the clean-process wrapper above
+loading `libamdhip64.so` successfully.
+
 ## JIT Cache And Profiler Migration
 
 A ROCm/compiler update changes hipEngine JIT cache keys. After upgrading:
@@ -357,10 +375,10 @@ For the current host, use the preserved ROCm 7.15 clone directly rather than
 mixing its libraries into the ROCm 10 shell:
 
 ```bash
-OLD=/home/lhl/.local/share/therock-backups/miniforge-rocm715-20260727
+OLD=/home/lhl/miniforge3/envs/therock-rocm715-backup-20260828
 OLD_PY=$OLD/bin/python
 OLD_ROOT=$("$OLD_PY" -m rocm_sdk path --root)
-OLD_SITE=$OLD/lib/python3.13/site-packages
+OLD_SITE=$OLD/lib/python3.12/site-packages
 
 "$OLD_PY" -m rocm_sdk version
 "$OLD_PY" -m pip check

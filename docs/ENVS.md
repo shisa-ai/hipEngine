@@ -1,6 +1,6 @@
 # Environment variables
 
-Last updated: 2026-09-06
+Last updated: 2026-09-11
 
 This is the user-facing env-var reference for hipEngine. Most users should not
 need any hipEngine-specific env vars for normal `LLM.generate()` use; prefer
@@ -37,13 +37,15 @@ shows the current gfx1151 clean-process wrapper.
 
 TheRock installs ROCm pieces inside the Python environment. Build the process
 environment around that prefix rather than mixing its libraries with
-`/opt/rocm`:
+`/opt/rocm`. The canonical gfx1151 prefix is the dedicated `therock` environment
+(Python 3.12, ROCm 10.0.0), not the Miniforge base prefix; the base interpreter
+has no ROCm packages installed:
 
 ```bash
-ENV_PREFIX=/home/lhl/miniforge3
+ENV_PREFIX=/home/lhl/miniforge3/envs/therock
 PY=$ENV_PREFIX/bin/python
 ROOT=$("$PY" -m rocm_sdk path --root)
-SITE=$ENV_PREFIX/lib/python3.13/site-packages
+SITE=$ENV_PREFIX/lib/python3.12/site-packages
 ROCM_LIBS="$SITE/_rocm_sdk_core/lib:$SITE/_rocm_sdk_devel/lib:$SITE/_rocm_sdk_libraries/lib"
 
 env -i HOME="$HOME" USER="$USER" LOGNAME="$LOGNAME" \
