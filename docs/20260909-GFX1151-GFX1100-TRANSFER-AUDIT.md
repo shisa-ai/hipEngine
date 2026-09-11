@@ -334,3 +334,129 @@ own-AR rule.
   16,121,359,328 bytes) is absent, and the local `UD-Q4_K_S` file is a
   different artifact (`75bc9c8a…`, 15,358,213,024 bytes). Re-running that row
   needs the original file re-fetched.
+
+## I. Pin inventory for the Qwen3.8-27B dense path (2026-09-12, commit `7ed5c5559`)
+
+Section H established that the gfx1100-only *registry* surface is mechanical and
+carries a written reason per key. This section does the same for the *capability*
+surface and separates the mechanisms, because they have different clearing costs.
+The registry counts below are re-derived at commit `7ed5c5559` and are unchanged
+from section H.
+
+### Two surfaces, counted
+
+The registry surface, reproduced with the snippet in section H: **1307 shared,
+105 gfx1100-only, 7 gfx1151-only, 241 declared exclusions, 18 body overrides.**
+
+The capability surface is separate and larger. `backend_package_capability`
+reads a module-level constant from the backend package by name, so a name defined
+on one backend and not the other silently takes the call site's default. Counting
+every `GGUF_*` name read by a module on this path:
+
+| Relation between the two backend packages | Count |
+| --- | ---: |
+| Defined on gfx1151 only | 50 |
+| Defined on both, different value | 31 |
+| Defined on both, same non-default value | 23 |
+| Defined on gfx1100 only | 18 |
+| Absent on both (the call-site default governs) | 2 |
+| **Total distinct names** | **124** |
+
+The dense path is **net ahead on gfx1151**: it defines 50 capabilities that
+gfx1100 does not, against 18 in the other direction. The `hip_gfx1100` literals
+in the runtime are nominal source markers (route map in `docs/KERNELS.md`), and
+they are not evidence of a gfx1151 deficit.
+
+### Six mechanisms, and which a gfx1151 change can clear
+
+| Mechanism | On this path | Pin lives in | Clearable from the gfx1151 package alone? |
+| --- | ---: | --- | --- |
+| Live code pin | 1 | `runtime/qwen35_paro.py:213` | yes |
+| Registry exclusion | 5 of 105 | `_GFX1151_ALIAS_EXCLUSIONS` | yes |
+| Capability gate defined on gfx1100 only | 18 | the gfx1100 package | yes — define the name on gfx1151 |
+| Capability gate declined on gfx1151 | 6 | the gfx1151 package | yes, but three are measured rejections |
+| Geometry pin | shared device source | the `.hip` launcher | **no** |
+| Row-count floor or ceiling | 13 names (9 differ) | both packages | yes — it is a per-backend value |
+
+Only the geometry pin is structural. The 105 registry exclusions each carry a
+written reason in the gfx1151 package; **none of the 18 gfx1100-only capability
+gates appears anywhere in the gfx1151 package** — no constant, no comment, no
+exclusion entry. Twelve of the 18 do carry a gfx1100-side comment, but it states
+the gfx1100 qualification rather than a gfx1151 verdict, and the remaining six
+have no comment at all. That asymmetry is the inventory's main defect: a name that
+exists only on gfx1100 reads as an ordinary default at every call site, so a
+gfx1151 regression from its absence is invisible in review.
+
+The 18 gfx1100-only gates are not spread evenly. Eight cover prefill
+(`GGUF_Q4_T16_UNEQUAL_PAIR_PREFILL_POLICIES`, `GGUF_Q4_T16_GROUPED_PAIR_ROWS6_POLICY`,
+`GGUF_Q4_DUAL_SILU_PREFILL_ROW48_MAX_ROWS`, `GGUF_DENSE_PREFILL_SCRATCH_LIVENESS_POLICIES`,
+`GGUF_RAW_K_PREFILL_ROLE_VARIANTS`, and the three `GGUF_T16_F16_ROCBLAS_*` names),
+eight cover the SPECDEC2 verifier (`GGUF_SPECDEC2_*`), and two are unclassified
+(`GGUF_C8_Q5_RAW_MMQ_SSM_OUT`, `GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS_BY_MAX_SEQUENCE_LENGTH`).
+One of the prefill eight is not this artifact's: the raw-K prefill family admits
+quants `{gguf_q8_0, gguf_q5_k, gguf_q6_k}` and never `gguf_q4_k_t16_v1`, so
+`GGUF_RAW_K_PREFILL_ROLE_VARIANTS` is N/A for Qwen3.8-27B `Q4_K_M` and matters
+only to raw-Q5/Q6 artifacts.
+
+### The geometry pin is in shared device source, not in a package
+
+The A2 row's geometry gate resolves to `launch_q4_dual_pairreuse_direct` in
+`kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.hip:6868`, which fixes
+`block(128)`, caps `rows` at 64, and requires `rows % x_rows == 0`. gfx1151
+admits the owner at the same floor (`GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS = 8`
+on both backends) and does not override the body, so the 40-CU part runs the
+96-CU part's launch geometry. This is the one pin a gfx1151 package change cannot
+reach: retuning it means either editing shared source that gfx1100 also uses, or
+registering a gfx1151 override body as the 18 existing overrides do.
+
+### Dense prefill scratch policy diverges by file type, not by backend
+
+The two dense scratch gates are keyed on `(geometry, file type)`, and the two
+backends populate different file types:
+
+| Capability | gfx1100 | gfx1151 |
+| --- | --- | --- |
+| `GGUF_DENSE_PREFILL_SCRATCH_LIVENESS_POLICIES` | `MOSTLY_Q4_K_M`: `min_rows=1`, `priority_min_rows=4096`, `hidden_inplace_min_rows=4096`, `priority_min_live_stages=5` | absent |
+| `GGUF_DENSE_PREFILL_SCRATCH_ROW_CAP_POLICIES` | `MOSTLY_Q4_K_M`: 1,024-row ceiling at capacity ≥1,024 | `MOSTLY_Q4_K_S`: 4,096-row ceiling at capacity ≥4,096, 1,024 at ≥8,192 |
+
+Both consequences land on the Qwen3.8-27B dense path:
+
+- **Dense scratch liveness aliasing is off on gfx1151.** The dense branch reads
+  `GGUF_DENSE_PREFILL_SCRATCH_LIVENESS_POLICIES` and returns `None` when the
+  geometry/file-type key is missing. gfx1151's
+  `GGUF_PREFILL_SCRATCH_LIVENESS_MIN_ROWS = 768` is read only in the MoE branch,
+  so it does not substitute here.
+- **A Q4_K_M request gets no row ceiling on gfx1151.** The ceiling exists on
+  gfx1100 specifically to stop a 4,096-row auto query chunk from overrunning
+  metadata buffers sized at allocation (the 2026-09-09 INT8 comparison-protocol
+  crash recorded in `_dense_prefill_scratch_row_cap`'s docstring). On gfx1151 the
+  dict has a `MOSTLY_Q4_K_S` key instead, so the same file type resolves to
+  `None` — meaning no clamp, not a tighter one.
+
+Neither is a measured gfx1151 result; both are consequences of the file-type key.
+They are the two concrete items a gfx1151 change can clear without touching
+shared source.
+
+### Highest-value gfx1151 targets, in order
+
+1. **Give the Q4_K_M lane its own external comparator.** The published
+   `380.366/377.605/361.497` prefill and `12.213/11.980/12.130` AR rows are the
+   only gfx1151 Qwen3.8-27B numbers with no same-artifact external cell. The
+   llama HIP/Vulkan cells (`352.426/364.443/367.993` prefill) come from the
+   Q4_K_S campaign, and the Q4_K_M artifact's own `comparability` field declares
+   the two lanes non-comparable. Until matched llama cells exist for this file,
+   "beats llama.cpp at every working shape" is established for Q4_K_S only.
+2. **Close the 18 undocumented capability gates.** Each needs a recorded gfx1151
+   verdict — retune, decline, or N/A — at the same standard the 105 registry
+   exclusions already meet. This is a ledger task.
+3. **Settle whether the missing Q4_K_M row ceiling is safe.** This is the one item
+   on the list that is a correctness question rather than a ledger or benchmark
+   one: gfx1100 clamps this file type to 1,024 rows specifically to keep a
+   4,096-row auto query chunk inside metadata buffers sized at allocation, and
+   gfx1151 does not. Either the gfx1151 owner-slots arena removes the hazard, or
+   it does not and the clamp needs a `MOSTLY_Q4_K_M` key.
+4. **The pair-reuse geometry (A2)** stays the lowest-priority structural item and
+   remains a Qwen3.6-35B-A3B MoE concern, not a Qwen3.8-27B one.
+
+Decode is not on this list. A1 closed it at 88.9% of the practical read roof, and
+C4 closed the INT8 K/V route as representation-owned.
