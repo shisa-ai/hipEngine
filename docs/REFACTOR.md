@@ -6312,4 +6312,4 @@ runtime level instead (2.5: fp32 unfused path; 3.0: fp32 routes through the
 separate var-q/k normalization chain). Register both families under the
 four-axis registry with their strict fallback chains when a second consumer
 of the kernels appears; until then the runtime-level fallback is the
-contract of record (see MODEL-TIMESFM3.md).
+contract of record (see docs/MODEL-TIMESFM3.md).
