@@ -36,6 +36,7 @@ from hipengine.kernels.cpu_reference.evie import (
     _EPS_RMS,
     _L2NORM_EPS,
     apply_rope_half,
+    layer_norm,
     l2norm,
     rms_norm,
     silu,
@@ -103,6 +104,18 @@ class SuryaSpec:
     gdn_value_head_dim: int = 128
     gdn_conv_kernel: int = 4
     gdn_time_step_rank: int = 16
+    vision_hidden_size: int = 768
+    vision_depth: int = 12
+    vision_num_heads: int = 12
+    vision_patch_size: int = 16
+    vision_temporal_patch_size: int = 2
+    vision_spatial_merge_size: int = 2
+    vision_intermediate_size: int = 3072
+    vision_out_hidden_size: int = 1024
+    vision_num_position_embeddings: int = 2304
+
+    def vision_head_dim(self) -> int:
+        return self.vision_hidden_size // self.vision_num_heads
 
     @classmethod
     def from_model_spec(cls, spec) -> "SuryaSpec":
@@ -125,6 +138,15 @@ class SuryaSpec:
             gdn_value_head_dim=spec.gdn_value_head_dim,
             gdn_conv_kernel=spec.gdn_conv_kernel,
             gdn_time_step_rank=spec.gdn_time_step_rank,
+            vision_hidden_size=spec.vision_hidden_size,
+            vision_depth=spec.vision_depth,
+            vision_num_heads=spec.vision_num_heads,
+            vision_patch_size=spec.vision_patch_size,
+            vision_temporal_patch_size=spec.vision_temporal_patch_size,
+            vision_spatial_merge_size=spec.vision_spatial_merge_size,
+            vision_intermediate_size=spec.vision_intermediate_size,
+            vision_out_hidden_size=spec.vision_out_hidden_size,
+            vision_num_position_embeddings=spec.vision_num_position_embeddings,
         )
 
     def is_full_attention(self, layer: int) -> bool:
@@ -157,6 +179,8 @@ class TextState:
     kv: dict[int, tuple[np.ndarray, np.ndarray]] = field(default_factory=dict)
     # number of tokens already processed (absolute positions)
     seq_len: int = 0
+    # number of image-pad tokens already consumed from visual_features
+    image_pads_consumed: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -367,8 +391,224 @@ def _full_attention_layer(
 
 
 # ---------------------------------------------------------------------------
+# vision tower
+# ---------------------------------------------------------------------------
+
+
+def _pixel_rows_to_patches(pixel_rows: np.ndarray, spec: SuryaSpec) -> np.ndarray:
+    """(n, ch*t*p*p) processor rows -> (n, ch, t, p, p) patch tensors."""
+
+    ch = 3
+    return pixel_rows.reshape(
+        -1,
+        ch,
+        spec.vision_temporal_patch_size,
+        spec.vision_patch_size,
+        spec.vision_patch_size,
+    )
+
+
+def vision_patch_embed(
+    w: SuryaWeights, spec: SuryaSpec, pixel_rows: np.ndarray
+) -> np.ndarray:
+    """Patch projection (conv-as-matmul) + bias: (n, vision_hidden)."""
+
+    patches = _pixel_rows_to_patches(pixel_rows, spec)
+    weight = w["model.visual.patch_embed.proj.weight"]  # (vh, 3, t, p, p)
+    bias = w["model.visual.patch_embed.proj.bias"]
+    vh = spec.vision_hidden_size
+    n = patches.shape[0]
+    flat_w = weight.reshape(vh, -1)  # (vh, ch*t*p*p)
+    return patches.reshape(n, -1) @ flat_w.T + bias[None, :]
+
+
+def _merge_block_major_coords(
+    grid_thw: list[tuple[int, int, int]], merge: int
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Per-patch (row, col) grid coords in the processor's spatial-merge
+    block-major order, plus per-patch image segment ids."""
+
+    rows, cols, seg = [], [], []
+    for si, (t, h, pw) in enumerate(grid_thw):
+        n = t * h * pw
+        blocks_w = pw // merge
+        within = np.arange(n) % (h * pw)
+        in_col = within % merge
+        in_row = (within // merge) % merge
+        block_col = (within // (merge * merge)) % blocks_w
+        block_row = within // (merge * merge * blocks_w)
+        rows.append(block_row * merge + in_row)
+        cols.append(block_col * merge + in_col)
+        seg.extend([si] * n)
+    return np.concatenate(rows), np.concatenate(cols), np.array(seg)
+
+
+def vision_pos_embed(
+    w: SuryaWeights,
+    spec: SuryaSpec,
+    grid_thw: list[tuple[int, int, int]],
+    coords: tuple[np.ndarray, np.ndarray],
+) -> np.ndarray:
+    """Bilinear (align_corners=True) resample of the learned 48x48 table
+    onto each patch's (row, col) grid coordinate: (n, vision_hidden)."""
+
+    side = int(round(spec.vision_num_position_embeddings**0.5))
+    assert side * side == spec.vision_num_position_embeddings
+    table = w["model.visual.pos_embed.weight"]  # (side*side, vh)
+    rows, cols = coords
+    counts = [t * h * pw for (t, h, pw) in grid_thw]
+    seg = np.repeat(np.arange(len(grid_thw)), counts)[: len(rows)]
+    heights = np.array([grid_thw[si][1] for si in seg], dtype=np.float64)
+    widths = np.array([grid_thw[si][2] for si in seg], dtype=np.float64)
+    # align_corners=True closed form: endpoints map to 0 and side-1
+    src_r = rows.astype(np.float64) * (side - 1) / np.clip(heights - 1, 1, None)
+    src_c = cols.astype(np.float64) * (side - 1) / np.clip(widths - 1, 1, None)
+
+    def _taps(src: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        floor = np.floor(src)
+        taps = np.clip(
+            np.stack([floor, floor + 1], axis=-1).astype(np.int64), 0, side - 1
+        )
+        dist = np.abs(src[:, None] - floor[:, None] - np.array([0.0, 1.0])[None, :])
+        weights = np.clip(1.0 - dist, 0.0, None)
+        return taps, weights
+
+    r_taps, r_w = _taps(src_r)
+    c_taps, c_w = _taps(src_c)
+    # separable 2D: outer product of the per-axis taps/weights
+    idx = r_taps[:, :, None] * side + c_taps[:, None, :]  # (n, 2, 2)
+    wts = r_w[:, :, None] * c_w[:, None, :]
+    n = idx.shape[0]
+    flat = idx.reshape(n, 4)
+    wflat = wts.reshape(n, 4)
+    return (table[flat] * wflat[:, :, None]).sum(axis=1)
+
+
+def vision_rotary(
+    spec: SuryaSpec, rows: np.ndarray, cols: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """cos/sin (s, head_dim) for full-dim 2-axis vision rotary (theta 1e4).
+
+    The tower rotary uses half-dim pairs: inv_freq has head_dim//4 entries
+    (dim = head_dim // 2 in the reference), giving head_dim//2 rotary
+    frequencies per axis; h freqs then w freqs are concatenated.
+    """
+
+    hd = spec.vision_head_dim()  # 64
+    quarter = hd // 4  # 16 inv freq entries (dim = 32)
+    inv_freq = 1.0 / (10000.0 ** (np.arange(0, 2 * quarter, 2, dtype=np.float32) / (2 * quarter)))
+    freqs = np.stack([rows, cols], axis=-1).astype(np.float32)[:, :, None] * inv_freq[
+        None, None, :
+    ]
+    freqs = freqs.reshape(-1, 2 * quarter)  # (s, 32): [h freqs, w freqs]
+    emb = np.concatenate([freqs, freqs], axis=-1)  # (s, hd)
+    return np.cos(emb), np.sin(emb)
+
+
+def _rotate_half_vision(x: np.ndarray) -> np.ndarray:
+    half = x.shape[-1] // 2
+    return np.concatenate([-x[..., half:], x[..., :half]], axis=-1)
+
+
+def _gelu_tanh_np(x: np.ndarray) -> np.ndarray:
+    return 0.5 * x * (1.0 + np.tanh(np.sqrt(2.0 / np.pi) * (x + 0.044715 * x**3)))
+
+
+def _erf(x: np.ndarray) -> np.ndarray:
+    # vectorized erf without scipy: Abramowitz-Stegun 7.1.26 (|eps|<1.5e-7)
+    a1, a2, a3, a4, a5 = (
+        0.254829592,
+        -0.284496736,
+        1.421413741,
+        -1.453152027,
+        1.061405429,
+    )
+    pf = 0.3275911
+    sign = np.sign(x)
+    z = np.abs(x)
+    t = 1.0 / (1.0 + pf * z)
+    y = 1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * np.exp(-z * z)
+    return sign * y
+
+
+def _gelu_erf_np(x: np.ndarray) -> np.ndarray:
+    return x * 0.5 * (1.0 + _erf(x / np.sqrt(2.0)))
+
+
+def vision_forward(
+    w: SuryaWeights,
+    spec: SuryaSpec,
+    pixel_rows: np.ndarray,
+    grid_thw: list[tuple[int, int, int]],
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Full vision tower; returns (patch_embed_out, tower_out, merged).
+
+    tower_out: (n, vision_hidden) pre-merger hidden states; merged:
+    (n / merge^2, vision_out_hidden) image features in merge-block order.
+    """
+
+    vh = spec.vision_hidden_size
+    nh, hd = spec.vision_num_heads, spec.vision_head_dim()
+    merge = spec.vision_spatial_merge_size
+
+    x = vision_patch_embed(w, spec, pixel_rows)
+    patch_out = x.copy()
+    coords = _merge_block_major_coords(grid_thw, merge)[:2]
+    x = x + vision_pos_embed(w, spec, grid_thw, coords)
+    cos, sin = vision_rotary(spec, *coords)
+
+    n = x.shape[0]
+    for i in range(spec.vision_depth):
+        p = f"model.visual.blocks.{i}."
+        h = layer_norm(x, w[p + "norm1.weight"], w[p + "norm1.bias"])
+        qkv = (h @ w[p + "attn.qkv.weight"].T + w[p + "attn.qkv.bias"]).reshape(
+            n, 3, nh, hd
+        )
+        q, k, v = qkv[:, 0], qkv[:, 1], qkv[:, 2]  # (n, nh, hd)
+        # 2D rotary on q/k (rotate_half over the hd-dim head)
+        cs = cos[:, None, :]
+        sn = sin[:, None, :]
+        q = q * cs + _rotate_half_vision(q) * sn
+        k = k * cs + _rotate_half_vision(k) * sn
+        # bidirectional within each image segment
+        qh = q.transpose(1, 0, 2)  # (nh, n, hd)
+        kh = k.transpose(1, 0, 2)
+        v_ = v.transpose(1, 0, 2)
+        att = softmax(qh @ kh.transpose(0, 2, 1) * (hd**-0.5))
+        out = (att @ v_).transpose(1, 0, 2).reshape(n, -1)
+        x = x + out @ w[p + "attn.proj.weight"].T + w[p + "attn.proj.bias"]
+        h2 = layer_norm(x, w[p + "norm2.weight"], w[p + "norm2.bias"])
+        fc1 = h2 @ w[p + "mlp.linear_fc1.weight"].T + w[p + "mlp.linear_fc1.bias"]
+        x = (
+            x
+            + _gelu_tanh_np(fc1) @ w[p + "mlp.linear_fc2.weight"].T
+            + w[p + "mlp.linear_fc2.bias"]
+        )
+
+    tower_out = x
+    # merger: per-patch LayerNorm -> merge-block reshape (n/4, 4*vh) ->
+    # fc1 -> erf GELU -> fc2
+    xm = layer_norm(
+        x,
+        w["model.visual.merger.norm.weight"],
+        w["model.visual.merger.norm.bias"],
+    )
+    xm = xm.reshape(-1, merge * merge * vh)
+    fc1 = (
+        xm @ w["model.visual.merger.linear_fc1.weight"].T
+        + w["model.visual.merger.linear_fc1.bias"]
+    )
+    merged = (
+        _gelu_erf_np(fc1) @ w["model.visual.merger.linear_fc2.weight"].T
+        + w["model.visual.merger.linear_fc2.bias"]
+    )
+    return patch_out, tower_out, merged
+
+
+# ---------------------------------------------------------------------------
 # forward
 # ---------------------------------------------------------------------------
+
 
 
 def _mlp(w: SuryaWeights, prefix: str, x: np.ndarray) -> np.ndarray:
@@ -398,7 +638,9 @@ def text_prefill(
     if visual_features is not None:
         for bi in range(x.shape[0]):
             mask = input_ids[bi] == spec.image_token_id
-            x[bi, mask] = visual_features[bi]
+            offset = state.image_pads_consumed
+            n_pads = int(mask.sum())
+            x[bi, mask] = visual_features[bi][offset : offset + n_pads]
     cos, sin = text_rope_tables(spec, position_ids)
     past = state.seq_len
     for layer in range(spec.num_layers):
@@ -418,6 +660,11 @@ def text_prefill(
         x = x + attn_out
         h2 = rms_norm(x, w[lp + "post_attention_layernorm.weight"])
         x = x + _mlp(w, lp, h2)
+    if visual_features is not None:
+        for bi in range(x.shape[0]):
+            state.image_pads_consumed += int(
+                (input_ids[bi] == spec.image_token_id).sum()
+            )
     state.seq_len = past + x.shape[1]
     return rms_norm(x, w["model.language_model.norm.weight"]), state
 
