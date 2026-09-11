@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "kind": "w7900_p6e_resumable_prefill_gpu_proof",
-  "timestamp": "2026-09-11T23:08:41.021679+00:00",
+  "timestamp": "2026-09-11T23:10:18.743885+00:00",
   "performance_claim": false,
   "passed": true,
   "host": {
@@ -15,11 +15,11 @@
     "route": "int8_direct layer-outer resumable"
   },
   "workload": {
-    "prompt_rows": 3072,
+    "prompt_rows": 3172,
     "bulk_prefill_row_capacity": 1024,
-    "planned_rounds": 3,
-    "final_round_rows": 1024,
-    "ragged_final_round": false,
+    "planned_rounds": 4,
+    "final_round_rows": 100,
+    "ragged_final_round": true,
     "layer_budget": 4,
     "decode_tokens": 24,
     "max_sequence_length": 16384,
@@ -28,30 +28,30 @@
   "gates": {
     "exact_continuation": {
       "passed": true,
-      "arm_a_token_id": 265,
-      "arm_b_token_id": 265,
+      "arm_a_token_id": 286,
+      "arm_b_token_id": 286,
       "detail": "both arms prefill the same prompt greedily and must sample the same token"
     },
     "real_yield": {
       "passed": true,
       "segments": 16,
-      "segment_min_ms": 259.024,
+      "segment_min_ms": 308.039,
       "declared_floor_ms": 1.0,
       "detail": "more than one segment proves control returned mid-prefill; every segment above the floor proves each segment did GPU work rather than advancing bookkeeping"
     },
     "bounded_decode_gap": {
       "passed": true,
-      "interleaved_p95_ms": 33.613,
-      "interleaved_max_ms": 33.658,
-      "p95_limit_ms": 67.24,
-      "max_limit_ms": 117.846,
+      "interleaved_p95_ms": 33.084,
+      "interleaved_max_ms": 33.115,
+      "p95_limit_ms": 67.164,
+      "max_limit_ms": 116.628,
       "declared_p95_factor": 2.0,
       "declared_max_factor": 3.0,
       "detail": "decode steps taken while a prefill is suspended must stay within the declared factors of the standalone decode step on the same session"
     },
     "cleanup": {
       "passed": true,
-      "peak_suspended_bytes": 221773824,
+      "peak_suspended_bytes": 223821824,
       "detail": "the suspended-state buffers must not outlive the completing checkpoint; peak_suspended_bytes proves suspension actually happened"
     },
     "layer_boundary_state": {
@@ -63,45 +63,45 @@
     },
     "ragged_final_round": {
       "passed": true,
-      "final_round_rows": 1024,
+      "final_round_rows": 100,
       "row_capacity": 1024,
-      "declared_ragged": false,
+      "declared_ragged": true,
       "detail": "the declared prompt shape must actually reach the executor: a ragged prompt must produce a short final round and a whole number of rounds must not, so neither shape can silently be padded into the other"
     }
   },
   "measurements": {
-    "arm_a_one_shot_wall_s": 4.1706,
-    "arm_b_resumable_wall_s": 4.7632,
+    "arm_a_one_shot_wall_s": 4.9726,
+    "arm_b_resumable_wall_s": 5.5552,
     "segments": {
       "count": 16,
-      "median_ms": 261.8,
-      "p95_ms": 287.55,
-      "min_ms": 259.024,
-      "max_ms": 288.023
+      "median_ms": 311.539,
+      "p95_ms": 338.282,
+      "min_ms": 308.039,
+      "max_ms": 340.227
     },
-    "peak_suspended_bytes": 221773824,
+    "peak_suspended_bytes": 223821824,
     "standalone_decode": {
       "count": 24,
-      "median_ms": 33.436,
-      "p95_ms": 33.62,
-      "min_ms": 32.696,
-      "max_ms": 39.282
+      "median_ms": 33.513,
+      "p95_ms": 33.582,
+      "min_ms": 32.741,
+      "max_ms": 38.876
     },
     "interleaved_decode": {
       "count": 15,
-      "median_ms": 33.39,
-      "p95_ms": 33.613,
-      "min_ms": 32.733,
-      "max_ms": 33.658
+      "median_ms": 32.943,
+      "p95_ms": 33.084,
+      "min_ms": 32.786,
+      "max_ms": 33.115
     },
     "interleaved_steps": 15,
     "state_position": [
-      3072,
-      3072
+      3172,
+      3172
     ],
     "state_layers_compared": 64
   },
-  "command": "/home/lhl/mambaforge/envs/therock/bin/python3 /home/lhl/hipEngine-main/scripts/gguf_resumable_prefill_gpu_proof.py --max-sequence-length 16384 --prompt-rounds 3 --layer-budget 4 --decode-tokens 24 --json benchmarks/results/2026-09-11-w7900-p6e-resumable-prefill-state-gate.json",
+  "command": "/home/lhl/mambaforge/envs/therock/bin/python3 /home/lhl/hipEngine-main/scripts/gguf_resumable_prefill_gpu_proof.py --max-sequence-length 16384 --prompt-rounds 3 --prompt-extra-rows 100 --layer-budget 4 --decode-tokens 24 --json benchmarks/results/2026-09-11-w7900-p6e-resumable-prefill-state-gate-ragged.json",
   "trace_environment": {
     "HIP_VISIBLE_DEVICES": "0",
     "HIPENGINE_HIP_ARCH": "gfx1100",

@@ -22,13 +22,15 @@ Contracts under test (CPU, fake device):
   before any layer runs, so the shared key is used - packed execution cannot
   silently realize per-layer pairs while the plan promises one;
 - the feature flag defaults OFF: the parity, wall A/B, trace-identity,
-  and server-probe diagnostics passed, and the layer-boundary/state and
-  exact KV/control packet gates are now closed on GPU (see
-  `scripts/gguf_resumable_prefill_gpu_proof.py`, whose `layer_boundary_state`
-  gate fingerprints the committed per-layer direct INT8 K/V, its scales, and
-  the linear state against the one-shot reference), but the shifted/ragged
-  GPU coverage and aliasing-on-this-executor packet gates are outstanding, so
-  the corrected chunk-outer executor remains the default.
+  and server-probe diagnostics passed, and the layer-boundary/state,
+  exact KV/control, and reachable ragged-final-round packet gates are now
+  closed on GPU (see `scripts/gguf_resumable_prefill_gpu_proof.py`, whose
+  `layer_boundary_state` gate fingerprints the committed per-layer direct INT8
+  K/V, its scales, and the linear state against the one-shot reference, and
+  also passes on a ragged prompt; multi-slot unequal prompts decline by the
+  executor's slot-stability guard and are covered by the decline tests), but
+  the aliasing-on-this-executor packet gate is outstanding, so the corrected
+  chunk-outer executor remains the default.
 """
 
 from __future__ import annotations

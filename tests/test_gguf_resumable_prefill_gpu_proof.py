@@ -42,6 +42,9 @@ _HEALTHY = {
     "peak_suspended_bytes": 221_773_824,
     "state_layers_compared": 14,
     "state_mismatches": [],
+    "final_round_rows": 1024,
+    "row_capacity": 1024,
+    "ragged_declared": False,
 }
 
 
@@ -51,7 +54,7 @@ def _gates(**overrides: object) -> dict:
     return evaluate_gates(**payload)  # type: ignore[arg-type]
 
 
-def test_all_five_gates_pass_on_a_healthy_run() -> None:
+def test_all_six_gates_pass_on_a_healthy_run() -> None:
     gates = _gates()
 
     assert set(gates) == {
@@ -60,8 +63,43 @@ def test_all_five_gates_pass_on_a_healthy_run() -> None:
         "bounded_decode_gap",
         "cleanup",
         "layer_boundary_state",
+        "ragged_final_round",
     }
     assert all(gate["passed"] for gate in gates.values())
+
+
+def test_ragged_final_round_passes_when_a_short_round_was_declared() -> None:
+    gates = _gates(final_round_rows=100, ragged_declared=True)
+
+    assert gates["ragged_final_round"]["passed"] is True
+    assert gates["ragged_final_round"]["final_round_rows"] == 100
+
+
+def test_ragged_final_round_fails_when_a_ragged_prompt_was_padded() -> None:
+    """A declared ragged shape that ran full rounds is not ragged coverage."""
+
+    gates = _gates(final_round_rows=1024, ragged_declared=True)
+
+    assert gates["ragged_final_round"]["passed"] is False
+
+
+def test_ragged_final_round_fails_when_a_full_round_was_declared_but_short() -> None:
+    """A shape that silently became ragged did not exercise full rounds."""
+
+    gates = _gates(final_round_rows=100, ragged_declared=False)
+
+    assert gates["ragged_final_round"]["passed"] is False
+
+
+def test_ragged_final_round_fails_on_a_degenerate_shape() -> None:
+    assert _gates(final_round_rows=0) ["ragged_final_round"]["passed"] is False
+    assert _gates(row_capacity=0)["ragged_final_round"]["passed"] is False
+    assert (
+        _gates(final_round_rows=2048, row_capacity=1024)["ragged_final_round"][
+            "passed"
+        ]
+        is False
+    )
 
 
 def test_layer_boundary_state_fails_when_a_layer_mismatches() -> None:
