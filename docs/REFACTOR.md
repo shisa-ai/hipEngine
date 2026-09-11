@@ -6339,3 +6339,22 @@ SnapKV) is wired to the Surya model, or when the Surya attention kernels are
 shared with the Qwen3.5 decode path — whichever comes first. Until then the
 dense offset scheme is the contract of record, and `docs/MODEL-SURYA.md`
 records the gap.
+
+## 2026-09-11 Surya vision attention: quadratic score scratch — open
+
+`hipengine/runtime/surya.py` `_vis_scores` materializes the full vision
+attention score matrix, `vision_num_heads * n^2 * 4` bytes for `n` patches
+(`vision_num_heads` = 12, and the resize factor is 32, so `n` = page pixels /
+1024): 50 MB for 1024x1024 (32x32 grid), 805 MB for 2048x2048 (64x64),
+4.08 GB for 3072x3072 (96x96), and 12.88 GB at the checkpoint's own
+`SURYA_MAX_PIXELS` ceiling of 16,777,216 px (16384 patches, 128x128 grid).
+Admission now bounds it (`DEFAULT_MAX_VISION_SCRATCH_BYTES`, 4 GiB) so an
+over-budget page fails with a clear error instead of attempting the
+allocation; the cap admits grids up to ~97x97 and rejects beyond. Bounding is
+not a fix: a 300-DPI A4 page resizes to 2496x3520 (110x78 grid, 8580 patches)
+and already needs 3.53 GB, which is inside the cap but leaves little room.
+
+Replace with tiled vision attention, which needs no full score matrix. Until
+then `SURYA_MAX_PIXELS` (16_777_216) admits pages the vision path cannot run,
+so `smart_resize` and the runtime disagree above the cap; resolve that in the
+same change. `docs/MODEL-SURYA.md` records the current envelope.
