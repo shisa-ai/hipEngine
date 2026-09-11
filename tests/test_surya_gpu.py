@@ -473,6 +473,54 @@ def test_gpu_full_page_vision_matches_oracle(runner) -> None:
     assert d.mean() < 1e-5, f"full-page vision drift: mean|d|={d.mean():.3e}"
 
 
+@pytest.mark.parametrize("page_name", ["columns", "list"])
+def test_gpu_ocr_corpus_matches_oracle(runner, page_name: str) -> None:
+    """Held-out layouts (two-column, numbered list) vs the torch oracle.
+
+    Both differ structurally from the single-column fixtures, so the GPU lane
+    cannot pass them by generalizing from the pages already covered: the
+    columns page needs the two prose columns kept apart, and the list page
+    needs the ``List-Group`` label, which no other fixture reaches.
+    """
+
+    r, _weights, spec = runner
+    from hipengine.loading.surya import SuryaTokenizer, preprocess_image_surya
+    from PIL import Image
+
+    oracle_path = FIXTURES / "oracle_corpus.json"
+    if not oracle_path.exists():
+        pytest.skip(
+            "oracle_corpus.json not present; run "
+            "scripts/surya_oracle_greedy.py --case corpus"
+        )
+    ref = json.loads(oracle_path.read_text())[page_name]
+    page = FIXTURES / f"page_{page_name}.png"
+    if not page.exists():
+        pytest.skip(f"page_{page_name}.png fixture not present")
+
+    tokenizer = SuryaTokenizer(_model_dir())
+    pixel_rows, grid = preprocess_image_surya(Image.open(page).convert("RGB"))
+    generated = _gpu_ocr_ids(
+        r, spec, tokenizer, pixel_rows, grid, len(ref["ids"]) + 8
+    )
+
+    if generated != ref["ids"]:
+        n = min(len(generated), len(ref["ids"]))
+        first = next((i for i in range(n) if generated[i] != ref["ids"][i]), n)
+        raise AssertionError(
+            f"GPU greedy decode of page_{page_name}.png diverged from the "
+            f"torch fp32 reference at index {first} "
+            f"(gpu len={len(generated)}, ref len={len(ref['ids'])})"
+        )
+
+    # the oracle decodes a rich layout; a near-constant run would make the
+    # parity assertion above vacuous
+    assert len(set(generated)) >= 10, (
+        f"page_{page_name}.png decoded only {len(set(generated))} distinct ids"
+    )
+    assert json.loads(tokenizer.decode(generated)), "output is not valid JSON"
+
+
 def test_gpu_text_only_matches_oracle(runner) -> None:
     """Text-only (no image) path: GPU prefill logits and greedy ids.
 

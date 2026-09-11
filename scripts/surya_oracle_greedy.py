@@ -17,6 +17,10 @@ Two cases, both greedy (argmax) with the model's own logits:
   logits_first). The small page's continuation is a degenerate repeated
   ``<ul><li>`` run, so parity against it is a weak gate; the full page decodes
   a long, non-degenerate layout-JSON sequence.
+- ``corpus``   — ``page_columns.png`` (two-column) and ``page_list.png``
+  (numbered checklist), both 512x512, -> ``oracle_corpus.json``. Layouts the
+  single-column fixtures cannot produce, so the GPU lane cannot pass them by
+  generalizing from the pages already covered.
 
 Additive: regenerating the ``image`` case rewrites ``oracle_greedy.json`` and
 nothing else. It does not touch ``oracle_image.npz`` / ``oracle_text.npz`` /
@@ -24,7 +28,7 @@ nothing else. It does not touch ``oracle_image.npz`` / ``oracle_text.npz`` /
 reproducible from ``scripts/surya_oracle_torch.py``.
 
 Usage:
-    python3 scripts/surya_oracle_greedy.py [--case all|image|fullpage] \
+    python3 scripts/surya_oracle_greedy.py [--case all|image|fullpage|corpus] \
         [--out-dir tests/fixtures/surya] [--device cpu]
 """
 
@@ -43,7 +47,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from surya_oracle_torch import (  # noqa: E402
     PROMPT_TEXT,
     _make_synthetic_page,
+    _make_synthetic_page_columns,
     _make_synthetic_page_full,
+    _make_synthetic_page_list,
 )
 
 DEFAULT_OUT_DIR = Path("tests/fixtures/surya")
@@ -51,6 +57,12 @@ DEFAULT_OUT_DIR = Path("tests/fixtures/surya")
 IMAGE_MAX_TOKENS = 64
 # the full page reaches EOS at 78; 96 leaves headroom to observe the stop
 FULLPAGE_MAX_TOKENS = 96
+# held-out layouts; both reach a natural EOS well inside this budget
+CORPUS_MAX_TOKENS = 96
+CORPUS_PAGES = {
+    "columns": _make_synthetic_page_columns,
+    "list": _make_synthetic_page_list,
+}
 EOS_TOKEN_ID = 2  # tokenizer + generation_config agree
 # canonical archive key order, matching the committed oracle_fullpage.npz
 _FULLPAGE_NPZ_KEYS = (
@@ -186,9 +198,35 @@ def _run_fullpage(model, processor, out_dir: Path, device: str) -> None:
           f"seq={int(caps['input_ids'].shape[1])}")
 
 
+def _run_corpus(model, processor, out_dir: Path, device: str) -> None:
+    """Held-out layouts: a two-column page and a numbered-list page.
+
+    Both differ structurally from the single-column fixtures, so the GPU lane
+    cannot pass them by generalizing from the pages already covered. The pages
+    are written as fixtures; the oracle is a single JSON of ids+text per page.
+    """
+
+    oracle: dict[str, dict[str, object]] = {}
+    for name, draw in CORPUS_PAGES.items():
+        page_path = out_dir / f"page_{name}.png"
+        draw(page_path)
+        caps, _captured, ids, text = _greedy_from_page(
+            model, processor, page_path, device=device, max_tokens=CORPUS_MAX_TOKENS
+        )
+        oracle[name] = {"ids": ids, "text": text}
+        print(
+            f"wrote {out_dir}/page_{name}.png — {len(ids)} greedy ids, "
+            f"grid_thw={caps['image_grid_thw'].tolist()}"
+        )
+    (out_dir / "oracle_corpus.json").write_text(json.dumps(oracle, indent=1))
+    print(f"wrote {out_dir}/oracle_corpus.json — {len(oracle)} pages")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--case", choices=("all", "image", "fullpage"), default="all")
+    parser.add_argument(
+        "--case", choices=("all", "image", "fullpage", "corpus"), default="all"
+    )
     parser.add_argument("--out-dir", type=Path, default=DEFAULT_OUT_DIR)
     parser.add_argument("--device", default="cpu")
     args = parser.parse_args()
@@ -206,6 +244,8 @@ def main() -> None:
         _run_image(model, processor, args.out_dir, args.device)
     if args.case in ("all", "fullpage"):
         _run_fullpage(model, processor, args.out_dir, args.device)
+    if args.case in ("all", "corpus"):
+        _run_corpus(model, processor, args.out_dir, args.device)
 
 
 if __name__ == "__main__":
