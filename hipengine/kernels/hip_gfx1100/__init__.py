@@ -1150,6 +1150,22 @@ GGUF_IQ_DENSE_PREFILL_POLICY["gguf_iq3_s"]["variant"] = _IQ_DENSE_W4A16_COOP_VAR
 GGUF_IQ_DENSE_PREFILL_STRICT_SLOTS = {
     ("MOSTLY_Q4_K_M", "gguf_ud_q4_k_m"): ("layers.0.ffn_up",),
 }
+# Decode-side per-slot strict pins (2026-09-11, decode lever 2b): with all
+# six dense-IQ quants on the local32 decode owner, UD-Q4_K_M's IQ3_S
+# slots compound the family's accumulation-order tail past the 5e-2
+# pooled max ceiling on the tokenized category suite - unpinned seed 7
+# max 5.19e-2; pinning the three ffn_down slots still left seed 11 at
+# 1.785e-1 (mixed_ja_en single-position outlier, p99 3.4e-3), so the
+# ffn_gate slot joins the pin and UD-Q4_K_M's whole IQ3_S population
+# (0.82 ms/tok, 4 launches) keeps the strict GEMV. UD-Q4_K_S - a
+# different artifact identity - keeps the route (its IQ3_S population is
+# 3.0 ms/tok, the campaign's largest remaining strict win). Prefill
+# routing is a separate table and is unchanged by these pins.
+GGUF_IQ_DENSE_DECODE_STRICT_SLOTS = {
+    ("MOSTLY_Q4_K_M", "gguf_ud_q4_k_m"): (
+        "layers.11.ffn_gate", "layers.14.ffn_down", "layers.15.ffn_down",
+        "layers.17.ffn_down"),
+}
 # Dense raw-IQ decode owner (rows=1): the local32 IQ4_XS GEMV candidate.
 # One wave per 8 output columns, each lane owning 8 contiguous K, two u32
 # payload loads per column-block and a byte-indexed fused codebook LUT -
@@ -1185,8 +1201,22 @@ GGUF_IQ_DENSE_DECODE_POLICY = {
     # (<= 5e-4 relative); the tokenized category suite is the admission
     # evidence (3 seeds, both artifacts).
     "gguf_iq4_nl": {"variant": "local32_gemv_bf16_bf16_out"},
+    # The split/scale siblings join the local32 decode owner (2026-09-11,
+    # decode lever 2b): IQ3_S, IQ3_XXS, IQ2_S, IQ2_XS share the owner's
+    # geometry - each lane's 8 contiguous k map to one 8-element slot (or two
+    # 4-element grid slots) of a 32-element group - so the per-lane payload
+    # is a handful of metadata bytes per column per 256-block. Grid staging
+    # follows the strict kernel's own measurements (iq3_grid and
+    # iq3_xxs_grid in LDS; iq2_s_grid stays __constant__). Elementwise
+    # agreement with the strict GEMV is bit-exact (one-hot probes, all
+    # blocks); the tokenized category suite is the admission evidence
+    # (3 seeds, both artifacts).
+    "gguf_iq3_s": {"variant": "local32_gemv_bf16_bf16_out"},
+    "gguf_iq3_xxs": {"variant": "local32_gemv_bf16_bf16_out"},
+    "gguf_iq2_s": {"variant": "local32_gemv_bf16_bf16_out"},
+    "gguf_iq2_xs": {"variant": "local32_gemv_bf16_bf16_out"},
 }
-# Q3_K, IQ2_S and IQ2_XS are W4A16-serviceable but deliberately NOT routed:
+# Q3_K is W4A16-serviceable but deliberately NOT routed:
 # adding all three measured 176.5 tok/s on gfx1151 but moved the mean
 # 0.000827 -> 0.001061, 6% over the calibrated 1e-3 limit. See the gfx1151
 # declaration and docs/UD-OPTIMIZED-ROUTE-PLAN.md for the unblock paths.
@@ -1278,6 +1308,7 @@ __all__ = [
     "GGUF_CONSUMER_LAYERS",
     "GGUF_IQ_DENSE_PREFILL_POLICY",
     "GGUF_IQ_DENSE_PREFILL_STRICT_SLOTS",
+    "GGUF_IQ_DENSE_DECODE_STRICT_SLOTS",
     "GGUF_IQ_DENSE_DECODE_POLICY",
     "LAGUNA_GLOBAL_SPLIT_MIN_LIVE",
     "LAGUNA_HEAD_KV_FUSION",

@@ -311,6 +311,14 @@ _iq_dense_mmq_workspace: ContextVar[IQDenseMMQWorkspace | None] = ContextVar(
 _iq_dense_mmq_strict_slots: ContextVar[frozenset[str]] = ContextVar(
     "iq_dense_mmq_strict_slots", default=frozenset()
 )
+# Slot paths an owning session pinned to the strict per-row GEMV for its
+# artifact on the DECODE side (per-stamp quality admission, the decode
+# sibling of the prefill pin above); the decode dispatch keeps their
+# strict owner. Kept in its own set so a prefill pin never unroutes decode
+# and vice versa.
+_iq_dense_decode_strict_slots: ContextVar[frozenset[str]] = ContextVar(
+    "iq_dense_decode_strict_slots", default=frozenset()
+)
 
 
 def iq_dense_mmq_activation_nbytes(rows: int, hidden: int) -> int:
@@ -333,6 +341,12 @@ def iq_dense_mmq_strict_slots() -> frozenset[str]:
     """Slot paths the owning session pinned to the strict owner, if any."""
 
     return _iq_dense_mmq_strict_slots.get()
+
+
+def iq_dense_decode_strict_slots() -> frozenset[str]:
+    """Slot paths pinned to the strict decode owner, if any."""
+
+    return _iq_dense_decode_strict_slots.get()
 
 
 def iq_dense_mmq_workspace() -> IQDenseMMQWorkspace | None:
@@ -362,6 +376,7 @@ def iq_dense_mmq_session(
     library: object = None,
     producer_library: object = None,
     strict_slots: Iterable[str] = (),
+    decode_strict_slots: Iterable[str] = (),
 ) -> Iterator[None]:
     """Bind a bounded workspace for the dense IQ integer-MMQ prefill route."""
 
@@ -385,9 +400,12 @@ def iq_dense_mmq_session(
     token = _iq_dense_mmq_workspace.set(workspace)
     pinned = frozenset(str(s) for s in strict_slots)
     pinned_token = _iq_dense_mmq_strict_slots.set(pinned)
+    decode_pinned = frozenset(str(s) for s in decode_strict_slots)
+    decode_pinned_token = _iq_dense_decode_strict_slots.set(decode_pinned)
     try:
         yield
     finally:
+        _iq_dense_decode_strict_slots.reset(decode_pinned_token)
         _iq_dense_mmq_strict_slots.reset(pinned_token)
         _iq_dense_mmq_workspace.reset(token)
 

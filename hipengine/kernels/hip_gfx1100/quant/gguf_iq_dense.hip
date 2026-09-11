@@ -722,6 +722,207 @@ extern "C" int hipengine_gguf_iq4_xs_local32_dual_silu(const void* x,
     }
 }
 
+// Local32 decode GEMV for the split/scale IQ quants (decode lever 2b):
+// IQ3_S (Q=2), IQ3_XXS (Q=4), IQ2_S (Q=5), IQ2_XS (Q=6) - the siblings of
+// the IQ4_XS/IQ4_NL owners. Same geometry: one wave per 8 output columns,
+// each lane owns 8 contiguous k, WAVES-way K split, and per quant a lane's
+// window maps to exactly one 8-element slot (IQ2_S/XS, IQ3_XXS) or two
+// 4-element grid slots (IQ3_S) of its 32-element group, so the per-lane
+// metadata is a handful of bytes per column per 256-block.
+//
+// Grid staging follows the strict kernel's own measurements: iq3_grid
+// (2 KB) and iq3_xxs_grid (1 KB) stage in LDS; iq2_s_grid (8 KB) is
+// excluded by measurement (occupancy loss outweighs the loads it
+// removes) and stays __constant__; IQ2_XS_GRID_PACKED (1 KB) stages.
+//
+// Same accumulation-order contract as the other local32 owners:
+// lane-grouped contiguous k, wave32 shuffle tree, fixed-order cross-wave
+// sum - a gated approximate owner, not a strict replacement.
+template<int Q, int WAVES>
+__global__ __launch_bounds__(32 * WAVES, 16 / WAVES > 0 ? 16 / WAVES : 1)
+void gguf_iq_split_local32_gemv_kernel(
+    const uint16_t* __restrict__ x, const uint8_t* __restrict__ w,
+    uint16_t* __restrict__ out, int64_t K, int64_t N) {
+    constexpr int COLS = 8;
+    constexpr int S = Q == 2 ? 110 : (Q == 4 ? 98 : (Q == 5 ? 82 : 74));
+    constexpr int GRID_BYTES =
+        Q == 2 ? 2048 : (Q == 4 ? 1024 : (Q == 6 ? 1024 : 0));
+    const int tid = threadIdx.x;
+    const int wave = tid >> 5;
+    const int lane = tid & 31;
+    const int64_t n0 = int64_t(blockIdx.x) * COLS;
+    const int64_t blocks_per_row = K / 256;
+    const int64_t col_bytes = blocks_per_row * S;
+
+    const int g = lane >> 2;            // this lane's 32-element group
+    const int slot = lane & 3;          // its 8-element slot in the group
+    const int half = (lane & 3) >> 1;  // its 16-element scale half
+
+    __shared__ uint8_t s_grid[GRID_BYTES ? GRID_BYTES : 1];
+    if constexpr (GRID_BYTES) {
+        const uint8_t* src = Q == 2 ? iq3_grid
+            : (Q == 4 ? iq3_xxs_grid
+                      : reinterpret_cast<const uint8_t*>(IQ2_XS_GRID_PACKED));
+        for (int i = tid; i < GRID_BYTES; i += 32 * WAVES)
+            s_grid[i] = src[i];
+        __syncthreads();
+    }
+
+    float acc[COLS];
+#pragma unroll
+    for (int t = 0; t < COLS; ++t) acc[t] = 0.0f;
+
+    for (int64_t blk = wave; blk < blocks_per_row; blk += WAVES) {
+        const uint16_t* xp = x + blk * 256 + lane * 8;
+        float xv[8];
+#pragma unroll
+        for (int j = 0; j < 8; ++j) xv[j] = bf16_load(xp[j]);
+#pragma unroll
+        for (int t = 0; t < COLS; ++t) {
+            if (n0 + t >= N) break;
+            const uint8_t* b = w + (n0 + t) * col_bytes + blk * S;
+            if constexpr (Q == 2) {
+                // IQ3_S: d + per-group scale nibble, 2 grid-slot index
+                // bytes (+high bits) and 1 sign byte for this lane's window.
+                const float d = half_load(b);
+                const int scale =
+                    1 + 2 * ((b[106 + g / 2] >> (4 * (g & 1))) & 15);
+                const float sd = d * float(scale);
+                const int hb = b[66 + g];
+                const int i0 = b[2 + g * 8 + 2 * slot]
+                             | (((hb >> (2 * slot)) & 1) << 8);
+                const int i1 = b[2 + g * 8 + 2 * slot + 1]
+                             | (((hb >> (2 * slot + 1)) & 1) << 8);
+                const int signs = b[74 + g * 4 + slot];
+#pragma unroll
+                for (int j = 0; j < 8; ++j) {
+                    const int index = j < 4 ? i0 : i1;
+                    const float mag =
+                        float(s_grid[index * 4 + (j & 3)]);
+                    const float sgn = (signs & (1 << j)) ? -1.0f : 1.0f;
+                    acc[t] += xv[j] * (sd * mag * sgn);
+                }
+            } else if constexpr (Q == 4) {
+                // IQ3_XXS: d + 4-byte per-group aux (scale in the top
+                // nibble, 7-bit sign patterns below). The 98-byte stride
+                // leaves aux only 2-aligned, so it reads as two u16s.
+                const float d = half_load(b);
+                const uint16_t a0 = *reinterpret_cast<const uint16_t*>(
+                    b + 66 + 4 * g);
+                const uint16_t a1 = *reinterpret_cast<const uint16_t*>(
+                    b + 66 + 4 * g + 2);
+                const uint32_t aux =
+                    uint32_t(a0) | (uint32_t(a1) << 16);
+                const float sd = (d * (0.5f + float(aux >> 28))) * 0.5f;
+                // The grid index is per 4 elements (j/4), so this lane's
+                // window spans two grid slots; signs stay per 8.
+                const int i0 = b[2 + g * 8 + 2 * slot];
+                const int i1 = b[2 + g * 8 + 2 * slot + 1];
+                const int signs =
+                    iq_sign_bits(int((aux >> (7 * slot)) & 127));
+#pragma unroll
+                for (int j = 0; j < 8; ++j) {
+                    const float mag = float(
+                        s_grid[(j < 4 ? i0 : i1) * 4 + (j & 3)]);
+                    const float sgn = (signs & (1 << j)) ? -1.0f : 1.0f;
+                    acc[t] += xv[j] * (sd * mag * sgn);
+                }
+            } else if constexpr (Q == 5) {
+                // IQ2_S: d + per-group scale/index-high bytes and one
+                // sign byte; the 8 KB grid stays __constant__ (staging it
+                // was measured -10.6% on the strict owner).
+                const float d = half_load(b);
+                const int index = b[2 + g * 4 + slot]
+                                | (((b[66 + g] >> (2 * slot)) & 3) << 8);
+                const int scale = (b[74 + g] >> (4 * half)) & 15;
+                const float sd = (d * (0.5f + float(scale))) * 0.25f;
+                const int signs = b[34 + g * 4 + slot];
+#pragma unroll
+                for (int j = 0; j < 8; ++j) {
+                    const float mag = float(iq2_s_grid[index * 8 + j]);
+                    const float sgn = (signs & (1 << j)) ? -1.0f : 1.0f;
+                    acc[t] += xv[j] * (sd * mag * sgn);
+                }
+            } else {
+                // IQ2_XS: d + one 16-bit word per slot (9-bit packed-grid
+                // index + 7-bit sign pattern) and a per-16 scale nibble.
+                const float d = half_load(b);
+                const uint16_t word = *reinterpret_cast<const uint16_t*>(
+                    b + 2 + 2 * (g * 4 + slot));
+                const int scale = (b[66 + g] >> (4 * half)) & 15;
+                const float sd = (d * (0.5f + float(scale))) * 0.25f;
+                const uint16_t packed = *reinterpret_cast<const uint16_t*>(
+                    s_grid + 2 * (word & 511));
+                const int signs = iq_sign_bits(word >> 9);
+#pragma unroll
+                for (int j = 0; j < 8; ++j) {
+                    const int code = (packed >> (2 * j)) & 3;
+                    const float mag = iq2_xs_magnitude(code);
+                    const float sgn = (signs & (1 << j)) ? -1.0f : 1.0f;
+                    acc[t] += xv[j] * (sd * mag * sgn);
+                }
+            }
+        }
+    }
+#pragma unroll
+    for (int t = 0; t < COLS; ++t)
+        for (int delta = 16; delta; delta >>= 1)
+            acc[t] += __shfl_down(acc[t], delta);
+    __shared__ float xwave[WAVES > 1 ? WAVES : 1][COLS];
+    if (lane == 0) {
+#pragma unroll
+        for (int t = 0; t < COLS; ++t) xwave[wave][t] = acc[t];
+    }
+    __syncthreads();
+    if (tid < COLS) {
+        const int t = tid;
+        if (n0 + t < N) {
+            float total = 0.0f;
+#pragma unroll
+            for (int wv2 = 0; wv2 < WAVES; ++wv2) total += xwave[wv2][t];
+            out[n0 + t] = bf16_store(total);
+        }
+    }
+}
+
+extern "C" int hipengine_gguf_iq_split_local32_gemv(const void* x,
+    const void* w, void* out, int64_t rows, int64_t K, int64_t N,
+    int quant, int waves, void* stream) {
+    if (!x || !w || !out || rows != 1 || K <= 0 || K % 256 || N <= 0 || N % 8)
+        return int(hipErrorInvalidValue);
+    if (quant != 2 && quant != 4 && quant != 5 && quant != 6)
+        return int(hipErrorInvalidValue);
+    if (waves != 1 && waves != 2 && waves != 4)
+        return int(hipErrorInvalidValue);
+    const dim3 grid(unsigned(N / 8));
+    const hipStream_t s = (hipStream_t)stream;
+    const uint16_t* xp = (const uint16_t*)x;
+    const uint8_t* wp = (const uint8_t*)w;
+    uint16_t* op = (uint16_t*)out;
+#define UD_LAUNCH(QQ, WW)                                                     \
+    gguf_iq_split_local32_gemv_kernel<QQ, WW>                                 \
+        <<<grid, 32 * WW, 0, s>>>(xp, wp, op, K, N)
+    if (quant == 2) {
+        if (waves == 1) { UD_LAUNCH(2, 1); }
+        else if (waves == 2) { UD_LAUNCH(2, 2); }
+        else { UD_LAUNCH(2, 4); }
+    } else if (quant == 4) {
+        if (waves == 1) { UD_LAUNCH(4, 1); }
+        else if (waves == 2) { UD_LAUNCH(4, 2); }
+        else { UD_LAUNCH(4, 4); }
+    } else if (quant == 5) {
+        if (waves == 1) { UD_LAUNCH(5, 1); }
+        else if (waves == 2) { UD_LAUNCH(5, 2); }
+        else { UD_LAUNCH(5, 4); }
+    } else {
+        if (waves == 1) { UD_LAUNCH(6, 1); }
+        else if (waves == 2) { UD_LAUNCH(6, 2); }
+        else { UD_LAUNCH(6, 4); }
+    }
+#undef UD_LAUNCH
+    return int(hipGetLastError());
+}
+
 extern "C" int hipengine_gguf_q3_k_embedding(const void* ids, const void* w,
     void* out, int64_t rows, int64_t K, int64_t vocab, void* stream) {
     if (!ids || !w || !out || rows<=0 || rows>65535 || K<=0 || K%256 || vocab<=0)

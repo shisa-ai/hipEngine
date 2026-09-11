@@ -13,6 +13,10 @@ TABLE_HASH = hashlib.sha256(b''.join(SOURCE.with_name(name).read_bytes() for nam
      'gguf_iq3_s_grid.h'))).hexdigest()
 QUANTS = {'gguf_iq4_xs': 0, 'gguf_iq4_nl': 1, 'gguf_iq3_s': 2, 'gguf_q3_k': 3,
           'gguf_iq3_xxs': 4, 'gguf_iq2_s': 5, 'gguf_iq2_xs': 6}
+# Quants the local32 decode owner serves; the split/scale family routes to
+# its own export (one kernel, per-quant decode blocks).
+_LOCAL32_SPLIT_QUANTS = ('gguf_iq3_s', 'gguf_iq3_xxs', 'gguf_iq2_s',
+                         'gguf_iq2_xs')
 OUTPUTS = {'f32': 0, 'bf16': 1}
 # Rows per block. R only changes which prompt rows share a block, so every
 # value is bit-identical to R=1; it trades registers for an R-fold cut in
@@ -38,9 +42,9 @@ def launch_local32(x_ptr, qweight_ptr, out_ptr, rows, in_features, out_features,
     accuracy gate. Measured max relative error against the strict owner on
     real tensors is <= 2.3e-4 (2026-09-09, W7900).
     """
-    if quant not in ('gguf_iq4_xs', 'gguf_iq4_nl'):
-        raise ValueError('local32 dense IQ decode supports gguf_iq4_xs and '
-                         'gguf_iq4_nl only')
+    if quant not in ('gguf_iq4_xs', 'gguf_iq4_nl') + _LOCAL32_SPLIT_QUANTS:
+        raise ValueError('local32 dense IQ decode supports the IQ4/IQ3/IQ2 '
+                         'family only')
     if output != 'bf16':
         raise ValueError('local32 dense IQ decode writes bf16 only')
     if (rows != 1 or in_features <= 0 or in_features % 256
@@ -53,11 +57,17 @@ def launch_local32(x_ptr, qweight_ptr, out_ptr, rows, in_features, out_features,
     key = id(library)
     fn = _LOCAL32_HANDLES.get((key, quant))
     if fn is None:
-        symbol = ('hipengine_gguf_iq4_xs_local32_gemv'
-                  if quant == 'gguf_iq4_xs'
-                  else 'hipengine_gguf_iq4_nl_local32_gemv')
-        fn = getattr(library, symbol)
-        fn.argtypes = [ctypes.c_void_p] * 3 + [ctypes.c_int64] * 4 + [ctypes.c_void_p]
+        if quant in _LOCAL32_SPLIT_QUANTS:
+            fn = library.hipengine_gguf_iq_split_local32_gemv
+            fn.argtypes = ([ctypes.c_void_p] * 3 + [ctypes.c_int64] * 3
+                           + [ctypes.c_int32] * 2 + [ctypes.c_void_p])
+        else:
+            symbol = ('hipengine_gguf_iq4_xs_local32_gemv'
+                      if quant == 'gguf_iq4_xs'
+                      else 'hipengine_gguf_iq4_nl_local32_gemv')
+            fn = getattr(library, symbol)
+            fn.argtypes = ([ctypes.c_void_p] * 3 + [ctypes.c_int64] * 4
+                           + [ctypes.c_void_p])
         fn.restype = ctypes.c_int
         _LOCAL32_HANDLES[(key, quant)] = fn
     # Split-K wave count: narrow-N shapes leave too few single-wave blocks on
@@ -67,9 +77,14 @@ def launch_local32(x_ptr, qweight_ptr, out_ptr, rows, in_features, out_features,
     waves = 4 if out_features < 8192 else 2
     while waves > 1 and in_features // 256 < 4 * waves:
         waves //= 2
-    err = fn(ctypes.c_void_p(x_ptr), ctypes.c_void_p(qweight_ptr),
-             ctypes.c_void_p(out_ptr), rows, in_features, out_features,
-             waves, ctypes.c_void_p(stream))
+    if quant in _LOCAL32_SPLIT_QUANTS:
+        err = fn(ctypes.c_void_p(x_ptr), ctypes.c_void_p(qweight_ptr),
+                 ctypes.c_void_p(out_ptr), rows, in_features, out_features,
+                 QUANTS[quant], waves, ctypes.c_void_p(stream))
+    else:
+        err = fn(ctypes.c_void_p(x_ptr), ctypes.c_void_p(qweight_ptr),
+                 ctypes.c_void_p(out_ptr), rows, in_features, out_features,
+                 waves, ctypes.c_void_p(stream))
     if err:
         rt = runtime or get_hip_runtime()
         raise RuntimeError(f'local32 dense IQ decode failed: {rt.error_string(err)}')
@@ -203,6 +218,10 @@ def register_gguf_iq_dense_kernels(*, backend='hip_gfx1100', replace=True):
     register(KernelKey(backend, 'linear', 'gguf_iq4_nl',
                        'local32_gemv_bf16_bf16_out'),
              partial(launch_local32, quant='gguf_iq4_nl'), replace=replace)
+    for quant in _LOCAL32_SPLIT_QUANTS:
+        register(KernelKey(backend, 'linear', quant,
+                           'local32_gemv_bf16_bf16_out'),
+                 partial(launch_local32, quant=quant), replace=replace)
     register(KernelKey(backend, 'linear_pair_silu', 'gguf_iq4_xs',
                        'local32_pair_silu_bf16_bf16_out'),
              launch_local32_dual_silu, replace=replace)
