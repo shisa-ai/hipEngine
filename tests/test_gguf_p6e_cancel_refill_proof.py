@@ -34,6 +34,10 @@ _HEALTHY = {
     "blocking_survivor_text": _REFERENCE_TEXT,
     "slow_consumer_survivor_text": _REFERENCE_TEXT,
     "slow_consumer_completed": True,
+    # The layer-outer route must be seen to engage, or the other gates are
+    # evidence about the default chunk-outer path instead of the deliverable.
+    "oracle_peak_owners": 1.0,
+    "oracle_peak_bytes": 912907308.0,
 }
 
 
@@ -48,6 +52,7 @@ def test_all_gates_pass_on_a_healthy_run() -> None:
 
     assert set(gates) == {
         "cancellation_reached_backend",
+        "resumable_path_engaged",
         "survivors_exact",
         "blocking_survivor_exact",
         "slow_consumer_survivor_exact",
@@ -56,6 +61,31 @@ def test_all_gates_pass_on_a_healthy_run() -> None:
         "cleanup",
     }
     assert all(gate["passed"] for gate in gates.values())
+
+
+def test_resumable_gate_fails_when_the_layer_outer_route_never_engaged() -> None:
+    """The gate that stops this proof from silently testing the default route."""
+
+    gates = _gates(oracle_peak_owners=0.0, oracle_peak_bytes=0.0)
+
+    assert gates["resumable_path_engaged"]["passed"] is False
+    # Every other gate can still pass, which is exactly the hazard: they would be
+    # evidence about a route that does not contain the deliverable.
+    assert gates["survivors_exact"]["passed"] is True
+    assert gates["cancellation_reached_backend"]["passed"] is True
+
+
+def test_resumable_gate_fails_when_the_oracle_metrics_are_absent() -> None:
+    gates = _gates(oracle_peak_owners=None, oracle_peak_bytes=None)
+
+    assert gates["resumable_path_engaged"]["passed"] is False
+
+
+def test_resumable_gate_fails_when_owners_rose_but_bytes_did_not() -> None:
+    # A partial reading must not be accepted as engagement.
+    gates = _gates(oracle_peak_owners=1.0, oracle_peak_bytes=0.0)
+
+    assert gates["resumable_path_engaged"]["passed"] is False
 
 
 def test_blocking_survivor_gate_fails_when_the_blocking_arm_perturbs_it() -> None:
