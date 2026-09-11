@@ -2,6 +2,16 @@
 
 Last updated: **2026-09-13**
 
+Surya OCR 2 first hipEngine GPU decoder lane on Strix Halo gfx1151:
+fp32 HIP text decoder end-to-end 2.395 s vs transformers fp32 2.662 s on
+the same host iGPU (prefill 0.122 s vs 1.620 s, 13.3x; decode 32.2 vs
+68.0 tok/s), all four measured lanes (hipEngine CPU, torch CPU, torch
+HIP, hipEngine GPU) greedy-match the torch fp32 CPU oracle. The vision
+tower is still the CPU-reference path (~1.3 s of the GPU-lane e2e) and
+the decode rate trails torch generate 2.1x, so no decode-superiority
+claim is made; both are recorded follow-ups.
+[Lane compare](results/2026-09-11-gfx1151-surya-lane-compare.json).
+
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
