@@ -26,6 +26,7 @@ from scripts.gguf_c1_decode_attribution import (
     read_kernels,
     read_marker_windows,
     read_memory_copies,
+    split_step_phases,
     summarize,
     trace_environment,
 )
@@ -76,6 +77,34 @@ def _window(index: int, start: int, end: int) -> dict[str, object]:
 )
 def test_classify_kernel_buckets(name: str, expected: str) -> None:
     assert classify_kernel(name) == expected
+
+
+def test_split_step_phases_separates_readback_from_host_work() -> None:
+    split = split_step_phases([0.035, 0.030], [20.0, 12.5])
+
+    assert split["step_walls_ms"] == [35.0, 30.0]
+    assert split["readback_ms"] == [20.0, 12.5]
+    assert split["host_outside_readback_ms"] == [15.0, 17.5]
+    # The split must reconstruct the wall, or the phases do not partition it.
+    for wall, readback, host in zip(
+        split["step_walls_ms"],
+        split["readback_ms"],
+        split["host_outside_readback_ms"],
+        strict=True,
+    ):
+        assert readback + host == pytest.approx(wall)
+
+
+def test_split_step_phases_rejects_a_readback_longer_than_its_step() -> None:
+    # A mis-attributed copy would otherwise surface as negative host time, which
+    # reads as an improvement rather than an error.
+    with pytest.raises(ValueError, match="cannot exceed its own wall"):
+        split_step_phases([0.020], [25.0])
+
+
+def test_split_step_phases_rejects_mismatched_lengths() -> None:
+    with pytest.raises(ValueError, match="per step"):
+        split_step_phases([0.035, 0.030], [20.0])
 
 
 def test_read_marker_windows_sorts_and_filters(tmp_path: Path) -> None:

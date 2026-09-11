@@ -136,6 +136,7 @@ def run_child(args: argparse.Namespace) -> int:
     prompt = _prompt_tokens(int(args.prompt_rows))
     marker = _Roctx()
     walls: list[float] = []
+    readback_ms: list[float] = []
 
     # A synchronous hipMemcpy blocks the host until the stream drains, so its
     # traced duration is mostly queue wait rather than transfer. The trace alone
@@ -188,6 +189,14 @@ def run_child(args: argparse.Namespace) -> int:
             for index in range(int(args.decode_tokens) - 1):
                 marker.push(f"{STEP_MARKER_PREFIX}{index}")
                 state["in_step"] = True
+                # Snapshot the per-site memcpy totals so the blocking D2H can be
+                # attributed to this step. The readback waits for the stream to
+                # drain, so it overlaps GPU execution; whatever the step wall
+                # spends *outside* it is host work with the GPU idle, and that is
+                # the part worth targeting.
+                before_ns = {
+                    site: entry["total_ns"] for site, entry in sync_callsites.items()
+                }
                 started = time.perf_counter()
                 try:
                     step = session.step(token, return_logits=False)
@@ -195,6 +204,12 @@ def run_child(args: argparse.Namespace) -> int:
                     state["in_step"] = False
                     marker.pop()
                 walls.append(time.perf_counter() - started)
+                step_readback_ns = 0
+                for site, entry in sync_callsites.items():
+                    delta = entry["total_ns"] - before_ns.get(site, 0)
+                    if "_read_sample" in site:
+                        step_readback_ns += delta
+                readback_ms.append(step_readback_ns / 1e6)
                 token = int(step.token_id)
     finally:
         runtime.memcpy = original_memcpy  # type: ignore[method-assign]
@@ -205,6 +220,10 @@ def run_child(args: argparse.Namespace) -> int:
         "prompt_rows": len(prompt),
         "measured_steps": len(walls),
         "step_walls_ms": [round(value * 1e3, 3) for value in walls],
+        "step_readback_ms": [round(value, 3) for value in readback_ms],
+        "step_host_outside_readback_ms": split_step_phases(walls, readback_ms)[
+            "host_outside_readback_ms"
+        ],
         "final_token_id": int(token),
         "sync_memcpy_callsites": [
             {
@@ -250,6 +269,44 @@ def classify_kernel(name: str) -> str:
     if "wmma" in lowered or "dense" in lowered:
         return "gguf_q4_k_t16_dense_wmma"
     return "other"
+
+
+def split_step_phases(
+    step_walls_s: Sequence[float], step_readback_ms: Sequence[float]
+) -> dict[str, list[float]]:
+    """Split each decode step wall into its blocking readback and everything else.
+
+    The readback is a synchronous D2H copy, so its duration is mostly queue wait:
+    the host is blocked while the step's GPU work drains. The step wall *outside*
+    that wait is host work that the GPU is not covering, which is the part worth
+    targeting. Rejecting a readback longer than its own step keeps the split
+    meaningful rather than letting a mis-attributed copy produce negative host
+    time that would read as a win.
+    """
+
+    if len(step_walls_s) != len(step_readback_ms):
+        raise ValueError(
+            "step walls and readback durations must be recorded per step: "
+            f"{len(step_walls_s)} walls vs {len(step_readback_ms)} readbacks"
+        )
+    walls_ms: list[float] = []
+    readback_ms: list[float] = []
+    host_ms: list[float] = []
+    for wall_s, readback in zip(step_walls_s, step_readback_ms, strict=True):
+        wall = wall_s * 1e3
+        if readback > wall:
+            raise ValueError(
+                "a step's readback cannot exceed its own wall: "
+                f"{readback:.3f} ms readback in a {wall:.3f} ms step"
+            )
+        walls_ms.append(round(wall, 3))
+        readback_ms.append(round(readback, 3))
+        host_ms.append(round(wall - readback, 3))
+    return {
+        "step_walls_ms": walls_ms,
+        "readback_ms": readback_ms,
+        "host_outside_readback_ms": host_ms,
+    }
 
 
 def read_marker_windows(path: Path) -> list[dict[str, int]]:
