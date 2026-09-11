@@ -6974,8 +6974,8 @@ runtime call site to registry resolution, and drop the
 
 ## 2026-09-11 Committed profiler traces and oversized captures under `benchmarks/results/`
 
-**State.** `git ls-files benchmarks/results` totals **159 MB**. Seven raw
-`rocprofv3` trace CSVs carry ~73 MB of it:
+**State.** `git ls-files benchmarks/results | xargs du -cb | tail -1` totals
+**155.7 MB**. Seven raw `rocprofv3` trace CSVs carry ~73 MB of it:
 
 | file | size |
 | --- | ---: |

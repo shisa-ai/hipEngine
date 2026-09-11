@@ -31,11 +31,13 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import sys
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Iterator
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -229,6 +231,35 @@ def mtp_scope_granted(preset_keys: set[str]):
         admission.resolve_qwen35_gguf_artifact_preset = original
 
 
+@contextmanager
+def device_selected(index: int) -> Iterator[dict[str, str | None]]:
+    """Pin device selection for the child suites, and restore it afterwards.
+
+    ``HIP_VISIBLE_DEVICES`` indexes into whatever ``ROCR_VISIBLE_DEVICES`` left
+    visible, so a stale ``ROCR_VISIBLE_DEVICES`` silently retargets the run:
+    with ``ROCR_VISIBLE_DEVICES=1`` the physical GPU 1 is logical 0, and
+    ``HIP_VISIBLE_DEVICES=1`` then selects nothing.  Clearing it makes
+    ``HIP_VISIBLE_DEVICES`` the single source of truth for the physical index.
+
+    Yields the prior values so the caller can record what it changed.  Both
+    variables are restored on exit, including on failure, so an in-process
+    caller cannot leak the selection into later work.
+    """
+
+    keys = ("HIP_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES")
+    prior = {key: os.environ.get(key) for key in keys}
+    os.environ["HIP_VISIBLE_DEVICES"] = str(int(index))
+    os.environ.pop("ROCR_VISIBLE_DEVICES", None)
+    try:
+        yield prior
+    finally:
+        for key, value in prior.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
 def _run_pair(argv: list[str], output: Path) -> dict[str, object]:
     from scripts import qwen36_dense_gguf_suite as suite
 
@@ -279,6 +310,36 @@ def expected_prompt_ids(prompts_path: Path) -> tuple[str, ...]:
     return tuple(ids)
 
 
+def _argv_flag(argv: object, flag: str) -> str | None:
+    """The value following ``flag`` in a resolved argv, or None."""
+
+    items = [str(part) for part in argv]  # type: ignore[union-attr]
+    if flag not in items:
+        return None
+    index = items.index(flag)
+    return items[index + 1] if index + 1 < len(items) else None
+
+
+def _normalized_command(parts: object) -> list[str]:
+    """A command with the payload-location detail removed.
+
+    ``--output`` names where the payload landed, which ``--from-raw`` may
+    legitimately relocate; it is not a protocol dimension.  Everything else is
+    kept, because everything else is a dimension the resolved command fixed.
+    """
+
+    items = [str(part) for part in parts]  # type: ignore[union-attr]
+    out: list[str] = []
+    index = 0
+    while index < len(items):
+        if items[index] == "--output":
+            index += 2
+            continue
+        out.append(items[index])
+        index += 1
+    return out
+
+
 def _evidence_completeness(
     payload: dict,
     *,
@@ -291,6 +352,11 @@ def _evidence_completeness(
     Without this, a truncated payload passes every downstream gate trivially: a
     single-run file gives each prompt one token hash, so ``_determinism`` finds
     no disagreement and reports deterministic repeats.
+
+    Row coverage alone is not enough.  It says *how many* rows arrived, not
+    *which protocol* produced them: a serial-verifier payload has the same shape
+    as a native-verifier one, so every dimension the resolved command fixed is
+    compared against what the payload itself declares.
     """
 
     problems: list[str] = []
@@ -323,6 +389,52 @@ def _evidence_completeness(
     for field in ("host_name", "device_name", "resolved_backend", "target_arch", "hipengine_commit"):
         if not provenance.get(field):
             problems.append(f"provenance.{field} missing")
+
+    # --- protocol identity -------------------------------------------------
+    # Every dimension the resolved command pinned, checked against the payload's
+    # own declaration.  Shape checks above cannot see any of these.
+    quant = provenance.get("quant")
+    if str(quant) != str(command["quant"]):
+        problems.append(
+            f"provenance.quant {quant!r} != {command['quant']!r} "
+            "(session quant identity)"
+        )
+    expected_verify_mode = _argv_flag(command["argv"], "--target-verify-mode")
+    if str(workload.get("target_verify_mode")) != str(expected_verify_mode):
+        problems.append(
+            f"workload.target_verify_mode {workload.get('target_verify_mode')!r} != "
+            f"{expected_verify_mode!r} (a serial-verifier payload is not the "
+            "native-verifier result)"
+        )
+    expected_draft = _argv_flag(command["argv"], "--draft-hidden-variant")
+    if str(workload.get("draft_hidden_variant")) != str(expected_draft):
+        problems.append(
+            f"workload.draft_hidden_variant {workload.get('draft_hidden_variant')!r} "
+            f"!= {expected_draft!r}"
+        )
+    if int(workload.get("runs") or 0) != int(runs):
+        problems.append(
+            f"workload.runs {workload.get('runs')!r} != {int(runs)} (workload run count)"
+        )
+    if bool(workload.get("warmup")) is not bool(PAIRED_PROTOCOL["warmup"]):
+        problems.append(
+            f"workload.warmup {workload.get('warmup')!r} != {PAIRED_PROTOCOL['warmup']!r}"
+        )
+    if int(provenance.get("repetitions") or 0) != int(runs):
+        problems.append(
+            f"provenance.repetitions {provenance.get('repetitions')!r} != {int(runs)}"
+        )
+
+    # The recorded argv is the strongest identity statement available.  The
+    # payload may carry the absolute interpreter that ran it, which is an
+    # environment detail rather than a protocol dimension, so a leading
+    # interpreter element is accepted.
+    resolved_command = _normalized_command(command["argv"])
+    recorded_command = _normalized_command(provenance.get("command") or ())
+    if recorded_command != resolved_command and recorded_command[1:] != resolved_command:
+        problems.append(
+            f"provenance.command {recorded_command} != resolved {resolved_command}"
+        )
 
     rows = payload.get("rows") or {}
     groups: dict[str, list[dict]] = {"true_ar": list(rows.get("true_ar") or [])}
@@ -414,8 +526,15 @@ def _verdict(
     *,
     command: dict[str, object],
     prompt_ids: tuple[str, ...],
+    timing_evidence_valid: bool = True,
 ) -> dict[str, object]:
-    """Binding control gates plus the recorded-not-binding exactness evidence."""
+    """Binding control gates plus the recorded-not-binding exactness evidence.
+
+    ``timing_evidence_valid`` is the mechanical invalidation switch.  When a run
+    is known to have been taken under conditions that make its rates unusable
+    (for example a device owned by another worker), every timing-derived gate
+    must fail rather than stay green behind a descriptive note.
+    """
 
     summary = payload.get("summary", {})
     true_ar = summary.get("true_ar", {}).get("full", {})
@@ -430,18 +549,28 @@ def _verdict(
     )
     determinism = _determinism(payload, runs)
     correctness = payload.get("correctness", {})
+    # An invalidated run keeps its token-ID evidence (contention changes timing,
+    # not identity) but may not carry any rate-derived claim.
+    timing_gates = {
+        "true_ar_denominator_present": bool(true_ar.get("decode_tok_s_weighted")),
+        "faster_than_true_ar": best_ratio > 1.0,
+    }
     binding_gates = {
         "evidence_complete": bool(completeness["complete"]),
-        "true_ar_denominator_present": bool(true_ar.get("decode_tok_s_weighted")),
+        "timing_evidence_valid": bool(timing_evidence_valid),
+        "true_ar_denominator_present": bool(timing_evidence_valid)
+        and timing_gates["true_ar_denominator_present"],
         "all_gpu_accept_match_cpu": bool(correctness.get("all_gpu_accept_match_cpu")),
         "deterministic_repeats": bool(completeness["complete"])
         and bool(determinism["deterministic"]),
-        "faster_than_true_ar": best_ratio > 1.0,
+        "faster_than_true_ar": bool(timing_evidence_valid)
+        and timing_gates["faster_than_true_ar"],
     }
     return {
         "runs": runs,
         "binding_gates": binding_gates,
         "binding_passed": all(binding_gates.values()),
+        "timing_evidence_valid": bool(timing_evidence_valid),
         "evidence_completeness": completeness,
         "recorded": {
             "suite_status": payload.get("status"),
@@ -449,6 +578,7 @@ def _verdict(
             "exactness": _exactness(payload),
         },
         "determinism": determinism,
+        "timing_as_measured": timing_gates,
         "true_ar_tok_s": true_ar.get("decode_tok_s_weighted"),
         "best_candidate_budget": best_budget,
         "best_mtp_tok_s": (
@@ -538,13 +668,11 @@ def main() -> int:
 
     # Never infer the device.  A previous run of this harness used device 0 by
     # default and published rates taken while another worker owned that card.
-    if not args.from_raw:
-        if args.device_index is None:
-            parser.error(
-                "--device-index is required for a real run: this host has more than "
-                "one gfx1100 card and the device is never inferred"
-            )
-        os.environ["HIP_VISIBLE_DEVICES"] = str(int(args.device_index))
+    if not args.from_raw and args.device_index is None:
+        parser.error(
+            "--device-index is required for a real run: this host has more than "
+            "one gfx1100 card and the device is never inferred"
+        )
 
     prompt_ids = expected_prompt_ids(REPO_ROOT / str(PAIRED_PROTOCOL["prompts"]))
     report: dict[str, object] = {
@@ -570,7 +698,15 @@ def main() -> int:
         },
         "pairs": [],
     }
-    with mtp_scope_granted({quant for _, quant, family in PAIRS.values() if family == "ud"}):
+    # The selection is scoped, not global: it is restored when the block exits so
+    # a later in-process run cannot inherit it.
+    device_context = (
+        contextlib.nullcontext({})
+        if args.from_raw
+        else device_selected(int(args.device_index))
+    )
+    with mtp_scope_granted({quant for _, quant, family in PAIRS.values() if family == "ud"}), device_context as device_prior:
+        report["device"]["prior_environment"] = device_prior
         for command in commands:
             label = str(command["label"])
             output = Path(str(command["argv"][command["argv"].index("--output") + 1]))
@@ -587,7 +723,11 @@ def main() -> int:
                 )
                 payload = _run_pair([str(part) for part in command["argv"]], output)
             evidence = _verdict(
-                payload, args.runs, command=command, prompt_ids=prompt_ids
+                payload,
+                args.runs,
+                command=command,
+                prompt_ids=prompt_ids,
+                timing_evidence_valid=not args.invalidate,
             )
             if args.expect_device:
                 reported = str((payload.get("provenance") or {}).get("device_name") or "")
@@ -628,6 +768,12 @@ def main() -> int:
                 "exactness or determinism observations, which stay valid."
             ),
         }
+    report["timing_evidence_valid"] = not bool(args.invalidate)
+    report["timing_evidence_valid_note"] = (
+        "False means every rate-derived binding gate is failed by construction: "
+        "an invalidated run may not satisfy a performance gate. Token-ID "
+        "exactness and determinism are unaffected and stay recorded."
+    )
 
     args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     print(f"[paired] wrote {args.output}")
@@ -640,6 +786,7 @@ def main() -> int:
         exact = recorded["exactness"]
         print(
             f"[paired] {entry['label']}: binding_passed={evidence['binding_passed']} "
+            f"timing_evidence_valid={evidence['timing_evidence_valid']} "
             f"AR={ar_rate:.3f} MTP={mtp_rate:.3f} ratio={evidence['best_mtp_vs_true_ar']:.4f}"
         )
         print(

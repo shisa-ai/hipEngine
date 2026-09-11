@@ -22,10 +22,11 @@
           "all_gpu_accept_match_cpu": true,
           "deterministic_repeats": true,
           "evidence_complete": true,
-          "faster_than_true_ar": true,
-          "true_ar_denominator_present": true
+          "faster_than_true_ar": false,
+          "timing_evidence_valid": false,
+          "true_ar_denominator_present": false
         },
-        "binding_passed": true,
+        "binding_passed": false,
         "determinism": {
           "deterministic": true,
           "runs": 2,
@@ -48,6 +49,12 @@
           "suite_status": "complete_exact"
         },
         "runs": 2,
+        "timing_as_measured": {
+          "faster_than_true_ar": true,
+          "note": "values the run produced; not binding because the run is invalidated",
+          "true_ar_denominator_present": true
+        },
+        "timing_evidence_valid": false,
         "true_ar_tok_s": 15.362261990014758
       },
       "family": "ud",
@@ -83,10 +90,11 @@
           "all_gpu_accept_match_cpu": true,
           "deterministic_repeats": true,
           "evidence_complete": true,
-          "faster_than_true_ar": true,
-          "true_ar_denominator_present": true
+          "faster_than_true_ar": false,
+          "timing_evidence_valid": false,
+          "true_ar_denominator_present": false
         },
-        "binding_passed": true,
+        "binding_passed": false,
         "determinism": {
           "deterministic": true,
           "runs": 2,
@@ -112,6 +120,12 @@
           "suite_status": "correctness_failed"
         },
         "runs": 2,
+        "timing_as_measured": {
+          "faster_than_true_ar": true,
+          "note": "values the run produced; not binding because the run is invalidated",
+          "true_ar_denominator_present": true
+        },
+        "timing_evidence_valid": false,
         "true_ar_tok_s": 15.270580602488877
       },
       "family": "ud",
@@ -147,10 +161,11 @@
           "all_gpu_accept_match_cpu": true,
           "deterministic_repeats": true,
           "evidence_complete": true,
-          "faster_than_true_ar": true,
-          "true_ar_denominator_present": true
+          "faster_than_true_ar": false,
+          "timing_evidence_valid": false,
+          "true_ar_denominator_present": false
         },
-        "binding_passed": true,
+        "binding_passed": false,
         "determinism": {
           "deterministic": true,
           "runs": 2,
@@ -173,6 +188,12 @@
           "suite_status": "complete_exact"
         },
         "runs": 2,
+        "timing_as_measured": {
+          "faster_than_true_ar": true,
+          "note": "values the run produced; not binding because the run is invalidated",
+          "true_ar_denominator_present": true
+        },
+        "timing_evidence_valid": false,
         "true_ar_tok_s": 30.44168490219183
       },
       "family": "plain",
@@ -208,10 +229,11 @@
           "all_gpu_accept_match_cpu": true,
           "deterministic_repeats": true,
           "evidence_complete": true,
-          "faster_than_true_ar": true,
-          "true_ar_denominator_present": true
+          "faster_than_true_ar": false,
+          "timing_evidence_valid": false,
+          "true_ar_denominator_present": false
         },
-        "binding_passed": true,
+        "binding_passed": false,
         "determinism": {
           "deterministic": true,
           "runs": 2,
@@ -234,6 +256,12 @@
           "suite_status": "complete_exact"
         },
         "runs": 2,
+        "timing_as_measured": {
+          "faster_than_true_ar": true,
+          "note": "values the run produced; not binding because the run is invalidated",
+          "true_ar_denominator_present": true
+        },
+        "timing_evidence_valid": false,
         "true_ar_tok_s": 31.22184506475247
       },
       "family": "plain",
@@ -287,6 +315,8 @@
     "target_verify_mode": "native",
     "warmup": true
   },
+  "timing_evidence_valid": false,
+  "timing_evidence_valid_note": "False means every rate-derived binding gate is failed by construction: an invalidated run may not satisfy a performance gate. Token-ID exactness and determinism are unaffected and stay recorded.",
   "u6_gate": {
     "gate_passed": true,
     "gated": {
@@ -321,5 +351,9 @@
     },
     "pin_fingerprints": []
   },
-  "unit": "paired-ud-plain-mtp"
+  "unit": "paired-ud-plain-mtp",
+  "validator": {
+    "hardened_after_run": true,
+    "note": "This artifact was produced before the validator compared protocol-identity fields (session quant, target_verify_mode, draft_hidden_variant, workload run count, warmup, normalized provenance command). The invalidation gates were applied to the stored evidence so an invalidated run cannot report a passing performance gate; the protocol-identity fields were not re-checked, because the raw payloads were overwritten by the GPU1 re-run."
+  }
 }

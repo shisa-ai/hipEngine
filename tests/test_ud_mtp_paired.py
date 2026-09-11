@@ -13,6 +13,8 @@ multi-hour GPU run and is not exercised here.
 from __future__ import annotations
 
 import json
+import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -216,7 +218,9 @@ def _payload(
     duplicate_first: bool = False,
     drop_last_prompt: bool = False,
     schema: int = 1,
+    command: dict | None = None,
 ) -> dict:
+    resolved = _command() if command is None else command
     ids = list(prompt_ids if prompt_ids is not None else _prompt_ids())
     if drop_last_prompt:
         ids = ids[:-1]
@@ -240,13 +244,19 @@ def _payload(
         "kind": "qwen36_dense_gguf_ar_mtp_suite",
         "status": "complete_exact",
         "correctness": {"all_exact_greedy": True, "all_gpu_accept_match_cpu": True},
-        "model": {"path": model if model is not None else _command()["model"]},
+        "model": {"path": model if model is not None else resolved["model"]},
         "workload": {
             "prompt_file": str(paired.REPO_ROOT / str(paired.PAIRED_PROTOCOL["prompts"])),
             "prompt_ids": list(ids),
             "prompt_count": len(ids),
             "max_new_tokens_visible": int(paired.PAIRED_PROTOCOL["max_new_tokens"]),
             "candidate_budgets": [budget],
+            # Protocol identity: what the payload says it ran.  Shape checks
+            # cannot see any of these.
+            "target_verify_mode": paired.PAIRED_PROTOCOL["target_verify_mode"],
+            "draft_hidden_variant": paired.PAIRED_PROTOCOL["draft_hidden_variant"],
+            "runs": runs,
+            "warmup": paired.PAIRED_PROTOCOL["warmup"],
         },
         "provenance": {
             "host_name": "epyc",
@@ -254,6 +264,11 @@ def _payload(
             "resolved_backend": "hip_gfx1100",
             "target_arch": "gfx1100",
             "hipengine_commit": "0" * 40,
+            "quant": resolved["quant"],
+            "repetitions": runs,
+            # The real payload records the absolute interpreter that ran the
+            # suite; the checker must tolerate that prefix.
+            "command": ["/usr/bin/python3.12", *[str(part) for part in resolved["argv"]]],
         },
         "summary": {
             "true_ar": {"full": {"decode_tok_s_weighted": 10.0}},
@@ -365,6 +380,7 @@ def test_committed_artifact_is_complete_evidence():
         )
     }
     prompt_ids = _prompt_ids()
+    invalidated = bool((report.get("invalidation") or {}).get("invalid"))
     assert {pair["label"] for pair in report["pairs"]} == set(paired.PAIRS)
     for pair in report["pairs"]:
         command = commands[pair["label"]]
@@ -375,9 +391,283 @@ def test_committed_artifact_is_complete_evidence():
         )
         assert evidence["binding_gates"]["evidence_complete"] is True
         assert evidence["binding_gates"]["deterministic_repeats"] is True
-        assert evidence["binding_passed"] is True
+        if invalidated:
+            # An invalidated artifact keeps its identity evidence (contention
+            # changes timing, not token identity) but may not claim a rate:
+            # every timing-derived gate must be failed by construction.
+            assert evidence["timing_evidence_valid"] is False
+            assert evidence["binding_gates"]["timing_evidence_valid"] is False
+            assert evidence["binding_gates"]["faster_than_true_ar"] is False
+            assert evidence["binding_gates"]["true_ar_denominator_present"] is False
+            assert evidence["binding_passed"] is False
+        else:
+            assert evidence["binding_passed"] is True
         # The command recorded in the artifact is the command the protocol
         # resolves today, so the artifact cannot silently drift from the script.
         assert pair["command"] == " ".join(str(part) for part in command["argv"])
         assert pair["provenance"]["device_name"]
         assert pair["provenance"]["hipengine_commit"]
+
+
+# --- protocol identity ------------------------------------------------------
+#
+# Row coverage says how many rows arrived, not which protocol produced them.  A
+# serial-verifier payload has exactly the same shape as a native-verifier one, so
+# each dimension the resolved command pinned is checked against the payload's own
+# declaration.  Every mutation below independently returned complete=True before
+# this check existed.
+
+
+def _recorded_command(payload: dict) -> list:
+    return payload["provenance"]["command"]
+
+
+def _retarget_recorded_flag(payload: dict, flag: str, value: str) -> dict:
+    command = _recorded_command(payload)
+    command[command.index(flag) + 1] = value
+    return payload
+
+
+@pytest.mark.parametrize(
+    "mutate, needle",
+    [
+        pytest.param(
+            lambda p: p["provenance"].__setitem__("quant", "gguf_q4_k_s"),
+            "session quant identity",
+            id="session-quant",
+        ),
+        pytest.param(
+            lambda p: p["workload"].__setitem__("target_verify_mode", "serial"),
+            "serial-verifier",
+            id="target-verify-mode",
+        ),
+        pytest.param(
+            lambda p: p["workload"].__setitem__("draft_hidden_variant", "post_output_norm"),
+            "draft_hidden_variant",
+            id="draft-hidden-variant",
+        ),
+        pytest.param(
+            lambda p: p["workload"].__setitem__("runs", 3),
+            "workload run count",
+            id="workload-runs",
+        ),
+        pytest.param(
+            lambda p: p["workload"].__setitem__("warmup", False),
+            "warmup",
+            id="warmup",
+        ),
+        pytest.param(
+            lambda p: p["provenance"].__setitem__("repetitions", 1),
+            "repetitions",
+            id="provenance-repetitions",
+        ),
+        pytest.param(
+            lambda p: _retarget_recorded_flag(p, "--target-verify-mode", "serial"),
+            "provenance.command",
+            id="recorded-command-flag",
+        ),
+        pytest.param(
+            lambda p: p["provenance"].__setitem__("command", []),
+            "provenance.command",
+            id="recorded-command-missing",
+        ),
+    ],
+)
+def test_protocol_identity_mutations_are_rejected(mutate, needle):
+    command = _command()
+    payload = _payload(command=command)
+    mutate(payload)
+    evidence = paired._verdict(payload, 2, command=command, prompt_ids=_prompt_ids())
+    assert evidence["binding_gates"]["evidence_complete"] is False
+    problems = " | ".join(evidence["evidence_completeness"]["problems"])
+    assert needle in problems, problems
+    assert evidence["binding_passed"] is False
+
+
+def test_recorded_command_tolerates_interpreter_and_output_path():
+    """The two legitimate normalizations must not fail a real payload."""
+
+    command = _command()
+    payload = _payload(command=command)
+
+    # No interpreter prefix at all.
+    payload["provenance"]["command"] = [str(part) for part in command["argv"]]
+    evidence = paired._verdict(payload, 2, command=command, prompt_ids=_prompt_ids())
+    assert evidence["evidence_completeness"]["complete"], evidence["evidence_completeness"]
+
+    # A relocated --output (the case --from-raw exists for).
+    _retarget_recorded_flag(payload, "--output", "/somewhere/else/paired-ud-q4-k-m.json")
+    evidence = paired._verdict(payload, 2, command=command, prompt_ids=_prompt_ids())
+    assert evidence["evidence_completeness"]["complete"], evidence["evidence_completeness"]
+
+
+# --- mechanical invalidation ------------------------------------------------
+
+
+def test_invalidation_fails_every_timing_gate():
+    """A descriptive note is not enough: invalidated rates must fail the gates."""
+
+    command = _command()
+    payload = _payload()
+
+    valid = paired._verdict(payload, 2, command=command, prompt_ids=_prompt_ids())
+    assert valid["timing_evidence_valid"] is True
+    assert valid["binding_gates"]["faster_than_true_ar"] is True
+    assert valid["binding_passed"] is True
+
+    invalid = paired._verdict(
+        payload, 2, command=command, prompt_ids=_prompt_ids(), timing_evidence_valid=False
+    )
+    assert invalid["timing_evidence_valid"] is False
+    assert invalid["binding_gates"]["timing_evidence_valid"] is False
+    assert invalid["binding_gates"]["faster_than_true_ar"] is False
+    assert invalid["binding_gates"]["true_ar_denominator_present"] is False
+    assert invalid["binding_passed"] is False
+    # What the clock said is still recorded, just not binding.
+    assert invalid["timing_as_measured"]["faster_than_true_ar"] is True
+    # Identity evidence survives invalidation.
+    assert invalid["evidence_completeness"]["complete"] is True
+    assert invalid["determinism"]["deterministic"] is True
+    assert invalid["binding_gates"]["all_gpu_accept_match_cpu"] is True
+
+
+def test_invalidate_alters_the_exit_verdict(tmp_path: Path, capsys):
+    """--invalidate must change the process exit code, not just the artifact."""
+
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    commands = paired.resolve_commands(runs=2, raw_dir=raw_dir, limit=None)
+    for command in commands:
+        label = str(command["label"])
+        (raw_dir / f"paired-{label}.json").write_text(
+            json.dumps(_payload(command=command))
+        )
+
+    def run(name: str, *extra: str) -> tuple[int, dict]:
+        output = tmp_path / f"out-{name}.json"
+        argv = sys.argv
+        try:
+            sys.argv = [
+                "ud_mtp_paired.py", "--from-raw", "--runs", "2",
+                "--raw-dir", str(raw_dir), "--output", str(output), *extra,
+            ]
+            code = paired.main()
+        finally:
+            sys.argv = argv
+        capsys.readouterr()
+        return code, json.loads(output.read_text())
+
+    plain_code, plain = run("plain")
+    invalid_code, invalid = run("invalid", "--invalidate", "device was contended")
+
+    # Complete evidence for every pair, so the only difference is invalidation.
+    assert plain_code == 0
+    assert plain["timing_evidence_valid"] is True
+    assert all(pair["evidence"]["binding_passed"] for pair in plain["pairs"])
+
+    assert invalid_code == 1
+    assert invalid["timing_evidence_valid"] is False
+    assert invalid["invalidation"]["invalid"] is True
+    assert invalid["invalidation"]["reason"] == "device was contended"
+    for pair in invalid["pairs"]:
+        evidence = pair["evidence"]
+        assert evidence["timing_evidence_valid"] is False
+        assert evidence["binding_gates"]["timing_evidence_valid"] is False
+        assert evidence["binding_gates"]["faster_than_true_ar"] is False
+        assert evidence["binding_passed"] is False
+        # Identity evidence is untouched by invalidation.
+        assert evidence["evidence_completeness"]["complete"] is True
+        assert evidence["determinism"]["deterministic"] is True
+        assert evidence["timing_as_measured"]["faster_than_true_ar"] is True
+
+
+# --- scoped device selection ------------------------------------------------
+
+
+def test_device_selected_pins_and_restores(monkeypatch):
+    monkeypatch.setenv("HIP_VISIBLE_DEVICES", "7")
+    monkeypatch.setenv("ROCR_VISIBLE_DEVICES", "3")
+
+    with paired.device_selected(1) as prior:
+        # HIP_VISIBLE_DEVICES indexes into what ROCR_VISIBLE_DEVICES left
+        # visible, so leaving a stale ROCR value would retarget the run.
+        assert os.environ["HIP_VISIBLE_DEVICES"] == "1"
+        assert "ROCR_VISIBLE_DEVICES" not in os.environ
+        assert prior == {"HIP_VISIBLE_DEVICES": "7", "ROCR_VISIBLE_DEVICES": "3"}
+
+    assert os.environ["HIP_VISIBLE_DEVICES"] == "7"
+    assert os.environ["ROCR_VISIBLE_DEVICES"] == "3"
+
+
+def test_device_selected_restores_on_failure(monkeypatch):
+    monkeypatch.delenv("HIP_VISIBLE_DEVICES", raising=False)
+    monkeypatch.delenv("ROCR_VISIBLE_DEVICES", raising=False)
+
+    with pytest.raises(RuntimeError):
+        with paired.device_selected(1):
+            raise RuntimeError("boom")
+
+    assert "HIP_VISIBLE_DEVICES" not in os.environ
+    assert "ROCR_VISIBLE_DEVICES" not in os.environ
+
+
+def test_main_scopes_and_restores_device_selection(tmp_path: Path, capsys, monkeypatch):
+    """Ordered: a real run must not leak its device selection into later work."""
+
+    monkeypatch.setenv("HIP_VISIBLE_DEVICES", "0")
+    monkeypatch.delenv("ROCR_VISIBLE_DEVICES", raising=False)
+    commands = {
+        command["quant"]: command
+        for command in paired.resolve_commands(runs=2, raw_dir=tmp_path, limit=None)
+    }
+    seen: list[str | None] = []
+
+    def fake_run_pair(argv, output):
+        seen.append(os.environ.get("HIP_VISIBLE_DEVICES"))
+        quant = argv[argv.index("--quant") + 1]
+        payload = _payload(command=commands[quant])
+        Path(output).write_text(json.dumps(payload))
+        return payload
+
+    monkeypatch.setattr(paired, "_run_pair", fake_run_pair)
+    output = tmp_path / "paired.json"
+    argv = sys.argv
+    try:
+        sys.argv = [
+            "ud_mtp_paired.py", "--runs", "2", "--raw-dir", str(tmp_path),
+            "--output", str(output), "--device-index", "1",
+        ]
+        code = paired.main()
+    finally:
+        sys.argv = argv
+
+    assert code == 0, capsys.readouterr()
+    assert seen == ["1"] * len(paired.PAIRS), seen
+    # Restored for whatever runs next in this process.
+    assert os.environ["HIP_VISIBLE_DEVICES"] == "0"
+    assert "ROCR_VISIBLE_DEVICES" not in os.environ
+
+    report = json.loads(output.read_text())
+    assert report["device"]["device_index"] == 1
+    assert report["device"]["prior_environment"] == {
+        "HIP_VISIBLE_DEVICES": "0",
+        "ROCR_VISIBLE_DEVICES": None,
+    }
+
+
+def test_real_run_requires_an_explicit_device(tmp_path: Path, capsys):
+    """The device is never inferred: no --device-index means no run."""
+
+    argv = sys.argv
+    try:
+        sys.argv = [
+            "ud_mtp_paired.py", "--runs", "2", "--raw-dir", str(tmp_path),
+            "--output", str(tmp_path / "out.json"),
+        ]
+        with pytest.raises(SystemExit) as excinfo:
+            paired.main()
+    finally:
+        sys.argv = argv
+    assert excinfo.value.code == 2
+    assert "--device-index is required" in capsys.readouterr().err
+    assert not (tmp_path / "out.json").exists()
