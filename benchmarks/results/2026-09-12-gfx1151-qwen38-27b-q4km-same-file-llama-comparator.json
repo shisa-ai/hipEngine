@@ -1,0 +1,367 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-12",
+  "kind": "qwen38_27b_gfx1151_q4km_same_file_llama_comparator",
+  "status": "complete_measured",
+  "publishable": true,
+  "baseline_eligible": true,
+  "performance_claim": true,
+  "performance_claim_scope": "Same-file, same-host, same-session hipEngine-versus-llama.cpp comparison for the standard Qwen3.8-27B Q4_K_M artifact on gfx1151. llama.cpp cells are the llama-bench split-timing tier (no explicit token arrays) and are not interchangeable with the explicit-token-array binding tier; both tiers are reported. No MTP, no speculation.",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "host_name": "gfx1151",
+    "cpu": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+    "memory": "125 GiB unified LPDDR5X",
+    "rocm": "HIP version: 7.15.26333-0000000"
+  },
+  "software": {
+    "hipengine_commit": "eb7236fb5cfa094d325e82202d6520744b94f2a5",
+    "git_branch": "main",
+    "tracked_tree_clean": true,
+    "build_profile": "readme_resident_sweep",
+    "hipcc_version_first_line": "HIP version: 7.15.26333-0000000",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "llamacpp_build_commit": "9d57ce456",
+    "llamacpp_build_number": 10438,
+    "process_env": {
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "GPU_MAX_HW_QUEUES": "2",
+      "HIPENGINE_GGUF_DECODE_REPACK": "1"
+    }
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "size_bytes": 17106775008,
+    "quant": "Q4_K_M",
+    "kv_storage": "BF16",
+    "identity_verified_in_session": true
+  },
+  "protocol": {
+    "hipengine": {
+      "harness": "scripts/qwen35_readme_sweep.py (persistent resident sweep)",
+      "prompt_source": "repeated token id 9707",
+      "shapes": [
+        "512/128",
+        "1K/128",
+        "4K/128"
+      ],
+      "process_contract": "one right-sized clean detached process per shape",
+      "warmup_runs": 1,
+      "measured_runs": 3,
+      "warmup_decode_tokens": 1,
+      "prefill_mode": "production bulk WMMA (--force-bulk-prefill --bulk-prefill-attention-mode bulk)",
+      "decode_mode": "production HIP graph replay",
+      "timing": "load, JIT prebuild, and graph capture excluded",
+      "jit_cache": "warmed in a separate prebuild pass; measured pass ran --require-cached-build"
+    },
+    "llamacpp": {
+      "harness": "scripts/llamacpp_bench_with_peak.py over llama-bench",
+      "tier": "llama-bench split prefill/decode-at-offset; no explicit token-array input",
+      "shapes": [
+        "512/128",
+        "1K/128",
+        "4K/128"
+      ],
+      "repetitions": 5,
+      "ngl": 99,
+      "flash_attn": 1,
+      "cache_type_k": "bf16",
+      "cache_type_v": "bf16",
+      "memory_domain": "gtt",
+      "poll_ms": 10,
+      "peak_scope": "whole-process GTT delta, sampled externally"
+    },
+    "kv_type_match": "both sides BF16 K/V",
+    "session": "hipEngine sweep and both llama.cpp backends ran back-to-back in one session"
+  },
+  "rows": {
+    "512/128": {
+      "hipengine": {
+        "prefill_tok_s": 380.13187900307395,
+        "prefill_cv_percent": 0.1284064367973123,
+        "decode_tok_s": 12.221700427127317,
+        "decode_cv_percent": 0.009656591641353393,
+        "prefill_min_tok_s": 379.5143165263803,
+        "prefill_max_tok_s": 380.47761054420863,
+        "decode_min_tok_s": 12.220072911354357,
+        "decode_max_tok_s": 12.222367138530714,
+        "tracked_peak_gib": 16.086500111967325,
+        "hip_used_peak_sampled_gib": 16.654380798339844,
+        "tracked_after_close_bytes": 0,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707
+        ],
+        "final_token_ids_stable": true,
+        "measured_runs": 3,
+        "route": {
+          "resolved_backend": "hip_gfx1151",
+          "target_arch": "gfx1151",
+          "use_bulk_prefill": true,
+          "bulk_prefill_attention_mode": "bulk",
+          "effective_use_wmma_prefill": true,
+          "effective_use_gemv_decode": true,
+          "effective_graph_replay_decode": false
+        }
+      },
+      "llama_hip": {
+        "prefill_tok_s": 383.190757,
+        "decode_tok_s": 12.230243,
+        "gtt_peak_delta_gib": 16.158710479736328,
+        "prefill_peak_gtt_gib": 16.15762710571289,
+        "decode_peak_gtt_gib": 16.1761474609375
+      },
+      "llama_vulkan": {
+        "prefill_tok_s": 377.941884,
+        "decode_tok_s": 12.835376,
+        "gtt_peak_delta_gib": 16.233009338378906,
+        "prefill_peak_gtt_gib": 16.18647003173828,
+        "decode_peak_gtt_gib": 16.250404357910156
+      },
+      "comparison": {
+        "prefill_vs_llamacpp_hip_percent": -0.7982650784361334,
+        "prefill_vs_llamacpp_vulkan_percent": 0.579452846002626,
+        "decode_vs_llamacpp_hip_percent": -0.06984794065565403,
+        "decode_vs_llamacpp_vulkan_percent": -4.7811265744975735,
+        "tracked_peak_gib": 16.086500111967325,
+        "llama_hip_gtt_delta_gib": 16.158710479736328,
+        "llama_vulkan_gtt_delta_gib": 16.233009338378906
+      }
+    },
+    "1K/128": {
+      "hipengine": {
+        "prefill_tok_s": 378.4435057011912,
+        "prefill_cv_percent": 0.14269613543003953,
+        "decode_tok_s": 11.988876143337903,
+        "decode_cv_percent": 0.07405242986171874,
+        "prefill_min_tok_s": 377.6780167956406,
+        "prefill_max_tok_s": 378.72003754496023,
+        "decode_min_tok_s": 11.973682605296625,
+        "decode_max_tok_s": 11.98922491923479,
+        "tracked_peak_gib": 16.510485600680113,
+        "hip_used_peak_sampled_gib": 17.136802673339844,
+        "tracked_after_close_bytes": 0,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707
+        ],
+        "final_token_ids_stable": true,
+        "measured_runs": 3,
+        "route": {
+          "resolved_backend": "hip_gfx1151",
+          "target_arch": "gfx1151",
+          "use_bulk_prefill": true,
+          "bulk_prefill_attention_mode": "bulk",
+          "effective_use_wmma_prefill": true,
+          "effective_use_gemv_decode": true,
+          "effective_graph_replay_decode": false
+        }
+      },
+      "llama_hip": {
+        "prefill_tok_s": 385.115968,
+        "decode_tok_s": 12.136913,
+        "gtt_peak_delta_gib": 16.189960479736328,
+        "prefill_peak_gtt_gib": 16.186847686767578,
+        "decode_peak_gtt_gib": 16.2073974609375
+      },
+      "llama_vulkan": {
+        "prefill_tok_s": 376.118235,
+        "decode_tok_s": 12.802463,
+        "gtt_peak_delta_gib": 16.23389434814453,
+        "prefill_peak_gtt_gib": 16.187355041503906,
+        "decode_peak_gtt_gib": 16.25128936767578
+      },
+      "comparison": {
+        "prefill_vs_llamacpp_hip_percent": -1.7325852089334237,
+        "prefill_vs_llamacpp_vulkan_percent": 0.6182286538676252,
+        "decode_vs_llamacpp_hip_percent": -1.2197241313511742,
+        "decode_vs_llamacpp_vulkan_percent": -6.354924491186553,
+        "tracked_peak_gib": 16.510485600680113,
+        "llama_hip_gtt_delta_gib": 16.189960479736328,
+        "llama_vulkan_gtt_delta_gib": 16.23389434814453
+      }
+    },
+    "4K/128": {
+      "hipengine": {
+        "prefill_tok_s": 361.62180829648463,
+        "prefill_cv_percent": 0.10318425028543617,
+        "decode_tok_s": 12.140895114209295,
+        "decode_cv_percent": 0.006163750304418209,
+        "prefill_min_tok_s": 361.3914070162977,
+        "prefill_max_tok_s": 362.1214953939577,
+        "decode_min_tok_s": 12.14080842794117,
+        "decode_max_tok_s": 12.142145789965792,
+        "tracked_peak_gib": 18.8593271933496,
+        "hip_used_peak_sampled_gib": 19.50914764404297,
+        "tracked_after_close_bytes": 0,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707
+        ],
+        "final_token_ids_stable": true,
+        "measured_runs": 3,
+        "route": {
+          "resolved_backend": "hip_gfx1151",
+          "target_arch": "gfx1151",
+          "use_bulk_prefill": true,
+          "bulk_prefill_attention_mode": "bulk",
+          "effective_use_wmma_prefill": true,
+          "effective_use_gemv_decode": true,
+          "effective_graph_replay_decode": false
+        }
+      },
+      "llama_hip": {
+        "prefill_tok_s": 374.692357,
+        "decode_tok_s": 11.591805,
+        "gtt_peak_delta_gib": 16.377460479736328,
+        "prefill_peak_gtt_gib": 16.374347686767578,
+        "decode_peak_gtt_gib": 16.3948974609375
+      },
+      "llama_vulkan": {
+        "prefill_tok_s": 365.500982,
+        "decode_tok_s": 12.656713,
+        "gtt_peak_delta_gib": 16.38587188720703,
+        "prefill_peak_gtt_gib": 16.339332580566406,
+        "decode_peak_gtt_gib": 16.40326690673828
+      },
+      "comparison": {
+        "prefill_vs_llamacpp_hip_percent": -3.4883414244596844,
+        "prefill_vs_llamacpp_vulkan_percent": -1.06133058310508,
+        "decode_vs_llamacpp_hip_percent": 4.736881911050905,
+        "decode_vs_llamacpp_vulkan_percent": -4.075449018957011,
+        "tracked_peak_gib": 18.8593271933496,
+        "llama_hip_gtt_delta_gib": 16.377460479736328,
+        "llama_vulkan_gtt_delta_gib": 16.38587188720703
+      }
+    }
+  },
+  "binding_tier_reference": {
+    "llamacpp_hip": {
+      "binary": "/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server",
+      "build_commit": "9d57ce456c94d241dde672b2db9cf18879766568",
+      "build_number": 10438,
+      "prefill_tok_s": {
+        "512/128": 352.42581849519684,
+        "1K/128": 364.442641212626,
+        "4K/128": 367.99291757380905
+      },
+      "true_ar_tok_s": {
+        "512/128": 12.15062791692198,
+        "1K/128": 12.064500969354377,
+        "4K/128": 11.508123386502662
+      },
+      "token_sha256_i64": "5055191f0e2b770b6fcd3aaf6574b792dd3d1dd221f77a2b7eb7007fd29ee652",
+      "token_exactness_uniform_across_shapes": true,
+      "samples_per_shape": 3,
+      "kv_dtype": "bf16",
+      "gtt_delta_gib": {
+        "512/128": 15.784839630126953,
+        "1K/128": 15.816089630126953,
+        "4K/128": 16.003589630126953
+      }
+    },
+    "llamacpp_vulkan": {
+      "binary": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server",
+      "build_commit": "9d57ce456c94d241dde672b2db9cf18879766568",
+      "build_number": 10438,
+      "prefill_tok_s": {
+        "512/128": 242.95616918860227,
+        "1K/128": 247.61046231581554,
+        "4K/128": 354.3677775179427
+      },
+      "true_ar_tok_s": {
+        "512/128": 12.762900799954693,
+        "1K/128": 12.71970179454124,
+        "4K/128": 12.568302094065688
+      },
+      "token_sha256_i64": "5055191f0e2b770b6fcd3aaf6574b792dd3d1dd221f77a2b7eb7007fd29ee652",
+      "token_exactness_uniform_across_shapes": true,
+      "samples_per_shape": 3,
+      "kv_dtype": "bf16",
+      "gtt_delta_gib": {
+        "512/128": 15.8707275390625,
+        "1K/128": 15.8717041015625,
+        "4K/128": 16.023681640625
+      }
+    },
+    "model_sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "model_path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "hipengine_commit": "943ec15f57d090f2ca8e38c3c7f1f330c3572517",
+    "tier": "explicit token arrays (repeated token 9707) via llama-server, token-sha256 gated",
+    "note": "Explicit-token-array llama-server cells carried from the P0 baseline artifact, which measured the same Q4_K_M file sha256 as this refresh. This tier carries both prefill and true-AR decode plus a uniform token_sha256_i64 across shapes, so the Q4_K_M lane does have a token-exact same-file comparator on both axes. Its hipEngine column is the older 85.288/7.026 opening baseline at commit 943ec15f5 and is not restated here; only the llama cells are carried.",
+    "vs_current_hipengine_percent": {
+      "512/128": {
+        "prefill": 7.861529733030825,
+        "decode": 0.584928702378873,
+        "prefill_vulkan": 56.46109348554338,
+        "decode_vulkan": -4.240418234930554
+      },
+      "1K/128": {
+        "prefill": 3.841719630276952,
+        "decode": -0.6268375808379689,
+        "prefill_vulkan": 52.83825334428085,
+        "decode_vulkan": -5.7456193785689
+      },
+      "4K/128": {
+        "prefill": -1.7313130152964318,
+        "decode": 5.498478826259201,
+        "prefill_vulkan": 2.0470345326966344,
+        "decode_vulkan": -3.400673986490188
+      }
+    }
+  },
+  "correctness": {
+    "hipengine_final_token_ids": {
+      "512/128": [
+        9707,
+        9707,
+        9707
+      ],
+      "1K/128": [
+        9707,
+        9707,
+        9707
+      ],
+      "4K/128": [
+        9707,
+        9707,
+        9707
+      ]
+    },
+    "hipengine_final_token_ids_stable": true,
+    "expected_final_token_id": 9707,
+    "hipengine_tracked_teardown_zero": true,
+    "hipengine_max_prefill_cv_percent": 0.14269613543003953,
+    "hipengine_max_decode_cv_percent": 0.07405242986171874,
+    "rollup_cv_gate_percent": 5.0,
+    "cv_gate_pass": true,
+    "llama_bench_generates_its_own_prompts": true,
+    "llama_bench_token_exactness_gate": "not applicable (no explicit token-array input on this tier)"
+  },
+  "evidence": {
+    "raw_root": "/tmp/hip1151-q38",
+    "hipengine_measured": {
+      "measured-512-128.json": "36f1957388fe10bd723037b2a69b509da88f8530d1eab04f4cf1ed9ce11c5063",
+      "measured-1K-128.json": "e31f973bc94fc35561b454d08db1e43a1c218fa39fabde4cea53fd437d391ca6",
+      "measured-4K-128.json": "29e4c5a1532463cb34d586162ae824a571c45a523505bc031e7a070a41ef648d"
+    },
+    "llamacpp_hip": "ee936d1e586032d0142425f982d8a2ff1f54f1d566588121e69b30116e4020d7",
+    "llamacpp_vulkan": "ed16f73f7cda9edbad624ee8398ebf4abc1f9c02f285930387b0d7ce5d53f83f",
+    "environment": "4ae1818cc4bbf149cfb588568d76105c2dac8618f7eb1574993c2834f1280bb0",
+    "binding_tier_source": "benchmarks/results/2026-08-15-gfx1151-qwen38-27b-p0-baseline.json"
+  },
+  "notes": [
+    "The two llama.cpp tiers disagree on the prefill verdict and the artifact keeps both rather than promoting one. At the llama-bench tier llama.cpp HIP leads prefill at every shape; at the explicit-token-array binding tier hipEngine leads at 512/1K and trails at 4K.",
+    "llama-bench generates its own prompts and cannot accept the repeated-token prompt the hipEngine sweep uses, so the llama-bench tier is a split-timing/profile comparator and not a token-exact one.",
+    "llama-bench decode is decode-at-offset (-p 0 -n 128 -d <prompt>), which is not the same timing scope as a resident-session AR decode after a real prefill.",
+    "hipEngine tracked_peak_gib covers hipEngine allocator ownership only; llama GTT delta is a whole-process external sample. The two columns are different scopes and are not a memory-advantage claim.",
+    "Correctness gates on the hipEngine side are unchanged from the refresh this supersedes: stable finite final token 9707 at every shape, tracked teardown to zero, CV far under the 5% gate.",
+    "A pre-existing defect was hit while running the comparator: hipengine/benchmark/provenance.py resolves device_name via ctypes.CDLL('libamdhip64.so'), which is not on the default loader path on a TheRock-only host, so the artifact write failed after all six llama-bench cells had completed. The comparator was rerun inside the hermetic TheRock environment. scripts/run_gfx1151_readme_refresh.sh runs its llamacpp phase without that environment."
+  ]
+}
