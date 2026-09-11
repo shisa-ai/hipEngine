@@ -58,6 +58,7 @@ def test_paired_commands_differ_only_in_the_artifact(tmp_path: Path):
         "candidate_budgets",
         "runs",
         "target_verify_mode",
+        "ar_decode_mode",
         "draft_hidden_variant",
         "kv_layout",
         "ar_baseline",
@@ -254,6 +255,7 @@ def _payload(
             # Protocol identity: what the payload says it ran.  Shape checks
             # cannot see any of these.
             "target_verify_mode": paired.PAIRED_PROTOCOL["target_verify_mode"],
+            "ar_decode_mode": paired.PAIRED_PROTOCOL["ar_decode_mode"],
             "draft_hidden_variant": paired.PAIRED_PROTOCOL["draft_hidden_variant"],
             "runs": runs,
             "warmup": paired.PAIRED_PROTOCOL["warmup"],
@@ -367,6 +369,7 @@ def test_from_raw_refuses_incomplete_evidence(tmp_path: Path, capsys):
     [
         "paired-ud-plain-mtp-c1-natural25-b3.json",
         "paired-ud-plain-mtp-c1-natural25-b3-xtx.json",
+        "paired-ud-plain-mtp-c1-natural25-b3-graph-xtx.json",
     ],
 )
 def test_committed_artifact_is_complete_evidence(name: str):
@@ -415,9 +418,10 @@ def test_committed_artifact_is_complete_evidence(name: str):
             assert evidence["timing_evidence_valid"] is True
             assert evidence["binding_gates"]["timing_evidence_valid"] is True
             assert evidence["binding_passed"] is True
-        # The command recorded in the artifact is the command the protocol
-        # resolves today, so the artifact cannot silently drift from the script.
-        assert pair["command"] == " ".join(str(part) for part in command["argv"])
+            # A valid current artifact must record the command the protocol
+            # resolves today. Invalidated attempts remain immutable historical
+            # evidence and may predate a protocol correction.
+            assert pair["command"] == " ".join(str(part) for part in command["argv"])
         assert pair["provenance"]["device_name"]
         assert pair["provenance"]["hipengine_commit"]
 
@@ -453,6 +457,11 @@ def _retarget_recorded_flag(payload: dict, flag: str, value: str) -> dict:
             lambda p: p["workload"].__setitem__("target_verify_mode", "serial"),
             "serial-verifier",
             id="target-verify-mode",
+        ),
+        pytest.param(
+            lambda p: p["workload"].__setitem__("ar_decode_mode", "eager"),
+            "ar_decode_mode",
+            id="ar-decode-mode",
         ),
         pytest.param(
             lambda p: p["workload"].__setitem__("draft_hidden_variant", "post_output_norm"),

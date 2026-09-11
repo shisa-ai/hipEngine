@@ -382,38 +382,21 @@ Q3_K strict decode (1.43/2.43 ms/tok), and the Q5 gate/up dual.
 ([final rollup](results/final-decode-campaign-2026-09-11/).)
 
 MTP for these artifacts is **refused by admission** (the U6 certification pin is
-empty), so the paired measurement below is diagnostic evidence for the two open
-U6 `paired_run` items, not a retained admission. It ran on the XTX with the
-device declared and verified, and it supersedes a withdrawn W7900 attempt (dated
-retraction in [`CHANGELOG.md`](CHANGELOG.md)).
+empty), and there is currently no valid paired MTP rate. The device-clean XTX
+attempt is withdrawn because its true-AR denominator called synchronous
+`step()` for every token instead of the production decode-graph path. A
+protocol-matched GPU1 trace measured the same device work for eager and graph
+AR (28.77 vs 28.88 ms/transition), but eager wall was 65-69 ms/transition
+against 31 ms for graph replay because the host submitted about 860 kernels per
+transition. The four AR/MTP rates, all MTP/AR ratios, and the derived UD/plain
+MTP ratios are therefore not evidence.
 
-c1 / natural25 / B3, XTX, two runs, each arm's MTP rate over that same arm's own
-in-protocol true no-MTP AR rate:
-
-| Arm (XTX) | AR tok/s | MTP B3 tok/s | Ratio | UD ÷ plain |
-| --- | ---: | ---: | ---: | ---: |
-| `UD-Q4_K_M` | 14.438 | 35.630 | **2.4678x** | 0.563x |
-| `UD-Q4_K_S` | 16.813 | 32.795 | **1.9506x** | 0.568x |
-| `Q4_K_M` (plain) | 36.986 | 63.317 | **1.7119x** | — |
-| `Q4_K_S` (plain) | 39.283 | 57.737 | **1.4698x** | — |
-
-All four arms pass every binding control gate (complete evidence for the
-resolved command, true AR denominator present, GPU/CPU acceptance agreement,
-deterministic repeats, faster than AR). Acceptance is effectively identical
-across arms (0.633–0.637 accepted per cycle, 2.73–2.76 visible per cycle), so
-the ratio differences are compute, not acceptance. `UD-Q4_K_S` keeps the same
-two `general_ja_plan` near-tie divergences in both runs (0.0096 logits, permitted
-production drift under `EXECUTION-PROFILES.md` §4.1).
-
-**Caveat: the UD ratios sit on an anomalously slow AR denominator.** UD's
-single-row AR decode costs 69.3 ms/step (K_M) / 59.5 (K_S) here, against 33.4
-ms/step for the same artifact on the same card under the p512/d128 graph-replay
-decode protocol, while plain agrees across both (27.0 vs 28.3). The same ~2x
-UD-vs-plain AR step gap appears on the W7900, so it is not a device artifact.
-The protocol-internal comparison is the trustworthy one: **UD MTP is 0.563x
-(K_M) / 0.568x (K_S) of plain MTP.** Attributing the UD AR step overhead is
-open. Treat the UD ratios as ±10%.
-([artifact](results/paired-ud-plain-mtp-c1-natural25-b3-xtx.json).)
+The non-timing observations remain valid: deterministic repeats, GPU/CPU
+acceptance agreement, the K_S `general_ja_plan` near tie, and the
+draft/verifier state-disjointness result. The paired harness now pins recorded
+production graph replay as a protocol dimension; a fresh GPU1 run is required
+before quoting MTP performance.
+([invalidated XTX attempt](results/paired-ud-plain-mtp-c1-natural25-b3-xtx.json).)
 
 Earlier revisions of this section published a W7900/XTX census comparison
 (46,913 vs 30,263 µs/token pure, localised to two local32 GEMV kernels at 3.84x

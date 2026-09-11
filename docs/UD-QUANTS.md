@@ -1608,17 +1608,22 @@ measurement on the whole unit would be circular:
 are currently `measurement_ready()` while incomplete, so the paired
 measurement may run while the pin stays withheld.
 
-One paired run was attempted and is **invalid**. It executed on HIP device 0
-with `HIP_VISIBLE_DEVICES` unset while another worker owned that card, so none
-of its rates are evidence; the artifact
-(`benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3.json`) is kept only as
-a marked-invalid record. `scripts/ud_mtp_paired.py` now requires an explicit
-`--device-index`, sets `HIP_VISIBLE_DEVICES` from it, and refuses to run if the
-reported `device_name` does not match `--expect-device`. A GPU1 re-run is
-required before any UD/plain MTP rate is quoted. See the retraction in
-`benchmarks/CHANGELOG.md` for the withdrawn numbers and for what survives
-(token-ID exactness and determinism, and the state-disjointness pointer
-comparison, which contention cannot change).
+Two paired timing attempts are **invalid**. The first executed on HIP device 0
+with `HIP_VISIBLE_DEVICES` unset while another worker owned that card. The
+second correctly used physical GPU1, but its no-MTP arm timed synchronous
+scalar `step()` calls rather than the production decode-graph path. A
+protocol-matched GPU1 trace measured equal eager/graph device work (28.77 vs
+28.88 ms/transition) while eager wall was 65-69 ms against 31 ms for graph
+replay, so every rate and ratio from that attempt is withdrawn. The invalid
+artifacts are
+`benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3.json` and
+`benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-xtx.json`.
+
+`scripts/ud_mtp_paired.py` now requires an explicit `--device-index`, verifies
+`--expect-device`, and pins recorded graph replay as the true-AR performance
+denominator. A fresh GPU1 run is required before any UD/plain MTP rate is
+quoted. Non-timing evidence survives: token-ID determinism, GPU/CPU acceptance
+agreement, the K_S near tie, and the state-disjointness pointer comparison.
 
 Item 5's contract is the **production** one. `docs/EXECUTION-PROFILES.md`
 section 6 states that free-running generated-ID equality "is recorded but is not

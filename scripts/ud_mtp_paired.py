@@ -53,10 +53,14 @@ PAIRED_PROTOCOL = {
     "candidate_budgets": (3,),
     "runs": 2,
     "target_verify_mode": "native",
+    "ar_decode_mode": "graph",
     "draft_hidden_variant": "pre_output_norm",
     "warmup": True,
     "kv_layout": "resident session default (Qwen35GGUFResidentSession, wmma prefill, gemv decode)",
-    "ar_baseline": "suite true no-MTP single-row greedy per artifact",
+    "ar_baseline": (
+        "suite true no-MTP single-row greedy per artifact through recorded "
+        "production decode-graph replay"
+    ),
     "correctness_gates": {
         "binding": (
             "true_ar_denominator_present",
@@ -167,6 +171,8 @@ def resolve_commands(*, runs: int, raw_dir: Path, limit: int | None) -> list[dic
             str(protocol["max_new_tokens"]),
             "--target-verify-mode",
             protocol["target_verify_mode"],
+            "--ar-decode-mode",
+            protocol["ar_decode_mode"],
             "--draft-hidden-variant",
             protocol["draft_hidden_variant"],
             "--output",
@@ -405,6 +411,13 @@ def _evidence_completeness(
             f"workload.target_verify_mode {workload.get('target_verify_mode')!r} != "
             f"{expected_verify_mode!r} (a serial-verifier payload is not the "
             "native-verifier result)"
+        )
+    expected_ar_decode_mode = _argv_flag(command["argv"], "--ar-decode-mode")
+    if str(workload.get("ar_decode_mode")) != str(expected_ar_decode_mode):
+        problems.append(
+            f"workload.ar_decode_mode {workload.get('ar_decode_mode')!r} != "
+            f"{expected_ar_decode_mode!r} (the true-AR performance denominator "
+            "must use the pinned production path)"
         )
     expected_draft = _argv_flag(command["argv"], "--draft-hidden-variant")
     if str(workload.get("draft_hidden_variant")) != str(expected_draft):
