@@ -719,11 +719,27 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             # "the flag was passed" and "the engine read the flag" are different
             # claims, and the engagement gate is only meaningful for the second.
             layer_outer_env_seen = os.environ.get(PACKED_LAYER_OUTER_ENV)
-            llm = LLM(model, backend=backend, max_sequence_length=max_sequence_length)
+            llm = LLM(
+                model,
+                backend=backend,
+                max_sequence_length=max_sequence_length,
+                kv_storage=args.kv_storage,
+                kv_scale_dtype=args.kv_scale_dtype,
+                kv_scale_granularity=args.kv_scale_granularity,
+            )
             adapter = llm._get_text_generator()
             llm.prepare(
                 max_sequence_length=max_sequence_length,
-                sampling_params=SamplingParams(max_tokens=max_tokens),
+                # The KV layout must be set here too, not only on ServerConfig:
+                # this prepare runs first, so an "auto" layout here would resolve
+                # to BF16 and leave the INT8 resumable route unreachable no matter
+                # what the server config says.
+                sampling_params=SamplingParams(
+                    max_tokens=max_tokens,
+                    kv_storage=args.kv_storage,
+                    kv_scale_dtype=args.kv_scale_dtype,
+                    kv_scale_granularity=args.kv_scale_granularity,
+                ),
             )
             tokenizer = adapter._runner.generator.tokenizer
             short_row = _prompt_rows(
@@ -753,6 +769,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     max_active_requests=2,
                     stream_queue_max_chunks=max_tokens + 8,
                     shutdown_grace_seconds=5.0,
+                    kv_storage=args.kv_storage,
+                    kv_scale_dtype=args.kv_scale_dtype,
+                    kv_scale_granularity=args.kv_scale_granularity,
                 ),
                 llm=llm,
             )
@@ -1011,6 +1030,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "cancellation_counter_after": cancelled_after,
             "packed_layer_outer_enabled": bool(args.packed_layer_outer),
             "packed_layer_outer_env_seen": layer_outer_env_seen,
+            "kv_storage_requested": args.kv_storage,
+            "kv_scale_dtype_requested": args.kv_scale_dtype,
             "oracle_observed_peak_bytes": oracle_observed_peak_bytes,
             "oracle_observed_peak_owners": oracle_observed_peak_owners,
             "live_oracle_owners": live_oracle_owners,
@@ -1152,6 +1173,19 @@ def build_parser() -> argparse.ArgumentParser:
             "cannot silently fall back to the default chunk-outer path"
         ),
     )
+    parser.add_argument(
+        "--kv-storage",
+        default="int8_per_token_head",
+        help=(
+            "KV layout for the service run. Defaults to int8_per_token_head because "
+            "the resumable prefill this harness certifies only runs on the "
+            "int8_direct route; ServerConfig's own default is 'auto', which "
+            "resolve_kv_policy resolves to BF16, leaving the feature unreachable "
+            "and the gates measuring the default route"
+        ),
+    )
+    parser.add_argument("--kv-scale-dtype", default="fp32")
+    parser.add_argument("--kv-scale-granularity", default="per_token_head")
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--json", type=Path, default=None)
     return parser
