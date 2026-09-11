@@ -214,6 +214,49 @@ def test_gpu_vision_matches_oracle_features(runner) -> None:
     )
 
 
+def test_gpu_vision_first_call_on_fresh_runner(runner) -> None:
+    """A brand-new runner's *first* vision forward must match the oracle.
+
+    Regression: the shared-memory softmax reduction in
+    ``hipengine_evie_softmax_rows_f32`` read the pass-1 max from ``sm[0]``
+    and then overwrote ``sm`` with the partial exponential sums without a
+    barrier in between. Whichever thread won that race fed a wrong max into
+    the exponentials, so the first call on a fresh runner diverged while
+    later calls on the same runner were exact.
+    """
+
+    _r, weights, spec = runner
+    from hipengine.runtime.surya import SuryaGpuRunner
+
+    path = FIXTURES / "oracle_image.npz"
+    if not path.exists():
+        pytest.skip("oracle_image.npz not present; run scripts/surya_oracle_torch.py")
+    with np.load(path) as z:
+        if "vision_merged" not in z.files:
+            pytest.skip("oracle_image.npz has no vision_merged features")
+        merged_oracle = z["vision_merged"]
+
+    pixel_rows, grid = _page_inputs()
+    for attempt in range(3):
+        r = SuryaGpuRunner(weights, spec)
+        try:
+            first = r.vision_forward(pixel_rows, [grid])
+            second = r.vision_forward(pixel_rows, [grid])
+        finally:
+            r.close()
+        assert np.isfinite(first).all(), f"attempt {attempt}: non-finite output"
+        # the race made the first call diverge by ~1e-1; the fixed path sits
+        # in the same fp32-GEMM noise band as the CPU reference
+        d = np.abs(first - merged_oracle)
+        assert d.max() < 5e-3, (
+            f"attempt {attempt}: first call on a fresh runner diverged: "
+            f"max|d|={d.max():.3e}"
+        )
+        assert np.array_equal(first, second), (
+            f"attempt {attempt}: first and second calls disagree"
+        )
+
+
 def test_gpu_end_to_end_ocr_matches_oracle(runner) -> None:
     """Full GPU pipeline: vision + prefill + decode reproduce oracle IDs."""
 
