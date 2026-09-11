@@ -69,13 +69,20 @@ production decoder converts them to FP16 on device at init.
   the rollback path.
 
 Both modes are validated per change by
-`python3 scripts/timesfm_gpu_bench.py --check`.
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/timesfm_gpu_bench.py --check`.
 
 ## Performance
 
 Workload: batch 8, context 8192, horizon 512 (one full decode: prefill of
-256 patches + 3 autoregressive steps × 20 layers). Same host throughout
-(zbook, Ryzen AI MAX+ PRO 395).
+256 patches + 3 autoregressive steps × 20 layers).
+
+Two physical Strix Halo hosts are recorded as separate lanes. They run the
+same `gfx1151` backend, the same code, and the same workload; the difference
+between them is host power/thermal headroom, so their absolute rates must not
+be read as an old→new delta. The torch and CPU reference rows exist only on
+the zbook lane (the Framework Desktop ROCm environment has no torch install).
+
+**HP ZBook Ultra G1a lane** (power/thermal limited; same host throughout):
 
 | Path | Precision | Decode time | Speed vs hipEngine fp16 |
 | --- | --- | ---: | ---: |
@@ -85,9 +92,27 @@ Workload: batch 8, context 8192, horizon 512 (one full decode: prefill of
 | Torch reference, CPU | fp32 | 9.52 s | 116× slower |
 | hipEngine NumPy CPU reference | fp32 | 9.13 s | 111× slower |
 
-Reproduce with `python3 scripts/timesfm_gpu_bench.py --metric` (best of N
-decodes; the same command with `--check` runs the fixture-parity guard).
+**Framework Desktop lane** (host `gfx1151`, machine ID
+`55ea6c509d0b49eea8de7094a1023668`; median of five independent process
+invocations, 0.062065 / 0.061938 / 0.062128 / 0.062122 / 0.062066 s):
+
+| Path | Precision | Decode time | Speed vs hipEngine fp16 |
+| --- | --- | ---: | ---: |
+| **hipEngine GPU** | fp16 (production) | **0.062 s** | 1× |
+
+The Framework Desktop runs this workload 25% faster than the zbook (0.062 s
+vs 0.082 s). That is a host-level difference between two machines with the
+same GPU, not a code improvement.
+
+Reproduce with
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/timesfm_gpu_bench.py --metric`
+(best of N decodes; the same command with `--check` runs the fixture-parity
+guard).
 Full artifacts per step live in `benchmarks/results/gfx1151-timesfm-*.json`.
+Lane baselines: zbook
+[`gfx1151-timesfm-quadtile-flash-2026-09-09.json`](../benchmarks/results/gfx1151-timesfm-quadtile-flash-2026-09-09.json),
+Framework Desktop
+[`2026-09-11-framework-desktop-timesfm-2p5-decode-lane.json`](../benchmarks/results/2026-09-11-framework-desktop-timesfm-2p5-decode-lane.json).
 
 ## Optimization history
 
