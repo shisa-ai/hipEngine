@@ -357,3 +357,116 @@ def test_dense_pair_variants_are_registered() -> None:
                 "hip_gfx1100", "linear_pair_silu", "gguf_q5_k_t16_v1", variant
             )
         ), variant
+
+
+@pytest.mark.parametrize(
+    "in_features,out_features",
+    [(512, 64), (1024, 32), (512, 128)],
+)
+def test_q5_t16_local32_single_matches_direct_gemv(
+    in_features: int, out_features: int
+) -> None:
+    """The Q5 local32 decode single must agree with the direct GEMV.
+
+    Same contract as the IQ4 local32 owners: per-element products identical,
+    only the summation order differs (one superblock of eight contiguous K
+    per lane, wave32 shuffle tree, lane-0 serial store). The tiles come from
+    the real repack path (repack_gguf_q5_k_tile16 over synthetic raw Q5_K
+    blocks), so the layout arithmetic - the hoisted d/dmin/scale/min unpack
+    plus the u32 nibble window and u8 high-bit row - is exercised exactly as
+    production materializes it.
+    """
+
+    runtime = get_hip_runtime()
+    raw = make_q5_k_raw(out_features, in_features, seed=0x6B31)
+    tiles = repack_gguf_q5_k_tile16(raw[None, ...]).tiles
+    rng = np.random.default_rng(0x71C1A)
+    x_bits = _bf16_bits(
+        rng.normal(0.0, 0.2, size=(1, in_features)).astype(np.float32)
+    )
+    ref_bits = np.zeros((1, out_features), dtype=np.uint16)
+    got_bits = np.zeros_like(ref_bits)
+    buffers = []
+    try:
+        x_dev = malloc(x_bits.nbytes, runtime=runtime)
+        tiles_dev = malloc(tiles.nbytes, runtime=runtime)
+        ref_dev = malloc(ref_bits.nbytes, runtime=runtime)
+        got_dev = malloc(got_bits.nbytes, runtime=runtime)
+        buffers.extend((x_dev, tiles_dev, ref_dev, got_dev))
+        copy_host_to_device(x_dev, host_array_ptr(x_bits), runtime=runtime)
+        copy_host_to_device(
+            tiles_dev, host_array_ptr(tiles), runtime=runtime
+        )
+        library = t16_gemv.build_gguf_t16_selected_gemv(load=True)
+        gguf_q5_k_t16_gemv_decode_bf16_bf16_out(
+            x_dev.ptr,
+            tiles_dev.ptr,
+            ref_dev.ptr,
+            1,
+            in_features,
+            out_features,
+            library=library,
+            runtime=runtime,
+        )
+        t16_gemv.gguf_q5_k_t16_dense_single_local32_bf16_bf16_out(
+            x_dev.ptr,
+            tiles_dev.ptr,
+            got_dev.ptr,
+            1,
+            in_features,
+            out_features,
+            library=library,
+            runtime=runtime,
+        )
+        copy_device_to_host(
+            host_array_ptr(ref_bits), ref_dev, ref_bits.nbytes, runtime=runtime
+        )
+        copy_device_to_host(
+            host_array_ptr(got_bits), got_dev, got_bits.nbytes, runtime=runtime
+        )
+    finally:
+        for buffer in buffers:
+            free(buffer, runtime=runtime)
+
+    ref = (ref_bits.astype(np.uint32) << 16).view(np.float32)
+    got = (got_bits.astype(np.uint32) << 16).view(np.float32)
+    assert np.isfinite(got).all()
+    scale = max(float(np.abs(ref).max()), 1e-30)
+    rel = float(np.abs(ref - got).max()) / scale
+    assert rel <= 5e-4, "Q5 local32 diverged from the direct GEMV"
+    assert float(np.corrcoef(ref.ravel(), got.ravel())[0, 1]) >= 0.9999
+
+
+def test_q5_t16_local32_registered_and_routed_at_c1() -> None:
+    """The local32 single is registered and the C1 table routes production
+    shapes at rows == 1 while rows > 1 keeps the direct family."""
+
+    from hipengine.kernels.backends import (
+        backend_package_capability,
+        load_backend_kernel_package,
+    )
+    from hipengine.kernels.registry import KernelKey, is_registered
+
+    load_backend_kernel_package("hip_gfx1100")
+
+    assert is_registered(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q5_k_t16_v1",
+            "dense_single_local32_bf16_bf16_out",
+        )
+    )
+    c1 = backend_package_capability(
+        "hip_gfx1100", "GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE", {}
+    )
+    for shape in (
+        (5_120, 6_144),
+        (5_120, 17_408),
+        (17_408, 5_120),
+        (6_144, 5_120),
+        (1_024, 5_120),
+        (5_120, 10_240),
+        (5_120, 12_288),
+    ):
+        assert c1["gguf_q5_k_t16_v1"][shape] == "dense_single_local32_bf16_bf16_out"
