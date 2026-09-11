@@ -1,0 +1,16 @@
+# UD MTP admission refusal (unchanged by the journal repair)
+
+Command (UD artifact, same suite):
+
+  HIP_VISIBLE_DEVICES=1 .venv/bin/python scripts/qwen36_dense_gguf_suite.py \
+    --model /models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf --quant gguf_ud_q4_k_m \
+    --candidate-budgets 3 --output /tmp/ud-mtp-suite-km.json
+
+    Qwen35GGUFNextNExecutor(model, **executor_kwargs),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lhl/hipEngine-ud/hipengine/runtime/qwen35_gguf_nextn.py", line 379, in __init__
+    self.weights: Qwen35GGUFNextNResidentWeights | None = materialize_qwen35_gguf_nextn_weights(
+                                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lhl/hipEngine-ud/hipengine/loading/qwen35_gguf_nextn_materialize.py", line 327, in materialize_qwen35_gguf_nextn_weights
+    raise Qwen35GGUFAdmissionError(
+hipengine.loading.qwen35_gguf_admission.Qwen35GGUFAdmissionError: GGUF NextN draft materialization refused: artifact preset 'gguf_ud_q4_k_m' is certified for scopes ['ar'] only; MTP/NextN draft operations require an explicitly certified MTP scope (AR-only and AR+MTP admission are distinct)
