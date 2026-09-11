@@ -1,0 +1,68 @@
+{
+ "date": "2026-09-11",
+ "host": "gfx1151 (AMD Ryzen AI Max+ Pro 395 w/ Radeon 8060S), 125GB RAM",
+ "model": "datalab-to/surya-ocr-2",
+ "workload": {
+  "image": "tests/fixtures/surya/page_small.png (256x256, 64 image tokens)",
+  "prompt": "Transcribe this page.",
+  "max_new_tokens": 64,
+  "precision": "fp32 everywhere"
+ },
+ "note": "hipEngine GPU lane = fp32 HIP text decoder (gfx1151); the vision tower still runs the CPU-reference path (EVIE tower kernel transfer is a recorded follow-up), so its e2e includes ~1.3s CPU vision. torch_cuda is the transformers reference on the same host iGPU. All lanes greedy-match the captured torch fp32 CPU oracle (tests/fixtures/surya/oracle_greedy.json).",
+ "results": [
+  {
+   "lane": "hipengine_cpu",
+   "backend": "cpu_reference/fp32 numpy",
+   "stages_s": {
+    "preprocess": 0.0,
+    "vision": 1.2204917710041627,
+    "prefill": 1.3834424810047494,
+    "decode": 18.757336298003793
+   },
+   "decode_tokens": 64,
+   "decode_tok_per_s": 3.4119983233872633,
+   "e2e_median_s": 21.977029594010673,
+   "e2e_warmup_s": 22.137494046008214,
+   "correctness": "PASS"
+  },
+  {
+   "lane": "torch_cpu",
+   "backend": "transformers fp32 cpu",
+   "stages_s": {
+    "prefill": 19.230158867998398,
+    "decode": 131.2618338589964
+   },
+   "decode_tokens": 64,
+   "decode_tok_per_s": 0.4875750865156268,
+   "e2e_median_s": 150.77901429099438,
+   "e2e_warmup_s": 150.447992410991,
+   "correctness": "PASS"
+  },
+  {
+   "lane": "torch_cuda",
+   "backend": "transformers fp32 cuda",
+   "stages_s": {
+    "prefill": 1.6204882729944075,
+    "decode": 0.9411812760081375
+   },
+   "decode_tokens": 64,
+   "decode_tok_per_s": 67.99965281018473,
+   "e2e_median_s": 2.6616990070033353,
+   "e2e_warmup_s": 2.6511497639876325,
+   "correctness": "PASS"
+  },
+  {
+   "lane": "hipengine_gpu",
+   "backend": "HIP fp32 decoder (gfx1151); vision tower on CPU",
+   "stages_s": {
+    "prefill": 0.1223341610020725,
+    "decode": 1.986855901996023
+   },
+   "decode_tokens": 64,
+   "decode_tok_per_s": 32.21169685013629,
+   "e2e_median_s": 2.3947261620050995,
+   "e2e_warmup_s": 2.417479315001401,
+   "correctness": "PASS"
+  }
+ ]
+}
