@@ -3,9 +3,14 @@
 Implements the TextGenerator protocol for text-only prompts and the
 multimodal detailed path (``generate_multimodal_detailed``) for OCR
 requests, over the fp32 NumPy CPU reference in
-``hipengine.kernels.cpu_reference.surya``. Greedy decode only: Surya OCR
-is a deterministic transcription model; sampling is intentionally
-unsupported and raises.
+``hipengine.kernels.cpu_reference.surya``.
+
+Greedy decoding only: Surya OCR is a deterministic transcription model.
+Supported request controls are ``max_tokens``, ``ignore_eos``,
+``eos_token_id``, ``stop_token_ids``, ``deadline_at``, and
+``cancellation_token``; any other sampling/constraint control must stay at
+its neutral default or the request is rejected (see
+``hipengine.generation.surya_contract``).
 
 Registered under ``(surya_ocr2, cpu_reference, fp32)`` through
 ``register_builtin_generators()``.
@@ -19,6 +24,10 @@ from typing import Any
 import numpy as np
 
 from hipengine.generation.registry import register_text_generator
+from hipengine.generation.surya_contract import (
+    greedy_decode_tokens,
+    resolve_surya_greedy_settings,
+)
 from hipengine.kernels.cpu_reference.surya import (
     SuryaSpec,
     SuryaWeights,
@@ -60,8 +69,11 @@ class SuryaOCRGenerator:
     # -- TextGenerator protocol (text-only) --------------------------------
 
     def generate(self, request: Any) -> list[str]:
-        prompts = tuple(str(p) for p in request.prompts)
-        return [self._generate_text_only(p, int(request.max_tokens)) for p in prompts]
+        settings = resolve_surya_greedy_settings(request, self.spec)
+        return [
+            self._generate_text_only(str(prompt), request, settings)
+            for prompt in request.prompts
+        ]
 
     def close(self) -> None:  # engine-loop lifecycle hook
         return None
@@ -74,10 +86,21 @@ class SuryaOCRGenerator:
     def generate_multimodal_detailed(
         self, prompt: str, image: Any, request: Any
     ) -> Any:
-        from hipengine.generation.registry import GenerationOutput
+        from hipengine.generation.registry import FinishDetails, GenerationOutput
 
-        result = self._generate_ocr(str(prompt), image, int(request.max_tokens))
-        return GenerationOutput(text=result)
+        settings = resolve_surya_greedy_settings(request, self.spec)
+        token_ids, finish_reason = self._generate_ocr(
+            str(prompt), image, request, settings
+        )
+        return GenerationOutput(
+            text=self.tokenizer.decode(token_ids, skip_special=True),
+            finish_details=FinishDetails(
+                reason=finish_reason,
+                eos_token_id=next(iter(settings.eos_token_ids), None),
+                length_limit=settings.max_tokens,
+            ),
+            generated_token_ids=tuple(token_ids),
+        )
 
     # -- internals ----------------------------------------------------------
 
@@ -86,8 +109,9 @@ class SuryaOCRGenerator:
         input_ids: np.ndarray,
         position_ids: np.ndarray,
         visual_features: np.ndarray | None,
-        max_tokens: int,
-    ) -> list[int]:
+        request: Any,
+        settings: Any,
+    ) -> tuple[list[int], str]:
         hidden, state = text_prefill(
             self.weights,
             self.spec,
@@ -97,27 +121,32 @@ class SuryaOCRGenerator:
         )
         emb = self.weights["model.language_model.embed_tokens.weight"]
         logits = hidden[:, -1] @ emb.T
-        generated: list[int] = []
         pos = int(position_ids[:, -1].max())
-        for step in range(max_tokens):
-            next_token = int(np.argmax(logits[0]))
-            if next_token == self.spec.eos_token_id:
-                break
-            generated.append(next_token)
-            logits = text_decode_step(
-                self.weights, self.spec, next_token, state, pos + 1 + step
-            )
-        return generated
 
-    def _generate_text_only(self, prompt: str, max_tokens: int) -> str:
+        def step_fn(token_id: int, step: int) -> np.ndarray:
+            return text_decode_step(
+                self.weights, self.spec, token_id, state, pos + 1 + step
+            )
+
+        return greedy_decode_tokens(logits, settings, step_fn, request)
+
+    def _generate_text_only(
+        self, prompt: str, request: Any, settings: Any
+    ) -> str:
         input_ids, mm = render_chat_prompt(self.tokenizer, prompt)
         position_ids = compute_mrope_positions(mm, None)
-        ids = self._decode_greedy(
-            np.array([input_ids], dtype=np.int64), position_ids, None, max_tokens
+        ids, _ = self._decode_greedy(
+            np.array([input_ids], dtype=np.int64),
+            position_ids,
+            None,
+            request,
+            settings,
         )
         return self.tokenizer.decode(ids, skip_special=True)
 
-    def _generate_ocr(self, prompt: str, image: Any, max_tokens: int) -> str:
+    def _generate_ocr(
+        self, prompt: str, image: Any, request: Any, settings: Any
+    ) -> tuple[list[int], str]:
         from hipengine.kernels.cpu_reference.surya import vision_forward
 
         pixel_rows, grid = preprocess_image_surya(image)
@@ -129,13 +158,13 @@ class SuryaOCRGenerator:
         position_ids = compute_mrope_positions(
             mm, grid, self.spec.vision_spatial_merge_size
         )
-        ids = self._decode_greedy(
+        return self._decode_greedy(
             np.array([input_ids], dtype=np.int64),
             position_ids,
             merged[None],
-            max_tokens,
+            request,
+            settings,
         )
-        return self.tokenizer.decode(ids, skip_special=True)
 
 
 def make_surya_generator_cpu(

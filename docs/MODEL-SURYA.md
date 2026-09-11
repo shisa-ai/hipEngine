@@ -1,9 +1,35 @@
 # MODEL-SURYA.md — Surya OCR 2 on hipEngine
 
-Status: **reviewed; inventory measured; implementation pending** (2026-09-11). This is the
-per-model architecture and bring-up plan, following `MODEL-EVIE.md` and
-`MODEL-TIMESFM3.md`. No Surya inference, numerical gate, or performance run
-was performed for this review.
+Status: **implemented — CPU reference and gfx1151 HIP lane** (2026-09-11). The
+per-model architecture and bring-up plan below is followed by an
+implementation-status section. Torch-free preprocessing, vision tower, text
+decoder, and the public OCR API run end to end; the HIP lane executes the
+vision tower and text decoder on gfx1151.
+
+### Implementation status (2026-09-11)
+
+| Area | State | Evidence |
+| --- | --- | --- |
+| Model/weight/tokenizer contracts | done | `hipengine/models/surya.py`, `hipengine/loading/surya.py`, `tests/test_surya_model_contract.py` |
+| Torch oracle fixtures | done | `scripts/surya_oracle_torch.py`, `tests/fixtures/surya/*.npz`, `tests/test_surya_oracle_fixtures.py` |
+| CPU-reference text decoder (GDN state, causal cache, mRoPE) | done | `hipengine/kernels/cpu_reference/surya.py`, `tests/test_surya_text_decoder.py` |
+| CPU-reference vision tower + merger | done | `tests/test_surya_vision.py` |
+| Public OCR API, greedy oracle parity | done | `hipengine/loading/surya.py:run_surya_ocr`, `tests/test_surya_e2e.py`, `tests/test_surya_public_api.py` |
+| HIP text decoder on gfx1151 | done | `hipengine/runtime/surya.py`, `tests/test_surya_gpu.py` |
+| HIP vision tower on gfx1151 | done | `tests/test_surya_gpu.py::test_gpu_vision_matches_oracle_features` |
+| Registered HIP generator (`surya_ocr2`/`hip_gfx1151`/fp32) | done | `hipengine/generation/surya_gpu.py` |
+| Request/resource contracts (greedy-only, capacity, EOS) | done | `hipengine/generation/surya_contract.py`, `tests/test_surya_generation_contract.py` |
+| Rectangular/full-page corpus and held-out quality | pending | only `page_small.png` (256x256) and `page_rect.png` are exercised |
+| GPU `rocprofv3` kernel-trace evidence | pending | required before any retained kernel-performance claim |
+| Registry migration + `KVLiveSpans` KV ABI | pending | tracked in `docs/REFACTOR.md` |
+| Quantized (GGUF) Surya decoder | pending | safetensors fp32 is the implementation target |
+| MTP / speculative decoding | pending | 15 MTP tensors inventoried, unused |
+
+Correctness gates in place: CPU reference matches the torch fp32 oracle on
+greedy token IDs (`tests/fixtures/surya/oracle_greedy.json`), the HIP vision
+tower sits inside the CPU-reference noise band against `vision_merged`, and the
+full HIP pipeline (GPU vision features + GPU prefill/decode) reproduces the
+oracle greedy IDs exactly. All HIP tests carry a ROCm-availability guard.
 
 ### Measured inventory (2026-09-11, revision `3b3d4cdf`)
 
@@ -208,7 +234,9 @@ language-generation engine.
 
 ## Suggested implementation sequence
 
-These are proposed milestones and paths, not existing Surya APIs.
+These were proposed milestones and paths. Steps 1–4 are implemented (see the
+status table above); step 5 is partially implemented (public OCR API and
+parsing, no OpenAI-compatible service path); step 6 is pending.
 
 1. **Freeze contracts and generate oracle fixtures.** Add
    `hipengine/models/surya.py` and targeted contract tests; inventory safetensors
@@ -239,10 +267,14 @@ These are proposed milestones and paths, not existing Surya APIs.
 
 Keep kernels behind `(backend, layer, quant, variant)` registrations and retain
 registered strict fallbacks. `KVLiveSpans` remains the attention ABI; mRoPE
-coordinates do not replace cache ownership metadata. Read `KERNELS.md` and run
+coordinates do not replace cache ownership metadata. The current HIP runtime
+does not yet meet this: it imports the `hip_gfx1100` JIT libraries directly and
+uses a bespoke dense KV scatter offset scheme, exactly as the existing EVIE
+runtime does. Both deviations are recorded in `docs/REFACTOR.md` with concrete
+removal conditions; migrating them is a repo-wide refactor, not a Surya-only
+change. Read `KERNELS.md` and run
 `python3 scripts/check_lineage.py --kind kernel --diff stat` before any kernel
-port. Update `PLAN.md` if implementation changes architectural interfaces;
-this review proposes reuse and does not change the architecture roadmap.
+port.
 
 ## Validation and performance plan
 
