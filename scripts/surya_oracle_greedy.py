@@ -21,6 +21,11 @@ Two cases, both greedy (argmax) with the model's own logits:
   (numbered checklist), both 512x512, -> ``oracle_corpus.json``. Layouts the
   single-column fixtures cannot produce, so the GPU lane cannot pass them by
   generalizing from the pages already covered.
+- ``bench``    — the representative document types written by
+  ``scripts/surya_bench_pages.py`` (Japanese, mixed script, dense small text,
+  ruled table, blank page, degraded scan, block-heavy long page) ->
+  ``oracle_bench.json``. These are the pages the tuning suite runs on, so they
+  carry a torch fp32 oracle rather than only a CPU-reference basis.
 
 Additive: regenerating the ``image`` case rewrites ``oracle_greedy.json`` and
 nothing else. It does not touch ``oracle_image.npz`` / ``oracle_text.npz`` /
@@ -63,6 +68,17 @@ CORPUS_PAGES = {
     "columns": _make_synthetic_page_columns,
     "list": _make_synthetic_page_list,
 }
+# Representative document types for the benchmark suite. The pages themselves
+# are produced by scripts/surya_bench_pages.py (seeded, byte-reproducible);
+# this captures their torch fp32 reference ids so the GPU lanes can be gated
+# against torch rather than only against the CPU reference.
+BENCH_PAGES = ("ja", "mixed", "dense", "table", "blank", "scan", "long")
+# The blank page stops almost immediately; the long page needs room to finish.
+# The default is generous on purpose: at 128 the Japanese, mixed, dense and scan
+# pages all hit the cap instead of reaching EOS, which would gate only their
+# first 128 tokens rather than their complete transcription.
+BENCH_MAX_TOKENS = {"blank": 32, "long": 320, "scan": 512}
+BENCH_DEFAULT_MAX_TOKENS = 384
 EOS_TOKEN_ID = 2  # tokenizer + generation_config agree
 # canonical archive key order, matching the committed oracle_fullpage.npz
 _FULLPAGE_NPZ_KEYS = (
@@ -146,12 +162,14 @@ def _greedy_from_page(
         past = out.past_key_values
         logits = out.logits[0, -1].detach().float()
 
+    # .cpu() before .numpy(): these were only ever captured on CPU, so the
+    # conversion broke as soon as the generator ran on the GPU device.
     caps = {
-        "input_ids": proc["input_ids"].numpy(),
-        "attention_mask": proc["attention_mask"].numpy(),
-        "pixel_values": proc["pixel_values"].numpy(),
-        "image_grid_thw": proc["image_grid_thw"].numpy(),
-        "mm_token_type_ids": proc["mm_token_type_ids"].numpy(),
+        "input_ids": proc["input_ids"].cpu().numpy(),
+        "attention_mask": proc["attention_mask"].cpu().numpy(),
+        "pixel_values": proc["pixel_values"].cpu().numpy(),
+        "image_grid_thw": proc["image_grid_thw"].cpu().numpy(),
+        "mm_token_type_ids": proc["mm_token_type_ids"].cpu().numpy(),
     }
     caps.update(captured)
     return caps, captured, ids, processor.tokenizer.decode(ids)
@@ -222,10 +240,46 @@ def _run_corpus(model, processor, out_dir: Path, device: str) -> None:
     print(f"wrote {out_dir}/oracle_corpus.json — {len(oracle)} pages")
 
 
+def _run_bench(model, processor, out_dir: Path, device: str) -> None:
+    """Capture torch fp32 reference ids for the representative bench pages.
+
+    The pages are inputs, not outputs: ``scripts/surya_bench_pages.py`` writes
+    them, and this records what torch fp32 greedily produces so the hipEngine
+    lanes have a real oracle and the text can be judged for OCR quality rather
+    than only for id parity.
+    """
+
+    oracle: dict[str, dict[str, object]] = {}
+    for name in BENCH_PAGES:
+        page_path = out_dir / f"page_{name}.png"
+        if not page_path.exists():
+            raise SystemExit(
+                f"missing {page_path}; run scripts/surya_bench_pages.py first"
+            )
+        max_tokens = BENCH_MAX_TOKENS.get(name, BENCH_DEFAULT_MAX_TOKENS)
+        caps, _captured, ids, text = _greedy_from_page(
+            model, processor, page_path, device=device, max_tokens=max_tokens
+        )
+        oracle[name] = {
+            "ids": ids,
+            "text": text,
+            "max_tokens": max_tokens,
+            "reached_limit": len(ids) >= max_tokens,
+            "grid_thw": caps["image_grid_thw"].tolist(),
+        }
+        print(
+            f"wrote oracle for page_{name}.png — {len(ids)} greedy ids "
+            f"(limit {max_tokens}), grid_thw={caps['image_grid_thw'].tolist()}"
+        )
+    (out_dir / "oracle_bench.json").write_text(json.dumps(oracle, indent=1))
+    print(f"wrote {out_dir}/oracle_bench.json — {len(oracle)} pages")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--case", choices=("all", "image", "fullpage", "corpus"), default="all"
+        "--case", choices=("all", "image", "fullpage", "corpus", "bench"),
+        default="all",
     )
     parser.add_argument("--out-dir", type=Path, default=DEFAULT_OUT_DIR)
     parser.add_argument("--device", default="cpu")
@@ -246,6 +300,8 @@ def main() -> None:
         _run_fullpage(model, processor, args.out_dir, args.device)
     if args.case in ("all", "corpus"):
         _run_corpus(model, processor, args.out_dir, args.device)
+    if args.case in ("all", "bench"):
+        _run_bench(model, processor, args.out_dir, args.device)
 
 
 if __name__ == "__main__":
