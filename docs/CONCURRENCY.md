@@ -1631,11 +1631,15 @@ multiple later gates.
 19. **Completed — IKV-C0:** integrated the divergent Qwen3.8 branches and
     locked INT8 admission to full-file artifact/backend/target/quant/layout/scale
     evidence with BF16 fallback and explicit provenance.
-20. **Next — IKV-C1:** qualify compact no-mirror c2/c4 through an honest serial
-    c1-per-row route with shifted block-table-aware prefill; make no throughput
-    claim.
-21. **Then — IKV-C2:** add and trace the row-batched 24Q/4KV/D256 INT8 split-K
-    producer/reducer, preserving c1 and unfused fallbacks.
+20. **Completed — IKV-C1:** qualified compact no-mirror c2/c4 through an honest
+    serial c1-per-row route with shifted block-table-aware prefill, making no
+    throughput claim. Admitted 2026-08-16 with `persistent_bf16_mirror` false.
+21. **Completed — IKV-C2:** added and traced the row-batched 24Q/4KV/D256 INT8
+    split-K producer/reducer, preserving c1 and unfused fallbacks. Completed and
+    promoted to physical c4 on 2026-09-11; the primitive gate is bit-exact
+    against the CPU reference and independent c1 for c1/c2/c4/c8, and the
+    committed `rocprofv3` ownership trace shows one batch producer plus one
+    strided reducer launch for all four rows.
 22. **Then — IKV-C3/C4:** prevent N-copy prefill scratch from erasing savings
     and reject the complete resource budget before HIP OOM.
 23. **Then — IKV-C5/C6:** close cancellation, grow/shrink, overload/recovery,
