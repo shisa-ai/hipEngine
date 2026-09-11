@@ -37,6 +37,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from hipengine.core import build as _hipengine_build  # noqa: E402
 from hipengine.kernels.backends import hip_target_arch_for_backend  # noqa: E402
 from hipengine.loading.gguf import scan_gguf  # noqa: E402
 from hipengine.models.kv_capabilities import KVCapabilityKey, model_artifact_identity  # noqa: E402
@@ -46,6 +47,13 @@ ARTIFACT_KIND = "qwen38_int8_row_batched_decode_ownership_trace"
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.8-27B-Q4_K_M.gguf")
 DEFAULT_COMPILER_VERSION_FILE = Path("/tmp/hipengine-hipcc-version.txt")
 DEFAULT_TRACE_ROOT = Path("/tmp/hipengine-ikv-c2-w7900-rocprof")
+
+# Taken from the module that reads them. A hardcoded lookalike such as
+# ``HIPENGINE_HIP_REQUIRE_CACHED_BUILD`` silently does nothing, which leaves a
+# profiled run free to spawn hipcc and corrupt the trace while the artifact
+# still claims it was cache-only.
+REQUIRE_CACHED_BUILD_ENV = _hipengine_build._ENV_REQUIRE_CACHED_BUILD
+COMPILER_VERSION_FILE_ENV = "HIPENGINE_COMPILER_VERSION_FILE"
 
 # Primitive-gate cases, mirroring the parametrization of
 # tests/test_qwen38_int8_batch_attention_gpu.py. A test asserts these stay in
@@ -232,11 +240,30 @@ def _trace_environment(compiler_version_file: Path, backend: str) -> dict[str, s
     environment.pop("ROCR_VISIBLE_DEVICES", None)
     environment.setdefault("HIP_VISIBLE_DEVICES", "0")
     environment["HIPENGINE_HIP_ARCH"] = hip_target_arch_for_backend(backend)
-    environment["HIPENGINE_COMPILER_VERSION_FILE"] = str(compiler_version_file)
+    environment[COMPILER_VERSION_FILE_ENV] = str(compiler_version_file)
     # The profiled process must not compile: a hipcc spawn inside the profiler
     # corrupts the trace rather than merely slowing it down.
-    environment["HIPENGINE_REQUIRE_CACHED_BUILD"] = "1"
+    environment[REQUIRE_CACHED_BUILD_ENV] = "1"
     return environment
+
+
+_CACHE_RELEVANT_ENV_KEYS = (
+    "HIP_VISIBLE_DEVICES",
+    "HIPENGINE_HIP_ARCH",
+    COMPILER_VERSION_FILE_ENV,
+    REQUIRE_CACHED_BUILD_ENV,
+)
+
+
+def _cache_relevant_environment(environment: Mapping[str, str]) -> dict[str, str]:
+    """The subset that decides whether the trace was genuinely cache-only.
+
+    Recording this makes the cache-only claim checkable instead of asserted: a
+    reader can see which switch was set and that it is the one the build module
+    reads.
+    """
+
+    return {key: environment[key] for key in _CACHE_RELEVANT_ENV_KEYS if key in environment}
 
 
 def _rocprofv3_version() -> str:
@@ -339,9 +366,32 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if command is not None:
         trace_command = " ".join(shlex.quote(part) for part in command)
         reduction = "profiled rocprofv3 run"
+        trace_environment = _cache_relevant_environment(environment)
     else:
         trace_command = str(args.trace_command or f"unavailable (parsed from {trace_root})")
         reduction = f"parse-only {trace_root}"
+        trace_environment = {}
+    notes = [
+        "kernel_time_ns is single-shot kernel duration from a correctness gate, not a "
+        "benchmark; it is launch-count and sub-window evidence.",
+        f"The batch producer and reducer each launch once for all {rows} rows; the c1 leaf "
+        "producer and reducer each launch once per row.",
+    ]
+    if trace_environment:
+        notes.insert(
+            0,
+            "Cache-only trace: the .so was built outside the profiler and "
+            f"{REQUIRE_CACHED_BUILD_ENV}=1, with the compiler version pinned by "
+            f"{COMPILER_VERSION_FILE_ENV}, prevented hipcc in the profiled process. "
+            "Both are recorded in trace_environment.",
+        )
+    else:
+        notes.insert(
+            0,
+            "Reduced from an existing trace; the cache-only property belongs to that "
+            "run, which this parse-only path cannot observe, so no cache-only claim is "
+            "made here.",
+        )
     return {
         "schema": 1,
         "kind": ARTIFACT_KIND,
@@ -364,14 +414,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "launches": launches,
         "command": trace_command,
         "reduction": reduction,
-        "notes": [
-            "Cache-only trace: the .so was built outside the profiler and "
-            "HIPENGINE_REQUIRE_CACHED_BUILD=1 prevented hipcc in the profiled process.",
-            "kernel_time_ns is single-shot kernel duration from a correctness gate, not a "
-            "benchmark; it is launch-count and sub-window evidence.",
-            f"The batch producer and reducer each launch once for all {rows} rows; the c1 leaf "
-            "producer and reducer each launch once per row.",
-        ],
+        "trace_environment": trace_environment,
+        "notes": notes,
     }
 
 

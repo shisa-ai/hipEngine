@@ -18,17 +18,23 @@ from __future__ import annotations
 import csv
 import importlib.util
 import json
+import re
 from pathlib import Path
 
 import pytest
 
 from scripts.qwen38_int8_batch_decode_ownership_trace import (
+    COMPILER_VERSION_FILE_ENV,
     GATE_CASES,
     GATE_TEST,
+    REQUIRE_CACHED_BUILD_ENV,
+    _trace_environment,
     classify_kernel,
     read_launches,
     summarize_ownership,
 )
+
+from hipengine.core import build as _hipengine_build
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 GATE_TEST_PATH = REPO_ROOT / "tests" / "test_qwen38_int8_batch_attention_gpu.py"
@@ -337,13 +343,119 @@ def test_retained_artifact_is_consistent_with_its_own_summary() -> None:
 
 
 def test_retained_artifact_preserves_trace_provenance() -> None:
-    """A parse-only regeneration must not erase how the trace was produced."""
+    """A regeneration must not erase how the trace was produced."""
 
     artifact = json.loads(RETAINED_ARTIFACT.read_text(encoding="utf-8"))
 
     assert "rocprofv3 --kernel-trace" in artifact["command"]
     assert "c4-ragged" in artifact["command"]
-    assert artifact["reduction"].startswith("parse-only")
+    assert artifact["reduction"] in {
+        "profiled rocprofv3 run",
+    } or artifact["reduction"].startswith("parse-only")
+
+
+def test_trace_environment_uses_the_names_the_build_module_reads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A lookalike env name silently disables the guard and the artifact lies.
+
+    ``HIPENGINE_HIP_REQUIRE_CACHED_BUILD`` reads like the real switch, does
+    nothing, and leaves the profiled process free to spawn hipcc while the
+    artifact still claims it was cache-only.
+    """
+
+    version_file = tmp_path / "hipcc-version.txt"
+    version_file.write_text("AMD clang version 22.0.0git\n", encoding="utf-8")
+    monkeypatch.setenv("HIP_VISIBLE_DEVICES", "0")
+    monkeypatch.setenv("ROCR_VISIBLE_DEVICES", "0")
+
+    environment = _trace_environment(version_file, "hip_gfx1100")
+
+    assert REQUIRE_CACHED_BUILD_ENV == _hipengine_build._ENV_REQUIRE_CACHED_BUILD
+    assert environment[REQUIRE_CACHED_BUILD_ENV] == "1"
+    assert environment[COMPILER_VERSION_FILE_ENV] == str(version_file)
+    assert "HIPENGINE_HIP_REQUIRE_CACHED_BUILD" not in environment
+    assert "ROCR_VISIBLE_DEVICES" not in environment
+
+
+@pytest.mark.parametrize("flag", ["1", "true", "yes", "on"])
+def test_require_cached_guard_is_actually_activated(
+    flag: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Drive the real predicate, not just the name."""
+
+    monkeypatch.setenv(_hipengine_build._ENV_REQUIRE_CACHED_BUILD, flag)
+    assert _hipengine_build._environment_requires_cached_build() is True
+
+
+def test_compiler_version_file_env_name_is_read_by_the_build_module(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The version-file name must be one the cache key actually consults."""
+
+    version_file = tmp_path / "hipcc-version.txt"
+    version_file.write_text("AMD clang version 22.0.0git\n", encoding="utf-8")
+    monkeypatch.setenv("HIPENGINE_COMPILER_VERSION_TEXT", "")
+    monkeypatch.setenv(COMPILER_VERSION_FILE_ENV, str(version_file))
+
+    identity = _hipengine_build._environment_version_identity("hipcc")
+
+    # The identity carries the raw override values, so the name is proven by
+    # finding this path in it; the resolved value then proves the file is read.
+    assert str(version_file) in identity
+    assert (
+        _hipengine_build._compiler_version_from_environment("hipcc")
+        == "AMD clang version 22.0.0git"
+    )
+
+
+def test_trace_environment_rejects_an_empty_compiler_version_file(
+    tmp_path: Path,
+) -> None:
+    version_file = tmp_path / "hipcc-version.txt"
+    version_file.write_text("   \n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="compiler version file is empty"):
+        _trace_environment(version_file, "hip_gfx1100")
+
+
+def test_retained_artifact_makes_its_cache_only_claim_checkable() -> None:
+    """The guard must be recorded, and recorded under the name that works.
+
+    The artifact this replaces asserted a cache-only run while its recorded
+    command set ``HIPENGINE_HIP_REQUIRE_CACHED_BUILD``, a name no module reads.
+    """
+
+    artifact = json.loads(RETAINED_ARTIFACT.read_text(encoding="utf-8"))
+    environment = artifact["trace_environment"]
+
+    assert environment[REQUIRE_CACHED_BUILD_ENV] == "1"
+    assert COMPILER_VERSION_FILE_ENV in environment
+    assert "HIPENGINE_HIP_REQUIRE_CACHED_BUILD" not in environment
+    assert artifact["reduction"] == "profiled rocprofv3 run"
+    assert any(REQUIRE_CACHED_BUILD_ENV in note for note in artifact["notes"])
+    assert all(
+        "HIPENGINE_HIP_REQUIRE_CACHED_BUILD" not in note for note in artifact["notes"]
+    )
+
+
+def test_no_script_uses_a_lookalike_cache_only_switch() -> None:
+    """A near-miss name reads as correct and silently does nothing.
+
+    The lookalike switch is the shape of mistake that matters: it reads as the
+    real guard, so a profiled run looks cache-only while remaining free to spawn
+    hipcc and corrupt the trace. Only quoted use is flagged, so prose that names
+    the trap to explain it stays allowed.
+    """
+
+    pattern = re.compile(r"""["']HIPENGINE_HIP_REQUIRE_CACHED_BUILD["']""")
+    offenders = sorted(
+        path.relative_to(REPO_ROOT).as_posix()
+        for path in (REPO_ROOT / "scripts").rglob("*.py")
+        if pattern.search(path.read_text(encoding="utf-8"))
+    )
+
+    assert offenders == []
 
 
 def test_retained_artifact_records_the_promoted_admitted_width() -> None:
