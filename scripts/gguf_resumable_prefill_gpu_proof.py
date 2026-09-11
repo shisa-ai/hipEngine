@@ -27,6 +27,12 @@ Gates, all of which must pass for the artifact to report a pass:
    stay within a declared factor of the standalone decode step on the same
    session, at both p95 and max.
 4. **Cleanup** - the suspended buffers are released once the prefill completes.
+5. **Layer-boundary state** - the committed per-layer direct INT8 K/V and the
+   linear conv/recurrent state after Arm B's segmented prefill fingerprint
+   identically to Arm A's one-shot reference over the committed prefix. This is
+   the reviewer's "layer-boundary/state comparison" gate: the resumable path
+   yields only at layer boundaries, so every boundary's K/V commit and state
+   hand-off must be exact.
 
 The route is eager, greedy, prefix-off, MTP-off, and artifact-scoped. Nothing
 here is a throughput claim: it is a control-and-liveness proof, and the artifact
@@ -36,6 +42,7 @@ sets ``performance_claim: false``.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shlex
@@ -91,6 +98,184 @@ def _percentiles(values: Sequence[float]) -> dict[str, float]:
     }
 
 
+def _device_hash(session: Any, ptr: int, nbytes: int) -> str:
+    """SHA-256 of a device byte range, for exact state comparison."""
+
+    import numpy as np
+
+    from hipengine.core.memory import (
+        DeviceBuffer,
+        copy_device_to_host,
+        host_array_ptr,
+    )
+
+    size = int(nbytes)
+    raw = np.empty((size,), dtype=np.uint8)
+    if size:
+        copy_device_to_host(
+            host_array_ptr(raw),
+            DeviceBuffer(int(ptr), size),
+            size,
+            runtime=session.runtime,
+        )
+    return hashlib.sha256(raw.tobytes()).hexdigest()
+
+
+def _tensor_nbytes(tensor: Any) -> int:
+    return int(tensor.numel) * int(tensor.dtype.itemsize)
+
+
+def _committed_prefix_nbytes(
+    plane_nbytes: int,
+    *,
+    total_rows: int,
+    committed_rows: int,
+) -> int:
+    """Bytes of a KV plane that hold committed rows.
+
+    The resident planes are allocated for the full context and ``reset()`` does
+    not clear them, so the tail beyond the committed rows still holds bytes from
+    earlier work (or nothing at all). Comparing that tail is meaningless, so
+    every plane is compared over its committed prefix only. The per-row width is
+    derived from the plane size and its row count rather than re-deriving the
+    scale-granularity formula, so this stays correct for per-token-head,
+    block16, and hadamard_group32 scales alike.
+    """
+
+    total = int(plane_nbytes)
+    rows = int(total_rows)
+    if total <= 0 or rows <= 0:
+        return 0
+    return (total // rows) * min(int(committed_rows), rows)
+
+
+def _capture_prefill_state(session: Any) -> dict[str, Any]:
+    """Fingerprint the committed direct INT8 K/V and the linear state.
+
+    The resumable executor yields only at layer boundaries, so after a full
+    prefill the committed K/V, its scales, and the linear conv/recurrent state
+    must be the same as the one-shot reference's. Every plane is compared over
+    its committed prefix only: the resident planes are allocated for the full
+    context and ``reset()`` does not clear them, so bytes beyond
+    ``session.position`` are meaningless and differ between two independently
+    allocated sessions.
+    """
+
+    from hipengine.core.dtype import DType
+
+    if session.runner is None or session.runner.weights is None or session.scratch is None:
+        raise RuntimeError("GGUF resident session is closed")
+    runtime = session.runtime
+    runtime.device_synchronize()
+    scratch = session.scratch
+    cfg = session.runner.weights.config
+    committed_rows = int(session.position)
+    payload_row_nbytes = (
+        int(cfg.head_count_kv)
+        * int(cfg.key_length)
+        * DType.INT8_PER_TOKEN_HEAD.itemsize
+    )
+    live_kv_nbytes = committed_rows * payload_row_nbytes
+    linear: list[dict[str, Any]] = []
+    for layer_id, (conv, recurrent) in enumerate(
+        zip(scratch.layer_conv_states, scratch.layer_recurrent_states, strict=True)
+    ):
+        if conv is None or recurrent is None:
+            continue
+        linear.append(
+            {
+                "layer": int(layer_id),
+                "conv": _device_hash(session, conv.ptr, conv.nbytes),
+                "recurrent": _device_hash(session, recurrent.ptr, recurrent.nbytes),
+            }
+        )
+    kv: list[dict[str, Any]] = []
+    for layer_id, (key, value) in enumerate(
+        zip(scratch.full_key_caches, scratch.full_value_caches, strict=True)
+    ):
+        if key is None or value is None:
+            continue
+        payload_nbytes = min(int(key.nbytes), int(live_kv_nbytes))
+        # The payload plane spans the whole context, so its row count is the
+        # plane's total position count. The scale planes use the same
+        # page/token order and are compared over the same committed rows.
+        total_positions = int(key.nbytes) // payload_row_nbytes
+        row: dict[str, Any] = {
+            "layer": int(layer_id),
+            "key_payload": _device_hash(session, key.ptr, payload_nbytes),
+            "value_payload": _device_hash(session, value.ptr, payload_nbytes),
+            "payload_nbytes": payload_nbytes,
+        }
+        metadata = scratch.full_scale_metadata(layer_id)
+        if metadata is not None:
+            for name, scale in (
+                ("key_scale", metadata.k_scale),
+                ("value_scale", metadata.v_scale),
+            ):
+                scale_nbytes = _tensor_nbytes(scale)
+                row[name] = _device_hash(
+                    session,
+                    scale.ptr,
+                    _committed_prefix_nbytes(
+                        scale_nbytes,
+                        total_rows=total_positions,
+                        committed_rows=committed_rows,
+                    ),
+                )
+                row[f"{name}_nbytes"] = scale_nbytes
+        kv.append(row)
+    return {
+        "position": committed_rows,
+        "linear": linear,
+        "kv": kv,
+    }
+
+
+def _state_mismatches(
+    actual: Mapping[str, Any],
+    expected: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    """Per-section, per-layer mismatches between two captured states."""
+
+    mismatches: list[dict[str, Any]] = []
+    for section in ("linear", "kv"):
+        got_rows = list(actual.get(section, ()))
+        want_rows = list(expected.get(section, ()))
+        if len(got_rows) != len(want_rows):
+            mismatches.append(
+                {
+                    "section": section,
+                    "row": None,
+                    "detail": "row count differs",
+                    "actual_rows": len(got_rows),
+                    "expected_rows": len(want_rows),
+                }
+            )
+            continue
+        for row, (got, want) in enumerate(zip(got_rows, want_rows, strict=True)):
+            if got != want:
+                fields = sorted(
+                    key
+                    for key in set(got) | set(want)
+                    if got.get(key) != want.get(key)
+                )
+                mismatches.append(
+                    {
+                        "section": section,
+                        "row": row,
+                        "layer": got.get("layer"),
+                        "fields": fields,
+                        "actual_sha256": hashlib.sha256(
+                            json.dumps(got, sort_keys=True).encode("utf-8")
+                        ).hexdigest(),
+                        "expected_sha256": hashlib.sha256(
+                            json.dumps(want, sort_keys=True).encode("utf-8")
+                        ).hexdigest(),
+                    }
+                )
+    return mismatches
+
+
 def _build_environment(compiler_version_file: Path, backend: str) -> dict[str, str]:
     compiler_version = compiler_version_file.read_text(encoding="utf-8").strip()
     if not compiler_version:
@@ -141,6 +326,8 @@ def evaluate_gates(
     gap: Mapping[str, Any],
     scratch_released: bool,
     peak_suspended_bytes: int,
+    state_layers_compared: int = 0,
+    state_mismatches: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
     """Evaluate the four P6e gates from measurements.
 
@@ -193,6 +380,18 @@ def evaluate_gates(
         "detail": (
             "the suspended-state buffers must not outlive the completing "
             "checkpoint; peak_suspended_bytes proves suspension actually happened"
+        ),
+    }
+    mismatches = list(state_mismatches)
+    gates["layer_boundary_state"] = {
+        "passed": int(state_layers_compared) > 0 and not mismatches,
+        "layers_compared": int(state_layers_compared),
+        "mismatch_count": len(mismatches),
+        "mismatches": mismatches[:8],
+        "detail": (
+            "the segmented resumable prefill must commit the same per-layer "
+            "direct INT8 K/V and linear conv/recurrent state as the one-shot "
+            "reference over the committed prefix"
         ),
     }
     return gates
@@ -299,6 +498,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         )[0]
         arm_a_wall = time.perf_counter() - started
         arm_a_token = int(arm_a.token_id)
+        # Capture the reference here, not at the end: a resident batch reuses
+        # its shared workspaces for later work, so a finished session's planes
+        # are not guaranteed to still hold this prefill's bytes after Arm B
+        # (and the interleaved decoder) have run. Measured 2026-09-11: reading
+        # the reference after Arm B reported 8 spurious K/V mismatches.
+        one_shot_state = _capture_prefill_state(one_shot)
 
         # --- Arm B: resumable segmented prefill with interleaved decode ------
         layer_budget = int(args.layer_budget)
@@ -341,6 +546,20 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         # The P6b contract, checked the same way the CPU test checks it: the
         # suspended buffers must not outlive the completing checkpoint.
         scratch_released = last_state is not None and last_state.scratch is None
+
+        # Layer-boundary/state comparison (P6f): the segmented arm yields only at
+        # layer boundaries, so after the prefill its committed per-layer direct
+        # INT8 K/V and its linear state must fingerprint identically to the
+        # one-shot reference captured when Arm A completed.
+        resumable_state = _capture_prefill_state(resumable)
+        state_mismatches = _state_mismatches(resumable_state, one_shot_state)
+        state_layers_compared = len(one_shot_state["kv"]) + len(
+            one_shot_state["linear"]
+        )
+        state_positions = [
+            int(one_shot_state["position"]),
+            int(resumable_state["position"]),
+        ]
     finally:
         stack.close()
 
@@ -356,6 +575,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         gap=gap,
         scratch_released=scratch_released,
         peak_suspended_bytes=peak_suspended_bytes,
+        state_layers_compared=state_layers_compared,
+        state_mismatches=state_mismatches,
     )
 
     return {
@@ -392,6 +613,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "standalone_decode": baseline,
             "interleaved_decode": gap,
             "interleaved_steps": len(interleaved),
+            "state_position": state_positions,
+            "state_layers_compared": state_layers_compared,
         },
         "command": " ".join(
             shlex.quote(part)
@@ -409,7 +632,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "The decode-gap factors and the segment work floor were declared before "
             "measuring, so the gate could not be fitted to the result.",
             "Arm A and Arm B prefill the same prompt on different sessions of one "
-            "resident batch; equal sampled tokens is the continuation check.",
+            "resident batch; equal sampled tokens is the continuation check, and "
+            "the layer_boundary_state gate additionally fingerprints the committed "
+            "per-layer direct INT8 K/V and linear state for exact equality.",
             "The interleaved decoder runs while the prefill is suspended, which is "
             "the case P6b's dedicated suspended buffers exist to protect.",
         ],
