@@ -75,6 +75,16 @@ def _rect_inputs():
     return preprocess_image_surya(Image.open(page).convert("RGB"))
 
 
+def _full_page_inputs():
+    from hipengine.loading.surya import preprocess_image_surya
+    from PIL import Image
+
+    page = FIXTURES / "page_full.png"
+    if not page.exists():
+        pytest.skip("page_full.png fixture not present")
+    return preprocess_image_surya(Image.open(page).convert("RGB"))
+
+
 def _gpu_ocr_ids(r, spec, tokenizer, pixel_rows, grid, max_tokens: int) -> list[int]:
     from hipengine.loading.surya import compute_mrope_positions, render_chat_prompt
 
@@ -293,6 +303,93 @@ def test_gpu_end_to_end_ocr_matches_oracle(runner) -> None:
     assert generated == ref["ids"], (
         "GPU pipeline greedy decode diverged from the torch fp32 reference"
     )
+
+
+def test_gpu_full_page_layout_matches_oracle(runner) -> None:
+    """Full-size realistic page (1024x1024, 1024 merged tokens) vs oracle.
+
+    ``page_small`` (256x256) and ``page_rect`` (320x192) are bar patterns
+    whose oracle continuation is a degenerate repeated ``<ul><li>`` run, so
+    greedy parity against them is a weak gate. This page renders real words,
+    produces a 1x64x64 patch grid, and decodes a long non-degenerate
+    layout-JSON sequence — long enough that a small numerical difference
+    flips an argmax.
+    """
+
+    r, _weights, spec = runner
+    from hipengine.loading.surya import (
+        compute_mrope_positions,
+        render_chat_prompt,
+    )
+    from hipengine.loading.surya import SuryaTokenizer, resolve_surya_path
+
+    ref_path = FIXTURES / "oracle_fullpage_greedy.json"
+    if not ref_path.exists():
+        pytest.skip(
+            "oracle_fullpage_greedy.json not present; "
+            "run scripts/surya_oracle_fullpage.py"
+        )
+    ref = json.loads(ref_path.read_text())
+
+    pixel_rows, grid = _full_page_inputs()
+    assert grid == (1, 64, 64), f"unexpected full-page grid {grid}"
+    n_img = (grid[1] // 2) * (grid[2] // 2)
+    tokenizer = SuryaTokenizer(resolve_surya_path(MODEL_ID))
+    ids, mm = render_chat_prompt(tokenizer, "Transcribe this page.", n_img)
+    pos = compute_mrope_positions(mm, grid, spec.vision_spatial_merge_size)
+
+    merged = r.vision_forward(pixel_rows, [grid])
+    logits = r.prefill(np.asarray(ids, dtype=np.int64), pos,
+                       visual_features=merged)
+    generated: list[int] = []
+    p = int(pos[:, -1].max())
+    for step in range(len(ref["ids"]) + 8):
+        nxt = int(np.argmax(logits))
+        if nxt == spec.eos_token_id:
+            break
+        generated.append(nxt)
+        logits = r.decode_step(nxt, p + 1 + step)
+
+    if generated != ref["ids"]:
+        n = min(len(generated), len(ref["ids"]))
+        first = next((i for i in range(n) if generated[i] != ref["ids"][i]), n)
+        raise AssertionError(
+            "GPU full-page greedy decode diverged from the torch fp32 "
+            f"reference at index {first} "
+            f"(gpu len={len(generated)}, ref len={len(ref['ids'])})"
+        )
+
+
+def test_gpu_full_page_vision_matches_oracle(runner) -> None:
+    """Vision tower at full-page scale (4096 patches) vs the torch oracle.
+
+    Localizes failures: if ``test_gpu_full_page_layout_matches_oracle``
+    fails, this says whether the vision tower or the decoder is at fault.
+    The gate is a fixed bound rather than a CPU-reference band so the test
+    does not pay for the ~19 s NumPy vision forward; measured on gfx1151,
+    gpu-vs-oracle max|d| is 9.19e-4 and cpu-vs-oracle max|d| is 2.59e-4.
+    """
+
+    r, _weights, spec = runner
+
+    path = FIXTURES / "oracle_fullpage.npz"
+    if not path.exists():
+        pytest.skip(
+            "oracle_fullpage.npz not present; "
+            "run scripts/surya_oracle_fullpage.py"
+        )
+    with np.load(path) as z:
+        if "vision_merged" not in z.files:
+            pytest.skip("oracle_fullpage.npz has no vision_merged features")
+        merged_oracle = z["vision_merged"]
+
+    pixel_rows, grid = _full_page_inputs()
+    merged_gpu = r.vision_forward(pixel_rows, [grid])
+    assert merged_gpu.shape == merged_oracle.shape
+    assert np.isfinite(merged_gpu).all()
+    d = np.abs(merged_gpu - merged_oracle)
+    assert d.max() < 2e-3, f"full-page vision diverged: max|d|={d.max():.3e}"
+    assert d.mean() < 1e-5, f"full-page vision drift: mean|d|={d.mean():.3e}"
 
 
 def test_gpu_runner_repeated_create_use_close_releases_memory(runner) -> None:
