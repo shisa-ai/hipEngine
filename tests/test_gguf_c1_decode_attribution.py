@@ -19,6 +19,7 @@ from scripts.gguf_c1_decode_attribution import (
     COMPILER_VERSION_FILE_ENV,
     REQUIRE_CACHED_BUILD_ENV,
     STEP_MARKER_PREFIX,
+    _merge_intervals,
     _union_ns,
     classify_kernel,
     compare_api_to_copies,
@@ -191,6 +192,63 @@ def test_union_merges_overlapping_intervals() -> None:
     assert _union_ns([(0, 10), (10, 20)]) == 20
     assert _union_ns([]) == 0
     assert _union_ns([(50, 60), (0, 10)]) == 20
+
+
+def test_merge_intervals_merges_overlapping_and_touching() -> None:
+    assert _merge_intervals([(0, 10), (5, 20), (30, 40)]) == [(0, 20), (30, 40)]
+    # Touching intervals merge, so a zero-length gap is not reported as a gap.
+    assert _merge_intervals([(0, 10), (10, 20)]) == [(0, 20)]
+    assert _merge_intervals([]) == []
+    assert _merge_intervals([(50, 60), (0, 10)]) == [(0, 10), (50, 60)]
+
+
+def test_summarize_splits_interior_gap_by_whether_api_is_in_flight() -> None:
+    # Kernels 0.1-0.3 ms and 0.5-0.7 ms leave a 0.2 ms interior gap, and a HIP API
+    # call spans 0.35-0.4 ms inside it. So 0.05 ms of the gap is host time inside
+    # the runtime and 0.15 ms is host Python with no API call in flight.
+    summary = summarize(
+        windows=[{"step": 0, "start_ns": 0, "end_ns": 1_000_000}],
+        kernels=[
+            {"family": "gguf_q4_k_t16_gemv_rowtile", "start_ns": 100_000, "end_ns": 300_000, "duration_ns": 200_000},
+            {"family": "paged_full_attn_decode", "start_ns": 500_000, "end_ns": 700_000, "duration_ns": 200_000},
+        ],
+        hip_api=[
+            {"function": "hipLaunchKernel", "start_ns": 350_000, "end_ns": 400_000, "duration_ns": 50_000},
+        ],
+        copies=[],
+        step_walls_ms=[12.0],
+    )
+
+    span = summary["gpu_span"]
+    assert span["interior_gap_entries"] == 1
+    assert span["interior_gap_per_step_ms"] == pytest.approx(0.2)
+    assert span["interior_gap_with_api_per_step_ms"] == pytest.approx(0.05)
+    assert span["interior_gap_without_api_per_step_ms"] == pytest.approx(0.15)
+    assert span["interior_gap_with_api_per_step_ms"] + span[
+        "interior_gap_without_api_per_step_ms"
+    ] == pytest.approx(span["interior_gap_per_step_ms"])
+
+
+def test_summarize_interior_gap_split_ignores_api_outside_the_gap() -> None:
+    # An API call before the gap and one after it must not be counted as covering
+    # the gap, or host Python would be misreported as launch latency.
+    summary = summarize(
+        windows=[{"step": 0, "start_ns": 0, "end_ns": 1_000_000}],
+        kernels=[
+            {"family": "gguf_q4_k_t16_gemv_rowtile", "start_ns": 100_000, "end_ns": 300_000, "duration_ns": 200_000},
+            {"family": "paged_full_attn_decode", "start_ns": 500_000, "end_ns": 700_000, "duration_ns": 200_000},
+        ],
+        hip_api=[
+            {"function": "hipLaunchKernel", "start_ns": 150_000, "end_ns": 200_000, "duration_ns": 50_000},
+            {"function": "hipLaunchKernel", "start_ns": 600_000, "end_ns": 650_000, "duration_ns": 50_000},
+        ],
+        copies=[],
+        step_walls_ms=[12.0],
+    )
+
+    span = summary["gpu_span"]
+    assert span["interior_gap_with_api_per_step_ms"] == pytest.approx(0.0)
+    assert span["interior_gap_without_api_per_step_ms"] == pytest.approx(0.2)
 
 
 def test_summarize_gpu_span_separates_interior_gap_from_edges() -> None:
