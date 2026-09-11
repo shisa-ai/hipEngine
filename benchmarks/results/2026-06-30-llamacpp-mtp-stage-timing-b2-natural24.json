@@ -1,0 +1,473 @@
+{
+  "schema": 1,
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "kind": "llamacpp_mtp_external_comparison",
+  "timestamp": "2026-06-30T09:53:34Z",
+  "config": {
+    "server_bin": "/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server",
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "alias": "qwen36-35b",
+    "host": "127.0.0.1",
+    "port": 8012,
+    "ctx_size": 8192,
+    "gpu_layers": 99,
+    "flash_attn": "on",
+    "cache_type_k": "f16",
+    "cache_type_v": "f16",
+    "draft_max": 2,
+    "protocol": "natural",
+    "prompts": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "max_tokens": 24,
+    "seed": 12345,
+    "temperature": 0.0,
+    "top_k": 1,
+    "top_p": 1.0,
+    "min_p": 0.0,
+    "token_id": 9707,
+    "shapes": [
+      "512/128",
+      "4096/128"
+    ],
+    "server_extra_arg": [
+      "--reasoning",
+      "off"
+    ],
+    "stage_timings_jsonl": "benchmarks/results/2026-06-30-llamacpp-mtp-stage-timing-b2-natural24.jsonl"
+  },
+  "software": {
+    "script": "scripts/llamacpp_mtp_bench.py",
+    "hipengine_commit": "0870cee21b082f4ef3d96d2208db57d2a92760ea",
+    "hipengine_dirty": true,
+    "llama_cpp_commit": "6e9007ae61f4e994c27484759caac6ef2aa32b30",
+    "llama_cpp_dirty": true
+  },
+  "runs": {
+    "mtp": {
+      "server_command": [
+        "/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server",
+        "-m",
+        "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "-ngl",
+        "99",
+        "-fa",
+        "on",
+        "-ctk",
+        "f16",
+        "-ctv",
+        "f16",
+        "-c",
+        "8192",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8012",
+        "--alias",
+        "qwen36-35b",
+        "--no-cache-prompt",
+        "--spec-type",
+        "draft-mtp",
+        "--spec-draft-n-max",
+        "2",
+        "--reasoning",
+        "off"
+      ],
+      "server_log": "/tmp/llamacpp-mtp-stage-timing-b2-natural24-logs/server-mtp.log",
+      "stage_timings_jsonl": "benchmarks/results/2026-06-30-llamacpp-mtp-stage-timing-b2-natural24.jsonl",
+      "protocols": {
+        "natural": {
+          "prompt_file": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+          "request_count": 10,
+          "rows": [
+            {
+              "id": "code_merge_intervals",
+              "category": "code",
+              "wall_s": 0.48989037820138037,
+              "content_sha256": "c8ec0aff8e83e14752d1f32238c3c92e0bf933675495cb9656dd9e11b4bba18a",
+              "content_chars": 98,
+              "timings": {
+                "cache_n": 0,
+                "prompt_n": 40,
+                "prompt_ms": 142.07,
+                "prompt_per_token_ms": 3.5517499999999997,
+                "prompt_per_second": 281.5513479270782,
+                "predicted_n": 24,
+                "predicted_ms": 322.217,
+                "predicted_per_token_ms": 13.425708333333333,
+                "predicted_per_second": 74.48396577461773,
+                "draft_n": 17,
+                "draft_n_accepted": 14
+              },
+              "draft_acceptance": 0.8235294117647058,
+              "accepted_per_output": 0.5833333333333334
+            },
+            {
+              "id": "code_topological_sort",
+              "category": "code",
+              "wall_s": 0.4683058022055775,
+              "content_sha256": "37f140bc384fac232181b005ecfe2efed9a846e1229ac40d50668600b277744d",
+              "content_chars": 96,
+              "timings": {
+                "cache_n": 0,
+                "prompt_n": 50,
+                "prompt_ms": 153.375,
+                "prompt_per_token_ms": 3.0675,
+                "prompt_per_second": 325.99837000814995,
+                "predicted_n": 24,
+                "predicted_ms": 284.876,
+                "predicted_per_token_ms": 11.869833333333332,
+                "predicted_per_second": 84.24718122972803,
+                "draft_n": 15,
+                "draft_n_accepted": 15
+              },
+              "draft_acceptance": 1.0,
+              "accepted_per_output": 0.625
+            },
+            {
+              "id": "code_lru_cache",
+              "category": "code",
+              "wall_s": 0.49374376190826297,
+              "content_sha256": "e8b38f553fcb13a81df04750a1b042325630172f971736f77dc1bdd27ce1f265",
+              "content_chars": 80,
+              "timings": {
+                "cache_n": 0,
+                "prompt_n": 47,
+                "prompt_ms": 152.055,
+                "prompt_per_token_ms": 3.235212765957447,
+                "prompt_per_second": 309.09868139817826,
+                "predicted_n": 24,
+                "predicted_ms": 316.443,
+                "predicted_per_token_ms": 13.185125,
+                "predicted_per_second": 75.84304282287806,
+                "draft_n": 16,
+                "draft_n_accepted": 14
+              },
+              "draft_acceptance": 0.875,
+              "accepted_per_output": 0.5833333333333334
+            },
+            {
+              "id": "code_markdown_table",
+              "category": "code",
+              "wall_s": 0.5012406471651047,
+              "content_sha256": "9d2688b11916d6ef4cbe35fa99e66c51eb138aad56da1e6b06fc72216d2269a9",
+              "content_chars": 103,
+              "timings": {
+                "cache_n": 0,
+                "prompt_n": 52,
+                "prompt_ms": 153.748,
+                "prompt_per_token_ms": 2.9566923076923075,
+                "prompt_per_second": 338.21578166870466,
+                "predicted_n": 24,
+                "predicted_ms": 317.165,
+                "predicted_per_token_ms": 13.215208333333335,
+                "predicted_per_second": 75.67039238251382,
+                "draft_n": 16,
+                "draft_n_accepted": 14
+              },
+              "draft_acceptance": 0.875,
+              "accepted_per_output": 0.5833333333333334
+            },
+            {
+              "id": "general_en_plan",
+              "category": "general_en",
+              "wall_s": 0.5285460739396513,
+              "content_sha256": "c42473483331e8e1070e8cd14329a9a8455ea87f02f16e624b90bb229631e0cf",
+              "content_chars": 106,
+              "timings": {
+                "cache_n": 0,
+                "prompt_n": 39,
+                "prompt_ms": 143.527,
+                "prompt_per_token_ms": 3.680179487179487,
+                "prompt_per_second": 271.7258773610541,
+                "predicted_n": 24,
+                "predicted_ms": 355.208,
+                "predicted_per_token_ms": 14.800333333333334,
+                "predicted_per_second": 67.56604580977906,
+                "draft_n": 18,
+                "draft_n_accepted": 13
+              },
+              "draft_acceptance": 0.7222222222222222,
+              "accepted_per_output": 0.5416666666666666
+            },
+            {
+              "id": "general_en_explain",
+              "category": "general_en",
+              "wall_s": 0.5281096140388399,
+              "content_sha256": "2ba9b9e2788ced67cc008fb5e28e60723c12a09a76b59f659235df97da9b2d08",
+              "content_chars": 123,
+              "timings": {
+                "cache_n": 0,
+                "prompt_n": 40,
+                "prompt_ms": 149.416,
+                "prompt_per_token_ms": 3.7354,
+                "prompt_per_second": 267.70894683300315,
+                "predicted_n": 24,
+                "predicted_ms": 348.669,
+                "predicted_per_token_ms": 14.527875,
+                "predicted_per_second": 68.83319136487614,
+                "draft_n": 17,
+                "draft_n_accepted": 13
+              },
+              "draft_acceptance": 0.7647058823529411,
+              "accepted_per_output": 0.5416666666666666
+            },
+            {
+              "id": "general_ja_plan",
+              "category": "general_ja",
+              "wall_s": 0.4822179819457233,
+              "content_sha256": "17626116dcf175ef97f941b394e659cdf5ec0375dd7603d4f8ffe230e8175b2b",
+              "content_chars": 55,
+              "timings": {
+                "cache_n": 0,
+                "prompt_n": 43,
+                "prompt_ms": 143.589,
+                "prompt_per_token_ms": 3.339279069767442,
+                "prompt_per_second": 299.46583651951056,
+                "predicted_n": 24,
+                "predicted_ms": 313.804,
+                "predicted_per_token_ms": 13.075166666666666,
+                "predicted_per_second": 76.48086066461869,
+                "draft_n": 16,
+                "draft_n_accepted": 14
+              },
+              "draft_acceptance": 0.875,
+              "accepted_per_output": 0.5833333333333334
+            },
+            {
+              "id": "general_ja_explain",
+              "category": "general_ja",
+              "wall_s": 0.5703173200599849,
+              "content_sha256": "8c7695e84eeb7beb62ef7f04857efb8d87485dddafe91ef70c79249f9478475a",
+              "content_chars": 47,
+              "timings": {
+                "cache_n": 0,
+                "prompt_n": 43,
+                "prompt_ms": 144.744,
+                "prompt_per_token_ms": 3.366139534883721,
+                "prompt_per_second": 297.0762173216161,
+                "predicted_n": 24,
+                "predicted_ms": 396.986,
+                "predicted_per_token_ms": 16.541083333333333,
+                "predicted_per_second": 60.45553243691213,
+                "draft_n": 21,
+                "draft_n_accepted": 12
+              },
+              "draft_acceptance": 0.5714285714285714,
+              "accepted_per_output": 0.5
+            },
+            {
+              "id": "mixed_ja_en_translate",
+              "category": "mixed_ja_en",
+              "wall_s": 0.52638408401981,
+              "content_sha256": "ef3e654bc14cb9c173ec019223b23117a4146a75302e67c2caf1cbc51f762f79",
+              "content_chars": 110,
+              "timings": {
+                "cache_n": 0,
+                "prompt_n": 64,
+                "prompt_ms": 180.218,
+                "prompt_per_token_ms": 2.81590625,
+                "prompt_per_second": 355.12545916612106,
+                "predicted_n": 24,
+                "predicted_ms": 316.635,
+                "predicted_per_token_ms": 13.193125,
+                "predicted_per_second": 75.79705338954948,
+                "draft_n": 16,
+                "draft_n_accepted": 14
+              },
+              "draft_acceptance": 0.875,
+              "accepted_per_output": 0.5833333333333334
+            },
+            {
+              "id": "mixed_ja_en_review",
+              "category": "mixed_ja_en",
+              "wall_s": 0.591133592883125,
+              "content_sha256": "2321dfcf9800f5fac47a615f9ef6a2142fad1528e4658f5cc54aa3e135ad0f98",
+              "content_chars": 115,
+              "timings": {
+                "cache_n": 0,
+                "prompt_n": 71,
+                "prompt_ms": 211.062,
+                "prompt_per_token_ms": 2.9727042253521128,
+                "prompt_per_second": 336.3940453516028,
+                "predicted_n": 24,
+                "predicted_ms": 354.038,
+                "predicted_per_token_ms": 14.751583333333334,
+                "predicted_per_second": 67.78933334839762,
+                "draft_n": 17,
+                "draft_n_accepted": 13
+              },
+              "draft_acceptance": 0.7647058823529411,
+              "accepted_per_output": 0.5416666666666666
+            }
+          ],
+          "summary": {
+            "requests": 10,
+            "predicted_per_second_median": 75.07717907856578,
+            "predicted_per_second_weighted": 72.15785974977457,
+            "draft_n": 169,
+            "draft_n_accepted": 136,
+            "draft_acceptance": 0.8047337278106509,
+            "accepted_per_output": 0.5666666666666667,
+            "denominators": {
+              "draft_acceptance": "draft_n_accepted / draft_n",
+              "accepted_per_output": "draft_n_accepted / predicted_n"
+            }
+          },
+          "category_summary": {
+            "code": {
+              "requests": 4,
+              "predicted_per_second_median": 75.75671760269594,
+              "predicted_per_second_weighted": 77.37561265768304,
+              "draft_n": 64,
+              "draft_n_accepted": 57,
+              "draft_acceptance": 0.890625,
+              "accepted_per_output": 0.59375,
+              "denominators": {
+                "draft_acceptance": "draft_n_accepted / draft_n",
+                "accepted_per_output": "draft_n_accepted / predicted_n"
+              }
+            },
+            "general_en": {
+              "requests": 2,
+              "predicted_per_second_median": 68.19961858732759,
+              "predicted_per_second_weighted": 68.19373271182323,
+              "draft_n": 35,
+              "draft_n_accepted": 26,
+              "draft_acceptance": 0.7428571428571429,
+              "accepted_per_output": 0.5416666666666666,
+              "denominators": {
+                "draft_acceptance": "draft_n_accepted / draft_n",
+                "accepted_per_output": "draft_n_accepted / predicted_n"
+              }
+            },
+            "general_ja": {
+              "requests": 2,
+              "predicted_per_second_median": 68.46819655076541,
+              "predicted_per_second_weighted": 67.5304942388047,
+              "draft_n": 37,
+              "draft_n_accepted": 26,
+              "draft_acceptance": 0.7027027027027027,
+              "accepted_per_output": 0.5416666666666666,
+              "denominators": {
+                "draft_acceptance": "draft_n_accepted / draft_n",
+                "accepted_per_output": "draft_n_accepted / predicted_n"
+              }
+            },
+            "mixed_ja_en": {
+              "requests": 2,
+              "predicted_per_second_median": 71.79319336897355,
+              "predicted_per_second_weighted": 71.5699006818524,
+              "draft_n": 33,
+              "draft_n_accepted": 27,
+              "draft_acceptance": 0.8181818181818182,
+              "accepted_per_output": 0.5625,
+              "denominators": {
+                "draft_acceptance": "draft_n_accepted / draft_n",
+                "accepted_per_output": "draft_n_accepted / predicted_n"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "summary": {},
+  "stage_timing_summary": {
+    "available": true,
+    "path": "benchmarks/results/2026-06-30-llamacpp-mtp-stage-timing-b2-natural24.jsonl",
+    "rows_total": 93,
+    "rows_measured": 87,
+    "warmup_task_id_excluded": 0,
+    "all": {
+      "cycles": 93,
+      "total_output_tokens": 241,
+      "total_accepted": 148,
+      "total_drafts": 181,
+      "accepted_per_output": 0.6141078838174274,
+      "draft_acceptance": 0.8176795580110497,
+      "cycle_wall_ms_total": 3396.905,
+      "cycle_wall_ms_per_output": 14.095041493775934,
+      "target_verify_layer_passes_per_output": 0.38589211618257263,
+      "target_verify_rows_per_output": 1.1369294605809128,
+      "target_verify_discarded_rows_per_output": 0.13692946058091288,
+      "stage_timing_totals_ms": {
+        "accept_policy_and_seed": 0.5270000000000001,
+        "draft_initial": 512.265,
+        "mtp_context_replay_append": 2706.277000000001,
+        "target_block_acceptance_accounting": 42.73899999999999,
+        "target_block_forward": 132.82599999999996,
+        "target_block_replay_or_commit": 0.8320000000000006,
+        "target_block_snapshot": 0.36300000000000027,
+        "target_block_verify_total": 2883.0370000000003
+      },
+      "stage_timing_per_output_ms": {
+        "accept_policy_and_seed": 0.0021867219917012454,
+        "draft_initial": 2.1255809128630703,
+        "mtp_context_replay_append": 11.22936514522822,
+        "target_block_acceptance_accounting": 0.17734024896265557,
+        "target_block_forward": 0.5511452282157675,
+        "target_block_replay_or_commit": 0.0034522821576763512,
+        "target_block_snapshot": 0.0015062240663900426,
+        "target_block_verify_total": 11.962809128630706
+      },
+      "stage_timing_per_cycle_ms": {
+        "accept_policy_and_seed": 0.005666666666666668,
+        "draft_initial": 5.5082258064516125,
+        "mtp_context_replay_append": 29.099752688172053,
+        "target_block_acceptance_accounting": 0.4595591397849461,
+        "target_block_forward": 1.4282365591397845,
+        "target_block_replay_or_commit": 0.008946236559139792,
+        "target_block_snapshot": 0.0039032258064516157,
+        "target_block_verify_total": 31.000397849462367
+      }
+    },
+    "measured_excluding_first_task": {
+      "cycles": 87,
+      "total_output_tokens": 223,
+      "total_accepted": 136,
+      "total_drafts": 169,
+      "accepted_per_output": 0.6098654708520179,
+      "draft_acceptance": 0.8047337278106509,
+      "cycle_wall_ms_total": 3172.407,
+      "cycle_wall_ms_per_output": 14.226040358744395,
+      "target_verify_layer_passes_per_output": 0.3901345291479821,
+      "target_verify_rows_per_output": 1.147982062780269,
+      "target_verify_discarded_rows_per_output": 0.14798206278026907,
+      "stage_timing_totals_ms": {
+        "accept_policy_and_seed": 0.4260000000000002,
+        "draft_initial": 478.5259999999999,
+        "mtp_context_replay_append": 2531.0990000000006,
+        "target_block_acceptance_accounting": 39.623999999999995,
+        "target_block_forward": 120.63900000000001,
+        "target_block_replay_or_commit": 0.7730000000000006,
+        "target_block_snapshot": 0.32700000000000023,
+        "target_block_verify_total": 2692.462
+      },
+      "stage_timing_per_output_ms": {
+        "accept_policy_and_seed": 0.0019103139013452925,
+        "draft_initial": 2.145856502242152,
+        "mtp_context_replay_append": 11.350219730941706,
+        "target_block_acceptance_accounting": 0.1776860986547085,
+        "target_block_forward": 0.5409820627802691,
+        "target_block_replay_or_commit": 0.0034663677130044868,
+        "target_block_snapshot": 0.0014663677130044854,
+        "target_block_verify_total": 12.073820627802691
+      },
+      "stage_timing_per_cycle_ms": {
+        "accept_policy_and_seed": 0.0048965517241379335,
+        "draft_initial": 5.500298850574711,
+        "mtp_context_replay_append": 29.093091954022995,
+        "target_block_acceptance_accounting": 0.45544827586206893,
+        "target_block_forward": 1.3866551724137932,
+        "target_block_replay_or_commit": 0.008885057471264375,
+        "target_block_snapshot": 0.0037586206896551753,
+        "target_block_verify_total": 30.94783908045977
+      }
+    }
+  },
+  "notes": [
+    "External comparison diagnostic; no hipEngine correctness gate is implied.",
+    "Natural prompt MTP can produce different output hashes from base even at temperature=0.",
+    "Token-repeat prompts are artificial and can overstate MTP acceptance versus natural prompts."
+  ]
+}

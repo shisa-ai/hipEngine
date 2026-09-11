@@ -1,0 +1,360 @@
+{
+ "schema_version": 1,
+ "kind": "hipengine_production_numerics_route_coverage_finding",
+ "status": "accepted_diagnostic_finding",
+ "created_at": "2026-09-03T03:41:57.894821+00:00",
+ "performance_claim": false,
+ "profile_qualification_claim": false,
+ "admits_or_rejects_candidate": false,
+ "subject": {
+  "route": "prefill_policy_qwen4exp_dense_q8_shapes",
+  "selected_variant": "mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out",
+  "strict_fallback_variant": "coltile8_rowbatch4_f32_f32_out",
+  "admission_threshold_rows": 64,
+  "threshold_source": "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_mmq_prefill.py:104 _QWEN4EXP_MIN_ROWS"
+ },
+ "decision_rule": {
+  "predeclared_in": "worklog/entries/20260903T033202.234656Z-lhl-qwen4exp-pf1-basis-predeclaration-6f6810.md",
+  "rule_b_coverage_floor": 0.5
+ },
+ "coverage": {
+  "admission_suite_2026_08_29": {
+   "fixture": "benchmarks/fixtures/qwen4exp_admission_suite_18prompt.json",
+   "fixture_kind": "qwen4exp_canonical_ar_exact_token_fixture",
+   "cases": 18,
+   "cases_engaging_route": 2,
+   "compared_rows": 450,
+   "rows_in_route_engaging_cases": 50,
+   "route_engagement_coverage": 0.1111111111111111,
+   "decode_rows_engage_route": false,
+   "per_case": [
+    {
+     "id": "code_merge_intervals",
+     "category": "code",
+     "prompt_tokens": 40,
+     "prefill_engages_q8_mmq": false,
+     "compared_rows": 25
+    },
+    {
+     "id": "code_topological_sort",
+     "category": "code",
+     "prompt_tokens": 50,
+     "prefill_engages_q8_mmq": false,
+     "compared_rows": 25
+    },
+    {
+     "id": "code_lru_cache",
+     "category": "code",
+     "prompt_tokens": 47,
+     "prefill_engages_q8_mmq": false,
+     "compared_rows": 25
+    },
+    {
+     "id": "code_markdown_table",
+     "category": "code",
+     "prompt_tokens": 52,
+     "prefill_engages_q8_mmq": false,
+     "compared_rows": 25
+    },
+    {
+     "id": "general_en_plan",
+     "category": "general_en",
+     "prompt_tokens": 39,
+     "prefill_engages_q8_mmq": false,
+     "compared_rows": 25
+    },
+    {
+     "id": "general_en_explain",
+     "category": "general_en",
+     "prompt_tokens": 40,
+     "prefill_engages_q8_mmq": false,
+     "compared_rows": 25
+    },
+    {
+     "id": "general_ja_plan",
+     "category": "general_ja",
+     "prompt_tokens": 43,
+     "prefill_engages_q8_mmq": false,
+     "compared_rows": 25
+    },
+    {
+     "id": "general_ja_explain",
+     "category": "general_ja",
+     "prompt_tokens": 43,
+     "prefill_engages_q8_mmq": false,
+     "compared_rows": 25
+    },
+    {
+     "id": "mixed_ja_en_translate",
+     "category": "mixed_ja_en",
+     "prompt_tokens": 64,
+     "prefill_engages_q8_mmq": true,
+     "compared_rows": 25
+    },
+    {
+     "id": "mixed_ja_en_review",
+     "category": "mixed_ja_en",
+     "prompt_tokens": 71,
+     "prefill_engages_q8_mmq": true,
+     "compared_rows": 25
+    },
+    {
+     "id": "heldout_code_rate_limiter",
+     "category": "code",
+     "prompt_tokens": 55,
+     "prefill_engages_q8_mmq": false,
+     "compared_rows": 25
+    },
+    {
+     "id": "heldout_code_interval_schedule",
+     "category": "code",
+     "prompt_tokens": 52,
+     "prefill_engages_q8_mmq": false,
+     "compared_rows": 25
+    },
+    {
+     "id": "heldout_general_en_incident",
+     "category": "general_en",
+     "prompt_tokens": 45,
+     "prefill_engages_q8_mmq": false,
+     "compared_rows": 25
+    },
+    {
+     "id": "heldout_general_en_quant",
+     "category": "general_en",
+     "prompt_tokens": 56,
+     "prefill_engages_q8_mmq": false,
+     "compared_rows": 25
+    },
+    {
+     "id": "heldout_general_ja_migration",
+     "category": "general_ja",
+     "prompt_tokens": 53,
+     "prefill_engages_q8_mmq": false,
+     "compared_rows": 25
+    },
+    {
+     "id": "heldout_general_ja_speculative",
+     "category": "general_ja",
+     "prompt_tokens": 45,
+     "prefill_engages_q8_mmq": false,
+     "compared_rows": 25
+    },
+    {
+     "id": "heldout_mixed_summary",
+     "category": "mixed_ja_en",
+     "prompt_tokens": 52,
+     "prefill_engages_q8_mmq": false,
+     "compared_rows": 25
+    },
+    {
+     "id": "heldout_mixed_review",
+     "category": "mixed_ja_en",
+     "prompt_tokens": 56,
+     "prefill_engages_q8_mmq": false,
+     "compared_rows": 25
+    }
+   ]
+  },
+  "canonical_suite_2026_09_03": {
+   "fixture": "benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+   "fixture_kind": "qwen4exp_canonical_ar_exact_token_fixture",
+   "cases": 12,
+   "cases_engaging_route": 12,
+   "compared_rows": 300,
+   "rows_in_route_engaging_cases": 300,
+   "route_engagement_coverage": 1.0,
+   "decode_rows_engage_route": false,
+   "per_case": [
+    {
+     "id": "code-p512",
+     "category": "code",
+     "prompt_tokens": 512,
+     "prefill_engages_q8_mmq": true,
+     "compared_rows": 25
+    },
+    {
+     "id": "code-p1024",
+     "category": "code",
+     "prompt_tokens": 1024,
+     "prefill_engages_q8_mmq": true,
+     "compared_rows": 25
+    },
+    {
+     "id": "code-p4096",
+     "category": "code",
+     "prompt_tokens": 4096,
+     "prefill_engages_q8_mmq": true,
+     "compared_rows": 25
+    },
+    {
+     "id": "general_en-p512",
+     "category": "general_en",
+     "prompt_tokens": 512,
+     "prefill_engages_q8_mmq": true,
+     "compared_rows": 25
+    },
+    {
+     "id": "general_en-p1024",
+     "category": "general_en",
+     "prompt_tokens": 1024,
+     "prefill_engages_q8_mmq": true,
+     "compared_rows": 25
+    },
+    {
+     "id": "general_en-p4096",
+     "category": "general_en",
+     "prompt_tokens": 4096,
+     "prefill_engages_q8_mmq": true,
+     "compared_rows": 25
+    },
+    {
+     "id": "general_ja-p512",
+     "category": "general_ja",
+     "prompt_tokens": 512,
+     "prefill_engages_q8_mmq": true,
+     "compared_rows": 25
+    },
+    {
+     "id": "general_ja-p1024",
+     "category": "general_ja",
+     "prompt_tokens": 1024,
+     "prefill_engages_q8_mmq": true,
+     "compared_rows": 25
+    },
+    {
+     "id": "general_ja-p4096",
+     "category": "general_ja",
+     "prompt_tokens": 4096,
+     "prefill_engages_q8_mmq": true,
+     "compared_rows": 25
+    },
+    {
+     "id": "mixed_ja_en-p512",
+     "category": "mixed_ja_en",
+     "prompt_tokens": 512,
+     "prefill_engages_q8_mmq": true,
+     "compared_rows": 25
+    },
+    {
+     "id": "mixed_ja_en-p1024",
+     "category": "mixed_ja_en",
+     "prompt_tokens": 1024,
+     "prefill_engages_q8_mmq": true,
+     "compared_rows": 25
+    },
+    {
+     "id": "mixed_ja_en-p4096",
+     "category": "mixed_ja_en",
+     "prompt_tokens": 4096,
+     "prefill_engages_q8_mmq": true,
+     "compared_rows": 25
+    }
+   ]
+  }
+ },
+ "measured": {
+  "admission_suite": {
+   "gate_artifact": "benchmarks/results/2026-09-03-gfx1151-qwen38-flash-next-pf1-admission-suite-reconciliation.json",
+   "route": {
+    "surface": "runner _q8_mmq_policy (dense-pair-gate pattern)",
+    "warmup_request_after_policy_flip": true,
+    "policy_restored_after_capture": true,
+    "candidate_planes": 2,
+    "context_planes": 3,
+    "strict_teacher": "policy None -> exact coltile8_rowbatch4 chain",
+    "incumbent_planes": 3
+   },
+   "incumbent_vs_strict": {
+    "rows": 450,
+    "kl_mean": 7.33539100523015e-05,
+    "kl_p50": 0.0,
+    "kl_p95": 0.00012490891712041506,
+    "kl_p99": 0.0021478142071084685,
+    "kl_max": 0.006327044057495176,
+    "top1_agreement": 0.9977777777777778,
+    "max_abs_logit_delta": 1.437572717666626
+   },
+   "incumbent_vs_strict_by_category": {
+    "code": {
+     "rows": 150,
+     "kl_mean": 0.0,
+     "kl_max": 0.0,
+     "top1_agreement": 1.0
+    },
+    "general_en": {
+     "rows": 100,
+     "kl_mean": 0.0,
+     "kl_max": 0.0,
+     "top1_agreement": 1.0
+    },
+    "general_ja": {
+     "rows": 100,
+     "kl_mean": 0.0,
+     "kl_max": 0.0,
+     "top1_agreement": 1.0
+    },
+    "mixed_ja_en": {
+     "rows": 100,
+     "kl_mean": 0.0003300925952353568,
+     "kl_max": 0.006327044057495176,
+     "top1_agreement": 0.99
+    }
+   },
+   "repeat_determinism_passed": true
+  },
+  "canonical_suite": {
+   "gate_artifact": "benchmarks/results/2026-09-03-gfx1151-qwen38-flash-next-pf1d-mmq-plane2-dualbasis.json",
+   "route": {
+    "surface": "runner _q8_mmq_policy (dense-pair-gate pattern)",
+    "warmup_request_after_policy_flip": true,
+    "policy_restored_after_capture": true,
+    "candidate_planes": 2,
+    "context_planes": 3,
+    "strict_teacher": "policy None -> exact coltile8_rowbatch4 chain",
+    "incumbent_planes": 3
+   },
+   "incumbent_vs_strict": {
+    "rows": 300,
+    "kl_mean": 0.0027289335335615515,
+    "kl_p50": 0.0009395654697687071,
+    "kl_p95": 0.011362321858421549,
+    "kl_p99": 0.017344700718241537,
+    "kl_max": 0.03245356821762118,
+    "top1_agreement": 0.9666666666666667,
+    "max_abs_logit_delta": 2.781018614768982
+   },
+   "incumbent_vs_strict_by_category": {
+    "code": {
+     "rows": 75,
+     "kl_mean": 0.002464503723506913,
+     "kl_max": 0.01603168011490489,
+     "top1_agreement": 0.96
+    },
+    "general_en": {
+     "rows": 75,
+     "kl_mean": 0.002812210350838752,
+     "kl_max": 0.015769805313282002,
+     "top1_agreement": 0.9466666666666667
+    },
+    "general_ja": {
+     "rows": 75,
+     "kl_mean": 0.0028865248565658904,
+     "kl_max": 0.03245356821762118,
+     "top1_agreement": 1.0
+    },
+    "mixed_ja_en": {
+     "rows": 75,
+     "kl_mean": 0.002752495203334651,
+     "kl_max": 0.01838076401140905,
+     "top1_agreement": 0.96
+    }
+   },
+   "repeat_determinism_passed": true
+  }
+ },
+ "verdict": {
+  "admission_suite_classification": "route_vacuous_for_scope",
+  "canonical_suite_classification": "route_covering"
+ }
+}

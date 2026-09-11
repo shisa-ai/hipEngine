@@ -1,0 +1,540 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_q5_k_iu8_exact_screen",
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "cfc065bf0ba47b5475ef58215839a065d4efbdd8",
+    "tracked_clean": true
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": "10.0.0",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)"
+  },
+  "command": [
+    "scripts/qwen4exp_q5_k_iu8_exact_screen.py",
+    "--model-root",
+    "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--rows",
+    "512",
+    "1024",
+    "4096",
+    "--pairs",
+    "10",
+    "--multiplier",
+    "16.0",
+    "--compiler-version-file",
+    "/tmp/hipcc-version-q5k.txt",
+    "--output",
+    "benchmarks/results/2026-09-09-framework-qwen4exp-q5k-iu8-screen.json"
+  ],
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "weights": [
+    {
+      "tensor": "blk.2.ffn_gate_exps.weight",
+      "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "sha256": "3503441ba264295aa56cdbe538db7cac53fc715f8d976467c7b6e261f41ed7bd"
+    },
+    {
+      "tensor": "blk.2.ffn_up_exps.weight",
+      "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "sha256": "317d4b8bb01646e3877c51224af0c601b710bb4e2d7e3b391bf30437ad9ef194"
+    }
+  ],
+  "arithmetic_class": "T0-exact-candidate",
+  "runtime_default_changed": false,
+  "boundary": "grouped Q5_K gate/up plus identical BF16 SiLU; tile map + iu8-risk + sparse exact repair versus the row4 parent; no routing/down/combine",
+  "parent_variant": "gguf_q5_k_selected_grouped_row4_gemv_bf16_bf16_out",
+  "candidate_variants": [
+    "gguf_q5_k_selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out",
+    "gguf_q5_k_selected_dual_sparse_exact_repair_bf16"
+  ],
+  "routing": "uniform",
+  "layer": 2,
+  "cases": [
+    {
+      "rows": 512,
+      "multiplier": 16.0,
+      "compact": 5120,
+      "pairs": 10,
+      "exact_silu": true,
+      "risk_count_median": 177648.0,
+      "risk_count_max": 177648,
+      "repair_share": 0.054214,
+      "parent_ms_median": 115.588,
+      "candidate_ms_median": 20.391,
+      "speedup": 5.6686,
+      "records": [
+        {
+          "pair": 0,
+          "order": "parent-first",
+          "parent_ms": 5974.929,
+          "candidate_ms": 879.215,
+          "risk_count": 177648
+        },
+        {
+          "pair": 0,
+          "order": "candidate-first",
+          "parent_ms": 115.417,
+          "candidate_ms": 20.223,
+          "risk_count": 177648
+        },
+        {
+          "pair": 1,
+          "order": "parent-first",
+          "parent_ms": 115.47,
+          "candidate_ms": 20.534,
+          "risk_count": 177648
+        },
+        {
+          "pair": 1,
+          "order": "candidate-first",
+          "parent_ms": 115.532,
+          "candidate_ms": 20.271,
+          "risk_count": 177648
+        },
+        {
+          "pair": 2,
+          "order": "parent-first",
+          "parent_ms": 115.634,
+          "candidate_ms": 20.775,
+          "risk_count": 177648
+        },
+        {
+          "pair": 2,
+          "order": "candidate-first",
+          "parent_ms": 115.719,
+          "candidate_ms": 20.527,
+          "risk_count": 177648
+        },
+        {
+          "pair": 3,
+          "order": "parent-first",
+          "parent_ms": 115.561,
+          "candidate_ms": 20.513,
+          "risk_count": 177648
+        },
+        {
+          "pair": 3,
+          "order": "candidate-first",
+          "parent_ms": 115.623,
+          "candidate_ms": 20.338,
+          "risk_count": 177648
+        },
+        {
+          "pair": 4,
+          "order": "parent-first",
+          "parent_ms": 115.581,
+          "candidate_ms": 20.237,
+          "risk_count": 177648
+        },
+        {
+          "pair": 4,
+          "order": "candidate-first",
+          "parent_ms": 115.501,
+          "candidate_ms": 20.132,
+          "risk_count": 177648
+        },
+        {
+          "pair": 5,
+          "order": "parent-first",
+          "parent_ms": 115.815,
+          "candidate_ms": 20.623,
+          "risk_count": 177648
+        },
+        {
+          "pair": 5,
+          "order": "candidate-first",
+          "parent_ms": 115.64,
+          "candidate_ms": 20.435,
+          "risk_count": 177648
+        },
+        {
+          "pair": 6,
+          "order": "parent-first",
+          "parent_ms": 115.722,
+          "candidate_ms": 20.289,
+          "risk_count": 177648
+        },
+        {
+          "pair": 6,
+          "order": "candidate-first",
+          "parent_ms": 115.207,
+          "candidate_ms": 20.398,
+          "risk_count": 177648
+        },
+        {
+          "pair": 7,
+          "order": "parent-first",
+          "parent_ms": 115.788,
+          "candidate_ms": 20.109,
+          "risk_count": 177648
+        },
+        {
+          "pair": 7,
+          "order": "candidate-first",
+          "parent_ms": 115.474,
+          "candidate_ms": 19.942,
+          "risk_count": 177648
+        },
+        {
+          "pair": 8,
+          "order": "parent-first",
+          "parent_ms": 115.869,
+          "candidate_ms": 20.722,
+          "risk_count": 177648
+        },
+        {
+          "pair": 8,
+          "order": "candidate-first",
+          "parent_ms": 115.576,
+          "candidate_ms": 19.934,
+          "risk_count": 177648
+        },
+        {
+          "pair": 9,
+          "order": "parent-first",
+          "parent_ms": 115.594,
+          "candidate_ms": 20.443,
+          "risk_count": 177648
+        },
+        {
+          "pair": 9,
+          "order": "candidate-first",
+          "parent_ms": 115.439,
+          "candidate_ms": 20.384,
+          "risk_count": 177648
+        }
+      ]
+    },
+    {
+      "rows": 1024,
+      "multiplier": 16.0,
+      "compact": 10240,
+      "pairs": 10,
+      "exact_silu": true,
+      "risk_count_median": 355227.0,
+      "risk_count_max": 355227,
+      "repair_share": 0.054203,
+      "parent_ms_median": 220.729,
+      "candidate_ms_median": 36.774,
+      "speedup": 6.0023,
+      "records": [
+        {
+          "pair": 0,
+          "order": "parent-first",
+          "parent_ms": 222.047,
+          "candidate_ms": 37.064,
+          "risk_count": 355227
+        },
+        {
+          "pair": 0,
+          "order": "candidate-first",
+          "parent_ms": 220.528,
+          "candidate_ms": 36.758,
+          "risk_count": 355227
+        },
+        {
+          "pair": 1,
+          "order": "parent-first",
+          "parent_ms": 221.291,
+          "candidate_ms": 36.599,
+          "risk_count": 355227
+        },
+        {
+          "pair": 1,
+          "order": "candidate-first",
+          "parent_ms": 220.239,
+          "candidate_ms": 36.762,
+          "risk_count": 355227
+        },
+        {
+          "pair": 2,
+          "order": "parent-first",
+          "parent_ms": 221.366,
+          "candidate_ms": 36.774,
+          "risk_count": 355227
+        },
+        {
+          "pair": 2,
+          "order": "candidate-first",
+          "parent_ms": 220.613,
+          "candidate_ms": 36.777,
+          "risk_count": 355227
+        },
+        {
+          "pair": 3,
+          "order": "parent-first",
+          "parent_ms": 221.527,
+          "candidate_ms": 36.786,
+          "risk_count": 355227
+        },
+        {
+          "pair": 3,
+          "order": "candidate-first",
+          "parent_ms": 220.771,
+          "candidate_ms": 36.959,
+          "risk_count": 355227
+        },
+        {
+          "pair": 4,
+          "order": "parent-first",
+          "parent_ms": 220.869,
+          "candidate_ms": 36.694,
+          "risk_count": 355227
+        },
+        {
+          "pair": 4,
+          "order": "candidate-first",
+          "parent_ms": 220.5,
+          "candidate_ms": 36.211,
+          "risk_count": 355227
+        },
+        {
+          "pair": 5,
+          "order": "parent-first",
+          "parent_ms": 221.317,
+          "candidate_ms": 36.733,
+          "risk_count": 355227
+        },
+        {
+          "pair": 5,
+          "order": "candidate-first",
+          "parent_ms": 220.268,
+          "candidate_ms": 36.618,
+          "risk_count": 355227
+        },
+        {
+          "pair": 6,
+          "order": "parent-first",
+          "parent_ms": 220.855,
+          "candidate_ms": 36.792,
+          "risk_count": 355227
+        },
+        {
+          "pair": 6,
+          "order": "candidate-first",
+          "parent_ms": 220.557,
+          "candidate_ms": 36.652,
+          "risk_count": 355227
+        },
+        {
+          "pair": 7,
+          "order": "parent-first",
+          "parent_ms": 220.882,
+          "candidate_ms": 36.422,
+          "risk_count": 355227
+        },
+        {
+          "pair": 7,
+          "order": "candidate-first",
+          "parent_ms": 220.458,
+          "candidate_ms": 36.774,
+          "risk_count": 355227
+        },
+        {
+          "pair": 8,
+          "order": "parent-first",
+          "parent_ms": 221.181,
+          "candidate_ms": 36.84,
+          "risk_count": 355227
+        },
+        {
+          "pair": 8,
+          "order": "candidate-first",
+          "parent_ms": 220.488,
+          "candidate_ms": 37.203,
+          "risk_count": 355227
+        },
+        {
+          "pair": 9,
+          "order": "parent-first",
+          "parent_ms": 220.688,
+          "candidate_ms": 37.09,
+          "risk_count": 355227
+        },
+        {
+          "pair": 9,
+          "order": "candidate-first",
+          "parent_ms": 220.474,
+          "candidate_ms": 36.885,
+          "risk_count": 355227
+        }
+      ]
+    },
+    {
+      "rows": 4096,
+      "multiplier": 16.0,
+      "compact": 40960,
+      "pairs": 10,
+      "exact_silu": true,
+      "risk_count_median": 1423764.0,
+      "risk_count_max": 1423764,
+      "repair_share": 0.054312,
+      "parent_ms_median": 855.15,
+      "candidate_ms_median": 127.988,
+      "speedup": 6.6815,
+      "records": [
+        {
+          "pair": 0,
+          "order": "parent-first",
+          "parent_ms": 857.03,
+          "candidate_ms": 128.915,
+          "risk_count": 1423764
+        },
+        {
+          "pair": 0,
+          "order": "candidate-first",
+          "parent_ms": 854.221,
+          "candidate_ms": 129.091,
+          "risk_count": 1423764
+        },
+        {
+          "pair": 1,
+          "order": "parent-first",
+          "parent_ms": 855.717,
+          "candidate_ms": 129.019,
+          "risk_count": 1423764
+        },
+        {
+          "pair": 1,
+          "order": "candidate-first",
+          "parent_ms": 854.583,
+          "candidate_ms": 126.346,
+          "risk_count": 1423764
+        },
+        {
+          "pair": 2,
+          "order": "parent-first",
+          "parent_ms": 857.606,
+          "candidate_ms": 126.346,
+          "risk_count": 1423764
+        },
+        {
+          "pair": 2,
+          "order": "candidate-first",
+          "parent_ms": 853.303,
+          "candidate_ms": 129.521,
+          "risk_count": 1423764
+        },
+        {
+          "pair": 3,
+          "order": "parent-first",
+          "parent_ms": 856.359,
+          "candidate_ms": 126.311,
+          "risk_count": 1423764
+        },
+        {
+          "pair": 3,
+          "order": "candidate-first",
+          "parent_ms": 853.494,
+          "candidate_ms": 126.616,
+          "risk_count": 1423764
+        },
+        {
+          "pair": 4,
+          "order": "parent-first",
+          "parent_ms": 856.558,
+          "candidate_ms": 127.956,
+          "risk_count": 1423764
+        },
+        {
+          "pair": 4,
+          "order": "candidate-first",
+          "parent_ms": 851.496,
+          "candidate_ms": 130.248,
+          "risk_count": 1423764
+        },
+        {
+          "pair": 5,
+          "order": "parent-first",
+          "parent_ms": 855.973,
+          "candidate_ms": 127.177,
+          "risk_count": 1423764
+        },
+        {
+          "pair": 5,
+          "order": "candidate-first",
+          "parent_ms": 853.751,
+          "candidate_ms": 129.245,
+          "risk_count": 1423764
+        },
+        {
+          "pair": 6,
+          "order": "parent-first",
+          "parent_ms": 856.466,
+          "candidate_ms": 126.864,
+          "risk_count": 1423764
+        },
+        {
+          "pair": 6,
+          "order": "candidate-first",
+          "parent_ms": 853.293,
+          "candidate_ms": 130.061,
+          "risk_count": 1423764
+        },
+        {
+          "pair": 7,
+          "order": "parent-first",
+          "parent_ms": 856.864,
+          "candidate_ms": 127.652,
+          "risk_count": 1423764
+        },
+        {
+          "pair": 7,
+          "order": "candidate-first",
+          "parent_ms": 852.893,
+          "candidate_ms": 127.678,
+          "risk_count": 1423764
+        },
+        {
+          "pair": 8,
+          "order": "parent-first",
+          "parent_ms": 857.224,
+          "candidate_ms": 128.02,
+          "risk_count": 1423764
+        },
+        {
+          "pair": 8,
+          "order": "candidate-first",
+          "parent_ms": 854.057,
+          "candidate_ms": 125.09,
+          "risk_count": 1423764
+        },
+        {
+          "pair": 9,
+          "order": "parent-first",
+          "parent_ms": 857.043,
+          "candidate_ms": 128.479,
+          "risk_count": 1423764
+        },
+        {
+          "pair": 9,
+          "order": "candidate-first",
+          "parent_ms": 853.832,
+          "candidate_ms": 128.683,
+          "risk_count": 1423764
+        }
+      ]
+    }
+  ]
+}

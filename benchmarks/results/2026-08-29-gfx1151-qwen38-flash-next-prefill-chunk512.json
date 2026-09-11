@@ -1,0 +1,62 @@
+{
+ "schema": 1,
+ "date": "2026-08-29",
+ "status": "accepted",
+ "scope": "Qwen4Exp gfx1151 strict prefill default chunk 256 to 512 with PLE staging capacity plumbed to the requested chunk",
+ "host": {
+  "identity": "zbook",
+  "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+  "cpu": "AMD Ryzen AI Max+ Pro 395",
+  "gpu": "AMD Radeon 8060S Graphics",
+  "arch": "gfx1151"
+ },
+ "model": {
+  "id": "Qwen/Qwen3.8-Flash-Next",
+  "quant": "Unsloth UD-Q4_K_XL",
+  "quant_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5"
+ },
+ "changes": [
+  "hipengine/generation/qwen4_exp_gguf.py: pass staging_token_capacity=prefill_chunk_size into plan_qwen4_exp_residency; default prefill_chunk_size 256 to 512",
+  "hipengine/runtime/qwen4_exp_runner.py: default prefill_chunk_size 256 to 512",
+  "tests/test_generation_qwen4_exp_gguf.py: plan monkeypatch lambda accepts kwargs"
+ ],
+ "commands": {
+  "p508_sweep": "uv run python /tmp/qwen4exp_chunk_sweep_p508.py",
+  "p1012_sweep": "uv run python /tmp/qwen4exp_chunk_sweep_p1012.py",
+  "gate_16k": "uv run python scripts/qwen4_exp_qsa_retrieval_gate.py /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --target-tokens 16384 --max-tokens 128 --prefill-chunk-size 512 --json-out /tmp/qwen4exp-qsa-retrieval-16k-chunk512.json"
+ },
+ "p508": {
+  "protocol": "one resident generator at chunk 640, mutated chunk size, 3 warmups then counterbalanced 256/512/640 x3; strict exact grouped env defaults",
+  "medians_seconds": {"256": 8.457968122005695, "512": 8.270210139991832, "640": 8.265705675003119},
+  "delta_256_to_512": "-2.22 percent",
+  "tok_s": {"256": 60.062, "512": 61.425, "640": 61.459},
+  "distributions_non_overlapping": true,
+  "logits_sha256_all_runs": "30a5accee27d33b9452fbac161ed48eafccda7dd17aeb1a2851844accf792b48",
+  "top1": 248068
+ },
+ "p1012": {
+  "protocol": "one resident generator at chunk 1152, mutated chunk size, 2 warmups then counterbalanced 256/512 x3",
+  "medians_seconds": {"256": 17.061816615008865, "512": 16.750571366006625},
+  "delta_256_to_512": "-1.82 percent",
+  "tok_s": {"256": 59.313, "512": 60.417},
+  "distributions_non_overlapping": true,
+  "logits_sha256_all_runs": "97e81f05e8ae3ea9346f29660579445827861e3d02752c31834dbb7348b1fe39"
+ },
+ "natural_16k_gate": {
+  "prefill_seconds": 341.17685647300095,
+  "prompt_tokens_per_second": 47.989,
+  "prior_chunk256_retained_seconds": 364.30625537000014,
+  "delta": "-6.35 percent",
+  "retrieval_exact": true,
+  "final_answer": "VIOLET-7391",
+  "needle_selected_layers": 12,
+  "cpu_index_oracle_exact_positions": true,
+  "transactional_repeat_exact": true,
+  "transactional_isolation_exact": true,
+  "teardown_bytes": 0,
+  "peak_tracked_bytes": 83901363336
+ },
+ "public_smoke": "default generator generate('The answer to 2 + 2 is') begins ' 4.\\n\\n'",
+ "no_red_rationale": "Generator-to-residency-plan plumbing has no synthetic-fixture seam (requires real GGUF map plus GPU); plan-level staging capacity math is covered by tests/test_qwen4_exp_residency.py. Validated by bit-exact counterbalanced prefill sweeps plus the complete natural 16K gate.",
+ "next": "Chunk 640 measured neutral versus 512; retain 512. The remaining prefill gap is the MoE MMQ cooperative dataflow port."
+}

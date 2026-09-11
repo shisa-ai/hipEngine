@@ -1,0 +1,102 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp_q8_0_wmma_down_logits_probe",
+ "source": {
+  "path": "/home/lhl/hipEngine",
+  "head": "83c32413a1466528d4789db977fd1d222d403d82",
+  "tracked_clean": false
+ },
+ "host": {
+  "hostname": "gfx1151",
+  "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+  "kernel": "7.1.6-1-cachyos",
+  "tuned_active": "Current active profile: accelerator-performance",
+  "cpu_governors": {
+   "performance": 32
+  },
+  "gpu_clock_policies": {
+   "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+  },
+  "rocm_platform": "10.0.0",
+  "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+ },
+ "command": [
+  "scripts/qwen4exp_q8_0_wmma_down_logits_probe.py",
+  "--model-root",
+  "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "--compiler-version-file",
+  "/tmp/hipengine-hipcc-version.txt",
+  "--case-id",
+  "code-p512",
+  "--case-id",
+  "code-p1024",
+  "--case-id",
+  "code-p4096",
+  "--output",
+  "/tmp/r9-drift-probe2.json"
+ ],
+ "arithmetic_class": "T1_production_candidate",
+ "flag": "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN",
+ "runtime_default_changed": false,
+ "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+ "manifest_sha256": "2de9d9196f376580487a1f71b28e117eae3e4d8f371b4f1017e0b19ef80274d4",
+ "cases": [
+  {
+   "id": "code-p512",
+   "prompt_tokens": 512,
+   "incumbent_deterministic": true,
+   "candidate_deterministic": true,
+   "logits_shape": [
+    248320
+   ],
+   "max_abs": 0.9227228164672852,
+   "p99_abs": 0.3579573631286621,
+   "median_abs": 0.08735080063343048,
+   "rel_p50": 0.08462236821651459,
+   "rel_p99": 5.491194248199463,
+   "rel_max": 12132.234375,
+   "kl_vs_incumbent": 3.667523688817588e-11,
+   "top1_agreement": 1.0,
+   "argmax_gap": 22.70614242553711,
+   "argmax_drift": 0.0294036865234375
+  },
+  {
+   "id": "code-p1024",
+   "prompt_tokens": 1024,
+   "incumbent_deterministic": true,
+   "candidate_deterministic": true,
+   "logits_shape": [
+    248320
+   ],
+   "max_abs": 1.6766952276229858,
+   "p99_abs": 0.8146568536758423,
+   "median_abs": 0.2140708565711975,
+   "rel_p50": 0.19187059998512268,
+   "rel_p99": 12.497103691101074,
+   "rel_max": 200613.8125,
+   "kl_vs_incumbent": 3.584889740254925e-13,
+   "top1_agreement": 1.0,
+   "argmax_gap": 26.490068435668945,
+   "argmax_drift": 0.12212753295898438
+  },
+  {
+   "id": "code-p4096",
+   "prompt_tokens": 4096,
+   "incumbent_deterministic": true,
+   "candidate_deterministic": true,
+   "logits_shape": [
+    248320
+   ],
+   "max_abs": 1.3724689483642578,
+   "p99_abs": 0.6015044450759888,
+   "median_abs": 0.16786789894104004,
+   "rel_p50": 0.14425599575042725,
+   "rel_p99": 8.864803314208984,
+   "rel_max": 43532.765625,
+   "kl_vs_incumbent": 1.8848208601692173e-14,
+   "top1_agreement": 1.0,
+   "argmax_gap": 30.267276763916016,
+   "argmax_drift": 0.03932952880859375
+  }
+ ]
+}

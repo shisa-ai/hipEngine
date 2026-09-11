@@ -1,0 +1,34 @@
+{
+  "schema":1,
+  "status":"state_gate_passed_performance_pending",
+  "source":"b48318ecb plus default-off admission edits",
+  "host":"gfx1151",
+  "machine_id":"55ea6c509d0b49eea8de7094a1023668",
+  "hardware":"Framework Ryzen AI Max+395 Radeon8060S gfx1151",
+  "model":"Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "kv_dtype":"BF16",
+  "command":".venv/bin/python scripts/qwen4exp_row4_state_gate.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --compiler-version-file /tmp/hipengine-hipcc-version.txt --route-package q51-fold128 --decode-steps 4 --full-kv --output /tmp/qwen4exp-q51-fold128-state.json",
+  "environment":{
+    "PATH_prefix":"/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin",
+    "LD_LIBRARY_PATH":"/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib",
+    "HIPENGINE_HIP_ARCH":"gfx1151",
+    "jit":"require_cached",
+    "clock_policy":"unchanged high/2900-requested"
+  },
+  "protocol":{"capacity":4352,"chunk":512,"decode_steps":4,"full_kv":true,"arms":["off","on","off"],"one_residency":true},
+  "cases":[
+    {"id":"code-p512","exact":true,"prefill_calls":[0,25,0],"decode_calls":[0,0,0]},
+    {"id":"code-p4096","exact":true,"prefill_calls":[0,200,0],"decode_calls":[0,0,0]},
+    {"id":"general_en-p512","exact":true,"prefill_calls":[0,25,0],"decode_calls":[0,0,0]},
+    {"id":"general_ja-p512","exact":true,"prefill_calls":[0,25,0],"decode_calls":[0,0,0]},
+    {"id":"mixed_ja_en-p512","exact":true,"prefill_calls":[0,25,0],"decode_calls":[0,0,0]}
+  ],
+  "correctness":"Full prefill logits, four decode logits, snapshot state/PLE/index/positions and full KV payload hashes exact across all arms/cases. Count validation added to harness after run and checked against recorded counts without rerunning trajectories.",
+  "memory_after_close":{"active_allocations":0,"current_allocated_bytes":0,"peak_allocated_bytes":85339323140},
+  "cpu_tests":"38 route/profile/harness tests pass, including RED3 selector/A-B tests and count/tail cases.",
+  "runtime_scope":"Only existing pair2-selected prefill rows>=64; neither M1, WMMA nor decode replaced. Both named profiles bind fold128 flag0; prior Q8 row4 production remains active.",
+  "raw_path":"/tmp/qwen4exp-q51-fold128-state.json",
+  "raw_sha256":"d333181052e31f9eba8ceb9866bde46611668bc6ac76fb0260ceaad1c800f9dd",
+  "promotion_blocker":"Clean-source canonical12-case same-residency A/B pending. This4352-capacity gate is not a fresh native262144 qualification.",
+  "performance_claim":false
+}

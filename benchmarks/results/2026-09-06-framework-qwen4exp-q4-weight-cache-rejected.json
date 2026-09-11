@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "status": "rejected_removed",
+  "source": "725ea5249 plus uncommitted candidate; all runtime edits removed",
+  "host": "gfx1151",
+  "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+  "hardware": "Framework Desktop Ryzen AI Max+395 Radeon 8060S gfx1151",
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "model_fingerprint": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "boundary": "Q4_K grouped dual gate/up plus unchanged BF16 SiLU. Actual layer3 weights and mixed4096 chunk7 captured counts; synthetic BF16 activations. Not all FFN or full model.",
+  "mechanism": "Template CACHE_WEIGHTS in existing pair2 kernel. For K2560, q4_k_weight_pair cached[10][4] holds80 exact F32 values per thread, loaded after metadata sync once per expert/output pair. Fully unroll ten-block consumption inside unchanged eight-row loop. Other K uses parent fallback. No accumulation/publication change.",
+  "impact_prior": {
+    "code4096_q4_pair_seconds_earlier_trace": 3.599,
+    "code4096_device_seconds_approx": 26.72,
+    "zero_cost_device_ceiling_approx": 1.156,
+    "hypothetical_1_2x_kernel_saving_seconds": 0.600,
+    "gap_coverage_hypothetical_approx": "3% of diagnostic same-host Vulkan device gap, not a wall claim"
+  },
+  "command": ".venv/bin/python scripts/qwen4exp_q4_bundle_screen.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --rows 512 --pairs 10 --weight-cache --layer 3 --routing-capture /tmp/qwen4exp-routing-categories.json --routing-case mixed_ja_en-p4096 --routing-chunk 7 --output /tmp/qwen4exp-q4-weight-cache-real.json",
+  "environment": {
+    "PATH_prefix": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin",
+    "LD_LIBRARY_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib",
+    "HIPENGINE_HIP_ARCH": "gfx1151",
+    "clock_policy": "unchanged high/2900-requested",
+    "compiler": "HIP7.15.26333-0000000 clang23.0.0git 8f497e0992fb7513f7f78a6f6b6f1056c375e961"
+  },
+  "shape": {"tokens": 512, "compact_rows": 5120, "experts": 512, "K": 2560, "N": 640, "active_experts": 275, "median_active_rows": 11, "max_rows": 149},
+  "weight_sha256": {
+    "blk.3.ffn_gate_exps.weight": "5c72577b467c69b6b525be0ed6e2524386e3678074beeb14e250c7d5089d9b01",
+    "blk.3.ffn_up_exps.weight": "d60023c47b0ff4cf5182569cf585e2e52dfd8cc23cd767b2fc3d3bb5da4e1810"
+  },
+  "routing_capture_sha256": "d34381f22f85fc5603b87b32dd1487ad41246b32ca76d5355e24bee4f4f34766",
+  "pairs": 10,
+  "parent_ms_approx": 17.013,
+  "candidate_ms_approx": 25.548,
+  "speedup": 0.6659306522998412,
+  "correctness": "Registry RED then13 GPU tests pass: full K2560 engagement, smaller/different-K parent fallback, exact repeated BF16 gate/up and reduced CPU numerical floor. All ten actual-weight pairs exact for gate/up/SiLU.",
+  "trace": {
+    "prefix": "HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen4exp-q4-weight-cache-trace --",
+    "screen_arguments": "same screen with --pairs 2 --output /tmp/qwen4exp-q4-weight-cache-trace.json",
+    "parent_symbol": "gguf_q4_k_selected_dual_grouped_pair2_bf16_kernel<false>",
+    "candidate_symbol": "gguf_q4_k_selected_dual_grouped_pair2_bf16_kernel<true>",
+    "parent_ns": [16900051,16973242],
+    "candidate_ns": [25416260,25525646],
+    "parent_vgpr": 88,
+    "candidate_vgpr": 168,
+    "both_lds_bytes": 4608,
+    "both_scratch_bytes": 0
+  },
+  "raw": {
+    "/tmp/qwen4exp-q4-weight-cache-real.json": "54e29f26d7d218fe2d9a8c5ca83f03e860d9dc5be6e2a15ac01e45676335a6d1",
+    "/tmp/qwen4exp-q4-weight-cache-trace/gfx1151/3089487_kernel_trace.csv": "722e5247a998eb1327c218d924216bf1407e0199935ef543a47ad02aa52deb26"
+  },
+  "disposition": "Remove all kernel/wrapper/registry/test/screen candidate edits. Register growth is measured; reduced occupancy as cause is an inference, not an occupancy-counter result. No additional model A/B warranted, no speed improvement claimed."
+}

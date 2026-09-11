@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "date": "2026-08-27",
+  "status": "candidate_default_off",
+  "scope": "single-prompt implementation smoke; not a public performance claim",
+  "host": {
+    "identity": "zbook",
+    "gpu": "AMD Radeon Pro W7900 gfx1151 128 GiB unified"
+  },
+  "model": {
+    "id": "Qwen/Qwen3.8-Flash-Next",
+    "quant": "Unsloth UD-Q4_K_XL",
+    "artifact": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "parts": 4
+  },
+  "workload": {
+    "prompt": "The answer to 2 + 2 is",
+    "token_ids": [760, 4087, 310, 220, 17, 478, 220, 17, 369],
+    "context_capacity": 2051,
+    "prefill_chunk_size": 2
+  },
+  "command": "uv run python scripts/qwen4_exp_compare_logits.py /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --prompt 'The answer to 2 + 2 is' --context 2051 --prefill-mode both --prefill-chunk-size 2 --json-out /tmp/qwen4exp-chunked-both-size2.json",
+  "result": {
+    "serial_seconds": 2.193096458002401,
+    "chunked_seconds": 1.2099215470007039,
+    "speedup": 1.812596,
+    "wall_reduction_percent": 44.8304,
+    "teacher_top1": 220,
+    "serial_top1": 220,
+    "chunked_top1": 220,
+    "teacher_to_chunk_kl": 0.005103600477379146,
+    "serial_to_chunk_kl": 0.004097224207032813,
+    "tracked_teardown_passed": true,
+    "owned_bytes_after_close": 0
+  },
+  "rejected_larger_chunk": {
+    "prefill_chunk_size": 9,
+    "serial_seconds": 2.31156815700524,
+    "chunked_seconds": 0.8007267900029547,
+    "serial_to_chunk_kl": 0.09754301500510722,
+    "reason": "fails max-KL gate"
+  },
+  "promotion_blocker": "Run the complete multi-prompt production numerical/task gate and 2052+ sparse-QSA transition qualification before changing public prefill from serial."
+}

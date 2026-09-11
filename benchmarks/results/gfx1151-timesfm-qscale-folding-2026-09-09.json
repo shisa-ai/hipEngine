@@ -1,0 +1,41 @@
+{
+  "schema": "timesfm-gpu-decode-bench/1",
+  "date": "2026-09-09",
+  "model": "google/timesfm-2.5-200m-pytorch",
+  "task": "time-series-forecast decode",
+  "hardware": "AMD Radeon 8060S (gfx1151, Strix Halo iGPU), Ryzen AI MAX+ PRO 395 host, 120 GB shared LPDDR5X",
+  "host": "zbook",
+  "workload": {
+    "batch": 8,
+    "context": 8192,
+    "horizon": 512,
+    "masks": "none"
+  },
+  "command": "python3 scripts/timesfm_gpu_bench.py --metric",
+  "change": "qkv_norm_scatter constant folding (precomputed qscale vector)",
+  "baseline": {
+    "decode_seconds_b8_ctx8192_h512": 0.0861,
+    "note": "pair-tile flashshort build"
+  },
+  "measurements": {
+    "decode_seconds_b8_ctx8192_h512": [
+      0.0849,
+      0.0835,
+      0.0844,
+      0.0908,
+      0.0828
+    ],
+    "median": 0.0844
+  },
+  "subwindow": {
+    "qkv_norm_scatter_avg_us": [
+      65.7,
+      44.4
+    ]
+  },
+  "correctness": {
+    "guard": "fp32 strict parity + fp16 production gate pass",
+    "pytest": "3/3"
+  },
+  "rejected_lever": "custom WMMA small-GEMM for AR shapes: 62.2/36.5us vs autotuned rocBLAS 49/39.2us \u2014 flat; removed"
+}

@@ -1,0 +1,36 @@
+{
+  "schema": "timesfm-gpu-decode-bench/1",
+  "date": "2026-09-09",
+  "model": "google/timesfm-2.5-200m-pytorch",
+  "task": "time-series-forecast decode",
+  "hardware": "AMD Radeon 8060S (gfx1151, Strix Halo iGPU), Ryzen AI MAX+ PRO 395 host, 120 GB shared LPDDR5X",
+  "host": "zbook",
+  "workload": {
+    "batch": 8,
+    "context": 8192,
+    "horizon": 512,
+    "masks": "none"
+  },
+  "command": "python3 scripts/timesfm_gpu_bench.py --metric",
+  "change": "WMMA flash-attention kernel replaces the scores-GEMM + masked-softmax + AV-GEMM chain in the fp16 attention path",
+  "baseline": {
+    "decode_seconds_b8_ctx8192_h512": 0.0975,
+    "note": "eager GEMM+softmax attention chain (21 runs 2026-09-08/09, median)"
+  },
+  "measurements": {
+    "decode_seconds_b8_ctx8192_h512": [0.0980, 0.0984, 0.0951, 0.0960, 0.0975, 0.0954, 0.0928, 0.0929, 0.0969, 0.0959, 0.0967, 0.0936, 0.0951, 0.0964, 0.0975, 0.0958, 0.0953, 0.0982, 0.0983, 0.0984, 0.0959],
+    "median": 0.0959
+  },
+  "subwindow": {
+    "flash_attention_ms_per_layer_prefill": 0.729,
+    "flash_attention_ms_per_layer_ar": 0.031,
+    "note": "micro-benchmark, B=8 Q=256/S=268 H=16 D=80; replaces 3 kernels (2 batched GEMMs + softmax) and eliminates the 35 MB/layer scores-buffer round trip"
+  },
+  "correctness": {
+    "guard": "python3 scripts/timesfm_gpu_bench.py --check: fp32 strict parity (atol 5e-4) + fp16 production gate pass",
+    "pytest": "tests/test_timesfm_gpu_decode.py 3/3",
+    "kernel_oracle": "standalone NumPy comparison, maxdiff <= 1.1e-3 across B2/B8, ragged Q/S, uniform-fallback shapes"
+  },
+  "retention": "kept as a verified sub-window win; wall aggregate within AR-feedback noise (multiloop significance test conservative)",
+  "rejected_lever": "HIP graph capture: replay 0.104-0.109s vs eager 0.097-0.099s (ROCm graph-node overhead exceeds launch savings) and capture attempts persistently slowed later eager runs by ~8%; code reverted"
+}

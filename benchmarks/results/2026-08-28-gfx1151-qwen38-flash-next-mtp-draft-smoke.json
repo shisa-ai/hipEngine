@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "date": "2026-08-28",
+  "status": "accepted_component_smoke",
+  "scope": "Sidecar-only Qwen4Exp one-layer MTP draft composition at 16-token capacity",
+  "host": {"identity": "zbook", "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8", "gpu": "AMD Radeon 8060S Graphics", "arch": "gfx1151"},
+  "target_geometry": {"hidden": 2560, "residual_branches": 4, "widened_hidden": 10240, "attention_heads": 24, "kv_heads": 2, "head_dim": 256, "experts": 512, "top_k": 10},
+  "sidecar": {"revision": "6f7900648b1c6b14f067a182c640e47971e9ab35", "sha256": "9db03a687670608286e99b563fcc86d0ee76c8dd863f64b2afc0b54eb0eb975d", "quant": "Q8_0", "tensor_count": 34},
+  "implementation": {"input": "independent standard RMSNorm over token embedding H2560 and target widened H10240; branchwise [e,h] concat; Q8_0 eh_proj", "layer": "one Qwen4Exp HC + dense attention + 512/top-10 MoE block", "state": "independent paged draft K/V and index cursor", "output": "widened pre-final-HC hidden plus final HC/lm-head logits", "candidate_budget": [1, 2, 3, 4]},
+  "correctness": {"cpu_input_formula": true, "gpu_input_formula_within_bf16_tolerance": true, "finite_logits": true, "finite_widened_hidden": true, "same_schedule_repeat_exact": true, "snapshot_restore_chain_replay_exact": true},
+  "validation": {"command": "uv run pytest -q tests/test_qwen4_exp_mtp_runner.py -x", "result": "3 passed"},
+  "claims": {"target_attached_execution": false, "speculative_output_exact": false, "performance_claim": false, "note": "Component gate only. Target handoff, prompt priming against real target rows, target verification, public serving, and economics are separate binding gates."}
+}

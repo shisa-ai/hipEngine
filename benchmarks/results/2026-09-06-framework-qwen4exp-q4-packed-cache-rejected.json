@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "status": "rejected_removed",
+  "source": "a14c82f1d plus uncommitted candidates; all runtime edits removed",
+  "host": "gfx1151",
+  "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+  "hardware": "Framework Desktop Ryzen AI Max+395 Radeon 8060S gfx1151",
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "model_fingerprint": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+  "protocol_identity": "Same layer3 weights, mixed4096 chunk7 captured counts, BF16 synthetic activations, therock compiler/environment and unchanged high/2900-requested GPU policy as 2026-09-06-framework-qwen4exp-q4-weight-cache-rejected.json.",
+  "boundary": "Q4_K gate/up plus unchanged BF16 SiLU; K2560,N640,5120 compact rows,512 experts,275 active,median11,max149.",
+  "prior": "Q4 pair owner3.599s of earlier code4096 device26.72s; zero-cost ceiling1.156x. No overlap with down/routing/GR. Hypothetical1.2x saves0.600s,about3% of diagnostic Vulkan device gap; not a wall claim.",
+  "mechanism": "Template PACKED_CACHE; uint32_t cached[10], one word per K block with each bank's q0/q1 nibbles at bank*8 and bank*8+4. Load once after metadata sync per expert/output pair. Fully unroll K10 consumption; mask nibbles and apply original F32 scale*q-min before unchanged RB8 arithmetic/publication. Non-K2560 uses parent. Second revision reads scales/mins through volatile shared-memory pointers to prevent metadata hoisting.",
+  "command": ".venv/bin/python scripts/qwen4exp_q4_bundle_screen.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --rows 512 --pairs 10 --packed-cache --layer 3 --routing-capture /tmp/qwen4exp-routing-categories.json --routing-case mixed_ja_en-p4096 --routing-chunk 7 --output /tmp/qwen4exp-q4-packed-cache-real.json",
+  "volatile_command": "Same command, rebuilt volatile revision, --output /tmp/qwen4exp-q4-packed-cache-volatile.json",
+  "cases": [
+    {"revision": "ordinary_metadata", "parent_ms_approx": 17.060, "candidate_ms_approx": 42.283, "speedup": 0.4036908705845117, "pairs": 10, "exact": true, "candidate_vgpr": 256, "candidate_scratch_bytes": 0},
+    {"revision": "volatile_metadata", "parent_ms_approx": 17.143, "candidate_ms_approx": 126.057, "speedup": 0.13599283345415203, "pairs": 10, "exact": true, "candidate_vgpr": 256, "candidate_scratch_bytes": 1208}
+  ],
+  "correctness": "Registry RED,13 GPU tests pass on each revision; exact full K2560 BF16 outputs and reduced/different-K parent fallbacks. Both real-weight10-pair screens preserve gate/up/SiLU bits.",
+  "trace": {
+    "ordinary_prefix": "HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen4exp-q4-packed-cache-trace --",
+    "volatile_prefix": "HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen4exp-q4-packed-volatile-trace --",
+    "arguments": "same screen with --pairs 2 and respective /tmp/qwen4exp-q4-packed-cache-trace.json or /tmp/qwen4exp-q4-packed-volatile-trace.json output",
+    "symbols": "gguf_q4_k_selected_dual_grouped_pair2_bf16_kernel<false>/<true>",
+    "ordinary_parent_ns": [16867191,16999676],
+    "ordinary_candidate_ns": [41860943,41849311],
+    "volatile_parent_ns": [16911514,17026744],
+    "volatile_candidate_ns": [125683749,125150600],
+    "parent_vgpr": 88,
+    "parent_scratch_bytes": 0,
+    "all_lds_bytes": 4608
+  },
+  "raw": {
+    "/tmp/qwen4exp-q4-packed-cache-real.json": "63c556164de74dd19922e6d8320eee753d14ef0f74d9542591329e8e1c3fdf05",
+    "/tmp/qwen4exp-q4-packed-cache-volatile.json": "cb9aa9e85724d682e99398d4ebf024fffb88f743d5489df20c062d6048070b41",
+    "/tmp/qwen4exp-q4-packed-cache-trace/gfx1151/3095303_kernel_trace.csv": "2c9816462a9a89f175a8ad0974809584b1e958d62c0c31d144877a2cad4553b0",
+    "/tmp/qwen4exp-q4-packed-volatile-trace/gfx1151/3096787_kernel_trace.csv": "569713a5806ae73a589686ed2a4b692890a3a7e5d37ae28617d00d5aa51196e9"
+  },
+  "disposition": "Remove both revisions. Source-level ten-word cache does not bound compiler live ranges; high VGPR and volatile spills are measured. No full-model run warranted. This rules out these fully-unrolled register-cache forms, not all possible staged reuse."
+}

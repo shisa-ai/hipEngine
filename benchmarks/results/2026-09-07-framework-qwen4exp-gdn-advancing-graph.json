@@ -1,0 +1,1462 @@
+{
+  "schema": 1,
+  "status": "advancing_decode_graph_feasibility_no_warm_speedup",
+  "production_changed": false,
+  "runs": [
+    {
+      "status": "passed",
+      "source": {
+        "path": "/home/lhl/hipEngine",
+        "head": "c9cd985364bcc871d4bc3c95ba68389bdc5f7b96",
+        "tracked_clean": true
+      },
+      "host": {
+        "hostname": "gfx1151",
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "kernel": "7.1.6-1-cachyos",
+        "tuned_active": "Current active profile: accelerator-performance",
+        "cpu_governors": {
+          "performance": 32
+        },
+        "gpu_clock_policies": {
+          "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+        },
+        "rocm_platform": null,
+        "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+      },
+      "model_identity": {
+        "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+        "fingerprint": {
+          "algorithm": "sha256-directory-manifest-v1",
+          "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+          "size_bytes": 111334654784,
+          "sampled_bytes": 12582912,
+          "file_count": 4,
+          "exists": true,
+          "path_type": "directory"
+        }
+      },
+      "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+      "command": [
+        "scripts/qwen4exp_gdn_decode_graph_probe.py",
+        "--model-root",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--steps",
+        "16",
+        "--output",
+        "/tmp/qwen4exp-gdn-advancing-graph-fixed.json"
+      ],
+      "case_id": "code-p4096",
+      "runs": [
+        {
+          "enabled": false,
+          "tokens": [
+            198,
+            760,
+            1156,
+            369,
+            9859,
+            364,
+            2943,
+            12654,
+            1970,
+            66320,
+            11173,
+            1599,
+            2942,
+            13,
+            2302,
+            1318
+          ],
+          "state": {
+            "state_sha256": "c7d5db93fad9556ee5bf3a8d2bf01938ae5624158f075fbc1533d25e38022242",
+            "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+            "buffer_bytes": {
+              "gdn_conv": 5898240,
+              "gdn_matrix": 113246208,
+              "ple_conv": 368640,
+              "residual": 20480
+            },
+            "finite": true,
+            "position": 4112,
+            "ple": {
+              "0": {
+                "tokens": [
+                  13,
+                  2302
+                ],
+                "next_position": 4112
+              }
+            },
+            "attention_positions": [
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ]
+            ],
+            "index_counts": [
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ]
+            ]
+          },
+          "step_seconds": [
+            0.3501811190508306,
+            0.0988382319919765,
+            0.09615109721198678,
+            0.09674934111535549,
+            0.08869701600633562,
+            0.09558483515866101,
+            0.09372702706605196,
+            0.09738444304093719,
+            0.09142476599663496,
+            0.09443150996230543,
+            0.08842557715252042,
+            0.09203199599869549,
+            0.0930806240066886,
+            0.09266129694879055,
+            0.07644907711073756,
+            0.07883995492011309
+          ],
+          "total_seconds": 1.7246579127386212,
+          "graph_delta": {
+            "capture": 0,
+            "replay": 0,
+            "setup_seconds": 0.0
+          }
+        },
+        {
+          "enabled": true,
+          "tokens": [
+            198,
+            760,
+            1156,
+            369,
+            9859,
+            364,
+            2943,
+            12654,
+            1970,
+            66320,
+            11173,
+            1599,
+            2942,
+            13,
+            2302,
+            1318
+          ],
+          "state": {
+            "state_sha256": "c7d5db93fad9556ee5bf3a8d2bf01938ae5624158f075fbc1533d25e38022242",
+            "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+            "buffer_bytes": {
+              "gdn_conv": 5898240,
+              "gdn_matrix": 113246208,
+              "ple_conv": 368640,
+              "residual": 20480
+            },
+            "finite": true,
+            "position": 4112,
+            "ple": {
+              "0": {
+                "tokens": [
+                  13,
+                  2302
+                ],
+                "next_position": 4112
+              }
+            },
+            "attention_positions": [
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ]
+            ],
+            "index_counts": [
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ]
+            ]
+          },
+          "step_seconds": [
+            0.24300339282490313,
+            0.06559811905026436,
+            0.06538919685408473,
+            0.06567987310700119,
+            0.06563220312818885,
+            0.065417560050264,
+            0.06540831294842064,
+            0.0654554518405348,
+            0.0653561451472342,
+            0.06535945110954344,
+            0.0654497710056603,
+            0.06540969596244395,
+            0.06540235201828182,
+            0.06545231607742608,
+            0.06553520099259913,
+            0.06550694792531431
+          ],
+          "total_seconds": 1.225055990042165,
+          "graph_delta": {
+            "capture": 36,
+            "replay": 540,
+            "setup_seconds": 0.22834520996548235
+          }
+        },
+        {
+          "enabled": true,
+          "tokens": [
+            198,
+            760,
+            1156,
+            369,
+            9859,
+            364,
+            2943,
+            12654,
+            1970,
+            66320,
+            11173,
+            1599,
+            2942,
+            13,
+            2302,
+            1318
+          ],
+          "state": {
+            "state_sha256": "c7d5db93fad9556ee5bf3a8d2bf01938ae5624158f075fbc1533d25e38022242",
+            "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+            "buffer_bytes": {
+              "gdn_conv": 5898240,
+              "gdn_matrix": 113246208,
+              "ple_conv": 368640,
+              "residual": 20480
+            },
+            "finite": true,
+            "position": 4112,
+            "ple": {
+              "0": {
+                "tokens": [
+                  13,
+                  2302
+                ],
+                "next_position": 4112
+              }
+            },
+            "attention_positions": [
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ]
+            ],
+            "index_counts": [
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ]
+            ]
+          },
+          "step_seconds": [
+            0.06604998698458076,
+            0.0665361201390624,
+            0.06546134315431118,
+            0.06548982602544129,
+            0.0654463751707226,
+            0.06545272609218955,
+            0.06542609608732164,
+            0.06541605782695115,
+            0.06530415709130466,
+            0.0653425888158381,
+            0.0655445079319179,
+            0.06544653396122158,
+            0.06540229101665318,
+            0.0654811488930136,
+            0.0655822700355202,
+            0.06548272306099534
+          ],
+          "total_seconds": 1.0488647522870451,
+          "graph_delta": {
+            "capture": 0,
+            "replay": 576,
+            "setup_seconds": 0.0
+          }
+        },
+        {
+          "enabled": false,
+          "tokens": [
+            198,
+            760,
+            1156,
+            369,
+            9859,
+            364,
+            2943,
+            12654,
+            1970,
+            66320,
+            11173,
+            1599,
+            2942,
+            13,
+            2302,
+            1318
+          ],
+          "state": {
+            "state_sha256": "c7d5db93fad9556ee5bf3a8d2bf01938ae5624158f075fbc1533d25e38022242",
+            "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+            "buffer_bytes": {
+              "gdn_conv": 5898240,
+              "gdn_matrix": 113246208,
+              "ple_conv": 368640,
+              "residual": 20480
+            },
+            "finite": true,
+            "position": 4112,
+            "ple": {
+              "0": {
+                "tokens": [
+                  13,
+                  2302
+                ],
+                "next_position": 4112
+              }
+            },
+            "attention_positions": [
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ]
+            ],
+            "index_counts": [
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ]
+            ]
+          },
+          "step_seconds": [
+            0.06618495006114244,
+            0.06536533194594085,
+            0.06535271788015962,
+            0.06517614680342376,
+            0.0653310080524534,
+            0.06548855383880436,
+            0.06534624705091119,
+            0.06528764590620995,
+            0.0652593330014497,
+            0.06531944591552019,
+            0.0652704939711839,
+            0.06516446499153972,
+            0.06528859795071185,
+            0.0653402148745954,
+            0.06538134207949042,
+            0.06516851298511028
+          ],
+          "total_seconds": 1.045725007308647,
+          "graph_delta": {
+            "capture": 0,
+            "replay": 0,
+            "setup_seconds": 0.0
+          }
+        }
+      ],
+      "limits": "Single request owner,c1 only,diagnostic wrapper,off/on/on/off order. First graph arm includes setup/validation;not canonical full-suite throughput.",
+      "memory_after_close": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 86094241540,
+        "total_allocated_bytes": 86100532996,
+        "total_freed_bytes": 86100532996,
+        "active_allocations": 0,
+        "peak_allocations": 1717
+      }
+    },
+    {
+      "status": "passed",
+      "source": {
+        "path": "/home/lhl/hipEngine",
+        "head": "c9cd985364bcc871d4bc3c95ba68389bdc5f7b96",
+        "tracked_clean": true
+      },
+      "host": {
+        "hostname": "gfx1151",
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "kernel": "7.1.6-1-cachyos",
+        "tuned_active": "Current active profile: accelerator-performance",
+        "cpu_governors": {
+          "performance": 32
+        },
+        "gpu_clock_policies": {
+          "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+        },
+        "rocm_platform": null,
+        "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+      },
+      "model_identity": {
+        "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+        "fingerprint": {
+          "algorithm": "sha256-directory-manifest-v1",
+          "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+          "size_bytes": 111334654784,
+          "sampled_bytes": 12582912,
+          "file_count": 4,
+          "exists": true,
+          "path_type": "directory"
+        }
+      },
+      "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+      "command": [
+        "scripts/qwen4exp_gdn_decode_graph_probe.py",
+        "--model-root",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--case-id",
+        "mixed_ja_en-p4096",
+        "--steps",
+        "16",
+        "--output",
+        "/tmp/qwen4exp-gdn-advancing-graph-mixed.json"
+      ],
+      "case_id": "mixed_ja_en-p4096",
+      "runs": [
+        {
+          "enabled": false,
+          "tokens": [
+            198,
+            760,
+            1156,
+            682,
+            3106,
+            264,
+            1546,
+            1248,
+            1876,
+            440,
+            1599,
+            11173,
+            13139,
+            314,
+            8806,
+            13
+          ],
+          "state": {
+            "state_sha256": "2f2f55b7e6207043d9bb8b2f7e1ff3deb74d7ecc1db82d465a56cd01fe91d419",
+            "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+            "buffer_bytes": {
+              "gdn_conv": 5898240,
+              "gdn_matrix": 113246208,
+              "ple_conv": 368640,
+              "residual": 20480
+            },
+            "finite": true,
+            "position": 4112,
+            "ple": {
+              "0": {
+                "tokens": [
+                  314,
+                  8806
+                ],
+                "next_position": 4112
+              }
+            },
+            "attention_positions": [
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ]
+            ],
+            "index_counts": [
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ]
+            ]
+          },
+          "step_seconds": [
+            0.380932352039963,
+            0.09390487498603761,
+            0.09561253990978003,
+            0.09398681903257966,
+            0.08968086610548198,
+            0.09891868592239916,
+            0.09056291216984391,
+            0.09879297995939851,
+            0.09592277207411826,
+            0.09761870512738824,
+            0.10483972891233861,
+            0.10238107410259545,
+            0.10830071498639882,
+            0.10433947900310159,
+            0.08879427309148014,
+            0.0924045389983803
+          ],
+          "total_seconds": 1.8369933164212853,
+          "graph_delta": {
+            "capture": 0,
+            "replay": 0,
+            "setup_seconds": 0.0
+          }
+        },
+        {
+          "enabled": true,
+          "tokens": [
+            198,
+            760,
+            1156,
+            682,
+            3106,
+            264,
+            1546,
+            1248,
+            1876,
+            440,
+            1599,
+            11173,
+            13139,
+            314,
+            8806,
+            13
+          ],
+          "state": {
+            "state_sha256": "2f2f55b7e6207043d9bb8b2f7e1ff3deb74d7ecc1db82d465a56cd01fe91d419",
+            "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+            "buffer_bytes": {
+              "gdn_conv": 5898240,
+              "gdn_matrix": 113246208,
+              "ple_conv": 368640,
+              "residual": 20480
+            },
+            "finite": true,
+            "position": 4112,
+            "ple": {
+              "0": {
+                "tokens": [
+                  314,
+                  8806
+                ],
+                "next_position": 4112
+              }
+            },
+            "attention_positions": [
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ]
+            ],
+            "index_counts": [
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ]
+            ]
+          },
+          "step_seconds": [
+            0.24810407892800868,
+            0.06563153699971735,
+            0.06554543599486351,
+            0.06553630903363228,
+            0.06552463700063527,
+            0.06551372585818172,
+            0.06549336714670062,
+            0.06546851107850671,
+            0.06545489584095776,
+            0.06561940396204591,
+            0.06549064302816987,
+            0.06545559712685645,
+            0.06543049891479313,
+            0.06559532904066145,
+            0.06559286499395967,
+            0.06556227686814964
+          ],
+          "total_seconds": 1.23101911181584,
+          "graph_delta": {
+            "capture": 36,
+            "replay": 540,
+            "setup_seconds": 0.23243476590141654
+          }
+        },
+        {
+          "enabled": true,
+          "tokens": [
+            198,
+            760,
+            1156,
+            682,
+            3106,
+            264,
+            1546,
+            1248,
+            1876,
+            440,
+            1599,
+            11173,
+            13139,
+            314,
+            8806,
+            13
+          ],
+          "state": {
+            "state_sha256": "2f2f55b7e6207043d9bb8b2f7e1ff3deb74d7ecc1db82d465a56cd01fe91d419",
+            "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+            "buffer_bytes": {
+              "gdn_conv": 5898240,
+              "gdn_matrix": 113246208,
+              "ple_conv": 368640,
+              "residual": 20480
+            },
+            "finite": true,
+            "position": 4112,
+            "ple": {
+              "0": {
+                "tokens": [
+                  314,
+                  8806
+                ],
+                "next_position": 4112
+              }
+            },
+            "attention_positions": [
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ]
+            ],
+            "index_counts": [
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ]
+            ]
+          },
+          "step_seconds": [
+            0.06599265499971807,
+            0.06577390502206981,
+            0.06552020786330104,
+            0.06554110697470605,
+            0.06547475303523242,
+            0.06542342598550022,
+            0.06547125615179539,
+            0.06540085398592055,
+            0.06548696500249207,
+            0.06562848086468875,
+            0.06555492291226983,
+            0.06561144907027483,
+            0.06551861483603716,
+            0.06546140811406076,
+            0.06550548109225929,
+            0.06561429495923221
+          ],
+          "total_seconds": 1.0489797808695585,
+          "graph_delta": {
+            "capture": 0,
+            "replay": 576,
+            "setup_seconds": 0.0
+          }
+        },
+        {
+          "enabled": false,
+          "tokens": [
+            198,
+            760,
+            1156,
+            682,
+            3106,
+            264,
+            1546,
+            1248,
+            1876,
+            440,
+            1599,
+            11173,
+            13139,
+            314,
+            8806,
+            13
+          ],
+          "state": {
+            "state_sha256": "2f2f55b7e6207043d9bb8b2f7e1ff3deb74d7ecc1db82d465a56cd01fe91d419",
+            "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+            "buffer_bytes": {
+              "gdn_conv": 5898240,
+              "gdn_matrix": 113246208,
+              "ple_conv": 368640,
+              "residual": 20480
+            },
+            "finite": true,
+            "position": 4112,
+            "ple": {
+              "0": {
+                "tokens": [
+                  314,
+                  8806
+                ],
+                "next_position": 4112
+              }
+            },
+            "attention_positions": [
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ],
+              [
+                4111,
+                4112
+              ]
+            ],
+            "index_counts": [
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ],
+              [
+                4112,
+                1028
+              ]
+            ]
+          },
+          "step_seconds": [
+            0.06611143797636032,
+            0.06550462893210351,
+            0.06535059912130237,
+            0.0654281850438565,
+            0.0655157589353621,
+            0.06523820897564292,
+            0.06536506698466837,
+            0.06540131499059498,
+            0.06534116202965379,
+            0.06531830900348723,
+            0.06534902681596577,
+            0.06540573411621153,
+            0.06541627296246588,
+            0.06540702586062253,
+            0.06537853321060538,
+            0.06555770779959857
+          ],
+          "total_seconds": 1.0470889727585018,
+          "graph_delta": {
+            "capture": 0,
+            "replay": 0,
+            "setup_seconds": 0.0
+          }
+        }
+      ],
+      "limits": "Single request owner,c1 only,diagnostic wrapper,off/on/on/off order. First graph arm includes setup/validation;not canonical full-suite throughput.",
+      "memory_after_close": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 86094241540,
+        "total_allocated_bytes": 86100532996,
+        "total_freed_bytes": 86100532996,
+        "active_allocations": 0,
+        "peak_allocations": 1717
+      }
+    }
+  ],
+  "prior_failed_probe": "/tmp/qwen4exp-gdn-advancing-graph.json snapshot incorrectly sized BF16 residual as F32;fixed before retained runs",
+  "limits": [
+    "Two cases,16 steps,off/on/on/off order;not full-suite or interleaved statistical throughput evidence.",
+    "First candidate arm includes full-layer graph capture/reference validation;setup separately reported and not hidden.",
+    "Warm graph arm and final eager arm effectively equal;no speedup extrapolated from restored-layer microprobe.",
+    "Experimental graph wrapper scoped to one runner/request,stable pointers/profile,c1 GDN only;no production integration."
+  ]
+}

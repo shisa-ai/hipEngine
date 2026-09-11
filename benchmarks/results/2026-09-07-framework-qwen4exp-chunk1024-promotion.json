@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "status": "retained_prefill_first_scoped_factory_default",
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "host": "Framework gfx1151",
+  "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+  "kv": "BF16",
+  "production_chunk_default": 1024,
+  "implicit_strict_active_chunk": 512,
+  "generic_constructor_and_other_quant_default": 512,
+  "explicit_factory_chunk_override": true,
+  "scope": "Registered gfx1151 gguf_ud_q4_k_xl factory only;Q4_K_M and direct runner/constructor defaults remain512. Implicit strict execution uses512 within the factory's1024 allocation.",
+  "decision": "Retain +7.87/+8.18% long-prompt prefill and faster requests in every long case under owner prefill-first direction. Keep short neutral-work fluctuations and p4096 decode losses explicit. No correctness bar relaxed.",
+  "by_shape": [
+    {"prompt": 512, "before_pp": 180.2636753148435, "after_pp": 180.16782059435053, "pp_delta_percent": -0.05317472881076},
+    {"prompt": 1024, "before_pp": 176.70591679677628, "after_pp": 190.61435723038903, "pp_delta_percent": 7.87095343819664},
+    {"prompt": 4096, "before_pp": 162.79947407823596, "after_pp": 176.11354796320893, "pp_delta_percent": 8.17820448152964}
+  ],
+  "tradeoffs": {
+    "p4096_aggregate_decode_delta_percent": -1.72312809796028,
+    "worst_category_decode_delta_percent": -3.1388830840715753,
+    "p512_worst_request_delta_percent": -0.14408667473964,
+    "larger_capacity_bytes_vs_recent512_peak": 754856960,
+    "benchmark_memory_limit": "Both throughput arms shared1024-capacity allocation;not allocation-size neutrality.",
+    "causal_thermal_claim": false
+  },
+  "evidence": {
+    "full72_trajectory_ab": "benchmarks/results/2026-09-07-framework-qwen4exp-chunk1024-full.json",
+    "full12_case_logits_state_kv": "benchmarks/results/2026-09-06-framework-qwen4exp-chunk1024-state.json",
+    "native_c2_admission": "benchmarks/results/2026-09-07-framework-qwen4exp-chunk1024-native-c2-memory.json",
+    "public_factory_serving": "benchmarks/results/2026-09-07-framework-qwen4exp-chunk1024-public-serving.json"
+  },
+  "public_gate": {
+    "resident_chunk_sizes": [1024,1024],
+    "context_capacity": 262144,
+    "retrieval_tokens": 8192,
+    "retrieval_status": 200,
+    "over_limit_status": 400,
+    "final_tracked_allocations": 0,
+    "tests": "21 focused factory/profile/context/chunk tests pass"
+  },
+  "limits": "No new external Vulkan comparison or native262144-length inference claim. Direct benchmark defaults stay historical512;current-default measurements must explicitly select1024."
+}

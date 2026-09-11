@@ -1,0 +1,76 @@
+{
+  "model": "tencent/EVIE-4.5B",
+  "backend": "hip_gfx1151 (AMD Radeon 8060S, Strix Halo)",
+  "host": "zbook (Ryzen AI MAX+ PRO 395)",
+  "date": "2026-09-10",
+  "change": "segment-batched encode (encode_queries/encode_documents: batched projections, per-segment attention, segments conv/GDN kernels) + elementwise-kernel coalescing pass (rmsnorm/layernorm/gdn_rmsnorm_gate/rope/gdn_l2norm_scale_repeat)",
+  "classification": "T1 (reduction reassociation in the norm kernels; isolation exact)",
+  "isolation_gates": "tests/test_evie_gpu_runtime_batched.py: distinct same-length neighbors bit-identical, ragged <=2e-5, segment lengths 1-5 match sequential, fixed batches bit-repeatable",
+  "matched_protocol": {
+    "inputs": "real ColQwen3_5Processor outputs, 8 pages + 8 queries, best of 3",
+    "hip_fp16_batched": {
+      "doc_ms": 1027.4,
+      "query_ms": 139.7,
+      "score_ms": 5.5,
+      "total_ms": 1172.7
+    },
+    "torch_bf16": {
+      "doc_ms": 1074.1,
+      "query_ms": 224.2,
+      "score_ms": 1.3,
+      "total_ms": 1299.5
+    },
+    "verdict": "hipEngine leads 1.11x overall (1.04x doc, 1.61x query)",
+    "retrieval_quality": {
+      "hip_fp16_vs_torch_fp32": {
+        "max_abs": 0.0176,
+        "max_rel": 0.0024,
+        "argmax": "8/8"
+      },
+      "torch_bf16_vs_torch_fp32": {
+        "max_abs": 0.245,
+        "max_rel": 0.0348,
+        "argmax": "5/8"
+      }
+    },
+    "harness": "scripts/evie_matched_protocol_torch.py + scripts/evie_matched_protocol_hip.py (reproducible)"
+  },
+  "bench_protocol": {
+    "fp16_8p8q_batched_ms": 1133.8,
+    "fp16_8p8q_sequential_ms": 1812.4,
+    "fp32_8p8q_batched_ms": 6199.5,
+    "prev_fp16_total_ms": 2114
+  },
+  "kernel_wins_ms": {
+    "gdn_l2norm_scale_repeat": [
+      148.6,
+      6.8
+    ],
+    "rope": [
+      57.9,
+      7.6
+    ],
+    "layernorm": [
+      58.9,
+      8.5
+    ],
+    "gdn_rmsnorm_gate": [
+      49.6,
+      11.7
+    ]
+  },
+  "fp16_manifest": {
+    "q_mean_min": [
+      0.9999986,
+      0.9999924
+    ],
+    "d_mean_min": [
+      0.9999491,
+      0.9984596
+    ],
+    "maxsim_delta": 2.9e-05
+  },
+  "rollback": "sequential encode paths unchanged and default for single items",
+  "strict_fallback": "HIPENGINE_EVIE_STRICT_ELEMENTWISE=1 selects the original pre-coalescing elementwise kernels (bit-for-bit the pre-campaign arithmetic)",
+  "cache_lifetime_regression": "tests/test_evie_attention_buffer_lifetime.py (reviewer's failing test, now green)"
+}

@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "date": "2026-08-28",
+  "hardware": "AMD Ryzen AI MAX+ 395 / Radeon 8060S / gfx1151",
+  "common_comparators": {
+    "hipengine_head": "93e08bc357c4c220b75b8915d2ed05b09f042e9b",
+    "llamacpp_mainline_vulkan_head": "4e97ac86ebe2c4cb8212d98d2641ad6768810896",
+    "primary_model_pending": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+    "common_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "heldouts_required": true
+  },
+  "lanes": [
+    {"id": "guide-ollama", "source": "hogeheer499 guide @ 029320fb", "claim": "20.42 generation tok/s"},
+    {"id": "mike", "source": "MikeVeerman @ cc527064", "claim": "Q6/Q8 MTP 2.1-2.2x C1; C4 0.78x"},
+    {"id": "julian", "source": "julianmb/q38rocm @ 5d097740; ROCmFPX @ 0fc9568e", "claim": "ROCmFP4_FAST 14.02 AR; 30.56-36.04 MTP"},
+    {"id": "kyanite", "source": "KyaniteLabs @ 7fa3ca81", "claim": "59.7 cold / 148-163 warm count-to-30; 11-24 real traffic"},
+    {"id": "laurent", "source": "LaurentZuijdwijk/llama.cpp @ c28d538df", "claim": "FP4+DFlash2 adaptive 65.6 structured / 26.1 prose"},
+    {"id": "piebru", "source": "PieBru @ 66cfceae; Nathanw fork", "claim": "Q6+DFlash2 17-21; Q5 about 23-24; replay ngram gains"},
+    {"id": "yandaq", "source": "yandaq @ eb68ceb0", "claim": "Q4 26.47; UD-Q4XL 26.26; Q8XL 15.20; K>=6 degeneration"},
+    {"id": "llamastash", "source": "guide-tracked Reddit stock b10503", "claim": "Q8_0 MTP 7.3-22.4"}
+  ],
+  "rules": [
+    "Run each published protocol on its exact artifact/runtime where obtainable.",
+    "Also run the common suite and category heldouts.",
+    "Record full model hashes, build commits, backend, command, output validity, acceptance, and timing boundary.",
+    "Do not compare absolute rates across different model files as an engine ranking.",
+    "Reject degenerate-output speedups.",
+    "Use bold only for winners in direct matched comparisons."
+  ]
+}

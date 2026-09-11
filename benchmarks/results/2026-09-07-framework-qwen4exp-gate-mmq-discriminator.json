@@ -1,0 +1,143 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_gate_mmq_discriminator",
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "a1a76798b3d3d842d0ec2ad85ef94a3176dbf394",
+    "tracked_clean": true
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "command": [
+    "scripts/qwen4exp_gate_mmq_discriminator.py",
+    "--model-root",
+    "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--rows",
+    "512",
+    "1024",
+    "--pairs",
+    "10",
+    "--truth-rows",
+    "512",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--require-cached-build",
+    "--output",
+    "/tmp/qwen4exp-gate-mmq-discriminator.json"
+  ],
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "tensor": "blk.0.attn_gate.weight",
+  "tensor_shape": [
+    6144,
+    2560
+  ],
+  "tensor_sha256": "07d0602265cac070edf0fea0c188a3a06ed5f6bdecd4860d78b0a9fcaf7eff95",
+  "arithmetic_class": "diagnostic",
+  "runtime_default_changed": false,
+  "boundary": "projection only: exact wave-scale coltile parent versus 3-plane quantize+guarded MMQ without repair; no GDN recurrence or downstream consumers",
+  "parent_variant": "gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_f32_f32_out",
+  "candidate_variants": [
+    "gguf_q8_0_mmq128_quantize_f32_d4x3",
+    "gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out"
+  ],
+  "cases": [
+    {
+      "rows": 512,
+      "f32_bit_flips": 2870517,
+      "f32_flip_fraction": 0.9125127792358398,
+      "abs_delta_max": 6.198883056640625e-06,
+      "abs_delta_median": 1.1920928955078125e-07,
+      "rel_delta_p95": 2.5619822502122952e-06,
+      "parent_median_ms": 5.471379030495882,
+      "mmq3_median_ms": 2.826319425366819,
+      "speedup": 1.9358671852123612,
+      "seconds": {
+        "parent": [
+          0.005709505174309015,
+          0.005532953888177872,
+          0.0048835258930921555,
+          0.0055112638510763645,
+          0.004916125908493996,
+          0.005506664980202913,
+          0.00489322398789227,
+          0.005475357174873352,
+          0.004907851107418537,
+          0.005467400886118412
+        ],
+        "mmq3": [
+          0.002877711085602641,
+          0.0028280180413275957,
+          0.002866660011932254,
+          0.002824620809406042,
+          0.002858063904568553,
+          0.0028013880364596844,
+          0.002787151141092181,
+          0.0028791730292141438,
+          0.0027400520630180836,
+          0.002791549079120159
+        ]
+      },
+      "truth": {
+        "e_parent_median": 5.7279916407249054e-08,
+        "e_parent_p95": 1.878206372374347e-07,
+        "e_mmq3_median": 1.203465863630626e-07,
+        "e_mmq3_p95": 5.215666045443876e-07,
+        "e_mmq3_over_e_parent_median": 2.101025872793211,
+        "e_mmq3_over_e_parent_p95": 2.7769398092556026,
+        "rel_e_parent_median": 1.0929478633834635e-07,
+        "rel_e_mmq3_median": 2.533339861602991e-07,
+        "rel_e_mmq3_p95": 2.1932441324377187e-06,
+        "ulp_of_truth_p95": 2.026851107349408e-07
+      }
+    },
+    {
+      "rows": 1024,
+      "f32_bit_flips": 5740394,
+      "f32_flip_fraction": 0.9124110539754232,
+      "abs_delta_max": 8.58306884765625e-06,
+      "abs_delta_median": 1.1920928955078125e-07,
+      "rel_delta_p95": 2.564845970333437e-06,
+      "parent_median_ms": 10.992666007950902,
+      "mmq3_median_ms": 5.905599100515246,
+      "speedup": 1.8613972639950829,
+      "seconds": {
+        "parent": [
+          0.011114479973912239,
+          0.011020494159311056,
+          0.010956733021885157,
+          0.011004554107785225,
+          0.010930484859272838,
+          0.010926096001639962,
+          0.010952184908092022,
+          0.010981970932334661,
+          0.011003361083567142,
+          0.011025883024558425
+        ],
+        "mmq3": [
+          0.006086472887545824,
+          0.005871209083124995,
+          0.005898911971598864,
+          0.00601180293597281,
+          0.0060252780094742775,
+          0.0059043720830231905,
+          0.005906826118007302,
+          0.005887550069019198,
+          0.005766222020611167,
+          0.005944856908172369
+        ]
+      }
+    }
+  ]
+}

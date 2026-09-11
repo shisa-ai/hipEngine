@@ -1,0 +1,81 @@
+{
+  "schema": 1,
+  "date": "2026-08-29",
+  "status": "accepted_exact_default",
+  "scope": "Qwen4Exp gfx1151 selected Q5_1 decode logical-thread contraction",
+  "host": {
+    "identity": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "cpu": "AMD Ryzen AI Max+ Pro 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "id": "Qwen/Qwen3.8-Flash-Next",
+    "quant": "Unsloth UD-Q4_K_XL",
+    "quant_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5"
+  },
+  "implementation": {
+    "change": "Each 128-thread CTA computes two logical partials per lane, writes all 256 logical slots, and executes the original shared-memory strides 128/64/32 plus wave32 shuffle tree.",
+    "registry_variant": "selected_gemv_logical256_t128_bf16_bf16_out",
+    "selection": "unconditional Q5_1 selected default",
+    "strict_fallback": "selected_gemv_bf16_bf16_out",
+    "new_tracked_device_bytes": 0
+  },
+  "correctness": {
+    "primitive_command": "HIPENGINE_HIP_ARCH=gfx1151 uv run pytest -q tests/test_qwen4_exp_q5_1_selected.py -x",
+    "primitive_result": "3 passed",
+    "cpu_dequant_oracle_bf16_bits_exact": true,
+    "strict_kernel_bf16_bits_exact": true,
+    "paired_generated_ids_exact": true,
+    "paired_full_logits_sha256_exact": true,
+    "paired_rows_per_mode": 3,
+    "measured_tokens_per_row": 32,
+    "deterministic_repeats": true
+  },
+  "paired_complete_model": {
+    "command": "uv run python /tmp/qwen4exp_decode_q5_exact128_paired.py",
+    "protocol": "one residency; separate MoE graph-cache keys during screening; warm strict+candidate; counterbalanced S/C/C/S/S/C; every row reset + p1 + 8 warm + 32 measured greedy tokens; full-logit SHA at every step",
+    "strict_seconds": [
+      2.83889255199756,
+      2.8120391339907655,
+      2.810222218002309
+    ],
+    "candidate_seconds": [
+      2.635828949001734,
+      2.6363706970005296,
+      2.6056682329945033
+    ],
+    "strict_median_seconds": 2.8120391339907655,
+    "candidate_median_seconds": 2.635828949001734,
+    "strict_tok_s": 11.37964248548224,
+    "candidate_tok_s": 12.14039325735433,
+    "reduction_percent": 6.266277835862083,
+    "speedup": 1.0668519044286873
+  },
+  "kernel_trace": {
+    "commands": [
+      "HIPENGINE_QWEN4_EXP_Q5_1_EXACT128=0 rocprofv3 --kernel-trace --output-format csv --output-file /tmp/q5strict -- uv run python /tmp/qwen4exp_decode32_profile.py",
+      "HIPENGINE_QWEN4_EXP_Q5_1_EXACT128=1 rocprofv3 --kernel-trace --output-format csv --output-file /tmp/q5exact128 -- uv run python /tmp/qwen4exp_decode32_profile.py"
+    ],
+    "note": "The environment flag existed only in the uncommitted screen and is removed by promotion.",
+    "launches_each": 1806,
+    "strict_kernel": "q5_1_selected_gemv_bf16_bf16_kernel",
+    "candidate_kernel": "q5_1_selected_gemv_logical256_t128_bf16_bf16_kernel",
+    "strict_cycle_wall_ms": 692.930331,
+    "candidate_cycle_wall_ms": 410.363776,
+    "cycle_wall_reduction_percent": 40.778494223541216,
+    "strict_median_us": 380.1145,
+    "candidate_median_us": 221.9575
+  },
+  "same_host_reference_after": {
+    "llama_cpp_hip_tg32": 15.847834,
+    "llama_cpp_vulkan_tg32": 18.716255,
+    "hipengine_tg32": 12.14039325735433,
+    "hipengine_fraction_of_hip": 0.7660600973832973,
+    "hipengine_fraction_of_vulkan": 0.648655046501254,
+    "remaining_gap_to_hip": 1.3053806136304358,
+    "remaining_gap_to_vulkan": 1.5416514608093266
+  },
+  "decision": "Promote as exact gfx1151 default. The physical-thread contraction preserves every logical partial and strict reduction operation while improving complete graph decode and Q5 cycle-wall materially."
+}

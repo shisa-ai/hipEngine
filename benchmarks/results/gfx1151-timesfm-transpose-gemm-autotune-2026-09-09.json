@@ -1,0 +1,62 @@
+{
+  "schema": "timesfm-gpu-decode-bench/1",
+  "date": "2026-09-09",
+  "model": "google/timesfm-2.5-200m-pytorch",
+  "task": "time-series-forecast decode",
+  "hardware": "AMD Radeon 8060S (gfx1151, Strix Halo iGPU), Ryzen AI MAX+ PRO 395 host, 120 GB shared LPDDR5X",
+  "host": "zbook",
+  "workload": {
+    "batch": 8,
+    "context": 8192,
+    "horizon": 512,
+    "masks": "none"
+  },
+  "command": "python3 scripts/timesfm_gpu_bench.py --metric",
+  "change": "head-transpose rewrite (37->6.8us/call) + shape-keyed rocBLAS GEMM solution autotuning",
+  "baseline": {
+    "decode_seconds_b8_ctx8192_h512": 0.0959,
+    "note": "flash-attention build (previous entry), 16-run median"
+  },
+  "measurements": {
+    "decode_seconds_b8_ctx8192_h512": [
+      0.0923,
+      0.0918,
+      0.0939,
+      0.0945,
+      0.0917,
+      0.0916,
+      0.0906,
+      0.0951,
+      0.0913,
+      0.0938,
+      0.0914
+    ],
+    "median": 0.0915
+  },
+  "subwindow": {
+    "transpose_heads_us_per_call": [
+      37.0,
+      6.8
+    ],
+    "gemm_us_best_of_50": {
+      "32x1280x3840": [
+        61.6,
+        49.0
+      ],
+      "8x1280x1280": [
+        59.6,
+        37.4
+      ],
+      "2048x1280x3840": [
+        534.5,
+        481.3
+      ]
+    },
+    "note": "rocprofv3 kernel trace + standalone GEMM solution sweep"
+  },
+  "correctness": {
+    "guard": "fp32 strict parity (atol 5e-4) + fp16 production gate pass",
+    "pytest": "tests/test_timesfm_gpu_decode.py 3/3"
+  },
+  "rejected_lever": "split-K AR flash attention: 146us vs 113us per call (per-chunk fixed cost exceeds parallelism win at Q=4); reverted"
+}

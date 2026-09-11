@@ -1,0 +1,208 @@
+{
+  "schema": 1,
+  "date": "2026-08-29",
+  "status": "accepted",
+  "scope": "Re-baseline llama.cpp at latest master (HIP+Vulkan) on zbook for Qwen3.8-Flash-Next UD-Q4_K_XL, fork/perf-setup survey, and pp508 per-kernel-family comparison vs hipEngine final production profile",
+  "host": {
+    "identity": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "cpu": "AMD Ryzen AI Max+ Pro 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "id": "Qwen/Qwen3.8-Flash-Next",
+    "quant": "Unsloth UD-Q4_K_XL",
+    "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+    "first_part": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf"
+  },
+  "llama_cpp": {
+    "old_baseline_commit": "bea3b12daee45876b0129a3602dc8f534ce30bf0 (PR #27742 branch, pre-merge)",
+    "master_commit": "17252c769",
+    "build_number": 10685,
+    "qwen4exp_merge": [
+      "6c84c7d5d model: add Qwen3.8-Flash-Next (qwen4exp) (#27742)",
+      "6fe749801 model: qwen4exp: reduce number of graph splits (#27880)"
+    ],
+    "builds": "~/llama.cpp/llama.cpp-hip build-hip and ~/llama.cpp/llama.cpp-vulkan build; out-of-tree Release; HIP flags AMDGPU_TARGETS=gfx1151 GGML_HIP_GRAPHS=ON GGML_HIP_MMQ_MFMA=ON GGML_HIP_NO_VMM=ON",
+    "parameters": {
+      "repetitions": 3,
+      "n_batch": 2048,
+      "n_ubatch": 512,
+      "gpu_layers": 999,
+      "kv_key": "bf16",
+      "kv_value": "bf16",
+      "flash_attention": "auto",
+      "threads": 16
+    },
+    "command": "llama-bench -m <first-part> -p 508,1006 -n 32 -r 3 -o json -ngl 999 -ctk bf16 -ctv bf16 -fa auto",
+    "results_tok_s": {
+      "hip_master_warm_pass1": {
+        "pp508_avg": 298.6,
+        "pp508_samples": [
+          262.2,
+          315.46,
+          318.14
+        ],
+        "pp1006_avg": 307.175,
+        "pp1006_samples": [
+          315.49,
+          302.92,
+          303.12
+        ],
+        "tg32_avg": 17.314,
+        "tg32_samples": [
+          17.07,
+          17.3,
+          17.57
+        ]
+      },
+      "hip_master_warm_pass2": {
+        "pp508_avg": 294.147,
+        "pp508_samples": [
+          262.1,
+          310.39,
+          309.95
+        ],
+        "pp1006_avg": 318.869,
+        "pp1006_samples": [
+          320.36,
+          319.86,
+          316.39
+        ],
+        "tg32_avg": 17.074,
+        "tg32_samples": [
+          17.12,
+          16.92,
+          17.18
+        ]
+      },
+      "vulkan_master_warm_pass1": {
+        "pp508_avg": 333.827,
+        "pp508_samples": [
+          331.67,
+          336.58,
+          333.23
+        ],
+        "pp1006_avg": 310.51,
+        "pp1006_samples": [
+          301.98,
+          317.14,
+          312.41
+        ],
+        "tg32_avg": 24.036,
+        "tg32_samples": [
+          24.15,
+          24.03,
+          23.93
+        ]
+      },
+      "vulkan_master_warm_pass2": {
+        "pp508_avg": 332.082,
+        "pp508_samples": [
+          330.26,
+          334.28,
+          331.71
+        ],
+        "pp1006_avg": 308.407,
+        "pp1006_samples": [
+          298.59,
+          313.04,
+          313.58
+        ],
+        "tg32_avg": 24.13,
+        "tg32_samples": [
+          24.37,
+          23.95,
+          24.07
+        ]
+      },
+      "old_baseline_reference": {
+        "hip": {
+          "pp508": 274.996,
+          "pp1006": 284.485,
+          "tg32": 15.848
+        },
+        "vulkan": {
+          "pp508": 316.38,
+          "pp1006": 290.45,
+          "tg32": 18.716
+        }
+      },
+      "delta_vs_old_baseline_percent": {
+        "hip": {
+          "pp508": 8.4,
+          "pp1006": 8.0,
+          "tg32": 8.5
+        },
+        "vulkan": {
+          "pp508": 5.2,
+          "pp1006": 6.5,
+          "tg32": 28.1
+        }
+      }
+    }
+  },
+  "hipengine_reference": {
+    "profile": "production final (manifest 6ec035b7...)",
+    "p508_tok_s": 78.31,
+    "p1012_tok_s": 76.793,
+    "tg32_tok_s": 15.543,
+    "artifact": "benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-prefill-mmq-campaign-final.json"
+  },
+  "gap_summary": {
+    "prefill_pp508_vs_hip_master": 3.79,
+    "prefill_pp508_vs_vulkan_master": 4.25,
+    "decode_tg32_vs_hip_master": 1.1,
+    "decode_tg32_vs_vulkan_master": 1.55
+  },
+  "pp508_kernel_family_comparison_ms": {
+    "protocol": "rocprofv3 kernel-trace, llama master warm segment (5121 launches, 1.693 s kernels) vs hipEngine final production trace (3684 launches, 6.548 s kernels); profiler overhead present in both",
+    "llama_master": {
+      "matmul_mmq_total": 1059.2,
+      "comgr_gemm": 198.5,
+      "gdn_recurrence": 86.0,
+      "qsa_flash_attn": 14.5,
+      "elementwise_norm_rope_misc": 275.0,
+      "concat_scatter": 52.1,
+      "ids_quantize_helpers": 45.0,
+      "total_kernels": 1693.0,
+      "launches": 5121
+    },
+    "hipengine_final": {
+      "matmul_moe_dense_total": 5526.9,
+      "gdn_recurrence": 750.7,
+      "qsa_attention": 141.5,
+      "elementwise_fused_misc": 125.8,
+      "total_kernels": 6548.2,
+      "launches": 3684
+    },
+    "module_gaps": {
+      "MoE+dense matmul": 4.39,
+      "GDN recurrence": 8.73,
+      "QSA flash attention": 9.76,
+      "elementwise (hipEngine wins)": 0.46
+    }
+  },
+  "root_cause_analysis": {
+    "moe_matmul": "llama mul_mat_q takes AMD_WMMA_AVAILABLE path on gfx1151 (RDNA4 WMMA matrix cores, f16 fragments, f32 accumulate) per ggml-cuda/mma.cuh and mmq.cuh use_mma_data_layout(); hipEngine MMQ kernels are integer dp4a ('d4') variants. Effective expert-MMQ throughput at pp508: llama ~4.5 TFLOP/s vs hipEngine ~1.1 TFLOP/s; weight-stream floor ~260 ms (66 GB at ~256 GB/s), so both remain compute-dominated.",
+    "gdn": "llama fused gated_delta_net_cuda<128,...> processes 512-token chunks at ~2.39 ms/launch x36; hipEngine exact fused prefill kernel averages 26.8 ms x27 plus peer-wave32 chain x9. Algorithmic gap: chunked parallel scan with per-chunk state passing.",
+    "qsa": "llama flash_attn_tile<256,256,8,4> 1.21 ms x12 vs hipEngine paged full-attn prefill family 141.5 ms."
+  },
+  "fork_survey": {
+    "ik_llama_cpp": "added qwen4exp runtime (#2365) + CUDA-only f32 small-GEMM fast TG (#2373); no gfx1151-specific advantage found",
+    "namore_rocmfp4_fork": "rocmfp4-qwen3.8-flash-next-template branch + kingjones777 ROCmFP4 STRIX_LEAN GGUF (~100 GiB Q4_0-ROCmFP4), Vulkan backend; different quant, not comparable to UD-Q4_K_XL",
+    "community_fast_decode_claims": "50-65 tok/s decode reports use ROCmFP4 quant + DFlash2/native-MTP speculative forks (hogeheer499-commits/strix-halo-guide route matrix); adaptive 65 t/s route unverified/unpublished sidecar; not same-quant no-spec comparisons",
+    "same_quant_public_blog": "soothill.io 2026-08-27: UD-Q4_K_XL on same APU class with PR#27742 build, tuned Vulkan 40-layer partial offload: 109.55 pp / 15.56 tg single-slot, 24.30 tg two-slot cached; below our matched all-GPU rows",
+    "hip_fix_pr_25863": "not merged as of 17252c769; no ggml-hip commits since 2026-08-25 in master",
+    "vulkan_decode_master_gain": "77f132cb1 mul_mat_id pad K rather than N (#27925), 90c26fcd4 row-IDs hoisting (#26686), and qwen4exp merge account for Vulkan tg32 18.7->24.1"
+  },
+  "traces": {
+    "llama_master_warm": "/tmp/llama-master-hip-trace/llama-master-pp508-warm_kernel_trace.csv",
+    "llama_master_measured": "/tmp/llama-master-hip-trace/llama-master-pp508_kernel_trace.csv",
+    "llama_master_db": "/tmp/llama-master-hip-trace/llama-master-pp508_results.db",
+    "llama_old": "/tmp/llama-qwen4exp-hip-pp508_kernel_trace.csv",
+    "hipengine_final": "/tmp/qwen4exp-gdn-peer35-p508_kernel_trace.csv"
+  },
+  "decision": "Optimization priorities for parity: (1) WMMA f16 matrix-core MoE MMQ path (potential ~3-4 s at pp508), (2) port llama chunked gated_delta_net scan (~0.66 s), (3) flash-attn QSA prefill (~0.13 s). Decode gap smaller (1.10-1.55x); revisit after prefill modules land."
+}

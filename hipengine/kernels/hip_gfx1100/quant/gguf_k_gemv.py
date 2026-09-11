@@ -315,6 +315,60 @@ def _symbol(quant: str, variant: str) -> str:
     return f"hipengine_{quant}_{variant}"
 
 
+def gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32(
+    x_ptr: int,
+    qweight_ptr: int,
+    normalized_ptr: int,
+    gate_ptr: int,
+    mixed_ptr: int,
+    rows: int,
+    in_features: int,
+    branches: int,
+    hidden: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+    _wave_scale: bool = False,
+) -> None:
+    """Launch exact raw-Q8 GR up, sigmoid gate, and branch mean."""
+
+    _validate("gguf_q8_0", rows, in_features, branches * hidden, threads)
+    if branches != 4:
+        raise ValueError("branches must equal 4")
+    if hidden <= 0 or hidden % 2:
+        raise ValueError("hidden must be a positive multiple of 2")
+    library = library or build_gguf_k_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = _cached_fn(
+        library,
+        ("hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_f32"
+         if _wave_scale else
+         "hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32"),
+        [_VOID, _VOID, _VOID, _VOID, _VOID,
+         _I64, _I64, _I64, _I64, _I64, _VOID],
+    )
+    err = fn(
+        x_ptr,
+        qweight_ptr,
+        normalized_ptr,
+        gate_ptr,
+        mixed_ptr,
+        rows,
+        in_features,
+        branches,
+        hidden,
+        threads,
+        stream,
+    )
+    _check_launch(runtime, err)
+
+
+def gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_f32(*args, **kwargs):
+    gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32(*args, **kwargs, _wave_scale=True)
+
+
 gguf_q8_0_gemv_f32_f32_out = _make_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "gemv_f32_f32_out"))
 gguf_q8_0_gemv_f32_fp16_out = _make_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "gemv_f32_fp16_out"))
 gguf_q8_0_gemv_fp16_f32_out = _make_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "gemv_fp16_f32_out"))
@@ -324,6 +378,7 @@ gguf_q8_0_gemv_bf16_fp16_out = _make_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "
 gguf_q8_0_gemv_bf16_bf16_out = _make_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "gemv_bf16_bf16_out"))
 gguf_q8_0_dual_gemv_f32_f32_out = _make_dual_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "dual_gemv_f32_f32_out"))
 gguf_q8_0_dual_gemv_bf16_bf16_out = _make_dual_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "dual_gemv_bf16_bf16_out"))
+gguf_q8_0_pack8_gemv_f32_f32_out = _make_pack8_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "pack8_gemv_f32_f32_out"))
 gguf_q8_0_pack8_gemv_bf16_f32_out = _make_pack8_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "pack8_gemv_bf16_f32_out"))
 gguf_q8_0_pack8_gemv_bf16_bf16_out = _make_pack8_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "pack8_gemv_bf16_bf16_out"))
 gguf_q8_0_exact_prefill_tile8x2_bf16_bf16_out = _make_pack8_wrapper(
@@ -336,6 +391,127 @@ gguf_q8_0_exact_prefill_tile16x4_bf16_bf16_out = _make_pack8_wrapper(
     "gguf_q8_0", _symbol("gguf_q8_0", "exact_prefill_tile16x4_bf16_bf16_out")
 )
 gguf_q8_0_selected_gemv_bf16_bf16_out = _make_selected_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "selected_gemv_bf16_bf16_out"))
+
+
+def _make_selected_grouped_wrapper(quant: str, symbol: str, *, required_geometry=None):
+    def wrapper(
+        x_ptr: int,
+        expert_start_ptr: int,
+        lane_to_row_ptr: int | None,
+        qweight_ptr: int,
+        out_ptr: int,
+        x_rows: int,
+        rows: int,
+        num_experts: int,
+        in_features: int,
+        out_features: int,
+        *,
+        threads: int = 128,
+        stream: int = 0,
+        library: ctypes.CDLL | None = None,
+        runtime: "HipRuntime | None" = None,
+    ) -> None:
+        if required_geometry is not None and (in_features,threads) != required_geometry:
+            raise ValueError(f"grouped kernel requires K/threads={required_geometry}")
+        _launch_selected_grouped(
+            quant,
+            symbol,
+            x_ptr,
+            expert_start_ptr,
+            lane_to_row_ptr,
+            qweight_ptr,
+            out_ptr,
+            x_rows,
+            rows,
+            num_experts,
+            in_features,
+            out_features,
+            threads=threads,
+            stream=stream,
+            library=library,
+            runtime=runtime,
+        )
+
+    return wrapper
+
+
+def _launch_selected_grouped(
+    quant: str,
+    symbol: str,
+    x_ptr: int,
+    expert_start_ptr: int,
+    lane_to_row_ptr: int | None,
+    qweight_ptr: int,
+    out_ptr: int,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: "HipRuntime | None" = None,
+) -> None:
+    if x_rows <= 0:
+        raise ValueError("x_rows must be positive")
+    if rows <= 0 or rows % x_rows != 0:
+        raise ValueError("rows must be positive and divisible by x_rows")
+    if num_experts <= 0:
+        raise ValueError("num_experts must be positive")
+    _validate(quant, rows, in_features, out_features, threads)
+    library = library or build_gguf_k_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(expert_start_ptr),
+        ctypes.c_void_p(lane_to_row_ptr) if lane_to_row_ptr else None,
+        ctypes.c_void_p(qweight_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(x_rows),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(num_experts),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+gguf_q8_0_selected_grouped_gemv_bf16_bf16_out = _make_selected_grouped_wrapper(
+    "gguf_q8_0", _symbol("gguf_q8_0", "selected_grouped_gemv_bf16_bf16_out")
+)
+gguf_q8_0_selected_grouped_row4_gemv_bf16_bf16_out = _make_selected_grouped_wrapper(
+    "gguf_q8_0", _symbol("gguf_q8_0", "selected_grouped_row4_gemv_bf16_bf16_out")
+)
+gguf_q8_0_selected_grouped_row4_bundle_gemv_bf16_bf16_out = _make_selected_grouped_wrapper(
+    "gguf_q8_0", _symbol("gguf_q8_0", "selected_grouped_row4_bundle_gemv_bf16_bf16_out")
+)
+gguf_q8_0_selected_grouped_row4_register_gemv_bf16_bf16_out = _make_selected_grouped_wrapper(
+    "gguf_q8_0", _symbol("gguf_q8_0", "selected_grouped_row4_register_gemv_bf16_bf16_out"),
+    required_geometry=(640,128),
+)
+gguf_q5_k_selected_grouped_row4_gemv_bf16_bf16_out = _make_selected_grouped_wrapper(
+    "gguf_q5_k", _symbol("gguf_q5_k", "selected_grouped_row4_gemv_bf16_bf16_out")
+)
 gguf_q8_0_selected_pack8_gemv_bf16_bf16_out = _make_selected_pack8_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "selected_pack8_gemv_bf16_bf16_out"))
 gguf_q8_0_prefill_f32_f32_out = gguf_q8_0_gemv_f32_f32_out
 gguf_q8_0_prefill_f32_fp16_out = gguf_q8_0_gemv_f32_fp16_out
@@ -531,6 +707,46 @@ gguf_q6_k_gemv_rowtile_bf16_f32_out = _make_wrapper("gguf_q6_k", _symbol("gguf_q
 gguf_q6_k_gemv_rowtile_f32_f32_out = _make_wrapper("gguf_q6_k", _symbol("gguf_q6_k", "gemv_rowtile_f32_f32_out"))
 
 # WPF-1 fixed-grid-Y weight-amortized variants for arbitrary prefill rows.
+gguf_q8_0_gemv_rowbatch4_f32_f32_out = _make_wrapper(
+    "gguf_q8_0", _symbol("gguf_q8_0", "gemv_rowbatch4_f32_f32_out")
+)
+gguf_q8_0_gemv_rowbatch8_f32_f32_out = _make_wrapper(
+    "gguf_q8_0", _symbol("gguf_q8_0", "gemv_rowbatch8_f32_f32_out")
+)
+gguf_q8_0_gemv_rowbatch16_f32_f32_out = _make_wrapper(
+    "gguf_q8_0", _symbol("gguf_q8_0", "gemv_rowbatch16_f32_f32_out")
+)
+gguf_q8_0_gemv_rowbatch32_f32_f32_out = _make_wrapper(
+    "gguf_q8_0", _symbol("gguf_q8_0", "gemv_rowbatch32_f32_f32_out")
+)
+gguf_q8_0_gemv_coltile4_rowbatch8_f32_f32_out = _make_wrapper(
+    "gguf_q8_0",
+    _symbol("gguf_q8_0", "gemv_coltile4_rowbatch8_f32_f32_out"),
+)
+gguf_q8_0_gemv_coltile8_rowbatch4_f32_f32_out = _make_wrapper(
+    "gguf_q8_0",
+    _symbol("gguf_q8_0", "gemv_coltile8_rowbatch4_f32_f32_out"),
+)
+gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_f32_f32_out = _make_wrapper(
+    "gguf_q8_0",
+    _symbol("gguf_q8_0", "gemv_coltile8_rowbatch4_wave_scale_f32_f32_out"),
+)
+gguf_q8_0_gemv_coltile8_rowbatch8_f32_f32_out = _make_wrapper(
+    "gguf_q8_0",
+    _symbol("gguf_q8_0", "gemv_coltile8_rowbatch8_f32_f32_out"),
+)
+gguf_q8_0_gemv_coltile16_rowbatch2_f32_f32_out = _make_wrapper(
+    "gguf_q8_0",
+    _symbol("gguf_q8_0", "gemv_coltile16_rowbatch2_f32_f32_out"),
+)
+gguf_q8_0_gemv_coltile16_rowbatch4_f32_f32_out = _make_wrapper(
+    "gguf_q8_0",
+    _symbol("gguf_q8_0", "gemv_coltile16_rowbatch4_f32_f32_out"),
+)
+gguf_q8_0_gemv_coltile32_rowbatch1_f32_f32_out = _make_wrapper(
+    "gguf_q8_0",
+    _symbol("gguf_q8_0", "gemv_coltile32_rowbatch1_f32_f32_out"),
+)
 gguf_q5_k_gemv_rowbatch4_bf16_bf16_out = _make_wrapper(
     "gguf_q5_k", _symbol("gguf_q5_k", "gemv_rowbatch4_bf16_bf16_out")
 )
@@ -749,6 +965,30 @@ def register_gguf_k_gemv_kernels(*, replace: bool = True) -> None:
     for quant in ("gguf_q8_0", "gguf_q5_k", "gguf_q6_k"):
         for variant, fn in _WRAPPERS[quant].items():
             register(KernelKey("hip_gfx1100", "linear", quant, variant), fn, replace=replace)
+    register(KernelKey("hip_gfx1100", "linear+gr_gated_mean", "gguf_q8_0",
+                       "coltile2_branch4_rowbatch4_wave_scale_f32_exact"),
+             gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_f32,
+             replace=replace)
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear+gr_gated_mean",
+            "gguf_q8_0",
+            "coltile2_branch4_rowbatch4_f32_exact",
+        ),
+        gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear+gr_gated_mean",
+            "gguf_q8_0",
+            "coltile8_rowbatch4_f32_f32_out",
+        ),
+        gguf_q8_0_gemv_coltile8_rowbatch4_f32_f32_out,
+        replace=replace,
+    )
     register(
         KernelKey(
             "hip_gfx1100",
@@ -1310,6 +1550,12 @@ def _check_launch(runtime: HipRuntime, err: int) -> None:
         runtime.check(int(err))
 
 
+gguf_q8_0_iu8_wmma_prefill_f32_f32_t = _make_wrapper(
+    "gguf_q8_0",
+    "hipengine_gguf_q8_0_iu8_wmma_prefill_f32_f32_t",
+)
+
+
 _WRAPPERS = {
     "gguf_q8_0": {
         "gemv_f32_f32_out": gguf_q8_0_gemv_f32_f32_out,
@@ -1321,12 +1567,17 @@ _WRAPPERS = {
         "gemv_bf16_bf16_out": gguf_q8_0_gemv_bf16_bf16_out,
         "dual_gemv_f32_f32_out": gguf_q8_0_dual_gemv_f32_f32_out,
         "dual_gemv_bf16_bf16_out": gguf_q8_0_dual_gemv_bf16_bf16_out,
+        "pack8_gemv_f32_f32_out": gguf_q8_0_pack8_gemv_f32_f32_out,
         "pack8_gemv_bf16_f32_out": gguf_q8_0_pack8_gemv_bf16_f32_out,
         "pack8_gemv_bf16_bf16_out": gguf_q8_0_pack8_gemv_bf16_bf16_out,
         "exact_prefill_tile8x2_bf16_bf16_out": gguf_q8_0_exact_prefill_tile8x2_bf16_bf16_out,
         "exact_prefill_tile8x4_bf16_bf16_out": gguf_q8_0_exact_prefill_tile8x4_bf16_bf16_out,
         "exact_prefill_tile16x4_bf16_bf16_out": gguf_q8_0_exact_prefill_tile16x4_bf16_bf16_out,
         "selected_gemv_bf16_bf16_out": gguf_q8_0_selected_gemv_bf16_bf16_out,
+        "selected_grouped_gemv_bf16_bf16_out": gguf_q8_0_selected_grouped_gemv_bf16_bf16_out,
+        "selected_grouped_row4_gemv_bf16_bf16_out": gguf_q8_0_selected_grouped_row4_gemv_bf16_bf16_out,
+        "selected_grouped_row4_bundle_gemv_bf16_bf16_out": gguf_q8_0_selected_grouped_row4_bundle_gemv_bf16_bf16_out,
+        "selected_grouped_row4_register_gemv_bf16_bf16_out": gguf_q8_0_selected_grouped_row4_register_gemv_bf16_bf16_out,
         "selected_pack8_gemv_bf16_bf16_out": gguf_q8_0_selected_pack8_gemv_bf16_bf16_out,
         "prefill_f32_f32_out": gguf_q8_0_prefill_f32_f32_out,
         "prefill_f32_fp16_out": gguf_q8_0_prefill_f32_fp16_out,
@@ -1338,6 +1589,18 @@ _WRAPPERS = {
         "rowtile_bf16_bf16_out": gguf_q8_0_gemv_rowtile_bf16_bf16_out,
         "rowtile_bf16_f32_out": gguf_q8_0_gemv_rowtile_bf16_f32_out,
         "rowtile_f32_f32_out": gguf_q8_0_gemv_rowtile_f32_f32_out,
+        "rowbatch4_f32_f32_out": gguf_q8_0_gemv_rowbatch4_f32_f32_out,
+        "rowbatch8_f32_f32_out": gguf_q8_0_gemv_rowbatch8_f32_f32_out,
+        "rowbatch16_f32_f32_out": gguf_q8_0_gemv_rowbatch16_f32_f32_out,
+        "rowbatch32_f32_f32_out": gguf_q8_0_gemv_rowbatch32_f32_f32_out,
+        "coltile4_rowbatch8_f32_f32_out": gguf_q8_0_gemv_coltile4_rowbatch8_f32_f32_out,
+        "coltile8_rowbatch4_f32_f32_out": gguf_q8_0_gemv_coltile8_rowbatch4_f32_f32_out,
+        "iu8_wmma_prefill_f32_f32_out": gguf_q8_0_iu8_wmma_prefill_f32_f32_t,
+        "coltile8_rowbatch4_wave_scale_f32_f32_out": gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_f32_f32_out,
+        "coltile8_rowbatch8_f32_f32_out": gguf_q8_0_gemv_coltile8_rowbatch8_f32_f32_out,
+        "coltile16_rowbatch2_f32_f32_out": gguf_q8_0_gemv_coltile16_rowbatch2_f32_f32_out,
+        "coltile16_rowbatch4_f32_f32_out": gguf_q8_0_gemv_coltile16_rowbatch4_f32_f32_out,
+        "coltile32_rowbatch1_f32_f32_out": gguf_q8_0_gemv_coltile32_rowbatch1_f32_f32_out,
     },
     "gguf_q5_k": {
         "gemv_f32_f32_out": gguf_q5_k_gemv_f32_f32_out,
@@ -1355,6 +1618,7 @@ _WRAPPERS = {
         "wave32x2_fixed_meta_gemv_decode_bf16_bf16_out": gguf_q5_k_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out,
         "wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_bf16_out": gguf_q5_k_wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_bf16_out,
         "selected_gemv_bf16_bf16_out": gguf_q5_k_selected_gemv_bf16_bf16_out,
+        "selected_grouped_row4_gemv_bf16_bf16_out": gguf_q5_k_selected_grouped_row4_gemv_bf16_bf16_out,
         "selected_silu_gemv_bf16_bf16_out": gguf_q5_k_selected_silu_gemv_bf16_bf16_out,
         "selected_pack8_gemv_bf16_bf16_out": gguf_q5_k_selected_pack8_gemv_bf16_bf16_out,
         "selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out": gguf_q5_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out,
@@ -1430,6 +1694,23 @@ register_gguf_k_gemv_kernels()
 
 __all__ = [
     "build_gguf_k_gemv",
+    "gguf_q8_0_selected_grouped_gemv_bf16_bf16_out",
+    "gguf_q8_0_selected_grouped_row4_gemv_bf16_bf16_out",
+    "gguf_q8_0_selected_grouped_row4_bundle_gemv_bf16_bf16_out",
+    "gguf_q8_0_selected_grouped_row4_register_gemv_bf16_bf16_out",
+    "gguf_q8_0_gemv_rowbatch4_f32_f32_out",
+    "gguf_q8_0_gemv_rowbatch8_f32_f32_out",
+    "gguf_q8_0_gemv_rowbatch16_f32_f32_out",
+    "gguf_q8_0_gemv_rowbatch32_f32_f32_out",
+    "gguf_q8_0_gemv_coltile4_rowbatch8_f32_f32_out",
+    "gguf_q8_0_gemv_coltile8_rowbatch4_f32_f32_out",
+    "gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_f32_f32_out",
+    "gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32",
+    "gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_f32",
+    "gguf_q8_0_gemv_coltile8_rowbatch8_f32_f32_out",
+    "gguf_q8_0_gemv_coltile16_rowbatch2_f32_f32_out",
+    "gguf_q8_0_gemv_coltile16_rowbatch4_f32_f32_out",
+    "gguf_q8_0_gemv_coltile32_rowbatch1_f32_f32_out",
     "gguf_q5_k_gemv_f32_f32_out",
     "gguf_q5_q6_attention_q5_qg_mixed_gemv_decode_bf16_f32_out",
     "gguf_q5_q6_attention_q5_qg_mixed_local32_fixed_meta_gemv_decode_bf16_f32_out",
@@ -1472,6 +1753,7 @@ __all__ = [
     "gguf_q5_k_wave32x2_gemv_decode_bf16_bf16_out",
     "gguf_q5_k_wave32x2_gemv_decode_bf16_f32_out",
     "gguf_q5_k_selected_gemv_bf16_bf16_out",
+    "gguf_q5_k_selected_grouped_row4_gemv_bf16_bf16_out",
     "gguf_q5_k_selected_silu_gemv_bf16_bf16_out",
     "gguf_q5_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out",
     "gguf_q5_k_prefill_f32_f32_out",
@@ -1538,3 +1820,49 @@ __all__ = [
     "plan_gguf_k_gemv_build",
     "register_gguf_k_gemv_kernels",
 ]
+
+
+_ARGS_Q8_0_IU8_WMMA = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
+
+
+def gguf_q8_0_iu8_wmma_prefill_f32_f32(
+    x_ptr: int,
+    qweight_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Dense iu8-WMMA Q8_0 projection (three-plane fp32 staging, T1).
+
+    Weight-exact on the Q8_0 codes; the activation-side three-plane residual
+    quantization is bounded implementation drift gated by the production
+    numerical envelope, not a bit-identity contract.
+    """
+
+    if rows <= 0 or in_features <= 0 or in_features % 32 or out_features <= 0:
+        raise ValueError("iu8 WMMA projection has invalid geometry")
+    library = library or build_gguf_k_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = _cached_fn(
+        library, "hipengine_gguf_q8_0_iu8_wmma_prefill_f32_f32",
+        list(_ARGS_Q8_0_IU8_WMMA))
+    err = fn(
+        x_ptr, qweight_ptr, out_ptr,
+        rows, in_features, out_features,
+        stream,
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))

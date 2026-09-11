@@ -1,0 +1,103 @@
+{
+  "capture_nonexecuting": true,
+  "command": [
+    "qwen4exp_gdn_graph_replay_probe.py",
+    "--require-cached-build",
+    "--compiler-version-file",
+    "/tmp/hipengine-qwen4exp-hipcc-version.txt",
+    "--output",
+    "/tmp/qwen4exp-gdn-conv-graph-replay.json"
+  ],
+  "host": {
+    "cpu_governors": {
+      "performance": 32
+    },
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "hostname": "zbook",
+    "kernel": "6.18.42-1-cachyos-lts",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "rocm_platform": "10.0.0",
+    "tuned_active": "Current active profile: accelerator-performance"
+  },
+  "kind": "qwen4exp_gdn_graph_replay_probe",
+  "lifecycle": {
+    "after_close": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 251311104,
+      "peak_allocations": 16,
+      "total_allocated_bytes": 251311104,
+      "total_freed_bytes": 251311104
+    },
+    "passed": true
+  },
+  "protocol": {
+    "capture_mode": "relaxed",
+    "captured_kernels_per_replay": 72,
+    "conv_channels": 10240,
+    "conv_kernel": 4,
+    "independent_conv_states": 36,
+    "independent_recurrent_states": 36,
+    "layers": 36,
+    "replays": 4,
+    "shape": [
+      16,
+      48,
+      128,
+      128
+    ],
+    "state_dtype": "FP32"
+  },
+  "reset_exact": true,
+  "rows": [
+    {
+      "conv_state_exact": true,
+      "output_exact": true,
+      "output_max_abs": 0.0,
+      "recurrent_state_exact": true,
+      "replay": 1,
+      "state_exact": true,
+      "state_max_abs": 0.0
+    },
+    {
+      "conv_state_exact": true,
+      "output_exact": true,
+      "output_max_abs": 0.0,
+      "recurrent_state_exact": true,
+      "replay": 2,
+      "state_exact": true,
+      "state_max_abs": 0.0
+    },
+    {
+      "conv_state_exact": true,
+      "output_exact": true,
+      "output_max_abs": 0.0,
+      "recurrent_state_exact": true,
+      "replay": 3,
+      "state_exact": true,
+      "state_max_abs": 0.0
+    },
+    {
+      "conv_state_exact": true,
+      "output_exact": true,
+      "output_max_abs": 0.0,
+      "recurrent_state_exact": true,
+      "replay": 4,
+      "state_exact": true,
+      "state_max_abs": 0.0
+    }
+  ],
+  "schema": 1,
+  "source": {
+    "head": "f329b7c2beb48cc349c4234966c38aa375e06d7f",
+    "path": "/home/lhl/hipEngine",
+    "tracked_clean": true
+  },
+  "status": "passed",
+  "summary": {
+    "first_output_mismatch": null,
+    "first_state_mismatch": null,
+    "passed": true,
+    "replays": 4
+  }
+}

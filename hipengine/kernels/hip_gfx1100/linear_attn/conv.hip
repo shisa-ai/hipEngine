@@ -258,6 +258,47 @@ __global__ void qwen35_linear_attn_conv_prefill_kernel(
   }
 }
 
+// Qwen4Exp's strict prompt contract is serial decode arithmetic. This fixed-K4
+// bulk sibling uses the same source-level acc += value * weight statements as
+// qwen35_linear_attn_conv_decode_kernel; hipcc therefore emits the identical
+// contraction/rounding sequence per row while independent rows share one grid.
+__global__ void qwen4_exp_linear_attn_conv_prefill_exact_kernel(
+    const float* __restrict__ hidden_states,
+    const float* __restrict__ conv_state,
+    const float* __restrict__ conv_weight,
+    float* __restrict__ out,
+    int64_t tokens,
+    int64_t channels) {
+  const int64_t size = tokens * channels;
+  for (int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       idx < size;
+       idx += static_cast<int64_t>(blockDim.x) * gridDim.x) {
+    const int64_t token = idx / channels;
+    const int64_t channel = idx - token * channels;
+    const int64_t offset = channel * 4;
+    const int64_t padded0 = token;
+    const int64_t padded1 = token + 1;
+    const int64_t padded2 = token + 2;
+    const int64_t padded3 = token + 3;
+    const float value0 = padded0 < 3
+        ? conv_state[offset + padded0 + 1]
+        : hidden_states[(padded0 - 3) * channels + channel];
+    const float value1 = padded1 < 3
+        ? conv_state[offset + padded1 + 1]
+        : hidden_states[(padded1 - 3) * channels + channel];
+    const float value2 = padded2 < 3
+        ? conv_state[offset + padded2 + 1]
+        : hidden_states[(padded2 - 3) * channels + channel];
+    const float value3 = hidden_states[(padded3 - 3) * channels + channel];
+    float acc = 0.0f;
+    acc += value0 * conv_weight[offset];
+    acc += value1 * conv_weight[offset + 1];
+    acc += value2 * conv_weight[offset + 2];
+    acc += value3 * conv_weight[offset + 3];
+    out[idx] = silu_f32(acc);
+  }
+}
+
 constexpr int64_t QWEN35_CONV_TOKEN_TILE = 32;
 constexpr int64_t QWEN35_CONV_CHANNEL_TILE = 128;
 constexpr int64_t QWEN35_CONV_KERNEL_SIZE = 4;
@@ -1385,6 +1426,54 @@ extern "C" int hipengine_qwen35_linear_attn_conv_prefill_f32(
   const int64_t state_size = channels * kernel_size;
   const int64_t state_blocks64 = (state_size + threads - 1) / threads;
   const int state_blocks = static_cast<int>(state_blocks64 < 65535 ? state_blocks64 : 65535);
+  hipLaunchKernelGGL(
+      qwen35_linear_attn_conv_prefill_state_kernel,
+      dim3(static_cast<unsigned int>(state_blocks)),
+      dim3(threads),
+      0,
+      stream,
+      hidden_states,
+      conv_state,
+      tokens,
+      channels,
+      kernel_size);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen4_exp_linear_attn_conv_prefill_exact_f32(
+    const float* hidden_states,
+    float* conv_state,
+    const float* conv_weight,
+    float* out,
+    int64_t tokens,
+    int64_t channels,
+    int64_t kernel_size,
+    hipStream_t stream) {
+  if (tokens <= 0 || channels <= 0 || kernel_size != 4) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 256;
+  const int64_t output_size = tokens * channels;
+  const int64_t output_blocks64 = (output_size + threads - 1) / threads;
+  const int output_blocks = static_cast<int>(
+      output_blocks64 < 65535 ? output_blocks64 : 65535);
+  hipLaunchKernelGGL(
+      qwen4_exp_linear_attn_conv_prefill_exact_kernel,
+      dim3(static_cast<unsigned int>(output_blocks)),
+      dim3(threads),
+      0,
+      stream,
+      hidden_states,
+      conv_state,
+      conv_weight,
+      out,
+      tokens,
+      channels);
+  int err = static_cast<int>(hipGetLastError());
+  if (err != static_cast<int>(hipSuccess)) return err;
+  const int64_t state_size = channels * kernel_size;
+  const int state_blocks = static_cast<int>(
+      (state_size + threads - 1) / threads);
   hipLaunchKernelGGL(
       qwen35_linear_attn_conv_prefill_state_kernel,
       dim3(static_cast<unsigned int>(state_blocks)),

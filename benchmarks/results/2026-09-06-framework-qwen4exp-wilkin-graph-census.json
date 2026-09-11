@@ -1,0 +1,456 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_graph_census",
+  "measurement_class": "diagnostic_profiled_not_performance",
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "e6f78c35dbfc8f86a2da5ea8d64a2287d54ba1a5",
+    "tracked_clean": true
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "model_identity": {
+    "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+    "fingerprint": {
+      "algorithm": "sha256-directory-manifest-v1",
+      "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+      "size_bytes": 111334654784,
+      "sampled_bytes": 12582912,
+      "file_count": 4,
+      "exists": true,
+      "path_type": "directory"
+    }
+  },
+  "quant": "UD-Q4_K_XL",
+  "kv_dtype": "BF16",
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "limitations": [
+    "Non-kernel time includes copies, waits, Python and profiling; not all removable dispatch.",
+    "API durations overlap kernels and each other; never add API sum to kernel sum.",
+    "Intra-graph gaps are observed gaps, not a measured PM4 speedup or guaranteed ceiling.",
+    "Kernel-only graph metadata is structural eligibility, not PM4 ABI/lifecycle qualification.",
+    "External PM4 is disabled by activity profiling; this is the current HIP/AQL baseline."
+  ],
+  "cases": [
+    {
+      "id": "code-p4096",
+      "phase": "prefill",
+      "command": [
+        "rocprofv3",
+        "--kernel-trace",
+        "--hip-trace",
+        "--marker-trace",
+        "--output-format",
+        "csv",
+        "-d",
+        "/tmp/qwen4exp-wilkin-graph-census.raw/code-p4096-prefill/trace",
+        "--",
+        "/home/lhl/hipEngine/.venv/bin/python",
+        "/home/lhl/hipEngine/scripts/qwen4exp_profile_gap.py",
+        "--model-root",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--case-id",
+        "code-p4096",
+        "--profile",
+        "--role-markers",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--require-cached-build",
+        "--output",
+        "/tmp/qwen4exp-wilkin-graph-census.raw/code-p4096-prefill/child.json",
+        "--mode",
+        "prefill",
+        "--repetitions",
+        "1"
+      ],
+      "raw_path": "/tmp/qwen4exp-wilkin-graph-census.raw/code-p4096-prefill/child.json",
+      "raw_sha256": "4db30ccfdfe81bc768bdada12eb667b92bc89de9dade23aecc144f87b2d07ba8",
+      "lifecycle": {
+        "after_warmup": {
+          "current_allocated_bytes": 85337212676,
+          "peak_allocated_bytes": 85337212676,
+          "total_allocated_bytes": 85347698436,
+          "total_freed_bytes": 10485760,
+          "active_allocations": 1717,
+          "peak_allocations": 1717
+        },
+        "after_measurement": {
+          "current_allocated_bytes": 85337212676,
+          "peak_allocated_bytes": 85337212676,
+          "total_allocated_bytes": 85347698436,
+          "total_freed_bytes": 10485760,
+          "active_allocations": 1717,
+          "peak_allocations": 1717
+        },
+        "after_close": {
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 85337212676,
+          "total_allocated_bytes": 85347698436,
+          "total_freed_bytes": 85347698436,
+          "active_allocations": 0,
+          "peak_allocations": 1717
+        },
+        "steady_allocation_growth": 0,
+        "steady_allocated_byte_growth": 0,
+        "passed": true
+      },
+      "memory_after_close": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 85337212676,
+        "total_allocated_bytes": 85347698436,
+        "total_freed_bytes": 85347698436,
+        "active_allocations": 0,
+        "peak_allocations": 1717
+      },
+      "profile": {
+        "owner_ms": {
+          "boundary": 73.387331,
+          "gdn": 780.739862,
+          "gr_read": 4232.349266,
+          "linear": 5352.8383,
+          "moe": 14618.505428999999,
+          "ple": 13.646288,
+          "qsa": 1920.81098
+        },
+        "total_device_ms": 26992.277456,
+        "profiled_window_ms": 27329.661823,
+        "matched_gap_eligible": true,
+        "coverage_fraction": 1.0,
+        "repetitions": 1
+      },
+      "correctness": {
+        "logits_sha256": "0b361e7db968b63ae88a78a87f0f7139ef62a61e351d7ca062640e75abfb3087",
+        "token_id": 248068
+      },
+      "capacity": null,
+      "capacity_note": "Prefill child does not emit capacity; resolve its recorded command against captured helper revision. Canonical default is max(768,prompt+1).",
+      "trace_sources": [
+        {
+          "path": "/tmp/qwen4exp-wilkin-graph-census.raw/code-p4096-prefill/trace/gfx1151/3117172_hip_api_trace.csv",
+          "sha256": "5c2170c169c2c3af9071041d5d8eb4531640cf0908fec5eb210ca689f321bc6c"
+        },
+        {
+          "path": "/tmp/qwen4exp-wilkin-graph-census.raw/code-p4096-prefill/trace/gfx1151/3117172_kernel_trace.csv",
+          "sha256": "128a84eb641f805ac1e5c0b5422748edd4a4303e20ecacf9a25568b1a41e8eab"
+        },
+        {
+          "path": "/tmp/qwen4exp-wilkin-graph-census.raw/code-p4096-prefill/trace/gfx1151/3117172_marker_api_trace.csv",
+          "sha256": "be8090915e456847f4d2856858aa3e5931189a9e8c65e2b0fd8b9111b29a4473"
+        }
+      ],
+      "graph_info": {},
+      "windows": [
+        {
+          "marker": "qwen4exp_prefill_p4096_0",
+          "window_ns": 27329661823,
+          "api_calls": {
+            "hipMemset": 797,
+            "hipMemcpy": 594,
+            "__hipPushCallConfiguration": 20950,
+            "__hipPopCallConfiguration": 20950,
+            "hipLaunchKernel": 20950,
+            "hipGetLastError": 20950,
+            "hipMemsetAsync": 2512,
+            "hipMemcpyAsync": 96,
+            "hipDeviceSynchronize": 2
+          },
+          "api_duration_sum_ns": {
+            "__hipPopCallConfiguration": 1772767,
+            "__hipPushCallConfiguration": 1604520,
+            "hipDeviceSynchronize": 56457744,
+            "hipGetLastError": 1228836,
+            "hipLaunchKernel": 213977049,
+            "hipMemcpy": 24720445262,
+            "hipMemcpyAsync": 1130485,
+            "hipMemset": 6151568,
+            "hipMemsetAsync": 30426386
+          },
+          "kernel_rows": 24940,
+          "kernel_union_ns": 26992277456,
+          "non_kernel_window_upper_bound_ns": 337384367,
+          "graph_launches": 0,
+          "graph_kernel_rows": 0,
+          "graph_launches_without_kernel": 0,
+          "graph_kernel_union_ns": 0,
+          "graph_api_non_kernel_ns": 0,
+          "intra_graph_gap_ns": 0,
+          "kernel_rows_without_api": 0,
+          "boundary_crossing_kernel_rows": 0
+        }
+      ]
+    },
+    {
+      "id": "code-p4096",
+      "phase": "decode",
+      "command": [
+        "rocprofv3",
+        "--kernel-trace",
+        "--hip-trace",
+        "--marker-trace",
+        "--output-format",
+        "csv",
+        "-d",
+        "/tmp/qwen4exp-wilkin-graph-census.raw/code-p4096-decode/trace",
+        "--",
+        "/home/lhl/hipEngine/.venv/bin/python",
+        "/home/lhl/hipEngine/scripts/qwen4exp_context_decode_profile.py",
+        "--model-root",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--case-id",
+        "code-p4096",
+        "--profile",
+        "--role-markers",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--require-cached-build",
+        "--output",
+        "/tmp/qwen4exp-wilkin-graph-census.raw/code-p4096-decode/child.json",
+        "--live-count",
+        "4097",
+        "--repetitions",
+        "3"
+      ],
+      "raw_path": "/tmp/qwen4exp-wilkin-graph-census.raw/code-p4096-decode/child.json",
+      "raw_sha256": "6f52816e2710e6d073996e7cc376c36ea93f4a208fdeead0fc756e76c6372882",
+      "lifecycle": {
+        "after_all_contexts": {
+          "active_allocations": 1717,
+          "current_allocated_bytes": 85337218820,
+          "peak_allocated_bytes": 85337218820,
+          "peak_allocations": 1717,
+          "total_allocated_bytes": 85347704580,
+          "total_freed_bytes": 10485760
+        },
+        "after_close": {
+          "active_allocations": 0,
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 85337218820,
+          "peak_allocations": 1717,
+          "total_allocated_bytes": 85347704580,
+          "total_freed_bytes": 85347704580
+        },
+        "after_first_context_warmup": {
+          "active_allocations": 1717,
+          "current_allocated_bytes": 85337218820,
+          "peak_allocated_bytes": 85337218820,
+          "peak_allocations": 1717,
+          "total_allocated_bytes": 85347704580,
+          "total_freed_bytes": 10485760
+        },
+        "cross_bucket_growth": {
+          "allocated_byte_growth": 0,
+          "allocation_growth": 0,
+          "passed": true
+        },
+        "passed": true,
+        "steady_windows_passed": true
+      },
+      "memory_after_close": {
+        "active_allocations": 0,
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 85337218820,
+        "peak_allocations": 1717,
+        "total_allocated_bytes": 85347704580,
+        "total_freed_bytes": 85347704580
+      },
+      "profile": {
+        "owner_ms": {
+          "boundary": 0.45531900000000003,
+          "gdn": 2.3541103333333333,
+          "gr_read": 6.607839000000001,
+          "linear": 17.082232000000005,
+          "moe": 17.311045333333336,
+          "ple": 0.03171266666666667,
+          "qsa": 16.956419
+        },
+        "total_device_ms": 60.798677333333345,
+        "profiled_window_ms": 68.56299133333333,
+        "matched_gap_eligible": true,
+        "coverage_fraction": 1.0,
+        "repetitions": 3
+      },
+      "correctness": "passed",
+      "capacity": 4098,
+      "capacity_note": "Explicit child protocol capacity.",
+      "trace_sources": [
+        {
+          "path": "/tmp/qwen4exp-wilkin-graph-census.raw/code-p4096-decode/trace/gfx1151/3119093_hip_api_trace.csv",
+          "sha256": "aa5e78e683cd4e4f186b546acce0574befc8c42b276aed687a45237b6b46f33d"
+        },
+        {
+          "path": "/tmp/qwen4exp-wilkin-graph-census.raw/code-p4096-decode/trace/gfx1151/3119093_kernel_trace.csv",
+          "sha256": "4fc974f9585c5b44cda290d0bdeb5f966fd044a8141ef8edc86f9e7b09eb00cb"
+        },
+        {
+          "path": "/tmp/qwen4exp-wilkin-graph-census.raw/code-p4096-decode/trace/gfx1151/3119093_marker_api_trace.csv",
+          "sha256": "e115f3b0082b1ed01d6f7dcce1c0917172c269f6903c1a63b25567ec84f8592c"
+        }
+      ],
+      "graph_info": {
+        "graph_before": {
+          "enabled": true,
+          "graphs": 48,
+          "node_types": {
+            "0": 625
+          },
+          "nodes": 625,
+          "stats": {
+            "capture": 48,
+            "eager": 0,
+            "reject": 0,
+            "replay": 0
+          }
+        },
+        "graph_after": {
+          "enabled": true,
+          "graphs": 48,
+          "node_types": {
+            "0": 625
+          },
+          "nodes": 625,
+          "stats": {
+            "capture": 48,
+            "eager": 0,
+            "reject": 0,
+            "replay": 144
+          }
+        },
+        "summary": {
+          "finite": true,
+          "passed": true,
+          "runs": 3,
+          "state_exact": true,
+          "token_exact": true,
+          "wall_seconds": {
+            "max": 0.06875533214770257,
+            "mean": 0.06855246137517194,
+            "median": 0.06845366605557501,
+            "min": 0.06844838592223823
+          }
+        }
+      },
+      "windows": [
+        {
+          "marker": "qwen4exp_decode_live4097_rep0",
+          "window_ns": 68468804,
+          "api_calls": {
+            "__hipPushCallConfiguration": 1172,
+            "__hipPopCallConfiguration": 1172,
+            "hipLaunchKernel": 1172,
+            "hipGetLastError": 1148,
+            "hipMemcpy": 26,
+            "hipGraphLaunch": 48,
+            "hipMemcpyAsync": 12,
+            "hipMemset": 1
+          },
+          "api_duration_sum_ns": {
+            "__hipPopCallConfiguration": 52518,
+            "__hipPushCallConfiguration": 52313,
+            "hipGetLastError": 36617,
+            "hipGraphLaunch": 2121164,
+            "hipLaunchKernel": 8874870,
+            "hipMemcpy": 32060467,
+            "hipMemcpyAsync": 112421,
+            "hipMemset": 11662
+          },
+          "kernel_rows": 1836,
+          "kernel_union_ns": 60773799,
+          "non_kernel_window_upper_bound_ns": 7695005,
+          "graph_launches": 48,
+          "graph_kernel_rows": 625,
+          "graph_launches_without_kernel": 0,
+          "graph_kernel_union_ns": 17303055,
+          "graph_api_non_kernel_ns": 141081,
+          "intra_graph_gap_ns": 1429181,
+          "kernel_rows_without_api": 0,
+          "boundary_crossing_kernel_rows": 0
+        },
+        {
+          "marker": "qwen4exp_decode_live4097_rep1",
+          "window_ns": 68767095,
+          "api_calls": {
+            "__hipPushCallConfiguration": 1172,
+            "__hipPopCallConfiguration": 1172,
+            "hipLaunchKernel": 1172,
+            "hipGetLastError": 1148,
+            "hipMemcpy": 26,
+            "hipGraphLaunch": 48,
+            "hipMemcpyAsync": 12,
+            "hipMemset": 1
+          },
+          "api_duration_sum_ns": {
+            "__hipPopCallConfiguration": 52687,
+            "__hipPushCallConfiguration": 57849,
+            "hipGetLastError": 40514,
+            "hipGraphLaunch": 2360804,
+            "hipLaunchKernel": 9063290,
+            "hipMemcpy": 30292422,
+            "hipMemcpyAsync": 136205,
+            "hipMemset": 12504
+          },
+          "kernel_rows": 1836,
+          "kernel_union_ns": 60791633,
+          "non_kernel_window_upper_bound_ns": 7975462,
+          "graph_launches": 48,
+          "graph_kernel_rows": 625,
+          "graph_launches_without_kernel": 0,
+          "graph_kernel_union_ns": 17310274,
+          "graph_api_non_kernel_ns": 166524,
+          "intra_graph_gap_ns": 1414344,
+          "kernel_rows_without_api": 0,
+          "boundary_crossing_kernel_rows": 0
+        },
+        {
+          "marker": "qwen4exp_decode_live4097_rep2",
+          "window_ns": 68453075,
+          "api_calls": {
+            "__hipPushCallConfiguration": 1172,
+            "__hipPopCallConfiguration": 1172,
+            "hipLaunchKernel": 1172,
+            "hipGetLastError": 1148,
+            "hipMemcpy": 26,
+            "hipGraphLaunch": 48,
+            "hipMemcpyAsync": 12,
+            "hipMemset": 1
+          },
+          "api_duration_sum_ns": {
+            "__hipPopCallConfiguration": 61839,
+            "__hipPushCallConfiguration": 65389,
+            "hipGetLastError": 48813,
+            "hipGraphLaunch": 2777394,
+            "hipLaunchKernel": 12168814,
+            "hipMemcpy": 22463076,
+            "hipMemcpyAsync": 123903,
+            "hipMemset": 13114
+          },
+          "kernel_rows": 1836,
+          "kernel_union_ns": 60830600,
+          "non_kernel_window_upper_bound_ns": 7622475,
+          "graph_launches": 48,
+          "graph_kernel_rows": 625,
+          "graph_launches_without_kernel": 0,
+          "graph_kernel_union_ns": 17319807,
+          "graph_api_non_kernel_ns": 135845,
+          "intra_graph_gap_ns": 1350913,
+          "kernel_rows_without_api": 0,
+          "boundary_crossing_kernel_rows": 0
+        }
+      ]
+    }
+  ],
+  "capture_path": "/tmp/qwen4exp-wilkin-graph-census.json",
+  "capture_sha256": "3086ff6405236168b934e709d757e672109bd6f92f662c628eb44c747dfe17e9"
+}

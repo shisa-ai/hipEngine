@@ -21,6 +21,12 @@ from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
     qwen35_linear_attn_tree_conv_decode_fp16_tloop,
     register_qwen35_linear_attn_conv_kernels,
 )
+from hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn import (
+    build_qwen4_exp_gdn,
+    plan_qwen4_exp_gdn_build,
+    qwen4_exp_gdn_decode_f32,
+    register_qwen4_exp_gdn_kernels,
+)
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     build_qwen35_linear_attn_gdn,
     build_qwen35_linear_attn_gdn_grouped_heads,
@@ -75,9 +81,11 @@ __all__ = [
     "build_qwen35_linear_attn_conv",
     "build_qwen35_linear_attn_gdn",
     "build_qwen35_linear_attn_gdn_grouped_heads",
+    "build_qwen4_exp_gdn",
     "plan_qwen35_linear_attn_conv_build",
     "plan_qwen35_linear_attn_gdn_build",
     "plan_qwen35_linear_attn_gdn_grouped_heads_build",
+    "plan_qwen4_exp_gdn_build",
     "qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_f32",
     "qwen35_gdn_prefill_recurrent_f32",
     "qwen35_gdn_prefill_recurrent_decode_order_exact_f32",
@@ -137,5 +145,7 @@ __all__ = [
     "qwen35_linear_attn_tree_conv_decode_bf16_tloop",
     "qwen35_linear_attn_tree_conv_decode_fp16_tloop",
     "register_qwen35_linear_attn_conv_kernels",
+    "qwen4_exp_gdn_decode_f32",
     "register_qwen35_linear_attn_gdn_kernels",
+    "register_qwen4_exp_gdn_kernels",
 ]

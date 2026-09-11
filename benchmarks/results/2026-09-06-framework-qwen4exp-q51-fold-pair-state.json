@@ -1,0 +1,28 @@
+{
+  "schema":1,
+  "status":"state_gate_passed_performance_pending",
+  "source":"03abd473d plus default-off admission edits",
+  "host":"gfx1151",
+  "machine_id":"55ea6c509d0b49eea8de7094a1023668",
+  "hardware":"Framework Ryzen AI Max+395 Radeon8060S gfx1151",
+  "model":"Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "kv_dtype":"BF16",
+  "command":".venv/bin/python scripts/qwen4exp_row4_state_gate.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --compiler-version-file /tmp/hipengine-hipcc-version.txt --route-package q51-fold-pair --decode-steps 4 --full-kv --output /tmp/qwen4exp-q51-fold-pair-state.json",
+  "environment":"Established therock SDK devel/bin PATH,devel/lib:core/lib LD_LIBRARY_PATH,HIPENGINE_HIP_ARCH=gfx1151,require_cached,unchanged high/2900-requested policy.",
+  "protocol":{"capacity":4352,"chunk":512,"decode_steps":4,"full_kv":true,"arms":["off","on","off"],"one_residency":true},
+  "cases":[
+    {"id":"code-p512","exact":true,"prefill_calls":[0,25,0],"decode_calls":[0,0,0]},
+    {"id":"code-p4096","exact":true,"prefill_calls":[0,200,0],"decode_calls":[0,0,0]},
+    {"id":"general_en-p512","exact":true,"prefill_calls":[0,25,0],"decode_calls":[0,0,0]},
+    {"id":"general_ja-p512","exact":true,"prefill_calls":[0,25,0],"decode_calls":[0,0,0]},
+    {"id":"mixed_ja_en-p512","exact":true,"prefill_calls":[0,25,0],"decode_calls":[0,0,0]}
+  ],
+  "correctness":"Full prefill logits,four decode logits,snapshot recurrent/PLE/index/position state and full allocated KV hashes exact across all arms/cases.",
+  "memory_after_close":{"active_allocations":0,"current_allocated_bytes":0,"peak_allocated_bytes":85339323140},
+  "cpu_tests":"28 route/profile/harness tests pass,initial RED3 missing selector/package tests;small and tail chunk counts covered.",
+  "runtime_scope":"After existing fold128 selection and rows>=512 only;both binders pin0. Smaller chunks retain sequential fold128. Strict/M1/WMMA/decode unchanged;prior promotions active in both arms.",
+  "raw_path":"/tmp/qwen4exp-q51-fold-pair-state.json",
+  "raw_sha256":"302571ce2203beec5804641004e7f93aa17748f25597610abb529a29e5f67747",
+  "performance_claim":false,
+  "promotion_blocker":"Clean canonical12-case A/B pending. Capacity4352 diagnostic,not native262144 qualification."
+}

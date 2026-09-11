@@ -3100,6 +3100,7 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
         kv_storage: str = "auto",
         kv_scale_dtype: str = "fp16",
         kv_scale_granularity: str = "per_token_head",
+        vision_model: str | None = None,
     ) -> FakeLLM:
         captured.update(
             {
@@ -3116,6 +3117,7 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
                 "kv_storage": kv_storage,
                 "kv_scale_dtype": kv_scale_dtype,
                 "kv_scale_granularity": kv_scale_granularity,
+                "vision_model": vision_model,
             }
         )
         return fake
@@ -3155,6 +3157,7 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
         "kv_storage": "int8_per_token_head",
         "kv_scale_dtype": "fp32",
         "kv_scale_granularity": "per_token_head",
+        "vision_model": None,
     }
 
 

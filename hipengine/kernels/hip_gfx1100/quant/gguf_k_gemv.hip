@@ -102,6 +102,14 @@ __device__ inline float q8_0_weight(const uint8_t* row, int k) {
   return d * static_cast<float>(q);
 }
 
+__device__ inline float q8_0_weight_wave_scale(const uint8_t* row, int k) {
+  const int block_idx = __builtin_amdgcn_readfirstlane(k / Q8_0_BLOCK);
+  const uint8_t* block = row + static_cast<int64_t>(block_idx) * Q8_0_BLOCK_BYTES;
+  const float d = fp16_bytes_to_float(block);
+  const int8_t q = reinterpret_cast<const int8_t*>(block + 2)[k & 31];
+  return d * static_cast<float>(q);
+}
+
 __device__ inline uint8_t q5_k_quant(const uint8_t* block, int subblock, int lane) {
   const uint8_t* qh = block + 16;
   const uint8_t* qs = block + 48;
@@ -633,7 +641,7 @@ template <
     typename out_t,
     int qtype,
     int COL_TILE,
-    int ROW_BATCH>
+    int ROW_BATCH, bool WAVE_SCALE = false>
 __launch_bounds__(128, 2)
 __global__ void gguf_k_prefill_out_coltile_rowbatch_kernel(
     const scalar_t* __restrict__ x,
@@ -643,15 +651,17 @@ __global__ void gguf_k_prefill_out_coltile_rowbatch_kernel(
     int in_features,
     int out_features) {
   static_assert(
-      COL_TILE * ROW_BATCH == 32,
-      "WPF-1T screens only constant-32-accumulator output tiles");
+      COL_TILE * ROW_BATCH == 32 || COL_TILE * ROW_BATCH == 64,
+      "exact coltile screens require 32 or 64 accumulators");
   const int out_col_base = static_cast<int>(blockIdx.x) * COL_TILE;
   const int row_base = static_cast<int>(blockIdx.y) * ROW_BATCH;
   const int tid = threadIdx.x;
   if (out_col_base >= out_features || row_base >= rows) return;
 
   int row_bytes = 0;
-  if constexpr (qtype == 5) {
+  if constexpr (qtype == 8) {
+    row_bytes = (in_features / Q8_0_BLOCK) * Q8_0_BLOCK_BYTES;
+  } else if constexpr (qtype == 5) {
     row_bytes = (in_features / QK_K) * Q5_K_BLOCK_BYTES;
   } else {
     row_bytes = (in_features / QK_K) * Q6_K_BLOCK_BYTES;
@@ -668,7 +678,10 @@ __global__ void gguf_k_prefill_out_coltile_rowbatch_kernel(
     float weights[COL_TILE];
 #pragma unroll
     for (int col = 0; col < COL_TILE; ++col) {
-      if constexpr (qtype == 5) {
+      if constexpr (qtype == 8) {
+        weights[col] = WAVE_SCALE ? q8_0_weight_wave_scale(weight_rows[col], k)
+                                  : q8_0_weight(weight_rows[col], k);
+      } else if constexpr (qtype == 5) {
         weights[col] = q5_k_weight(weight_rows[col], k);
       } else {
         weights[col] = q6_k_weight(weight_rows[col], k);
@@ -726,6 +739,321 @@ __global__ void gguf_k_prefill_out_coltile_rowbatch_kernel(
           out,
           static_cast<int64_t>(row) * out_features + out_col_base + col,
           total);
+    }
+  }
+}
+
+// Qwen4Exp GR up projection plus sigmoid-gated branch mean. Every output keeps
+// the retained Q8 coltile8/rowbatch4 K ownership, FMA order, wave shuffle, and
+// serial wave publication. The eight output slots are remapped to two hidden
+// columns across four branches so the publication threads can emit the exact
+// materialized sigmoid gate and branch-ordered mean.
+// Dense iu8-WMMA Q8_0 projection with in-kernel three-plane residual
+// activation staging (fp32 scales; T1 production-correctness candidate for
+// the GR up owner). The raw signed Q8_0 codes are the integer B operand
+// (weight path has no requantization at all; Q8_0 has no min-offset term).
+constexpr int GR_IU8_ACT_PLANES = 3;
+constexpr int GR_IU8_LDS_ROW_STRIDE = 256 + 16;  // bank-conflict padding
+typedef int __attribute__((vector_size(8 * sizeof(int)))) gr_iu8_int32x8;
+typedef int __attribute__((vector_size(4 * sizeof(int)))) gr_iu8_int32x4;
+
+__global__ __launch_bounds__(128, 2)
+void q8_0_iu8_wmma_prefill_f32_f32_kernel(
+    const float* __restrict__ x,
+    const uint8_t* __restrict__ qweight,
+    float* __restrict__ out,
+    int rows,
+    int in_features,
+    int out_features) {
+  __shared__ int8_t lds_q8a[GR_IU8_ACT_PLANES * 16 * GR_IU8_LDS_ROW_STRIDE];
+  __shared__ float lds_da[GR_IU8_ACT_PLANES * 16 * 8];
+  __shared__ int lds_sumq8a[GR_IU8_ACT_PLANES * 16 * 8];
+
+  const int tid = static_cast<int>(threadIdx.x);
+  const int warp = tid >> 5;
+  const int lane = tid & 31;
+  const int64_t col_base = static_cast<int64_t>(blockIdx.x) * 128;
+  const int row_tile = blockIdx.y;
+
+  const int row_base = row_tile * 16;
+  const int row_end = min(row_base + 16, rows);
+
+  const int64_t global_col = col_base + warp * 32 + lane;
+  const bool col_valid = global_col < out_features;
+  const int64_t blocks_per_row = in_features / 32;
+  const int64_t row_bytes = blocks_per_row * Q8_0_BLOCK_BYTES;
+  const uint8_t* block_base = col_valid
+      ? (qweight + global_col * row_bytes)
+      : nullptr;
+
+  float sum[16];
+#pragma unroll
+  for (int r = 0; r < 16; ++r) {
+    sum[r] = 0.0f;
+  }
+
+  // A-operand lane -> activation row (hardware permutation).
+  int a_row = -1;
+  if ((lane & 1) == 0 && lane < 16) {
+    a_row = lane >> 1;
+  } else if ((lane & 1) == 1 && lane >= 17) {
+    a_row = (lane - 17) >> 1;
+  }
+
+  const int64_t chunks = (in_features + 255) / 256;
+  for (int64_t chunk = 0; chunk < chunks; ++chunk) {
+    // Cooperative activation staging: thread -> (actrow = tid/8, sub = tid%8),
+    // one 32-element block per (actrow, sub).
+    {
+      const int actrow = tid >> 3;
+      const int sub = tid & 7;
+      const int64_t col0 = chunk * 256 + static_cast<int64_t>(sub) * 32;
+      const int local_row = actrow;
+      const bool row_valid = row_base + local_row < row_end;
+      const bool sub_valid = col0 + 32 <= in_features;
+      const int64_t row = row_valid ? (row_base + local_row) : 0;
+      const float* row_ptr = sub_valid
+          ? (x + row * in_features + col0)
+          : nullptr;
+      float vals[32];
+      float amax = 0.0f;
+#pragma unroll
+      for (int l = 0; l < 32; ++l) {
+        const float v = (row_valid && sub_valid) ? row_ptr[l] : 0.0f;
+        vals[l] = v;
+        amax = fmaxf(amax, fabsf(v));
+      }
+      float work[32];
+#pragma unroll
+      for (int l = 0; l < 32; ++l) work[l] = vals[l];
+#pragma unroll
+      for (int plane = 0; plane < GR_IU8_ACT_PLANES; ++plane) {
+        float plane_max = 0.0f;
+#pragma unroll
+        for (int l = 0; l < 32; ++l)
+          plane_max = fmaxf(plane_max, fabsf(work[l]));
+        const float da = plane_max > 0.0f ? plane_max / 127.0f : 0.0f;
+        lds_da[plane * 16 * 8 + actrow * 8 + sub] = da;
+        int8_t* dst = lds_q8a + plane * 16 * GR_IU8_LDS_ROW_STRIDE +
+                      actrow * GR_IU8_LDS_ROW_STRIDE + sub * 32;
+        int qsum = 0;
+        if (da > 0.0f) {
+          const float inv = 1.0f / da;
+#pragma unroll
+          for (int l = 0; l < 32; ++l) {
+            int q = __float2int_rn(work[l] * inv);
+            q = max(-127, min(127, q));
+            dst[l] = static_cast<int8_t>(q);
+            qsum += q;
+            work[l] = fmaf(-static_cast<float>(q), da, work[l]);
+          }
+        } else {
+#pragma unroll
+          for (int l = 0; l < 32; ++l) dst[l] = 0;
+        }
+        lds_sumq8a[plane * 16 * 8 + actrow * 8 + sub] = qsum;
+      }
+    }
+    __syncthreads();
+
+#pragma unroll 1
+    for (int sub = 0; sub < 8; ++sub) {
+      const int64_t col0 = chunk * 256 + static_cast<int64_t>(sub) * 32;
+      const bool sub_valid = col0 + 32 <= in_features;
+      const uint8_t* block_ptr = sub_valid && col_valid
+          ? (block_base + (col0 / 32) * Q8_0_BLOCK_BYTES)
+          : nullptr;
+      // Raw signed Q8_0 codes as the integer B operand.
+      int8_t wq8[32];
+      if (block_ptr != nullptr) {
+        const int8_t* qs = reinterpret_cast<const int8_t*>(block_ptr + 2);
+#pragma unroll
+        for (int l = 0; l < 32; ++l) {
+          wq8[l] = qs[l];
+        }
+      } else {
+#pragma unroll
+        for (int l = 0; l < 32; ++l) wq8[l] = 0;
+      }
+      const float dsub = block_ptr != nullptr
+          ? fp16_bytes_to_float(block_ptr) : 0.0f;
+
+#pragma unroll
+      for (int g = 0; g < 2; ++g) {
+        gr_iu8_int32x8 acc[GR_IU8_ACT_PLANES];
+#pragma unroll
+        for (int plane = 0; plane < GR_IU8_ACT_PLANES; ++plane) {
+          acc[plane] = {0, 0, 0, 0, 0, 0, 0, 0};
+        }
+#pragma unroll
+        for (int khalf = 0; khalf < 2; ++khalf) {
+          signed char bbytes[16];
+#pragma unroll
+          for (int j = 0; j < 16; ++j) bbytes[j] = wq8[khalf * 16 + j];
+          gr_iu8_int32x4 b_frag;
+          {
+            int32_t words[4];
+            memcpy(words, bbytes, 16);
+            b_frag = (gr_iu8_int32x4){words[0], words[1], words[2], words[3]};
+          }
+#pragma unroll
+          for (int plane = 0; plane < GR_IU8_ACT_PLANES; ++plane) {
+            signed char abytes[16];
+            if (a_row >= 0) {
+              const int8_t* src = lds_q8a +
+                  plane * 16 * GR_IU8_LDS_ROW_STRIDE +
+                  (g * 8 + a_row) * GR_IU8_LDS_ROW_STRIDE +
+                  sub * 32 + khalf * 16;
+#pragma unroll
+              for (int j = 0; j < 16; ++j) abytes[j] = src[j];
+            } else {
+#pragma unroll
+              for (int j = 0; j < 16; ++j) abytes[j] = 0;
+            }
+            gr_iu8_int32x4 a_frag;
+            {
+              int32_t words[4];
+              memcpy(words, abytes, 16);
+              a_frag = (gr_iu8_int32x4){words[0], words[1], words[2], words[3]};
+            }
+            acc[plane] = __builtin_amdgcn_wmma_i32_16x16x16_iu8_w32(
+                true, a_frag, true, b_frag, acc[plane], true);
+          }
+        }
+#pragma unroll
+        for (int i = 0; i < 8; ++i) {
+          const int r = g * 8 + i;
+          float main_sum = 0.0f;
+#pragma unroll
+          for (int plane = 0; plane < GR_IU8_ACT_PLANES; ++plane) {
+            const float da = lds_da[plane * 16 * 8 + r * 8 + sub];
+            const int* cr = reinterpret_cast<const int*>(&acc[plane]);
+            main_sum += da * static_cast<float>(cr[i]);
+          }
+          sum[r] += dsub * main_sum;
+        }
+      }
+    }
+    __syncthreads();
+  }
+
+  if (!col_valid) return;
+#pragma unroll
+  for (int r = 0; r < 16; ++r) {
+    const int64_t row = row_base + r;
+    if (row < row_end) {
+      out[row * out_features + global_col] = sum[r];
+    }
+  }
+}
+
+template <bool WAVE_SCALE = false>
+__launch_bounds__(128, 2)
+__global__ void q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel(
+    const float* __restrict__ x,
+    const uint8_t* __restrict__ qweight,
+    const float* __restrict__ normalized,
+    float* __restrict__ gate,
+    float* __restrict__ mixed,
+    int rows,
+    int in_features,
+    int branches,
+    int hidden) {
+  constexpr int ROW_BATCH = 4;
+  constexpr int HIDDEN_TILE = 2;
+  constexpr int BRANCHES = 4;
+  const int hidden_base = static_cast<int>(blockIdx.x) * HIDDEN_TILE;
+  const int row_base = static_cast<int>(blockIdx.y) * ROW_BATCH;
+  const int tid = threadIdx.x;
+  if (hidden_base >= hidden || row_base >= rows || branches != BRANCHES) return;
+  const int row_bytes = (in_features / Q8_0_BLOCK) * Q8_0_BLOCK_BYTES;
+  const uint8_t* weight_rows[BRANCHES][HIDDEN_TILE];
+#pragma unroll
+  for (int branch = 0; branch < BRANCHES; ++branch) {
+#pragma unroll
+    for (int col = 0; col < HIDDEN_TILE; ++col) {
+      const int output = branch * hidden + hidden_base + col;
+      weight_rows[branch][col] =
+          qweight + static_cast<int64_t>(output) * row_bytes;
+    }
+  }
+  float acc[ROW_BATCH][BRANCHES][HIDDEN_TILE] = {};
+  for (int k = tid; k < in_features; k += blockDim.x) {
+    float weights[BRANCHES][HIDDEN_TILE];
+#pragma unroll
+    for (int branch = 0; branch < BRANCHES; ++branch) {
+#pragma unroll
+      for (int col = 0; col < HIDDEN_TILE; ++col) {
+        weights[branch][col] = WAVE_SCALE ? q8_0_weight_wave_scale(weight_rows[branch][col], k)
+                                         : q8_0_weight(weight_rows[branch][col], k);
+      }
+    }
+#pragma unroll
+    for (int row_idx = 0; row_idx < ROW_BATCH; ++row_idx) {
+      const int row = row_base + row_idx;
+      if (row < rows) {
+        const float xv = x[static_cast<int64_t>(row) * in_features + k];
+#pragma unroll
+        for (int branch = 0; branch < BRANCHES; ++branch) {
+#pragma unroll
+          for (int col = 0; col < HIDDEN_TILE; ++col) {
+            acc[row_idx][branch][col] =
+                fmaf(xv, weights[branch][col], acc[row_idx][branch][col]);
+          }
+        }
+      }
+    }
+  }
+#pragma unroll
+  for (int row_idx = 0; row_idx < ROW_BATCH; ++row_idx) {
+#pragma unroll
+    for (int branch = 0; branch < BRANCHES; ++branch) {
+#pragma unroll
+      for (int col = 0; col < HIDDEN_TILE; ++col) {
+        for (int offset = 16; offset > 0; offset >>= 1) {
+          acc[row_idx][branch][col] +=
+              __shfl_down(acc[row_idx][branch][col], offset);
+        }
+      }
+    }
+  }
+  __shared__ float wave_sums[4][ROW_BATCH][BRANCHES][HIDDEN_TILE];
+  const int wave = tid >> 5;
+  const int lane = tid & 31;
+  if (lane == 0) {
+#pragma unroll
+    for (int row_idx = 0; row_idx < ROW_BATCH; ++row_idx) {
+#pragma unroll
+      for (int branch = 0; branch < BRANCHES; ++branch) {
+#pragma unroll
+        for (int col = 0; col < HIDDEN_TILE; ++col) {
+          wave_sums[wave][row_idx][branch][col] = acc[row_idx][branch][col];
+        }
+      }
+    }
+  }
+  __syncthreads();
+  if (tid < ROW_BATCH * HIDDEN_TILE) {
+    const int row_idx = tid / HIDDEN_TILE;
+    const int col = tid - row_idx * HIDDEN_TILE;
+    const int row = row_base + row_idx;
+    if (row < rows && hidden_base + col < hidden) {
+      float value = 0.0f;
+#pragma unroll
+      for (int branch = 0; branch < BRANCHES; ++branch) {
+        float total = 0.0f;
+#pragma unroll
+        for (int wave_idx = 0; wave_idx < 4; ++wave_idx) {
+          total += wave_sums[wave_idx][row_idx][branch][col];
+        }
+        const int64_t index = static_cast<int64_t>(row) * BRANCHES * hidden
+            + branch * hidden + hidden_base + col;
+        const float sigmoid_gate = 1.0f / (1.0f + expf(-total));
+        gate[index] = sigmoid_gate;
+        value += normalized[index] * sigmoid_gate;
+      }
+      mixed[static_cast<int64_t>(row) * hidden + hidden_base + col] =
+          value / static_cast<float>(BRANCHES);
     }
   }
 }
@@ -1016,6 +1344,174 @@ __global__ void gguf_k_selected_prefill_out_kernel(
   const float total = reduce_block_sum(acc);
   if (threadIdx.x == 0) {
     store_output<out_t>(out, static_cast<int64_t>(row) * out_features + out_col, total);
+  }
+}
+
+// PF-1 fork (b) T0 candidate: grouped selected down prefill. One block serves
+// every selected lane of one (expert, out_col) pair. ROW_BATCH=1 retains the
+// original serial-lane owner; ROW_BATCH=4 reuses each decoded weight across
+// four rows without changing their independent accumulation sequences.
+// Per-output arithmetic is identical to
+// gguf_k_selected_prefill_out_kernel: the same per-thread k sequence
+// (k = threadIdx.x; k += blockDim.x), the same ordered ``acc += xv * wv``
+// accumulation, and the same reduce_block_sum wave-shuffle + serial wave
+// publication, so output bits must equal the block-per-output owner
+// (RED-pinned in tests/test_qwen4exp_pf1_forkb_selected_down.py). Rows whose
+// expert is invalid never appear in the group map and stay unwritten, exactly
+// like the owner's invalid-expert early return.
+//
+// lane_to_row maps each sorted group position to the x/out row it serves.
+// When the caller's x and out buffers are already in sorted-lane order (the
+// qwen4-exp grouped-prefill scratch layout), pass nullptr and row = lane.
+template <typename scalar_t, typename out_t, int ROW_BATCH = 1, bool BUNDLE = false, bool REGISTER_WEIGHTS = false>
+__launch_bounds__(256, 2)
+__global__ void gguf_k_selected_grouped_prefill_out_kernel(
+    const scalar_t* __restrict__ x,
+    const int64_t* __restrict__ expert_start,
+    const int64_t* __restrict__ lane_to_row,
+    const uint8_t* __restrict__ qweight,
+    out_t* __restrict__ out,
+    int x_rows,
+    int rows,
+    int num_experts,
+    int in_features,
+    int out_features) {
+  const int out_col = blockIdx.x;
+  const int expert_id = blockIdx.y;
+  if (out_col >= out_features || expert_id >= num_experts) return;
+  const int lane_begin = static_cast<int>(expert_start[expert_id]);
+  const int lane_end = static_cast<int>(expert_start[expert_id + 1]);
+  if (lane_begin >= lane_end) return;
+  const int lanes_per_x_row = rows / x_rows;
+  const int row_bytes = (in_features / Q8_0_BLOCK) * Q8_0_BLOCK_BYTES;
+  const int64_t expert_bytes = static_cast<int64_t>(out_features) * row_bytes;
+  const uint8_t* __restrict__ weight_row =
+      qweight + static_cast<int64_t>(expert_id) * expert_bytes +
+      static_cast<int64_t>(out_col) * row_bytes;
+
+  float cached[REGISTER_WEIGHTS ? 5 : 1];
+  if constexpr (REGISTER_WEIGHTS) {
+#pragma unroll
+    for (int step=0; step<5; ++step)
+      cached[step] = q8_0_weight(weight_row,threadIdx.x+step*128);
+  }
+  for (int base = lane_begin; base < lane_end; base += ROW_BATCH) {
+    int row[ROW_BATCH];
+    int x_row[ROW_BATCH];
+#pragma unroll
+    for (int r = 0; r < ROW_BATCH; ++r) {
+      const int lane = base + r;
+      row[r] = lane < lane_end
+          ? (lane_to_row ? static_cast<int>(lane_to_row[lane]) : lane) : 0;
+      x_row[r] = (x_rows == 1) ? 0 : (row[r] / lanes_per_x_row);
+    }
+    float acc[ROW_BATCH] = {};
+    if constexpr (REGISTER_WEIGHTS) {
+#pragma unroll
+      for (int step=0; step<5; ++step) {
+        const int k=threadIdx.x+step*128;
+#pragma unroll
+        for (int r=0; r<ROW_BATCH; ++r)
+          if (base+r<lane_end)
+            acc[r] += scalar_to_float<scalar_t>(
+                x[static_cast<int64_t>(x_row[r])*in_features+k])*cached[step];
+      }
+    } else {
+    for (int k = threadIdx.x; k < in_features; k += blockDim.x) {
+      const float wv = q8_0_weight(weight_row, k);
+#pragma unroll
+      for (int r = 0; r < ROW_BATCH; ++r) {
+        if (base + r < lane_end) {
+          const float xv = scalar_to_float<scalar_t>(
+              x[static_cast<int64_t>(x_row[r]) * in_features + k]);
+          acc[r] += xv * wv;
+        }
+      }
+    }
+    }
+    if constexpr (BUNDLE) {
+      __shared__ float sums[ROW_BATCH][8];
+#pragma unroll
+      for (int r = 0; r < ROW_BATCH; ++r) {
+        for (int offset = 16; offset > 0; offset >>= 1)
+          acc[r] += __shfl_down(acc[r], offset);
+        if ((threadIdx.x & 31) == 0) sums[r][threadIdx.x >> 5] = acc[r];
+      }
+      __syncthreads();
+      if (threadIdx.x < ROW_BATCH) {
+        const int r = threadIdx.x;
+        float total = 0.0f;
+        for (int wave = 0; wave < (blockDim.x + 31) / 32; ++wave)
+          total += sums[r][wave];
+        if (base + r < lane_end)
+          store_output<out_t>(out, static_cast<int64_t>(row[r])*out_features+out_col, total);
+      }
+      __syncthreads();
+    } else {
+#pragma unroll
+    for (int r = 0; r < ROW_BATCH; ++r) {
+      const float total = reduce_block_sum(acc[r]);
+      if (threadIdx.x == 0 && base + r < lane_end) {
+        store_output<out_t>(
+            out, static_cast<int64_t>(row[r]) * out_features + out_col, total);
+      }
+      // Retire the shared reduction scratch before publishing the next row.
+      __syncthreads();
+    }
+    }
+  }
+}
+
+// Preserve selected GEMV's per-row arithmetic while amortizing Q5 decoding
+// over four lanes belonging to the same expert.
+__launch_bounds__(256, 2)
+__global__ void gguf_q5_k_selected_grouped_row4_bf16_kernel(
+    const uint16_t* __restrict__ x,
+    const int64_t* __restrict__ expert_start,
+    const int64_t* __restrict__ lane_to_row,
+    const uint8_t* __restrict__ weights,
+    uint16_t* __restrict__ output,
+    int x_rows, int rows, int experts, int in_features, int out_features) {
+  const int out_col = blockIdx.x;
+  const int expert = blockIdx.y;
+  if (out_col >= out_features || expert >= experts) return;
+  const int begin = static_cast<int>(expert_start[expert]);
+  const int end = static_cast<int>(expert_start[expert + 1]);
+  if (begin < 0 || begin >= end || end > rows) return;
+  const int row_bytes = (in_features / QK_K) * Q5_K_BLOCK_BYTES;
+  const uint8_t* weight_row = weights
+      + (static_cast<int64_t>(expert) * out_features + out_col) * row_bytes;
+  const int lanes_per_x_row = rows / x_rows;
+  for (int base = begin; base < end; base += 4) {
+    int dest[4];
+#pragma unroll
+    for (int r = 0; r < 4; ++r) {
+      dest[r] = base + r < end
+          ? (lane_to_row ? static_cast<int>(lane_to_row[base + r]) : base + r)
+          : -1;
+    }
+    float acc[4] = {};
+    for (int k = threadIdx.x; k < in_features; k += blockDim.x) {
+      const float wv = q5_k_weight(weight_row, k);
+#pragma unroll
+      for (int r = 0; r < 4; ++r) {
+        if (dest[r] >= 0 && dest[r] < rows) {
+          const int x_row = dest[r] / lanes_per_x_row;
+          const float xv = scalar_to_float<uint16_t>(
+              x[static_cast<int64_t>(x_row) * in_features + k]);
+          acc[r] += xv * wv;
+        }
+      }
+    }
+#pragma unroll
+    for (int r = 0; r < 4; ++r) {
+      const float total = reduce_block_sum(acc[r]);
+      if (threadIdx.x == 0 && dest[r] >= 0 && dest[r] < rows) {
+        store_output<uint16_t>(
+            output, static_cast<int64_t>(dest[r]) * out_features + out_col, total);
+      }
+      __syncthreads();
+    }
   }
 }
 
@@ -4074,7 +4570,7 @@ template <
     typename out_t,
     int qtype,
     int COL_TILE,
-    int ROW_BATCH>
+    int ROW_BATCH, bool WAVE_SCALE = false>
 int launch_gguf_k_gemv_coltile_rowbatch_out(
     const scalar_t* x,
     const uint8_t* qweight,
@@ -4084,8 +4580,10 @@ int launch_gguf_k_gemv_coltile_rowbatch_out(
     int64_t out_features,
     int64_t threads,
     hipStream_t stream) {
+  const bool valid_shape = (qtype == 8) ? ((in_features % Q8_0_BLOCK) == 0)
+                                        : ((in_features % QK_K) == 0);
   if (x == nullptr || qweight == nullptr || out == nullptr || rows <= 0 ||
-      in_features <= 0 || (in_features % QK_K) != 0 || out_features <= 0 ||
+      in_features <= 0 || !valid_shape || out_features <= 0 ||
       (out_features % COL_TILE) != 0 || threads != 128) {
     return static_cast<int>(hipErrorInvalidValue);
   }
@@ -4098,7 +4596,7 @@ int launch_gguf_k_gemv_coltile_rowbatch_out(
       out_t,
       qtype,
       COL_TILE,
-      ROW_BATCH><<<grid, block, 0, stream>>>(
+      ROW_BATCH, WAVE_SCALE><<<grid, block, 0, stream>>>(
       x,
       qweight,
       out,
@@ -4209,6 +4707,47 @@ int launch_gguf_k_selected_gemv_out(
   return static_cast<int>(hipGetLastError());
 }
 
+template <typename scalar_t, typename out_t, int ROW_BATCH = 1, bool BUNDLE = false, bool REGISTER_WEIGHTS = false>
+int launch_gguf_k_selected_grouped_gemv_out(
+    const scalar_t* x,
+    const int64_t* expert_start,
+    const int64_t* lane_to_row,
+    const uint8_t* qweight,
+    out_t* out,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  const bool valid_shape = (in_features % Q8_0_BLOCK) == 0;
+  if (x == nullptr || expert_start == nullptr || qweight == nullptr ||
+      out == nullptr || x_rows <= 0 ||
+      rows <= 0 || (rows % x_rows) != 0 || num_experts <= 0 ||
+      in_features <= 0 || out_features <= 0 || !valid_shape ||
+      (threads != 64 && threads != 128 && threads != 256) ||
+      (REGISTER_WEIGHTS && (threads != 128 || in_features != 640))) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(static_cast<unsigned int>(threads));
+  const dim3 grid(
+      static_cast<unsigned int>(out_features),
+      static_cast<unsigned int>(num_experts));
+  gguf_k_selected_grouped_prefill_out_kernel<scalar_t, out_t, ROW_BATCH, BUNDLE, REGISTER_WEIGHTS><<<grid, block, 0, stream>>>(
+      x,
+      expert_start,
+      lane_to_row,
+      qweight,
+      out,
+      static_cast<int>(x_rows),
+      static_cast<int>(rows),
+      static_cast<int>(num_experts),
+      static_cast<int>(in_features),
+      static_cast<int>(out_features));
+  return static_cast<int>(hipGetLastError());
+}
+
 template <typename scalar_t, typename out_t, int qtype>
 int launch_gguf_k_selected_silu_gemv_out(
     const scalar_t* gate,
@@ -4247,7 +4786,66 @@ int launch_gguf_k_selected_silu_gemv_out(
   return static_cast<int>(hipGetLastError());
 }
 
+static int launch_q8_0_iu8_wmma_prefill_f32_f32(
+    const float* x,
+    const uint8_t* qweight,
+    float* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (x == nullptr || qweight == nullptr || out == nullptr || rows <= 0 ||
+      in_features <= 0 || (in_features % 32) != 0 || out_features <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t row_tiles = (rows + 15) / 16;
+  const dim3 block(128);
+  const dim3 grid(
+      static_cast<unsigned int>((out_features + 127) / 128),
+      static_cast<unsigned int>(row_tiles));
+  hipLaunchKernelGGL(
+      (q8_0_iu8_wmma_prefill_f32_f32_kernel),
+      grid, block, 0, stream,
+      x, qweight, out,
+      static_cast<int>(rows),
+      static_cast<int>(in_features),
+      static_cast<int>(out_features));
+  return static_cast<int>(hipGetLastError());
+}
+
 }  // namespace
+
+extern "C" int hipengine_gguf_q8_0_iu8_wmma_prefill_f32_f32(
+    const void* x,
+    const void* qweight,
+    void* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q8_0_iu8_wmma_prefill_f32_f32(
+      static_cast<const float*>(x),
+      static_cast<const uint8_t*>(qweight),
+      static_cast<float*>(out),
+      rows, in_features, out_features, stream);
+}
+
+extern "C" int hipengine_gguf_q8_0_iu8_wmma_prefill_f32_f32_t(
+    const void* x,
+    const void* qweight,
+    void* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  (void)threads;  // fixed 128-thread launch; accepted for ABI compatibility
+  return launch_q8_0_iu8_wmma_prefill_f32_f32(
+      static_cast<const float*>(x),
+      static_cast<const uint8_t*>(qweight),
+      static_cast<float*>(out),
+      rows, in_features, out_features, stream);
+}
 
 #define HIPENGINE_GGUF_K_EXPORTS(NAME, QTYPE) \
 extern "C" int hipengine_##NAME##_gemv_f32_f32_out( \
@@ -4306,6 +4904,12 @@ extern "C" int hipengine_##NAME##_dual_gemv_bf16_bf16_out( \
   return launch_gguf_k_dual_gemv_out<uint16_t, uint16_t, QTYPE>( \
       x, qweight_a, qweight_b, out_a, out_b, rows, in_features, out_features, threads, stream); \
 } \
+extern "C" int hipengine_##NAME##_pack8_gemv_f32_f32_out( \
+    const float* x, const uint8_t* qweight, float* out, int64_t rows, \
+    int64_t in_features, int64_t out_features, int64_t threads, hipStream_t stream) { \
+  return launch_gguf_k_pack8_gemv_out<float, float, QTYPE>( \
+      x, qweight, out, rows, in_features, out_features, threads, stream); \
+} \
 extern "C" int hipengine_##NAME##_pack8_gemv_bf16_f32_out( \
     const uint16_t* x, const uint8_t* qweight, float* out, int64_t rows, \
     int64_t in_features, int64_t out_features, int64_t threads, hipStream_t stream) { \
@@ -4362,6 +4966,68 @@ HIPENGINE_GGUF_K_EXPORTS(gguf_q8_0, 8)
 HIPENGINE_GGUF_K_EXPORTS(gguf_q5_k, 5)
 HIPENGINE_GGUF_K_EXPORTS(gguf_q6_k, 6)
 
+extern "C" int hipengine_gguf_q5_k_selected_grouped_row4_gemv_bf16_bf16_out(
+    const uint16_t* x, const int64_t* expert_start, const int64_t* lane_to_row,
+    const uint8_t* weights, uint16_t* output,
+    int64_t x_rows, int64_t rows, int64_t experts,
+    int64_t in_features, int64_t out_features, int64_t threads,
+    hipStream_t stream) {
+  if (!x || !expert_start || !weights || !output || x_rows <= 0 ||
+      rows <= 0 || rows % x_rows != 0 || experts <= 0 ||
+      in_features <= 0 || in_features % QK_K != 0 || out_features <= 0 ||
+      (threads != 64 && threads != 128 && threads != 256)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 grid(static_cast<unsigned int>(out_features),
+                  static_cast<unsigned int>(experts));
+  gguf_q5_k_selected_grouped_row4_bf16_kernel<<<grid, threads, 0, stream>>>(
+      x, expert_start, lane_to_row, weights, output, x_rows, rows, experts,
+      in_features, out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
+// PF-1 fork (b) T0 candidate: grouped selected down (Q8_0 only). Consumes the
+// per-expert group map (exclusive expert_start[num_experts+1] prefix plus the
+// sorted lane_to_row permutation) that the M2 routing infrastructure already
+// produces; per-output bits must equal selected_gemv_bf16_bf16_out.
+extern "C" int hipengine_gguf_q8_0_selected_grouped_gemv_bf16_bf16_out(
+    const uint16_t* x, const int64_t* expert_start, const int64_t* lane_to_row,
+    const uint8_t* qweight, uint16_t* out, int64_t x_rows, int64_t rows,
+    int64_t num_experts, int64_t in_features, int64_t out_features,
+    int64_t threads, hipStream_t stream) {
+  return launch_gguf_k_selected_grouped_gemv_out<uint16_t, uint16_t>(
+      x, expert_start, lane_to_row, qweight, out, x_rows, rows, num_experts,
+      in_features, out_features, threads, stream);
+}
+
+extern "C" int hipengine_gguf_q8_0_selected_grouped_row4_gemv_bf16_bf16_out(
+    const uint16_t* x, const int64_t* expert_start, const int64_t* lane_to_row,
+    const uint8_t* qweight, uint16_t* out, int64_t x_rows, int64_t rows,
+    int64_t num_experts, int64_t in_features, int64_t out_features,
+    int64_t threads, hipStream_t stream) {
+  return launch_gguf_k_selected_grouped_gemv_out<uint16_t, uint16_t, 4>(
+      x, expert_start, lane_to_row, qweight, out, x_rows, rows, num_experts,
+      in_features, out_features, threads, stream);
+}
+
+extern "C" int hipengine_gguf_q8_0_selected_grouped_row4_bundle_gemv_bf16_bf16_out(
+    const uint16_t* x, const int64_t* expert_start, const int64_t* lane_to_row,
+    const uint8_t* qweight, uint16_t* out, int64_t x_rows, int64_t rows,
+    int64_t num_experts, int64_t in_features, int64_t out_features,
+    int64_t threads, hipStream_t stream) {
+  return launch_gguf_k_selected_grouped_gemv_out<uint16_t, uint16_t, 4, true>(
+      x, expert_start, lane_to_row, qweight, out, x_rows, rows, num_experts,
+      in_features, out_features, threads, stream);
+}
+
+extern "C" int hipengine_gguf_q8_0_selected_grouped_row4_register_gemv_bf16_bf16_out(
+    const uint16_t* x,const int64_t* starts,const int64_t* map,const uint8_t* w,
+    uint16_t* out,int64_t xr,int64_t rows,int64_t experts,int64_t k,int64_t n,
+    int64_t threads,hipStream_t stream) {
+  return launch_gguf_k_selected_grouped_gemv_out<uint16_t,uint16_t,4,true,true>(
+      x,starts,map,w,out,xr,rows,experts,k,n,threads,stream);
+}
+
 #define HIPENGINE_GGUF_K_ROWBATCH_EXPORTS(NAME, QTYPE, ROW_BATCH) \
 extern "C" int hipengine_##NAME##_gemv_rowbatch##ROW_BATCH##_bf16_bf16_out( \
     const uint16_t* x, const uint8_t* qweight, uint16_t* out, int64_t rows, \
@@ -4386,6 +5052,96 @@ HIPENGINE_GGUF_K_ROWBATCH_EXPORTS(gguf_q6_k, 6, 16)
 HIPENGINE_GGUF_K_ROWBATCH_EXPORTS(gguf_q6_k, 6, 32)
 
 #undef HIPENGINE_GGUF_K_ROWBATCH_EXPORTS
+
+#define HIPENGINE_GGUF_Q8_F32_ROWBATCH_EXPORT(ROW_BATCH) \
+extern "C" int hipengine_gguf_q8_0_gemv_rowbatch##ROW_BATCH##_f32_f32_out( \
+    const float* x, const uint8_t* qweight, float* out, int64_t rows, \
+    int64_t in_features, int64_t out_features, int64_t threads, hipStream_t stream) { \
+  return launch_gguf_k_gemv_rowbatch_out<float, float, 8, ROW_BATCH>( \
+      x, qweight, out, rows, in_features, out_features, threads, stream); \
+}
+
+HIPENGINE_GGUF_Q8_F32_ROWBATCH_EXPORT(4)
+HIPENGINE_GGUF_Q8_F32_ROWBATCH_EXPORT(8)
+HIPENGINE_GGUF_Q8_F32_ROWBATCH_EXPORT(16)
+HIPENGINE_GGUF_Q8_F32_ROWBATCH_EXPORT(32)
+
+#undef HIPENGINE_GGUF_Q8_F32_ROWBATCH_EXPORT
+
+template <bool WAVE_SCALE>
+int launch_q8_gr_up_scale(
+    const float* x,
+    const uint8_t* qweight,
+    const float* normalized,
+    float* gate,
+    float* mixed,
+    int64_t rows,
+    int64_t in_features,
+    int64_t branches,
+    int64_t hidden,
+    int64_t threads,
+    hipStream_t stream) {
+  if (x == nullptr || qweight == nullptr || normalized == nullptr ||
+      gate == nullptr || mixed == nullptr || rows <= 0 || in_features <= 0 ||
+      in_features % Q8_0_BLOCK != 0 || branches != 4 || hidden <= 0 ||
+      hidden % 2 != 0 || threads != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel<WAVE_SCALE>),
+      dim3(
+          static_cast<unsigned int>(hidden / 2),
+          static_cast<unsigned int>((rows + 3) / 4)),
+      dim3(128),
+      0,
+      stream,
+      x,
+      qweight,
+      normalized,
+      gate,
+      mixed,
+      static_cast<int>(rows),
+      static_cast<int>(in_features),
+      static_cast<int>(branches),
+      static_cast<int>(hidden));
+  return static_cast<int>(hipGetLastError());
+}
+
+#define Q8_GR_SCALE_ENTRY(NAME, WAVE) \
+extern "C" int NAME(const float* x, const uint8_t* qweight, const float* normalized, \
+    float* gate, float* mixed, int64_t rows, int64_t in_features, int64_t branches, \
+    int64_t hidden, int64_t threads, hipStream_t stream) { \
+  return launch_q8_gr_up_scale<WAVE>(x, qweight, normalized, gate, mixed, rows, \
+      in_features, branches, hidden, threads, stream); \
+}
+Q8_GR_SCALE_ENTRY(hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32, false)
+Q8_GR_SCALE_ENTRY(hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_f32, true)
+#undef Q8_GR_SCALE_ENTRY
+
+#define HIPENGINE_GGUF_Q8_F32_COLTILE_EXPORT(COL_TILE, ROW_BATCH) \
+extern "C" int hipengine_gguf_q8_0_gemv_coltile##COL_TILE##_rowbatch##ROW_BATCH##_f32_f32_out( \
+    const float* x, const uint8_t* qweight, float* out, int64_t rows, \
+    int64_t in_features, int64_t out_features, int64_t threads, hipStream_t stream) { \
+  return launch_gguf_k_gemv_coltile_rowbatch_out< \
+      float, float, 8, COL_TILE, ROW_BATCH>( \
+      x, qweight, out, rows, in_features, out_features, threads, stream); \
+}
+
+HIPENGINE_GGUF_Q8_F32_COLTILE_EXPORT(4, 8)
+HIPENGINE_GGUF_Q8_F32_COLTILE_EXPORT(8, 4)
+HIPENGINE_GGUF_Q8_F32_COLTILE_EXPORT(8, 8)
+HIPENGINE_GGUF_Q8_F32_COLTILE_EXPORT(16, 2)
+HIPENGINE_GGUF_Q8_F32_COLTILE_EXPORT(16, 4)
+HIPENGINE_GGUF_Q8_F32_COLTILE_EXPORT(32, 1)
+
+#undef HIPENGINE_GGUF_Q8_F32_COLTILE_EXPORT
+
+extern "C" int hipengine_gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_f32_f32_out(
+    const float* x, const uint8_t* qweight, float* out, int64_t rows,
+    int64_t in_features, int64_t out_features, int64_t threads, hipStream_t stream) {
+  return launch_gguf_k_gemv_coltile_rowbatch_out<float, float, 8, 8, 4, true>(
+      x, qweight, out, rows, in_features, out_features, threads, stream);
+}
 
 #define HIPENGINE_GGUF_K_COLTILE_ROWBATCH_EXPORTS( \
     NAME, QTYPE, COL_TILE, ROW_BATCH) \

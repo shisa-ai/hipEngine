@@ -1,0 +1,613 @@
+{
+  "schema": 1,
+  "date": "2026-09-05",
+  "date_basis": "UTC",
+  "kind": "qwen4exp_q4_pair_reuse_screen",
+  "status": "retained_kernel_pending_model_admission",
+  "performance_claim": true,
+  "source_sha256": {
+    "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_selected_prefill.hip": "03809b448b2f681964fd51d9852b704bd915a2402474bafe8448fe0cc7cba7d4",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_selected_prefill.py": "1955f37c6338490724414ba63d177050509fd79eee299c5e382bddd317dc7c40"
+  },
+  "raw_sha256": {
+    "/tmp/qwen4exp-q4-pair-screen.json": "0115eab59bdb3667bb6bf444c3b3c1057dbbbf16ac47b6a423007df2fc10b0a5",
+    "/tmp/qwen4exp-q4-pair-skewed.json": "fb54ec621183692fcdf9391a66addfb285ba0ba729ed3ebbc83b1df38f9b6224",
+    "/tmp/qwen4exp-post-gdn-roles.json": "b6c89d8c8719530cede6a0817894b66ddce9e87dccd3fc9665369cec68046df6"
+  },
+  "environment_reference": "benchmarks/results/2026-09-05-framework-qwen4exp-gdn-register.json",
+  "hipengine_artifact_provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 2,
+    "collected_at": "2026-09-05T18:44:42.958516+00:00",
+    "host_name": "gfx1151",
+    "repo_root": "/home/lhl/hipEngine",
+    "hipengine_commit": "511dd977a36a21f8cf255e9db10f88323146552e",
+    "git_branch": "qwen3.8-flash-next",
+    "staged_dirty": false,
+    "unstaged_dirty": true,
+    "untracked_dirty": true,
+    "untracked_count": 76,
+    "dirty": true,
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S",
+    "model_path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "model_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+    "model_fingerprint": {
+      "algorithm": "sha256-directory-manifest-v1",
+      "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+      "size_bytes": 111334654784,
+      "sampled_bytes": 12582912,
+      "file_count": 4,
+      "exists": true,
+      "path_type": "directory"
+    },
+    "quant": "UD-Q4_K_XL",
+    "kv_dtype": "BF16",
+    "command": [
+      ".venv/bin/python",
+      "scripts/qwen4exp_q4_bundle_screen.py",
+      "--model-root",
+      "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--require-cached-build",
+      "--pair-reuse",
+      "--routing",
+      "skewed",
+      "--layer",
+      "4",
+      "--output",
+      "/tmp/qwen4exp-q4-pair-skewed.json"
+    ],
+    "environment": {
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-hipcc-version.txt",
+      "HIPENGINE_REQUIRE_CACHED_BUILD": "1"
+    },
+    "rocm_version": "HIP version: 7.15.26333-0000000",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+    "build_profile": "prefill",
+    "timing_protocol": "same-host actual-weight gate/up+SiLU; alternating ten pairs after one warmup per arm",
+    "warmups": 1,
+    "repetitions": 10,
+    "profiler": null
+  },
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "511dd977a36a21f8cf255e9db10f88323146552e",
+    "tracked_clean": false
+  },
+  "uniform": {
+    "schema": 1,
+    "kind": "qwen4exp_q4_bundle_gate_up_silu",
+    "source": {
+      "path": "/home/lhl/hipEngine",
+      "head": "511dd977a36a21f8cf255e9db10f88323146552e",
+      "tracked_clean": false
+    },
+    "host": {
+      "hostname": "gfx1151",
+      "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+      "kernel": "7.1.6-1-cachyos",
+      "tuned_active": "Current active profile: accelerator-performance",
+      "cpu_governors": {
+        "performance": 32
+      },
+      "gpu_clock_policies": {
+        "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+      },
+      "rocm_platform": null,
+      "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+    },
+    "command": [
+      "scripts/qwen4exp_q4_bundle_screen.py",
+      "--model-root",
+      "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--require-cached-build",
+      "--pair-reuse",
+      "--output",
+      "/tmp/qwen4exp-q4-pair-screen.json"
+    ],
+    "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+    "weights": [
+      {
+        "tensor": "blk.0.ffn_gate_exps.weight",
+        "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+        "shape": [
+          512,
+          640,
+          2560
+        ],
+        "sha256": "c52d2ded80cdbdb92f75c08ecfdd0ae3e2bc97198edda3d62ef8645df19a6947"
+      },
+      {
+        "tensor": "blk.0.ffn_up_exps.weight",
+        "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+        "shape": [
+          512,
+          640,
+          2560
+        ],
+        "sha256": "92e1eb072ea457687ae6b531c9402817c1d8ac6043a70ceed7986fd0e4997450"
+      }
+    ],
+    "arithmetic_class": "T0",
+    "runtime_default_changed": false,
+    "boundary": "grouped Q4_K gate/up plus unchanged BF16 SiLU, no routing/down/combine",
+    "parent_variant": "gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out",
+    "candidate_variant": "gguf_q4_k_selected_dual_grouped_pair2_bf16_bf16_out",
+    "cases": [
+      {
+        "tokens": 64,
+        "compact_rows": 640,
+        "active_experts": 380,
+        "seconds": {
+          "parent": [
+            0.005870176013559103,
+            0.005906282924115658,
+            0.00595690798945725,
+            0.005884421989321709,
+            0.005944034084677696,
+            0.0058960639871656895,
+            0.005961847025901079,
+            0.005869403947144747,
+            0.005923544988036156,
+            0.005895182024687529
+          ],
+          "candidate": [
+            0.005853133043274283,
+            0.005898237926885486,
+            0.005792289040982723,
+            0.00589018315076828,
+            0.005853182869032025,
+            0.005842673126608133,
+            0.005772542208433151,
+            0.005838054930791259,
+            0.005806294968351722,
+            0.005825781030580401
+          ]
+        },
+        "speedup": 1.010411924092772,
+        "all_pairs_exact": true
+      },
+      {
+        "tokens": 512,
+        "compact_rows": 5120,
+        "active_experts": 512,
+        "seconds": {
+          "parent": [
+            0.024313342990353703,
+            0.025119855999946594,
+            0.024969544960185885,
+            0.024867722997441888,
+            0.02525558089837432,
+            0.025208191946148872,
+            0.025257794884964824,
+            0.025216958951205015,
+            0.025190348969772458,
+            0.025114275980740786
+          ],
+          "candidate": [
+            0.018734203884378076,
+            0.01874011498875916,
+            0.018445551861077547,
+            0.018503911094740033,
+            0.01885935803875327,
+            0.01867923093959689,
+            0.018718253122642636,
+            0.01871259300969541,
+            0.01863124081864953,
+            0.01861143298447132
+          ]
+        },
+        "speedup": 1.3454867844356988,
+        "all_pairs_exact": true
+      }
+    ]
+  },
+  "skewed": {
+    "schema": 1,
+    "kind": "qwen4exp_q4_bundle_gate_up_silu",
+    "source": {
+      "path": "/home/lhl/hipEngine",
+      "head": "511dd977a36a21f8cf255e9db10f88323146552e",
+      "tracked_clean": false
+    },
+    "host": {
+      "hostname": "gfx1151",
+      "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+      "kernel": "7.1.6-1-cachyos",
+      "tuned_active": "Current active profile: accelerator-performance",
+      "cpu_governors": {
+        "performance": 32
+      },
+      "gpu_clock_policies": {
+        "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+      },
+      "rocm_platform": null,
+      "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+    },
+    "command": [
+      "scripts/qwen4exp_q4_bundle_screen.py",
+      "--model-root",
+      "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--require-cached-build",
+      "--pair-reuse",
+      "--routing",
+      "skewed",
+      "--layer",
+      "4",
+      "--output",
+      "/tmp/qwen4exp-q4-pair-skewed.json"
+    ],
+    "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+    "weights": [
+      {
+        "tensor": "blk.4.ffn_gate_exps.weight",
+        "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+        "shape": [
+          512,
+          640,
+          2560
+        ],
+        "sha256": "4276edca4d2c0a3de06d99f708fbe9369a45da0a319f719667b1bd7b1eba3e46"
+      },
+      {
+        "tensor": "blk.4.ffn_up_exps.weight",
+        "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+        "shape": [
+          512,
+          640,
+          2560
+        ],
+        "sha256": "4286135c3cd2974de46146b489da0d2f7d8a7b9d1fa38fe5b31a0fbc3ee4e084"
+      }
+    ],
+    "arithmetic_class": "T0",
+    "runtime_default_changed": false,
+    "boundary": "grouped Q4_K gate/up plus unchanged BF16 SiLU, no routing/down/combine",
+    "parent_variant": "gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out",
+    "candidate_variant": "gguf_q4_k_selected_dual_grouped_pair2_bf16_bf16_out",
+    "routing": "skewed",
+    "layer": 4,
+    "cases": [
+      {
+        "tokens": 64,
+        "compact_rows": 640,
+        "active_experts": 226,
+        "seconds": {
+          "parent": [
+            0.004448466934263706,
+            0.004462282871827483,
+            0.004456052090972662,
+            0.0044577650260180235,
+            0.004461791832000017,
+            0.004455049987882376,
+            0.004508309066295624,
+            0.004416458075866103,
+            0.00459578400477767,
+            0.004441484110429883
+          ],
+          "candidate": [
+            0.0040983210783451796,
+            0.004203777993097901,
+            0.004059416940435767,
+            0.004134268034249544,
+            0.004093119874596596,
+            0.00412725517526269,
+            0.004121583886444569,
+            0.004137844080105424,
+            0.004076448967680335,
+            0.004102278035134077
+          ]
+        },
+        "max_expert_rows": 30,
+        "median_active_expert_rows": 2.0,
+        "speedup": 1.0838967387817713,
+        "all_pairs_exact": true
+      },
+      {
+        "tokens": 512,
+        "compact_rows": 5120,
+        "active_experts": 432,
+        "seconds": {
+          "parent": [
+            0.026326379971578717,
+            0.02645699610002339,
+            0.026453419122844934,
+            0.026427519973367453,
+            0.023661921033635736,
+            0.026396211003884673,
+            0.02572985109873116,
+            0.026295803021639585,
+            0.02643191907554865,
+            0.026432680198922753
+          ],
+          "candidate": [
+            0.01828384888358414,
+            0.01840373408049345,
+            0.018258601892739534,
+            0.01834392105229199,
+            0.01832748088054359,
+            0.018336838111281395,
+            0.018417518818750978,
+            0.018384127877652645,
+            0.018344902899116278,
+            0.018377343891188502
+          ]
+        },
+        "max_expert_rows": 172,
+        "median_active_expert_rows": 6.0,
+        "speedup": 1.4397771661259404,
+        "all_pairs_exact": true
+      }
+    ]
+  },
+  "trace": {
+    "path": "/tmp/qwen4exp-q4-pair-trace/gfx1151/2471577_kernel_trace.csv",
+    "candidate_kernel": "gguf_q4_k_selected_dual_grouped_pair2_bf16_kernel",
+    "duration_ns": 18498583,
+    "vgpr": 88,
+    "lds_bytes": 4608,
+    "scratch_bytes": 0,
+    "workgroup": 128,
+    "command": "HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen4exp-q4-pair-trace -- .venv/bin/python scripts/qwen4exp_q4_bundle_screen.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --pair-reuse --rows 512 --pairs 1 --output /tmp/qwen4exp-q4-pair-trace.json"
+  },
+  "correctness": {
+    "class": "T0",
+    "gate_up_and_silu_bits": "all actual-weight pairs exact",
+    "fixtures": "odd output/row tails, empty experts, K256/512/2560/4096, full512 expert shape, repeated outputs",
+    "cpu_gate": "both gate/up: allclose rtol0.02/atol0.002, max output-channel KL<=0.05, top1>=90% on reduced fixtures",
+    "focused_tests_passed": 16,
+    "scope": "primitive CPU distribution, not full-model logits or D1"
+  },
+  "owner_refresh": {
+    "source": {
+      "path": "/home/lhl/hipEngine",
+      "head": "511dd977a36a21f8cf255e9db10f88323146552e",
+      "tracked_clean": false
+    },
+    "command": [
+      "qwen4exp_profile_gap.py",
+      "--model-root",
+      "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "--mode",
+      "prefill",
+      "--case-id",
+      "code-p4096",
+      "--repetitions",
+      "1",
+      "--profile",
+      "--role-markers",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--require-cached-build",
+      "--output",
+      "/tmp/qwen4exp-post-gdn-role-profile.json"
+    ],
+    "trace_dir": "/tmp/qwen4exp-post-gdn-role-trace/gfx1151",
+    "window_ms": 29661.251977,
+    "coverage_pct": 100.0,
+    "roles": [
+      {
+        "name": "moe:layers.*.expert_gate",
+        "ms": 15511.808287,
+        "rows": 6480,
+        "symbols": 25
+      },
+      {
+        "name": "qsa_prefill:layers.*.attn_q",
+        "ms": 1921.000177,
+        "rows": 1232,
+        "symbols": 13
+      },
+      {
+        "name": "linear:layers.*.attn_gate",
+        "ms": 1774.371153,
+        "rows": 288,
+        "symbols": 1
+      },
+      {
+        "name": "linear:layers.*.attn_qkv",
+        "ms": 1616.718261,
+        "rows": 1152,
+        "symbols": 4
+      },
+      {
+        "name": "gr_read:layers.*.hc_attn_down",
+        "ms": 1312.889069,
+        "rows": 1152,
+        "symbols": 3
+      },
+      {
+        "name": "gr_read:layers.*.hc_ffn_down",
+        "ms": 1310.719718,
+        "rows": 1152,
+        "symbols": 3
+      },
+      {
+        "name": "linear:layers.*.ssm_out",
+        "ms": 886.940962,
+        "rows": 1152,
+        "symbols": 4
+      },
+      {
+        "name": "linear:layers.*.hc_attn_down",
+        "ms": 831.686899,
+        "rows": 1536,
+        "symbols": 4
+      },
+      {
+        "name": "linear:layers.*.hc_ffn_down",
+        "ms": 820.265036,
+        "rows": 1536,
+        "symbols": 4
+      },
+      {
+        "name": "gdn:layers.*.attn_qkv",
+        "ms": 779.854462,
+        "rows": 984,
+        "symbols": 5
+      },
+      {
+        "name": "linear:layers.*.attn_q",
+        "ms": 609.696707,
+        "rows": 384,
+        "symbols": 4
+      },
+      {
+        "name": "linear:layers.*.shared_down",
+        "ms": 346.969628,
+        "rows": 384,
+        "symbols": 1
+      },
+      {
+        "name": "linear:layers.*.attn_output",
+        "ms": 294.82987,
+        "rows": 384,
+        "symbols": 4
+      },
+      {
+        "name": "linear:layers.*.index_q",
+        "ms": 222.280461,
+        "rows": 96,
+        "symbols": 1
+      },
+      {
+        "name": "linear:layers.*.shared_gate",
+        "ms": 195.427381,
+        "rows": 1536,
+        "symbols": 4
+      },
+      {
+        "name": "linear:layers.*.shared_up",
+        "ms": 188.215181,
+        "rows": 1536,
+        "symbols": 4
+      },
+      {
+        "name": "prefill_boundary",
+        "ms": 74.890614,
+        "rows": 1229,
+        "symbols": 6
+      },
+      {
+        "name": "linear:layers.*.ssm_alpha",
+        "ms": 59.693298,
+        "rows": 288,
+        "symbols": 1
+      },
+      {
+        "name": "linear:layers.*.ssm_beta",
+        "ms": 56.400198,
+        "rows": 288,
+        "symbols": 1
+      },
+      {
+        "name": "linear:layers.*.index_k",
+        "ms": 47.916867,
+        "rows": 96,
+        "symbols": 1
+      },
+      {
+        "name": "linear:layers.*.attn_k",
+        "ms": 46.958871,
+        "rows": 384,
+        "symbols": 4
+      },
+      {
+        "name": "linear:layers.*.attn_v",
+        "ms": 46.581791,
+        "rows": 384,
+        "symbols": 4
+      },
+      {
+        "name": "linear:layers.*.ple_key",
+        "ms": 46.191439,
+        "rows": 32,
+        "symbols": 4
+      },
+      {
+        "name": "linear:layers.*.hc_attn_inject",
+        "ms": 29.280282,
+        "rows": 384,
+        "symbols": 1
+      },
+      {
+        "name": "linear:layers.*.hc_ffn_inject",
+        "ms": 28.62218,
+        "rows": 384,
+        "symbols": 1
+      },
+      {
+        "name": "ple:layers.*.ple_key",
+        "ms": 13.567903,
+        "rows": 64,
+        "symbols": 7
+      },
+      {
+        "name": "linear:layers.*.ple_value",
+        "ms": 9.811366,
+        "rows": 32,
+        "symbols": 4
+      },
+      {
+        "name": "linear:layers.*.shared_expert_gate",
+        "ms": 3.746262,
+        "rows": 384,
+        "symbols": 1
+      },
+      {
+        "name": "linear:root.lm_head",
+        "ms": 3.055333,
+        "rows": 1,
+        "symbols": 1
+      },
+      {
+        "name": "linear:root.head_hc_down",
+        "ms": 0.042119,
+        "rows": 1,
+        "symbols": 1
+      },
+      {
+        "name": "linear:root.head_hc_up",
+        "ms": 0.025728,
+        "rows": 1,
+        "symbols": 1
+      },
+      {
+        "name": "gr_read:root.head_hc_down",
+        "ms": 0.010741,
+        "rows": 4,
+        "symbols": 4
+      }
+    ],
+    "logits_sha256": "0b361e7db968b63ae88a78a87f0f7139ef62a61e351d7ca062640e75abfb3087",
+    "lifecycle": true,
+    "scope": "profiled attribution, not an unprofiled rate; only RED test/worklog dirty before capture, executable sources unchanged"
+  },
+  "promotion_blocker": "Need invocation-verified full logits/state/KV and complete12-case same-residency A/B before model/profile default selection.",
+  "fallback": "selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out plus unchanged BF16 SiLU; earlier strict owners remain registered",
+  "runtime_default_changed": false
+}

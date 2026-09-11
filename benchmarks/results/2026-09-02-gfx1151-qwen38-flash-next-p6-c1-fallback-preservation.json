@@ -1,0 +1,38 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_p6_c1_fallback_preservation",
+  "status": "closed_exact_fallbacks_preserved",
+  "performance_claim": false,
+  "scope": "Audit exact Q4 dual+SiLU and Q5_1 weighted-down c1 fallback registration and bit contracts",
+  "amdahl": {
+    "W_C_O_s": "not changed; invariant audit credits no performance saving",
+    "overlap_exclusions": "no whole-model or owner timings are combined",
+    "arithmetic_class": "T0 exact fallback preservation",
+    "strict_fallbacks": {
+      "q4": "selected_dual_silu_logical128_t64_gemv_bf16_bf16_out and exact grouped row8/output4 owner",
+      "q5_1": "selected_weighted_sum_logical256_t64_bf16_bf16_out with selected projection plus ordered weighted-sum chain on misses"
+    }
+  },
+  "runtime_dispatch": {
+    "source": "hipengine/runtime/qwen4_exp_runner.py",
+    "q5_weighted_resolution": "rows==1 resolves selected_weighted_sum_logical256_t64_bf16_bf16_out when registered; otherwise executes selected projection then weighted_sum_out_bf16_f32w",
+    "q4_profile_fallback": "production DP4A selection retains selected_dual_silu_logical128_t64_gemv_bf16_bf16_out as strict fallback"
+  },
+  "focused_validation": [
+    {
+      "command": "uv run pytest -q tests/test_qwen4_exp_profiles.py tests/test_qwen4_exp_q5_1_selected.py",
+      "result": "6 passed"
+    },
+    {
+      "command": "uv run pytest -q tests/test_gguf_q4_k_selected_wmma_prefill.py::test_gguf_q4_k_selected_wmma_registry_and_build_plan tests/test_gguf_q4_k_selected_wmma_prefill.py::test_selected_dual_silu_matches_unfused_bf16_boundaries tests/test_gguf_q4_k_selected_wmma_prefill.py::test_grouped_rowbatch8_matches_strict_selected_dual_bits",
+      "result": "3 passed"
+    }
+  ],
+  "evidence": {
+    "q4_profile_test": "asserts selected DP4A owner names selected_dual_silu_logical128_t64_gemv_bf16_bf16_out as strict fallback",
+    "q4_bit_test": "fused dual+SiLU equals the unfused BF16 projection and SiLU/product boundaries",
+    "q5_registry_and_bit_test": "weighted-down variant is registered and matches the declared ordered reference"
+  },
+  "decision": "Close fallback preservation. Both exact c1 fallbacks remain registered and focused bit-contract tests pass. Future replacements require same-role whole-model evidence and must retain these owners until independently superseded."
+}

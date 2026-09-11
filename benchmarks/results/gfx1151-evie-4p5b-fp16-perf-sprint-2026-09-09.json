@@ -1,0 +1,54 @@
+{
+  "schema": "evie-gpu-bench/1",
+  "date": "2026-09-09",
+  "model": "tencent/EVIE-4.5B",
+  "task": "multimodal multi-vector retrieval encode (document pages + text queries) + MaxSim",
+  "hardware": "AMD Radeon 8060S (gfx1151, Strix Halo iGPU), Ryzen AI MAX+ PRO 395 host, 120 GB shared LPDDR5X",
+  "host": "zbook",
+  "workload": {
+    "pages": 8,
+    "page_size": "448x336",
+    "queries": 8,
+    "seed": 20260909,
+    "protocol": "same synthetic workload as scripts/evie_gpu_bench.py (torch baseline)"
+  },
+  "command": "python3 scripts/evie_hip_bench.py --precision fp16 --pages 8 --queries 8",
+  "change": "perf sprint: fp16 production path (batched attention, fp16 GEMMs on matrix cores, k2 GDN recurrence, query-path fixed costs)",
+  "baseline": {
+    "first_corrected_fp32_total_s": 15.62,
+    "torch_fp32_total_s": 4.148,
+    "torch_bf16_total_s": 1.356,
+    "note": "torch baselines from scripts/evie_gpu_bench.py, best of 3, same host/workload"
+  },
+  "measurements": {
+    "doc_ms_8pages": [1917.7, 1928.0, 1934.2],
+    "query_ms_8queries": [541.3, 543.7, 552.3],
+    "maxsim_ms": [0.4, 0.5, 0.5],
+    "best_total_ms": 2459.5
+  },
+  "optimization_path": [
+    {"step": 1, "change": "corrected first fp32 path (bench grid-units fix + buffer-leak fix)", "total_s": 15.62},
+    {"step": 2, "change": "batched attention GEMMs + parallel softmax kernel", "total_s": 11.68},
+    {"step": 3, "change": "fp16 GEMM production path (f16 out + cast back)", "total_s": 4.52},
+    {"step": 4, "change": "GDN k2 recurrence (exact)", "total_s": 4.08},
+    {"step": 5, "change": "GDN projections fp16", "total_s": 3.47},
+    {"step": 6, "change": "f16-out narrowed (later retracted as stale-edit artifact)", "total_s": 3.09},
+    {"step": 7, "change": "f16 vision attention (per-head aligned planes)", "total_s": 2.99},
+    {"step": 8, "change": "GDN full f16-out (wall retracted, verified clean)", "total_s": 2.69},
+    {"step": 9, "change": "text attention f16 (GQA repeat gather)", "total_s": 2.66},
+    {"step": 10, "change": "query-path fixed costs (persistent state-zero, pos-table cache)", "total_s": 2.46}
+  ],
+  "correctness": {
+    "fp16_production": {
+      "query_embedding_cos_vs_oracle": 0.9999986,
+      "doc_embedding_cos_vs_oracle": 0.9999498,
+      "visual_features_cos_vs_oracle": 0.9999932,
+      "maxsim_vs_oracle": "5.9108 vs 5.9114 (-0.01%)",
+      "deterministic": true
+    },
+    "fp32_strict": {
+      "pytest": "tests/test_evie_gpu_runtime.py 3/3",
+      "parity": "query max 1.9e-06, doc max 3.0e-05, maxsim 8e-06 vs torch fp32 oracle fixture"
+    }
+  }
+}

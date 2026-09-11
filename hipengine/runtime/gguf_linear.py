@@ -8,7 +8,7 @@ import os
 from contextvars import ContextVar
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Iterator, Mapping
+from typing import Callable, Iterator, Mapping
 
 from hipengine.core.dtype import DType
 from hipengine.core.hip import get_hip_runtime
@@ -76,7 +76,10 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_mmq_prefill import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_mmq_prefill import (
     Q8MMQPrefillPolicy,
     gguf_q8_0_mmq128_quantize_bf16_d4x3,
+    gguf_q8_0_mmq128_quantize_f32_d4x2,
+    gguf_q8_0_mmq128_quantize_f32_d4x3,
     gguf_q8_0_mmq128_sparse_exact_correct_bf16,
+    gguf_q8_0_mmq128_sparse_exact_correct_f32,
     q8_mmq_d4x3_nbytes,
     register_gguf_q8_0_mmq_prefill_kernels,
 )
@@ -138,6 +141,9 @@ _WMMA_PREFILL_ENV = "HIPENGINE_GGUF_WMMA_PREFILL"
 # ``None`` until set, so the env var still controls the default for plain
 # bench/diagnostic invocations.
 _wmma_prefill_session_enabled: bool | None = None
+_wmma_prefill_weight_filter: ContextVar[
+    Callable[[GGUFDeviceWeight], bool] | None
+] = ContextVar("gguf_wmma_prefill_weight_filter", default=None)
 
 # Opt-in env var for the GGUF pack8 GEMV decode family (P9.B). See
 # docs/GGUF.md "P9: closing the qwen35moe gap to PARO" for the wider
@@ -508,11 +514,29 @@ _ROWTILE_QUANT_BLOCKS: Mapping[str, int] = {
 # the scalar fallback. Keeping the policy context-local avoids backend/quant
 # branches in model code and remains safe for concurrent request owners.
 _RAW_K_PREFILL_ROWBATCHES = frozenset({0, 4, 8, 16, 32})
-_RAW_K_PREFILL_ROWBATCH_QUANTS = frozenset({"gguf_q5_k", "gguf_q6_k"})
-_RAW_K_PREFILL_ROWBATCH_VARIANTS = frozenset(
-    {"prefill_bf16_bf16_out", "prefill_bf16_f32_out"}
+_RAW_K_PREFILL_ROWBATCH_QUANTS = frozenset(
+    {"gguf_q8_0", "gguf_q5_k", "gguf_q6_k"}
 )
-_RAW_K_PREFILL_VARIANTS = frozenset({"rowbatch", "coltile"})
+_RAW_K_PREFILL_ROWBATCH_VARIANTS = frozenset(
+    {
+        "gemv_f32_f32_out",
+        "prefill_f32_f32_out",
+        "prefill_bf16_bf16_out",
+        "prefill_bf16_f32_out",
+    }
+)
+_RAW_K_PREFILL_VARIANTS = frozenset(
+    {
+        "rowbatch",
+        "coltile",
+        "coltile8",
+        "coltile8_wave_scale",
+        "coltile8x8",
+        "coltile16",
+        "coltile16x4",
+        "coltile32",
+    }
+)
 _raw_k_prefill_rowbatch: ContextVar[int] = ContextVar(
     "raw_k_prefill_rowbatch",
     default=0,
@@ -575,6 +599,7 @@ class _Q8MMQPrefillSession:
     risk_indices_nbytes: int
     library: ctypes.CDLL | None
     policy: Q8MMQPrefillPolicy
+    prepacked_weights: Mapping[tuple[int, int, int], tuple[int, int]] | None = None
 
 
 _q8_mmq_prefill_session: ContextVar[_Q8MMQPrefillSession | None] = ContextVar(
@@ -1324,6 +1349,7 @@ def q8_mmq_prefill_session(
     risk_indices_nbytes: int = 0,
     policy: Q8MMQPrefillPolicy | None,
     library: ctypes.CDLL | None = None,
+    prepacked_weights: Mapping[tuple[int, int, int], tuple[int, int]] | None = None,
 ) -> Iterator[None]:
     """Expose a bounded D4 workspace only while a plugin-selected prefill runs."""
 
@@ -1345,6 +1371,7 @@ def q8_mmq_prefill_session(
             risk_indices_nbytes=int(risk_indices_nbytes),
             library=library,
             policy=policy,
+            prepacked_weights=dict(prepacked_weights) if prepacked_weights else None,
         )
     token = _q8_mmq_prefill_session.set(selected)
     try:
@@ -1358,16 +1385,29 @@ def resolve_q8_mmq_prefill_policy(
     *,
     backend: str = "hip_gfx1100",
 ) -> Q8MMQPrefillPolicy | None:
-    """Resolve the optional raw-Q8 MMQ policy on the model quant axis."""
+    """Resolve the optional raw-Q8 MMQ policy on the model quant axis.
+
+    #28 R12 candidate gate: HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES=2 selects the
+    two-plane d4x2 MMQ (raw-vec4, +1.4x on the dense legs, quantization-level
+    drift pending envelope qualification); the default stays the retained
+    three-plane d4x3 exact chain.
+    """
 
     register_gguf_q8_0_mmq_prefill_kernels()
-    return resolve(
+    policy = resolve(
         backend=backend,
         layer="linear_prefill_policy",
         quant=str(quant),
         variant="raw_q8_mmq128",
         missing="none",
     )
+    planes_env = os.environ.get("HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES", "")
+    if policy is not None and planes_env in {"2", "3"}:
+        planes = int(planes_env)
+        if planes != policy.planes:
+            from dataclasses import replace
+            policy = replace(policy, planes=planes)
+    return policy
 
 
 _DISPATCH_TABLE: Mapping[tuple[str, str, str], GGUFLinearDispatch] = {
@@ -1395,12 +1435,20 @@ _DISPATCH_TABLE: Mapping[tuple[str, str, str], GGUFLinearDispatch] = {
         KernelKey("hip_gfx1100", "linear", "<from-weight>", "gemv_bf16_f32_out"),
         "raw",
     ),
+    (LAYOUT_RAW_GGUF, GGUF_ACTIVATION_F32, GGUF_OUTPUT_F32): GGUFLinearDispatch(
+        KernelKey("hip_gfx1100", "linear", "<from-weight>", "gemv_f32_f32_out"),
+        "raw",
+    ),
     (LAYOUT_DENSE_BF16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16): GGUFLinearDispatch(
         KernelKey("hip_gfx1100", "dense_gemv", "bf16", "out"),
         "dense_bf16",
     ),
     (LAYOUT_DENSE_BF16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_F32): GGUFLinearDispatch(
         KernelKey("hip_gfx1100", "dense_gemv", "bf16", "f32_out"),
+        "dense_bf16",
+    ),
+    (LAYOUT_DENSE_BF16, GGUF_ACTIVATION_F32, GGUF_OUTPUT_F32): GGUFLinearDispatch(
+        KernelKey("hip_gfx1100", "dense_gemv", "bf16", "f32_hidden_f32_out"),
         "dense_bf16",
     ),
     (LAYOUT_DENSE_F32, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16): GGUFLinearDispatch(
@@ -1807,6 +1855,19 @@ def wmma_prefill_session(enabled: bool | None) -> Iterator[None]:
         set_wmma_prefill_enabled(previous)
 
 
+@contextlib.contextmanager
+def wmma_prefill_weight_filter_session(
+    selector: Callable[[GGUFDeviceWeight], bool] | None,
+) -> Iterator[None]:
+    """Restrict an enabled WMMA session through a plugin-owned weight filter."""
+
+    token = _wmma_prefill_weight_filter.set(selector)
+    try:
+        yield
+    finally:
+        _wmma_prefill_weight_filter.reset(token)
+
+
 def _env_wmma_prefill_enabled() -> bool:
     raw = os.environ.get(_WMMA_PREFILL_ENV, "")
     if not raw:
@@ -1907,7 +1968,9 @@ def raw_k_prefill_variant_session(variant: str) -> Iterator[None]:
 
     selected = str(variant).strip().lower()
     if selected not in _RAW_K_PREFILL_VARIANTS:
-        raise ValueError("raw-K prefill variant must be 'rowbatch' or 'coltile'")
+        raise ValueError(
+            "raw-K prefill variant must be rowbatch or a supported coltile geometry"
+        )
     token = _raw_k_prefill_variant.set(selected)
     try:
         yield
@@ -2599,7 +2662,7 @@ def _raw_k_prefill_rowbatch_dispatch(
     row_batch: int,
     variant: str,
 ) -> GGUFLinearDispatch:
-    """Select exact fixed-grid-Y Q5/Q6 row/output reuse above small-B."""
+    """Select exact fixed-grid-Y Q8/Q5/Q6 row/output reuse above small-B."""
 
     selected = int(row_batch)
     geometry = str(variant)
@@ -2609,28 +2672,63 @@ def _raw_k_prefill_rowbatch_dispatch(
         or rows <= _ROWTILE_MAX_ROWS
     ):
         return dispatch
-    if (
-        not backend_package_capability(
+    rowbatch_supported = bool(
+        backend_package_capability(
+            dispatch.key.backend,
+            "GGUF_RAW_Q8_F32_PREFILL_ROWBATCH_SUPPORTED",
+            False,
+        )
+        if dispatch.key.quant == "gguf_q8_0"
+        else backend_package_capability(
             dispatch.key.backend,
             "GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED",
             False,
         )
+    )
+    if (
+        not rowbatch_supported
         or dispatch.abi != "raw"
         or dispatch.key.quant not in _RAW_K_PREFILL_ROWBATCH_QUANTS
         or dispatch.key.variant not in _RAW_K_PREFILL_ROWBATCH_VARIANTS
-        or in_features % 256 != 0
+        or (
+            in_features
+            % (32 if dispatch.key.quant == "gguf_q8_0" else 256)
+            != 0
+        )
     ):
         return dispatch
-    output_variant = dispatch.key.variant[len("prefill_") :]
+    output_variant = (
+        dispatch.key.variant[len("prefill_") :]
+        if dispatch.key.variant.startswith("prefill_")
+        else dispatch.key.variant[len("gemv_") :]
+    )
     selected_variant = f"rowbatch{selected}_{output_variant}"
+    coltile_geometry = {
+        "coltile": (4, 8),
+        "coltile8": (8, 4),
+        "coltile8x8": (8, 8),
+        "coltile16": (16, 2),
+        "coltile16x4": (16, 4),
+        "coltile32": (32, 1),
+    }.get(geometry)
     if (
-        geometry == "coltile"
+        coltile_geometry is not None
         and selected == 32
-        and out_features % 4 == 0
-        and backend_package_capability(
-            dispatch.key.backend,
-            "GGUF_RAW_K_PREFILL_COLTILE_SUPPORTED",
-            False,
+        and out_features % coltile_geometry[0] == 0
+        and (
+            backend_package_capability(
+                dispatch.key.backend,
+                "GGUF_RAW_K_PREFILL_COLTILE_SUPPORTED",
+                False,
+            )
+            or (
+                dispatch.key.quant == "gguf_q8_0"
+                and backend_package_capability(
+                    dispatch.key.backend,
+                    "GGUF_RAW_Q8_F32_PREFILL_COLTILE_SUPPORTED",
+                    False,
+                )
+            )
         )
     ):
         shape_key = (
@@ -2644,11 +2742,15 @@ def _raw_k_prefill_rowbatch_dispatch(
             "GGUF_RAW_K_PREFILL_COLTILE2_SHAPES",
             frozenset(),
         )
-        geometry = (
-            "coltile2_rowbatch16"
-            if shape_key in coltile2_shapes
-            else "coltile4_rowbatch8"
-        )
+        if geometry == "coltile":
+            geometry = (
+                "coltile2_rowbatch16"
+                if shape_key in coltile2_shapes
+                else "coltile4_rowbatch8"
+            )
+        else:
+            coltile_width, coltile_rows = coltile_geometry
+            geometry = f"coltile{coltile_width}_rowbatch{coltile_rows}"
         selected_variant = f"{geometry}_{output_variant}"
         role_variants = backend_package_capability(
             dispatch.key.backend,
@@ -2682,6 +2784,60 @@ def _raw_k_prefill_rowbatch_dispatch(
         ),
         "raw",
     )
+
+
+def _q8_iu8_wmma_dispatch(
+    dispatch: GGUFLinearDispatch,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> GGUFLinearDispatch:
+    """Default-off iu8-WMMA route for Q8_0 F32/F32 prefill linears (T1).
+
+    Replaces the retained F32 coltile family for prefill-sized rows when
+    the geometry fits the dense iu8 kernel (in_features % 32 == 0). The
+    three-plane fp32 staging drift is gated by the production numerical
+    envelope; the exact coltile parents stay the default and the
+    sub-256-row path.
+    """
+
+    if (
+        dispatch.abi != "raw"
+        or dispatch.key.quant != "gguf_q8_0"
+        or dispatch.key.variant
+        not in {
+            "prefill_f32_f32_out",
+            "coltile8_rowbatch4_f32_f32_out",
+            "coltile8_rowbatch4_wave_scale_f32_f32_out",
+        }
+        or rows <= 256
+        or in_features <= 0
+        or in_features % 32 != 0
+        or out_features <= 0
+        or os.environ.get("HIPENGINE_QWEN4_EXP_Q8_IU8_WMM", "0")
+        in {"", "0", "false", "False"}
+    ):
+        return dispatch
+    key = KernelKey(
+        dispatch.key.backend,
+        dispatch.key.layer,
+        dispatch.key.quant,
+        "iu8_wmma_prefill_f32_f32_out",
+    )
+    if not is_registered(key):
+        # Populate the raw families before deciding so the very first
+        # launch of a process cannot silently fall back past this route.
+        _ensure_linear_kernel_registered(key)
+    return GGUFLinearDispatch(key, "raw") if is_registered(key) else dispatch
+
+
+def _raw_k_wave_scale_dispatch(dispatch: GGUFLinearDispatch, *, enabled: bool) -> GGUFLinearDispatch:
+    if not enabled or dispatch.abi != "raw" or dispatch.key.variant != "coltile8_rowbatch4_f32_f32_out":
+        return dispatch
+    key = KernelKey(dispatch.key.backend, dispatch.key.layer, dispatch.key.quant,
+                    "coltile8_rowbatch4_wave_scale_f32_f32_out")
+    return GGUFLinearDispatch(key, "raw") if is_registered(key) else dispatch
 
 
 def resolve_gguf_linear_dispatch(
@@ -3145,6 +3301,9 @@ def launch_gguf_linear(
         return
     f_gemv = _resolve_use_gemv_decode(use_gemv_decode)
     use_wmma = _resolve_use_wmma_prefill(use_wmma_prefill)
+    wmma_filter = _wmma_prefill_weight_filter.get()
+    if use_wmma and wmma_filter is not None:
+        use_wmma = bool(wmma_filter(weight))
     f_rowtile = (not use_wmma) and _resolve_use_q4k_rowtile(None)
     if (
         _native_batch_decode_session_enabled
@@ -3200,6 +3359,8 @@ def launch_gguf_linear(
         raw_k_variant,
         bool(use_q4_pack8_wmma),
         os.environ.get("HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK", "1") != "0",
+        os.environ.get("HIPENGINE_QWEN4_EXP_Q8_IU8_WMM", "0") not in
+        {"", "0", "false", "False"},
         registered_variant,
         bool(_native_batch_decode_session_enabled),
         None if mmq_session is None else id(mmq_session),
@@ -3357,7 +3518,15 @@ def launch_gguf_linear(
             in_features=in_features,
             out_features=out_features,
             row_batch=raw_k_rowbatch,
-            variant=raw_k_variant,
+            variant="coltile8" if raw_k_variant == "coltile8_wave_scale" else raw_k_variant,
+        )
+        dispatch = _raw_k_wave_scale_dispatch(
+            dispatch, enabled=raw_k_variant == "coltile8_wave_scale")
+        dispatch = _q8_iu8_wmma_dispatch(
+            dispatch,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
         )
         dispatch = _q4_pack8_wmma_dispatch(
             dispatch,
@@ -6914,6 +7083,223 @@ def _launch_raw_mmq_d4x3(fn, weight, x_ptr, out_ptr, rows, in_features, out_feat
     )
 
 
+def _q8_mmq_token64_key(key: KernelKey, *, rows: int, hidden: int, outputs: int) -> KernelKey:
+    if (rows<512 or (hidden,outputs)!=(2560,12288)
+            or key.variant!="mmq128_raw_vec4_q8_1_d4x3_guarded_f32_f32_out"
+            or os.environ.get("HIPENGINE_QWEN4_EXP_MMQ_TOKEN64","0")!="1"):
+        return key
+    candidate=KernelKey(key.backend,key.layer,key.quant,
+                       "mmq128_token64_q8_1_d4x3_guarded_f32_f32_out")
+    return candidate if is_registered(candidate) else key
+
+
+def _q8_mmq_raw_vector_key(key: KernelKey, *, rows: int) -> KernelKey:
+    if (rows < 64 or key.variant != "mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out"
+            or os.environ.get("HIPENGINE_QWEN4_EXP_Q8_MMQ_RAW_VECTOR","0") != "1"):
+        return key
+    candidate = KernelKey(key.backend,key.layer,key.quant,
+                          "mmq128_raw_vec4_q8_1_d4x3_guarded_f32_f32_out")
+    return candidate if is_registered(candidate) else key
+
+
+def _q8_mmq_vec4_key(key: KernelKey, *, rows: int) -> KernelKey:
+    if (rows < 64 or key.variant != "mmq128_prepacked_q8_1_d4x3_guarded_f32_f32_out"
+            or os.environ.get("HIPENGINE_QWEN4_EXP_Q8_MMQ_VEC4", "0") != "1"):
+        return key
+    candidate = KernelKey(key.backend, key.layer, key.quant,
+                          "mmq128_prepacked_vec4_q8_1_d4x3_guarded_f32_f32_out")
+    return candidate if is_registered(candidate) else key
+
+
+def _launch_raw_mmq_d4x3_f32(fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs) -> None:
+    """Guarded D4x3 MMQ over F32 activations with exact F32 repair."""
+
+    session = _q8_mmq_prefill_session.get()
+    if session is None:
+        raise RuntimeError("Q8 MMQ launch escaped its prefill workspace session")
+
+    max_risks = int(rows) * int(out_features)
+    required_risk_bytes = max_risks * ctypes.sizeof(ctypes.c_int32)
+    if required_risk_bytes > session.risk_indices_nbytes:
+        raise ValueError(
+            "Q8 MMQ risk-index queue is too small: "
+            f"required={required_risk_bytes}, available={session.risk_indices_nbytes}"
+        )
+
+    regions = {
+        "workspace": (session.workspace_ptr, session.workspace_nbytes),
+        "risk counter": (session.risk_count_ptr, session.risk_count_nbytes),
+        "risk-index queue": (session.risk_indices_ptr, session.risk_indices_nbytes),
+        "F32 activation input": (int(x_ptr), int(rows) * int(in_features) * 4),
+        "F32 output": (int(out_ptr), int(rows) * int(out_features) * 4),
+    }
+    names = tuple(regions)
+    for index, left_name in enumerate(names):
+        left_ptr, left_nbytes = regions[left_name]
+        for right_name in names[index + 1:]:
+            if {left_name, right_name} == {"F32 activation input", "F32 output"}:
+                continue
+            right_ptr, right_nbytes = regions[right_name]
+            if max(left_ptr, right_ptr) < min(
+                left_ptr + left_nbytes,
+                right_ptr + right_nbytes,
+            ):
+                raise ValueError(f"Q8 MMQ {left_name} overlaps {right_name}")
+
+    runtime = kwargs.get("runtime") or get_hip_runtime()
+    stream = int(kwargs.get("stream", 0))
+    runtime.memset_async(
+        session.risk_count_ptr,
+        0,
+        ctypes.sizeof(ctypes.c_int32),
+        stream,
+    )
+    mmq_kwargs = {
+        "stream": stream,
+        "runtime": runtime,
+        "library": session.library,
+    }
+    qweight_ptr = weight.allocation("raw").tensor.ptr
+    matmul_weight_ptr = qweight_ptr
+    packed = (session.prepacked_weights or {}).get((int(qweight_ptr),int(in_features),int(out_features)))
+    if packed is not None:
+        from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_mmq_prefill import q8_mmq_prepacked_weight_nbytes
+        required = q8_mmq_prepacked_weight_nbytes(in_features,out_features)
+        if packed[0] <= 0 or packed[1] < required:
+            raise ValueError("Q8 MMQ prepacked weight buffer is invalid or undersized")
+        for name,(ptr,size) in regions.items():
+            if max(packed[0],ptr) < min(packed[0]+packed[1],ptr+size):
+                raise ValueError(f"Q8 MMQ prepacked weight overlaps {name}")
+        key = _q8_mmq_vec4_key(KernelKey(
+            weight.backend, "linear", weight.spec.quant_key,
+            "mmq128_prepacked_q8_1_d4x3_guarded_f32_f32_out"), rows=rows)
+        fn = resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant)
+        matmul_weight_ptr = packed[0]
+    else:
+        key = KernelKey(weight.backend,"linear",weight.spec.quant_key,
+                        "mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out")
+        candidate = _q8_mmq_raw_vector_key(key,rows=rows)
+        candidate = _q8_mmq_token64_key(candidate,rows=rows,hidden=in_features,outputs=out_features)
+        if candidate != key:
+            fn = resolve(backend=candidate.backend,layer=candidate.layer,
+                         quant=candidate.quant,variant=candidate.variant)
+    gguf_q8_0_mmq128_quantize_f32_d4x3(
+        x_ptr,
+        session.workspace_ptr,
+        rows,
+        in_features,
+        **mmq_kwargs,
+    )
+    fn(
+        session.workspace_ptr,
+        matmul_weight_ptr,
+        out_ptr,
+        session.risk_count_ptr,
+        session.risk_indices_ptr,
+        max_risks,
+        session.policy.risk_threshold,
+        rows,
+        in_features,
+        out_features,
+        **mmq_kwargs,
+    )
+    gguf_q8_0_mmq128_sparse_exact_correct_f32(
+        x_ptr,
+        qweight_ptr,
+        out_ptr,
+        session.risk_count_ptr,
+        session.risk_indices_ptr,
+        max_risks,
+        rows,
+        in_features,
+        out_features,
+        **mmq_kwargs,
+    )
+
+
+def _launch_raw_mmq_d4x2_f32(fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs) -> None:
+    """Guarded two-plane D4x2 MMQ over F32 activations (PF-1d candidate)."""
+
+    session = _q8_mmq_prefill_session.get()
+    if session is None:
+        raise RuntimeError("Q8 MMQ launch escaped its prefill workspace session")
+
+    max_risks = int(rows) * int(out_features)
+    required_risk_bytes = max_risks * ctypes.sizeof(ctypes.c_int32)
+    if required_risk_bytes > session.risk_indices_nbytes:
+        raise ValueError(
+            "Q8 MMQ risk-index queue is too small: "
+            f"required={required_risk_bytes}, available={session.risk_indices_nbytes}"
+        )
+
+    regions = {
+        "workspace": (session.workspace_ptr, session.workspace_nbytes),
+        "risk counter": (session.risk_count_ptr, session.risk_count_nbytes),
+        "risk-index queue": (session.risk_indices_ptr, session.risk_indices_nbytes),
+        "F32 activation input": (int(x_ptr), int(rows) * int(in_features) * 4),
+        "F32 output": (int(out_ptr), int(rows) * int(out_features) * 4),
+    }
+    names = tuple(regions)
+    for index, left_name in enumerate(names):
+        left_ptr, left_nbytes = regions[left_name]
+        for right_name in names[index + 1:]:
+            if {left_name, right_name} == {"F32 activation input", "F32 output"}:
+                continue
+            right_ptr, right_nbytes = regions[right_name]
+            if max(left_ptr, right_ptr) < min(
+                left_ptr + left_nbytes,
+                right_ptr + right_nbytes,
+            ):
+                raise ValueError(f"Q8 MMQ {left_name} overlaps {right_name}")
+
+    runtime = kwargs.get("runtime") or get_hip_runtime()
+    stream = int(kwargs.get("stream", 0))
+    runtime.memset_async(
+        session.risk_count_ptr,
+        0,
+        ctypes.sizeof(ctypes.c_int32),
+        stream,
+    )
+    mmq_kwargs = {
+        "stream": stream,
+        "runtime": runtime,
+        "library": session.library,
+    }
+    qweight_ptr = weight.allocation("raw").tensor.ptr
+    gguf_q8_0_mmq128_quantize_f32_d4x2(
+        x_ptr,
+        session.workspace_ptr,
+        rows,
+        in_features,
+        **mmq_kwargs,
+    )
+    fn(
+        session.workspace_ptr,
+        qweight_ptr,
+        out_ptr,
+        session.risk_count_ptr,
+        session.risk_indices_ptr,
+        max_risks,
+        session.policy.risk_threshold,
+        rows,
+        in_features,
+        out_features,
+        **mmq_kwargs,
+    )
+    gguf_q8_0_mmq128_sparse_exact_correct_f32(
+        x_ptr,
+        qweight_ptr,
+        out_ptr,
+        session.risk_count_ptr,
+        session.risk_indices_ptr,
+        max_risks,
+        rows,
+        in_features,
+        out_features,
+        **mmq_kwargs,
+    )
+
+
 def _pack8_decode_dispatch(
     dispatch: GGUFLinearDispatch,
     *,
@@ -6925,17 +7311,17 @@ def _pack8_decode_dispatch(
         and rows == 1
         and out_features % 8 == 0
         and dispatch.key.quant in {"gguf_q8_0", "gguf_q5_k", "gguf_q6_k"}
-        and dispatch.key.variant in {"gemv_bf16_bf16_out", "gemv_bf16_f32_out"}
+        and dispatch.key.variant
+        in {"gemv_bf16_bf16_out", "gemv_bf16_f32_out", "gemv_f32_f32_out"}
     ):
-        return GGUFLinearDispatch(
-            KernelKey(
-                dispatch.key.backend,
-                dispatch.key.layer,
-                dispatch.key.quant,
-                f"pack8_{dispatch.key.variant}",
-            ),
-            dispatch.abi,
+        candidate = KernelKey(
+            dispatch.key.backend,
+            dispatch.key.layer,
+            dispatch.key.quant,
+            f"pack8_{dispatch.key.variant}",
         )
+        if is_registered(candidate):
+            return GGUFLinearDispatch(candidate, dispatch.abi)
     return dispatch
 
 
@@ -7058,7 +7444,6 @@ def _q8_mmq_prefill_dispatch(
     if not (
         dispatch.abi == "raw"
         and dispatch.key.quant == "gguf_q8_0"
-        and dispatch.key.variant == "prefill_bf16_bf16_out"
         and in_features % 256 == 0
         and out_features % 16 == 0
     ):
@@ -7069,15 +7454,39 @@ def _q8_mmq_prefill_dispatch(
             "Q8 MMQ D4 workspace is too small: "
             f"required={required}, available={session.workspace_nbytes}"
         )
-    return GGUFLinearDispatch(
-        KernelKey(
-            dispatch.key.backend,
-            dispatch.key.layer,
-            dispatch.key.quant,
-            "mmq128_prefill_q8_1_d4x3_guarded_bf16_bf16_out",
-        ),
-        "raw_mmq_d4x3",
-    )
+    if (
+        dispatch.key.variant == "prefill_bf16_bf16_out"
+    ):
+        return GGUFLinearDispatch(
+            KernelKey(
+                dispatch.key.backend,
+                dispatch.key.layer,
+                dispatch.key.quant,
+                "mmq128_prefill_q8_1_d4x3_guarded_bf16_bf16_out",
+            ),
+            "raw_mmq_d4x3",
+        )
+    if dispatch.key.variant in ("gemv_f32_f32_out", "prefill_f32_f32_out"):
+        if getattr(session.policy, "planes", 3) == 2:
+            return GGUFLinearDispatch(
+                KernelKey(
+                    dispatch.key.backend,
+                    dispatch.key.layer,
+                    dispatch.key.quant,
+                    "mmq128_raw_vec4_q8_1_d4x2_guarded_f32_f32_out",
+                ),
+                "raw_mmq_d4x2_f32",
+            )
+        return GGUFLinearDispatch(
+            KernelKey(
+                dispatch.key.backend,
+                dispatch.key.layer,
+                dispatch.key.quant,
+                "mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out",
+            ),
+            "raw_mmq_d4x3_f32",
+        )
+    return dispatch
 
 
 def _exact_q8_prefill_dispatch(
@@ -7825,6 +8234,8 @@ _LAUNCH_ABI = {
     "raw_mmq_d4x3": _launch_raw_mmq_d4x3,
     "t16_q5_raw_mmq": _launch_t16_q5_raw_mmq,
     "t16_q5_planar_dp4a": _launch_t16_q5_planar_dp4a,
+    "raw_mmq_d4x3_f32": _launch_raw_mmq_d4x3_f32,
+    "raw_mmq_d4x2_f32": _launch_raw_mmq_d4x2_f32,
     "raw_k_f32_ordered": _launch_raw_k_f32_ordered,
     "raw_k_f32_ordered_activation_tile_k_row": (
         _launch_raw_k_f32_ordered_activation_tile_k_row
@@ -7901,4 +8312,5 @@ __all__ = [
     "resolve_q8_mmq_prefill_policy",
     "set_wmma_prefill_enabled",
     "wmma_prefill_session",
+    "wmma_prefill_weight_filter_session",
 ]

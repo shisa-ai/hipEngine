@@ -1,0 +1,120 @@
+{
+  "promotion_basis": "Exact actual-model owner saving with prior full-state/KV gate and72 exact canonical trajectories. Promote under sub-window retention policy,not a statistically established headline throughput gain.",
+  "limits": "Instrumented HIP-event intervals with state restore and host hash downloads outside timing; cache/order differs from normal serving. Full model A/B remains mixed nearzero; retained unchanged. Scratch increases24->36B.",
+  "prior_model_evidence": "benchmarks/results/2026-09-07-framework-qwen4exp-gdn-wave-norm-model.json",
+  "prior_state_evidence": "benchmarks/results/2026-09-07-framework-qwen4exp-gdn-wave-norm-state.json",
+  "failed_instrumentation_attempts": ["/tmp/qwen4exp-gdn-owner.json missing buffer nbytes", "/tmp/qwen4exp-gdn-owner-fixed.json token-result serialization"],
+  "schema": 1,
+  "status": "retained_exact_owner_saving",
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "b1b7038901cd5bf1dbccb4926ecbc660c8f38065",
+    "tracked_clean": true
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "model_identity": {
+    "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+    "fingerprint": {
+      "algorithm": "sha256-directory-manifest-v1",
+      "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+      "size_bytes": 111334654784,
+      "sampled_bytes": 12582912,
+      "file_count": 4,
+      "exists": true,
+      "path_type": "directory"
+    }
+  },
+  "command": [
+    "scripts/qwen4exp_gdn_owner_probe.py",
+    "--model-root",
+    "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--output",
+    "/tmp/qwen4exp-gdn-owner-complete.json"
+  ],
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "chunk_size": 1024,
+  "protocol": "Every serial call: restore starting state outside timing,1 warmup pair+2 measured counterbalanced pairs; compare complete output/state hashes after every pair. Only HIP-event kernel intervals timed.",
+  "memory_after_close": {
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 86097387268,
+    "total_allocated_bytes": 86104727300,
+    "total_freed_bytes": 86104727300,
+    "active_allocations": 0,
+    "peak_allocations": 1718
+  },
+  "cases": [
+    {
+      "id": "code-p512",
+      "calls": 21,
+      "parent_ms": 61.35746514797211,
+      "candidate_ms": 58.97210347652435,
+      "speedup": 1.0404489840250877,
+      "first_token": 248068,
+      "min_call_speedup": 1.0236418679651136
+    },
+    {
+      "id": "code-p1024",
+      "calls": 21,
+      "parent_ms": 121.67054462432861,
+      "candidate_ms": 116.90037322044373,
+      "speedup": 1.0408054420398607,
+      "first_token": 248068,
+      "min_call_speedup": 1.0284664043940874
+    },
+    {
+      "id": "code-p4096",
+      "calls": 84,
+      "parent_ms": 486.6612286567688,
+      "candidate_ms": 467.3839771747589,
+      "speedup": 1.0412449985952383,
+      "first_token": 248068,
+      "min_call_speedup": 1.0241667777246644
+    },
+    {
+      "id": "general_en-p4096",
+      "calls": 84,
+      "parent_ms": 486.92189478874207,
+      "candidate_ms": 467.5206437110901,
+      "speedup": 1.041498169842616,
+      "first_token": 248068,
+      "min_call_speedup": 1.0272355533911481
+    },
+    {
+      "id": "general_ja-p4096",
+      "calls": 84,
+      "parent_ms": 486.820796251297,
+      "candidate_ms": 467.38080191612244,
+      "speedup": 1.0415934806382212,
+      "first_token": 248068,
+      "min_call_speedup": 1.0244166982903058
+    },
+    {
+      "id": "mixed_ja_en-p4096",
+      "calls": 84,
+      "parent_ms": 486.8359794616699,
+      "candidate_ms": 467.330144405365,
+      "speedup": 1.0417388762309017,
+      "first_token": 248068,
+      "min_call_speedup": 1.0157957318535937
+    }
+  ],
+  "calls": 378,
+  "measured_pairs": 756,
+  "raw_path": "/tmp/qwen4exp-gdn-owner-complete.json"
+}

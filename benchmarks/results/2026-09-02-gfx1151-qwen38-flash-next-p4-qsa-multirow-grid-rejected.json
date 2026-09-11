@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_qsa_prefill_candidate",
+  "status": "rejected",
+  "candidate": "chunk_bounded_ordered_multirow_three_pass",
+  "arithmetic_class": "T0",
+  "scope": "code-p4096 named-production prefill on zbook/gfx1151",
+  "clock_policy": "auto",
+  "amdahl": {
+    "complete_wall_seconds": 57.730,
+    "comparator_wall_seconds": 13.910,
+    "owner_seconds": 9.418,
+    "hypothesized_local_speedup": 1.8,
+    "hypothesized_savings_seconds": 4.186,
+    "hypothesized_gap_coverage": 0.096
+  },
+  "mechanism": "one QK CTA per row/head/selected token, serial per-row coefficient recurrence, one output-column CTA per row/head",
+  "strict_fallback": "strict_rows_spans",
+  "red": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 uv run pytest tests/test_qwen4_exp_qsa_sparse_hip.py::test_qwen4_exp_sparse_rows_ordered_is_bit_exact_to_strict -q",
+    "result": "pass",
+    "geometry": "rows=3, Hq=24, Hkv=2, D=256, selected_counts=2049/2050/2051",
+    "contract": "uint32 byte equality"
+  },
+  "screen": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 uv run python scripts/qwen4exp_route_pair.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --fixture benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json --case-id code-p4096 --mode prefill --pairs 1 --warmups 1 --max-sequence-length 4352 --compiler-version-file /tmp/hipengine-qwen4exp-hipcc-version.txt --require-cached-build --override HIPENGINE_QWEN4_EXP_QSA_ORDERED_PREFILL=1",
+    "result": "terminated after more than 168 seconds with GPU use at 99% before the first warmup completed",
+    "partial_artifact": "/tmp/qwen4exp-qsa-ordered-prefill-p4096-screen.json",
+    "samples": 0
+  },
+  "reason": "The score grid creates rows*selected_stride*query_heads CTAs: about 25.2 million per 512-row sparse chunk, repeated across sparse layers. Launch/scheduling work overwhelms the incumbent serial-per-row kernel before a valid whole-model sample can complete.",
+  "disposition": "Implementation removed; no default or experimental route retained. Re-rank to a row-tiled or persistent selected-token decomposition before another implementation.",
+  "overlap_exclusions": ["dense QSA rows", "index score/top-k", "projections", "MoE", "GDN", "copies", "host stages"]
+}

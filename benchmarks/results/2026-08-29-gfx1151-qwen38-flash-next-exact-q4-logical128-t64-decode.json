@@ -1,0 +1,79 @@
+{
+  "schema": 1,
+  "date": "2026-08-29",
+  "status": "accepted_exact_default",
+  "scope": "Qwen4Exp gfx1151 selected Q4_K dual gate/up plus SiLU logical-thread contraction",
+  "host": {
+    "identity": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "cpu": "AMD Ryzen AI Max+ Pro 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "id": "Qwen/Qwen3.8-Flash-Next",
+    "quant": "Unsloth UD-Q4_K_XL",
+    "quant_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5"
+  },
+  "baseline_commit": "aaf93ddf6",
+  "implementation": {
+    "change": "Each 64-thread CTA computes logical lanes tid and tid+64 for gate and up, publishes the same four strict wave32 partials, sums them in the same order, and preserves both BF16 projection boundaries plus SiLU/product publication.",
+    "registry_variant": "selected_dual_silu_logical128_t64_gemv_bf16_bf16_out",
+    "selection": "unconditional Q4_K selected dual+SiLU default",
+    "strict_fallback": "selected_dual_silu_gemv_bf16_bf16_out",
+    "new_tracked_device_bytes": 0
+  },
+  "correctness": {
+    "primitive_command": "HIPENGINE_HIP_ARCH=gfx1151 uv run pytest -q tests/test_gguf_q4_k_selected_wmma_prefill.py::test_selected_dual_silu_matches_unfused_bf16_boundaries -x",
+    "primitive_result": "1 passed",
+    "strict_kernel_bf16_bits_exact": true,
+    "unfused_projection_and_silu_bits_exact": true,
+    "paired_generated_ids_exact": true,
+    "paired_full_logits_sha256_exact": true,
+    "paired_rows_per_mode": 3,
+    "measured_tokens_per_row": 32,
+    "deterministic_repeats": true
+  },
+  "paired_complete_model": {
+    "command": "uv run python /tmp/qwen4exp_decode_q4_exact64_paired.py",
+    "protocol": "one residency; separate MoE graph-cache keys during screening; warm strict+candidate; counterbalanced S/C/C/S/S/C; every row reset + p1 + 8 warm + 32 measured greedy tokens; full-logit SHA at every step",
+    "strict_seconds": [
+      2.6244362230063416,
+      2.665936393997981,
+      2.7148193629982416
+    ],
+    "candidate_seconds": [
+      2.447675914008869,
+      2.4302387359930435,
+      2.4242704170028446
+    ],
+    "strict_median_seconds": 2.665936393997981,
+    "candidate_median_seconds": 2.4302387359930435,
+    "strict_tok_s": 12.003287127196266,
+    "candidate_tok_s": 13.167430642127497,
+    "reduction_percent": 8.841083325753052,
+    "speedup": 1.096985392634122
+  },
+  "kernel_trace": {
+    "command": "HIPENGINE_QWEN4_EXP_Q4_EXACT64=1 rocprofv3 --kernel-trace --output-format csv --output-file /tmp/q4exact64 -- uv run python /tmp/qwen4exp_decode32_profile.py",
+    "note": "The environment flag existed only in the uncommitted screen and is removed by promotion; strict measurements come from the immediately preceding exact-Q5 baseline trace.",
+    "launches_each": 1974,
+    "strict_kernel": "gguf_q4_k_selected_dual_prefill_out_kernel<unsigned short, unsigned short, true>",
+    "candidate_kernel": "gguf_q4_k_selected_dual_silu_logical128_t64_kernel<unsigned short>",
+    "strict_cycle_wall_ms": 1076.766582,
+    "candidate_cycle_wall_ms": 814.90553,
+    "cycle_wall_reduction_percent": 24.31920310097439,
+    "strict_median_us": 517.413,
+    "candidate_median_us": 386.8275
+  },
+  "same_host_reference_after": {
+    "llama_cpp_hip_tg32": 15.847834,
+    "llama_cpp_vulkan_tg32": 18.716255,
+    "hipengine_tg32": 13.167430642127497,
+    "hipengine_fraction_of_hip": 0.8308662648868922,
+    "hipengine_fraction_of_vulkan": 0.7035291324107038,
+    "remaining_gap_to_hip": 1.2035631271371119,
+    "remaining_gap_to_vulkan": 1.421405246678859
+  },
+  "decision": "Promote as exact gfx1151 default. The physical-thread contraction preserves the complete strict arithmetic and materially improves both complete graph decode and Q4 cycle-wall."
+}

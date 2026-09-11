@@ -1,0 +1,678 @@
+#!/usr/bin/env python3
+"""Collect Qwen4Exp wall time, ROCTX ranges, role markers, and runtime census.
+
+This is the durable version of the fresh-profile harness used for the
+2026-08-30 gfx1151 llama.cpp comparison. It deliberately keeps profiler-only
+instrumentation out of dispatch: ROCTX ranges wrap existing runner entry points
+and runtime calls are restored before the generator is closed. Diagnostic
+``--override HIPENGINE_KEY=VALUE`` arguments are applied after the named
+production-profile binder and recorded alongside both bound and effective route
+environments.
+"""
+from __future__ import annotations
+
+import argparse
+import ctypes
+import hashlib
+import json
+import os
+import statistics
+import sys
+import time
+from collections import Counter, defaultdict
+from pathlib import Path
+from typing import Any, Callable
+
+import numpy as np
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from scripts.qwen4exp_canonical_ar_bench import (  # noqa: E402
+    DEFAULT_FIXTURE,
+    _git_metadata,
+    _host_metadata,
+    load_fixture,
+)
+
+ROUTE_ENV_KEYS = (
+    "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL",
+    "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL",
+    "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL",
+    "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS",
+    "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL",
+    "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS",
+    "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS",
+    "HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL",
+    "HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS",
+    "HIPENGINE_QWEN4_EXP_Q4_DP4A64",
+    "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS",
+    "HIPENGINE_QWEN4_EXP_MOE_GRAPH",
+)
+
+
+class Roctx:
+    """Minimal ROCTX range wrapper for rocprofiler-sdk's traced shim."""
+
+    def __init__(self) -> None:
+        self.lib = ctypes.CDLL("librocprofiler-sdk-roctx.so.1")
+        self.lib.roctxRangePushA.argtypes = [ctypes.c_char_p]
+        self.lib.roctxRangePushA.restype = ctypes.c_int
+        self.lib.roctxRangePop.argtypes = []
+        self.lib.roctxRangePop.restype = ctypes.c_int
+
+    def push(self, text: str) -> None:
+        self.lib.roctxRangePushA(text.encode("utf-8"))
+
+    def pop(self) -> None:
+        self.lib.roctxRangePop()
+
+
+class RoleMarkers:
+    """Profiler-only owner ranges for correlation-ID role attribution."""
+
+    def __init__(self, module: Any, marker: Roctx) -> None:
+        self.module = module
+        self.marker = marker
+        self.originals: dict[str, Any] = {}
+
+    @staticmethod
+    def _layer(weight: Any) -> str:
+        return str(getattr(getattr(weight, "spec", None), "slot_path", "unknown"))
+
+    def install(self) -> None:
+        specs: dict[str, Callable[[tuple[Any, ...], dict[str, Any]], str]] = {
+            "launch_gguf_linear": lambda a, _k: "linear:" + self._layer(a[0]),
+            "run_qwen4_exp_gr_read": lambda a, _k: "gr_read:" + self._layer(a[2]),
+            "run_qwen4_exp_moe": lambda a, _k: "moe:" + self._layer(a[1]["expert_gate"]),
+            "run_qwen4_exp_gdn_token_mixer": lambda a, _k: "gdn:" + self._layer(a[1]["attn_qkv"]),
+            "run_qwen4_exp_qsa_prefill_token_mixer": lambda a, _k: "qsa_prefill:" + self._layer(a[1].projections["attn_q"]),
+            "run_qwen4_exp_dense_qsa_token_mixer": lambda a, _k: "qsa_decode:" + self._layer(a[1].projections["attn_q"]),
+            "run_qwen4_exp_ple": lambda a, _k: "ple:" + self._layer(a[2]["ple_key"]),
+        }
+        for name, role_fn in specs.items():
+            original = getattr(self.module, name)
+            self.originals[name] = original
+
+            def wrapper(
+                *args: Any,
+                _original: Any = original,
+                _role_fn: Callable[[tuple[Any, ...], dict[str, Any]], str] = role_fn,
+                **kwargs: Any,
+            ) -> Any:
+                self.marker.push("qwen4exp_role:" + _role_fn(args, kwargs))
+                try:
+                    return _original(*args, **kwargs)
+                finally:
+                    self.marker.pop()
+
+            setattr(self.module, name, wrapper)
+
+    def close(self) -> None:
+        for name, original in self.originals.items():
+            setattr(self.module, name, original)
+        self.originals.clear()
+
+
+def _summarize_moe_selection(
+    selected: np.ndarray,
+    *,
+    experts: int,
+    layer: str,
+    quant_triplet: tuple[str, str, str],
+) -> dict[str, Any]:
+    values = np.asarray(selected, dtype=np.int64)
+    if values.ndim != 2 or values.size == 0:
+        raise ValueError("MoE telemetry needs a non-empty rows x top-k selection")
+    if np.any(values < 0) or np.any(values >= int(experts)):
+        raise ValueError("MoE telemetry selection contains an invalid expert")
+    counts = np.bincount(values.reshape(-1), minlength=int(experts))
+    histogram_values = np.bincount(counts, minlength=int(counts.max()) + 1)
+    active = np.flatnonzero(counts)
+    expert_rows = sorted(
+        (
+            {"expert": int(expert), "rows": int(counts[expert])}
+            for expert in active
+        ),
+        key=lambda row: (-row["rows"], row["expert"]),
+    )
+    return {
+        "layer": str(layer),
+        "quant_triplet": list(quant_triplet),
+        "rows": int(values.shape[0]),
+        "top_k": int(values.shape[1]),
+        "compact_rows": int(values.size),
+        "experts": int(experts),
+        "active_experts": int(active.size),
+        "min_rows_per_active_expert": int(counts[active].min()),
+        "median_rows_per_active_expert": float(statistics.median(counts[active])),
+        "max_rows_per_expert": int(counts.max()),
+        "row_count_histogram": {
+            str(count): int(expert_count)
+            for count, expert_count in enumerate(histogram_values)
+            if expert_count
+        },
+        "expert_rows": expert_rows,
+    }
+
+
+class MoeTelemetry:
+    """Profiler-only selected-expert census collected after each MoE role."""
+
+    def __init__(self, module: Any) -> None:
+        self.module = module
+        self.original: Any | None = None
+        self.rows: list[dict[str, Any]] = []
+        self.copy_seconds = 0.0
+        self.copy_bytes = 0
+
+    def install(self) -> None:
+        from hipengine.core.memory import copy_device_to_host, host_array_ptr
+
+        original = getattr(self.module, "run_qwen4_exp_moe")
+        self.original = original
+
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            result = original(*args, **kwargs)
+            weights = args[1]
+            row_count = int(kwargs["rows"])
+            top_k = int(kwargs["top_k"])
+            experts = int(kwargs["experts"])
+            selected = np.empty((row_count, top_k), dtype=np.int64)
+            started = time.perf_counter()
+            copy_device_to_host(
+                host_array_ptr(selected),
+                result.selected,
+                selected.nbytes,
+                runtime=kwargs.get("runtime") or kwargs["scratch"].runtime,
+            )
+            self.copy_seconds += time.perf_counter() - started
+            self.copy_bytes += int(selected.nbytes)
+            self.rows.append(
+                _summarize_moe_selection(
+                    selected,
+                    experts=experts,
+                    layer=RoleMarkers._layer(weights["expert_gate"]),
+                    quant_triplet=tuple(
+                        str(weights[name].spec.quant_key)
+                        for name in ("expert_gate", "expert_up", "expert_down")
+                    ),
+                )
+            )
+            return result
+
+        setattr(self.module, "run_qwen4_exp_moe", wrapper)
+
+    def close(self) -> None:
+        if self.original is not None:
+            setattr(self.module, "run_qwen4_exp_moe", self.original)
+            self.original = None
+
+    def snapshot(self) -> dict[str, Any]:
+        return {
+            "measurement_class": "diagnostic_instrumented_not_performance",
+            "rows": self.rows,
+            "calls": len(self.rows),
+            "copy_bytes": int(self.copy_bytes),
+            "copy_seconds": float(self.copy_seconds),
+        }
+
+
+class RuntimeCensus:
+    """Count Python-visible runtime operations in a measured window.
+
+    Compiled launch wrappers call HIP directly and therefore appear only in the
+    rocprof HIP API census. This census intentionally exposes that boundary.
+    """
+
+    METHODS = (
+        "memcpy",
+        "memcpy_async",
+        "memset",
+        "memset_async",
+        "device_synchronize",
+        "stream_synchronize",
+        "graph_launch",
+    )
+
+    def __init__(self, runtime: Any) -> None:
+        self.runtime = runtime
+        self.counts: Counter[str] = Counter()
+        self.bytes: Counter[str] = Counter()
+        self.sizes: dict[str, Counter[int]] = defaultdict(Counter)
+        self.kinds: dict[str, Counter[str]] = defaultdict(Counter)
+        self.size_kinds: dict[str, Counter[tuple[int, str]]] = defaultdict(Counter)
+        self.originals: dict[str, Any] = {}
+
+    def install(self) -> None:
+        for name in self.METHODS:
+            original = getattr(self.runtime, name)
+            self.originals[name] = original
+
+            def wrapper(*args: Any, _name: str = name, _original: Any = original, **kwargs: Any) -> Any:
+                self.counts[_name] += 1
+                if _name.startswith("memcpy") and len(args) >= 3:
+                    nbytes = int(args[2])
+                    self.bytes[_name] += nbytes
+                    self.sizes[_name][nbytes] += 1
+                    if len(args) >= 4:
+                        kind = str(int(args[3]))
+                        self.kinds[_name][kind] += 1
+                        self.size_kinds[_name][(nbytes, kind)] += 1
+                elif _name.startswith("memset") and len(args) >= 3:
+                    nbytes = int(args[2])
+                    self.bytes[_name] += nbytes
+                    self.sizes[_name][nbytes] += 1
+                return _original(*args, **kwargs)
+
+            setattr(self.runtime, name, wrapper)
+
+    def close(self) -> None:
+        for name, original in self.originals.items():
+            setattr(self.runtime, name, original)
+        self.originals.clear()
+
+    def snapshot(self) -> dict[str, Any]:
+        return {
+            "calls": dict(self.counts),
+            "bytes": dict(self.bytes),
+            "sizes": {
+                name: {str(size): count for size, count in counts.most_common()}
+                for name, counts in self.sizes.items()
+            },
+            "memcpy_kinds": {name: dict(counts) for name, counts in self.kinds.items()},
+            "memcpy_size_kinds": {
+                name: {
+                    f"{size}:{kind}": count
+                    for (size, kind), count in counts.most_common()
+                }
+                for name, counts in self.size_kinds.items()
+            },
+        }
+
+
+def _graph_snapshot(cache: Any, runtime: Any) -> dict[str, Any]:
+    if cache is None:
+        return {"enabled": False, "stats": {}, "graphs": 0, "nodes": 0, "node_types": {}}
+    node_types: Counter[str] = Counter()
+    nodes = 0
+    graphs = getattr(cache, "_graphs", {})
+    for graph in graphs.values():
+        for node in runtime.graph_nodes(int(graph)):
+            nodes += 1
+            node_types[str(runtime.graph_node_type(int(node)))] += 1
+    return {
+        "enabled": bool(cache.enabled),
+        "stats": cache.stats,
+        "graphs": len(graphs),
+        "nodes": nodes,
+        "node_types": dict(node_types),
+    }
+
+
+def _wall_summary(mode: str, prompt_tokens: int, walls: list[float]) -> dict[str, float | int]:
+    total = sum(walls)
+    return {
+        "count": len(walls),
+        "sum": total,
+        "mean": statistics.mean(walls),
+        "median": statistics.median(walls),
+        "min": min(walls),
+        "max": max(walls),
+        "tok_s": (prompt_tokens * len(walls) / total) if mode == "prefill" else (len(walls) / total),
+    }
+
+
+def _select_fixture_case(fixture: dict[str, Any], case_id: str) -> dict[str, Any]:
+    matches = [row for row in fixture.get("cases", ()) if str(row.get("id")) == case_id]
+    if len(matches) != 1:
+        raise ValueError(f"fixture must contain exactly one case {case_id!r}")
+    return dict(matches[0])
+
+
+def _parse_overrides(values: list[str]) -> dict[str, str]:
+    overrides: dict[str, str] = {}
+    for raw in values:
+        key, separator, value = raw.partition("=")
+        if not separator:
+            raise ValueError(f"override must use KEY=VALUE, got {raw!r}")
+        if not key:
+            raise ValueError("override must have a non-empty key")
+        if not key.startswith("HIPENGINE_"):
+            raise ValueError(f"override key must start with HIPENGINE_, got {key!r}")
+        if key in overrides:
+            raise ValueError(f"duplicate override for {key}")
+        overrides[key] = value
+    return overrides
+
+
+def _apply_post_binder_overrides(
+    overrides: dict[str, str],
+) -> tuple[dict[str, str | None], dict[str, str | None]]:
+    effective_route_keys = tuple(dict.fromkeys((*ROUTE_ENV_KEYS, *overrides)))
+    bound = {key: os.environ.get(key) for key in effective_route_keys}
+    os.environ.update(overrides)
+    effective = {key: os.environ.get(key) for key in effective_route_keys}
+    return bound, effective
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--model-root", type=Path, required=True, help="Directory containing the split GGUF parts")
+    parser.add_argument("--mode", choices=("prefill", "decode"), required=True)
+    parser.add_argument("--prompt-file", type=Path, help="Prompt text for prefill mode")
+    parser.add_argument(
+        "--fixture",
+        type=Path,
+        default=DEFAULT_FIXTURE,
+        help="Exact-token fixture used with --case-id",
+    )
+    parser.add_argument(
+        "--case-id",
+        help="Canonical exact-token fixture case for prefill mode",
+    )
+    parser.add_argument("--expected-prompt-tokens", type=int, help="Optional token-count assertion for the prompt")
+    parser.add_argument("--profile", action="store_true", help="Emit ROCTX measurement ranges")
+    parser.add_argument("--role-markers", action="store_true", help="Emit profiler-only qwen4exp_role:* ranges")
+    parser.add_argument(
+        "--moe-telemetry",
+        action="store_true",
+        help="Collect diagnostic per-layer selected-expert row distributions",
+    )
+    parser.add_argument("--repetitions", type=int, default=3)
+    parser.add_argument("--decode-steps", type=int, default=16)
+    parser.add_argument(
+        "--decode-output",
+        choices=("compact", "full_logits"),
+        default="compact",
+        help=(
+            "Decode result boundary: normal compact device argmax or explicit "
+            "full-logit diagnostic capture"
+        ),
+    )
+    parser.add_argument("--warm-decode-steps", type=int, default=8)
+    parser.add_argument("--warm-trajectory-repetitions", type=int, default=0)
+    parser.add_argument(
+        "--max-sequence-length",
+        type=int,
+        help=(
+            "Defaults to 768 for text-prefill, case length + 1 for larger "
+            "canonical cases, and 128 for decode"
+        ),
+    )
+    parser.add_argument("--prefill-chunk-size", type=int, help="Defaults to 512 for prefill and 256 for decode")
+    parser.add_argument("--hip-arch", default="gfx1151")
+    parser.add_argument("--compiler-version-file", type=Path)
+    parser.add_argument("--require-cached-build", action="store_true")
+    parser.add_argument(
+        "--override",
+        action="append",
+        default=[],
+        metavar="HIPENGINE_KEY=VALUE",
+        help=(
+            "Diagnostic runtime override applied after the named profile binder; "
+            "repeat for multiple keys"
+        ),
+    )
+    parser.add_argument("--output", type=Path, required=True)
+    return parser
+
+
+def main() -> None:
+    args = build_parser().parse_args()
+    try:
+        overrides = _parse_overrides(args.override)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+    if args.mode == "prefill" and (args.prompt_file is None) == (args.case_id is None):
+        raise SystemExit("prefill mode requires exactly one of --prompt-file or --case-id")
+    if args.mode == "decode" and args.case_id is not None:
+        raise SystemExit("--case-id is supported only in prefill mode")
+    if args.moe_telemetry and args.mode != "prefill":
+        raise SystemExit("--moe-telemetry is supported only in prefill mode")
+    if args.moe_telemetry and args.profile:
+        raise SystemExit("run --moe-telemetry separately from --profile")
+    fixture_case: dict[str, Any] | None = None
+    fixture_sha256: str | None = None
+    if args.case_id is not None:
+        fixture, fixture_sha256 = load_fixture(args.fixture)
+        fixture_case = _select_fixture_case(fixture, str(args.case_id))
+    default_max_sequence_length = 768 if args.mode == "prefill" else 128
+    if fixture_case is not None:
+        default_max_sequence_length = max(
+            default_max_sequence_length, int(fixture_case["prompt_tokens"]) + 1
+        )
+    max_sequence_length = args.max_sequence_length or default_max_sequence_length
+    prefill_chunk_size = args.prefill_chunk_size or (512 if args.mode == "prefill" else 256)
+
+    os.environ.setdefault("HIPENGINE_HIP_ARCH", args.hip_arch)
+    if args.compiler_version_file is not None:
+        os.environ.setdefault("HIPENGINE_COMPILER_VERSION_FILE", str(args.compiler_version_file))
+    if args.require_cached_build:
+        os.environ.setdefault("HIPENGINE_REQUIRE_CACHED_BUILD", "1")
+
+    from hipengine.core.memory import memory_stats, reset_memory_stats
+    from hipengine.execution_profiles import ExecutionProfile, resolve_runtime_profile
+    from hipengine.generation.qwen4_exp_gguf import Qwen4ExpGGUFTextGenerator
+    from hipengine.generation.qwen4_exp_profiles import (
+        QWEN4_EXP_BACKEND,
+        QWEN4_EXP_MODEL,
+        QWEN4_EXP_QUANTS,
+        register_qwen4_exp_gfx1151_profiles,
+    )
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+    from hipengine.loading.gguf import discover_gguf_files, load_gguf_index
+    from hipengine.models import resolve_model
+    import hipengine.runtime.qwen4_exp_runner as runner_module
+
+    register_gfx1151_kernels(replace=True)
+    register_qwen4_exp_gfx1151_profiles()
+    index = load_gguf_index(discover_gguf_files(args.model_root)[0])
+    plugin = resolve_model(index.architecture or "")
+    resolved = resolve_runtime_profile(
+        model=QWEN4_EXP_MODEL,
+        backend=QWEN4_EXP_BACKEND,
+        quant=QWEN4_EXP_QUANTS[1],
+        profile=ExecutionProfile.PRODUCTION,
+    )
+
+    def factory() -> Qwen4ExpGGUFTextGenerator:
+        return Qwen4ExpGGUFTextGenerator(
+            model_path=args.model_root,
+            weight_index=index,
+            model_plugin=plugin,
+            backend="hip_gfx1151",
+            max_sequence_length=max_sequence_length,
+            prefill_chunk_size=prefill_chunk_size,
+        )
+
+    roctx = Roctx() if args.profile else None
+    report: dict[str, Any] = {
+        "schema": 1,
+        "kind": "qwen4exp_profile_gap_window",
+        "command": [Path(sys.argv[0]).name, *sys.argv[1:]],
+        "source": _git_metadata(ROOT),
+        "host": _host_metadata(),
+        "mode": args.mode,
+        "decode_output": args.decode_output if args.mode == "decode" else None,
+        "profile": bool(args.profile),
+        "model_root": str(args.model_root),
+        "prompt_file": str(args.prompt_file) if args.prompt_file else None,
+        "fixture": str(args.fixture) if fixture_case is not None else None,
+        "fixture_sha256": fixture_sha256,
+        "case": (
+            {
+                "id": str(fixture_case["id"]),
+                "category": str(fixture_case["category"]),
+                "prompt_tokens": int(fixture_case["prompt_tokens"]),
+                "prompt_token_ids_sha256": str(
+                    fixture_case["prompt_token_ids_sha256"]
+                ),
+            }
+            if fixture_case is not None
+            else None
+        ),
+        "manifest_sha256": resolved.manifest_sha256,
+        "strict_manifest_sha256": resolved.strict_manifest_sha256,
+        "fell_back_to_strict": resolved.fell_back_to_strict,
+        "configuration_class": (
+            "diagnostic_post_binder_override" if overrides else "named_profile"
+        ),
+        "named_profile_intact": not bool(overrides),
+        "overrides": dict(overrides),
+        "override_stage": "post_profile_binder_pre_measurement",
+        "bound_route_env": {},
+        "route_env": {},
+        "wall_seconds": [],
+        "lifecycle": {},
+    }
+    reset_memory_stats()
+    generator = resolved.construct_generator(factory)
+    try:
+        runner = generator.runner
+        report["bound_route_env"], report["route_env"] = (
+            _apply_post_binder_overrides(overrides)
+        )
+        if args.mode == "prefill":
+            ids = (
+                [int(value) for value in fixture_case["prompt_token_ids"]]
+                if fixture_case is not None
+                else generator.tokenizer.encode(args.prompt_file.read_text())
+            )
+            if args.expected_prompt_tokens is not None and len(ids) != args.expected_prompt_tokens:
+                raise RuntimeError(
+                    f"expected {args.expected_prompt_tokens} prompt tokens, got {len(ids)}"
+                )
+            runner.prefill(ids)
+            runner.runtime.device_synchronize()
+            report["lifecycle"]["after_warmup"] = memory_stats()
+            census = RuntimeCensus(runner.runtime)
+            census.install()
+            roles = RoleMarkers(runner_module, roctx) if args.role_markers and roctx else None
+            if roles is not None:
+                roles.install()
+            telemetry = MoeTelemetry(runner_module) if args.moe_telemetry else None
+            if telemetry is not None:
+                telemetry.install()
+            try:
+                for rep in range(args.repetitions):
+                    if roctx:
+                        roctx.push(f"qwen4exp_prefill_p{len(ids)}_{rep}")
+                    if roles is not None:
+                        roctx.push("qwen4exp_role:prefill_boundary")
+                    started = time.perf_counter()
+                    try:
+                        result = runner.prefill(ids)
+                        runner.runtime.device_synchronize()
+                    finally:
+                        if roles is not None:
+                            roctx.pop()
+                    report["wall_seconds"].append(time.perf_counter() - started)
+                    if roctx:
+                        roctx.pop()
+                report["token_id"] = int(result.token_id)
+                report["logits_sha256"] = hashlib.sha256(result.logits.tobytes()).hexdigest()
+                report["runtime_census"] = census.snapshot()
+                report["lifecycle"]["after_measurement"] = memory_stats()
+                if telemetry is not None:
+                    report["moe_telemetry"] = telemetry.snapshot()
+            finally:
+                if telemetry is not None:
+                    telemetry.close()
+                if roles is not None:
+                    roles.close()
+                census.close()
+            prompt_tokens = len(ids)
+        else:
+            if args.decode_output == "full_logits":
+                prefill_kwargs: dict[str, bool] = {}
+                step_kwargs: dict[str, bool] = {}
+            else:
+                prefill_kwargs = {
+                    "capture_logits": False,
+                    "capture_target_hidden": False,
+                }
+                step_kwargs = {
+                    "capture_logits": False,
+                    "capture_target_hidden": False,
+                    "token_id_resident": True,
+                }
+            for _ in range(args.warm_trajectory_repetitions):
+                result = runner.prefill([9707], **prefill_kwargs)
+                for _ in range(args.warm_decode_steps + args.decode_steps):
+                    result = runner.step(int(result.token_id), **step_kwargs)
+                runner.runtime.device_synchronize()
+            result = runner.prefill([9707], **prefill_kwargs)
+            for _ in range(args.warm_decode_steps):
+                result = runner.step(int(result.token_id), **step_kwargs)
+            runner.runtime.device_synchronize()
+            report["lifecycle"]["after_warmup"] = memory_stats()
+            report["graph_before"] = _graph_snapshot(runner.moe_graph_cache, runner.runtime)
+            census = RuntimeCensus(runner.runtime)
+            census.install()
+            roles = RoleMarkers(runner_module, roctx) if args.role_markers and roctx else None
+            if roles is not None:
+                roles.install()
+            try:
+                if roctx:
+                    roctx.push("qwen4exp_decode_window")
+                for step in range(args.decode_steps):
+                    if roctx:
+                        roctx.push(f"qwen4exp_decode_step_{step}")
+                    if roles is not None:
+                        roctx.push("qwen4exp_role:decode_boundary")
+                    started = time.perf_counter()
+                    try:
+                        result = runner.step(int(result.token_id), **step_kwargs)
+                    finally:
+                        if roles is not None:
+                            roctx.pop()
+                    report["wall_seconds"].append(time.perf_counter() - started)
+                    if roctx:
+                        roctx.pop()
+                runner.runtime.device_synchronize()
+                if roctx:
+                    roctx.pop()
+                report["token_id"] = int(result.token_id)
+                report["logits_sha256"] = (
+                    None
+                    if result.logits is None
+                    else hashlib.sha256(result.logits.tobytes()).hexdigest()
+                )
+                report["runtime_census"] = census.snapshot()
+                report["lifecycle"]["after_measurement"] = memory_stats()
+            finally:
+                if roles is not None:
+                    roles.close()
+                census.close()
+            report["graph_after"] = _graph_snapshot(runner.moe_graph_cache, runner.runtime)
+            prompt_tokens = 0
+        report["wall_summary"] = _wall_summary(args.mode, prompt_tokens, report["wall_seconds"])
+    finally:
+        generator.close()
+    report["memory_after_close"] = memory_stats()
+    report["lifecycle"]["after_close"] = report["memory_after_close"]
+    after_warmup = report["lifecycle"]["after_warmup"]
+    after_measurement = report["lifecycle"]["after_measurement"]
+    report["lifecycle"]["steady_allocation_growth"] = (
+        int(after_measurement["active_allocations"])
+        - int(after_warmup["active_allocations"])
+    )
+    report["lifecycle"]["steady_allocated_byte_growth"] = (
+        int(after_measurement["current_allocated_bytes"])
+        - int(after_warmup["current_allocated_bytes"])
+    )
+    report["lifecycle"]["passed"] = bool(
+        report["lifecycle"]["steady_allocation_growth"] == 0
+        and report["lifecycle"]["steady_allocated_byte_growth"] == 0
+        and int(report["memory_after_close"]["active_allocations"]) == 0
+        and int(report["memory_after_close"]["current_allocated_bytes"]) == 0
+    )
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps(report, indent=2) + "\n")
+    print(json.dumps(report, indent=2))
+
+
+if __name__ == "__main__":
+    main()

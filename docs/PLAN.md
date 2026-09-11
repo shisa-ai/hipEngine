@@ -818,7 +818,58 @@ fallback, and promotion gates are specified in [`PM4.md`](PM4.md).
 
 **Rule:** we do not add levers #2–5 without `rocprofv3` evidence that dispatch is above ~3% of decode wall time.
 
+September 6, 2026 follow-up: compare Wilkin's gfx1151-qualified experimental
+HIP-queue prepared PM4 lists with our existing dedicated-queue gfx1100 design;
+this is not new architecture admission or a runtime replacement. First census
+Flash-Next graph eligibility/cost, then consider an isolated ordinary-AQL/PM4
+runtime A/B. Profiler activity forces that external PM4 path to AQL, so PM4
+engagement/timing must additionally be verified unprofiled. See
+[pinned review](QWEN4EXP-WILKIN-RUNTIME-REVIEW.md) and campaign WIL-1 through WIL-4
+for graph-update, UMA ownership and semantic-safe TOP_K follow-ups.
+
+Qwen4Exp grouped Q8 expert-down prefill now uses exact four-row reuse for
+rows>=512 in production, with row1 for smaller chunks and strict selected GEMV
+unchanged. Full12-case A/B preserves72 trajectories and improves all prefill/
+request walls; PP512/1024/4096 improves0.822%/0.635%/0.705%. No new sidecars.
+See `benchmarks/results/2026-09-06-framework-qwen4exp-q8-down-row4-production.json`.
+
+Qwen4Exp Q5_1 pair prefill also promotes exact stride128 register folding and
+halved LDS scratch after72 exact canonical trajectories and all12 prefill/
+request-wall improvements. PP512/1024/4096 gains0.716%/0.978%/0.915%.
+Only existing pair2 rows>=64 changes; strict and decode remain untouched.
+See `benchmarks/results/2026-09-06-framework-qwen4exp-q51-fold128-production.json`.
+
+The Q8 down row4 owner now bundles exact row reductions, reducing barrier
+traffic with unchanged register/LDS allocation. Full12-case A/B preserves72
+trajectories and improves every prefill/request wall; PP512/1024/4096 gains
+0.829%/0.671%/0.768%,with tiny decode decreases explicitly retained under
+prefill-first policy. Existing rows>=512 scope and strict fallback unchanged.
+See `benchmarks/results/2026-09-06-framework-qwen4exp-q8-down-bundle-production.json`.
+
+At K640/rows>=512, compact and mapped Q8 down now reuse five decoded
+weights/thread across the expert row loop. Production binds the register
+variant; strict and unsupported shapes preserve fallbacks. Current chunk1024
+canonical72 trajectories exact, all12 prefill/request averages improve,
+PP+0.851%/+0.701%/+0.647%. No causal decode claim; weakest request gain is
+only0.004%. See `benchmarks/results/2026-09-07-framework-qwen4exp-q8-down-register-production.json`.
+
+Q5_1 folded pair reductions now run together for production chunks>=512,
+within the original unfolded pair2 LDS budget. Full12-case A/B preserves72
+trajectories and improves every prefill/request wall;PP512/1024/4096 gains
+1.950%/1.543%/1.896%. Sequential fold128 remains for64-511 rows;strict
+arithmetic and decode unchanged. Dynamic LDS increase and tiny TG losses are
+recorded in `benchmarks/results/2026-09-06-framework-qwen4exp-q51-fold-pair-production.json`.
+
 #### Fusion Planner
+
+Qwen4Exp K640 Q5_1 grouped down at rows>=512 now publishes folded
+partials one row at a time, eliminating36B private scratch while preserving
+the register weight cache and exact reduction tree. Full72 trajectories
+and state/KV gate pass; all12 prefill/request averages improve.
+PP512/1024/4096 gains4.296%/4.732%/4.323%; incidental TG changes
+-0.012%/-0.048%/-0.201% retained under prefill-first direction.
+Strict and unsupported shapes retain fallbacks.
+See `benchmarks/results/2026-09-07-framework-qwen4exp-q51-row-publish-production.json`.
 
 Dispatch converts a layer's op chain into a kernel plan. Fused composites are preferred when a registered kernel matches a contiguous sub-chain; otherwise the planner falls back to unfused primitives. Every fused kernel must have a registered strict unfused chain. Strict composites satisfy their declared exact/parent-parity contract; production composites may reassociate arithmetic only after the profile-wide semantic gate and still fall back to that strict chain.
 
@@ -1042,11 +1093,69 @@ Phase-0 targets (driven by the current research focus):
 | **Qwen3.5 0.8B** dense | full_attention + dense_mlp | Phase 0 correctness |
 | **Qwen3.5 27B** dense | full_attention + dense_mlp | Phase 1 perf target |
 | **Qwen3.6 35B-A3B** MoE hybrid | full_attention + linear_attention + gdn + moe_top2 | Phase 2 perf target; the ZBook quant/runtime campaign and quality-only automatic-tool/task [`AGENTIC-QUALITY2`](AGENTIC-QUALITY2.md) follow-up are closed, with no quality runtime mechanism retained |
+| **Qwen3.8-Flash-Next 125B-A6B + 51B PLE** Qwen4 experimental MoE | QSA + GDN + gated residual + top-10 MoE + sparse host n-gram embedding | Bounded gfx1151 `UD-Q4_K_XL` text/QSA/PLE/MTP/multimodal/c2 support is working. Current production manifest `37d59564…` passes the 450-row numerical/task/state/c2/lifecycle gate and deterministic p512/p1024/p4096-tg128 at 83.35/14.18, 82.93/14.16, and 69.20/12.16 pp/tok/s; exact ordered sparse QSA is default. MTP remains explicit/default-off at 0.7407x same-command true AR and is capped at 1K. Rows<=8 verifier storage, pooled D2D state transactions, serial oracle, and rejection-depth controls are retained, but final-head-only public verification regresses every category. Final five-pair comparator freeze and 4K MTP remain blocked. See [`QWEN3.8-FLASH-NEXT.md`](QWEN3.8-FLASH-NEXT.md) and the [performance campaign](QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md); gfx1100 performance and 128K+/262K inference remain unverified/unsupported. |
 | **Moonshine ASR** encoder-decoder | conv encoder + self/cross attention + gated decoder MLP | HIP FP16 graph decoder and selected encoder hybrids promoted internally; `cuda_sm120a` C0-C8 includes a torch-free encoder, static/continuous batching, and device-owned decode but remains outside public model admission; gfx1151 transfer campaign: [`MOONSHINE.md`](MOONSHINE.md) |
 | **Maple-Preview 20B-A1B** ternary MoE | GQA sliding/global attention + top-8/256 MoE + packed ternary/affine4 | gfx11 public c1/c2/c4/c8 path promoted; `cuda_sm120a` c1 generation, native prefill through p512 performance / 770 state, exact wave32 direct decode, and exact split-K global decode through a full p512 suite are retained on GPU0, while CUDA resident batching/serving remain pending |
 | **Gemma 4** | sliding_attention + global_attention + dense_mlp | Phase 3 |
 | **Llama 3** | full_attention + dense_mlp | Phase 3 |
 | **sansho** (custom) | (your arch; see `/home/lhl/amd-gpu-tuning/reference/sansho/`) | Phase 3+ |
+
+Qwen3.8-Flash-Next gap-closure priority (review 2026-09-08): R1-R3 committed-source
+QSA provenance and combined-default owner/throughput refresh are retained;
+the canonical-sequence drift mechanism remains open. Qualify repair, building
+on `62dffb872`, then conditionally screen Q5_1 down and GR. Add a bounded
+direct-Q4 IU4 grouped-prefill screen against the current repaired IU8 route,
+preserving weights and charging activation precision, corrections and repair.
+Next target MoE decode, exact linear/three-plane scheduling, measured
+submission/drift costs and secondary QSA/GDN work, reranked after each win.
+Existing promotions stay retained; no sidecar, numerical-policy change,
+whole-family closure or Vulkan parity is admitted by this plan. See the
+[active campaign punchlist](QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md#active-review-punchlist-september-8-2026),
+and [ranked experiments](QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md#ranked-targets-and-iu4-experiments-september-8-2026),
+which supersede the September 5 halo queue without relaxing profile gates.
+September6 owner detour enables admission-aware native context through the public
+Qwen4Exp factory and `prepare()`. The immutable QSA2051 dense-equivalence constant
+is not runner capacity. Auto resolves artifact/plugin native262144 within memory
+and configured c1/c2 residency; explicit limits fail rather than silently clamp.
+Framework c2 native-capacity startup, completions/chat8K retrieval, HTTP over-limit
+rejection and native-capacity2051/2052/4097 boundary repeats pass.
+Full256K-length inference is not newly qualified by this capacity
+change; see [context contract](QWEN4EXP-CONTEXT-CAPACITY.md).
+Qwen4Exp chat now renders its embedded GGUF template and uses a model-owned
+XML-parameter parser while preserving generic JSON tool support for other models.
+Greedy text grammar requests use request-owned llguidance masks before host
+argmax; selected tokens feed the subsequent decode explicitly. Unconstrained
+device-token execution is unchanged. See [tools/grammar contract](QWEN4EXP-TOOLS-GRAMMAR.md)
+for supported schema forms, text-only scope and development benchmark evidence.
+The 2026-09-05 owner decision retains exact page256 QSA and bundled-Q4
+publication in production despite their measured small hot-decode losses;
+strict keeps the previous owners. Separate component prefill gains are
+about19-20% for p4096 QSA and 2.45-3.47% for bundled-Q4. Do not add those
+ratios or claim a combined rate without measurement. Correctness gates are
+unchanged, and decode optimization, D1, and comparator closure remain open.
+See the [promotion packet](../benchmarks/results/2026-09-05-framework-qwen4exp-prefill-promotion.json).
+The subsequent exact Q5_1 output-pair route is production at rows>=64 after
+its full12-case A/B: prefill132.13/130.60/122.82 tok/s at p512/p1024/p4096,
+an incremental4.14%/4.17%/3.73% gain with all72 trajectories exact.
+Decode remains a noisy, separate optimization target. Short rows keep M1
+and strict keeps the original exact down owner.
+The GDN tile-16 Hv=48 owner was promoted in `22dc56268` after live-route
+one-residency validation. Active execution now uses Framework Desktop host
+`gfx1151` (machine ID `55ea6c509d0b49eea8de7094a1023668`) and targets
+halo-box Vulkan despite reported screening variance; historical `zbook` rates
+are not cross-host deltas. The performance campaign's active contract records
+native FP8 as the remote full-model reference and llama.cpp as the same-Q4
+implementation reference; production does not require cross-engine generated
+output equality.
+Exact Q5_K grouped-row4 gate/up is now production after the clean Framework
+12-case A/B: p512/p1024/p4096 prefill 122.575/121.472/97.850 tok/s
+(+3.07%/+3.19%/+2.55% against its same-residency parent), all 72 trajectories
+exact and decode flat. Strict retains selected GEMV. This incremental win
+does not close the Vulkan gap; remaining MoE/dense/QSA owners need reranking.
+The historical Q8 admission packet's route-coverage finding and subsequent
+natural-text failure leave D1 re-qualification/scope/fallback with the owner;
+the status row above records historical admission, not resolution of that audit.
+This reprioritization changes no architecture, runtime default or quality gate.
 
 Each model plugin owns:
 - **Layer sequence**: Qwen3.5 35B-A3B alternates `full_attn` with `linear_attn` and `gdn`; Gemma 4 alternates `sliding` with `global`; dense models are uniform.

@@ -1,0 +1,265 @@
+# MODEL-EVIE.md — EVIE-4.5B on hipEngine
+
+Status: **complete (strict fp32 + fp16 production; perf sprint 15.6 s →
+2.16 s; vision f16-stream, INT8/FP8, and cluster8 all evaluated — cluster8
+adopted as exact, the other two rejected on measurement)**. This file is the
+per-model record: what the model is, how hipEngine runs it, the measured
+performance against reference implementations, and the optimization history
+with exact gains. It follows the format of `MODEL-TIMESFM.md`.
+
+## Model
+
+**Checkpoint:** `tencent/EVIE-4.5B` (Hugging Face safetensors, 4.54B tensor
+parameters in `model.safetensors`; the checkpoint's 4.61B total also includes a
+sentence-transformers Dense head used for text-only retrieval).
+
+EVIE is Tencent's multimodal multi-vector document retrieval model — a
+ColQwen3.5-style late-interaction encoder in the ColPali lineage. It embeds
+document pages (images) and text queries as multi-vector representations and
+scores pairs with MaxSim (each query token attends to its best document token).
+
+Two inference workloads matter:
+
+- **Document indexing:** page image → per-token embeddings (typically ~600
+  tokens per page).
+- **Query encoding:** query text → per-token embeddings (~20 tokens).
+
+**Geometry (from `config.json`):**
+
+| Parameter | Value |
+| --- | --- |
+| Text hidden size | 2560, 32 layers |
+| Text attention | hybrid: 3 linear-attention (GDN) + 1 full-attention per group of 4 (`full_attention_interval: 4`) |
+| Full attention heads × head dim | 16 × 256, GQA with 4 key/value heads, sigmoid output gate |
+| GDN | 32 value heads × 128, 16 key heads × 128, conv kernel 4 |
+| Vocab / max positions | 248320 / 262144 |
+| Vision tower | 24 blocks, hidden 1024, 16 heads × 64, patch 16, spatial merge 2, temporal patch 2 |
+| Vision merger | 2×2 concat (4096) → GELU-erf MLP → 2560 |
+| Prefix head | 128-dim multi-vector projection (Prefix-MRL) |
+
+**Semantics** (correctness-relevant): vision attention is bidirectional with
+2D rope (head-major, half rotary); text full-attention layers are causal with
+GQA key/value repeat and a sigmoid gate on the output; GDN layers use gated
+delta net recurrence with `exp(-exp(A_log) softplus(a + dt_bias))` decay; the
+document path uses mRoPE position ids (text, image-height, image-width bands);
+MRL prefix head 128; embeddings are L2-normalized per token after the head.
+
+## hipEngine implementation
+
+Torch-free HIP implementation on the gfx1151 backend (AMD Radeon 8060S,
+Strix Halo iGPU). All weights load as FP32 (BF16 storage is converted on the
+host during load).
+
+| Piece | Path |
+| --- | --- |
+| Model contract / spec | `hipengine/models/evie.py` |
+| Checkpoint loader (BF16→FP32 host conversion) | `hipengine/loading/evie.py` |
+| GPU runtime (host orchestration) | `hipengine/runtime/evie.py` |
+| HIP kernels (norms, rope, gates, GDN ops, softmax, gathers) | `hipengine/kernels/hip_gfx1100/evie/evie_ops.{hip,py}` |
+| Conv prefill + GDN recurrent prefill kernels | shared with Qwen3.5 (`hipengine/kernels/hip_gfx1100/qwen35/`) |
+| CPU reference + oracle | `hipengine/kernels/cpu_reference/evie.py` |
+| Torch oracle fixture generator | `scripts/evie_oracle_torch.py` |
+| Bench | `scripts/evie_hip_bench.py` |
+| Tests | `tests/test_evie_model_contract.py`, `tests/test_evie_cpu_reference.py`, `tests/test_evie_gpu_runtime.py` (strict), `tests/test_evie_gpu_runtime_fp16.py` (production manifest gate) |
+
+**Precision modes:**
+
+- **`fp32` (strict):** FP32 SGEMM everywhere; strict parity to the torch
+  FP32 oracle fixture (query embeddings max 2.6e-06, document embeddings max
+  4.4e-05, MaxSim 1e-05, bit-repeatable; measured with the cluster8
+  recurrence — the default since step 11).
+- **`fp16` (production):** FP16 storage / FP32 accumulate / FP16 output
+  GEMMs on the matrix cores (14–26 TF/s vs ~2 TF/s SGEMM on this APU);
+  activations cast fp32→fp16→fp32 around each GEMM, residual stream and all
+  elementwise kernels stay FP32. Attention runs f16 batched GEMMs on
+  per-head-contiguous planes with an f16 scale+softmax kernel. All GEMMs —
+  including the GDN projections — run f16 in/out; an earlier exception for
+  `in_proj_qkv` was retracted after clean re-verification (the observed
+  drift was a stale-edit artifact, not numerics).
+
+  **Profile classification: T1** (local implementation drift — fp16
+  intermediates with unchanged algorithm; `docs/EXECUTION-PROFILES.md`
+  sec 5); the strict fp32 path remains the reference mode. This is
+  fixture-gated evidence,
+  not a registered production-profile certification: no resolved EVIE
+  variant manifest exists in `docs/EXECUTION-PROFILES.md` and the
+  retrieval-ranking qualification remains open. The committed fixture
+  gate is `tests/test_evie_gpu_runtime_fp16.py`: per-token embedding
+  cosine versus the fp32 oracle (query mean/min
+  `0.9999986/0.9999884`, document mean/min `0.9999500/0.9985462`),
+  MaxSim delta `6.2e-4`, and sec-6.4 determinism (three identical
+  fixed-seed repeats, single model resident). The bounds are the
+  recorded manifest less a tiny cross-build slack — not independent
+  quality thresholds — and any future path that shifts parity beyond
+  them must re-run the full profile adjudication. The
+  ranking-preservation leg of the gate needs a real multi-page corpus
+  (see the quant evaluation below) and remains open.
+
+**Correctness gates:** the GPU runtime is validated against the oracle fixture
+`tests/fixtures/evie/evie_4p5b_doc_query.npz` (generated by the torch oracle
+script in FP32). The CPU reference matches the same fixture to ~1e-06, and the
+GPU runtime matches it via `tests/test_evie_gpu_runtime.py` (HIP-guarded,
+skips without ROCm or the cached snapshot).
+
+## Performance
+
+Workload: 8 synthetic 448×336 pages + 8 queries (seed 20260909, same protocol
+as `scripts/evie_gpu_bench.py`). Same host throughout (zbook, Ryzen AI MAX+
+PRO 395, gfx1151).
+
+| Path | Precision | Doc (8 pages) | Query (8) | MaxSim | Total |
+| --- | --- | ---: | ---: | ---: | ---: |
+| **hipEngine GPU (current)** | fp16 (production) | 1667 ms | 496 ms | 0.4 ms | **2163 ms** |
+| hipEngine GPU | fp32 (strict) | 6538 ms | 1178 ms | 0.5 ms | 7717 ms |
+| Torch reference, same GPU | bf16 (deployment) | — | — | — | 1356 ms |
+| Torch reference, same GPU | fp32 | — | — | — | 4148 ms |
+
+Torch rows are doc + query + maxsim totals (best of 3). The cross-engine
+ratios are approximate: the two benches do not share a protocol — hipEngine
+uses torch-free synthetic preprocessing inside the timing loop (12-token
+templated queries, 8 zipped query/doc pairs) while the torch reference uses
+the real processor with preprocessing outside the timing loop (20-token
+queries, 64 scored pairs). The engines differ in query length, scored
+pairs, and preprocessing, so this comparison is indicative for compute
+cost, not a matched retrieval workload; see the matched-protocol section
+below for the controlled version.
+Reproduce with
+`python3 scripts/evie_hip_bench.py --precision fp16 --pages 8 --queries 8`.
+
+**Matched-protocol comparison** (2026-09-10, same processor outputs fed to
+both engines — real ColQwen3_5Processor preprocessing outside the timing
+loop, 20-token padded queries, full 8×8 scoring): at matched precision
+torch leads — fp32 3991 vs 7602 ms (1.9×), production precision 1300 (bf16,
+batched) vs 2134 ms (fp16, sequential pages; 1.64×) — because the torch
+reference batches all 8 pages into one forward while the hipEngine v1
+runtime is single-page sequential. The headline "fp16 beats torch fp32
+(2163 vs 4148 ms)" is a cross-precision statement, not a matched one.
+Retrieval quality under this protocol: hip-fp32 matches torch-fp32 scores
+to 1e-4; hip-fp16 is closer to the fp32 teacher than torch's own bf16
+(max rel 0.23% vs 3.5%) and preserves the fp32 argmax ranking 8/8
+(torch bf16: 6/8; Kendall τ vs bf16 0.91).
+Artifact:
+[`gfx1151-evie-4p5b-matched-protocol-2026-09-10.json`](../benchmarks/results/gfx1151-evie-4p5b-matched-protocol-2026-09-10.json).
+
+**Corrected profile (2026-09-10, HIP-event timing):** a document page is
+**device-bound — GPU-busy 196 of 216 ms (91%)** across ~1,800 launches;
+the earlier "212 of 231 ms is launch/dispatch overhead" claim (async
+wrapper timing) is retracted. The torch gap is batching, not dispatch:
+torch batch-1 runs 270.7 ms/page versus our sequential ~204 ms/page
+(1.33x faster unbatched), and torch gains 1.99x from batching eight
+pages (135.8 ms/page). A batched hipEngine encode is therefore the
+dominant lever; HIP graphs are bounded by the 9% host gap. Benchmark
+artifact with the full history:
+[`gfx1151-evie-4p5b-fp16-perf-sprint-2026-09-09.json`](../benchmarks/results/gfx1151-evie-4p5b-fp16-perf-sprint-2026-09-09.json).
+
+## Optimization history
+
+Same workload/host throughout; each step is cumulative.
+
+| # | Change | Total (s) | Δ |
+| --- | --- | ---: | ---: |
+| 1 | First working GPU path, corrected (fp32; the recorded 175 s "first path" was a benchmark bug — pixel dims passed as the patch grid — plus a 750 MB/page buffer leak) | 15.62 | — |
+| 2 | Batched attention GEMMs (vision strided / text GQA pointer-array) + softmax kernel all-thread passes (14.8 → 0.22 ms) | 11.68 | −25% |
+| 3 | fp16 GEMM production path (matrix cores, f16 out + cast back) | 4.52 | −61% |
+| 4 | GDN k2 recurrence (exact, 3.2× faster than naive) | 4.08 | −10% |
+| 5 | GDN projections fp16-in/f32-out | 3.47 | −15% |
+| 6 | GDN f16-out narrowed to in_proj_qkv only | 3.09 | −11% |
+| 7 | f16 vision attention (per-head planes + f16 softmax) | 2.99 | −3% |
+| 8 | GDN full f16-out — steps 5–6's "needs f32-out" finding was retracted after clean re-verification (stale-edit artifact, not numerics) | 2.69 | −10% |
+| 9 | text GQA attention f16 (repeat-fused gather) | 2.66 | −1% |
+| 10 | query-path fixed costs (persistent state-zero, pos-table cache) | 2.46 | −8% |
+| 11 | GDN recurrence k2 → normalized_cluster8 — algebraically exact (q scale folded to the output; the prior "max err 0.39, not numerically equivalent" finding was a double-applied scale in the comparison harness and is retracted); strict fp32 path 14.69 → 7.72 s (−47%) | 2.16 | −12% |
+
+## INT8/FP8 quantization evaluation (2026-09-09): not applicable
+
+Evaluated and rejected for this stack, on two independent grounds:
+
+1. **No library path exists.** rocBLAS `gemm_ex` returns NOT_SUPPORTED
+   (status 11) for every INT8 and FP8 datatype/compute combination at our
+   shapes (NT, m=out_features, k=in_features). hipBLASLt on gfx1151
+   rejects INT8 compute descriptors outright (INVALID_VALUE), rejects
+   INT8 operands with F32 compute, and accepts the FP8 datatypes
+   (E4M3/E5M2) but returns **zero heuristic algorithms** — there are no
+   gfx1151 FP8 matmul kernels in this ROCm build.
+2. **The runtime is launch-bound, not GEMM-bound.** Instrumenting one
+   document page (231 ms total): dense projection GEMMs including their
+   fp16 casts total **16.3 ms**, batched attention GEMMs 2.3 ms — the
+   remaining **212 ms** is kernel launches, elementwise/norm kernels, the
+   GDN recurrence, and host dispatch. A hypothetical 2× INT8 GEMM speedup
+   would save under 10 ms/page (~4% end-to-end) and would not close the
+   torch-bf16 gap. Closing that gap requires launch-count reduction and
+   dispatch-overhead work, not lower-precision GEMMs.
+
+A custom WMMA-INT8 kernel campaign (like the gfx1100 timesfm flash
+kernels) would remove blocker 1 but not blocker 2; it is not worth the
+effort at the current profile. Weight-only INT8 (bandwidth) was also
+considered: dequantizing into an fp16 staging buffer adds a full extra
+pass over the weights per page, and dequant-in-GEMM-epilogue requires the
+same custom-kernel campaign — no viable middle ground. After the
+cluster8 promotion (step 11) the non-recurrent GEMM share of a page is
+even smaller, so both blockers hold with more margin.
+
+**Accuracy-gate design for any future quant path** (recorded for reuse):
+the metric is retrieval, not distributional KL. Gate on (a) per-token
+embedding cosine vs the strict fp32 teacher, (b) MaxSim delta on the
+oracle fixture, and (c) ranking preservation: encode N pages × M queries
+under both precisions, compare the MaxSim matrices by top-1 agreement,
+recall@k, and Kendall tau. (a) and (b) run today from the committed
+fixture; (c) needs a real multi-page corpus with per-page queries (e.g.
+ViDoRe), which is not in-tree — synthetic bench pages make rankings
+degenerate and are not a valid (c).
+
+## Remaining work (future)
+
+The port and its optimization campaign are complete. Open follow-ups, in
+impact order:
+
+1. **Batched encode (the measured frontier):** the page is device-bound
+   (91% GPU-busy) and torch's whole advantage is its 1.99x batching gain;
+   our sequential path already beats torch's sequential by 1.33x. Batch
+   queries first, then pages (pad to max length; segment-aware GDN state
+   via the shared qwen35 segments kernels).
+2. ~~**Vision full-f16 stream**~~ — evaluated 2026-09-09 and rejected:
+   instrumenting the cast kernels in a full document-page encode gives
+   **4.97 ms total cast overhead (2.1% of the 233 ms page)** — f32→f16
+   2.51 ms + f16→f32 2.46 ms across every GEMM in the model. The vision
+   share bounds the full-f16 campaign at ~3-4 ms/page, not the ~20-30 ms
+   estimated before the launch-bound profile was known.
+3. ~~**cluster8 GDN recurrence**~~ — **adopted as the default (2026-09-10)**:
+   algebraically exact for this block (the 1/√d_k q scale is applied at the
+   recurrence output instead of the input); single-layer max diff vs k2
+   3.0e-08, strict oracle parity doc 4.4e-05 / query 2.6e-06, bit-repeatable.
+   fp16 2.46 → 2.163 s (−12%), strict fp32 14.69 → 7.72 s (−47%). k2 remains
+   the `HIPENGINE_EVIE_GDN_RECURRENCE=k2` opt-out.
+4. **INT8/FP8 re-evaluation** only if a ROCm build ships gfx1151 int8/fp8
+   matmul kernels (see the evaluation above).
+
+## Notes for this port
+
+- The conv-prefill kernel **mutates** its conv state; it must be re-zeroed
+  before every GDN layer, and the state layout is (channels, kernel_size) with
+  slot 0 unused — undersizing it reads out of bounds.
+- rocBLAS SGEMM tiles can over-read past operand ends; on this APU/GTT system
+  demand-mapped pages that are read before first write abort the process with
+  "page not present". All GEMM-touched allocations are padded and zero-
+  committed at malloc.
+- The attention value GEMM needs the transposed-v layout (W as (out, in));
+  the gather kernel has a `-tp` variant for it.
+- Never pass a temporary numpy array to `host_array_ptr()` — the buffer is
+  freed before the H2D copy reads it. Runner uploads hold named references.
+- `gemm_strided_batched_ex` (f16) with packed head strides of 64 f16
+  elements (128 B) silently produces garbage for heads ≥ 1 — head 0 checks
+  out, which makes it look almost correct. Padding head-plane strides to
+  128 elements (making each head base 256-byte aligned) fixed it. This is
+  consistent with a per-batch pointer alignment requirement, but the fix
+  changed stride and alignment together and no isolated reproducer has
+  pinned the exact threshold; treat 256-byte-aligned batch bases as the
+  safe operating point.
+- Two "findings" from the sprint were retracted after clean re-verification
+  as stale-edit artifacts (the GDN f16-out drift wall; two silently no-op'd
+  doc edits). Every precision decision in this file is backed by a
+  fixture-parity run in the linked worklog entries, not by intermediate
+  debug output.
+- Per-piece timing loops that re-run a layer function accumulate `_to_dev`
+  buffers and inflate later iterations; in-pipeline instrumentation is the
+  authoritative source (see the quant-evaluation section).

@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_p11_depth_budget_admission",
+  "status": "blocked_context_capacity_and_verifier_economics",
+  "performance_claim": false,
+  "source_artifacts": [
+    "benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-rejection-depth-grid.json",
+    "benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-public-deferred-verifier-rejected.json",
+    "benchmarks/prompts/mtp-realworld-long-context.jsonl"
+  ],
+  "amdahl_declaration": {
+    "W_seconds": 22.82073687799857,
+    "C_seconds": 16.90401850201306,
+    "O_ms_per_b2_verify": 128.46436550898943,
+    "s": 0.8726203729348171,
+    "arithmetic_class": "no budget candidate; future policy changes control and must preserve exact provider output",
+    "scope": "Qwen4Exp candidate budget by 4K+ context depth on full category+heldout suites",
+    "mechanism": "admission audit before fitting marginal accepted tokens per cycle",
+    "strict_fallback": "B2 serial target.step or target_ar",
+    "overlap_exclusions": [
+      "short-context B2 timing is not a depth-policy fit",
+      "external budget constants are not local s",
+      "no 4K prompt was truncated or relabeled as 1K"
+    ]
+  },
+  "readiness": {
+    "rejection_depth_red": true,
+    "public_context_limit_tokens": 1024,
+    "draft_context_limit_tokens": 1024,
+    "supported_candidate_budgets": [1, 2, 3, 4],
+    "required_long_context_tokens": [4096],
+    "required_external_hypothesis_budget": 6,
+    "operation_complete_verifier_beats_serial": false,
+    "fullsuite_serial_mtp_over_ar": 0.7407306167361402,
+    "fullsuite_deferred_over_serial": 0.8726203729348171,
+    "eligible_for_depth_budget_fit": false
+  },
+  "long_context_suite": {
+    "path": "benchmarks/prompts/mtp-realworld-long-context.jsonl",
+    "rows": 6,
+    "target_context_tokens": [4096],
+    "categories": ["retrieval", "multihop", "aggregation", "long_doc", "code", "mixed_ja_en"]
+  },
+  "decision": {
+    "budget_sweep_run": false,
+    "reason": "The public provider and draft cannot execute the required 4K suite, budget 6 is unsupported, and the only exact verifier is 0.8726x serial MTP. Sweeping budgets 1-4 at <=1K would fit the wrong depth and fixed evaluation prompts.",
+    "unblock": "Extend request-owned draft KV/index capacity and provider contract to at least 4K, implement budget 6 only after RED coverage, and produce an exact operation-complete verifier that beats serial MTP. Then fit on unrestricted disjoint telemetry and evaluate the complete long-context/category-heldout suite."
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "status": "kernel_candidate_retained_runtime_admission_pending",
+  "source": "317e6147c plus in-tree candidate",
+  "host": "gfx1151",
+  "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+  "hardware": "Framework Desktop Ryzen AI Max+395 Radeon8060S gfx1151",
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "model_fingerprint": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+  "boundary": "Already grouped BF16 activations -> Q8 down BF16 output; unchanged routing/combine excluded. Actual weights, captured counts, synthetic activations.",
+  "mechanism": "ROW_BATCH4 shares decoded Q8 weights across four independent rows. Exact original K/reduction order; row1 and selected GEMV fallbacks retained.",
+  "owner_prior": {"code4096_grouped_q8_down_ms": 1486.809, "layers": [4,30,46,47], "profiled_window_ms": 27329.662, "zero_cost_ceiling_approx": 1.0575, "hypothetical_1_1x_saving_ms": 135.164},
+  "command": ".venv/bin/python scripts/qwen4exp_q8_down_row4_screen.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --compiler-version-file /tmp/hipengine-hipcc-version.txt --routing-capture /tmp/qwen4exp-routing-categories.json --layer 4 --case-id code-p4096 --chunk 0 --output /tmp/qwen4exp-q8-down-row4-layer4.json",
+  "second_command": "Same command with --layer 30 --routing-layer 4 --case-id mixed_ja_en-p4096 --chunk 7 --output /tmp/qwen4exp-q8-down-row4-layer30.json",
+  "environment": {
+    "PATH_prefix": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin",
+    "LD_LIBRARY_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib",
+    "HIPENGINE_HIP_ARCH": "gfx1151",
+    "compiler": "HIP7.15.26333-0000000 clang23.0.0git 8f497e0992fb7513f7f78a6f6b6f1056c375e961",
+    "clock_policy": "unchanged high/2900-requested"
+  },
+  "shape": [5120,640,2560],
+  "cases": [
+    {"weight_layer": 4, "routing_layer": 4, "case": "code-p4096", "chunk": 0, "weight_sha256": "e878d371b50944f0f1f9bf2d5be7c37f2b09eba642645608145710691e856368", "parent_ms": 47.8047699435, "candidate_ms": 43.1753520388, "median_speedup": 1.1072236284, "mean_speedup": 1.1046089697, "order_speedups": [1.1092401785,1.1046524310], "pairs": 20, "exact": true},
+    {"weight_layer": 30, "routing_layer": 4, "case": "mixed_ja_en-p4096", "chunk": 7, "weight_sha256": "4759dbab3b3ef8d5866714be18e2147aecdd7370c7f7d62433b948cac9a719ed", "parent_ms": 47.2538605100, "candidate_ms": 41.5458140196, "median_speedup": 1.1373916151, "mean_speedup": 1.1332909453, "order_speedups": [1.1381301666,1.1360965350], "pairs": 20, "exact": true, "limitation": "Layer4 counts on independent layer30 weights, not actual layer30 routing"}
+  ],
+  "correctness": "19 GPU tests pass: mapped repeats, compact null-map tails/empty experts at64/128/256 threads, reduced CPU KL<=0.05/top1>=90% and existing quant tests. Forty actual-weight pairs exact. Existing whole-MoE row1 test required explicit router registration; focused repair passed.",
+  "trace": {
+    "prefix": "HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen4exp-q8-down-row4-trace --",
+    "arguments": "first command with --pairs 2 --output /tmp/qwen4exp-q8-down-row4-trace.json",
+    "symbols": "gguf_k_selected_grouped_prefill_out_kernel<unsigned short,unsigned short,1>/<unsigned short,unsigned short,4>",
+    "parent_ns": [47706552,47712734], "candidate_ns": [43077078,43095639],
+    "both_vgpr": 24, "both_lds_bytes": 512, "both_scratch_bytes": 0
+  },
+  "raw": {
+    "/tmp/qwen4exp-q8-down-row4-layer4.json": "79322769bb25d3f1565264a9d751a17ed7adfa94f5c057dee452d2cfcbe1863e",
+    "/tmp/qwen4exp-q8-down-row4-layer30.json": "9996559d39dd2dedd5be1ba1539d0473be497ade05bb1e92a74c8c039f1e3cf9",
+    "/tmp/qwen4exp-q8-down-row4-trace/gfx1151/3150719_kernel_trace.csv": "0246dc2b0a1d82623cf03eee7ff3e37935310dfa73bbf02f51e6517d9a27df26"
+  },
+  "runtime_default_changed": false,
+  "promotion_blocker": "Invocation-checked full-model logits/state/KV and canonical12-case same-residency A/B not yet run."
+}

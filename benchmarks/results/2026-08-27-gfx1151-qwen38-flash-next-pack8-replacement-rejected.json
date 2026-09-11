@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "date": "2026-08-27",
+  "status": "rejected_and_removed",
+  "scope": "Qwen4Exp one-layout Q4 expert gate/up pack8 replacement diagnostic",
+  "host": {"identity": "zbook", "gpu": "AMD Radeon 8060S Graphics", "arch": "gfx1151"},
+  "model": {"id": "Qwen/Qwen3.8-Flash-Next", "quant": "Unsloth UD-Q4_K_XL", "quant_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5"},
+  "real_tensor_micro": {
+    "tensor": "layer0.expert_gate",
+    "raw_bytes": 471859200,
+    "pack8_bytes": 629145600,
+    "pack_seconds": 1.6157319789926987,
+    "raw_median_ms": 0.36837300285696983,
+    "pack8_median_ms": 0.08239499584306031,
+    "speedup": 4.4708,
+    "sampled_output_bits_exact": true
+  },
+  "full_profile": {
+    "load_repack_seconds": 978.868820402,
+    "warm_512_prefill_tok_s": 18.506300089313047,
+    "warm_32_decode_tok_s": 6.267109974021375,
+    "peak_tracked_bytes": 98157047120,
+    "after_close_bytes": 0
+  },
+  "paired_single_pack8_decode": {
+    "command": "uv run python /tmp/qwen4exp_pack8_decode_gate.py",
+    "steps": 32,
+    "raw_strict_tok_s": 5.496789737200815,
+    "pack8_tok_s": 6.437400071314357,
+    "speedup": 1.17112,
+    "mean_kl": 0.0020889926958725493,
+    "p95_kl": 0.00652945142017176,
+    "p99_kl": 0.008669164778896026,
+    "max_kl": 0.009502852393308916,
+    "top1_agreement_rate": 1.0
+  },
+  "decision": {
+    "retained": false,
+    "reason": "Whole-model mean/p95 KL exceed production thresholds and uncached repack/load costs 979 seconds. Experimental planner/materializer/runtime code was removed."
+  }
+}

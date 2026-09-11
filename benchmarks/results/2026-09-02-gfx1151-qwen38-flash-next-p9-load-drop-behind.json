@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_p9_load_drop_behind",
+  "status": "optional_mechanism_complete_default_off",
+  "performance_claim": false,
+  "scope": "Per-tensor file DONTNEED after successful device ownership of non-PLE weights",
+  "amdahl": {
+    "W_C_O_s": "not assigned; no same-session disabled/enabled load A/B was used for promotion",
+    "arithmetic_class": "T0 load-memory policy",
+    "overlap_exclusions": "process total includes model load and one p512 request; request read/fault deltas include lazy PLE and are not a pure load subwindow",
+    "strict_fallback": "HIPENGINE_QWEN4_EXP_LOAD_DROP_BEHIND is default-off"
+  },
+  "safety": {
+    "advice_order": "after device_loader returns successful ownership",
+    "hot_tensor_count_advised": 1223,
+    "lazy_ple_advised": false,
+    "validation_readers_advised": false,
+    "descriptors_reused_by_part_and_closed_on_success_or_failure": true
+  },
+  "host": {
+    "hostname": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "gpu": "gfx1151",
+    "power_dpm_force_performance_level": "auto"
+  },
+  "one_shot": {
+    "process_total_s": 47.115313217,
+    "rss_before_request_bytes": 243400704,
+    "rss_file_before_request_bytes": 92037120,
+    "rss_anon_before_request_bytes": 119808000,
+    "request_read_bytes": 13751525376,
+    "request_major_faults": 6093,
+    "output_sha256": "b2b0d9578d179234619f4c3157e50db89a96920c872ae0af4ab15528c96caf0d",
+    "after_close_bytes": 0,
+    "raw_sha256": "28868ab4eee2b8ed07a28d9053c315afb7e5dfcb5c0b5fbe7aa79f1e9ad65fc2"
+  },
+  "reload_heavy": {
+    "process_total_s": 45.668223075,
+    "rss_before_request_bytes": 244760576,
+    "rss_file_before_request_bytes": 93569024,
+    "rss_anon_before_request_bytes": 119635968,
+    "request_read_bytes": 15606910976,
+    "request_major_faults": 6212,
+    "output_sha256": "b2b0d9578d179234619f4c3157e50db89a96920c872ae0af4ab15528c96caf0d",
+    "after_close_bytes": 0,
+    "raw_sha256": "8bb45bced913b2233bd0f6b892b5a1508446f5f05f25d0f79cd90a21ee1a88f4"
+  },
+  "comparison_context": {
+    "prior_warm_off_rss_before_request_bytes": 720388096,
+    "prior_warm_off_rss_file_before_request_bytes": 354656256,
+    "warning": "Different process/cache sessions; these RSS values describe direction only and are not a retained old-to-new speed comparison."
+  },
+  "decision": "Retain as an explicit default-off one-shot-serving control. It lowers post-load file residency directionally but forces 13.75-15.61 GB of lazy request reads in the observed runs; reload-heavy services should leave it off."
+}

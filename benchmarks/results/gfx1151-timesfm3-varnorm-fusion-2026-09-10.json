@@ -1,0 +1,65 @@
+{
+  "schema": "timesfm3-gpu-decode-bench/1",
+  "date": "2026-09-10",
+  "model": "google/timesfm-3.0-pytorch",
+  "task": "time-series-forecast decode (non-autoregressive single pass)",
+  "hardware": "AMD Radeon 8060S (gfx1151, Strix Halo iGPU), Ryzen AI MAX+ PRO 395 host, 120 GB shared LPDDR5X",
+  "host": "zbook",
+  "workload": {
+    "batch": 8,
+    "variates": 3,
+    "variates_detail": "2 targets + 1 past-future covariate",
+    "context": 8192,
+    "horizon": 512,
+    "patches": 272,
+    "rows": 6528,
+    "masks": "none"
+  },
+  "command": "python3 scripts/timesfm3_gpu_bench.py --metric",
+  "change": "var-attention QK-norm fusion: in-kernel RMSNorm + folded per-dim query scale (deterministic warp-per-row sumsq), replacing head_rmsnorm x2 + head_perdim",
+  "baseline": {
+    "decode_seconds_b8_v3_ctx8192_h512": 0.397,
+    "note": "first working fp16 GPU path (separate var q/k norm kernels); commit 53dc9314b"
+  },
+  "measurements": {
+    "decode_seconds_b8_v3_ctx8192_h512": [
+      0.3232,
+      0.3212,
+      0.3188,
+      0.322,
+      0.3213
+    ],
+    "median": 0.3213,
+    "note": "5 independent process invocations of the metric command (JIT-warm within each); machine otherwise idle"
+  },
+  "comparison": {
+    "torch_fp32_same_gpu": {
+      "protocol": "torch 2.13.0+rocm10.0.0, TimesFM3Torch reference from google-research/timesfm master (vendored in scripts/timesfm3_oracle_torch.py), model.eval(), no_grad, 5 decodes after 1 warmup, torch.cuda.synchronize around each; inputs identical to the metric workload",
+      "decode_seconds": 1.3341,
+      "speedup_vs_hipengine_fp16": 4.17
+    },
+    "hipengine_fp32_strict": {
+      "decode_seconds": 3.3936,
+      "note": "strict rollback path (naive per-row attention kernel); intentionally unoptimized"
+    }
+  },
+  "correctness": {
+    "guard": "fp32 strict parity + fp16 production gate pass on 3 fixtures",
+    "fixtures": {
+      "base": {
+        "fp32_max_abs": 8.345e-06,
+        "fp16_max_rel_signal": 0.0034
+      },
+      "edge": {
+        "fp32_max_abs": 1.144e-05,
+        "fp16_max_rel_signal": 0.0022
+      },
+      "covmask": {
+        "fp32_max_abs": 1.085e-05,
+        "fp16_max_rel_signal": 0.0043
+      }
+    },
+    "pytest": "13/13 (parity, production gate, determinism x2 precisions, precision validation)",
+    "profile": "rocprofv3 --kernel-trace: head_rmsnorm/head_perdim eliminated; var family 121ms -> 34ms; device time 345ms -> 252ms"
+  }
+}

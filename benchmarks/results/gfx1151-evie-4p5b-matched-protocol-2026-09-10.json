@@ -1,0 +1,21 @@
+{
+  "model": "tencent/EVIE-4.5B",
+  "backend": "hip_gfx1151 (AMD Radeon 8060S) vs torch (same GPU, sdpa)",
+  "host": "zbook (Ryzen AI MAX+ PRO 395)",
+  "date": "2026-09-10",
+  "protocol": "matched: identical inputs from the real ColQwen3_5Processor (8 seeded synthetic 448x336 pages, 8 queries 'What is the value shown in figure {i}?', 20-token padded query batch, 151-token doc batch), preprocessing outside timing, full 8x8 MaxSim scoring, best of 3; hipEngine encodes pages sequentially (v1 single-page runtime), torch batches all 8 pages in one forward",
+  "performance_ms": {
+    "torch_fp32": {"doc": 3539.0, "query": 450.5, "score": 1.3, "total": 3990.8},
+    "torch_bf16": {"doc": 1074.1, "query": 224.2, "score": 1.3, "total": 1299.5},
+    "hip_fp32": {"doc": 6384.9, "query": 1211.2, "score": 5.7, "total": 7601.7},
+    "hip_fp16": {"doc": 1616.4, "query": 510.1, "score": 7.6, "total": 2134.1}
+  },
+  "retrieval_quality": {
+    "hip_fp32_vs_torch_fp32": {"max_abs": 0.0001},
+    "hip_fp16_vs_torch_fp32": {"max_abs": 0.0170, "max_rel": 0.0023},
+    "torch_bf16_vs_torch_fp32": {"max_abs": 0.2450, "max_rel": 0.0348},
+    "argmax_vs_fp32_teacher": {"hip_fp16": "8/8", "torch_bf16": "6/8"},
+    "kendall_tau_hip_fp16_vs_torch_bf16": 0.9062
+  },
+  "conclusion": "At matched precision torch leads (batching); hip fp16 is more accurate vs the fp32 teacher than torch bf16 and preserves the fp32 ranking 8/8. The earlier 'fp16 beats torch fp32' headline is cross-precision, not matched."
+}

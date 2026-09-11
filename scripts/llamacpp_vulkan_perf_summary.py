@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 SCHEMA = "hipengine.llamacpp_vulkan_perf_summary.v1"
+CLASSIFIER_VERSION = "2-selected-matmul-first"
 
 _OPERATION_RE = re.compile(
     r"^(?P<name>.+):\s+(?P<count>\d+)\s+x\s+"
@@ -57,6 +58,12 @@ def classify_operation(name: str) -> str:
         return "llama_selected_q5"
     if "MUL_MAT_ID" in upper and "Q6_K" in upper:
         return "llama_selected_q6"
+    if "MUL_MAT_ID" in upper and "Q5_1" in upper:
+        return "llama_selected_q51"
+    if "MUL_MAT_ID" in upper and "Q8_0" in upper:
+        return "llama_selected_q8"
+    if "MUL_MAT_ID" in upper:
+        return "llama_selected_other"
     if "MUL_MAT_VEC Q6_K" in upper:
         return "llama_lm_head"
     if "MUL_MAT" in upper and "Q8_0" in upper:
@@ -99,11 +106,15 @@ def classify_operation(name: str) -> str:
 
 
 def parse_perf_log(path: Path) -> list[TimingSection]:
+    return parse_perf_text(path.read_text(errors="replace"), source_label=str(path))
+
+
+def parse_perf_text(text: str, *, source_label: str = "<text>") -> list[TimingSection]:
     sections: list[TimingSection] = []
     in_section = False
     operations: list[OperationTiming] = []
 
-    for raw_line in path.read_text(errors="replace").splitlines():
+    for raw_line in text.splitlines():
         line = raw_line.strip()
         if line == "Vulkan Timings:":
             if in_section:
@@ -137,7 +148,7 @@ def parse_perf_log(path: Path) -> list[TimingSection]:
     if in_section:
         raise ValueError("incomplete Vulkan timing section at end of log")
     if not sections:
-        raise ValueError(f"no Vulkan timing sections found in {path}")
+        raise ValueError(f"no Vulkan timing sections found in {source_label}")
     return sections
 
 
@@ -217,6 +228,7 @@ def build_summary(
     operations, families = _aggregate_rows(selected)
     return {
         "schema": SCHEMA,
+        "classifier_version": CLASSIFIER_VERSION,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "label": label,
         "command": command,

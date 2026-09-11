@@ -1,0 +1,192 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_h256_wave_attention_screen",
+  "command": [
+    "scripts/qwen4exp_qsa_h256_wave_screen.py",
+    "--rows",
+    "16",
+    "64",
+    "512",
+    "--selected",
+    "2051",
+    "--pairs",
+    "10",
+    "--page256",
+    "--compare-generic",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--require-cached-build",
+    "--output",
+    "/tmp/qwen4exp-qsa-page256-checked-screen.json"
+  ],
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "f13e4e56a0e6177d56178ca6597385a5c668ce13",
+    "tracked_clean": false
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "arithmetic_class": "T0",
+  "runtime_default_changed": false,
+  "boundary": "selected paged BF16 K/V attention to F32 output; selection and KV publication excluded",
+  "geometry": {
+    "query_heads": 24,
+    "kv_heads": 2,
+    "head_dim": 256,
+    "capacity": 4352,
+    "block_size": 256
+  },
+  "fixture": "seed506 random Q/BF16 KV, per-row page permutations and sorted unique selected positions",
+  "cases": [
+    {
+      "rows": 16,
+      "selected_stride": 2051,
+      "selected_sha256": "a5cd86a20fb1315c0ee1d282f9b39399435d0a12b514a6e3dc6a054bba8749c7",
+      "counts_sha256": "532b9fea260eaa470d090150b1231644d33a789fe7e75a27471643baea24df1d",
+      "seconds": {
+        "parent": [
+          0.002513165818527341,
+          0.0025248380843549967,
+          0.0025160619989037514,
+          0.0025073760189116,
+          0.0025090989656746387,
+          0.0025015040300786495,
+          0.0025084081571549177,
+          0.0025058819446712732,
+          0.0025063129141926765,
+          0.002503958996385336
+        ],
+        "candidate": [
+          0.0024203720968216658,
+          0.0024122470058500767,
+          0.0024257320910692215,
+          0.002426743973046541,
+          0.002427426166832447,
+          0.0024246699176728725,
+          0.002420702949166298,
+          0.002419099910184741,
+          0.002419500146061182,
+          0.0024203818757086992
+        ]
+      },
+      "all_pairs_exact": true,
+      "speedup": 1.0360868188662717
+    },
+    {
+      "rows": 64,
+      "selected_stride": 2051,
+      "selected_sha256": "ab452f6f88b385f70efc6e85088891c52bb7cdeb3239692f5f32ef9455b38975",
+      "counts_sha256": "3fb073bf7d25ddc33b79a349f19b59b15eaebf51e6369ff908bb2985e592ec61",
+      "seconds": {
+        "parent": [
+          0.005084631964564323,
+          0.005143851973116398,
+          0.0051039280369877815,
+          0.005121160997077823,
+          0.005119547015056014,
+          0.005146288080140948,
+          0.0050866249948740005,
+          0.005124957067891955,
+          0.005123885115608573,
+          0.005115339066833258
+        ],
+        "candidate": [
+          0.005049957195296884,
+          0.005033385939896107,
+          0.005042824195697904,
+          0.004986998857930303,
+          0.005009421147406101,
+          0.005010643042623997,
+          0.00503411702811718,
+          0.005015813047066331,
+          0.004988111089915037,
+          0.005025211023166776
+        ]
+      },
+      "all_pairs_exact": true,
+      "speedup": 1.0198868103994192
+    },
+    {
+      "rows": 512,
+      "selected_stride": 2051,
+      "selected_sha256": "0ce1bdd7a29a87f0189385fc07336728032bdc83c3f53955115b71ed3f07da5e",
+      "counts_sha256": "60e731104c86957c0dace2aeda901761435eedf57d34212469b6f16d33d9caf3",
+      "seconds": {
+        "parent": [
+          0.027938518906012177,
+          0.028419310925528407,
+          0.02823173999786377,
+          0.027962774969637394,
+          0.02815139782615006,
+          0.027953027049079537,
+          0.028225338086485863,
+          0.028117404086515307,
+          0.028307671891525388,
+          0.027952444972470403
+        ],
+        "candidate": [
+          0.027504664845764637,
+          0.028756393818184733,
+          0.02820584108121693,
+          0.027809147024527192,
+          0.027402373030781746,
+          0.027538447873666883,
+          0.027481060940772295,
+          0.027700131991878152,
+          0.027503132121637464,
+          0.027580928057432175
+        ]
+      },
+      "all_pairs_exact": true,
+      "speedup": 1.0208533925166918
+    }
+  ],
+  "page256": true,
+  "baseline": "generic_h256_wave",
+  "date": "2026-09-05",
+  "status": "standalone_page256_candidate_runtime_pending",
+  "performance_claim": false,
+  "environment": {
+    "LD_LIBRARY_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib",
+    "HIPENGINE_HIP_ARCH": "gfx1151"
+  },
+  "cwd": "/home/lhl/hipEngine",
+  "python": ".venv/bin/python",
+  "source_sha256": {
+    "hipengine/kernels/hip_gfx1100/attention/qwen4_exp_qsa.hip": "cf96705c35adc1bbaebcdc4eb0aa06f4226be3e891c4b8d44f8d0640304dcfb7",
+    "hipengine/kernels/hip_gfx1100/attention/qwen4_exp_qsa.py": "fcb05547ca757bd14d942a8d87f45cc73cfb7bc6c61acf885c28b9b8e337e006"
+  },
+  "raw_sha256": "a30e39a06099a181486a49e675ab53ecc47b900d3f39eed76f466eecbec5c68c",
+  "correctness": "20 focused tests pass; ten actual-geometry parity cases cover both candidates; CPU-reference values, page and dimension rejection, fallback registration",
+  "trace": {
+    "path": "/tmp/qwen4exp-qsa-page256-trace/gfx1151/2195985_kernel_trace.csv",
+    "sha256": "8bc3c4f30222ce4789496a13be5b0eaf5e34032d148a74793ff44f95446954de",
+    "symbol": "qsa_sparse_attention_h256_wave_rows_f32_kernel<true>",
+    "duration_ns": [
+      27620238,
+      27279985
+    ],
+    "vgpr": 40,
+    "lds": 0,
+    "scratch": 0,
+    "command": "rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen4exp-qsa-page256-trace -- .venv/bin/python scripts/qwen4exp_qsa_h256_wave_screen.py --rows 512 --selected 2051 --pairs 1 --page256 --compare-generic --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --output /tmp/qwen4exp-qsa-page256-traced.json",
+    "executable": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/bin/rocprofv3"
+  },
+  "limitations": [
+    "Not a power measurement or resolution of whole-model late decode regression.",
+    "Development-tree standalone source hashes pinned; no runtime/default change.",
+    "Both timed arms individually checked against strict after every sample; previous preliminary screen had only end-of-pair assertions and is superseded."
+  ]
+}

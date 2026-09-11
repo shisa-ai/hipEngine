@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "date": "2026-08-27",
+  "status": "accepted_exact_default",
+  "scope": "Qwen4Exp raw Q5_1 strict selected decode reduction",
+  "host": {"identity": "zbook", "gpu": "AMD Radeon 8060S Graphics", "arch": "gfx1151"},
+  "model": {"id": "Qwen/Qwen3.8-Flash-Next", "quant": "Unsloth UD-Q4_K_XL", "quant_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5"},
+  "change": "Preserve shared-memory strides 128/64/32, then execute the identical 16/8/4/2/1 reduction tree with wave32 shuffles; remove five workgroup barriers per output block.",
+  "correctness": {
+    "q5_output_bits_exact_to_cpu_dequant": true,
+    "focused_tests_passed": 2,
+    "structural_token": 264,
+    "strict_fallback_semantics": "same registered strict kernel and identical BF16 output bits"
+  },
+  "kernel_trace": {
+    "baseline_file": "/tmp/qwen4exp-step-profile_kernel_trace.csv",
+    "candidate_file": "/tmp/qwen4exp-step-wave-tail-profile_kernel_trace.csv",
+    "q5_launches_per_token": 43,
+    "baseline_q5_ms": 45.095658,
+    "candidate_q5_ms": 38.157268,
+    "q5_bucket_reduction_percent": 15.3879,
+    "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen4exp-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace -f csv -o /tmp/qwen4exp-step-wave-tail-profile -- uv run python /tmp/qwen4exp_profile_step.py"
+  },
+  "warm_eager_diagnostic": {
+    "tokens": 32,
+    "baseline_tok_s": 5.738567280181355,
+    "candidate_tok_s": 5.889906632750584,
+    "delta_percent": 2.6373,
+    "command": "uv run python /tmp/qwen4exp_warm_perf.py"
+  },
+  "decision": {"promoted": true, "reason": "bit-exact Q5 output, matched hot-bucket reduction, and non-regressive warm whole-model decode"}
+}

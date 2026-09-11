@@ -1,0 +1,231 @@
+from __future__ import annotations
+
+import importlib.util
+from pathlib import Path
+import sys
+from types import MappingProxyType, SimpleNamespace
+
+import numpy as np
+
+
+ROOT = Path(__file__).resolve().parents[1]
+SCRIPT = ROOT / "scripts" / "qwen4exp_layer2_profile_gate.py"
+
+
+def _load_script():
+    spec = importlib.util.spec_from_file_location("qwen4exp_layer2_profile_gate", SCRIPT)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_json_value_thaws_nested_immutable_profile_manifest() -> None:
+    module = _load_script()
+    value = MappingProxyType({"rows": (1, MappingProxyType({"variant": "x"}))})
+
+    assert module._json_value(value) == {"rows": [1, {"variant": "x"}]}
+
+
+def test_state_summary_hashes_owned_state_and_metadata() -> None:
+    module = _load_script()
+    snapshot = SimpleNamespace(
+        position=7,
+        decode_state=SimpleNamespace(
+            buffers={
+                "gdn_matrix": np.asarray([1.0, 2.0], dtype=np.float32).view(np.uint8),
+                "residual": np.asarray([0x3F80, 0x4000], dtype=np.uint16).view(np.uint8),
+            }
+        ),
+        ple_hash_states={0: SimpleNamespace(tokens=(1, 2), next_position=7)},
+    )
+    runner = SimpleNamespace(
+        snapshot=lambda: snapshot,
+        attention_states=(
+            SimpleNamespace(position_host=np.asarray([6]), context_host=np.asarray([7])),
+        ),
+        index_states=(SimpleNamespace(count=7, pooled_count=1),),
+    )
+
+    first = module._state_summary(runner)
+    second = module._state_summary(runner)
+
+    assert first == second
+    assert first["finite"] is True
+    assert first["position"] == 7
+    assert first["buffer_bytes"] == {"gdn_matrix": 8, "residual": 4}
+    assert first["attention_positions"] == [[6, 7]]
+    assert first["index_counts"] == [[7, 1]]
+
+
+def test_state_repeat_gate_requires_candidate_repeatability_and_layout() -> None:
+    module = _load_script()
+    metadata = {"position": 7, "attention_positions": [[6, 7]], "index_counts": [[7, 1]]}
+    strict = [{
+        "prompt_id": "p", "state_sha256": "s", "layout_sha256": "l",
+        "finite": True, **metadata,
+    }]
+    candidate = [[
+        {"prompt_id": "p", "state_sha256": "c", "layout_sha256": "l", "finite": True, **metadata},
+        {"prompt_id": "p", "state_sha256": "c", "layout_sha256": "l", "finite": True, **metadata},
+        {"prompt_id": "p", "state_sha256": "c", "layout_sha256": "l", "finite": True, **metadata},
+    ]]
+
+    passed = module._state_repeat_gate(strict, candidate)
+    assert passed["passed"] is True
+    assert passed["prompts"][0]["strict_candidate_state_exact"] is False
+
+    candidate[0][2] = {**candidate[0][2], "state_sha256": "different"}
+    failed = module._state_repeat_gate(strict, candidate)
+    assert failed["passed"] is False
+    assert failed["mismatches"][0]["repeat_exact"] is False
+
+
+def test_compact_state_gate_binds_strict_candidate_equality() -> None:
+    module = _load_script()
+    metadata = {
+        "position": 7,
+        "attention_positions": [[6, 7]],
+        "index_counts": [[7, 1]],
+    }
+    strict = [{
+        "prompt_id": "p", "state_sha256": "s", "layout_sha256": "l",
+        "finite": True, **metadata,
+    }]
+    candidate = [[
+        {
+            "prompt_id": "p", "state_sha256": "c", "layout_sha256": "l",
+            "finite": True, **metadata,
+        }
+        for _ in range(3)
+    ]]
+
+    gate = module._state_repeat_gate(strict, candidate)
+    gate["all_strict_candidate_state_exact"] = all(
+        row["strict_candidate_state_exact"] for row in gate["prompts"]
+    )
+    gate["passed"] = gate["passed"] and gate["all_strict_candidate_state_exact"]
+
+    assert gate["passed"] is False
+
+
+def test_compact_free_trajectory_reuses_device_token_and_skips_hidden_copy(
+    monkeypatch,
+) -> None:
+    module = _load_script()
+
+    class Runner:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def reset(self) -> None:
+            return None
+
+        def prefill(self, token_ids, **kwargs):
+            self.calls.append(("prefill", tuple(token_ids), kwargs))
+            return SimpleNamespace(token_id=7)
+
+        def step(self, token_id, **kwargs):
+            self.calls.append(("step", int(token_id), kwargs))
+            return SimpleNamespace(token_id=int(token_id) + 1)
+
+    runner = Runner()
+    tokenizer = SimpleNamespace(decode=lambda ids, skip_special: str(list(ids)))
+    monkeypatch.setattr(module, "_state_summary", lambda _runner: {"state_sha256": "s"})
+
+    result = module._free_trajectory(
+        runner, tokenizer, [1, 2], 3, compact_output=True
+    )
+
+    assert result["ids"] == [7, 8, 9]
+    assert runner.calls == [
+        (
+            "prefill", (1, 2),
+            {"capture_logits": False, "capture_target_hidden": False},
+        ),
+        (
+            "step", 7,
+            {
+                "capture_logits": False,
+                "capture_target_hidden": False,
+                "token_id_resident": True,
+            },
+        ),
+        (
+            "step", 8,
+            {
+                "capture_logits": False,
+                "capture_target_hidden": False,
+                "token_id_resident": True,
+            },
+        ),
+    ]
+
+
+def test_device_argmax_candidate_is_t0_and_fail_closed() -> None:
+    module = _load_script()
+    candidate = module.CANDIDATES["device_argmax"]
+
+    assert candidate.environment == {}
+    assert candidate.classification == "T0"
+    assert candidate.base_profile == "strict"
+    assert candidate.candidate_key[-1] == "top1_i64"
+    assert candidate.compact_output is True
+
+
+def test_q8_mmq_attn_gate_candidate_is_explicit_and_fail_closed() -> None:
+    module = _load_script()
+    candidate = module.CANDIDATES["q8_mmq_attn_gate"]
+
+    assert candidate.environment == {"HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE": "1"}
+    assert candidate.classification == "T2"
+    assert candidate.base_profile == "production"
+    assert candidate.candidate_key[-1] == (
+        "mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out"
+    )
+    assert candidate.fallback_key[-1] == "coltile8_rowbatch4_f32_f32_out"
+
+
+def test_gfx1151_registry_contains_layer2_candidate_and_strict_fallback() -> None:
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+    from hipengine.kernels.registry import resolve
+
+    register_gfx1151_kernels(replace=True)
+
+    assert resolve(
+        backend="hip_gfx1151",
+        layer="moe_linear",
+        quant="gguf_q5_k",
+        variant="selected_wmma_prefill_compact_bf16_bf16_out",
+    ) is not None
+    assert resolve(
+        backend="hip_gfx1151",
+        layer="linear",
+        quant="gguf_q5_k",
+        variant="selected_gemv_bf16_bf16_out",
+    ) is not None
+    assert resolve(
+        backend="hip_gfx1151",
+        layer="linear",
+        quant="gguf_q8_0",
+        variant="mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out",
+    ) is not None
+
+
+def test_task_gate_requires_repeatability_and_flags_cross_route_divergence() -> None:
+    module = _load_script()
+    strict = {"a": {"ids": [1, 2], "ids_sha256": "s", "text": "strict"}}
+    candidate = {
+        "a": [
+            {"ids": [1, 3], "ids_sha256": "c", "text": "candidate"},
+            {"ids": [1, 3], "ids_sha256": "c", "text": "candidate"},
+        ]
+    }
+
+    result = module._task_gate(strict, candidate, categories={"a": "general_en"})
+
+    assert result["candidate_repeat_exact"] is True
+    assert result["strict_exact_count"] == 0
+    assert result["status"] == "requires_review"
+    assert result["divergences"][0]["id"] == "a"

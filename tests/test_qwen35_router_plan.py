@@ -16,6 +16,7 @@ from hipengine.kernels.hip_gfx1100.moe import (
     qwen35_router_logits_bf16_f32w_token_tile_8,
     qwen35_router_logits_bf16_f32w_token_tile_16,
     qwen35_router_logits_f32_f32w,
+    qwen35_router_logits_f32_f32w_token_tile4_dense_exact,
     qwen35_router_logits_fp16,
     qwen35_router_logits_fp16_f32w,
     qwen35_router_select,
@@ -31,6 +32,7 @@ from hipengine.kernels.hip_gfx1100.moe import (
     qwen35_router_topk_shared_sigmoid_out_fp16,
     register_qwen35_router_kernels,
 )
+from hipengine.kernels.hip_gfx1100.linear.dense_gemv import dense_gemv_out_f32
 from hipengine.kernels.registry import clear_registry_for_tests, resolve
 
 
@@ -94,6 +96,15 @@ def test_qwen35_router_registers_bf16_and_w4_paro() -> None:
     assert (
         resolve(backend="hip_gfx1100", layer="router_logits", quant="f32", variant="f32_hidden")
         is qwen35_router_logits_f32_f32w
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="router_logits",
+            quant="f32",
+            variant="f32_hidden_token_tile4_dense_exact",
+        )
+        is qwen35_router_logits_f32_f32w_token_tile4_dense_exact
     )
     assert (
         resolve(backend="hip_gfx1100", layer="router_logits", quant="w4_paro", variant="fp16_hidden")
@@ -503,6 +514,50 @@ def test_split_shared_coop_bf16_matches_cpu_router(router_library) -> None:
     np.testing.assert_allclose(logits, expected_logits, atol=2.0e-5, rtol=2.0e-5)
     np.testing.assert_array_equal(selected, expected_selected)
     np.testing.assert_allclose(routing, expected_routing, atol=1.0e-6, rtol=1.0e-6)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+@pytest.mark.parametrize("tokens", [1, 5, 508])
+def test_router_logits_f32_token_tile4_is_bit_exact_to_dense(
+    router_library, tokens: int
+) -> None:
+    rng = np.random.default_rng(20260831 + tokens)
+    hidden_size = 2560
+    num_experts = 512
+    hidden = rng.normal(0.0, 0.1, size=(tokens, hidden_size)).astype(np.float32)
+    weight = rng.normal(0.0, 0.1, size=(num_experts, hidden_size)).astype(np.float32)
+    dense = np.empty((tokens, num_experts), dtype=np.float32)
+    tiled = np.empty_like(dense)
+    buffers = [malloc(arr.nbytes) for arr in (hidden, weight, dense, tiled)]
+    try:
+        for arr, buf in zip((hidden, weight), buffers, strict=False):
+            copy_host_to_device(buf, host_array_ptr(arr), arr.nbytes)
+        dense_gemv_out_f32(
+            buffers[0].ptr,
+            buffers[1].ptr,
+            buffers[2].ptr,
+            tokens,
+            hidden_size,
+            num_experts,
+            threads=256,
+        )
+        qwen35_router_logits_f32_f32w_token_tile4_dense_exact(
+            buffers[0].ptr,
+            buffers[1].ptr,
+            buffers[3].ptr,
+            tokens,
+            hidden_size,
+            num_experts,
+            threads=256,
+            library=router_library,
+        )
+        copy_device_to_host(host_array_ptr(dense), buffers[2], dense.nbytes)
+        copy_device_to_host(host_array_ptr(tiled), buffers[3], tiled.nbytes)
+    finally:
+        for buf in reversed(buffers):
+            free(buf)
+
+    np.testing.assert_array_equal(tiled.view(np.uint32), dense.view(np.uint32))
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")

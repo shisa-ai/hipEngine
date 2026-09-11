@@ -1,0 +1,73 @@
+{
+  "schema": 1,
+  "status": "retained_kernel_only_model_gates_pending",
+  "runtime_default_changed": false,
+  "source": {
+    "base_commit": "ada92b9c74fce620e40cea2c29ee519d029de2e3",
+    "tracked_clean": false,
+    "candidate_in_recording_commit": true,
+    "hip_sha256": "729446b11384f6cc5f252ef2972afb2acec60d9ecf4cdd004ee58b984fb1e048",
+    "wrapper_sha256": "9ecfa711256f5ea7adea7b0cc0b6a9adf44e43d2204751c80084decd35dc08f1"
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "hardware": "Framework Desktop Ryzen AI Max+395 / Radeon8060S",
+    "arch": "gfx1151",
+    "kernel": "7.1.6-1-cachyos",
+    "hip": "7.15.26333-0000000",
+    "compiler_revision": "8f497e0992fb7513f7f78a6f6b6f1056c375e961",
+    "clock_policy": "unchanged high, requested min/max2900MHz"
+  },
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "model_fingerprint": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+  "kv": "BF16 in model; not involved in this projection screen",
+  "weights": [
+    {"tensor": "blk.0.ffn_down_exps.weight", "shape": [512,2560,640], "sha256": "b8182533b10a398040d86f4026f4cdbee23b5b666414c37b4c6f73bcfa3f5663"},
+    {"tensor": "blk.1.ffn_down_exps.weight", "shape": [512,2560,640], "sha256": "74b2d0bdc9090ab85924b670c079cf6d93bbee0a764d37c519f1a14e17831c95"}
+  ],
+  "boundary": "Two rotating Q5_1 down banks with same-layer captured routing counts and synthetic activations; maps supplied, routing/combine excluded",
+  "mechanism": "K640 specialization loads five exact decoded weights per physical thread/output before routed-row loop, preserves logical256 accumulator streams, folded-pair reduction and BF16 publication. No extra LDS.",
+  "command": ".venv/bin/python scripts/qwen4exp_q51_pair_screen.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --register-cache --routing-capture /tmp/qwen4exp-routing-categories.json --case-id code-p4096 --chunk 0 --rows 512 --pairs 20 --output /tmp/qwen4exp-q51-register-cache-code.json",
+  "second_command_changes": "--case-id mixed_ja_en-p4096 --chunk 7 --output /tmp/qwen4exp-q51-register-cache-mixed.json",
+  "environment": {
+    "PATH_prefix": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin",
+    "LD_LIBRARY_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib",
+    "HIPENGINE_HIP_ARCH": "gfx1151",
+    "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-hipcc-version.txt"
+  },
+  "cases": [
+    {
+      "routing": "code-p4096 chunk0", "tokens": 512, "compact_rows": 5120, "pairs": 20,
+      "parent_mean_ms": 34.44961830973625, "candidate_mean_ms": 28.194502473343164,
+      "median_speedup": 1.2237042404437557, "mean_speedup": 1.221855868615063,
+      "order_speedups": [1.2255122114412231,1.2198498899951664], "all_pairs_exact": true
+    },
+    {
+      "routing": "mixed_ja_en-p4096 chunk7", "tokens": 512, "compact_rows": 5120, "pairs": 20,
+      "parent_mean_ms": 33.75577782280743, "candidate_mean_ms": 27.81860331306234,
+      "median_speedup": 1.2155866288980057, "mean_speedup": 1.213424608091567,
+      "order_speedups": [1.219648762253582,1.2109274703310449], "all_pairs_exact": true
+    }
+  ],
+  "correctness": "Registry RED then17 GPU tests pass. K640 bound, output tails/empty experts, repeated exact BF16 output versus M1, CPU-reference KL/top1 floor; all40 two-bank timing pairs exact.",
+  "trace": {
+    "command_prefix": "HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen4exp-q51-register-cache-trace --",
+    "arguments": "First command with --pairs 2 --output /tmp/qwen4exp-q51-register-cache-trace.json",
+    "path": "/tmp/qwen4exp-q51-register-cache-trace/gfx1151/3430840_kernel_trace.csv",
+    "symbol": "q5_1_selected_grouped_prefill_pair2_bf16_kernel<true,true,REGISTER_CACHE>",
+    "calls_per_arm": 6,
+    "parent_mean_ms": 17.123827, "candidate_mean_ms": 14.0600395,
+    "parent_vgpr": 72, "candidate_vgpr": 96,
+    "parent_private_scratch_bytes": 0, "candidate_private_scratch_bytes": 36,
+    "dynamic_lds_requested_bytes_both": 8672,
+    "note": "CSV static LDS0 does not include the dynamic launch allocation. Private scratch is a real resource cost; no spill-free claim."
+  },
+  "raw_sha256": {
+    "/tmp/qwen4exp-q51-register-cache-code.json": "8042da97ea7ad7aecfb261bf4da6a753ec0bba8563bab24e0d8f24139e72aaa2",
+    "/tmp/qwen4exp-q51-register-cache-mixed.json": "4653eeb9d7e31352d1033348ce26cf22bc1fb877a0431381ab5784898db56d58",
+    "/tmp/qwen4exp-routing-categories.json": "d34381f22f85fc5603b87b32dd1487ad41246b32ca76d5355e24bee4f4f34766"
+  },
+  "promotion_blocker": "Full-model invocation/logits/state/KV and canonical12-case A/B required at full residency. Candidate scope for admission is only existing folded-pair rows>=512 and K640; other shapes keep parent.",
+  "limits": "Kernel screen, not whole-model speedup or Vulkan parity. No clock/power changes; broad lineage audit still fails on missing hb-pr11 reference, no external port."
+}
