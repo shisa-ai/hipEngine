@@ -314,6 +314,32 @@ rg -n "import torch|torch\." hipengine tests scripts pyproject.toml docs/IMPLEME
 
 The torch audit may show docstrings/comments, but executable hot-path imports/usages are blockers.
 
+### 2.1 Two ROCm stacks cannot share a process
+
+`hipengine` loads the process HIP runtime with `ctypes.CDLL("libamdhip64.so")`,
+which resolves to the system ROCm install. When the optional `torch` extra ships
+its own ROCm SDK, torch's `rocm_sdk.initialize_process()` then preloads a second
+`libamdhip64.so.7` from `_rocm_sdk_core` and fails with
+`undefined symbol: hsa_amd_vmem_export_fabric_handle, version ROCR_1`, because the
+already-loaded system ROCR lacks that symbol. Only one ROCm stack can be loaded
+per process, and whichever loads first wins.
+
+A test module that needs torch must therefore skip rather than error. Note that
+`pytest.importorskip("torch")` is **not** sufficient: the failure is an `OSError`
+from `dlopen`, not an `ImportError`, so it escapes the guard and errors the whole
+collection. Use the shared helper instead:
+
+```python
+from tests._rocm_guard import torch_or_skip
+
+torch = torch_or_skip(__name__, module_level=True)   # module import
+# ... or inside a test body:
+torch = torch_or_skip(__name__)
+```
+
+It probes the HIP runtime and catches both `ImportError` and `OSError`, skipping
+with the underlying diagnostic. `tests/test_rocm_guard.py` pins the behaviour.
+
 ### 3. GPU smoke bundle
 
 Run only when the GPU is explicitly clear. The default-off prefill flight

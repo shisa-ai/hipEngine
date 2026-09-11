@@ -7,8 +7,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-pytest.importorskip("torch")
-import torch
+from tests._rocm_guard import torch_or_skip
+
+torch = torch_or_skip(__name__, module_level=True)
 from safetensors.torch import save_file as save_safetensors
 
 from hipengine.kvcache import load_dms_retrofit_config

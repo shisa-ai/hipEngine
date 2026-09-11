@@ -15,6 +15,8 @@ from hipengine.kvcache.dms_labels import (
     load_dms_label_manifest,
 )
 
+from tests._rocm_guard import torch_or_skip
+
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -44,7 +46,7 @@ def test_future_attention_mass_keeps_kv_heads_independent() -> None:
 
 
 def test_tiled_gpu_future_mass_matches_cpu_and_repeats_deterministically() -> None:
-    torch = pytest.importorskip("torch")
+    torch = torch_or_skip(__name__)
     if not torch.cuda.is_available():
         pytest.skip("PyTorch HIP/CUDA device is unavailable")
     from scripts.qwen38_dms_build_labels import future_attention_mass_torch
