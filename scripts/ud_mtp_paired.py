@@ -12,12 +12,16 @@ hopeful:
 * every pair runs the same ``qwen36_dense_gguf_suite.py`` entry point, so the
   AR baseline is the suite's own true no-MTP greedy path for each artifact and
   the KV layout comes from the same resident-session construction;
-* the run refuses to start unless the U6 certification unit is complete for
-  the UD artifacts, which is the "only after U6 certification passes" gate.
+* the run refuses to start unless every U6 *pre-measurement* item is
+  qualified for the UD artifacts: the structural and control items that can be
+  verified without the run and whose violation would make its numbers
+  meaningless.  The two items the run itself establishes (control/determinism
+  evidence and the backend/profile/context/width envelope) cannot gate the run
+  without circularity, and the admission pin still requires both.
 
-The gate is deliberately not bypassable by a flag. While U6 is incomplete the
-useful action is ``--dry-run``, which resolves and prints the exact commands
-and the certification state without touching the GPU.
+While the pre-measurement items are open the useful action is ``--dry-run``,
+which resolves and prints the exact commands and the certification state
+without touching the GPU.
 
 Usage:
     python3 scripts/ud_mtp_paired.py --dry-run
@@ -102,15 +106,23 @@ def u6_gate_state() -> dict[str, object]:
         _, quant, _ = PAIRS[label]
         cert = by_preset.get(quant)
         if cert is None:
-            state["gated"][label] = {"preset_key": quant, "certified": False, "reason": "no U6 record"}
+            state["gated"][label] = {
+                "preset_key": quant,
+                "measurement_ready": False,
+                "pin_complete": False,
+                "reason": "no U6 record",
+            }
             blocked_any = True
             continue
-        blocked = list(cert.blocked_items)
-        blocked_any = blocked_any or bool(blocked)
+        blocked = [item.item for item in cert.items if not item.qualified]
+        pre_blocked = list(cert.measurement_blockers)
+        blocked_any = blocked_any or bool(pre_blocked)
         state["gated"][label] = {
             "preset_key": quant,
-            "certified": cert.is_complete(),
-            "blocked_items": blocked,
+            "measurement_ready": cert.measurement_ready(),
+            "pin_complete": cert.is_complete(),
+            "measurement_blockers": pre_blocked,
+            "open_items": blocked,
             "blockers": {item.item: item.blocker for item in cert.items if item.blocker},
         }
     state["gate_passed"] = not blocked_any
@@ -195,8 +207,55 @@ def _run_pair(argv: list[str], output: Path) -> dict[str, object]:
     return json.loads(output.read_text())
 
 
+def _determinism(payload: dict, runs: int) -> dict[str, object]:
+    """Whether every prompt repeats bit-identically across runs, AR and MTP."""
+
+    rows = payload.get("rows", {})
+    groups: dict[str, list[dict]] = {"true_ar": list(rows.get("true_ar", []))}
+    for budget, budget_rows in (rows.get("mtp") or {}).items():
+        groups[f"mtp_B{budget}"] = list(budget_rows)
+    unstable: dict[str, list[str]] = {}
+    for label, group in groups.items():
+        by_prompt: dict[str, set[str]] = {}
+        for row in group:
+            by_prompt.setdefault(str(row["id"]), set()).add(str(row["token_sha256_i64"]))
+        differing = sorted(prompt for prompt, hashes in by_prompt.items() if len(hashes) > 1)
+        if differing:
+            unstable[label] = differing
+    return {
+        "runs": int(runs),
+        "deterministic": not unstable,
+        "unstable": unstable,
+    }
+
+
+def _exactness(payload: dict) -> dict[str, object]:
+    """Free-running ID agreement, recorded but not binding (docs section 6)."""
+
+    rows = payload.get("rows", {})
+    divergent: list[str] = []
+    total = 0
+    for group in (rows.get("mtp") or {}).values():
+        for row in group:
+            total += 1
+            if not bool(row.get("exact_greedy_match")):
+                divergent.append(f"{row['id']}#run{row.get('run')}")
+    return {
+        "rows": total,
+        "divergent_rows": sorted(divergent),
+        "divergent_count": len(divergent),
+        "binding": False,
+        "note": (
+            "docs/EXECUTION-PROFILES.md section 6: free-running generated-ID equality "
+            "is recorded but is not the denominator; section 4.1 permits logits and "
+            "generated IDs to differ at near ties in the production profile."
+        ),
+    }
+
+
 def _verdict(payload: dict, runs: int) -> dict[str, object]:
-    correctness = payload.get("correctness", {})
+    """Binding control gates plus the recorded-not-binding exactness evidence."""
+
     summary = payload.get("summary", {})
     true_ar = summary.get("true_ar", {}).get("full", {})
     budgets = summary.get("mtp", {})
@@ -205,17 +264,24 @@ def _verdict(payload: dict, runs: int) -> dict[str, object]:
         ratio = float(block.get("full", {}).get("mtp_vs_true_ar", 0.0) or 0.0)
         if ratio > best_ratio:
             best_budget, best_ratio = budget, ratio
-    gates = {
-        "status_complete_exact": payload.get("status") == "complete_exact",
-        "all_exact_greedy": bool(correctness.get("all_exact_greedy")),
-        "all_gpu_accept_match_cpu": bool(correctness.get("all_gpu_accept_match_cpu")),
+    determinism = _determinism(payload, runs)
+    correctness = payload.get("correctness", {})
+    binding_gates = {
         "true_ar_denominator_present": bool(true_ar.get("decode_tok_s_weighted")),
+        "all_gpu_accept_match_cpu": bool(correctness.get("all_gpu_accept_match_cpu")),
+        "deterministic_repeats": bool(determinism["deterministic"]),
         "faster_than_true_ar": best_ratio > 1.0,
     }
     return {
         "runs": runs,
-        "gates": gates,
-        "gates_passed": all(gates.values()),
+        "binding_gates": binding_gates,
+        "binding_passed": all(binding_gates.values()),
+        "recorded": {
+            "suite_status": payload.get("status"),
+            "all_exact_greedy": bool(correctness.get("all_exact_greedy")),
+            "exactness": _exactness(payload),
+        },
+        "determinism": determinism,
         "true_ar_tok_s": true_ar.get("decode_tok_s_weighted"),
         "best_candidate_budget": best_budget,
         "best_mtp_tok_s": (
@@ -247,16 +313,20 @@ def main() -> int:
 
     if not gate["gate_passed"]:
         print(
-            "refusing to run: the U6 certification unit is incomplete for the gated UD "
-            "artifacts, and this measurement is only valid after U6 passes.",
+            "refusing to run: a U6 pre-measurement item is unqualified for a gated UD "
+            "artifact. Those items are the ones that can be verified without the run, "
+            "and a violation would make the measured numbers meaningless.",
             file=sys.stderr,
         )
         for label, entry in gate["gated"].items():
-            if entry.get("certified"):
+            if entry.get("measurement_ready"):
                 continue
-            print(f"  {label} ({entry['preset_key']}): blocked={entry.get('blocked_items')}", file=sys.stderr)
-            for item, blocker in (entry.get("blockers") or {}).items():
-                print(f"      {item}: {blocker}", file=sys.stderr)
+            print(
+                f"  {label} ({entry['preset_key']}): blocked={entry.get('measurement_blockers')}",
+                file=sys.stderr,
+            )
+            for item in entry.get("measurement_blockers") or ():
+                print(f"      {item}: {(entry.get('blockers') or {}).get(item)}", file=sys.stderr)
         print("use --dry-run to inspect the resolved protocol and commands.", file=sys.stderr)
         return 1
 
@@ -268,6 +338,11 @@ def main() -> int:
         "unit": "paired-ud-plain-mtp",
         "protocol": PAIRED_PROTOCOL,
         "u6_gate": gate,
+        "candidate_mode": (
+            "the U6 admission pin is empty (the two paired_run items are still open), so "
+            "MTP scope is granted in-process and this artifact is diagnostic evidence "
+            "for those items, not a retained admission."
+        ),
         "host_note": (
             "single host/GPU by construction; no concurrent GPU work is enforced by "
             "the operator, not by this script"
@@ -297,14 +372,22 @@ def main() -> int:
         evidence = entry["evidence"]
         ar_rate = evidence["true_ar_tok_s"] or 0.0
         mtp_rate = evidence["best_mtp_tok_s"] or 0.0
+        recorded = evidence["recorded"]
+        exact = recorded["exactness"]
         print(
-            f"[paired] {entry['label']}: gates_passed={evidence['gates_passed']} "
+            f"[paired] {entry['label']}: binding_passed={evidence['binding_passed']} "
             f"AR={ar_rate:.3f} MTP={mtp_rate:.3f} ratio={evidence['best_mtp_vs_true_ar']:.4f}"
         )
-        for gate_name, ok in evidence["gates"].items():
+        print(
+            f"[paired]   recorded (not binding): suite_status={recorded['suite_status']} "
+            f"all_exact_greedy={recorded['all_exact_greedy']} "
+            f"divergent_rows={exact['divergent_count']}/{exact['rows']} "
+            f"{exact['divergent_rows']}"
+        )
+        for gate_name, ok in evidence["binding_gates"].items():
             if not ok:
                 failed = True
-                print(f"[paired]   GATE FAILED: {gate_name}")
+                print(f"[paired]   BINDING GATE FAILED: {gate_name}")
     return 1 if failed else 0
 
 

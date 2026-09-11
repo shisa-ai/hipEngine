@@ -79,18 +79,81 @@ def test_paired_gate_mirrors_the_certification_record():
     assert set(state["gated"]) == set(paired.UD_GATED_LABELS)
     for label, entry in state["gated"].items():
         cert = by_preset[entry["preset_key"]]
-        assert entry["certified"] is cert.is_complete()
-        assert entry["blocked_items"] == list(cert.blocked_items)
-    assert state["gate_passed"] == all(entry["certified"] for entry in state["gated"].values())
+        assert entry["measurement_ready"] is cert.measurement_ready()
+        assert entry["pin_complete"] is cert.is_complete()
+        assert entry["measurement_blockers"] == list(cert.measurement_blockers)
+        # The run may start while the pin is still withheld: the paired_run
+        # items are established by this very measurement.
+        assert entry["measurement_ready"] or entry["measurement_blockers"]
+    assert state["gate_passed"] == all(
+        entry["measurement_ready"] for entry in state["gated"].values()
+    )
 
 
-def test_paired_run_refuses_while_u6_is_incomplete(tmp_path: Path, capsys):
-    """The gate is not bypassable: no flag lets the measurement start early."""
+def test_measurement_gate_is_weaker_than_the_pin_but_still_binding():
+    """A closed pre-measurement item blocks the run; a closed paired_run item does not."""
 
-    state = paired.u6_gate_state()
-    if state["gate_passed"]:
-        pytest.skip("U6 is complete; the refusal path no longer applies")
+    from hipengine.loading.qwen35_gguf_admission import (
+        Qwen35GGUFUDMTPCertification,
+        Qwen35GGUFUDMTPCertificationItem,
+    )
 
+    def record(*, structural_open: bool, run_open: bool) -> Qwen35GGUFUDMTPCertification:
+        return Qwen35GGUFUDMTPCertification(
+            fingerprint="x" * 64,
+            preset_key="gguf_ud_test",
+            backend="hip_gfx1100",
+            execution_profile="production",
+            context_max=4096,
+            widths=(1,),
+            items=(
+                Qwen35GGUFUDMTPCertificationItem(
+                    item="structural", contract="c", evidence="e",
+                    qualified=not structural_open, blocker="b" if structural_open else "",
+                ),
+                Qwen35GGUFUDMTPCertificationItem(
+                    item="run_item", contract="c", evidence="e", qualified=not run_open,
+                    blocker="b" if run_open else "", phase="paired_run",
+                ),
+            ),
+        )
+
+    ready = record(structural_open=False, run_open=True)
+    assert ready.measurement_ready() is True
+    assert ready.is_complete() is False
+    assert ready.measurement_blockers == ()
+
+    blocked = record(structural_open=True, run_open=False)
+    assert blocked.measurement_ready() is False
+    assert blocked.is_complete() is False
+    assert blocked.measurement_blockers == ("structural",)
+
+    complete = record(structural_open=False, run_open=False)
+    assert complete.measurement_ready() is True
+    assert complete.is_complete() is True
+
+
+def test_paired_run_refuses_when_a_pre_measurement_item_is_open(tmp_path: Path, capsys, monkeypatch):
+    """The gate is not bypassable: a closed structural item stops the run."""
+
+    monkeypatch.setattr(
+        paired,
+        "u6_gate_state",
+        lambda: {
+            "gate_passed": False,
+            "pin_fingerprints": [],
+            "gated": {
+                "ud-q4-k-m": {
+                    "preset_key": "gguf_ud_q4_k_m",
+                    "measurement_ready": False,
+                    "pin_complete": False,
+                    "measurement_blockers": ["draft_and_verifier_state_ownership"],
+                    "open_items": ["draft_and_verifier_state_ownership"],
+                    "blockers": {"draft_and_verifier_state_ownership": "shared state"},
+                }
+            },
+        },
+    )
     output = tmp_path / "paired.json"
     import sys
 
@@ -104,10 +167,8 @@ def test_paired_run_refuses_while_u6_is_incomplete(tmp_path: Path, capsys):
     assert not output.exists(), "the gated run must not write an artifact"
     captured = capsys.readouterr()
     assert "refusing to run" in captured.err
-    # The refusal names the concrete blockers rather than a generic message.
-    for entry in state["gated"].values():
-        for item in entry["blocked_items"]:
-            assert item in captured.err
+    assert "draft_and_verifier_state_ownership" in captured.err
+    assert "shared state" in captured.err
 
 
 def test_paired_dry_run_emits_the_protocol_without_running(tmp_path: Path, capsys):
