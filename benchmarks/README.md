@@ -652,9 +652,12 @@ Speculative decode and single-request decode versus the same GGUF on llama.cpp:
 Evidence: [`clean Q4_K_S`](results/2026-08-16-gfx1151-qwen38-27b-q4ks-clean-publication.json),
 [`Q5 source-F16 prefill retention`](results/2026-08-17-gfx1151-qwen38-27b-q4ks-q5-source-f16-prefill-retention.json)
 (the source of the prefill and AR columns above),
-[`exact B3`](results/2026-08-17-gfx1151-qwen38-27b-q4ks-exact-native-b3.json),
-[`memory package`](results/2026-08-17-gfx1151-qwen38-27b-q4ks-memory-parity-retained.json),
-[`G6 closure`](results/2026-08-17-gfx1151-qwen38-27b-q4ks-g6-closure.json), and the
+[`G6 closure`](results/2026-08-17-gfx1151-qwen38-27b-q4ks-g6-closure.json)
+(the source of the true-AR and B3 rows above),
+[`exact B3`](results/2026-08-17-gfx1151-qwen38-27b-q4ks-exact-native-b3.json)
+(the earlier task-23 retention measurement, 24.19347 tok/s at 1.82281x on a
+source that predates `fix: make Qwen3.8 Q4_K_S native B3 exact`),
+[`memory package`](results/2026-08-17-gfx1151-qwen38-27b-q4ks-memory-parity-retained.json), and the
 [`campaign plan`](../docs/QWEN38-27B-GFX1151-CAMPAIGN.md).
 
 The standard (non-UD) `Q4_K_M` file is a separate lane: a different model
