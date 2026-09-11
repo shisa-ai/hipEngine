@@ -191,7 +191,7 @@ row, not across them.
 | Qwen3.6-35B-A3B | GGUF `UD-Q4_K_M` | **1369.5** | **54.3** | 80.1 (opt-in) | — |
 | Laguna S 2.1 | GGUF `Q4_K_M` | **654.2** | **23.2** | — | — |
 | Qwen3.8-27B Dense | GGUF `Q4_K_S` | **396.1** | **13.1** | **23.9** | — |
-| Qwen3.8-27B Dense | GGUF `Q4_K_M` | — | — | **15.6** | — |
+| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **380.4** | **12.2** | **15.6** | — |
 
 **Time-series forecasting (TimesFM 2.5 200M).** hipEngine decodes batch=8,
 context 8192, horizon 512 forecasts in **0.082 s** on the power-limited HP ZBook

@@ -6526,3 +6526,31 @@ separate var-q/k normalization chain). Register both families under the
 four-axis registry with their strict fallback chains when a second consumer
 of the kernels appears; until then the runtime-level fallback is the
 contract of record (see docs/MODEL-TIMESFM3.md).
+
+## 2026-09-12 PARO runtime resolves paged-attention decode through a hardcoded gfx1100 backend key — open
+
+`hipengine/runtime/qwen35_paro.py` sets
+`_PAGED_KV_REGISTRY_BACKEND = "hip_gfx1100"` and passes it to
+`resolve_paged_attn_decode` at four call sites (append/decode INT8 per-token
+head at lines ~2123 and ~2260, the decode full-attention gate path at ~3779,
+and `decode_full_attention_context_gate_fp16_batch` at ~4213). The class
+docstring on `Qwen35ParoDecodeState` states the assumption explicitly
+("Kernel selection still flows through the registry/wrappers added in the
+gfx1100 backend tree").
+
+Consequence on gfx1151: PARO gets the gfx1100 body for every key it resolves.
+For `paged_attn_decode / w4_paro / bf16_context_batch_c1_exact_spans` that is
+visible, because `hipengine/kernels/hip_gfx1151/__init__.py` deliberately
+overrides that key to `..._fixed256_spans` ("Keep gfx1151 on the generic
+reduction, but pin its geometry to the c4/c8-proven 256-thread shape"). PARO
+therefore runs the c1-exact kernel on gfx1151 while every other gfx1151
+paged-attention caller runs the pinned generic reduction. Both bodies are
+validated, so this is a cross-backend arithmetic-consistency risk rather than
+a known bug; it would surface as a gfx1151 paged-attention gate that compares
+PARO against a GGUF or stored gfx1151 baseline.
+
+Removal condition: thread the resolved backend through `Qwen35ParoDecodeState`
+(the runner already holds one; see `qwen35_paro_runner.py` where it reads
+`getattr(self, "backend", "hip_gfx1100")`) and drop the module constant. Do it
+together with a gfx1151 PARO-vs-GGUF paged-attention parity check, and keep the
+current behavior as the fallback until that check passes.
