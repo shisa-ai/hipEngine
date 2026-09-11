@@ -92,6 +92,11 @@ ORACLE_OBSERVED_PEAK_BYTES_METRIC = (
 ORACLE_OBSERVED_PEAK_OWNERS_METRIC = (
     "hipengine_resident_prefill_oracle_observed_peak_owners"
 )
+# The field the engine keeps specifically to distinguish the layer-outer executor
+# from the chunk-outer fallback (qwen35_gguf_runner.py:212-214). Without it a
+# decline can only be inferred from an absent counter, which names no reason.
+EXECUTOR_MODE_METRIC = "hipengine_resident_prefill_executor_mode_total"
+LAYER_OUTER_EXECUTOR_MODE = "layer_outer_packed"
 
 # Declared before measuring, so no gate can be fitted to the result.
 DECLARED_ACK_P95_LIMIT_MS = 3000.0
@@ -407,6 +412,36 @@ def _metric_delta(
     return new - old
 
 
+def _labeled_metric_values(
+    client: httpx.Client, base_url: str, name: str
+) -> dict[str, float]:
+    """Read one metric family label-aware, as {label_value: sample}.
+
+    ``_metrics_values`` sums across labels, which is right for totals but loses
+    exactly the information that identifies which path ran. This keeps the label.
+    """
+
+    try:
+        response = client.get(f"{base_url}/metrics")
+    except Exception:  # noqa: BLE001
+        return {}
+    if int(response.status_code) != 200:
+        return {}
+    values: dict[str, float] = {}
+    prefix = f"{name}{{"
+    for line in response.text.splitlines():
+        if not line.startswith(prefix):
+            continue
+        sample, _, raw = line.rpartition(" ")
+        inner = sample[len(name) + 1 : sample.rindex("}")]
+        _, _, label_value = inner.partition("=")
+        try:
+            values[label_value.strip().strip('"')] = float(raw)
+        except ValueError:
+            continue
+    return values
+
+
 def _wait_for(predicate: Any, *, timeout: float, interval: float = 0.05) -> bool:
     deadline = time.perf_counter() + timeout
     while time.perf_counter() < deadline:
@@ -432,6 +467,7 @@ def evaluate_gates(
     oracle_observed_peak_bytes: float | None = None,
     oracle_observed_peak_owners: float | None = None,
     live_oracle_owners: float | None = None,
+    executor_modes: dict[str, float] | None = None,
 ) -> dict[str, Any]:
     """Evaluate the service gates. Split out so the failure paths are testable."""
 
@@ -458,11 +494,14 @@ def evaluate_gates(
         "owners_metric": ORACLE_OBSERVED_PEAK_OWNERS_METRIC,
         "bytes_metric": ORACLE_OBSERVED_PEAK_BYTES_METRIC,
         "live_gauge_owners": live_oracle_owners,
+        "executor_modes": dict(executor_modes or {}),
         "detail": (
             "the layer-outer route must actually engage during a long prefill, "
             "proven by the while-live observed peak of the shared per-layer oracle "
             "owner being non-zero; otherwise every other gate here is evidence "
-            "about the default route rather than about the resumable yield"
+            "about the default route rather than about the resumable yield. "
+            "executor_modes names what actually ran, so a failure reports the "
+            "decline reason instead of leaving it to be inferred"
         ),
     }
     gates["survivors_exact"] = {
@@ -804,6 +843,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             live_oracle_owners = _metric(
                 engagement_metrics, ORACLE_OWNER_COUNT_METRIC
             )
+            executor_modes = _labeled_metric_values(
+                client, base_url, EXECUTOR_MODE_METRIC
+            )
     finally:
         if server is not None:
             server.should_exit = True
@@ -829,6 +871,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         oracle_observed_peak_bytes=oracle_observed_peak_bytes,
         oracle_observed_peak_owners=oracle_observed_peak_owners,
         live_oracle_owners=live_oracle_owners,
+        executor_modes=executor_modes,
     )
 
     return {
@@ -884,6 +927,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "oracle_observed_peak_bytes": oracle_observed_peak_bytes,
             "oracle_observed_peak_owners": oracle_observed_peak_owners,
             "live_oracle_owners": live_oracle_owners,
+            "executor_modes": dict(executor_modes or {}),
+            "layer_outer_executor_mode": LAYER_OUTER_EXECUTOR_MODE,
             "blocking": {
                 "long_request": {
                     "chars": len(blocking_outcome.text)

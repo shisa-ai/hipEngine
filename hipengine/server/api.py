@@ -8762,6 +8762,16 @@ def _resident_loop_metric_values(snapshot: Mapping[str, Any] | None) -> dict[str
             "hidden_and_bulk_owner_bytes": _non_negative_metric_value(
                 (model_runner.get("prefill_transients") or {}).get("hidden_and_bulk_owner_bytes")
             ),
+            # Which packed-prefill executor actually ran, per resident session.
+            # ``route`` alone cannot distinguish the layer-outer executor from the
+            # chunk-outer fallback (qwen35_gguf_runner.py:212-214), so without this
+            # a run that silently took the fallback is indistinguishable from one
+            # that took the deliverable route. String-valued, hence not a gauge.
+            "executor_modes": _string_value_counts(
+                (model_runner.get("prefill_transients") or {}).get(
+                    "last_packed_executor_modes"
+                )
+            ),
         },
         "persistent_kv": {
             "int8_payload_bytes": _non_negative_metric_value(
@@ -9065,6 +9075,13 @@ def _render_prometheus_metrics(
             )
     _append_labeled_counter_metrics(
         lines,
+        "hipengine_resident_prefill_executor_mode_total",
+        "Packed-prefill executor that ran per resident session, by executor mode.",
+        "mode",
+        resident["prefill_transients"]["executor_modes"],
+    )
+    _append_labeled_counter_metrics(
+        lines,
         "hipengine_resident_route_total",
         "Resident GGUF execution transitions by declared route.",
         "route",
@@ -9309,6 +9326,24 @@ def _non_negative_metric_value(value: Any, *, default: float = 0.0) -> float:
     if not math.isfinite(numeric) or numeric < 0:
         return default
     return numeric
+
+
+def _string_value_counts(value: Any) -> dict[str, float]:
+    """Count occurrences of each distinct string in a list of optional strings.
+
+    Used for diagnostics that report *which* path ran rather than how much of
+    something was used. ``None`` entries become ``"none"`` so an unset field is
+    visible in the export instead of silently disappearing, and an absent or
+    non-list value yields an empty mapping so the metric is simply not emitted.
+    """
+
+    if not isinstance(value, (list, tuple)):
+        return {}
+    counts: dict[str, float] = {}
+    for item in value:
+        key = "none" if item is None else str(item)
+        counts[key] = counts.get(key, 0.0) + 1.0
+    return counts
 
 
 def _non_negative_metric_mapping(value: Any) -> dict[str, float]:

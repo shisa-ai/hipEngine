@@ -8,10 +8,13 @@ produce.
 
 from __future__ import annotations
 
+import pytest
+
 from scripts.gguf_p6e_cancel_refill_proof import (
     CANCELLATION_COUNTER,
     DECLARED_ACK_P95_LIMIT_MS,
     DECLARED_GAP_MAX_FACTOR,
+    _labeled_metric_values,
     evaluate_gates,
 )
 
@@ -266,3 +269,73 @@ def test_layer_outer_flag_helper_reads_the_env_it_is_given(
     monkeypatch.setattr(runner, "_gguf_packed_layer_outer_enabled_cache", None)
     # Default OFF: the corrected chunk-outer executor remains the fallback.
     assert runner._gguf_packed_layer_outer_enabled() is False
+
+
+def test_engagement_gate_reports_what_actually_ran_not_just_that_it_failed() -> None:
+    """A red gate must name the reason, not leave it to be inferred.
+
+    Before the executor-mode export existed, a decline could only be inferred
+    from an absent fallback counter. The gate now carries the observed modes so
+    the artifact records which executor ran.
+    """
+
+    gates = _gates(
+        oracle_observed_peak_owners=0.0,
+        oracle_observed_peak_bytes=0.0,
+        executor_modes={"none": 2.0},
+    )
+
+    gate = gates["resumable_path_engaged"]
+    assert gate["passed"] is False
+    assert gate["executor_modes"] == {"none": 2.0}
+    assert gate["detail"].endswith(
+        "decline reason instead of leaving it to be inferred"
+    )
+
+
+def test_engagement_gate_can_pass_when_the_layer_outer_mode_is_observed() -> None:
+    gates = _gates(
+        oracle_observed_peak_owners=1.0,
+        oracle_observed_peak_bytes=912907308.0,
+        executor_modes={"layer_outer_packed": 1.0},
+    )
+
+    assert gates["resumable_path_engaged"]["passed"] is True
+    assert gates["resumable_path_engaged"]["executor_modes"] == {
+        "layer_outer_packed": 1.0
+    }
+
+
+def test_labeled_metric_values_keeps_the_label_that_identifies_the_path() -> None:
+    """_metrics_values sums labels; this one must not, or the mode is lost."""
+
+    text = (
+        "# HELP hipengine_resident_prefill_executor_mode_total executor\n"
+        "# TYPE hipengine_resident_prefill_executor_mode_total counter\n"
+        'hipengine_resident_prefill_executor_mode_total{mode="layer_outer_packed"} 1\n'
+        'hipengine_resident_prefill_executor_mode_total{mode="none"} 2\n'
+        "hipengine_resident_other_total 5\n"
+    )
+
+    class _Response:
+        status_code = 200
+
+        def __init__(self, body: str) -> None:
+            self.text = body
+
+    class _Client:
+        def get(self, url: str) -> _Response:
+            return _Response(text)
+
+    values = _labeled_metric_values(
+        _Client(), "http://x", "hipengine_resident_prefill_executor_mode_total"
+    )  # type: ignore[arg-type]
+
+    assert values == {"layer_outer_packed": 1.0, "none": 2.0}
+    # A metric family that is absent yields nothing rather than a fabricated zero.
+    assert (
+        _labeled_metric_values(
+            _Client(), "http://x", "hipengine_resident_absent_total"
+        )  # type: ignore[arg-type]
+        == {}
+    )
