@@ -994,6 +994,9 @@ def test_coverage_records_use_existing_registry_layer_names():
             QWEN35_GGUF_OP_AR_PREFILL,
             QWEN35_GGUF_OP_EMBEDDING_LOOKUP,
             QWEN35_GGUF_OP_LM_HEAD_F32_LOGITS,
+            # U6: the NextN draft is a separate slot-scoped operation; its
+            # records must satisfy the same concrete-consumer convention.
+            QWEN35_GGUF_OP_MTP_NEXTN_DRAFT,
         }
         # F3: every record names a REAL registry layer and a concrete
         # (quant, variant) consumer identity — placeholders are not

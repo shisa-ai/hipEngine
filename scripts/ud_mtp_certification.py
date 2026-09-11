@@ -247,6 +247,35 @@ def _run_one(
     }
 
 
+def _certification_unit_state() -> dict[str, object]:
+    """The U6 unit's declared envelope and open items, per pinned artifact.
+
+    A candidate run is evidence for the unit, never a pin: the pin is derived
+    from a complete certification record, so a passing run must still clear
+    every item whose ``blocker`` is set here.
+    """
+
+    from hipengine.loading.qwen35_gguf_admission import _UD_MTP_CERTIFICATIONS
+
+    return {
+        certification.preset_key: {
+            "fingerprint": fingerprint,
+            "backend": certification.backend,
+            "execution_profile": certification.execution_profile,
+            "context_max": certification.context_max,
+            "widths": list(certification.widths),
+            "pin_granted": certification.is_complete(),
+            "blocked_items": list(certification.blocked_items),
+            "blockers": {
+                item.item: item.blocker
+                for item in certification.items
+                if item.blocker
+            },
+        }
+        for fingerprint, certification in _UD_MTP_CERTIFICATIONS.items()
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -285,6 +314,7 @@ def main() -> int:
             "limit": args.limit,
         },
         "artifacts": [],
+        "certification_unit": _certification_unit_state(),
     }
     for name in names:
         path, quant = ARTIFACTS[name]

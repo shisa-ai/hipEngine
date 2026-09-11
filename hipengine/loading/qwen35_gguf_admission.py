@@ -247,15 +247,242 @@ _UD_PRESET_FINGERPRINTS: Mapping[str, tuple[str, tuple[str, ...], str]] = {
 # two tables are deliberately distinct so a new AR certificate can never widen
 # MTP admission by accident, and so an MTP certificate can be revoked without
 # touching AR.
-#
-# Empty until the complete U6 MTP scope passes.  The scope is not just "MTP
-# runs": it is the declared backend/quant/profile/context/width envelope, the
-# c1..c8 serving paths, draft residency and eh_proj/head ownership, exact
-# accept/commit control, and the full category/heldout suite against a true
-# no-MTP AR denominator.  The enabling work below (draft dtype pin, quant-
-# agnostic accept-chain registration) is landed and gated; only this pin is
-# withheld.
-_UD_MTP_PRESET_FINGERPRINTS: Mapping[str, str] = {}
+
+
+@dataclass(frozen=True)
+class Qwen35GGUFUDMTPCertificationItem:
+    """One defined element of the U6 MTP certification unit.
+
+    ``qualified`` is True only while in-tree evidence passes for this item on
+    this artifact.  It is not a plan or an intention: an open item MUST name
+    the concrete missing evidence in ``blocker``, and an incomplete unit
+    cannot mint the pin.
+    """
+
+    item: str
+    contract: str
+    evidence: str
+    qualified: bool
+    blocker: str = ""
+
+
+@dataclass(frozen=True)
+class Qwen35GGUFUDMTPCertification:
+    """The U6 unit: the declared MTP envelope plus its six gated elements.
+
+    The declared envelope fields (``backend``/``execution_profile``/
+    ``context_max``/``widths``) are part of the certificate, not decoration:
+    an artifact is certified for MTP only within them.  ``context_max`` is
+    ``None`` while the long-context point is unmeasured, and the unit is
+    incomplete in that state.
+    """
+
+    fingerprint: str
+    preset_key: str
+    backend: str
+    execution_profile: str
+    context_max: int | None
+    widths: tuple[int, ...]
+    items: tuple[Qwen35GGUFUDMTPCertificationItem, ...]
+
+    @property
+    def blocked_items(self) -> tuple[str, ...]:
+        blocked = [item.item for item in self.items if not item.qualified]
+        if self.context_max is None or not self.widths:
+            blocked.append("supported_backend_quant_profile_context_width_scope")
+        return tuple(dict.fromkeys(blocked))
+
+    def is_complete(self) -> bool:
+        return not self.blocked_items
+
+    def evidence_line(self) -> str:
+        widths = ",".join(f"c{width}" for width in self.widths) or "none"
+        return (
+            f"U6 MTP certificate for {self.preset_key!r}: backend={self.backend} "
+            f"profile={self.execution_profile} context_max={self.context_max} "
+            f"widths={widths}"
+        )
+
+
+# The concrete backend name the U6 records declare.  AGENTS.md fixes the
+# default hardware at gfx1100; a claim about another backend needs its own
+# measured record rather than inheriting this one.
+_UD_MTP_DECLARED_BACKEND = "hip_gfx1100"
+assert _UD_MTP_DECLARED_BACKEND in HIP_BACKEND_TARGET_ARCH
+
+
+def _ud_mtp_items(
+    *,
+    control_evidence: str,
+    control_blocker: str,
+) -> tuple[Qwen35GGUFUDMTPCertificationItem, ...]:
+    """The six gated elements every UD MTP certificate must carry.
+
+    Contracts are shared because the *unit* is shared; only the per-artifact
+    qualification evidence differs.
+    """
+
+    return (
+        Qwen35GGUFUDMTPCertificationItem(
+            item="nextn_residency_and_eh_proj_head_ownership",
+            contract=(
+                "The draft owns exactly its blk.N layer slots plus the NextN "
+                "slots (including eh_proj); the token embedding and head are "
+                "borrowed target root residents, and every fallback names a "
+                "resident this artifact already plans with the identical "
+                "source tensor."
+            ),
+            evidence=(
+                "preflight fallback_unowned stage (nextn fallback identity) + "
+                "tests/test_ud_mtp_certification.py "
+                "test_nextn_draft_owns_block_and_borrows_embedding_and_head"
+            ),
+            qualified=True,
+        ),
+        Qwen35GGUFUDMTPCertificationItem(
+            item="blk64_draft_operation_set",
+            contract=(
+                "Every nextn_block.* slot resolves a certified draft coverage "
+                "record for its (role_class, layout, source type); the draft "
+                "operation is slot-scoped and never widens the AR slot scope."
+            ),
+            evidence=(
+                "admission._draft_coverage() + slot-scoped checked_ops + "
+                "tests/test_ud_mtp_certification.py "
+                "test_draft_operation_set_is_slot_scoped_and_certified"
+            ),
+            qualified=True,
+        ),
+        Qwen35GGUFUDMTPCertificationItem(
+            item="draft_and_verifier_state_ownership",
+            contract=(
+                "Draft KV/linear state is a private allocation set distinct "
+                "from the target session's KV and rollback journal; the "
+                "verifier journal owns its own multi-row snapshots."
+            ),
+            evidence=(
+                "hipengine.speculative.mtp_resident_draft: the draft runner owns "
+                "its private _buffers allocation set; the target session owns "
+                "its KV and rollback journal; draft KV is passed into the cycle "
+                "as explicit arguments"
+            ),
+            qualified=False,
+            blocker=(
+                "no in-tree assertion that the resident draft's private buffers "
+                "and the target session's journal/KV pointers are disjoint; the "
+                "journal regression covers only the target side"
+            ),
+        ),
+        Qwen35GGUFUDMTPCertificationItem(
+            item="ud_specific_journal_requirements",
+            contract=(
+                "A UD MTP session allocates a row-capable verify journal "
+                "whenever any reachable end position selects the serial row "
+                "route, decided from the session backend capability and the "
+                "resident cursor bound."
+            ),
+            evidence=(
+                "hipengine.runtime.qwen35_gguf_mtp._verify_journal_plan + "
+                "tests/test_qwen35_gguf_mtp_session.py journal contract tests + "
+                "tests/test_ud_mtp_certification.py "
+                "test_ud_journal_is_row_capable_across_the_declared_context"
+            ),
+            qualified=True,
+        ),
+        Qwen35GGUFUDMTPCertificationItem(
+            item="exact_ar_mtp_control_behavior",
+            contract=(
+                "Greedy token IDs are exactly equal to the true no-MTP AR "
+                "denominator, GPU and CPU acceptance agree, and repeats are "
+                "deterministic across the full category suite."
+            ),
+            evidence=control_evidence,
+            qualified=False,
+            blocker=control_blocker,
+        ),
+        Qwen35GGUFUDMTPCertificationItem(
+            item="supported_backend_quant_profile_context_width_scope",
+            contract=(
+                "The certificate declares the backend, quant identity, "
+                "execution profile, maximum context, and serving widths it "
+                "authorizes; scope outside the declaration is not admitted."
+            ),
+            evidence=(
+                "natural25 B3 c1 on hip_gfx1100: short-prompt widths c1 "
+                "measured; backend, quant identity and execution profile "
+                "declared on this record"
+            ),
+            qualified=False,
+            blocker=(
+                "c2/c4/c8 serving, the 512/4096 and long-context points, and "
+                "width transitions are unmeasured, so context_max stays None"
+            ),
+        ),
+    )
+
+
+# Per-artifact U6 certification records.  These are present-but-incomplete:
+# the unit is defined and its open items name concrete missing evidence.  The
+# pin below is DERIVED from this table, so populating a record's evidence and
+# flipping its items to qualified is the only way to grant MTP scope.
+_UD_MTP_CERTIFICATIONS: Mapping[str, Qwen35GGUFUDMTPCertification] = {
+    "5535c5bd7a3e84c6381de70bf8ca5c6f4bcd804dabf8435b85c8418038c8619f": Qwen35GGUFUDMTPCertification(
+        fingerprint="5535c5bd7a3e84c6381de70bf8ca5c6f4bcd804dabf8435b85c8418038c8619f",
+        preset_key=GGUF_UD_Q4_K_M_PRESET,
+        backend=_UD_MTP_DECLARED_BACKEND,
+        execution_profile="production",
+        context_max=None,
+        widths=(1,),
+        items=_ud_mtp_items(
+            control_evidence=(
+                "benchmarks/results/ud-mtp-certification-u6.json: all ten "
+                "natural25 B3 category prompts exact in both repeats with "
+                "GPU/CPU acceptance agreement"
+            ),
+            control_blocker=(
+                "heldout categories and c2/c4/c8 widths are outstanding; the "
+                "published four-category suite is not the full gate"
+            ),
+        ),
+    ),
+    "91130e1698bb7fc24c89f94e8b1043dd788769682b56c6514d70b6d2cdea068c": Qwen35GGUFUDMTPCertification(
+        fingerprint="91130e1698bb7fc24c89f94e8b1043dd788769682b56c6514d70b6d2cdea068c",
+        preset_key=GGUF_UD_Q4_K_S_PRESET,
+        backend=_UD_MTP_DECLARED_BACKEND,
+        execution_profile="production",
+        context_max=None,
+        widths=(1,),
+        items=_ud_mtp_items(
+            control_evidence=(
+                "benchmarks/results/ud-mtp-certification-u6.json: nine of ten "
+                "natural25 B3 category prompts exact in both repeats; "
+                "general_ja_plan is the outlier"
+            ),
+            control_blocker=(
+                "general_ja_plan diverges from its own AR reference at output "
+                "position 12 in both repeats; the AR path, not the MTP path, "
+                "is the outlier, so exact AR/MTP control is unqualified"
+            ),
+        ),
+    ),
+}
+
+
+# MTP scope is granted ONLY by a complete U6 certification record.  The pin is
+# derived, never hand-written, so a record cannot be added without its
+# envelope and its six gated items, and an incomplete unit can never leak
+# MTP admission.  Empty until the complete U6 MTP scope passes: the scope is
+# not just "MTP runs": it is the declared backend/quant/profile/context/width
+# envelope, the c1..c8 serving paths, draft residency and eh_proj/head
+# ownership, exact accept/commit control, and the full category/heldout suite
+# against a true no-MTP AR denominator.
+_UD_MTP_PRESET_FINGERPRINTS: Mapping[str, str] = MappingProxyType(
+    {
+        fingerprint: certification.evidence_line()
+        for fingerprint, certification in _UD_MTP_CERTIFICATIONS.items()
+        if certification.is_complete()
+    }
+)
 
 # Per-artifact NextN draft dtype manifests (U6).  A UD draft block is quantized
 # differently from the plain control's draft: Q6_K for eh_proj/attn_q/
@@ -1048,6 +1275,62 @@ def _certified_coverage() -> tuple[Qwen35GGUFOperationCoverage, ...]:
                    if record.operation in {QWEN35_GGUF_OP_EMBEDDING_LOOKUP, QWEN35_GGUF_OP_LM_HEAD_F32_LOGITS}
                    or (record.operation == QWEN35_GGUF_OP_AR_DECODE_ROWS
                        and record.role_class in {"moe_router", "moe_experts"}))
+    records.extend(_draft_coverage())
+    return tuple(records)
+
+
+def _draft_coverage() -> tuple[Qwen35GGUFOperationCoverage, ...]:
+    """U6: the certified blk.N NextN draft operation set.
+
+    A target-attached NextN draft block is a dense transformer block plus a
+    fusion projection.  It consumes the *same* shared primitives as the AR
+    rows (``launch_gguf_linear``, the registered F32-weight RMSNorm wrapper),
+    so its coverage is expressed as concrete four-axis records rather than a
+    new consumer family.  What makes it a separate operation is the resident
+    set: the draft owns its own attention/FFN weights and ``eh_proj``, while
+    the token embedding and the head are *borrowed* target residents and stay
+    certified under the AR root scope (see
+    ``preflight_qwen35_gguf_artifact``'s NextN borrow check).
+
+    These records are required only for ``nextn_block.*`` slots.  The draft
+    operation is deliberately NOT added to the AR slot scope: an AR slot is
+    certified against the AR operation set, and the two scopes stay
+    independent so a draft record can never authorize an AR consumer.
+    """
+
+    operation = QWEN35_GGUF_OP_MTP_NEXTN_DRAFT
+    records: list[Qwen35GGUFOperationCoverage] = []
+    # Owned attention/FFN/eh_proj projections: raw GGUF residents consumed by
+    # the shared layout-aware linear dispatch (Q6_K dense projections, Q8_0
+    # key/value).  Other raw source types are absent by design: the UD draft
+    # signature is pinned per artifact by ``_UD_NEXTN_DRAFT_QTYPES``.
+    records.extend(
+        _bf16_linear_records(
+            (operation,),
+            "projection",
+            layouts=(LAYOUT_RAW_GGUF,),
+            note="NextN draft owned projections (raw Q6_K/Q8_0) via the shared linear dispatch.",
+        )
+    )
+    # Owned F32 norms (attn_norm, post_attention_norm, q/k norms, enorm, hnorm,
+    # shared_head_norm): the registered F32-weight RMSNorm wrapper the draft
+    # runtime calls directly.
+    records.append(
+        Qwen35GGUFOperationCoverage(
+            operation=operation,
+            role_class="norm",
+            resident_layout=LAYOUT_DENSE_F32,
+            source_ggml_types=frozenset({"F32"}),
+            rows_scope="rows_any",
+            input_dtype=RMSNORM.operands[0][1],
+            output_dtype=next(dtype for _, dtype, access in RMSNORM.operands if access == "write"),
+            kernel_layer=RMSNORM.layer,
+            kernel_quant=RMSNORM.quant,
+            kernel_variant=RMSNORM.variant,
+            strict_fallback="registered F32-resident RMSNorm wrapper",
+            note="NextN draft owned F32 norms (bf16 activations, f32 weights).",
+        )
+    )
     return tuple(records)
 
 
@@ -1213,7 +1496,7 @@ _OPERATION_ROLE_CLASSES: Mapping[str, frozenset[str]] = {
     QWEN35_GGUF_OP_EMBEDDING_LOOKUP: frozenset({"token_embedding"}),
     QWEN35_GGUF_OP_LM_HEAD_F32_LOGITS: frozenset({"lm_head"}),
     QWEN35_GGUF_OP_MTP_NEXTN_DRAFT: frozenset(
-        {"projection", "recurrent_alpha_beta", "norm", "gdn_scalar", "conv1d", "token_embedding", "lm_head"}
+        {"projection", "recurrent_alpha_beta", "norm", "gdn_norm", "gdn_scalar", "conv1d", "moe_router", "moe_experts"}
     ),
 }
 
@@ -2068,10 +2351,42 @@ def preflight_qwen35_gguf_artifact(
             (f"nextn_block.{block_id}.{slot}", tensor)
             for slot, tensor in nextn_map.nextn_tensors.items()
         )
-        slot_tensors.extend(
-            (f"nextn_block.{block_id}.fallback:{slot}", tensor)
-            for slot, tensor in nextn_map.fallback_tensors.items()
-        )
+        # U6 ownership check: the NextN draft does NOT materialize its own
+        # embedding or head.  Each fallback must name a resident this same
+        # artifact already plans, with the identical source tensor: either the
+        # target's own root resident (``token_embedding``/``lm_head``, covered
+        # by the AR root scope) or a draft-owned NextN slot (the shared head
+        # norm doubles as the draft's output norm).  A fallback that names
+        # nothing planned would be a silent extra resident, so it refuses
+        # here rather than at allocation time.
+        owned_by_name = {
+            tensor.name: slot
+            for slot, tensor in (*nextn_map.layer_tensors.items(), *nextn_map.nextn_tensors.items())
+        }
+        root_by_name = {tensor.name: slot for slot, tensor in model_map.root_tensors.items()}
+        for slot, tensor in nextn_map.fallback_tensors.items():
+            if tensor.name in owned_by_name or tensor.name in root_by_name:
+                continue
+            # Required-but-unrecorded, exactly like a planner/consumer
+            # refusal: the slot must be planned and never earns a record, so
+            # the contract can never authorize this scope.
+            required_plan_slots.add(f"nextn_block.{block_id}.fallback:{slot}")
+            unsupported.append(
+                Qwen35GGUFUnsupportedOperation(
+                    slot_path=f"nextn_block.{block_id}.fallback:{slot}",
+                    role_class="nextn_fallback",
+                    operation=QWEN35_GGUF_OP_MTP_NEXTN_DRAFT,
+                    source_ggml_type=tensor.ggml_type_name,
+                    resident_layout=None,
+                    stage="fallback_unowned",
+                    reason=(
+                        f"NextN draft fallback {slot!r} names {tensor.name!r}, which is "
+                        "neither a draft-owned NextN slot nor a target root resident; "
+                        "the draft borrows embedding/head residents and never "
+                        "materializes its own"
+                    ),
+                )
+            )
 
     checked_ops = tuple(op for op in requested if op != QWEN35_GGUF_OP_MTP_NEXTN_DRAFT)
     f32_input_set = frozenset(f32_input)
@@ -2105,13 +2420,21 @@ def preflight_qwen35_gguf_artifact(
         if allowed_slots is not None and str(slot_path) not in allowed_slots:
             continue
         role_class = _role_class_for_slot(str(slot_path).rsplit(".", 1)[-1])
+        # The NextN draft operation is slot-scoped: it is required for the
+        # draft block's own slots and is never added to the AR slot scope, so
+        # a draft record can never authorize an AR consumer and vice versa.
+        slot_scope_ops = (
+            (QWEN35_GGUF_OP_MTP_NEXTN_DRAFT,)
+            if str(slot_path).startswith("nextn_block.")
+            else checked_ops
+        )
         if not role_class:
             required_plan_slots.add(str(slot_path))
             unsupported.append(
                 Qwen35GGUFUnsupportedOperation(
                     slot_path=str(slot_path),
                     role_class="",
-                    operation=checked_ops[0] if checked_ops else "-",
+                    operation=slot_scope_ops[0] if slot_scope_ops else "-",
                     source_ggml_type=tensor.ggml_type_name,
                     resident_layout=None,
                     stage="consumer_unqualified",
@@ -2120,7 +2443,7 @@ def preflight_qwen35_gguf_artifact(
             )
             continue
         applicable_ops = tuple(
-            op for op in checked_ops if role_class in _OPERATION_ROLE_CLASSES.get(op, frozenset())
+            op for op in slot_scope_ops if role_class in _OPERATION_ROLE_CLASSES.get(op, frozenset())
         )
         # Every selected resident will be materialized, even when none of
         # the requested operations consumes it. Check resident prerequisites

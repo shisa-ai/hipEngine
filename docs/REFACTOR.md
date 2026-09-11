@@ -6952,14 +6952,18 @@ runtime call site to registry resolution, and drop the
 ## 2026-09-11 U6 — UD MTP scope pin is withheld
 
 - `_UD_MTP_PRESET_FINGERPRINTS` (`hipengine/loading/qwen35_gguf_admission.py`)
-  is the separate MTP certification table. It is empty on purpose: the UD
-  draft dtype pin and the UD accept-chain registrations are landed and gated,
-  but the complete U6 MTP scope (declared profile/context/width envelope,
-  c1..c8 serving paths, aliases/teardown, exact commit/rollback control,
-  category heldouts) is not.
-- Population trigger: a passing `scripts/ud_mtp_certification.py` run on the
-  pinned artifact **plus** the remaining `docs/UD-QUANTS.md` U6 checklist items.
-  The pin entry carries that evidence in its note string.
+  is the separate MTP certification table. It is **derived** from
+  `_UD_MTP_CERTIFICATIONS` and admits only a complete certification unit, so it
+  is empty on purpose and can no longer be hand-granted. The UD draft dtype pin,
+  the UD accept-chain registrations, the slot-scoped blk.64 draft operation set,
+  and the draft residency/`eh_proj`/head ownership contract are landed and
+  gated; draft/verifier state disjointness, exact AR/MTP control (blocked by the
+  K_S `general_ja_plan` AR divergence), the declared context/width envelope, and
+  the category heldouts are not.
+- Population trigger: flip the affected `Qwen35GGUFUDMTPCertificationItem`
+  entries to `qualified=True` with their passing evidence **and** clear the
+  remaining `docs/UD-QUANTS.md` U6 checklist items. A record's `blocker` field
+  names exactly what is missing; `is_complete()` is what grants the pin.
 - Do not populate the pin from a single-prompt or single-width result, and do
   not widen `_UD_PRESET_FINGERPRINTS` (the AR table) to grant MTP scope: the
   two tables exist precisely so an AR certificate cannot imply MTP admission.
