@@ -522,6 +522,10 @@ __global__ void mask_softmax_kernel(
     __syncthreads();
   }
   float row_max = partial[0];
+  // barrier before reusing partial: every thread must have read the
+  // pass-1 row max before any thread overwrites partial with its
+  // partial exponential sum.
+  __syncthreads();
   if (row_max == -INFINITY) row_max = 0.0f;
 
   float sum = 0.0f;

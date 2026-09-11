@@ -99,6 +99,10 @@ __device__ __forceinline__ void qwen35_full_attn_decode_impl(
     __syncthreads();
   }
   const float max_score = partial[0];
+  // barrier before reusing partial: every thread must have read the
+  // pass-1 row max before any thread overwrites partial with its
+  // partial exponential sum.
+  __syncthreads();
 
   float local_sum = 0.0f;
   for (int64_t token = threadIdx.x; token < context_len; token += blockDim.x) {
@@ -621,6 +625,10 @@ __global__ void qwen35_paged_full_attn_decode_context_tensor_batch_c1_exact_kern
     __syncthreads();
   }
   const float max_score = partial[0];
+  // barrier before reusing partial: every thread must have read the
+  // pass-1 row max before any thread overwrites partial with its
+  // partial exponential sum.
+  __syncthreads();
 
   float local_sum = 0.0f;
   for (int64_t token = threadIdx.x; token < context_len; token += blockDim.x) {
@@ -1798,6 +1806,10 @@ __global__ void qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel(
     __syncthreads();
   }
   const float max_score = partial[0];
+  // barrier before reusing partial: every thread must have read the
+  // pass-1 row max before any thread overwrites partial with its
+  // partial exponential sum.
+  __syncthreads();
 
   float local_sum = 0.0f;
   for (int64_t token = threadIdx.x; token < visible_len; token += blockDim.x) {
@@ -2105,6 +2117,10 @@ __global__ void qwen35_paged_full_attn_prefill_gqa_gate_tree_fp16_kernel(
     __syncthreads();
   }
   const float max_score = partial[0];
+  // barrier before reusing partial: every thread must have read the
+  // pass-1 row max before any thread overwrites partial with its
+  // partial exponential sum.
+  __syncthreads();
 
   float local_sum = 0.0f;
   for (int64_t token = threadIdx.x; token < visible_len; token += blockDim.x) {
@@ -2283,6 +2299,10 @@ __global__ void qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_kernel(
     __syncthreads();
   }
   const float max_score = partial[0];
+  // barrier before reusing partial: every thread must have read the
+  // pass-1 row max before any thread overwrites partial with its
+  // partial exponential sum.
+  __syncthreads();
 
   float local_sum = 0.0f;
   for (int64_t token = threadIdx.x; token < visible_len; token += blockDim.x) {
