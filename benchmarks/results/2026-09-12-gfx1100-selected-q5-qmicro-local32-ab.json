@@ -1,0 +1,72 @@
+{
+  "ab_design": "Both arms ran the same tree and binaries back to back. The only difference is GGUF_T16_SELECTED_C1_VARIANTS_BY_QUANT_SHAPE: populated for the candidate, {} for the baseline. The route is the selected Q5 MoE down projection, which this model materializes in the qmicro planar layout (gguf_q5_k_qmicro_t16_v1).",
+  "arms": {
+    "baseline": {
+      "decode_tok_s": {
+        "count": 3,
+        "max": 93.81666516775473,
+        "mean": 93.78550357706403,
+        "median": 93.80456793967483,
+        "min": 93.73527762376256,
+        "stdev": 0.043915492944818196
+      },
+      "policy": "GGUF_T16_SELECTED_C1_VARIANTS_BY_QUANT_SHAPE = {}",
+      "prefill_tok_s": {
+        "count": 3,
+        "max": 2718.7660805177784,
+        "mean": 2698.8933540862063,
+        "median": 2714.125133308542,
+        "min": 2663.7888484322984,
+        "stdev": 30.48982347691874
+      },
+      "selected_down_owner": "selected_t16_gemv_decode_bf16_bf16_out",
+      "tracked_peak_allocated_gib": 21.07324194908142
+    },
+    "candidate": {
+      "decode_tok_s": {
+        "count": 3,
+        "max": 93.82858455757328,
+        "mean": 93.78667480161668,
+        "median": 93.81652805868768,
+        "min": 93.71491178858909,
+        "stdev": 0.06244027002218505
+      },
+      "policy": "GGUF_T16_SELECTED_C1_VARIANTS_BY_QUANT_SHAPE = {\"gguf_q5_k_qmicro_t16_v1\": {(512, 2048): \"selected_t16_local32_gemv_decode_bf16_bf16_out\"}}",
+      "prefill_tok_s": {
+        "count": 3,
+        "max": 2736.0262322892013,
+        "mean": 2722.4397025523886,
+        "median": 2720.9391546630595,
+        "min": 2710.353720704905,
+        "stdev": 12.901867916607507
+      },
+      "selected_down_owner": "selected_t16_local32_gemv_decode_bf16_bf16_out",
+      "tracked_peak_allocated_gib": 21.07324194908142
+    }
+  },
+  "backend": "hip_gfx1100",
+  "correctness": {
+    "contract": "The qmicro local32 owner matches the production qmicro tile8 owner at the production shape and at shared-x/batched row contracts: max relative error <= 5e-4, correlation >= 0.9999. Verified RED: sabotaging the metadata record index or the row-to-x mapping fails the test.",
+    "gate": "tests/test_gguf_q5_selected_local32_decode.py",
+    "route_live": "Counted in the measured sweep decode: 74 resolutions of gguf_q5_k_qmicro_t16_v1 + selected_t16_local32_gemv_decode_bf16_bf16_out for a 128/16 workload, so the neutral aggregate is not a routing miss."
+  },
+  "decision": "Retained and promoted to the default path: exact, non-regressive, and a measured isolated cycle win at the production shape. The end-to-end decode rate on this model/protocol is neutral, so this is not a scoreboard row and no topline metric is claimed.",
+  "delta": {
+    "decode_tok_s_absolute": 0.011960119012854875,
+    "decode_tok_s_percent": 0.012750039017861425,
+    "verdict": "neutral"
+  },
+  "host": "AMD Radeon Pro W7900 (gfx1100), HIP_VISIBLE_DEVICES=0",
+  "kernel_cycle_evidence": {
+    "baseline_qmicro_tile8_us": 15.91,
+    "candidate_qmicro_local32_us": 11.53,
+    "method": "Isolated launch timing at the production selected-down geometry (in=512, out=2048, experts=256, rows=8, x_rows=8), 400 iterations after warmup, synthetic Q5_K weights repacked to each layout.",
+    "note": "The isolated cycle win does not move the end-to-end decode rate on this model/protocol, so it is retained as a kernel-level sub-window win only. No in-decode kernel trace accompanies it: rocprofv3 hangs in this environment and the measured decode is graph-captured, so per-kernel HIP event timing is rejected inside the capture.",
+    "ratio": 1.3806
+  },
+  "kind": "diagnostic-ab",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "protocol": "scripts/qwen35_readme_sweep.py --engine gguf --quant gguf_q4_k_m --workloads 512/128 --warmup-runs 1 --measured-runs 3 --backend hip_gfx1100 --require-cached-build",
+  "quant": "gguf_q4_k_m",
+  "unit": "ud-selected-q5-qmicro-local32"
+}
