@@ -97,6 +97,13 @@ ORACLE_OBSERVED_PEAK_OWNERS_METRIC = (
 # decline can only be inferred from an absent counter, which names no reason.
 EXECUTOR_MODE_METRIC = "hipengine_resident_prefill_executor_mode_total"
 LAYER_OUTER_EXECUTOR_MODE = "layer_outer_packed"
+# The outer gate on the resumable path (qwen35_gguf.py:8084): the resumable
+# executor is only attempted when the session's KV layout is int8_direct. This is
+# already exported, so the reason a decline happens is measurable rather than
+# inferred from an absent fallback counter.
+ROUTE_MANIFEST_METRIC = "hipengine_resident_route_manifest_info"
+KV_SOURCE_LABEL = "kv_attention_source"
+RESUMABLE_KV_SOURCE = "int8_direct"
 
 # Declared before measuring, so no gate can be fitted to the result.
 DECLARED_ACK_P95_LIMIT_MS = 3000.0
@@ -442,6 +449,66 @@ def _labeled_metric_values(
     return values
 
 
+def _metric_sample_labels(
+    client: httpx.Client, base_url: str, name: str
+) -> dict[str, str]:
+    """Labels of the first sample of a multi-label metric family.
+
+    ``_labeled_metric_values`` assumes one label, which is enough for the
+    executor-mode counter but not for the route-manifest info metric, whose
+    meaning lives in the combination of its labels.
+    """
+
+    try:
+        response = client.get(f"{base_url}/metrics")
+    except Exception:  # noqa: BLE001
+        return {}
+    if int(response.status_code) != 200:
+        return {}
+    prefix = f"{name}{{"
+    for line in response.text.splitlines():
+        if not line.startswith(prefix):
+            continue
+        sample, _, _ = line.rpartition(" ")
+        inner = sample[len(name) + 1 : sample.rindex("}")]
+        labels: dict[str, str] = {}
+        for part in _split_prometheus_labels(inner):
+            key, _, value = part.partition("=")
+            labels[key.strip()] = value.strip().strip('"')
+        return labels
+    return {}
+
+
+def _split_prometheus_labels(inner: str) -> list[str]:
+    """Split ``a="1",b="2"`` on commas that are not inside a quoted value."""
+
+    parts: list[str] = []
+    current: list[str] = []
+    in_quotes = False
+    escaped = False
+    for char in inner:
+        if escaped:
+            current.append(char)
+            escaped = False
+            continue
+        if char == "\\":
+            current.append(char)
+            escaped = True
+            continue
+        if char == '"':
+            in_quotes = not in_quotes
+            current.append(char)
+            continue
+        if char == "," and not in_quotes:
+            parts.append("".join(current))
+            current = []
+            continue
+        current.append(char)
+    if current:
+        parts.append("".join(current))
+    return [part for part in parts if part]
+
+
 def _wait_for(predicate: Any, *, timeout: float, interval: float = 0.05) -> bool:
     deadline = time.perf_counter() + timeout
     while time.perf_counter() < deadline:
@@ -468,6 +535,7 @@ def evaluate_gates(
     oracle_observed_peak_owners: float | None = None,
     live_oracle_owners: float | None = None,
     executor_modes: dict[str, float] | None = None,
+    kv_attention_source: str | None = None,
 ) -> dict[str, Any]:
     """Evaluate the service gates. Split out so the failure paths are testable."""
 
@@ -495,13 +563,16 @@ def evaluate_gates(
         "bytes_metric": ORACLE_OBSERVED_PEAK_BYTES_METRIC,
         "live_gauge_owners": live_oracle_owners,
         "executor_modes": dict(executor_modes or {}),
+        "kv_attention_source": kv_attention_source,
+        "resumable_kv_source": RESUMABLE_KV_SOURCE,
         "detail": (
             "the layer-outer route must actually engage during a long prefill, "
             "proven by the while-live observed peak of the shared per-layer oracle "
             "owner being non-zero; otherwise every other gate here is evidence "
             "about the default route rather than about the resumable yield. "
-            "executor_modes names what actually ran, so a failure reports the "
-            "decline reason instead of leaving it to be inferred"
+            "executor_modes names what actually ran, and kv_attention_source names "
+            "whether the resumable path was even attempted, so a failure reports "
+            "the decline reason instead of leaving it to be inferred"
         ),
     }
     gates["survivors_exact"] = {
@@ -846,6 +917,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             executor_modes = _labeled_metric_values(
                 client, base_url, EXECUTOR_MODE_METRIC
             )
+            manifest_labels = _metric_sample_labels(
+                client, base_url, ROUTE_MANIFEST_METRIC
+            )
+            kv_attention_source = manifest_labels.get(KV_SOURCE_LABEL)
     finally:
         if server is not None:
             server.should_exit = True
@@ -872,6 +947,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         oracle_observed_peak_owners=oracle_observed_peak_owners,
         live_oracle_owners=live_oracle_owners,
         executor_modes=executor_modes,
+        kv_attention_source=kv_attention_source,
     )
 
     return {
@@ -929,6 +1005,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "live_oracle_owners": live_oracle_owners,
             "executor_modes": dict(executor_modes or {}),
             "layer_outer_executor_mode": LAYER_OUTER_EXECUTOR_MODE,
+            "kv_attention_source": kv_attention_source,
+            "resumable_kv_source": RESUMABLE_KV_SOURCE,
+            "route_manifest_labels": dict(manifest_labels or {}),
             "blocking": {
                 "long_request": {
                     "chars": len(blocking_outcome.text)

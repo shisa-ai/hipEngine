@@ -15,6 +15,8 @@ from scripts.gguf_p6e_cancel_refill_proof import (
     DECLARED_ACK_P95_LIMIT_MS,
     DECLARED_GAP_MAX_FACTOR,
     _labeled_metric_values,
+    _metric_sample_labels,
+    _split_prometheus_labels,
     evaluate_gates,
 )
 
@@ -339,3 +341,83 @@ def test_labeled_metric_values_keeps_the_label_that_identifies_the_path() -> Non
         )  # type: ignore[arg-type]
         == {}
     )
+
+
+def test_metric_sample_labels_reads_a_multi_label_family() -> None:
+    """The route manifest carries its meaning across several labels."""
+
+    text = (
+        "# HELP hipengine_resident_route_manifest_info identity\n"
+        "# TYPE hipengine_resident_route_manifest_info gauge\n"
+        "hipengine_resident_route_manifest_info{"
+        'claim_level="none",kind="gguf_ar_serial_fallback_execution_manifest",'
+        'kv_attention_source="bf16_mirror",mode="serial_c1_per_row",rows="2"} 1\n'
+    )
+
+    class _Response:
+        status_code = 200
+
+        def __init__(self, body: str) -> None:
+            self.text = body
+
+    class _Client:
+        def get(self, url: str) -> _Response:
+            return _Response(text)
+
+    labels = _metric_sample_labels(
+        _Client(), "http://x", "hipengine_resident_route_manifest_info"
+    )  # type: ignore[arg-type]
+
+    assert labels["kv_attention_source"] == "bf16_mirror"
+    assert labels["kind"] == "gguf_ar_serial_fallback_execution_manifest"
+    assert len(labels) == 5
+    # An absent family yields nothing rather than a fabricated source.
+    assert (
+        _metric_sample_labels(_Client(), "http://x", "hipengine_absent_info")
+        == {}  # type: ignore[arg-type]
+    )
+
+
+def test_split_prometheus_labels_ignores_commas_inside_quoted_values() -> None:
+    """A label value containing a comma must not split into two labels."""
+
+    assert _split_prometheus_labels('a="1",b="2"') == ['a="1"', 'b="2"']
+    assert _split_prometheus_labels('mode="a,b",c="d"') == ['mode="a,b"', 'c="d"']
+    # An escaped quote does not close the value.
+    assert _split_prometheus_labels('mode="a\\",b",c="d"') == [
+        'mode="a\\",b"',
+        'c="d"',
+    ]
+    assert _split_prometheus_labels("") == []
+
+
+def test_engagement_gate_reports_whether_the_resumable_path_was_even_attempted() -> None:
+    """The outer int8_direct gate must be visible, not inferred.
+
+    An empty fallback counter only implies the int8_direct branch was not
+    entered. Recording kv_attention_source states it.
+    """
+
+    gates = _gates(
+        oracle_observed_peak_owners=0.0,
+        oracle_observed_peak_bytes=0.0,
+        executor_modes={"None": 2.0},
+        kv_attention_source="bf16_mirror",
+    )
+
+    gate = gates["resumable_path_engaged"]
+    assert gate["passed"] is False
+    assert gate["kv_attention_source"] == "bf16_mirror"
+    assert gate["resumable_kv_source"] == "int8_direct"
+    assert "whether the resumable path was even attempted" in gate["detail"]
+
+
+def test_engagement_gate_still_passes_when_the_source_is_int8_direct() -> None:
+    gates = _gates(
+        oracle_observed_peak_owners=1.0,
+        oracle_observed_peak_bytes=912907308.0,
+        executor_modes={"layer_outer_packed": 1.0},
+        kv_attention_source="int8_direct",
+    )
+
+    assert gates["resumable_path_engaged"]["passed"] is True

@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "kind": "w7900_p6e_cancel_refill_service_proof",
-  "timestamp": "2026-09-11T19:09:37.693412+00:00",
+  "timestamp": "2026-09-11T19:18:15.390069+00:00",
   "performance_claim": false,
   "passed": false,
   "host": {
@@ -38,7 +38,9 @@
       "executor_modes": {
         "None": 2.0
       },
-      "detail": "the layer-outer route must actually engage during a long prefill, proven by the while-live observed peak of the shared per-layer oracle owner being non-zero; otherwise every other gate here is evidence about the default route rather than about the resumable yield. executor_modes names what actually ran, so a failure reports the decline reason instead of leaving it to be inferred"
+      "kv_attention_source": "unavailable",
+      "resumable_kv_source": "int8_direct",
+      "detail": "the layer-outer route must actually engage during a long prefill, proven by the while-live observed peak of the shared per-layer oracle owner being non-zero; otherwise every other gate here is evidence about the default route rather than about the resumable yield. executor_modes names what actually ran, and kv_attention_source names whether the resumable path was even attempted, so a failure reports the decline reason instead of leaving it to be inferred"
     },
     "survivors_exact": {
       "passed": true,
@@ -63,16 +65,16 @@
     },
     "bounded_acknowledgement": {
       "passed": true,
-      "acknowledgement_ms": 825.3257144242525,
+      "acknowledgement_ms": 826.3575369492173,
       "p95_limit_ms": 3000.0,
       "p99_limit_ms": 6000.0,
       "detail": "a refill admitted right after a cancelled prefill must be acknowledged within the declared limit"
     },
     "bounded_decode_gap": {
       "passed": true,
-      "refill_max_gap_ms": 39.107,
-      "reference_max_gap_ms": 42.292,
-      "limit_ms": 105.73,
+      "refill_max_gap_ms": 38.893,
+      "reference_max_gap_ms": 42.016,
+      "limit_ms": 105.039,
       "declared_factor": 2.5,
       "detail": "the surviving request's worst inter-token gap must stay within the declared factor of its own reference run"
     },
@@ -90,57 +92,57 @@
       "finish_reason": "length",
       "error": null,
       "raw_lines": [
-        "data: {\"id\":\"cmpl-dfe810e26a784259988c0e84cbe99ce8\",\"object\":\"text_completion\",\"created\":1789153757,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
-        "data: {\"id\":\"cmpl-dfe810e26a784259988c0e84cbe99ce8\",\"object\":\"text_completion\",\"created\":1789153757,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
-        "data: {\"id\":\"cmpl-dfe810e26a784259988c0e84cbe99ce8\",\"object\":\"text_completion\",\"created\":1789153757,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
-        "data: {\"id\":\"cmpl-dfe810e26a784259988c0e84cbe99ce8\",\"object\":\"text_completion\",\"created\":1789153757,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
-        "data: {\"id\":\"cmpl-dfe810e26a784259988c0e84cbe99ce8\",\"object\":\"text_completion\",\"created\":1789153757,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
-        "data: {\"id\":\"cmpl-dfe810e26a784259988c0e84cbe99ce8\",\"object\":\"text_completion\",\"created\":1789153757,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
-        "data: {\"id\":\"cmpl-dfe810e26a784259988c0e84cbe99ce8\",\"object\":\"text_completion\",\"created\":1789153757,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
-        "data: {\"id\":\"cmpl-dfe810e26a784259988c0e84cbe99ce8\",\"object\":\"text_completion\",\"created\":1789153757,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi"
+        "data: {\"id\":\"cmpl-7a55a636a2964288a5dac51d03202852\",\"object\":\"text_completion\",\"created\":1789154274,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
+        "data: {\"id\":\"cmpl-7a55a636a2964288a5dac51d03202852\",\"object\":\"text_completion\",\"created\":1789154274,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
+        "data: {\"id\":\"cmpl-7a55a636a2964288a5dac51d03202852\",\"object\":\"text_completion\",\"created\":1789154274,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
+        "data: {\"id\":\"cmpl-7a55a636a2964288a5dac51d03202852\",\"object\":\"text_completion\",\"created\":1789154274,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
+        "data: {\"id\":\"cmpl-7a55a636a2964288a5dac51d03202852\",\"object\":\"text_completion\",\"created\":1789154274,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
+        "data: {\"id\":\"cmpl-7a55a636a2964288a5dac51d03202852\",\"object\":\"text_completion\",\"created\":1789154274,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
+        "data: {\"id\":\"cmpl-7a55a636a2964288a5dac51d03202852\",\"object\":\"text_completion\",\"created\":1789154274,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi",
+        "data: {\"id\":\"cmpl-7a55a636a2964288a5dac51d03202852\",\"object\":\"text_completion\",\"created\":1789154274,\"model\":\"qwen35-p6e\",\"choices\":[{\"text\":\".Q\",\"index\":0,\"logprobs\":null,\"finish_reason\":null,\"hipengi"
       ],
       "gaps_ms": {
         "samples": [
-          42.29212366044521,
-          35.76071094721556,
-          35.9536437317729,
-          35.224394872784615,
-          34.99813098460436,
-          35.803151316940784,
-          35.42960714548826,
-          35.8339324593544,
-          36.1538864672184,
-          34.89141073077917,
-          35.68664938211441,
-          35.7788922265172,
-          35.536497831344604,
-          35.09478271007538,
-          35.31217575073242,
-          36.078495904803276,
-          34.65288691222668,
-          35.90302262455225,
-          36.11559607088566,
-          35.031212493777275,
-          36.00291348993778,
-          35.71590129286051,
-          40.22364690899849
+          42.015718296170235,
+          35.47315392643213,
+          36.38838604092598,
+          35.56491527706385,
+          34.986358135938644,
+          36.22717224061489,
+          34.69971567392349,
+          35.86797881871462,
+          35.57428438216448,
+          35.685527138412,
+          35.64166650176048,
+          35.67127604037523,
+          35.74379812926054,
+          35.75487807393074,
+          36.89731191843748,
+          34.778944216668606,
+          35.9695702791214,
+          35.884300246834755,
+          35.927469842135906,
+          36.04307118803263,
+          35.47884430736303,
+          35.02170741558075,
+          39.1007112339139
         ],
         "count": 23,
-        "median": 35.76071094721556,
-        "p95": 40.22364690899849,
-        "min": 34.65288691222668,
-        "max": 42.29212366044521,
-        "stdev": 1.7210194686457312,
-        "stdev_pct_of_median": 4.812598583920869
+        "median": 35.74379812926054,
+        "p95": 39.1007112339139,
+        "min": 34.69971567392349,
+        "max": 42.015718296170235,
+        "stdev": 1.554275923229176,
+        "stdev_pct_of_median": 4.348379312149306
       }
     },
     "cancel_probe": {
       "admitted": true,
-      "admission_ms": 2.912,
+      "admission_ms": 5.108,
       "held_open_ms": 600.07,
       "bytes_before_close": 0,
       "closed_by_server": false,
-      "response_head": "HTTP/1.1 200 OK\r\ndate: Fri, 11 Sep 2026 19:09:18 GMT\r\nserver: uvicorn\r\ncontent-type: text/event-stream; charset=utf-8\r\nconnection: close\r\ntransfer-encoding: chunked\r\n\r\n",
+      "response_head": "HTTP/1.1 200 OK\r\ndate: Fri, 11 Sep 2026 19:17:55 GMT\r\nserver: uvicorn\r\ncontent-type: text/event-stream; charset=utf-8\r\nconnection: close\r\ntransfer-encoding: chunked\r\n\r\n",
       "error": null
     },
     "refill": {
@@ -148,40 +150,40 @@
       "text_sha256": "118cf54787fe2a9c931d0e8ed4eddf2235fdcd64abe1b1e253ee908d6797f19d",
       "finish_reason": "length",
       "error": null,
-      "submit_to_first_token_ms": 825.326,
+      "submit_to_first_token_ms": 826.358,
       "gaps_ms": {
         "samples": [
-          35.99386475980282,
-          35.18746327608824,
-          35.560169257223606,
-          35.06820183247328,
-          36.27271857112646,
-          35.796831361949444,
-          35.65071988850832,
-          35.988714545965195,
-          35.02132184803486,
-          35.74028052389622,
-          35.84419284015894,
-          36.01714503020048,
-          35.125172697007656,
-          35.73901113122702,
-          35.86416319012642,
-          35.82750167697668,
-          35.87453160434961,
-          35.700101405382156,
-          35.607398487627506,
-          35.88612377643585,
-          36.06963437050581,
-          36.22722811996937,
-          39.10717274993658
+          35.51225457340479,
+          35.134549252688885,
+          35.78509856015444,
+          35.7836177572608,
+          36.28730494529009,
+          35.65887548029423,
+          35.226911306381226,
+          35.99331062287092,
+          35.53476557135582,
+          35.83920747041702,
+          34.78678595274687,
+          35.52178479731083,
+          36.381226032972336,
+          35.1978400722146,
+          35.698506981134415,
+          35.5194341391325,
+          35.3893032297492,
+          35.24712100625038,
+          36.20727453380823,
+          36.227802745997906,
+          36.60196904093027,
+          35.70544719696045,
+          38.892537355422974
         ],
         "count": 23,
-        "median": 35.82750167697668,
-        "p95": 36.27271857112646,
-        "min": 35.02132184803486,
-        "max": 39.10717274993658,
-        "stdev": 0.7841237990422872,
-        "stdev_pct_of_median": 2.1886086451464117
+        "median": 35.698506981134415,
+        "p95": 36.60196904093027,
+        "min": 34.78678595274687,
+        "max": 38.892537355422974,
+        "stdev": 0.8014301556196113,
+        "stdev_pct_of_median": 2.2449962852596133
       }
     },
     "cancellation_counter_before": 0.0,
@@ -195,11 +197,24 @@
       "None": 2.0
     },
     "layer_outer_executor_mode": "layer_outer_packed",
+    "kv_attention_source": "unavailable",
+    "resumable_kv_source": "int8_direct",
+    "route_manifest_labels": {
+      "claim_level": "exact_hybrid",
+      "kind": "gguf_packed_ar_execution_manifest",
+      "kv_attention_source": "unavailable",
+      "logical_c": "2",
+      "mode": "decode",
+      "physical_execution_width": "2",
+      "rows": "2",
+      "serial_decode_fallback": "false",
+      "throughput_claim_eligible": "false"
+    },
     "blocking": {
       "long_request": {
         "chars": 48,
         "finish_reason": "length",
-        "wall_ms": 6064.877,
+        "wall_ms": 6072.821,
         "error": null
       },
       "survivor": {
@@ -223,7 +238,7 @@
         "error": null
       }
     },
-    "prefill_work_total_delta": 2.0,
+    "prefill_work_total_delta": 3.0,
     "request_failed_total_delta": 1.0,
     "metrics_baseline": {
       "hipengine_chat_sessions_active": 0.0,
@@ -291,10 +306,10 @@
       "hipengine_resident_prefill_oracle_observed_peak_owners": 0.0,
       "hipengine_resident_prefill_oracle_owner_bytes": 0.0,
       "hipengine_resident_prefill_oracle_owners": 0.0,
-      "hipengine_resident_request_latency_max_seconds": 4.256793071515858,
-      "hipengine_resident_request_latency_seconds": 8.500463942531496,
+      "hipengine_resident_request_latency_max_seconds": 4.268275631591678,
+      "hipengine_resident_request_latency_seconds": 8.52368883015588,
       "hipengine_resident_request_latency_seconds_count": 27.0,
-      "hipengine_resident_request_latency_seconds_sum": 5.039736630395055,
+      "hipengine_resident_request_latency_seconds_sum": 5.053483751602471,
       "hipengine_resident_requests_active": 0.0,
       "hipengine_resident_requests_admitted": 0.0,
       "hipengine_resident_requests_admitted_total": 1.0,
@@ -311,7 +326,7 @@
     "oracle_owner_bytes_baseline": 0.0,
     "oracle_owner_bytes_final": 0.0
   },
-  "command": "/home/lhl/mambaforge/envs/therock/bin/python3 /home/lhl/hipEngine-main/scripts/gguf_p6e_cancel_refill_proof.py --long-prompt-rows 3072 --short-prompt-rows 512 --decode-tokens 24 --cancel-delay-ms 600 --cancel-observe-timeout-seconds 60 --concurrent-lead-seconds 0.6 --slow-consumer-line-delay-ms 40 --packed-layer-outer --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p6e-modes.json",
+  "command": "/home/lhl/mambaforge/envs/therock/bin/python3 /home/lhl/hipEngine-main/scripts/gguf_p6e_cancel_refill_proof.py --long-prompt-rows 3072 --short-prompt-rows 512 --decode-tokens 24 --cancel-delay-ms 600 --cancel-observe-timeout-seconds 60 --concurrent-lead-seconds 0.6 --slow-consumer-line-delay-ms 40 --packed-layer-outer --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p6e-kvsource.json",
   "trace_environment": {
     "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-hipcc-version.txt",
     "HIPENGINE_REQUIRE_CACHED_BUILD": "1"
