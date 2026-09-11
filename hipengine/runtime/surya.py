@@ -887,11 +887,16 @@ class SuryaGpuRunner:
 
     def decode_step(self, token_id: int, position: int) -> np.ndarray:
         """Advance one token; position is the absolute rope position."""
-        self._seq_len += 1
         x = self._embed(np.array([token_id]), None)
         cos_buf, sin_buf = self._rope_tables_device(
             np.array([[position], [position], [position]], dtype=np.int64))
+        # ``_seq_len`` is the next free KV slot: ``_attn_layer_decode`` scatters
+        # into that slot and attends over ``_seq_len + 1`` positions. Advance it
+        # only after the step, otherwise the scatter lands one slot too high and
+        # attention reads a slot this request never wrote -- stale KV from any
+        # earlier, longer request on the same runner.
         self._decode_stack(x.ptr, 1, cos_buf, sin_buf, decode=True)
+        self._seq_len += 1
         return self._logits_last()
 
     def generate(self, input_ids, positions, visual_features=None,
