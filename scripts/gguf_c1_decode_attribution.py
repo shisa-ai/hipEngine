@@ -652,6 +652,60 @@ def summarize(
         )
 
     measured_wall_ms = statistics.median(step_walls_ms) if step_walls_ms else None
+
+    # The GPU span: how long the device is actually held by one step, from its
+    # first kernel start to its last kernel end. The device union says how much of
+    # that span is execution, so the difference is gap. Splitting the gap decides
+    # the lever: gap *before* the first launch and *after* the last kernel is host
+    # time the device is idle regardless of kernel count, whereas gap *between*
+    # kernels is what fewer/larger kernels (fusion) or a graph replay would remove.
+    span_ns: list[int] = []
+    leading_ns: list[int] = []
+    trailing_ns: list[int] = []
+    busy_ns: list[int] = []
+    for window in windows:
+        inside = _clip_to_windows(
+            [
+                (int(row["start_ns"]), int(row["end_ns"]))
+                for row in kernels
+                if _in_windows(row["start_ns"], row["end_ns"], [window])
+            ],
+            [window],
+        )
+        if not inside:
+            continue
+        first = min(start for start, _end in inside)
+        last = max(end for _start, end in inside)
+        span_ns.append(last - first)
+        leading_ns.append(first - int(window["start_ns"]))
+        trailing_ns.append(int(window["end_ns"]) - last)
+        busy_ns.append(_union_ns(inside))
+
+    def _median_ms(values: Sequence[int]) -> float | None:
+        return round(statistics.median(values) / 1e6, 3) if values else None
+
+    interior_gap_ns = [span - busy for span, busy in zip(span_ns, busy_ns, strict=True)]
+    gpu_span = {
+        "steps": len(span_ns),
+        "span_ms": _median_ms(span_ns),
+        "busy_in_span_ms": _median_ms(busy_ns),
+        "interior_gap_ms": _median_ms(interior_gap_ns),
+        "leading_gap_ms": _median_ms(leading_ns),
+        "trailing_gap_ms": _median_ms(trailing_ns),
+        "duty_cycle": (
+            round(statistics.median(busy_ns) / statistics.median(span_ns), 4)
+            if span_ns and statistics.median(span_ns)
+            else None
+        ),
+        "note": (
+            "span is first kernel start to last kernel end within each step window; "
+            "busy is the device union inside that span; leading is host time before "
+            "the first launch and trailing is host time after the last kernel ends "
+            "(which is where the blocking readback waits). Interior gap is the part "
+            "fusion or a graph replay could remove; leading and trailing gap are not"
+        ),
+    }
+
     return {
         "windows": {
             "measured_steps": len(windows),
@@ -682,6 +736,7 @@ def summarize(
             "gpu_idle_ns": gpu_idle_ns,
             "gpu_idle_ms": round(gpu_idle_ns / 1e6, 3),
         },
+        "gpu_span": gpu_span,
         "kernel_families": kernel_families,
         "hip_api": {
             "calls": len(in_window_api),

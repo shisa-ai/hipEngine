@@ -193,6 +193,60 @@ def test_union_merges_overlapping_intervals() -> None:
     assert _union_ns([(50, 60), (0, 10)]) == 20
 
 
+def test_summarize_gpu_span_separates_interior_gap_from_edges() -> None:
+    # Window 0-1 ms: kernels 0.1-0.4 ms and 0.5-0.6 ms, so the span is 0.1-0.6 ms
+    # (0.5 ms) with 0.4 ms busy and a 0.1 ms interior gap. Leading is 0.1 ms
+    # (window start to first launch) and trailing is 0.4 ms (last kernel end to
+    # window end). Interior gap is what fusion or a graph replay could remove;
+    # the edges are host time outside the device span and are not.
+    summary = summarize(
+        windows=[{"step": 0, "start_ns": 0, "end_ns": 1_000_000}],
+        kernels=[
+            {"family": "gguf_q4_k_t16_gemv_rowtile", "start_ns": 100_000, "end_ns": 400_000, "duration_ns": 300_000},
+            {"family": "paged_full_attn_decode", "start_ns": 500_000, "end_ns": 600_000, "duration_ns": 100_000},
+        ],
+        hip_api=[],
+        copies=[],
+        step_walls_ms=[12.0],
+    )
+
+    span = summary["gpu_span"]
+    assert span["steps"] == 1
+    assert span["span_ms"] == pytest.approx(0.5)
+    assert span["busy_in_span_ms"] == pytest.approx(0.4)
+    assert span["interior_gap_ms"] == pytest.approx(0.1)
+    assert span["leading_gap_ms"] == pytest.approx(0.1)
+    assert span["trailing_gap_ms"] == pytest.approx(0.4)
+    assert span["duty_cycle"] == pytest.approx(0.8)
+    # The span must partition the window, or the gap attribution is meaningless.
+    assert span["span_ms"] + span["leading_gap_ms"] + span["trailing_gap_ms"] == (
+        pytest.approx(summary["windows"]["per_step_ms"])
+    )
+    assert span["busy_in_span_ms"] + span["interior_gap_ms"] == pytest.approx(
+        span["span_ms"]
+    )
+
+
+def test_summarize_gpu_span_skips_a_window_with_no_kernels() -> None:
+    summary = summarize(
+        windows=[
+            {"step": 0, "start_ns": 0, "end_ns": 1_000_000},
+            {"step": 1, "start_ns": 2_000_000, "end_ns": 3_000_000},
+        ],
+        kernels=[
+            {"family": "gguf_q4_k_t16_gemv_rowtile", "start_ns": 2_100_000, "end_ns": 2_400_000, "duration_ns": 300_000},
+        ],
+        hip_api=[],
+        copies=[],
+        step_walls_ms=[12.0, 12.0],
+    )
+
+    # Only the window that actually holds kernels contributes a span, so an empty
+    # window cannot inject a zero that would drag the medians down.
+    assert summary["gpu_span"]["steps"] == 1
+    assert summary["gpu_span"]["span_ms"] == pytest.approx(0.3)
+
+
 def test_summarize_attributes_only_in_window_intervals() -> None:
     windows = [{"step": 0, "start_ns": 1000, "end_ns": 2000}]
 
