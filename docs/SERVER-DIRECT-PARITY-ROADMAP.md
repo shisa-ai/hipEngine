@@ -72,6 +72,7 @@ unless noted):
 | P6a/P6c resumable prefill | - | per-poll layer segment; checkpoint `next_layer` + derived ping-pong phase; oracle released at every segment boundary | - | `35b61413b` |
 | P6b suspended-state ownership | - | - | dedicated hidden-plane + linear-state buffers copied out at each yield and back on resume; suspended owner counted in prefill-transient telemetry; freed on completion, failure, and row reclaim | `--` (this unit) |
 | P6d harness repair | - | - | - | `--` (this unit) |
+| P6e service proof | - | bounded command acknowledgement and cancel delay while a long prefill is in flight; survivor text byte-identical over 192 characters | - | `f6578280a`, `53f134a7e`, `1a663ef9a` |
 
 Combined P3+P4 at 32K declared: ~1.6 GiB of route transients vs ~6.4 GiB at
 the P0 baseline (-75%), measured with the executor flag enabled. The
@@ -88,9 +89,9 @@ as the rollback.
 Remaining open packets: P6 (P6a/P6b/P6c landed opt-in - the resumable layer-outer
 checkpoint, its suspended-state ownership, and the CPU tests; P6e GPU proof on
 the serial INT8 route **landed 2026-09-11 and now passes on the resumable route
-itself** (ten gates, including a cancellation-delay sweep and a host-sampling arm;
-see the coverage table in the P6 section, which also records native sampling as
-still unasserted and long prefix suffixes as intentionally fail-closed), and P6f
+itself** (eleven gates - ten passing and the native-sampling gate explicitly
+`skipped` with its blocker named - including a cancellation-delay sweep and a
+host-sampling arm; see the coverage table in the P6 section), and P6f
 P3/P2 gates are outstanding, so the route stays behind
 `HIPENGINE_GGUF_PACKED_LAYER_OUTER` until P6f closes), P5
 remainder (HIP-API/queue-gap attribution and graph-capture amortization; the
