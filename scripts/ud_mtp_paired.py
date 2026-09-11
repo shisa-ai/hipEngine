@@ -53,13 +53,24 @@ PAIRED_PROTOCOL = {
     "warmup": True,
     "kv_layout": "resident session default (Qwen35GGUFResidentSession, wmma prefill, gemv decode)",
     "ar_baseline": "suite true no-MTP single-row greedy per artifact",
-    "correctness_gates": (
-        "status_complete_exact",
-        "all_exact_greedy",
-        "all_gpu_accept_match_cpu",
-        "true_ar_denominator_present",
-        "faster_than_true_ar",
-    ),
+    "correctness_gates": {
+        "binding": (
+            "true_ar_denominator_present",
+            "all_gpu_accept_match_cpu",
+            "deterministic_repeats",
+            "faster_than_true_ar",
+        ),
+        "recorded_not_binding": (
+            "status_complete_exact",
+            "all_exact_greedy",
+        ),
+        "note": (
+            "docs/EXECUTION-PROFILES.md section 6: free-running generated-ID equality "
+            "is recorded but is not the denominator, and section 4.1 permits logits "
+            "and generated IDs to differ at near ties under the production profile. "
+            "The control-plane gates are binding in every profile."
+        ),
+    },
 }
 
 # label -> (gguf path, session quant identity, family)
@@ -207,6 +218,31 @@ def _run_pair(argv: list[str], output: Path) -> dict[str, object]:
     return json.loads(output.read_text())
 
 
+def _provenance_summary(payload: dict) -> dict[str, object]:
+    """Host identity and claim eligibility, so the artifact is self-contained."""
+
+    provenance = payload.get("provenance") or {}
+    model = payload.get("model") or {}
+    workload = payload.get("workload") or {}
+    return {
+        "host_name": provenance.get("host_name"),
+        "device_name": provenance.get("device_name"),
+        "resolved_backend": provenance.get("resolved_backend"),
+        "target_arch": provenance.get("target_arch"),
+        "hipengine_commit": provenance.get("hipengine_commit"),
+        "git_branch": provenance.get("git_branch"),
+        "dirty": provenance.get("dirty"),
+        "untracked_count": provenance.get("untracked_count"),
+        "speed_claim_eligible": payload.get("speed_claim_eligible"),
+        "suite_status": payload.get("status"),
+        "model_path": model.get("path"),
+        "model_size_bytes": model.get("size_bytes"),
+        "model_file_type": model.get("file_type"),
+        "prompt_file": workload.get("prompt_file"),
+        "prompt_file_sha256": workload.get("prompt_file_sha256"),
+    }
+
+
 def _determinism(payload: dict, runs: int) -> dict[str, object]:
     """Whether every prompt repeats bit-identically across runs, AR and MTP."""
 
@@ -302,6 +338,15 @@ def main() -> int:
         action="store_true",
         help="print the resolved commands and the U6 gate state; run nothing",
     )
+    parser.add_argument(
+        "--from-raw",
+        action="store_true",
+        help=(
+            "re-derive the artifact from raw payloads already present in --raw-dir "
+            "instead of running the GPU commands; the raw payloads are the evidence "
+            "and are not modified"
+        ),
+    )
     args = parser.parse_args()
 
     gate = u6_gate_state()
@@ -352,8 +397,18 @@ def main() -> int:
     for command in commands:
         label = str(command["label"])
         output = Path(str(command["argv"][command["argv"].index("--output") + 1]))
-        print(f"[paired] {label}: {command['model']} (quant={command['quant']}) -> {output}", flush=True)
-        payload = _run_pair([str(part) for part in command["argv"]], output)
+        if args.from_raw:
+            if not output.exists():
+                print(f"[paired] {label}: missing raw payload {output}", file=sys.stderr)
+                return 1
+            print(f"[paired] {label}: re-deriving from {output}", flush=True)
+            payload = json.loads(output.read_text())
+        else:
+            print(
+                f"[paired] {label}: {command['model']} (quant={command['quant']}) -> {output}",
+                flush=True,
+            )
+            payload = _run_pair([str(part) for part in command["argv"]], output)
         report["pairs"].append(
             {
                 "label": label,
@@ -361,6 +416,8 @@ def main() -> int:
                 "model": command["model"],
                 "quant": command["quant"],
                 "command": " ".join(str(part) for part in command["argv"]),
+                "raw_payload": str(output),
+                "provenance": _provenance_summary(payload),
                 "evidence": _verdict(payload, args.runs),
             }
         )

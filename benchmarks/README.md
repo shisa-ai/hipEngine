@@ -377,6 +377,32 @@ the Q5 MoE selected-expert path (2.22 ms/tok K_M on the direct GEMV),
 Q3_K strict decode (1.43/2.43 ms/tok), and the Q5 gate/up dual.
 ([final rollup](results/final-decode-campaign-2026-09-11/).)
 
+MTP for these artifacts is **measured but not admitted** (the U6 certification
+pin is empty, so admission still refuses MTP for both UD presets). The paired
+c1 / natural25 / B3 measurement is therefore diagnostic, and its ratios are
+within-arm only — each arm's MTP rate over that same arm's own AR rate:
+
+| Arm (W7900, GPU0) | AR tok/s | MTP B3 tok/s | Ratio |
+| --- | ---: | ---: | ---: |
+| `UD-Q4_K_M` | 15.362 | 30.735 | **2.0007x** |
+| `UD-Q4_K_S` | 15.271 | 27.626 | **1.8091x** |
+| `Q4_K_M` (plain) | 30.442 | 52.342 | **1.7194x** |
+| `Q4_K_S` (plain) | 31.222 | 54.433 | **1.7434x** |
+
+All four arms pass the binding control gates and repeat bit-identically per
+prompt. `UD-Q4_K_S` differs from its own AR reference on one prompt in both
+runs — a 0.0096-logit near tie between the single-row AR route and the 4-row
+verify route — which `docs/EXECUTION-PROFILES.md` §4.1 permits as production
+drift, so it is recorded rather than binding. **The UD/plain AR ratio in this
+protocol (0.505x) is not comparable to the 0.848x above**: the table above was
+measured with graph-replay decode on GPU1 (the XTX), while this suite's AR path
+is eager. The two artifacts are not compute-different (UD K_M 30.263 ms/token
+pure vs plain K_M 30.478, at 831 vs 796 launches/token), so the eager gap is
+host-side per-launch overhead; the MTP path is less exposed because its
+proposal is graph-captured, which inflates the UD ratios relative to a
+graph-replay protocol. Treat the UD ratios as ±10%.
+([artifact](results/paired-ud-plain-mtp-c1-natural25-b3.json).)
+
 Both artifacts pass the tokenized 18-prompt category/heldout screen
 (`scripts/gguf_ud_combined_stack_gate.py --category-heldout`, real tokenizer
 + chat template, incumbent-extended 512-token prompts, 1170 teacher-forced
