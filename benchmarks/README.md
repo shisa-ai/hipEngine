@@ -58,17 +58,23 @@ is not monotonic in tile count.
 
 Full-page transcription is gated against the text drawn on each page, not only
 against a captured oracle. Using the checkpoint's real full-page HTML prompt,
-seven representative documents (Japanese, mixed script, dense small text, a
-ruled table, a blank page, a degraded scan, and a 25-line block-heavy page) all
-reach a natural EOS with line recall 1.000, line exact rate 1.000, character
+eight documents (Japanese, mixed script, dense small text, a ruled table, a
+blank page, a degraded scan, a 25-line block-heavy page, and a 300-DPI A4 page)
+all reach a natural EOS with line recall 1.000, line exact rate 1.000, character
 error rate 0.0000, and zero reading-order violations; the ruled table reads as
 4x8 with 32/32 cells and a matching header, and a deliberately starved budget
-is reported as truncation with omissions rather than passing a prefix. One
-caveat is recorded: on the degraded scan the HIP lane differs from torch fp32 on
-21 of 616 ids, all bbox coordinate digits, with identical labels and text and a
-worst coordinate delta of 4 of 1000 — and torch bf16 differs from torch fp32 on
-15 ids there and changes the decoded text, so the drift is a property of that
-page's coordinates rather than of the HIP route.
+is reported as truncation with omissions rather than passing a prefix. The A4
+page is the page-scale case at 2480x3508 (220x156 patch grid, 8580 image
+tokens): 2108 tokens to a natural EOS, vision 47.7 s, prefill 8.0 s, decode
+58.4 s (27.7 ms/token, 36.1 tok/s), 114.3 s end to end. Scoring it initially
+read as a failure — recall 0.241, CER 0.890 — because the ground truth split its
+wrapped prose into physical lines while the model correctly returns a paragraph
+as one block; the A4 ground truth is now paragraph-level and all 12 units match
+at similarity 1.0. One caveat is recorded: on the degraded scan the HIP lane
+differs from torch fp32 on 21 of 616 ids, all bbox coordinate digits, with
+identical labels and text and a worst coordinate delta of 4 of 1000 — and torch
+bf16 differs from torch fp32 on 15 ids there and changes the decoded text, so
+the drift is a property of that page's coordinates rather than of the HIP route.
 [Transcription acceptance](results/2026-09-12-gfx1151-surya-transcription-acceptance.json).
 
 Non-GR linear structural floor measured on Framework gfx1151:

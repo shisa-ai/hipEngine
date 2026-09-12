@@ -6431,3 +6431,18 @@ plus a query offset in `surya_causal_mask_scale_f32` (the causal mask is
 relative to the tile's first query). Do it when a page-scale prefill peak
 matters on a smaller device, or when the prefill block size is wanted as a
 tunable; the measured envelope is recorded in `docs/MODEL-SURYA.md`.
+
+## 2026-09-12 Surya A4 page has no torch fp32 reference — open
+
+The 300-DPI A4 page is in the transcription ground-truth and reading-order gates
+(`QUALITY_CASES` in `tests/test_surya_transcription.py`) but not in the
+implementation-parity gates, because those compare against a captured torch fp32
+greedy chain and no such capture exists for this page. So the page's *quality* is
+gated and its *parity with the reference implementation* is not.
+
+Capture it when a page-scale parity claim is wanted: add the case to
+`scripts/surya_oracle_greedy.py --case protocol` and to
+`tests/fixtures/surya/oracle_fullpage_protocol.json`, then move `a4` from
+`QUALITY_ONLY_CASES` into `CASES`/`EXACT_ID_CASES` (or `COORDINATE_CASES` if its
+bbox digits turn out to be as fragile as the degraded scan's). The capture is a
+torch fp32 CPU run of 2108 tokens; nothing else about the page needs to change.
