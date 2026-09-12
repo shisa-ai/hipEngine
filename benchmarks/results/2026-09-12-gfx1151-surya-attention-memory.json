@@ -1,0 +1,138 @@
+{
+ "date": "2026-09-12",
+ "generated_utc": "2026-09-12T06:15:57Z",
+ "model": "datalab-to/surya-ocr-2",
+ "vision_attention": {
+  "budget_bytes": 536870912,
+  "grids": [
+   {
+    "grid": [
+     1,
+     220,
+     156
+    ],
+    "patches": 34320,
+    "merged_image_tokens": 8580,
+    "dense_score_bytes": 56537395200,
+    "query_block": 325,
+    "tiled_score_bytes": 535392000,
+    "reduction_x": 105.6
+   },
+   {
+    "grid": [
+     1,
+     256,
+     256
+    ],
+    "patches": 65536,
+    "merged_image_tokens": 16384,
+    "dense_score_bytes": 206158430208,
+    "query_block": 170,
+    "tiled_score_bytes": 534773760,
+    "reduction_x": 385.50588235294117
+   }
+  ]
+ },
+ "protocol": {
+  "measurement": "hipengine.core.memory process-local device allocation counter (hipEngine-owned buffers)",
+  "boundary": "peak scratch = peak_allocated_bytes - resident_bytes, where resident is the runner's long-lived allocation after construction",
+  "prompt": "synthetic text-only ids of the given length with plain 1-D rope positions; no image, so this isolates the text stack",
+  "isolation": "a fresh runner per token count, with reset_memory_stats() after construction, so the peak is one prefill.s footprint and not a previous run.s high-water mark"
+ },
+ "page_tokens": {
+  "300dpi_a4": 8580
+ },
+ "results": [
+  {
+   "max_seq": 16384,
+   "resident_components": {
+    "weights_bytes": 2663047936,
+    "kv_planes_bytes": 402653184,
+    "gdn_state_bytes": 18883584,
+    "conv_state_bytes": 1778688,
+    "resident_bytes": 3086373160
+   },
+   "skipped_over_context": [],
+   "rows": [
+    {
+     "tokens": 256,
+     "resident_bytes": 3086373160,
+     "peak_scratch_bytes": 49766404,
+     "retained_scratch_bytes": 49766404,
+     "attention_scores_bytes": 2097152,
+     "non_attention_scratch_bytes": 47669252,
+     "linear_bytes_per_token": 186208.015625,
+     "peak_total_bytes": 3136139564,
+     "prefill_seconds": 0.19188141822814941
+    },
+    {
+     "tokens": 512,
+     "resident_bytes": 3086373160,
+     "peak_scratch_bytes": 103442436,
+     "retained_scratch_bytes": 103442436,
+     "attention_scores_bytes": 8388608,
+     "non_attention_scratch_bytes": 95053828,
+     "linear_bytes_per_token": 185652.0078125,
+     "peak_total_bytes": 3189815596,
+     "prefill_seconds": 0.386063814163208
+    },
+    {
+     "tokens": 1024,
+     "resident_bytes": 3086373160,
+     "peak_scratch_bytes": 223377412,
+     "retained_scratch_bytes": 223377412,
+     "attention_scores_bytes": 33554432,
+     "non_attention_scratch_bytes": 189822980,
+     "linear_bytes_per_token": 185374.00390625,
+     "peak_total_bytes": 3309750572,
+     "prefill_seconds": 0.7681717872619629
+    },
+    {
+     "tokens": 2048,
+     "resident_bytes": 3086373160,
+     "peak_scratch_bytes": 513579012,
+     "retained_scratch_bytes": 513579012,
+     "attention_scores_bytes": 134217728,
+     "non_attention_scratch_bytes": 379361284,
+     "linear_bytes_per_token": 185235.001953125,
+     "peak_total_bytes": 3599952172,
+     "prefill_seconds": 1.5769438743591309
+    },
+    {
+     "tokens": 4096,
+     "resident_bytes": 3086373160,
+     "peak_scratch_bytes": 1295308804,
+     "retained_scratch_bytes": 1295308804,
+     "attention_scores_bytes": 536870912,
+     "non_attention_scratch_bytes": 758437892,
+     "linear_bytes_per_token": 185165.5009765625,
+     "peak_total_bytes": 4381681964,
+     "prefill_seconds": 3.306070327758789
+    },
+    {
+     "tokens": 8580,
+     "resident_bytes": 3086373160,
+     "peak_scratch_bytes": 3944133156,
+     "retained_scratch_bytes": 3944133156,
+     "attention_scores_bytes": 2355724800,
+     "non_attention_scratch_bytes": 1588408356,
+     "linear_bytes_per_token": 185129.17902097903,
+     "peak_total_bytes": 7030506316,
+     "prefill_seconds": 7.448568344116211
+    },
+    {
+     "tokens": 16384,
+     "resident_bytes": 3086373160,
+     "peak_scratch_bytes": 11622832132,
+     "retained_scratch_bytes": 11622832132,
+     "attention_scores_bytes": 8589934592,
+     "non_attention_scratch_bytes": 3032897540,
+     "linear_bytes_per_token": 185113.37524414062,
+     "peak_total_bytes": 14709205292,
+     "prefill_seconds": 16.603649616241455
+    }
+   ],
+   "fitted_linear_bytes_per_token": 185096.00000000003
+  }
+ ]
+}
