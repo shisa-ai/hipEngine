@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-11**
+Last updated: **2026-09-12**
 
 Surya OCR 2 on Strix Halo gfx1151, hipEngine HIP lane vs transformers fp32 on
 the same host iGPU, over 12 pages covering layout-JSON and markup output,
@@ -12,9 +12,9 @@ oracle exactly on all 12 pages, and each decode stage repeats identically.
 Every lane times the same region — page image plus prompt in, greedy token ids
 out — with checkpoint load and runner construction reported separately as
 `init_s`. Decode is weight-bandwidth-bound: one token streams 2342 MB of fp32
-weights at 138 GB/s, and 82-87% of decode kernel time is the projection GEMMs.
+weights at 136-143 GB/s, and 88% of decode kernel time is the projection GEMMs.
 [Suite baseline](results/2026-09-11-gfx1151-surya-suite-baseline.json),
-[post-SGEMV profile](results/2026-09-11-gfx1151-surya-post-sgemv-profile.json).
+[phase-attributed profile](results/2026-09-12-gfx1151-surya-phase-attributed-profile.json).
 Earlier Surya rows here reported decode trailing torch at 55.5 vs 68.2 tok/s;
 that comparison came from a harness defect in which the torch prefill stage was
 timed before its synchronization and decode was derived by subtracting two
