@@ -44,7 +44,17 @@ context is 7.03 GB for the 8580-token page and 14.71 GB at a full 16384-token
 prompt, of which 2.36 GB and 8.59 GB are the causal score matrix that is not
 yet tiled.
 [Attention memory](results/2026-09-12-gfx1151-surya-attention-memory.json),
-[numerical gate](results/2026-09-12-gfx1151-surya-numerical-gate.json).
+[numerical gate](results/2026-09-12-gfx1151-surya-numerical-gate.json),
+[vision tiling cost](results/2026-09-12-gfx1151-surya-vision-tiling-cost.json).
+
+The tiling's wall-clock cost is measured on the grids that run both ways, since
+the page-scale grids have no dense baseline. At 1024 patches an 8 MiB tile
+budget is 138.26 ms against 192.27 ms dense (1.391x faster) while cutting score
+scratch from 48.0 to 8.0 MiB; at 4096 patches the same budget is 1129.09 ms
+against 1045.58 ms dense (0.926x) while cutting scratch from 768.0 to 7.9 MiB.
+At 4096 patches the 512 MiB default is 1118.47 ms (0.935x) at 511.9 MiB and a
+64 MiB budget is 1177.79 ms (0.888x) at 63.9 MiB, so the cost is 7-11% there and
+is not monotonic in tile count.
 
 Full-page transcription is gated against the text drawn on each page, not only
 against a captured oracle. Using the checkpoint's real full-page HTML prompt,
