@@ -79,4 +79,5 @@ def test_chat_discovers_model_and_streams_completion(monkeypatch: pytest.MonkeyP
     )
     assert result == 0
     assert "context=176128" in output.getvalue()
-    assert "assistant> hello world" in output.getvalue()
+    assert "assistant> " in output.getvalue()
+    assert "hello world" in output.getvalue()

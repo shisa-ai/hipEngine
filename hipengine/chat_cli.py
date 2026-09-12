@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from collections.abc import Iterator, Sequence
 from urllib.error import HTTPError, URLError
@@ -120,6 +121,35 @@ def _stream_completion(
                 yield text
 
 
+def _render_markdown(text: str, output_stream) -> None:
+    """Render completed Markdown with optional Rich and a dependency-free fallback."""
+
+    try:
+        from rich.console import Console
+        from rich.markdown import Markdown
+
+        Console(file=output_stream, force_terminal=output_stream.isatty()).print(
+            Markdown(text)
+        )
+        return
+    except (ImportError, AttributeError):
+        pass
+
+    in_code = False
+    for line in str(text).splitlines():
+        if line.strip().startswith("```"):
+            in_code = not in_code
+            continue
+        if in_code:
+            print(f"  {line}", file=output_stream)
+            continue
+        line = re.sub(r"^#{1,6}\s+", "", line)
+        line = re.sub(r"^\s*[-*]\s+", "- ", line)
+        line = re.sub(r"\*\*(.+?)\*\*", r"\1", line)
+        line = re.sub(r"`(.+?)`", r"\1", line)
+        print(line, file=output_stream)
+
+
 def run(args: argparse.Namespace, *, input_stream=None, output_stream=None) -> int:
     input_stream = sys.stdin if input_stream is None else input_stream
     output_stream = sys.stdout if output_stream is None else output_stream
@@ -181,12 +211,12 @@ def run(args: argparse.Namespace, *, input_stream=None, output_stream=None) -> i
                 max_tokens=int(args.max_tokens),
             ):
                 answer_parts.append(text)
-                print(text, end="", file=output_stream, flush=True)
         except (HTTPError, URLError, OSError, ValueError) as exc:
             print(f"\nrequest failed: {exc}", file=sys.stderr)
             messages.pop()
             continue
         print(file=output_stream)
+        _render_markdown("".join(answer_parts), output_stream)
         messages.append({"role": "assistant", "content": "".join(answer_parts)})
 
 
