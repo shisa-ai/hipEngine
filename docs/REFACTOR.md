@@ -7042,3 +7042,21 @@ pins `graph` in `PAIRED_PROTOCOL` and rejects a payload whose
 
 **Do not promote `eager` to a default or a second supported denominator.** It is
 a diagnostic control; every published rate uses `graph`.
+
+## 2026-09-12 `--mtp-scope-grant` on the c1-c8 server bench
+
+**State.** `scripts/gguf_mtp_c1c8_server_bench.py` gained `--mtp-scope-grant`,
+off by default, which grants the named preset's MTP scope in process via
+`ud_mtp_paired.mtp_scope_granted` so a width cell can be measured while the U6
+pin is still unminted. It is documented as requiring
+`--generation2-diagnostic`, whose rows are labelled `diagnostic_physical_gguf_mtp`.
+
+**Why it is retained.** The U6 pin mints MTP scope, and the pin needs the width
+evidence, so without a candidate-mode grant the widths cannot be measured at
+all. The same pattern already exists for the paired protocol.
+
+**Removal trigger.** Remove the flag once the U6 certification records are
+complete and the pin is derived, since a granted run is then no longer needed to
+reach the cell. A granted run must never be used as a rate claim: it is a
+diagnostic whose only purpose is to decide whether a real evidence row is
+warranted.
