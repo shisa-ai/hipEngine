@@ -1,6 +1,6 @@
 {
  "ja": {
-  "page": "page_ja_fit.png",
+  "page": "page_ja.png",
   "prompt": "OCR this image to HTML. Each block is a div with data-label and data-bbox (x0 y0 x1 y1, normalized 0-1000).",
   "ids": [
    1168,
@@ -304,7 +304,7 @@
   ]
  },
  "mixed": {
-  "page": "page_mixed_fit.png",
+  "page": "page_mixed.png",
   "prompt": "OCR this image to HTML. Each block is a div with data-label and data-bbox (x0 y0 x1 y1, normalized 0-1000).",
   "ids": [
    1168,
@@ -2227,7 +2227,7 @@
   ]
  },
  "scan": {
-  "page": "page_scan_fit.png",
+  "page": "page_scan.png",
   "prompt": "OCR this image to HTML. Each block is a div with data-label and data-bbox (x0 y0 x1 y1, normalized 0-1000).",
   "ids": [
    1168,
@@ -2860,7 +2860,7 @@
   ]
  },
  "long": {
-  "page": "page_long_fit.png",
+  "page": "page_long.png",
   "prompt": "OCR this image to HTML. Each block is a div with data-label and data-bbox (x0 y0 x1 y1, normalized 0-1000).",
   "ids": [
    1168,

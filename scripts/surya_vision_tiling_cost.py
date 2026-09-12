@@ -32,9 +32,9 @@ FIXTURES = Path("tests/fixtures/surya")
 MODEL = "datalab-to/surya-ocr-2"
 MIB = 1024 * 1024
 
-# (fixture, patch count). 1024 patches is the 1024x1024 bench page; 4096 is the
-# 1024x1024 "fit" page at grid 1x64x64. Both are admissible densely.
-CASES = (("page_dense.png", 1024), ("page_ja_fit.png", 4096))
+# (fixture, patch count). 1024 patches is a 512x512 page; 4096 is the 1024x1024
+# Japanese page at grid 1x64x64. Both are admissible densely.
+CASES = (("page_dense.png", 1024), ("page_ja.png", 4096))
 
 # None = dense (one tile). The rest are tile budgets, smallest last so the
 # printed curve reads largest-tile-first.

@@ -106,21 +106,67 @@ top-5 overlap 3-5. The test therefore splits into `EXACT_ID_CASES` (full id
 equality) and `COORDINATE_CASES` (equal finish reason, under 5% coordinate-id
 diff, identical labels and texts, worst bbox delta under 8 of 1000).
 
-**Fixture defect found and worked around.** Four of the seven bench pages draw
-text past the canvas, so their intended text is not what is in the image:
-`ja` body lines are 576-663 px wide on a 512 px page, `mixed` Latin lines
-503/506 px against 480 usable, `scan` up to ~531 px against 476, and
-`page_long` draws six 224 px blocks from y=168 so blocks 5 and 6 fall off a
+**Fixture defect found and fixed (2026-09-13).** Four of the seven bench pages
+drew text past the canvas, so their intended text was not what was in the
+image: `ja` body lines were 576-663 px wide on a 512 px page, `mixed` Latin
+lines 503/506 px against 480 usable, `scan` up to ~531 px against 476, and
+`page_long` drew six 224 px blocks from y=168 so blocks 5 and 6 fell off a
 1024 px canvas. Scored against the intended text those pages read as CER 0.220
 (`ja`) and 0.039 (`mixed`), and the apparent hallucination `line.` ->
-`literature` was the model completing a clipped word. The bench pages are left
-byte-identical so their captured oracles and benchmark artifacts stay valid;
-the acceptance test scores `page_<name>_fit.png` for those four and the bench
-page for the other three. Re-cutting the bench suite is tracked as follow-up.
+`literature` was the model completing a clipped word. The pages are now drawn
+through a fit assertion that raises instead of clipping, and the four were
+re-cut onto canvases that hold them (1024x1024 for `ja`/`mixed`/`scan`,
+1024x1600 for `long`); `page_ja.png` and its siblings are the pages the
+acceptance test and the benchmark suite both use, with no separate variant.
+The vision grids grew with the canvas (`ja`/`mixed`/`scan` 32x32 -> 64x64,
+`long` 64x64 -> 100x64), so `oracle_bench.json` and the lane comparison were
+re-captured. The one measurement that did not change is the truncated
+`scan` continuation: the old page's clipped text drove torch fp32 to 504 ids
+against a 512 cap, while the re-cut page reaches a natural EOS at 158.
+
+#### The lane comparison (2026-09-13)
+
+The re-cut suite is 12 pages x 2 lanes, `--split all --runs 3`, all 24 rows
+PASS: hipEngine decodes at 54.6-57.0 tok/s against the torch fp32 lane's
+24.6-28.1, a median 2.19x (2.03x-2.23x on every page), and end-to-end is
+0.20-8.85 s against 0.29-14.38 s. The four re-cut pages cost hipEngine more
+end-to-end time than the clipped ones did (`ja` 2.71 -> 5.75 s, `long`
+5.67 -> 8.85 s, `mixed` 5.13 -> 6.76 s) because their vision grids are 4x
+bigger, while decode is unchanged at ~55 tok/s.
+
+**The scan page cannot carry an exact-id gate under this prompt.** The bench
+suite's ad-hoc prompt `"Transcribe this page."` is not one of the checkpoint's
+training-time prompts, and on the re-cut degraded scan both lanes free-run into
+the same rigid 10-box layout template: identical labels, identical `count`
+values, a fixed line pitch. Only the bbox digits differ, and neither lane's
+digits are a reading of the page — the lines are drawn 470-554 of 1000 wide,
+torch reports 474-566, and hipEngine a flat 564. Gating those digits would
+measure which arbitrary continuation the sampler picks, so `scan` declares
+`parity="structure"`: the gate is the layout skeleton (box count, label
+sequence, reading order, per-box `count`), and the coordinate drift is recorded
+as `bbox_max_delta` (90 of 1000) instead of gated. The divergence is not a HIP
+defect and not a regression: it reproduces at the pre-KV-spans commit
+`b1e241d57` with the same first divergence (id 7 of 158), and under the
+checkpoint's real prompt on the same image both lanes read the page and agree
+within 2 of 1000 with identical labels and text. The other eleven cases keep
+the exact-id gate.
+
+**Each lane is measured in its own process.** Both lanes in one process corrupt
+the tail of the hipEngine lane on this suite: the same 12 cases measured with
+`--lanes hipengine_gpu` alone pass every gate, while `--lanes
+hipengine_gpu,torch_cuda` returns the last three hipEngine rows (`full`,
+`columns`, `list`) degenerate from the first generated token. Every stage time
+is unchanged — `full`'s e2e is 3.663 s against 3.344 s in isolation and only
+because it ran 96 tokens instead of 78, `init_s` is identical to 0.04 s — so the
+device was healthy and fast and the logits were wrong, which puts this in the
+class tracked as task #80 rather than in the pages or the harness. The retained
+comparison is therefore one run per lane merged with `--merge`; a combined run
+is reproducible with
+`HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/surya_perf_compare.py --split all --runs 3 --lanes hipengine_gpu,torch_cuda`.
 
 #### The 300-DPI A4 page (2026-09-12)
 
-The seven pages above are 512-1024 px on a side. `page_a4.png` is the real
+The seven pages above are 512-1600 px on a side. `page_a4.png` is the real
 page-scale case: 2480x3508 at 300 DPI, which `smart_resize` rounds to 2496x3520
 — exactly the 220x156 patch grid and 8580 merged image tokens the page-scale
 memory plan is written against.

@@ -28,7 +28,7 @@ from hipengine.generation.surya_protocol import (
     FULL_PAGE_HTML_PROMPT,
     parse_full_page_html,
 )
-from scripts.surya_bench_pages import GROUND_TRUTH, acceptance_page, expected_lines
+from scripts.surya_bench_pages import GROUND_TRUTH, expected_lines, page_filename
 from scripts.surya_transcription_score import (
     TranscriptionThresholds,
     evaluate,
@@ -128,7 +128,7 @@ def _run(generator, page: str, max_tokens: int):
 
     return generator.generate_multimodal_detailed(
         FULL_PAGE_HTML_PROMPT,
-        str(FIXTURES / acceptance_page(page)),
+        str(FIXTURES / page_filename(page)),
         GenerationRequest(
             prompts=[FULL_PAGE_HTML_PROMPT],
             max_tokens=max_tokens,
@@ -160,7 +160,7 @@ def test_protocol_matches_torch_reference(page: str, outputs: dict) -> None:
     entry = _oracle()[page]
 
     assert entry["prompt"] == FULL_PAGE_HTML_PROMPT, "oracle used a different prompt"
-    assert entry["page"] == acceptance_page(page), "oracle used a different page"
+    assert entry["page"] == page_filename(page), "oracle used a different page"
 
     result = outputs[page]
     assert list(result.generated_token_ids) == entry["ids"]
@@ -175,7 +175,7 @@ def test_protocol_matches_torch_reference_up_to_coordinate_digits(
 
     entry = _oracle()[page]
     result = outputs[page]
-    assert entry["page"] == acceptance_page(page)
+    assert entry["page"] == page_filename(page)
     assert result.finish_details.reason == entry["finish_reason"]
 
     ours = list(result.generated_token_ids)

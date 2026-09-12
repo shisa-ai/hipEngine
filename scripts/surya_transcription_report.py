@@ -26,7 +26,7 @@ from hipengine.generation.surya_protocol import (
     FULL_PAGE_HTML_PROMPT,
     parse_full_page_html,
 )
-from scripts.surya_bench_pages import GROUND_TRUTH, acceptance_page, expected_lines
+from scripts.surya_bench_pages import GROUND_TRUTH, expected_lines, page_filename
 from scripts.surya_transcription_score import evaluate, score_transcription
 from scripts.surya_transcription_score import TranscriptionThresholds
 
@@ -175,7 +175,7 @@ def main() -> int:
     rows = []
     try:
         for page in cases:
-            page_name = acceptance_page(page)
+            page_name = page_filename(page)
             budget = MAX_TOKENS[page]
             totals, restore = (
                 _stage_timer(generator.runner) if args.stage_timings else ({}, [])
@@ -261,8 +261,8 @@ def main() -> int:
             "boundary": "page image plus prompt in, greedy full-page HTML out",
             "correctness_basis": (
                 "text drawn on the fixture (scripts/surya_bench_pages.py), not a "
-                "model run; reference lines are the visible text, so the fixtures "
-                "for ja/mixed/scan/long are the non-clipping page_*_fit variants"
+                "model run; every page is drawn through a fit assertion, so the "
+                "reference lines are exactly the visible text"
             ),
             "metrics": (
                 "line_recall/omissions use a presence bar of normalized "
