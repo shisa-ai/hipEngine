@@ -476,10 +476,12 @@ Before automatic MTP admission, complete the U6 envelope:
 - [ ] Explicit artifact-scoped strict manifest.
 - [ ] Explicit backend/profile/context/width scope.
 
-The pin remains empty until all declared certification items are complete.
+The pin is now minted: both UD records are complete, `_UD_MTP_PRESET_FINGERPRINTS`
+carries both fingerprints, and the artifacts derive `GGUF_PRESET_SCOPE_MTP`. The
+declared envelope is width c1 and context 1023, and it is the measured one.
 
 **Result (2026-09-12, physical GPU1 / RX 7900 XTX / gfx1100).** Two units are
-closed.
+closed, and the scope item is now closed on measurement rather than left open.
 
 U6 item 5 is qualified on both UD records, so the unit's only open item is the
 declared backend/profile/context/width scope. The evidence is the
