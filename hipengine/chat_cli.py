@@ -58,13 +58,23 @@ def _print_status(server: str, model: str, *, output_stream=None) -> None:
     queue = ready.get("queue", {})
     kv = ready.get("kv_capacity", {})
     pool = kv.get("pool") if isinstance(kv, dict) else {}
+    concurrency = queue.get("max_active_requests", "auto")
+    current_bytes = pool.get("current_bytes", 0) if isinstance(pool, dict) else 0
+    budget_bytes = pool.get("budget_bytes") if isinstance(pool, dict) else None
+
+    def gib(value):
+        try:
+            return f"{float(value) / 1024**3:.2f} GiB"
+        except (TypeError, ValueError):
+            return "unknown"
+
     print(
         f"[{model}] "
         f"context={context.get('effective_max_context_tokens', 'auto')} "
-        f"concurrency={queue.get('max_active_requests', 'auto')} "
+        f"concurrency={concurrency} "
         f"kv={kv.get('storage', 'unknown')}/{kv.get('scale_dtype', 'unknown')} "
-        f"pool={pool.get('current_bytes', 0)}B/"
-        f"{pool.get('budget_bytes', 'auto') if isinstance(pool, dict) else 'auto'}",
+        f"pool={gib(current_bytes)}/"
+        f"{gib(budget_bytes) if budget_bytes is not None else 'automatic'}",
         file=output_stream,
     )
 
@@ -132,6 +142,7 @@ def run(args: argparse.Namespace, *, input_stream=None, output_stream=None) -> i
     print("Type /help for commands. Ctrl-D or /quit exits.", file=output_stream)
     while True:
         try:
+            print("you> ", end="", file=output_stream, flush=True)
             line = input_stream.readline()
         except KeyboardInterrupt:
             print(file=output_stream)
