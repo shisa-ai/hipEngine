@@ -133,6 +133,12 @@ class TranscriptionScore:
 
     skipped_non_text_blocks: int = 0
 
+    # Per-line assignment detail. Diagnostic only: kept off ``as_dict`` so the
+    # committed artifact stays compact, but available to a caller that needs to
+    # read why a page failed rather than guess.
+    matches: list[LineMatch] = field(default_factory=list)
+    candidates: list[CandidateLine] = field(default_factory=list)
+
     @property
     def truncated(self) -> bool:
         """The decode stopped at the token budget instead of at EOS."""
@@ -311,6 +317,8 @@ def score_transcription(
     )
 
     matches = _assign(expected_lines, candidates, presence_threshold)
+    score.matches = matches
+    score.candidates = candidates
     score.lines_expected = len(expected_lines)
     score.lines_found = sum(1 for m in matches if m.present)
     score.line_recall = (

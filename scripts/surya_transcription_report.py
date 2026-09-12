@@ -44,6 +44,10 @@ MAX_TOKENS = {
     "blank": 64,
     "scan": 640,
     "long": 2600,
+    # A real 300-DPI A4 page (grid 1x220x156, 8580 image tokens). It needs the
+    # largest output budget in the suite because it is a full page of prose plus
+    # a ruled table.
+    "a4": 4000,
 }
 
 THRESHOLDS = TranscriptionThresholds(
@@ -70,11 +74,93 @@ def _host_identity() -> dict:
     return {"cpu": cpu, "platform": platform.platform()}
 
 
+def _stage_timer(runner: object) -> tuple[dict[str, float], list[tuple]]:
+    """Wrap the runner's stage entry points to accumulate wall clock per stage.
+
+    Reporting only: the wrappers call through unchanged, so the measured run is
+    the production path. Decode steps are counted rather than individually
+    timed, because per-step timing overhead would dominate a 20 ms step.
+    """
+
+    totals = {"vision_s": 0.0, "prefill_s": 0.0, "decode_s": 0.0, "decode_steps": 0.0}
+    restore: list[tuple] = []
+
+    def wrap(name: str, key: str):
+        original = getattr(runner, name)
+
+        def timed(*args, **kwargs):
+            start = time.perf_counter()
+            try:
+                return original(*args, **kwargs)
+            finally:
+                totals[key] += time.perf_counter() - start
+                if key == "decode_s":
+                    totals["decode_steps"] += 1
+
+        setattr(runner, name, timed)
+        restore.append((name, original))
+
+    wrap("vision_forward", "vision_s")
+    wrap("prefill", "prefill_s")
+    wrap("decode_step", "decode_s")
+    return totals, restore
+
+
+def _dump_hypothesis(
+    directory: Path,
+    page: str,
+    raw_text: str,
+    blocks: list,
+    score: object,
+    row: dict,
+) -> None:
+    """Write one page's raw output and its per-line verdict.
+
+    A scored failure is otherwise only a count: this makes it readable, so the
+    difference between "the model did not emit the text" and "the model emitted
+    the text in a shape the line matcher cannot pair up" is a matter of reading
+    rather than of guessing.
+    """
+
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / f"{page}.html").write_text(raw_text, encoding="utf-8")
+    lines = [
+        f"score: {json.dumps({k: v for k, v in row.items() if k != 'failures'})}",
+        f"blocks: {len(blocks)}",
+        "",
+        "--- candidate lines (model output, in order) ---",
+    ]
+    for index, candidate in enumerate(score.candidates):
+        lines.append(f"[{index:3d}] blk{candidate.block_index:<4d} {candidate.text!r}")
+    lines += ["", "--- expected lines and their assignment ---"]
+    for match in score.matches:
+        verdict = "EXACT" if match.exact else ("match" if match.present else "MISS ")
+        lines.append(
+            f"{verdict} sim={match.similarity:.3f} dist={match.distance:<4d} "
+            f"exp={match.expected!r}"
+        )
+        if match.matched is not None and not match.exact:
+            lines.append(f"          got={match.matched!r}")
+    (directory / f"{page}.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=None)
     parser.add_argument("--max-seq", type=int, default=16384)
     parser.add_argument("--cases", default=",".join(MAX_TOKENS))
+    parser.add_argument(
+        "--stage-timings", action="store_true",
+        help="record per-stage wall clock for each page (reporting only)",
+    )
+    parser.add_argument(
+        "--dump", type=Path, default=None,
+        help=(
+            "write each page's raw hypothesis, its parsed blocks, and the "
+            "per-line match verdict to this directory, so a scored failure can "
+            "be read rather than guessed at"
+        ),
+    )
     args = parser.parse_args()
 
     from hipengine.generation.registry import GenerationRequest
@@ -91,18 +177,25 @@ def main() -> int:
         for page in cases:
             page_name = acceptance_page(page)
             budget = MAX_TOKENS[page]
-            started = time.time()
-            result = generator.generate_multimodal_detailed(
-                FULL_PAGE_HTML_PROMPT,
-                str(FIXTURES / page_name),
-                GenerationRequest(
-                    prompts=[FULL_PAGE_HTML_PROMPT],
-                    max_tokens=budget,
-                    temperature=0.0,
-                    top_p=1.0,
-                    ignore_eos=False,
-                ),
+            totals, restore = (
+                _stage_timer(generator.runner) if args.stage_timings else ({}, [])
             )
+            started = time.time()
+            try:
+                result = generator.generate_multimodal_detailed(
+                    FULL_PAGE_HTML_PROMPT,
+                    str(FIXTURES / page_name),
+                    GenerationRequest(
+                        prompts=[FULL_PAGE_HTML_PROMPT],
+                        max_tokens=budget,
+                        temperature=0.0,
+                        top_p=1.0,
+                        ignore_eos=False,
+                    ),
+                )
+            finally:
+                for name, original in restore:
+                    setattr(generator.runner, name, original)
             elapsed = time.time() - started
             blocks = parse_full_page_html(result.text)
             score = score_transcription(
@@ -124,7 +217,26 @@ def main() -> int:
                     "failures": failures,
                 }
             )
+            if totals:
+                steps = int(totals["decode_steps"])
+                row["stages"] = {
+                    "vision_s": round(totals["vision_s"], 3),
+                    "prefill_s": round(totals["prefill_s"], 3),
+                    "decode_s": round(totals["decode_s"], 3),
+                    "decode_steps": steps,
+                    "decode_ms_per_step": (
+                        round(totals["decode_s"] / steps * 1000.0, 2) if steps else None
+                    ),
+                    "decode_tok_per_s": (
+                        round(steps / totals["decode_s"], 2)
+                        if totals["decode_s"] > 0 else None
+                    ),
+                }
             rows.append(row)
+            if args.dump is not None:
+                _dump_hypothesis(
+                    args.dump, page, result.text, blocks, score, row
+                )
             print(
                 f"{page:6s} {row['generated_tokens']:5d} tok {row['finish_reason']:6s} "
                 f"recall={score.line_recall:.4f} exact={score.line_exact_rate:.4f} "
@@ -160,6 +272,7 @@ def main() -> int:
             ),
             "max_seq": args.max_seq,
             "tiled": True,
+            "stage_timings": bool(args.stage_timings),
         },
         "thresholds": {
             "min_line_recall": THRESHOLDS.min_line_recall,

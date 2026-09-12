@@ -1,6 +1,6 @@
 {
  "date": "2026-09-12",
- "generated_utc": "2026-09-12T07:45:13Z",
+ "generated_utc": "2026-09-12T10:41:31Z",
  "model": "datalab-to/surya-ocr-2",
  "hardware": {
   "cpu": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S",
@@ -12,7 +12,8 @@
   "correctness_basis": "text drawn on the fixture (scripts/surya_bench_pages.py), not a model run; reference lines are the visible text, so the fixtures for ja/mixed/scan/long are the non-clipping page_*_fit variants",
   "metrics": "line_recall/omissions use a presence bar of normalized similarity >= 0.60 with one-to-one assignment; line_exact_rate requires normalized equality; cer is total character edit distance over total expected characters",
   "max_seq": 16384,
-  "tiled": true
+  "tiled": true,
+  "stage_timings": true
  },
  "thresholds": {
   "min_line_recall": 1.0,
@@ -50,9 +51,17 @@
    "page_fixture": "page_ja_fit.png",
    "max_tokens": 600,
    "generated_tokens": 287,
-   "seconds": 7.598,
+   "seconds": 7.574,
    "passed": true,
-   "failures": []
+   "failures": [],
+   "stages": {
+    "vision_s": 1.164,
+    "prefill_s": 0.934,
+    "decode_s": 5.445,
+    "decode_steps": 287,
+    "decode_ms_per_step": 18.97,
+    "decode_tok_per_s": 52.71
+   }
   },
   {
    "page": "mixed",
@@ -79,9 +88,17 @@
    "page_fixture": "page_mixed_fit.png",
    "max_tokens": 600,
    "generated_tokens": 341,
-   "seconds": 8.464,
+   "seconds": 8.457,
    "passed": true,
-   "failures": []
+   "failures": [],
+   "stages": {
+    "vision_s": 1.098,
+    "prefill_s": 0.837,
+    "decode_s": 6.49,
+    "decode_steps": 341,
+    "decode_ms_per_step": 19.03,
+    "decode_tok_per_s": 52.54
+   }
   },
   {
    "page": "dense",
@@ -108,9 +125,17 @@
    "page_fixture": "page_dense.png",
    "max_tokens": 1500,
    "generated_tokens": 1054,
-   "seconds": 20.158,
+   "seconds": 20.219,
    "passed": true,
-   "failures": []
+   "failures": [],
+   "stages": {
+    "vision_s": 0.187,
+    "prefill_s": 0.291,
+    "decode_s": 19.709,
+    "decode_steps": 1054,
+    "decode_ms_per_step": 18.7,
+    "decode_tok_per_s": 53.48
+   }
   },
   {
    "page": "table",
@@ -137,9 +162,17 @@
    "page_fixture": "page_table.png",
    "max_tokens": 640,
    "generated_tokens": 448,
-   "seconds": 8.721,
+   "seconds": 8.729,
    "passed": true,
-   "failures": []
+   "failures": [],
+   "stages": {
+    "vision_s": 0.184,
+    "prefill_s": 0.286,
+    "decode_s": 8.245,
+    "decode_steps": 448,
+    "decode_ms_per_step": 18.4,
+    "decode_tok_per_s": 54.34
+   }
   },
   {
    "page": "blank",
@@ -166,9 +199,17 @@
    "page_fixture": "page_blank.png",
    "max_tokens": 64,
    "generated_tokens": 12,
-   "seconds": 0.716,
+   "seconds": 0.709,
    "passed": true,
-   "failures": []
+   "failures": [],
+   "stages": {
+    "vision_s": 0.19,
+    "prefill_s": 0.29,
+    "decode_s": 0.222,
+    "decode_steps": 12,
+    "decode_ms_per_step": 18.52,
+    "decode_tok_per_s": 54.0
+   }
   },
   {
    "page": "scan",
@@ -195,9 +236,17 @@
    "page_fixture": "page_scan_fit.png",
    "max_tokens": 640,
    "generated_tokens": 616,
-   "seconds": 13.902,
+   "seconds": 13.918,
    "passed": true,
-   "failures": []
+   "failures": [],
+   "stages": {
+    "vision_s": 1.13,
+    "prefill_s": 0.848,
+    "decode_s": 11.895,
+    "decode_steps": 616,
+    "decode_ms_per_step": 19.31,
+    "decode_tok_per_s": 51.79
+   }
   },
   {
    "page": "long",
@@ -224,9 +273,54 @@
    "page_fixture": "page_long_fit.png",
    "max_tokens": 2600,
    "generated_tokens": 1804,
-   "seconds": 40.404,
+   "seconds": 40.435,
    "passed": true,
-   "failures": []
+   "failures": [],
+   "stages": {
+    "vision_s": 2.088,
+    "prefill_s": 1.372,
+    "decode_s": 36.916,
+    "decode_steps": 1804,
+    "decode_ms_per_step": 20.46,
+    "decode_tok_per_s": 48.87
+   }
+  },
+  {
+   "page": "a4",
+   "finish_reason": "eos",
+   "truncated": false,
+   "n_blocks": 13,
+   "n_candidate_lines": 44,
+   "lines_expected": 12,
+   "lines_found": 12,
+   "line_recall": 1.0,
+   "lines_exact": 12,
+   "line_exact_rate": 1.0,
+   "cer": 0.0,
+   "omissions": [],
+   "reading_order_violations": 0,
+   "skipped_non_text_blocks": 0,
+   "table_expected": true,
+   "table_found": true,
+   "table_shape_match": true,
+   "table_header_match": true,
+   "table_cells_expected": 32,
+   "table_cells_matched": 32,
+   "table_cell_accuracy": 1.0,
+   "page_fixture": "page_a4.png",
+   "max_tokens": 4000,
+   "generated_tokens": 2108,
+   "seconds": 114.277,
+   "passed": true,
+   "failures": [],
+   "stages": {
+    "vision_s": 47.67,
+    "prefill_s": 7.985,
+    "decode_s": 58.377,
+    "decode_steps": 2108,
+    "decode_ms_per_step": 27.69,
+    "decode_tok_per_s": 36.11
+   }
   }
  ]
 }

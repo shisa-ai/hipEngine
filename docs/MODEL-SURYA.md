@@ -27,7 +27,7 @@ vision tower and text decoder on gfx1151.
 | OCR output quality check (labels + bboxes vs drawn geometry) | done | `tests/test_surya_gpu.py::test_gpu_full_page_layout_matches_oracle` second half |
 | Greedy reference fixtures are reproducible | done | `scripts/surya_oracle_greedy.py --case all` regenerates `oracle_greedy.json`, `oracle_fullpage_greedy.json` and `oracle_corpus.json` byte-for-byte |
 | Multi-page held-out OCR corpus | done | `page_columns.png` (two-column) and `page_list.png` (numbered list) via `tests/test_surya_gpu.py::test_gpu_ocr_corpus_matches_oracle` |
-| 300-DPI A4 page fixture and its transcription measurement | measured, failing | `scripts/surya_bench_pages.py:make_page_a4`, `benchmarks/results/2026-09-12-gfx1151-surya-a4-transcription.json` |
+| 300-DPI A4 page fixture and its transcription measurement | done | `scripts/surya_bench_pages.py:make_page_a4`, gated by `tests/test_surya_transcription.py::test_transcription_meets_ground_truth[a4]` |
 | OpenAI-compatible HTTP serving (`hipserver`) | done (fake-generator tested) | `hipengine/server/multimodal.py`, `tests/test_surya_server_multimodal.py` |
 | Registry migration + `KVLiveSpans` KV ABI | pending | tracked in `docs/REFACTOR.md` |
 | Quantized (GGUF) Surya decoder | pending | safetensors fp32 is the implementation target |
@@ -117,39 +117,47 @@ byte-identical so their captured oracles and benchmark artifacts stay valid;
 the acceptance test scores `page_<name>_fit.png` for those four and the bench
 page for the other three. Re-cutting the bench suite is tracked as follow-up.
 
-#### The 300-DPI A4 page does not pass
+#### The 300-DPI A4 page (2026-09-12)
 
 The seven pages above are 512-1024 px on a side. `page_a4.png` is the real
 page-scale case: 2480x3508 at 300 DPI, which `smart_resize` rounds to 2496x3520
 — exactly the 220x156 patch grid and 8580 merged image tokens the page-scale
-memory plan is written against. Its ground truth is the text drawn through
-`_draw_text_fit`, so no line is clipped.
+memory plan is written against.
 
 Measured fp32 on gfx1151 with `FULL_PAGE_HTML_PROMPT`,
 `scripts/surya_transcription_report.py`, artifact
-`benchmarks/results/2026-09-12-gfx1151-surya-a4-transcription.json`:
+`benchmarks/results/2026-09-12-gfx1151-surya-transcription-acceptance.json`:
 
 | metric | value | gate |
 | --- | ---: | --- |
-| `line_recall` | 0.2414 (7/29) | 1.0000 |
-| `line_exact_rate` | 0.2414 | 0.9500 |
-| `cer` | 0.8901 | 0.0100 |
-| reading-order violations | 1 | 0 |
+| `line_recall` | 1.0000 (12/12) | 1.0000 |
+| `line_exact_rate` | 1.0000 | 0.9500 |
+| `cer` | 0.0000 | 0.0100 |
+| reading-order violations | 0 | 0 |
 | `table_cell_accuracy` | 1.0000 (32/32) | 1.0000 |
 | finish | eos, 2108 tokens, not truncated | eos |
 
-Stages: vision 47.4 s, prefill 7.7 s, decode 58.4 s (2108 steps, 27.7 ms/step,
-36.1 tok/s), 113.7 s total.
+Stages: vision 47.7 s, prefill 8.0 s, decode 58.4 s (2108 steps, 27.7 ms/step,
+36.1 tok/s), 114.3 s total.
 
-The split is diagnostic. The ruled table transcribes perfectly — all 32 cells,
-correct shape and header — and the run reaches a natural EOS well inside its
-4000-token budget, so the text decoder, the protocol prompt, and the stop-token
-rule are all doing their job. What is missing is 22 of the 29 paragraph lines:
-the model produced 13 blocks and 44 candidate lines, so it saw structure but
-not the body text. Two candidates explain that and are not yet separated: the
-vision resolution at this grid, or the tiled vision path (this run was
-`tiled: True`). Both are cheap to test — the dense vision path against the same
-page, and a smaller `SURYA_MAX_PIXELS` — and neither has been run.
+**The first measurement of this page read as a failure, and the failure was in
+the ground truth.** Scored per drawn line it measured recall 0.2414, CER 0.8901,
+and one reading-order violation. The model output was in fact exact: it returned
+each paragraph as one block, which is correct, and the ground truth had split
+each paragraph into the 4-5 physical lines the renderer wrapped it onto. Every
+one of the 12 text units matches at normalized similarity 1.0 and the 22
+"omitted" lines are the wrapped lines of 5 paragraphs the model transcribed
+verbatim. The A4 ground truth is therefore paragraph-level, because the body is
+wrapped prose; the other seven pages draw one logical unit per physical line, so
+for them the two granularities coincide. `_a4_paragraphs()` builds the units
+from the same constants the page is drawn from, and
+`tests/test_surya_transcription_fixtures.py` pins that a wrapped line is not its
+own unit. This is the second defect of that shape found in this suite, after the
+four bench pages that draw text past their own canvas.
+
+The page is in the ground-truth and reading-order gates (`QUALITY_CASES`) but
+not the implementation-parity gates, because no torch fp32 reference has been
+captured for it.
 
 ### Numerical gate (2026-09-12)
 
