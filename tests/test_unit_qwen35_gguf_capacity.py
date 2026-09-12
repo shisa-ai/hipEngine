@@ -568,6 +568,26 @@ def _auto_context_generator(**overrides):
     return generator
 
 
+def _resident_runner_stub(generator, *, capacity: int = 4):
+    """Minimal resident model runner for exercising ``prepare`` retry logic."""
+
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+        qwen35_gguf.Qwen35GGUFResidentModelRunner
+    )
+    runner.generator = generator
+    runner.capacity = int(capacity)
+    runner._shared_runner = object()
+    runner._engine_loop_config = None
+    runner._kv_pool = None
+    runner._available = []
+    runner._rows = {}
+    runner._resident_batch_owner = None
+    runner._resident_batch_owner_pool_key = None
+    runner._max_sequence_length = None
+    runner._prefix_state_snapshots = {}
+    return runner
+
+
 def _auto_context_runner(*, free_gib: float = 8.0, with_geometry: bool = True):
     weights = SimpleNamespace(config=_real_qwen38_27b_cfg())
     runtime = SimpleNamespace(mem_get_info=lambda: (int(free_gib * 2**30), 24 * 2**30))
@@ -580,6 +600,23 @@ def _auto_context_runner(*, free_gib: float = 8.0, with_geometry: bool = True):
         for name, value in _QWEN38_27B_GEOMETRY.items():
             setattr(runner, name, value)
     return runner
+
+
+def test_auto_context_reserve_default_covers_measured_untracked_overhead(monkeypatch) -> None:
+    """The reserve has to cover device memory the model never prices.
+
+    Measured on the W7900 at the auto-selected 27B context: 42.91 GiB of
+    whole-card use against 40.25 GiB of hipEngine-tracked allocations. The
+    default is pinned here so lowering it back toward the old 512 MiB is a
+    deliberate act with a failing test attached.
+    """
+
+    monkeypatch.delenv("HIPENGINE_GGUF_KV_CAPACITY_RESERVE_MIB", raising=False)
+    reserve_mib = qwen35_gguf._gguf_auto_context_reserve_bytes() // 1024**2
+    assert reserve_mib >= 2560  # measured 2.66 GiB of untracked device memory
+
+    monkeypatch.setenv("HIPENGINE_GGUF_KV_CAPACITY_RESERVE_MIB", "256")
+    assert qwen35_gguf._gguf_auto_context_reserve_bytes() == 256 * 1024**2
 
 
 def test_auto_context_resolves_and_caches_a_context_that_fits(monkeypatch) -> None:
@@ -705,34 +742,42 @@ def test_construct_shared_session_retries_smaller_after_oom(monkeypatch) -> None
     assert attempts == sorted(attempts, reverse=True)
 
 
-def test_construct_shared_session_does_not_retry_a_pinned_context(monkeypatch) -> None:
-    """With an explicit context there is no auto fit, so OOM must propagate."""
+def test_construct_shared_session_degrades_a_pinned_context_with_a_warning(monkeypatch) -> None:
+    """An explicit context may degrade, but the failed request is observable."""
 
     generator = _auto_context_generator()
     generator._prepared_session_kv_kwargs = lambda: {}
     generator._configure_session = lambda session: None
     attempts: list[int | None] = []
+    warnings: list[str] = []
+    monkeypatch.setattr(
+        qwen35_gguf._LOGGER,
+        "warning",
+        lambda message, *args: warnings.append(message % args),
+    )
 
     class _Session:
         def __init__(self, model_path, **kwargs):
             attempts.append(kwargs.get("max_sequence_length"))
-            raise MemoryError("hip out of memory")
+            context = kwargs.get("max_sequence_length")
+            if context is not None and int(context) > 16_384:
+                raise MemoryError("hip out of memory")
+            self.max_sequence_length = context
 
     monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", _Session)
-    try:
-        generator._construct_shared_session(
-            _auto_context_runner(),
-            max_sequence_length=None,
-            max_batch_size=1,
-            defer_kv_allocation=True,
-            use_wmma_prefill=None,
-            use_gemv_decode=None,
-        )
-    except MemoryError:
-        pass
-    else:  # pragma: no cover - defensive
-        raise AssertionError("expected the pinned-context allocation failure to propagate")
-    assert attempts == [None]
+    session = generator._construct_shared_session(
+        _auto_context_runner(),
+        max_sequence_length=131_072,
+        max_batch_size=1,
+        defer_kv_allocation=True,
+        use_wmma_prefill=None,
+        use_gemv_decode=None,
+    )
+
+    assert session.max_sequence_length < 131_072
+    assert attempts[0] == 131_072
+    assert attempts[-1] == session.max_sequence_length
+    assert any("requested 131072 tokens failed" in warning for warning in warnings)
 
 
 def test_packed_workspace_lease_mirrors_the_engine_loop_decision(monkeypatch) -> None:
@@ -765,6 +810,156 @@ def test_packed_workspace_lease_mirrors_the_engine_loop_decision(monkeypatch) ->
     owner._prefix_cache_mode = "off"
     monkeypatch.setenv("HIPENGINE_GGUF_PACKED_KV_LEASE", "1")
     assert generator._packed_workspace_lease_needed(max_batch_size=1) is True
+
+
+def test_prepare_retries_when_the_kv_pool_allocation_fails(monkeypatch) -> None:
+    """The pool is the dominant allocation; the retry has to cover it too."""
+
+    monkeypatch.delenv("HIPENGINE_GGUF_AUTO_CONTEXT", raising=False)
+    monkeypatch.setenv("HIPENGINE_GGUF_AUTO_CONTEXT_ATTEMPTS", "4")
+    generator = _auto_context_generator()
+    runner = _resident_runner_stub(generator, capacity=4)
+    # Resolve once so the generator has a context to recalibrate from.
+    generator._resolve_auto_context(
+        _auto_context_runner(free_gib=8.0), max_batch_size=4, defer_kv_allocation=True
+    )
+    selected = generator._auto_resolved_max_sequence_length
+    assert selected is not None
+
+    reserved: list[int | None] = []
+
+    def _reserve_sessions() -> None:
+        context = generator._auto_resolved_max_sequence_length
+        reserved.append(context)
+        # Fail while the pool would need more than half the original budget.
+        if context is not None and int(context) > selected // 2:
+            raise MemoryError("hip out of memory")
+        runner._available = [object()]
+
+    runner._reserve_sessions = _reserve_sessions
+    runner._clear_prefix_snapshots = lambda: None
+    runner._release_available_sessions = lambda: None
+
+    runner.prepare()
+
+    assert len(reserved) >= 2
+    assert reserved[0] == selected
+    assert reserved == sorted(reserved, reverse=True)
+    assert generator._auto_resolved_max_sequence_length < selected
+
+
+def test_prepare_degrades_a_pinned_context_with_a_warning(monkeypatch) -> None:
+    """A pinned context backs off too, and the warning names the asked-for size."""
+
+    monkeypatch.delenv("HIPENGINE_GGUF_AUTO_CONTEXT", raising=False)
+    monkeypatch.setenv("HIPENGINE_GGUF_AUTO_CONTEXT_ATTEMPTS", "4")
+    generator = _auto_context_generator(_prepared_max_sequence_length=131_072)
+    runner = _resident_runner_stub(generator, capacity=4)
+    attempted: list[int | None] = []
+    warnings: list[str] = []
+    monkeypatch.setattr(
+        qwen35_gguf._LOGGER,
+        "warning",
+        lambda message, *args: warnings.append(message % args),
+    )
+
+    def _reserve_sessions() -> None:
+        attempted.append(runner._max_sequence_length)
+        if runner._max_sequence_length is None or int(runner._max_sequence_length) > 32_768:
+            raise MemoryError("hip out of memory")
+        runner._available = [object()]
+
+    runner._reserve_sessions = _reserve_sessions
+    runner._clear_prefix_snapshots = lambda: None
+    runner._release_available_sessions = lambda: None
+
+    runner.prepare()
+
+    assert attempted[0] == 131_072
+    assert attempted[-1] is not None and attempted[-1] <= 32_768
+    assert attempted == sorted(attempted, reverse=True)
+    assert any("requested 131072 tokens failed" in warning for warning in warnings)
+
+
+def test_auto_context_flag_disables_the_fallback_on_both_paths(monkeypatch) -> None:
+    """``HIPENGINE_GGUF_AUTO_CONTEXT=0`` is the full rollback, not just sizing."""
+
+    monkeypatch.setenv("HIPENGINE_GGUF_AUTO_CONTEXT", "0")
+    monkeypatch.setenv("HIPENGINE_GGUF_AUTO_CONTEXT_ATTEMPTS", "4")
+    generator = _auto_context_generator(_prepared_max_sequence_length=131_072)
+    generator._prepared_session_kv_kwargs = lambda: {}
+    generator._configure_session = lambda session: None
+    attempts: list[int | None] = []
+
+    class _Session:
+        def __init__(self, model_path, **kwargs):
+            attempts.append(kwargs.get("max_sequence_length"))
+            raise MemoryError("hip out of memory")
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", _Session)
+    try:
+        generator._construct_shared_session(
+            _auto_context_runner(),
+            max_sequence_length=131_072,
+            max_batch_size=1,
+            defer_kv_allocation=True,
+            use_wmma_prefill=None,
+            use_gemv_decode=None,
+        )
+    except MemoryError:
+        pass
+    else:  # pragma: no cover - defensive
+        raise AssertionError("expected the failure to propagate with the flag off")
+    assert attempts == [131_072]
+
+    runner = _resident_runner_stub(generator, capacity=4)
+    reserved: list[int | None] = []
+
+    def _reserve_sessions() -> None:
+        reserved.append(runner._max_sequence_length)
+        raise MemoryError("hip out of memory")
+
+    runner._reserve_sessions = _reserve_sessions
+    runner._clear_prefix_snapshots = lambda: None
+    runner._release_available_sessions = lambda: None
+    try:
+        runner.prepare()
+    except MemoryError:
+        pass
+    else:  # pragma: no cover - defensive
+        raise AssertionError("expected the failure to propagate with the flag off")
+    assert reserved == [131_072]
+
+
+def test_construct_shared_session_propagates_without_a_context(monkeypatch) -> None:
+    """With no context there is nothing to back off to, so OOM must propagate."""
+
+    monkeypatch.delenv("HIPENGINE_GGUF_AUTO_CONTEXT", raising=False)
+    generator = _auto_context_generator()
+    generator._prepared_session_kv_kwargs = lambda: {}
+    generator._configure_session = lambda session: None
+    attempts: list[int | None] = []
+
+    class _Session:
+        def __init__(self, model_path, **kwargs):
+            attempts.append(kwargs.get("max_sequence_length"))
+            raise MemoryError("hip out of memory")
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", _Session)
+    try:
+        generator._construct_shared_session(
+            _auto_context_runner(),
+            max_sequence_length=None,
+            max_batch_size=1,
+            defer_kv_allocation=True,
+            use_wmma_prefill=None,
+            use_gemv_decode=None,
+        )
+    except MemoryError:
+        pass
+    else:  # pragma: no cover - defensive
+        raise AssertionError("expected the contextless allocation failure to propagate")
+    assert attempts == [None]
 
 
 def test_recalibrated_auto_context_is_strictly_smaller_and_aligned(monkeypatch) -> None:

@@ -62,7 +62,7 @@ def main() -> int:
 
     import numpy as np
     from hipengine.core.hip import get_hip_runtime
-    from hipengine.core.memory import memory_stats
+    from hipengine.core.memory import memory_stats, reset_memory_stats
     from hipengine.kvcache import resolve_kv_policy
     from hipengine.runtime.prefill import PrefillConfig
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
@@ -94,6 +94,15 @@ def main() -> int:
             kv_scale_granularity=str(policy.scale_granularity),
             max_batch_size=int(args.max_batch_size),
         ) as session:
+            # Split the envelope the way the capacity model does: the resident
+            # term is weights + KV + persistent scratch and scales with the
+            # declared context, while the transient term is the prefill/decode
+            # workspace. Resetting the high-water mark here (which preserves live
+            # allocations) keeps the model-load peak from masking the transient
+            # peak at small contexts.
+            resident_bytes = int(memory_stats().get("current_allocated_bytes", 0))
+            process_peak_bytes = int(memory_stats().get("peak_allocated_bytes", 0))
+            reset_memory_stats()
             first = session.prefill(prompt_ids, use_bulk=True, return_logits=True)
             logits = np.asarray(first.logits, dtype=np.float32)
             finite = bool(np.all(np.isfinite(logits)))
@@ -108,7 +117,10 @@ def main() -> int:
                     "status": "pass" if finite else "nonfinite_logits",
                     "finite_logits": finite,
                     "first_token": int(first.token_id),
-                    "tracked_peak_gib": round(peak_bytes / 2**30, 6),
+                    "tracked_peak_gib": round(process_peak_bytes / 2**30, 6),
+                    "resident_gib": round(resident_bytes / 2**30, 6),
+                    "resident_plus_transient_peak_gib": round(peak_bytes / 2**30, 6),
+                    "transient_peak_gib": round((peak_bytes - resident_bytes) / 2**30, 6),
                     "scratch_max_positions": int(session.scratch.max_positions) if session.scratch else None,
                 }
             )

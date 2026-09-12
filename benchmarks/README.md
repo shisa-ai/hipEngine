@@ -164,17 +164,29 @@ with one full-context KV plane per resident slot (4 for auto-selected GGUF):
 
 | Model | Selected context | BF16 KV per token, 4 slots | Usable at selection |
 | --- | ---: | ---: | ---: |
-| Qwen3.8-27B `Q4_K_M` | 45,568 | 600,963 B | 27.12 GiB |
-| Qwen3.6-35B-A3B `UD-Q4_K_M` | 98,304 | 240,386 B | 23.27 GiB |
-| Qwen3.8-27B `Q4_K_M`, 24 GB-class budget | 11,520 | 600,963 B | 8.12 GiB |
+| Qwen3.8-27B `Q4_K_M` | 40,960 | 600,963 B | 24.62 GiB |
+| Qwen3.6-35B-A3B `UD-Q4_K_M` | 87,040 | 240,386 B | 20.77 GiB |
+| Qwen3.8-27B `Q4_K_M`, 24 GB-class budget | 3,328 | 600,963 B | 3.60 GiB |
 
 The selection follows each model's own KV growth rate, so the two models differ
-by their attention geometry rather than by a per-model table. `--max-context-tokens`
-and `HIPENGINE_MAX_CONTEXT_TOKENS` still force a cap, and
-`HIPENGINE_GGUF_AUTO_CONTEXT=0` restores the previous fixed 256-token resident
-context. Tier-1 probe at the auto-selected 27B context, BF16 KV at 4 slots:
-`status=pass`, finite logits, `tracked_peak_gib` 28.89
-([probe](results/2026-09-12-w7900-27b-auto-context-45568-bf16-c4-probe.json)).
+by their attention geometry rather than by a per-model table. The 3 GiB reserve
+covers 2.66 GiB of device memory the capacity model does not price at all — HIP
+context, JIT kernel modules, AOTriton, and KV pool pointer tables — which is
+allocated after the free-memory reading the model prices against. The resident
+growth rate is validated against prediction: two Tier-1 probes at 16,384 and
+45,568 give a measured slope of 263,156 B/token against a predicted 262,979, a
+**+0.067%** error
+([16,384](results/2026-09-12-w7900-27b-resident-slope-16384-bf16-c4.json),
+[45,568](results/2026-09-12-w7900-27b-resident-slope-45568-bf16-c4.json)).
+`--max-context-tokens` and `HIPENGINE_MAX_CONTEXT_TOKENS` still force a cap; a
+context that cannot be allocated — automatic or requested — backs off with a
+logged warning naming the size that was asked for, and
+`HIPENGINE_GGUF_AUTO_CONTEXT=0` disables both the sizing and the backoff. The
+24 GB-class row is the arithmetic that matters most for that class of card: with
+4 resident slots a 27B `Q4_K_M` is weight-bound and leaves room for only about
+3.3K tokens, and the slot count is the lever — the same budget at one slot
+carries roughly three times the context, because each slot takes a full-context
+KV plane.
 
 [Full comparison and source review](results/2026-09-08-rx7900xtx-engine-comparison.md)
 and [commands, samples and checks](results/2026-09-08-rx7900xtx-engine-comparison.json).
