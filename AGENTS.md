@@ -119,7 +119,7 @@ Explicit, auto-commit-after-validation. Many small, atomic, working-state commit
 
 - **Commit immediately** after a logical unit is complete and validation passes. Do not ask, do not wait to be asked, and do not start the next logical task until the previous validated unit is committed.
 - Include related handoff docs in the same unit (a change that needed a worklog entry or a `docs/PLAN.md` update commits them together).
-- Always commit the new `worklog/entries/<unique-entry>.md` path with the logical unit that required it. Run `python3 scripts/worklog.py check` before staging/committing; never edit, rename, or delete a committed entry.
+- Always commit the new `worklog/entries/<unique-entry>.md` path with the logical unit that required it. Stage it, then run `python3 scripts/worklog.py check` (it validates staged and tracked content only, so another worker's unstaged entry cannot block your commit); never edit, rename, or delete a committed entry.
 - Do not commit mid-task while exploring, debugging, or in a broken state.
 - Docs, plans, repo-setup, and dependency additions are first-class logical units.
 

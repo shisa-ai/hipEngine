@@ -65,16 +65,32 @@ rename, or delete it. Correct an old conclusion with a new `decision` or
 
 Validation fails on malformed schema/frontmatter, filename mismatch, missing or
 reordered sections, placeholders, conflict markers, committed entry changes,
-staged/working-tree divergence, unexpected entry-directory paths, or any change
-to the frozen legacy journal or manifest.
+staged/working-tree divergence, unexpected tracked paths under
+`worklog/entries/`, or any change to the frozen legacy journal or manifest. It
+gates staged and tracked content only; see "Validate" below.
 
 ## Validate
 
-Before committing a logical unit that includes an entry:
+`check` validates the **commit tree** — what Git tracks or stages — not the
+working directory. Stage the entry first:
 
 ```bash
+git add worklog/entries/<entry>.md
 python3 scripts/worklog.py check
 ```
+
+An untracked working-tree file is not part of the commit. `check` reports it as
+a note and never fails on it, so another worker's unfinished entry in a shared
+worktree cannot force `git commit --no-verify`. Validate your own work in
+progress before staging it with:
+
+```bash
+python3 scripts/worklog.py check --include-unstaged
+```
+
+The check also rejects any change to an already-tracked entry or to the frozen
+legacy journal, and it rejects a staged entry whose working-tree copy has moved
+on (re-run `git add` to commit the final text).
 
 The optional local pre-commit checker can be installed in a trusted clone with:
 
@@ -84,8 +100,9 @@ python3 scripts/worklog.py install-hook
 
 The installer does not set `core.hooksPath`, does not touch Git LFS
 post-checkout/post-commit/post-merge/pre-push hooks, and refuses to overwrite an
-unrelated pre-commit hook. Manual validation remains required by `AGENTS.md`;
-the local hook is defense in depth.
+unrelated pre-commit hook. The installed hook runs the same commit-tree check.
+Manual validation remains required by `AGENTS.md`; the local hook is defense in
+depth.
 
 ## Read and render
 
@@ -101,9 +118,12 @@ Include the complete frozen journal only when older context is needed:
 python3 scripts/worklog.py render --include-legacy
 ```
 
-Rendering is atomic and never overwrites tracked root `WORKLOG.md`. For routine
-handoff, inspect the latest relevant files in `worklog/entries/`; consult
-`WORKLOG-LEGACY.md` only for pre-cutoff evidence.
+Rendering is atomic and never overwrites tracked root `WORKLOG.md`. The rendered
+view also includes unstaged entries from the working tree, so local work in
+progress shows up before it is committed; an entry that is not valid yet is
+skipped with a note on stderr. For routine handoff, inspect the latest relevant
+files in `worklog/entries/`; consult `WORKLOG-LEGACY.md` only for pre-cutoff
+evidence.
 
 ## Historical journal
 
