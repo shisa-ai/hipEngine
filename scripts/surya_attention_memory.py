@@ -17,7 +17,8 @@ What it reports, per (``max_seq``, ``text budget``, token count):
 
 * ``resident_bytes`` — the runner's long-lived allocations: fp32 weights, KV
   planes (``2 * nk * max_seq * hd * 4`` per full-attention layer), GDN
-  recurrence state, and conv windows.
+  recurrence state, conv windows, and the ``KVLiveSpans`` state (the split-K
+  decode partials, the page table, the position table, and the eviction mask).
 * ``peak_scratch_bytes`` — the high-water mark of hipEngine-owned device
   buffers above ``resident_bytes`` while the prefill runs. Split into
   ``score_tile_bytes`` (the planned causal score tile, ``nq * tokens * block *
@@ -188,6 +189,7 @@ def _resident_components(spec, weights, max_seq: int) -> dict:
     """Long-lived allocation accounting for one runner configuration."""
 
     from hipengine.core.memory import memory_stats, reset_memory_stats
+    from hipengine.kernels.hip_gfx1100.surya.surya_ops import plan_surya_dense_spans
     from hipengine.runtime.surya import SuryaGpuRunner
 
     probe = SuryaGpuRunner(weights, spec, max_seq=max_seq)
@@ -195,11 +197,23 @@ def _resident_components(spec, weights, max_seq: int) -> dict:
         reset_memory_stats()
         s = spec
         nk, hd = s.num_key_value_heads, s.head_dim
+        nq = s.num_attention_heads
+        spans = plan_surya_dense_spans(max_seq)
+        span_scalars = 16  # live_counts + row_positions, one int64 each
+        span_metadata = (
+            spans.page_table.nbytes + spans.token_positions.nbytes
+            + spans.evict_mask.nbytes + span_scalars
+        )
+        span_decode = nq * spans.num_splits * (hd + 2) * 4
         return {
             "weights_bytes": sum(b.nbytes for b in probe._w.values()),
             "kv_planes_bytes": 2 * nk * max_seq * hd * 4 * probe.n_attn_layers,
             "gdn_state_bytes": sum(b.nbytes for b in probe._gdn_state.values()),
             "conv_state_bytes": sum(b.nbytes for b in probe._conv_state.values()),
+            "span_metadata_bytes": int(span_metadata),
+            "span_decode_partial_bytes": int(span_decode),
+            "span_num_splits": int(spans.num_splits),
+            "span_block_size": int(spans.block_size),
             "resident_bytes": memory_stats()["current_allocated_bytes"],
         }
     finally:
