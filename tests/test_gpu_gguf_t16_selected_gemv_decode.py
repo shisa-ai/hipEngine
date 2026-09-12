@@ -7,6 +7,7 @@ import ctypes
 import numpy as np
 import pytest
 
+from hipengine.benchmark.correctness import evaluate_logits
 from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
 from hipengine.core.specdec2_scope import (
     physical_exact_rowtiles_session,
@@ -891,6 +892,7 @@ def test_q4_t16_dense_rowtiles_match_pack8_production_bits(
     rows: int,
     t16_selected_library,
     q4_library,
+    record_property,
 ) -> None:
     rng = np.random.default_rng(20260804 + rows)
     in_features = 512
@@ -969,6 +971,13 @@ def test_q4_t16_dense_rowtiles_match_pack8_production_bits(
         expected_single,
         **_TOL,
     )
+    quality = evaluate_logits(
+        expected_single, _bf16_u16_to_f32(single_col4),
+        kl_threshold=0.05, top1_threshold=0.90,
+    )
+    record_property("cpu_reference_kl_max", quality.kl_max)
+    record_property("cpu_reference_top1", quality.top1_agreement)
+    assert quality.passed
 
 
 @pytest.mark.parametrize("rows", [2, 3, 4, 6, 8])
@@ -1153,6 +1162,7 @@ def test_qmicro_q4_dense_dual_rowtile_matches_t16_bits(
 def test_q4_t16_dense_down_residual_is_bit_exact(
     rows: int,
     t16_selected_library,
+    record_property,
 ) -> None:
     rng = np.random.default_rng(20260806 + rows)
     in_features = 512
@@ -1186,6 +1196,20 @@ def test_q4_t16_dense_down_residual_is_bit_exact(
     )
 
     np.testing.assert_array_equal(candidate, expected)
+    cpu_projection = gguf_quant_gemv(
+        _bf16_u16_to_f32(x_bf16), raw, GGMLQuantizationType.Q4_K,
+    )
+    cpu_composite = (
+        _bf16_u16_to_f32(_f32_to_bf16_u16(cpu_projection))
+        + _bf16_u16_to_f32(residual)
+    )
+    quality = evaluate_logits(
+        cpu_composite, _bf16_u16_to_f32(candidate),
+        kl_threshold=0.05, top1_threshold=0.90,
+    )
+    record_property("cpu_reference_kl_max", quality.kl_max)
+    record_property("cpu_reference_top1", quality.top1_agreement)
+    assert quality.passed
 
 
 def test_q4_t16_dense_c1_down_residual_is_bit_exact(
