@@ -237,6 +237,10 @@ def _run_child(args: argparse.Namespace) -> int:
                         block_inputs,
                         fallback=False,
                         cycle_id=0 if index is None else int(index),
+                        transaction_id=0 if index is None else int(index) + 1,
+                        request_id=1,
+                        device_accept_commit=bool(args.native_device_accept_commit),
+                        remaining_decode=block_rows - 1,
                         bulk_attention_mode=str(args.block_verify_mode),
                         use_wmma_prefill=bool(args.block_wmma_prefill),
                         capture_linear_state_rows=bool(args.direct_state_commit),
@@ -254,7 +258,10 @@ def _run_child(args: argparse.Namespace) -> int:
                         sync_stage_timings=bool(args.sync_stage_timings),
                         defer_linear_state_commit=bool(args.direct_state_commit),
                     )
-                if args.direct_state_commit:
+                device_committed = bool(
+                    args.native_spec_target_cycle and args.native_device_accept_commit
+                )
+                if args.direct_state_commit and not device_committed:
                     if not result.linear_state_rows_captured:
                         raise RuntimeError("direct-state block profile did not capture linear-state rows")
                     session._commit_verify_linear_state_row(block_rows - 1, position=start_position + block_rows)
@@ -290,6 +297,7 @@ def _run_child(args: argparse.Namespace) -> int:
         "block_wmma_prefill": bool(args.block_wmma_prefill) if args.mode == "block-verify" else None,
         "direct_state_commit": bool(args.direct_state_commit) if args.mode == "block-verify" else None,
         "native_spec_target_cycle": bool(args.native_spec_target_cycle),
+        "native_device_accept_commit": bool(args.native_device_accept_commit),
         "verify_dp4a": bool(args.verify_dp4a),
         "verify_dense_q8_dp4a": bool(args.verify_dense_q8_dp4a),
         "verify_dense_q8_dp4a_all": bool(args.verify_dense_q8_dp4a_all),
@@ -366,6 +374,8 @@ def _run_parent(args: argparse.Namespace) -> int:
         child_base.extend(["--quant", str(args.quant)])
     if args.native_spec_target_cycle:
         child_base.append("--native-spec-target-cycle")
+        if not args.native_device_accept_commit:
+            child_base.append("--no-native-device-accept-commit")
     if args.return_logits:
         child_base.append("--return-logits")
     else:
@@ -445,6 +455,7 @@ def _run_parent(args: argparse.Namespace) -> int:
         "block_wmma_prefill": bool(args.block_wmma_prefill) if args.mode == "block-verify" else None,
         "direct_state_commit": bool(args.direct_state_commit) if args.mode == "block-verify" else None,
         "native_spec_target_cycle": bool(args.native_spec_target_cycle),
+        "native_device_accept_commit": bool(args.native_device_accept_commit),
         "return_logits": bool(args.return_logits),
         "verify_dp4a": bool(args.verify_dp4a),
         "verify_dense_q8_dp4a": bool(args.verify_dense_q8_dp4a),
@@ -749,6 +760,15 @@ def main() -> int:
         help="Submit fixed three-row block verification through NativeSpecCycle N1.",
     )
     parser.add_argument(
+        "--native-device-accept-commit",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Match the production native target graph's device-side accept/commit "
+            "(default on; the same graph bucket production replays)."
+        ),
+    )
+    parser.add_argument(
         "--direct-state-commit",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -819,8 +839,8 @@ def main() -> int:
                 "--native-spec-target-cycle requires --mode block-verify --block-rows "
                 f"in {sorted(NATIVE_SPEC_TARGET_ROWS)} (one root row plus B1-B7 drafts)"
             )
-        if args.block_verify_mode != "bulk" or args.block_wmma_prefill:
-            parser.error("--native-spec-target-cycle requires bulk non-WMMA block verification")
+        if args.block_wmma_prefill:
+            parser.error("--native-spec-target-cycle requires non-WMMA block verification")
         if args.return_logits or args.sync_stage_timings:
             parser.error("--native-spec-target-cycle does not support logits or synchronized timings")
     return _run_child(args) if args.child else _run_parent(args)

@@ -94,6 +94,24 @@ def test_quant_selection_reaches_the_child(monkeypatch) -> None:
     assert captured["quant"] == "gguf_q4_k_m"
 
 
+def test_native_device_accept_commit_defaults_to_the_production_bucket(monkeypatch) -> None:
+    """The census must replay the same graph bucket production replays, so the
+    device-side accept/commit default is on; the opt-out stays available."""
+
+    captured = {}
+    monkeypatch.setattr(profiler, "_run_child", lambda args: captured.update(vars(args)) or 0)
+    monkeypatch.setattr(sys, "argv", ["gguf_mtp_verifier_rocprof.py", "--child"])
+    assert profiler.main() == 0
+    assert captured["native_device_accept_commit"] is True
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["gguf_mtp_verifier_rocprof.py", "--child", "--no-native-device-accept-commit"],
+    )
+    assert profiler.main() == 0
+    assert captured["native_device_accept_commit"] is False
+
+
 def test_native_cycle_accepts_every_bucket_row_count(monkeypatch) -> None:
     """The native graph covers one root plus B1-B7 drafts; B3 verifies four rows."""
 
