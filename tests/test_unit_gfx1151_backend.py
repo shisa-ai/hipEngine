@@ -1301,10 +1301,6 @@ def test_gfx1151_backend_scopes_dense_down_residual_fusions() -> None:
 
     for quant, variant in (
         (
-            "gguf_q4_k_t16_v1",
-            "dense_rowtile_bf16_residual_bf16_out",
-        ),
-        (
             "gguf_q6_k_t16_qmicro_planar_v1",
             "t16_gemv_rowtile_bf16_residual_bf16_out",
         ),
@@ -1317,6 +1313,17 @@ def test_gfx1151_backend_scopes_dense_down_residual_fusions() -> None:
                 variant,
             )
         )
+    # The dense-H5120 Q4 down+residual rowtile was admitted on 2026-09-12 once
+    # an independent gfx1151 crossover and complete-model gate existed; the Q6
+    # planar sibling above stays withheld.
+    assert is_registered(
+        KernelKey(
+            "hip_gfx1151",
+            "linear+residual",
+            "gguf_q4_k_t16_v1",
+            "dense_rowtile_bf16_residual_bf16_out",
+        )
+    )
     for quant, variant in (
         (
             "gguf_q4_k_t16_v1",
@@ -3021,13 +3028,27 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         )
         == frozenset()
     )
-    assert not is_registered(
+    # The dense-H5120 narrow Q4T16 col4 rowtile was admitted on 2026-09-12
+    # (rows 2-4, shape (5120, 1024)); the q5/q6 rowbatch variants below stay
+    # withheld. The admission aliases the shared body rather than overriding it.
+    assert is_registered(
         KernelKey(
             "hip_gfx1151",
             "linear",
             "gguf_q4_k_t16_v1",
             "dense_rowtile_col4_bf16_bf16_out",
         )
+    )
+    assert resolve(
+        backend="hip_gfx1151",
+        layer="linear",
+        quant="gguf_q4_k_t16_v1",
+        variant="dense_rowtile_col4_bf16_bf16_out",
+    ) is resolve(
+        backend="hip_gfx1100",
+        layer="linear",
+        quant="gguf_q4_k_t16_v1",
+        variant="dense_rowtile_col4_bf16_bf16_out",
     )
     for quant in ("gguf_q5_k", "gguf_q6_k"):
         for row_batch in (4, 8):
