@@ -113,9 +113,9 @@ def test_native_device_accept_commit_defaults_to_the_production_bucket(monkeypat
 
 
 def test_native_cycle_accepts_every_bucket_row_count(monkeypatch) -> None:
-    """The native graph covers one root plus B1-B7 drafts; B3 verifies four rows."""
+    """The production native leaf is B1-B3: four rows is the B3 verifier shape."""
 
-    assert NATIVE_SPEC_TARGET_ROWS == frozenset(range(2, 9))
+    assert NATIVE_SPEC_TARGET_ROWS == frozenset({2, 3, 4})
     monkeypatch.setattr(profiler, "_run_child", lambda _args: 0)
     monkeypatch.setattr(
         sys,
@@ -131,6 +131,30 @@ def test_native_cycle_accepts_every_bucket_row_count(monkeypatch) -> None:
         ],
     )
     assert profiler.main() == 0
+
+
+@pytest.mark.parametrize("rows", ("5", "6", "7", "8"))
+def test_native_bucket_stops_at_four_rows(monkeypatch, rows) -> None:
+    """The graph builder admits 2-8 rows, but the fused add/RMSNorm and device
+    accept/commit kernels raise `rows must be 2, 3, or 4` above four."""
+
+    monkeypatch.setattr(profiler, "_run_child", lambda _args: 0)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "gguf_mtp_verifier_rocprof.py",
+            "--child",
+            "--native-spec-target-cycle",
+            "--mode",
+            "block-verify",
+            "--block-rows",
+            rows,
+        ],
+    )
+    with pytest.raises(SystemExit) as excinfo:
+        profiler.main()
+    assert excinfo.value.code == 2
 
 
 @pytest.mark.parametrize("rows", ("1", "9"))
