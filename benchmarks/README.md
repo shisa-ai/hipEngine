@@ -300,12 +300,19 @@ fraction of the memory cost of the previous release:
 | Maximum context on 24 GB card (tokens) | 155,648 | — |
 
 Prefill logits are identical between the routes. The context row reflects
-complete prefill-and-decode request cycles verified at 65K/98K/131K/152K
-contexts (~2.9x the previous release's 54,272-token limit). Since 2026-09-11 the
+complete prefill-and-decode request cycles at declared 65K/98K/131K/152K
+contexts, each with a 2,048-row prompt (~2.9x the previous release's
+54,272-token limit); the declared context is what was bracketed, not a
+full-length prefill at that depth. Since 2026-09-11 the
 default packed prefill is layer-outer, which shares one BF16 oracle pair per
 session instead of one per INT8-retained full-attention layer: measured 0.438 GiB
-lower tracked peak at 2K/4K/8K rows, with prefill throughput at parity within a
-1.5% noise floor and identical generated IDs at 1K-8K rows.
+lower tracked peak at 2K/4K/8K rows and 0.000 at 1K rows, where a single chunk
+means there is no oracle to share, with identical generated IDs at 1K-8K rows.
+On wall time the A/B shows no regression, but read that as one observed
+comparison rather than a qualified parity result: the 1.5% reference is a single
+spread from one same-code pair at 1,024 rows (where the executor does not
+engage), each length was measured once on a shared host, and the memory figures
+are the runtime's own tracked allocator peak rather than whole-device VRAM.
 [Speed repetitions](results/2026-09-10-w7900-p7-c1-speed-parity-paired-reps.json),
 [layer-outer promotion A/B](results/2026-09-11-w7900-p3-promotion-ab-layerouter-8192.json),
 [server route check](results/2026-09-11-w7900-p3-promotion-server-c1-on.json),

@@ -81,6 +81,11 @@ _HEALTHY = {
     "oracle_observed_peak_owners": 1.0,
     "oracle_observed_peak_bytes": 912907308.0,
     "live_oracle_owners": 0.0,
+    # The positive executor identity. The peak above is only a proxy for
+    # *some* shared-oracle route having run; the identity is what names which
+    # one, and the gate requires it (reviewer finding 1, 2026-09-11).
+    "executor_modes": {"layer_outer_resumable": 2.0},
+    "kv_attention_sources": {"int8_direct": 2.0},
     # Every swept cancellation point must cancel a live prefill and be
     # acknowledged in bound, so the delay gate is a bound rather than one point.
     "cancel_sweep": [
@@ -351,9 +356,8 @@ def test_engagement_gate_reports_what_actually_ran_not_just_that_it_failed() -> 
     gate = gates["resumable_path_engaged"]
     assert gate["passed"] is False
     assert gate["executor_modes"] == {"none": 2.0}
-    assert gate["detail"].endswith(
-        "decline reason instead of leaving it to be inferred"
-    )
+    assert "decline reason instead of leaving it to be inferred" in gate["detail"]
+    assert gate["executor_identity_recorded"] is False
 
 
 def test_engagement_gate_can_pass_when_the_layer_outer_mode_is_observed() -> None:
@@ -838,3 +842,54 @@ def test_host_sampling_payload_forces_the_host_route_deterministically() -> None
     assert "top_logprobs" not in payload
     # The seed is what makes a survivor comparable at temperature above zero.
     assert payload["seed"] == 99
+
+
+def test_engagement_gate_fails_when_the_executor_identity_was_not_recorded() -> None:
+    """Reviewer finding 1 (2026-09-11): the oracle peak is only a proxy.
+
+    The P6 service proof went green while reporting ``executor_modes {"None": 2}``
+    beside a correct ``kv_attention_sources {"int8_direct": 2}``: the resumable
+    executor ran, but its identity was written on the batch owner while
+    telemetry read the leased slot view. The gate's own detail claims
+    executor_modes names what ran, so resumable work with no recorded identity
+    has to fail here rather than pass on the peak proxy.
+    """
+
+    gates = _gates(
+        oracle_observed_peak_owners=1.0,
+        oracle_observed_peak_bytes=912907308.0,
+        executor_modes={"None": 2.0},
+        kv_attention_sources={"int8_direct": 2.0},
+    )
+
+    gate = gates["resumable_path_engaged"]
+    assert gate["passed"] is False
+    assert gate["executor_identity_recorded"] is False
+    assert gate["executor_identity_labels"] == []
+    # The evidence that the route really was resumable is still reported, so a
+    # reader can see this is a provenance failure and not a routing failure.
+    assert gate["kv_attention_sources"] == {"int8_direct": 2.0}
+    assert gate["oracle_observed_peak_owners"] == 1.0
+
+
+def test_engagement_gate_names_the_recorded_executor_identity() -> None:
+    gates = _gates(
+        oracle_observed_peak_owners=1.0,
+        oracle_observed_peak_bytes=912907308.0,
+        executor_modes={"layer_outer_resumable": 2.0},
+        kv_attention_sources={"int8_direct": 2.0},
+    )
+
+    gate = gates["resumable_path_engaged"]
+    assert gate["passed"] is True
+    assert gate["executor_identity_recorded"] is True
+    assert gate["executor_identity_labels"] == ["layer_outer_resumable"]
+    assert gate["executor_modes"] == {"layer_outer_resumable": 2.0}
+
+
+def test_the_service_proof_expects_the_resumable_label_not_the_one_shot_one() -> None:
+    """The serving path enters through the resumable entry, so it must say so."""
+
+    from scripts.gguf_p6e_cancel_refill_proof import LAYER_OUTER_EXECUTOR_MODE
+
+    assert LAYER_OUTER_EXECUTOR_MODE == "layer_outer_resumable"

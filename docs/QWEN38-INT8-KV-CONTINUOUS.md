@@ -2,6 +2,15 @@
 
 Status: **active; `IKV-C0` and `IKV-C1` completed on 2026-08-16; `IKV-C2` is
 completed and promoted on 2026-09-11.**
+
+The single current statement of what is promoted and what is not lives in
+[`SERVER-DIRECT-PARITY-ROADMAP.md` §1.1](SERVER-DIRECT-PARITY-ROADMAP.md#11-execution-status).
+Sections of this campaign document that predate the 2026-09-11 promotion
+describe the earlier physical-C1 state and are kept as history, not as current
+status: the ledger rows for `IKV-C3`..`IKV-C7` remain `blocked`, and `IKV-C2`'s
+promotion covers eager physical-C4 decode only. INT8 KV decode graphs are
+default-off and native sampling on the resumable INT8 route is blocked.
+
 Planning baseline was local commit `c791ca3c9`; merge commit `6cff90213`
 integrated the 94 tracked `origin/main` commits before runtime implementation.
 Artifact/backend/target capability identity fails closed, and the exact gfx1100

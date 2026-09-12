@@ -1072,3 +1072,138 @@ def test_allocation_failure_at_a_yield_leaves_the_session_usable(
     assert isinstance(results, list) and len(results) == 1
     assert _layers_run(recorder) == list(range(len(_LAYER_TYPES)))
     assert recorder.scatters == 1
+
+
+# ---------------------------------------------------------------------------
+# Executor identity provenance (reviewer finding 1, 2026-09-11)
+# ---------------------------------------------------------------------------
+
+
+def _bare_view(owner: Qwen35GGUFResidentSession) -> Qwen35GGUFResidentSession:
+    """A slot-view stand-in with its own empty plan dict.
+
+    ``resident_slot_view`` initializes a view's ``last_packed_prefill_plan`` to
+    ``{}``, which is what made the telemetry report ``mode="None"``.
+    """
+
+    view = object.__new__(Qwen35GGUFResidentSession)
+    view.__dict__.update(owner.__dict__)
+    view.last_packed_prefill_plan = {}
+    return view
+
+
+def test_executor_identity_is_recorded_on_the_sessions_it_ran_for(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The serving path runs on the batch owner but telemetry reads the lease.
+
+    Regression for the P6 service proof reporting ``executor_modes {"None": 2}``
+    beside a correct ``kv_attention_sources {"int8_direct": 2}``: the identity
+    was written only on ``self`` (the owner) while the leased session is a
+    different object with an independent plan dict.
+    """
+
+    from hipengine.generation.qwen35_gguf import prefill_transient_owner_inventory
+
+    recorder = _Recorder()
+    owner = _resumable_owner(monkeypatch, recorder)
+    view = _bare_view(owner)
+    prompt = tuple(range(32))
+    chunks = _prompt_rounds(prompt, rows=8)
+
+    # Before the fix this is exactly the observed defect: an empty plan reads
+    # back as the string "None" rather than as an executor mode.
+    assert prefill_transient_owner_inventory((view,))["last_packed_executor_modes"] == [
+        "None"
+    ]
+
+    state = owner._prefill_batch_native_layer_outer(
+        (prompt,),
+        sessions=(view,),
+        chunks=chunks,
+        layer_budget=3,
+    )
+    assert isinstance(state, _GGUFResumablePrefillState)
+    assert view.last_packed_prefill_plan["executor_mode"] == "layer_outer_packed"
+    assert prefill_transient_owner_inventory((view,))["last_packed_executor_modes"] == [
+        "layer_outer_packed"
+    ]
+
+
+def test_resumable_entry_labels_its_own_executor_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A segmented resumable run must be distinguishable from the one-shot one."""
+
+    recorder = _Recorder()
+    owner = _resumable_owner(monkeypatch, recorder)
+    view = _bare_view(owner)
+    prompt = tuple(range(32))
+
+    state = owner.prefill_batch_native_layer_outer_resumable(
+        (prompt,),
+        sessions=(view,),
+        layer_budget=3,
+    )
+    assert isinstance(state, _GGUFResumablePrefillState)
+    assert state.executor_mode == "layer_outer_resumable"
+    assert view.last_packed_prefill_plan["executor_mode"] == "layer_outer_resumable"
+
+
+def test_executor_identity_survives_a_mid_prompt_view_rebuild(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A continuation segment must re-assert the identity.
+
+    A slot view can be rebuilt between scheduler polls; if the identity were
+    written only on the first segment, the rebuilt view would report "None"
+    again for exactly the long prompts the resumable route exists to serve.
+    """
+
+    from hipengine.generation.qwen35_gguf import prefill_transient_owner_inventory
+
+    recorder = _Recorder()
+    owner = _resumable_owner(monkeypatch, recorder)
+    view = _bare_view(owner)
+    prompt = tuple(range(32))
+
+    state = owner.prefill_batch_native_layer_outer_resumable(
+        (prompt,),
+        sessions=(view,),
+        layer_budget=3,
+    )
+    assert isinstance(state, _GGUFResumablePrefillState)
+
+    # Simulate the rebuild: a fresh view object with a fresh empty plan, which
+    # is what the serving path hands to the next segment.
+    rebuilt = _bare_view(owner)
+    state.sessions = (rebuilt,)
+    assert prefill_transient_owner_inventory((rebuilt,))[
+        "last_packed_executor_modes"
+    ] == ["None"]
+
+    owner._prefill_batch_native_layer_outer(
+        None,
+        sessions=None,
+        chunks=None,
+        resume_state=state,
+        layer_budget=3,
+    )
+    assert (
+        rebuilt.last_packed_prefill_plan["executor_mode"] == "layer_outer_resumable"
+    )
+    assert prefill_transient_owner_inventory((rebuilt,))[
+        "last_packed_executor_modes"
+    ] == ["layer_outer_resumable"]
+
+
+def test_identity_helper_tolerates_a_missing_plan_attribute() -> None:
+    """A partially constructed session must not raise inside a telemetry write."""
+
+    session = SimpleNamespace()
+    gguf_runner._record_packed_prefill_executor_identity(
+        (session,), "layer_outer_resumable"
+    )
+    assert session.last_packed_prefill_plan == {
+        "executor_mode": "layer_outer_resumable"
+    }
