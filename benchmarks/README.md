@@ -27,23 +27,28 @@ that comparison came from a harness defect in which the torch prefill stage was
 timed before its synchronization and decode was derived by subtracting two
 differently-measured runs. Decode is now timed directly.
 
-Surya OCR 2's vision attention is tiled by query rows, so a 300-DPI A4 page
-(220x156 patch grid, 34320 patches) needs a 535 MB score tile instead of the
-56.5 GB a dense score matrix would require, and the checkpoint's 16.7 MP
-preprocessor ceiling (256x256, 65536 patches) 535 MB instead of 206 GB. Each
-tile still attends over the full key range, so the result is the dense
-full-image attention result: under a 12 MiB budget (4-10 tiles per page,
-partial tiles included) the tiled and dense paths are bit-identical over 4562
-teacher-forced full-vocabulary rows — mean/p95/p99/max KL `0.000e+00`, top-1
-`100%` — and the lane reproduces the torch fp32 reference ids exactly on six of
-the seven acceptance pages. The generator's default text context is 16384
-tokens, set with `LLM(max_sequence_length=...)`, so a 300-DPI A4 page's 8580
-image tokens fit with room for a full-page output; the vision score-tile budget
-is `LLM(vision_max_scratch_bytes=...)`. Measured text-prefill peak at that
-context is 7.03 GB for the 8580-token page and 14.71 GB at a full 16384-token
-prompt, of which 2.36 GB and 8.59 GB are the causal score matrix that is not
-yet tiled.
+Surya OCR 2 tiles both of its attention score matrices by query rows, so the
+live score scratch is bounded by a budget rather than quadratic in the
+sequence. A 300-DPI A4 page (220x156 patch grid, 34320 patches) needs a 535 MB
+vision score tile instead of the 56.5 GB a dense score matrix would require,
+and the checkpoint's 16.7 MP preprocessor ceiling (256x256, 65536 patches)
+535 MB instead of 206 GB. Each tile still attends over the full key range, so
+the result is the dense full-image attention result: under a 12 MiB budget
+(4-10 tiles per page, partial tiles included) the tiled and dense paths are
+bit-identical over 4562 teacher-forced full-vocabulary rows — mean/p95/p99/max
+KL `0.000e+00`, top-1 `100%` — and the lane reproduces the torch fp32 reference
+ids exactly on six of the seven acceptance pages. The text prefill uses the
+same query-row tiling and the same planner, so its causal scores are 537 MB
+rather than 2.36 GB for the page's 8580 image tokens and 537 MB rather than
+8.59 GB at a full 16384-token prompt; the measured prefill peak falls 7.03 ->
+5.21 GB and 14.71 -> 6.66 GB for 0.8% wall-clock at 16384 tokens, and the tiled
+logits are bit-identical to the dense path. The generator's default text
+context is 16384 tokens, set with `LLM(max_sequence_length=...)`, so a 300-DPI
+A4 page's 8580 image tokens fit with room for a full-page output; the two score
+tiles are `LLM(vision_max_scratch_bytes=...)` and
+`LLM(prefill_max_scratch_bytes=...)`.
 [Attention memory](results/2026-09-12-gfx1151-surya-attention-memory.json),
+[text-prefill tiling](results/2026-09-12-gfx1151-surya-text-prefill-tiling.json),
 [numerical gate](results/2026-09-12-gfx1151-surya-numerical-gate.json),
 [vision tiling cost](results/2026-09-12-gfx1151-surya-vision-tiling-cost.json).
 
