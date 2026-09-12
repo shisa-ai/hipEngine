@@ -29,17 +29,29 @@
   sha256-identical to eager) and non-regressive but small, -0.53% decode wall
   with capture cost included and -2.48% replay-only. Artifacts:
   `benchmarks/results/2026-09-11-w7900-ikv-c2-c1-decode-graph-int8-{eager,replay}.json`.
-- Removal condition: the INT8 admission is kept behind this flag because the
-  measured win is not separated from run-to-run noise, and the earlier claim
-  that the scalar C1 floor (24) disagreed with the packed path's model/width
-  policy floor (128) was wrong. On gfx1100 `GGUF_PACKED_DECODE_GRAPH_MIN_REPLAY_STEPS_BY_POLICY`
-  is empty, so `_resolve_gguf_packed_decode_graph_min_replay_steps` returns
-  `ceil(24 / rows)` = 24 at one row - the same floor the scalar resolver uses.
-  The 128 lives in `GGUF_DECODE_GRAPH_SUBMISSION_POLICIES` and selects the
-  submission *transport* (pm4 at >=128 replay steps, hipgraph below), not
-  eligibility. Corrected in `worklog/entries/20260912T001500`-series entry
-  `p3-c1-graph-floor-correction`. Promote the flag only if repeats establish a
-  win outside noise; otherwise delete the flag and the INT8 admission with it.
+- Removal condition: the INT8 admission is kept behind this flag because its sign
+  depends on the decode horizon, and the shared eligibility floor does not encode
+  that. Measured on the full 10-prompt mtp-bench suite, 10/10 byte-identical every
+  time: at 128 decode tokens (the `pm4` transport) the graph is a real win - five
+  pairs, mean -0.73%, range -1.36% to -0.49%, 0.05 pp spread across the three
+  forward pairs, and a reversed-order control gives -1.08% graph-first versus
+  -0.50% graph-second, so the win is not an order artifact. At 64 tokens
+  (`hipgraph`) it is +0.81% / +0.68%, and at 32 tokens +1.36% / +1.40% - also
+  repeatable. The mechanism is transport economics, not replay overhead: capture
+  is ~82 ms per request under `pm4` and ~18 ms under `hipgraph`, while the replay
+  saves ~2.5% under `pm4` and is neutral under `hipgraph`. So the win exists
+  exactly where `GGUF_DECODE_GRAPH_SUBMISSION_POLICIES` already selects `pm4`
+  (>=128 replay steps for this geometry at one row).
+  To promote: add an INT8-specific capture-aware floor near 128 steps, or admit
+  the graph only when the resolved submission transport is `pm4`. The design
+  constraint is that the decode horizon is unknown at admission time, so a fixed
+  floor is the available lever. Then re-measure at 128 steps and promote to
+  default, keeping `=0` as rollback. If no floor mechanism is wanted, delete the
+  flag and the INT8 admission with it, since a default-on graph at a floor of 24
+  would regress every 24-127-step generation.
+  Note also that the earlier claim of a scalar-vs-packed floor inconsistency was
+  wrong and was corrected in
+  `worklog/entries/20260912T000826.517239Z-lhl-p3-c1-graph-floor-correction-5a1217.md`.
 
 ## Qwen4Exp Q8 expanded F32 cache: removed
 
