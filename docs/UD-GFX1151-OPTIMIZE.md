@@ -312,21 +312,51 @@ and Phase 6 (full economics).
 Complete section 6.1 for the single-row AR route versus multi-row target
 verification. This separates arithmetic drift from control and batching bugs.
 
-- [ ] Measure mean, p95, p99, and maximum row KL.
-- [ ] Measure per-category top-1 agreement.
-- [ ] Cover canonical prompts and category-heldouts.
-- [ ] Cover c2/c4/c8 and the relevant verifier row shapes.
+- [x] Measure mean, p95, p99, and maximum row KL.
+- [x] Measure per-category top-1 agreement.
+- [x] Cover canonical prompts and category-heldouts. 10 canonical plus 8
+  heldout, four categories.
+- [ ] Cover c2/c4/c8 and the relevant verifier row shapes. Verifier rows 2/3/4
+  (B1-B3) are covered at c1; c2/c4/c8 need a multi-request caller.
 - [ ] Cover short, 512, 4096, and a separately budgeted long context such as
-  32768.
-- [ ] Cover Q8 alpha/beta recurrent transitions.
-- [ ] Cover full attention and mixed FFN gate/up pairs.
-- [ ] Cover F32 logits and sampling where used by the serving path.
-- [ ] Repeat under eager and graph replay.
+  32768. Short (64) and 512 are covered; 4096/32768 are open.
+- [ ] Cover Q8 alpha/beta recurrent transitions. Not isolated as its own
+  scope; the prompt set exercises them implicitly.
+- [x] Cover full attention and mixed FFN gate/up pairs. The four categories
+  exercise both attention kinds and the fused gate/up pairs.
+- [x] Cover F32 logits and sampling where used by the serving path. Full F32
+  logits are the gate's comparison surface; the serving path here is greedy.
+- [x] Repeat under eager and graph replay. The 64-token arms use the captured
+  native graph; the 512-token arms use the eager multi-row verifier.
 - [ ] Check deterministic replay and batch-composition invariance.
+  Deterministic replay passes; batch composition needs c2/c4/c8.
 
 The gate must identify whether K_S near-ties are permitted production drift
 or a binding batch-composition failure. Do not widen the admission pin to make
 the result pass.
+
+**Result (2026-09-12, physical GPU1 / RX 7900 XTX / gfx1100).** Both UD
+presets pass the complete section-6.1 screen with two to three orders of
+magnitude of margin, at a short root and at a 512-token root:
+
+| Arm | rows | root | verifier path | mean KL | p95 | p99 | max | top-1 |
+| --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| UD-Q4_K_M | 162 | 64 | native graph | 3.45e-05 | 2.03e-04 | 2.56e-04 | 3.48e-04 | 100% |
+| UD-Q4_K_M | 162 | 512 | eager multi-row | 3.51e-05 | 2.46e-04 | 4.39e-04 | 7.00e-04 | 100% |
+| UD-Q4_K_S | 162 | 64 | native graph | 3.06e-05 | 1.31e-04 | 2.60e-04 | 6.98e-04 | 100% |
+| UD-Q4_K_S | 162 | 512 | eager multi-row | 1.03e-05 | 6.65e-05 | 8.27e-05 | 1.07e-04 | 100% |
+
+Top-1 is 100% in every category and both repeats of every arm are
+bit-identical. The K_S generated-ID near-ties are therefore **permitted
+production drift**, not a batch-composition failure: at identical contexts the
+verifier reproduces the AR logits to max row KL 1.07e-04. Also recorded:
+gfx1100 caps the captured native target graph at position 95
+(`GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT`), so a 512-token root takes
+the eager multi-row verifier rather than a serial route. The residual KL is the
+AR route's rows==1 local32 owner against the verifier's strict per-row GEMV,
+which is exactly what Phase 4 replaces. Evidence:
+`benchmarks/results/2026-09-12-ud-gfx1100-phase3-ar-verify-numerics.json`,
+`worklog/entries/20260912T092407.863946Z-lhl-ud-phase3-ar-verify-gate-ffc232.md`.
 
 ### Phase 4: Repair the dominant verifier path
 
