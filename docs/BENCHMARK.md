@@ -154,7 +154,7 @@ Hard rules:
   six-train/four-heldout identity; do not benchmark an untracked converted copy.
 - **Greedy selection stays greedy.** Draft/target token selection in benchmark
   harnesses is pure argmax/top-k. The guard test
-  `tests/test_gguf_mtp_bench_metrics.py::test_select_topk_tokens_is_pure_argmax_no_prompt_specific_rerank`
+  `tests/test_unit_gguf_mtp_bench_metrics.py::test_select_topk_tokens_is_pure_argmax_no_prompt_specific_rerank`
   fails if a prompt-specific override is reintroduced; do not weaken it.
 - **Cleanup, not just rejection.** When gaming is found, strip the offending code
   and mark every WORKLOG/README/CHANGELOG row and `benchmarks/results/` artifact
@@ -621,7 +621,7 @@ Recorded commands must stay executable. `scripts/check_published_command_drift.p
 the declared flags of every tool invoked by an artifact cited in `benchmarks/README.md` and fails
 on `UNKNOWN-FLAG` (the tool no longer declares the flag), `SCRIPT-NOT-IN-REPO` (the command ran
 from `/tmp`, so the row was never reproducible), and `SCRIPT-MISSING`. It is parse-level only -
-no import, no GPU - and runs as `tests/test_scripts_check_published_command_drift.py`. Scope is
+no import, no GPU - and runs as `tests/test_unit_scripts_check_published_command_drift.py`. Scope is
 the published set deliberately: the full `benchmarks/results` history contains 125 distinct
 drifts across 1579 recorded `scripts/*.py` commands, which is not a fixable backlog. Pre-existing
 problems owned by another lane are listed in the tool's `EXCEPTIONS` with dates and reasons,
@@ -1002,7 +1002,7 @@ Initial protocol shapes:
 | `c=8`, prompt 512 / decode 128 | primary early concurrent target | same profile-aware gate at rows 8 plus ragged/isolation/retirement coverage |
 
 GGUF native rows use the model-level equivalent gate rather than the PARO
-primitive-only script. Under strict, `tests/test_qwen35_gguf_target_rows.py`
+primitive-only script. Under strict, `tests/test_live_qwen35_gguf_target_rows.py`
 proves full FP32 logits against independent strict c1 at C=2/4/8, including
 variable prompt lengths and reclaim/compact/readmit, while
 `scripts/qwen35_batch_gguf_diagnostic.py` preserves all generated IDs over the

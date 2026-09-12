@@ -18,9 +18,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_iq_selected_prefill import (
     gguf_iq2_xs_selected_dual_grouped_prefill_compact_bf16_bf16_out,
     gguf_iq2_xs_selected_dual_grouped_prefill_compact_rowbatch4_bf16_bf16_out,
 )
-from tests.test_gguf_iq2_xs_selected_prefill import _weights
-from tests.test_gguf_iq_gemv import _f32_to_bf16_u16, _make_x
-from tests.test_gguf_iq_selected_prefill import _compact_meta
+from tests.test_gpu_gguf_iq2_xs_selected_prefill import _weights
+from tests.test_gpu_gguf_iq_gemv import _f32_to_bf16_u16, _make_x
+from tests.test_gpu_gguf_iq_selected_prefill import _compact_meta
 
 
 def _parse_args() -> argparse.Namespace:

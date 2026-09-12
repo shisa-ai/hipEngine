@@ -15,7 +15,6 @@ from hipengine.core.memory import malloc, free, memory_stats
 from hipengine.kernels.registry import KernelKey, register, resolve
 from scripts import qwen4exp_row4_state_gate as gate
 from scripts.qwen4exp_framework_family_refresh import check_host, model_identity
-from tests.test_qwen4_exp_gdn_hip import _download
 from types import SimpleNamespace
 
 
@@ -29,6 +28,8 @@ def pair_order(index):
 
 
 def main():
+    from tests.test_gpu_qwen4_exp_gdn_hip import _download
+
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument("--model-root",type=Path,required=True)
     p.add_argument("--compiler-version-file",type=Path,required=True)

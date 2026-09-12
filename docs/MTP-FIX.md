@@ -125,7 +125,7 @@ questions for the next coder.
 
 - [x] **Review and continue, do not discard, the current uncommitted candidate**
       in `hipengine/runtime/qwen35_gguf_runner.py` and
-      `tests/test_gguf_native_spec_cycle.py`. At long split-K contexts with
+      `tests/test_live_gguf_native_spec_cycle.py`. At long split-K contexts with
       multiple verifier rows, it routes each attention and FFN row through the
       registered c1/strict dispatch while retaining the native split-K leaf;
       retained short-context batching is unchanged. The associated checkpoint is

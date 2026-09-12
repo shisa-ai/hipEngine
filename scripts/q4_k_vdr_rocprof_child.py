@@ -47,7 +47,7 @@ def main() -> int:
 
     rng = np.random.default_rng(0x6A34C0DE)
     rows, in_features, out_features = 1, 512, 256
-    from tests.test_gguf_x8_selected_gemv import _weights
+    from tests.test_gpu_gguf_x8_selected_gemv import _weights
 
     qweight = _weights(
         "q4", out_features=out_features, in_features=in_features, experts=1

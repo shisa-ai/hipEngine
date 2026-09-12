@@ -5,7 +5,7 @@ Builds a tiny C shim around llama.cpp ``ggml/src/ggml-quants.c`` (the exact
 reference implementations), dequantizes a few real tensor rows from the local
 UD-Q3_K_M GGUF, and writes ``tests/fixtures/gguf/q3km_iq_dequant_oracle.json``.
 
-The committed fixture lets ``tests/test_gguf_iq_dequant_oracle.py`` validate
+The committed fixture lets ``tests/test_unit_gguf_iq_dequant_oracle.py`` validate
 hipEngine's NumPy dequantizers against llama.cpp bit-exactly without needing a
 C toolchain or the llama.cpp checkout at test time. Re-run this script when
 the reference model or ggml layout understanding changes:

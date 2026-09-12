@@ -7,7 +7,7 @@ the PP8192 deficit is projection-prefill-dominated, ~63% of timed prefill is
 the T16 WMMA projection family; the candidate arithmetic class is nasone32's
 raw-Q4_K x Q8_1 integer MMQ with efa4e8641-family load reuse). The
 2026-08-12 T16-payload integer rejections bound the screen, so the MMQ arms
-consume raw GGUF Q4_K bytes (tests/test_gguf_q4_k_q8_1_mmq_prefill.py proves
+consume raw GGUF Q4_K bytes (tests/test_gpu_gguf_q4_k_q8_1_mmq_prefill.py proves
 bit-exact ctl/vdr pairs per class plus the DS4 CPU oracle).
 
 Arms per case (real Qwen3.8-27B Q4_K_M weights, bulk prefill rows):

@@ -6,7 +6,7 @@ nasone32-style raw-Q4_K x Q8_1-activation integer MMQ with efa4e8641-family
 load reuse, versus the retained float Q4T16 WMMA projection prefill owners.
 Two consumer classes ship here, each with ctl/vdr siblings that share thread
 mapping, integer dot terms and per-subblock f32 evaluation order (bit-exact
-RED contract in tests/test_gguf_q4_k_q8_1_mmq_prefill.py):
+RED contract in tests/test_gpu_gguf_q4_k_q8_1_mmq_prefill.py):
 
   * mmq32 — local128 staged-dp4a consumer, 32x32 output tiles (dense port
     of the retained raw Q5 MMQ32 C8-owner idiom).

@@ -1462,7 +1462,7 @@ expanded this way on the current128x128 accumulator schedule.
 [Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-mmq-scale-cache-rejected.json).
 
 **Poisoned-QSA reader coverage (September7 UTC):**
-`tests/test_qwen4exp_qsa_poisoned_padding.py` now checks parent,
+`tests/test_gpu_qwen4exp_qsa_poisoned_padding.py` now checks parent,
 H256 wave,and production page256 wave readers against BF16 NaN/Inf in
 every unselected physical KV row. The union of all query-required cells
 is preserved,so neighboring live inputs remain valid. Unused selection

@@ -20,7 +20,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from hipengine.kernels.cpu_reference.ops import gguf_q4_k_moe_selected_ffn  # noqa: E402
-from tests.test_cpu_reference_moe_ffn import (  # noqa: E402
+from tests.test_unit_cpu_reference_moe_ffn import (  # noqa: E402
     FFN_LEN,
     FIXTURE_PATH,
     HIDDEN,

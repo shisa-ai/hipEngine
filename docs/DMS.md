@@ -672,20 +672,20 @@ Representative commands:
 
 ```bash
 uv run pytest -q \
-  tests/test_dms_sidecar_metadata.py \
-  tests/test_dms_capture.py \
-  tests/test_qwen38_dms_capture_script.py \
-  tests/test_dms_labels.py \
-  tests/test_dms_sidecar_replay.py \
-  tests/test_dms_external_runtime.py \
-  tests/test_qwen38_dms_quality.py \
-  tests/test_kvcache_dms.py
+  tests/test_unit_dms_sidecar_metadata.py \
+  tests/test_unit_dms_capture.py \
+  tests/test_unit_qwen38_dms_capture_script.py \
+  tests/test_gpu_dms_labels.py \
+  tests/test_unit_dms_sidecar_replay.py \
+  tests/test_gpu_dms_external_runtime.py \
+  tests/test_unit_qwen38_dms_quality.py \
+  tests/test_unit_kvcache_dms.py
 
-python3 -m pytest -q tests/test_dms_sidecar_training.py -s
+python3 -m pytest -q tests/test_gpu_dms_sidecar_training.py -s
 
 uv run pytest -q \
-  tests/test_dms_capture_gguf_hip.py \
-  tests/test_kvcache_dms_device_hip.py
+  tests/test_live_dms_capture_gguf_hip.py \
+  tests/test_gpu_kvcache_dms_device_hip.py
 ```
 
 Coverage includes malformed metadata, model/sidecar/data/tensor hash mismatch,

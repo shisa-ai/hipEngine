@@ -203,10 +203,10 @@ Run the narrowest tier that covers the change. Escalate at milestone boundaries.
 Examples:
 
 ```bash
-python3 -m pytest tests/test_cpu_reference.py -q
-python3 -m pytest tests/test_kernel_registry.py tests/test_fusion_spike.py -q
-python3 -m pytest tests/test_build.py tests/test_smoke_add_plan.py -q
-python3 -m pytest tests/test_benchmark_matrix.py tests/test_exact_token_benchmark.py -q
+python3 -m pytest tests/test_unit_cpu_reference.py -q
+python3 -m pytest tests/test_unit_kernel_registry.py tests/test_unit_fusion_spike.py -q
+python3 -m pytest tests/test_unit_build.py tests/test_unit_smoke_add_plan.py -q
+python3 -m pytest tests/test_unit_benchmark_matrix.py tests/test_unit_exact_token_benchmark.py -q
 ```
 
 For matrix changes, also build and validate the committed diagnostic manifest.
@@ -338,7 +338,7 @@ torch = torch_or_skip(__name__)
 ```
 
 It probes the HIP runtime and catches both `ImportError` and `OSError`, skipping
-with the underlying diagnostic. `tests/test_rocm_guard.py` pins the behaviour.
+with the underlying diagnostic. `tests/test_gpu_rocm_guard.py` pins the behaviour.
 
 ### 3. GPU smoke bundle
 
@@ -351,7 +351,7 @@ also requires a cached `rocprofv3 --kernel-trace` smoke under the name
 
 ```bash
 HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest \
-  tests/test_prefill_flight_recorder.py tests/test_hip_runtime.py -q
+  tests/test_gpu_prefill_flight_recorder.py tests/test_gpu_hip_runtime.py -q
 ```
 
 ```bash
@@ -441,9 +441,9 @@ throughput improvement.
 Required correctness commands:
 
 ```bash
-python3 -m pytest tests/test_qwen35_resident_batch_layout.py \
-  tests/test_qwen35_kv_e2e_fixture_gate.py \
-  tests/test_qwen35_bench_memory_audit.py -q
+python3 -m pytest tests/test_unit_qwen35_resident_batch_layout.py \
+  tests/test_unit_qwen35_kv_e2e_fixture_gate.py \
+  tests/test_unit_qwen35_bench_memory_audit.py -q
 python3 scripts/check_fixtures.py
 python3 scripts/smoke.py --mode qwen35-paged-kv-write-int8-hip \
   --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
@@ -652,12 +652,25 @@ Use `--suite all --collect-only` to check migration coverage without executing i
 Milestone instructions elsewhere that call for a *full* pytest run require
 `--suite all`; ordinary development must not implicitly launch that run.
 
-Migration is incremental: only reviewed and timed modules belong in the
-unit tier. Legacy filenames are not assumed fast and are excluded from
-default discovery, but remain available by explicit path or `--suite all`.
-This initial migration admits adaptive-budget, batch-width-dispatch,
-draft-confidence, and generation-constraint tests. It is not a completed
-runtime audit of the remaining suite.
+All test modules now use tier-prefixed filenames. The default is the
+CPU source-screened unit tier, not the full correctness suite. Whole-module
+tiers are conservative when a file mixes CPU and device/live cases; split
+those modules before moving their CPU cases into the default tier.
+Source classification is not a duration guarantee. Use measured per-test
+durations to identify expensive CPU cases and move deliberate exhaustive
+work to `slow`, preserving the assertions and validation matrix.
+
+Run `python3 scripts/check_test_tiers.py` to check filenames and direct
+unit-to-non-unit test imports without importing tests. The unit tier includes
+a repository-wide check, so a new untiered file cannot silently evade the
+naming rule. The checker does not prove that an imported helper is CPU-only;
+review transitive dependencies and fixture side effects as well.
+
+The migration record and remaining issues live in
+[`testing/TEST-MIGRATION.md`](testing/TEST-MIGRATION.md).
+The JSON inventory is audit evidence only, never a pytest filter or routing
+table. The release workflow explicitly selects `--suite all`; that opt-in
+release gate is not part of routine development.
 
 Agents must follow this naming contract when adding tests, update active
 imports/commands when moving tests, preserve immutable historical worklogs,

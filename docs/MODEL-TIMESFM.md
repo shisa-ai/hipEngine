@@ -56,7 +56,7 @@ production decoder converts them to FP16 on device at init.
 | HIP kernels (norms, RoPE+scatter, flash attention, heads) | `hipengine/kernels/hip_gfx1100/timesfm/timesfm.{hip,py}` |
 | CPU reference + oracle | `hipengine/kernels/cpu_reference/timesfm.py` |
 | Bench + correctness guard | `scripts/timesfm_gpu_bench.py` |
-| Tests | `tests/test_timesfm_model_contract.py`, `tests/test_timesfm_cpu_reference.py`, `tests/test_timesfm_gpu_decode.py` |
+| Tests | `tests/test_unit_timesfm_model_contract.py`, `tests/test_live_timesfm_cpu_reference.py`, `tests/test_gpu_timesfm_gpu_decode.py` |
 
 **Precision modes:**
 

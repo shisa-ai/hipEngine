@@ -9,7 +9,7 @@ their indexing math done in ``int64`` before downcasting to ``uint8``.
 These helpers produce byte-identical output to the originals for
 ``out_features <= 127`` (we re-use the same dequant math). They are not
 intended to replace the originals; the originals remain the canonical source
-in ``tests/test_gguf_q4_k_gemv.py`` / ``tests/test_gguf_k_gemv.py`` for the
+in ``tests/test_gpu_gguf_q4_k_gemv.py`` / ``tests/test_gpu_gguf_k_gemv.py`` for the
 existing P8 fixtures.
 """
 
@@ -60,7 +60,7 @@ def _make_q4_k_block(out_idx: int, block_idx: int) -> np.ndarray:
 def make_q4_k_weight(out_features: int, in_features: int) -> np.ndarray:
     """Build raw Q4_K bytes ``[out_features, blocks * Q4_K_BLOCK_BYTES]``.
 
-    Same math as ``tests/test_gguf_q4_k_gemv.py::make_q4_k_weight`` but the
+    Same math as ``tests/test_gpu_gguf_q4_k_gemv.py::make_q4_k_weight`` but the
     index arithmetic uses int64 to avoid uint8 overflow for large
     ``out_features``.
     """

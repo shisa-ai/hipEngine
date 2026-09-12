@@ -978,9 +978,9 @@ Likely new paths (names may change during design review):
 - `hipengine/loading/laguna_gguf.py`;
 - `hipengine/tokenization/laguna_gguf.py`, or a model-neutral generalization of
   the current GGUF byte-BPE tokenizer;
-- `tests/test_laguna_gguf_config.py`;
+- `tests/test_unit_laguna_gguf_config.py`;
 - `tests/test_laguna_gguf_tensor_map.py`;
-- `tests/test_laguna_gguf_tokenizer.py`.
+- `tests/test_live_laguna_gguf_tokenizer.py`.
 
 Requirements:
 

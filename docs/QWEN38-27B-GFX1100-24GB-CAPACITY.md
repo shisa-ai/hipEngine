@@ -209,7 +209,7 @@ slabs), and `_int8_prefill_oracle_capacity_positions` sizes the oracle by
 [`Defect evidence`](../benchmarks/results/2026-09-10-w7900-int8-packed-shared-oracle-defect.json)
 
 Follow-up (same day): host-policy regression tests now pin the fix
-(`tests/test_gguf_int8_prefill_oracle_per_layer.py` — 15 tests, 8 of them
+(`tests/test_unit_gguf_int8_prefill_oracle_per_layer.py` — 15 tests, 8 of them
 failing on the pre-fix code when the runner hunk of the fix commit is
 reverse-applied): shared-plan keying with and without the per-layer override,
 ownership set on every session before the first slab (including tail-chunk
@@ -1119,7 +1119,7 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
   on gfx1100 for the qualified (1, 24, 4, 256) shape — the same exact
   registered kernel already default on gfx1151, bit-identical to the unfused
   GPU control chain and CPU-reference gated
-  (tests/test_qwen38_full_attn_qk_postprocess.py; focused decode/dispatch
+  (tests/test_gpu_qwen38_full_attn_qk_postprocess.py; focused decode/dispatch
   bundle 100 passed).
 - [x] Measure dense BF16, compact no-evict and trained DMS BF16 through the same
   owner. Record logical tokens, per-layer/head survivors, allocated extents,
@@ -1181,7 +1181,7 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
   ledgers consistent, and 0.0 MiB after close. C8 @ 8,192/16,384 OOM at
   compact-backend pack-time allocation — the same dense-owner + payload
   coexistence memory boundary as the C1 ladder, not a routing blocker.
-  Unit marker semantics: `tests/test_qwen38_dms_decode_owner_routing.py`
+  Unit marker semantics: `tests/test_unit_qwen38_dms_decode_owner_routing.py`
   (6 cases); focused bundle 124 passed; single-session 768 quality suite
   identical post-fix (max KL/top-1 unchanged). Artifact:
   `results/2026-09-07-rx7900xtx-dms-concurrency-ladder.json`.
@@ -1435,7 +1435,7 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
 
 Use the relevant tests under `tests/` for residency, resource ledger/global pool,
 INT8 capability/batch decode, MTP transactions, DMS extents/device rollback and
-`test_gguf_context_ceiling_probe.py`. Add end-to-end harness tests for the gaps
+`test_integration_gguf_context_ceiling_probe.py`. Add end-to-end harness tests for the gaps
 in section 2. Normative gates are [`TESTING.md`](TESTING.md),
 [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md) and [`BENCHMARK.md`](BENCHMARK.md).
 Track temporary routes/flags in [`REFACTOR.md`](REFACTOR.md).

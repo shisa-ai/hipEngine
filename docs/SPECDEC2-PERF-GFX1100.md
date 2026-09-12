@@ -688,9 +688,9 @@ bucket decision:
 | `hipengine/speculative/mtp_native.py` | PARO provider/device descriptors without borrowed-pointer ownership drift. |
 | `hipengine/runtime/qwen35_paro_runner.py` | PARO physical target and selected-state ownership. |
 | `hipengine/kernels/hip_gfx1100/` | Only P5-admitted in-tree primitives. |
-| `tests/test_specdec2_perf_gfx1100_bridge.py` | Schema/counterbalance/provenance/timing RED tests. |
-| `tests/test_qwen35_gguf_mtp2_seam.py` | Dense integration and lifecycle RED gates. |
-| `tests/test_qwen35_paro_mtp2_seam.py` | Packed integration and lifecycle RED gates. |
+| `tests/test_unit_specdec2_perf_gfx1100_bridge.py` | Schema/counterbalance/provenance/timing RED tests. |
+| `tests/test_unit_qwen35_gguf_mtp2_seam.py` | Dense integration and lifecycle RED gates. |
+| `tests/test_unit_qwen35_paro_mtp2_seam.py` | Packed integration and lifecycle RED gates. |
 | `benchmarks/results/` | Compact retained/rejected/no-go artifacts. |
 
 Kernel work first runs `scripts/check_lineage.py`, updates `KERNELS.md` when

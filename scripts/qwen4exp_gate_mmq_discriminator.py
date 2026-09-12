@@ -40,7 +40,7 @@ from hipengine.kernels.hip_gfx1100.quant import gguf_k_gemv as q8
 from hipengine.kernels.hip_gfx1100.quant import gguf_q8_0_mmq_prefill as mmq
 from hipengine.loading.gguf import GGUFReader, discover_gguf_files
 from scripts.qwen4exp_canonical_ar_bench import _git_metadata, _host_metadata
-from tests.test_qwen4_exp_pf3_moe_schedules import _alloc, _download, _upload
+from tests.test_gpu_qwen4_exp_pf3_moe_schedules import _alloc, _download, _upload
 
 PARENT = "gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_f32_f32_out"
 

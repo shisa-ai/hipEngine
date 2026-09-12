@@ -57,12 +57,12 @@ _KERNEL_KEYS = (
     ),
 )
 _TEST_NODES = (
-    "tests/test_dms_extract_decision_hip.py::test_dms_extract_decision_production_head_geometry_bit_exact",
-    "tests/test_dms_external_linear_hip.py::test_external_linear_device_projector_matches_bf16_cpu_decisions_production_geometry",
-    "tests/test_dms_streaming_pack_hip.py::test_dms_streaming_pack_long_prompt_multi_tile_bit_exact",
-    "tests/test_dms_append_decode_hip.py::test_dms_append_decode_batched_rows_bit_exact",
-    "tests/test_dms_compact_attn_decode_hip.py::test_dms_compact_attn_decode_kl_top1_gate_production_shape",
-    "tests/test_dms_compact_attn_decode_hip.py::test_dms_compact_attn_decode_splitk_crosses_multiple_256_row_tiles",
+    "tests/test_gpu_dms_extract_decision_hip.py::test_dms_extract_decision_production_head_geometry_bit_exact",
+    "tests/test_gpu_dms_external_linear_hip.py::test_external_linear_device_projector_matches_bf16_cpu_decisions_production_geometry",
+    "tests/test_gpu_dms_streaming_pack_hip.py::test_dms_streaming_pack_long_prompt_multi_tile_bit_exact",
+    "tests/test_gpu_dms_append_decode_hip.py::test_dms_append_decode_batched_rows_bit_exact",
+    "tests/test_gpu_dms_compact_attn_decode_hip.py::test_dms_compact_attn_decode_kl_top1_gate_production_shape",
+    "tests/test_gpu_dms_compact_attn_decode_hip.py::test_dms_compact_attn_decode_splitk_crosses_multiple_256_row_tiles",
 )
 
 

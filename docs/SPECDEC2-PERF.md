@@ -1088,7 +1088,7 @@ cost share or a new exact representation/dataflow gives a measured premise.
 | `hipengine/kernels/hip_gfx1100/` | Shared source only for a P5-admitted in-tree kernel/graph primitive. |
 | `hipengine/kernels/hip_gfx1151/` | Independent capability/variant registration. |
 | `tests/test_specdec2_*.py` | Contracts, lifecycle, policy, and focused route tests. |
-| `tests/test_qwen35_gguf_mtp2_seam.py` | Dense staged provider/target integration gates. |
+| `tests/test_unit_qwen35_gguf_mtp2_seam.py` | Dense staged provider/target integration gates. |
 | `benchmarks/results/` | Compact retained/rejected/no-go artifacts. |
 
 No normal generation path imports torch. Kernel bodies keep raw pointer ABIs.
