@@ -512,11 +512,18 @@ missing run. Above resident capacity 1 the C1 singleton MTP route is refused
 `weight_quant="gguf_q4_k_m"`, so no UD artifact has one. The unblock is an
 ordering change, not a kernel change: grant UD serving evidence in process for
 a candidate run, measure c2/c4/c8, then write the rows. MTP serving is also
-capped at 1023 context by the same adapter, so the declared `context_max` has
-to respect that cap and the 4096 verifier point is evidence about the verifier
-rather than about serving. Rows 9+ are outside the native target graph, and the
-prefill tile/chunk boundaries are unstarted. Evidence:
-`worklog/entries/20260912T172746.747765Z-lhl-ud-phase5-width-scope-14e699.md`.
+capped at 1023 context, and that cap is real rather than bookkeeping: above
+`start_position + rows >= 1024` the verifier's `strict_long_rows` term
+suppresses the batched exact rows chain and the layer falls through to a
+per-row loop that is bit-identical to the single-row AR route. The 4096-token
+point was measured and returned zero KL over 162 rows because there is no
+multi-row verifier above that line, so it is evidence about the fallback rather
+than a long-context pass. The optimization is to admit the batched exact rows
+chain under split decode (see `docs/REFACTOR.md`), after which the long-context
+point has something to measure. Rows 9+ are outside the native target graph,
+and the prefill tile/chunk boundaries are unstarted. Evidence:
+`worklog/entries/20260912T172746.747765Z-lhl-ud-phase5-width-scope-14e699.md`,
+`worklog/entries/20260912T212716.391678Z-lhl-ud-mtp-long-context-verifier-126dac.md`.
 
 ### Phase 6: Re-run the complete paired economics gate
 
