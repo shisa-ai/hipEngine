@@ -160,10 +160,11 @@ llm.close()
 
 `LLM(...)` detects a supported AMD GPU and chooses the model format
 automatically. You can also pass a local GGUF or Maple path. Advanced users can
-override the choice with `backend=` and `quant=`. The opt-in
+override the choice with `backend=` and `quant=`. The
 `execution_profile="strict"|"production"|"batch_invariant"` selector is
-fail-closed to registered kernel plans with exact fallbacks; omitting it
-preserves the migration default until profile calibration completes.
+fail-closed to registered kernel plans with exact fallbacks; omitting it selects
+`production` for models with a certified plan and keeps the previous behaviour
+otherwise.
 
 ## Performance highlights
 

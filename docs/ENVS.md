@@ -19,11 +19,12 @@ false unless the variable says otherwise.
 - `LLM(model)` and `hipengine serve --model ...` resolve the model plugin's
   quantization. Supported GGUF models also select decode-repack and the public
   WMMA-prefill/GEMV-decode session profile.
-- Server metadata reports the concrete backend, quantization, and, when you set
-  one, the execution-profile manifest hash after the model loads. Leave
-  `HIPENGINE_EXECUTION_PROFILE` unset unless the model, backend, and quantization
-  you chose have a registered plan; a plan hipEngine cannot complete is an error,
-  not a silent fallback.
+- Server metadata reports the concrete backend, quantization, and the
+  execution-profile manifest hash after the model loads. Leave
+  `HIPENGINE_EXECUTION_PROFILE` unset for the default: a model, backend, and
+  quantization with a certified plan runs `production`, and one with no
+  registered plan keeps the migration path. A plan hipEngine cannot complete is
+  an error, not a silent fallback.
 - Set `HIPENGINE_BACKEND=hip_gfx1100` or `HIPENGINE_BACKEND=hip_gfx1151` only
   when auto-detection falls back or you are forcing a nearby target explicitly.
 - Leave diagnostic fusion/tuning knobs unset.
@@ -128,7 +129,7 @@ qwen35moe fast-path safety gate.
 | Variable | Owner | Default | Values / notes |
 | --- | --- | --- | --- |
 | `HIPENGINE_BACKEND` | Backend selection | unset / `auto` | Force a backend key such as `hip_gfx1100` or `hip_gfx1151`; otherwise auto-detects supported HIP arches and falls back to `cpu_reference` with a warning. |
-| `HIPENGINE_EXECUTION_PROFILE` | Execution-profile plan selection | unset (shipped default) | `strict`, `production`, or `batch_invariant`; same as the Python `execution_profile=` argument and the server `--execution-profile` flag. Each value selects a kernel plan registered for that model, backend, and quantization, and hipEngine checks the plan's kernels and their fallbacks before running. An unregistered combination is an error, not a silent substitution. Leaving it unset keeps the shipped behaviour and is not a fourth profile. |
+| `HIPENGINE_EXECUTION_PROFILE` | Execution-profile plan selection | unset (shipped default) | `strict`, `production`, or `batch_invariant`; same as the Python `execution_profile=` argument and the server `--execution-profile` flag. Each value selects a kernel plan registered for that model, backend, and quantization, and hipEngine checks the plan's kernels and their fallbacks before running. An unregistered combination is an error, not a silent substitution. Leaving it unset selects `production` for a model, backend, and quantization combination with a certified production plan, and keeps the migration path otherwise; the migration path is not a fourth profile. |
 | `HIPENGINE_HIP_ARCH` | HIP JIT build | unset | Force native HIP offload arch in build cache keys, e.g. `gfx1100` or `gfx1151`. The backend helper sets this temporarily when needed. |
 | `GPU_MAX_HW_QUEUES` | HIP runtime / gfx1151 branch concurrency | gfx1151: `2`; otherwise unset (ROCm default `4`) | Must be set before `libamdhip64` loads. hipEngine sets `2` only when every visible HIP architecture it recognizes is gfx1151 and you have not set a value; your own value always wins. Use `1` for the previous single-queue behaviour or `4` for ROCm's default when testing the scheduler. The Laguna shared and routed expert kernels were checked against two queues at short prompts, so neither `1` nor `2` says anything about surviving repeated 128K-context runs. |
 | `HSA_SCRATCH_SINGLE_LIMIT` | HIP runtime / gfx1100 scratch reserve | gfx1100: `8388608` (8 MiB); otherwise ROCr default | Must be set before `libamdhip64` loads. ROCr 7.2.4 reserves 140 MiB per process per GPU up front and takes a slower allocate-once path above that limit. hipEngine lowers only the gfx1100 default to 8 MiB, which releases 132 MiB of reserve nothing was using and still covers the 300 MiB AOTriton allocate-once path. Your own value always wins; use `146800640` for the upstream 140 MiB. Mixed-architecture machines get no default. |

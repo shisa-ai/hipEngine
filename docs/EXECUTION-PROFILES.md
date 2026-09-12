@@ -69,6 +69,28 @@ regression—not because an individual win is deemed too small. A pre-existing
 product/SLO failure shared by control and candidate is tracked separately and
 does not erase a candidate improvement.
 
+**Default decision (2026-09-12, v0.5.0).** An omitted profile now resolves to
+`production` for any `(model, backend, quant)` combination that has both a
+registered strict plan and a certified production plan. A combination with no
+registered plan keeps the migration path, which remains tracked for removal in
+[`REFACTOR.md`](REFACTOR.md). The registered combinations are
+`qwen3_5_gguf`/`hip_gfx1100`/`gguf_q4_k_m`,
+`qwen3_5_gguf`/`hip_gfx1151`/`gguf_q4_k_m`,
+`qwen3_5_moe_gguf`/`hip_gfx1100`/`gguf_q4_k_m`,
+`qwen3_5_moe_gguf`/`hip_gfx1151`/`gguf_q4_k_m`,
+`qwen3_5_moe_paro`/`hip_gfx1100`/`w4_paro`,
+`qwen4_exp_gguf`/`hip_gfx1151`/`gguf_q4_k_m`, and
+`qwen4_exp_gguf`/`hip_gfx1151`/`gguf_ud_q4_k_xl`. Each one is covered by a
+decision section below and keeps a registered strict fallback, so
+`execution_profile="strict"` still selects exact arithmetic, and
+`batch_invariant` still falls back per scope wherever its composition gate has
+not passed.
+
+The §2.2 ZBook soak failure (87 completed and 33 rejected of 120) is present
+in both the migration arm and the production arm, so under the shared-failure
+rule above it stays tracked as a product/scheduler blocker and does not block
+this arithmetic default.
+
 ### 2.2 First ZBook c1/cN default decision
 
 The 2026-08-16 Qwen3.6 GGUF package-level campaign retains the incumbent
@@ -82,9 +104,11 @@ clean drain. Seven paired graph runs retain small c4/c8 wins.
 The complete production-server packet nevertheless fails soak completion:
 87/120 requests complete exactly and 33 are rejected under sustained offered
 load. That shared serving failure remains a product/scheduler blocker, but win
-magnitude is not. Omitted-profile package behavior stays unchanged only because
-no route is certified through a named runtime profile and the task/BF16/control
-schema debt remains open.
+magnitude is not. Omitted-profile package behavior stayed unchanged at the time
+only because no route was certified through a named runtime profile and the
+task/BF16/control schema debt remained open; the named plan is now registered
+and §2.1's default decision applies, while the soak failure stays tracked as
+the shared product/scheduler blocker it is.
 The compact evidence and raw hashes are in
 [`2026-08-16-zbook-qwen36-production-profile-cn-blocked.json`](../benchmarks/results/2026-08-16-zbook-qwen36-production-profile-cn-blocked.json).
 

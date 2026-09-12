@@ -1562,11 +1562,17 @@ fallback count is not a success metric.
   and preserves the pre-profile package selection. That compatibility behavior
   is not a fourth named profile. `HIPENGINE_EXECUTION_PROFILE` is the sole
   environment adapter; explicit API/CLI values win.
-- Removal trigger: after P4 re-certifies or replaces every current non-exact
-  default, P7 passes the public-default SLO/c1 guard, API/server docs name the
-  default, and one release window confirms strict fallback and
-  batch-invariant behavior. Then remove omitted-profile legacy selection and
-  any duplicate env-to-profile adapter. Keep registered strict fallbacks.
+- 2026-09-12 (v0.5.0): an omitted profile now resolves to `production` for
+  every combination with a registered strict+production plan (seven at this
+  writing; the list is in `EXECUTION-PROFILES.md` §2.1). The named default, the
+  strict fallback, and the batch-invariant fallback are all reachable, and the
+  API/server docs name the default.
+- Removal trigger for the remaining legacy path: after P4 re-certifies or
+  replaces every current non-exact default so that every shipped
+  model/backend/quant has a registered plan, and one release window confirms
+  strict fallback and batch-invariant behavior. Then remove omitted-profile
+  legacy selection and any duplicate env-to-profile adapter. Keep registered
+  strict fallbacks.
 
 ## Generation-2 GGUF width-selection hardcoding
 

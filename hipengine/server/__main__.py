@@ -113,8 +113,8 @@ def build_parser() -> argparse.ArgumentParser:
         choices=tuple(profile.value for profile in ExecutionProfile),
         default=os.environ.get(EXECUTION_PROFILE_ENV),
         help=(
-            "Execution profile; omitted preserves the migration default "
-            f"(env {EXECUTION_PROFILE_ENV})"
+            "Execution profile; omitted selects production for models with a "
+            f"certified plan and the migration path otherwise (env {EXECUTION_PROFILE_ENV})"
         ),
     )
     parser.add_argument("--served-model-name", help="Public model id exposed by /v1/models")

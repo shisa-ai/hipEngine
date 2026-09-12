@@ -1073,27 +1073,45 @@ class LLM:
         backend: str | None = None,
         quant: str | None = None,
     ) -> Any | None:
-        if self.execution_profile is None:
-            return None
         if self._resolved_execution_profile is not None:
             return self._resolved_execution_profile
         if model_plugin is None:
             _weight_index, model_plugin = self._load_model_metadata()
         concrete_backend = self._resolve_backend() if backend is None else backend
         concrete_quant = self._resolve_quant(model_plugin) if quant is None else quant
-        from hipengine.execution_profiles import resolve_runtime_profile
+        from hipengine.execution_profiles import (
+            resolve_default_execution_profile,
+            resolve_runtime_profile,
+        )
 
+        requested = self.execution_profile
+        if requested is None:
+            # Shipped default: a combination with a certified production plan
+            # runs it without the caller naming a profile. A combination with no
+            # registered plan keeps the migration path, which is not a profile.
+            requested = resolve_default_execution_profile(
+                model=model_plugin.name,
+                backend=concrete_backend,
+                quant=concrete_quant,
+            )
+            if requested is None:
+                return None
         self._resolved_execution_profile = resolve_runtime_profile(
             model=model_plugin.name,
             backend=concrete_backend,
             quant=concrete_quant,
-            profile=self.execution_profile,
+            profile=requested,
         )
         return self._resolved_execution_profile
 
     @property
     def resolved_execution_profile(self) -> str | None:
-        """Return the explicit resolved profile, or ``None`` for legacy migration."""
+        """Return the resolved profile, or ``None`` on the migration path.
+
+        A combination with a certified production plan resolves to
+        ``production`` when no profile was requested; a combination with no
+        registered plan returns ``None``.
+        """
 
         resolution = self._resolve_execution_profile()
         return None if resolution is None else resolution.profile.value
