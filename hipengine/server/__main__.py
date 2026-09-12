@@ -306,6 +306,34 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--vision-max-pixels",
+        type=_positive_int,
+        default=(
+            None
+            if os.environ.get("HIPENGINE_VISION_MAX_PIXELS") is None
+            else _positive_int(os.environ["HIPENGINE_VISION_MAX_PIXELS"])
+        ),
+        help=(
+            "Decoded-pixel bound for HTTP vision input; default takes the "
+            "engine's declared vision_max_pixels, or 1 MP for the Qwen4Exp "
+            "scope (env HIPENGINE_VISION_MAX_PIXELS)"
+        ),
+    )
+    parser.add_argument(
+        "--vision-max-image-bytes",
+        type=_positive_int,
+        default=(
+            None
+            if os.environ.get("HIPENGINE_VISION_MAX_IMAGE_BYTES") is None
+            else _positive_int(os.environ["HIPENGINE_VISION_MAX_IMAGE_BYTES"])
+        ),
+        help=(
+            "Compressed base64 PNG payload bound for HTTP vision input; "
+            "default scales with the pixel bound "
+            "(env HIPENGINE_VISION_MAX_IMAGE_BYTES)"
+        ),
+    )
+    parser.add_argument(
         "--speculative-candidate-budget",
         type=_positive_int,
         default=int(os.environ.get("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", "4")),
@@ -393,6 +421,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         draft_model=args.draft_model,
         speculative_candidate_budget=args.speculative_candidate_budget,
         vision_model=args.vision_model,
+        vision_max_pixels=args.vision_max_pixels,
+        vision_max_image_bytes=args.vision_max_image_bytes,
     )
     app = create_app(config)
     try:

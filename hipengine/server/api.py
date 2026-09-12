@@ -69,7 +69,14 @@ from hipengine.generation.constraints import JsonObjectConstraintState, ToolCall
 from hipengine.generation.registry import normalize_prompt_input
 from hipengine.kernels.backends import backend_package_capability
 from hipengine.kvcache import resolve_prefix_cache_mode
-from hipengine.server.multimodal import extract_qwen4_exp_chat_media
+from hipengine.server.multimodal import (
+    extract_chat_media,
+    media_for_engine,
+    request_has_media,
+    resolve_vision_http_limits,
+    vision_max_side,
+    vision_prompt_markers,
+)
 from hipengine.speculative.policy import (
     DEFAULT_AUTO_DEPTH_POLICY,
     select_offline_speculative_depth,
@@ -346,6 +353,11 @@ class ServerConfig:
     draft_model: str | None = None
     speculative_candidate_budget: int = 4
     vision_model: str | None = None
+    # HTTP vision input bounds. None means: take the decoded-pixel bound from
+    # the engine's declared ``vision_max_pixels`` (falling back to the 1 MP
+    # Qwen4Exp scope), and scale the compressed-payload bound with it.
+    vision_max_pixels: int | None = None
+    vision_max_image_bytes: int | None = None
     created: int = field(default_factory=lambda: int(time.time()))
     execution_profile: str | None = None
 
@@ -398,6 +410,13 @@ class ServerConfig:
         if vision_model == "":
             raise ValueError("vision_model must be non-empty when set")
         object.__setattr__(self, "vision_model", vision_model)
+        for name in ("vision_max_pixels", "vision_max_image_bytes"):
+            value = getattr(self, name)
+            if value is None:
+                continue
+            if int(value) <= 0:
+                raise ValueError(f"{name} must be positive when set")
+            object.__setattr__(self, name, int(value))
         if int(self.stream_queue_max_chunks) < 2:
             raise ValueError("stream_queue_max_chunks must be at least 2")
         if float(self.shutdown_grace_seconds) < 0.0:
@@ -6925,6 +6944,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         )
         _validate_continuation_resume_request(request)
         attached_engine = getattr(app.state, "hipengine_llm", None)
+        # A lazily loaded server (eager_load=False) has no attached engine yet,
+        # so an engine-declared vision model is invisible until the first
+        # request. Detect media in the request first, and only then pay for
+        # get_llm() to read its declarations.
+        has_media = request_has_media(request.messages)
+        if has_media and attached_engine is None:
+            attached_engine = get_llm()
         multimodal_capable = bool(
             config.vision_model is not None
             or (
@@ -6933,11 +6959,23 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
         )
         try:
-            multimodal_input = (
-                extract_qwen4_exp_chat_media(request.messages)
-                if multimodal_capable
-                else None
-            )
+            if not multimodal_capable:
+                multimodal_input = None
+            else:
+                max_pixels, max_bytes = resolve_vision_http_limits(
+                    attached_engine,
+                    max_pixels=config.vision_max_pixels,
+                    max_bytes=config.vision_max_image_bytes,
+                )
+                image_marker, video_marker = vision_prompt_markers(attached_engine)
+                multimodal_input = extract_chat_media(
+                    request.messages,
+                    max_bytes=max_bytes,
+                    max_side=vision_max_side(max_pixels),
+                    max_pixels=max_pixels,
+                    image_marker=image_marker,
+                    video_marker=video_marker,
+                )
         except ValueError as exc:
             raise OpenAIHTTPError(
                 400, str(exc), code="invalid_request", param="messages"
@@ -6950,26 +6988,39 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             if request.stream:
                 raise OpenAIHTTPError(
                     400,
-                    "Qwen4Exp HTTP multimodal streaming is not yet supported",
+                    "HTTP multimodal streaming is not yet supported",
                     code="unsupported_parameter",
                     param="stream",
                 )
             if _request_n(request) != 1:
                 raise OpenAIHTTPError(
                     400,
-                    "Qwen4Exp HTTP multimodal generation requires n=1",
+                    "HTTP multimodal generation requires n=1",
                     code="unsupported_parameter",
                     param="n",
                 )
             if request.tools or request.continuation_id or request.session:
                 raise OpenAIHTTPError(
                     400,
-                    "Qwen4Exp HTTP multimodal generation does not combine with "
+                    "HTTP multimodal generation does not combine with "
                     "tools, continuation, or sessions",
                     code="unsupported_parameter",
                 )
             prompt, media = multimodal_input
             engine = get_llm()
+            # A prompt-driven model's task *is* its prompt. An image-only
+            # request (no text part, or only whitespace) means "do the model's
+            # default task", so substitute the engine's declared prompt rather
+            # than sending an empty one.
+            default_prompt = getattr(engine, "vision_default_prompt", None)
+            if default_prompt and not prompt.strip():
+                prompt = str(default_prompt)
+            try:
+                adapted_media = media_for_engine(engine, media)
+            except ValueError as exc:
+                raise OpenAIHTTPError(
+                    400, str(exc), code="invalid_request", param="messages"
+                ) from exc
             control = _request_control(config, request, raw_request)
             maximum = (
                 request.max_completion_tokens
@@ -6996,7 +7047,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     run_in_threadpool(
                         engine.generate_multimodal_detailed,
                         prompt,
-                        media,
+                        adapted_media,
                         sampling,
                     ),
                     control,
