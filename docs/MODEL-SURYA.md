@@ -650,14 +650,15 @@ the 16384-token plan) plus the page table, `arange` position table, and empty
 eviction mask (147 KB at `max_seq` 16384). Both attention score matrices are
 tiled by query rows under a 512 MiB score-tile budget. The vision tower's is
 `12 * n^2 * 4` bytes dense, so a 300-DPI A4 page (220x156 grid, 34320 patches)
-needs 535 MB instead of the 56.5 GB a dense score matrix would, and the
-`SURYA_MAX_PIXELS` ceiling (256x256, 65536 patches) needs 535 MB instead of
+needs 527 MB instead of the 56.5 GB a dense score matrix would, and the
+`SURYA_MAX_PIXELS` ceiling (256x256, 65536 patches) needs 1.01 GB instead of
 206 GB. The text prefill's causal scores are `8 * tokens^2 * 4` bytes dense, so
-the page's 8580 image tokens need 537 MB instead of 2.36 GB and a full
-16384-token prompt 537 MB instead of 8.59 GB; the measured prefill peak at
-`max_seq` 16384 falls from 7.03 GB to 5.21 GB for the page and from 14.71 GB to
-6.66 GB at a full prompt, with the remaining scratch linear at 180.8 KiB/token
-and the tiling costing 0.8% wall-clock at 16384 tokens. The generator admits
+the page's 8580 image tokens need 70 MB instead of 2.36 GB and a full
+16384-token prompt 268 MB instead of 8.59 GB; the measured prefill peak at
+`max_seq` 16384 falls from 7.03 GB to 4.75 GB for the page and from 14.71 GB to
+6.39 GB at a full prompt, with the remaining scratch linear at 180.8 KiB/token
+and the tiling costing 0.7% wall-clock for the page and 3.1% at 16384 tokens.
+The generator admits
 `max_seq` 16384 by default (upstream Surya budgets 12,288 context tokens per OCR
 slot and 18,000 for vLLM), configurable through `LLM(max_sequence_length=...)`;
 a 300-DPI A4 page's 8580 image tokens fit that context with room for a
@@ -666,6 +667,27 @@ document. The two score tiles are configurable through
 `LLM(vision_max_scratch_bytes=...)` and `LLM(prefill_max_scratch_bytes=...)`; a
 budget that cannot hold even one query row is a configuration-time rejection,
 not a silent fallback to the quadratic matrix.
+
+The budget is an upper bound on the tile, not the shape rule itself. `rows` is
+the patch count for vision and the token count for text, and `plan_score_tiles`
+caps the block at `max(128, ceil(rows / 32))` rows and rounds it down to a whole
+number of 32-lane wavefronts, then takes the widest value that fits the budget.
+The cap is 128 rows for every grid up to 4096 patches and grows with the grid
+above that, so the budget stays the binding constraint at page scale: at 34320
+patches the cap is 1073 rows and the 512 MiB budget still chooses the shape. Two
+effects motivate that shape. Wide tiles waste the tile GEMMs where the dense
+matrix is small — at 1024 patches the budget admits the whole dense score matrix
+(193.54 ms) where a 128-row tile runs 135.52 ms, and at 4096 patches it admits
+2730 rows (1123.42 ms) where 128 rows runs 874.38 ms — while narrow tiles make
+every tile re-read the whole key range, which is what page-scale grids cannot
+afford (on the A4 page 48 rows across 715 tiles takes 65983 ms against 44022 ms
+for 512 rows across 68). The wavefront rounding is what the page-scale curve
+actually separates on: every measured A4 width that is a multiple of 32 runs
+43862-44668 ms and every width that is not runs 45050-48496 ms, and the 512 MiB
+budget derives 325 rows, on the slow side of that line. The envelope is not
+optimal at every grid and the misses are recorded rather than hidden: at 6400
+patches a 96-row tile is 10% faster than the 192 rows the cap picks, and the A4
+page's own best measured width is 2048 rows (41622 ms, 5.1% below the default).
 
 No Surya rate or memory target is established here. EVIE retrieval throughput
 and upstream NVIDIA/Apple results are not hipEngine OCR baselines. Begin on
