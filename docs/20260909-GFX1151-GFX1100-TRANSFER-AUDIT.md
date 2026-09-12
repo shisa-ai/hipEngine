@@ -375,7 +375,7 @@ they are not evidence of a gfx1151 deficit.
 
 | Mechanism | On this path | Pin lives in | Clearable from the gfx1151 package alone? |
 | --- | ---: | --- | --- |
-| Live code pin | 1 | `runtime/qwen35_paro.py:213` | yes |
+| Live code pin | 1 | `runtime/qwen35_paro.py:213` | no — measured load-bearing, see below |
 | Registry exclusion | 5 of 105 | `_GFX1151_ALIAS_EXCLUSIONS` | yes |
 | Capability gate defined on gfx1100 only | 18 | the gfx1100 package | yes — define the name on gfx1151 |
 | Capability gate declined on gfx1151 | 6 | the gfx1151 package | yes, but three are measured rejections |
@@ -390,6 +390,30 @@ the gfx1100 qualification rather than a gfx1151 verdict, and the remaining six
 have no comment at all. That asymmetry is the inventory's main defect: a name that
 exists only on gfx1100 reads as an ordinary default at every call site, so a
 gfx1151 regression from its absence is invisible in review.
+
+### The PARO pin is load-bearing, not a stale default
+
+The `_PAGED_KV_REGISTRY_BACKEND = "hip_gfx1100"` pin at
+`runtime/qwen35_paro.py:213` was cleared and re-tested on 2026-09-12 at commit
+`fa4209f79`. Threading the session backend into the four paged-KV / paged-attention
+resolutions is a one-line change that reaches the gfx1151 override at
+`hip_gfx1151/__init__.py:3199`, and it **fails**:
+
+| Arm | c=2 / p512 / d128 native_batch vs independent c1 |
+| --- | --- |
+| Session backend threaded (gfx1151 `fixed256` body) | **25/137**, row 0 diverges at decode token 25 |
+| Session backend threaded, repeat run | **25/137**, bit-identical to the first |
+| Historical gfx1100 pin (`c1_exact` body) | **137/137** |
+| `per_row` control | **137/137** |
+
+Measured on the physical gfx1151 host with Qwen3.6-35B-A3B PARO. The gfx1151
+override is correct for the GGUF route that registers it and wrong for this PARO
+path, which keeps its own batch-vs-c1 equality contract on the gfx1100 c1-exact
+body. The pin now carries that measurement as a source comment and is guarded by
+`tests/test_qwen35_decode_state.py::test_qwen35_decode_state_paged_kv_backend_stays_pinned_to_gfx1100`.
+The clearing cost in the table above is therefore **no**, not yes: this is the
+second mechanism on this path that a gfx1151 package change cannot safely reach,
+for a measured reason rather than a structural one.
 
 The 18 gfx1100-only gates are not spread evenly. Eight cover prefill
 (`GGUF_Q4_T16_UNEQUAL_PAIR_PREFILL_POLICIES`, `GGUF_Q4_T16_GROUPED_PAIR_ROWS6_POLICY`,
