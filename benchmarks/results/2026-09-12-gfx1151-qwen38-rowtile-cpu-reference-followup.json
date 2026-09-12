@@ -2,6 +2,24 @@
   "schema_version": 1,
   "kind": "gfx1151_dense_rowtile_cpu_reference_followup",
   "status": "cpu_reference_floor_passed",
+  "uncontended_actual_weight_trace": {
+    "passed": true,
+    "source_commit": "df1acb846",
+    "command": "GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hip1151-t6/hipcc-version-gfx1151.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen38-release-20260913/rowtile-actual-idle-trace -- .venv/bin/python scripts/qwen38_q4_dense_rowtile_gfx1151_screen.py --rows 2,3,4 --warmups 1 --samples 2 --burst 1 --output /tmp/qwen38-release-20260913/rowtile-actual-idle-trace.json",
+    "trace": "/tmp/qwen38-release-20260913/rowtile-actual-idle-trace/gfx1151/879204_kernel_trace.csv",
+    "trace_sha256": "d8b5dc41309022f4a1982821ba2ea8ca70c1e99f1dbd359ab83db482ff508666",
+    "raw_json_sha256": "47d536e6b5d954c20ac5bed4a8ff39d7a2e961648ae66286bafc64ec171c87ed",
+    "all_30_actual_weight_cases_bit_exact": true,
+    "duration_definition": "End_Timestamp - Start_Timestamp; profiler smoke only, not a new speedup measurement",
+    "kernels": [
+      {"family": "q4_k_t16_dense_rowtile_col4_gemv_kernel", "rows": 2, "calls": 24, "median_ns": 8616.0, "vgpr": 64, "scratch": 0, "lds": 0, "grid": 8192, "block": 32},
+      {"family": "q4_k_t16_dense_rowtile_col4_gemv_kernel", "rows": 3, "calls": 24, "median_ns": 10299.5, "vgpr": 80, "scratch": 0, "lds": 0, "grid": 8192, "block": 32},
+      {"family": "q4_k_t16_dense_rowtile_col4_gemv_kernel", "rows": 4, "calls": 24, "median_ns": 11401.5, "vgpr": 88, "scratch": 0, "lds": 0, "grid": 8192, "block": 32},
+      {"family": "q4_k_t16_dense_rowtile_residual_gemv_kernel", "rows": 2, "calls": 16, "median_ns": 225663.5, "vgpr": 120, "scratch": 0, "lds": 0, "grid": 20480, "block": 32},
+      {"family": "q4_k_t16_dense_rowtile_residual_gemv_kernel", "rows": 3, "calls": 16, "median_ns": 227927.5, "vgpr": 136, "scratch": 0, "lds": 0, "grid": 20480, "block": 32},
+      {"family": "q4_k_t16_dense_rowtile_residual_gemv_kernel", "rows": 4, "calls": 16, "median_ns": 233879.0, "vgpr": 144, "scratch": 0, "lds": 0, "grid": 20480, "block": 32}
+    ]
+  },
   "performance_claim": false,
   "hardware": {
     "host": "gfx1151",
