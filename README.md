@@ -42,7 +42,14 @@ hipEngine is a from-scratch project and does not inherit any unvetted code or le
 | Qwen3.x MoE | **35B-A3B:** [GGUF](docs/GGUF.md) `Q4_K_M`, `Q4_K_S`, `UD-Q3_K_M`, `UD-Q4_K_M`<br>[ParoQuant W4](https://huggingface.co/shisa-ai/Qwen3.6-35B-A3B-PARO-packed) | Yes | Yes | — |
 | Qwen3.8 Flash-Next | **125B-A6B + sparse PLE:** GGUF `UD-Q4_K_XL`; optional Q8 MTP and BF16 mmproj | — | Yes — text/QSA, opt-in MTP, ≤1K image/video, c2 serving | — |
 | Laguna S 2.1 | [GGUF `Q4_K_M`](https://huggingface.co/poolside/Laguna-S-2.1-GGUF) | — | Yes | — |
+| EVIE 4.5B / 8B | [Safetensors](docs/MODEL-EVIE.md) `fp32`, `fp16`; multimodal retrieval encoding | — | Yes | — |
+| TimesFM 2.5 / 3.0 | [Safetensors](docs/MODEL-TIMESFM.md) `fp32`; [time-series forecasting](docs/MODEL-TIMESFM3.md) | — | Yes | — |
 | Maple-Preview 20B-A1B | [2-bit MLX](https://huggingface.co/deepgrove/maple-preview-2bit-mlx) | Yes | Yes | Python API only |
+
+**Qwen3.8-27B** is the dense model to start with: GGUF `Q4_K_M` on both AMD
+backends, measured from one request up to eight running at once. An independent
+[survey of Qwen3.8-27B implementations on Strix Halo](docs/QWEN38-STRIX-HALO-EXTERNAL-SURVEY.md)
+compares hipEngine against other engines on the same host.
 
 CPU model generation is not supported. The CPU backend is used for correctness
 tests. On NVIDIA, load Maple with `backend="cuda_sm120a"`; automatic hardware
