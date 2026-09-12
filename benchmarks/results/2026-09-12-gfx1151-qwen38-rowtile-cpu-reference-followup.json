@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1151_dense_rowtile_cpu_reference_followup",
+  "status": "cpu_reference_floor_passed",
+  "performance_claim": false,
+  "hardware": {
+    "host": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "hip_version": "7.15.26333"
+  },
+  "parent_admission": "benchmarks/results/2026-09-12-gfx1151-qwen38-27b-q4km-dense-rowtile-withheld-variants-qualified.json",
+  "scope": {
+    "model": "Qwen3.8-27B-Q4_K_M.gguf",
+    "kv": "bf16",
+    "fixture_shape": {"in_features": 512, "out_features": 32},
+    "fixture_oracle": "hipengine.kernels.cpu_reference.gguf_quant_gemv",
+    "strict_parent_parity": true,
+    "note": "Synthetic kernel fixture floor. Actual-weight shapes and model token gates are in parent_admission; this is not whole-profile certification."
+  },
+  "correctness": {
+    "passed": true,
+    "tests": 10,
+    "col4": {
+      "rows": [2, 3, 4, 5, 6, 7, 8],
+      "kl_max_by_width": [0.006468658284956421, 8.295690528523469e-14, 3.4810597693226914e-15, 7.0044428411610134e-09, 1.5568153152390493e-11, 0.009185365708426263, 2.4500761062153293e-07],
+      "top1_agreement_every_width": 1.0
+    },
+    "residual": {
+      "rows": [2, 3, 4],
+      "kl_max_by_width": [3.9871128504895455e-15, 2.9282877897637993e-09, 9.16706393128782e-13],
+      "top1_agreement_every_width": 1.0,
+      "oracle": "CPU Q4_K GEMV, BF16 projection round-trip, plus BF16 residual; compares fused output to this CPU composite"
+    }
+  },
+  "command": "GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hip1151-t6/hipcc-version-gfx1151.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen38-release-20260913/rowtile-trace -- .venv/bin/python -m pytest tests/test_gpu_gguf_t16_selected_gemv_decode.py::test_q4_t16_dense_rowtiles_match_pack8_production_bits tests/test_gpu_gguf_t16_selected_gemv_decode.py::test_q4_t16_dense_down_residual_is_bit_exact -q -o junit_family=xunit1 --junitxml=/tmp/qwen38-release-20260913/rowtile-traced-cpu-reference.xml",
+  "raw_evidence": {
+    "junit": "/tmp/qwen38-release-20260913/rowtile-traced-cpu-reference.xml",
+    "junit_sha256": "e6c3be5b9f57a9e770f41c6267b92d7c3c1e54ba6b4458cf24dcbde7e67f41cc",
+    "trace": "/tmp/qwen38-release-20260913/rowtile-trace/gfx1151/874911_kernel_trace.csv",
+    "trace_sha256": "45eb4825572fb8a738e8e4e943648cf2c95b951e6f8b6967dfcd908a39e24650",
+    "expected_families": ["q4_k_t16_dense_rowtile_col4_gemv_kernel", "q4_k_t16_dense_rowtile_residual_gemv_kernel"],
+    "expected_families_executed": true,
+    "limitation": "Concurrent independent FP16 state correctness gate was active. This trace proves execution identity only; durations are not uncontended performance evidence."
+  }
+}
