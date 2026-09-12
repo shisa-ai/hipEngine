@@ -945,10 +945,14 @@ not a correctness one.
 
 Nineteen `GGUF_*` capability names are defined on gfx1100, absent on gfx1151,
 and live-read through `backend_package_capability` somewhere in the package.
-The table contains **12 declined and 7 N/A** dispositions. It closes the
-inventory, not independent measurement of the disabled optimizations. In
-particular, the positive unequal-pair leaf screen still needs its integrated
-non-regression decision under the small-win policy.
+The original table contained **12 declined and 7 N/A** dispositions.
+The September 13 follow-up admits row48, leaving **11 declined, 7 N/A,
+and 1 admitted**; 18 names remain gfx1100-only. The inventory is not
+independent measurement of every disabled optimization. The unequal-pair
+integrated follow-up now finds a real regression: all 18 prompts are exact
+but every measured complete-prefill row band is slower, including 1.0-1.2%
+lower throughput at 512/1K/4K. See
+[integrated rejection](../benchmarks/results/2026-09-12-gfx1151-qwen38-unequal-pair-integrated-rejected.json).
 This is the section I defect closed: none of them appeared in the gfx1151
 package, so each absence read as an ordinary call-site default. Each now has a
 gfx1151 verdict below. Nothing in this pass changes a shipped value.
@@ -973,7 +977,7 @@ condition. Reachability is stated against the two in-scope artifacts: Qwen3.8-27
 | --- | --- | --- | --- |
 | `GGUF_Q4_T16_GROUPED_PAIR_ROWS6_POLICY` | `{}` — and unreachable | its only call site is nested inside the absent `GGUF_SPECDEC2_TARGET_VERIFY_PAD_ROW_COUNTS` gate, so no gfx1151 route reaches it; the rows6 sibling is registered but unselectable | N/A |
 | `GGUF_Q4_T16_UNEQUAL_PAIR_PREFILL_POLICIES` | `{}` → identity miss | retained pair route; `dense_unequal_dual_wmma_prefill_bf16_bf16_out` is registered but never selected | declined |
-| `GGUF_Q4_DUAL_SILU_PREFILL_ROW48_MAX_ROWS` | `0` → rows 33-48 fall to `rows <= 64` | `dense_dual_wmma_prefill_row64_bf16_bf16_out` instead of the row48 variant (registered, unreachable) | declined |
+| `GGUF_Q4_DUAL_SILU_PREFILL_ROW48_MAX_ROWS` | `48` | row48 at rows33-48; row64/row128 above the band; exact unfused fallback | admitted |
 | `GGUF_DENSE_PREFILL_SCRATCH_LIVENESS_POLICIES` | `{}` → `None` | no scratch liveness aliasing (more scratch, no arithmetic change) | declined |
 | `GGUF_RAW_K_PREFILL_ROLE_VARIANTS` | `{}` | computed `coltile*_rowbatch*` geometry; all three W7900 entries are `gguf_q6_k`, whose raw coltile family gfx1151 declines upstream | N/A |
 | `GGUF_T16_F16_ROCBLAS_SOLUTION_VERSION_PREFIX` | `""` → guard fails | the F16 rocBLAS pair route is not selected; its kernel is not registered on gfx1151 | N/A |

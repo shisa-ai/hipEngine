@@ -1166,7 +1166,7 @@ def test_bulk_row48_promotion_is_backend_qualified(monkeypatch, backend, rows) -
     key = module._q4_t16_dual_wmma_silu_dispatch(
         dispatch, dispatch, rows=rows, in_features=5120, out_features=17408,
     )
-    tile = 48 if backend == "hip_gfx1100" and rows <= 48 else 64
+    tile = 48 if rows <= 48 else 64
     assert key.variant == f"dense_dual_wmma_prefill_row{tile}_bf16_bf16_out"
 
 

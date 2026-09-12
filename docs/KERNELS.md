@@ -2,6 +2,12 @@
 
 This document is the durable catalog of kernel families implemented in hipEngine and the stable mechanics for adding or porting one. It is intentionally **not** an experiment log.
 
+Dense gfx1151 Q4T16 gate/up prefill selects the existing fused row48 owner
+at rows33-48 (`GGUF_Q4_DUAL_SILU_PREFILL_ROW48_MAX_ROWS=48`), row64/row128
+above that band, and the registered unfused chain as fallback. The
+Qwen3.8-27B Q4_K_M qualification is in
+`benchmarks/results/2026-09-12-gfx1151-qwen38-row48-prefill-retained.json`.
+
 Keep here:
 
 - what kernel and oracle families exist;
