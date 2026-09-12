@@ -32,15 +32,34 @@ Surya OCR 2's vision attention is tiled by query rows, so a 300-DPI A4 page
 56.5 GB a dense score matrix would require, and the checkpoint's 16.7 MP
 preprocessor ceiling (256x256, 65536 patches) 535 MB instead of 206 GB. Each
 tile still attends over the full key range, so the result is the dense
-full-image attention result: the tiled and dense paths agree within 1e-4 on the
-same GPU and both match the torch fp32 oracle. The generator's default text
-context is 16384 tokens, set with `LLM(max_sequence_length=...)`, so a 300-DPI
-A4 page's 8580 image tokens fit with room for a full-page output; the vision
-score-tile budget is `LLM(vision_max_scratch_bytes=...)`. Measured text-prefill
-peak at that context is 7.03 GB for the 8580-token page and 14.71 GB at a full
-16384-token prompt, of which 2.36 GB and 8.59 GB are the causal score matrix
-that is not yet tiled.
-[Attention memory](results/2026-09-12-gfx1151-surya-attention-memory.json).
+full-image attention result: under a 12 MiB budget (4-10 tiles per page,
+partial tiles included) the tiled and dense paths are bit-identical over 4562
+teacher-forced full-vocabulary rows — mean/p95/p99/max KL `0.000e+00`, top-1
+`100%` — and the lane reproduces the torch fp32 reference ids exactly on six of
+the seven acceptance pages. The generator's default text context is 16384
+tokens, set with `LLM(max_sequence_length=...)`, so a 300-DPI A4 page's 8580
+image tokens fit with room for a full-page output; the vision score-tile budget
+is `LLM(vision_max_scratch_bytes=...)`. Measured text-prefill peak at that
+context is 7.03 GB for the 8580-token page and 14.71 GB at a full 16384-token
+prompt, of which 2.36 GB and 8.59 GB are the causal score matrix that is not
+yet tiled.
+[Attention memory](results/2026-09-12-gfx1151-surya-attention-memory.json),
+[numerical gate](results/2026-09-12-gfx1151-surya-numerical-gate.json).
+
+Full-page transcription is gated against the text drawn on each page, not only
+against a captured oracle. Using the checkpoint's real full-page HTML prompt,
+seven representative documents (Japanese, mixed script, dense small text, a
+ruled table, a blank page, a degraded scan, and a 25-line block-heavy page) all
+reach a natural EOS with line recall 1.000, line exact rate 1.000, character
+error rate 0.0000, and zero reading-order violations; the ruled table reads as
+4x8 with 32/32 cells and a matching header, and a deliberately starved budget
+is reported as truncation with omissions rather than passing a prefix. One
+caveat is recorded: on the degraded scan the HIP lane differs from torch fp32 on
+21 of 616 ids, all bbox coordinate digits, with identical labels and text and a
+worst coordinate delta of 4 of 1000 — and torch bf16 differs from torch fp32 on
+15 ids there and changes the decoded text, so the drift is a property of that
+page's coordinates rather than of the HIP route.
+[Transcription acceptance](results/2026-09-12-gfx1151-surya-transcription-acceptance.json).
 
 Non-GR linear structural floor measured on Framework gfx1151:
 the GDN-gate (2560,6144) exact coltile is 1.94x/1.86x slower than the
