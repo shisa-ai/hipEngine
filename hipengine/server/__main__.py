@@ -188,13 +188,24 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--kv-storage",
-        default=os.environ.get("HIPENGINE_KV_STORAGE", "auto"),
-        help="Server-wide KV storage policy: auto, bf16, or int8_per_token_head",
+        default=os.environ.get("HIPENGINE_KV_STORAGE", "int8_per_token_head"),
+        help=(
+            "Server-wide KV storage policy: auto, bf16, or int8_per_token_head "
+            "(default). int8_per_token_head is used only when the loaded "
+            "artifact is qualified for it; an unqualified artifact fails closed "
+            "to BF16 and records the reason in /ready and the KVCache summary. "
+            "Pass bf16 to force the previous behavior."
+        ),
     )
     parser.add_argument(
         "--kv-scale-dtype",
-        default=os.environ.get("HIPENGINE_KV_SCALE_DTYPE", "fp16"),
-        help="INT8 KV scale dtype: fp16 or fp32 (default: fp16)",
+        default=os.environ.get("HIPENGINE_KV_SCALE_DTYPE", "fp32"),
+        help=(
+            "INT8 KV scale dtype: fp16 or fp32 (default: fp32). The retained "
+            "INT8 KV qualification evidence for the supported dense GGUF "
+            "artifacts is keyed on fp32 scales; fp16 scales resolve to no "
+            "matching contract and therefore fail closed to BF16."
+        ),
     )
     parser.add_argument(
         "--kv-scale-granularity",
