@@ -52,3 +52,85 @@ def test_public_multimodal_ocr_matches_torch_reference(llm: LLM) -> None:
     # torch-free public path reproduces the torch fp32 greedy output exactly
     assert res.text == ref["text"]
     assert llm.supports_vision
+
+
+def test_run_surya_ocr_defaults_to_the_full_page_prompt() -> None:
+    """The public OCR entry point must drive the checkpoint's real task.
+
+    ``run_surya_ocr`` used to default to the ad-hoc ``"Transcribe this
+    page."`` prompt, whose continuation is layout JSON or a degenerate
+    repeated list. Its default is now the full-page transcription prompt, and
+    the call must go through the registered generator so this entry point and
+    ``LLM(...)`` share one implementation.
+    """
+
+    from PIL import Image
+
+    from hipengine.generation.registry import GenerationRequest, resolve_text_generator
+    from hipengine.generation.surya_protocol import FULL_PAGE_HTML_PROMPT
+    from hipengine.loading.surya import run_surya_ocr, resolve_surya_path
+
+    page = FIXTURES / "page_small.png"
+    if not page.exists():
+        pytest.skip("page_small.png fixture not present")
+    try:
+        model_dir = resolve_surya_path("datalab-to/surya-ocr-2")
+    except FileNotFoundError:
+        pytest.skip("datalab-to/surya-ocr-2 not in local HF cache")
+
+    image = Image.open(page).convert("RGB")
+    default = run_surya_ocr(model_dir, image, max_new_tokens=32)
+
+    factory = resolve_text_generator(
+        model="surya_ocr2", backend="cpu_reference", quant="fp32"
+    )
+    generator = factory(model_path=model_dir)
+    try:
+        explicit = generator.generate_multimodal_detailed(
+            FULL_PAGE_HTML_PROMPT,
+            image,
+            GenerationRequest(
+                prompts=[FULL_PAGE_HTML_PROMPT],
+                max_tokens=32,
+                temperature=0.0,
+                top_p=1.0,
+                ignore_eos=False,
+            ),
+        )
+    finally:
+        generator.close()
+
+    assert default.token_ids == list(explicit.generated_token_ids)
+    assert default.text == explicit.text
+    assert default.text.startswith("<div data-bbox="), (
+        f"the default prompt did not produce the transcription protocol: "
+        f"{default.text[:120]!r}"
+    )
+
+
+def test_run_surya_ocr_propagates_cancellation_and_deadlines() -> None:
+    from PIL import Image
+
+    from hipengine.generation.deadline import (
+        GenerationCancelled,
+        GenerationCancellationToken,
+        GenerationDeadlineExceeded,
+    )
+    from hipengine.loading.surya import run_surya_ocr, resolve_surya_path
+
+    page = FIXTURES / "page_small.png"
+    if not page.exists():
+        pytest.skip("page_small.png fixture not present")
+    try:
+        model_dir = resolve_surya_path("datalab-to/surya-ocr-2")
+    except FileNotFoundError:
+        pytest.skip("datalab-to/surya-ocr-2 not in local HF cache")
+
+    image = Image.open(page).convert("RGB")
+    token = GenerationCancellationToken()
+    token.cancel()
+    with pytest.raises(GenerationCancelled):
+        run_surya_ocr(model_dir, image, max_new_tokens=8, cancellation_token=token)
+
+    with pytest.raises(GenerationDeadlineExceeded):
+        run_surya_ocr(model_dir, image, max_new_tokens=8, deadline_at=0.0)

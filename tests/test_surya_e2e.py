@@ -123,7 +123,12 @@ def test_end_to_end_greedy_matches_torch_reference(model_dir: Path) -> None:
         pytest.skip("oracle_greedy.json not present; capture with transformers")
     ref = json.loads(ref_path.read_text())
     page = FIXTURES / "page_small.png"
-    res = run_surya_ocr(model_dir, str(page), max_new_tokens=64)
+    # The fixture was captured with the early ad-hoc prompt, so name it here
+    # rather than relying on the default: `run_surya_ocr` now defaults to the
+    # checkpoint's real full-page prompt, which is a different task.
+    res = run_surya_ocr(
+        model_dir, str(page), prompt="Transcribe this page.", max_new_tokens=64
+    )
     assert res.token_ids == ref["ids"], (
         "torch-free greedy decode diverged from the torch fp32 reference"
     )

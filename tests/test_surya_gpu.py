@@ -1207,3 +1207,94 @@ def test_gpu_generator_rejection_names_the_required_context() -> None:
     finally:
         gen.runner.vision_forward = real_vision
         gen.close()
+
+
+def test_gpu_generator_recovers_after_an_abandoned_request() -> None:
+    """An aborted request must not contaminate the next one on the runner.
+
+    The decode loop raises between steps, so an abandoned request leaves the
+    runner holding a partially written KV cache and advanced recurrent state —
+    and, because it was abandoned mid-prefill of a *long* prompt, more written
+    slots than the next request will ever attend over. `prefill` zeroes the
+    conv and GDN state and rewrites KV from slot 0, so the follow-up request
+    must be bit-identical to the same request on a runner that never saw the
+    abandoned one. The long-then-short ordering is the leak-prone direction.
+    """
+
+    from hipengine.generation.deadline import (
+        GenerationCancelled,
+        GenerationCancellationToken,
+    )
+    from hipengine.generation.registry import GenerationRequest
+    from hipengine.generation.surya_contract import SuryaRequestError
+    from hipengine.generation.surya_gpu import SuryaOCRGeneratorGPU
+    from hipengine.generation.surya_protocol import FULL_PAGE_HTML_PROMPT
+
+    for name in ("page_table.png", "page_dense.png"):
+        if not (FIXTURES / name).exists():
+            pytest.skip(f"{name} fixture not present")
+
+    def request(max_tokens: int, token: object = None) -> GenerationRequest:
+        return GenerationRequest(
+            prompts=[FULL_PAGE_HTML_PROMPT],
+            max_tokens=max_tokens,
+            temperature=0.0,
+            top_p=1.0,
+            ignore_eos=False,
+            cancellation_token=token,
+        )
+
+    gen = SuryaOCRGeneratorGPU(model_path=_model_dir())
+    try:
+        # 1. the reference: the short page on a runner that has only seen it
+        reference = gen.generate_multimodal_detailed(
+            FULL_PAGE_HTML_PROMPT, str(FIXTURES / "page_table.png"), request(512)
+        )
+
+        # 2. abandon a much longer page eight decode steps in
+        token = GenerationCancellationToken()
+        real_step = gen.runner.decode_step
+        steps = {"n": 0}
+
+        def cancel_at_eight(token_id: int, position: int) -> np.ndarray:
+            steps["n"] += 1
+            if steps["n"] == 8:
+                token.cancel()
+            return real_step(token_id, position)
+
+        gen.runner.decode_step = cancel_at_eight
+        try:
+            with pytest.raises(GenerationCancelled):
+                gen.generate_multimodal_detailed(
+                    FULL_PAGE_HTML_PROMPT,
+                    str(FIXTURES / "page_dense.png"),
+                    request(2048, token),
+                )
+        finally:
+            gen.runner.decode_step = real_step
+        assert steps["n"] == 8, "the abandoned request did not reach eight steps"
+
+        # 3. the same short page must reproduce the reference exactly
+        after_cancel = gen.generate_multimodal_detailed(
+            FULL_PAGE_HTML_PROMPT, str(FIXTURES / "page_table.png"), request(512)
+        )
+        assert after_cancel.generated_token_ids == reference.generated_token_ids, (
+            "the abandoned request left state behind: the next page decoded "
+            "differently"
+        )
+
+        # 4. a rejected request must also leave the runner usable
+        with pytest.raises(SuryaRequestError):
+            gen.generate_multimodal_detailed(
+                FULL_PAGE_HTML_PROMPT,
+                str(FIXTURES / "page_table.png"),
+                request(gen.runner.max_seq),
+            )
+        after_reject = gen.generate_multimodal_detailed(
+            FULL_PAGE_HTML_PROMPT, str(FIXTURES / "page_table.png"), request(512)
+        )
+        assert after_reject.generated_token_ids == reference.generated_token_ids, (
+            "a rejected request changed the runner's state"
+        )
+    finally:
+        gen.close()
