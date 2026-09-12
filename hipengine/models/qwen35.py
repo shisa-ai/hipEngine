@@ -192,6 +192,88 @@ _QWEN36_DENSE_Q4KM_MTP_SERVING_EVIDENCE = (
 )
 
 
+# UD MTP serving evidence.  The pinned UD artifacts share the plain Qwen3.8
+# dense production manifest and the ``gguf_q4_k_m``/``gguf_q4_k_s`` file-type
+# stamps, so the only axes that distinguish them from the plain lane are the
+# artifact sha256 and size.  The declared scope is the measured one: width c1
+# only, because c2 measured 1.0418x, c4 has no production physical width cell,
+# and c8 runs out of memory on the default GPU; the context bucket stops well
+# below the 1023 sentinel where the adapter refuses and the verifier stops
+# batching.  Evidence and measurements:
+# ``worklog/entries/20260912T214335.416137Z-lhl-ud-mtp-width-cells-8e85ce.md``
+# and ``worklog/entries/20260912T220000.000000Z-lhl-ud-u6-pin-automatic-scope-2c7d1e.md``.
+_UD_Q4K_MTP_SERVING_EVIDENCE = (
+    SpeculativeMTPServingEvidence(
+        evidence_key="ud-q4km-gfx1100-production-bf16-c1-k3-d24",
+        artifact_sha256=(
+            "322e194ff79741c7baa497c240f677f54b201b0efab44ca8e50f122b39123482"
+        ),
+        artifact_size_bytes=16_464_440_224,
+        backend="hip_gfx1100",
+        target_arch="gfx1100",
+        weight_quant="gguf_q4_k_m",
+        execution_profile="production",
+        execution_profile_manifest_sha256=(
+            "2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960"
+        ),
+        kv_storage="bf16",
+        kv_layout="uniform",
+        realized_group_rows=1,
+        resident_capacity=1,
+        candidate_budget=3,
+        sampling_modes=("greedy_fast",),
+        max_sequence_length=1024,
+        min_context_tokens=4,
+        max_context_tokens=95,
+        min_output_horizon_tokens=24,
+        max_output_horizon_tokens=24,
+        reason="qualified_automatic_ud_c1_k3_d24",
+        evidence_artifacts=(
+            "benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-phase4.json",
+            "benchmarks/results/2026-09-12-ud-gfx1100-mtp-width-cells.json",
+            "benchmarks/results/2026-09-12-ud-gfx1100-phase5-ar-verify-numerics.json",
+            "benchmarks/results/2026-09-12-ud-gfx1100-phase4-ar-verify-numerics.json",
+        ),
+        strict_fallback_key="gguf_target_ar",
+        automatic_eligible=True,
+    ),
+    SpeculativeMTPServingEvidence(
+        evidence_key="ud-q4ks-gfx1100-production-bf16-c1-k3-d24",
+        artifact_sha256=(
+            "75bc9c8adba2842e72f0ab5201aaa07133c5010b566305c09187fcbdcd364017"
+        ),
+        artifact_size_bytes=15_358_213_024,
+        backend="hip_gfx1100",
+        target_arch="gfx1100",
+        weight_quant="gguf_q4_k_s",
+        execution_profile="production",
+        execution_profile_manifest_sha256=(
+            "2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960"
+        ),
+        kv_storage="bf16",
+        kv_layout="uniform",
+        realized_group_rows=1,
+        resident_capacity=1,
+        candidate_budget=3,
+        sampling_modes=("greedy_fast",),
+        max_sequence_length=1024,
+        min_context_tokens=4,
+        max_context_tokens=95,
+        min_output_horizon_tokens=24,
+        max_output_horizon_tokens=24,
+        reason="qualified_automatic_ud_c1_k3_d24",
+        evidence_artifacts=(
+            "benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-phase4.json",
+            "benchmarks/results/2026-09-12-ud-gfx1100-mtp-width-cells.json",
+            "benchmarks/results/2026-09-12-ud-gfx1100-phase5-ar-verify-numerics.json",
+            "benchmarks/results/2026-09-12-ud-gfx1100-phase4-ar-verify-numerics.json",
+        ),
+        strict_fallback_key="gguf_target_ar",
+        automatic_eligible=True,
+    ),
+)
+
+
 _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
     # W7900 C1 evidence is withdrawn: its runs used the legacy singleton
     # target after preparation. Requalify the packed target independently
@@ -674,7 +756,8 @@ class Qwen35GGUFModel:
     )
     kv_capability_evidence: tuple[KVCapabilityEvidence, ...] = _QWEN38_GGUF_KV_CAPABILITY_EVIDENCE
     speculative_mtp_serving_evidence: tuple[SpeculativeMTPServingEvidence, ...] = (
-        _QWEN38_Q4KM_MTP_SERVING_EVIDENCE
+        _UD_Q4K_MTP_SERVING_EVIDENCE
+        + _QWEN38_Q4KM_MTP_SERVING_EVIDENCE
         + _QWEN36_DENSE_Q4KM_MTP_SERVING_EVIDENCE
     )
     speculative_mtp2_adapter: str = "dense_nextn"
