@@ -79,6 +79,21 @@ def test_a_missing_library_says_what_was_searched(tmp_path) -> None:
         raise AssertionError("expected FileNotFoundError for a non-existent SDK path")
 
 
+def test_quant_selection_reaches_the_child(monkeypatch) -> None:
+    """A plain artifact aborts with a sentinel token when the prefill quant axis
+    is left at the generic default, so the flag must survive arg parsing."""
+
+    captured = {}
+    monkeypatch.setattr(profiler, "_run_child", lambda args: captured.update(vars(args)) or 0)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["gguf_mtp_verifier_rocprof.py", "--child", "--quant", "gguf_q4_k_m"],
+    )
+    assert profiler.main() == 0
+    assert captured["quant"] == "gguf_q4_k_m"
+
+
 def test_native_cycle_accepts_every_bucket_row_count(monkeypatch) -> None:
     """The native graph covers one root plus B1-B7 drafts; B3 verifies four rows."""
 
