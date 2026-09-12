@@ -6446,3 +6446,16 @@ Capture it when a page-scale parity claim is wanted: add the case to
 `QUALITY_ONLY_CASES` into `CASES`/`EXACT_ID_CASES` (or `COORDINATE_CASES` if its
 bbox digits turn out to be as fragile as the degraded scan's). The capture is a
 torch fp32 CPU run of 2108 tokens; nothing else about the page needs to change.
+
+## 2026-09-12 Only Surya reports `GenerationOutput.prompt_tokens` — open
+
+The server prefers a generator-reported `prompt_tokens` and falls back to
+`engine.count_tokens(prompt)` when none is reported. Only the Surya generators
+set it, because only they build a prompt whose length a tokenizer cannot
+recover (text plus image tokens). Every text-only generator still takes the
+fallback path.
+
+Set it in the text-only generators when the fallback is wanted gone: it removes
+a `count_tokens` call per request and one branch in `chat_completions`. There is
+no correctness reason to hurry, since for a text-only prompt the tokenizer count
+is already exact.

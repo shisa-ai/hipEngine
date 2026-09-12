@@ -418,6 +418,56 @@ class LLM:
         generator = self._text_generator
         return bool(generator is not None and getattr(generator, "supports_vision", False))
 
+    def _generator_vision_declaration(self, name: str) -> Any:
+        """Read a vision declaration off the wrapped generator.
+
+        ``LLM`` is the object a serving front end holds, but the declarations
+        live on the generator it wraps, so a front end that reads them off
+        ``LLM`` gets ``None`` and silently falls back to a default it was not
+        meant to use.
+
+        An undeclared attribute raises ``AttributeError`` rather than returning
+        ``None``, so ``getattr(engine, name, default)`` in a caller still sees
+        the absence and applies its own default. That distinction matters:
+        Qwen4Exp declares no vision bounds and must keep the caller's default,
+        while Surya declares them and must override it.
+        """
+
+        generator = self._text_generator
+        if generator is None:
+            raise AttributeError(name)
+        return getattr(generator, name)
+
+    @property
+    def vision_max_pixels(self) -> int:
+        """Decoded-image ceiling the wrapped generator admits."""
+
+        return self._generator_vision_declaration("vision_max_pixels")
+
+    @property
+    def vision_media_input(self) -> str:
+        """Media form the wrapped generator accepts (``"items"`` / ``"image_array"``)."""
+
+        return self._generator_vision_declaration("vision_media_input")
+
+    @property
+    def vision_prompt_marker(self) -> str:
+        """Prompt text the wrapped generator wants where its media sits."""
+
+        return self._generator_vision_declaration("vision_prompt_marker")
+
+    @property
+    def vision_video_prompt_marker(self) -> str:
+        """Prompt text the wrapped generator wants where its video frames sit."""
+
+        return self._generator_vision_declaration("vision_video_prompt_marker")
+
+    @property
+    def vision_default_prompt(self) -> str:
+        """Prompt the wrapped generator wants for an image-only request."""
+
+        return self._generator_vision_declaration("vision_default_prompt")
+
     def generate_speculative_mtp_detailed(
         self,
         prompts: Any,
