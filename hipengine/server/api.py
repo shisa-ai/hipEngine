@@ -4841,8 +4841,30 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         )
         async with session_lock:
             engine_started = time.perf_counter()
+            model_size = None
             try:
-                engine = get_llm()
+                model_size = Path(config.model).stat().st_size
+            except OSError:
+                pass
+            _LOGGER.info(
+                "MODEL_LOAD: loading model=%s size=%s backend=%s quant=%s",
+                config.model,
+                "unknown" if model_size is None else _format_bytes(model_size),
+                config.backend,
+                config.quant,
+            )
+            try:
+                load_task = asyncio.create_task(run_in_threadpool(get_llm))
+                while not load_task.done():
+                    try:
+                        await asyncio.wait_for(asyncio.shield(load_task), timeout=10.0)
+                    except asyncio.TimeoutError:
+                        _LOGGER.info(
+                            "MODEL_LOAD: still loading model=%s elapsed=%.1fs",
+                            config.model,
+                            time.perf_counter() - engine_started,
+                        )
+                engine = await load_task
             except Exception as exc:
                 startup_checks["engine_create"] = {
                     "status": "failed",
@@ -4859,6 +4881,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 _LOGGER.exception("STARTUP_ENGINE_CREATE: failed")
                 return
             engine_create_s = time.perf_counter() - engine_started
+            _LOGGER.info(
+                "MODEL_LOAD: model ready elapsed=%.1fs",
+                engine_create_s,
+            )
             prepare_started = time.perf_counter()
             try:
                 max_context = await ensure_resident_context(engine, sampling, phase="startup")
