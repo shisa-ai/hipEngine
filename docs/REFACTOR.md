@@ -861,6 +861,13 @@ should be removed or collapsed.
 
 ## 2026-08-26 speculative-MTP default capability migration
 
+- September 12 gfx1151 dense Q4_K_M correction: the named production binder
+  now forces FP32 recurrent state after C1/packed D128 max-KL failures.
+  FP16 kernels and legacy Q4_K_S policy remain separate. Remove or replace
+  the unbounded FP16 experiment only after a geometry/profile/horizon-owned
+  storage plan passes the full long-horizon numerical and serving gates.
+  Do not re-enable it by copying the historical D24 verifier manifest.
+
 - The initial audit found two gfx1151 switches that choose behavior from the header
   (`general.file_type`) instead of the file's actual per-tensor format mix:
   `GGUF_FP16_RECURRENT_STATE_DEFAULT_FILE_TYPES` and

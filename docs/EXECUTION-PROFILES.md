@@ -136,6 +136,20 @@ and [`retained opt-in packet`](../benchmarks/results/2026-08-20-gfx1151-qwen38-2
 
 ### 2.4 Qwen3.8 Q4_K_M production C2/K3 decision
 
+**September 12, 2026 correction:** the unbounded gfx1151 production binder
+now allocates FP32 recurrent state. The actual omitted-profile C1 D128
+FP16 composition fails max KL at 0.07664; packed D128 fails at 0.22994.
+Neither short verifier evidence nor the different Q4_K_S artifact authorizes
+unbounded FP16 allocation. The FP32 replacement manifest
+`c4a4a342e2243c2dcc430174606dde682393a2bd2e30acc83129027fcf572acc`
+passes the 18-prompt C1 D128 numerical gate (2,322 rows, max KL 0.003451,
+99.914% top-1, three deterministic repeats). Q4 rowtile selections and
+strict fallbacks stay registered. The historical FP16 verifier cells below
+retain their own manifest identity; they are not certificates for this
+replacement. Packed/serving qualification is in progress.
+Evidence: [FP16 default rejection](../benchmarks/results/2026-09-12-gfx1151-qwen38-named-fp16-default-d128-rejected.json),
+[FP32 C1 gate](../benchmarks/results/2026-09-12-gfx1151-qwen38-fp32-default-c1-qualified.json).
+
 The 2026-08-28 gfx1151 Qwen3.8 `Q4_K_M` production manifest qualifies one
 bounded T1+T2 serving cell: FP16 recurrent state plus standard-Q4 singleton and
 gate/up rowtiles for packed C2/K3 physical R8. Six actual Q4 shapes select the
