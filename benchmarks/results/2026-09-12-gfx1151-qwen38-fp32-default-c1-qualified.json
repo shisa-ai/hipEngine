@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "kind": "qwen38_fp32_default_c1_numerical_gate",
+  "status": "c1_numerical_gate_passed",
+  "performance_claim": false,
+  "full_production_qualification": false,
+  "hardware": {"host": "gfx1151", "machine_id": "55ea6c509d0b49eea8de7094a1023668", "gpu": "AMD Radeon 8060S Graphics", "arch": "gfx1151", "hip_version": "7.15.26333"},
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "kv": "bf16",
+  "strict_manifest_sha256": "393155123c5e09700ff017f949f338fb5f519579e2f05bea3ffef7a43a09a71b",
+  "production_manifest_sha256": "c4a4a342e2243c2dcc430174606dde682393a2bd2e30acc83129027fcf572acc",
+  "candidate_source_sha256": "d66605ad7df714bca1c3030f90d2f762245a1114e824516d300dbe52d42252d3",
+  "command": "GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hip1151-t6/hipcc-version-gfx1151.txt .venv/bin/python scripts/qwen38_production_ar_gate.py --decode-steps 128 --repeat-runs 3 --output /tmp/qwen38-release-20260913/named-fp32-default-ar-d128.json",
+  "protocol": {"prompts": 18, "canonical": 10, "heldout": 8, "teacher_rows": 2322, "decode_steps": 128, "repeats": 3, "mode": "public-configured C1 eager AR"},
+  "quality": {
+    "kl_mean": 0.00005697702088878285,
+    "kl_p95": 0.00035633378728027983,
+    "kl_p99": 0.0008655225853872052,
+    "kl_max": 0.003450623784258197,
+    "top1_agreement": 0.9991386735572783,
+    "top1_matches": 2320,
+    "hard_gates_passed": true,
+    "all_categories_passed": true,
+    "determinism_passed": true,
+    "finite_layout_state_repeat_passed": true,
+    "outlier_review_required": false
+  },
+  "raw_evidence": {"path": "/tmp/qwen38-release-20260913/named-fp32-default-ar-d128.json", "sha256": "7d6dea224419f229c1a3572260e0788a1b0007aff66cd89543c9cc3cfe7961ed"},
+  "decision": "Use the registered FP32 recurrent-state fallback to remove the measured FP16 default failure. Preserve other production selections. Packed profile, HTTP lifecycle, MTP and final performance gates remain separate."
+}

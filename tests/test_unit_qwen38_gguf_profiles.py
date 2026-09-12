@@ -85,7 +85,7 @@ def test_qwen38_strict_profile_resolves_and_disables_fp16_state() -> None:
         ]["selected_variant"] == "dense_dual_wmma_prefill_bf16_bf16_out"
 
 
-def test_qwen38_production_profile_resolves_fp16_state_with_strict_fallbacks() -> None:
+def test_qwen38_production_profile_keeps_fp32_state_and_q4_rowtiles() -> None:
     register_gfx1151_kernels(replace=True)
     register_qwen38_gguf_gfx1151_profiles()
     resolved = _resolve(ExecutionProfile.PRODUCTION)
@@ -96,7 +96,7 @@ def test_qwen38_production_profile_resolves_fp16_state_with_strict_fallbacks() -
     assert resolved.profile is ExecutionProfile.PRODUCTION
     assert not resolved.fell_back_to_strict
     assert resolved.manifest_sha256 != resolved.strict_manifest_sha256
-    assert os.environ[FP16_RECURRENT_STATE_ENV] == "1"
+    assert os.environ[FP16_RECURRENT_STATE_ENV] == "0"
     assert os.environ[VERIFY_CAPTURE_PREFILL_GDN_ENV] == "1"
     assert os.environ[PRODUCTION_Q4_VERIFIER_ROWTILE_ENV] == "1"
     selections = _selection_map(resolved)
@@ -127,7 +127,7 @@ def test_qwen38_production_profile_resolves_fp16_state_with_strict_fallbacks() -
             for budget, rows in ((1, 6), (2, 9), (3, 12))
         },
         ("gdn_chain_recurrent_rmsnorm_gate", "specdec2_mtp2_target_state_rows"): (
-            "bf16_c1_exact_state_rows_tloop_fp16state",
+            "bf16_c1_exact_state_rows_tloop",
             "bf16_c1_exact_state_rows_tloop",
         ),
     }

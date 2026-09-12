@@ -1,10 +1,9 @@
 """Qwen3.8 dense GGUF gfx1151 strict/production profile plans.
 
-The strict plan owns FP32 recurrent-state SPECDEC2 target journals.  The
-production candidate selects the typed FP16-state siblings (FP32 accumulation,
-FP16 state round-trip) and keeps every strict FP32 variant as an explicit
-fallback.  Registration is cold-path only; P8 qualification still determines
-whether any automatic SPECDEC2 policy cell may promote.
+Both plans own FP32 recurrent state. The FP16 storage candidate failed the
+long-horizon C1 and packed production envelopes; short verifier evidence cannot
+authorize its allocation for arbitrary AR requests. Production keeps its
+independently selected Q4 rowtiles and every registered strict fallback.
 """
 
 from __future__ import annotations
@@ -34,11 +33,6 @@ PRODUCTION_Q4_VERIFIER_ROWTILE_ENV = (
 _GDN_REGISTRY_QUANT = "gguf_qwen35"
 _Q4_REGISTRY_QUANT = "gguf_q4_k_t16_v1"
 _STRICT_CHAIN_VARIANT = "bf16_c1_exact_state_rows_tloop"
-_PRODUCTION_CHAIN_VARIANT = f"{_STRICT_CHAIN_VARIANT}_fp16state"
-_FP16_EVIDENCE = (
-    "benchmarks/results/"
-    "2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json"
-)
 _Q4_ROWTILE_EVIDENCE = (
     "benchmarks/results/"
     "2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json"
@@ -80,7 +74,7 @@ def _production_binder(generator: Any, resolved: ResolvedRuntimeProfile) -> None
     _binder(
         generator,
         resolved,
-        fp16_state=True,
+        fp16_state=False,
         q4_verifier_rowtile=True,
     )
 
@@ -210,21 +204,19 @@ def _production_selections() -> tuple[VariantSelection, ...]:
             selected=_STRICT_CHAIN_VARIANT,
             fallback=_STRICT_CHAIN_VARIANT,
             quant=_GDN_REGISTRY_QUANT,
-            evidence=_FP16_EVIDENCE,
         ),
         _selection(
             layer="gdn_chain_recurrent_rmsnorm_gate",
             scope="specdec2_mtp2_target_state_rows",
-            selected=_PRODUCTION_CHAIN_VARIANT,
+            selected=_STRICT_CHAIN_VARIANT,
             fallback=_STRICT_CHAIN_VARIANT,
             quant=_GDN_REGISTRY_QUANT,
-            evidence=_FP16_EVIDENCE,
         ),
     )
 
 
 def register_qwen38_gguf_gfx1151_profiles() -> bool:
-    """Register strict FP32 and production-candidate FP16 plans once."""
+    """Register strict and production-rowtile plans with FP32 state once."""
 
     wanted = {_key(ExecutionProfile.STRICT), _key(ExecutionProfile.PRODUCTION)}
     existing = set(registered_runtime_profile_keys())
