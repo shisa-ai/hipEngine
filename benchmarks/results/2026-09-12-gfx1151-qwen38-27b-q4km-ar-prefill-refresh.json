@@ -1,0 +1,220 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-12",
+  "kind": "qwen38_27b_gfx1151_q4km_ar_prefill_refresh",
+  "status": "complete_measured",
+  "publishable": true,
+  "baseline_eligible": true,
+  "performance_claim": true,
+  "performance_claim_scope": "true autoregressive decode and non-speculative prefill for the standard Qwen3.8-27B Q4_K_M artifact on gfx1151; no MTP, no cross-lane delta",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "host_name": "gfx1151",
+    "memory": "125 GiB unified LPDDR5X",
+    "rocm": "HIP version: 7.15.26333-0000000"
+  },
+  "software": {
+    "hipengine_commit": "f3b20c1f24153f97659869c319e72ebbd099f43d",
+    "git_branch": "main",
+    "tracked_tree_clean": true,
+    "build_profile": "readme_resident_sweep",
+    "hipcc_version_first_line": "HIP version: 7.15.26333-0000000",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "process_env": {
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "GPU_MAX_HW_QUEUES": "2",
+      "HIPENGINE_GGUF_DECODE_REPACK": "1"
+    }
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "size_bytes": 17106775008,
+    "quant": "Q4_K_M",
+    "kv_storage": "BF16"
+  },
+  "protocol": {
+    "harness": "scripts/qwen35_readme_sweep.py (persistent resident sweep)",
+    "prompt_source": "repeated token id 9707",
+    "shapes": [
+      "512/128",
+      "1K/128",
+      "4K/128"
+    ],
+    "process_contract": "one right-sized clean detached process per shape",
+    "warmup_runs": 1,
+    "measured_runs": 3,
+    "warmup_decode_tokens": 1,
+    "prefill_mode": "production bulk WMMA (--force-bulk-prefill --bulk-prefill-attention-mode bulk)",
+    "decode_mode": "production HIP graph replay",
+    "timing": "load and JIT excluded; graph capture excluded from decode wall",
+    "jit": "warm cache pass before the measured pass (--require-cached-build on the measured pass)",
+    "comparability": "same harness, flags and shape set as the published Radeon 8060S Q4_K_S row; Q4_K_M is a different model artifact, so rates are a separate lane, not a delta"
+  },
+  "rows": {
+    "512/128": {
+      "prefill_tok_s": 380.366,
+      "prefill_cv_percent": 0.0927,
+      "decode_tok_s": 12.213,
+      "decode_cv_percent": 0.0032,
+      "measured_runs": 3,
+      "tracked_peak_gib": 16.087,
+      "hip_used_peak_sampled_gib": 16.654,
+      "final_token_ids_stable": true,
+      "finite_final_logits": true,
+      "tracked_after_close_bytes": 0
+    },
+    "1K/128": {
+      "prefill_tok_s": 377.605,
+      "prefill_cv_percent": 0.1124,
+      "decode_tok_s": 11.98,
+      "decode_cv_percent": 0.0053,
+      "measured_runs": 3,
+      "tracked_peak_gib": 16.51,
+      "hip_used_peak_sampled_gib": 17.137,
+      "final_token_ids_stable": true,
+      "finite_final_logits": true,
+      "tracked_after_close_bytes": 0
+    },
+    "4K/128": {
+      "prefill_tok_s": 361.497,
+      "prefill_cv_percent": 0.0358,
+      "decode_tok_s": 12.13,
+      "decode_cv_percent": 0.0388,
+      "measured_runs": 3,
+      "tracked_peak_gib": 18.859,
+      "hip_used_peak_sampled_gib": 19.509,
+      "final_token_ids_stable": true,
+      "finite_final_logits": true,
+      "tracked_after_close_bytes": 0
+    }
+  },
+  "roofline": {
+    "source": "docs/ROOFLINE-gfx1151.md section 3.2 (~221 GB/s practical read roof)",
+    "ar_per_token_weight_bytes": 16091000000,
+    "ar_per_token_weight_bytes_derivation": "GGUF tensor table: 17.096 GB total - 0.290 GB blk.64 NextN/MTP block - 0.715 GB token_embd full table + one 5120-row embedding read",
+    "decode_gb_per_s_at_512": 196.5,
+    "decode_percent_of_practical_read_roof_at_512": 88.9,
+    "reading": "dense decode streams ~89% of the documented practical read roof, so the remaining decode headroom on this artifact is ~11% and is not concentrated in the GEMV owners"
+  },
+  "correctness": {
+    "all_shapes_finite_final_logits": true,
+    "all_shapes_final_token_ids_stable": true,
+    "all_shapes_tracked_teardown_zero": true,
+    "variance_gate": "every prefill and decode CV is below 0.15% (rollup gate is 5%)"
+  },
+  "evidence": {
+    "512/128": {
+      "source_name": "component-gguf-512-128.json",
+      "source_sha256": "6b609d79c0b0f59d938cfef29099046fe3d60b1201be1a219afb389f97a79f79",
+      "source_bytes": 455411,
+      "command": [
+        "scripts/qwen35_readme_sweep.py",
+        "--engine",
+        "gguf",
+        "--model",
+        "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "--quant",
+        "gguf_q4_k_m",
+        "--backend",
+        "hip_gfx1151",
+        "--workloads",
+        "512/128",
+        "--warmup-runs",
+        "1",
+        "--measured-runs",
+        "3",
+        "--warmup-decode-tokens",
+        "1",
+        "--force-bulk-prefill",
+        "--bulk-prefill-attention-mode",
+        "bulk",
+        "--use-wmma-prefill",
+        "--use-gemv-decode",
+        "--graph-replay-decode",
+        "--compiler-version-file",
+        "/tmp/hip1151-run/hipcc-version-gfx1151.txt",
+        "--require-cached-build",
+        "--json",
+        "/tmp/hip1151-run/component-gguf-512-128.json"
+      ]
+    },
+    "1K/128": {
+      "source_name": "component-gguf-1K-128.json",
+      "source_sha256": "977efc1610c138fabff4f6df79a6f3c7be44c4c76a64f4d0efb7a04afcf8eb10",
+      "source_bytes": 451916,
+      "command": [
+        "scripts/qwen35_readme_sweep.py",
+        "--engine",
+        "gguf",
+        "--model",
+        "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "--quant",
+        "gguf_q4_k_m",
+        "--backend",
+        "hip_gfx1151",
+        "--workloads",
+        "1K/128",
+        "--warmup-runs",
+        "1",
+        "--measured-runs",
+        "3",
+        "--warmup-decode-tokens",
+        "1",
+        "--force-bulk-prefill",
+        "--bulk-prefill-attention-mode",
+        "bulk",
+        "--use-wmma-prefill",
+        "--use-gemv-decode",
+        "--graph-replay-decode",
+        "--compiler-version-file",
+        "/tmp/hip1151-run/hipcc-version-gfx1151.txt",
+        "--require-cached-build",
+        "--json",
+        "/tmp/hip1151-run/component-gguf-1K-128.json"
+      ]
+    },
+    "4K/128": {
+      "source_name": "component-gguf-4K-128.json",
+      "source_sha256": "773fd34981235bf66e1844c907e5ba62cb0eb3794b6805d3e3d6b4f38aba9b45",
+      "source_bytes": 454450,
+      "command": [
+        "scripts/qwen35_readme_sweep.py",
+        "--engine",
+        "gguf",
+        "--model",
+        "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "--quant",
+        "gguf_q4_k_m",
+        "--backend",
+        "hip_gfx1151",
+        "--workloads",
+        "4K/128",
+        "--warmup-runs",
+        "1",
+        "--measured-runs",
+        "3",
+        "--warmup-decode-tokens",
+        "1",
+        "--force-bulk-prefill",
+        "--bulk-prefill-attention-mode",
+        "bulk",
+        "--use-wmma-prefill",
+        "--use-gemv-decode",
+        "--graph-replay-decode",
+        "--compiler-version-file",
+        "/tmp/hip1151-run/hipcc-version-gfx1151.txt",
+        "--require-cached-build",
+        "--json",
+        "/tmp/hip1151-run/component-gguf-4K-128.json"
+      ]
+    }
+  },
+  "notes": [
+    "Assembled from the three per-shape component artifacts named in evidence[]; every number in rows[] is the median of the three measured runs in its component, with the discarded warmup excluded.",
+    "The published Radeon 8060S Q4_K_S row uses a different model artifact that is not present on this host (sha256 22200efcd98a7aeeaf83f59b0f1400b055d9e0437900e26b930ef2d42a3eb3f9), so no old->new comparison is made.",
+    "This run refreshes the Q4_K_M prefill/decode cells that the topline table previously left blank."
+  ]
+}

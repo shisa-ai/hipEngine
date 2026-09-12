@@ -210,6 +210,27 @@ def _reset_shared_rotate_fuse_barrier_state() -> None:
     """Clear process-local keyed barrier counters for a new resident session."""
 
     _SHARED_ROTATE_FUSE_BARRIER_STATE.clear()
+
+
+# Paged-KV write, paged-attention prefill, and paged-attention decode are the
+# only kernels this runtime resolves through the registry rather than by direct
+# import, so they are the only place a backend key changes the body that runs.
+# The pin to gfx1100 is deliberate and load-bearing, not a stale default.
+#
+# Measured 2026-09-12 on the physical gfx1151 host (Ryzen AI MAX+ 395 / Radeon
+# 8060S) with Qwen3.6-35B-A3B PARO, c=2, prompt 512, 128 decode tokens: the
+# batch-context decode key (paged_attn_decode, w4_paro,
+# bf16_context_batch_c1_exact_spans) is repointed by the gfx1151 package at
+# qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_spans. Resolving it
+# against hip_gfx1151 instead of this pin breaks the retained
+# native_batch-vs-independent-c1 equality contract deterministically: row 0
+# diverges at decode token 25 of 137 (25/137 equal), reproducing bit-identically
+# across two runs, while the pre-fix pin and the per_row control both reach
+# 137/137. The gfx1151 override is therefore correct for the GGUF route that
+# registers it, and wrong for this PARO path, which keeps its own equality
+# contract on the gfx1100 c1-exact body. Do not "clean this up" without
+# re-running that gate. Guarded by
+# tests/test_unit_qwen35_decode_state.py::test_qwen35_decode_state_paged_kv_backend_stays_pinned_to_gfx1100.
 _PAGED_KV_REGISTRY_BACKEND = "hip_gfx1100"
 
 # C3.0c: row counts for which the output-column-tiled pack8 GEMV is instantiated

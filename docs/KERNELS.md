@@ -175,6 +175,26 @@ the capacity lane's XTX verification
 
 GGUF is not a PARO alias. Raw GGML blocks, pack8/T16/qmicro/X8 replacement layouts, exact expanded planes, and source-F16 Laguna tensors have distinct storage and registry keys.
 
+#### Qwen3.8-27B dense GGUF route map
+
+Qwen3.8-27B dense is served by the shared Qwen3.5/3.6/3.8 dense plugin; there is no separate Qwen3.8 model plugin. The chain from `LLM(...)` to a launch is:
+
+| Stage | Module | Key |
+| --- | --- | --- |
+| Model plugin | `models/qwen35.py` (`QWEN35_GGUF`) | `name="qwen3_5_gguf"`, `architectures=("qwen35",)`, `default_quant="gguf_q4_k_m"` |
+| Backend admission | `kernels/backends.py` `select_backend` | explicit arg → `HIPENGINE_BACKEND` → detected arch → `cpu_reference` |
+| Generator factory | `generation/registry.py` `resolve_text_generator` | `(model, backend, quant, mode="greedy_one_token")`, exact match |
+| Execution profile | `execution_profiles.py` `resolve_runtime_profile` | `(model, backend, quant, profile)`; an omitted profile selects a certified production plan where registered, and the migration route otherwise |
+| Materialize / quant | `loading/qwen35_gguf_materialize.py` | file quant `gguf_q4_k_m` → layout/registry quant `gguf_q4_k_t16_v1`; GDN family uses `gguf_qwen35` |
+| Dense linear dispatch | `runtime/gguf_linear.py` `resolve_gguf_linear_dispatch` | `(layout, activation, output)` template, backend from the resolved weight |
+| Kernel resolution | `kernels/registry.py` `resolve` | exact → no-variant → `fp16` → `cpu_reference`; no cross-HIP-backend fallback |
+
+Default route: bulk WMMA prefill (`use_bulk_prefill`, `bulk_prefill_attention_mode=bulk`, `use_wmma_prefill` default True) and GEMV decode (`use_gemv_decode=True`). `HIPENGINE_GGUF_DECODE_GRAPH` is enabled by default; graph replay additionally requires an admitted layout and the backend's published replay horizon. Decode remains eager when those conditions are not met. An unset sweep graph option now follows engine admission rather than forcing eager execution.
+
+Backend-specific knobs are read through `backend_package_capability(backend, NAME, default)` against module-level constants in `kernels/<backend>/`. Process-start HIP defaults live in `HIP_BACKEND_PROCESS_ENV_DEFAULTS` (gfx1100 `HSA_SCRATCH_SINGLE_LIMIT=8388608`; gfx1151 `GPU_MAX_HW_QUEUES=2`) and never overwrite explicit user values.
+
+`runtime/qwen35_gguf_runner.py` declares 80 module-level `KernelKey("hip_gfx1100", layer, quant, variant)` constants (46 on the dense `gguf_qwen35` GDN/linear-attention families, 34 on the MoE path). **These are nominal source markers, not backend pins:** every consumer discards `key.backend` and substitutes the active backend, for example through a local `_resolve` closure calling `resolve(backend=backend, layer=key.layer, quant=key.quant, variant=key.variant)`. Resolving the dense GDN keys on gfx1151 returns the gfx1151 bodies (`qwen35_gdn_recurrent_rmsnorm_gate_indexed_shared_statecache24_lowp_bf16` and its `_fp16state` sibling), not the gfx1100 ones. Grep hits on that literal in this file are not gfx1100-only surfaces. The live pin of this class is PARO's `_PAGED_KV_REGISTRY_BACKEND` in `runtime/qwen35_paro.py`; see `docs/REFACTOR.md`.
+
 #### GGUF projection and quant families
 
 | Quant/layout family | Source / wrapper | Principal registry layers | Stable notes |
