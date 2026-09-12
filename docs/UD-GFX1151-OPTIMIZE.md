@@ -504,9 +504,19 @@ policy to rows 5-8 is the follow-up that makes budget 4 worth using. Evidence:
 `benchmarks/results/2026-09-12-ud-gfx1100-rows5-budget4-gate.json`,
 `worklog/entries/20260912T150309.673218Z-lhl-ud-phase5-rows-envelope-8351b3.md`.
 
-Still open: c2/c4/c8 and width transitions need a multi-request caller; the
-4096-token and long-context points are unmeasured; rows 9+ are outside the
-native target graph; and the prefill tile/chunk boundaries are unstarted.
+Still open: the width scope is c1 only, and that is structural rather than a
+missing run. Above resident capacity 1 the C1 singleton MTP route is refused
+(`physical_singleton=False`) and the physical route needs a
+`SpeculativeMTPServingEvidence` row for the artifact with
+`realized_group_rows > 1`; the evidence tables cover only
+`weight_quant="gguf_q4_k_m"`, so no UD artifact has one. The unblock is an
+ordering change, not a kernel change: grant UD serving evidence in process for
+a candidate run, measure c2/c4/c8, then write the rows. MTP serving is also
+capped at 1023 context by the same adapter, so the declared `context_max` has
+to respect that cap and the 4096 verifier point is evidence about the verifier
+rather than about serving. Rows 9+ are outside the native target graph, and the
+prefill tile/chunk boundaries are unstarted. Evidence:
+`worklog/entries/20260912T172746.747765Z-lhl-ud-phase5-width-scope-14e699.md`.
 
 ### Phase 6: Re-run the complete paired economics gate
 

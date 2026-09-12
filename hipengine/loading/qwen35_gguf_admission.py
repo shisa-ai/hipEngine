@@ -451,8 +451,16 @@ def _ud_mtp_items(
             ),
             qualified=False,
             blocker=(
-                "c2/c4/c8 serving, the 512/4096 and long-context points, and "
-                "width transitions are unmeasured, so context_max stays None"
+                "context_max stays None because the long-context point is not "
+                "measured yet, and the width scope is c1 only: UD MTP above "
+                "resident capacity 1 is refused before the run because the "
+                "C1 singleton route needs capacity 1 and the physical route "
+                "needs a SpeculativeMTPServingEvidence row for this artifact "
+                "with realized_group_rows > 1, which no UD artifact has. MTP "
+                "serving is also capped at 1023 context by the same adapter, "
+                "so a measured verifier context beyond that does not widen "
+                "the served envelope. See "
+                "worklog/entries/20260912T172746.747765Z-lhl-ud-phase5-width-scope-14e699.md"
             ),
             phase="paired_run",
         ),
