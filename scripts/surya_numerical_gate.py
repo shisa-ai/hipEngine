@@ -569,7 +569,7 @@ def _build_cases(names: list[str], fixtures: Path) -> list[Case]:
     import sys
 
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from surya_bench_pages import acceptance_page  # noqa: PLC0415
+    from surya_bench_pages import page_filename  # noqa: PLC0415
 
     from hipengine.generation.surya_protocol import FULL_PAGE_HTML_PROMPT  # noqa: PLC0415
 
@@ -580,7 +580,7 @@ def _build_cases(names: list[str], fixtures: Path) -> list[Case]:
     return [
         Case(
             name=name,
-            page_path=fixtures / acceptance_page(name),
+            page_path=fixtures / page_filename(name),
             prompt=FULL_PAGE_HTML_PROMPT,
             max_tokens=budgets[name],
         )
