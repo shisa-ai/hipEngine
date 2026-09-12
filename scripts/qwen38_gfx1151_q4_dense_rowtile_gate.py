@@ -440,7 +440,7 @@ def main() -> int:
             and entry["window_start"] == window_start
             and entry["window_end"] == window_end
         }
-        if set(pair) != set(arms):
+        if set(pair) != {"excluded", "admitted"}:
             # Partial arm runs are diagnostics for the caller, not verdicts.
             continue
         excluded = pair["excluded"]
