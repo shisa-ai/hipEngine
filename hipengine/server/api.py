@@ -4860,10 +4860,20 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     try:
                         await asyncio.wait_for(asyncio.shield(load_task), timeout=10.0)
                     except asyncio.TimeoutError:
+                        live_memory = _device_memory_snapshot()
+                        memory_suffix = (
+                            ""
+                            if live_memory is None
+                            else (
+                                f" gpu_used={_format_bytes(int(live_memory['used_bytes']))}"
+                                f"/{_format_bytes(int(live_memory['total_bytes']))}"
+                            )
+                        )
                         _LOGGER.info(
-                            "MODEL_LOAD: still loading model=%s elapsed=%.1fs",
+                            "MODEL_LOAD: still loading model=%s elapsed=%.1fs%s",
                             config.model,
                             time.perf_counter() - engine_started,
+                            memory_suffix,
                         )
                 engine = await load_task
             except Exception as exc:
