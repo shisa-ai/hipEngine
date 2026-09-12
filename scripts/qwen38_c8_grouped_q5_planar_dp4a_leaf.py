@@ -8,7 +8,7 @@ kernel (integer dp4a planar decode vs the registered raw mmq32 owner). Arms
 differ in arithmetic reassociation only (same decode class); outputs are
 compared informationally (mismatch, KL). Kernel-level oracle/owner-parity/
 determinism contracts live in
-tests/test_gguf_q5_k_planar_q8_1_grouped_gemv.py.
+tests/test_gpu_gguf_q5_k_planar_q8_1_grouped_gemv.py.
 """
 from __future__ import annotations
 
@@ -263,7 +263,7 @@ def main() -> int:
         "candidate_wins": candidate_wins,
         "results": results,
         "timing": "HIP events, counterbalanced bursts; both arms include the shared quantize launch",
-        "note": "same-decode-class screen (integer dp4a reassociation; informational KL, no exactness gate); kernel-level oracle/owner-parity/determinism contracts in tests/test_gguf_q5_k_planar_q8_1_grouped_gemv.py",
+        "note": "same-decode-class screen (integer dp4a reassociation; informational KL, no exactness gate); kernel-level oracle/owner-parity/determinism contracts in tests/test_gpu_gguf_q5_k_planar_q8_1_grouped_gemv.py",
     }
     with open(args.output, "w") as handle:
         json.dump(payload, handle, indent=1)

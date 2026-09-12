@@ -15155,7 +15155,7 @@ class Qwen35GGUFResidentSession:
     # _PackedWorkspaceState holder so the batch owner and its resident slot
     # views observe the same allocations, geometry, and deferred-scatter
     # dirtiness (see the serving-load stability contracts in
-    # tests/test_gguf_packed_workspace_stability.py).
+    # tests/test_unit_gguf_packed_workspace_stability.py).
 
     def _packed_workspace_state(self) -> _PackedWorkspaceState:
         state = self.__dict__.get("_packed_ws_state")
@@ -28807,7 +28807,7 @@ class Qwen35GGUFResidentSession:
         Reads the Q6_K t16 lm-head tiles ONCE across all block rows instead of
         re-reading the full head per row (the per-row decode kernel's small-B
         over-read). Bit-exact vs the per-row decode kernel
-        (tests/test_gguf_q6_k_t16_rowtile_gemv.py). Returns True if it handled the
+        (tests/test_live_gguf_q6_k_t16_rowtile_gemv.py). Returns True if it handled the
         GEMV; False means the caller should fall back to launch_gguf_linear.
         """
 

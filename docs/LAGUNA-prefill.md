@@ -7884,13 +7884,13 @@ Likely reused or extended files:
 
 Likely focused tests/harnesses:
 
-- `tests/test_gguf_q4_k_q8_1_selected_prefill.py`
-- `tests/test_laguna_q4_k_x8_exact_decode_bench.py`
-- `tests/test_gguf_q8_0_mmq_prefill.py`
-- `tests/test_laguna_moe_gpu.py`
-- `tests/test_laguna_f16_projection.py`
-- `tests/test_laguna_kv_attention.py`
-- `tests/test_laguna_gguf_runner.py`
+- `tests/test_gpu_gguf_q4_k_q8_1_selected_prefill.py`
+- `tests/test_unit_laguna_q4_k_x8_exact_decode_bench.py`
+- `tests/test_gpu_gguf_q8_0_mmq_prefill.py`
+- `tests/test_live_laguna_moe_gpu.py`
+- `tests/test_gpu_laguna_f16_projection.py`
+- `tests/test_gpu_laguna_kv_attention.py`
+- `tests/test_unit_laguna_gguf_runner.py`
 - `scripts/laguna_prefill_profile.py`
 - `scripts/laguna_routing_replay.py`
 - `scripts/laguna_q4_k_x8_exact_decode_bench.py`

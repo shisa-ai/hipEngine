@@ -173,7 +173,7 @@ per §1.4; commit each validated unit atomically with its worklog entry.
   registry key changed: enabling routes verify rows>1 through the already
   registered `t16_wmma_prefill_bf16_bf16_out` four-axis variants — the same
   retained exact band routers prefill uses. RED coverage:
-  `tests/test_mtp_serving_target_wmma_transfer.py` (12 tests: default-off
+  `tests/test_unit_mtp_serving_target_wmma_transfer.py` (12 tests: default-off
   fallback, env values, both serving modules consume the switch, prefill
   band variants registered for all four verifier quants on hip_gfx1151).
   Ledger entry RF-B1A in `docs/REFACTOR.md`.
@@ -270,7 +270,7 @@ per §1.4; commit each validated unit atomically with its worklog entry.
   owners (strict oracle `kernels/cpu_reference/` where applicable). Tests fail
   before implementation.
 
-  RED in place 2026-09-02: `tests/test_gguf_k_t16_dense_f16_activation_prefill.py`
+  RED in place 2026-09-02: `tests/test_gpu_gguf_k_t16_dense_f16_activation_prefill.py`
   fails at `test_f16_dense_siblings_exist` (three sibling wrappers missing:
   `gguf_q4_k_t16_wmma_prefill_fp16_in_bf16_out`,
   `gguf_q4_k_t16_wmma_prefill_shared_b_fp16_in_bf16_out`,
@@ -378,7 +378,7 @@ per §1.4; commit each validated unit atomically with its worklog entry.
   prompt/token/candidate branch is allowed.
 
   RED committed 2026-09-02:
-  `tests/test_qwen38_m1_shadow_lifecycle.py` (12 expected failures) requires
+  `tests/test_unit_qwen38_m1_shadow_lifecycle.py` (12 expected failures) requires
   distinct real/shadow target sessions, provider checkpoints, hidden rows,
   KV/recurrent owners, physical compute for both lanes, real-only publication
   and public commit, two-checkpoint cancellation restore, exact-once reclaim,
@@ -527,7 +527,7 @@ per §1.4; commit each validated unit atomically with its worklog entry.
   Evidence:
   [`...b5-integer-mmq-screen.json`](../benchmarks/results/2026-09-03-gfx1151-qwen38-b5-integer-mmq-screen.json).
 
-  RED/implementation retained: `tests/test_qwen38_b5_q6_integer_mmq.py`
+  RED/implementation retained: `tests/test_gpu_qwen38_b5_q6_integer_mmq.py`
   pins the gfx1151-only four-axis key, exact R17-48/two-shape dispatch bounds,
   profile/env semantics, bounded/restored session workspace, resident-owner
   reuse, packed-target context, and composite pack→MMQ launch. The dense

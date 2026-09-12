@@ -14,7 +14,7 @@ import numpy as np
 
 from hipengine.core.memory import copy_host_to_device, host_array_ptr
 from hipengine.kernels.hip_gfx1100.linear_attn import qwen4_exp_gdn as gdn
-from tests.test_qwen4exp_gdn_register import Fixture
+from tests.test_gpu_qwen4exp_gdn_register import Fixture
 
 
 def main():

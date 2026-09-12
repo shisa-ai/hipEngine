@@ -333,7 +333,7 @@ def _run_native_q3(
             ),
             "compaction_occurred": False,
             "continuous_prompt_list_gate": (
-                "tests/test_generation_qwen35_gguf_sampling.py::"
+                "tests/test_live_generation_qwen35_gguf_sampling.py::"
                 "test_gguf_native_scheduler_reclaims_compacts_and_readmits"
             ),
         },
@@ -379,7 +379,7 @@ def _run_native_q3(
         "correctness": {
             "generated_ids_equal": all(equality),
             "full_logits_gate": (
-                "tests/test_qwen35_gguf_target_rows.py C=2/4/8, C=2 split-attention, "
+                "tests/test_live_qwen35_gguf_target_rows.py C=2/4/8, C=2 split-attention, "
                 "and reclaim/compact/readmit"
             ),
             "kl_threshold": 0.05,

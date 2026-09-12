@@ -56,7 +56,7 @@ REQUIRE_CACHED_BUILD_ENV = _hipengine_build._ENV_REQUIRE_CACHED_BUILD
 COMPILER_VERSION_FILE_ENV = "HIPENGINE_COMPILER_VERSION_FILE"
 
 # Primitive-gate cases, mirroring the parametrization of
-# tests/test_qwen38_int8_batch_attention_gpu.py. A test asserts these stay in
+# tests/test_gpu_qwen38_int8_batch_attention_gpu.py. A test asserts these stay in
 # sync so the artifact's ``rows``/``live_counts`` cannot drift from the gate.
 GATE_CASES: Mapping[str, tuple[int, tuple[int, ...]]] = {
     "c1-8k-page-tail": (1, (8193,)),
@@ -65,7 +65,7 @@ GATE_CASES: Mapping[str, tuple[int, tuple[int, ...]]] = {
     "c8-sparse": (8, (1, 2, 255, 256, 257, 513, 1023, 0)),
 }
 GATE_TEST = (
-    "tests/test_qwen38_int8_batch_attention_gpu.py"
+    "tests/test_gpu_qwen38_int8_batch_attention_gpu.py"
     "::test_qwen38_int8_batch_attention_matches_cpu_and_independent_c1"
 )
 

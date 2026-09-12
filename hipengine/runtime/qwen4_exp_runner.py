@@ -4393,7 +4393,7 @@ def run_qwen4_exp_moe(
             # block per (expert, out_col) pair serving every lane of the pair so
             # the expert's weight row is read once. Per-output arithmetic is
             # identical to the strict per-expert selected gemv (bit-exact,
-            # RED-pinned in tests/test_qwen4exp_pf1_forkb_selected_down.py);
+            # RED-pinned in tests/test_gpu_qwen4exp_pf1_forkb_selected_down.py);
             # kernel-level paired A/B at the p4096 compact shape measured
             # 32.42 vs 47.42 ms median (-31.6%). The incumbent strict selected
             # gemv and the legacy P1 grouped/WMMA owners stay available below.

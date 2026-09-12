@@ -17,8 +17,8 @@ from hipengine.core.memory import free
 from hipengine.loading.gguf import GGUFReader, discover_gguf_files
 from hipengine.kernels.hip_gfx1100.quant import qwen4_exp_q5_1 as q5
 from scripts.qwen4exp_canonical_ar_bench import _git_metadata, _host_metadata
-from tests.test_qwen4exp_q51_pair import PARENT,CANDIDATE
-from tests.test_qwen4_exp_pf3_moe_schedules import _upload,_alloc,_download,_make_activation
+from tests.test_gpu_qwen4exp_q51_pair import PARENT,CANDIDATE
+from tests.test_gpu_qwen4_exp_pf3_moe_schedules import _upload,_alloc,_download,_make_activation
 
 
 def main():
@@ -39,17 +39,17 @@ def main():
     a=p.parse_args()
     parent_name, candidate_name = PARENT, CANDIDATE
     if a.fold128:
-        from tests.test_qwen4exp_q51_pair import FOLD
+        from tests.test_gpu_qwen4exp_q51_pair import FOLD
         parent_name, candidate_name = CANDIDATE, FOLD
     if a.fold_pair:
-        from tests.test_qwen4exp_q51_pair import FOLD, FOLD_PAIR
+        from tests.test_gpu_qwen4exp_q51_pair import FOLD, FOLD_PAIR
         parent_name, candidate_name = FOLD, FOLD_PAIR
     if a.register_cache:
-        from tests.test_qwen4exp_q51_pair import FOLD_PAIR, REGISTER_CACHE
+        from tests.test_gpu_qwen4exp_q51_pair import FOLD_PAIR, REGISTER_CACHE
         parent_name, candidate_name = FOLD_PAIR, REGISTER_CACHE
     if a.row_publish:
-        from tests.test_qwen4exp_q51_pair import REGISTER_CACHE
-        from tests.test_qwen4exp_q51_row_publish import CANDIDATE as ROW_PUBLISH
+        from tests.test_gpu_qwen4exp_q51_pair import REGISTER_CACHE
+        from tests.test_gpu_qwen4exp_q51_row_publish import CANDIDATE as ROW_PUBLISH
         parent_name, candidate_name = REGISTER_CACHE, ROW_PUBLISH
     capture = None
     if a.routing_capture:

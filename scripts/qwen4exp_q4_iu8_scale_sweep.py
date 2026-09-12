@@ -23,8 +23,8 @@ sys.path.insert(0, str(ROOT))
 from hipengine.core.hip import get_hip_runtime
 from hipengine.core.memory import free
 from hipengine.kernels.hip_gfx1100.quant import gguf_q4_k_selected_prefill as q4
-from tests.test_gguf_q4_k_selected_wmma_prefill import _build_compact_fixture
-from tests.test_qwen4exp_q4_iu8_exact import (
+from tests.test_gpu_gguf_q4_k_selected_wmma_prefill import _build_compact_fixture
+from tests.test_gpu_qwen4exp_q4_iu8_exact import (
     _run_chain,
     _run_parent,
 )

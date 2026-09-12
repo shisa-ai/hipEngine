@@ -9,6 +9,7 @@ import pytest
 _BASELINE_KERNELS: dict[Any, Any] | None = None
 _BASELINE_RUNTIME_PROFILE_PLANS: dict[Any, Any] | None = None
 
+
 def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption(
         "--suite",

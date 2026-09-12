@@ -607,7 +607,7 @@ This gate was met on 2026-09-11: `scripts/gguf_resumable_prefill_gpu_proof.py`
 compares per-layer direct INT8 K/V, its scales, and the linear state against the
 one-shot reference at a full and a ragged shape and under both hidden-plane
 alias configurations, and the shift/tail and cancellation-cleanup fixtures are
-in `tests/test_gguf_resumable_layer_outer_prefill.py`. The corrected chunk-outer
+in `tests/test_unit_gguf_resumable_layer_outer_prefill.py`. The corrected chunk-outer
 executor remains the registered rollback (`HIPENGINE_GGUF_PACKED_LAYER_OUTER=0`),
 but promotion was decided on 2026-09-11 and the layer-outer route is now the
 default.
@@ -787,11 +787,11 @@ every change.
 
 | Packet | Existing tests to extend or run |
 | --- | --- |
-| P0 accounting and comparison | `tests/test_gguf_packed_workspace_stability.py`, `tests/test_kvcache_global_device_pool.py`, `tests/test_kvcache_global_pool.py`, `tests/test_benchmark_matrix.py`, `tests/test_exact_token_benchmark.py` |
-| P1 attention admission | `tests/test_qwen35_gguf_slot_local_aotriton_admission.py`, `tests/test_gguf_int8_prefill_oracle_per_layer.py`, `tests/test_gguf_packed_kv_import_skip.py`, `tests/test_gguf_device_kv_binding.py` |
-| P2-P4 resource/lifetime changes | `tests/test_qwen35_gguf_int8_kv_policy.py`, `tests/test_gguf_int8_prefill_oracle_per_layer.py`, `tests/test_int8_layer_outer_hidden_alias.py`, `tests/test_gguf_packed_workspace_stability.py`, `tests/test_gguf_packed_verify_layout.py`, `tests/test_gguf_device_kv_binding.py` |
-| P5 decode and sampler | `tests/test_generation_qwen35_gguf_sampling.py`, `tests/test_gguf_packed_execution_manifest.py`, `tests/test_gguf_packed_decode_graph.py`, `tests/test_qwen38_int8_batch_decode_gate.py`, `tests/test_qwen38_int8_kv_capability.py` |
-| P6 service and lifecycle | `tests/test_generation_engine_service.py`, `tests/test_generation_engine_loop_burst.py`, `tests/test_qwen38_int8_server_context_soak.py`, plus the affected nodes in `tests/test_server_api.py` |
+| P0 accounting and comparison | `tests/test_unit_gguf_packed_workspace_stability.py`, `tests/test_unit_kvcache_global_device_pool.py`, `tests/test_unit_kvcache_global_pool.py`, `tests/test_unit_benchmark_matrix.py`, `tests/test_unit_exact_token_benchmark.py` |
+| P1 attention admission | `tests/test_unit_qwen35_gguf_slot_local_aotriton_admission.py`, `tests/test_unit_gguf_int8_prefill_oracle_per_layer.py`, `tests/test_unit_gguf_packed_kv_import_skip.py`, `tests/test_unit_gguf_device_kv_binding.py` |
+| P2-P4 resource/lifetime changes | `tests/test_unit_qwen35_gguf_int8_kv_policy.py`, `tests/test_unit_gguf_int8_prefill_oracle_per_layer.py`, `tests/test_unit_int8_layer_outer_hidden_alias.py`, `tests/test_unit_gguf_packed_workspace_stability.py`, `tests/test_unit_gguf_packed_verify_layout.py`, `tests/test_unit_gguf_device_kv_binding.py` |
+| P5 decode and sampler | `tests/test_live_generation_qwen35_gguf_sampling.py`, `tests/test_unit_gguf_packed_execution_manifest.py`, `tests/test_unit_gguf_packed_decode_graph.py`, `tests/test_unit_qwen38_int8_batch_decode_gate.py`, `tests/test_unit_qwen38_int8_kv_capability.py` |
+| P6 service and lifecycle | `tests/test_integration_generation_engine_service.py`, `tests/test_integration_generation_engine_loop_burst.py`, `tests/test_unit_qwen38_int8_server_context_soak.py`, plus the affected nodes in `tests/test_integration_server_api.py` |
 
 An existing test filename is not proof of coverage for a new route. Add RED
 fixtures for the actual gaps: shared-owner sums, omitted growth owners,
@@ -803,8 +803,8 @@ For the narrow oracle/import contract, the existing command is:
 
 ```bash
 python3 -m pytest -q \
-  tests/test_gguf_int8_prefill_oracle_per_layer.py \
-  tests/test_gguf_packed_kv_import_skip.py
+  tests/test_unit_gguf_int8_prefill_oracle_per_layer.py \
+  tests/test_unit_gguf_packed_kv_import_skip.py
 ```
 
 Service tests should be run with visible node progress and a bounded
@@ -812,7 +812,7 @@ diagnostic timeout, for example:
 
 ```bash
 timeout 180s python3 -m pytest -vv -o faulthandler_timeout=60 \
-  tests/test_generation_engine_service.py
+  tests/test_integration_generation_engine_service.py
 ```
 
 The timeout is a diagnostic bound, not a product SLO or a passing verdict.
@@ -858,8 +858,8 @@ Use the applicable profile evaluator and independent reference fixtures.
 
 For a new kernel, run its declared RED/GREEN and CPU-reference gate, then
 cache-only kernel-trace smoke with expected identity, plausible duration,
-and manifest provenance. Existing `tests/test_qwen38_int8_batch_attention_gpu.py`
-and `tests/test_qwen35_int8_prefill_attention_gpu.py` are relevant only if the
+and manifest provenance. Existing `tests/test_gpu_qwen38_int8_batch_attention_gpu.py`
+and `tests/test_gpu_qwen35_int8_prefill_attention_gpu.py` are relevant only if the
 changed consumer is actually exercised by them.
 
 R0-R4 timing needs a matched harness/manifest, not a ratio assembled from
@@ -884,7 +884,7 @@ survive line movement.
 
 CPU-only checks on the reviewed tree:
 
-- `python3 -m pytest -q tests/test_gguf_int8_prefill_oracle_per_layer.py tests/test_gguf_packed_kv_import_skip.py`
+- `python3 -m pytest -q tests/test_unit_gguf_int8_prefill_oracle_per_layer.py tests/test_unit_gguf_packed_kv_import_skip.py`
   passed all 19 tests.
 - Shared-holder reproduction using `object.__new__(Qwen35GGUFResidentSession)`,
   two sessions sharing `_packed_ws_state`, and one fake
@@ -894,7 +894,7 @@ CPU-only checks on the reviewed tree:
 - A fake 32,768-position session backed by 256 pages of 256 tokens returned
   65,536 oracle-capacity positions.
 - The separate command
-  `python3 -m pytest -q tests/test_gguf_packed_workspace_stability.py tests/test_generation_engine_service.py tests/test_generation_engine_loop_burst.py`
+  `python3 -m pytest -q tests/test_unit_gguf_packed_workspace_stability.py tests/test_integration_generation_engine_service.py tests/test_integration_generation_engine_loop_burst.py`
   stopped reporting progress after 32 passing-test markers. No completed
   verdict or failing-node attribution was obtained before the user requested
   read-only review. This is incomplete validation, not an all-green bundle

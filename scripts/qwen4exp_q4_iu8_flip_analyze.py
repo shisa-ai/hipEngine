@@ -18,7 +18,7 @@ import numpy as np
 from hipengine.loading.gguf import GGUFReader, discover_gguf_files
 from hipengine.loading.materialize import float_array_to_bf16_bits
 from hipengine.quant.gguf import bf16_to_float32
-from tests.test_qwen4_exp_pf3_moe_schedules import _make_activation
+from tests.test_gpu_qwen4_exp_pf3_moe_schedules import _make_activation
 
 ROWS = 512
 EXPERTS = 512

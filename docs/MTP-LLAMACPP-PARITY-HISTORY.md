@@ -4170,15 +4170,15 @@ Validation:
 python3 -m py_compile \
   hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_pack8_gemv.py \
   hipengine/speculative/mtp_resident_draft.py \
-  tests/test_gguf_q6_k_pack8_gemv_decode.py
+  tests/test_gpu_gguf_q6_k_pack8_gemv_decode.py
 
 PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 pytest -q \
-  tests/test_gguf_q6_k_pack8_gemv_decode.py
+  tests/test_gpu_gguf_q6_k_pack8_gemv_decode.py
 
 PYTHONPATH=. pytest -q \
-  tests/test_mtp_resident_draft_device_commit.py \
-  tests/test_gguf_mtp_bench_metrics.py \
-  tests/test_gguf_ar_mtp_suite.py
+  tests/test_unit_mtp_resident_draft_device_commit.py \
+  tests/test_unit_gguf_mtp_bench_metrics.py \
+  tests/test_unit_gguf_ar_mtp_suite.py
 ```
 
 The new unit gate compares the fused kernel against the old logits -> top-k ->
@@ -4267,13 +4267,13 @@ python3 -m py_compile \
   hipengine/runtime/qwen35_gguf_runner.py \
   scripts/gguf_mtp_bench.py \
   scripts/gguf_ar_mtp_suite.py \
-  tests/test_gguf_mtp_bench_metrics.py \
-  tests/test_gguf_ar_mtp_suite.py
+  tests/test_unit_gguf_mtp_bench_metrics.py \
+  tests/test_unit_gguf_ar_mtp_suite.py
 
 PYTHONPATH=. pytest -q \
-  tests/test_gguf_mtp_bench_metrics.py \
-  tests/test_gguf_ar_mtp_suite.py \
-  tests/test_mtp_resident_draft_device_commit.py
+  tests/test_unit_gguf_mtp_bench_metrics.py \
+  tests/test_unit_gguf_ar_mtp_suite.py \
+  tests/test_unit_mtp_resident_draft_device_commit.py
 ```
 
 Full-suite A/B against the prior Q6 top-1/gather row, same command family:
@@ -5909,7 +5909,7 @@ and the benchmark uses it in
 [`scripts/gguf_mtp_bench.py#L1126-L1155`](https://github.com/shisa-ai/hipEngine/blob/98df03ddd00ae682c07e302721343040373e1b55/scripts/gguf_mtp_bench.py#L1126-L1155).
 
 The fixture proving sequential cache writes match two-row dense attention is
-[`tests/test_mtp_dense_device_kv_cache.py#L1-L120`](https://github.com/shisa-ai/hipEngine/blob/98df03ddd00ae682c07e302721343040373e1b55/tests/test_mtp_dense_device_kv_cache.py#L1-L120).
+[`tests/test_gpu_mtp_dense_device_kv_cache.py#L1-L120`](https://github.com/shisa-ai/hipEngine/blob/98df03ddd00ae682c07e302721343040373e1b55/tests/test_gpu_mtp_dense_device_kv_cache.py#L1-L120).
 
 This is useful infrastructure, but it remains default-off because it has not yet
 improved same-suite speed/acceptance.

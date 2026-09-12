@@ -120,7 +120,7 @@ def _pack8_payload(out_features: int, in_features: int, seed: int) -> dict[str, 
     18 GB/s that way). Feeding every arm the output of
     ``repack_gguf_q4_k_pack8`` keeps the comparison honest and makes the
     bit-exactness check meaningful. Bit-exactness against the raw-Q4_K CPU
-    dequantization stays covered by ``tests/test_gguf_q4_k_wmma_prefill.py``.
+    dequantization stays covered by ``tests/test_gpu_gguf_q4_k_wmma_prefill.py``.
     """
 
     from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_pack8

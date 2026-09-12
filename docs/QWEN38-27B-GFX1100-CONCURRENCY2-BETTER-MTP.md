@@ -356,7 +356,7 @@ is not this deliverable.
   `Qwen35GGUFTransactionalVerifier`, or the legacy singleton execution route.
   Scope that assertion to this new path; do not break existing gfx1151 or
   Qwen3.6 uses of those helpers.
-  (2026-09-06: `tests/test_qwen35_gguf_mtp2_c1_physical.py` — flag, partition,
+  (2026-09-06: `tests/test_unit_qwen35_gguf_mtp2_c1_physical.py` — flag, partition,
   claims, capability, state-open, cancel-restore, refill/pair closure,
   survivor claims, pad/bucket audit; gfx1151 legacy behavior pinned.)
 - [x] Replace the blanket `bound > 1` exclusion in `partition_max_requests`
@@ -609,8 +609,8 @@ Read the relevant implementation before editing these shared files:
 
 | Surface | Expected work / existing test anchor |
 | --- | --- |
-| `hipengine/generation/qwen35_gguf_mtp2.py` | Partition/admission, physical C1, claims, provider/target transactions; `tests/test_qwen35_gguf_mtp2_seam.py`, `tests/test_qwen35_gguf_mtp2_accept_staging.py`. |
-| `hipengine/generation/qwen35_gguf.py`, `hipengine/speculative/serving.py`, `hipengine/models/qwen35.py` | Owner creation, safety versus performance policy, depth and evidence; `tests/test_speculative_mtp_serving_capability.py`, `tests/test_specdec2_engine_frontier.py`. |
+| `hipengine/generation/qwen35_gguf_mtp2.py` | Partition/admission, physical C1, claims, provider/target transactions; `tests/test_unit_qwen35_gguf_mtp2_seam.py`, `tests/test_unit_qwen35_gguf_mtp2_accept_staging.py`. |
+| `hipengine/generation/qwen35_gguf.py`, `hipengine/speculative/serving.py`, `hipengine/models/qwen35.py` | Owner creation, safety versus performance policy, depth and evidence; `tests/test_unit_speculative_mtp_serving_capability.py`, `tests/test_unit_specdec2_engine_frontier.py`. |
 | `hipengine/runtime/qwen35_gguf_runner.py`, `hipengine/runtime/qwen35_gguf_nextn.py`, `hipengine/runtime/gguf_linear.py` | Frontier row cost, hidden/state lifecycle, draft and target owners; existing packed-state/oracle tests plus new C1 boundary fixtures. |
 | `hipengine/kernels/hip_gfx1100/` | Four-axis registrations and device source in this checkout, with strict fallbacks and applicable CPU-reference/numerical/profiler gates. |
 | `scripts/gguf_mtp_c1c8_server_bench.py`, `scripts/gguf_mtp_verifier_rocprof.py`, `scripts/mtp_cycle_accounting.py` | Extend route/cycle evidence; verify the harness reaches the actual staged product route before relying on it. |

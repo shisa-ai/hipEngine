@@ -441,11 +441,11 @@ bundle is expected to include:
 
 ```bash
 python3 -m pytest -q \
-  tests/test_speculative_interfaces.py \
-  tests/test_speculative_cycle_simulator.py \
-  tests/test_speculative_provider_registry.py \
-  tests/test_speculative_generic_providers.py \
-  tests/test_kvcache_policy.py
+  tests/test_unit_speculative_interfaces.py \
+  tests/test_unit_speculative_cycle_simulator.py \
+  tests/test_unit_speculative_provider_registry.py \
+  tests/test_unit_speculative_generic_providers.py \
+  tests/test_unit_kvcache_policy.py
 ```
 
 Then run the applicable CPU deterministic bundle from `TESTING.md`. No GPU run
@@ -513,11 +513,11 @@ Expected focused tests include new SPECDEC2 scheduler/loop files plus:
 
 ```bash
 python3 -m pytest -q \
-  tests/test_generation_batch_scheduler.py \
+  tests/test_integration_generation_batch_scheduler.py \
   tests/test_generation_engine_loop.py \
-  tests/test_generation_engine_service.py \
-  tests/test_server_speculative_provider.py \
-  tests/test_speculative_streaming.py
+  tests/test_integration_generation_engine_service.py \
+  tests/test_integration_server_speculative_provider.py \
+  tests/test_unit_speculative_streaming.py
 ```
 
 Use narrow test nodes during RED/GREEN; do not repeatedly run the existing large

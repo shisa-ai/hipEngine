@@ -96,7 +96,7 @@ def _default_tiles(rows: int, in_features: int, out_features: int) -> tuple[int,
     * ``rows < 32``: drop ``tile_n`` to 16 (the kernel still launches but
       the bigger TN under-utilises the WMMA tile).
 
-    See ``tests/test_gguf_q8_0_wmma_prefill.py`` for dispatch pinning tests.
+    See ``tests/test_gpu_gguf_q8_0_wmma_prefill.py`` for dispatch pinning tests.
     """
 
     override_m = os.environ.get("HIPENGINE_GGUF_Q8_0_WMMA_TILE_M")

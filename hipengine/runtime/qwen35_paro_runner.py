@@ -7853,7 +7853,7 @@ class Qwen35ParoResidentSession:
         single, growable, self-aliased buffer sized to the last decode step's
         row count): reusing ``prefill_hidden`` for the verifier forward writes
         out of bounds and faults/hangs the GPU.  Regression covered by
-        ``tests/test_qwen35_resident_batch_layout.py``.
+        ``tests/test_unit_qwen35_resident_batch_layout.py``.
         """
         verify_rows = int(self.max_batch_size)
         if verify_rows <= 0:

@@ -1601,7 +1601,7 @@ hipengine/
 │   ├── test_moe_correctness.py
 │   ├── test_quantization.py
 │   ├── test_prefix_cache.py
-│   └── test_kernel_registry.py  # All (backend, layer, quant) keys resolve
+│   └── test_unit_kernel_registry.py  # All (backend, layer, quant) keys resolve
 ├── scripts/
 │   ├── install_rocm.sh
 │   ├── audit_kernels.sh         # rocprofv3 wrapper

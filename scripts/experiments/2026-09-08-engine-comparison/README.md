@@ -112,7 +112,7 @@ python3 scripts/experiments/2026-09-08-engine-comparison/validate_engine_compari
 The archive integrity test also checks syntax without executing any script:
 
 ```bash
-python3 -m pytest tests/test_engine_comparison_script_archive.py -q
+python3 -m pytest tests/test_unit_engine_comparison_script_archive.py -q
 ```
 
 Model weights, external source clones, compiled libraries, JIT caches, profiler

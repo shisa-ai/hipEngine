@@ -18,7 +18,7 @@ Q4_K_M weights:
     32-element subblock, activation packs reused across 8 columns).
 
 ctl and vdr are bit-identical by construction (tests/
-test_gguf_q4_k_q8_1_dp4a_vdr_gemv.py); production is a different
+test_gpu_gguf_q4_k_q8_1_dp4a_vdr_gemv.py); production is a different
 arithmetic class (float activations) and is compared informationally
 (mismatch/KL), not gated on exactness.
 """

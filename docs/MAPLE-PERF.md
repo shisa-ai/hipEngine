@@ -257,7 +257,7 @@ decode step (24-layer loop + final norm + affine4 lm_head + argmax) as one graph
 and self-validates bit-exact on first capture (argmax parity vs a fresh eager
 reference, with the output cleared so a no-op graph is rejected). The capture is
 bit-exact across 120 tokens over a growing KVLiveSpans cache
-(`tests/test_maple_graph_capture.py`). A post-correction counterbalanced review
+(`tests/test_live_maple_graph_capture.py`). A post-correction counterbalanced review
 (three independent eager and three graph processes, 4 warmup + 128 measured)
 measures eager **7.0661 ms** versus graph **7.0329 ms** median-of-medians:
 **1.0047x**, only 0.033 ms. IDs and top-logit hashes match, every graph reports
