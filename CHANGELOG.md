@@ -8,14 +8,15 @@ evidence under [`benchmarks/results/`](benchmarks/results/).
 
 ## Unreleased
 
-## v0.5.0 - 2026-09-06
+## v0.5.0 - 2026-09-12
 
-hipEngine now runs dense Qwen models, not only the Qwen 3.6 35B
-mixture-of-experts models. Several performance choices that used to need manual
-settings now happen on their own, but only where they have been measured as safe
-for the model and shape in use. Everything below was tested on Radeon RDNA 3
-(`gfx1100`: RX 7900 XTX, Pro W7900) and on Strix Halo (`gfx1151`: Ryzen AI MAX+
-395 with Radeon 8060S). Numbers live in
+hipEngine now runs more than the Qwen 3.6 35B mixture-of-experts models: dense
+Qwen models, a multimodal retrieval encoder, a time-series forecaster, and
+Qwen3.8 Flash-Next on Strix Halo. Several performance choices that used to need
+manual settings now happen on their own, but only where they have been measured
+as safe for the model and shape in use. Everything below was tested on Radeon
+RDNA 3 (`gfx1100`: RX 7900 XTX, Pro W7900) and on Strix Halo (`gfx1151`: Ryzen
+AI MAX+ 395 with Radeon 8060S). Numbers live in
 [`benchmarks/README.md`](benchmarks/README.md) and the dated performance history
 in [`benchmarks/CHANGELOG.md`](benchmarks/CHANGELOG.md).
 
@@ -27,6 +28,13 @@ in [`benchmarks/CHANGELOG.md`](benchmarks/CHANGELOG.md).
   model's own multi-token prediction (MTP) head. Qwen3.8-27B is measured from one
   request up to eight running at once, alongside two llama.cpp HIP builds
   measured the same way.
+- **Initial support for more model families.** EVIE-4.5B and EVIE-8B run
+  multimodal retrieval encoding ([model record](docs/MODEL-EVIE.md)), TimesFM
+  2.5 200M and TimesFM 3.0 500M run time-series forecasting
+  ([2.5](docs/MODEL-TIMESFM.md), [3.0](docs/MODEL-TIMESFM3.md)), and Qwen3.8
+  Flash-Next 125B-A6B runs on Strix Halo
+  ([survey](docs/QWEN3.8-FLASH-NEXT-STRIX-HALO-SURVEY.md)). These are early
+  ports: each record names the measured performance and the current limits.
 - **The server decides when to speculate.** The default for
   `--speculative-mtp-serving` (env `HIPENGINE_SPECULATIVE_MTP_SERVING`) moved
   from `off` to `auto`. In `auto`, a request uses speculative decoding only when
@@ -107,15 +115,33 @@ in [`benchmarks/CHANGELOG.md`](benchmarks/CHANGELOG.md).
   removed.
 - **Python 3.11 is the minimum supported version.** Python 3.10 is no longer
   packaged or tested, and the install requirements say so.
+- **The INT8 KV route serves concurrent requests faster.** Row-batched direct
+  INT8 decode now handles up to four requests in one pass. Against the same
+  server serving the same requests one at a time, aggregate complete-request
+  throughput rose to **1.25x at two requests** and **1.42x at four**; one
+  request is unchanged (0.99x). This applies to the explicit
+  `--kv-storage int8_per_token_head` route. Per-request latency still grows with
+  the number of concurrent requests.
+- **Long prompts on the INT8 KV route use less memory and no longer block other
+  requests.** The packed prefill now runs layer-outer by default, sharing one
+  BF16 oracle pair per request instead of one per retained layer: tracked peak
+  memory fell by **0.438 GiB** at every multi-chunk prompt length, with identical
+  generated tokens and no measured throughput regression. The same change makes
+  the resumable, bounded-yield prefill the default for leased requests, so
+  prefill work yields to in-flight decoding instead of running to completion
+  first. Set `HIPENGINE_GGUF_PACKED_LAYER_OUTER=0` to restore the previous
+  executor.
 - **Published numbers were re-measured for this release,** not copied forward:
-  the current rows come from runs dated 2026-08-03 through 2026-09-06, and each
+  the current rows come from runs dated 2026-08-03 through 2026-09-11, and each
   table names its model, protocol, and hardware. Rows from v0.4.0 and v0.5.0 use
   different models and protocols, so they are not an old-to-new speed comparison.
-- **INT8 cache still saves no memory on dense 27B.** The attention code INT8
-  cache needs is now written and checked against the CPU reference, but INT8 with
-  FP32 scales fails the short-prompt quality suite, and a mixed BF16/INT8 layer
-  map that passes quality costs more memory, cannot use graph capture safely, and
-  decodes about 10% slower than the BF16 path. Dense 27B cache stays BF16.
+- **INT8 cache still saves no memory on dense 27B on Strix Halo.** The
+  attention code INT8 cache needs is now written and checked against the CPU
+  reference, but there INT8 with FP32 scales fails the short-prompt quality
+  suite, and a mixed BF16/INT8 layer map that passes quality costs more memory,
+  cannot use graph capture safely, and decodes about 10% slower than the BF16
+  path. The default dense 27B cache stays BF16; the explicit W7900
+  `int8_per_token_head` route is separately qualified.
 
 ### Fixed
 
