@@ -27,6 +27,23 @@ _HANDLES = {}
 _LIBRARY = None
 _LOCAL32_HANDLES = {}
 _LOCAL32_DUAL_HANDLES = {}
+_LOCAL32_ROWS_HANDLES = {}
+
+
+def _local32_waves(in_features, out_features):
+    """Split-K wave count shared by the rows==1 owner and its rows 2-4 sibling.
+
+    Narrow-N shapes leave too few single-wave blocks on a 96-CU part
+    (ffn_down at N=5120 -> 640), so they take 4 waves; wide-N takes 2
+    (measured best-or-tied on every real shape, 2026-09-09, W7900). Each wave
+    needs at least a few 256-element blocks to stay efficient. Both owners
+    call this, so the cross-wave reduction order - and with it the sibling's
+    bit-exactness claim - is shared code rather than a copied constant.
+    """
+    waves = 4 if out_features < 8192 else 2
+    while waves > 1 and in_features // 256 < 4 * waves:
+        waves //= 2
+    return waves
 
 
 def launch_local32(x_ptr, qweight_ptr, out_ptr, rows, in_features, out_features, *,
@@ -70,13 +87,9 @@ def launch_local32(x_ptr, qweight_ptr, out_ptr, rows, in_features, out_features,
                            + [ctypes.c_void_p])
         fn.restype = ctypes.c_int
         _LOCAL32_HANDLES[(key, quant)] = fn
-    # Split-K wave count: narrow-N shapes leave too few single-wave blocks on
-    # a 96-CU part (ffn_down at N=5120 -> 640), so they take 4 waves; wide-N
-    # takes 2 (measured best-or-tied on every real shape, 2026-09-09, W7900).
-    # Each wave needs at least a few 256-element blocks to stay efficient.
-    waves = 4 if out_features < 8192 else 2
-    while waves > 1 and in_features // 256 < 4 * waves:
-        waves //= 2
+    # Split-K wave count: see _local32_waves. Shared with the rows 2-4
+    # sibling so the two owners' cross-wave reduction order cannot drift.
+    waves = _local32_waves(in_features, out_features)
     if quant in _LOCAL32_SPLIT_QUANTS:
         err = fn(ctypes.c_void_p(x_ptr), ctypes.c_void_p(qweight_ptr),
                  ctypes.c_void_p(out_ptr), rows, in_features, out_features,
@@ -88,6 +101,66 @@ def launch_local32(x_ptr, qweight_ptr, out_ptr, rows, in_features, out_features,
     if err:
         rt = runtime or get_hip_runtime()
         raise RuntimeError(f'local32 dense IQ decode failed: {rt.error_string(err)}')
+
+
+def launch_local32_rows(x_ptr, qweight_ptr, out_ptr, rows, in_features,
+                        out_features, *, quant='gguf_iq4_xs', output='bf16',
+                        stream=0, library=None, runtime=None):
+    """Launch the rows 2-4 verifier sibling of the local32 IQ decode owner.
+
+    One block owns ``rows`` prompt rows and shares the weight decode across
+    them. Every row keeps the rows == 1 owner's per-(row, column) k ownership,
+    FMA order, shuffle tree and cross-wave sum, so each row's output is
+    bit-identical to that owner's output for the same row - the sibling adds
+    no arithmetic of its own.
+
+    The owner is still approximate relative to the strict per-row GEMV (the
+    local32 accumulation order), so routes admitting it owe the
+    production-referenced accuracy gate exactly as the rows == 1 owner does.
+    """
+    if quant not in ('gguf_iq4_xs', 'gguf_iq4_nl') + _LOCAL32_SPLIT_QUANTS:
+        raise ValueError('local32 dense IQ rows decode supports the IQ4/IQ3/'
+                         'IQ2 family only')
+    if output != 'bf16':
+        raise ValueError('local32 dense IQ rows decode writes bf16 only')
+    if (rows not in (2, 3, 4) or in_features <= 0 or in_features % 256
+            or out_features <= 0 or out_features % 8):
+        raise ValueError('local32 dense IQ rows decode requires rows in 2..4, '
+                         'K divisible by 256 and N divisible by 8')
+    if not all((x_ptr, qweight_ptr, out_ptr)):
+        raise ValueError('local32 dense IQ rows decode pointers must be nonzero')
+    library = library or _default_library()
+    key = (id(library), quant)
+    fn = _LOCAL32_ROWS_HANDLES.get(key)
+    if fn is None:
+        if quant in _LOCAL32_SPLIT_QUANTS:
+            fn = library.hipengine_gguf_iq_split_local32_rows_gemv
+            fn.argtypes = ([ctypes.c_void_p] * 3 + [ctypes.c_int64] * 3
+                           + [ctypes.c_int32] * 2 + [ctypes.c_void_p])
+        else:
+            symbol = ('hipengine_gguf_iq4_xs_local32_rows_gemv'
+                      if quant == 'gguf_iq4_xs'
+                      else 'hipengine_gguf_iq4_nl_local32_rows_gemv')
+            fn = getattr(library, symbol)
+            fn.argtypes = ([ctypes.c_void_p] * 3 + [ctypes.c_int64] * 4
+                           + [ctypes.c_void_p])
+        fn.restype = ctypes.c_int
+        _LOCAL32_ROWS_HANDLES[key] = fn
+    # Same split-K rule as the rows == 1 owner so the per-row arithmetic is
+    # identical, not merely equivalent.
+    waves = _local32_waves(in_features, out_features)
+    if quant in _LOCAL32_SPLIT_QUANTS:
+        err = fn(ctypes.c_void_p(x_ptr), ctypes.c_void_p(qweight_ptr),
+                 ctypes.c_void_p(out_ptr), rows, in_features, out_features,
+                 QUANTS[quant], waves, ctypes.c_void_p(stream))
+    else:
+        err = fn(ctypes.c_void_p(x_ptr), ctypes.c_void_p(qweight_ptr),
+                 ctypes.c_void_p(out_ptr), rows, in_features, out_features,
+                 waves, ctypes.c_void_p(stream))
+    if err:
+        rt = runtime or get_hip_runtime()
+        raise RuntimeError(
+            f'local32 dense IQ rows decode failed: {rt.error_string(err)}')
 
 
 def launch_local32_dual_silu(x_ptr, qweight_a_ptr, qweight_b_ptr, out_ptr,
@@ -222,6 +295,19 @@ def register_gguf_iq_dense_kernels(*, backend='hip_gfx1100', replace=True):
         register(KernelKey(backend, 'linear', quant,
                            'local32_gemv_bf16_bf16_out'),
                  partial(launch_local32, quant=quant), replace=replace)
+    # Verifier sibling (2026-09-12): the same local32 owner geometry at rows
+    # 2-4. Registered under its own variant so the strict per-row GEMV stays
+    # the default owner everywhere the backend policy does not admit it.
+    register(KernelKey(backend, 'linear', 'gguf_iq4_xs',
+                       'local32_rows_gemv_bf16_bf16_out'),
+             partial(launch_local32_rows, quant='gguf_iq4_xs'), replace=replace)
+    register(KernelKey(backend, 'linear', 'gguf_iq4_nl',
+                       'local32_rows_gemv_bf16_bf16_out'),
+             partial(launch_local32_rows, quant='gguf_iq4_nl'), replace=replace)
+    for quant in _LOCAL32_SPLIT_QUANTS:
+        register(KernelKey(backend, 'linear', quant,
+                           'local32_rows_gemv_bf16_bf16_out'),
+                 partial(launch_local32_rows, quant=quant), replace=replace)
     register(KernelKey(backend, 'linear_pair_silu', 'gguf_iq4_xs',
                        'local32_pair_silu_bf16_bf16_out'),
              launch_local32_dual_silu, replace=replace)

@@ -8026,20 +8026,34 @@ def _iq_dense_decode_dispatch(
     out_features: int,
     slot_path: str | None = None,
 ) -> GGUFLinearDispatch:
-    """Select the backend-declared dense raw-IQ decode owner (rows=1).
+    """Select the backend-declared dense raw-IQ owner for the caller's rows.
 
-    The local32 owner trades the strict per-row GEMV's pinned accumulation
-    contract for lane-grouped contiguous k, a wave32 shuffle tree and a
-    fixed-order cross-wave sum, so it is approximate: like the prefill routes
-    it requires an opened dense-IQ session (the execution-owner gate) and a
-    backend ``GGUF_IQ_DENSE_DECODE_POLICY`` entry, and any route admitting it
-    owes the production-referenced accuracy gate. Without either, or for an
+    ``rows == 1`` is the decode owner (``GGUF_IQ_DENSE_DECODE_POLICY``) and
+    arrives under the ``gemv_bf16_bf16_out`` parent; ``rows`` 2-4 is its
+    verifier sibling (``GGUF_IQ_DENSE_VERIFY_POLICY``) and arrives under the
+    ``prefill_bf16_bf16_out`` alias, because above one row the strict per-row
+    GEMV is reached through the prefill name until a prefill policy claims it
+    (that policy starts at 8 rows, so at verifier row counts the alias still
+    means the strict GEMV). Both owners trade the strict GEMV's pinned
+    accumulation contract for lane-grouped contiguous k, a wave32 shuffle
+    tree and a fixed-order cross-wave sum, so both are approximate: both
+    require an opened dense-IQ session (the execution-owner gate) and a
+    backend policy entry, and any route admitting either owes the
+    production-referenced accuracy gate. Without a policy entry, or for an
     unregistered variant, the strict GEMV keeps the call.
     """
 
-    if rows != 1 or dispatch.abi != "raw":
+    if dispatch.abi != "raw":
         return dispatch
-    if dispatch.key.variant != "gemv_bf16_bf16_out":
+    if rows == 1:
+        if dispatch.key.variant != "gemv_bf16_bf16_out":
+            return dispatch
+        policy_name = "GGUF_IQ_DENSE_DECODE_POLICY"
+    elif 2 <= rows <= 4:
+        if dispatch.key.variant != "prefill_bf16_bf16_out":
+            return dispatch
+        policy_name = "GGUF_IQ_DENSE_VERIFY_POLICY"
+    else:
         return dispatch
     if iq_dense_mmq_workspace() is None:
         return dispatch
@@ -8047,20 +8061,21 @@ def _iq_dense_decode_dispatch(
     # an owning session may pin specific slots to the strict per-row GEMV
     # for its artifact when the local32 family's accumulation-order tail
     # compounds past the gate ceiling (UD-Q4_K_M's IQ3_S ffn_down slots,
-    # 2026-09-11).
+    # 2026-09-11). The pin covers the verifier rows too, so a slot that keeps
+    # the strict decode owner keeps the strict verify owner.
     if slot_path is not None and slot_path in iq_dense_decode_strict_slots():
+        return dispatch
+    if out_features % 8:  # the local32 grid is N/8 blocks
         return dispatch
     policy = backend_package_capability(
         dispatch.key.backend,
-        "GGUF_IQ_DENSE_DECODE_POLICY",
+        policy_name,
         {},
     )
     if not isinstance(policy, Mapping):
         return dispatch
     entry = policy.get(dispatch.key.quant)
     if not isinstance(entry, Mapping):
-        return dispatch
-    if out_features % 8:  # the local32 grid is N/8 blocks
         return dispatch
     key = KernelKey(
         dispatch.key.backend,

@@ -19487,6 +19487,78 @@ class Qwen35GGUFResidentSession:
             return ()
         return tuple(str(s) for s in slots)
 
+    def _iq_dense_policy_present(self) -> bool:
+        """True when this backend declares any dense raw-IQ owner policy.
+
+        Any one of the three row regimes is reason enough to bind the
+        execution-owner session: a backend that routes only decode, only
+        prefill, or only verifier rows must not be silently left unrouted.
+        """
+
+        return any(
+            bool(backend_package_capability(self.backend, name, {}))
+            for name in (
+                "GGUF_IQ_DENSE_PREFILL_POLICY",
+                "GGUF_IQ_DENSE_DECODE_POLICY",
+                "GGUF_IQ_DENSE_VERIFY_POLICY",
+            )
+        )
+
+    def _iq_dense_verify_binding_needed(self, rows: int) -> bool:
+        """True when a dense-IQ verifier policy declares this row count.
+
+        The binding is deliberately scoped to the row window the verifier
+        policies actually declare. Binding it unconditionally would also open
+        the dense-IQ *prefill* policy (min_rows 8) inside the verifier, which
+        is a different owner with a different arithmetic and was measured
+        slower than the strict GEMV at exactly 8 rows - a change outside this
+        unit. Rows outside every verifier window keep their previous owner.
+        """
+
+        policy = backend_package_capability(
+            self.backend, "GGUF_IQ_DENSE_VERIFY_POLICY", {}
+        )
+        if not isinstance(policy, Mapping):
+            return False
+        for entry in policy.values():
+            if not isinstance(entry, Mapping):
+                continue
+            try:
+                if int(entry["min_rows"]) <= int(rows) <= int(entry["max_rows"]):
+                    return True
+            except (KeyError, TypeError, ValueError):
+                continue
+        return False
+
+    def _iq_dense_mmq_verify_context(self, *, rows: int):
+        """Bind the dense raw-IQ execution-owner session around the verifier.
+
+        The block verifier runs the same raw-IQ projections the single-row AR
+        route runs, at rows 2-4 instead of row 1, so it needs the same
+        execution-owner binding for the backend's verifier-row policy to
+        admit a multi-row sibling. Without the binding every raw-IQ
+        projection in the verifier keeps the strict per-row GEMV owner even
+        when the AR route alongside it uses the local32 owner, which is what
+        leaves a verification-specific residual in the section-6.1 screen.
+
+        The session is deliberately workspace-less: the dense-IQ prefill
+        policy starts at 8 rows and cannot engage at verifier row counts, and
+        this path runs inside stream capture for the native target graph,
+        where allocating a workspace is not an option. Only the strict-slot
+        pins and the row-regime policies matter here, and the binding is
+        entered only for row counts a verifier policy actually declares.
+        """
+
+        if not bool(getattr(self, "use_iq_dense_mmq", True)):
+            return iq_dense_mmq_session(False)
+        if not self._iq_dense_verify_binding_needed(rows):
+            return iq_dense_mmq_session(False)
+        return iq_dense_mmq_session(
+            True,
+            strict_slots=self._iq_dense_mmq_strict_slots(),
+            decode_strict_slots=self._iq_dense_decode_strict_slots(),
+        )
+
     def _iq_dense_mmq_context(self):
         """Bind the dense raw-IQ execution-owner session (UD items 3 and C).
 
@@ -19506,10 +19578,7 @@ class Qwen35GGUFResidentSession:
             self.backend, "GGUF_IQ_DENSE_PREFILL_POLICY", {}
         )
         if not policy:
-            decode_policy = backend_package_capability(
-                self.backend, "GGUF_IQ_DENSE_DECODE_POLICY", {}
-            )
-            if not decode_policy:
+            if not self._iq_dense_policy_present():
                 return iq_dense_mmq_session(False)
             # Decode-only owners read the caller's buffer like W4A16; a
             # workspace-less session is enough and allocates nothing.
@@ -21300,6 +21369,7 @@ class Qwen35GGUFResidentSession:
                 wmma_prefill_session(block_wmma_prefill),
                 gemv_decode_session(self.use_gemv_decode),
                 native_batch_decode_session(bulk_attention_mode == "native"),
+                self._iq_dense_mmq_verify_context(rows=rows),
             ):
                 for layer_id, layer_type in enumerate(layer_types):
                     if use_f32_residual and layer_id >= f32_residual_layer_limit:

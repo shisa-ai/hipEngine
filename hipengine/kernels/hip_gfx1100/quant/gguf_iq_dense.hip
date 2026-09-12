@@ -392,8 +392,17 @@ template<int Q> void run(const void* x, const void* w, void* out,
 // per-column partials cross-wave reduce through LDS in a fixed wave order,
 // so the owner stays deterministic. The K-range partition changes the sum
 // order again, which the gate already covers.
-template<int WAVES>
-__global__ __launch_bounds__(32 * WAVES, 16 / WAVES > 0 ? 16 / WAVES : 1)
+// ROWS > 1 is the verifier sibling (2026-09-12): the same owner geometry with
+// one block owning ROWS prompt rows. The weight decode is shared across the
+// rows and every per-(row, column) k ownership, FMA order, shuffle tree and
+// serial wave-0..WAVES-1 sum is unchanged, so each row's output is
+// bit-identical to the ROWS == 1 owner's output for that row. The launch
+// bounds relax to one resident block for ROWS > 1 because the row accumulators
+// and activations need the registers that the rows == 1 variant spends on
+// occupancy.
+template<int WAVES, int ROWS = 1>
+__global__ __launch_bounds__(32 * WAVES,
+    ROWS > 1 ? 1 : (16 / WAVES > 0 ? 16 / WAVES : 1))
 void gguf_iq4_xs_local32_gemv_kernel(
     const uint16_t* __restrict__ x, const uint8_t* __restrict__ w,
     uint16_t* __restrict__ out, int64_t K, int64_t N) {
@@ -418,16 +427,21 @@ void gguf_iq4_xs_local32_gemv_kernel(
         s_cb[i] = float(iq4_values[i >= 256 ? ((i & 255) >> 4) : (i & 15)]);
     __syncthreads();
 
-    float acc[COLS];
+    float acc[ROWS][COLS];
 #pragma unroll
-    for (int t = 0; t < COLS; ++t) acc[t] = 0.0f;
+    for (int r = 0; r < ROWS; ++r)
+#pragma unroll
+        for (int t = 0; t < COLS; ++t) acc[r][t] = 0.0f;
 
     for (int64_t blk = wave; blk < blocks_per_row; blk += WAVES) {
-        // This lane's 8 activation values (contiguous k window).
-        const uint16_t* xp = x + blk * 256 + lane * 8;
-        float xv[8];
+        // This lane's 8 activation values (contiguous k window) for every row.
+        float xv[ROWS][8];
 #pragma unroll
-        for (int j = 0; j < 8; ++j) xv[j] = bf16_load(xp[j]);
+        for (int r = 0; r < ROWS; ++r) {
+            const uint16_t* xp = x + r * K + blk * 256 + lane * 8;
+#pragma unroll
+            for (int j = 0; j < 8; ++j) xv[r][j] = bf16_load(xp[j]);
+        }
 #pragma unroll
         for (int t = 0; t < COLS; ++t) {
             if (n0 + t >= N) break;
@@ -446,27 +460,34 @@ void gguf_iq4_xs_local32_gemv_kernel(
             for (int j = 0; j < 8; ++j) {
                 const int code_byte = int((p[j >> 2] >> (8 * (j & 3))) & 0xffu);
                 const float wv = s_d * s_cb[code_byte + (nib << 8)];
-                acc[t] += xv[j] * wv;
+#pragma unroll
+                for (int r = 0; r < ROWS; ++r)
+                    acc[r][t] += xv[r][j] * wv;
             }
         }
     }
 #pragma unroll
-    for (int t = 0; t < COLS; ++t)
-        for (int delta = 16; delta; delta >>= 1)
-            acc[t] += __shfl_down(acc[t], delta);
-    __shared__ float xwave[WAVES > 1 ? WAVES : 1][COLS];
+    for (int r = 0; r < ROWS; ++r)
+#pragma unroll
+        for (int t = 0; t < COLS; ++t)
+            for (int delta = 16; delta; delta >>= 1)
+                acc[r][t] += __shfl_down(acc[r][t], delta);
+    __shared__ float xwave[WAVES > 1 ? WAVES : 1][ROWS][COLS];
     if (lane == 0) {
 #pragma unroll
-        for (int t = 0; t < COLS; ++t) xwave[wave][t] = acc[t];
+        for (int r = 0; r < ROWS; ++r)
+#pragma unroll
+            for (int t = 0; t < COLS; ++t) xwave[wave][r][t] = acc[r][t];
     }
     __syncthreads();
-    if (tid < COLS) {
-        const int t = tid;
+    if (tid < ROWS * COLS) {
+        const int r = tid / COLS;
+        const int t = tid % COLS;
         if (n0 + t < N) {
             float total = 0.0f;
 #pragma unroll
-            for (int wv2 = 0; wv2 < WAVES; ++wv2) total += xwave[wv2][t];
-            out[n0 + t] = bf16_store(total);
+            for (int wv2 = 0; wv2 < WAVES; ++wv2) total += xwave[wv2][r][t];
+            out[int64_t(r) * N + n0 + t] = bf16_store(total);
         }
     }
 }
@@ -590,8 +611,14 @@ void gguf_iq4_xs_local32_dual_silu_kernel(
 // as the IQ4_XS owner: lane-grouped contiguous k, wave32 shuffle tree,
 // fixed-order cross-wave sum - a gated approximate owner, not a strict
 // replacement.
-template<int WAVES>
-__global__ __launch_bounds__(32 * WAVES, 16 / WAVES > 0 ? 16 / WAVES : 1)
+// ROWS > 1 is the verifier sibling (2026-09-12), exactly as on the IQ4_XS
+// owner: one block owns ROWS prompt rows, the weight decode is shared across
+// them, and each row's per-(row, column) k ownership, FMA order, shuffle tree
+// and cross-wave sum are unchanged, so every row is bit-identical to the
+// ROWS == 1 owner's output for that row.
+template<int WAVES, int ROWS = 1>
+__global__ __launch_bounds__(32 * WAVES,
+    ROWS > 1 ? 1 : (16 / WAVES > 0 ? 16 / WAVES : 1))
 void gguf_iq4_nl_local32_gemv_kernel(
     const uint16_t* __restrict__ x, const uint8_t* __restrict__ w,
     uint16_t* __restrict__ out, int64_t K, int64_t N) {
@@ -612,15 +639,20 @@ void gguf_iq4_nl_local32_gemv_kernel(
         s_cb[i] = float(iq4_values[i >= 256 ? ((i & 255) >> 4) : (i & 15)]);
     __syncthreads();
 
-    float acc[COLS];
+    float acc[ROWS][COLS];
 #pragma unroll
-    for (int t = 0; t < COLS; ++t) acc[t] = 0.0f;
+    for (int r = 0; r < ROWS; ++r)
+#pragma unroll
+        for (int t = 0; t < COLS; ++t) acc[r][t] = 0.0f;
 
     for (int64_t blk = wave; blk < blocks_per_row; blk += WAVES) {
-        const uint16_t* xp = x + blk * 256 + lane * 8;
-        float xv[8];
+        float xv[ROWS][8];
 #pragma unroll
-        for (int j = 0; j < 8; ++j) xv[j] = bf16_load(xp[j]);
+        for (int r = 0; r < ROWS; ++r) {
+            const uint16_t* xp = x + r * K + blk * 256 + lane * 8;
+#pragma unroll
+            for (int j = 0; j < 8; ++j) xv[r][j] = bf16_load(xp[j]);
+        }
 #pragma unroll
         for (int t = 0; t < COLS; ++t) {
             if (n0 + t >= N) break;
@@ -639,27 +671,35 @@ void gguf_iq4_nl_local32_gemv_kernel(
 #pragma unroll
             for (int j = 0; j < 8; ++j) {
                 const int code_byte = int((q[j >> 1] >> (8 * (j & 1))) & 0xffu);
-                acc[t] += xv[j] * (s_d * s_cb[code_byte + (nib << 8)]);
+                const float wv = s_d * s_cb[code_byte + (nib << 8)];
+#pragma unroll
+                for (int r = 0; r < ROWS; ++r)
+                    acc[r][t] += xv[r][j] * wv;
             }
         }
     }
 #pragma unroll
-    for (int t = 0; t < COLS; ++t)
-        for (int delta = 16; delta; delta >>= 1)
-            acc[t] += __shfl_down(acc[t], delta);
-    __shared__ float xwave[WAVES > 1 ? WAVES : 1][COLS];
+    for (int r = 0; r < ROWS; ++r)
+#pragma unroll
+        for (int t = 0; t < COLS; ++t)
+            for (int delta = 16; delta; delta >>= 1)
+                acc[r][t] += __shfl_down(acc[r][t], delta);
+    __shared__ float xwave[WAVES > 1 ? WAVES : 1][ROWS][COLS];
     if (lane == 0) {
 #pragma unroll
-        for (int t = 0; t < COLS; ++t) xwave[wave][t] = acc[t];
+        for (int r = 0; r < ROWS; ++r)
+#pragma unroll
+            for (int t = 0; t < COLS; ++t) xwave[wave][r][t] = acc[r][t];
     }
     __syncthreads();
-    if (tid < COLS) {
-        const int t = tid;
+    if (tid < ROWS * COLS) {
+        const int r = tid / COLS;
+        const int t = tid % COLS;
         if (n0 + t < N) {
             float total = 0.0f;
 #pragma unroll
-            for (int wv2 = 0; wv2 < WAVES; ++wv2) total += xwave[wv2][t];
-            out[n0 + t] = bf16_store(total);
+            for (int wv2 = 0; wv2 < WAVES; ++wv2) total += xwave[wv2][r][t];
+            out[int64_t(r) * N + n0 + t] = bf16_store(total);
         }
     }
 }
@@ -738,8 +778,14 @@ extern "C" int hipengine_gguf_iq4_xs_local32_dual_silu(const void* x,
 // Same accumulation-order contract as the other local32 owners:
 // lane-grouped contiguous k, wave32 shuffle tree, fixed-order cross-wave
 // sum - a gated approximate owner, not a strict replacement.
-template<int Q, int WAVES>
-__global__ __launch_bounds__(32 * WAVES, 16 / WAVES > 0 ? 16 / WAVES : 1)
+// ROWS > 1 is the verifier sibling (2026-09-12), exactly as on the IQ4_XS
+// owner: one block owns ROWS prompt rows, the weight decode is shared across
+// them, and each row's per-(row, column) k ownership, FMA order, shuffle tree
+// and cross-wave sum are unchanged, so every row is bit-identical to the
+// ROWS == 1 owner's output for that row.
+template<int Q, int WAVES, int ROWS = 1>
+__global__ __launch_bounds__(32 * WAVES,
+    ROWS > 1 ? 1 : (16 / WAVES > 0 ? 16 / WAVES : 1))
 void gguf_iq_split_local32_gemv_kernel(
     const uint16_t* __restrict__ x, const uint8_t* __restrict__ w,
     uint16_t* __restrict__ out, int64_t K, int64_t N) {
@@ -768,15 +814,20 @@ void gguf_iq_split_local32_gemv_kernel(
         __syncthreads();
     }
 
-    float acc[COLS];
+    float acc[ROWS][COLS];
 #pragma unroll
-    for (int t = 0; t < COLS; ++t) acc[t] = 0.0f;
+    for (int r = 0; r < ROWS; ++r)
+#pragma unroll
+        for (int t = 0; t < COLS; ++t) acc[r][t] = 0.0f;
 
     for (int64_t blk = wave; blk < blocks_per_row; blk += WAVES) {
-        const uint16_t* xp = x + blk * 256 + lane * 8;
-        float xv[8];
+        float xv[ROWS][8];
 #pragma unroll
-        for (int j = 0; j < 8; ++j) xv[j] = bf16_load(xp[j]);
+        for (int r = 0; r < ROWS; ++r) {
+            const uint16_t* xp = x + r * K + blk * 256 + lane * 8;
+#pragma unroll
+            for (int j = 0; j < 8; ++j) xv[r][j] = bf16_load(xp[j]);
+        }
 #pragma unroll
         for (int t = 0; t < COLS; ++t) {
             if (n0 + t >= N) break;
@@ -800,7 +851,10 @@ void gguf_iq_split_local32_gemv_kernel(
                     const float mag =
                         float(s_grid[index * 4 + (j & 3)]);
                     const float sgn = (signs & (1 << j)) ? -1.0f : 1.0f;
-                    acc[t] += xv[j] * (sd * mag * sgn);
+                    const float wv = sd * mag * sgn;
+#pragma unroll
+                    for (int r = 0; r < ROWS; ++r)
+                        acc[r][t] += xv[r][j] * wv;
                 }
             } else if constexpr (Q == 4) {
                 // IQ3_XXS: d + 4-byte per-group aux (scale in the top
@@ -825,7 +879,10 @@ void gguf_iq_split_local32_gemv_kernel(
                     const float mag = float(
                         s_grid[(j < 4 ? i0 : i1) * 4 + (j & 3)]);
                     const float sgn = (signs & (1 << j)) ? -1.0f : 1.0f;
-                    acc[t] += xv[j] * (sd * mag * sgn);
+                    const float wv = sd * mag * sgn;
+#pragma unroll
+                    for (int r = 0; r < ROWS; ++r)
+                        acc[r][t] += xv[r][j] * wv;
                 }
             } else if constexpr (Q == 5) {
                 // IQ2_S: d + per-group scale/index-high bytes and one
@@ -841,7 +898,10 @@ void gguf_iq_split_local32_gemv_kernel(
                 for (int j = 0; j < 8; ++j) {
                     const float mag = float(iq2_s_grid[index * 8 + j]);
                     const float sgn = (signs & (1 << j)) ? -1.0f : 1.0f;
-                    acc[t] += xv[j] * (sd * mag * sgn);
+                    const float wv = sd * mag * sgn;
+#pragma unroll
+                    for (int r = 0; r < ROWS; ++r)
+                        acc[r][t] += xv[r][j] * wv;
                 }
             } else {
                 // IQ2_XS: d + one 16-bit word per slot (9-bit packed-grid
@@ -859,28 +919,36 @@ void gguf_iq_split_local32_gemv_kernel(
                     const int code = (packed >> (2 * j)) & 3;
                     const float mag = iq2_xs_magnitude(code);
                     const float sgn = (signs & (1 << j)) ? -1.0f : 1.0f;
-                    acc[t] += xv[j] * (sd * mag * sgn);
+                    const float wv = sd * mag * sgn;
+#pragma unroll
+                    for (int r = 0; r < ROWS; ++r)
+                        acc[r][t] += xv[r][j] * wv;
                 }
             }
         }
     }
 #pragma unroll
-    for (int t = 0; t < COLS; ++t)
-        for (int delta = 16; delta; delta >>= 1)
-            acc[t] += __shfl_down(acc[t], delta);
-    __shared__ float xwave[WAVES > 1 ? WAVES : 1][COLS];
+    for (int r = 0; r < ROWS; ++r)
+#pragma unroll
+        for (int t = 0; t < COLS; ++t)
+            for (int delta = 16; delta; delta >>= 1)
+                acc[r][t] += __shfl_down(acc[r][t], delta);
+    __shared__ float xwave[WAVES > 1 ? WAVES : 1][ROWS][COLS];
     if (lane == 0) {
 #pragma unroll
-        for (int t = 0; t < COLS; ++t) xwave[wave][t] = acc[t];
+        for (int r = 0; r < ROWS; ++r)
+#pragma unroll
+            for (int t = 0; t < COLS; ++t) xwave[wave][r][t] = acc[r][t];
     }
     __syncthreads();
-    if (tid < COLS) {
-        const int t = tid;
+    if (tid < ROWS * COLS) {
+        const int r = tid / COLS;
+        const int t = tid % COLS;
         if (n0 + t < N) {
             float total = 0.0f;
 #pragma unroll
-            for (int wv2 = 0; wv2 < WAVES; ++wv2) total += xwave[wv2][t];
-            out[n0 + t] = bf16_store(total);
+            for (int wv2 = 0; wv2 < WAVES; ++wv2) total += xwave[wv2][r][t];
+            out[int64_t(r) * N + n0 + t] = bf16_store(total);
         }
     }
 }
@@ -962,6 +1030,125 @@ extern "C" int hipengine_gguf_iq4_xs_local32_gemv(const void* x,
                 int(hipGetLastError()));
             return err;
         default: return int(hipErrorInvalidValue);
+    }
+}
+
+// Verifier sibling (2026-09-12): rows 2-4 of the same local32 owners. ROWS is
+// a template parameter, so every row keeps the rows == 1 accumulation order and
+// each row's output is bit-identical to the rows == 1 owner's output for that
+// row. The host keeps the strict per-row GEMV registered as the fallback.
+template<int ROWS>
+int launch_iq4_xs_local32_rows(const void* x, const void* w, void* out,
+    int64_t K, int64_t N, int waves, hipStream_t s) {
+    const dim3 grid(unsigned(N / 8));
+    const uint16_t* xp = (const uint16_t*)x;
+    const uint8_t* wp = (const uint8_t*)w;
+    uint16_t* op = (uint16_t*)out;
+    switch (waves) {
+        case 1: gguf_iq4_xs_local32_gemv_kernel<1, ROWS>
+            <<<grid, 32, 0, s>>>(xp, wp, op, K, N); break;
+        case 2: gguf_iq4_xs_local32_gemv_kernel<2, ROWS>
+            <<<grid, 64, 0, s>>>(xp, wp, op, K, N); break;
+        case 4: gguf_iq4_xs_local32_gemv_kernel<4, ROWS>
+            <<<grid, 128, 0, s>>>(xp, wp, op, K, N); break;
+        default: return int(hipErrorInvalidValue);
+    }
+    return int(hipGetLastError());
+}
+
+template<int ROWS>
+int launch_iq_split_local32_rows(const void* x, const void* w, void* out,
+    int64_t K, int64_t N, int quant, int waves, hipStream_t s) {
+    const dim3 grid(unsigned(N / 8));
+    const uint16_t* xp = (const uint16_t*)x;
+    const uint8_t* wp = (const uint8_t*)w;
+    uint16_t* op = (uint16_t*)out;
+    switch (waves) {
+        case 1:
+            if (quant == 2) { gguf_iq_split_local32_gemv_kernel<2, 1, ROWS><<<grid, 32, 0, s>>>(xp, wp, op, K, N); }
+            else if (quant == 4) { gguf_iq_split_local32_gemv_kernel<4, 1, ROWS><<<grid, 32, 0, s>>>(xp, wp, op, K, N); }
+            else if (quant == 5) { gguf_iq_split_local32_gemv_kernel<5, 1, ROWS><<<grid, 32, 0, s>>>(xp, wp, op, K, N); }
+            else { gguf_iq_split_local32_gemv_kernel<6, 1, ROWS><<<grid, 32, 0, s>>>(xp, wp, op, K, N); }
+            break;
+        case 2:
+            if (quant == 2) { gguf_iq_split_local32_gemv_kernel<2, 2, ROWS><<<grid, 64, 0, s>>>(xp, wp, op, K, N); }
+            else if (quant == 4) { gguf_iq_split_local32_gemv_kernel<4, 2, ROWS><<<grid, 64, 0, s>>>(xp, wp, op, K, N); }
+            else if (quant == 5) { gguf_iq_split_local32_gemv_kernel<5, 2, ROWS><<<grid, 64, 0, s>>>(xp, wp, op, K, N); }
+            else { gguf_iq_split_local32_gemv_kernel<6, 2, ROWS><<<grid, 64, 0, s>>>(xp, wp, op, K, N); }
+            break;
+        case 4:
+            if (quant == 2) { gguf_iq_split_local32_gemv_kernel<2, 4, ROWS><<<grid, 128, 0, s>>>(xp, wp, op, K, N); }
+            else if (quant == 4) { gguf_iq_split_local32_gemv_kernel<4, 4, ROWS><<<grid, 128, 0, s>>>(xp, wp, op, K, N); }
+            else if (quant == 5) { gguf_iq_split_local32_gemv_kernel<5, 4, ROWS><<<grid, 128, 0, s>>>(xp, wp, op, K, N); }
+            else { gguf_iq_split_local32_gemv_kernel<6, 4, ROWS><<<grid, 128, 0, s>>>(xp, wp, op, K, N); }
+            break;
+        default: return int(hipErrorInvalidValue);
+    }
+    return int(hipGetLastError());
+}
+
+extern "C" int hipengine_gguf_iq4_xs_local32_rows_gemv(const void* x,
+    const void* w, void* out, int64_t rows, int64_t K, int64_t N,
+    int waves, void* stream) {
+    if (!x || !w || !out || rows < 2 || rows > 4 || K <= 0 || K % 256
+        || N <= 0 || N % 8)
+        return int(hipErrorInvalidValue);
+    const hipStream_t s = (hipStream_t)stream;
+    switch (rows) {
+        case 2: return launch_iq4_xs_local32_rows<2>(x, w, out, K, N, waves, s);
+        case 3: return launch_iq4_xs_local32_rows<3>(x, w, out, K, N, waves, s);
+        default: return launch_iq4_xs_local32_rows<4>(x, w, out, K, N, waves, s);
+    }
+}
+
+extern "C" int hipengine_gguf_iq_split_local32_rows_gemv(const void* x,
+    const void* w, void* out, int64_t rows, int64_t K, int64_t N,
+    int quant, int waves, void* stream) {
+    if (!x || !w || !out || rows < 2 || rows > 4 || K <= 0 || K % 256
+        || N <= 0 || N % 8)
+        return int(hipErrorInvalidValue);
+    if (quant != 2 && quant != 4 && quant != 5 && quant != 6)
+        return int(hipErrorInvalidValue);
+    if (waves != 1 && waves != 2 && waves != 4)
+        return int(hipErrorInvalidValue);
+    const hipStream_t s = (hipStream_t)stream;
+    switch (rows) {
+        case 2: return launch_iq_split_local32_rows<2>(x, w, out, K, N, quant, waves, s);
+        case 3: return launch_iq_split_local32_rows<3>(x, w, out, K, N, quant, waves, s);
+        default: return launch_iq_split_local32_rows<4>(x, w, out, K, N, quant, waves, s);
+    }
+}
+
+template<int ROWS>
+int launch_iq4_nl_local32_rows(const void* x, const void* w, void* out,
+    int64_t K, int64_t N, int waves, hipStream_t s) {
+    const dim3 grid(unsigned(N / 8));
+    const uint16_t* xp = (const uint16_t*)x;
+    const uint8_t* wp = (const uint8_t*)w;
+    uint16_t* op = (uint16_t*)out;
+    switch (waves) {
+        case 1: gguf_iq4_nl_local32_gemv_kernel<1, ROWS>
+            <<<grid, 32, 0, s>>>(xp, wp, op, K, N); break;
+        case 2: gguf_iq4_nl_local32_gemv_kernel<2, ROWS>
+            <<<grid, 64, 0, s>>>(xp, wp, op, K, N); break;
+        case 4: gguf_iq4_nl_local32_gemv_kernel<4, ROWS>
+            <<<grid, 128, 0, s>>>(xp, wp, op, K, N); break;
+        default: return int(hipErrorInvalidValue);
+    }
+    return int(hipGetLastError());
+}
+
+extern "C" int hipengine_gguf_iq4_nl_local32_rows_gemv(const void* x,
+    const void* w, void* out, int64_t rows, int64_t K, int64_t N,
+    int waves, void* stream) {
+    if (!x || !w || !out || rows < 2 || rows > 4 || K <= 0 || K % 256
+        || N <= 0 || N % 8)
+        return int(hipErrorInvalidValue);
+    const hipStream_t s = (hipStream_t)stream;
+    switch (rows) {
+        case 2: return launch_iq4_nl_local32_rows<2>(x, w, out, K, N, waves, s);
+        case 3: return launch_iq4_nl_local32_rows<3>(x, w, out, K, N, waves, s);
+        default: return launch_iq4_nl_local32_rows<4>(x, w, out, K, N, waves, s);
     }
 }
 

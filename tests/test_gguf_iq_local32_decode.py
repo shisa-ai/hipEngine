@@ -102,12 +102,22 @@ def test_gfx1100_routes_local32_for_iq4_xs_and_gfx1151_keeps_none():
 # ------------------------------------------------------------------- dispatch
 
 
+def _parent_variant(rows):
+    """The strict owner's registered variant at this row count.
+
+    Above one row the strict per-row GEMV is reached through the prefill
+    alias until the dense-IQ prefill policy (which starts at 8 rows) claims
+    it, so verifier row counts arrive under ``prefill_bf16_bf16_out``.
+    """
+    return "gemv_bf16_bf16_out" if rows == 1 else "prefill_bf16_bf16_out"
+
+
 def _dispatch(quant="gguf_iq4_xs", *, rows, out_features=17408, backend="hip_gfx1100"):
     from hipengine.runtime.gguf_linear import (
         GGUFLinearDispatch, _iq_dense_decode_dispatch)
     load_backend_kernel_package(backend)
     base = GGUFLinearDispatch(
-        KernelKey(backend, "linear", quant, "gemv_bf16_bf16_out"), "raw")
+        KernelKey(backend, "linear", quant, _parent_variant(rows)), "raw")
     return _iq_dense_decode_dispatch(base, rows=rows, out_features=out_features)
 
 
@@ -142,13 +152,27 @@ def test_shipped_policy_routes_the_local32_owner():
     assert out.key.variant == "local32_gemv_bf16_bf16_out"
 
 
-def test_route_declines_above_one_row():
-    """The owner serves single-stream decode only; prefill owners stay put."""
+def test_route_declines_above_four_rows():
+    """The decode owner serves rows 1 and the verifier sibling rows 2-4.
+
+    Rows 5 and up have no local32 owner (the native target bucket stops at
+    B3), and the prefill owners stay put.
+    """
     from hipengine.kernels.hip_gfx1100.quant import gguf_iq_source_mmq_prefill as iq_mmq
     with iq_mmq.iq_dense_mmq_session(True):
-        for rows in (2, 8, 512):
+        for rows in (5, 8, 512):
             out = _dispatch(rows=rows)
-            assert out.key.variant == "gemv_bf16_bf16_out", rows
+            assert out.key.variant == _parent_variant(rows), rows
+
+
+def test_route_selects_the_verifier_sibling_for_rows_two_to_four():
+    """Rows 2-4 take the local32 verifier sibling under the shipped policy."""
+    from hipengine.kernels.hip_gfx1100.quant import gguf_iq_source_mmq_prefill as iq_mmq
+    with iq_mmq.iq_dense_mmq_session(True):
+        for rows in (2, 3, 4):
+            out = _dispatch(rows=rows)
+            assert out.key.variant == "local32_rows_gemv_bf16_bf16_out", rows
+            assert out.abi == "raw"
 
 
 def test_route_declines_for_unrouted_quants():

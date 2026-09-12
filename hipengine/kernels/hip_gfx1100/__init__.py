@@ -1249,6 +1249,23 @@ GGUF_IQ_DENSE_DECODE_POLICY = {
     "gguf_iq2_s": {"variant": "local32_gemv_bf16_bf16_out"},
     "gguf_iq2_xs": {"variant": "local32_gemv_bf16_bf16_out"},
 }
+# Verifier sibling of the decode owner (2026-09-12). The multi-row target
+# verifier reaches rows 2-4 for the same raw-IQ tensors; this routes them to
+# the local32 geometry with one block owning the block's rows, sharing the
+# weight decode. Each row's output is bit-identical to the rows == 1 owner's
+# output for that row, so the sibling adds no arithmetic of its own - it is the
+# same approximate owner the decode policy already admits, and it keeps the
+# same per-slot strict pin below. The strict per-row GEMV stays registered and
+# remains the owner for rows 1 and 5+ and wherever this policy is absent.
+GGUF_IQ_DENSE_VERIFY_POLICY = {
+    quant: {
+        "min_rows": 2,
+        "max_rows": 4,
+        "variant": "local32_rows_gemv_bf16_bf16_out",
+    }
+    for quant in ("gguf_iq4_xs", "gguf_iq4_nl", "gguf_iq3_s", "gguf_iq3_xxs",
+                  "gguf_iq2_s", "gguf_iq2_xs")
+}
 # Q3_K is W4A16-serviceable but deliberately NOT routed:
 # adding all three measured 176.5 tok/s on gfx1151 but moved the mean
 # 0.000827 -> 0.001061, 6% over the calibrated 1e-3 limit. See the gfx1151
@@ -1343,6 +1360,7 @@ __all__ = [
     "GGUF_IQ_DENSE_PREFILL_STRICT_SLOTS",
     "GGUF_IQ_DENSE_DECODE_STRICT_SLOTS",
     "GGUF_IQ_DENSE_DECODE_POLICY",
+    "GGUF_IQ_DENSE_VERIFY_POLICY",
     "LAGUNA_GLOBAL_SPLIT_MIN_LIVE",
     "LAGUNA_HEAD_KV_FUSION",
     "LAGUNA_GROUPED_GATE_UP_ROLE_VARIANTS",
