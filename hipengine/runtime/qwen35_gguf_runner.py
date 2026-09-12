@@ -1451,36 +1451,42 @@ class _GGUFResumablePrefillScratch:
 # slot-local packed prefills execute layer-outer (all chunks of a layer
 # complete before the next layer), so the per-layer BF16 oracle is shared
 # (one pair per session) instead of per-layer-keyed (16 pairs on the 27B).
-# Default OFF until the P3 gates (parity, tail/ragged fixtures, decode
-# handoff) pass; the corrected chunk-outer executor remains the fallback.
+# Promoted to the default on 2026-09-11 after the P3 packet gates closed; the
+# corrected chunk-outer executor remains the registered rollback and is
+# selected by HIPENGINE_GGUF_PACKED_LAYER_OUTER=0.
 _GGUF_PACKED_LAYER_OUTER_ENV = "HIPENGINE_GGUF_PACKED_LAYER_OUTER"
 _gguf_packed_layer_outer_enabled_cache: bool | None = None
 
 
 def _gguf_packed_layer_outer_enabled() -> bool:
-    """Default OFF: diagnostics passed, the full packet gates have not.
+    """Default ON: the P3 packet gates closed on 2026-09-11.
 
-    Passed diagnostics (2026-09-10): bitwise parity vs the scalar bulk
-    control at 2,048-row (two full rounds) and 1,500-row (476-row tail
-    round) prompts; wall A/B at 1K/2K/4K/8K within 2% of scalar; the
-    server allocation probe (one shared oracle owner, -94% transient);
-    decode handoff with clean teardown; and the rocprofv3 trace identity
-    (AOTriton attn_fwd for >=512-row rounds, native
-    qwen35_paged_full_attn_prefill for <512-row tails - two kernel
-    identities, exactly as the roadmap's F1 correction predicted).
+    Promotion evidence, all same-host on the W7900 with 27B `Q4_K_M` and INT8
+    KV: wall A/B at 1,024/2,048/4,096/8,192 rows is parity within a 1.5%
+    noise floor (measured on an identical-code pair at 1,024 rows, where the
+    layer-outer executor does not engage) with identical generated IDs at every
+    length, and tracked peak is 0.438 GiB lower at every multi-chunk length.
+    The server route engages the resumable layer-outer prefill with zero
+    fallbacks (`prefill_executor_modes_delta` measures `layer_outer_packed`
+    directly), the same prompt/completion token counts, and a wall inside the
+    same noise floor.
 
-    Outstanding packet gates (reviewer finding 4): layer-boundary/hidden
-    state comparison, exact KV/control fixtures, shifted/ragged GPU
-    coverage, aliasing validation on this executor, and cancellation
-    cleanup. Set HIPENGINE_GGUF_PACKED_LAYER_OUTER=1 to enable the
-    layer-outer route; the corrected chunk-outer executor remains the
-    default.
+    Exactness: `scripts/gguf_resumable_prefill_gpu_proof.py`'s
+    `layer_boundary_state` gate fingerprints the committed per-layer direct
+    INT8 K/V, its scales, and the linear conv/recurrent state against the
+    one-shot reference at a full and a ragged shape, and under both the
+    single-plane hidden alias and its two-plane control. Multi-slot unequal
+    prompts decline by the executor's slot-stability guard and are covered by
+    the decline tests.
+
+    Set HIPENGINE_GGUF_PACKED_LAYER_OUTER=0 to roll back to the corrected
+    chunk-outer executor. See `docs/REFACTOR.md` for the eventual flag removal.
     """
 
     global _gguf_packed_layer_outer_enabled_cache
     if _gguf_packed_layer_outer_enabled_cache is None:
         _gguf_packed_layer_outer_enabled_cache = (
-            os.environ.get(_GGUF_PACKED_LAYER_OUTER_ENV, "0").strip().lower()
+            os.environ.get(_GGUF_PACKED_LAYER_OUTER_ENV, "1").strip().lower()
             in {"1", "true", "yes", "on"}
         )
     return _gguf_packed_layer_outer_enabled_cache

@@ -50,9 +50,9 @@ reasonable requirements.
 
 Status levels are distinguished per the review: implementation landed /
 diagnostic passed / qualified. P0 (telemetry) and P4 (lease removal,
-allocator corrected) are landed; P1-P3 have diagnostics passed, and P3's
-packet gates all closed on GPU 2026-09-11 (so its promotion is now an
-unblocked decision rather than a blocked one); P2 is an observation harness,
+allocator corrected) are landed; P1-P3 have diagnostics passed, and P3 was
+promoted to default ON on 2026-09-11 after its packet gates closed and the
+same-host promotion A/B passed; P2 is an observation harness,
 not an admission preflight;
 P5's C1 baseline is landed and P7's capacity bracket is tier-1
 allocation-validity only. Stage table (W7900 GPU0, 27B Q4_K_M,
@@ -69,7 +69,7 @@ unless noted):
 | P4 lease removal | 677-732 | - | lease 0/0; pinned 0/0; pool high-water 0.07; chunk-outer oracle halves to 1.0 GiB (pool-backing coupling); determinism verified | `0aded03b1` |
 | P5 t1 decode ladder | - | R0 35.15 ms; packed-entry R1 35.22 ms (ratio 1.002, private sessions - executor-entry cost only, not server pool/scheduler execution) | - | `2cc99ad75` |
 | P7 t1 capacity | - | - | tier-1 allocation-validity bracket passes 65,536-155,648 DECLARED contexts (one 2,048-row request each; not full-length completions; no cross-card direct comparison) | `c7eb76b88` |
-| P3 promotion | - | - | trace identity passed (AOTriton + native, as predicted); default reverted to OFF pending the packet gates (reviewer F4), and those gates all closed on GPU 2026-09-11, so the default is now a decision rather than a blocker | `bf2267029` + corrective |
+| P3 promotion | - | - | trace identity passed (AOTriton + native, as predicted); default reverted to OFF pending the packet gates (reviewer F4), those gates all closed on GPU 2026-09-11, and the route was **promoted to default ON 2026-09-11** after the same-host A/B (1,024/2,048/4,096/8,192 rows: wall parity within a 1.5% noise floor, identical generated IDs, 0.438 GiB less tracked peak per multi-chunk length) and a server-route check with zero fallbacks | `bf2267029` + corrective + promotion |
 | P7 t2 publish | - | - | paired reps: ratio median 1.004 (one matched 8K diagnostic; cross-rep variance 89-104% under shared-host contention, so 'consistently within 5%' is not established); SSE observation is delivery cadence, not isolated transport cost; kernel-family attribution landed | `9e28487cb`, `131d4219d` |
 | P6a/P6c resumable prefill | - | per-poll layer segment; checkpoint `next_layer` + derived ping-pong phase; oracle released at every segment boundary | - | `35b61413b` |
 | P6b suspended-state ownership | - | - | dedicated hidden-plane + linear-state buffers copied out at each yield and back on resume; suspended owner counted in prefill-transient telemetry; freed on completion, failure, and row reclaim | `--` (this unit) |
@@ -88,10 +88,14 @@ fingerprints the committed per-layer direct INT8 K/V, its scales, and the linear
 state against the one-shot reference at a full and a ragged shape, and its
 `hidden_plane_alias` gate measures the single-plane hidden configuration with a
 `--hidden-plane-alias off` two-plane control; multi-slot unequal prompts decline
-by the executor's slot-stability guard and are covered by the decline tests. The
-default is still OFF, but promotion is now an unblocked decision rather than one
-waiting on a gate (reviewer finding 4);
-`HIPENGINE_GGUF_PACKED_LAYER_OUTER=1` enables it. The lease removal is default
+by the executor's slot-stability guard and are covered by the decline tests.
+**Promoted to the default on 2026-09-11**: the same-host A/B at
+1,024/2,048/4,096/8,192 rows is wall parity within a 1.5% noise floor with
+identical generated IDs at every length and 0.438 GiB less tracked peak at every
+multi-chunk length, and the server route engages the resumable layer-outer
+prefill with zero fallbacks and the same token counts.
+`HIPENGINE_GGUF_PACKED_LAYER_OUTER=0` is the rollback to the corrected
+chunk-outer executor. The lease removal is default
 on for the C1/prefix-off/MTP-off route with `HIPENGINE_GGUF_PACKED_KV_LEASE=1`
 as the rollback.
 
@@ -101,9 +105,11 @@ the serial INT8 route **landed 2026-09-11 and now passes on the resumable route
 itself** (eleven gates - ten passing and the native-sampling gate explicitly
 `skipped` with its blocker named - including a cancellation-delay sweep and a
 host-sampling arm; see the coverage table in the P6 section), and P6f's
-packet gates all closed on GPU 2026-09-11, so the route's promotion is now an
-unblocked decision rather than a blocked one and it stays behind
-`HIPENGINE_GGUF_PACKED_LAYER_OUTER` only until that decision is taken), P5
+packet gates all closed on GPU 2026-09-11 and the route promoted to default ON
+the same day (wall parity within a 1.5% noise floor, identical generated IDs at
+1,024-8,192 rows, 0.438 GiB less tracked peak per multi-chunk length, and a
+server route with zero fallbacks), so it now sits behind
+`HIPENGINE_GGUF_PACKED_LAYER_OUTER=0` only as an explicit rollback), P5
 remainder (HIP-API/queue-gap attribution and graph-capture amortization; the
 IKV-C2 C>1 row-batched consumer landed and is promoted to physical c4 on the
 W7900 gfx1100 Qwen3.8-27B INT8 artifact as of 2026-09-11, so the capacity>1
@@ -580,8 +586,9 @@ compares per-layer direct INT8 K/V, its scales, and the linear state against the
 one-shot reference at a full and a ragged shape and under both hidden-plane
 alias configurations, and the shift/tail and cancellation-cleanup fixtures are
 in `tests/test_gguf_resumable_layer_outer_prefill.py`. The corrected chunk-outer
-executor remains the registered fallback and the default until promotion is
-decided.
+executor remains the registered rollback (`HIPENGINE_GGUF_PACKED_LAYER_OUTER=0`),
+but promotion was decided on 2026-09-11 and the layer-outer route is now the
+default.
 
 This fixes memory, not automatically F1 or service fairness. Checkpointable
 execution belongs in P6 before broad mixed-serving promotion.

@@ -328,8 +328,10 @@ def test_layer_outer_flag_helper_reads_the_env_it_is_given(
 
     monkeypatch.delenv("HIPENGINE_GGUF_PACKED_LAYER_OUTER", raising=False)
     monkeypatch.setattr(runner, "_gguf_packed_layer_outer_enabled_cache", None)
-    # Default OFF: the corrected chunk-outer executor remains the fallback.
-    assert runner._gguf_packed_layer_outer_enabled() is False
+    # Default ON since 2026-09-11; the corrected chunk-outer executor is the
+    # explicit rollback via =0, and the P6e proof's --packed-layer-outer runs
+    # still assert the route they enable is the one that runs.
+    assert runner._gguf_packed_layer_outer_enabled() is True
 
 
 def test_engagement_gate_reports_what_actually_ran_not_just_that_it_failed() -> None:

@@ -296,12 +296,19 @@ fraction of the memory cost of the previous release:
 | Decode latency (ms/token) | 35.2 | 35.1 |
 | Time to first token, 2K-token prompt (s) | 2.8 | - |
 | Per-request transient memory at 32K context (GiB) | ~1.6 | - |
+| Packed-prefill oracle peak, 2K-8K-token prompts (GiB) | -0.438 vs the previous default | — |
 | Maximum context on 24 GB card (tokens) | 155,648 | — |
 
 Prefill logits are identical between the routes. The context row reflects
 complete prefill-and-decode request cycles verified at 65K/98K/131K/152K
-contexts (~2.9x the previous release's 54,272-token limit).
+contexts (~2.9x the previous release's 54,272-token limit). Since 2026-09-11 the
+default packed prefill is layer-outer, which shares one BF16 oracle pair per
+session instead of one per INT8-retained full-attention layer: measured 0.438 GiB
+lower tracked peak at 2K/4K/8K rows, with prefill throughput at parity within a
+1.5% noise floor and identical generated IDs at 1K-8K rows.
 [Speed repetitions](results/2026-09-10-w7900-p7-c1-speed-parity-paired-reps.json),
+[layer-outer promotion A/B](results/2026-09-11-w7900-p3-promotion-ab-layerouter-8192.json),
+[server route check](results/2026-09-11-w7900-p3-promotion-server-c1-on.json),
 [capacity bracket](results/2026-09-10-w7900-server-alloc-probe-152k.json),
 [memory](results/2026-09-10-w7900-server-alloc-probe-16k-p4-lease-removed.json),
 [streaming](results/2026-09-10-w7900-p7-http-transport-budget.json).

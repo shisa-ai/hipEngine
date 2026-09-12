@@ -288,6 +288,34 @@ def build_phase_record(
             metrics_after, "hipengine_resident_route_total"
         ).items()
     }
+    # Which packed-prefill executor actually ran, so a route change (layer-outer
+    # versus chunk-outer) is measured rather than inferred from a flag.
+    executor_modes = {
+        key: value
+        for key, value in labeled_counter(
+            metrics_after, "hipengine_resident_prefill_executor_mode_total"
+        ).items()
+    }
+    if metrics_before:
+        before_modes = labeled_counter(
+            metrics_before, "hipengine_resident_prefill_executor_mode_total"
+        )
+        executor_modes = {
+            key: value - float(before_modes.get(key, 0.0))
+            for key, value in executor_modes.items()
+        }
+    record["prefill_executor_modes_delta"] = executor_modes
+    record["kv_attention_sources_delta"] = {
+        key: value
+        - float(
+            labeled_counter(
+                metrics_before, "hipengine_resident_kv_attention_source_total"
+            ).get(key, 0.0)
+        )
+        for key, value in labeled_counter(
+            metrics_after, "hipengine_resident_kv_attention_source_total"
+        ).items()
+    }
     manifest = manifest_from_metrics(metrics_after)
     if manifest:
         record["execution_manifest"] = manifest
