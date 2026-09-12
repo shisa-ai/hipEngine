@@ -1,5 +1,20 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## `HIPENGINE_GGUF_PACKED_LAYER_OUTER` (promoted to default ON 2026-09-11)
+
+- The layer-outer packed AR prefill executor became the default after its packet
+  gates closed and the same-host promotion A/B passed: wall parity within a 1.5%
+  noise floor at 1,024/2,048/4,096/8,192 rows with identical generated IDs, and
+  0.438 GiB less tracked peak at every multi-chunk length. The server route
+  engages the resumable layer-outer prefill with zero fallbacks. Artifacts:
+  `benchmarks/results/2026-09-11-w7900-p3-promotion-ab-{chunkouter,layerouter}-{1024,2048,4096,8192}.json`
+  and `benchmarks/results/2026-09-11-w7900-p3-promotion-server-c1-{off,on}.json`.
+- `=0` selects the corrected chunk-outer executor. Removal condition: once the
+  chunk-outer executor has no remaining rollback or bisection value, delete the
+  flag, the `_gguf_packed_layer_outer_enabled` helper, and the chunk-outer
+  dispatch branch together, and keep the chunk-outer tests only as the decline
+  coverage the layer-outer path needs.
+
 ## `HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH` (INT8 KV C1 decode graph)
 
 - Admitted 2026-09-11 so the INT8 KV C1 decode graph could be measured instead

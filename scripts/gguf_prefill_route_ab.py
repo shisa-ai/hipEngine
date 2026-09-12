@@ -95,6 +95,10 @@ def main() -> int:
         "env": {k: os.environ.get(k) for k in (
             "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG",
             "HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS",
+            # The packed arm's executor is selected by this flag, and the
+            # layer-outer executor is the only one that records an
+            # executor_mode, so its absence is weak evidence on its own.
+            "HIPENGINE_GGUF_PACKED_LAYER_OUTER",
         )},
         "arms": {},
     }

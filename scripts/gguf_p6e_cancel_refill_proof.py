@@ -1059,10 +1059,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     environment = {
         **_EXACT_ENV,
         # P6's resumable yield only exists on the layer-outer route, which is
-        # default OFF (HIPENGINE_GGUF_PACKED_LAYER_OUTER=0). Without this the
-        # harness silently measures the default chunk-outer path and its gates
-        # pass for reasons that have nothing to do with the deliverable. The
-        # resumable_path_engaged gate below is what stops that from recurring.
+        # default ON since the 2026-09-11 promotion. This harness still sets the
+        # flag explicitly from --packed-layer-outer so a run cannot silently
+        # measure the chunk-outer path and pass its gates for reasons that have
+        # nothing to do with the deliverable. The resumable_path_engaged gate
+        # below is what stops that from recurring.
         PACKED_LAYER_OUTER_ENV: "1" if args.packed_layer_outer else "0",
         "HIPENGINE_MAX_ACTIVE_REQUESTS": "2",
         # Sized for the long prompt, not for the live bench's 512-token contexts:

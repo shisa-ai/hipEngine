@@ -21,16 +21,17 @@ Contracts under test (CPU, fake device):
 - the executor resets ``_int8_prefill_oracle_per_layer`` on every session
   before any layer runs, so the shared key is used - packed execution cannot
   silently realize per-layer pairs while the plan promises one;
-- the feature flag defaults OFF, but not for a missing packet gate any more:
-  every P6f packet gate is now closed on GPU 2026-09-11 (see
-  `scripts/gguf_resumable_prefill_gpu_proof.py` - `layer_boundary_state`
-  fingerprints the committed per-layer direct INT8 K/V, its scales, and the
-  linear state against the one-shot reference at full and ragged shapes;
-  `hidden_plane_alias` measures the single-plane hidden configuration and the
-  `--hidden-plane-alias off` two-plane control both pass). Promotion of the
-  layer-outer route to the default is now an unblocked decision rather than a
-  blocked one; until it is taken, `HIPENGINE_GGUF_PACKED_LAYER_OUTER=1` enables
-  it.
+- the feature flag defaults ON since the 2026-09-11 promotion. Every P6f
+  packet gate is closed on GPU (see `scripts/gguf_resumable_prefill_gpu_proof.py`
+  - `layer_boundary_state` fingerprints the committed per-layer direct INT8 K/V,
+  its scales, and the linear state against the one-shot reference at full and
+  ragged shapes; `hidden_plane_alias` measures the single-plane hidden
+  configuration and the `--hidden-plane-alias off` two-plane control both pass),
+  and the same-host promotion A/B at 1,024/2,048/4,096/8,192 rows is wall parity
+  within a 1.5% noise floor with identical generated IDs and 0.438 GiB less
+  tracked peak at every multi-chunk length.
+  `HIPENGINE_GGUF_PACKED_LAYER_OUTER=0` is the explicit rollback to the
+  corrected chunk-outer executor.
 """
 
 from __future__ import annotations
@@ -409,17 +410,17 @@ def test_executor_resets_per_layer_ownership_before_layers(
     )
 
 
-def test_feature_flag_defaults_off_pending_packet_gates(
+def test_feature_flag_defaults_on_after_packet_gates_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Default OFF: diagnostics passed, packet gates outstanding (reviewer F4)."""
+    """Default ON: the P3 packet gates closed on 2026-09-11."""
 
     monkeypatch.delenv("HIPENGINE_GGUF_PACKED_LAYER_OUTER", raising=False)
     gguf_runner._gguf_packed_layer_outer_enabled_cache = None
-    assert _gguf_packed_layer_outer_enabled() is False
-    monkeypatch.setenv("HIPENGINE_GGUF_PACKED_LAYER_OUTER", "1")
-    gguf_runner._gguf_packed_layer_outer_enabled_cache = None
     assert _gguf_packed_layer_outer_enabled() is True
+    monkeypatch.setenv("HIPENGINE_GGUF_PACKED_LAYER_OUTER", "0")
+    gguf_runner._gguf_packed_layer_outer_enabled_cache = None
+    assert _gguf_packed_layer_outer_enabled() is False
 
 
 def test_shared_oracle_binding_records_executor_mode(
@@ -440,12 +441,12 @@ def test_shared_oracle_binding_records_executor_mode(
 
 
 def test_env_flag_cache_resets(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("HIPENGINE_GGUF_PACKED_LAYER_OUTER", "1")
-    gguf_runner._gguf_packed_layer_outer_enabled_cache = None
-    assert _gguf_packed_layer_outer_enabled() is True
-    monkeypatch.delenv("HIPENGINE_GGUF_PACKED_LAYER_OUTER", raising=False)
+    monkeypatch.setenv("HIPENGINE_GGUF_PACKED_LAYER_OUTER", "0")
     gguf_runner._gguf_packed_layer_outer_enabled_cache = None
     assert _gguf_packed_layer_outer_enabled() is False
+    monkeypatch.delenv("HIPENGINE_GGUF_PACKED_LAYER_OUTER", raising=False)
+    gguf_runner._gguf_packed_layer_outer_enabled_cache = None
+    assert _gguf_packed_layer_outer_enabled() is True
 
 
 def test_layer_outer_cancellation_releases_and_survives(
