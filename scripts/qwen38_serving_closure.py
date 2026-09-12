@@ -19,7 +19,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.gguf_mtp_c1c8_server_bench import (
-    _generated_ids, _resident_observability, load_prompt_suite, DEFAULT_PROMPTS,
+    _generated_ids, _resident_observability, load_prompt_suite, DEFAULT_PROMPTS, _mtp_engaged,
 )
 from scripts.gguf_p6e_cancel_refill_proof import _free_port, _metrics_values, _wait_for
 
@@ -27,6 +27,7 @@ from scripts.gguf_p6e_cancel_refill_proof import _free_port, _metrics_values, _w
 def stream_summary(events):
     text, finished, done, errors, request_ids = [], False, False, [], set()
     token_ids = None
+    terminal_metadata = {}
     for event in events:
         if event == "[DONE]":
             done = True
@@ -38,12 +39,13 @@ def stream_summary(events):
             finished |= choice.get("finish_reason") is not None
             state = choice.get("hipengine", {}).get("decode_state", {})
             if choice.get("finish_reason") is not None:
-                token_ids = choice.get("hipengine", {}).get("generated_token_ids")
+                terminal_metadata = choice.get("hipengine", {})
+                token_ids = terminal_metadata.get("generated_token_ids")
             if state.get("request_id") is not None:
                 request_ids.add(state["request_id"])
     return {"text": "".join(text), "complete": done and finished and not errors
             and len(request_ids) <= 1, "errors": errors,
-            "request_ids": sorted(request_ids), "ids": token_ids}
+            "request_ids": sorted(request_ids), "ids": token_ids, "hipengine": terminal_metadata}
 
 
 def validate_response(body):
@@ -57,10 +59,12 @@ def validate_response(body):
             "hipengine": body.get("hipengine", {})}
 
 
-def payload(prompt, count, *, stream=False):
+def payload(prompt, count, *, stream=False, mtp=False):
     result = {"model": "qwen38-closure", "prompt": list(prompt), "max_tokens": count,
               "temperature": 0.0, "top_p": 1.0, "ignore_eos": True,
-              "stream": stream, "speculative_mtp": False}
+              "stream": stream}
+    if mtp is not None:
+        result["speculative_mtp"] = mtp
     if stream:
         result["stream_options"] = {"include_hipengine": True, "include_usage": True}
     return result
@@ -109,16 +113,24 @@ def run(args):
     from hipengine.server.api import ServerConfig, create_app
 
     before_memory = memory_stats()
-    llm = LLM(str(args.model), backend="hip_gfx1151", max_active_requests=8,
-              max_sequence_length=8192, execution_profile=None)
+    profile = None if args.execution_profile == "default" else args.execution_profile
+    capacity = args.capacity
+    widths = [int(value) for value in args.widths.split(",")]
+    if not widths or min(widths) < 1 or max(widths) > capacity:
+        raise ValueError("widths must fit the declared capacity")
+    context = 1024 if profile == "strict" else 8192
+    mtp = None if args.mtp_mode == "automatic" else False
+    llm = LLM(str(args.model), backend="hip_gfx1151", max_active_requests=capacity,
+              max_sequence_length=context, execution_profile=profile)
     server = thread = runner = original_reclaim = None
     reclaimed = {}
     rows, cancellation = [], []
     report = {"kind": "qwen38_public_default_socket_serving", "passed": False,
-              "performance_claim": False, "scope": "greedy AR; MTP checked separately",
+              "performance_claim": False, "scope": "greedy public socket serving",
+              "mtp_mode": args.mtp_mode, "capacity": capacity, "widths": widths,
               "rows": rows, "cancellation": cancellation}
     try:
-        llm.prepare(max_sequence_length=8192)
+        llm.prepare(max_sequence_length=context)
         generator = llm._get_text_generator()
         runner = generator._runner
         original_reclaim = runner.reclaim
@@ -135,14 +147,14 @@ def run(args):
         runner.reclaim = MethodType(capture_reclaim, runner)
         suite = load_prompt_suite(DEFAULT_PROMPTS)
         prompts = [list(generator.tokenize(row["rendered_prompt"])) for row in suite]
-        report["profile"] = {"requested": None, "resolved": llm.resolved_execution_profile,
+        report["profile"] = {"requested": profile, "resolved": llm.resolved_execution_profile,
                              "manifest_sha256": llm.execution_profile_manifest_sha256,
                              "manifest": llm.execution_profile_manifest}
         report["prompt_suite"] = str(DEFAULT_PROMPTS)
         report["prompt_ids"] = [row["id"] for row in suite]
         app = create_app(ServerConfig(
             model=str(args.model), backend="hip_gfx1151", served_model_name="qwen38-closure",
-            max_active_requests=8, max_context_tokens=8192, metrics="prometheus",
+            max_active_requests=capacity, max_context_tokens=context, metrics="prometheus",
             eager_load=False, stream_queue_max_chunks=256, shutdown_grace_seconds=10,
         ), llm=llm)
         port = _free_port()
@@ -156,13 +168,13 @@ def run(args):
         references = [request(base, payload(prompt, args.tokens)) for prompt in prompts]
         report["references"] = references
         for streaming in ((True,) if args.streaming_only else (False, True)):
-            for width in (1, 2, 4, 8):
+            for width in widths:
                 for repeat in range(3):
                     indices = [(repeat * width + offset) % len(prompts) for offset in range(width)]
                     barrier = threading.Barrier(width)
                     with ThreadPoolExecutor(max_workers=width) as pool:
                         futures = [pool.submit(
-                            request, base, payload(prompts[i], args.tokens, stream=streaming),
+                            request, base, payload(prompts[i], args.tokens, stream=streaming, mtp=mtp),
                             barrier=barrier) for i in indices]
                         actual = [future.result() for future in futures]
                     matches = [
@@ -185,6 +197,10 @@ def run(args):
                     row = {"stream": streaming, "width": width, "repeat": repeat,
                            "prompt_indices": indices, "exact": all(matches),
                            "responses": actual, "telemetry": _resident_observability(llm, recent=width)}
+                    row["mtp_engaged"] = [_mtp_engaged("", value["hipengine"].get("speculative_mtp", {}))
+                                          for value in actual]
+                    if profile == "strict" and mtp is None and width == 1:
+                        row["exact"] = row["exact"] and all(row["mtp_engaged"])
                     rows.append(row)
                     print(f"stream={streaming} C{width} repeat={repeat}: exact={row['exact']}", flush=True)
 
@@ -195,14 +211,15 @@ def run(args):
                 ready = threading.Event()
                 with ThreadPoolExecutor(max_workers=2) as pool:
                     survivor = pool.submit(request, base,
-                        payload(prompts[0], args.tokens, stream=True), first_token=ready)
+                        payload(prompts[0], args.tokens, stream=True, mtp=mtp), first_token=ready)
                     if not ready.wait(60):
                         raise RuntimeError("survivor never entered decode")
                     if phase == "decode":
-                        victim = request(base, payload(prompts[1], 128, stream=True), cancel=True)
+                        victim = request(base, payload(prompts[1], args.tokens, stream=True, mtp=mtp), cancel=True)
                         admitted = not victim["complete"] and bool(victim["text"])
                     else:
-                        long_prompt = (prompts[1] * (4096 // len(prompts[1]) + 1))[:4096]
+                        long_rows = min(4096, context - 130)
+                        long_prompt = (prompts[1] * (long_rows // len(prompts[1]) + 1))[:long_rows]
                         body = json.dumps(payload(long_prompt, 128, stream=True)).encode()
                         with socket.create_connection(("127.0.0.1", port), timeout=60) as sock:
                             sock.sendall(
@@ -217,12 +234,16 @@ def run(args):
                                     raise RuntimeError("prefill victim closed before response headers")
                                 headers += chunk
                             admitted = b"200 OK" in headers
+                            entered = _wait_for(lambda: any(
+                                tuple(row.prompt_ids) == tuple(long_prompt)
+                                for row in tuple(runner._rows.values())), timeout=30)
+                            admitted = admitted and entered
                             time.sleep(0.2)
                     observed = _wait_for(
                         lambda: _metrics_values(client, base).get(cancel_metric, 0) > baseline,
                         timeout=60)
                     survivor_result = survivor.result(timeout=120)
-                refill = request(base, payload(prompts[0], args.tokens))
+                refill = request(base, payload(prompts[0], args.tokens, mtp=mtp))
                 passed = (admitted and observed and survivor_result["complete"]
                           and survivor_result["text"] == references[0]["text"]
                           and refill["ids"] == references[0]["ids"])
@@ -268,10 +289,16 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", type=Path, default=Path("/models/gguf/Qwen3.8-27B-Q4_K_M.gguf"))
     parser.add_argument("--tokens", type=int, default=32)
+    parser.add_argument("--execution-profile", choices=("default", "strict"), default="default")
+    parser.add_argument("--mtp-mode", choices=("off", "automatic"), default="off")
+    parser.add_argument("--capacity", type=int, default=8)
+    parser.add_argument("--widths", default="1,2,4,8")
     parser.add_argument("--streaming-only", action="store_true",
                         help="Focused rerun preserving the completed blocking-gate evidence")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
+    if args.tokens < 2 or args.capacity not in (1, 2, 4, 8):
+        parser.error("requires at least two tokens and a supported resident capacity")
     return 0 if run(args)["passed"] else 1
 
 
