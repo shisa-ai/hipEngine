@@ -144,17 +144,23 @@ UD K_M, plain K_M, UD K_S, and plain K_S. Keep draft generation, target
 verification, acceptance/commit, host submission, and graph replay separately
 visible.
 
-- [ ] Capture c1, c2, c4, and c8 where the caller supports them.
-- [ ] Capture representative verifier rows such as 6, 9, 12, 16, 28, and 32.
-- [ ] Record kernel names, launch counts, duration, stream, grid, and block.
-- [ ] Attribute wall time to decoder, projection, norm, gate/up, down, logits,
+- [x] Record kernel names, launch counts, duration, stream, grid, and block.
+- [x] Attribute wall time to decoder, projection, norm, gate/up, down, logits,
   synchronization, and host/device transfer categories.
-- [ ] Compare row/tile decomposition between UD and plain.
-- [ ] Check whether UD uses BF16 expansion where plain uses compressed
-  consumers.
-- [ ] Check Q5/Q6/IQ/Q3 decoder occupancy, memory traffic, and launch count.
-- [ ] Confirm whether the deficit is steady verifier work or transition-only
-  overhead.
+- [x] Compare row/tile decomposition between UD and plain.
+- [x] Check whether UD uses BF16 expansion where plain uses compressed
+  consumers. No dequantize/expand/repack kernel runs in any verifier window;
+  UD reads raw IQ bytes in `gguf_iq_dense_strict`.
+- [x] Confirm whether the deficit is steady verifier work or transition-only
+  overhead. It is steady per-step verifier work.
+- [x] Check Q5/Q6/IQ/Q3 decoder launch count and occupancy (grid, block, VGPR,
+  SGPR). Memory traffic counters were not collected.
+- [ ] Capture c1, c2, c4, and c8 where the caller supports them. The census is
+  a single-request leaf; width capture needs a multi-request caller.
+- [ ] Capture representative verifier rows such as 6, 9, 12, 16, 28, and 32.
+  The production native verifier path is capped at four rows (B1-B3): the fused
+  rounded add/RMSNorm and the device accept/commit kernels raise `rows must be
+  2, 3, or 4`. Rows 2 and 4 were captured.
 
 Decision gate:
 
@@ -165,6 +171,22 @@ Decision gate:
 - If only a narrow shape loses, keep the optimization shape-scoped.
 
 No kernel change starts before this attribution is recorded.
+
+**Result (2026-09-12, physical GPU1 / RX 7900 XTX / gfx1100).** The hypothesis
+is confirmed. Device work dominates (kernel share 0.861-0.928, host residual
+4.3-5.3 ms/step). At the B3 shape, UD's IQ-family quants run
+`gguf_iq_dense_strict` (51.6% of UD-Q4_K_M verifier kernel time, 68.0% of
+UD-Q4_K_S) while plain's Q4_K/Q5_K/Q6_K/Q8_0 run the weight-amortized rowtile
+family and never launch it. UD/plain verifier kernel time is 1.97x (K_M) and
+2.25x (K_S), matching the paired production ordering. The loss is
+shape-scoped: the owner-map dead zone runs from 2 to 7 rows because the
+dense-IQ decode owner is `rows == 1` and the dense-IQ prefill owner has
+`min_rows == 8`. The selected action is to optimize the responsible kernel
+family with a rows 2-4 IQ verifier sibling. Lowering `min_rows` is not the
+fix: the recorded crossover sweep measures the existing prefill owner at 0.59x
+(2 rows) and 0.68x (4 rows). Evidence:
+`benchmarks/results/2026-09-12-ud-gfx1100-phase1-attribution.json`,
+`worklog/entries/20260912T081032.217161Z-lhl-ud-phase1-attribution-a570a6.md`.
 
 ### Phase 2: Transfer prefill wins into verifier shapes
 
