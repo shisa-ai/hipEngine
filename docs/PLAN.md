@@ -579,6 +579,18 @@ create another scheduler. See the capacity document's bounded closeout.
 
 #### Current status
 
+September 12, 2026 gfx1151 dense-Q4_K_M correction: the current public
+production profile uses FP32 recurrent state and AR-only MTP admission;
+historical FP16-production MTP rows below are not current-profile certificates.
+The final public packed D128 gate is exact over 8,716 rows, and greedy
+blocking/SSE cancellation/refill gates pass. Strict C1/K3 natural25 remains
+available with capacity1/4 and context1-67, measured at 20.985 versus 11.150
+same-protocol AR tok/s over three category-suite runs. Current production
+512/128 is 404.487 prefill / 12.226 decode tok/s. This is bounded model
+qualification, not full-repository release signoff.
+[Current serving scope](../benchmarks/results/2026-09-12-gfx1151-qwen38-serving-mtp-closure.json)
+and [headline measurements](../benchmarks/results/2026-09-12-gfx1151-qwen38-final-headline-refresh.json).
+
 | Question | Answer |
 |---|---|
 | Can current hipEngine run real c=8 PARO decode? | Yes on gfx1151 for W4/BF16-KV greedy contexts covered by the retained profile. Direct physical c2/c4/c8 are independent-c1 exact at p512/d128, use 40/40 selected-batch layers, and never stack c2 groups. G5 attaches those widths to the shared resident OpenAI loop and makes them the gfx1151 package default: blocking F1 c1/c2/c4/c8 is 47.124/51.962/60.323/61.253 aggregate tok/s, all 68 rows exact, and the complementary SSE/native-plus-serial packet keeps all 100 rows exact. gfx1100 remains retained only at direct c2; sampled-native, context >=1024, other-KV, capture/replay, and gfx1100 owner c4/c8 remain open. |

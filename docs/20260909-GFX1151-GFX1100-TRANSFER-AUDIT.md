@@ -541,32 +541,24 @@ is safe and the limitation is explicit.
   numerical and performance gates or backend-owned admission. The later
   row48 capability gate does not gate row64/row128. No gfx1151 numerical
   regression is demonstrated by this source audit.
-- [ ] **Resolve the production-default / automatic-MTP interaction.**
-  `8899172e5` makes omitted profiles resolve to production, including dense
-  gfx1151 Q4_K_M (`hipengine/llm.py::_resolve_execution_profile`). However,
-  `hipengine/models/qwen35.py::_QWEN38_Q4KM_MTP_SERVING_EVIDENCE` marks only
-  the two gfx1151 strict C1/K3 rows automatic; every production row is
-  explicit-only. `hipengine/speculative/serving.py::_evidence_checks` matches
-  profile and manifest exactly. Consequently the former strict automatic
-  cell is not available to a no-profile production request. Confirm this at
-  the public server boundary, then either document explicit `strict` as
-  necessary for that automatic cell or independently qualify a production
-  automatic cell. Do not copy the strict admission bit.
-- [ ] **Verify the shipped production composition on gfx1151.** The default
-  flip's [worklog](../worklog/entries/20260912T081647.658257Z-lhl-exec-profile-default-production-48e246.md)
-  explicitly reuses prior certification and did not rerun GPU numerical or
-  serving gates. Check current manifest identity, omitted versus explicit
-  production, strict fallback, C1/C2/C4/C8 and occupancy transitions,
-  blocking/SSE cancellation/refill, determinism/isolation and the applicable
-  production numerical/task gates. Tie published no-flag performance to
-  that actual profile rather than assuming older profile-less rows still
-  measure the shipped composition.
-  In particular, `qwen38_gguf_profiles.py::_production_binder` enables FP16
-  recurrent storage before allocation without a context/horizon gate.
-  [Execution profiles section 2.4](EXECUTION-PROFILES.md#24-qwen38-q4_k_m-production-c2k3-decision)
-  explicitly withholds long-horizon authorization after a failed D120
-  diagnostic. Establish independent longer-horizon AR/default coverage or
-  narrow admission; that MTP diagnostic is not itself proof of an AR failure.
+- [x] **Resolve the production-default / automatic-MTP interaction.**
+  The [current socket and route packet](../benchmarks/results/2026-09-12-gfx1151-qwen38-serving-mtp-closure.json)
+  confirms that omitted-profile production runs AR, including explicit MTP
+  requests. The FP32 production manifest does not match historical FP16 MTP
+  certificates. Strict C1/K3 remains available at capacity1/4, context1-67,
+  natural25 and greedy sampling; K4 and ignore_eos correctly fall back.
+  Three complete category runs and blocking/SSE cancellation/refill pass.
+- [x] **Verify the shipped production composition in the declared greedy scope.**
+  FP32 state replaces the failed unbounded FP16 default; planar-Q6 integer-MMQ
+  is confined to target verification after an AR-prefill scope failure.
+  The [final public packed gate](../benchmarks/results/2026-09-12-gfx1151-qwen38-public-packed-final-qualified.json)
+  passes 8,716 teacher-forced rows at KL0/top1 100%, with three repeats,
+  static C2/C4/C8, sparse slots, C8-to-C1 retirement and p512/D128.
+  The [headline preflight](../benchmarks/results/2026-09-12-gfx1151-qwen38-final-headline-refresh.json)
+  adds exact graph/eager IDs, final logits and states over 18 prompts.
+  Real-socket blocking/SSE and cancellation/refill pass and allocations drain.
+  This does not claim arbitrary long-context MTP, non-greedy sampling, SLO
+  certification, or full-repository release closure.
 - [x] **Decide the Q4_K_M scratch-row clamp question from section I.**
   Section K records the no-clamp decision and focused selection-invariant
   tests. This closes the known allocation/chunk mismatch at source level;
@@ -806,8 +798,9 @@ each other.
   chunk site derive from the same resolution. See the subsection below for the
   invariant, the test that holds it at the 1K/4K/8K boundaries, and the one
   measurement still outstanding.
-- [ ] Production-default / automatic-MTP interaction (section J) — stays.
-- [ ] Verify the shipped production composition on gfx1151 (section J) — stays.
+- [x] Production-default / automatic-MTP interaction: scoped closure in section J.
+- [x] Shipped production composition: declared greedy numerical/serving scope
+  closed in section J; broader quality and release axes remain separate.
 - [ ] Inherited Q4 fused-prefill retiles (section J) — stays.
 - [ ] Layer-outer and slot-local AOTriton reachable scope (section J) — stays.
   `HIPENGINE_GGUF_PACKED_LAYER_OUTER` and
@@ -888,10 +881,11 @@ the binding **0.05** ceiling. Failures include ordinary C4/C8 and sparse
 continuations, plus the 512-token prompt at decode step 28.
 
 This is FP16 versus FP32 storage on the same packed production arithmetic,
-not the named strict-profile denominator. It supplies a concrete blocker to
-unbounded FP16 admission; a named-profile C1 AR check and a scoped fallback
-decision are in progress. It does not revoke the independently measured D24
-verifier cells or qualify a replacement by itself.
+not the named strict-profile denominator. The independent named C1 check also
+failed, and the binder now uses FP32 state. After additionally confining
+integer-MMQ to target verification, the final public packed gate passes all
+8,716 rows exactly. Historical D24 verifier cells keep their original
+manifest identity; they are not relabeled as the new production profile.
 
 ### The Q4_K_M scratch-row clamp is not needed on gfx1151 (2026-09-12)
 
@@ -946,7 +940,7 @@ not a correctness one.
 Nineteen `GGUF_*` capability names are defined on gfx1100, absent on gfx1151,
 and live-read through `backend_package_capability` somewhere in the package.
 The original table contained **12 declined and 7 N/A** dispositions.
-The September 13 follow-up admits row48, leaving **11 declined, 7 N/A,
+The September 12 UTC follow-up admits row48, leaving **11 declined, 7 N/A,
 and 1 admitted**; 18 names remain gfx1100-only. The inventory is not
 independent measurement of every disabled optimization. The unequal-pair
 integrated follow-up now finds a real regression: all 18 prompts are exact

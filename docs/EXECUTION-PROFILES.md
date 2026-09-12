@@ -146,7 +146,12 @@ passes the 18-prompt C1 D128 numerical gate (2,322 rows, max KL 0.003451,
 99.914% top-1, three deterministic repeats). Q4 rowtile selections and
 strict fallbacks stay registered. The historical FP16 verifier cells below
 retain their own manifest identity; they are not certificates for this
-replacement. Packed/serving qualification is in progress.
+replacement. The final public C2/C4/C8 D128 packet passes 8,716 rows at
+KL0/top1 100%, and the declared greedy blocking/SSE/cancellation/refill gates
+pass. Production remains AR-only for automatic and explicit MTP requests;
+strict C1/K3 uses its original qualified natural25 scope.
+See [serving closure](../benchmarks/results/2026-09-12-gfx1151-qwen38-serving-mtp-closure.json)
+and [headline evidence](../benchmarks/results/2026-09-12-gfx1151-qwen38-final-headline-refresh.json).
 Evidence: [FP16 default rejection](../benchmarks/results/2026-09-12-gfx1151-qwen38-named-fp16-default-d128-rejected.json),
 [FP32 C1 gate](../benchmarks/results/2026-09-12-gfx1151-qwen38-fp32-default-c1-qualified.json).
 

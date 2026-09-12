@@ -172,12 +172,9 @@ These are measured results, not estimates. Prompt processing is the speed of
 reading the input. Text generation is the speed of producing new tokens.
 
 <!-- BEGIN TOPLINE:README_HIGHLIGHTS -->
-Every number below is measured on the named hardware and links to a
-reproducible artifact. **Prompt processing** is how fast hipEngine reads your
-input; **text generation** is how fast it writes new tokens. **With MTP** is
-speculative decoding, which is enabled only where it is qualified for that
-model and shape. Rows use different models and protocols — compare within a
-row, not across them.
+Measured tokens/s on each named host. **Prompt processing** measures input;
+**text generation** measures output. **MTP** is speculative decoding within
+qualified scopes. Compare only matching models and workloads.
 
 ### Performance
 
@@ -199,7 +196,12 @@ row, not across them.
 | Qwen3.6-35B-A3B | GGUF `UD-Q4_K_M` | **1369.5** | **54.3** | 80.1 (opt-in) | — |
 | Laguna S 2.1 | GGUF `Q4_K_M` | **654.2** | **23.2** | — | — |
 | Qwen3.8-27B Dense | GGUF `Q4_K_S` | **396.1** | **13.1** | **23.9** | — |
-| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **380.4** | **12.2** | **15.6** | — |
+| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **404.5** | **12.2** | 21.0 (strict K3) | — |
+
+Qwen3.8 `Q4_K_M` defaults to production AR. MTP uses strict/K3, capacity 4,
+a 1K session limit, one active request, 1-67 prompt tokens and 25 outputs: **1.88x its matched
+11.15 tok/s AR baseline**, not the 512/128 generation column.
+[Measurements](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-12-gfx1151-qwen38-final-headline-refresh.json).
 
 **Time-series forecasting (TimesFM 2.5 200M).** hipEngine decodes batch=8,
 context 8192, horizon 512 forecasts in **0.082 s** on the power-limited HP ZBook
@@ -304,11 +306,10 @@ Important limits:
   context on a 24 GB card is qualified to 232,448 tokens on the DMS and
   opt-in direct-INT8 routes; concurrent-request shapes on 24 GB are not
   qualified yet, so keep a conservative context limit there.
-- Automatic speculative decoding covers only narrow measured shapes. Asking for
-  it explicitly on a dense Qwen model uses three draft tokens and can produce
-  different text from normal decoding;
-  `HIPENGINE_GGUF_MTP_VERIFY_MODE=serial_exact` restores token-for-token
-  agreement. See [Server API](docs/API.md).
+- Automatic speculative decoding covers only narrow measured shapes. On
+  gfx1151, Qwen3.8 `Q4_K_M` requires the strict/K3 settings and request scope
+  shown above; production-profile requests use AR. Requesting speculation
+  does not guarantee engagement. See [Server API](docs/API.md).
 - APIs and supported combinations can still change before 1.0.
 
 ## Hardware detection
