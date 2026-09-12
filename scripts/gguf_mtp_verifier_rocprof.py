@@ -188,6 +188,12 @@ def _run_child(args: argparse.Namespace) -> int:
         use_wmma_prefill=True,
         use_gemv_decode=True,
     ) as session:
+        if args.quant:
+            # The four-axis prefill plugins resolve against this axis. The
+            # verifier's own dispatch reads the per-tensor quant key, so this
+            # only affects the warmup prefill, but a mismatched axis can still
+            # return a sentinel token id that aborts the run.
+            session.select_prefill_quant(str(args.quant))
         first = session.prefill(prompt_ids, use_bulk=True, return_logits=False)
         cur = int(first.token_id)
         if args.mode == "serial-step":
@@ -275,6 +281,7 @@ def _run_child(args: argparse.Namespace) -> int:
     payload = {
         "schema": "hipengine.gguf_mtp_verifier_rocprof.child.v1",
         "mode": str(args.mode),
+        "quant": (str(args.quant) if args.quant else None),
         "steps": int(args.steps),
         "warmup": int(args.warmup),
         "return_logits": bool(args.return_logits),
@@ -355,6 +362,8 @@ def _run_parent(args: argparse.Namespace) -> int:
         "--child-json",
         str(child_json),
     ]
+    if args.quant:
+        child_base.extend(["--quant", str(args.quant)])
     if args.native_spec_target_cycle:
         child_base.append("--native-spec-target-cycle")
     if args.return_logits:
@@ -430,6 +439,7 @@ def _run_parent(args: argparse.Namespace) -> int:
         "model": str(args.model),
         "hardware": _hardware_label(),
         "mode": str(args.mode),
+        "quant": (str(args.quant) if args.quant else None),
         "block_rows": int(args.block_rows) if args.mode == "block-verify" else None,
         "block_verify_mode": str(args.block_verify_mode) if args.mode == "block-verify" else None,
         "block_wmma_prefill": bool(args.block_wmma_prefill) if args.mode == "block-verify" else None,
@@ -710,6 +720,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--child", action="store_true", help="internal: process run under rocprofv3")
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
+    parser.add_argument(
+        "--quant",
+        default=None,
+        help="Four-axis prefill quant plugin to select (e.g. gguf_ud_q4_k_m, gguf_q4_k_m).",
+    )
     parser.add_argument("--prompt-ids", default=DEFAULT_PROMPT_IDS)
     parser.add_argument("--steps", type=int, default=12)
     parser.add_argument("--warmup", type=int, default=3)
