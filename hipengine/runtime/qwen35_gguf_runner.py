@@ -1204,6 +1204,36 @@ class _GGUFPackedARPrefillChunk:
         return sum(len(tokens) for tokens in self.prompt_token_ids)
 
 
+def _record_packed_prefill_executor_identity(
+    sessions: Sequence["Qwen35GGUFResidentSession"],
+    mode: str,
+) -> None:
+    """Record which packed-prefill executor ran, on the sessions it ran for.
+
+    ``prefill_transient_owner_inventory`` reads ``last_packed_prefill_plan``
+    from the *leased* session, but the serving path executes the packed
+    prefill on ``_packed_execution_owner(lease.session)`` - the batch owner -
+    and for a slot view those are different objects with independent plan
+    dicts (``resident_slot_view`` initializes a view's plan to ``{}``).
+    Writing the identity only on the owner therefore left the metric
+    reporting ``mode="None"`` while the route really was the layer-outer
+    executor: a provenance defect, not a model defect. The P6 service proof
+    surfaced it as ``executor_modes {"None": 2}`` beside a correct
+    ``kv_attention_sources {"int8_direct": 2}``.
+
+    Re-asserted on every segment so a slot view rebuilt mid-prompt cannot
+    silently lose the identity.
+    """
+
+    label = str(mode)
+    for session in sessions:
+        plan = getattr(session, "last_packed_prefill_plan", None)
+        if not isinstance(plan, dict):
+            plan = {}
+            session.last_packed_prefill_plan = plan
+        plan["executor_mode"] = label
+
+
 @dataclass
 class _GGUFResumablePrefillState:
     """Cross-poll checkpoint for a suspended layer-outer INT8 prefill.
@@ -1239,6 +1269,13 @@ class _GGUFResumablePrefillState:
     require_logits: bool = False
     runtime: object | None = None
     scratch: _GGUFResumablePrefillScratch | None = None
+    # Which packed-prefill executor owns this checkpoint. Carried on the state
+    # because continuation segments re-assert the identity on the sessions
+    # they run for (see ``_record_packed_prefill_executor_identity``): the
+    # serving path executes on the batch owner while telemetry reads the
+    # leased session, so the identity must be written where it is read and
+    # re-written on every segment in case a slot view is rebuilt mid-prompt.
+    executor_mode: str = "layer_outer_packed"
 
     @property
     def layer_count(self) -> int:
@@ -22613,6 +22650,7 @@ class Qwen35GGUFResidentSession:
                 chunks=chunks,
                 layer_budget=layer_budget,
                 stream=stream,
+                executor_mode="layer_outer_resumable",
             )
         except BaseException:
             # A failed segment cannot be resumed, so its suspended-state
@@ -22975,6 +23013,7 @@ class Qwen35GGUFResidentSession:
         stream: int = 0,
         resume_state: _GGUFResumablePrefillState | None = None,
         layer_budget: int | None = None,
+        executor_mode: str = "layer_outer_packed",
     ) -> list[Qwen35GGUFNextTokenProbeResult | None] | _GGUFResumablePrefillState:
         """Execute a multi-chunk packed prompt layer-outer with one shared oracle.
 
@@ -23155,9 +23194,13 @@ class Qwen35GGUFResidentSession:
             "hidden_seed_norm_rows",
         ):
             self.last_packed_prefill_plan.setdefault(_plan_counter, 0)
-        self.last_packed_prefill_plan["executor_mode"] = "layer_outer_packed"
+        self.last_packed_prefill_plan["executor_mode"] = str(executor_mode)
         self.last_packed_prefill_plan["layer_outer_rounds"] = len(chunk_plans)
         self.last_packed_prefill_plan["layer_outer_rows"] = total_rows
+        # The serving path runs this executor on the batch owner while
+        # telemetry reads the leased session, so the identity has to be
+        # written where it is read as well (see the helper's docstring).
+        _record_packed_prefill_executor_identity(session_tuple, executor_mode)
         state = _GGUFResumablePrefillState(
             prompts=prompt_tuple,
             sessions=session_tuple,
@@ -23174,6 +23217,7 @@ class Qwen35GGUFResidentSession:
             return_logits=bool(return_logits),
             require_logits=bool(require_logits),
             runtime=runtime,
+            executor_mode=str(executor_mode),
         )
         return self._prefill_batch_native_layer_outer_segment_guarded(
             state,
@@ -23223,6 +23267,10 @@ class Qwen35GGUFResidentSession:
 
         session_tuple = state.sessions
         chunk_plans = state.chunk_plans
+        # Re-assert the executor identity every segment: the serving path may
+        # rebuild a slot view between segments, and the identity is read from
+        # the leased session rather than from the batch owner that runs this.
+        _record_packed_prefill_executor_identity(session_tuple, state.executor_mode)
         packed_state = state.packed_state
         packed_scratch_base = state.packed_scratch_base
         sample_output = state.sample_output

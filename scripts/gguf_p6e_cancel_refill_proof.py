@@ -96,7 +96,12 @@ ORACLE_OBSERVED_PEAK_OWNERS_METRIC = (
 # from the chunk-outer fallback (qwen35_gguf_runner.py:212-214). Without it a
 # decline can only be inferred from an absent counter, which names no reason.
 EXECUTOR_MODE_METRIC = "hipengine_resident_prefill_executor_mode_total"
-LAYER_OUTER_EXECUTOR_MODE = "layer_outer_packed"
+# This proof drives the *serving* path, which enters through
+# ``prefill_batch_native_layer_outer_resumable`` and therefore labels itself
+# ``layer_outer_resumable`` (distinct from the one-shot ``layer_outer_packed``).
+# Kept as an expectation only - the measured value is the executor_modes
+# histogram in the resumable_path_engaged gate.
+LAYER_OUTER_EXECUTOR_MODE = "layer_outer_resumable"
 # The outer gate on the resumable path (qwen35_gguf.py:8084): the resumable
 # executor is only attempted when the session's KV layout is int8_direct. Read from
 # the session, not from the route manifest: the manifest's kv_attention_source
@@ -923,6 +928,21 @@ def evaluate_gates(
     gates["native_sampling_survivor_exact"] = _evaluate_sampling_gate(
         native_sampling, label="native", skipped_reason=NATIVE_SAMPLING_SKIP_REASON
     )
+    # Reviewer finding 1 (2026-09-11): the oracle-peak proxy proves that *some*
+    # shared-oracle route ran, but it cannot prove which one. This gate's own
+    # detail claims executor_modes names what ran, so a resumable run that
+    # recorded no executor identity must fail here rather than pass on the
+    # proxy. That is exactly how the P6 service proof reported
+    # ``executor_modes {"None": 2}`` beside a correct ``int8_direct`` source
+    # and still went green: the identity was written on the batch owner while
+    # telemetry read the leased slot view.
+    executor_identity_labels = sorted(
+        {
+            str(label)
+            for label in (executor_modes or {})
+            if str(label).strip().lower() not in ("", "none", "null")
+        }
+    )
     gates["resumable_path_engaged"] = {
         # Without this the other gates can all pass on the default chunk-outer
         # path, which does not contain the deliverable at all. The indicator must
@@ -930,13 +950,19 @@ def evaluate_gates(
         # on the loop lock during a synchronous prefill, so polling the live gauge
         # from out of process always reads zero and would fail this gate no matter
         # what the engine did.
-        "passed": bool(oracle_observed_peak_owners) and bool(oracle_observed_peak_bytes),
+        "passed": bool(oracle_observed_peak_owners)
+        and bool(oracle_observed_peak_bytes)
+        and bool(executor_identity_labels),
         "oracle_observed_peak_owners": oracle_observed_peak_owners,
         "oracle_observed_peak_bytes": oracle_observed_peak_bytes,
         "owners_metric": ORACLE_OBSERVED_PEAK_OWNERS_METRIC,
         "bytes_metric": ORACLE_OBSERVED_PEAK_BYTES_METRIC,
         "live_gauge_owners": live_oracle_owners,
         "executor_modes": dict(executor_modes or {}),
+        # The positive assertion the reviewer asked for: an explicit executor
+        # identity, not an inference from the oracle peak.
+        "executor_identity_labels": executor_identity_labels,
+        "executor_identity_recorded": bool(executor_identity_labels),
         # The session's own KV layout: this is what gates the resumable path.
         "kv_attention_sources": dict(kv_attention_sources or {}),
         # Kept separate and labelled, because it is a different measurement: the
@@ -950,7 +976,9 @@ def evaluate_gates(
             "about the default route rather than about the resumable yield. "
             "executor_modes names what ran, and kv_attention_sources names whether "
             "the resumable path was even attempted, so a failure reports the "
-            "decline reason instead of leaving it to be inferred"
+            "decline reason instead of leaving it to be inferred. The oracle peak "
+            "is only a proxy for which executor ran, so a resumable run that "
+            "recorded no executor identity fails here rather than passing on it"
         ),
     }
     gates["survivors_exact"] = {
@@ -1536,7 +1564,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "oracle_observed_peak_owners": oracle_observed_peak_owners,
             "live_oracle_owners": live_oracle_owners,
             "executor_modes": dict(executor_modes or {}),
-            "layer_outer_executor_mode": LAYER_OUTER_EXECUTOR_MODE,
+            # An expectation, not a measurement. Renamed so it cannot be read
+            # as evidence that this mode ran; the measured value is the
+            # executor_modes histogram in the resumable_path_engaged gate.
+            "layer_outer_executor_mode_expected": LAYER_OUTER_EXECUTOR_MODE,
             "kv_attention_sources": dict(kv_attention_sources or {}),
             "manifest_kv_attention_source": manifest_kv_attention_source,
             "resumable_kv_source": RESUMABLE_KV_SOURCE,
@@ -1616,6 +1647,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "rather than only stopping the client read.",
             "The long request is confirmed admitted, then held open a little longer, "
             "so the cancel lands inside a real prefill.",
+            "executor_modes is per resident session, so a session whose prompts were "
+            "all single-chunk reports None: no packed layer-outer prefill ran on "
+            "it, which is the honest answer rather than a missing label. The gate "
+            "therefore requires at least one explicit executor identity (and "
+            "resumable_path_engaged.executor_identity_labels records which), not "
+            "that every session has one.",
         ],
     }
 

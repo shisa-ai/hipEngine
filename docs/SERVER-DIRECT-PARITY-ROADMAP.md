@@ -46,7 +46,29 @@ promise: transport, token handling, and fairness have costs. Equal KV geometry,
 no redundant context-proportional storage, and near-direct model-step time are
 reasonable requirements.
 
-## 1.1 Execution status (2026-09-10, end of day)
+## 1.1 Execution status
+
+**Promoted scopes and remaining unsupported modes (2026-09-11).** This table is
+the single current answer; read it before the historical stage detail below,
+which records how each stage got here rather than what is shipping now.
+
+| Item | State | Scope |
+| --- | --- | --- |
+| P3 layer-outer packed prefill | **default** | qualified INT8 C1 route; `HIPENGINE_GGUF_PACKED_LAYER_OUTER=0` is the rollback to the corrected chunk-outer executor |
+| P6 resumable (bounded-yield) prefill | **qualified** | INT8 direct, greedy and host sampling, prefix-off, MTP-off, declared gfx1100 artifact. It is also the default for leased requests, because P3 gates it |
+| Native sampling on that route | **blocked** | `HIPENGINE_QWEN35_NATIVE_SAMPLER=1` leaves the packed native sampler at capacity 0, so the request fails with `invalid_request` and the engine then times out and closes. This is an unresolved production-path defect, not missing test coverage |
+| Prefix-suffix (shared-prefix) resumable prefill | **intentionally unsupported** | the layer-outer executor provides no incremental prefill, so admission declines these rounds by design |
+| IKV-C2 row-batched INT8 decode | **promoted to physical C4** | eager decode; concurrent requests share one packed model step |
+| INT8 KV decode graphs | **default-off** | `HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH=1` admits them. Measured as a repeatable win above the `pm4` transport threshold and a repeatable regression below it, so promotion needs transport-aware or horizon-aware admission first |
+| C8, decode graphs, MTP, batched INT8 prefill | **not promoted** | measured or diagnostic only |
+
+Two consequences worth stating plainly, because they are easy to lose in the
+detail below. First, P6 is closed for the greedy/host-sampling INT8 route and
+**not** for every public sampling mode: native sampling is broken, not
+untested. Second, the packed cancellation race against a live packed step is the
+open lifecycle gate that must close before IKV-C2 is widened from C4 to C8.
+
+### Historical stage detail (2026-09-10, end of day)
 
 Status levels are distinguished per the review: implementation landed /
 diagnostic passed / qualified. P0 (telemetry) and P4 (lease removal,
@@ -683,7 +705,9 @@ acknowledgement/cancel delay, explicit p95/p99 decode gap/TTFT SLOs, no
 unbounded output queue, and no hidden serial fallback in native claims.
 
 **Coverage status as of 2026-09-11** (evidence:
-`benchmarks/results/2026-09-11-w7900-p6e-cancel-refill-service-proof.json`,
+`benchmarks/results/2026-09-11-w7900-p6e-cancel-refill-service-proof-provenance-corrected.json`
+(the corrected re-run; the earlier `...-service-proof.json` is retained because
+older CHANGELOG entries cite its measurements),
 eleven gates - ten passing and the native-sampling gate explicitly `skipped` with its blocker named - `passed: true`, `performance_claim: false`):
 
 | P6 coverage item | Status |
