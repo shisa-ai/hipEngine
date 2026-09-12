@@ -228,6 +228,7 @@ when an adapter/parser calls `add_engine_loop_config_args(...)`.
 | `HIPENGINE_KV_POOL_LOW_WATER_PAGES` | `128` | `--kv-pool-low-water-pages` | Idle-shrink low-water pages, clamped with the initial allocation; must be > 0 and no greater than configured initial pages. |
 | `HIPENGINE_KV_POOL_HIGH_WATER_PAGES` | unset | `--kv-pool-high-water-pages` | Optional atomic grow-on-admission page cap; unset means no configured pool cap. |
 | `HIPENGINE_KV_POOL_CHUNK_PAGES` | `128` | `--kv-pool-chunk-pages` | Real device pages per grow/shrink tail chunk, clamped to useful runner capacity; must be > 0. |
+| `HIPENGINE_KV_POOL_MEMORY_BUDGET_MIB` | automatic | `--kv-pool-memory-budget-mib` | Independent dense-GGUF KV pool memory ceiling in MiB; when unset, derived from live free HIP memory after reserve. |
 | `HIPENGINE_KV_POOL_IDLE_GRACE_SECONDS` | `30.0` | `--kv-pool-idle-grace-seconds` | Seconds before fully-free, graph-unpinned tail chunks are eligible to shrink; must be ≥ 0. |
 | `HIPENGINE_MAX_PENDING_REQUESTS` | unset | `--max-pending-requests` | Optional pending request queue cap for the resident scheduler; must be > 0 when set. |
 

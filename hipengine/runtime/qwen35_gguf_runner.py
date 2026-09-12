@@ -17523,7 +17523,6 @@ class Qwen35GGUFResidentSession:
             layout = _qwen35_gguf_session_kv_chunk_layout(self)
             self._device_kv_layout = layout
         page_bytes = _qwen35_gguf_kv_page_bytes(cfg, layout)
-
         def allocate_chunk(start_block_id: int, pages: int):
             return _allocate_qwen35_gguf_kv_chunk(
                 self.runner,
@@ -17571,6 +17570,30 @@ class Qwen35GGUFResidentSession:
         if layout is None:
             layout = _qwen35_gguf_session_kv_chunk_layout(self)
             self._device_kv_layout = layout
+        page_bytes = _qwen35_gguf_kv_page_bytes(cfg, layout)
+        max_pages = capacity
+        mem_get_info = getattr(runtime, "mem_get_info", None)
+        if callable(mem_get_info):
+            try:
+                free_bytes, _total_bytes = mem_get_info()
+                configured_budget_mib = getattr(
+                    self,
+                    "kv_pool_memory_budget_mib",
+                    None,
+                )
+                if configured_budget_mib is not None:
+                    max_pages = max(
+                        capacity,
+                        int(configured_budget_mib) * 1024**2 // page_bytes,
+                    )
+                else:
+                    max_pages = max(
+                        capacity,
+                        int(max(0, int(free_bytes) - 3 * 1024**3) // page_bytes),
+                    )
+            except Exception:
+                max_pages = capacity
+        growth_chunk_pages = max(1, min(128, max_pages - capacity))
         backing = _allocate_qwen35_gguf_kv_chunk(
             self.runner,
             runtime=runtime,
@@ -17578,6 +17601,7 @@ class Qwen35GGUFResidentSession:
             pages=capacity,
             layout=layout,
         )
+        backings = [backing]
         plane_page_pointers: dict[str, tuple[int, ...]] = {}
 
         def add_plane(role: str, buffer: DeviceBuffer | None) -> None:
@@ -17644,6 +17668,87 @@ class Qwen35GGUFResidentSession:
             raise
 
         closed = False
+        descriptor_generation = int(pool_generation)
+
+        def grow_storage(
+            pages: int,
+            start_block_id: int,
+        ) -> tuple[dict[str, tuple[int, ...]], dict[str, int]]:
+            """Append device pages and rebuild indirection tables atomically."""
+
+            nonlocal descriptor_generation
+            count = int(pages)
+            start = int(start_block_id)
+            if count <= 0 or start < 0:
+                raise ValueError("global KV growth requires positive pages and a valid start")
+            chunk = _allocate_qwen35_gguf_kv_chunk(
+                self.runner,
+                runtime=runtime,
+                start_block_id=start,
+                pages=count,
+                layout=layout,
+            )
+            appended: dict[str, tuple[int, ...]] = {}
+
+            def add_appended(role: str, buffer: DeviceBuffer | None) -> None:
+                if buffer is None:
+                    return
+                page_nbytes = int(buffer.nbytes) // count
+                appended[role] = tuple(
+                    int(buffer.ptr) + page_id * page_nbytes
+                    for page_id in range(count)
+                )
+
+            for layer_id in range(len(layout.layer_storage_dtypes)):
+                add_appended(f"layer{layer_id}.key_payload", chunk.full_key_caches[layer_id])
+                add_appended(f"layer{layer_id}.value_payload", chunk.full_value_caches[layer_id])
+                add_appended(f"layer{layer_id}.bf16_mirror_key", chunk.full_bf16_mirror_key_caches[layer_id])
+                add_appended(f"layer{layer_id}.bf16_mirror_value", chunk.full_bf16_mirror_value_caches[layer_id])
+                add_appended(f"layer{layer_id}.key_scale", chunk.full_k_scale_caches[layer_id])
+                add_appended(f"layer{layer_id}.value_scale", chunk.full_v_scale_caches[layer_id])
+
+            new_tables: dict[str, DeviceBuffer] = {}
+            try:
+                for role, extra in appended.items():
+                    pointers = plane_page_pointers[role] + extra
+                    host = np.ascontiguousarray(pointers, dtype=np.uint64)
+                    table = malloc(host.nbytes, runtime=runtime)
+                    copy_host_to_device(table, host_array_ptr(host), host.nbytes, runtime=runtime)
+                    new_tables[role] = table
+            except Exception:
+                for table in reversed(tuple(new_tables.values())):
+                    free(table, runtime=runtime)
+                _free_qwen35_gguf_kv_chunk(chunk, runtime=runtime)
+                raise
+            next_generation = descriptor_generation + 1
+            descriptor_host = np.zeros((256,), dtype=np.uint8)
+            descriptor_host[:16] = np.asarray(
+                [next_generation, start + count],
+                dtype=np.uint64,
+            ).view(np.uint8)
+            try:
+                copy_host_to_device(
+                    descriptor,
+                    host_array_ptr(descriptor_host),
+                    descriptor_host.nbytes,
+                    runtime=runtime,
+                )
+            except Exception:
+                for table in reversed(tuple(new_tables.values())):
+                    free(table, runtime=runtime)
+                _free_qwen35_gguf_kv_chunk(chunk, runtime=runtime)
+                raise
+            old_tables = pointer_tables
+            plane_page_pointers.update(appended)
+            pointer_tables = new_tables
+            descriptor_generation = next_generation
+            for table in reversed(tuple(old_tables.values())):
+                free(table, runtime=runtime)
+            backings.append(chunk)
+            return (
+                appended,
+                {role: int(table.ptr) for role, table in new_tables.items()},
+            )
 
         def close_storage() -> None:
             nonlocal closed
@@ -17653,7 +17758,8 @@ class Qwen35GGUFResidentSession:
             free(descriptor, runtime=runtime)
             for table in reversed(tuple(pointer_tables.values())):
                 free(table, runtime=runtime)
-            _free_qwen35_gguf_kv_chunk(backing, runtime=runtime)
+            for chunk in reversed(backings):
+                _free_qwen35_gguf_kv_chunk(chunk, runtime=runtime)
             closed = True
 
         page_bytes = _qwen35_gguf_kv_page_bytes(cfg, layout)
@@ -17674,6 +17780,17 @@ class Qwen35GGUFResidentSession:
             },
             metadata_descriptor_pointer=int(descriptor.ptr),
             close_storage=close_storage,
+            grow_storage=grow_storage,
+            before_grow=lambda: self._resident_batch_owner._invalidate_live_packed_decode_graphs()
+            if self._resident_batch_owner is not None
+            else None,
+            max_pages=max_pages,
+            growth_chunk_pages=growth_chunk_pages,
+            on_pressure=(
+                lambda required: self._resident_batch_owner.evict_prefix_cache_for_pressure(required)
+                if self._resident_batch_owner is not None
+                else None
+            ),
         )
 
     def decode_graph_min_replay_steps(self) -> int | None:
