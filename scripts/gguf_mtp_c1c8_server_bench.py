@@ -1053,10 +1053,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         backend_package.GGUF_SPECDEC2_MTP2_PHYSICAL = True
     started = time.perf_counter()
     initial_memory = memory_stats()
+    requested_profile = (
+        None if args.execution_profile == "default" else str(args.execution_profile)
+    )
     llm = LLM(
         str(args.model),
         backend=str(args.backend),
-        execution_profile=str(args.execution_profile),
+        execution_profile=requested_profile,
         max_active_requests=resident_capacity,
         max_sequence_length=int(args.max_sequence_length),
         speculative_candidate_budget=int(args.candidate_budget),
@@ -1068,7 +1071,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         if args.capture_prefill_attribution:
             prefill_probe = _install_native_prefill_probe(llm)
         runtime_profile = {
-            "requested": str(args.execution_profile),
+            "requested": requested_profile,
             "resolved": getattr(llm, "resolved_execution_profile", None),
             "manifest_sha256": getattr(llm, "execution_profile_manifest_sha256", None),
             "strict_manifest_sha256": getattr(
@@ -1076,7 +1079,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ),
         }
         if args.generation2_diagnostic:
-            if str(args.execution_profile) == "production":
+            if runtime_profile["resolved"] == "production":
                 width_depths = backend_package_capability(
                     str(args.backend),
                     "GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS",
@@ -1238,7 +1241,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "warmup_arms_per_width": 2,
             "runs": 1,
             "sampling": "raw greedy, no processed target, natural stop/EOS",
-            "execution_profile": str(args.execution_profile),
+            "execution_profile": runtime_profile.get("resolved"),
+            "requested_execution_profile": requested_profile,
             "correctness_contract": str(args.correctness_contract),
             "generated_id_equality": "diagnostic; production promotion binds the complete execution-profile numerical/task gate",
             "generation2_diagnostic_plan": bool(args.generation2_diagnostic),
@@ -1274,8 +1278,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--quant", default="gguf_q4_k_m")
     parser.add_argument(
         "--execution-profile",
-        choices=("strict", "production"),
+        choices=("strict", "production", "default"),
         default="production",
+        help="default omits the public profile selector; explicit production remains the historical harness default",
     )
     parser.add_argument("--prompts", type=Path, default=DEFAULT_PROMPTS)
     parser.add_argument(

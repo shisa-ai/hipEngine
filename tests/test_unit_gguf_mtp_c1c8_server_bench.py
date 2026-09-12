@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from scripts import gguf_mtp_c1c8_server_bench as server_bench
 from scripts.gguf_mtp_c1c8_server_bench import (
     _backend_mtp_engaged,
     _cell_correctness,
@@ -63,6 +64,23 @@ def test_mtp_c1c8_parser_defaults_to_production_profile() -> None:
     assert normal_owner.widths == (2,)
     assert normal_owner.resident_capacity == 4
     assert default.diagnostic_prompt_count == 0
+
+
+def test_default_profile_arm_reaches_llm_without_a_selector(monkeypatch):
+    args = build_parser().parse_args(
+        ("--execution-profile", "default", "--output", "/tmp/out.json"))
+    monkeypatch.delenv("HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET", raising=False)
+    monkeypatch.setattr(server_bench.subprocess, "check_output", lambda *a, **k: "")
+    captured = []
+
+    def llm(*args, **kwargs):
+        captured.append(kwargs["execution_profile"])
+        raise RuntimeError("stop before allocation")
+
+    monkeypatch.setattr(server_bench, "LLM", llm)
+    with pytest.raises(RuntimeError, match="stop before allocation"):
+        server_bench.run(args)
+    assert captured == [None]
 
 
 def test_mtp_c1c8_diagnostic_prompt_subset_is_fail_closed() -> None:
