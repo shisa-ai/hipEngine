@@ -27,7 +27,9 @@ FIXTURES = Path("tests/fixtures/surya")
 
 
 def test_every_page_has_ground_truth() -> None:
-    assert set(GROUND_TRUTH) == {"ja", "mixed", "dense", "table", "blank", "scan", "long"}
+    assert set(GROUND_TRUTH) == {
+        "ja", "mixed", "dense", "table", "blank", "scan", "long", "a4"
+    }
 
 
 def test_acceptance_page_uses_fit_variant_only_where_needed() -> None:
@@ -39,6 +41,9 @@ def test_acceptance_page_uses_fit_variant_only_where_needed() -> None:
     assert acceptance_page("dense") == "page_dense.png"
     assert acceptance_page("table") == "page_table.png"
     assert acceptance_page("blank") == "page_blank.png"
+    # The A4 page is generated with the same fit assertion, so it needs no
+    # variant; it is its own page-scale fixture.
+    assert acceptance_page("a4") == "page_a4.png"
 
 
 def test_acceptance_page_rejects_an_unknown_name() -> None:
@@ -88,3 +93,77 @@ def test_table_page_ground_truth_matches_the_drawn_grid() -> None:
 
 def test_blank_page_has_no_expected_lines() -> None:
     assert expected_lines("blank") == ()
+
+
+def test_a4_page_is_the_page_scale_grid_the_memory_plan_describes() -> None:
+    """The A4 fixture must be the grid the page-scale evidence talks about.
+
+    The 220x156 / 34320-patch / 8580-image-token numbers in the memory plan are
+    only meaningful if a fixture actually produces that grid, so this pins the
+    fixture to them rather than leaving the plan untested arithmetic.
+    """
+
+    from PIL import Image
+
+    from hipengine.loading.surya import smart_resize_surya
+
+    page = FIXTURES / "page_a4.png"
+    assert page.exists(), "page_a4.png is not committed"
+    with Image.open(page) as image:
+        width, height = image.size
+    # A4 at 300 DPI.
+    assert (width, height) == (2480, 3508)
+    resized_h, resized_w = smart_resize_surya(height, width)
+    assert (resized_h // 16, resized_w // 16) == (220, 156)
+    patches = (resized_h // 16) * (resized_w // 16)
+    assert patches == 34320
+    assert (resized_h // 32) * (resized_w // 32) == 8580
+
+
+def test_a4_page_regenerates_byte_identically(tmp_path: Path) -> None:
+    from scripts.surya_bench_pages import make_page_a4
+
+    written = tmp_path / "page_a4.png"
+    make_page_a4(written)
+    assert written.read_bytes() == (FIXTURES / "page_a4.png").read_bytes(), (
+        "page_a4.png is not reproducible; regenerate the fixture"
+    )
+
+
+def test_a4_ground_truth_is_paragraph_level_not_drawn_line_level() -> None:
+    """The A4 body is wrapped prose, so its text unit is the paragraph.
+
+    Scoring the drawn lines as separate units reads a correct paragraph-level
+    transcription as 22 omissions and CER 0.89. This pins the unit, and pins
+    that the unit is the drawn prose joined at the wrap points rather than a
+    retyped copy that could drift from the page.
+    """
+
+    from scripts.surya_bench_pages import (
+        _A4_ABSTRACT,
+        _A4_META,
+        _A4_SECTIONS,
+        _A4_TABLE_CAPTION,
+        _A4_TITLE,
+    )
+
+    units = expected_lines("a4")
+
+    assert len(units) == 12, "title, meta, 4 headings, 4 paragraphs, caption"
+    assert _A4_TITLE in units
+    assert _A4_META in units
+    assert _A4_TABLE_CAPTION in units
+    # The wrapped lines are NOT units ...
+    for line in _A4_ABSTRACT:
+        assert line not in units
+    # ... the paragraph they form is.
+    assert " ".join(_A4_ABSTRACT) in units
+    for heading_text, lines in _A4_SECTIONS:
+        assert heading_text in units
+        assert " ".join(lines) in units
+        for line in lines:
+            assert line not in units, "a wrapped line must not be its own unit"
+
+    # Reading order: each paragraph follows its heading.
+    for heading_text, lines in _A4_SECTIONS:
+        assert units.index(" ".join(lines)) == units.index(heading_text) + 1

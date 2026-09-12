@@ -53,6 +53,15 @@ MODEL_ID = "datalab-to/surya-ocr-2"
 ORACLE_PATH = FIXTURES / "oracle_fullpage_protocol.json"
 CASES = ("ja", "mixed", "dense", "table", "blank", "scan", "long")
 
+# The 300-DPI A4 page is page-scale (2480x3508, 220x156 patch grid, 8580 image
+# tokens) and has no captured torch reference, so it joins the ground-truth and
+# reading-order gates without joining the implementation-parity gates. Its
+# ground truth is paragraph-level because its body is wrapped prose; see
+# scripts/surya_bench_pages.py:_a4_paragraphs.
+QUALITY_ONLY_CASES = ("a4",)
+QUALITY_CASES = CASES + QUALITY_ONLY_CASES
+QUALITY_ONLY_MAX_TOKENS = {"a4": 4000}
+
 # Pages whose full greedy id chain matches the torch fp32 reference exactly.
 EXACT_ID_CASES = ("ja", "mixed", "dense", "table", "blank", "long")
 
@@ -130,12 +139,20 @@ def _run(generator, page: str, max_tokens: int):
     )
 
 
+def _budget(oracle: dict, page: str) -> int:
+    """Output budget for one page: the captured oracle's, else the declared one."""
+
+    if page in oracle:
+        return oracle[page]["max_tokens"]
+    return QUALITY_ONLY_MAX_TOKENS[page]
+
+
 @pytest.fixture(scope="module")
 def outputs(generator) -> dict:
     """One generation per page, shared by the parity and quality tests."""
 
     oracle = _oracle()
-    return {page: _run(generator, page, oracle[page]["max_tokens"]) for page in CASES}
+    return {page: _run(generator, page, _budget(oracle, page)) for page in QUALITY_CASES}
 
 
 @pytest.mark.parametrize("page", EXACT_ID_CASES)
@@ -180,9 +197,9 @@ def test_protocol_matches_torch_reference_up_to_coordinate_digits(
         )
 
 
-@pytest.mark.parametrize("page", CASES)
+@pytest.mark.parametrize("page", QUALITY_CASES)
 def test_transcription_meets_ground_truth(page: str, outputs: dict) -> None:
-    entry = _oracle()[page]
+    entry = _oracle().get(page)
     result = outputs[page]
 
     blocks = parse_full_page_html(result.text)
@@ -210,10 +227,11 @@ def test_transcription_meets_ground_truth(page: str, outputs: dict) -> None:
     assert score.line_exact_rate == 1.0
     assert score.cer == 0.0
     assert not score.truncated
-    assert entry["finish_reason"] == "eos"
+    if entry is not None:
+        assert entry["finish_reason"] == "eos"
 
 
-@pytest.mark.parametrize("page", CASES)
+@pytest.mark.parametrize("page", QUALITY_CASES)
 def test_reading_order_follows_the_drawn_order(page: str, outputs: dict) -> None:
     score = score_transcription(
         page=page,
