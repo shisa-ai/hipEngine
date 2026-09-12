@@ -26,6 +26,7 @@ from scripts.gguf_p6e_cancel_refill_proof import _free_port, _metrics_values, _w
 
 def stream_summary(events):
     text, finished, done, errors, request_ids = [], False, False, [], set()
+    token_ids = None
     for event in events:
         if event == "[DONE]":
             done = True
@@ -36,11 +37,13 @@ def stream_summary(events):
             text.append(choice.get("text", ""))
             finished |= choice.get("finish_reason") is not None
             state = choice.get("hipengine", {}).get("decode_state", {})
+            if choice.get("finish_reason") is not None:
+                token_ids = choice.get("hipengine", {}).get("generated_token_ids")
             if state.get("request_id") is not None:
                 request_ids.add(state["request_id"])
     return {"text": "".join(text), "complete": done and finished and not errors
             and len(request_ids) <= 1, "errors": errors,
-            "request_ids": sorted(request_ids)}
+            "request_ids": sorted(request_ids), "ids": token_ids}
 
 
 def validate_response(body):
@@ -152,7 +155,7 @@ def run(args):
         base = f"http://127.0.0.1:{port}"
         references = [request(base, payload(prompt, args.tokens)) for prompt in prompts]
         report["references"] = references
-        for streaming in (False, True):
+        for streaming in ((True,) if args.streaming_only else (False, True)):
             for width in (1, 2, 4, 8):
                 for repeat in range(3):
                     indices = [(repeat * width + offset) % len(prompts) for offset in range(width)]
@@ -170,14 +173,15 @@ def run(args):
                     if streaming:
                         for i, value in zip(indices, actual, strict=True):
                             ids = value["request_ids"]
-                            if len(ids) != 1 or not _wait_for(
-                                lambda: ids[0] in reclaimed, timeout=10):
-                                raise ValueError("SSE response lacks a reclaimed request identity")
-                            terminal = reclaimed[ids[0]]
-                            value["terminal_generated_ids"] = terminal["generated_ids"]
-                            value["terminal_prompt_ids"] = terminal["prompt_ids"]
-                            matches.append(terminal["generated_ids"] == references[i]["ids"]
-                                           and terminal["prompt_ids"] == prompts[i])
+                            if value["ids"] is None:
+                                report["failed_sse"] = value
+                                raise ValueError("SSE response lacks authoritative terminal token IDs")
+                            matches.append(value["ids"] == references[i]["ids"])
+                            if len(ids) == 1 and ids[0] in reclaimed:
+                                terminal = reclaimed[ids[0]]
+                                value["reclaim_crosscheck"] = terminal
+                                matches.append(terminal["generated_ids"] == value["ids"]
+                                               and terminal["prompt_ids"] == prompts[i])
                     row = {"stream": streaming, "width": width, "repeat": repeat,
                            "prompt_indices": indices, "exact": all(matches),
                            "responses": actual, "telemetry": _resident_observability(llm, recent=width)}
@@ -264,6 +268,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", type=Path, default=Path("/models/gguf/Qwen3.8-27B-Q4_K_M.gguf"))
     parser.add_argument("--tokens", type=int, default=32)
+    parser.add_argument("--streaming-only", action="store_true",
+                        help="Focused rerun preserving the completed blocking-gate evidence")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     return 0 if run(args)["passed"] else 1

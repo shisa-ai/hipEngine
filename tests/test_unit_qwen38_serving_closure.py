@@ -27,3 +27,14 @@ def test_blocking_requires_exact_server_owned_ids_and_count():
     response["usage"]["completion_tokens"] = 3
     with pytest.raises(ValueError):
         validate_response(response)
+
+
+def test_stream_uses_authoritative_terminal_ids_without_resident_request_id():
+    events = [
+        {"choices": [{"text": "ok", "finish_reason": None}]},
+        {"choices": [{"text": "", "finish_reason": "length", "hipengine": {
+            "generated_token_ids": [1, 2], "generated_tokens": 2,
+        }}]},
+        "[DONE]",
+    ]
+    assert stream_summary(events)["ids"] == [1, 2]
