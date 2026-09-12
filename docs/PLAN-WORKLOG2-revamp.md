@@ -255,10 +255,19 @@ immutable.
 - unfinished placeholders;
 - conflict markers;
 - a staged entry whose working-tree copy differs;
-- unexpected files directly under `worklog/entries/`;
+- unexpected tracked files directly under `worklog/entries/`;
 - any change to the frozen legacy file or its manifest invariant.
 
 Only newly added entry paths are permitted under `worklog/entries/`.
+
+**Scope amendment (2026-09-12).** Validation reads the Git index — the commit
+tree — rather than the working directory. An untracked file under
+`worklog/entries/` is normally some worker's unfinished entry, is not part of the
+commit, and must not block another worker's commit in a shared worktree, so
+`check` reports those files as notes and `--include-unstaged` validates them on
+request. Every bullet above still applies to staged and tracked content,
+including a staged entry whose working-tree copy differs (re-run `git add` to
+commit the final text).
 
 A wrong committed entry is corrected by a new `decision` or `checkpoint` entry
 that names the superseded conclusion and points to the original path. Historical

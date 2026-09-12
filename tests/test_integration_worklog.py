@@ -85,6 +85,18 @@ def _new_entry(
     return path
 
 
+def _unfinished_entry(
+    repo: Path,
+    *,
+    title: str = "Work in progress",
+    topic: str = "work-in-progress",
+    worker: str = "other-lane",
+) -> Path:
+    """Mint an entry template whose placeholders are still unfilled (working-tree WIP)."""
+    result = _tool(repo, "new", "--title", title, "--topic", topic, "--worker", worker)
+    return repo / result.stdout.strip()
+
+
 def _commit_entry(repo: Path, entry: Path, message: str = "docs: add worklog entry") -> None:
     _git(repo, "add", str(entry.relative_to(repo)))
     _git(repo, "commit", "-m", message)
@@ -119,6 +131,7 @@ def test_new_check_and_render_keep_root_navigation_tracked(tmp_path: Path) -> No
     entry = _new_entry(repo)
 
     assert entry.parent == repo / "worklog" / "entries"
+    _git(repo, "add", str(entry.relative_to(repo)))
     assert _tool(repo, "check").stdout.strip() == "worklog: 1 valid entry"
 
     root_before = (repo / "WORKLOG.md").read_bytes()
@@ -139,6 +152,7 @@ def test_rapid_new_calls_allocate_unique_paths(tmp_path: Path) -> None:
     assert first != second
     assert first.is_file()
     assert second.is_file()
+    _git(repo, "add", str(first.relative_to(repo)), str(second.relative_to(repo)))
     assert _tool(repo, "check").stdout.strip() == "worklog: 2 valid entries"
 
 
@@ -157,6 +171,7 @@ printf '## Summary\\n'
         1,
     )
     entry.write_text(text, encoding="utf-8")
+    _git(repo, "add", str(entry.relative_to(repo)))
 
     assert _tool(repo, "check").returncode == 0
 
@@ -191,7 +206,10 @@ def test_render_orders_equal_timestamps_by_filename(tmp_path: Path) -> None:
     second.write_text(second_text.replace(second_stamp, first_stamp), encoding="utf-8")
     second_stamp_name = second.name.split("-", 1)[0]
     first_stamp_name = first.name.split("-", 1)[0]
-    second.rename(second.with_name(second.name.replace(second_stamp_name, first_stamp_name, 1)))
+    renamed = second.rename(
+        second.with_name(second.name.replace(second_stamp_name, first_stamp_name, 1))
+    )
+    _git(repo, "add", str(first.relative_to(repo)), str(renamed.relative_to(repo)))
 
     _tool(repo, "check")
     _tool(repo, "render")
@@ -266,10 +284,11 @@ def test_default_render_excludes_legacy_and_full_render_includes_it(tmp_path: Pa
         (lambda text: text + "<<<<<<< conflict\n", "conflict marker"),
     ],
 )
-def test_check_rejects_malformed_entries(tmp_path: Path, mutation, expected: str) -> None:
+def test_check_rejects_malformed_staged_entries(tmp_path: Path, mutation, expected: str) -> None:
     repo = _init_repo(tmp_path)
     entry = _new_entry(repo)
     entry.write_text(mutation(entry.read_text(encoding="utf-8")), encoding="utf-8")
+    _git(repo, "add", str(entry.relative_to(repo)))
 
     result = _tool(repo, "check", check=False)
     assert result.returncode == 1
@@ -306,6 +325,69 @@ def test_check_rejects_staged_worktree_divergence(tmp_path: Path) -> None:
     result = _tool(repo, "check", check=False)
     assert result.returncode == 1
     assert "differs from its staged content" in result.stderr
+
+
+def test_check_reports_unmerged_entry_conflict(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    entry = _new_entry(repo)
+    _commit_entry(repo, entry)
+    _git(repo, "switch", "-c", "lane")
+    entry.write_text(entry.read_text(encoding="utf-8") + "\nLane text.\n", encoding="utf-8")
+    _git(repo, "commit", "-am", "docs: lane edit")
+    _git(repo, "switch", "main")
+    entry.write_text(entry.read_text(encoding="utf-8") + "\nMain text.\n", encoding="utf-8")
+    _git(repo, "commit", "-am", "docs: main edit")
+    merge = _git(repo, "merge", "--no-edit", "lane", check=False)
+    assert merge.returncode != 0
+
+    result = _tool(repo, "check", check=False)
+    assert result.returncode == 1
+    assert "unresolved merge conflict in the Git index" in result.stderr
+    assert "immutable" not in result.stderr
+
+
+def test_check_ignores_unfinished_unstaged_entries(tmp_path: Path) -> None:
+    """Another worker's unfinished entry is not part of this commit and cannot block it."""
+    repo = _init_repo(tmp_path)
+    mine = _new_entry(repo, title="Mine", topic="mine")
+    _git(repo, "add", str(mine.relative_to(repo)))
+    wip = _unfinished_entry(repo)
+    (repo / "worklog" / "entries" / "scratch.txt").write_text("wip\n", encoding="utf-8")
+
+    result = _tool(repo, "check")
+    assert result.stdout.strip() == "worklog: 1 valid entry"
+    assert "not part of this commit and is not valid yet" in result.stderr
+    assert wip.name in result.stderr
+
+    strict = _tool(repo, "check", "--include-unstaged", check=False)
+    assert strict.returncode == 1
+    assert "placeholder" in strict.stderr
+
+
+def test_check_rejects_staged_unfinished_entry(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    wip = _unfinished_entry(repo)
+    _git(repo, "add", str(wip.relative_to(repo)))
+
+    result = _tool(repo, "check", check=False)
+    assert result.returncode == 1
+    assert "placeholder" in result.stderr
+
+
+def test_render_includes_unstaged_entries_and_reports_invalid_ones(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    committed = _new_entry(repo, title="Committed outcome", topic="committed-outcome")
+    _commit_entry(repo, committed)
+    unstaged = _new_entry(repo, title="Unstaged outcome", topic="unstaged-outcome")
+    _unfinished_entry(repo, title="Unfinished outcome", topic="unfinished-outcome")
+
+    result = _tool(repo, "render")
+    rendered = (repo / ".worklog" / "WORKLOG.md").read_text(encoding="utf-8")
+    assert "Committed outcome" in rendered
+    assert "Unstaged outcome" in rendered
+    assert unstaged.name in rendered
+    assert "Unfinished outcome" not in rendered
+    assert "not rendered" in result.stderr
 
 
 def test_independent_branch_entries_merge_without_conflict(tmp_path: Path) -> None:
@@ -374,13 +456,22 @@ def test_install_hook_preserves_lfs_hooks_and_refuses_unrelated_precommit(tmp_pa
     assert {name: (hooks / name).read_bytes() for name in lfs_names} == before
 
 
-def test_managed_hook_validates_entries_and_tolerates_branch_without_tool(tmp_path: Path) -> None:
+def test_managed_hook_validates_staged_entries_and_tolerates_branch_without_tool(
+    tmp_path: Path,
+) -> None:
     repo = _init_repo(tmp_path)
     _tool(repo, "install-hook")
     hook = repo / ".git" / "hooks" / "pre-commit"
+
+    _unfinished_entry(repo)
+    assert _run(repo, str(hook), check=False).returncode == 0
+
     entry = _new_entry(repo)
     entry.write_text(entry.read_text(encoding="utf-8") + "<<<<<<< bad\n", encoding="utf-8")
-    assert _run(repo, str(hook), check=False).returncode == 1
+    _git(repo, "add", str(entry.relative_to(repo)))
+    blocked = _run(repo, str(hook), check=False)
+    assert blocked.returncode == 1
+    assert "conflict marker" in blocked.stderr
 
     tool = repo / "scripts" / "worklog.py"
     hidden = repo / "scripts" / "worklog.py.hidden"
@@ -390,3 +481,19 @@ def test_managed_hook_validates_entries_and_tolerates_branch_without_tool(tmp_pa
     finally:
         hidden.rename(tool)
     assert result.returncode == 0
+
+
+def test_commit_succeeds_with_unfinished_unstaged_entry_present(tmp_path: Path) -> None:
+    """The installed hook must not force `git commit --no-verify` on a shared worktree."""
+    repo = _init_repo(tmp_path)
+    _tool(repo, "install-hook")
+    wip = _unfinished_entry(repo)
+    entry = _new_entry(repo, title="Mine", topic="mine")
+    _git(repo, "add", str(entry.relative_to(repo)))
+
+    commit = _git(repo, "commit", "-m", "docs: record my unit", check=False)
+    assert commit.returncode == 0, commit.stderr
+    assert wip.is_file()
+    assert _git(repo, "ls-files", "--others", "--exclude-standard").stdout.strip() == str(
+        wip.relative_to(repo)
+    )

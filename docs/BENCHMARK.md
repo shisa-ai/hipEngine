@@ -1603,7 +1603,7 @@ Minimum sequence for a retained number:
    production, or batch-invariant whole-path gate. A failing binding gate kills
    the number — do not publish.
 7. **Artifact + rollup.** Emit the JSON under `benchmarks/results/`, update `benchmarks/README.md`, and add a short entry to `benchmarks/CHANGELOG.md`.
-8. **Log.** Create a unique immutable worklog entry with `python3 scripts/worklog.py new`, then summarize the number, delta vs prior baseline, and anomalies (high VGPR, scratch, unexpected kernel in trace). Validate it with `python3 scripts/worklog.py check` and commit the entry/artifact/rollup/changelog with the code change, or as its own `perf:` unit otherwise.
+8. **Log.** Create a unique immutable worklog entry with `python3 scripts/worklog.py new`, then summarize the number, delta vs prior baseline, and anomalies (high VGPR, scratch, unexpected kernel in trace). Stage the entry and validate it with `python3 scripts/worklog.py check`, then commit the entry/artifact/rollup/changelog with the code change, or as its own `perf:` unit otherwise.
 
 If the number contradicts the roofline prediction by > 2×, stop and re-audit before publishing. Overperformance usually means a measurement bug; underperformance usually means a pathology worth naming.
 
