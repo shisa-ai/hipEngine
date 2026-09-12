@@ -40,6 +40,7 @@ from hipengine.loading.qwen35_gguf_admission import (
     GGUF_UD_Q4_K_S_PRESET,
     GGUF_PRESET_SCOPE_AR,
     GGUF_PRESET_SCOPE_MTP,
+    _UD_MTP_DECLARED_CONTEXT_MAX,
     Qwen35GGUFArtifactPreset,
     resolve_qwen35_gguf_artifact_preset,
     resolve_qwen35_gguf_nextn_draft_qtypes,
@@ -495,7 +496,7 @@ def test_u6_certificate_is_incomplete_while_the_scope_item_is_open():
     """The pin stays unminted until every item, in both phases, qualifies."""
 
     for certification in _u6_records().values():
-        assert certification.context_max is None
+        assert certification.context_max == _UD_MTP_DECLARED_CONTEXT_MAX
         assert certification.widths == (1,)
         assert not certification.is_complete()
         assert (

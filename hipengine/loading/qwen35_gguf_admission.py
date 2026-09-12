@@ -345,6 +345,18 @@ class Qwen35GGUFUDMTPCertification:
 _UD_MTP_DECLARED_BACKEND = "hip_gfx1100"
 assert _UD_MTP_DECLARED_BACKEND in HIP_BACKEND_TARGET_ARCH
 
+# The declared UD MTP context bound.  This is the sentinel the MTP2 adapter and
+# the packed verifier already use, and it is measured rather than assumed: the
+# adapter refuses MTP at ``prompt + 1 >= min(1023, max_sequence_length)``
+# (``target_context_k0``), and independently the verifier's ``strict_long_rows``
+# term drops the packed batch to a per-row loop at
+# ``start_position + rows >= 1024``.  A gate run above that line reports zero KL
+# for the fallback's reason, not the multi-row verifier's, so the MTP envelope
+# cannot be declared wider on the strength of it.  See ``docs/REFACTOR.md``
+# "Dense long split-K multi-row eager verifier row-wise strict dispatch" and
+# ``worklog/entries/20260912T214404.298879Z-lhl-ud-mtp-long-context-prior-art-5b1f0c.md``.
+_UD_MTP_DECLARED_CONTEXT_MAX = 1023
+
 
 def _ud_mtp_items(
     *,
@@ -447,19 +459,20 @@ def _ud_mtp_items(
             evidence=(
                 "natural25 B3 c1 on hip_gfx1100: short-prompt widths c1 "
                 "measured; backend, quant identity and execution profile "
-                "declared on this record"
+                "declared on this record. The 1023 context bound is declared "
+                "from the measured adapter refusal at prompt + 1 >= 1023 and "
+                "the measured verifier batching flip at start + rows >= 1024"
             ),
             qualified=False,
             blocker=(
-                "context_max stays None because the long-context point is not "
-                "measured yet, and the width scope is c1 only: UD MTP above "
-                "resident capacity 1 is refused before the run because the "
-                "C1 singleton route needs capacity 1 and the physical route "
-                "needs a SpeculativeMTPServingEvidence row for this artifact "
-                "with realized_group_rows > 1, which no UD artifact has. MTP "
-                "serving is also capped at 1023 context by the same adapter, "
-                "so a measured verifier context beyond that does not widen "
-                "the served envelope. See "
+                "width scope is c1 only. UD MTP above resident capacity 1 is "
+                "refused before the run because the C1 singleton route needs "
+                "capacity 1 and the physical route needs a "
+                "SpeculativeMTPServingEvidence row for this artifact with "
+                "realized_group_rows > 1, which no UD artifact has. Either "
+                "authorize a candidate-mode serving-evidence grant so c2/c4/c8 "
+                "can be measured, or declare the envelope as c1-only and mint "
+                "at that scope; both are recorded in "
                 "worklog/entries/20260912T172746.747765Z-lhl-ud-phase5-width-scope-14e699.md"
             ),
             phase="paired_run",
@@ -477,7 +490,7 @@ _UD_MTP_CERTIFICATIONS: Mapping[str, Qwen35GGUFUDMTPCertification] = {
         preset_key=GGUF_UD_Q4_K_M_PRESET,
         backend=_UD_MTP_DECLARED_BACKEND,
         execution_profile="production",
-        context_max=None,
+        context_max=_UD_MTP_DECLARED_CONTEXT_MAX,
         widths=(1,),
         items=_ud_mtp_items(
             control_evidence=(
@@ -501,7 +514,7 @@ _UD_MTP_CERTIFICATIONS: Mapping[str, Qwen35GGUFUDMTPCertification] = {
         preset_key=GGUF_UD_Q4_K_S_PRESET,
         backend=_UD_MTP_DECLARED_BACKEND,
         execution_profile="production",
-        context_max=None,
+        context_max=_UD_MTP_DECLARED_CONTEXT_MAX,
         widths=(1,),
         items=_ud_mtp_items(
             control_evidence=(
