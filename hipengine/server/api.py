@@ -19,6 +19,7 @@ import logging
 import math
 import os
 import re
+import sys
 import time
 import uuid
 from collections import deque
@@ -5117,6 +5118,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             "skipped" if scratch_probe_s is None else f"{scratch_probe_s:.3f}",
             "skipped" if chat_smoke_s is None else f"{chat_smoke_s:.3f}",
             startup_total_s,
+        )
+        _log_pretty_startup_summary(
+            config,
+            engine=engine,
+            memory=_startup_memory_summary(startup_memory, startup_checks),
         )
         _log_effective_mtp_config(config, engine=app.state.hipengine_llm)
         _LOGGER.info("hipEngine is ready.")
@@ -10819,6 +10825,71 @@ def _log_startup_memory_summary(memory: Mapping[str, Any], checks: Mapping[str, 
         _format_bytes(int(summary["min_free_bytes"])),
         _format_bytes(int(summary["total_bytes"])),
         int(summary["sample_count"]),
+    )
+
+
+def _log_pretty_startup_summary(
+    config: ServerConfig,
+    *,
+    engine: Any,
+    memory: Mapping[str, Any] | None,
+) -> None:
+    """Emit a compact human-facing startup summary after eager preparation."""
+
+    estimate = _kv_capacity_estimate_payload(engine) or {}
+    snapshot = _live_loop_snapshot(engine) or {}
+    runner = _nested_mapping(snapshot, "runner")
+    pool = _nested_mapping(runner, "kv_pool")
+    context = estimate.get("requested_context_tokens")
+    model_max = estimate.get("model_max_context_tokens")
+    storage = estimate.get("kv_storage_dtype") or config.kv_storage
+    scale = estimate.get("kv_scale_dtype") or config.kv_scale_dtype
+    concurrency = runner.get("max_active_requests")
+    budget = pool.get("budget_bytes")
+    if budget is None:
+        budget = estimate.get("usable_bytes")
+    used = None if memory is None else memory.get("final_used_bytes")
+    total = None if memory is None else memory.get("total_bytes")
+
+    color = bool(sys.stderr.isatty()) and "NO_COLOR" not in os.environ
+    cyan = "\033[36m" if color else ""
+    green = "\033[32m" if color else ""
+    yellow = "\033[33m" if color else ""
+    reset = "\033[0m" if color else ""
+    context_text = (
+        "unknown"
+        if context is None
+        else f"{int(context):,}"
+        + (f" / {int(model_max):,}" if model_max else "")
+    )
+    memory_text = (
+        "unknown"
+        if used is None or total is None
+        else f"{_format_bytes(int(used))} / {_format_bytes(int(total))}"
+    )
+    budget_text = "automatic" if budget is None else _format_bytes(int(budget))
+    _LOGGER.info(
+        "\n%s%s%s\n"
+        "  Model       %s\n"
+        "  Context     %s tokens\n"
+        "  KV cache    %s (%s scales)\n"
+        "  Concurrency %s requests in flight\n"
+        "  KV budget   %s\n"
+        "  GPU memory  %s used\n"
+        "%s%s%s",
+        cyan,
+        "hipEngine ready",
+        reset,
+        config.model,
+        context_text,
+        f"{storage}",
+        scale,
+        "automatic" if concurrency is None else str(int(concurrency)),
+        budget_text,
+        memory_text,
+        green,
+        "  Ready for requests",
+        reset,
     )
 
 
