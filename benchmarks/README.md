@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-13**
+Last updated: **2026-09-12 UTC**
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
@@ -10,12 +10,9 @@ authoritative evidence. It is not an optimization journal.
 The root README exports this compact retained summary verbatim.
 
 <!-- BEGIN TOPLINE:README_HIGHLIGHTS -->
-Every number below is measured on the named hardware and links to a
-reproducible artifact. **Prompt processing** is how fast hipEngine reads your
-input; **text generation** is how fast it writes new tokens. **With MTP** is
-speculative decoding, which is enabled only where it is qualified for that
-model and shape. Rows use different models and protocols — compare within a
-row, not across them.
+Measured tokens/s on each named host. **Prompt processing** measures input;
+**text generation** measures output. **MTP** is speculative decoding within
+qualified scopes. Compare only matching models and workloads.
 
 ### Performance
 
@@ -37,7 +34,12 @@ row, not across them.
 | Qwen3.6-35B-A3B | GGUF `UD-Q4_K_M` | **1369.5** | **54.3** | 80.1 (opt-in) | — |
 | Laguna S 2.1 | GGUF `Q4_K_M` | **654.2** | **23.2** | — | — |
 | Qwen3.8-27B Dense | GGUF `Q4_K_S` | **396.1** | **13.1** | **23.9** | — |
-| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **380.4** | **12.2** | **15.6** | — |
+| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **404.5** | **12.2** | 21.0 (strict K3) | — |
+
+Qwen3.8 `Q4_K_M` defaults to production AR. MTP uses strict/K3, capacity 4,
+a 1K session limit, one active request, 1-67 prompt tokens and 25 outputs: **1.88x its matched
+11.15 tok/s AR baseline**, not the 512/128 generation column.
+[Measurements](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-12-gfx1151-qwen38-final-headline-refresh.json).
 
 **Time-series forecasting (TimesFM 2.5 200M).** hipEngine decodes batch=8,
 context 8192, horizon 512 forecasts in **0.082 s** on the power-limited HP ZBook
@@ -179,8 +181,8 @@ whole-process memory percentage, throughput gain or proven context maximum.
 ## Current default notes
 
 W7900 Qwen3.6 enables automatic MTP only for its qualified single-request and
-capacity-2/two-request keys. **Qwen3.8-27B `Q4_K_M` uses ordinary AR by default
-at every width.** Explicit MTP is available with production/BF16 KV, context
+capacity-2/two-request keys. **On W7900, Qwen3.8-27B `Q4_K_M` uses ordinary AR by default
+at every width.** Explicit MTP is available there with production/BF16 KV, context
 4-95 and 24 generated tokens: two active requests at resident capacity 2 with
 K2/K3, or eight at capacity 8 with K3. A single active request at capacity 8
 with K2/K3 currently engages through the legacy singleton target route (exact
@@ -242,14 +244,19 @@ Reducing the packed one-row frontier overhead gates any packed-route
 product registration. Until then the legacy route is the only
 measured single-request MTP path.
 
-Strix Halo `Q4_K_M`: strict C1/K3 automatic at **15.609 tok/s (1.5916x AR)**
-([d7 closure](results/2026-08-27-gfx1151-qwen38-dynamic-admission-d7-closure.json));
-production explicit/K0. Production C8/K3 is **52.103 vs 52.025 AR tok/s**
-([width policy](results/2026-09-05-gfx1151-qwen38-c8-k3-width-policy-retained.json)).
-The 18.191 tok/s / 1.6445x cell measured on the 2026-08-29 baseline is an
-aspiration target rather than the default: the retained production path
-measured 15.646 tok/s / 1.408x
-([streaming width-1](results/2026-08-31-gfx1151-qwen38-mtp-c1-streaming-width1-retained.json)).
+Strix Halo `Q4_K_M`: the production profile uses AR, including when MTP is
+explicitly requested. The current FP32-state manifest has no matching MTP
+certificate. The supported strict/BF16 C1/K3 cell measures **20.985 tok/s**
+versus **11.150 AR tok/s (1.882x)** across three complete ten-prompt runs.
+Every category improves in every run, and all 30 prompt/run cells are exact.
+Select `--execution-profile strict --speculative-candidate-budget 3` with
+resident capacity 1 or 4, a declared session limit of at most 1,024 tokens
+(`--max-context-tokens 1024`), 1-67 prompt tokens, a 25-token horizon, and ordinary
+greedy/EOS handling. The benchmark used capacity 4. K4, `ignore_eos`, and
+unsupported contexts or horizons select AR. The old FP16 production C8
+measurement is historical evidence, not current-profile admission.
+[Current measurements](results/2026-09-12-gfx1151-qwen38-final-headline-refresh.json)
+and [serving gates](results/2026-09-12-gfx1151-qwen38-serving-mtp-closure.json).
 
 TimesFM 2.5 200M GPU decode (batch 8, context 8192, horizon 512) — **two
 physical Strix Halo `gfx1151` hosts, recorded as separate lanes**: **0.082 s**
@@ -411,8 +418,9 @@ The direct packed-AR decode route uses the singleton-indexed GDN recurrence
 [`C8 automatic promotion`](results/2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json);
 [`dedicated campaign`](../docs/QWEN38-GFX1100-C8-K3-CAMPAIGN.md).
 
-On Strix Halo, the current automatic Qwen3.8 `Q4_K_M` route is strict C1/K3;
-production C1-C8 remains explicit/K0 as summarized above. `Q4_K_S` uses FP16
+On Strix Halo, Qwen3.8 `Q4_K_M` defaults to production AR. Strict C1/K3
+MTP requires the qualified settings described above; production MTP requests
+fall back to AR. `Q4_K_S` uses FP16
 recurrent state with FP32 rollback; its exact W8192 DMS sidecar remains
 default-off.
 
@@ -680,25 +688,31 @@ source that predates `fix: make Qwen3.8 Q4_K_S native B3 exact`),
 [`memory package`](results/2026-08-17-gfx1151-qwen38-27b-q4ks-memory-parity-retained.json), and the
 [`campaign plan`](../docs/QWEN38-27B-GFX1151-CAMPAIGN.md).
 
-The standard (non-UD) `Q4_K_M` file is a separate lane: a different model
-artifact, so its rates are not comparable with the `Q4_K_S` row above. One
-warmup and three measured resident resets per shape, production bulk WMMA
-prefill and HIP graph replay decode:
+The standard (non-UD) `Q4_K_M` file is a separate lane from `Q4_K_S`.
+Current measurements use the public production profile, FP32 recurrent state,
+BF16 KV, two hardware queues, and a prepared 8,192-token session. Each shape
+has one discarded warmup and three measured resets; decode uses the
+backend-selected HIP graph path.
 
 | Shape | Prefill | AR decode | Tracked peak |
 | --- | ---: | ---: | ---: |
-| 512/128 | **380.366 tok/s** | **12.213 tok/s** | 16.087 GiB |
-| 1K/128 | **377.605 tok/s** | **11.980 tok/s** | 16.510 GiB |
-| 4K/128 | **361.497 tok/s** | **12.130 tok/s** | 18.859 GiB |
+| 512/128 | **404.487 tok/s** | **12.226 tok/s** | 24.153 GiB |
+| 1K/128 | **395.000 tok/s** | **11.997 tok/s** | 24.153 GiB |
+| 4K/128 | **373.218 tok/s** | **12.153 tok/s** | 24.153 GiB |
 
-Every prefill and decode CV is below 0.15%, all final token IDs are stable and
-finite, and every shape tears its tracked allocation down to zero. Dense decode
-streams about 89% of the documented practical read roof for `gfx1151`, so the
-remaining headroom on this file is small and is not concentrated in the GEMV
-owners. [`Q4_K_M AR/prefill refresh`](results/2026-09-12-gfx1151-qwen38-27b-q4km-ar-prefill-refresh.json).
+Every prefill/decode CV is below 0.22%. All timed final logits are finite,
+and the graph/eager preflight matches every generated ID, final full logits,
+and state fingerprint on 18 category/heldout prompts. The public packed
+numerical gate covers 8,716 rows at KL0/top-1 100%; real-socket blocking/SSE,
+cancellation, refill and clean-drain checks pass. Tracked peak includes
+public session pools and the graph preflight; session-owned peak is 19.810 GiB.
+These memory scopes differ from the older right-sized low-level-session
+measurements. [Current profile measurements](results/2026-09-12-gfx1151-qwen38-final-headline-refresh.json).
 
-This is the one `gfx1151` Qwen3.8-27B lane measured against llama.cpp on the
-same file. Both engines ran back to back on one host with BF16 K/V:
+The following earlier September 12 same-file comparison used the then-current
+low-level hipEngine session. Both engines ran back to back on one host with
+BF16 K/V. It is a historical comparator, not a fresh comparison against the
+public-profile measurements above:
 
 | Shape | hipEngine prefill | llama.cpp HIP prefill | hipEngine AR | llama.cpp HIP AR |
 | --- | ---: | ---: | ---: | ---: |
@@ -706,13 +720,11 @@ same file. Both engines ran back to back on one host with BF16 K/V:
 | 1K/128 | 378.444 tok/s | **385.116 tok/s** | 11.989 tok/s | **12.137 tok/s** |
 | 4K/128 | 361.622 tok/s | **374.692 tok/s** | **12.141 tok/s** | 11.592 tok/s |
 
-On this file hipEngine and llama.cpp HIP stay within about 3.5% and neither
-leads everywhere: llama.cpp HIP is ahead on prefill at all three shapes, while
-hipEngine is ahead on decode at 4K/128 and level at 512/128 and 1K/128. Against
-llama.cpp Vulkan, hipEngine leads prefill at 512/128 and 1K/128 by about 0.6%,
-trails prefill at 4K/128 by 1.1%, and trails Vulkan decode at every shape by
-4.1-6.4%. The `Q4_K_S` row above leads its comparator on every axis; this row
-does not, so the two lanes do not carry the same result.
+In that earlier comparison hipEngine and llama.cpp HIP were within about
+3.5%, with neither ahead everywhere. HIP led prefill, while hipEngine led
+4K decode. The Vulkan comparison likewise belongs to that older session:
+hipEngine led short prefill but trailed Vulkan decode by 4.1-6.4%.
+Those differences must not be read as results for the refreshed profile.
 
 The llama.cpp columns above come from `llama-bench`, which generates its own
 prompts and cannot take the repeated-token prompt hipEngine uses, so that tier
@@ -803,16 +815,19 @@ and [`D1 helper`](results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-r
 
 ## Current speculative decode scoreboards
 
+Rows labeled historical are older protocol snapshots, not admission evidence
+for the current gfx1151 FP32 production profile.
+
 | Platform / model | Contract | True AR | MTP | MTP / AR | Status and evidence |
 | --- | --- | ---: | ---: | ---: | --- |
 | W7900 / Qwen3.6-27B Dense `Q4_K_M` | Exact/default natural25 B3 | 29.457 | **60.929** | **2.0684x** | Current clean snapshot; all ten prompts, greedy outputs, and GPU/CPU acceptance agree. The ratio replaces stale historical denominators. [`artifact`](results/2026-08-23-w7900-qwen36-27b-current-default-publication.json) |
 | RX 7900 XTX / Qwen3.8-27B Dense `Q4_K_M` | Exact/default natural25 B3 | 35.287 | **62.440** | **1.7695x** | Clean idle-card correction; exact greedy and GPU/CPU acceptance, retained fusion improves matched AR 3.764% and B3 0.439% with every category non-regressive. [`artifact`](results/2026-08-15-qwen38-27b-xtx-clean-idle-performance-correction.json) |
-| Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Exact natural25 B3 | 11.692 | **21.158** | **1.8095x** | Clean current-main direct-leaf snapshot; all ten prompts and 30 MTP comparisons are exact, GPU/CPU acceptance agrees, and cached profiling confirms the qualified scalar-C1 and native Q4 rows4/2 owners. [`artifact`](results/2026-08-26-gfx1151-qwen38-current-main-ar-mtp.json) |
+| Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Historical direct-leaf natural25 B3 | 11.692 | 21.158 | 1.8095x | August 26 direct-leaf protocol, not the public-server headline. [`artifact`](results/2026-08-26-gfx1151-qwen38-current-main-ar-mtp.json) |
 | W7900 / Qwen3.6-27B Dense `Q4_K_M` | Public production/BF16 resident-C2 K2 D24, automatic | 30.736 | **34.341** | **1.1173x** | Latest-source 10/10 engaged/exact; all categories non-regressive; blocking/SSE/static-intent/cancel/drain pass. [`artifact`](results/2026-08-28-w7900-dual-model-physical-c2-campaign-final.json) |
 | W7900 / Qwen3.6-35B-A3B `UD-Q4_K_M` | Public production/BF16 resident-C2 K2 D24, automatic | 80.973 | **93.644** | **1.1565x** | Latest-source 10/10 engaged and MTP self-exact; three-run ratio 1.1368x; all categories non-regressive; strict-teacher, blocking/SSE/cancel/drain pass. Shares the artifact linked in the row above. |
-| Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Public strict/BF16 normal-cap4 realized-C1 B3, automatic | 9.807 | **15.609** | **1.5916x** | Current-source 10/10 >1.10x; all categories positive; 78.57% acceptance; C2-C8 group at normal AR width and select pure K0. [`artifact`](results/2026-08-27-gfx1151-qwen38-dynamic-admission-d7-closure.json) |
-| Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Public production/BF16 C1 B3, c68-128/h24, explicit | 9.350 | **13.088** | **1.3998x** | 10/10 >1.10x; all slices positive; 87.63% acceptance; numerics/blocking/SSE pass. c129+/auto K0. [`artifact`](results/2026-08-27-gfx1151-qwen38-c68-c128-production-explicit.json) |
-| Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Production/BF16 C3 K3 D24, explicit diagnostic | 20.788 | **19.934** | **0.9589x** | Scoped R6/R9/R12 reuse improves MTP 4.53%; 10/10 exact and 1,296 numerical rows pass, but mixed/aggregate trail AR, so automatic C3 remains K0. [`artifact`](results/2026-08-28-gfx1151-qwen38-c3-production-rowtiles-retained.json) |
+| Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Public strict/BF16 cap4 realized-C1 K3, natural25 | 11.150 | **20.985** | **1.882x** | Three full-suite runs; all 30 cells exact, engaged and budget-conformed; every category faster. Blocking/SSE and cancellation/refill pass. Production default is AR. [`artifact`](results/2026-09-12-gfx1151-qwen38-final-headline-refresh.json) |
+| Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Historical FP16 production C1 B3, c68-128/h24 | 9.350 | 13.088 | 1.3998x | Older profile certificate; not current FP32-production admission. [`artifact`](results/2026-08-27-gfx1151-qwen38-c68-c128-production-explicit.json) |
+| Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Historical FP16 production C3 K3 D24 diagnostic | 20.788 | 19.934 | 0.9589x | Older implementation comparison, slower than its AR baseline; not current-profile admission. [`artifact`](results/2026-08-28-gfx1151-qwen38-c3-production-rowtiles-retained.json) |
 | W7900 / Qwen3.6-35B-A3B packed PARO W4A16+MTP BF16 | Production/default B1 fast, raw D24 | 110.830 | **115.770** | **1.0446x** | Exact `720/720`; complete 10-prompt numerical/repeat/task/state gate passes. Fast improves strict MTP 10.33% overall and every category. [`artifact`](results/2026-08-24-w7900-paro-fast-d24-3run-default.json) |
 | W7900 / Qwen3.6-35B-A3B `UD-Q4_K_M` | `llama-compat` MTP-2 natural suite | 96.75 | **122.67** | **1.2679x** | Retained explicit opt-in; accuracy-traded versus normal AR. [`artifact`](results/2026-07-19-w7900-llama-compat-reusable-native-cycle.json) |
 | Radeon 8060S / Qwen3.6-35B-A3B `UD-Q4_K_M` | `llama-compat` MTP-2 natural suite | 56.09 | **80.10** | **1.4282x** | Retained explicit opt-in; accuracy-traded versus normal AR. [`artifact`](results/2026-07-19-gfx1151-llama-compat-native-cycle-transfer.json) |
