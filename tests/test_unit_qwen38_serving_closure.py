@@ -1,6 +1,6 @@
 import pytest
 
-from scripts.qwen38_serving_closure import stream_summary, validate_response
+from scripts.qwen38_serving_closure import stream_summary, validate_response, payload
 
 
 def test_stream_requires_done_and_terminal_without_error():
@@ -38,3 +38,8 @@ def test_stream_uses_authoritative_terminal_ids_without_resident_request_id():
         "[DONE]",
     ]
     assert stream_summary(events)["ids"] == [1, 2]
+
+
+def test_automatic_mtp_payload_omits_request_override():
+    assert "speculative_mtp" not in payload([1, 2], 25, mtp=None)
+    assert payload([1, 2], 25, mtp=False)["speculative_mtp"] is False
