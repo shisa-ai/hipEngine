@@ -157,6 +157,25 @@ the INT8 KV route runs the same workload at 677 tok/s
 ([gate](results/2026-09-10-w7900-int8-slot-local-aotriton-gate-corrected.json),
 [paired repetitions](results/2026-09-10-w7900-p7-c1-speed-parity-paired-reps.json)).
 
+Automatic resident context, W7900 (48 GiB), `hipengine serve --model <gguf>` with
+no sizing flags. After weights load the server prices the resident footprint
+against free HIP memory and takes the largest block-aligned context that fits,
+with one full-context KV plane per resident slot (4 for auto-selected GGUF):
+
+| Model | Selected context | BF16 KV per token, 4 slots | Usable at selection |
+| --- | ---: | ---: | ---: |
+| Qwen3.8-27B `Q4_K_M` | 45,568 | 600,963 B | 27.12 GiB |
+| Qwen3.6-35B-A3B `UD-Q4_K_M` | 98,304 | 240,386 B | 23.27 GiB |
+| Qwen3.8-27B `Q4_K_M`, 24 GB-class budget | 11,520 | 600,963 B | 8.12 GiB |
+
+The selection follows each model's own KV growth rate, so the two models differ
+by their attention geometry rather than by a per-model table. `--max-context-tokens`
+and `HIPENGINE_MAX_CONTEXT_TOKENS` still force a cap, and
+`HIPENGINE_GGUF_AUTO_CONTEXT=0` restores the previous fixed 256-token resident
+context. Tier-1 probe at the auto-selected 27B context, BF16 KV at 4 slots:
+`status=pass`, finite logits, `tracked_peak_gib` 28.89
+([probe](results/2026-09-12-w7900-27b-auto-context-45568-bf16-c4-probe.json)).
+
 [Full comparison and source review](results/2026-09-08-rx7900xtx-engine-comparison.md)
 and [commands, samples and checks](results/2026-09-08-rx7900xtx-engine-comparison.json).
 

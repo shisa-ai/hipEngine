@@ -53,10 +53,16 @@ group caps used by the explicit `gguf_*` routes.
 
 By default the server eagerly loads the model, loads resident weights, estimates
 remaining HIP memory for KV cache plus persistent context metadata, then
-preallocates `min(model max context, estimated allocatable context)`. Pass
+preallocates `min(model max context, estimated allocatable context)`. This
+automatic context selection applies to both resident routes (PARO and GGUF). Pass
 `--max-context-tokens` (or `HIPENGINE_MAX_CONTEXT_TOKENS`) to force a lower cap.
 Startup fails with a clear error if the requested cap cannot be allocated; lower
-`--max-context-tokens` or use `--kv-storage int8_per_token_head`. Disable eager
+`--max-context-tokens` or use `--kv-storage int8_per_token_head`. When an
+automatic selection still fails to allocate, the resident session re-prices
+against current free memory and retries at a smaller block-aligned context
+before giving up, so a near miss degrades instead of aborting startup. Set
+`HIPENGINE_GGUF_AUTO_CONTEXT=0` to keep the previous fixed 256-token resident
+context on the GGUF route. Disable eager
 startup with `--no-eager-load` or `HIPENGINE_EAGER_LOAD=0`. The warmup prompt and
 token count are configurable via `--eager-load-prompt` and
 `--eager-load-max-tokens`. Eager startup logs `LOAD_TIMING` rows for resident
@@ -68,7 +74,9 @@ The resident KV policy is server-wide: set `--kv-storage` (`auto`, `bf16`, or
 startup. Requests that ask for a different KV policy are rejected instead of
 rebuilding the resident model. Startup logs include a compact KVCache summary
 from current HIP free memory and warn when even INT8 KV is below the model's
-advertised max context. Chat requests that omit `max_tokens` use
+advertised max context. The KVCache summary is emitted for both eager and lazy
+startup once the resident session is prepared, and it reports the context that
+was actually selected. Chat requests that omit `max_tokens` use
 `--chat-default-max-tokens` (default `4096`) clamped to the remaining admitted
 context. Pass `--chat-default-max-tokens auto` to restore the previous behavior
 of using the full remaining context (`max_context_tokens - prompt_tokens - 1`).

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import copy
+import logging
 import os
 import socket
 import sys
@@ -24,6 +25,7 @@ import numpy as np
 from hipengine.benchmark.provenance import collect_model_identity, detect_device_name
 import hipengine.generation.qwen35_gguf_mtp2 as _qwen35_gguf_mtp2_module
 from hipengine.core.dtype import DType
+from hipengine.core.hip import HipError
 from hipengine.core.memory import free, malloc, memory_stats
 from hipengine.dispatch import (
     RequestState,
@@ -64,6 +66,7 @@ from hipengine.generation.sampling import (
 )
 from hipengine.loading.gguf import GGUFModelInfo, GGUFReader
 from hipengine.loading.qwen35_gguf import (
+    FULL_ATTENTION,
     Qwen35GGUFConfig,
     qwen35_gguf_config_from_metadata,
 )
@@ -97,10 +100,15 @@ from hipengine.runtime.qwen35_gguf_runner import (
     _PACKED_VERIFY_DEFAULT_SLOT_CAPACITY,
     _PACKED_VERIFY_MIN_MAX_SEQUENCE,
     _gguf_device_kv_contiguous_base_row,
+    _gguf_int8_bf16_full_attention_layer_indices,
     _gguf_packed_layer_outer_enabled,
+    _qualified_no_mirror_int8_capability,
     _rope_tables as _gguf_rope_tables,
+    estimate_qwen35_gguf_kv_capacity,
 )
 from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def _new_gguf_timing_batch_id(kind: str) -> str:
@@ -398,6 +406,88 @@ _GGUF_MTP_SERVER_VERIFY_MODE_ENV = "HIPENGINE_GGUF_MTP_VERIFY_MODE"
 _GGUF_MTP_SERVER_CANDIDATE_BUDGET_ENV = "HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET"
 _GGUF_MTP_SERVER_DEFAULT_VERIFY_MODE = "native"
 _GGUF_MTP_SERVER_DEFAULT_CANDIDATE_BUDGET = 3
+
+# Automatic resident context sizing.
+#
+# When the caller does not pin a context, the resident GGUF session prices the
+# footprint against free HIP memory after weights load and takes the largest
+# block-aligned context that fits with a safety reserve. Set
+# HIPENGINE_GGUF_AUTO_CONTEXT=0 to keep the historical fixed default instead.
+_GGUF_AUTO_CONTEXT_ENV = "HIPENGINE_GGUF_AUTO_CONTEXT"
+_GGUF_AUTO_CONTEXT_RESERVE_MIB_ENV = "HIPENGINE_GGUF_KV_CAPACITY_RESERVE_MIB"
+_GGUF_AUTO_CONTEXT_TRANSIENT_KIB_ENV = "HIPENGINE_GGUF_KV_TRANSIENT_KIB_PER_TOKEN"
+_GGUF_AUTO_CONTEXT_TRANSIENT_FIXED_MIB_ENV = "HIPENGINE_GGUF_KV_TRANSIENT_FIXED_MIB"
+_GGUF_AUTO_CONTEXT_ATTEMPTS_ENV = "HIPENGINE_GGUF_AUTO_CONTEXT_ATTEMPTS"
+_GGUF_AUTO_CONTEXT_BLOCK_SIZE = 256
+_GGUF_AUTO_CONTEXT_MAX_ATTEMPTS = 4
+_GGUF_AUTO_CONTEXT_FALLBACK_NUMERATOR = 3
+_GGUF_AUTO_CONTEXT_FALLBACK_DENOMINATOR = 4
+
+
+def _gguf_auto_context_enabled() -> bool:
+    return os.environ.get(_GGUF_AUTO_CONTEXT_ENV, "1").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
+
+
+def _gguf_auto_context_int_env(name: str, default: int, *, minimum: int) -> int:
+    raw = (os.environ.get(name) or "").strip()
+    if not raw:
+        return int(default)
+    try:
+        return max(int(minimum), int(raw))
+    except ValueError:
+        return int(default)
+
+
+def _gguf_auto_context_attempts() -> int:
+    return _gguf_auto_context_int_env(
+        _GGUF_AUTO_CONTEXT_ATTEMPTS_ENV,
+        _GGUF_AUTO_CONTEXT_MAX_ATTEMPTS,
+        minimum=1,
+    )
+
+
+def _gguf_auto_context_reserve_bytes() -> int:
+    return _gguf_auto_context_int_env(
+        _GGUF_AUTO_CONTEXT_RESERVE_MIB_ENV,
+        512,
+        minimum=0,
+    ) * 1024**2
+
+
+def _gguf_auto_context_transient_bytes_per_token() -> int:
+    return _gguf_auto_context_int_env(
+        _GGUF_AUTO_CONTEXT_TRANSIENT_KIB_ENV,
+        74,
+        minimum=0,
+    ) * 1024
+
+
+def _gguf_auto_context_transient_fixed_bytes() -> int:
+    return _gguf_auto_context_int_env(
+        _GGUF_AUTO_CONTEXT_TRANSIENT_FIXED_MIB_ENV,
+        1024,
+        minimum=0,
+    ) * 1024**2
+
+
+def _gguf_allocation_failure(exc: BaseException) -> bool:
+    """Return whether an exception is a device-allocation failure.
+
+    HIP reports out-of-memory as ``HipError``; the host-side and pool paths
+    raise ``MemoryError``. Both mean the same thing to the auto-context
+    fallback, and neither should be swallowed for any other failure.
+    """
+
+    if isinstance(exc, MemoryError):
+        return True
+    message = str(exc).lower()
+    return "out of memory" in message or "oom" in message
+
 _GGUF_PUBLIC_USE_WMMA_PREFILL = True
 _GGUF_PUBLIC_USE_GEMV_DECODE = True
 from hipengine.runtime.gguf_linear import (
@@ -1100,6 +1190,18 @@ class Qwen35GGUFBringupGenerator:
         init=False,
         repr=False,
     )
+    _auto_resolved_max_sequence_length: int | None = field(
+        default=None,
+        init=False,
+        repr=False,
+    )
+    _auto_resolved_max_sequence_lengths: dict[tuple[int, bool], int] = field(
+        default_factory=dict,
+        init=False,
+        repr=False,
+    )
+    _auto_context_estimate: Any | None = field(default=None, init=False, repr=False)
+    _resident_model_runner: Any | None = field(default=None, init=False, repr=False)
     _kv_artifact_identity: ModelArtifactIdentity | None = field(
         default=None,
         init=False,
@@ -1577,7 +1679,7 @@ class Qwen35GGUFBringupGenerator:
     ) -> "Qwen35GGUFResidentModelRunner":
         """Create the single scheduler-facing GGUF model owner for this generator."""
 
-        return Qwen35GGUFResidentModelRunner(
+        runner = Qwen35GGUFResidentModelRunner(
             self,
             capacity=(
                 _GGUF_RESIDENT_MODEL_LOOP_DEFAULT_CAPACITY
@@ -1585,6 +1687,12 @@ class Qwen35GGUFBringupGenerator:
                 else int(capacity)
             ),
         )
+        # The server's resident-session lookups (context reporting, KVCache
+        # summary, /ready payloads) resolve the owner from the generator. Keep
+        # the newest owner reachable rather than requiring the caller to thread
+        # it back through.
+        self._resident_model_runner = runner
+        return runner
 
     def _get_shared_runner(self) -> Qwen35GGUFFullStackRunner:
         runner = getattr(self, "_shared_runner", None)
@@ -1614,6 +1722,376 @@ class Qwen35GGUFBringupGenerator:
         if not hasattr(self, "_shared_mtp_draft_pool_lock"):
             self._shared_mtp_draft_pool_lock = threading.Lock()
 
+    def _packed_workspace_lease_needed(self, *, max_batch_size: int) -> bool:
+        """Mirror ``configure_engine_loop``'s packed-KV lease decision.
+
+        The lease reserves a second full-context KV plane in the page pool. The
+        capacity estimate has to know about it before the pool exists, so the
+        decision is reproduced here from the same inputs. The policy lives on the
+        resident model runner, not on the generator, so it is read from there.
+        While that runner has not resolved its engine-loop policy yet the lease
+        is assumed: promising context the pool will later need is the failure
+        that costs an OOM.
+        """
+
+        if int(max_batch_size) > 1:
+            return True
+        if os.environ.get("HIPENGINE_GGUF_PACKED_KV_LEASE", "0").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }:
+            return True
+        owner = getattr(self, "_resident_model_runner", None)
+        config = getattr(owner, "_engine_loop_config", None)
+        if config is None:
+            return True
+        if getattr(owner, "_prefix_cache_mode", "off") != "off":
+            return True
+        policy = (
+            str(getattr(config, "speculative_mtp_serving", "auto") or "auto")
+            .strip()
+            .lower()
+            .replace("-", "_")
+        )
+        return policy != "off"
+
+    def _resident_capacity_estimate(
+        self,
+        shared_runner: Qwen35GGUFFullStackRunner,
+        *,
+        max_batch_size: int,
+        defer_kv_allocation: bool,
+        requested_context_tokens: int | None,
+    ) -> Any | None:
+        """Price the resident GGUF footprint against current free HIP memory.
+
+        Returns ``None`` when the inputs a real session needs are unavailable
+        (fake runners in unit tests, no HIP runtime). Auto-sizing is best-effort
+        and must never turn a working fixed-context path into a failure.
+        """
+
+        weights = getattr(shared_runner, "weights", None)
+        cfg = getattr(weights, "config", None)
+        runtime = getattr(shared_runner, "runtime", None)
+        mem_get_info = getattr(runtime, "mem_get_info", None)
+        if cfg is None or not callable(mem_get_info):
+            return None
+        try:
+            free_bytes, _total_bytes = mem_get_info()
+            hidden_size = int(shared_runner.hidden_size)
+            ffn_size = int(shared_runner.ffn_size)
+            q_width = int(shared_runner.q_width)
+            kv_width = int(shared_runner.kv_width)
+            linear_qkv_width = int(shared_runner.linear_qkv_width)
+        except Exception as exc:  # noqa: BLE001 - best-effort sizing probe
+            _LOGGER.debug("GGUF automatic context sizing unavailable: %s", exc)
+            return None
+        signature = getattr(self, "_prepared_kv_signature", None) or (
+            "bf16",
+            "uniform",
+            "fp16",
+            "per_token_head",
+        )
+        storage, storage_layout, scale_dtype, granularity = (str(part) for part in signature)
+        model_max = int(getattr(cfg, "context_length", 0) or 0)
+        requested = int(requested_context_tokens or 0) or model_max or _GGUF_AUTO_CONTEXT_BLOCK_SIZE
+        qualified = _qualified_no_mirror_int8_capability(
+            getattr(self, "kv_capability_provenance", None)
+        )
+        full_attention_layers = sum(
+            1 for layer_type in getattr(cfg, "layer_types", ()) if layer_type == FULL_ATTENTION
+        )
+
+        def _layer_indices(max_positions: int) -> tuple[int, ...]:
+            if qualified:
+                return ()
+            return _gguf_int8_bf16_full_attention_layer_indices(
+                kv_storage_dtype=DType.parse(storage),
+                max_positions=int(max_positions),
+                full_attention_layers=int(full_attention_layers),
+            )
+
+        try:
+            return estimate_qwen35_gguf_kv_capacity(
+                cfg,
+                available_bytes=int(free_bytes),
+                requested_context_tokens=int(requested),
+                hidden_size=hidden_size,
+                ffn_size=ffn_size,
+                q_width=q_width,
+                kv_width=kv_width,
+                linear_qkv_width=linear_qkv_width,
+                fp16_recurrent_state=bool(getattr(shared_runner, "fp16_recurrent_state", False)),
+                max_batch_size=int(max_batch_size),
+                kv_storage_dtype=storage,
+                kv_storage_layout=storage_layout,
+                kv_scale_dtype=scale_dtype,
+                kv_scale_granularity=granularity,
+                int8_kv_no_mirror_qualified=qualified,
+                int8_bf16_layer_indices_resolver=_layer_indices,
+                allocate_kv_cache=not bool(defer_kv_allocation),
+                workspace_lease_needed=self._packed_workspace_lease_needed(
+                    max_batch_size=int(max_batch_size)
+                ),
+                reserve_bytes=_gguf_auto_context_reserve_bytes(),
+                transient_bytes_per_token=_gguf_auto_context_transient_bytes_per_token(),
+                transient_fixed_bytes=_gguf_auto_context_transient_fixed_bytes(),
+            )
+        except Exception as exc:  # noqa: BLE001 - best-effort sizing probe
+            _LOGGER.debug("GGUF automatic context sizing unavailable: %s", exc)
+            return None
+
+    def _auto_context_cache_key(
+        self, *, max_batch_size: int, defer_kv_allocation: bool
+    ) -> tuple[int, bool]:
+        return (int(max_batch_size), bool(defer_kv_allocation))
+
+    def _record_auto_context_selection(
+        self,
+        *,
+        max_batch_size: int,
+        defer_kv_allocation: bool,
+        context_tokens: int,
+        estimate: Any | None = None,
+    ) -> None:
+        """Remember a resolved context and keep the reported value conservative.
+
+        Different batch sizes price differently and already own separate session
+        pools, so the cache is keyed the same way. ``_auto_resolved_max_sequence_length``
+        stays the smallest context any caller was given, which is the honest
+        single number to report for the process.
+        """
+
+        key = self._auto_context_cache_key(
+            max_batch_size=max_batch_size,
+            defer_kv_allocation=defer_kv_allocation,
+        )
+        self._auto_resolved_max_sequence_lengths[key] = int(context_tokens)
+        current = self._auto_resolved_max_sequence_length
+        self._auto_resolved_max_sequence_length = (
+            int(context_tokens)
+            if current is None
+            else min(int(current), int(context_tokens))
+        )
+        if estimate is not None:
+            self._auto_context_estimate = estimate
+
+    def _resolve_auto_context(
+        self,
+        shared_runner: Qwen35GGUFFullStackRunner,
+        *,
+        max_batch_size: int,
+        defer_kv_allocation: bool,
+    ) -> int | None:
+        """Choose the resident context when the caller did not pin one.
+
+        The selection is cached per batch size: every session sharing a pool key
+        must agree on the context, and free memory only shrinks as sessions are
+        created, so re-pricing per session would drift the answer downward for
+        no reason.
+        """
+
+        cached = self._auto_resolved_max_sequence_lengths.get(
+            self._auto_context_cache_key(
+                max_batch_size=max_batch_size,
+                defer_kv_allocation=defer_kv_allocation,
+            )
+        )
+        if cached is not None:
+            return int(cached)
+        if not _gguf_auto_context_enabled():
+            return None
+        estimate = self._resident_capacity_estimate(
+            shared_runner,
+            max_batch_size=max_batch_size,
+            defer_kv_allocation=defer_kv_allocation,
+            requested_context_tokens=None,
+        )
+        if estimate is None:
+            return None
+        selected = int(estimate.allocatable_context_tokens)
+        if selected <= 0:
+            raise MemoryError(
+                "automatic GGUF resident context sizing found no allocatable context tokens; "
+                "free GPU memory, use --kv-storage int8_per_token_head, or pin a smaller "
+                "--max-context-tokens"
+            )
+        # Re-price at the selected context so the attached estimate describes the
+        # decision that was taken (and its ``requested_context_tokens`` matches
+        # the session) instead of the model-max probe used to find it. Nothing
+        # has been allocated in between, so free memory is unchanged.
+        settled = self._resident_capacity_estimate(
+            shared_runner,
+            max_batch_size=max_batch_size,
+            defer_kv_allocation=defer_kv_allocation,
+            requested_context_tokens=selected,
+        )
+        self._record_auto_context_selection(
+            max_batch_size=max_batch_size,
+            defer_kv_allocation=defer_kv_allocation,
+            context_tokens=selected,
+            estimate=estimate if settled is None else settled,
+        )
+        _LOGGER.info(
+            "GGUF auto context: selected %d tokens (model max %s, allocatable %d, "
+            "usable %.2f GiB after %.2f GiB reserve, ~%d B/token)",
+            selected,
+            "unknown" if estimate.model_max_context_tokens <= 0 else str(estimate.model_max_context_tokens),
+            int(estimate.allocatable_context_tokens),
+            int(estimate.usable_bytes) / 1024**3,
+            int(estimate.reserve_bytes) / 1024**3,
+            int(estimate.marginal_bytes_per_token),
+        )
+        return selected
+
+    def _recalibrated_auto_context(
+        self,
+        shared_runner: Qwen35GGUFFullStackRunner,
+        *,
+        failed_context: int,
+        max_batch_size: int,
+        defer_kv_allocation: bool,
+    ) -> int:
+        """Re-price after an allocation failure and give back extra headroom.
+
+        The failed attempt is a hard upper bound, and the session constructor
+        rolls its partial allocations back, so free memory here is real. Two
+        cases are worth separating:
+
+        * The re-priced model now claims less than what just failed. The model
+          is tracking this machine, so trim its answer by a quarter and keep the
+          context that is left.
+        * The re-priced model still claims more than the allocator refused. Its
+          transient term is not describing this machine, so halve instead of
+          trimming, which converges inside the attempt budget.
+        """
+
+        block = _GGUF_AUTO_CONTEXT_BLOCK_SIZE
+        candidate = int(failed_context)
+        estimate = self._resident_capacity_estimate(
+            shared_runner,
+            max_batch_size=max_batch_size,
+            defer_kv_allocation=defer_kv_allocation,
+            requested_context_tokens=int(failed_context),
+        )
+        model_binds = False
+        if estimate is not None:
+            allocatable = int(estimate.allocatable_context_tokens)
+            if 0 < allocatable < candidate:
+                candidate = allocatable
+                model_binds = True
+        if model_binds:
+            reduced = candidate * _GGUF_AUTO_CONTEXT_FALLBACK_NUMERATOR // _GGUF_AUTO_CONTEXT_FALLBACK_DENOMINATOR
+        else:
+            reduced = candidate // 2
+        reduced = max(block, (reduced // block) * block)
+        return min(reduced, int(failed_context) - block)
+
+    def _construct_shared_session(
+        self,
+        shared_runner: Qwen35GGUFFullStackRunner,
+        *,
+        max_sequence_length: int | None,
+        max_batch_size: int,
+        defer_kv_allocation: bool,
+        use_wmma_prefill: bool | None,
+        use_gemv_decode: bool | None,
+    ) -> Qwen35GGUFResidentSession:
+        """Construct a resident session, backing the context off if it OOMs.
+
+        The capacity model is conservative but not exact. A failed allocation is
+        rolled back by the session constructor, so the honest response is to
+        recompute from the memory that is actually free and retry smaller rather
+        than surface a bare HIP error during startup.
+        """
+
+        context = None if max_sequence_length is None else int(max_sequence_length)
+        attempts = _gguf_auto_context_attempts()
+        for attempt in range(attempts):
+            session_kwargs = {} if context is None else {"max_sequence_length": int(context)}
+            try:
+                session = Qwen35GGUFResidentSession(
+                    self.model_path,
+                    backend=self.backend,
+                    runtime=shared_runner.runtime,
+                    shared_runner=shared_runner,
+                    use_wmma_prefill=use_wmma_prefill,
+                    use_gemv_decode=use_gemv_decode,
+                    defer_kv_allocation=bool(defer_kv_allocation),
+                    max_batch_size=int(max_batch_size),
+                    **self._prepared_session_kv_kwargs(),
+                    **session_kwargs,
+                )
+            except (HipError, MemoryError) as exc:
+                if context is None or not _gguf_allocation_failure(exc):
+                    raise
+                if attempt + 1 >= attempts:
+                    raise MemoryError(
+                        "automatic GGUF resident context sizing could not allocate a "
+                        f"resident session at {context} tokens after {attempts} attempts "
+                        f"(last error: {exc}); free GPU memory, use "
+                        "--kv-storage int8_per_token_head, or pin a smaller --max-context-tokens"
+                    ) from exc
+                next_context = self._recalibrated_auto_context(
+                    shared_runner,
+                    failed_context=int(context),
+                    max_batch_size=int(max_batch_size),
+                    defer_kv_allocation=bool(defer_kv_allocation),
+                )
+                if next_context >= int(context):
+                    raise
+                _LOGGER.warning(
+                    "GGUF auto context: %d tokens failed to allocate (%s); retrying at %d",
+                    int(context),
+                    exc,
+                    next_context,
+                )
+                context = next_context
+            else:
+                self._attach_capacity_estimate(
+                    session,
+                    shared_runner,
+                    max_batch_size=int(max_batch_size),
+                    defer_kv_allocation=bool(defer_kv_allocation),
+                )
+                return session
+        raise MemoryError(
+            "automatic GGUF resident context sizing exhausted its attempts"
+        )  # pragma: no cover - the loop always returns or raises
+
+    def _attach_capacity_estimate(
+        self,
+        session: Qwen35GGUFResidentSession,
+        shared_runner: Qwen35GGUFFullStackRunner,
+        *,
+        max_batch_size: int,
+        defer_kv_allocation: bool,
+    ) -> None:
+        """Publish a capacity estimate on the session for server reporting.
+
+        The server's KVCache summary and /ready payload read
+        ``session.kv_capacity_estimate``; attaching it here is what makes the
+        GGUF route report the same shape the PARO route already does.
+        """
+
+        context = getattr(session, "max_sequence_length", None)
+        if context is None:
+            return
+        estimate = getattr(self, "_auto_context_estimate", None)
+        if estimate is not None and int(estimate.requested_context_tokens) == int(context):
+            session.kv_capacity_estimate = estimate
+            return
+        repriced = self._resident_capacity_estimate(
+            shared_runner,
+            max_batch_size=int(max_batch_size),
+            defer_kv_allocation=bool(defer_kv_allocation),
+            requested_context_tokens=int(context),
+        )
+        if repriced is not None:
+            session.kv_capacity_estimate = repriced
+
     def _acquire_shared_session(
         self,
         shared_runner: Qwen35GGUFFullStackRunner,
@@ -1629,6 +2107,12 @@ class Qwen35GGUFBringupGenerator:
         if getattr(self, "_prepared_kv_signature", None) is None:
             self._prepare_kv_policy(None)
         assert self._prepared_kv_signature is not None
+        if max_sequence_length is None:
+            max_sequence_length = self._resolve_auto_context(
+                shared_runner,
+                max_batch_size=int(max_batch_size),
+                defer_kv_allocation=bool(defer_kv_allocation),
+            )
         key = (
             str(pool_name),
             use_wmma_prefill,
@@ -1646,23 +2130,36 @@ class Qwen35GGUFBringupGenerator:
                 reset()
             self._configure_session(session)
             return session, key, True
-        session_kwargs = (
-            {}
-            if max_sequence_length is None
-            else {"max_sequence_length": int(max_sequence_length)}
-        )
-        session = Qwen35GGUFResidentSession(
-            self.model_path,
-            backend=self.backend,
-            runtime=shared_runner.runtime,
-            shared_runner=shared_runner,
+        session = self._construct_shared_session(
+            shared_runner,
+            max_sequence_length=max_sequence_length,
+            max_batch_size=int(max_batch_size),
+            defer_kv_allocation=bool(defer_kv_allocation),
             use_wmma_prefill=use_wmma_prefill,
             use_gemv_decode=use_gemv_decode,
-            defer_kv_allocation=bool(defer_kv_allocation),
-            max_batch_size=int(max_batch_size),
-            **self._prepared_session_kv_kwargs(),
-            **session_kwargs,
         )
+        effective = getattr(session, "max_sequence_length", None)
+        if effective is not None and int(effective) != (
+            None if max_sequence_length is None else int(max_sequence_length)
+        ):
+            # The session backed off to a smaller context than the pool key was
+            # built from. Keep the key describing what the session actually owns,
+            # or a later acquire would hand out a mismatched session under the
+            # original key.
+            max_sequence_length = int(effective)
+            self._record_auto_context_selection(
+                max_batch_size=int(max_batch_size),
+                defer_kv_allocation=bool(defer_kv_allocation),
+                context_tokens=int(effective),
+            )
+            key = (
+                str(pool_name),
+                use_wmma_prefill,
+                use_gemv_decode,
+                max_sequence_length,
+                int(max_batch_size),
+                self._prepared_kv_signature,
+            )
         self._configure_session(session)
         return session, key, False
 
@@ -7569,6 +8066,27 @@ class Qwen35GGUFResidentModelRunner:
             int(self._kv_hip_used_peak_sampled_bytes),
             self._current_hip_used_bytes(),
         )
+
+    @property
+    def _session(self) -> Any | None:
+        """Representative resident session, for server reporting lookups.
+
+        The server resolves resident sessions through the generator
+        (``api._resident_session_for_engine``) to report the effective context,
+        the KVCache summary, and /ready memory samples. The batch owner is the
+        canonical session: every slot view shares its declared context.
+        """
+
+        owner = self._resident_batch_owner
+        if owner is not None:
+            return owner
+        if self._available:
+            return self._available[0].session
+        for row in self._rows.values():
+            session = getattr(getattr(row, "lease", None), "session", None)
+            if session is not None:
+                return session
+        return None
 
     def _acquire_lease(self) -> _GGUFResidentSessionLease:
         if not self._available:

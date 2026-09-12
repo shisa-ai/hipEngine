@@ -6648,3 +6648,28 @@ qualified PARO route preserving its declared profile and ownership contracts.
 The open follow-up is to understand and separate the PARO and GGUF semantics
 sharing this registry key, not to substitute the session backend unconditionally.
 See the [upstream decision and reproduction protocol](../worklog/entries/20260912T044256.896835Z-lhl-paro-paged-kv-backend-pin-load-bearing-e64405.md).
+
+## 2026-09-12 GGUF automatic context sizing knobs
+
+`hipengine/generation/qwen35_gguf.py` added `HIPENGINE_GGUF_AUTO_CONTEXT`
+(default on), `HIPENGINE_GGUF_KV_CAPACITY_RESERVE_MIB`,
+`HIPENGINE_GGUF_KV_TRANSIENT_KIB_PER_TOKEN`,
+`HIPENGINE_GGUF_KV_TRANSIENT_FIXED_MIB`, and
+`HIPENGINE_GGUF_AUTO_CONTEXT_ATTEMPTS` for the automatic resident context
+selection.
+
+`HIPENGINE_GGUF_AUTO_CONTEXT` is the rollback for the behavior change and is
+kept until the automatic selection has a full benchmark cycle on the supported
+target models; removal condition is that no bisection case remains where the
+fixed 256-token context is wanted. The other four are calibration overrides for
+the transient and reserve terms, which are currently inherited values rather than
+measured ones (see the `gguf-auto-context-sizing` worklog entry). Removal
+condition for those four: once the transient term is calibrated against probe
+peaks and the reserve is set from measured allocator overhead, delete the
+overrides and keep the calibrated constants. Until then they are the only way to
+re-price a host without editing source.
+
+The `_auto_resolved_max_sequence_length` / `_auto_resolved_max_sequence_lengths` /
+`_auto_context_estimate` fields on `Qwen35GGUFBringupGenerator` exist only to feed
+the server's KVCache summary and `/ready` payload. If the reporting path ever
+reads the estimate from the session alone, drop the generator-side copies.
