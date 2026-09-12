@@ -29,15 +29,17 @@
   sha256-identical to eager) and non-regressive but small, -0.53% decode wall
   with capture cost included and -2.48% replay-only. Artifacts:
   `benchmarks/results/2026-09-11-w7900-ikv-c2-c1-decode-graph-int8-{eager,replay}.json`.
-- Removal condition: fix `_resolve_decode_graph_min_replay_steps` so the scalar
-  C1 path applies the model/width policy floor the packed path already applies
-  (`packed_decode_graph_min_replay_steps` returns 128 for dense H5120 `Q4_K_M`
-  at one row, while the scalar resolver returns the backend default 24), then
-  re-measure with repeats at that floor. Capture costs ~70-82 ms per request, so
-  a 24-step horizon pays roughly 9% and would regress; the flag must not default
-  on before that floor is corrected. If the corrected floor holds a repeatable
-  win, promote to default and delete this flag; if it does not, delete the flag
-  and the INT8 admission with it.
+- Removal condition: the INT8 admission is kept behind this flag because the
+  measured win is not separated from run-to-run noise, and the earlier claim
+  that the scalar C1 floor (24) disagreed with the packed path's model/width
+  policy floor (128) was wrong. On gfx1100 `GGUF_PACKED_DECODE_GRAPH_MIN_REPLAY_STEPS_BY_POLICY`
+  is empty, so `_resolve_gguf_packed_decode_graph_min_replay_steps` returns
+  `ceil(24 / rows)` = 24 at one row - the same floor the scalar resolver uses.
+  The 128 lives in `GGUF_DECODE_GRAPH_SUBMISSION_POLICIES` and selects the
+  submission *transport* (pm4 at >=128 replay steps, hipgraph below), not
+  eligibility. Corrected in `worklog/entries/20260912T001500`-series entry
+  `p3-c1-graph-floor-correction`. Promote the flag only if repeats establish a
+  win outside noise; otherwise delete the flag and the INT8 admission with it.
 
 ## Qwen4Exp Q8 expanded F32 cache: removed
 
