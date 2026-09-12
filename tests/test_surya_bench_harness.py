@@ -67,6 +67,7 @@ def test_blank_case_accepts_its_actual_markup_output() -> None:
     ref = H._load_oracle(case)
     assert ref is not None
     run = _run(generated=list(ref), e2e_generated=list(ref),
+               termination="eos", e2e_termination="eos",
                text="<div><img/></div>")
     assert H._validate(run, case, ref)["correctness"] == "PASS"
     # and a JSON case must reject that same text
@@ -74,6 +75,7 @@ def test_blank_case_accepts_its_actual_markup_output() -> None:
     other_ref = H._load_oracle(other)
     if other_ref is not None:
         bad = _run(generated=list(other_ref), e2e_generated=list(other_ref),
+                   termination="eos", e2e_termination="eos",
                    text="<div><img/></div>")
         assert H._validate(bad, other, other_ref)["correctness"] == "FAIL"
 
@@ -238,11 +240,14 @@ def test_validation_rejects_a_matching_prefix_with_a_divergent_tail() -> None:
     ref = H._load_oracle(case)
     assert ref is not None
 
-    good = _run(generated=list(ref), e2e_generated=list(ref), text="<div>x</div>")
+    good = _run(generated=list(ref), e2e_generated=list(ref),
+                termination="length", e2e_termination="length",
+                text="<div>x</div>")
     assert H._validate(good, case, ref)["correctness"] == "PASS"
 
     truncated = _run(
-        generated=list(ref[:10]), e2e_generated=list(ref[:10]), text="<div>x</div>"
+        generated=list(ref[:10]), e2e_generated=list(ref[:10]),
+        termination="length", e2e_termination="length", text="<div>x</div>",
     )
     checks = H._validate(truncated, case, ref)
     assert checks["ids_match"] is False
@@ -257,11 +262,13 @@ def test_validation_flags_a_decode_stage_that_disagrees_with_e2e() -> None:
     ref = H._load_oracle(case)
     assert ref is not None
     run = _run(
-        generated=list(ref), e2e_generated=list(ref[:-1]), text="<div>x</div>"
+        generated=list(ref), e2e_generated=list(ref[:-1]),
+        termination="length", e2e_termination="length", text="<div>x</div>",
     )
     checks = H._validate(run, case, ref)
     assert checks["e2e_agrees"] is False
     assert checks["correctness"] == "FAIL"
+    assert "e2e_agrees" in checks["gate_failures"]
 
 
 def test_validation_records_termination_and_format_basis() -> None:
@@ -272,9 +279,10 @@ def test_validation_records_termination_and_format_basis() -> None:
         generated=list(ref),
         e2e_generated=list(ref),
         termination="eos",
+        e2e_termination="eos",
         text='[{"label": "Text", "bbox": "1 2 3 4", "count": 3}]',
     )
-    checks = H._validate(run, case, ref)
+    checks = H._validate(run, case, ref, reference_source="torch_fixture")
     assert checks["termination"] == "eos"
     assert checks["correctness_basis"] == "torch_fixture"
     assert checks["layout_json"] is True
@@ -282,15 +290,163 @@ def test_validation_records_termination_and_format_basis() -> None:
     assert checks["correctness"] == "PASS"
 
 
-def test_validation_marks_the_cpu_reference_basis_when_there_is_no_fixture() -> None:
+def test_basis_is_not_guessed_when_the_source_is_unnamed() -> None:
+    """A record must not claim a basis the caller did not name.
+
+    Defaulting to ``torch_fixture`` would let a CPU reference be published as a
+    captured fixture, which is the same mislabelling that let the rectangular
+    rows claim ``cpu_reference`` while comparing against nothing.
+    """
+
+    case = H.CASES_BY_NAME["list"]
+    ref = H._load_oracle(case)
+    run = _run(generated=list(ref), e2e_generated=list(ref),
+               termination="eos", e2e_termination="eos",
+               text='[{"label": "Text", "bbox": "1 2 3 4", "count": 3}]')
+    assert H._validate(run, case, ref)["correctness_basis"] == "unspecified"
+
+
+# --- fail-closed gates ------------------------------------------------------
+#
+# Each test below pins one condition that a PASS must require. Before these
+# gates existed a lane could PASS with no reference at all (``ids_match``
+# null), with a decode stage that did not repeat, and with a termination that
+# disagreed with the reference or with the end-to-end run.
+
+
+def test_validation_fails_closed_when_no_reference_is_available() -> None:
+    """A missing reference must not read as a pass.
+
+    ``rect`` declares no captured fixture, so its basis is the CPU reference
+    the main loop computes in-process. Passing ``None`` here is the harness
+    defect this guards: the record used to claim ``cpu_reference`` as its basis
+    while comparing against nothing, which is how the committed rectangular
+    rows came to carry ``ids_match: null`` and ``correctness: PASS``.
+    """
+
     case = H.CASES_BY_NAME["rect"]
     assert H._load_oracle(case) is None
-    run = _run(generated=[1, 2, 3], e2e_generated=[1, 2, 3], text="anything")
+    run = _run(generated=[1, 2, 3], e2e_generated=[1, 2, 3], text="anything",
+               termination="eos", e2e_termination="eos")
     checks = H._validate(run, case, None)
-    assert checks["correctness_basis"] == "cpu_reference"
+    assert checks["reference_present"] is False
     assert checks["ids_match"] is None
-    # "any" format only requires a non-empty output
+    assert checks["correctness"] == "FAIL"
+    assert "reference_present" in checks["gate_failures"]
+    assert checks["correctness_basis"] == "none"
+
+
+def test_pass_requires_decode_repeatable() -> None:
+    """An isolated decode is the premise of the decode timing.
+
+    If repeat 2 started where repeat 1 stopped, the decode rate describes a
+    different computation than the one reported, so it cannot be a pass.
+    """
+
+    case = H.CASES_BY_NAME["small"]
+    ref = H._load_oracle(case)
+    run = _run(generated=list(ref), e2e_generated=list(ref),
+               termination="length", e2e_termination="length",
+               text="<div>x</div>", decode_repeatable=False)
+    checks = H._validate(run, case, ref)
+    assert checks["decode_repeatable"] is False
+    assert checks["correctness"] == "FAIL"
+    assert "decode_repeatable" in checks["gate_failures"]
+
+
+def test_pass_requires_termination_to_agree_with_the_reference() -> None:
+    """A budget-capped capture and an EOS capture must not be interchangeable.
+
+    ``small`` fills its whole 64-token budget, so a lane reporting EOS produced
+    a different sequence than the reference even if every shared id matches.
+    """
+
+    case = H.CASES_BY_NAME["small"]
+    ref = H._load_oracle(case)
+    assert len(ref) == case.max_tokens
+    run = _run(generated=list(ref), e2e_generated=list(ref), termination="eos",
+               e2e_termination="eos", text="<div>x</div>")
+    checks = H._validate(run, case, ref)
+    assert checks["reference_termination"] == "length"
+    assert checks["termination_match"] is False
+    assert checks["correctness"] == "FAIL"
+    assert "termination_match" in checks["gate_failures"]
+
+    # and the converse: a case that stops on EOS must not claim the budget
+    other = H.CASES_BY_NAME["ja"]
+    other_ref = H._load_oracle(other)
+    assert len(other_ref) < other.max_tokens
+    bad = _run(generated=list(other_ref), e2e_generated=list(other_ref),
+               termination="length", e2e_termination="length",
+               text=H._load_oracle_record(other)["text"])
+    checks = H._validate(bad, other, other_ref)
+    assert checks["reference_termination"] == "eos"
+    assert checks["termination_match"] is False
+    assert checks["correctness"] == "FAIL"
+
+
+def test_pass_requires_e2e_termination_to_agree_with_the_decode_stage() -> None:
+    """The timed decode loop and the end-to-end run must stop the same way."""
+
+    case = H.CASES_BY_NAME["small"]
+    ref = H._load_oracle(case)
+    run = _run(generated=list(ref), e2e_generated=list(ref),
+               termination="length", e2e_termination="eos",
+               text="<div>x</div>")
+    checks = H._validate(run, case, ref)
+    assert checks["e2e_termination_agrees"] is False
+    assert checks["correctness"] == "FAIL"
+    assert "e2e_termination_agrees" in checks["gate_failures"]
+
+
+def test_gate_failures_is_empty_only_for_a_clean_pass() -> None:
+    """A FAIL must name the condition that failed, not just say FAIL."""
+
+    case = H.CASES_BY_NAME["blank"]
+    ref = H._load_oracle(case)
+    run = _run(generated=list(ref), e2e_generated=list(ref), termination="eos",
+               e2e_termination="eos", text="<div><img/></div>")
+    checks = H._validate(run, case, ref)
+    assert checks["gate_failures"] == []
     assert checks["correctness"] == "PASS"
+
+    broken = _run(generated=list(ref), e2e_generated=list(ref),
+                  termination="eos", e2e_termination="length",
+                  text="<div><img/></div>", decode_repeatable=False)
+    failures = H._validate(broken, case, ref)["gate_failures"]
+    assert set(failures) == {"decode_repeatable", "e2e_termination_agrees"}
+
+
+def test_reference_termination_comes_from_the_budget() -> None:
+    """A capture that filled its budget ended on length, not on EOS."""
+
+    assert H._reference_termination([1, 2, 3], 64) == "eos"
+    assert H._reference_termination(list(range(64)), 64) == "length"
+    # a reference longer than the budget cannot have stopped on EOS either
+    assert H._reference_termination(list(range(65)), 64) == "length"
+
+
+def test_a_declared_but_missing_oracle_file_is_an_error() -> None:
+    """A declared fixture that is absent must not degrade to "no reference".
+
+    Returning ``None`` for a missing file made a case silently fall back to an
+    unverified basis; only ``oracle=None`` may mean "compute the CPU
+    reference".
+    """
+
+    case = H.Case("ghost", "page_small.png", H.PROMPT, 8, "tuning", "any",
+                  "oracle_does_not_exist.json")
+    with pytest.raises(FileNotFoundError):
+        H._load_oracle_record(case)
+    with pytest.raises(FileNotFoundError):
+        H._load_oracle(case)
+
+
+def test_only_rect_declares_no_fixture() -> None:
+    """Pin the blast radius of the CPU-reference fallback."""
+
+    without = [c.name for c in H.SUITE if c.oracle is None]
+    assert without == ["rect"], without
 
 
 def test_validation_rejects_non_json_output_for_a_json_case() -> None:
@@ -349,6 +505,7 @@ def test_artifact_records_the_protocol_and_suite(tmp_path, monkeypatch) -> None:
     """The artifact must carry provenance and the frozen suite definition."""
 
     out = tmp_path / "artifact.json"
+    monkeypatch.setattr(H, "_cpu_reference", lambda case: [1, 2, 3])
     monkeypatch.setattr(
         H,
         "LANES",
@@ -356,13 +513,12 @@ def test_artifact_records_the_protocol_and_suite(tmp_path, monkeypatch) -> None:
             lane="fake",
             generated=[1, 2, 3],
             e2e_generated=[1, 2, 3],
+            termination="eos",
+            e2e_termination="eos",
             text="x",
             stages={"decode": 0.5, "vision_prefill": 0.25},
             e2e_samples=[1.0, 1.1],
         )},
-    )
-    monkeypatch.setattr(
-        H.sys, "argv", ["surya_perf_compare.py", "--cases", "rect", "--lanes", "fake"]
     )
     # drive main() with explicit argv
     monkeypatch.setattr(
@@ -374,6 +530,89 @@ def test_artifact_records_the_protocol_and_suite(tmp_path, monkeypatch) -> None:
     artifact = json.loads(out.read_text())
     assert artifact["protocol"]["sync"].startswith("sync()")
     assert artifact["protocol"]["decode_derivation"].startswith("decode timed")
+    # the gate the PASS is measured against must be stated, not implied
+    assert "ids_match" in artifact["protocol"]["gate"]
+    assert "decode_repeatable" in artifact["protocol"]["gate"]
+    assert "termination" in artifact["protocol"]["gate"]
     assert artifact["provenance"]["command"].endswith(str(out))
     assert [c["name"] for c in artifact["suite"]] == ["rect"]
     assert artifact["results"][0]["lane"] == "fake"
+
+
+def test_main_computes_the_cpu_reference_when_a_case_has_no_fixture(
+        tmp_path, monkeypatch) -> None:
+    """``rect`` declares no fixture, so the main loop must supply a basis.
+
+    Before this, ``main`` called ``_load_oracle`` and passed whatever came
+    back: ``None`` for a fixture-less case. The record then reported
+    ``correctness_basis: cpu_reference`` without ever computing one and
+    ``ids_match: null`` while still reading PASS.
+    """
+
+    out = tmp_path / "artifact.json"
+    calls: list[str] = []
+
+    def fake_reference(case):
+        calls.append(case.name)
+        return [7, 8, 9]
+
+    monkeypatch.setattr(H, "_cpu_reference", fake_reference)
+    monkeypatch.setattr(H, "LANES", {"fake": lambda case, runs: _run(
+        lane="fake", generated=[7, 8, 9], e2e_generated=[7, 8, 9],
+        termination="eos", e2e_termination="eos", text="x",
+        stages={"decode": 0.5}, e2e_samples=[1.0])})
+    monkeypatch.setattr(sys, "argv", [
+        "surya_perf_compare.py", "--cases", "rect", "--lanes", "fake",
+        "--out", str(out)])
+    H.main()
+    record = json.loads(out.read_text())["results"][0]
+    assert calls == ["rect"], "the reference must be computed for the case"
+    assert record["reference_present"] is True
+    assert record["correctness_basis"] == "cpu_reference"
+    assert record["ids_match"] is True
+    assert record["gate_failures"] == []
+    assert record["correctness"] == "PASS"
+
+
+def test_main_does_not_compute_a_cpu_reference_when_a_fixture_exists(
+        tmp_path, monkeypatch) -> None:
+    """The captured fixture is the basis; the fallback must not shadow it."""
+
+    out = tmp_path / "artifact.json"
+
+    def boom(case):
+        raise AssertionError(f"computed a CPU reference for {case.name}")
+
+    ref = H._load_oracle(H.CASES_BY_NAME["blank"])
+    assert ref is not None
+    monkeypatch.setattr(H, "_cpu_reference", boom)
+    monkeypatch.setattr(H, "LANES", {"fake": lambda case, runs: _run(
+        lane="fake", generated=list(ref), e2e_generated=list(ref),
+        termination="eos", e2e_termination="eos", text="<div><img/></div>",
+        stages={"decode": 0.5}, e2e_samples=[1.0])})
+    monkeypatch.setattr(sys, "argv", [
+        "surya_perf_compare.py", "--cases", "blank", "--lanes", "fake",
+        "--out", str(out)])
+    H.main()
+    record = json.loads(out.read_text())["results"][0]
+    assert record["correctness_basis"] == "torch_fixture"
+    assert record["ids_match"] is True
+    assert record["correctness"] == "PASS"
+
+
+def test_main_reports_a_mismatching_lane_as_failed(tmp_path, monkeypatch) -> None:
+    """The end-to-end path must not launder a mismatch into a PASS."""
+
+    out = tmp_path / "artifact.json"
+    ref = H._load_oracle(H.CASES_BY_NAME["blank"])
+    monkeypatch.setattr(H, "LANES", {"fake": lambda case, runs: _run(
+        lane="fake", generated=list(ref)[:-1], e2e_generated=list(ref)[:-1],
+        termination="eos", e2e_termination="eos", text="<div><img/></div>",
+        stages={"decode": 0.5}, e2e_samples=[1.0])})
+    monkeypatch.setattr(sys, "argv", [
+        "surya_perf_compare.py", "--cases", "blank", "--lanes", "fake",
+        "--out", str(out)])
+    H.main()
+    record = json.loads(out.read_text())["results"][0]
+    assert record["correctness"] == "FAIL"
+    assert "ids_match" in record["gate_failures"]
