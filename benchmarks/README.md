@@ -381,10 +381,24 @@ the Q5 MoE selected-expert path (2.22 ms/tok K_M on the direct GEMV),
 Q3_K strict decode (1.43/2.43 ms/tok), and the Q5 gate/up dual.
 ([final rollup](results/final-decode-campaign-2026-09-11/).)
 
-MTP for these artifacts is still **refused by admission** because the U6
-certification pin is empty. The valid GPU1/XTX paired diagnostic now uses
-recorded production graph replay for the true-AR arm (c1, natural25, B3, ten
-prompts, two repeats):
+MTP for these artifacts is now **admitted**: the U6 certification records are
+complete, `_UD_MTP_PRESET_FINGERPRINTS` carries both fingerprints, and the
+artifacts derive the `mtp` scope alongside `ar`. The admitted scope is width c1
+and the 4-95 token context bucket, and it is the measured scope — c2 K2 engages
+and holds `ar_exact` but reaches only 1.0418x, c4 has no production physical
+width cell, c8 runs out of memory at capacity 8 on a 24 GB card, and above 1023
+context the adapter refuses MTP while the packed verifier stops batching. An
+admission check with no request field, no diagnostic flag and no in-process
+grant measures `UD-Q4_K_M` AR 14.23 -> MTP **34.32** tok/s (**2.4126x**) and
+`UD-Q4_K_S` AR 15.19 -> MTP **35.71** tok/s (**2.3517x**), 10/10 engaged and
+10/10 `ar_exact`, on the server-path diagnostic denominator
+([admission check](results/2026-09-12-ud-gfx1100-mtp-automatic-admission.json),
+[width census](results/2026-09-12-ud-gfx1100-mtp-width-cells.json)). That
+denominator is not the resident graph-replay leaf used below, so it does not
+replace these rates.
+
+The retained paired measurement (c1, natural25, B3, ten prompts, two repeats,
+recorded production graph replay for the true-AR arm):
 
 | Tier | UD AR | Plain AR | UD / plain AR | UD MTP B3 | Plain MTP B3 | UD / plain MTP | UD MTP / AR |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -393,8 +407,7 @@ prompts, two repeats):
 
 All four arms have complete 20-row-per-group evidence, deterministic repeats,
 GPU/CPU acceptance agreement, a positive MTP/AR ratio, and generated-ID
-exactness. These rates are U6 diagnostic evidence, not automatic MTP admission.
-The remaining gap is concentrated in MTP compute: UD trails plain by
+exactness. The remaining gap is concentrated in MTP compute: UD trails plain by
 14.1%/21.3% in AR but 30.5%/31.7% in MTP.
 ([paired artifact](results/paired-ud-plain-mtp-c1-natural25-b3-phase4.json),
 [worklog](../worklog/entries/20260912T125745.171165Z-ud-phase4-lane-ud-phase4-rows-sibling-retained-43a671.md).)
