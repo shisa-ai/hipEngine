@@ -23,7 +23,7 @@ from hipengine.generation.surya_contract import (
 
 
 def _spec() -> SimpleNamespace:
-    return SimpleNamespace(eos_token_id=2)
+    return SimpleNamespace(eos_token_id=2, vision_spatial_merge_size=2)
 
 
 def _request(**overrides) -> SimpleNamespace:
@@ -320,3 +320,221 @@ def test_zero_max_tokens_returns_empty() -> None:
         np.array([0.0, 5.0, 0.0, 0.0]), _settings(max_tokens=0), step_fn, _request()
     )
     assert ids == [] and reason == "length"
+
+
+# -- Stage-boundary cancellation and deadline checks ------------------------
+#
+# Both generators must observe an abandoned request before the expensive
+# stages, not only per generated token. The vision tower and the prefill are
+# the two costs that matter: an already-cancelled request must not pay for
+# either, and a cancel that lands during preprocessing or during vision must
+# not be paid for by the next stage.
+
+
+class _StubRunner:
+    """Records the device stages a Surya generator asks for."""
+
+    def __init__(self, calls: list[str]) -> None:
+        self.calls = calls
+        self.max_seq = 4096
+        self.max_vision_scratch_bytes = 0
+
+    def check_vision_capacity(self, grid_thw: object) -> None:
+        self.calls.append("check_vision_capacity")
+
+    def vision_forward(self, pixel_rows: object, grid_thw: object) -> np.ndarray:
+        self.calls.append("vision_forward")
+        return np.zeros((1, 4), dtype=np.float32)
+
+    def prefill(self, input_ids: object, positions: object, visual_features: object = None) -> np.ndarray:
+        self.calls.append("prefill")
+        return np.zeros(8, dtype=np.float32)
+
+    def decode_step(self, token_id: int, position: int) -> np.ndarray:
+        self.calls.append("decode_step")
+        return np.zeros(8, dtype=np.float32)
+
+
+def _cpu_weights() -> dict[str, np.ndarray]:
+    """Minimal weights for the CPU decode tail, so a missing stage check fails
+    on the intended assertion rather than on a lookup error."""
+
+    return {
+        "model.language_model.embed_tokens.weight": np.zeros((8, 4), dtype=np.float32)
+    }
+
+
+def _gpu_generator(calls: list[str]) -> object:
+    """A GPU generator wired to a stub runner, without a checkpoint."""
+
+    from hipengine.generation import surya_gpu
+
+    generator = surya_gpu.SuryaOCRGeneratorGPU.__new__(surya_gpu.SuryaOCRGeneratorGPU)
+    generator.runner = _StubRunner(calls)
+    generator.spec = _spec()
+    generator.tokenizer = None
+    generator.max_seq = generator.runner.max_seq
+    generator.max_vision_scratch_bytes = 0
+    return generator
+
+
+def _stub_pipeline(monkeypatch: pytest.MonkeyPatch, module: object, calls: list[str],
+                   *, during_preprocess: object = None,
+                   during_vision: object = None) -> None:
+    """Replace preprocessing and prompt rendering with recording stubs."""
+
+    def fake_preprocess(image: object) -> tuple[np.ndarray, tuple[int, int, int]]:
+        calls.append("preprocess")
+        if during_preprocess is not None:
+            during_preprocess()
+        return np.zeros((4, 1536), dtype=np.float32), (1, 4, 4)
+
+    def fake_render(tokenizer: object, prompt: str, n_image_tokens: int | None = None):
+        calls.append("render_prompt")
+        return [1, 2, 3], [0, 1, 1]
+
+    monkeypatch.setattr(module, "preprocess_image_surya", fake_preprocess)
+    monkeypatch.setattr(module, "render_chat_prompt", fake_render)
+    monkeypatch.setattr(
+        module,
+        "compute_mrope_positions",
+        lambda mm, grid, merge=None: np.zeros((3, 3), dtype=np.int64),
+    )
+
+
+def _multimodal_call(generator: object, request: object) -> None:
+    generator.generate_multimodal_detailed("prompt", "page.png", request)
+
+
+def test_gpu_ocr_skips_every_stage_when_already_cancelled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hipengine.generation import surya_gpu
+    from hipengine.generation.deadline import GenerationCancelled, GenerationCancellationToken
+
+    calls: list[str] = []
+    _stub_pipeline(monkeypatch, surya_gpu, calls)
+    token = GenerationCancellationToken()
+    token.cancel()
+
+    with pytest.raises(GenerationCancelled):
+        _multimodal_call(
+            _gpu_generator(calls), _request(cancellation_token=token)
+        )
+    assert calls == [], f"a cancelled request still ran {calls}"
+
+
+def test_gpu_ocr_skips_every_stage_when_the_deadline_expired(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hipengine.generation import surya_gpu
+
+    calls: list[str] = []
+    _stub_pipeline(monkeypatch, surya_gpu, calls)
+
+    with pytest.raises(GenerationDeadlineExceeded):
+        _multimodal_call(_gpu_generator(calls), _request(deadline_at=0.0))
+    assert calls == [], f"an expired request still ran {calls}"
+
+
+def test_gpu_ocr_does_not_start_vision_after_a_cancel_during_preprocess(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hipengine.generation import surya_gpu
+    from hipengine.generation.deadline import GenerationCancelled, GenerationCancellationToken
+
+    calls: list[str] = []
+    token = GenerationCancellationToken()
+    _stub_pipeline(monkeypatch, surya_gpu, calls, during_preprocess=token.cancel)
+
+    with pytest.raises(GenerationCancelled):
+        _multimodal_call(_gpu_generator(calls), _request(cancellation_token=token))
+    assert "preprocess" in calls
+    assert "vision_forward" not in calls
+    assert "prefill" not in calls
+
+
+def test_gpu_ocr_does_not_prefill_after_a_cancel_during_vision(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hipengine.generation import surya_gpu
+    from hipengine.generation.deadline import GenerationCancelled, GenerationCancellationToken
+
+    calls: list[str] = []
+    token = GenerationCancellationToken()
+    generator = _gpu_generator(calls)
+    _stub_pipeline(monkeypatch, surya_gpu, calls)
+    original = generator.runner.vision_forward
+
+    def cancel_then_run(pixel_rows: object, grid_thw: object) -> np.ndarray:
+        token.cancel()
+        return original(pixel_rows, grid_thw)
+
+    monkeypatch.setattr(generator.runner, "vision_forward", cancel_then_run)
+
+    with pytest.raises(GenerationCancelled):
+        _multimodal_call(generator, _request(cancellation_token=token))
+    assert "vision_forward" in calls
+    assert "prefill" not in calls
+    assert "decode_step" not in calls
+
+
+def test_cpu_ocr_skips_every_stage_when_already_cancelled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hipengine.generation import surya as surya_cpu
+    from hipengine.generation.deadline import GenerationCancelled, GenerationCancellationToken
+
+    calls: list[str] = []
+    _stub_pipeline(monkeypatch, surya_cpu, calls)
+    monkeypatch.setattr(
+        "hipengine.kernels.cpu_reference.surya.vision_forward",
+        lambda *a, **k: (calls.append("vision_forward"), None, None, np.zeros((1, 4), dtype=np.float32))[1:],
+    )
+    monkeypatch.setattr(
+        surya_cpu, "text_prefill",
+        lambda *a, **k: (calls.append("prefill") or np.zeros((1, 1, 4), dtype=np.float32), None),
+    )
+    generator = surya_cpu.SuryaOCRGenerator.__new__(surya_cpu.SuryaOCRGenerator)
+    generator.spec = _spec()
+    generator.tokenizer = None
+    generator.weights = _cpu_weights()
+    token = GenerationCancellationToken()
+    token.cancel()
+
+    with pytest.raises(GenerationCancelled):
+        _multimodal_call(generator, _request(cancellation_token=token))
+    assert calls == [], f"a cancelled request still ran {calls}"
+
+
+def test_cpu_ocr_does_not_prefill_after_a_cancel_during_vision(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hipengine.generation import surya as surya_cpu
+    from hipengine.generation.deadline import GenerationCancelled, GenerationCancellationToken
+
+    calls: list[str] = []
+    token = GenerationCancellationToken()
+    _stub_pipeline(monkeypatch, surya_cpu, calls)
+
+    def fake_vision(weights: object, spec: object, pixel_rows: object, grid_thw: object):
+        calls.append("vision_forward")
+        token.cancel()
+        return None, None, np.zeros((1, 4), dtype=np.float32)
+
+    monkeypatch.setattr(
+        "hipengine.kernels.cpu_reference.surya.vision_forward", fake_vision
+    )
+    monkeypatch.setattr(
+        surya_cpu, "text_prefill",
+        lambda *a, **k: (calls.append("prefill") or np.zeros((1, 1, 4), dtype=np.float32), None),
+    )
+    generator = surya_cpu.SuryaOCRGenerator.__new__(surya_cpu.SuryaOCRGenerator)
+    generator.spec = _spec()
+    generator.tokenizer = None
+    generator.weights = _cpu_weights()
+
+    with pytest.raises(GenerationCancelled):
+        _multimodal_call(generator, _request(cancellation_token=token))
+    assert "vision_forward" in calls
+    assert "prefill" not in calls

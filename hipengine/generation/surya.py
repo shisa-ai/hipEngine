@@ -23,6 +23,7 @@ from typing import Any
 
 import numpy as np
 
+from hipengine.generation.deadline import raise_if_generation_deadline_expired
 from hipengine.generation.registry import register_text_generator
 from hipengine.generation.surya_contract import (
     greedy_decode_tokens,
@@ -112,6 +113,9 @@ class SuryaOCRGenerator:
         request: Any,
         settings: Any,
     ) -> tuple[list[int], str]:
+        # An abandoned request must not pay for the prefill. The caller already
+        # checked before vision, and the decode loop checks before every step.
+        raise_if_generation_deadline_expired(request)
         hidden, state = text_prefill(
             self.weights,
             self.spec,
@@ -149,6 +153,10 @@ class SuryaOCRGenerator:
     ) -> tuple[list[int], str]:
         from hipengine.kernels.cpu_reference.surya import vision_forward
 
+        # Fail before any work when the request is already abandoned, then
+        # again before the vision tower. The prefill is checked inside
+        # `_decode_greedy`.
+        raise_if_generation_deadline_expired(request)
         pixel_rows, grid = preprocess_image_surya(image)
         _, _, merged = vision_forward(self.weights, self.spec, pixel_rows, [grid])
         n_image_tokens = (grid[1] // 2) * (grid[2] // 2)
@@ -158,6 +166,7 @@ class SuryaOCRGenerator:
         position_ids = compute_mrope_positions(
             mm, grid, self.spec.vision_spatial_merge_size
         )
+        raise_if_generation_deadline_expired(request)
         return self._decode_greedy(
             np.array([input_ids], dtype=np.int64),
             position_ids,

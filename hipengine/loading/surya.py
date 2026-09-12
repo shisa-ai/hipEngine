@@ -28,14 +28,13 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Sequence
 
 import numpy as np
 
 from hipengine.kernels.cpu_reference.surya import (
     SuryaSpec,
     SuryaWeights,
-    greedy_generate,
-    text_prefill,
 )
 from hipengine.models.surya import parse_surya_model_spec
 
@@ -339,52 +338,60 @@ class SuryaOCRResult:
 def run_surya_ocr(
     model_dir: Path,
     image: "object",
-    prompt: str = "Transcribe this page.",
+    prompt: str | None = None,
     max_new_tokens: int = 256,
+    *,
+    ignore_eos: bool = False,
+    stop_token_ids: Sequence[int] = (),
+    deadline_at: float | None = None,
+    cancellation_token: "object | None" = None,
 ) -> SuryaOCRResult:
-    """Full torch-free OCR pass: preprocess -> vision tower -> prefill with
-    feature injection -> greedy cached decode with EOS stopping.
+    """Full torch-free OCR pass over the CPU-reference path.
 
-    CPU-reference path (fp32 numpy); the GPU path registers separately.
+    ``prompt=None`` uses the checkpoint's full-page transcription prompt
+    (:data:`~hipengine.generation.surya_protocol.FULL_PAGE_HTML_PROMPT`). That
+    wording is the model's training-time contract; the earlier ad-hoc
+    ``"Transcribe this page."`` default produced layout JSON or a degenerate
+    repeated list instead of a transcription. Pass an explicit prompt only when
+    the caller is deliberately driving a different protocol.
+
+    The work runs through the registered ``(surya_ocr2, cpu_reference, fp32)``
+    generator, so this public entry point and ``LLM(...)`` share one
+    implementation: the same capacity admission, stop-token handling, and
+    cancellation/deadline checks. ``deadline_at`` is an absolute
+    ``time.perf_counter()`` value; ``cancellation_token`` is a
+    :class:`~hipengine.generation.deadline.GenerationCancellationToken`.
     """
 
-    spec = load_surya_spec(model_dir)
-    weights = load_surya_weights(model_dir)
-    tokenizer = SuryaTokenizer(model_dir)
+    from hipengine.generation.registry import GenerationRequest, resolve_text_generator
+    from hipengine.generation.surya_protocol import FULL_PAGE_HTML_PROMPT
 
-    pixel_rows, grid = preprocess_image_surya(image)
-    _, _, merged = __import__(
-        "hipengine.kernels.cpu_reference.surya", fromlist=["vision_forward"]
-    ).vision_forward(weights, spec, pixel_rows, [grid])
-    n_image_tokens = (grid[1] // 2) * (grid[2] // 2)
-
-    input_ids, mm = render_chat_prompt(tokenizer, prompt, n_image_tokens)
-    position_ids = compute_mrope_positions(mm, grid, spec.vision_spatial_merge_size)
-
-    hidden, state = text_prefill(
-        weights,
-        spec,
-        np.array([input_ids], dtype=np.int64),
-        position_ids,
-        visual_features=merged[None],
+    resolved_prompt = FULL_PAGE_HTML_PROMPT if prompt is None else str(prompt)
+    factory = resolve_text_generator(
+        model="surya_ocr2", backend="cpu_reference", quant="fp32"
     )
-    # greedy decode stepping through the same state container
-    emb = weights["model.language_model.embed_tokens.weight"]
-    logits = hidden[:, -1] @ emb.T
-    generated: list[int] = []
-    pos = int(position_ids[:, -1].max())
-    stopped = False
-    for step in range(max_new_tokens):
-        next_token = int(np.argmax(logits[0]))
-        if next_token == spec.eos_token_id:
-            stopped = True
-            break
-        generated.append(next_token)
-        from hipengine.kernels.cpu_reference.surya import text_decode_step
-
-        logits = text_decode_step(weights, spec, next_token, state, pos + 1 + step)
+    generator = factory(model_path=model_dir)
+    try:
+        output = generator.generate_multimodal_detailed(
+            resolved_prompt,
+            image,
+            GenerationRequest(
+                prompts=[resolved_prompt],
+                max_tokens=int(max_new_tokens),
+                temperature=0.0,
+                top_p=1.0,
+                ignore_eos=bool(ignore_eos),
+                stop_token_ids=tuple(int(t) for t in stop_token_ids),
+                deadline_at=deadline_at,
+                cancellation_token=cancellation_token,
+            ),
+        )
+    finally:
+        close = getattr(generator, "close", None)
+        if close is not None:
+            close()
     return SuryaOCRResult(
-        token_ids=generated,
-        text=tokenizer.decode(generated, skip_special=True),
-        stopped_on_eos=stopped,
+        token_ids=list(output.generated_token_ids),
+        text=output.text,
+        stopped_on_eos=output.finish_details.reason == "eos",
     )

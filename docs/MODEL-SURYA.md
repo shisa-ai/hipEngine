@@ -163,6 +163,55 @@ tok/s). The same fp32 `rows == 1` pattern exists in `runtime/evie.py`,
 `runtime/timesfm_decode.py` and `runtime/timesfm3_decode.py`, which have not
 been converted.
 
+### Serving path and lifecycle (2026-09-12)
+
+There is one implementation per backend, and both public entry points reach it
+through the four-axis registry rather than through a parallel copy:
+
+| entry point | path |
+| --- | --- |
+| `LLM("datalab-to/surya-ocr-2", backend=...)` + `generate_multimodal_detailed` | `LLM` → `resolve_text_generator(model="surya_ocr2", backend, quant="fp32")` → `SuryaOCRGenerator` / `SuryaOCRGeneratorGPU` |
+| `run_surya_ocr(model_dir, image, ...)` | same registry resolution, CPU backend |
+
+`run_surya_ocr` used to carry its own copy of preprocess → vision → prefill →
+greedy loop and default to the ad-hoc `"Transcribe this page."` prompt. It now
+defaults to `FULL_PAGE_HTML_PROMPT` and delegates to the registered
+`(surya_ocr2, cpu_reference, fp32)` generator, so the public entry point and
+`LLM(...)` share one capacity check, one stop-token rule, and one
+cancellation/deadline path. `prompt=None` means the checkpoint's full-page
+prompt; a caller driving a different protocol passes it explicitly.
+
+**Cancellation and deadlines are checked at stage boundaries, not only per
+token.** A request that is already cancelled or past its `deadline_at` must not
+pay for work it will throw away, so both generators check before preprocessing,
+again immediately before the vision tower, and again before the text prefill;
+`greedy_decode_tokens` keeps checking before every decode step. Previously the
+only check was per generated token, so an abandoned request still ran the whole
+vision tower and prefill first.
+
+**Failure recovery is exact.** An abandoned request leaves the runner holding a
+partially written KV cache and advanced conv/GDN state — and, because the
+abandoned request is typically the longer one, more written KV slots than the
+next request will attend over. `prefill` zeroes the conv and GDN state and
+rewrites KV from slot 0, and decode attends only over `_seq_len + 1` slots, so
+the follow-up request is bit-identical to the same request on a runner that
+never saw the abandoned one. `tests/test_surya_gpu.py`
+`test_gpu_generator_recovers_after_an_abandoned_request` gates the
+long-then-short ordering, and also that an over-capacity rejection leaves the
+runner usable.
+
+**Open ABI gap.** The Surya KV write and decode kernels use a bespoke dense
+`(nk, max_seq, hd)` plane instead of the `KVLiveSpans`
+`(base_offsets, live_counts, token_positions, evict_mask)` ABI. Dense uniform
+spans are behaviourally equivalent, but the ABI is not, and no drop-in kernel
+exists: every spans-aware attention/KV-write kernel in `hip_gfx1100` stores
+BF16 or int8-with-scales while Surya stores fp32, and the one dense-context
+decode kernel is BF16-only and reserves more LDS than gfx11 has at Surya's
+16384-token default context. Closing it means a new fp32 spans-aware
+head_dim-256 decode-attention kernel, which would also replace three rocBLAS
+batched GEMMs and three elementwise kernels per layer. The work breakdown and
+the adoption triggers are in `docs/REFACTOR.md`.
+
 ### Measured inventory (2026-09-11, revision `3b3d4cdf`)
 
 Checkpoint downloaded and inventoried; the geometry table above matches the

@@ -32,6 +32,7 @@ from typing import Any
 
 import numpy as np
 
+from hipengine.generation.deadline import raise_if_generation_deadline_expired
 from hipengine.generation.registry import register_text_generator
 from hipengine.generation.surya_contract import (
     check_prompt_capacity,
@@ -153,6 +154,10 @@ class SuryaOCRGeneratorGPU:
         request: Any,
         settings: Any,
     ) -> tuple[list[int], str]:
+        # An abandoned request must not pay for the prefill. This is the second
+        # of three checks: the caller already checked before vision, and the
+        # decode loop checks before every step.
+        raise_if_generation_deadline_expired(request)
         check_prompt_capacity(
             int(input_ids.shape[-1]),
             settings.max_tokens,
@@ -186,6 +191,11 @@ class SuryaOCRGeneratorGPU:
     def _generate_ocr(
         self, prompt: str, image: Any, request: Any, settings: Any
     ) -> tuple[list[int], str]:
+        # Fail before any work when the request is already abandoned, then
+        # again before the two expensive stages. Preprocessing is host-side and
+        # cheap but not free at 16.7 MP, vision is the first device stage, and
+        # the prefill is checked inside `_decode_greedy`.
+        raise_if_generation_deadline_expired(request)
         pixel_rows, grid = preprocess_image_surya(image)
         n_image_tokens = (grid[1] // 2) * (grid[2] // 2)
         input_ids, mm = render_chat_prompt(
@@ -205,6 +215,7 @@ class SuryaOCRGeneratorGPU:
             self.runner.max_seq,
             hint="raise LLM(max_sequence_length=...)",
         )
+        raise_if_generation_deadline_expired(request)
         self.runner.check_vision_capacity([grid])
         merged = self.runner.vision_forward(pixel_rows, [grid])
         return self._decode_greedy(
