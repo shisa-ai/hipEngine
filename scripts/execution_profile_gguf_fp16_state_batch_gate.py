@@ -75,8 +75,8 @@ class StaticScenario:
     long_context: bool = False
 
     def __post_init__(self) -> None:
-        if self.width not in SUPPORTED_WIDTHS:
-            raise ValueError("static scenario width must be c4 or c8")
+        if self.width not in SUPPORTED_WIDTHS | {2}:
+            raise ValueError("static scenario width must be c2, c4 or c8")
         if len(self.rows) != self.width or len(self.token_rows) != self.width:
             raise ValueError("static scenario rows must fill its physical width")
         if not 0 < self.actual_count <= self.width:
@@ -163,7 +163,7 @@ def build_static_scenarios(
     scenarios: list[StaticScenario] = []
     for width in widths:
         width = int(width)
-        if width not in SUPPORTED_WIDTHS:
+        if width not in SUPPORTED_WIDTHS | {2}:
             raise ValueError(f"unsupported static width {width}")
         for group_index, start in enumerate(range(0, len(rows), width)):
             actual = list(rows[start : start + width])
@@ -205,12 +205,49 @@ def build_static_scenarios(
     return tuple(scenarios)
 
 
+def _make_public_profile_sessions(args, *, candidate, max_sequence_length):
+    from hipengine import LLM
+    from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+    from scripts.qwen38_production_ar_gate import profile_identity
+
+    stack = ExitStack()
+    try:
+        requested = None if candidate else "strict"
+        llm = LLM(str(args.model), backend=str(args.backend), quant=str(args.quant_label),
+                  execution_profile=requested, max_active_requests=8,
+                  max_sequence_length=max_sequence_length)
+        stack.callback(llm.close)
+        llm.prepare(max_sequence_length=max_sequence_length)
+        generator = llm._get_text_generator()
+        owner, _ = stack.enter_context(generator._resident_session_scope(
+            shared_runner=generator._get_shared_runner(), pool_name="profile_batch_gate"))
+        identity = profile_identity(llm, generator, owner, requested=requested)
+        if not hasattr(args, "runtime_profiles"):
+            args.runtime_profiles = {}
+        args.runtime_profiles["candidate" if candidate else "strict"] = identity
+        sessions = [owner]
+        while len(sessions) < 8:
+            session = stack.enter_context(Qwen35GGUFResidentSession(
+                args.model, backend=str(args.backend), runtime=owner.runtime,
+                shared_runner=owner.runner, max_sequence_length=max_sequence_length,
+                use_wmma_prefill=True, use_gemv_decode=True))
+            generator._configure_session(session)
+            sessions.append(session)
+        return stack, tuple(sessions), str(owner.runner.backend), str(owner.runner.target_arch)
+    except BaseException:
+        stack.close()
+        raise
+
+
 def _make_sessions(
     args: argparse.Namespace,
     *,
     fp16: bool,
     max_sequence_length: int,
 ) -> tuple[ExitStack, tuple[Any, ...], str, str]:
+    if getattr(args, "public_profiles", False):
+        return _make_public_profile_sessions(
+            args, candidate=fp16, max_sequence_length=max_sequence_length)
     from hipengine.runtime.prefill import PrefillConfig
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
@@ -567,8 +604,12 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     if int(args.decode_steps) < 24 or int(args.repeat_runs) < 3:
         raise GateError("complete gate needs at least 24 decode steps and three repeats")
     widths = tuple(int(value) for value in str(args.widths).split(",") if value)
-    if set(widths) != SUPPORTED_WIDTHS:
-        raise GateError("complete gate requires static widths 4,8")
+    required_widths = (
+        SUPPORTED_WIDTHS | {2} if getattr(args, "public_profiles", False)
+        else SUPPORTED_WIDTHS
+    )
+    if set(widths) != required_widths:
+        raise GateError(f"complete gate requires static widths {sorted(required_widths)}")
     schedule = validate_width_schedule(
         DEFAULT_DYNAMIC_SCHEDULE,
         decode_steps=int(args.decode_steps),
@@ -778,6 +819,15 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         captures,
         thresholds=EvaluationThresholds(),
     )
+    public_profiles = getattr(args, "runtime_profiles", None)
+    route_environment = (
+        {"runtime_profiles": public_profiles}
+        if public_profiles else {
+            "strict_route_environment": {FP16_STATE_ENV: "0"},
+            "candidate_route_environment": {FP16_STATE_ENV: "1"},
+            "production_route": PRODUCTION_ROUTE,
+        }
+    )
     provenance = collect_artifact_provenance(
         repo_root=REPO_ROOT,
         configured_backend=str(args.backend),
@@ -790,9 +840,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         environment={
             "HIPENGINE_HIP_ARCH": os.environ.get("HIPENGINE_HIP_ARCH"),
             "HIP_VISIBLE_DEVICES": os.environ.get("HIP_VISIBLE_DEVICES"),
-            "strict_route_environment": {FP16_STATE_ENV: "0"},
-            "candidate_route_environment": {FP16_STATE_ENV: "1"},
-            "production_route": PRODUCTION_ROUTE,
+            **route_environment,
         },
         build_profile="execution_profile_gguf_fp16_state_batch_gate",
         timing_protocol="none_full_logits_isolation_and_state_ownership_v1",
@@ -806,7 +854,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     complete_matrix = bool(
         complete_suite
         and len(prompt_rows) == 18
-        and set(widths) == SUPPORTED_WIDTHS
+        and set(widths) == required_widths
         and int(args.decode_steps) >= 24
         and int(args.repeat_runs) >= 3
         and int(args.long_prompt_tokens) >= 512
@@ -826,18 +874,25 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     passed = bool(measurement_valid and evaluated["quality"]["hard_gates_passed"])
     return {
         "schema_version": SCHEMA_VERSION,
-        "kind": KIND,
+        "kind": "qwen38_named_public_profile_batch_gate" if public_profiles else KIND,
+        "runtime_profiles": public_profiles,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "status": "passed" if passed else "failed_or_screen_only",
         "measurement_valid": measurement_valid,
         "performance_claim": False,
         "profile_qualification_claim": False,
         "qualification_blockers": [
-            "capture is not a runtime-resolved public production-profile manifest",
+            *([] if public_profiles else [
+                "capture is not a runtime-resolved public production-profile manifest"]),
             "fresh BF16-relative and external task-score verdicts are unavailable",
             "complete dynamic serving/SLO-goodput packet has not run",
         ],
         "candidate": {
+            "name": "public_default",
+            "classification": "resolved production composition versus public strict",
+            "strict_fallback": "public strict profile",
+            "runtime_profiles": public_profiles,
+        } if public_profiles else {
             "name": CANDIDATE_NAME,
             "classification": "T1 lower-precision recurrent-state storage",
             "mechanism": "FP16 recurrent-state storage with FP32 accumulation",
@@ -908,6 +963,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
     parser.add_argument("--backend", default="hip_gfx1151")
     parser.add_argument("--quant-label", default="gguf_q4_k_s")
+    parser.add_argument(
+        "--public-profiles", action="store_true",
+        help="Use public strict/default factories instead of toggling FP16 storage on a legacy route")
     parser.add_argument("--prompts", action="append", type=Path, default=None)
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--widths", default="4,8")
