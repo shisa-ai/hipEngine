@@ -3869,3 +3869,54 @@ def test_qwen35_decode_state_int8_prefill_append_converts_fp16_value_and_passes_
         rows,
         7,
     )
+
+
+
+def test_qwen35_decode_state_paged_kv_backend_stays_pinned_to_gfx1100(monkeypatch) -> None:
+    """PARO resolves paged-KV/attention keys against gfx1100, and must keep doing so.
+
+    The pin is load-bearing rather than a stale default. Measured 2026-09-12 on
+    the physical gfx1151 host with Qwen3.6-35B-A3B PARO at c=2 / prompt 512 /
+    128 decode tokens, threading the session backend into this resolution
+    repointed ``(paged_attn_decode, w4_paro, bf16_context_batch_c1_exact_spans)``
+    at the gfx1151 ``fixed256`` body and broke the retained
+    native_batch-vs-independent-c1 equality contract: row 0 diverged at decode
+    token 25 of 137, reproducing bit-identically across two runs, while the
+    pinned body and the ``per_row`` control both reached 137/137. The gfx1151
+    override is correct for the GGUF route that registers it; it is wrong here.
+    """
+
+    assert qwen_runtime._PAGED_KV_REGISTRY_BACKEND == "hip_gfx1100"
+
+    runtime = FakeRuntime()
+    state = _state(runtime, _full_attention_weights())
+    scratch = state.reserve_full_attention_scratch(
+        tokens=2, num_splits=1, activation_dtype="fp16", gated_dtype="fp16"
+    )
+    spans = KVLiveSpans.paged_uniform(
+        block_table=_tensor(0x1000, (2, 4), "int32"),
+        live_counts=_tensor(0x2000, (2,), "int64"),
+        max_live_count=8,
+        storage_dtype="bf16",
+    )
+    seen: list[dict] = []
+
+    def fake_resolve_paged_attn_decode(**kwargs):
+        seen.append(kwargs)
+        return lambda *args, **call_kwargs: None
+
+    monkeypatch.setattr(qwen_runtime, "resolve_paged_attn_decode", fake_resolve_paged_attn_decode)
+    monkeypatch.setattr(qwen_runtime, "qwen35_full_attn_gate_mul_fp16", lambda *args, **kwargs: None)
+
+    state.decode_full_attention_context_gate_fp16_batch(
+        scratch,
+        key_cache=_tensor(0xE000, (4, 256, 2, 256), "bf16"),
+        value_cache=_tensor(0xF000, (4, 256, 2, 256), "bf16"),
+        spans=spans,
+        rows=2,
+        library={},
+        stream=0,
+    )
+
+    assert len(seen) == 1
+    assert seen[0]["backend"] == "hip_gfx1100"
