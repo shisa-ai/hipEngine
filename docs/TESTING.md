@@ -579,7 +579,7 @@ The 2026-05-18 K1 artifacts are the current reference rows:
 At milestone boundaries:
 
 ```bash
-python3 -m pytest -q
+python3 -m pytest --suite all -q
 python3 scripts/check_fixtures.py
 # plus the phase's named GPU/perf target once available
 ```
@@ -619,3 +619,46 @@ Prefer truth-scoped wording:
 - Good: "`rmsnorm` CPU-reference fixture `rmsnorm_basic` passes at max_abs=0 under `python3 scripts/check_fixtures.py`."
 - Good: "W7900/gfx1100 smoke_add n=1024 passed max_abs=0.0; rocprof trace is currently blocked by profiler hang."
 - Bad: "kernel is correct" without oracle/shape/command.
+
+## Test Naming and Discovery
+
+New and migrated test modules MUST use `test_<tier>_<subject>.py`.
+The tier describes what the test executes, not the product being tested.
+No filename substring heuristics, per-file filter lists, or exceptions.
+
+| Tier | Execution contract |
+| --- | --- |
+| `unit` | Bounded CPU logic with synthetic inputs or small committed fixtures; no GPU, JIT/compiler, live model/service, or network dependency. Review and time before admission. |
+| `integration` | Process, service, or concurrency boundaries, including fake executable integration. |
+| `gpu` | Actual device execution or device-code compilation with explicit availability guards. |
+| `benchmark` | Actual timing/profiling protocols, not merely parsing benchmark artifacts. |
+| `live` | Real model weights, live services, or external data dependencies. |
+| `slow` | Exhaustive matrices, soak, or long-context validation whose cost is deliberate. |
+
+For example, a pure benchmark-result parser is
+`test_unit_benchmark_metrics.py`, not a benchmark-tier test. A CPU planner
+for a HIP kernel is a unit test, not a GPU test. Split mixed modules by
+execution contract; keep shared fixture builders in non-test helper modules.
+When contracts overlap, choose the more demanding tier (`slow`, `live`,
+`benchmark`, `gpu`, `integration`, then `unit`) and document dependencies.
+Do not trim numerical matrices or broaden mutable fixture scope solely to
+admit a test into the unit tier.
+
+`uv run pytest` discovers only `test_unit_*.py` and prints duration rankings.
+Use `uv run pytest --suite gpu` (or another tier) for opt-in discovery.
+Explicit file/node arguments still run that target regardless of its tier.
+The complete historical suite requires `uv run pytest --suite all`.
+Use `--suite all --collect-only` to check migration coverage without executing it.
+Milestone instructions elsewhere that call for a *full* pytest run require
+`--suite all`; ordinary development must not implicitly launch that run.
+
+Migration is incremental: only reviewed and timed modules belong in the
+unit tier. Legacy filenames are not assumed fast and are excluded from
+default discovery, but remain available by explicit path or `--suite all`.
+This initial migration admits adaptive-budget, batch-width-dispatch,
+draft-confidence, and generation-constraint tests. It is not a completed
+runtime audit of the remaining suite.
+
+Agents must follow this naming contract when adding tests, update active
+imports/commands when moving tests, preserve immutable historical worklogs,
+and verify both targeted execution and collection after a move.
