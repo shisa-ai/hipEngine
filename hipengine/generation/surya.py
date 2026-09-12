@@ -29,6 +29,7 @@ from hipengine.generation.surya_contract import (
     greedy_decode_tokens,
     resolve_surya_greedy_settings,
 )
+from hipengine.generation.surya_protocol import FULL_PAGE_HTML_PROMPT
 from hipengine.kernels.cpu_reference.surya import (
     SuryaSpec,
     SuryaWeights,
@@ -36,6 +37,7 @@ from hipengine.kernels.cpu_reference.surya import (
     text_prefill,
 )
 from hipengine.loading.surya import (
+    SURYA_MAX_PIXELS,
     SuryaTokenizer,
     compute_mrope_positions,
     load_surya_spec,
@@ -50,6 +52,13 @@ _QUANT = "fp32"
 
 class SuryaOCRGenerator:
     """Greedy OCR generator over the torch-free CPU reference path."""
+
+    vision_max_pixels = SURYA_MAX_PIXELS
+    vision_media_input = "image_array"
+    vision_default_prompt = FULL_PAGE_HTML_PROMPT
+    # render_chat_prompt derives the image pad span from the patch grid,
+    # so the prompt is the bare text with no inline placeholder.
+    vision_prompt_marker = ""
 
     def __init__(
         self,
