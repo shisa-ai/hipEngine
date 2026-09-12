@@ -352,7 +352,7 @@ HIPENGINE_BUILD_CACHE_ROOT=/tmp/hipengine-rocm10-smoke-cache \
 PYTHONPATH=. \
 "$PY" -m pytest -q \
   tests/test_hip_runtime.py \
-  tests/test_hip_graph_capture_replay.py
+  tests/test_gpu_hip_graph_capture_replay.py
 ```
 
 The 2026-08-30 upgrade result was `27` SDK tests and `6` hipEngine tests passed.

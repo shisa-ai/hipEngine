@@ -69,7 +69,8 @@ path = "hatch_build.py"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+addopts = "-q --durations=30"
+python_files = ["test_unit_*.py"]
 # Resolve hipengine/scripts from THIS checkout first. The shared environment's
 # editable install can point at a different worktree (observed 2026-08-17:
 # a redline-branch checkout shadowed imports and broke collection/gates).

@@ -270,7 +270,7 @@ kernel chain and does **not** reuse this c1 graph. Evidence:
 
 The repo already proved this pattern in `hipengine/runtime/moe_graph.py`: a
 **stateless** per-layer unit is safe to capture and replay across arbitrarily
-many relaunches (bit-exact in `tests/test_hip_graph_capture_replay.py`). Maple
+many relaunches (bit-exact in `tests/test_gpu_hip_graph_capture_replay.py`). Maple
 decode is stateless per token: every layer recomputes from fresh
 `hidden`/`qkv` buffers through fixed session-resident scratch pointers. The only
 stateful memory is the KV cache, but the KV-write/attention kernels read and
