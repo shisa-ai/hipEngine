@@ -1,13 +1,13 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-12**
+Last updated: **2026-09-13**
 
 Surya OCR 2 on Strix Halo gfx1151, hipEngine HIP lane vs transformers fp32 on
 the same host iGPU, over 12 pages covering layout-JSON and markup output,
 Japanese and mixed script, dense small text, a ruled table, a blank page, a
-degraded scan, and long block-heavy pages: decode 51.7-55.4 tok/s vs
-20.4-26.6, a median 2.25x faster (2.03x-2.60x across every page), and
-end-to-end 0.21-9.88 s vs 0.32-20.99 s. Both lanes reproduce their declared
+degraded scan, and long block-heavy pages: decode 55.1-56.6 tok/s vs
+25.6-29.8, a median 2.00x faster (1.90x-2.16x across every page), and
+end-to-end 0.20-9.53 s vs 0.28-19.16 s. Both lanes reproduce their declared
 reference exactly on all 12 pages — a captured torch fp32 fixture for 11 and the
 oracle-gated CPU reference for the rectangular page — and each decode stage
 repeats identically. A lane is reported PASS only when a reference is present,
@@ -19,9 +19,12 @@ region — page image plus prompt in, greedy token ids out — with checkpoint l
 and runner construction reported separately as `init_s`. Decode is
 weight-bandwidth-bound: one token streams 2342 MB of fp32 weights at 136-143
 GB/s, and 88% of decode kernel time is the projection GEMMs.
-[Suite baseline](results/2026-09-11-gfx1151-surya-suite-baseline.json),
+[Suite run](results/2026-09-13-gfx1151-surya-kv-spans-decode.json),
 [rect re-qualification](results/2026-09-12-gfx1151-surya-rect-reference.json),
 [phase-attributed profile](results/2026-09-12-gfx1151-surya-phase-attributed-profile.json).
+An earlier run of this suite recorded the torch lane 13-26% lower on every page;
+that artifact is superseded and the 2.25x ratio it implied is not comparable
+with this one.
 Earlier Surya rows here reported decode trailing torch at 55.5 vs 68.2 tok/s;
 that comparison came from a harness defect in which the torch prefill stage was
 timed before its synchronization and decode was derived by subtracting two
@@ -60,6 +63,36 @@ against 1045.58 ms dense (0.926x) while cutting scratch from 768.0 to 7.9 MiB.
 At 4096 patches the 512 MiB default is 1118.47 ms (0.935x) at 511.9 MiB and a
 64 MiB budget is 1177.79 ms (0.888x) at 63.9 MiB, so the cost is 7-11% there and
 is not monotonic in tile count.
+
+Surya's KV write and decode read the same `KVLiveSpans` `(base_offsets,
+live_counts, token_positions, evict_mask)` metadata the rest of the engine uses,
+over the head-major fp32 planes the prefill path already addresses.
+`surya_scatter_kv_f32_spans` resolves each logical token index through the page
+table and skips slots that are outside `live_counts`, empty, or evicted;
+`surya_full_attn_decode_f32_spans` fuses the decode chain (batched-SGEMM QK^T,
+scale, row softmax, batched-SGEMM AV) into one GQA-fused split-K producer plus a
+reduce. One producer block per `(kv_head, context chunk)` computes all four
+query heads of that KV head from a single K/V read, so each plane is read once
+per KV head instead of once per query head, and no `(nq, max_seq)` score row is
+materialized; split-K is what makes that possible at Surya's geometry, since a
+`capacity`-sized LDS score row would need 66560 B at the 16384-token default
+against a 64 KiB workgroup limit. On gfx1151, fp32, one query row, the fused
+route is 2.3-9.5x the rocBLAS parent across context lengths 128-16384 (0.28 ->
+0.12 ms/token at 128, 1.98 -> 0.30 at 2048, 8.63 -> 0.91 at 8580, 16.93 -> 2.06
+at 16384, six full-attention layers per token), with the dense-fill output
+agreeing to 3.3e-07 absolute. The ratio is monotone from 512 tokens up; below
+that both routes are tens of microseconds and the parent's own per-layer time
+swings enough that the sub-512 ratios move by ~0.5x between runs. The split plan targets a constant split count
+rather than a constant chunk, because the producer's parallelism is
+`num_kv_heads * num_splits`: at 2048 tokens a 1024-token chunk (4 blocks) ran at
+0.96x the parent while a 32-token chunk (128 blocks) ran at 6.2x, and at 16384
+tokens a 256-token chunk (128 blocks) beat a 32-token one (1024 blocks) because
+the reduce then has 512 partials per head. Across the 12-page lane suite every
+case improves, decode median 53.9 -> 55.4 tok/s (+2.1% to +6.8%, 55.35 -> 56.64
+on the retained `small` workload) with vision and prefill flat within noise, all
+24 rows PASS on full-sequence oracle equality with empty `gate_failures`.
+[Isolated decode attention](results/2026-09-13-gfx1151-surya-kv-spans-decode-attention.json),
+[lane suite](results/2026-09-13-gfx1151-surya-kv-spans-decode.json).
 
 Full-page transcription is gated against the text drawn on each page, not only
 against a captured oracle. Using the checkpoint's real full-page HTML prompt,

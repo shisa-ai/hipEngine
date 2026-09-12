@@ -29,7 +29,8 @@ vision tower and text decoder on gfx1151.
 | Multi-page held-out OCR corpus | done | `page_columns.png` (two-column) and `page_list.png` (numbered list) via `tests/test_surya_gpu.py::test_gpu_ocr_corpus_matches_oracle` |
 | 300-DPI A4 page fixture and its transcription measurement | done | `scripts/surya_bench_pages.py:make_page_a4`, gated by `tests/test_surya_transcription.py::test_transcription_meets_ground_truth[a4]` |
 | OpenAI-compatible HTTP serving (`hipserver`) | done | `hipengine/server/multimodal.py`, `scripts/surya_http_e2e.py`, `tests/test_surya_server_multimodal.py` |
-| Registry migration + `KVLiveSpans` KV ABI | pending | tracked in `docs/REFACTOR.md` |
+| Registry migration | pending | tracked in `docs/REFACTOR.md` |
+| `KVLiveSpans` KV ABI | done | `surya_scatter_kv_f32_spans`, `surya_full_attn_decode_f32_spans`; `tests/test_surya_kv_spans.py`, `scripts/surya_kv_spans_bench.py` |
 | Quantized (GGUF) Surya decoder | pending | safetensors fp32 is the implementation target |
 | MTP / speculative decoding | pending | 15 MTP tensors inventoried, unused |
 
@@ -253,17 +254,25 @@ never saw the abandoned one. `tests/test_surya_gpu.py`
 long-then-short ordering, and also that an over-capacity rejection leaves the
 runner usable.
 
-**Open ABI gap.** The Surya KV write and decode kernels use a bespoke dense
-`(nk, max_seq, hd)` plane instead of the `KVLiveSpans`
-`(base_offsets, live_counts, token_positions, evict_mask)` ABI. Dense uniform
-spans are behaviourally equivalent, but the ABI is not, and no drop-in kernel
-exists: every spans-aware attention/KV-write kernel in `hip_gfx1100` stores
-BF16 or int8-with-scales while Surya stores fp32, and the one dense-context
-decode kernel is BF16-only and reserves more LDS than gfx11 has at Surya's
-16384-token default context. Closing it means a new fp32 spans-aware
-head_dim-256 decode-attention kernel, which would also replace three rocBLAS
-batched GEMMs and three elementwise kernels per layer. The work breakdown and
-the adoption triggers are in `docs/REFACTOR.md`.
+**KV ABI closed (2026-09-13).** The KV write and decode kernels read the same
+`(base_offsets, live_counts, token_positions, evict_mask)` `KVLiveSpans` ABI as
+the rest of the tree. `surya_scatter_kv_f32_spans` maps each logical token
+index through the page table and skips it when it is outside `live_counts`, has
+a negative `token_positions` entry, or is marked in `evict_mask`;
+`surya_full_attn_decode_f32_spans` is a fused fp32 GQA-4 split-K producer plus
+its reduce, replacing the batched-SGEMM scores + scale + row-softmax + AV chain
+and never materializing an `(nq, max_seq)` score row. The dense policy fills
+every span field uniformly (identity page table, `arange` positions, empty
+eviction mask), so the default path exercises the metadata rather than merely
+declaring it, and the request's `live_counts`/`row_positions` move once per
+decode step. The pre-spans `surya_scatter_kv_f32` and
+`attention_decode_rocblas_f32` remain registered as the bisection oracle and the
+strict fallback for a shape the fused kernel does not compile for. Measured on
+gfx1151, the fused decode attention is 2.3-9.5x the rocBLAS parent over context
+lengths 128-16384 with the same-fill output agreeing to 3.3e-07 absolute; the
+ratio is monotone from 512 tokens up, while below that both routes are tens of
+microseconds and the ratio moves by ~0.5x between runs
+(`tests/test_surya_kv_spans.py`, `scripts/surya_kv_spans_bench.py`).
 
 ### HTTP serving (2026-09-12)
 
@@ -549,12 +558,12 @@ parsing, no OpenAI-compatible service path); step 6 is pending.
 
 Keep kernels behind `(backend, layer, quant, variant)` registrations and retain
 registered strict fallbacks. `KVLiveSpans` remains the attention ABI; mRoPE
-coordinates do not replace cache ownership metadata. The current HIP runtime
-does not yet meet this: it imports the `hip_gfx1100` JIT libraries directly and
-uses a bespoke dense KV scatter offset scheme, exactly as the existing EVIE
-runtime does. Both deviations are recorded in `docs/REFACTOR.md` with concrete
-removal conditions; migrating them is a repo-wide refactor, not a Surya-only
-change. Read `KERNELS.md` and run
+coordinates do not replace cache ownership metadata. The Surya KV write and
+decode kernels now read that ABI. The remaining deviation is the direct
+`hip_gfx1100` JIT-library import, which the existing EVIE runtime also uses;
+it is recorded in `docs/REFACTOR.md` with concrete removal conditions, and
+migrating it is a repo-wide refactor, not a Surya-only change. Read
+`KERNELS.md` and run
 `python3 scripts/check_lineage.py --kind kernel --diff stat` before any kernel
 port.
 
@@ -589,7 +598,10 @@ page latency, pages/s, output tokens, peak memory, and quality.
 Measured memory envelope (gfx1151, fp32, `scripts/surya_attention_memory.py`):
 the runner holds 2663 MB of fp32 weights, `2 * nk * max_seq * hd * 4` bytes per
 full-attention layer of KV planes (403 MB at `max_seq` 16384), 18.9 MB of GDN
-recurrence state, and 1.8 MB of conv windows. Both attention score matrices are
+recurrence state, 1.8 MB of conv windows, and 0.68 MB of resident spans state:
+one split-K partial set of `nq * num_splits * (hd + 2) * 4` bytes (528 KB at
+the 16384-token plan) plus the page table, `arange` position table, and empty
+eviction mask (147 KB at `max_seq` 16384). Both attention score matrices are
 tiled by query rows under a 512 MiB score-tile budget. The vision tower's is
 `12 * n^2 * 4` bytes dense, so a 300-DPI A4 page (220x156 grid, 34320 patches)
 needs 535 MB instead of the 56.5 GB a dense score matrix would, and the
