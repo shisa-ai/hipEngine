@@ -942,11 +942,12 @@ def test_gpu_tiled_prefill_matches_dense_and_cpu_reference(runner) -> None:
 def test_gpu_tiled_prefill_is_bit_identical_at_the_default_budget(runner) -> None:
     """The default budget's page-scale split must not perturb the logits.
 
-    Below ~512 MB of dense score the default budget keeps one tile, so the
-    default path *is* the dense path there. At the 8580 image tokens of a
-    300-DPI A4 page the default splits into 5 tiles of 1955 query rows, which
-    is the regime the production numerical gate runs in — so this pins the
-    claim that the gate's recorded numbers still describe the default path.
+    At the 8580 image tokens of a 300-DPI A4 page the default budget splits the
+    prefill into 32 tiles of 269 query rows, which is the regime the production
+    numerical gate runs in — so this pins the claim that the gate's recorded
+    numbers still describe the default path. The tile shape is chosen by
+    :func:`plan_score_tiles`, so this also pins that the shape envelope does not
+    perturb the arithmetic.
     """
 
     _, weights, spec = runner

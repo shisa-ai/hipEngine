@@ -6462,6 +6462,44 @@ pass, and drop the `lane_isolation` protocol note and the per-lane caveat from
 `benchmarks/README.md`. `--merge` itself stays: merging per-lane artifacts is a
 legitimate way to keep a comparison honest when one lane perturbs the other.
 
+## 2026-09-13 Surya tile shape: grid divisibility was tested and rejected
+
+Grid divisibility was the other candidate shape rule and it was tested: the
+sweep records `even` (full last tile) per row, and even division wins at 256 and
+6400 patches and loses at 1024 and 4096, so it does not predict the curve. The
+rule uses the wavefront multiple instead, which does separate on the A4 page
+(where no measured block divides the grid, so the separation is not a tail
+effect). If a future rule wants to use divisibility, the data to re-check is
+already in the artifacts.
+
+## 2026-09-13 Surya attention tile shape envelope is not optimal everywhere — open
+
+`plan_score_tiles` caps the query block at `max(128, ceil(rows / 32))` rows and
+rounds it down to a multiple of 32 (`SHAPE_TILE_ROWS`, `SHAPE_TILE_DIVISOR`,
+`SHAPE_TILE_MULTIPLE` in `hipengine/runtime/surya.py`). The envelope is
+calibrated on the 256/1024/4096/6400/34320-patch vision grids and the
+2048-16384-token text prefill, and two grids disagree with it:
+
+- At 6400 patches the cap picks 192 rows (2130.11 ms) where 96 rows across 67
+tiles is 1940.93 ms, a 10% gap, and 256/341/1024/2048/4096 rows are all
+2056-2101 ms. 6400 is the only measured grid that wants *more* tiles than
+`rows / 32`, and the surrounding points do not separate on the wavefront
+multiple the way the A4 page does (64 rows is 2057.20 ms, 96 is 1940.93, 128 is
+2112.64). Revisit when a sweep over more mid-size grids shows what makes it
+different; special-casing one grid would be overfitting.
+- The A4 page's own best measured width is 2048 rows (41622.25 ms), 5.1% below
+the 320-row default, but the byte budget is what stops there (512 MiB admits
+325 rows), not the envelope. Raise `max_vision_scratch_bytes` rather than
+loosen the cap.
+
+Also latent, found while sweeping: a user-raised `max_vision_scratch_bytes`
+above ~6 GB on an A4 grid makes the vision attention fail with
+`hipErrorInvalidConfiguration` (error 9) from the `vision score scale` check
+instead of erroring cleanly — block 2048 works and the 4096/8192/34320 rows of
+the same sweep died. The 512 MiB default derives 320 rows and never reaches it.
+Worth a launch-config guard on `_vision_attention_packed` (or a clearer error)
+before the budget is advertised as freely raisable.
+
 ## 2026-09-12 Surya prefill tiles still compute the masked-away keys — open
 
 The text-prefill tiling bounds the *memory* but not the QK^T arithmetic: every

@@ -106,6 +106,56 @@ DEFAULT_MAX_VISION_SCRATCH_BYTES = 512 * 1024**2
 # about; pass ``max_prefill_scratch_bytes=None`` to run a single dense tile.
 DEFAULT_MAX_PREFILL_SCRATCH_BYTES = 512 * 1024**2
 
+# The tile's query block is a shape choice, not simply the widest tile the byte
+# budget admits. The block is capped by the measured envelope
+# ``max(SHAPE_TILE_ROWS, ceil(rows / SHAPE_TILE_DIVISOR))`` and then rounded
+# down to a whole number of wavefronts; the constants are calibrated with
+# ``scripts/surya_vision_tiling_cost.py`` on gfx1151, as the median of 3-8
+# timed forwards per shape, and the same envelope is applied to the text
+# prefill (``scripts/surya_attention_memory.py``) because the two paths tile
+# the same matrix.
+#
+# Why cap at all: the budget alone takes the widest tile that fits, and where
+# the dense matrix is small that is a bad shape. At 1024 patches the budget
+# admits the whole dense matrix (193.54 ms) where a 128-row tile runs 135.52 ms,
+# and at 4096 patches it picks a 2730-row tile (1123.42 ms) where 128 rows runs
+# 874.38 ms. The tile GEMMs' `n` dimension is the block, so a tile far wider
+# than the grid needs buys nothing back.
+#
+# Why the cap grows with the grid: every tile re-reads the whole key range, so
+# the key/value re-read traffic and the launch count grow with the tile count.
+# On the 34320-patch A4 page 715 tiles (48 rows) take 65983 ms, 269 tiles (128
+# rows) 45834 ms, 68 tiles (512 rows) 44022 ms and 17 tiles (2048 rows)
+# 41622 ms, so a fixed 128-row cap would cost 13% against what the 512 MiB
+# budget can buy. Capping at a 32nd of the grid instead admits 1073 rows at
+# 34320 patches, which leaves the byte budget the binding constraint: the
+# 512 MiB default still chooses the shape, so raising the budget still buys a
+# wider tile. SHAPE_TILE_ROWS is where the two bounds meet: the cap is 128 rows
+# for every grid up to 4096 patches, and rows/32 above it.
+#
+# Why the rounding: on the A4 page every measured width that is a multiple of 32
+# lands in 43862-44668 ms (256, 288, 320, 352, 384, 448, 480, 512) and every
+# width that is not lands in 45050-48496 ms (272, 300, 304, 325, 336, 400), so
+# the best non-multiple is slower than the worst multiple and the means differ
+# by 4.8%. The tile's `n` dimension is the block, so a width that is not a whole
+# number of 32-lane wavefronts leaves the last wavefront partly idle. The
+# 512 MiB budget derives 325 rows there, which is the slow side of that line;
+# rounding down to 320 takes it 48496.26 -> 43862.87 ms (1.106x) and shrinks the
+# tile 510.6 -> 502.7 MiB. Rounding down can only shrink the tile, so it cannot
+# break the budget. Grid divisibility was the other candidate shape rule and it
+# was tested too: the sweep records `even` (full last tile) per row, and even
+# division wins at 256 and 6400 patches and loses at 1024 and 4096, so it does
+# not predict the curve.
+#
+# The envelope is not optimal at every grid, and the misses are recorded in
+# ``docs/REFACTOR.md`` rather than hidden: at 6400 patches a 96-row tile (67
+# tiles, 1940.93 ms) beats the envelope's 192 rows (2130.11 ms) by 10%, and at
+# 16384 text tokens the envelope's 512 rows cost 2.4% against the budget's 1024.
+# It recovers 28.5-42.8% at the grids where the budget alone picks a bad shape.
+SHAPE_TILE_ROWS = 128
+SHAPE_TILE_DIVISOR = 32
+SHAPE_TILE_MULTIPLE = 32
+
 # Text-decoder context the generator admits by default. Upstream Surya budgets
 # 12,288 context tokens per OCR slot (image prefill + full-page output +
 # chat-template overhead) and sizes its vLLM lane at 18,000. A 300-DPI A4 page
@@ -127,10 +177,13 @@ def plan_score_tiles(
 
     The tile is ``num_heads * rows * block`` fp32 elements — the full key range
     for ``block`` query rows. ``block`` is the largest value whose tile fits
-    ``budget_bytes``; ``None`` disables the budget and returns one tile
-    covering every query. A budget too small for even one query row still
-    returns ``block == 1`` so admission can report the shortfall instead of
-    silently producing an unusable plan.
+    ``budget_bytes``, bounded by the measured shape envelope
+    (:data:`SHAPE_TILE_ROWS` / :data:`SHAPE_TILE_DIVISOR`) and rounded down to a
+    whole number of wavefronts (:data:`SHAPE_TILE_MULTIPLE`); ``None`` disables
+    the budget and the envelope and returns one tile covering every query. A
+    budget too small for even one query row still returns ``block == 1`` so
+    admission can report the shortfall instead of silently producing an
+    unusable plan.
     """
 
     n = int(rows)
@@ -141,10 +194,15 @@ def plan_score_tiles(
     if budget_bytes is None:
         return n, per_row * n
     block = int(budget_bytes) // per_row
+    envelope = max(SHAPE_TILE_ROWS, -(-n // SHAPE_TILE_DIVISOR))
+    if block > envelope:
+        block = envelope
+    if block > SHAPE_TILE_MULTIPLE:
+        block -= block % SHAPE_TILE_MULTIPLE
+    if block > n:
+        block = n
     if block < 1:
         block = 1
-    elif block > n:
-        block = n
     return block, per_row * block
 
 
