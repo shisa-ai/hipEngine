@@ -39,6 +39,21 @@ _TARGET_ARTIFACT = _ROOT / (
 _TARGET_ARTIFACT_SHA256 = (
     "0461a3cb560cfe1226d5eaeb74afa1de09cf010dcc46940913663a90b54eae73"
 )
+_RENAMED_SOURCES = {
+    # The 2026-09-12 tier migration renamed these modules; the artifact records
+    # their pre-migration paths. Each renamed module is otherwise byte-identical
+    # to the hash it recorded.
+    "tests/test_laguna_h6w_runtime_policy.py": (
+        "tests/test_unit_laguna_h6w_runtime_policy.py"
+    ),
+    "tests/test_laguna_h6w_source_default.py": (
+        "tests/test_unit_laguna_h6w_source_default.py"
+    ),
+    "tests/test_laguna_h6w_swa_global_score_replay.py": (
+        "tests/test_gpu_laguna_h6w_swa_global_score_replay.py"
+    ),
+    "tests/test_laguna_kv_attention.py": "tests/test_gpu_laguna_kv_attention.py",
+}
 _CANDIDATE_STARTS = (256, 384)
 _FALLBACK_STARTS = (0, 128)
 _CALL_WEIGHTS = {256: 36, 384: 36}
@@ -402,9 +417,10 @@ def test_h7y_frozen_target_artifact_work_model_and_admission_protocol() -> None:
     )
 
     candidate_present = hasattr(_module(), _FUNCTION)
-    for relative, expected in artifact["source_sha256"].items():
-        if candidate_present and relative in _AFFECTED_SOURCE_PATHS:
+    for recorded, expected in artifact["source_sha256"].items():
+        if candidate_present and recorded in _AFFECTED_SOURCE_PATHS:
             continue
+        relative = _RENAMED_SOURCES.get(recorded, recorded)
         if relative == "tests/test_gpu_laguna_kv_attention.py":
             # The gfx1151 handoff extended this shared test after H7Y without
             # changing the frozen gfx1100 candidate sources.

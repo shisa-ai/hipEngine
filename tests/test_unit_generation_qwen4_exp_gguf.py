@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from types import SimpleNamespace
 
 import pytest
@@ -7,6 +8,14 @@ import pytest
 from hipengine.generation.deadline import GenerationCancellationToken, GenerationCancelled
 from hipengine.generation.qwen4_exp_gguf import Qwen4ExpGGUFTextGenerator
 from hipengine.generation.registry import GenerationRequest, resolve_text_generator
+
+
+@dataclass
+class _Admission:
+    """Stand-in for the context-admission record; only ``context_tokens`` is read."""
+
+    context_tokens: int
+    mode: str = "auto"
 
 
 class _Tokenizer:
@@ -155,15 +164,26 @@ def test_qwen4_exp_generator_closes_resident_when_runner_construction_fails(
     )
     monkeypatch.setattr(
         "hipengine.generation.qwen4_exp_gguf.build_qwen4_exp_gguf_tensor_map",
-        lambda infos: SimpleNamespace(),
+        lambda infos: SimpleNamespace(config=SimpleNamespace(context_length=4096)),
     )
     monkeypatch.setattr(
         "hipengine.generation.qwen4_exp_gguf.plan_qwen4_exp_residency",
         lambda model_map, **kwargs: SimpleNamespace(),
     )
+    # Context admission normally reads live device memory. Supplying a synthetic
+    # runtime and admission keeps this construction-failure case on CPU instead
+    # of reaching real HIP context admission.
+    monkeypatch.setattr(
+        "hipengine.core.hip.get_hip_runtime",
+        lambda: SimpleNamespace(mem_get_info=lambda: (64 << 30, 64 << 30)),
+    )
+    monkeypatch.setattr(
+        "hipengine.loading.qwen4_exp_context.resolve_qwen4_exp_context",
+        lambda plan, **kwargs: _Admission(context_tokens=4096),
+    )
     monkeypatch.setattr(
         "hipengine.generation.qwen4_exp_gguf.materialize_qwen4_exp_weights",
-        lambda readers, plan, backend: Resident(),
+        lambda readers, **kwargs: Resident(),
     )
 
     def fail_runner(*args, **kwargs):

@@ -9,6 +9,8 @@ from pathlib import Path
 
 import pytest
 
+from tests._laguna_policy_pin import assert_laguna_policy_pinned
+
 _ROOT = Path(__file__).resolve().parents[1]
 _RUNTIME_ARTIFACT = _ROOT / (
     "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-"
@@ -17,7 +19,6 @@ _RUNTIME_ARTIFACT = _ROOT / (
 _RUNTIME_ARTIFACT_SHA256 = (
     "50ed3cd81a5a350ac39e70eaed3560d88144251e40f07198acbbb10e2ae1a325"
 )
-_PACKAGE = _ROOT / "hipengine/kernels/hip_gfx1100/__init__.py"
 _SOURCE_CAPABILITY = "LAGUNA_Q5_F32_RESIDENT_GLOBAL_CACHE"
 _REMOVED_SUPPORTED_CAPABILITY = (
     "LAGUNA_Q5_F32_RESIDENT_GLOBAL_CACHE_SUPPORTED"
@@ -57,10 +58,6 @@ _SOURCE_ADMISSION = {
     "candidate_capability_cleanup_after_checkpoint": True,
     "no_subset_or_favorable_rerun": True,
 }
-_NORMALIZED_PACKAGE_SHA256 = (
-    # Audited Qwen-only policy additions; all 39 Laguna assignments are unchanged.
-    "1d52f4eb9d9f601e74eb700a87ceb408099735ea9ce859f714ec717af0a24cd9"
-)
 _SOURCE_SHA256 = {
     "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": (
         "fb9b2ae1a88300ac1e754b8c3214310db65d3e2343598b7631ac185ec141f33e"
@@ -68,28 +65,30 @@ _SOURCE_SHA256 = {
     "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip": (
         "1a06011ea6e7bda8e0b48fd357cbcbadaff76793a1b5c49bd217cc83d32b7110"
     ),
-    "hipengine/kernels/hip_gfx1151/__init__.py": (
-        "a5838ffc8fd8df367cd828f397e701f94f2268c7992d0a5e143c8d7e2b8ba3b3"
-    ),
-    "hipengine/runtime/gguf_linear.py": (
-        "f9ebb089b31937dcaea27f8bb43bfc2936b294d541c2841465c498d6f6dbd363"
-    ),
     "hipengine/runtime/laguna_gguf_runner.py": (
         "edea1fc2df3c8ca46fe3396663ac14f9000b4ee0cc967ebafb55208afad50654"
     ),
     "tests/test_gpu_laguna_h8a_resident_q5_global_cache.py": (
-        "fca107c250f9f510c43c1bd324c9e0d464040fdd28046bb60aff80e76ffb8dd8"
+        # The 2026-09-12 tier migration renamed this module from
+        # tests/test_laguna_h8a_resident_q5_global_cache.py and rewrote three of
+        # its test imports. The kernel-facing body is unchanged.
+        "4ac3cc55f9153d6fe437aa7f259b0c23139a5754f925ae037849bc975092d6d1"
+    ),
+}
+_LINEAR_SYMBOL_SHA256 = {
+    # The shared dispatch module carries every campaign's routing, so pinning the
+    # whole file pinned Q8/Qwen4Exp dispatch with it. These are the two symbols
+    # H8A added there and the resident Q5 owner runs, byte-identical since
+    # 63c4cd6bb despite 502 changed lines elsewhere in the file.
+    "Q5F32ResidentPlane": (
+        "55a8c2d542178807ef80764511e60a0deee419d57df22eba52b7aca7e338936c"
+    ),
+    "_launch_raw_k_f32_resident_activation_tile_k_row": (
+        "82bc76f0e339298d2b0e5c5de5ed72076a04054df511651b2b6af1784ca5b00f"
     ),
 }
 _POST_MERGE_SOURCE_SHA256 = {
     # Later Qwen3.8 and execution-profile policies do not alter H8A's owner.
-    "hipengine/kernels/hip_gfx1151/__init__.py": (
-        "ae4375a31bf62afe3ef341dfaf26cbd1c6bf456097f63567d521c59ab3a0c82b"
-    ),
-    "hipengine/runtime/gguf_linear.py": (
-        # Only Q4 dual-SiLU row48 dispatch changed; Q5 cache consumers did not.
-        "e2c59bee0146e5298c1d72e60894dcff9ee557fba7503b2a8ee123504f6db706"
-    ),
     "hipengine/runtime/laguna_gguf_runner.py": (
         "ae45f9e3e39fd93f971e5aa0b3394b3e5ce0a797b7cef8a9e1a20b1f2a133825"
     ),
@@ -100,19 +99,8 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _normalized_package_sha256() -> str:
-    source = _PACKAGE.read_text()
-    disabled = f"{_SOURCE_CAPABILITY} = False"
-    enabled = f"{_SOURCE_CAPABILITY} = True"
-    assert source.count(disabled) + source.count(enabled) == 1
-    normalized = source.replace(
-        disabled,
-        f"{_SOURCE_CAPABILITY} = <SOURCE>",
-    ).replace(
-        enabled,
-        f"{_SOURCE_CAPABILITY} = <SOURCE>",
-    )
-    return hashlib.sha256(normalized.encode()).hexdigest()
+def _sha256_text(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
 
 
 def test_h8a_source_red_pins_qualified_owner_and_promotion_contract() -> None:
@@ -180,7 +168,9 @@ def test_h8a_source_red_pins_qualified_owner_and_promotion_contract() -> None:
     }
     assert getattr(hip_gfx1100, _SOURCE_CAPABILITY) is True
     assert not hasattr(hip_gfx1100, _REMOVED_SUPPORTED_CAPABILITY)
-    assert _normalized_package_sha256() == _NORMALIZED_PACKAGE_SHA256
+    # Every other Laguna policy in the shared gfx1100 registry module is frozen by
+    # source; the flag under test is excluded because flipping it is the point.
+    assert_laguna_policy_pinned(exclude=frozenset({_SOURCE_CAPABILITY}))
     parameters = inspect.signature(runner.LagunaGGUFResidentSession.__init__).parameters
     assert "resident_q5_f32_cache" in parameters
     assert "use_q5_f32_resident_global_cache" in parameters
@@ -196,6 +186,10 @@ def test_h8a_source_red_pins_qualified_owner_and_promotion_contract() -> None:
         assert _sha256(_ROOT / relative) == _POST_MERGE_SOURCE_SHA256.get(
             relative, expected
         )
+    from hipengine.runtime import gguf_linear
+
+    for name, expected in _LINEAR_SYMBOL_SHA256.items():
+        assert _sha256_text(inspect.getsource(getattr(gguf_linear, name))) == expected
 
 
 def test_h8a_source_default_selects_owner_and_preserves_transient_rollback() -> None:
@@ -219,4 +213,4 @@ def test_h8a_source_default_selects_owner_and_preserves_transient_rollback() -> 
         resolve_laguna_q5_f32_resident_global_cache("hip_gfx1100", True)
     with pytest.raises(ValueError, match="positive selector was removed"):
         resolve_laguna_q5_f32_resident_global_cache("hip_gfx1151", True)
-    assert _normalized_package_sha256() == _NORMALIZED_PACKAGE_SHA256
+    assert_laguna_policy_pinned(exclude=frozenset({_SOURCE_CAPABILITY}))
