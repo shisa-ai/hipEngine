@@ -9,6 +9,8 @@ import os
 from pathlib import Path
 import sys
 
+import numpy as np
+
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -21,6 +23,40 @@ from scripts.qwen35_gguf_bench import (
     _summary,
 )
 from scripts.qwen38_production_ar_gate import profile_session
+from scripts.execution_profile_gguf_fp16_state_gate import _run_logits_trajectory
+from scripts.execution_profile_gguf_c1_route_gate import _state_summary
+from scripts.gguf_gdn_semantic_gate import DEFAULT_PROMPTS, _load_suites
+from scripts.gguf_mtp_bench import build_chat_prompt
+
+
+def verify_graph_prompt(session, tokens, *, steps=32):
+    eager = _run_logits_trajectory(
+        session, prompt_ids=tokens, decode_steps=steps, bulk_attention_mode="bulk")
+    forced = [row["token_id"] for row in eager[:-1]]
+    eager_state = _state_summary(session, eager, forced)
+    session.reset()
+    first = session.prefill(tokens, use_bulk=True, return_logits=False)
+    graph = session.capture_decode_graph(
+        position=session.position, max_replay_steps=steps, record_steps=steps,
+        input_token_id=int(first.token_id))
+    try:
+        graph.replay(steps)
+        ids = [int(first.token_id), *graph.read_generated_token_ids(steps)]
+        final = graph.read_sample()
+        graph_state = _state_summary(
+            session, [{"token_id": final.token_id, "logits": final.logits}], forced)
+        logits_exact = bool(np.array_equal(final.logits, eager[-1]["logits"]))
+        ids_exact = ids == [row["token_id"] for row in eager]
+        state_exact = graph_state["state_sha256"] == eager_state["state_sha256"]
+        return {
+            "passed": bool(logits_exact and ids_exact and state_exact
+                           and graph_state["finite"] and eager_state["finite"]),
+            "ids_exact": ids_exact, "final_logits_exact": logits_exact,
+            "state_exact": state_exact, "generated_ids": ids,
+            "eager_state": eager_state, "graph_state": graph_state,
+        }
+    finally:
+        graph.close()
 
 
 def run_workload(session, args, prompt_length):
@@ -66,6 +102,23 @@ def main():
             or max(args.prompt_lengths) + args.decode_tokens + 1 >= args.max_sequence_length):
         parser.error("requires valid context, one warmup and at least three measured repetitions")
     with profile_session(args, None) as (session, profile):
+        from hipengine.loading.gguf import scan_gguf
+        from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
+
+        tokenizer = Qwen35GGUFTokenizer.from_gguf_info(scan_gguf(args.model))
+        graph_gate = []
+        for prompt in _load_suites(DEFAULT_PROMPTS):
+            tokens = build_chat_prompt(tokenizer, str(prompt["prompt"]))
+            row = verify_graph_prompt(session, tokens)
+            graph_gate.append(dict(row, prompt_id=prompt["id"], category=prompt["category"]))
+            print(f"graph/eager {prompt['id']}: {row['passed']}", flush=True)
+            if not row["passed"]:
+                args.output.parent.mkdir(parents=True, exist_ok=True)
+                args.output.write_text(json.dumps({
+                    "kind": "qwen38_readme_graph_gate_failed", "profile": profile,
+                    "graph_gate": graph_gate, "performance_claim": False,
+                }, indent=2) + "\n")
+                return 1
         runs = {str(length): run_workload(session, args, length)
                 for length in args.prompt_lengths}
     summaries = {length: _summary(values) for length, values in runs.items()}
@@ -82,6 +135,7 @@ def main():
     payload = {
         "kind": "qwen38_gfx1151_public_profile_readme_sweep", "schema_version": 1,
         "profile": profile, "provenance": provenance, "runs": runs,
+        "graph_eager_gate": graph_gate,
         "summaries": summaries, "decode_tokens": args.decode_tokens,
         "load_timing": "not measured; per-run load_seconds is zero by protocol",
         "performance_claim": False,
