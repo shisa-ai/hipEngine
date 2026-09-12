@@ -1,5 +1,27 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Dense Qwen35 execution-profile module names (architecture-scope rename)
+
+- Three profile modules are named after models but register architecture-scoped
+  plans: `hipengine/generation/qwen36_gguf_gfx1100_profiles.py` registers the
+  gfx1100 dense-qwen35 plan, `hipengine/generation/qwen38_gguf_profiles.py`
+  registers the gfx1151 dense-qwen35 plan, and
+  `hipengine/generation/qwen36_gguf_profiles.py` registers the gfx1151
+  MoE-qwen35 plan. Qwen3.6-27B and Qwen3.8-27B share
+  `QWEN35_DENSE_H5120_GEOMETRY` and the profile key
+  `(qwen3_5_gguf, backend, gguf_q4_k_m)`, so there is one dense plan per backend
+  and not one per model. The file names have already been re-reported once as a
+  cross-model defect.
+- Rename to `qwen35_dense_gfx1100_profiles.py`,
+  `qwen35_dense_gfx1151_profiles.py`, and `qwen35_moe_gfx1151_profiles.py`, and
+  drop the model-name constants from their docstrings. The rename is safe
+  whenever it is done; it must not change any `RuntimeProfileKey`, any
+  `VariantSelection`, or any binder env name, and it must not split the key per
+  model name.
+- See `docs/20260909-GFX1151-GFX1100-TRANSFER-AUDIT.md` section K for the
+  identity ruling and for the gfx1100-versus-gfx1151 plan A/B that decides which
+  composition each backend keeps.
+
 ## `HIPENGINE_GGUF_PACKED_LAYER_OUTER` (promoted to default ON 2026-09-11)
 
 - The layer-outer packed AR prefill executor became the default after its packet

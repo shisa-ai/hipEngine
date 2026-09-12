@@ -6,9 +6,12 @@ plan it serves: finish the remaining gfx1100 optimizations, close gfx1100,
 run this gfx1151 pass, then ship "finished" Qwen3.8-27B support on both
 backends.
 
-**Current release checklist:** [section J](#j-current-v050-release-checklist).
+**Current release checklist:** [section K](#k-v050-scope-and-identity-decision),
+which supersedes [section J](#j-current-v050-release-checklist) as the live list
+by fixing the pass's scope and dispositioning section J's items under it.
 Sections A-I preserve the earlier audit and its dated corrections; section J
-records what still needs a decision after the September 12 pull.
+records the September 12 source/evidence pass; section K is the v0.5.0 scope
+decision and the identity ruling that closes audit finding 3.
 
 Two structural facts shape every row:
 
@@ -653,3 +656,184 @@ Audit verification: the focused current tests
 `tests/test_unit_speculative_mtp_serving_capability.py` pass together
 (60 tests). They establish resolver/evidence contracts, not the requested
 public-server or hardware gates above.
+
+## K. v0.5.0 scope and identity decision
+
+Recorded September 12, 2026 at `f1bdd2332`. Section J is the source/evidence
+checklist; this section fixes the *scope* that checklist runs under and rules on
+the profile-identity question section I left open. Where K and J disagree, K
+governs.
+
+### Scope for this pass
+
+- **gfx1151 only.** Every open item below is a gfx1151 action. gfx1100 is out of
+  scope: no gfx1100 change, no gfx1100 qualification, and no gfx1100 row in this
+  audit is a work item. A gfx1100 artifact is cited as the reference
+  composition or the prior, never as the target.
+- **Focus artifact:** Qwen3.8-27B GGUF `Q4_K_M` (`7e78da5d…c6fe169`,
+  17,106,775,008 bytes) on the physical gfx1151 host.
+- **Backlog rule.** Anything else that surfaces is qualified only if its
+  artifact is already on this host. Otherwise it gets a backlog entry with a
+  named reopen condition, not a fetch and not an investigation.
+- **Excluded and owned elsewhere:** the test-tier migration
+  ([`docs/testing/TEST-MIGRATION.md`](testing/TEST-MIGRATION.md)). Section J's
+  release-validation item keeps its content there but is not this pass's work.
+
+### Qwen3.6-27B and Qwen3.8-27B are one dispatch identity
+
+`hipengine/kernels/policy.py` states the rule outright: "Human-facing model
+names are provenance, not dispatch keys. Backend packages use these immutable
+identities to admit only model families with the exact weight/state topology
+that was gated, while compatible finetunes and renamed exports inherit the same
+policy."
+
+Both dense 27B files resolve to `QWEN35_DENSE_H5120_GEOMETRY`
+(`architecture="qwen35"`, 64 blocks, H5120, FFN 17408, 24/4 heads, K/V 256, SSM
+6144/16/128, conv 4, time-step rank 48). `GGUFModelGeometry` is a plain frozen
+dataclass, so the policy key is the structural identity of those 20 fields and
+nothing else. Both files therefore also share the profile key
+`(model="qwen3_5_gguf", backend, quant="gguf_q4_k_m")`.
+
+The two dense profile modules are consequently **not** two plans for two models.
+They are one dense-qwen35 plan per backend, filed under misleadingly
+model-named modules:
+
+| Module | Registers | What it actually is |
+| --- | --- | --- |
+| `qwen36_gguf_gfx1100_profiles.py` | dense + MoE, gfx1100 | the gfx1100 dense-qwen35 plan |
+| `qwen38_gguf_profiles.py` | dense, gfx1151 | the gfx1151 dense-qwen35 plan |
+| `qwen36_gguf_profiles.py` | MoE, gfx1151 | the gfx1151 MoE-qwen35 plan |
+
+**Ruling: audit finding 3 of `20260911T204040.594305Z-gfx1151-audit-qwen38-dense-path-map-050600`
+("a Qwen3.8-27B file on gfx1100 resolves to the Qwen3.6 dense plan") is closed
+as not a defect.** One plan per backend is the intended design. **The profile
+key must not be split per model name** — splitting it would contradict
+`policy.py` and would silently drop one file onto the migration path.
+
+Tracked refactor: rename the three modules to architecture scope
+(`qwen35_dense_*` / `qwen35_moe_*`) so a future reader does not re-report the
+file names as a defect. The rename changes names only, never the key.
+
+### New work item: A/B the gfx1100 dense composition against the gfx1151 one
+
+Because the plan is geometry-keyed, "the gfx1100 defaults" is a runnable
+candidate on this artifact, not a different model's configuration. The two
+per-backend `production` plans differ in both binder env flags and variant
+selections (the gfx1100 strict plan's `linear_pair_silu` fallback is
+`dense_dual_rowtile_bf16_bf16_out`):
+
+| | gfx1100 dense plan | gfx1151 dense plan |
+| --- | --- | --- |
+| `linear_pair_silu` | `dense_dual_wmma_prefill_row32_bf16_bf16_out` | `dense_dual_rowtile_bf16_bf16_out` |
+| `linear` (C2/C3 scopes) | — | `dense_rowtile_bf16_bf16_out` |
+| `gdn_chain_recurrent_rmsnorm_gate` | — | `bf16_c1_exact_state_rows_tloop_fp16state` |
+| `linear_attn_chain_conv_decode` | `bf16_c1_exact_state_rows_tloop` | `bf16_c1_exact_state_rows_tloop` |
+| binder env | `FP16_RECURRENT_STATE=0`, `VERIFY_CAPTURE_PREFILL_GDN=1`, `VERIFY_F32_RESIDUAL=1`, `VERIFY_F32_POST_NORM=1`, `Q4_T16_DUAL_SILU_PRODUCTION_R28=1`, `C8_Q6_DP4A_GROUPED=1` | `FP16_RECURRENT_STATE=1`, `VERIFY_CAPTURE_PREFILL_GDN=1`, `VERIFY_PRODUCTION_Q4_ROWTILE=1` |
+
+Since `8899172e5` an omitted profile resolves to `production` on both backends,
+so the gfx1151 plan is the only thing standing between a no-flag Qwen3.8-27B
+user and the gfx1100 composition, and the two have never been measured against
+each other.
+
+- [ ] **Run the gfx1100-composition A/B on gfx1151 as part of initial
+  qualification.** Same host, same artifact, same KV route, same protocol; the
+  gfx1151 plan is the control, the gfx1100 plan's reachable binder is the
+  candidate. Keep the winner. Where the gfx1151 composition wins, that
+  measurement *is* the gfx1151 gate. Where the gfx1100 composition wins, add a
+  gfx1151 backend gate that admits it deliberately rather than leaving it
+  inherited by accident.
+- Two reachability facts, verified at this commit, constrain that A/B:
+  - **Two of the gfx1100 binder's flags are inert on gfx1151 by construction.**
+    `GGUF_SPECDEC2_Q4_DUAL_SILU_PRODUCTION_R28_POLICY` and
+    `GGUF_SPECDEC2_Q4_DUAL_SILU_ROWTILE_POLICY` are defined only in the gfx1100
+    package, and
+    `hipengine/runtime/gguf_linear.py::_q4_t16_physical_dual_silu_variant`
+    reads them through `backend_package_capability(backend, name, {})`, so on
+    gfx1151 they resolve to `{}` and the row-28 retile never engages. A naive
+    "set the gfx1100 env" A/B measures only the reachable subset. Either name
+    that subset in the result or define the policies on gfx1151 first.
+  - **The gfx1100 binder does not publish its manifest hash.** The gfx1151
+    binder sets `HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256`; the gfx1100 one
+    does not. Record the manifest hash in the A/B artifact by hand so the two
+    arms are identifiable after the fact.
+- `graph_policy` is **manifest metadata only** — no runtime branch reads it
+  (`grep -rn graph_policy hipengine/` finds only the profile registrations and
+  an unrelated PARO local). The two plans declare different values
+  (`specdec2_eager_c1_exact_qwen38_c8_q6_dp4a` versus `specdec2_eager_c1`) but
+  that difference is not enforced anywhere, so it must not be read as evidence
+  that the compositions differ in decode-graph behaviour. Relevant to section
+  J's "verify the shipped production composition" item.
+
+### Carried forward from section J, re-scoped
+
+- [ ] **Q4_K_M scratch-row clamp.** Unchanged and still the one correctness
+  question on this list. gfx1151's `GGUF_DENSE_PREFILL_SCRATCH_ROW_CAP_POLICIES`
+  has only a `MOSTLY_Q4_K_S` key and `GGUF_DENSE_PREFILL_SCRATCH_LIVENESS_POLICIES`
+  is absent entirely, so a `Q4_K_M` request resolves to *no* clamp rather than a
+  tighter one, while gfx1100 clamps this file type to 1,024 rows to keep a
+  4,096-row auto query chunk inside metadata buffers sized at allocation
+  (`_dense_prefill_scratch_row_cap` docstring, 2026-09-09 INT8 crash). Decide
+  whether the clamp is needed: check allocation-sized position/metadata buffers
+  against auto query-chunk selection at the 1K/4K/8K boundaries, including tails
+  and packed requests, then either prove the route safe without a cap or add the
+  `MOSTLY_Q4_K_M` key.
+- [ ] Production-default / automatic-MTP interaction (section J) — stays.
+- [ ] Verify the shipped production composition on gfx1151 (section J) — stays.
+- [ ] Inherited Q4 fused-prefill retiles (section J) — stays.
+- [ ] Layer-outer and slot-local AOTriton reachable scope (section J) — stays.
+  `HIPENGINE_GGUF_PACKED_LAYER_OUTER` and
+  `_gguf_int8_prefill_slot_local_aotriton_enabled` both default on globally with
+  W7900-only evidence, which is exactly the inheritance this scope exists to
+  test.
+- [ ] 18 gfx1100-only capability settings (sections I/J) — stays; dense
+  `Q4_K_M`-applicable settings first.
+- [ ] Five dense-path registry decisions (sections H/J) — stays.
+- [x] Release-validation and wording gaps (section J) — **not this pass's
+  work**; the test-tier migration is in flight under another owner.
+- [x] gfx1100 items G2 and G3 (section G) — **out of scope**, backlog.
+
+### Local work in progress to pick up
+
+The two untracked scripts target the two withheld dense Q4T16 rowtile
+exclusions. The work was interrupted, not abandoned, and is to be resumed:
+
+| Script | State at interruption |
+| --- | --- |
+| `scripts/qwen38_q4_dense_rowtile_gfx1151_screen.py` | Complete. 30 cases in `/tmp/hip1151-t6/screen.json`. |
+| `scripts/qwen38_gfx1151_q4_dense_rowtile_gate.py` | Partial. rows=2 and rows=4 at 8 output tokens pass (`gate.json`, `gate4.json`); the 32-token run (`gate32.log`) stops mid-way at rows=4 arm=admitted. |
+
+Measured so far, every comparison bit-exact against the retained owner:
+`col4` at K5120/N1024 rows 2-4 is 1.10-1.23x the retained
+`dense_rowtile_bf16_bf16_out` (6 tensors, 21 counterbalanced pairs each), and
+the fused `dense_rowtile_bf16_residual_bf16_out` at K17408/N5120 rows 2-4 is
+1.008-1.033x `rowtile + gguf_bf16_add`.
+
+Neither has a full-model gate on the mtp-bench category suite, a long-context or
+soak shape, an artifact under `benchmarks/results/`, or a worklog entry, and the
+gfx1151 exclusion set is untouched. Draft results in `/tmp` are not
+qualification evidence.
+
+Pickup order: finish the 32-token gate, run the full multi-prompt category
+suite, emit the artifact and rollup rows, and only then decide the two
+exclusions.
+
+### Backlog (named reopen condition, no work this pass)
+
+- **A2** selected-expert pair-reuse geometry — Qwen3.6-35B-A3B MoE, not this
+  artifact. Reopen if the MoE lane is revisited.
+- **A3** nasone32 RDNA3.5-guarded donors — the gfx1100 VDR rejection is the
+  prior. Reopen only if the A1 floor conclusion changes.
+- **A4** strix-llama.cpp HIP deltas — reopen only if upstream merges new HIP
+  work after `5f851647`.
+- **B1** prefill family attribution, **B3** direct INT8 prefill speed, **C1**
+  DMS speed A/B — reopen when a prefill or DMS transfer target is chosen.
+- **C2/C3/C5** capacity ladders — N/A-capacity on the APU; confirm
+  non-regression only.
+- **D2** MTP numbers — governed by the gfx1151 scaling campaign's own-AR rule.
+- **G2/G3** gfx1100 open items — gfx1100, out of scope.
+- **Qwen3.6-27B model-level A/B is not runnable on this host.** `/models/gguf`
+  holds Qwen3.8-27B `Q4_K_M`/`UD-Q4_K_M`/`UD-Q4_K_S`, Qwen3.6-35B-A3B
+  `UD-Q4_K_M`, and Qwen3.8-Flash-Next; the `Qwen3.6-27B-Q4_K_M.gguf` the W7900
+  artifacts reference is absent. Fetch it only if a model-level (rather than
+  plan-level) comparison is ever needed — the plan-level A/B above does not
+  need it, because the plan is geometry-keyed.
