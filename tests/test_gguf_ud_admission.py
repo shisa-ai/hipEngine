@@ -436,10 +436,10 @@ def test_pinned_ud_q4_k_m_resolves_through_manifest_not_stamp():
     )
     assert preset is not None
     assert preset.preset_key == GGUF_UD_Q4_K_M_PRESET
-    # AR-only until U6 resolves draft/serving scopes.
-    assert preset.scopes == (GGUF_PRESET_SCOPE_AR,)
+    # AR plus the U6 MTP certificate this artifact's record derives.
+    assert preset.scopes == (GGUF_PRESET_SCOPE_AR, GGUF_PRESET_SCOPE_MTP)
     assert preset.scope_certified(GGUF_PRESET_SCOPE_AR)
-    assert not preset.scope_certified(GGUF_PRESET_SCOPE_MTP)
+    assert preset.scope_certified(GGUF_PRESET_SCOPE_MTP)
     assert preset.file_type_stamp == stamp
     # A plain control sharing the stamp does not resolve to the UD preset...
     _r2, plain_map, plain_nextn = _real_map(PLAIN_Q4_K_M)
@@ -461,7 +461,7 @@ def test_pinned_ud_q4_k_s_has_an_equally_explicit_preset_identity():
     assert preset is not None
     assert preset.preset_key == GGUF_UD_Q4_K_S_PRESET
     assert preset.preset_key != GGUF_UD_Q4_K_M_PRESET
-    assert preset.scopes == (GGUF_PRESET_SCOPE_AR,)
+    assert preset.scopes == (GGUF_PRESET_SCOPE_AR, GGUF_PRESET_SCOPE_MTP)
     # The plain K_S control with the same stamp stays on the plain lane.
     _r2, plain_map, plain_nextn = _real_map(PLAIN_Q4_K_S)
     assert (
@@ -707,7 +707,16 @@ def test_q3_k_embedding_has_raw_consumer():
 
 
 @pytest.mark.skipif(not UD_Q4_K_M.exists(), reason=f"pinned artifact missing: {UD_Q4_K_M}")
-def test_ud_preset_refuses_mtp_draft_scope():
+def test_ud_preset_without_the_pin_refuses_mtp_draft_scope(monkeypatch):
+    """The derived MTP pin is the gate: without it the draft scope refuses.
+
+    Emptying the pin in-process restores the AR-only preset, which is the state
+    the operation-set gate has to keep refusing.
+    """
+
+    from hipengine.loading import qwen35_gguf_admission as admission
+
+    monkeypatch.setattr(admission, "_UD_MTP_PRESET_FINGERPRINTS", {})
     report = _preflight_real(
         UD_Q4_K_M, "hip_gfx1100", operations=(QWEN35_GGUF_OP_MTP_NEXTN_DRAFT,)
     )
@@ -724,6 +733,13 @@ def test_ud_preset_refuses_mtp_draft_scope():
     )
     ar_scope = [u for u in ar_report.unsupported if u.stage == "scope_refused"]
     assert ar_scope and ar_scope[0].operation == QWEN35_GGUF_OP_MTP_NEXTN_DRAFT
+    monkeypatch.undo()
+
+    # With the pin, the same request is no longer refused for scope.
+    pinned = _preflight_real(
+        UD_Q4_K_M, "hip_gfx1100", operations=(QWEN35_GGUF_OP_MTP_NEXTN_DRAFT,)
+    )
+    assert not [u for u in pinned.unsupported if u.stage == "scope_refused"]
 
 
 def test_mtp_scope_requires_an_explicitly_certified_preset():
@@ -904,15 +920,18 @@ def test_non_native_xl_variant_validation_unchanged():
 
 @pytest.mark.skipif(not UD_Q4_K_M.exists(), reason=f"pinned artifact missing: {UD_Q4_K_M}")
 def test_ud_artifact_nextn_draft_materialization_scope_refused(monkeypatch):
-    """The UD preset is AR-only: draft materialization is refused before any
-    planning or allocation, with the distinct-scope reason."""
+    """An AR-only UD preset refuses draft materialization before any planning
+    or allocation, with the distinct-scope reason. The pin is emptied here so
+    the AR-only state is reachable; with the pin the same call proceeds."""
 
     from hipengine.loading.qwen35_gguf_nextn_materialize import (
         materialize_qwen35_gguf_nextn_weights,
     )
     from hipengine.loading import qwen35_gguf_nextn_materialize as nextn_loader
     from hipengine.loading import materialize as host_materialize
+    from hipengine.loading import qwen35_gguf_admission as admission
 
+    monkeypatch.setattr(admission, "_UD_MTP_PRESET_FINGERPRINTS", {})
     sentinel = _AllocationSentinel(
         "allocator invoked before NextN draft scope refusal"
     )

@@ -207,7 +207,11 @@ def _grant_mtp_scope_in_process(preset_keys: set[str]) -> object:
 
     def patched(*args, **kwargs):
         preset = original(*args, **kwargs)
-        if preset is not None and preset.preset_key in preset_keys:
+        if (
+            preset is not None
+            and preset.preset_key in preset_keys
+            and not preset.scope_certified(admission.GGUF_PRESET_SCOPE_MTP)
+        ):
             return admission.replace(
                 preset,
                 scopes=(*preset.scopes, admission.GGUF_PRESET_SCOPE_MTP),

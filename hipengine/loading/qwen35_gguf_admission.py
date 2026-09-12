@@ -73,8 +73,8 @@ binds to the actual role manifest instead:
 UD dense consumers for Q3_K / IQ4_NL / IQ3_S / IQ3_XXS / IQ2_S and raw dense
 IQ4_XS do not exist until UD-U2..U5, so both published UD artifacts are
 rejected honestly here, with the complete per-slot refusal list.  Certified
-scopes are AR-only for U1: ``mtp_nextn_draft`` is refused for UD presets until
-U6 resolves the draft operation set.
+scopes are AR plus MTP for both published UD artifacts, the MTP half being
+derived from the U6 certification records below.
 """
 
 from __future__ import annotations
@@ -202,8 +202,8 @@ class Qwen35GGUFArtifactPreset:
 
     ``preset_key`` is the model/session admission identity (the planned
     ``gguf_ud_q4_k_m`` key from the K_M campaign plus the equally explicit
-    K_S identity).  ``scopes`` states what the preset is certified for;
-    UD presets are AR-only until U6 resolves draft/serving operations.
+    K_S identity).  ``scopes`` states what the preset is certified for; the UD
+    presets carry AR plus the MTP scope their U6 record derives.
     ``manifest_fingerprint`` is the binding: a file with the same stamp but a
     different role/shape/type manifest never resolves to this preset.
     """
@@ -286,9 +286,12 @@ class Qwen35GGUFUDMTPCertification:
 
     The declared envelope fields (``backend``/``execution_profile``/
     ``context_max``/``widths``) are part of the certificate, not decoration:
-    an artifact is certified for MTP only within them.  ``context_max`` is
-    ``None`` while the long-context point is unmeasured, and the unit is
-    incomplete in that state.
+    an artifact is certified for MTP only within them.  The declared UD
+    envelope is deliberately narrow and measured: width c1 only, and
+    ``context_max`` 1023, because c2 measured 1.04x, c4 has no production
+    physical cell, c8 runs out of memory on the default GPU, and above 1023
+    the packed verifier drops to a per-row route.  Widening either axis needs
+    evidence, not an edit here.
     """
 
     fingerprint: str
@@ -457,33 +460,35 @@ def _ud_mtp_items(
                 "authorizes; scope outside the declaration is not admitted."
             ),
             evidence=(
-                "natural25 B3 c1 on hip_gfx1100: short-prompt widths c1 "
-                "measured; backend, quant identity and execution profile "
-                "declared on this record. The 1023 context bound is declared "
-                "from the measured adapter refusal at prompt + 1 >= 1023 and "
-                "the measured verifier batching flip at start + rows >= 1024"
+                "Scope declaration, on hip_gfx1100 at execution profile "
+                "production: backend hip_gfx1100, quant identity from this "
+                "record's preset, context_max 1023, serving width c1. "
+                "benchmarks/results/2026-09-12-ud-gfx1100-mtp-width-cells.json: "
+                "c1 K3 engages MTP on all ten canonical prompts and holds "
+                "ar_exact, AR 13.891 -> MTP 34.205 tok/s; c2 K2 also holds "
+                "ar_exact but only reaches 1.0418x, c4 K3 is refused by "
+                "GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS, and c8 K3 fails "
+                "with HIP error 2 out of memory at capacity 8, so c1 is the "
+                "declared width. "
+                "benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-phase4.json: "
+                "the retained c1 K3 paired rates for this artifact. "
+                "benchmarks/results/2026-09-12-ud-gfx1100-phase4-ar-verify-numerics.json: "
+                "the verifier holds its calibrated envelope at the short and "
+                "512-token points, and the batching flip at "
+                "start_position + rows >= 1024 fixes the context bound."
             ),
-            qualified=False,
-            blocker=(
-                "width scope is c1 only. UD MTP above resident capacity 1 is "
-                "refused before the run because the C1 singleton route needs "
-                "capacity 1 and the physical route needs a "
-                "SpeculativeMTPServingEvidence row for this artifact with "
-                "realized_group_rows > 1, which no UD artifact has. Either "
-                "authorize a candidate-mode serving-evidence grant so c2/c4/c8 "
-                "can be measured, or declare the envelope as c1-only and mint "
-                "at that scope; both are recorded in "
-                "worklog/entries/20260912T172746.747765Z-lhl-ud-phase5-width-scope-14e699.md"
-            ),
+            qualified=True,
+            blocker="",
             phase="paired_run",
         ),
     )
 
 
-# Per-artifact U6 certification records.  These are present-but-incomplete:
-# the unit is defined and its open items name concrete missing evidence.  The
-# pin below is DERIVED from this table, so populating a record's evidence and
-# flipping its items to qualified is the only way to grant MTP scope.
+# Per-artifact U6 certification records.  Both records are complete as of the
+# 2026-09-12 width census, so the pin below mints and the two UD artifacts
+# derive MTP scope.  The pin is DERIVED from this table, so populating a
+# record's evidence and flipping its items to qualified is the only way to
+# grant MTP scope; editing the table without evidence grants nothing.
 _UD_MTP_CERTIFICATIONS: Mapping[str, Qwen35GGUFUDMTPCertification] = {
     "5535c5bd7a3e84c6381de70bf8ca5c6f4bcd804dabf8435b85c8418038c8619f": Qwen35GGUFUDMTPCertification(
         fingerprint="5535c5bd7a3e84c6381de70bf8ca5c6f4bcd804dabf8435b85c8418038c8619f",

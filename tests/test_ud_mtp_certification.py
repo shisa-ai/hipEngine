@@ -254,8 +254,13 @@ def test_u6_certification_records_define_all_six_items():
         else:
             assert fingerprint not in admission._UD_MTP_PRESET_FINGERPRINTS
             assert certification.blocked_items
-    # Both pinned UD artifacts are defined but not yet certified for MTP.
-    assert admission._UD_MTP_PRESET_FINGERPRINTS == {}
+    # Both pinned UD artifacts are certified, so the derived pin carries both.
+    assert set(admission._UD_MTP_PRESET_FINGERPRINTS) == {
+        fingerprint
+        for fingerprint, certification in _u6_records().items()
+        if certification.is_complete()
+    }
+    assert len(admission._UD_MTP_PRESET_FINGERPRINTS) == len(_u6_records())
 
 
 @pytest.mark.parametrize("path", [UD_Q4_K_M, UD_Q4_K_S])
@@ -326,13 +331,16 @@ def test_draft_operation_set_is_slot_scoped_and_certified(path: Path, monkeypatc
     reader, model_map, nextn_map = _real_map(path)
     draft = admission.QWEN35_GGUF_OP_MTP_NEXTN_DRAFT
 
-    # Without the MTP scope the whole operation refuses.
+    # The pinned artifact now carries the MTP scope, so the draft operation is
+    # certified directly. Removing the pin in-process must refuse it again, which
+    # is what makes the scope the gate rather than the operation set.
+    monkeypatch.setattr(admission, "_UD_MTP_PRESET_FINGERPRINTS", {})
     scoped = admission.preflight_qwen35_gguf_artifact(
         model_map, backend="hip_gfx1100", operations=(draft,), nextn_map=nextn_map
     )
     assert any(item.stage == "scope_refused" for item in scoped.unsupported)
+    monkeypatch.undo()
 
-    _grant_mtp_scope(monkeypatch)
     report = admission.preflight_qwen35_gguf_artifact(
         model_map, backend="hip_gfx1100", operations=(draft,), nextn_map=nextn_map
     )
@@ -416,7 +424,7 @@ def test_ud_presets_stay_ar_only_until_the_mtp_pin_lands(path: Path):
 
 
 def test_mtp_pin_composes_the_scope_and_evidence(monkeypatch):
-    """Populating the separate table grants MTP scope without touching AR."""
+    """The pin is the only source of MTP scope, and it composes with AR."""
 
     from hipengine.loading import qwen35_gguf_admission as admission
 
@@ -426,8 +434,24 @@ def test_mtp_pin_composes_the_scope_and_evidence(monkeypatch):
     base = resolve_qwen35_gguf_artifact_preset(
         model_map, nextn_map=nextn_map, file_type_stamp=reader.info.file_type_name
     )
-    assert base is not None and base.scopes == (GGUF_PRESET_SCOPE_AR,)
+    assert base is not None
+    assert base.scopes == (GGUF_PRESET_SCOPE_AR, GGUF_PRESET_SCOPE_MTP)
+    assert base.scope_certified(GGUF_PRESET_SCOPE_MTP)
+    assert base.scope_certified(GGUF_PRESET_SCOPE_AR)
+    assert "U6 MTP certificate" in base.note
 
+    # Emptying the pin removes MTP scope and leaves AR untouched: the AR pin is
+    # a separate table, so the two can never imply each other.
+    monkeypatch.setattr(admission, "_UD_MTP_PRESET_FINGERPRINTS", {})
+    stripped = resolve_qwen35_gguf_artifact_preset(
+        model_map, nextn_map=nextn_map, file_type_stamp=reader.info.file_type_name
+    )
+    assert stripped is not None
+    assert stripped.scopes == (GGUF_PRESET_SCOPE_AR,)
+    assert not stripped.scope_certified(GGUF_PRESET_SCOPE_MTP)
+    monkeypatch.undo()
+
+    # Populating the pin with different evidence composes that evidence instead.
     monkeypatch.setattr(
         admission,
         "_UD_MTP_PRESET_FINGERPRINTS",
@@ -492,15 +516,19 @@ def test_u6_evidence_names_existing_artifacts():
     assert not missing, missing
 
 
-def test_u6_certificate_is_incomplete_while_the_scope_item_is_open():
-    """The pin stays unminted until every item, in both phases, qualifies."""
+def test_u6_certificate_mints_the_pin_at_the_declared_scope():
+    """The pin mints once every item, in both phases, qualifies.
+
+    The declared scope is deliberately narrow and evidence-backed: width c1
+    because c2 measured 1.04x, c4 has no production physical cell, and c8 runs
+    out of memory on the default GPU; context 1023 because that is where both
+    the adapter refuses and the verifier stops batching. Widening either axis
+    means adding evidence, not editing this test.
+    """
 
     for certification in _u6_records().values():
         assert certification.context_max == _UD_MTP_DECLARED_CONTEXT_MAX
         assert certification.widths == (1,)
-        assert not certification.is_complete()
-        assert (
-            "supported_backend_quant_profile_context_width_scope"
-            in certification.blocked_items
-        )
+        assert certification.is_complete()
+        assert certification.blocked_items == ()
         assert certification.measurement_ready()
