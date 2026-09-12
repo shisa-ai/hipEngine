@@ -7008,3 +7008,26 @@ artifact. Confirm no doc link breaks first — currently none exists.
 **Not done here.** These files belong to other agents' committed units, and
 `AGENTS.md` forbids cleaning up another agent's benchmark outputs unless the task
 asks for it. This entry records the debt rather than acting on it.
+
+## 2026-09-12 `--ar-decode-mode eager` retained as a diagnostic control
+
+**State.** `scripts/qwen36_dense_gguf_suite.py` gained `--ar-decode-mode
+{graph,eager}`, defaulting to `graph`, so the true-AR performance denominator
+runs the production decode-graph replay path instead of synchronous scalar
+`step()` submission. `eager` is retained as a synchronous diagnostic control.
+
+**Why it is retained.** It is the only way to re-derive the eager/graph
+comparison that localized the original denominator defect (same device work,
+28.77 vs 28.88 ms/transition at about 860 launches; wall 65-69 ms eager against
+31 ms graph). `scripts/gguf_ar_eager_graph_equivalence.py` uses it.
+
+**Removal trigger.** Remove `--ar-decode-mode`, the `eager` branch in `_run_ar`,
+and the `autoregressive_step` stage key once no open question needs the eager
+path — concretely, after the eager/graph equivalence check is either folded into
+a routinely run gate or the eager route is retired. Until then the flag must not
+be used to produce a paired or campaign denominator: `scripts/ud_mtp_paired.py`
+pins `graph` in `PAIRED_PROTOCOL` and rejects a payload whose
+`workload.ar_decode_mode` disagrees.
+
+**Do not promote `eager` to a default or a second supported denominator.** It is
+a diagnostic control; every published rate uses `graph`.
