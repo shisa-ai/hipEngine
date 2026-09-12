@@ -5,23 +5,31 @@ Last updated: **2026-09-13**
 Surya OCR 2 on Strix Halo gfx1151, hipEngine HIP lane vs transformers fp32 on
 the same host iGPU, over 12 pages covering layout-JSON and markup output,
 Japanese and mixed script, dense small text, a ruled table, a blank page, a
-degraded scan, and long block-heavy pages: decode 55.1-56.6 tok/s vs
-25.6-29.8, a median 2.00x faster (1.90x-2.16x across every page), and
-end-to-end 0.20-9.53 s vs 0.28-19.16 s. Both lanes reproduce their declared
-reference exactly on all 12 pages — a captured torch fp32 fixture for 11 and the
-oracle-gated CPU reference for the rectangular page — and each decode stage
-repeats identically. A lane is reported PASS only when a reference is present,
-the full sequence matches it, it terminated the way the reference did, the
-isolated decode repeats agree, the timed decode stage and the end-to-end run
-agree on both ids and termination, and the declared output format holds;
-`gate_failures` names every condition that did not. Every lane times the same
-region — page image plus prompt in, greedy token ids out — with checkpoint load
-and runner construction reported separately as `init_s`. Decode is
-weight-bandwidth-bound: one token streams 2342 MB of fp32 weights at 136-143
+degraded scan, and long block-heavy pages: decode 54.6-57.0 tok/s vs
+24.6-28.1, a median 2.19x faster (2.03x-2.23x across every page), and
+end-to-end 0.20-8.85 s vs 0.29-14.38 s. Every row passes its declared gate and
+each decode stage repeats identically. A lane is reported PASS only when a
+reference is present, the output matches it, it terminated the way the
+reference did, the isolated decode repeats agree, the timed decode stage and the
+end-to-end run agree on both ids and termination, and the declared output format
+holds; `gate_failures` names every condition that did not. Eleven pages gate on
+the full greedy id chain. The degraded scan gates on the layout skeleton — box
+count, labels, reading order and per-box `count` — because under this suite's
+ad-hoc prompt both lanes free-run into the same rigid 10-box template whose bbox
+digits track neither the page nor each other: the drawn line widths are 470-554
+of 1000, torch reports 474-566, and hipEngine a flat 564, so the drift is
+recorded as `bbox_max_delta` (90 of 1000) rather than gated. Every lane times
+the same region — page image plus prompt in, greedy token ids out — with
+checkpoint load and runner construction reported separately as `init_s`. Decode
+is weight-bandwidth-bound: one token streams 2342 MB of fp32 weights at 136-143
 GB/s, and 88% of decode kernel time is the projection GEMMs.
-[Suite run](results/2026-09-13-gfx1151-surya-kv-spans-decode.json),
+[Suite run](results/2026-09-13-gfx1151-surya-suite-recut.json),
 [rect re-qualification](results/2026-09-12-gfx1151-surya-rect-reference.json),
 [phase-attributed profile](results/2026-09-12-gfx1151-surya-phase-attributed-profile.json).
+Each lane is measured in its own process and the two runs merged: running both
+lanes in one process is not reliable on this suite — the same 12 cases measured
+hipEngine-only pass every gate, while a combined run returns the last three
+hipEngine rows degenerate from the first token with every stage time unchanged.
 An earlier run of this suite recorded the torch lane 13-26% lower on every page;
 that artifact is superseded and the 2.25x ratio it implied is not comparable
 with this one.

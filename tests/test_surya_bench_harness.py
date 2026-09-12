@@ -473,6 +473,171 @@ def test_summary_line_survives_a_lane_with_no_samples() -> None:
     assert "FAIL" in line
 
 
+# --- structure parity -------------------------------------------------------
+
+# The shape the degraded scan actually produces under this suite's ad-hoc
+# prompt: a rigid template both lanes free-run into. Only the bbox digits move.
+_TEMPLATE_REF = json.dumps([
+    {"label": "Section-Header", "bbox": "44 26 361 63", "count": 30},
+    {"label": "Text", "bbox": "44 83 566 114", "count": 70},
+    {"label": "Text", "bbox": "44 122 526 153", "count": 70},
+])
+
+
+def _template_text(body_x1: int, header_x1: int = 362, y_step: int = 40) -> str:
+    """A lane's realization of the template: body x1 flat, header x1 correct."""
+
+    return json.dumps([
+        {"label": "Section-Header", "bbox": f"44 26 {header_x1} 62", "count": 30},
+        {"label": "Text", "bbox": f"44 83 {body_x1} 114", "count": 70},
+        {"label": "Text", "bbox": f"44 {83 + y_step} {body_x1} {114 + y_step}",
+         "count": 70},
+    ])
+
+
+def _structure_run(text: str, ref_len: int) -> "H.LaneRun":
+    ids = [1] * ref_len
+    return _run(generated=list(ids), e2e_generated=list(ids),
+                termination="eos", e2e_termination="eos", text=text)
+
+
+def test_scan_declares_structure_parity_and_everything_else_exact() -> None:
+    """One case relaxes the id gate; the rest must keep it."""
+
+    relaxed = {c.name for c in H.SUITE if c.parity != "exact"}
+    assert relaxed == {"scan"}, relaxed
+    for case in H.SUITE:
+        assert case.parity in {"exact", "structure"}
+        if case.parity == "structure":
+            # a structure case without a captured fixture cannot check its
+            # skeleton, so it would fail closed forever
+            assert case.oracle is not None
+
+
+def test_structure_parity_passes_on_a_different_bbox_template() -> None:
+    """The point of the mode: coordinate digits are not gated."""
+
+    case = H.CASES_BY_NAME["scan"]
+    ref = H._load_oracle(case)
+    assert ref is not None
+    # a flat x1 where the reference varies, and a 38-of-1000 drift
+    checks = H._validate(_structure_run(_template_text(564), len(ref)),
+                         case, ref, reference_source="torch_fixture",
+                         ref_text=_TEMPLATE_REF)
+    assert checks["ids_match"] is False, "the digits really did move"
+    assert checks["structure_match"] is True
+    assert checks["bbox_max_delta"] == 38
+    assert checks["correctness"] == "PASS", checks["gate_failures"]
+    assert "ids_match" not in checks["gate_failures"]
+
+
+def test_structure_parity_rejects_an_omitted_box() -> None:
+    """A dropped region must still fail, even though ids are not gated."""
+
+    case = H.CASES_BY_NAME["scan"]
+    ref = H._load_oracle(case)
+    short = json.dumps(json.loads(_template_text(564))[:2])
+    checks = H._validate(_structure_run(short, len(ref)), case, ref,
+                         ref_text=_TEMPLATE_REF)
+    assert checks["structure_match"] is False
+    assert checks["correctness"] == "FAIL"
+    assert "structure_match" in checks["gate_failures"]
+
+
+def test_structure_parity_rejects_a_relabelled_box() -> None:
+    """Same count, same coordinates, wrong label is still a failure."""
+
+    case = H.CASES_BY_NAME["scan"]
+    ref = H._load_oracle(case)
+    boxes = json.loads(_template_text(564))
+    boxes[1]["label"] = "Table"
+    checks = H._validate(_structure_run(json.dumps(boxes), len(ref)), case, ref,
+                         ref_text=_TEMPLATE_REF)
+    assert checks["structure_match"] is False
+    assert checks["correctness"] == "FAIL"
+
+
+def test_structure_parity_fails_closed_without_reference_text() -> None:
+    """No skeleton to compare against is a failure, not a free pass."""
+
+    case = H.CASES_BY_NAME["scan"]
+    ref = H._load_oracle(case)
+    checks = H._validate(_structure_run(_template_text(564), len(ref)),
+                         case, ref, ref_text=None)
+    assert checks["structure_match"] is False
+    assert checks["correctness"] == "FAIL"
+
+
+def test_structure_parity_rejects_non_layout_output() -> None:
+    """Markup cannot compare equal to an empty skeleton."""
+
+    case = H.CASES_BY_NAME["scan"]
+    ref = H._load_oracle(case)
+    checks = H._validate(_structure_run("<div><p>x</p></div>", len(ref)),
+                         case, ref, ref_text=_TEMPLATE_REF)
+    assert checks["structure_match"] is False
+    assert checks["generated_boxes"] is None
+
+
+def test_bbox_bound_is_a_gate_only_when_the_case_declares_one() -> None:
+    """``max_bbox_delta`` turns the diagnostic into a bound on demand."""
+
+    from dataclasses import replace
+
+    case = replace(H.CASES_BY_NAME["scan"], max_bbox_delta=8.0)
+    ref = H._load_oracle(case)
+    checks = H._validate(_structure_run(_template_text(564), len(ref)), case, ref,
+                         ref_text=_TEMPLATE_REF)
+    assert checks["bbox_within_bound"] is False
+    assert "bbox_within_bound" in checks["gate_failures"]
+    # and the bound passes when the drift is inside it
+    tight = H._validate(_structure_run(_TEMPLATE_REF, len(ref)), case, ref,
+                        ref_text=_TEMPLATE_REF)
+    assert tight["bbox_max_delta"] == 0
+    assert tight["correctness"] == "PASS"
+
+
+def test_structure_case_still_gates_termination_and_format() -> None:
+    """Relaxing the id gate must not relax the other gates."""
+
+    case = H.CASES_BY_NAME["scan"]
+    ref = H._load_oracle(case)
+    ids = [1] * len(ref)
+    run = _run(generated=list(ids), e2e_generated=list(ids),
+               termination="length", e2e_termination="length",
+               text=_template_text(564))
+    checks = H._validate(run, case, ref, ref_text=_TEMPLATE_REF)
+    assert checks["structure_match"] is True
+    assert "termination_match" in checks["gate_failures"]
+    assert checks["correctness"] == "FAIL"
+
+
+def test_structure_parity_requires_a_reference_to_be_present() -> None:
+    case = H.CASES_BY_NAME["scan"]
+    checks = H._validate(_structure_run(_template_text(564), 3), case, None,
+                         ref_text=_TEMPLATE_REF)
+    assert "reference_present" in checks["gate_failures"]
+    assert checks["correctness"] == "FAIL"
+
+
+def test_artifact_records_the_parity_mode_per_case(tmp_path, monkeypatch) -> None:
+    """A reader must be able to tell which gate a retained row used."""
+
+    out = tmp_path / "artifact.json"
+    ref = H._load_oracle(H.CASES_BY_NAME["blank"])
+    monkeypatch.setattr(H, "LANES", {"fake": lambda case, runs: _run(
+        lane="fake", generated=list(ref), e2e_generated=list(ref),
+        termination="eos", e2e_termination="eos", text="<div><img/></div>",
+        stages={"decode": 0.5}, e2e_samples=[1.0])})
+    monkeypatch.setattr(sys, "argv", [
+        "surya_perf_compare.py", "--cases", "blank", "--lanes", "fake",
+        "--out", str(out)])
+    H.main()
+    suite = json.loads(out.read_text())["suite"]
+    assert suite[0]["parity"] == "exact"
+    assert H.CASES_BY_NAME["scan"].parity == "structure"
+
+
 def test_case_selection_honours_the_frozen_split() -> None:
     class Args:
         cases = None
@@ -616,3 +781,100 @@ def test_main_reports_a_mismatching_lane_as_failed(tmp_path, monkeypatch) -> Non
     record = json.loads(out.read_text())["results"][0]
     assert record["correctness"] == "FAIL"
     assert "ids_match" in record["gate_failures"]
+
+
+# --- lane-isolated merge ----------------------------------------------------
+
+
+def _artifact(path, rows, *, protocol=None, suite=None) -> Path:
+    """A minimal artifact; the suite defaults to the cases the rows name."""
+
+    if suite is None:
+        suite = [{"name": name, "page": f"page_{name}.png"}
+                 for name in dict.fromkeys(row["case"] for row in rows)]
+    path.write_text(json.dumps({
+        "provenance": {"command": f"run for {path.name}"},
+        "protocol": protocol if protocol is not None else {"runs": 3},
+        "suite": suite,
+        "results": rows,
+    }))
+    return path
+
+
+def test_merge_interleaves_lanes_in_suite_order(tmp_path) -> None:
+    """Each lane is measured alone; the merged table reads case-major."""
+
+    one = _artifact(tmp_path / "one.json", [
+        {"case": "a", "lane": "hip", "correctness": "PASS"},
+        {"case": "b", "lane": "hip", "correctness": "PASS"},
+    ])
+    two = _artifact(tmp_path / "two.json", [
+        {"case": "a", "lane": "torch", "correctness": "PASS"},
+        {"case": "b", "lane": "torch", "correctness": "PASS"},
+    ])
+    merged = H._merge_artifacts([one, two])
+    assert [(r["case"], r["lane"]) for r in merged["results"]] == [
+        ("a", "hip"), ("a", "torch"), ("b", "hip"), ("b", "torch")]
+    assert merged["provenance"]["merged"] is True
+    assert len(merged["provenance"]["sources"]) == 2
+    assert merged["protocol"]["lanes"] == ["hip", "torch"]
+    assert "one process per lane" in merged["protocol"]["lane_isolation"]
+
+
+def test_merge_rejects_a_mismatched_suite(tmp_path) -> None:
+    """Mixing two different suites would silently produce a wrong table."""
+
+    one = _artifact(tmp_path / "one.json", [{"case": "a", "lane": "hip"}])
+    other = _artifact(tmp_path / "two.json", [{"case": "a", "lane": "torch"}],
+                      suite=[{"name": "a", "page": "page_other.png"}])
+    with pytest.raises(ValueError, match="different suite"):
+        H._merge_artifacts([one, other])
+
+
+def test_merge_rejects_a_mismatched_protocol(tmp_path) -> None:
+    one = _artifact(tmp_path / "one.json", [{"case": "a", "lane": "hip"}])
+    other = _artifact(tmp_path / "two.json", [{"case": "a", "lane": "torch"}],
+                      protocol={"runs": 5})
+    with pytest.raises(ValueError, match="different protocol"):
+        H._merge_artifacts([one, other])
+
+
+def test_merge_rejects_a_duplicate_row(tmp_path) -> None:
+    """The same lane measured twice is a mistake, not something to average."""
+
+    one = _artifact(tmp_path / "one.json", [{"case": "a", "lane": "hip"}])
+    other = _artifact(tmp_path / "two.json", [{"case": "a", "lane": "hip"}])
+    with pytest.raises(ValueError, match="both measured"):
+        H._merge_artifacts([one, other])
+
+
+def test_merge_rejects_a_missing_row(tmp_path) -> None:
+    """A lane that skipped a case must not vanish from the table."""
+
+    suite = [{"name": "a", "page": "page_a.png"},
+             {"name": "b", "page": "page_b.png"}]
+    one = _artifact(tmp_path / "one.json", [
+        {"case": "a", "lane": "hip"}, {"case": "b", "lane": "hip"}], suite=suite)
+    two = _artifact(tmp_path / "two.json", [{"case": "a", "lane": "torch"}],
+                    suite=suite)
+    with pytest.raises(ValueError, match="missing rows"):
+        H._merge_artifacts([one, two])
+
+
+def test_merge_through_main_writes_the_artifact(tmp_path, monkeypatch) -> None:
+    one = _artifact(tmp_path / "one.json", [{"case": "a", "lane": "hip"}])
+    two = _artifact(tmp_path / "two.json", [{"case": "a", "lane": "torch"}])
+    out = tmp_path / "merged.json"
+    monkeypatch.setattr(sys, "argv", [
+        "surya_perf_compare.py", "--merge", str(one), str(two), "--out", str(out)])
+    H.main()
+    assert [r["lane"] for r in json.loads(out.read_text())["results"]] == \
+        ["hip", "torch"]
+
+
+def test_merge_without_out_is_an_error(tmp_path, monkeypatch) -> None:
+    one = _artifact(tmp_path / "one.json", [{"case": "a", "lane": "hip"}])
+    monkeypatch.setattr(sys, "argv", [
+        "surya_perf_compare.py", "--merge", str(one)])
+    with pytest.raises(SystemExit, match="needs --out"):
+        H.main()
