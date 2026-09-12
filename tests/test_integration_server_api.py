@@ -1076,6 +1076,8 @@ def test_models_endpoint_reports_served_model_name_and_auth() -> None:
     response = client.get("/v1/models", headers={"Authorization": "Bearer secret"})
 
     assert response.status_code == 200
+    assert "MODEL_LOAD: loading model=fake-path" in caplog.text
+    assert "MODEL_LOAD: model ready elapsed=" in caplog.text
     body = response.json()
     assert body["object"] == "list"
     assert len(body["data"]) == 1
