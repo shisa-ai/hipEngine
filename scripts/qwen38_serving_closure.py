@@ -66,10 +66,10 @@ def payload(prompt, count, *, stream=False):
 def request(base_url, body, *, barrier=None, first_token=None, cancel=False):
     import httpx
 
-    if barrier is not None:
-        barrier.wait(timeout=30)
-    started = time.perf_counter()
     with httpx.Client(timeout=240) as client:
+        if barrier is not None:
+            barrier.wait(timeout=30)
+        started = time.perf_counter()
         if not body["stream"]:
             response = client.post(base_url + "/v1/completions", json=body)
             response.raise_for_status()
