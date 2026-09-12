@@ -799,17 +799,13 @@ each other.
 
 ### Carried forward from section J, re-scoped
 
-- [ ] **Q4_K_M scratch-row clamp.** Unchanged and still the one correctness
-  question on this list. gfx1151's `GGUF_DENSE_PREFILL_SCRATCH_ROW_CAP_POLICIES`
-  has only a `MOSTLY_Q4_K_S` key and `GGUF_DENSE_PREFILL_SCRATCH_LIVENESS_POLICIES`
-  is absent entirely, so a `Q4_K_M` request resolves to *no* clamp rather than a
-  tighter one, while gfx1100 clamps this file type to 1,024 rows to keep a
-  4,096-row auto query chunk inside metadata buffers sized at allocation
-  (`_dense_prefill_scratch_row_cap` docstring, 2026-09-09 INT8 crash). Decide
-  whether the clamp is needed: check allocation-sized position/metadata buffers
-  against auto query-chunk selection at the 1K/4K/8K boundaries, including tails
-  and packed requests, then either prove the route safe without a cap or add the
-  `MOSTLY_Q4_K_M` key.
+- [x] **Q4_K_M scratch-row clamp.** Decided 2026-09-12: **no clamp is needed
+  on gfx1151 for correctness**, so the `MOSTLY_Q4_K_M` key is not added. The
+  cap on gfx1100 is a memory policy, and its shrink of the allocation is what
+  created the 2026-09-09 overrun; with no cap the gfx1151 allocation and every
+  chunk site derive from the same resolution. See the subsection below for the
+  invariant, the test that holds it at the 1K/4K/8K boundaries, and the one
+  measurement still outstanding.
 - [ ] Production-default / automatic-MTP interaction (section J) — stays.
 - [ ] Verify the shipped production composition on gfx1151 (section J) — stays.
 - [ ] Inherited Q4 fused-prefill retiles (section J) — stays.
@@ -875,6 +871,54 @@ per-token AR-active weight stream, which projects to roughly 0.06% and 0.09% of
 decode, so this is not a topline move. The gate harness also needed a fix: the
 batch diagnostic created an `LLM` per arm without closing it, so multi-arm runs
 leaked a full model each and triggered a host-wide OOM kill.
+
+### The Q4_K_M scratch-row clamp is not needed on gfx1151 (2026-09-12)
+
+This was the section's one correctness question. Decision: **no clamp**, the
+`MOSTLY_Q4_K_M` key is not added, and the route is safe without it. The
+reasoning is that the gfx1100 cap is a *memory* policy, and the overrun it is
+associated with was caused by the cap itself.
+
+- The cap landed in `38e5b85ce` (2026-09-07) to stop session scratch being
+  sized by the declared context below 4,096 (~1 MiB per declared token against
+  a 64 KiB/token KV payload). Its recorded measurements are memory: BF16 3,840
+  request peak 21.820 → 19.375 GiB, declared-context boundary 3,840 → 40,960
+  tokens, capped and uncapped runs token-identical.
+- The 2026-09-09 overrun (fixed in `2082f1353`) was a consequence of that
+  shrink: the cap pinned the allocation at 1,024 rows while the auto policy
+  resolved a 4,096-row query chunk, and the chunk sites had to be taught to
+  honor the cap. The failure mode requires a cap that makes the allocation
+  smaller than the natural chunk.
+- The invariant that matters is `chunk_rows <= allocated_rows`, because
+  `for_chunk` writes `rows` entries into buffers sized by
+  `_prefill_scratch_rows`. Without a cap, the allocation is
+  `max(selector_linear(capacity), selector_full(capacity))` and every selector
+  is monotone in tokens and bounded by capacity, so a request with
+  `rows <= capacity` can never select more than the allocation. The outer chunk
+  loop additionally takes `min(_prefill_scratch_rows(rows), bulk_scratch.rows)`,
+  and `_chunk_ranges` only ever shortens the last chunk, so tails are covered.
+- Measured on the selection logic by the new cases in
+  `tests/test_unit_gguf_prefill_chunk_row_cap.py`: at capacities
+  1,024/4,096/8,192/32,768 with tails of 0/1/3 rows and 1/2-row requests, the
+  invariant holds; for capacities above the 1,025-token tuning floor the
+  gfx1151 allocation equals the 4,096-row auto query chunk exactly, so the
+  uncapped route is self-consistent rather than merely unbounded; and the
+  gfx1100 contrast case shows the clamp there is load-bearing (allocation
+  1,024 against a 4,096-row natural chunk).
+
+One limitation is recorded rather than papered over: this is a proof of the
+selection invariant plus the policy history, not a GPU run of the boundary
+matrix. The device-side metadata writes are bounded by the same `rows` value
+that the invariant bounds, and the 2026-09-09 crash was a selection mismatch
+rather than a device-side accounting error, so the static argument covers the
+known failure mode — but a confirming gfx1151 run at 1K/4K/8K with tails and
+packed requests is still the measurement that would close it empirically.
+
+Separately, and not part of this correctness question: without the cap, gfx1151
+scratch still tracks the declared context below 4,096. That is the same memory
+behaviour the gfx1100 cap removed, and on this APU it is a capacity/boundary
+question for the gfx1151 lane (section J's capacity items, backlog C2/C3/C5),
+not a correctness one.
 
 ### gfx1100-only capability ledger: one gfx1151 verdict per name (2026-09-12)
 
