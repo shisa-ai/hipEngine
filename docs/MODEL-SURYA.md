@@ -140,6 +140,15 @@ Measured fp32 on gfx1151 with `FULL_PAGE_HTML_PROMPT`,
 Stages: vision 47.7 s, prefill 8.0 s, decode 58.4 s (2108 steps, 27.7 ms/step,
 36.1 tok/s), 114.3 s total.
 
+The 8580-image-token prefill is verified rather than inferred from the grid
+arithmetic: `render_chat_prompt` — the same call the generator makes — returns
+8701 `input_ids` for this page, of which exactly 8580 are contiguous image pads
+(121 text tokens, then the image span), and that list is what the prefill
+receives. `tests/test_surya_transcription_fixtures.py` pins the count, the
+contiguity, and the absence of any other image flag. The serving path reports
+the same 8701 as `usage.prompt_tokens`, and its HTTP response reproduces this
+row exactly (see "HTTP serving" below).
+
 **The first measurement of this page read as a failure, and the failure was in
 the ground truth.** Scored per drawn line it measured recall 0.2414, CER 0.8901,
 and one reading-order violation. The model output was in fact exact: it returned
