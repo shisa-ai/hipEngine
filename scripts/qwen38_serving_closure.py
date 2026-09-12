@@ -121,13 +121,15 @@ def run(args):
     context = 1024 if profile == "strict" else 8192
     mtp = None if args.mtp_mode == "automatic" else False
     llm = LLM(str(args.model), backend="hip_gfx1151", max_active_requests=capacity,
-              max_sequence_length=context, execution_profile=profile)
+              max_sequence_length=context, execution_profile=profile,
+              speculative_candidate_budget=args.candidate_budget)
     server = thread = runner = original_reclaim = None
     reclaimed = {}
     rows, cancellation = [], []
     report = {"kind": "qwen38_public_default_socket_serving", "passed": False,
               "performance_claim": False, "scope": "greedy public socket serving",
               "mtp_mode": args.mtp_mode, "capacity": capacity, "widths": widths,
+              "candidate_budget": args.candidate_budget,
               "rows": rows, "cancellation": cancellation}
     try:
         llm.prepare(max_sequence_length=context)
@@ -156,6 +158,7 @@ def run(args):
             model=str(args.model), backend="hip_gfx1151", served_model_name="qwen38-closure",
             max_active_requests=capacity, max_context_tokens=context, metrics="prometheus",
             eager_load=False, stream_queue_max_chunks=256, shutdown_grace_seconds=10,
+            speculative_candidate_budget=args.candidate_budget,
         ), llm=llm)
         port = _free_port()
         server = uvicorn.Server(uvicorn.Config(
@@ -292,6 +295,7 @@ def main():
     parser.add_argument("--execution-profile", choices=("default", "strict"), default="default")
     parser.add_argument("--mtp-mode", choices=("off", "automatic"), default="off")
     parser.add_argument("--capacity", type=int, default=8)
+    parser.add_argument("--candidate-budget", type=int, default=3)
     parser.add_argument("--widths", default="1,2,4,8")
     parser.add_argument("--streaming-only", action="store_true",
                         help="Focused rerun preserving the completed blocking-gate evidence")
