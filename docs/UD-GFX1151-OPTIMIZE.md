@@ -504,17 +504,27 @@ policy to rows 5-8 is the follow-up that makes budget 4 worth using. Evidence:
 `benchmarks/results/2026-09-12-ud-gfx1100-rows5-budget4-gate.json`,
 `worklog/entries/20260912T150309.673218Z-lhl-ud-phase5-rows-envelope-8351b3.md`.
 
-Still open: the width scope is c1 only, and that is structural rather than a
-missing run. The context bound is now declared as `_UD_MTP_DECLARED_CONTEXT_MAX
-= 1023`; that is the sentinel the adapter and the verifier already share, and it
-is measured rather than assumed. Above resident capacity 1 the C1 singleton MTP
-route is refused (`physical_singleton=False`) and the physical route needs a
-`SpeculativeMTPServingEvidence` row for the artifact with
-`realized_group_rows > 1`; the evidence tables cover only
-`weight_quant="gguf_q4_k_m"`, so no UD artifact has one. The unblock is an
-ordering change, not a kernel change: grant UD serving evidence in process for
-a candidate run, measure c2/c4/c8, then write the rows. MTP serving is also
-capped at 1023 context, and that cap is real rather than bookkeeping: above
+The width scope is c1 only, and that is now measured rather than assumed. The
+context bound is declared as `_UD_MTP_DECLARED_CONTEXT_MAX = 1023`; that is the
+sentinel the adapter and the verifier already share. The width cells were
+reached with a candidate-mode scope grant plus the diagnostic physical width
+plan, and the census is:
+
+| Cell | AR tok/s | MTP tok/s | MTP / AR | exact | engaged |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| c1 K3 | 13.891 | **34.205** | **2.4624x** | 10/10 | 10/10 |
+| c2 K2 | 30.102 | 31.359 | 1.0418x | 10/10 | 10/10 |
+
+c4 is not in `GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS["production"]`
+(`((1,2),(1,3),(2,2),(8,3))`), so it has no physical kernel cell to qualify. c8
+K3 is policy-admitted but fails every request with `HIP error 2: out of memory`
+at capacity 8 on the 25.75 GB default GPU against the 16.46 GB artifact. Both
+measured cells hold `ar_exact`, so c2 is correct but not useful: two requests in
+flight nearly double the server path's own AR rate while MTP barely moves. Those
+are server-path diagnostic rates and do not replace the retained paired rates.
+
+MTP serving is also capped at 1023 context, and that cap is real rather than
+bookkeeping: above
 `start_position + rows >= 1024` the verifier's `strict_long_rows` term
 suppresses the batched exact rows chain and the layer falls through to a
 per-row loop that is bit-identical to the single-row AR route. The 4096-token
@@ -528,7 +538,9 @@ candidate measured 0.9989x and is not auto-routed. Rows 9+ are outside the
 native target graph, and the prefill tile/chunk boundaries are unstarted.
 Evidence:
 `worklog/entries/20260912T172746.747765Z-lhl-ud-phase5-width-scope-14e699.md`,
-`worklog/entries/20260912T212716.391678Z-lhl-ud-mtp-long-context-verifier-126dac.md`.
+`worklog/entries/20260912T212716.391678Z-lhl-ud-mtp-long-context-verifier-126dac.md`,
+`worklog/entries/20260912T214335.416137Z-lhl-ud-mtp-width-cells-8e85ce.md`,
+`benchmarks/results/2026-09-12-ud-gfx1100-mtp-width-cells.json`.
 
 ### Phase 6: Re-run the complete paired economics gate
 
