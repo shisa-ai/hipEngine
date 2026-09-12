@@ -379,21 +379,63 @@ Likely investigation order:
   UD arms are now generated-ID exact. See
   `benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-phase4.json` and
   `benchmarks/results/2026-09-12-ud-gfx1100-phase4-*.json`.
-- [ ] UD Q5 selected-expert path.
+- [x] UD Q5 selected-expert path. Closed 2026-09-12 on the post-rows
+  attribution: `qk_t16_selected_direct_gemv` is 0.367 ms/step (0.78%) on
+  UD-Q4_K_M and 0.662 (1.46%) on UD-Q4_K_S, below the repair threshold at
+  verifier rows.
 - [ ] Q3_K strict decode. Q3_K has no rows==1 local32 owner, so it has no
-  rows 2-4 sibling either; it keeps the strict per-row GEMV.
-- [ ] Q5 gate/up dual execution.
-- [ ] Q5/Q6 compact residency and raw consumer qualification.
-- [ ] IQ/Q3 decoder vectorization and memory access.
-- [ ] Norm, SiLU, residual, and logits tail overhead.
-- [ ] Graph capture/replay ownership and synchronization.
+  rows 2-4 sibling either; it keeps the strict per-row GEMV. Blocked, not
+  merely unattempted: routing it was measured on gfx1151 at +176.5 tok/s but
+  moved the calibrated mean KL 0.000827 -> 0.001061, 6% over the 1e-3 limit
+  (`GGUF_IQ_DENSE_VERIFY_POLICY` comment in
+  `hipengine/kernels/hip_gfx1100/__init__.py`).
+- [x] Q5 gate/up dual execution. Closed 2026-09-12: the Q5_K gate/up dual
+  runs the WMMA prefill owner at verifier rows and the whole pair costs 6.38
+  ms/step against the plain Q4_K dual rowtile's 8.85, so UD's arm is already
+  the cheaper one measured.
+- [x] Q5/Q6 compact residency and raw consumer qualification. Closed
+  2026-09-12: Q6_K col8 is 0.77 ms/step in UD against 6.23 in plain Q4_K_M,
+  and the Q5_K col8 alternative lost the column-width measurement below.
+- [ ] IQ/Q3 decoder vectorization and memory access. Re-scoped 2026-09-12 to
+  memory-level parallelism at fixed occupancy. `gguf_iq4_xs_local32_gemv` is
+  12.24 ms/step (26.0% of the UD-Q4_K_M verifier) at 46% (`ffn_gate`, N=17408
+  K=5120) and 58% (`ffn_down`, N=5120 K=17408) of the 960 GB/s DRAM roofline,
+  with 192 VGPRs. Two instruction-level candidates were measured and rejected,
+  so the lever is explicit prefetch or a wider row/wave split, which needs a
+  hardware-counter unit plus a new bit-exactness contract.
+- [x] Norm, SiLU, residual, and logits tail overhead. Closed 2026-09-12:
+  1.885 ms/step, 4.00% of the UD-Q4_K_M verifier, below the repair threshold.
+- [ ] Graph capture/replay ownership and synchronization. The host residual is
+  5.25 ms/step against 1032 kernel calls/step, 5.09 us per launch (the plain
+  control is 824 calls/step, 4.39 ms/step and 5.33 us per launch), so it is
+  launch overhead rather than a synchronization stall. Reducing it means
+  fewer, wider launches or replay-side launch elision.
 - [ ] The t16 decode-versus-rowtile accumulation order (Q4_K 27.4% + Q5_K
   25.7% + Q6_K 8.1% of rank-2 MACs) is the dominant remaining source of
   verification-specific drift: the rows 2-4 t16 rowtile owners are not
   bit-identical to the rows 1 t16 decode owners, so the AR route and the
   verifier still disagree on those tensors after the IQ family is aligned.
+  Split-K, which is the measured next lever for the Q5_K rowtile, changes this
+  order again and therefore owes the full production profile gate.
 
-For each candidate:
+Two further scoped candidates were measured and rejected on 2026-09-12 and are
+recorded so they are not retried:
+
+- **Q5_K rows 2-8 rowtile column width 4 -> 8.** `TILE_COLS=4` launches four
+  blocks per 16-column tile and each reads the whole tile, so the family
+  re-reads its weights 4x; `TILE_COLS=8` halves that and is already registered
+  under `gguf_q5_k_t16_v1 / t16_gemv_rowtile_col8_bf16_bf16_out`. Measured:
+  the Q5_K rowtile went 9.23 -> 10.61 ms/step (85.5 -> 98.2 us/call, VGPR 56
+  -> 88) and the arm went 47.09 -> 47.90. Rejected: the re-read is served by
+  L2, and col4 wins because it launches twice as many blocks.
+- **local32 activation load vectorization.** One 16-byte load per lane window
+  instead of eight scalar BF16 loads, in all three local32 owners. Measured on
+  the four real IQ4_XS tensors at rows 4: the rows 2-4 sibling moved -1.9% and
+  the rows == 1 owner +1.5%, both inside run-to-run spread, with bit-exactness
+  preserved. Rejected as neutral: the compiler already coalesces the loads, so
+  the family is not load-issue-bound.
+
+For each candidate that is carried as far as an implementation:
 
 - [x] Record the exact kernel/dispatch registry key and source lineage.
 - [x] Add or update the focused RED test before implementation.
@@ -403,6 +445,12 @@ For each candidate:
 - [x] Run a kernel trace proving the intended kernel actually ran.
 - [x] Run the full paired benchmark before calling it a win.
 - [x] Report absolute rates and all three ratios.
+
+A candidate may be closed without an implementation when the measured cost is
+below the repair threshold, when the alternative owner is already the cheaper
+one measured, or when a registered policy records a concrete blocker. It is
+closed by recording the measurement and the registry key, as the rejected and
+closed entries above do.
 
 Promotion rule: retain only changes that are correct, reproducible, and
 non-regressive on the declared suite. A ratio gain with lower UD tok/s is
