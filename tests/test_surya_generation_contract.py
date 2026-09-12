@@ -160,22 +160,79 @@ def test_vision_tile_plan_stays_inside_the_budget() -> None:
 
 
 def test_vision_tile_plan_uses_one_tile_when_it_fits() -> None:
-    """Small grids must keep the single dense tile, not be split for nothing."""
+    """A grid the envelope covers in one tile keeps the single dense tile."""
 
     from hipengine.runtime.surya import plan_vision_attention
 
     heads = 12
-    # 4096 patches x 12 heads x 4 B = 196 KiB per query row; the whole grid is
-    # 805 MiB, so a 1 GiB budget keeps it in one tile and a 512 MiB budget must
+    # 128 patches x 12 heads x 4 B = 6 KiB per query row; the whole grid is
+    # 768 KiB, so a 1 MiB budget keeps it in one tile and a 512 KiB budget must
     # split it
-    dense = heads * 4096 * 4096 * 4
-    block, scratch = plan_vision_attention(4096, heads, 1024 * _MIB)
-    assert block == 4096
+    dense = heads * 128 * 128 * 4
+    block, scratch = plan_vision_attention(128, heads, 1024 * 1024)
+    assert block == 128
     assert scratch == dense
 
-    block, scratch = plan_vision_attention(4096, heads, 512 * _MIB)
-    assert 1 <= block < 4096
-    assert scratch == heads * 4096 * block * 4 <= 512 * _MIB
+    block, scratch = plan_vision_attention(128, heads, 512 * 1024)
+    assert 1 <= block < 128
+    assert scratch == heads * 128 * block * 4 <= 512 * 1024
+
+
+def test_vision_tile_plan_is_bounded_by_the_measured_shape_envelope() -> None:
+    """The block is a shape choice, not just the widest tile that fits.
+
+    ``scripts/surya_vision_tiling_cost.py`` sweeps the query block on gfx1151.
+    At 4096 patches the byte budget alone picks a 2730-row tile (1123.42 ms)
+    where a 128-row tile runs 874.38 ms, and at 1024 patches the budget admits
+    the whole dense matrix (193.54 ms) where a 128-row tile runs 135.52 ms. The
+    envelope that recovers that caps the block at ``max(128, rows/32)`` rows, so
+    the budget stays the binding constraint where it matters: at the 34320-patch
+    A4 page the cap is 1073 rows and the 512 MiB budget still chooses the shape.
+    """
+
+    from hipengine.runtime.surya import plan_vision_attention
+
+    heads = 12
+    dense = heads * 4096 * 4096 * 4
+    # a budget that admits the whole dense matrix is still split to 32 tiles
+    block, scratch = plan_vision_attention(4096, heads, dense)
+    assert block == 128
+    assert scratch == heads * 4096 * 128 * 4 == dense // 32
+    # the 128-row bound binds on the smaller grids rather than rows/32
+    assert plan_vision_attention(1024, heads, 512 * _MIB)[0] == 128
+    assert plan_vision_attention(256, heads, 512 * _MIB)[0] == 128
+    # and rows/32 never binds at page scale, where the budget is narrower
+    block, scratch = plan_vision_attention(34320, heads, 512 * _MIB)
+    assert block == 320
+    assert scratch <= 512 * _MIB
+
+
+def test_tile_plan_keeps_the_block_on_a_wavefront_multiple() -> None:
+    """The tile's query width is a whole number of 32-lane wavefronts.
+
+    On the 34320-patch A4 page every measured block that is a multiple of 32
+    runs 43862-44668 ms (256/288/320/352/384/448/480/512) and every block that
+    is not runs 45050-48496 ms (272/300/304/325/336/400), so the best
+    non-multiple is slower than the worst multiple. The 512 MiB budget derives
+    325 rows there, which is the slow side of that line.
+    """
+
+    from hipengine.runtime.surya import plan_score_tiles, plan_vision_attention
+
+    for rows, heads, budget in (
+        (34320, 12, 512 * _MIB),
+        (65536, 12, 512 * _MIB),
+        (6400, 12, 512 * _MIB),
+        (8580, 8, 512 * _MIB),
+        (1000, 8, 512 * _MIB),
+        (34320, 12, 700 * _MIB),
+    ):
+        block, scratch = plan_score_tiles(rows, heads, budget)
+        assert block % 32 == 0, (rows, heads, budget, block)
+        assert scratch == heads * rows * block * 4 <= budget
+        assert plan_vision_attention(rows, heads, budget) == (block, scratch)
+    # a budget too small for a whole wavefront still gets a usable tile
+    assert plan_score_tiles(4096, 12, 20 * 12 * 4096 * 4)[0] == 20
 
 
 def test_vision_tile_plan_honors_a_disabled_budget() -> None:
@@ -253,16 +310,12 @@ def test_prefill_and_vision_share_one_planner() -> None:
 
 
 def test_prefill_tile_plan_uses_one_tile_when_it_fits() -> None:
-    """A prompt whose dense matrix fits the budget must not be split.
-
-    ``block >= tokens`` is what makes the tiled path a strict superset of the
-    dense one: one tile with ``bq == tokens`` issues exactly the dense calls.
-    """
+    """A prompt the envelope covers in one tile keeps the single dense tile."""
 
     from hipengine.runtime.surya import plan_score_tiles
 
     heads = 8
-    tokens = 1024
+    tokens = 128
     dense = heads * tokens * tokens * 4
     block, scratch = plan_score_tiles(tokens, heads, dense)
     assert block == tokens
@@ -271,6 +324,28 @@ def test_prefill_tile_plan_uses_one_tile_when_it_fits() -> None:
     block, scratch = plan_score_tiles(tokens, heads, dense - 1)
     assert 1 <= block < tokens
     assert scratch == heads * tokens * block * 4 <= dense - 1
+
+
+def test_prefill_tile_plan_is_bounded_by_the_measured_shape_envelope() -> None:
+    """The text prefill shares the vision envelope and wavefront multiple."""
+
+    from hipengine.runtime.surya import plan_score_tiles
+
+    heads = 8
+    # 1024 tokens need 32 MiB dense, well inside the default budget, and the
+    # envelope still splits them into 8 tiles
+    block, scratch = plan_score_tiles(1024, heads, 512 * _MIB)
+    assert block == 128
+    assert scratch == heads * 1024 * 128 * 4
+    # the full 16384-token context: the cap is 512 rows, inside the budget
+    block, scratch = plan_score_tiles(16384, heads, 512 * _MIB)
+    assert block == 512
+    assert scratch == heads * 16384 * 512 * 4 <= 512 * _MIB
+    # 8580 tokens: the cap is 269 rows, rounded down to 256
+    block, _ = plan_score_tiles(8580, heads, 512 * _MIB)
+    assert block == 256
+    # and a budget narrower than the envelope still wins
+    assert plan_score_tiles(16384, heads, 64 * _MIB)[0] == 128
 
 
 def test_gpu_factory_declares_the_budgets_it_honors() -> None:
