@@ -38,6 +38,16 @@ comparison is over the *complete* generated sequence including how it
 terminated, never a prefix. Each case also records whether the decoded text
 parses as the layout JSON Surya OCR is supposed to emit.
 
+The gate fails closed. A lane is ``PASS`` only when all of these hold, and
+``gate_failures`` names every one that did not: a reference is present (a
+captured fixture, or the in-process CPU reference when the case declares none),
+``ids_match`` (full-sequence equality), ``termination_match`` (the lane stopped
+the way the reference did), ``decode_repeatable`` (isolated repeats produced
+identical output), ``e2e_agrees`` and ``e2e_termination_agrees`` (the timed
+decode stage and the end-to-end run describe the same computation), and
+``task_format`` (the declared output shape). A case that declares a fixture
+which is missing is an error, not a silent fall back to an unverified basis.
+
 Workload suite: cases are split into a ``tuning`` subset and a disjoint
 ``heldout`` subset, recorded in the artifact. A tuning run iterates on the
 tuning subset; the held-out subset is for evaluation only, so a tuning
@@ -143,15 +153,29 @@ CASES_BY_NAME = {case.name: case for case in SUITE}
 
 
 def _load_oracle_record(case: Case) -> dict | None:
-    """The raw oracle entry for a case (ids, text, capture metadata)."""
+    """The raw oracle entry for a case (ids, text, capture metadata).
+
+    ``None`` means the case declares no captured fixture, which is a different
+    state from a declared fixture that is missing. The latter raises: treating
+    an absent fixture as "no reference" is how a case silently loses its
+    correctness basis.
+    """
 
     if case.oracle is None:
         return None
     path = FIXTURES / case.oracle
     if not path.exists():
-        return None
+        raise FileNotFoundError(
+            f"case {case.name} declares oracle {case.oracle!r} but {path} "
+            f"does not exist"
+        )
     data = json.loads(path.read_text())
     if case.oracle_key is not None:
+        if case.oracle_key not in data:
+            raise KeyError(
+                f"case {case.name} selects {case.oracle_key!r} from {path}, "
+                f"which has {sorted(data)}"
+            )
         data = data[case.oracle_key]
     return data
 
@@ -159,6 +183,19 @@ def _load_oracle_record(case: Case) -> dict | None:
 def _load_oracle(case: Case) -> list[int] | None:
     record = _load_oracle_record(case)
     return None if record is None else [int(i) for i in record["ids"]]
+
+
+def _reference_termination(ref: list[int], max_tokens: int) -> str:
+    """How the reference stopped, derived from its length against the budget.
+
+    The greedy loop appends a token and stops on EOS or when the budget is
+    spent, so a reference that fills its budget ended on ``length`` and a
+    shorter one ended on ``eos``. Deriving it rather than storing it keeps the
+    check honest for fixtures captured before the metadata existed, and makes
+    it impossible for a lane to match ids while having terminated differently.
+    """
+
+    return "length" if len(ref) >= max_tokens else "eos"
 
 
 # ---------------------------------------------------------------------------
@@ -338,16 +375,37 @@ class LaneRun:
     e2e_termination: str = "unknown"
 
 
-def _validate(lane_run: LaneRun, case: Case, ref: list[int] | None) -> dict[str, object]:
-    """Complete-output, termination and task-level checks for one lane/case."""
+def _validate(lane_run: LaneRun, case: Case, ref: list[int] | None,
+              *, reference_source: str | None = None) -> dict[str, object]:
+    """Complete-output, termination and task-level checks for one lane/case.
+
+    The gate fails closed. A ``PASS`` requires a reference to be present, the
+    full generated sequence to equal it, the lane to have terminated the way
+    the reference did, the isolated decode repeats to agree, the timed decode
+    stage and the end-to-end run to describe the same computation, and the
+    declared task format to hold. ``gate_failures`` names every condition that
+    did not, so a FAIL is self-explaining rather than just a label.
+    """
 
     generated = lane_run.generated
     checks: dict[str, object] = {
         "generated_tokens": len(generated),
         "termination": lane_run.termination,
-        "correctness_basis": "torch_fixture" if ref is not None else "cpu_reference",
+        "reference_present": ref is not None,
+        # Never guess the basis: an unnamed source is recorded as such rather
+        # than defaulted to "torch_fixture", which would mislabel a CPU
+        # reference as a captured fixture.
+        "correctness_basis": (
+            (reference_source or "unspecified") if ref is not None else "none"
+        ),
     }
-    if ref is not None:
+    if ref is None:
+        checks["ids_match"] = None
+        checks["reference_tokens"] = None
+        checks["first_divergence"] = None
+        checks["reference_termination"] = None
+        checks["termination_match"] = None
+    else:
         first = next(
             (i for i in range(min(len(generated), len(ref))) if generated[i] != ref[i]),
             min(len(generated), len(ref)),
@@ -356,8 +414,10 @@ def _validate(lane_run: LaneRun, case: Case, ref: list[int] | None) -> dict[str,
         checks["ids_match"] = generated == ref
         checks["reference_tokens"] = len(ref)
         checks["first_divergence"] = None if generated == ref else first
-    else:
-        checks["ids_match"] = None
+        checks["reference_termination"] = _reference_termination(ref, case.max_tokens)
+        checks["termination_match"] = (
+            lane_run.termination == checks["reference_termination"]
+        )
     try:
         parsed = json.loads(lane_run.text)
         checks["layout_json"] = isinstance(parsed, list)
@@ -379,20 +439,30 @@ def _validate(lane_run: LaneRun, case: Case, ref: list[int] | None) -> dict[str,
         task_ok = len(generated) > 0
     checks["task_format"] = task_ok
     checks["decode_repeatable"] = lane_run.decode_repeatable
-    # the decode stage and the end-to-end run must produce the same sequence;
-    # tok/s is derived from the stage, so a disagreement would mean the number
-    # describes something other than the reported output
+    # the decode stage and the end-to-end run must produce the same sequence
+    # and stop the same way; tok/s is derived from the stage, so a disagreement
+    # would mean the number describes something other than the reported output
     checks["e2e_agrees"] = lane_run.e2e_generated == lane_run.generated
-    checks["correctness"] = (
-        "PASS"
-        if checks["ids_match"] is not False and task_ok and checks["e2e_agrees"]
-        else "FAIL"
+    checks["e2e_termination_agrees"] = (
+        lane_run.e2e_termination == lane_run.termination
     )
+    gates = {
+        "reference_present": ref is not None,
+        "ids_match": checks["ids_match"] is True,
+        "termination_match": checks["termination_match"] is True,
+        "decode_repeatable": bool(lane_run.decode_repeatable),
+        "e2e_agrees": checks["e2e_agrees"] is True,
+        "e2e_termination_agrees": checks["e2e_termination_agrees"] is True,
+        "task_format": task_ok is True,
+    }
+    checks["gate_failures"] = [name for name, ok in gates.items() if not ok]
+    checks["correctness"] = "PASS" if not checks["gate_failures"] else "FAIL"
     return checks
 
 
-def _lane_record(lane_run: LaneRun, case: Case, ref: list[int] | None) -> dict:
-    checks = _validate(lane_run, case, ref)
+def _lane_record(lane_run: LaneRun, case: Case, ref: list[int] | None,
+                 *, reference_source: str | None = None) -> dict:
+    checks = _validate(lane_run, case, ref, reference_source=reference_source)
     decode_s = lane_run.stages.get("decode", 0.0)
     n = len(lane_run.generated)
     record = {
@@ -761,6 +831,34 @@ LANES = {
 }
 
 
+def _cpu_reference(case: Case) -> list[int]:
+    """Greedy ids from the torch-free CPU reference, for a case with no fixture.
+
+    Computed here, in the main loop, rather than defaulting to "no reference":
+    an absent reference must not read as a pass. The pipeline is the
+    ``hipengine_cpu`` lane's, so a GPU lane's ``ids_match`` is a genuine
+    cross-implementation comparison; for the CPU lane itself the check is
+    self-consistency, and the reference's own accuracy is gated against the
+    torch fixtures by ``tests/test_surya_e2e.py``.
+    """
+
+    return list(lane_hipengine_cpu(case, runs=1).generated)
+
+
+def _resolve_reference(case: Case) -> tuple[list[int] | None, str]:
+    """The correctness basis for a case, and which kind it is.
+
+    A captured fixture is used when the case declares one; otherwise the CPU
+    reference is computed in-process. There is no third state: a case that
+    declares a fixture which is missing raises from ``_load_oracle``.
+    """
+
+    if case.oracle is not None:
+        return _load_oracle(case), "torch_fixture"
+    print("   (no captured fixture: computing the CPU reference)", flush=True)
+    return _cpu_reference(case), "cpu_reference"
+
+
 # ---------------------------------------------------------------------------
 # entry point
 # ---------------------------------------------------------------------------
@@ -780,12 +878,14 @@ def _summary_line(record: dict) -> str:
         return f"{value:.1f}" if isinstance(value, (int, float)) else "n/a"
 
     stages = record.get("stages_s") or {}
+    failures = record.get("gate_failures") or []
+    reason = f" [{','.join(failures)}]" if failures else ""
     return (
         f"   e2e {seconds(record.get('e2e_median_s'))}  "
         f"vision+prefill {seconds(stages.get('vision_prefill'))}  "
         f"decode {seconds(stages.get('decode'))} "
         f"({rate(record.get('decode_tok_per_s'))} tok/s)  "
-        f"{record.get('correctness')} ({record.get('termination')})"
+        f"{record.get('correctness')}{reason} ({record.get('termination')})"
     )
 
 
@@ -835,13 +935,14 @@ def main() -> None:
     print(f"cases: {[c.name for c in cases]}  lanes: {lanes}  runs: {args.runs}")
     results: list[dict] = []
     for case in cases:
-        ref = _load_oracle(case)
         print(f"\n== case {case.name} ({case.page}, {case.max_tokens} tokens, "
               f"split={case.split}, oracle={case.oracle or 'cpu_reference'}) ==")
+        ref, reference_source = _resolve_reference(case)
         for lane in lanes:
             print(f"-- lane {lane} ...", flush=True)
             lane_run = LANES[lane](case, args.runs)
-            record = _lane_record(lane_run, case, ref)
+            record = _lane_record(lane_run, case, ref,
+                                  reference_source=reference_source)
             record["case"] = case.name
             results.append(record)
             print(_summary_line(record))
@@ -856,6 +957,14 @@ def main() -> None:
             "runs": args.runs,
             "warmup": "one discarded warmup before every timed series",
             "decode_derivation": "decode timed directly, never subtracted from other stages",
+            "gate": (
+                "PASS requires a reference (captured torch fixture, or the "
+                "in-process CPU reference when a case declares none), "
+                "full-sequence ids_match, termination agreement with the "
+                "reference, decode_repeatable, e2e_agrees, "
+                "e2e_termination_agrees, and the declared task format; "
+                "gate_failures names every condition that failed"
+            ),
             "splits": "tuning cases must not be used to report held-out results",
         },
         "suite": [

@@ -349,7 +349,9 @@
    "decode_repeatable": true,
    "e2e_agrees": true,
    "correctness": "PASS",
-   "case": "rect"
+   "case": "rect",
+   "qualification": "unverified: no reference was computed, so ids_match is null",
+   "requalified_by": "results/2026-09-12-gfx1151-surya-rect-reference.json"
   },
   {
    "lane": "torch_cuda",
@@ -410,7 +412,9 @@
    "decode_repeatable": true,
    "e2e_agrees": true,
    "correctness": "PASS",
-   "case": "rect"
+   "case": "rect",
+   "qualification": "unverified: no reference was computed, so ids_match is null",
+   "requalified_by": "results/2026-09-12-gfx1151-surya-rect-reference.json"
   },
   {
    "lane": "hipengine_gpu",
@@ -1752,5 +1756,7 @@
    "correctness": "PASS",
    "case": "list"
   }
- ]
+ ],
+ "gate": "at capture time PASS required ids_match is not False, the declared task format, and e2e_agrees; decode_repeatable, termination agreement and a present reference were recorded but not gated",
+ "gate_note": "the two rect rows carry ids_match: null and correctness: PASS because the case declares no captured fixture and the harness did not compute the in-process CPU reference it promised, so those rows have no correctness basis. Under the current gate they fail reference_present and ids_match. They are re-qualified against a computed CPU reference in results/2026-09-12-gfx1151-surya-rect-reference.json, which reproduces their timings (hipengine_gpu 54.15 -> 54.50 tok/s, torch_cuda 26.62 -> 26.25 tok/s) and adds ids_match: true for both lanes. The other 22 rows already satisfy every current gate condition."
 }
