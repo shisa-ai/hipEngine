@@ -46,8 +46,10 @@ DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 DEFAULT_PROMPT_IDS = "760,4087,369,220,16,17,18,19"
 SERIAL_MARKER_PREFIX = "gguf_mtp_verify_serial_"
 BLOCK_MARKER_PREFIX = "gguf_mtp_verify_block_"
-# The native accept/commit bucket covers one root row plus B1-B7 draft rows.
-NATIVE_SPEC_TARGET_ROWS = frozenset({2, 3, 4, 5, 6, 7, 8})
+# The production native target graph is B1-B3: the graph builder admits 2-8 rows,
+# but the fused rounded add/RMSNorm and the device accept/commit kernels are
+# fixed to rows 2-4, so five to eight rows raise inside the verifier.
+NATIVE_SPEC_TARGET_ROWS = frozenset({2, 3, 4})
 
 
 def _marker_prefix(mode: str) -> str:
@@ -837,7 +839,8 @@ def main() -> int:
         if args.mode != "block-verify" or int(args.block_rows) not in NATIVE_SPEC_TARGET_ROWS:
             parser.error(
                 "--native-spec-target-cycle requires --mode block-verify --block-rows "
-                f"in {sorted(NATIVE_SPEC_TARGET_ROWS)} (one root row plus B1-B7 drafts)"
+                f"in {sorted(NATIVE_SPEC_TARGET_ROWS)} (one root row plus B1-B3 drafts; the "
+                "fused add/RMSNorm and device accept/commit kernels are fixed to four rows)"
             )
         if args.block_wmma_prefill:
             parser.error("--native-spec-target-cycle requires non-WMMA block verification")
