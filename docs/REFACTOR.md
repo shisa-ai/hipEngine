@@ -6660,14 +6660,31 @@ selection.
 
 `HIPENGINE_GGUF_AUTO_CONTEXT` is the rollback for the behavior change and is
 kept until the automatic selection has a full benchmark cycle on the supported
-target models; removal condition is that no bisection case remains where the
-fixed 256-token context is wanted. The other four are calibration overrides for
-the transient and reserve terms, which are currently inherited values rather than
-measured ones (see the `gguf-auto-context-sizing` worklog entry). Removal
-condition for those four: once the transient term is calibrated against probe
-peaks and the reserve is set from measured allocator overhead, delete the
-overrides and keep the calibrated constants. Until then they are the only way to
-re-price a host without editing source.
+target models. Removal condition is that no bisection case remains where the
+fixed 256-token context is wanted. It also disables the allocation backoff, so
+the rollback restores the historical behavior completely rather than half of it.
+
+The other four are calibration overrides. `HIPENGINE_GGUF_KV_TRANSIENT_KIB_PER_TOKEN`
+and `HIPENGINE_GGUF_KV_TRANSIENT_FIXED_MIB` front measured values (the packed
+slot-local prefill route's live oracle and hidden owners, and its
+context-independent execution workspace, measured 2026-09-11 and documented at
+`_GGUF_TRANSIENT_BYTES_PER_TOKEN_DEFAULT`).
+`HIPENGINE_GGUF_KV_CAPACITY_RESERVE_MIB` fronts a measured value too: the
+whole-card minus hipEngine-tracked difference on the W7900, 2.66 GiB, which is
+HIP context, JIT kernel modules, AOTriton, and pool pointer tables — all
+allocated after the free-memory reading the model prices against. Removal
+condition for these three: once the reserve and transient terms are expressed as
+named model terms rather than an override, delete the overrides and keep the
+calibrated constants. `HIPENGINE_GGUF_AUTO_CONTEXT_ATTEMPTS` stays until the
+backoff has production mileage.
+
+An open accuracy item recorded in the `gguf-auto-context-sizing` worklog entries:
+the transient term is priced at a full-context worst case (4.22 GiB at the 27B's
+auto-selected context) against 0.30 GiB measured with a 43,011-token prompt, so
+the model is roughly 3.9 GiB conservative there. That conservatism is currently
+load-bearing — it is what kept the pre-fix 512 MiB reserve from turning into an
+OOM — so any attempt to tighten the transient term must re-derive the reserve at
+the same time.
 
 The `_auto_resolved_max_sequence_length` / `_auto_resolved_max_sequence_lengths` /
 `_auto_context_estimate` fields on `Qwen35GGUFBringupGenerator` exist only to feed

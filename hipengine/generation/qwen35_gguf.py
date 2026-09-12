@@ -423,6 +423,22 @@ _GGUF_AUTO_CONTEXT_MAX_ATTEMPTS = 4
 _GGUF_AUTO_CONTEXT_FALLBACK_NUMERATOR = 3
 _GGUF_AUTO_CONTEXT_FALLBACK_DENOMINATOR = 4
 
+# The reserve covers device memory the capacity model does not price at all:
+# HIP context, JIT-compiled kernel modules, AOTriton, and the KV pool's pointer
+# tables. Those are allocated lazily *after* the free-memory reading the model
+# prices against, so they cannot be inferred from it.
+#
+# Measured on the W7900 (48 GiB), 27B Q4_K_M, auto-selected 45,568 tokens at 4
+# BF16 slots, after a 43,011-token prefill: whole-card use 42.91 GiB against
+# 40.25 GiB of hipEngine-tracked allocations, i.e. **2.66 GiB untracked**, of
+# which about 2.35 GiB materializes after the selection is made. The previous
+# 512 MiB default did not cover that; the auto-selection only survived a
+# full-depth prompt because the transient term is priced at its worst case
+# (4.22 GiB) against a measured 0.30 GiB, and that 3.9 GiB of slack absorbed
+# the shortfall. On a 24 GiB card the same arithmetic selected a context whose
+# true peak was 26.2 GiB against 23.98 GiB of VRAM.
+_GGUF_AUTO_CONTEXT_RESERVE_MIB_DEFAULT = 3072
+
 
 def _gguf_auto_context_enabled() -> bool:
     return os.environ.get(_GGUF_AUTO_CONTEXT_ENV, "1").strip().lower() not in {
@@ -454,7 +470,7 @@ def _gguf_auto_context_attempts() -> int:
 def _gguf_auto_context_reserve_bytes() -> int:
     return _gguf_auto_context_int_env(
         _GGUF_AUTO_CONTEXT_RESERVE_MIB_ENV,
-        512,
+        _GGUF_AUTO_CONTEXT_RESERVE_MIB_DEFAULT,
         minimum=0,
     ) * 1024**2
 
@@ -2008,7 +2024,10 @@ class Qwen35GGUFBringupGenerator:
         """
 
         context = None if max_sequence_length is None else int(max_sequence_length)
-        attempts = _gguf_auto_context_attempts()
+        # ``HIPENGINE_GGUF_AUTO_CONTEXT=0`` is the full rollback: no automatic
+        # sizing and no backoff, so an allocation failure stays fatal exactly as
+        # it was before automatic sizing existed.
+        attempts = _gguf_auto_context_attempts() if _gguf_auto_context_enabled() else 1
         for attempt in range(attempts):
             session_kwargs = {} if context is None else {"max_sequence_length": int(context)}
             try:
@@ -2029,7 +2048,7 @@ class Qwen35GGUFBringupGenerator:
                     raise
                 if attempt + 1 >= attempts:
                     raise MemoryError(
-                        "automatic GGUF resident context sizing could not allocate a "
+                        "GGUF resident context sizing could not allocate a "
                         f"resident session at {context} tokens after {attempts} attempts "
                         f"(last error: {exc}); free GPU memory, use "
                         "--kv-storage int8_per_token_head, or pin a smaller --max-context-tokens"
@@ -2043,7 +2062,8 @@ class Qwen35GGUFBringupGenerator:
                 if next_context >= int(context):
                     raise
                 _LOGGER.warning(
-                    "GGUF auto context: %d tokens failed to allocate (%s); retrying at %d",
+                    "GGUF context request: requested %d tokens failed to allocate (%s); "
+                    "retrying at %d tokens",
                     int(context),
                     exc,
                     next_context,
@@ -2058,7 +2078,7 @@ class Qwen35GGUFBringupGenerator:
                 )
                 return session
         raise MemoryError(
-            "automatic GGUF resident context sizing exhausted its attempts"
+            "GGUF resident context sizing exhausted its attempts"
         )  # pragma: no cover - the loop always returns or raises
 
     def _attach_capacity_estimate(
@@ -7451,14 +7471,71 @@ class Qwen35GGUFResidentModelRunner:
             raise RuntimeError("cannot resize resident GGUF sessions while requests are active")
         with hip_target_arch_environment(self.generator.target_arch):
             config = self._engine_loop_config
-            self._clear_prefix_snapshots()
-            if self._kv_pool is not None:
-                self._teardown_kv_pool(release_workspace_state=True)
-            self._release_available_sessions()
-            self._max_sequence_length = requested
-            self._reserve_sessions()
-            if config is not None:
-                self.configure_engine_loop(config)
+            # The session scratch and the device KV pool are separate
+            # allocations, and the pool is the larger one. The session-level
+            # fallback in ``_acquire_shared_session`` cannot see a pool
+            # failure, so the retry lives here where both are in scope. A pinned
+            # context backs off too, and the warning names the size that was
+            # asked for, so the substitution is never silent.
+            # ``HIPENGINE_GGUF_AUTO_CONTEXT=0`` is the full rollback: it turns
+            # off both the automatic sizing and the backoff, restoring the
+            # historical hard failure.
+            fallback_active = _gguf_auto_context_enabled()
+            attempts = _gguf_auto_context_attempts() if fallback_active else 1
+            for attempt in range(attempts):
+                self._clear_prefix_snapshots()
+                if self._kv_pool is not None:
+                    self._teardown_kv_pool(release_workspace_state=True)
+                self._release_available_sessions()
+                self._max_sequence_length = requested
+                try:
+                    self._reserve_sessions()
+                    if config is not None:
+                        self.configure_engine_loop(config)
+                except (HipError, MemoryError) as exc:
+                    if (
+                        not fallback_active
+                        or not _gguf_allocation_failure(exc)
+                        or attempt + 1 >= attempts
+                    ):
+                        raise
+                    current = requested
+                    if current is None:
+                        current = getattr(
+                            self.generator, "_auto_resolved_max_sequence_length", None
+                        )
+                    if current is None:
+                        raise
+                    next_context = self.generator._recalibrated_auto_context(
+                        self._shared_runner,
+                        failed_context=int(current),
+                        max_batch_size=int(self.capacity),
+                        defer_kv_allocation=True,
+                    )
+                    if next_context >= int(current):
+                        raise
+                    _LOGGER.warning(
+                        "GGUF context request: requested %d tokens failed to allocate "
+                        "(%s); retrying at %d tokens",
+                        int(current),
+                        exc,
+                        next_context,
+                    )
+                    if requested is None:
+                        # Automatic sizing owns the selection, so keep the
+                        # generator's cache in step for the next attempt.
+                        self.generator._record_auto_context_selection(
+                            max_batch_size=int(self.capacity),
+                            defer_kv_allocation=True,
+                            context_tokens=int(next_context),
+                        )
+                    else:
+                        requested = int(next_context)
+                    continue
+                return
+            raise MemoryError(
+                "GGUF resident context sizing exhausted its attempts"
+            )  # pragma: no cover - the loop always returns or raises
 
     def _try_prefill_native_work_batch(self, work: WorkItem) -> frozenset[int]:
         """Run one full-prompt scheduler work item as native cN.

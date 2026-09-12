@@ -56,13 +56,14 @@ remaining HIP memory for KV cache plus persistent context metadata, then
 preallocates `min(model max context, estimated allocatable context)`. This
 automatic context selection applies to both resident routes (PARO and GGUF). Pass
 `--max-context-tokens` (or `HIPENGINE_MAX_CONTEXT_TOKENS`) to force a lower cap.
-Startup fails with a clear error if the requested cap cannot be allocated; lower
-`--max-context-tokens` or use `--kv-storage int8_per_token_head`. When an
-automatic selection still fails to allocate, the resident session re-prices
-against current free memory and retries at a smaller block-aligned context
-before giving up, so a near miss degrades instead of aborting startup. Set
-`HIPENGINE_GGUF_AUTO_CONTEXT=0` to keep the previous fixed 256-token resident
-context on the GGUF route. Disable eager
+When a context cannot be allocated — automatic or explicitly requested — the
+resident route re-prices against current free memory and retries at a smaller
+block-aligned context before giving up, logging `GGUF context request: requested
+N tokens failed to allocate ... retrying at M tokens` so a substitution is never
+silent. Startup fails only when the retries are exhausted. Set
+`HIPENGINE_GGUF_AUTO_CONTEXT=0` for the full rollback: it turns off both the
+automatic sizing and the backoff, restoring the fixed 256-token resident context
+on the GGUF route and a hard failure on an unsatisfiable request. Disable eager
 startup with `--no-eager-load` or `HIPENGINE_EAGER_LOAD=0`. The warmup prompt and
 token count are configurable via `--eager-load-prompt` and
 `--eager-load-max-tokens`. Eager startup logs `LOAD_TIMING` rows for resident
