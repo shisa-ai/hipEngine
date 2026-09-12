@@ -36,10 +36,18 @@ from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+# The venv installs ``hipengine`` as an editable pointing at another worktree, and
+# child mode re-runs this file, so ``sys.path[0]`` is this script's directory and
+# ``hipengine`` would otherwise resolve to that other tree. Put this worktree
+# first, as every sibling script does.
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 DEFAULT_PROMPT_IDS = "760,4087,369,220,16,17,18,19"
 SERIAL_MARKER_PREFIX = "gguf_mtp_verify_serial_"
 BLOCK_MARKER_PREFIX = "gguf_mtp_verify_block_"
+# The native accept/commit bucket covers one root row plus B1-B7 draft rows.
+NATIVE_SPEC_TARGET_ROWS = frozenset({2, 3, 4, 5, 6, 7, 8})
 
 
 def _marker_prefix(mode: str) -> str:
@@ -791,8 +799,11 @@ def main() -> int:
     )
     args = parser.parse_args()
     if args.native_spec_target_cycle:
-        if args.mode != "block-verify" or int(args.block_rows) != 3:
-            parser.error("--native-spec-target-cycle requires --mode block-verify --block-rows 3")
+        if args.mode != "block-verify" or int(args.block_rows) not in NATIVE_SPEC_TARGET_ROWS:
+            parser.error(
+                "--native-spec-target-cycle requires --mode block-verify --block-rows "
+                f"in {sorted(NATIVE_SPEC_TARGET_ROWS)} (one root row plus B1-B7 drafts)"
+            )
         if args.block_verify_mode != "bulk" or args.block_wmma_prefill:
             parser.error("--native-spec-target-cycle requires bulk non-WMMA block verification")
         if args.return_logits or args.sync_stage_timings:

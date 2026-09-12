@@ -11,11 +11,32 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
+from scripts import gguf_mtp_verifier_rocprof as profiler
 from scripts.gguf_mtp_verifier_rocprof import (
+    NATIVE_SPEC_TARGET_ROWS,
     _default_roctx_sdk,
     _prepare_roctx_override,
     _roctx_candidates,
 )
+
+
+def test_module_puts_its_own_worktree_first_on_sys_path() -> None:
+    """Child mode re-runs this file, so sys.path[0] is scripts/ and hipengine
+    would otherwise resolve to the editable install's other worktree."""
+
+    import importlib
+
+    saved = list(sys.path)
+    try:
+        sys.path[:] = [entry for entry in sys.path if entry != str(profiler.REPO_ROOT)]
+        assert str(profiler.REPO_ROOT) not in sys.path
+        importlib.reload(profiler)
+        assert sys.path[0] == str(profiler.REPO_ROOT), sys.path[:3]
+    finally:
+        sys.path[:] = saved
+    assert (profiler.REPO_ROOT / "hipengine" / "__init__.py").is_file()
 
 
 def test_candidates_cover_the_base_prefix_not_just_the_venv() -> None:
@@ -56,3 +77,44 @@ def test_a_missing_library_says_what_was_searched(tmp_path) -> None:
         assert "--roctx-sdk" in message
     else:  # pragma: no cover
         raise AssertionError("expected FileNotFoundError for a non-existent SDK path")
+
+
+def test_native_cycle_accepts_every_bucket_row_count(monkeypatch) -> None:
+    """The native graph covers one root plus B1-B7 drafts; B3 verifies four rows."""
+
+    assert NATIVE_SPEC_TARGET_ROWS == frozenset(range(2, 9))
+    monkeypatch.setattr(profiler, "_run_child", lambda _args: 0)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "gguf_mtp_verifier_rocprof.py",
+            "--child",
+            "--native-spec-target-cycle",
+            "--mode",
+            "block-verify",
+            "--block-rows",
+            "4",
+        ],
+    )
+    assert profiler.main() == 0
+
+
+@pytest.mark.parametrize("rows", ("1", "9"))
+def test_native_cycle_rejects_rows_outside_the_bucket(monkeypatch, rows) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "gguf_mtp_verifier_rocprof.py",
+            "--child",
+            "--native-spec-target-cycle",
+            "--mode",
+            "block-verify",
+            "--block-rows",
+            rows,
+        ],
+    )
+    with pytest.raises(SystemExit) as excinfo:
+        profiler.main()
+    assert excinfo.value.code == 2
