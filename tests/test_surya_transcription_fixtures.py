@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 PIL = pytest.importorskip("PIL")
@@ -24,6 +25,7 @@ from scripts.surya_bench_pages import (  # noqa: E402
 )
 
 FIXTURES = Path("tests/fixtures/surya")
+MODEL_ID = "datalab-to/surya-ocr-2"
 
 
 def test_every_page_has_ground_truth() -> None:
@@ -167,3 +169,48 @@ def test_a4_ground_truth_is_paragraph_level_not_drawn_line_level() -> None:
     # Reading order: each paragraph follows its heading.
     for heading_text, lines in _A4_SECTIONS:
         assert units.index(" ".join(lines)) == units.index(heading_text) + 1
+
+
+def test_a4_page_prompt_is_the_8580_image_token_prefill() -> None:
+    """Close the loop from the A4 image to the prefill the page actually runs.
+
+    The 8580-image-token number is used as evidence for the page-scale memory
+    plan, so it must be what the model is fed and not only what the grid
+    arithmetic predicts. `render_chat_prompt` is the same call the generator
+    makes, and its output is the exact `input_ids` handed to the prefill.
+    """
+
+    from PIL import Image
+
+    from hipengine.generation.surya_protocol import FULL_PAGE_HTML_PROMPT
+    from hipengine.loading.surya import preprocess_image_surya, render_chat_prompt
+
+    page = FIXTURES / "page_a4.png"
+    assert page.exists(), "page_a4.png is not committed"
+
+    # preprocess_image_surya takes a path or an array; the generator passes the
+    # decoded page, so decode it here too.
+    with Image.open(page) as image:
+        array = np.asarray(image.convert("RGB"))
+    _pixel_rows, grid = preprocess_image_surya(array)
+    n_image_tokens = (grid[1] // 2) * (grid[2] // 2)
+    assert grid == (1, 220, 156)
+    assert n_image_tokens == 8580
+
+    from hipengine.loading.surya import SuryaTokenizer, resolve_surya_path
+
+    try:
+        tokenizer = SuryaTokenizer(resolve_surya_path(MODEL_ID))
+    except (FileNotFoundError, ImportError) as exc:
+        pytest.skip(f"cannot build the Surya tokenizer locally: {exc}")
+
+    input_ids, mm = render_chat_prompt(tokenizer, FULL_PAGE_HTML_PROMPT, n_image_tokens)
+
+    # The image pads are the prefill's vision slots, and nothing else is one.
+    assert sum(mm) == 8580
+    assert len(input_ids) == 8701, "121 text tokens plus 8580 image tokens"
+    assert len(input_ids) == len(mm)
+    # They are contiguous, so the vision features land in one span.
+    first = mm.index(1)
+    assert mm[first:first + 8580] == [1] * 8580
+    assert 1 not in mm[:first] and 1 not in mm[first + 8580:]
