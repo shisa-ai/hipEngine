@@ -42,6 +42,9 @@ _JA_BODY = (
     "今後は、異常検知モデルの精度検証を継続し、四半期ごとに結果を報告する。",
 )
 _JA_HEADING = "製造工程 歩留まり改善 中間報告"
+_LONG_TITLE = "Annual process qualification report"
+_MIXED_HEADING = "Mixed script page / 混在文書"
+_SCAN_HEADING = "Scanned inspection record"
 
 _MIXED_LINES = (
     "Summary: the deposition step dominates yield loss in this line.",
@@ -88,6 +91,33 @@ def _font(paths: tuple[str, ...], size: int):
         if Path(candidate).exists():
             return ImageFont.truetype(candidate, size)
     raise RuntimeError(f"no usable font found among {paths}")
+
+
+def _draw_text_fit(
+    draw, xy, text: str, font, *, max_x: int, max_y: int, fill
+) -> None:
+    """Draw one line, refusing to let it run off the canvas.
+
+    The original bench pages had no such check and four of them silently draw
+    text past the page edge (``ja``/``mixed``/``scan`` horizontally, ``long``
+    vertically). A transcription test scored against the *intended* text then
+    reads correct model output as an error, so the acceptance fixtures assert
+    fit here and their ground truth is exactly the visible text.
+    """
+
+    x, y = xy
+    width = draw.textlength(text, font=font)
+    if x + width > max_x:
+        raise ValueError(
+            f"line runs off the page (x={x}, width={width:.1f}, max_x={max_x}): "
+            f"{text!r}"
+        )
+    if y + font.size > max_y:
+        raise ValueError(
+            f"line runs off the page (y={y}, size={font.size}, max_y={max_y}): "
+            f"{text!r}"
+        )
+    draw.text((x, y), text, fill=fill, font=font)
 
 
 def make_page_ja(path: Path, size: int = 512) -> None:
@@ -217,6 +247,22 @@ def make_page_scan(path: Path, size: int = 512) -> None:
     Image.fromarray(pixels).save(path)
 
 
+def _long_blocks() -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """``(heading, body lines)`` per qualification block, in drawing order.
+
+    Shared by :func:`make_page_long` and :data:`GROUND_TRUTH` so the drawn page
+    and its expected text cannot drift apart.
+    """
+
+    return tuple(
+        (
+            f"{block + 1}. Section heading for qualification block",
+            tuple(_DENSE_LINES[block % len(_DENSE_LINES)] for _ in range(3)),
+        )
+        for block in range(6)
+    )
+
+
 def make_page_long(path: Path, size: int = 1024) -> None:
     """A block-heavy full page: many separated regions, so the output runs long."""
 
@@ -228,18 +274,15 @@ def make_page_long(path: Path, size: int = 1024) -> None:
     body = _font(LATIN_FONT_CANDIDATES, 20)
     caption = _font(LATIN_FONT_CANDIDATES, 18)
 
-    draw.text((64, 56), "Annual process qualification report", fill=(10, 10, 10),
-              font=heading)
+    draw.text((64, 56), _LONG_TITLE, fill=(10, 10, 10), font=heading)
     draw.rectangle([64, 118, size - 64, 122], fill=(70, 70, 70))
 
     y = 168
-    for block in range(6):
-        draw.text((64, y), f"{block + 1}. Section heading for qualification block",
-                  fill=(20, 20, 20), font=body)
+    for block_heading, body_lines in _long_blocks():
+        draw.text((64, y), block_heading, fill=(20, 20, 20), font=body)
         y += 36
-        for _ in range(3):
-            draw.text((80, y), _DENSE_LINES[block % len(_DENSE_LINES)],
-                      fill=(45, 45, 45), font=caption)
+        for line in body_lines:
+            draw.text((80, y), line, fill=(45, 45, 45), font=caption)
             y += 28
         draw.rectangle([80, y + 6, 300, y + 70], fill=(215, 215, 215))
         y += 104
@@ -257,18 +300,237 @@ PAGES = {
 }
 
 
+# ---------------------------------------------------------------------------
+# transcription-acceptance fixtures
+# ---------------------------------------------------------------------------
+#
+# Same documents and ground-truth text as PAGES, drawn on a canvas where every
+# line is fully visible. The bench pages are kept as they are so their captured
+# oracles and benchmark artifacts stay valid; these are the pages the
+# transcription acceptance test scores against.
+
+FIT_SIZE = 1024
+FIT_LONG_HEIGHT = 1600
+
+
+def make_page_ja_fit(path: Path, size: int = FIT_SIZE) -> None:
+    """Japanese page with no clipping (the bench page cuts ~28% of each line)."""
+
+    from PIL import Image, ImageDraw
+
+    img = Image.new("RGB", (size, size), (255, 255, 255))
+    draw = ImageDraw.Draw(img)
+    heading = _font(CJK_FONT_CANDIDATES, 26)
+    body = _font(CJK_FONT_CANDIDATES, 17)
+
+    _draw_text_fit(draw, (32, 30), _JA_HEADING, heading, max_x=size - 32,
+                   max_y=size, fill=(10, 10, 10))
+    y = 84
+    for line in _JA_BODY:
+        _draw_text_fit(draw, (32, y), line, body, max_x=size - 32, max_y=size,
+                       fill=(30, 30, 30))
+        y += 52
+    draw.rectangle([32, y + 8, size - 32, y + 11], fill=(150, 150, 150))
+    img.save(path)
+
+
+def make_page_mixed_fit(path: Path, size: int = FIT_SIZE) -> None:
+    """Mixed-script page with no clipping (the bench page cuts the Latin tails)."""
+
+    from PIL import Image, ImageDraw
+
+    img = Image.new("RGB", (size, size), (255, 255, 255))
+    draw = ImageDraw.Draw(img)
+    heading = _font(CJK_FONT_CANDIDATES, 22)
+    cjk = _font(CJK_FONT_CANDIDATES, 16)
+    latin = _font(LATIN_FONT_CANDIDATES, 16)
+
+    _draw_text_fit(draw, (32, 28), _MIXED_HEADING, heading, max_x=size - 32,
+                   max_y=size, fill=(10, 10, 10))
+    y = 80
+    for index, line in enumerate(_MIXED_LINES):
+        font = latin if index % 2 == 0 else cjk
+        _draw_text_fit(draw, (32, y), line, font, max_x=size - 32, max_y=size,
+                       fill=(30, 30, 30))
+        y += 46
+    img.save(path)
+
+
+def make_page_scan_fit(path: Path, size: int = FIT_SIZE) -> None:
+    """Degraded scan with no clipping; keeps the rotation, blur, and speckle.
+
+    The right margin is deliberately wide: the rotation moves every glyph, so a
+    line that only just fits before rotation would still be cut afterwards.
+    """
+
+    import numpy as np
+    from PIL import Image, ImageDraw, ImageFilter
+
+    img = Image.new("RGB", (size, size), (252, 250, 245))
+    draw = ImageDraw.Draw(img)
+    body = _font(LATIN_FONT_CANDIDATES, 17)
+    heading = _font(LATIN_FONT_CANDIDATES, 24)
+    max_x = size - 200
+
+    _draw_text_fit(draw, (36, 40), _SCAN_HEADING, heading, max_x=max_x,
+                   max_y=size, fill=(25, 25, 25))
+    y = 96
+    for line in _DENSE_LINES[:8]:
+        _draw_text_fit(draw, (36, y), line, body, max_x=max_x, max_y=size,
+                       fill=(45, 45, 45))
+        y += 40
+
+    img = img.rotate(-1.4, resample=Image.BILINEAR, fillcolor=(252, 250, 245))
+    img = img.filter(ImageFilter.GaussianBlur(radius=0.7))
+
+    rng = np.random.default_rng(_SCAN_SEED)
+    pixels = np.asarray(img).astype(np.int16)
+    speckle = rng.normal(0.0, 7.0, pixels.shape)
+    pixels = np.clip(pixels + speckle, 0, 255).astype(np.uint8)
+    Image.fromarray(pixels).save(path)
+
+
+def make_page_long_fit(path: Path, width: int = FIT_SIZE,
+                       height: int = FIT_LONG_HEIGHT) -> None:
+    """Block-heavy page on a tall enough canvas (the bench page overflows).
+
+    ``page_long.png`` draws six 224 px blocks from y=168 on a 1024 px canvas,
+    so blocks 5 and 6 land off the bottom edge and are simply not in the image.
+    """
+
+    from PIL import Image, ImageDraw
+
+    img = Image.new("RGB", (width, height), (255, 255, 255))
+    draw = ImageDraw.Draw(img)
+    heading = _font(LATIN_FONT_CANDIDATES, 36)
+    body = _font(LATIN_FONT_CANDIDATES, 20)
+    caption = _font(LATIN_FONT_CANDIDATES, 18)
+
+    _draw_text_fit(draw, (64, 56), _LONG_TITLE, heading, max_x=width - 64,
+                   max_y=height, fill=(10, 10, 10))
+    draw.rectangle([64, 118, width - 64, 122], fill=(70, 70, 70))
+
+    y = 168
+    for block_heading, body_lines in _long_blocks():
+        _draw_text_fit(draw, (64, y), block_heading, body, max_x=width - 64,
+                       max_y=height, fill=(20, 20, 20))
+        y += 36
+        for line in body_lines:
+            _draw_text_fit(draw, (80, y), line, caption, max_x=width - 64,
+                           max_y=height, fill=(45, 45, 45))
+            y += 28
+        if y + 70 > height:
+            raise ValueError(
+                f"image block runs off the page (y={y + 70}, height={height})"
+            )
+        draw.rectangle([80, y + 6, 300, y + 70], fill=(215, 215, 215))
+        y += 104
+    img.save(path)
+
+
+# Acceptance fixture name -> (generator, kwargs). Only the pages that clip or
+# overflow on the bench canvas need a re-render; ground truth is shared with the
+# same-named bench page, since only the rendering changes, never the text.
+FIT_PAGES = {
+    "ja": (make_page_ja_fit, {}),
+    "mixed": (make_page_mixed_fit, {}),
+    "scan": (make_page_scan_fit, {}),
+    "long": (make_page_long_fit, {}),
+}
+
+
+# ---------------------------------------------------------------------------
+# independent ground truth
+# ---------------------------------------------------------------------------
+#
+# The text actually drawn on each fixture page. This is the reference a
+# transcription acceptance test scores against: it comes from the drawing
+# source, never from a model run, so reproducing a model's output (including
+# its mistakes) cannot satisfy it. ``lines`` is in drawn reading order.
+# ``table`` is the ruled grid for pages that have one.
+
+GROUND_TRUTH: dict[str, dict[str, object]] = {
+    "ja": {"lines": (_JA_HEADING, *_JA_BODY)},
+    "mixed": {"lines": (_MIXED_HEADING, *_MIXED_LINES)},
+    "dense": {"lines": _DENSE_LINES},
+    "table": {
+        "lines": ("Inspection summary",),
+        "table": {"header": _TABLE_HEADER, "rows": _TABLE_ROWS},
+    },
+    "blank": {"lines": ()},
+    "scan": {"lines": (_SCAN_HEADING, *_DENSE_LINES[:8])},
+    "long": {
+        "lines": (
+            _LONG_TITLE,
+            *tuple(
+                line
+                for block_heading, body_lines in _long_blocks()
+                for line in (block_heading, *body_lines)
+            ),
+        )
+    },
+}
+
+
+def expected_lines(page: str) -> tuple[str, ...]:
+    """Drawn reading-order text lines for a fixture page name."""
+
+    return tuple(GROUND_TRUTH[page]["lines"])  # type: ignore[arg-type]
+
+
+def acceptance_page(name: str) -> str:
+    """Fixture filename a transcription test should score for ``name``.
+
+    ``page_<name>_fit.png`` when the bench page does not fit its canvas,
+    otherwise the bench page itself.
+    """
+
+    if name not in GROUND_TRUTH:
+        raise KeyError(f"unknown page {name!r}; known: {sorted(GROUND_TRUTH)}")
+    return f"page_{name}_fit.png" if name in FIT_PAGES else f"page_{name}.png"
+
+
+def write_fit_pages(out_dir: Path, only: list[str] | None = None) -> list[Path]:
+    """Write the transcription-acceptance fixtures; returns the paths written."""
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    wanted = list(only) if only else list(FIT_PAGES)
+    unknown = [name for name in wanted if name not in FIT_PAGES]
+    if unknown:
+        raise SystemExit(f"unknown fit page(s) {unknown}; known: {sorted(FIT_PAGES)}")
+    written: list[Path] = []
+    for name in wanted:
+        generator, kwargs = FIT_PAGES[name]
+        path = out_dir / f"page_{name}_fit.png"
+        generator(path, **kwargs)
+        written.append(path)
+    return written
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out-dir", type=Path, default=Path("tests/fixtures/surya"))
     parser.add_argument("--only", default=None,
                         help="comma-separated page names (default: all)")
+    parser.add_argument(
+        "--fit",
+        action="store_true",
+        help="write the transcription-acceptance fixtures (page_<name>_fit.png) "
+             "instead of the bench pages",
+    )
     args = parser.parse_args()
 
-    args.out_dir.mkdir(parents=True, exist_ok=True)
-    wanted = (
+    only = (
         [name.strip() for name in args.only.split(",") if name.strip()]
-        if args.only else list(PAGES)
+        if args.only else None
     )
+    if args.fit:
+        for path in write_fit_pages(args.out_dir, only):
+            print(f"wrote {path}")
+        return 0
+
+    args.out_dir.mkdir(parents=True, exist_ok=True)
+    wanted = only if only is not None else list(PAGES)
     unknown = [name for name in wanted if name not in PAGES]
     if unknown:
         raise SystemExit(f"unknown page(s) {unknown}; known: {sorted(PAGES)}")
