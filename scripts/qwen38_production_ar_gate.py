@@ -15,6 +15,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from hipengine.benchmark.provenance import collect_artifact_provenance
+from hipengine.core.dtype import DType
 from scripts.execution_profile_gdn_calibration import (
     PromptCalibrationCapture,
     build_candidate_quality,
@@ -40,7 +41,8 @@ def profile_identity(llm, generator, session, *, requested):
     digest = llm.execution_profile_manifest_sha256
     if not digest or digest != generator.execution_profile_manifest_sha256:
         raise ValueError("LLM and generator manifest identities differ")
-    if str(session.kv_storage_dtype) != "bf16":
+    kv_dtype = DType.parse(session.kv_storage_dtype)
+    if kv_dtype != DType.BF16:
         raise ValueError("gate requires actual BF16 KV storage")
     return {
         "requested": requested,
@@ -48,7 +50,7 @@ def profile_identity(llm, generator, session, *, requested):
         "manifest_sha256": digest,
         "manifest": llm.execution_profile_manifest,
         "fp16_recurrent_state": bool(session.runner.fp16_recurrent_state),
-        "kv_storage_dtype": str(session.kv_storage_dtype),
+        "kv_storage_dtype": kv_dtype.value,
     }
 
 

@@ -6,16 +6,18 @@ from contextlib import contextmanager
 import hipengine
 import pytest
 
+from hipengine.core.dtype import DType
 from scripts.qwen38_production_ar_gate import profile_identity, profile_session
 
 
-def test_profile_identity_records_actual_default_and_state_dtype():
+@pytest.mark.parametrize("kv_dtype", ["bf16", DType.BF16])
+def test_profile_identity_records_actual_default_and_state_dtype(kv_dtype):
     llm = SimpleNamespace(execution_profile_manifest={"execution_profile": "production"},
                           execution_profile_manifest_sha256="abc")
     generator = SimpleNamespace(execution_profile="production",
                                 execution_profile_manifest_sha256="abc",
                                 execution_profile_fell_back_to_strict=False)
-    session = SimpleNamespace(kv_storage_dtype="bf16",
+    session = SimpleNamespace(kv_storage_dtype=kv_dtype,
                               runner=SimpleNamespace(fp16_recurrent_state=True))
     result = profile_identity(llm, generator, session, requested=None)
     assert result["requested"] is None
