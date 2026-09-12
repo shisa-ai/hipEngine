@@ -113,9 +113,9 @@ def test_native_device_accept_commit_defaults_to_the_production_bucket(monkeypat
 
 
 def test_native_cycle_accepts_every_bucket_row_count(monkeypatch) -> None:
-    """The production native leaf is B1-B3: four rows is the B3 verifier shape."""
+    """The census covers the whole native graph envelope, not just B1-B3."""
 
-    assert NATIVE_SPEC_TARGET_ROWS == frozenset({2, 3, 4})
+    assert NATIVE_SPEC_TARGET_ROWS == frozenset({2, 3, 4, 5, 6, 7, 8})
     monkeypatch.setattr(profiler, "_run_child", lambda _args: 0)
     monkeypatch.setattr(
         sys,
@@ -134,9 +134,14 @@ def test_native_cycle_accepts_every_bucket_row_count(monkeypatch) -> None:
 
 
 @pytest.mark.parametrize("rows", ("5", "6", "7", "8"))
-def test_native_bucket_stops_at_four_rows(monkeypatch, rows) -> None:
-    """The graph builder admits 2-8 rows, but the fused add/RMSNorm and device
-    accept/commit kernels raise `rows must be 2, 3, or 4` above four."""
+def test_native_bucket_admits_rows_above_the_budget_envelope(monkeypatch, rows) -> None:
+    """Five to eight rows are reachable and must be capturable.
+
+    The fused rounded add/RMSNorm wrapper used to cap the whole chain at four
+    rows.  Its device kernel is one block per row with an identical reduction
+    tree, so the cap was a wrapper guard rather than a kernel limit, and rows
+    five to eight now run the real native cycle.
+    """
 
     monkeypatch.setattr(profiler, "_run_child", lambda _args: 0)
     monkeypatch.setattr(
@@ -152,9 +157,7 @@ def test_native_bucket_stops_at_four_rows(monkeypatch, rows) -> None:
             rows,
         ],
     )
-    with pytest.raises(SystemExit) as excinfo:
-        profiler.main()
-    assert excinfo.value.code == 2
+    assert profiler.main() == 0
 
 
 @pytest.mark.parametrize("rows", ("1", "9"))
@@ -175,3 +178,68 @@ def test_native_cycle_rejects_rows_outside_the_bucket(monkeypatch, rows) -> None
     with pytest.raises(SystemExit) as excinfo:
         profiler.main()
     assert excinfo.value.code == 2
+
+
+_TWO_CARD_ROCminfo = """\
+=====================
+HSA Agents
+=====================
+*******
+Agent 1
+*******
+  Name:                    AMD Ryzen 9 5950X 16-Core Processor
+  Marketing Name:          AMD Ryzen 9 5950X 16-Core Processor
+*******
+Agent 2
+*******
+  Name:                    gfx1100
+  Marketing Name:          AMD Radeon Pro W7900
+*******
+Agent 3
+*******
+  Name:                    gfx1100
+  Marketing Name:          AMD Radeon RX 7900 XTX
+"""
+
+
+def _label_for(monkeypatch, visible: str | None) -> str:
+    class _Result:
+        stdout = _TWO_CARD_ROCminfo
+
+    monkeypatch.setattr(profiler.subprocess, "run", lambda *a, **k: _Result())
+    for name in ("HIP_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES"):
+        monkeypatch.delenv(name, raising=False)
+    if visible is not None:
+        monkeypatch.setenv("HIP_VISIBLE_DEVICES", visible)
+    return profiler._hardware_label()
+
+
+def test_hardware_label_names_the_card_the_process_will_use(monkeypatch) -> None:
+    """The evidence policy binds a rate to a physical device.
+
+    rocminfo lists every card in the machine, so reporting the first gfx agent
+    mislabels a run pinned to a second card.
+    """
+
+    assert _label_for(monkeypatch, None) == (
+        "AMD Radeon Pro W7900 (gfx1100), visible ordinal 0 of 2"
+    )
+    assert _label_for(monkeypatch, "1") == (
+        "AMD Radeon RX 7900 XTX (gfx1100), visible ordinal 1 of 2"
+    )
+
+
+def test_hardware_label_survives_an_unmappable_visibility_selection(monkeypatch) -> None:
+    """A UUID selection cannot be mapped to an ordinal, so do not guess."""
+
+    assert _label_for(monkeypatch, "GPU-cc4d02090dc9c3ff") == "unknown AMD GPU (unknown)"
+
+
+def test_visible_gpu_index_prefers_hip_over_rocr(monkeypatch) -> None:
+    for name in ("HIP_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES"):
+        monkeypatch.delenv(name, raising=False)
+    assert profiler._visible_gpu_index() == 0
+    monkeypatch.setenv("ROCR_VISIBLE_DEVICES", "1")
+    assert profiler._visible_gpu_index() == 1
+    monkeypatch.setenv("HIP_VISIBLE_DEVICES", "0")
+    assert profiler._visible_gpu_index() == 0

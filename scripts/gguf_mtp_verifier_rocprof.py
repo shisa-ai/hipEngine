@@ -46,10 +46,13 @@ DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 DEFAULT_PROMPT_IDS = "760,4087,369,220,16,17,18,19"
 SERIAL_MARKER_PREFIX = "gguf_mtp_verify_serial_"
 BLOCK_MARKER_PREFIX = "gguf_mtp_verify_block_"
-# The production native target graph is B1-B3: the graph builder admits 2-8 rows,
-# but the fused rounded add/RMSNorm and the device accept/commit kernels are
-# fixed to rows 2-4, so five to eight rows raise inside the verifier.
-NATIVE_SPEC_TARGET_ROWS = frozenset({2, 3, 4})
+# The native target graph admits two to eight rows (one root row plus B1-B7
+# drafts).  The old cap of four came from the fused rounded add/RMSNorm
+# wrapper; its device kernel is one block per row with an identical reduction
+# tree, so the wrapper now matches the graph envelope.  The device
+# accept/commit path was never row-capped: it binds positions from a device
+# array, not from the four-scalar ``prepare_packed_decode_metadata`` ABI.
+NATIVE_SPEC_TARGET_ROWS = frozenset({2, 3, 4, 5, 6, 7, 8})
 
 
 def _marker_prefix(mode: str) -> str:
@@ -492,7 +495,37 @@ def _run_parent(args: argparse.Namespace) -> int:
     return 0
 
 
+def _visible_gpu_index() -> int:
+    """The rocminfo ordinal this process will actually use.
+
+    ``HIP_VISIBLE_DEVICES``/``ROCR_VISIBLE_DEVICES`` renumber the visible set,
+    so ordinal 0 is the first listed entry, not the first card in the machine.
+    Returns ``-1`` when the selection cannot be mapped to an ordinal (a UUID
+    entry, for example).
+    """
+
+    for name in ("HIP_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES"):
+        raw = os.environ.get(name)
+        if raw is None:
+            continue
+        entries = [part.strip() for part in raw.split(",") if part.strip()]
+        if not entries:
+            continue
+        if not entries[0].isdigit():
+            return -1
+        return int(entries[0])
+    return 0
+
+
 def _hardware_label() -> str:
+    """Label the GPU this process will actually use.
+
+    ``rocminfo`` lists every card in the machine, so the first gfx agent is
+    only the right answer on a single-card host or at ordinal 0.  The evidence
+    policy binds a rate to a physical device, so the label has to name the card
+    that was measured.
+    """
+
     result = subprocess.run(
         ["rocminfo"],
         capture_output=True,
@@ -500,20 +533,25 @@ def _hardware_label() -> str:
         check=False,
         timeout=15,
     )
-    marketing = "unknown AMD GPU"
-    arch = "unknown"
-    waiting_for_marketing = False
+    devices: list[tuple[str, str]] = []
+    arch: str | None = None
     for line in result.stdout.splitlines():
         text = line.strip()
-        if text.startswith("Name:") and arch == "unknown":
+        if text.startswith("Name:"):
             candidate = text.split(":", 1)[1].strip()
-            if candidate.startswith("gfx"):
-                arch = candidate
-                waiting_for_marketing = True
-        elif text.startswith("Marketing Name:") and waiting_for_marketing:
-            marketing = text.split(":", 1)[1].strip()
-            break
-    return f"{marketing} ({arch})"
+            arch = candidate if candidate.startswith("gfx") else None
+        elif text.startswith("Marketing Name:") and arch is not None:
+            devices.append((arch, text.split(":", 1)[1].strip()))
+            arch = None
+    if not devices:
+        return "unknown AMD GPU (unknown)"
+    index = _visible_gpu_index()
+    if not 0 <= index < len(devices):
+        return "unknown AMD GPU (unknown)"
+    arch, marketing = devices[index]
+    if len(devices) == 1:
+        return f"{marketing} ({arch})"
+    return f"{marketing} ({arch}), visible ordinal {index} of {len(devices)}"
 
 
 def _prepare_roctx_override(sdk_path: Path) -> Path:
@@ -839,8 +877,8 @@ def main() -> int:
         if args.mode != "block-verify" or int(args.block_rows) not in NATIVE_SPEC_TARGET_ROWS:
             parser.error(
                 "--native-spec-target-cycle requires --mode block-verify --block-rows "
-                f"in {sorted(NATIVE_SPEC_TARGET_ROWS)} (one root row plus B1-B3 drafts; the "
-                "fused add/RMSNorm and device accept/commit kernels are fixed to four rows)"
+                f"in {sorted(NATIVE_SPEC_TARGET_ROWS)} (one root row plus B1-B7 drafts; "
+                "the native target graph is defined for two to eight rows)"
             )
         if args.block_wmma_prefill:
             parser.error("--native-spec-target-cycle requires non-WMMA block verification")

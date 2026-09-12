@@ -414,7 +414,13 @@ def gguf_rounded_add_rmsnorm_bf16_f32_weight(
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Add BF16 inputs, round, then normalize that rounded residual."""
+    """Add BF16 inputs, round, then normalize that rounded residual.
+
+    The device kernel is one block per row with an identical 256-thread
+    reduction tree, so it is row-count agnostic; the guard matches the
+    ``2 <= rows <= 8`` envelope every caller already declares (B1-B7
+    verifier rows plus the root row).
+    """
 
     if not 2 <= int(rows) <= 8:
         raise ValueError("rows must be between 2 and 8")

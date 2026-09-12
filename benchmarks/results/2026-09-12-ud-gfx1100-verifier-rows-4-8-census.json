@@ -1,0 +1,254 @@
+{
+  "schema": "hipengine.ud_gfx1100_verifier_rows_census.v1",
+  "kind": "attribution",
+  "performance_claim": false,
+  "date": "2026-09-12",
+  "plan": "docs/UD-GFX1151-OPTIMIZE.md",
+  "phase": "Phase 5: lifecycle and serving coverage",
+  "unit": "Lift the rows 5-8 verifier cap and attribute the cost of the newly reachable rows.",
+  "host": {
+    "hostname": "epyc",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+    "physical_gpu": "GPU1 = AMD Radeon RX 7900 XTX, gfx1100 / RDNA3, rocminfo uuid GPU-cc4d02090dc9c3ff",
+    "gpu_selection": "HIP_VISIBLE_DEVICES=1 (device 0 is the W7900, uuid GPU-e282895b62c2b295)",
+    "note": "Single physical GPU by construction; no concurrent GPU work. Each arm records the device label the profiler resolved."
+  },
+  "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+  "quant_axis": "gguf_ud_q4_k_m",
+  "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/gguf_mtp_verifier_rocprof.py --model /models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf --quant gguf_ud_q4_k_m --prompt-ids 760,4087,369,220,16,17,18,19 --steps 3 --warmup 1 --max-seq 512 --mode block-verify --block-rows {4,5,6,8} --block-verify-mode native --native-spec-target-cycle --direct-state-commit --require-cached --out <out>",
+  "protocol": {
+    "profiler": "rocprofv3 --kernel-trace --marker-trace",
+    "route": "native target cycle with device accept/commit and deferred linear-state commit",
+    "warmup_steps": 1,
+    "measured_steps": 3
+  },
+  "arms": {
+    "4": {
+      "block_rows": 4,
+      "avg_host_ms_per_step": 51.1452816426754,
+      "avg_kernel_ms_per_step": 45.54111,
+      "kernel_time_share_of_host_wall": 0.8904264193551864,
+      "host_residual_ms_per_step": 5.6041716426753965,
+      "kernel_calls_per_step": 1032.0,
+      "ms_per_row": 12.78632041066885,
+      "top_kernels": [
+        {
+          "name": "gguf_iq4_xs_local32_gemv",
+          "calls": 351,
+          "pct_kernel": 26.012760046179515,
+          "ms_per_step": 11.846499666666666,
+          "us_per_call": 101.2521339031339
+        },
+        {
+          "name": "q5_k_t16_dense_rowtile_gemv",
+          "calls": 324,
+          "pct_kernel": 19.649695992624398,
+          "ms_per_step": 8.948689666666668,
+          "us_per_call": 82.858237654321
+        },
+        {
+          "name": "gguf_q5_k_t16_dense_dual_wmma_prefill_silu_bf16",
+          "calls": 27,
+          "pct_kernel": 11.860300872479097,
+          "ms_per_step": 5.401312666666666,
+          "us_per_call": 600.1458518518517
+        },
+        {
+          "name": "q4_k_t16_dense_rowtile_gemv",
+          "calls": 276,
+          "pct_kernel": 10.339873870736414,
+          "ms_per_step": 4.708893333333329,
+          "us_per_call": 51.18362318840575
+        },
+        {
+          "name": "gguf_iq_dense_strict",
+          "calls": 33,
+          "pct_kernel": 7.070538391942284,
+          "ms_per_step": 3.2200016666666667,
+          "us_per_call": 292.7274242424242
+        },
+        {
+          "name": "q6_k_t16_qmicro_planar_gemv_rowtile_col8",
+          "calls": 45,
+          "pct_kernel": 4.776030565204346,
+          "ms_per_step": 2.175057333333333,
+          "us_per_call": 145.00382222222223
+        }
+      ],
+      "iq_family_owner": "gguf_iq4_xs_local32_gemv"
+    },
+    "5": {
+      "block_rows": 5,
+      "avg_host_ms_per_step": 91.3167508939902,
+      "avg_kernel_ms_per_step": 85.481491,
+      "kernel_time_share_of_host_wall": 0.936098691238321,
+      "host_residual_ms_per_step": 5.835259893990194,
+      "kernel_calls_per_step": 1096.0,
+      "ms_per_row": 18.263350178798042,
+      "top_kernels": [
+        {
+          "name": "gguf_iq_dense_strict",
+          "calls": 405,
+          "pct_kernel": 61.788642643119104,
+          "ms_per_step": 52.81785300000002,
+          "us_per_call": 391.2433555555557
+        },
+        {
+          "name": "q5_k_t16_dense_rowtile_gemv",
+          "calls": 324,
+          "pct_kernel": 12.2031633725247,
+          "ms_per_step": 10.431446,
+          "us_per_call": 96.58746296296295
+        },
+        {
+          "name": "gguf_q5_k_t16_dense_dual_wmma_prefill_silu_bf16",
+          "calls": 27,
+          "pct_kernel": 6.534920329517104,
+          "ms_per_step": 5.586147333333334,
+          "us_per_call": 620.6830370370371
+        },
+        {
+          "name": "q4_k_t16_dense_rowtile_gemv",
+          "calls": 279,
+          "pct_kernel": 5.811056415319976,
+          "ms_per_step": 4.9673776666666685,
+          "us_per_call": 53.4126630824373
+        },
+        {
+          "name": "q6_k_t16_qmicro_planar_gemv_rowtile_col8",
+          "calls": 45,
+          "pct_kernel": 2.85451424020357,
+          "ms_per_step": 2.440081333333333,
+          "us_per_call": 162.67208888888888
+        },
+        {
+          "name": "qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop",
+          "calls": 144,
+          "pct_kernel": 2.695415861039048,
+          "ms_per_step": 2.304081666666667,
+          "us_per_call": 48.0017013888889
+        }
+      ],
+      "iq_family_owner": "gguf_iq_dense_strict"
+    },
+    "6": {
+      "block_rows": 6,
+      "avg_host_ms_per_step": 94.97310252239306,
+      "avg_kernel_ms_per_step": 88.64225566666666,
+      "kernel_time_share_of_host_wall": 0.9333406334258303,
+      "host_residual_ms_per_step": 6.330846855726406,
+      "kernel_calls_per_step": 1160.0,
+      "ms_per_row": 15.828850420398844,
+      "top_kernels": [
+        {
+          "name": "gguf_iq_dense_strict",
+          "calls": 405,
+          "pct_kernel": 60.94117069456193,
+          "ms_per_step": 54.01962833333332,
+          "us_per_call": 400.1453950617283
+        },
+        {
+          "name": "q5_k_t16_dense_rowtile_gemv",
+          "calls": 324,
+          "pct_kernel": 12.643278215013234,
+          "ms_per_step": 11.207287,
+          "us_per_call": 103.77117592592595
+        },
+        {
+          "name": "gguf_q5_k_t16_dense_dual_wmma_prefill_silu_bf16",
+          "calls": 27,
+          "pct_kernel": 6.279123455067613,
+          "ms_per_step": 5.5659566666666676,
+          "us_per_call": 618.4396296296297
+        },
+        {
+          "name": "q4_k_t16_dense_rowtile16_w2_gemv",
+          "calls": 279,
+          "pct_kernel": 5.58217292958704,
+          "ms_per_step": 4.948164,
+          "us_per_call": 53.20606451612903
+        },
+        {
+          "name": "q6_k_t16_qmicro_planar_gemv_rowtile_col8",
+          "calls": 45,
+          "pct_kernel": 3.1741802809944293,
+          "ms_per_step": 2.8136650000000003,
+          "us_per_call": 187.5776666666667
+        },
+        {
+          "name": "qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop",
+          "calls": 144,
+          "pct_kernel": 3.010913151138336,
+          "ms_per_step": 2.668941333333333,
+          "us_per_call": 55.60294444444444
+        }
+      ],
+      "iq_family_owner": "gguf_iq_dense_strict"
+    },
+    "8": {
+      "block_rows": 8,
+      "avg_host_ms_per_step": 104.75751447180907,
+      "avg_kernel_ms_per_step": 97.37513033333333,
+      "kernel_time_share_of_host_wall": 0.9295288345117964,
+      "host_residual_ms_per_step": 7.382384138475743,
+      "kernel_calls_per_step": 1288.0,
+      "ms_per_row": 13.094689308976134,
+      "top_kernels": [
+        {
+          "name": "gguf_iq_dense_strict",
+          "calls": 405,
+          "pct_kernel": 59.4648388506565,
+          "ms_per_step": 57.90396433333339,
+          "us_per_call": 428.9182543209881
+        },
+        {
+          "name": "q5_k_t16_dense_rowtile_gemv",
+          "calls": 324,
+          "pct_kernel": 13.481803777885235,
+          "ms_per_step": 13.127924000000002,
+          "us_per_call": 121.55485185185186
+        },
+        {
+          "name": "q4_k_t16_dense_rowtile_gemv",
+          "calls": 279,
+          "pct_kernel": 6.374008755712712,
+          "ms_per_step": 6.206699333333332,
+          "us_per_call": 66.73870250896056
+        },
+        {
+          "name": "gguf_q5_k_t16_dense_dual_wmma_prefill_silu_bf16",
+          "calls": 27,
+          "pct_kernel": 5.574183039775547,
+          "ms_per_step": 5.427868,
+          "us_per_call": 603.0964444444445
+        },
+        {
+          "name": "qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop",
+          "calls": 144,
+          "pct_kernel": 3.4472672729773084,
+          "ms_per_step": 3.356781,
+          "us_per_call": 69.9329375
+        },
+        {
+          "name": "q6_k_t16_qmicro_planar_gemv_rowtile_col8",
+          "calls": 45,
+          "pct_kernel": 3.2647384629431278,
+          "ms_per_step": 3.179043333333334,
+          "us_per_call": 211.93622222222226
+        }
+      ],
+      "iq_family_owner": "gguf_iq_dense_strict"
+    }
+  },
+  "finding": {
+    "cap_was_one_guard": "Rows 5-8 previously raised inside the verifier. The only blocker was the Python and C guard on the fused rounded add/RMSNorm wrapper (hip_gfx1100/add+rmsnorm/gguf_f32_weight/rounded_bf16_out). Its device kernel launches one block per row with an identical 256-thread reduction tree, so it is row-count agnostic and the guard was narrower than every caller's declared 2-8 envelope.",
+    "device_accept_commit_was_never_capped": "The earlier claim that the device accept/commit kernels also cap at four rows is wrong. The verifier binds positions from a device array (prepare_packed_decode_metadata_from_positions); the four-scalar position0..position3 ABI belongs to prepare_packed_decode_metadata, which has no in-tree runtime caller.",
+    "cliff_at_five_rows": "Above four rows the IQ family leaves the rows 2-4 local32 verifier sibling and reverts to gguf_iq_dense_strict, which then owns 59.5-61.8% of verifier kernel time. Rows 5 costs 91.32 ms/step against 51.15 at rows 4, so 25% more rows costs 78% more time: 18.26 ms/row against 12.79. The strict kernel's cost is nearly row-count independent (52.8 / 54.0 / 57.9 ms/step at rows 5 / 6 / 8) because it is dominated by the per-step IQ weight stream, so rows 5 is the worst per-row point of the four.",
+    "reachable_shape": "Budget 4 is the only newly reachable production shape: _GGUF_MTP_CANDIDATE_BUDGETS is (1,2,3,4), so rows 5 = one root row plus B4. Rows 6-8 need a budget policy that admits 5-7, which the declared envelope does not.",
+    "default_path_unchanged": "max_candidate_budget defaults to 3 and candidate_budget to 1, so the measured B1-B3 protocol and every default route are unaffected. Budget 4 requires explicit opt-in."
+  },
+  "notes": [
+    "This is attribution evidence. The per-step times are single-host single-GPU profiler runs at one prompt, not a paired throughput benchmark, and they carry no rate claim.",
+    "The census bucket classifier leaves most kernel time in an 'other' bucket, so the per-family table understates the families it does not name; the top-kernels table is the reliable view and is what this artifact records."
+  ]
+}
