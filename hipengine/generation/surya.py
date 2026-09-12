@@ -99,7 +99,7 @@ class SuryaOCRGenerator:
         from hipengine.generation.registry import FinishDetails, GenerationOutput
 
         settings = resolve_surya_greedy_settings(request, self.spec)
-        token_ids, finish_reason = self._generate_ocr(
+        token_ids, finish_reason, prompt_tokens = self._generate_ocr(
             str(prompt), image, request, settings
         )
         return GenerationOutput(
@@ -110,6 +110,7 @@ class SuryaOCRGenerator:
                 length_limit=settings.max_tokens,
             ),
             generated_token_ids=tuple(token_ids),
+            prompt_tokens=prompt_tokens,
         )
 
     # -- internals ----------------------------------------------------------
@@ -159,7 +160,7 @@ class SuryaOCRGenerator:
 
     def _generate_ocr(
         self, prompt: str, image: Any, request: Any, settings: Any
-    ) -> tuple[list[int], str]:
+    ) -> tuple[list[int], str, int]:
         from hipengine.kernels.cpu_reference.surya import vision_forward
 
         # Fail before any work when the request is already abandoned, then
@@ -176,13 +177,16 @@ class SuryaOCRGenerator:
             mm, grid, self.spec.vision_spatial_merge_size
         )
         raise_if_generation_deadline_expired(request)
-        return self._decode_greedy(
+        token_ids, finish_reason = self._decode_greedy(
             np.array([input_ids], dtype=np.int64),
             position_ids,
             merged[None],
             request,
             settings,
         )
+        # The prompt is text *plus* image tokens, so its length is only known
+        # here. A serving front end reports it as usage.prompt_tokens.
+        return token_ids, finish_reason, len(input_ids)
 
 
 def make_surya_generator_cpu(
