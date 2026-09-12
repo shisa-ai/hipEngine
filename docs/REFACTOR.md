@@ -867,6 +867,11 @@ should be removed or collapsed.
   the unbounded FP16 experiment only after a geometry/profile/horizon-owned
   storage plan passes the full long-horizon numerical and serving gates.
   Do not re-enable it by copying the historical D24 verifier manifest.
+- Planar-Q6 integer-MMQ now requires explicit target-verifier workspace
+  admission. The historical `HIPENGINE_GGUF_Q6_INTEGER_MMQ_PREFILL` name is
+  misleading: it no longer authorizes ordinary AR prefill. Rename it with
+  compatibility handling when the verifier configuration is consolidated;
+  widen AR admission only after independent long-prefill/stateful gates.
 
 - The initial audit found two gfx1151 switches that choose behavior from the header
   (`general.file_type`) instead of the file's actual per-tensor format mix:

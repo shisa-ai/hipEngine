@@ -19173,10 +19173,10 @@ class Qwen35GGUFResidentSession:
             workspace_nbytes=int(buffer.nbytes),
         )
 
-    def _q6_integer_mmq_context(self):
-        """Alias the resident staging allocation for the bounded B5 route."""
+    def _q6_integer_mmq_context(self, *, target_verifier: bool = False):
+        """Bind the B5 workspace only in its qualified target-verifier phase."""
 
-        if not bool(self.use_q6_integer_mmq):
+        if not target_verifier or not bool(self.use_q6_integer_mmq):
             return q6_dense_integer_mmq_session(False)
         buffer = self._ensure_prefill_f16_staging_buffer()
         if self._q6_integer_mmq_library is None:
@@ -20444,7 +20444,7 @@ class Qwen35GGUFResidentSession:
                 packed_scratch,
                 request_count=len(job_list),
             ),
-            self._q6_integer_mmq_context(),
+            self._q6_integer_mmq_context(target_verifier=True),
         ):
             for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
                 layer_start = time.perf_counter()

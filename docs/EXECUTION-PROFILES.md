@@ -251,6 +251,15 @@ Evidence: [`C8 automatic promotion`](../benchmarks/results/2026-09-05-w7900-q4km
 
 ### 2.8 Qwen3.8 gfx1151 production planar-Q6 integer-MMQ decision
 
+**September 12 correction:** integer-MMQ workspace admission is target-verifier
+only. Ordinary scalar and packed AR prefill use the registered BF16 owners.
+The public FP32-state long-C8/p512/D128 gate exposed max KL 0.10617 when AR
+prefill inherited this verifier association. Disabling only MMQ restores
+exact strict logits over all 1,032 long-C8 rows and three repeats; disabling
+F16 staging does not repair the failure. F16 staging and the bounded
+verifier kernel remain available. See the
+[phase-scope diagnosis](../benchmarks/results/2026-09-12-gfx1151-qwen38-ar-mmq-scope-rejected.json).
+
 The 2026-09-03 gfx1151 Qwen3.8 `Q4_K_M` production profile qualifies one
 shape- and row-bounded T2 association: BF16→Q8_1 activation packing plus the
 sole-resident planar-Q6 integer `mmq64x64` consumer at physical rows17-48 for

@@ -208,7 +208,7 @@ def test_b5_q6_integer_mmq_resident_context_reuses_session_owned_workspace(
         clear=False,
     ):
         with session._prefill_f16_staging_context():
-            with session._q6_integer_mmq_context():
+            with session._q6_integer_mmq_context(target_verifier=True):
                 owner = current()
                 assert owner is not None
                 assert owner.ptr == allocation.ptr
@@ -224,7 +224,7 @@ def test_b5_packed_target_verifier_enters_integer_mmq_context() -> None:
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
     source = inspect.getsource(Qwen35GGUFResidentSession.verify_target_blocks_batch)
-    assert "self._q6_integer_mmq_context()" in source
+    assert "self._q6_integer_mmq_context(target_verifier=True)" in source
 
 
 def test_b5_q6_integer_mmq_composite_launch_uses_owner_workspace(monkeypatch) -> None:
