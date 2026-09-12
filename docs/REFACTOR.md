@@ -6334,11 +6334,38 @@ per-head cache pointer arrays from `max_seq * hd` strides. The architectural
 invariant is that every paged-KV-write and attention-decode kernel reads
 `KVLiveSpans` `(base_offsets, live_counts, token_positions, evict_mask)`. Dense
 Surya KV is a uniform fill, so the behaviour is equivalent, but the ABI is not.
-Adopt `KVLiveSpans` for the Surya KV path when a second KV policy (DMS/H2O/
-SnapKV) is wired to the Surya model, or when the Surya attention kernels are
-shared with the Qwen3.5 decode path — whichever comes first. Until then the
-dense offset scheme is the contract of record, and `docs/MODEL-SURYA.md`
-records the gap.
+
+Assessed 2026-09-12; the blocker is device-side and concrete, not a matter of
+wiring. `hipengine.kvcache.KVLiveSpans` is a frozen dataclass over hipEngine
+`Tensor` descriptors, and `Tensor.from_handle` wraps a raw device pointer, so
+the *host* half is small: build one `KVLiveSpans` per request from the runner's
+existing plane pointers plus two int32 `base_offsets`/`live_counts` device
+arrays. The *kernel* half has no drop-in:
+
+- Every spans-aware attention or KV-write kernel in `hip_gfx1100` stores BF16
+  (`laguna_kv_attention`, `paged_attn_decode`, `paged_kv_write`) or int8 with
+  per-token-head scales (`..._int8_scale_f32_spans`). Surya stores fp32 KV, so
+  none of them can be registered for it.
+- The one plain dense-context decode kernel
+  (`hipengine_qwen35_full_attn_decode_context_bf16`) is BF16-only, takes a
+  device `context_len` scalar rather than the spans ABI, and reserves
+  `(max_context_len + 256) * 4` bytes of LDS. At Surya's 16384-token default
+  context that is 66560 bytes, above the 64 KiB per-workgroup LDS limit on
+  gfx11, so it cannot run there even at the right dtype.
+
+So the migration is a new fp32-KV spans-aware decode-attention kernel for
+head_dim 256 with GQA repeat 4 (plus a spans-aware `surya_scatter_kv_f32`), and
+that kernel is a fused replacement for the current per-layer sequence of three
+rocBLAS batched GEMMs plus three elementwise kernels over a materialized
+`(heads, total)` score row. That is worth doing for the decode cost as well as
+the ABI, which is why it belongs in its own unit with its own strict RED gate
+against the current path, its own numerical gate, and launch/cycle evidence —
+not as a side effect of a lifecycle change. Adopt it when a second KV policy
+(DMS/H2O/SnapKV) is wired to the Surya model, when the Surya attention kernels
+are shared with the Qwen3.5 decode path, or when Surya decode launch count or
+score-matrix traffic becomes the measured bottleneck — whichever comes first.
+Until then the dense offset scheme is the contract of record, and
+`docs/MODEL-SURYA.md` records the gap.
 
 ## 2026-09-11 Surya vision attention: quadratic score scratch — closed
 
