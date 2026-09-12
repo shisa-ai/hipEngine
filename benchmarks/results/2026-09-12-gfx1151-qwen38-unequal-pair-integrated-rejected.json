@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "kind": "qwen38_unequal_pair_integrated_comparison",
+  "status": "rejected_performance",
+  "performance_claim": false,
+  "source_commit": "684b073b2",
+  "worktree": "/tmp/hipengine-qwen38-release-20260913",
+  "hardware": {"host": "gfx1151", "machine_id": "55ea6c509d0b49eea8de7094a1023668", "gpu": "AMD Radeon 8060S Graphics", "arch": "gfx1151", "queues": 2, "hip_version": "7.15.26333"},
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "model_sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+  "quant": "gguf_q4_k_m",
+  "kv": "bf16",
+  "profile": "production",
+  "manifest_sha256": "c4a4a342e2243c2dcc430174606dde682393a2bd2e30acc83129027fcf572acc",
+  "command": "GPU_MAX_HW_QUEUES=2 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hip1151-t6/hipcc-version-gfx1151.txt PYTHONPATH=. /home/lhl/hipEngine/.venv/bin/python scripts/qwen38_gfx1151_prefill_compare.py --baseline shipped --candidate unequal_pair --rows 32 48 64 128 512 1024 4096 --output /tmp/qwen38-release-20260913/unequal-pair-ab.json",
+  "protocol": {"timing": "same-session counterbalanced synchronized complete-prefill wall", "warmup_pairs": 1, "measured_pairs": 6, "quality": "18 canonical/category-heldout prompts, full logits and IDs through D32"},
+  "correctness": {"full_logit_token_exact": true, "prompts": 18, "candidate_pair_calls": 432, "control_pair_calls": 0, "all_timed_tokens_equal": true},
+  "measurements": [
+    {"rows": 32, "baseline_seconds": 0.17633639834821224, "candidate_seconds": 0.20627959398552775, "candidate_speedup": 0.8548416978200166},
+    {"rows": 48, "baseline_seconds": 0.2561091324314475, "candidate_seconds": 0.2861095720436424, "candidate_speedup": 0.8951435305085889},
+    {"rows": 64, "baseline_seconds": 0.29497687239199877, "candidate_seconds": 0.3240795941092074, "candidate_speedup": 0.9101988454496717},
+    {"rows": 128, "baseline_seconds": 0.4285488738678396, "candidate_seconds": 0.44409748865291476, "candidate_speedup": 0.964988284819536},
+    {"rows": 512, "baseline_seconds": 1.2675130360294133, "candidate_seconds": 1.2823284263722599, "candidate_speedup": 0.9884464930838665},
+    {"rows": 1024, "baseline_seconds": 2.5941405610647053, "candidate_seconds": 2.6241720870602876, "candidate_speedup": 0.9885558092231577},
+    {"rows": 4096, "baseline_seconds": 10.97996064950712, "candidate_seconds": 11.095594827318564, "candidate_speedup": 0.9895783705505594}
+  ],
+  "raw_evidence": {"path": "/tmp/qwen38-release-20260913/unequal-pair-ab.json", "sha256": "bf163ebfe150cb17d862ce5c5a2235b1598773865bf7d4febd3f49c1617753f8"},
+  "decision": "Keep unequal-pair prefill disabled: measured complete-prefill regression at every tested row count. This replaces the prior minimum-percentage rationale with an integrated performance decision; it does not reject small positive wins."
+}

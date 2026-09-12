@@ -1158,6 +1158,9 @@ LAGUNA_DENSE_Q4_PREFILL_MODE = "wmma_pack8"
 # BF16 ULP. The complete p512 A/B also exercised the attention pack8 shapes.
 # Fail closed beyond that measured row/shape matrix until it is expanded.
 GGUF_Q4_PACK8_WMMA_BULK_PREFILL = True
+# Q4T16 gate/up rows33-48: exact 18-prompt gate and +9.2-9.6% complete
+# prefill throughput on the gfx1151 Qwen3.8 Q4_K_M artifact.
+GGUF_Q4_DUAL_SILU_PREFILL_ROW48_MAX_ROWS = 48
 GGUF_Q4_PACK8_WMMA_BULK_PREFILL_SHAPES = frozenset(
     {
         (512, 1_024, 512),
@@ -3451,6 +3454,7 @@ __all__ = [
     "GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS",
     "GGUF_PREFILL_SCRATCH_LIVENESS_MIN_ROWS",
     "GGUF_Q4_K_M_FAIR_PREFILL_BURST_CHUNKS",
+    "GGUF_Q4_DUAL_SILU_PREFILL_ROW48_MAX_ROWS",
     "GGUF_Q4_K_M_MAX_PREFILL_CHUNK_TOKENS",
     "GGUF_Q4_K_M_PREFILL_DECODE_POLICY",
     "GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS",

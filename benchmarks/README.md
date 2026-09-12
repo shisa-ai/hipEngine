@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-12**
+Last updated: **2026-09-13**
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
@@ -644,6 +644,12 @@ the ten-prompt gate is exact. Qwen3.8 W7900 detail is in the direct engine
 c1-c8 table above.
 
 ### Radeon 8060S: Qwen3.8-27B Dense GGUF
+
+For standard `Q4_K_M` with BF16 KV, short 33-48-token prefills use the
+row48 gate/up kernel. Six paired same-host measurements improve complete
+prefill throughput by **9.2-9.6%** versus the previous row64 kernel;
+all 18 category and heldout prompt trajectories match exactly.
+[Short-prefill evidence](results/2026-09-12-gfx1151-qwen38-row48-prefill-retained.json).
 
 Qwen3.8 uses `Q4_K_S` with BF16 K/V. A byte-identical `Q_K_M`-derived Q5T16
 route feeds prefill; decode runs the retained `Q4_K_S` path. hipEngine
