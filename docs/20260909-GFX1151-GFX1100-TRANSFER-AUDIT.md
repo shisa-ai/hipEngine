@@ -670,14 +670,26 @@ governs.
   scope: no gfx1100 change, no gfx1100 qualification, and no gfx1100 row in this
   audit is a work item. A gfx1100 artifact is cited as the reference
   composition or the prior, never as the target.
-- **Focus artifact:** Qwen3.8-27B GGUF `Q4_K_M` (`7e78da5d…c6fe169`,
-  17,106,775,008 bytes) on the physical gfx1151 host.
+- **Test artifacts — two, not three.**
+  - Primary: Qwen3.8-27B GGUF `Q4_K_M` (`7e78da5d…c6fe169`, 17,106,775,008
+    bytes) on the physical gfx1151 host.
+  - Secondary: Qwen3.6-35B-A3B GGUF `UD-Q4_K_M`
+    (`/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`), the MoE lane.
+  - **Qwen3.6-27B `Q4_K_M` is being retired.** Its published gfx1100 rows are
+    to be removed from final validation, so it is not a test target here and its
+    absence from this host is not a limitation to record.
+- **The MoE lane has no equivalent transfer audit.** Sections A-I enumerate the
+  dense Qwen3.8-27B `Q4_K_M` path only. Qwen3.6-35B-A3B is in scope as a test
+  artifact, but its gfx1100-to-gfx1151 transfer surface has never been
+  enumerated, so the MoE items in this section are a first pass and not a
+  complete inventory.
 - **Backlog rule.** Anything else that surfaces is qualified only if its
   artifact is already on this host. Otherwise it gets a backlog entry with a
   named reopen condition, not a fetch and not an investigation.
 - **Excluded and owned elsewhere:** the test-tier migration
   ([`docs/testing/TEST-MIGRATION.md`](testing/TEST-MIGRATION.md)). Section J's
-  release-validation item keeps its content there but is not this pass's work.
+  release-validation item bundles that work together with release-wording fixes;
+  the wording half stays in scope here, the migration half does not.
 
 ### Qwen3.6-27B and Qwen3.8-27B are one dispatch identity
 
@@ -715,6 +727,17 @@ Tracked refactor: rename the three modules to architecture scope
 file names as a defect. The rename changes names only, never the key.
 
 ### New work item: A/B the gfx1100 dense composition against the gfx1151 one
+
+The candidate is not a retiring model's configuration. The gfx1100 plan cites
+two evidence artifacts, and the one behind the production selection that
+differs — the fused R28 `linear_pair_silu` variant — is a **Qwen3.8-27B
+`Q4_K_M` gfx1100 measurement**
+(`benchmarks/results/2026-09-02-w7900-q4km-k3-c7-fused-r28-periodic-strict-retained.json`,
+model `Qwen3.8-27B-Q4_K_M.gguf`, 17,106,773,984 bytes). Only the strict plan's
+`_DENSE_STRICT_EVIDENCE` is a Qwen3.6-27B publication, and that model is being
+retired. So the A/B compares a Qwen3.8-evidenced candidate against the gfx1151
+plan on this artifact, which is exactly the comparison that decides whether the
+backends need different compositions at all.
 
 Because the plan is geometry-keyed, "the gfx1100 defaults" is a runnable
 candidate on this artifact, not a different model's configuration. The two
@@ -785,11 +808,41 @@ each other.
   `_gguf_int8_prefill_slot_local_aotriton_enabled` both default on globally with
   W7900-only evidence, which is exactly the inheritance this scope exists to
   test.
-- [ ] 18 gfx1100-only capability settings (sections I/J) — stays; dense
-  `Q4_K_M`-applicable settings first.
+- [ ] **Qwen3.6-35B-A3B MoE lane.** In scope as the secondary artifact, and the
+  selected-expert pair-reuse geometry (section H's A2) moves here from the
+  backlog. gfx1151 admits the Q4 selected-expert pair-reuse dual owner
+  (`GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS = 8` on both backends), but the
+  owner's geometry (`x_rows=8`, `rows` capped at 64, `block(128)`) is shared
+  source pinned by a gfx1100 measurement on a 96-CU part and is not overridden
+  on gfx1151. The gate resolves to `launch_q4_dual_pairreuse_direct` in
+  `kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.hip`, which a gfx1151
+  package change cannot reach: retuning means either editing shared source or
+  registering a gfx1151 override body as the 18 existing overrides do. Note
+  also that this host holds `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`, while the W7900
+  MoE rows are standard `Q4_K_M` — a different artifact, so re-measure rather
+  than inherit.
+- [ ] gfx1100-only capability settings (sections I/J) — stays, and the ledger is
+  one name larger than either section states. Derived at this commit over
+  `hipengine/**/*.py`: **47** `GGUF_*` names are defined on gfx1100 and absent
+  on gfx1151; **19** of those are live-read through
+  `backend_package_capability` anywhere in the package, and
+  `GGUF_SPECDEC2_MTP2_PHYSICAL_C1` (`generation/qwen35_gguf_mtp2.py`) is missing
+  from section J's list of 18. The other 28 sit in the gfx1100 package's
+  `__all__` without being read that way; most are internal composition blocks
+  folded into a parent policy in the same file (`GGUF_Q5_F32_ORDERED_PREFILL_H7G_POLICY`
+  is merged into a combined policy a few lines below its definition). Give all
+  19 a gfx1151 verdict. With the MoE lane in scope, section J's "do not treat
+  MoE/raw-quant-only settings as dense `Q4_K_M` gaps" now applies only to the
+  primary dense artifact, not to Qwen3.6-35B-A3B.
 - [ ] Five dense-path registry decisions (sections H/J) — stays.
-- [x] Release-validation and wording gaps (section J) — **not this pass's
-  work**; the test-tier migration is in flight under another owner.
+- [x] Test-tier migration half of section J's release-validation item — **not
+  this pass's work**; in flight under another owner.
+- [ ] Release-wording half of the same item — **stays**. `CHANGELOG.md`'s INT8
+  c4 and layer-outer gains need scoping to their measured artifact and backend,
+  and its "tested … on … both" introduction and automatic-MTP wording need
+  reconciling with the per-backend evidence. `docs/KERNELS.md`'s small-row
+  single-wave description needs refreshing against the actual gfx1151
+  low-VGPR/shared-B2W2 override.
 - [x] gfx1100 items G2 and G3 (section G) — **out of scope**, backlog.
 
 ### Local work in progress to pick up
@@ -819,8 +872,6 @@ exclusions.
 
 ### Backlog (named reopen condition, no work this pass)
 
-- **A2** selected-expert pair-reuse geometry — Qwen3.6-35B-A3B MoE, not this
-  artifact. Reopen if the MoE lane is revisited.
 - **A3** nasone32 RDNA3.5-guarded donors — the gfx1100 VDR rejection is the
   prior. Reopen only if the A1 floor conclusion changes.
 - **A4** strix-llama.cpp HIP deltas — reopen only if upstream merges new HIP
@@ -830,10 +881,11 @@ exclusions.
 - **C2/C3/C5** capacity ladders — N/A-capacity on the APU; confirm
   non-regression only.
 - **D2** MTP numbers — governed by the gfx1151 scaling campaign's own-AR rule.
+- **Non-Qwen gfx1100-only capability names.** 24 `LAGUNA_*` and 2 `PARO_*`
+  names are defined on gfx1100, absent on gfx1151, and — like the 47 `GGUF_*`
+  ones — carry no comment, constant, or exclusion entry anywhere in the gfx1151
+  package. Laguna S 2.1 is a shipped gfx1151 model with a published topline row,
+  so this is the same defect class as the ledger above, just outside this
+  release's two artifacts. No Laguna GGUF is on this host, so it is backlog by
+  the rule above. Reopen when a Laguna gfx1151 lane is qualified.
 - **G2/G3** gfx1100 open items — gfx1100, out of scope.
-- **Qwen3.6-27B model-level A/B is not runnable on this host.** `/models/gguf`
-  holds Qwen3.8-27B `Q4_K_M`/`UD-Q4_K_M`/`UD-Q4_K_S`, Qwen3.6-35B-A3B
-  `UD-Q4_K_M`, and Qwen3.8-Flash-Next; the `Qwen3.6-27B-Q4_K_M.gguf` the W7900
-  artifacts reference is absent. Fetch it only if a model-level (rather than
-  plan-level) comparison is ever needed — the plan-level A/B above does not
-  need it, because the plan is geometry-keyed.
