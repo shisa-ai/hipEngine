@@ -480,16 +480,21 @@ The pin is now minted: both UD records are complete, `_UD_MTP_PRESET_FINGERPRINT
 carries both fingerprints, and the artifacts derive `GGUF_PRESET_SCOPE_MTP`. The
 declared envelope is width c1 and context 1023, and it is the measured one.
 
-The pin grants **opt-in** MTP, not automatic MTP. An explicit
-`speculative_mtp=true` request engages on all ten canonical prompts at 2.3967x
-(AR 14.09 to MTP 33.78 tok/s) on the server-path diagnostic denominator. The
-automatic route still declines every cell with
-`decision_reason: automatic_mtp_scope_not_promoted`, because automatic admission
-additionally requires a `SpeculativeMTPServingEvidence` row with
-`automatic_eligible=True` and no UD artifact has one. That row is the remaining
-unit for automatic admission; the width census fixes its `realized_group_rows`
-and `resident_capacity` to 1 and supplies the evidence to cite. See
-`worklog/entries/20260912T220000.000000Z-lhl-ud-u6-pin-automatic-scope-2c7d1e.md`.
+Automatic MTP admission is live for both artifacts. The pin supplies the MTP
+scope and `_UD_Q4K_MTP_SERVING_EVIDENCE` supplies automatic eligibility, so a
+request that omits `speculative_mtp` now engages with no flag and no in-process
+grant:
+
+| Artifact | AR tok/s | MTP tok/s | MTP / AR | engaged | exact |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `UD-Q4_K_M` | 14.23 | **34.32** | **2.4126x** | 10/10 | 10/10 |
+| `UD-Q4_K_S` | 15.19 | **35.71** | **2.3517x** | 10/10 | 10/10 |
+
+Those are the server-path diagnostic denominator, not the retained paired
+rates, so they do not supersede the paired artifact. The admitted scope is width
+c1 and the 4-95 token context bucket. Evidence:
+`benchmarks/results/2026-09-12-ud-gfx1100-mtp-automatic-admission.json`,
+`worklog/entries/20260912T215804.296062Z-lhl-ud-mtp-automatic-live-2c5b23.md`.
 
 **Result (2026-09-12, physical GPU1 / RX 7900 XTX / gfx1100).** Two units are
 closed, and the scope item is now closed on measurement rather than left open.
