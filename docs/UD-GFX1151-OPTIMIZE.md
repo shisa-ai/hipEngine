@@ -374,9 +374,10 @@ Likely investigation order:
   the rows == 1 owner launched once per row, covering 94.1% (K_M) / 85.9%
   (K_S) of the dead-zone MACs. The block verifier also had to bind the
   dense-IQ execution-owner session: without it every raw-IQ verifier
-  projection kept the strict GEMV. End to end, UD MTP B3 rose 35.54 -> 43.69
-  (K_M) and 33.06 -> 45.46 (K_S) tok/s on the same host and protocol, and both
+  projection kept the strict GEMV. End to end, UD MTP B3 rose 35.54 -> 43.83
+  (K_M) and 33.06 -> 44.46 (K_S) tok/s on the same host and protocol, and both
   UD arms are now generated-ID exact. See
+  `benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-phase4.json` and
   `benchmarks/results/2026-09-12-ud-gfx1100-phase4-*.json`.
 - [ ] UD Q5 selected-expert path.
 - [ ] Q3_K strict decode. Q3_K has no rows==1 local32 owner, so it has no
