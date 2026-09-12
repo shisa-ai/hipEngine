@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
 from types import SimpleNamespace
 
 import pytest
@@ -703,3 +706,22 @@ def test_verdict_reasons_omits_the_single_token_note_when_tokens_allow_speculati
     assert len(reasons) == 1
     assert "max_tokens=1" not in reasons[0]
     assert "engaged=0/10" in reasons[0]
+
+
+def test_module_puts_its_own_worktree_first_on_sys_path() -> None:
+    """The venv's editable hipengine points at another worktree.
+
+    Without this the bench imports that tree and reports numbers for source the
+    operator is not looking at, with no error to notice.
+    """
+
+    import importlib
+
+    import hipengine
+    import scripts.gguf_mtp_c1c8_server_bench as bench_module
+
+    reloaded = importlib.reload(bench_module)
+    root = Path(__file__).resolve().parents[1]
+    assert reloaded.REPO_ROOT == root
+    assert str(root) in sys.path
+    assert Path(hipengine.__file__).resolve().is_relative_to(root)
