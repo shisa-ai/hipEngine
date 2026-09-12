@@ -174,8 +174,8 @@ What this review settled:
 
 `hipengine/kernels/hip_gfx1151/__init__.py` aliases the whole gfx1100 key space
 and then subtracts an explicit list. At this commit the two backends hold
-**1307 shared variants, 105 gfx1100-only variants, 7 gfx1151-only variants,
-241 declared exclusions (`_GFX1151_ALIAS_EXCLUSIONS`), and 18 body overrides
+**1309 shared variants, 103 gfx1100-only variants, 7 gfx1151-only variants,
+239 declared exclusions (`_GFX1151_ALIAS_EXCLUSIONS`), and 18 body overrides
 (`_GFX1151_OVERRIDES`)**. The declared exclusion list is larger than the
 gfx1100-only set because it also names keys that gfx1151 never had, and because
 the 18 overrides keep their key while replacing the body. Reproduce:
@@ -194,22 +194,28 @@ print(len(a & c), "shared;", len(a - c), "gfx1100-only;", len(c - a), "gfx1151-o
 PY
 ```
 
-The 105 gfx1100-only variants are concentrated off the dense path: by layer they
-are 47 `linear`, 19 `moe_linear`, and 10 `laguna_attention_prefill`; by quant
-they are 24 `gguf_q5_k`, 23 `gguf_q6_k`, 15 `gguf_iq3_xxs`, and 14 `bf16`. Every
-gfx1100-only variant carries a written reason in the gfx1151 file, so this is
-deliberate scope, not drift.
+The 103 gfx1100-only variants are concentrated off the dense path: by layer they
+are 46 `linear`, 19 `moe_linear`, and 38 spread across 24 other layer keys (at
+most five variants each); by quant they are 24 `gguf_q5_k`, 23 `gguf_q6_k`,
+15 `gguf_iq3_xxs`, and 14 `bf16`. Every gfx1100-only variant carries a written
+reason in the gfx1151 file, so this is deliberate scope, not drift.
 
-Exactly **five** gfx1100-only variants sit on the Qwen3.8-27B dense path, and
-each one has a named gate that would clear it:
+Exactly **three** gfx1100-only variants sit on the Qwen3.8-27B dense path, and
+each one has a named gate that would clear it. Two more were on this list until
+2026-09-12, when their named gates were satisfied and the keys were admitted:
+`linear / gguf_q4_k_t16_v1 / dense_rowtile_col4_bf16_bf16_out` and
+`linear+residual / gguf_q4_k_t16_v1 / dense_rowtile_bf16_residual_bf16_out`
+([qualification artifact](../benchmarks/results/2026-09-12-gfx1151-qwen38-27b-q4km-dense-rowtile-withheld-variants-qualified.json)).
 
 | Key | Recorded reason |
 | --- | --- |
-| `linear / gguf_q4_k_t16_v1 / dense_rowtile_col4_bf16_bf16_out` | W7900-only until gfx1151 receives an independent shape crossover and full-model gate |
-| `linear+residual / gguf_q4_k_t16_v1 / dense_rowtile_bf16_residual_bf16_out` | W7900-only pending independent gfx1151 boundary/model gates |
 | `linear_attn_alpha_beta+chain_conv+snapshot / f32 / bf16_k5120_n48_c10240_k4_exact_state_rows_tloop` | Screened only on gfx1100; gfx1151 keeps three independent leaves |
 | `linear_state_pair_copy / f32 / chunked_i32` | W7900-only until gfx1151 receives independent transaction and launch-overhead gates |
 | `paged_kv_write / gguf_q4_k_m / mixed_bf16_shared_batch_spans` | Qualified only for the W7900 dense-H5120 N1 graph; gfx1151 keeps scalar append aliases |
+
+The two admitted keys keep their shared bodies rather than an override, and
+their strict fallbacks (`dense_rowtile_bf16_bf16_out`, and the rowtile +
+`gguf_bf16_add` chain for the composite) stay registered.
 
 The 18 overrides are the healthy pattern — gfx1151 keeps the key and swaps in a
 40-CU-tuned body (`gguf_q4_k_t16_wmma_prefill_gfx1151_bf16_bf16_out`,
@@ -356,8 +362,8 @@ from section H.
 
 ### Two surfaces, counted
 
-The registry surface, reproduced with the snippet in section H: **1307 shared,
-105 gfx1100-only, 7 gfx1151-only, 241 declared exclusions, 18 body overrides.**
+The registry surface, reproduced with the snippet in section H: **1309 shared,
+103 gfx1100-only, 7 gfx1151-only, 239 declared exclusions, 18 body overrides.**
 
 The capability surface is separate and larger. `backend_package_capability`
 reads a module-level constant from the backend package by name, so a name defined
@@ -383,13 +389,13 @@ they are not evidence of a gfx1151 deficit.
 | Mechanism | On this path | Pin lives in | Clearable from the gfx1151 package alone? |
 | --- | ---: | --- | --- |
 | Live code pin | 1 | `runtime/qwen35_paro.py:213` | no — measured load-bearing, see below |
-| Registry exclusion | 5 of 105 | `_GFX1151_ALIAS_EXCLUSIONS` | yes |
+| Registry exclusion | 3 of 103 | `_GFX1151_ALIAS_EXCLUSIONS` | yes |
 | Capability gate defined on gfx1100 only | 18 | the gfx1100 package | yes — define the name on gfx1151 |
 | Capability gate declined on gfx1151 | 6 | the gfx1151 package | yes, but three are measured rejections |
 | Geometry pin | shared device source | the `.hip` launcher | **no** |
 | Row-count floor or ceiling | 13 names (9 differ) | both packages | yes — it is a per-backend value |
 
-Only the geometry pin is structural. The 105 registry exclusions each carry a
+Only the geometry pin is structural. The 103 registry exclusions each carry a
 written reason in the gfx1151 package; **none of the 18 gfx1100-only capability
 gates appears anywhere in the gfx1151 package** — no constant, no comment, no
 exclusion entry. Twelve of the 18 do carry a gfx1100-side comment, but it states
@@ -498,7 +504,7 @@ shared source.
    prefill baseline of the two, but it must not be read as covering the Q4_K_M
    row.
 2. **Close the 18 undocumented capability gates.** Each needs a recorded gfx1151
-   verdict — retune, decline, or N/A — at the same standard the 105 registry
+   verdict — retune, decline, or N/A — at the same standard the 103 registry
    exclusions already meet. This is a ledger task.
 3. **Settle whether the missing Q4_K_M row ceiling is safe.** This is the one item
    on the list that is a correctness question rather than a ledger or benchmark
@@ -607,7 +613,7 @@ is safe and the limitation is explicit.
   below a projected 1% request-saving threshold. Today's small-win policy
   warrants an integrated non-regression decision, not automatic rejection
   under that historical threshold.
-- [ ] **Finish the five dense-path registry decisions.** The excluded keys
+- [ ] **Finish the three dense-path registry decisions.** The excluded keys
   in section H are still excluded: Q4 col4 rowtile, Q4 rowtile+residual,
   fused alpha/beta+conv+snapshot, chunked state-pair copy, and N1 graph
   batched KV append. The two Q4 rowtiles need independent shape crossover
@@ -630,8 +636,8 @@ is safe and the limitation is explicit.
 ### Reviewed outcomes not to reopen without a new premise
 
 - [x] Registry inventory reproduced on this HEAD with `.venv/bin/python`:
-  **1307 shared, 105 gfx1100-only, 7 gfx1151-only**. Most exclusions are
-  outside dense Qwen3.8; do not describe all 105 as missing dense ports.
+  **1309 shared, 103 gfx1100-only, 7 gfx1151-only**. Most exclusions are
+  outside dense Qwen3.8; do not describe all 103 as missing dense ports.
 - [x] gfx1151 has its own prefill/GDN/attention overrides and planar-Q6
   integer-MMQ admission. Integer MMQ is a gfx1151 donor, not a missing
   gfx1100-to-gfx1151 transfer.
@@ -834,7 +840,7 @@ each other.
   19 a gfx1151 verdict. With the MoE lane in scope, section J's "do not treat
   MoE/raw-quant-only settings as dense `Q4_K_M` gaps" now applies only to the
   primary dense artifact, not to Qwen3.6-35B-A3B.
-- [ ] Five dense-path registry decisions (sections H/J) — stays.
+- [ ] Three dense-path registry decisions (sections H/J) — stays.
 - [x] Test-tier migration half of section J's release-validation item — **not
   this pass's work**; in flight under another owner.
 - [ ] Release-wording half of the same item — **stays**. `CHANGELOG.md`'s INT8
@@ -845,30 +851,23 @@ each other.
   low-VGPR/shared-B2W2 override.
 - [x] gfx1100 items G2 and G3 (section G) — **out of scope**, backlog.
 
-### Local work in progress to pick up
+### The two withheld dense Q4T16 rowtiles are qualified and admitted (2026-09-12)
 
-The two untracked scripts target the two withheld dense Q4T16 rowtile
-exclusions. The work was interrupted, not abandoned, and is to be resumed:
+This was the section's open work item. It is closed:
 
-| Script | State at interruption |
+| Step | Result |
 | --- | --- |
-| `scripts/qwen38_q4_dense_rowtile_gfx1151_screen.py` | Complete. 30 cases in `/tmp/hip1151-t6/screen.json`. |
-| `scripts/qwen38_gfx1151_q4_dense_rowtile_gate.py` | Partial. rows=2 and rows=4 at 8 output tokens pass (`gate.json`, `gate4.json`); the 32-token run (`gate32.log`) stops mid-way at rows=4 arm=admitted. |
+| Leaf screen (`scripts/qwen38_q4_dense_rowtile_gfx1151_screen.py`) | 30 cases, every arm bit-exact against the retained owner. `col4` at K5120/N1024 rows 2-4 is 1.005-1.257x the retained `dense_rowtile_bf16_bf16_out` (6 tensors, 21 counterbalanced pairs each, 377/378 pairs won); the fused `dense_rowtile_bf16_residual_bf16_out` at K17408/N5120 rows 2-4 is 1.007-1.011x `rowtile + gguf_bf16_add` (4 tensors, 245/252 pairs won). |
+| Soak gate (`scripts/qwen38_gfx1151_q4_dense_rowtile_gate.py --rows 2,3,4 --max-new-tokens 32`) | rows 2/3/4 `eq_ok`, candidate and control arms token-identical, native c-aware decode, no serial fallback. |
+| Full-suite gate (`--rows 2,4 --windows --max-new-tokens 8`) | All 10 mtp-bench prompts across `code`/`general_en`/`general_ja`/`mixed_ja_en`, at rows 2 and 4, `eq_ok` and token-identical between arms. |
+| Verdict | Both keys admitted: `_GFX1151_ALIAS_EXCLUSIONS` no longer withholds them, and the shipped registry reproduces the admitted arm's tokens with no mutation. |
 
-Measured so far, every comparison bit-exact against the retained owner:
-`col4` at K5120/N1024 rows 2-4 is 1.10-1.23x the retained
-`dense_rowtile_bf16_bf16_out` (6 tensors, 21 counterbalanced pairs each), and
-the fused `dense_rowtile_bf16_residual_bf16_out` at K17408/N5120 rows 2-4 is
-1.008-1.033x `rowtile + gguf_bf16_add`.
-
-Neither has a full-model gate on the mtp-bench category suite, a long-context or
-soak shape, an artifact under `benchmarks/results/`, or a worklog entry, and the
-gfx1151 exclusion set is untouched. Draft results in `/tmp` are not
-qualification evidence.
-
-Pickup order: finish the 32-token gate, run the full multi-prompt category
-suite, emit the artifact and rollup rows, and only then decide the two
-exclusions.
+Artifact: [`dense rowtile qualification`](../benchmarks/results/2026-09-12-gfx1151-qwen38-27b-q4km-dense-rowtile-withheld-variants-qualified.json).
+Both are sub-window wins: the two families carry 0.46% and 9.97% of the 16.091 GB
+per-token AR-active weight stream, which projects to roughly 0.06% and 0.09% of
+decode, so this is not a topline move. The gate harness also needed a fix: the
+batch diagnostic created an `LLM` per arm without closing it, so multi-arm runs
+leaked a full model each and triggered a host-wide OOM kill.
 
 ### Backlog (named reopen condition, no work this pass)
 
@@ -881,11 +880,10 @@ exclusions.
 - **C2/C3/C5** capacity ladders — N/A-capacity on the APU; confirm
   non-regression only.
 - **D2** MTP numbers — governed by the gfx1151 scaling campaign's own-AR rule.
-- **Non-Qwen gfx1100-only capability names.** 24 `LAGUNA_*` and 2 `PARO_*`
+- **Other gfx1100-only capability names outside the two artifacts.** 2 `PARO_*`
   names are defined on gfx1100, absent on gfx1151, and — like the 47 `GGUF_*`
   ones — carry no comment, constant, or exclusion entry anywhere in the gfx1151
-  package. Laguna S 2.1 is a shipped gfx1151 model with a published topline row,
-  so this is the same defect class as the ledger above, just outside this
-  release's two artifacts. No Laguna GGUF is on this host, so it is backlog by
-  the rule above. Reopen when a Laguna gfx1151 lane is qualified.
+  package. This is the same defect class as the ledger above, outside this
+  release's two artifacts. No artifact that reaches those names is on this host,
+  so it is backlog by the rule above.
 - **G2/G3** gfx1100 open items — gfx1100, out of scope.

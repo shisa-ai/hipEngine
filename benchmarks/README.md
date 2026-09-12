@@ -720,6 +720,15 @@ allocator ownership and the llama.cpp peak is an external whole-process GTT
 delta; the two are different scopes and are not comparable as a memory result.
 [`same-file llama.cpp comparator`](results/2026-09-12-gfx1151-qwen38-27b-q4km-same-file-llama-comparator.json).
 
+Two dense Q4T16 rowtile variants that this backend previously inherited from
+`gfx1100` only as exclusions are now admitted: the narrow col4 rowtile and the
+fused down+residual rowtile. Both are bit-identical to the retained owners at
+every reachable shape and row band, and each is a small win (**1.005-1.257x**
+and **1.007-1.011x** per call over 21 counterbalanced pairs per cell). They are
+reachable only at rows 2-4, and together they cover about 0.15% of decode, so no
+number in the tables above moves.
+[`dense rowtile qualification`](results/2026-09-12-gfx1151-qwen38-27b-q4km-dense-rowtile-withheld-variants-qualified.json).
+
 ### Radeon 8060S: Qwen3.6-35B-A3B GGUF
 
 This is the latest clean, exact one-queue production snapshot. The artifact is a

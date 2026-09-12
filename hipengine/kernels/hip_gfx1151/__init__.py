@@ -2384,13 +2384,11 @@ _SOURCE_BACKEND = "hip_gfx1100"
 # independent gfx1151 parity gate; the proposal graph remains unadmitted here.
 _GFX1151_ALIAS_EXCLUSIONS = frozenset(
     {
-        # Dense-H5120 narrow/selective Q4T16 col4 rowtiles are W7900-only until
-        # gfx1151 receives an independent shape crossover and full-model gate.
-        (
-            "linear",
-            "gguf_q4_k_t16_v1",
-            "dense_rowtile_col4_bf16_bf16_out",
-        ),
+        # The dense-H5120 narrow Q4T16 col4 rowtile and the dense-H5120
+        # down+residual rowtile were admitted on 2026-09-12: independent gfx1151
+        # shape crossovers (rows 2-4, bit-exact) and complete-model gates now
+        # exist. See
+        # benchmarks/results/2026-09-12-gfx1151-qwen38-27b-q4km-dense-rowtile-withheld-variants-qualified.json.
         # The exact scalar F32 alpha/beta pair is independently admitted on
         # gfx1151; wider/native rows retain singleton projections.
         # The cross-family alpha/beta plus snapshot-Conv owner has only been
@@ -2407,13 +2405,9 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "f32+gguf_q5_k_t16_v1",
             "bf16_k5120_n48_hk16_hv48_d128_exact_state_rows_tloop_f32_bf16_out",
         ),
-        # Dense-H5120 down+residual and rounded next-input RMSNorm fusions
-        # are W7900-only pending independent gfx1151 boundary/model gates.
-        (
-            "linear+residual",
-            "gguf_q4_k_t16_v1",
-            "dense_rowtile_bf16_residual_bf16_out",
-        ),
+        # The rounded next-input RMSNorm fusion is W7900-only pending an
+        # independent gfx1151 boundary/model gate. Its sibling dense-H5120
+        # down+residual rowtile is admitted (2026-09-12 qualification).
         (
             "add+rmsnorm",
             "gguf_f32_weight",
