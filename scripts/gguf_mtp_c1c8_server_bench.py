@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import subprocess
+import sys
 import threading
 import time
 from datetime import datetime, timezone
@@ -19,13 +20,21 @@ from typing import Any, Mapping, Sequence
 
 from fastapi.testclient import TestClient
 
-from hipengine import LLM
-from hipengine.benchmark.provenance import collect_model_identity
-from hipengine.core.memory import memory_stats
-from hipengine.kernels.backends import backend_package_capability
-from hipengine.server.api import ServerConfig, create_app
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
+# The venv installs ``hipengine`` as an editable pointing at another worktree,
+# and running this file puts ``scripts/`` at ``sys.path[0]``, so ``hipengine``
+# would otherwise resolve to that other tree and the bench would silently
+# measure the wrong source. Put this worktree first, as every sibling script
+# does.
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from hipengine import LLM  # noqa: E402
+from hipengine.benchmark.provenance import collect_model_identity  # noqa: E402
+from hipengine.core.memory import memory_stats  # noqa: E402
+from hipengine.kernels.backends import backend_package_capability  # noqa: E402
+from hipengine.server.api import ServerConfig, create_app  # noqa: E402
+
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-27B-Q4_K_M.gguf")
 DEFAULT_PROMPTS = REPO_ROOT / "benchmarks/prompts/mtpbench-code-general-ja.jsonl"
 FULL_PROMPT_IDS = (
