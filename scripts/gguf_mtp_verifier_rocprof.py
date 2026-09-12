@@ -328,9 +328,35 @@ def _run_child(args: argparse.Namespace) -> int:
     return 0
 
 
+def _default_raw_root(args: argparse.Namespace) -> Path:
+    """A per-shape scratch root for the profiler's raw trace.
+
+    The default used to be one fixed path that every run deleted first, so a
+    sweep over verifier row counts kept only the last run's kernel trace while
+    every earlier artifact still recorded a pointer to it.
+    """
+
+    base = Path("/tmp/hipengine-gguf-mtp-verifier-rocprof")
+    if args.mode == "block-verify":
+        shape = f"block-verify-rows{int(args.block_rows)}"
+    else:
+        shape = str(args.mode)
+    if args.quant:
+        shape = f"{shape}-{args.quant}"
+    return base / shape
+
+
+def _resolve_raw_root(args: argparse.Namespace) -> Path:
+    """The scratch root for this run: explicit when given, else per-shape."""
+
+    if args.raw_root is not None:
+        return Path(args.raw_root)
+    return _default_raw_root(args)
+
+
 def _run_parent(args: argparse.Namespace) -> int:
     rocprofv3 = shutil.which(args.rocprofv3) or args.rocprofv3
-    raw_root = Path(args.raw_root)
+    raw_root = _resolve_raw_root(args)
     if raw_root.exists():
         shutil.rmtree(raw_root)
     raw_root.mkdir(parents=True, exist_ok=True)
@@ -863,7 +889,16 @@ def main() -> int:
     parser.add_argument("--skip-warmbuild", action="store_true")
     parser.add_argument("--compiler-version-file", type=Path, default=Path("/tmp/hipengine-hipcc-version.txt"))
     parser.add_argument("--child-json", type=Path, default=None)
-    parser.add_argument("--raw-root", type=Path, default=Path("/tmp/hipengine-gguf-mtp-verifier-rocprof"))
+    parser.add_argument(
+        "--raw-root",
+        type=Path,
+        default=None,
+        help=(
+            "scratch directory for the raw rocprofv3 trace. Defaults to a "
+            "per-shape path (mode, block rows, quant) so a sweep over shapes "
+            "does not delete the previous shape's trace."
+        ),
+    )
     parser.add_argument("--rocprofv3", default="rocprofv3")
     parser.add_argument("--roctx-sdk", type=Path, default=_default_roctx_sdk())
     parser.add_argument("--top", type=int, default=24)

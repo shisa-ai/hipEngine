@@ -243,3 +243,41 @@ def test_visible_gpu_index_prefers_hip_over_rocr(monkeypatch) -> None:
     assert profiler._visible_gpu_index() == 1
     monkeypatch.setenv("HIP_VISIBLE_DEVICES", "0")
     assert profiler._visible_gpu_index() == 0
+
+
+def test_default_raw_root_is_per_shape(monkeypatch) -> None:
+    """A row sweep must not delete the previous shape's kernel trace.
+
+    The default used to be one fixed path that every run removed first, so
+    only the last run's trace survived while earlier artifacts still pointed
+    at it.
+    """
+
+    import argparse
+
+    def root(**overrides):
+        base = {"mode": "block-verify", "block_rows": 4, "quant": "gguf_ud_q4_k_m"}
+        base.update(overrides)
+        return profiler._default_raw_root(argparse.Namespace(**base))
+
+    assert root() == Path("/tmp/hipengine-gguf-mtp-verifier-rocprof/block-verify-rows4-gguf_ud_q4_k_m")
+    assert root(block_rows=8) != root(block_rows=4)
+    assert root(quant="gguf_ud_q4_k_s") != root(quant="gguf_ud_q4_k_m")
+    assert root(mode="serial-step") == Path(
+        "/tmp/hipengine-gguf-mtp-verifier-rocprof/serial-step-gguf_ud_q4_k_m"
+    )
+
+
+def test_raw_root_resolution_honours_an_explicit_path() -> None:
+    """An explicit --raw-root wins; an unset one derives from the shape."""
+
+    import argparse
+
+    explicit = argparse.Namespace(
+        raw_root=Path("/tmp/mine"), mode="block-verify", block_rows=4, quant=None
+    )
+    assert profiler._resolve_raw_root(explicit) == Path("/tmp/mine")
+    derived = argparse.Namespace(
+        raw_root=None, mode="block-verify", block_rows=4, quant="gguf_ud_q4_k_m"
+    )
+    assert profiler._resolve_raw_root(derived) == profiler._default_raw_root(derived)
