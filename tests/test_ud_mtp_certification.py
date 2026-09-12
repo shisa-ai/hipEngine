@@ -444,3 +444,62 @@ def test_mtp_pin_composes_the_scope_and_evidence(monkeypatch):
     assert admission._UD_PRESET_FINGERPRINTS[base.manifest_fingerprint][1] == (
         GGUF_PRESET_SCOPE_AR,
     )
+
+
+def _u6_records():
+    from hipengine.loading.qwen35_gguf_admission import _UD_MTP_CERTIFICATIONS
+
+    assert _UD_MTP_CERTIFICATIONS, "the U6 table must not be empty"
+    return _UD_MTP_CERTIFICATIONS
+
+
+def test_u6_open_items_name_a_blocker_and_qualified_items_do_not():
+    """The ``blocker`` field is the record's own completeness proof.
+
+    An open item must name the concrete missing evidence, and a qualified item
+    must not keep a stale one: a unit that is finished but still advertises a
+    blocker understates what is qualified, and the paired gate prints these
+    strings verbatim into every artifact's ``u6_gate`` block.
+    """
+
+    for fingerprint, certification in _u6_records().items():
+        for item in certification.items:
+            if item.qualified:
+                assert item.blocker == "", (fingerprint, item.item, item.blocker)
+            else:
+                assert item.blocker.strip(), (fingerprint, item.item)
+
+
+def test_u6_evidence_names_existing_artifacts():
+    """A cited benchmark artifact must exist in the tree.
+
+    Evidence strings are the only trace from a qualified item back to the
+    measurement that qualified it, so a dangling path silently turns a claim
+    into an assertion.
+    """
+
+    import re
+
+    root = Path(__file__).resolve().parents[1]
+    pattern = re.compile(r"benchmarks/results/[A-Za-z0-9._-]+\.json")
+    missing: list[str] = []
+    for fingerprint, certification in _u6_records().items():
+        for item in certification.items:
+            for reference in pattern.findall(item.evidence):
+                if not (root / reference).is_file():
+                    missing.append(f"{fingerprint[:8]}/{item.item}: {reference}")
+    assert not missing, missing
+
+
+def test_u6_certificate_is_incomplete_while_the_scope_item_is_open():
+    """The pin stays unminted until every item, in both phases, qualifies."""
+
+    for certification in _u6_records().values():
+        assert certification.context_max is None
+        assert certification.widths == (1,)
+        assert not certification.is_complete()
+        assert (
+            "supported_backend_quant_profile_context_width_scope"
+            in certification.blocked_items
+        )
+        assert certification.measurement_ready()

@@ -433,7 +433,7 @@ def _ud_mtp_items(
                 "itself a failure."
             ),
             evidence=control_evidence,
-            qualified=False,
+            qualified=not control_blocker,
             blocker=control_blocker,
             phase="paired_run",
         ),
@@ -473,17 +473,19 @@ _UD_MTP_CERTIFICATIONS: Mapping[str, Qwen35GGUFUDMTPCertification] = {
         widths=(1,),
         items=_ud_mtp_items(
             control_evidence=(
-                "benchmarks/results/ud-mtp-certification-u6.json: all ten "
-                "natural25 B3 category prompts exact in both repeats with "
-                "GPU/CPU acceptance agreement"
+                "benchmarks/results/2026-09-12-ud-gfx1100-phase4-ar-verify-numerics.json: "
+                "the teacher-forced 6.1 calibrated gate passes at the short and "
+                "512-token points, top-1 1.0000 in every category and at every "
+                "budget, deterministic repeats, worst row-mean KL 4.23e-05 "
+                "against the 1e-03 limit; "
+                "benchmarks/results/2026-09-12-ud-gfx1100-phase5-ar-verify-numerics.json "
+                "reproduces all sixteen arm numbers exactly in fresh processes. "
+                "benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-phase4.json: "
+                "the binding control-plane gates (true_ar_denominator_present, "
+                "all_gpu_accept_match_cpu, deterministic_repeats, "
+                "faster_than_true_ar) pass with u6_gate.gate_passed true."
             ),
-            control_blocker=(
-                "the 6.1 calibrated gate is not run: this is free-running "
-                "generation, so it gives no teacher-forced mean/p95/p99/max row "
-                "KL or per-category top-1 agreement between the single-row AR "
-                "route and the multi-row verify route. Heldout categories and "
-                "c2/c4/c8 widths are also outstanding"
-            ),
+            control_blocker="",
         ),
     ),
     "91130e1698bb7fc24c89f94e8b1043dd788769682b56c6514d70b6d2cdea068c": Qwen35GGUFUDMTPCertification(
@@ -495,21 +497,22 @@ _UD_MTP_CERTIFICATIONS: Mapping[str, Qwen35GGUFUDMTPCertification] = {
         widths=(1,),
         items=_ud_mtp_items(
             control_evidence=(
-                "benchmarks/results/ud-mtp-certification-u6.json: nine of ten "
-                "natural25 B3 category prompts exact in both repeats; "
-                "general_ja_plan is the outlier. "
+                "benchmarks/results/2026-09-12-ud-gfx1100-phase4-ar-verify-numerics.json: "
+                "both K_S arms pass the teacher-forced 6.1 calibrated gate "
+                "(top-1 1.0000 in every category and at every budget, "
+                "deterministic repeats, worst row-mean KL 4.23e-05 against the "
+                "1e-03 limit), reproduced exactly in fresh processes by "
+                "benchmarks/results/2026-09-12-ud-gfx1100-phase5-ar-verify-numerics.json; "
+                "benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-phase4.json "
+                "passes the binding control-plane gates with u6_gate.gate_passed "
+                "true. The general_ja_plan generated-ID difference is not a "
+                "control failure: "
                 "benchmarks/results/ud-mtp-ks-near-tie-localization.json "
-                "localizes it: at output position 12 the AR path picks 99720 "
-                "(logit 21.181459) over 211768 (21.171841), a 0.0096 spread, "
-                "and the MTP verifier picks the AR rank-1 token 211768"
+                "localizes it to a 0.0096-logit near tie (AR 99720 at 21.181459 "
+                "over 211768 at 21.171841) that docs/EXECUTION-PROFILES.md 4.1 "
+                "permits as production drift."
             ),
-            control_blocker=(
-                "same 6.1 calibrated-gate gap as the K_M record. The "
-                "general_ja_plan ID difference is NOT the blocker: "
-                "ud-mtp-ks-near-tie-localization.json shows it is a 0.0096-logit "
-                "near-tie between the single-row AR route and the 4-row verifier "
-                "route, which 4.1 permits as production drift"
-            ),
+            control_blocker="",
         ),
     ),
 }

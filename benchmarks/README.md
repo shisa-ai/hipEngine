@@ -409,9 +409,11 @@ GEMV at rows 2-4 and covers 94.1% (K_M) / 85.9% (K_S) of the rows 2-7
 dead-zone MACs. The block verifier also had to bind the dense-IQ
 execution-owner session, without which its raw-IQ rows 2-4 kept the strict
 owner. All four section-6.1 arms still pass with at least 24x margin on the
-binding mean limit and 100% top-1 overall and per category.
+binding mean limit and 100% top-1 overall and per category, and a
+fresh-process reproduction matches all sixteen arm numbers to the last digit.
 ([kernel headroom](results/2026-09-12-ud-gfx1100-phase4-local32-rows-headroom.json),
 [numerics gate](results/2026-09-12-ud-gfx1100-phase4-ar-verify-numerics.json),
+[gate reproduction](results/2026-09-12-ud-gfx1100-phase5-ar-verify-numerics.json),
 [implementation entry](../worklog/entries/20260912T092947.074218Z-ud-phase4-lane-ud-phase4-local32-rows-sibling-103062.md).)
 
 The 2026-09-11 baseline this compares against measured UD-Q4_K_M 31.993 AR /
