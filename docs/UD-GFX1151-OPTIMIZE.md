@@ -166,7 +166,88 @@ Decision gate:
 
 No kernel change starts before this attribution is recorded.
 
-### Phase 2: Establish the teacher-forced numerical gate
+### Phase 2: Transfer prefill wins into verifier shapes
+
+Prefill parity establishes that a resident/layout/kernel combination is
+competitive at large M. It does not establish that the same route is efficient
+for MTP verification, where rows are usually small and are often split into
+physical verifier tiles. Treat every prefill owner as a verifier candidate,
+not as an automatic verifier default.
+
+For every retained prefill owner, classify its verifier behavior:
+
+- [ ] **Direct transfer:** the same resident, layout, kernel family, and
+  dispatch are efficient at verifier rows.
+- [ ] **Verifier sibling:** the same resident/layout is retained, but a
+  small-row or row-tile kernel is required.
+- [ ] **Prefill-only:** the route is efficient for large M but loses at
+  verifier rows and remains scoped to prefill.
+- [ ] **Shared bottleneck:** both paths lose; optimize the underlying
+  resident, decoder, or consumer before adding another dispatch.
+- [ ] **Non-transferable:** ownership, arithmetic, or ABI constraints make
+  reuse invalid; document the reason and retain the qualified fallback.
+
+Measure each classification with the same tensor and resident where possible:
+
+| Measurement | Required values |
+| --- | --- |
+| Prefill M | representative retained prefill M values |
+| Verifier rows | 2, 4, 8, 12, 16, 28, and 32 where supported |
+| Physical decomposition | actual row tiles and remainder launches |
+| Kernel family | selected registry key and kernel name |
+| Launch count | per logical target-verification transition |
+| Device time | total and time per logical output row |
+| Residency | source format, resident layout, expansion status, sidecars |
+| Correctness | strict/production gate, KL, top-1, repeatability |
+
+Prioritize the families already implicated by the gfx1151 differential
+evidence:
+
+- [ ] Q6 lm-head and other wide-Q6 verifier sweeps.
+- [ ] Q5 `ssm_out` and selected-expert/direct Q5 consumers.
+- [ ] Q4/IQ gate-up and SiLU paths.
+- [ ] IQ4_XS, IQ4_NL, IQ3_S, IQ3_XXS, and IQ2_S small-row consumers.
+- [ ] Norm, residual, activation, and logits work surrounding the GEMMs.
+- [ ] Row packing, launch reuse, and graph synchronization between those
+  consumers.
+
+For each transferred candidate:
+
+- [ ] Confirm UD and plain select comparable resident/layout routes.
+- [ ] Confirm the optimized route is not accidentally selected only for one
+  artifact or fixed prompt.
+- [ ] Compare the prefill winner against the current verifier owner at every
+  declared row shape.
+- [ ] Check whether the verifier is rescanning the same weights per row tile.
+- [ ] Check whether a batched owner reduces launches without changing exact
+  ownership, masks, or rollback semantics.
+- [ ] Add a focused RED test for the row-shape/dispatch contract.
+- [ ] Keep the existing strict verifier fallback registered.
+- [ ] Capture a kernel trace showing the intended owner actually ran.
+
+Transfer decision:
+
+- Reuse unchanged only when it wins at the verifier row shapes and passes the
+  verifier numerical gate.
+- Add a verifier sibling when the resident/layout is good but large-M tiling
+  is the wrong geometry.
+- Do not route MTP through a bulk-prefill kernel merely because it won
+  prefill; prove the row-shape economics first.
+- Do not claim a transfer win from kernel time alone. Re-measure complete
+  target verification and end-to-end MTP.
+
+The result must record both the local transfer effect and the full economics:
+
+| Candidate | Prefill result | Verifier result | UD AR | UD MTP | UD MTP/AR | UD/plain MTP | Decision |
+| --- | --- | --- | ---: | ---: | ---: | ---: | --- |
+| Prefill owner transfer | unchanged / improved / regressed | unchanged / improved / regressed | measured | measured | measured | measured | retain / hold |
+
+This phase is complete only when every important prefill owner is classified as
+direct transfer, verifier sibling, prefill-only, shared bottleneck, or
+non-transferable. Unknown transfer behavior is an attribution gap, not a
+negative result.
+
+### Phase 3: Establish the teacher-forced numerical gate
 
 Complete section 6.1 for the single-row AR route versus multi-row target
 verification. This separates arithmetic drift from control and batching bugs.
@@ -187,7 +268,7 @@ The gate must identify whether K_S near-ties are permitted production drift
 or a binding batch-composition failure. Do not widen the admission pin to make
 the result pass.
 
-### Phase 3: Repair the dominant verifier path
+### Phase 4: Repair the dominant verifier path
 
 Use the Phase 1 attribution to choose one scoped change at a time. Every
 candidate must have a strict registered fallback and a RED test before
@@ -219,7 +300,7 @@ Promotion rule: retain only changes that are correct, reproducible, and
 non-regressive on the declared suite. A ratio gain with lower UD tok/s is
 diagnostic unless the absolute result is still an explicitly accepted tradeoff.
 
-### Phase 4: Close lifecycle and serving coverage
+### Phase 5: Close lifecycle and serving coverage
 
 Before automatic MTP admission, complete the U6 envelope:
 
@@ -234,7 +315,7 @@ Before automatic MTP admission, complete the U6 envelope:
 
 The pin remains empty until all declared certification items are complete.
 
-### Phase 5: Re-run the complete paired economics gate
+### Phase 6: Re-run the complete paired economics gate
 
 Run the final paired protocol for each tier and candidate:
 
@@ -261,7 +342,7 @@ Required result fields:
 | `ud_mtp_gain_abs` | `ud_mtp_toks - ud_ar_toks` |
 | `ud_plain_mtp_gap_abs` | `ud_mtp_toks - plain_mtp_toks` |
 
-### Phase 6: Promote or hold
+### Phase 7: Promote or hold
 
 Promote a tier only when:
 
