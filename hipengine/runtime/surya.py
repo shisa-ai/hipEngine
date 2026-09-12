@@ -23,8 +23,11 @@ state decay, keyed memory read, delta write-back, query read-out) plus the
 fp32 conv decode kernel. The correctness gate is greedy-token parity and
 logit agreement against the CPU reference, not a loose statistical gate.
 
-The vision tower currently runs on the host (CPU reference); its device
-port is tracked as follow-up work. This module owns the text stack only.
+The vision tower runs on the same device: patch embed, half-split 2-axis
+rotary, bidirectional full-image attention tiled by query rows, the tanh-GELU
+MLP blocks, and the merger. Preprocessing (resize, normalize, patchify, the
+mRoPE and position tables) stays on the host — it is data preparation, not
+model math, and keeps the runtime torch-free.
 """
 
 from __future__ import annotations
@@ -72,14 +75,56 @@ _S = ctypes.c_void_p
 
 _GEMM_PAD_BYTES = 512
 
-# Vision attention materializes the full score matrix, so its scratch grows as
-# heads * patches^2 * 4 bytes. At the checkpoint's own max_pixels ceiling
-# (16_777_216 px -> 14400 patches) that is ~9.95 GB for one request. This cap
-# admits a 300-DPI A4 page (77x109 grid, ~3.4 GB) and rejects the pathological
-# ceiling with a clear error instead of attempting the allocation. Tiled vision
-# attention removes the need for a large scratch; until then the cap is the
-# admission contract. Pass ``max_vision_scratch_bytes=None`` to disable it.
-DEFAULT_MAX_VISION_SCRATCH_BYTES = 4 * 1024**3
+# Vision attention is bidirectional over the whole page: every patch attends to
+# every other patch, so the score matrix for `n` patches is `heads * n^2 * 4`
+# bytes. Materializing it needs 56.5 GB for a 300-DPI A4 page (220x156 grid,
+# 34320 patches) and 206 GB at the checkpoint's `max_pixels` ceiling (256x256,
+# 65536 patches). The tower instead walks the score matrix in query-row tiles:
+# each tile holds the full key range for `block` queries, so its softmax rows
+# are exactly the rows the dense path computes, and only
+# `heads * n * block * 4` bytes are live at once.
+#
+# This value is the per-request ceiling on that live tile. The block size is
+# derived from it (`plan_vision_attention`), so the budget is honored rather
+# than merely checked, and any grid the checkpoint admits fits: the tile never
+# has to exceed one query row. Pass ``max_vision_scratch_bytes=None`` to run a
+# single dense tile.
+DEFAULT_MAX_VISION_SCRATCH_BYTES = 512 * 1024**2
+
+# Text-decoder context the generator admits by default. Upstream Surya budgets
+# 12,288 context tokens per OCR slot (image prefill + full-page output +
+# chat-template overhead) and sizes its vLLM lane at 18,000. A 300-DPI A4 page
+# alone is 8580 image tokens, so the previous 2048 default rejected every real
+# document before the prompt or any output token.
+DEFAULT_MAX_SEQ = 16384
+
+
+def plan_vision_attention(
+    n_patches: int, num_heads: int, budget_bytes: int | None
+) -> tuple[int, int]:
+    """Plan one vision grid's score tile: ``(query_block, scratch_bytes)``.
+
+    The tile is ``num_heads * n_patches * block`` fp32 elements — the full key
+    range for ``block`` query rows. ``block`` is the largest value whose tile
+    fits ``budget_bytes``; ``None`` disables the budget and returns one tile
+    covering every query. A budget too small for even one query row still
+    returns ``block == 1`` so admission can report the shortfall instead of
+    silently producing an unusable plan.
+    """
+
+    n = int(n_patches)
+    heads = int(num_heads)
+    if n <= 0 or heads <= 0:
+        raise ValueError("vision attention needs a positive patch count and head count")
+    per_row = heads * n * 4
+    if budget_bytes is None:
+        return n, per_row * n
+    block = int(budget_bytes) // per_row
+    if block < 1:
+        block = 1
+    elif block > n:
+        block = n
+    return block, per_row * block
 
 
 class SuryaGpuRuntimeError(RuntimeError):
@@ -110,9 +155,17 @@ class SuryaGpuRunner:
     ):
         if isinstance(weights, str):
             weights = SuryaWeights.load(weights)
+        if int(max_seq) <= 0:
+            raise ValueError("max_seq must be positive")
+        if max_vision_scratch_bytes is not None and int(max_vision_scratch_bytes) <= 0:
+            raise ValueError("max_vision_scratch_bytes must be positive when set")
         self.spec = spec or SuryaSpec()
-        self.max_seq = max_seq
-        self.max_vision_scratch_bytes = max_vision_scratch_bytes
+        self.max_seq = int(max_seq)
+        self.max_vision_scratch_bytes = (
+            None
+            if max_vision_scratch_bytes is None
+            else int(max_vision_scratch_bytes)
+        )
         self.runtime = runtime or get_hip_runtime()
         self.rocblas = rocblas or Rocblas.load()
         self.rocblas.set_workspace(0, 0)
@@ -692,6 +745,10 @@ class SuryaGpuRunner:
         fc2). Preprocessing and the small pos-embed/rotary tables stay on
         the host; every tensor op runs on the device. Returns the merged
         features (n / merge^2, vision_out_hidden_size) as host fp32.
+
+        Attention is the dense full-image bidirectional attention, evaluated in
+        query-row tiles so the score matrix is never fully materialized; see
+        ``_vision_attention_packed``.
         """
         from hipengine.kernels.cpu_reference.surya import (
             _merge_block_major_coords,
@@ -700,9 +757,8 @@ class SuryaGpuRunner:
             vision_rotary,
         )
 
-        # Admit before any device work: the attention scratch is quadratic in
-        # patch count, so an over-budget page must be rejected here, not after
-        # patch embed and a failed multi-GB allocation.
+        # Admit before any device work: an over-budget page must be rejected
+        # here, not after patch embed and a failed multi-GB allocation.
         self.check_vision_capacity(grid_thw)
 
         s = self.spec
@@ -715,6 +771,7 @@ class SuryaGpuRunner:
         n = patches.shape[0]
         n_merged = n // (merge * merge)
         vis_inter = merge * merge * vh
+        block = self.vision_block(grid_thw)
 
         x = self._buf("vis_x", n * vh * 4)
         norm = self._buf("vis_norm", n * vh * 4)
@@ -724,7 +781,7 @@ class SuryaGpuRunner:
         mlp = self._buf("vis_mlp", n * inter * 4)
         merged_in = self._buf("vis_merged_in", n_merged * vis_inter * 4)
         merged = self._buf("vis_merged", n_merged * s.vision_out_hidden_size * 4)
-        scores, head_stride = self._vis_scores(n, nh)
+        scores = self._vis_scores(n, nh, block)
 
         # patch embed: (n, ch*t*p*p) @ (ch*t*p*p, vh) + bias (separate C —
         # never alias the GEMM input)
@@ -765,7 +822,7 @@ class SuryaGpuRunner:
             self._rope(qkv.ptr + vh * 4, cos_buf.ptr, sin_buf.ptr, n, nh, hd, hd, 3 * vh)
             self._vision_attention_packed(
                 qkv.ptr, qkv.ptr + vh * 4, qkv.ptr + 2 * vh * 4,
-                attn.ptr, n, nh, hd, 3 * vh, scores.ptr, head_stride, scale)
+                attn.ptr, n, nh, hd, 3 * vh, scores.ptr, scale, block)
             self._gemm(attn.ptr, self._w[p + "attn.proj.weight"].ptr, out.ptr,
                        n, vh, vh)
             self._add_bias(out.ptr, self._w[p + "attn.proj.bias"].ptr, n * vh, vh)
@@ -818,33 +875,53 @@ class SuryaGpuRunner:
         return self._pos_table_host
 
     @staticmethod
-    def _vis_score_stride(n: int) -> int:
-        """Per-head score-tile stride in elements, 16-byte aligned."""
+    def _vis_tile_elements(n: int, block: int) -> int:
+        """Elements per head in one query-row tile of the score matrix."""
 
-        return (n * n + 3) & ~3
+        return n * block
 
-    def _vis_scores(self, n: int, heads: int) -> tuple[DeviceBuffer, int]:
-        stride = self._vis_score_stride(n)
-        return self._buf("vis_scores", heads * stride * 4), stride
+    def _vis_scores(self, n: int, heads: int, block: int) -> DeviceBuffer:
+        """Score scratch for one query tile of a ``n``-patch grid."""
+
+        tile = self._vis_tile_elements(n, block)
+        return self._buf("vis_scores", heads * tile * 4)
 
     # -- vision admission --------------------------------------------------
 
-    def vision_scratch_bytes(self, grid_thw) -> int:
-        """Device scratch the vision attention scores need for ``grid_thw``.
+    def vision_block(self, grid_thw) -> int:
+        """Query rows per score tile for ``grid_thw``, from the budget."""
 
-        Quadratic in patch count. Derived from the same stride helper as
-        ``_vis_scores`` so admission can never disagree with the allocation.
+        return plan_vision_attention(
+            self._grid_patches(grid_thw),
+            self.spec.vision_num_heads,
+            self.max_vision_scratch_bytes,
+        )[0]
+
+    @staticmethod
+    def _grid_patches(grid_thw) -> int:
+        return int(grid_thw[0][1]) * int(grid_thw[0][2])
+
+    def vision_scratch_bytes(self, grid_thw) -> int:
+        """Peak score-tile bytes the vision attention needs for ``grid_thw``.
+
+        Linear in patch count once the query block is bounded, and derived from
+        the same plan the allocation uses so admission can never disagree with
+        it. The dense path this replaced was quadratic
+        (``heads * n^2 * 4``).
         """
 
-        n = int(grid_thw[0][1]) * int(grid_thw[0][2])
-        return self.spec.vision_num_heads * self._vis_score_stride(n) * 4
+        n = self._grid_patches(grid_thw)
+        _, need = plan_vision_attention(
+            n, self.spec.vision_num_heads, self.max_vision_scratch_bytes
+        )
+        return need
 
     def check_vision_capacity(self, grid_thw) -> None:
         """Admit a vision grid before any device work or allocation runs.
 
         Two independent checks, because they fail for different reasons:
 
-        - the configured cap bounds a single request regardless of how much
+        - the configured budget bounds a single request regardless of how much
           memory the host happens to have;
         - free device memory catches the case where the weights plus other
           live runners have already consumed the budget.
@@ -852,15 +929,17 @@ class SuryaGpuRunner:
         Called before patch embed so an over-budget page costs nothing.
         """
 
-        n = int(grid_thw[0][1]) * int(grid_thw[0][2])
+        n = self._grid_patches(grid_thw)
         need = self.vision_scratch_bytes(grid_thw)
         grid = (int(grid_thw[0][0]), int(grid_thw[0][1]), int(grid_thw[0][2]))
         cap = self.max_vision_scratch_bytes
         if cap is not None and need > cap:
             raise SuryaGpuRuntimeError(
-                f"vision attention scratch for grid {grid} is {need / 1e9:.2f} GB "
-                f"({n} patches), above the {cap / 1e9:.2f} GB cap; reduce the page "
-                f"resolution or construct SuryaGpuRunner(max_vision_scratch_bytes=...)"
+                f"vision attention score tile for grid {grid} is "
+                f"{need / 1e9:.2f} GB ({n} patches), above the "
+                f"{cap / 1e9:.2f} GB budget; one query row needs "
+                f"{self.spec.vision_num_heads * n * 4 / 1e6:.1f} MB, so raise "
+                f"SuryaGpuRunner(max_vision_scratch_bytes=...) to at least that"
             )
         # the scratch buffer is cached per key and reused when it is already big
         # enough, so only the growth is charged against free memory
@@ -870,12 +949,13 @@ class SuryaGpuRunner:
             return
         try:
             free_bytes, _total = self.runtime.mem_get_info()
-        except Exception:  # runtime without mem_get_info: cap is the only bound
+        except Exception:  # runtime without mem_get_info: budget is the only bound
             return
         if growth > int(free_bytes):
             raise SuryaGpuRuntimeError(
-                f"vision attention scratch for grid {grid} needs {growth / 1e9:.2f} GB "
-                f"more device memory but only {int(free_bytes) / 1e9:.2f} GB is free"
+                f"vision attention score tile for grid {grid} needs "
+                f"{growth / 1e9:.2f} GB more device memory but only "
+                f"{int(free_bytes) / 1e9:.2f} GB is free"
             )
 
     def _add_bias(self, x_ptr: int, bias_ptr: int, n: int, row: int) -> None:
@@ -912,36 +992,47 @@ class SuryaGpuRunner:
     def _vision_attention_packed(self, q_ptr: int, k_ptr: int, v_ptr: int,
                                  out_ptr: int, tokens: int, heads: int,
                                  head_dim: int, row_stride: int,
-                                 scores_ptr: int, head_stride: int,
-                                 scale: float) -> None:
-        """Bidirectional attention over head planes embedded in packed rows.
+                                 scores_ptr: int, scale: float,
+                                 block: int) -> None:
+        """Bidirectional full-image attention, tiled by query rows.
 
-        scores tile h is the col-major (tokens x tokens) C of batch h with
-        ldc=tokens, so tile h starts at h*head_stride (== h*tokens^2 for the
-        aligned stride) — the same layout the softmax kernel indexes.
+        Every query attends to every key — the tiles partition the queries, not
+        the image, so the result is the dense full-image attention result. Each
+        tile's scores are the col-major ``(tokens x bq)`` C of a strided-batched
+        SGEMM with ``ldc=tokens``, so tile h starts at ``h * tokens * bq`` and a
+        softmax row is the full ``tokens``-long key range for one query.
+
+        ``block`` is the number of query rows per tile. The final partial tile
+        packs tighter (``tokens * bq``) than the largest one, so no element of
+        the scratch buffer is read without having been written by this tile.
         """
-        self.rocblas.sgemm_strided_batched(
-            k_ptr, q_ptr, scores_ptr,
-            m=tokens, n=tokens, k=head_dim,
-            lda=row_stride, ldb=row_stride, ldc=tokens,
-            stride_a=head_dim, stride_b=head_dim, stride_c=head_stride,
-            batch=heads, trans_a=True, trans_b=False,
-        )
-        err = self._k("hipengine_evie_scale_f32", [_P, _P, _F, _I, _S])(
-            _P(scores_ptr), _P(scores_ptr), _F(scale),
-            _I(heads * head_stride), _S(0))
-        self._check(err, "vision score scale")
-        err = self._k("hipengine_evie_softmax_rows_f32", [_P, _I, _I, _I, _I, _S])(
-            _P(scores_ptr), _I(heads * tokens), _I(tokens), _I(tokens),
-            _I(head_stride), _S(0))
-        self._check(err, "vision softmax")
-        self.rocblas.sgemm_strided_batched(
-            v_ptr, scores_ptr, out_ptr,
-            m=head_dim, n=tokens, k=tokens,
-            lda=row_stride, ldb=tokens, ldc=heads * head_dim,
-            stride_a=head_dim, stride_b=head_stride, stride_c=head_dim,
-            batch=heads, trans_a=False, trans_b=False,
-        )
+
+        for start in range(0, tokens, block):
+            bq = min(block, tokens - start)
+            tile = tokens * bq
+            q_blk = q_ptr + start * row_stride * 4
+            self.rocblas.sgemm_strided_batched(
+                k_ptr, q_blk, scores_ptr,
+                m=tokens, n=bq, k=head_dim,
+                lda=row_stride, ldb=row_stride, ldc=tokens,
+                stride_a=head_dim, stride_b=head_dim, stride_c=tile,
+                batch=heads, trans_a=True, trans_b=False,
+            )
+            err = self._k("hipengine_evie_scale_f32", [_P, _P, _F, _I, _S])(
+                _P(scores_ptr), _P(scores_ptr), _F(scale),
+                _I(heads * tile), _S(0))
+            self._check(err, "vision score scale")
+            err = self._k("hipengine_evie_softmax_rows_f32", [_P, _I, _I, _I, _I, _S])(
+                _P(scores_ptr), _I(heads * bq), _I(tokens), _I(bq),
+                _I(tile), _S(0))
+            self._check(err, "vision softmax")
+            self.rocblas.sgemm_strided_batched(
+                v_ptr, scores_ptr, out_ptr + start * heads * head_dim * 4,
+                m=head_dim, n=bq, k=tokens,
+                lda=row_stride, ldb=tokens, ldc=heads * head_dim,
+                stride_a=head_dim, stride_b=tile, stride_c=head_dim,
+                batch=heads, trans_a=False, trans_b=False,
+            )
 
     def _logits_last(self) -> np.ndarray:
         s = self.spec
