@@ -5771,6 +5771,17 @@ should be boring.
   versus scalar AR (layer 46 row 3, max abs 0.015625). The retained 13/13
   transition packet and real crossing are in
   `worklog/entries/20260821T052947.067917Z-gfx1151-mtp-rf1-boundary-4k-46c738.md`.
+- Measured 2026-09-12: the flip is exactly at `start_position + rows == 1024`.
+  `scripts/ud_mtp_ar_verify_numerics_gate.py` reports `max_abs_diff` 0.073-0.280
+  at 1021/1022/1023 and exactly `0.0` at 1024, 1536, 2048 and 4096, because the
+  per-row branch runs the same per-token kernels as `session.step`. **A
+  long-context run of that gate therefore reports zero KL for a reason that has
+  nothing to do with the multi-row arithmetic**: at 4096 it pooled 162 rows with
+  mean = p95 = p99 = max = `0.000e+00` and top-1 1.0000. Do not read a
+  long-context zero-KL result from this gate as a multi-row verifier pass, and do
+  not read it as a speed claim either — the retained per-row route is 44.7 s per
+  8 generated tokens and the long-graph alternative measured 0.9989x (see the RF2
+  entry above).
 - This is deliberately not the fast long-context route (direct cycle cost
   0.4–1.6 s, 44.7 s per 8 generated tokens) and does not raise the 1023 graph
   context cap.
@@ -7031,38 +7042,3 @@ pins `graph` in `PAIRED_PROTOCOL` and rejects a payload whose
 
 **Do not promote `eager` to a default or a second supported denominator.** It is
 a diagnostic control; every published rate uses `graph`.
-
-## 2026-09-12 `strict_long_rows` suppresses the batched exact rows chain above 1024 context
-
-**State.** In `Qwen35GGUFResidentSession.verify_target_block`
-(`hipengine/runtime/qwen35_gguf_runner.py`), `strict_long_rows` is
-
-```python
-strict_long_rows = (
-    rows > 1
-    and not bool(self.weights.config.is_moe)
-    and _use_gguf_full_attention_split_decode(start_position + rows)
-)
-```
-
-and it suppresses `staged_dense_linear`, the batched exact rows chain
-(`_run_linear_attention_attn_chain_rows_exact`). Above the threshold the layer
-falls through to a per-row loop that runs the same per-token kernels as
-`session.step`.
-
-**Why it is a problem.** The per-row loop is bit-identical to the single-row AR
-route, so above `start_position + rows >= 1024` the packed multi-row MTP
-verifier is arithmetically a no-op: it costs the AR route's work and returns the
-AR route's logits. The exactness gate then passes trivially with zero KL, which
-reads as a long-context success. Measured boundary and mechanism:
-`worklog/entries/20260912T212716.391678Z-lhl-ud-mtp-long-context-verifier-126dac.md`.
-
-**Removal trigger.** Remove the `strict_long_rows` term once the batched exact
-rows chain is admitted under split decode and the applicable production-profile
-gate passes at 2048 and 4096 context. If the chain cannot be admitted, replace
-the silent per-row fallback with an explicit route flag so a long-context
-verifier call cannot be mistaken for multi-row verification.
-
-**Not done here.** This is a correctness-visibility and performance item, not a
-cleanup: the batched chain already exists and already passes the gate below the
-threshold.
