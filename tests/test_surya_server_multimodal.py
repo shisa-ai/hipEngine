@@ -30,6 +30,7 @@ from hipengine.server.multimodal import (  # noqa: E402
     media_for_engine,
     resolve_vision_http_limits,
     vision_max_side,
+    vision_prompt_markers,
 )
 
 FIXTURES = Path("tests/fixtures/surya")
@@ -63,7 +64,7 @@ class _VisionGenerator:
         pass
 
 
-class _SuryaLikeLLM(_VisionGenerator):
+class _SuryaLikeGenerator(_VisionGenerator):
     """Surya's declarations, read off the real generator class so this fake
     cannot drift from what ships."""
 
@@ -75,14 +76,31 @@ class _SuryaLikeLLM(_VisionGenerator):
     max_sequence_length = 16384
 
 
-class _Qwen4ExpLikeLLM(_VisionGenerator):
-    """An engine that declares no vision bounds keeps the old scope."""
+class _Qwen4ExpLikeGenerator(_VisionGenerator):
+    """A generator that declares no vision bounds keeps the old scope."""
 
     supports_vision = True
     max_sequence_length = 16384
 
 
-def _client(llm: object, model: str = "surya-ocr-2", **config_kwargs) -> TestClient:
+def _engine(generator: object) -> object:
+    """Wrap a fake generator the way the real server's engine wraps one.
+
+    The serving front end holds an ``LLM``, not the generator, and the vision
+    declarations live on the generator. Testing against the bare fake would miss
+    that boundary — and did: ``LLM`` did not forward these declarations, so the
+    server read ``None`` from the engine, fell back to the 1 MP Qwen4Exp default
+    and rejected every real A4 page with ``unsupported PNG geometry``.
+    """
+
+    from hipengine import LLM
+
+    engine = LLM("fake-path")
+    engine._text_generator = generator
+    return engine
+
+
+def _client(engine: object, model: str = "surya-ocr-2", **config_kwargs) -> TestClient:
     app = create_app(
         ServerConfig(
             model="fake-path",
@@ -92,7 +110,7 @@ def _client(llm: object, model: str = "surya-ocr-2", **config_kwargs) -> TestCli
             startup_scratch_probe=False,
             **config_kwargs,
         ),
-        llm=llm,
+        llm=engine,
     )
     return TestClient(app)
 
@@ -118,14 +136,14 @@ def _post_page(client: TestClient, page: Path, *, model: str, text: str | None,
 
 
 def test_http_vision_limits_default_to_the_qwen4exp_scope() -> None:
-    pixels, max_bytes = resolve_vision_http_limits(_Qwen4ExpLikeLLM())
+    pixels, max_bytes = resolve_vision_http_limits(_engine(_Qwen4ExpLikeGenerator()))
     assert pixels == DEFAULT_VISION_MAX_PIXELS
     assert vision_max_side(pixels) == 1024
     assert max_bytes == DEFAULT_VISION_MAX_BYTES
 
 
 def test_http_vision_limits_follow_a_page_scale_engine_declaration() -> None:
-    pixels, max_bytes = resolve_vision_http_limits(_SuryaLikeLLM())
+    pixels, max_bytes = resolve_vision_http_limits(_engine(_SuryaLikeGenerator()))
     assert pixels == 16_777_216
     assert vision_max_side(pixels) == 4096
     # widened with the area, because a 300-DPI document does not compress like
@@ -135,7 +153,7 @@ def test_http_vision_limits_follow_a_page_scale_engine_declaration() -> None:
 
 def test_explicit_http_vision_limits_win() -> None:
     pixels, max_bytes = resolve_vision_http_limits(
-        _SuryaLikeLLM(), max_pixels=2_000_000, max_bytes=1_000_000
+        _engine(_SuryaLikeGenerator()), max_pixels=2_000_000, max_bytes=1_000_000
     )
     assert (pixels, max_bytes) == (2_000_000, 1_000_000)
 
@@ -161,21 +179,21 @@ def test_server_cli_exposes_the_vision_limits() -> None:
 def test_media_for_engine_unwraps_one_image_for_an_image_array_engine() -> None:
     image = np.zeros((4, 6, 3), dtype=np.uint8)
     media = {"items": [{"type": "image", "data": image}]}
-    adapted = media_for_engine(_SuryaLikeLLM(), media)
+    adapted = media_for_engine(_engine(_SuryaLikeGenerator()), media)
     assert isinstance(adapted, np.ndarray)
     np.testing.assert_array_equal(adapted, image)
 
 
 def test_media_for_engine_keeps_the_items_mapping_for_the_default_form() -> None:
     media = {"items": [{"type": "image", "data": np.zeros((4, 6, 3), dtype=np.uint8)}]}
-    assert media_for_engine(_Qwen4ExpLikeLLM(), media) is media
+    assert media_for_engine(_engine(_Qwen4ExpLikeGenerator()), media) is media
 
 
 def test_media_for_engine_rejects_more_than_one_image_for_a_single_image_model() -> None:
     image = np.zeros((4, 6, 3), dtype=np.uint8)
     media = {"items": [{"type": "image", "data": image}, {"type": "image", "data": image}]}
     with pytest.raises(ValueError, match="exactly one image"):
-        media_for_engine(_SuryaLikeLLM(), media)
+        media_for_engine(_engine(_SuryaLikeGenerator()), media)
 
 
 def test_request_has_media_is_structural() -> None:
@@ -207,12 +225,13 @@ def test_a_lazily_loaded_server_resolves_the_engine_for_a_media_request(
     if not page.exists():
         pytest.skip("page_small.png is not present")
 
-    llm = _SuryaLikeLLM()
+    generator = _SuryaLikeGenerator()
+    engine = _engine(generator)
     built: list[str] = []
 
     def fake_llm(model, **kwargs):
         built.append(model)
-        return llm
+        return engine
 
     monkeypatch.setattr(api_module, "LLM", fake_llm)
     app = create_app(
@@ -230,19 +249,17 @@ def test_a_lazily_loaded_server_resolves_the_engine_for_a_media_request(
     )
     assert response.status_code == 200, response.text
     assert built == ["datalab-to/surya-ocr-2"]
-    assert len(llm.calls) == 1
-    assert isinstance(llm.calls[0][1], np.ndarray)
+    assert len(generator.calls) == 1
+    assert isinstance(generator.calls[0][1], np.ndarray)
 
 
 def test_vision_prompt_markers_follow_the_engine_declaration() -> None:
-    from hipengine.server.multimodal import vision_prompt_markers
-
     # Qwen4Exp splices features at an inline marker ...
-    assert vision_prompt_markers(_Qwen4ExpLikeLLM())[0] == (
+    assert vision_prompt_markers(_engine(_Qwen4ExpLikeGenerator()))[0] == (
         "<|vision_start|><|image_pad|><|vision_end|>"
     )
     # ... Surya renders the placeholder from the patch grid, so bare text.
-    assert vision_prompt_markers(_SuryaLikeLLM()) == ("", "")
+    assert vision_prompt_markers(_engine(_SuryaLikeGenerator())) == ("", "")
 
 
 # -- the A4 page is admitted -------------------------------------------------
@@ -252,7 +269,7 @@ def test_the_committed_a4_page_decodes_under_the_surya_bound() -> None:
     page = FIXTURES / "page_a4.png"
     if not page.exists():
         pytest.skip("page_a4.png is not present")
-    pixels, max_bytes = resolve_vision_http_limits(_SuryaLikeLLM())
+    pixels, max_bytes = resolve_vision_http_limits(_engine(_SuryaLikeGenerator()))
     decoded = decode_bounded_png_data_url(
         _png_data_url(page),
         max_bytes=max_bytes,
@@ -277,9 +294,10 @@ def test_surya_chat_completions_transcribes_a_page() -> None:
     page = FIXTURES / "page_small.png"
     if not page.exists():
         pytest.skip("page_small.png is not present")
-    llm = _SuryaLikeLLM()
+    generator = _SuryaLikeGenerator()
     response = _post_page(
-        _client(llm), page, model="surya-ocr-2", text=FULL_PAGE_HTML_PROMPT
+        _client(_engine(generator)), page, model="surya-ocr-2",
+        text=FULL_PAGE_HTML_PROMPT,
     )
     assert response.status_code == 200, response.text
     payload = response.json()
@@ -288,8 +306,8 @@ def test_surya_chat_completions_transcribes_a_page() -> None:
     assert payload["hipengine"]["multimodal"] is True
     assert payload["usage"]["completion_tokens"] == 3
 
-    assert len(llm.calls) == 1
-    prompt, image, sampling = llm.calls[0]
+    assert len(generator.calls) == 1
+    prompt, image, sampling = generator.calls[0]
     assert prompt == FULL_PAGE_HTML_PROMPT
     assert isinstance(image, np.ndarray), "the engine must receive the RGB array"
     assert image.ndim == 3 and image.shape[2] == 3
@@ -301,36 +319,38 @@ def test_surya_chat_completions_falls_back_to_the_model_prompt() -> None:
     page = FIXTURES / "page_small.png"
     if not page.exists():
         pytest.skip("page_small.png is not present")
-    llm = _SuryaLikeLLM()
-    response = _post_page(_client(llm), page, model="surya-ocr-2", text=None)
+    generator = _SuryaLikeGenerator()
+    response = _post_page(_client(_engine(generator)), page, model="surya-ocr-2", text=None)
     assert response.status_code == 200, response.text
-    assert llm.calls[0][0] == FULL_PAGE_HTML_PROMPT
+    assert generator.calls[0][0] == FULL_PAGE_HTML_PROMPT
 
 
 def test_surya_chat_completions_keeps_an_explicit_prompt() -> None:
     page = FIXTURES / "page_small.png"
     if not page.exists():
         pytest.skip("page_small.png is not present")
-    llm = _SuryaLikeLLM()
-    response = _post_page(_client(llm), page, model="surya-ocr-2", text="LAYOUT ONLY")
+    generator = _SuryaLikeGenerator()
+    response = _post_page(
+        _client(_engine(generator)), page, model="surya-ocr-2", text="LAYOUT ONLY"
+    )
     assert response.status_code == 200, response.text
-    assert llm.calls[0][0] == "LAYOUT ONLY"
+    assert generator.calls[0][0] == "LAYOUT ONLY"
 
 
 def test_surya_chat_completions_rejects_a_page_above_a_configured_bound() -> None:
     page = FIXTURES / "page_a4.png"
     if not page.exists():
         pytest.skip("page_a4.png is not present")
-    llm = _SuryaLikeLLM()
+    generator = _SuryaLikeGenerator()
     response = _post_page(
-        _client(llm, vision_max_pixels=1_048_576),
+        _client(_engine(generator), vision_max_pixels=1_048_576),
         page,
         model="surya-ocr-2",
         text=FULL_PAGE_HTML_PROMPT,
     )
     assert response.status_code == 400, response.text
     assert "unsupported PNG geometry" in response.text
-    assert llm.calls == [], "the engine ran for a rejected image"
+    assert generator.calls == [], "the engine ran for a rejected image"
 
 
 def test_surya_generators_declare_their_vision_capabilities() -> None:
@@ -345,3 +365,60 @@ def test_surya_generators_declare_their_vision_capabilities() -> None:
         assert generator.vision_default_prompt == FULL_PAGE_HTML_PROMPT
         # render_chat_prompt renders the image placeholder itself
         assert generator.vision_prompt_marker == ""
+
+
+# -- the LLM boundary --------------------------------------------------------
+
+
+def test_llm_forwards_the_generators_vision_declarations() -> None:
+    """The front end holds an LLM; the declarations live on the generator.
+
+    Without this forwarding the server reads ``None`` off the engine, keeps its
+    1 MP Qwen4Exp default, and rejects every real A4 page.
+    """
+
+    engine = _engine(_SuryaLikeGenerator())
+    assert engine.supports_vision is True
+    assert engine.vision_max_pixels == 16_777_216
+    assert engine.vision_media_input == "image_array"
+    assert engine.vision_prompt_marker == ""
+    assert engine.vision_default_prompt == FULL_PAGE_HTML_PROMPT
+    # ... and the server's helpers resolve through the wrapper.
+    pixels, _ = resolve_vision_http_limits(engine)
+    assert pixels == 16_777_216
+    assert vision_prompt_markers(engine) == ("", "")
+    assert media_for_engine(engine, {"items": [{"type": "image", "data": np.zeros((4, 4, 3), dtype=np.uint8)}]}).shape == (4, 4, 3)
+
+
+def test_llm_keeps_the_callers_default_when_the_generator_declares_nothing() -> None:
+    """An undeclared declaration must read as absent, not as ``None``.
+
+    Qwen4Exp declares no vision bounds and must keep the caller's default, so
+    the property raises ``AttributeError`` for ``getattr`` to fall back on. A
+    property that returned ``None`` would silently strip Qwen4Exp's inline
+    prompt marker.
+    """
+
+    engine = _engine(_Qwen4ExpLikeGenerator())
+    assert engine.supports_vision is True
+    assert getattr(engine, "vision_max_pixels", 0) == 0
+    assert getattr(engine, "vision_media_input", None) is None
+    assert getattr(engine, "vision_default_prompt", None) is None
+    # Qwen4Exp keeps the 1 MP / 1024 px / 8 MiB scope ...
+    assert resolve_vision_http_limits(engine)[0] == 1_048_576
+    # ... and its inline image marker.
+    assert vision_prompt_markers(engine)[0] == "<|vision_start|><|image_pad|><|vision_end|>"
+    # The media mapping is passed through untouched.
+    media = {"items": [{"type": "image", "data": np.zeros((4, 4, 3), dtype=np.uint8)}]}
+    assert media_for_engine(engine, media) is media
+
+
+def test_llm_vision_declarations_are_absent_before_the_generator_loads() -> None:
+    """Reading a declaration must not force a model load, and must read absent."""
+
+    from hipengine import LLM
+
+    engine = LLM("not-loaded")
+    assert engine.supports_vision is False
+    assert getattr(engine, "vision_max_pixels", 0) == 0
+    assert getattr(engine, "vision_prompt_marker", "sentinel") == "sentinel"

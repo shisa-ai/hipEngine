@@ -77,6 +77,17 @@ bf16 differs from torch fp32 on 15 ids there and changes the decoded text, so
 the drift is a property of that page's coordinates rather than of the HIP route.
 [Transcription acceptance](results/2026-09-12-gfx1151-surya-transcription-acceptance.json).
 
+Surya OCR 2 is also reachable through hipEngine's own OpenAI-compatible server.
+`scripts/surya_http_e2e.py` serves the 300-DPI A4 page over
+`/v1/chat/completions` against a loaded checkpoint and asserts equality with the
+direct-call row above rather than similarity: 2108 completion tokens, 8701
+prompt tokens (121 text plus 8580 image), 13 blocks, 12/12 paragraph units, CER
+0.0000, 32/32 table cells, zero reading-order violations, `stop`, 119.9 s wall
+against the direct call's 114.3 s. The vision bounds and media form are engine
+declarations, so a page-scale model is admitted without editing the server, and
+an engine that declares nothing keeps the previous 1 MP / 1024 px / 8 MiB scope.
+[HTTP serving e2e](results/2026-09-12-gfx1151-surya-http-serving-e2e.json).
+
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.

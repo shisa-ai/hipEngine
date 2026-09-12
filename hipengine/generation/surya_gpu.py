@@ -149,7 +149,7 @@ class SuryaOCRGeneratorGPU:
         from hipengine.generation.registry import FinishDetails, GenerationOutput
 
         settings = resolve_surya_greedy_settings(request, self.spec)
-        token_ids, finish_reason = self._generate_ocr(
+        token_ids, finish_reason, prompt_tokens = self._generate_ocr(
             str(prompt), image, request, settings
         )
         return GenerationOutput(
@@ -160,6 +160,7 @@ class SuryaOCRGeneratorGPU:
                 length_limit=settings.max_tokens,
             ),
             generated_token_ids=tuple(token_ids),
+            prompt_tokens=prompt_tokens,
         )
 
     # -- internals ----------------------------------------------------------
@@ -208,7 +209,7 @@ class SuryaOCRGeneratorGPU:
 
     def _generate_ocr(
         self, prompt: str, image: Any, request: Any, settings: Any
-    ) -> tuple[list[int], str]:
+    ) -> tuple[list[int], str, int]:
         # Fail before any work when the request is already abandoned, then
         # again before the two expensive stages. Preprocessing is host-side and
         # cheap but not free at 16.7 MP, vision is the first device stage, and
@@ -236,13 +237,16 @@ class SuryaOCRGeneratorGPU:
         raise_if_generation_deadline_expired(request)
         self.runner.check_vision_capacity([grid])
         merged = self.runner.vision_forward(pixel_rows, [grid])
-        return self._decode_greedy(
+        token_ids, finish_reason = self._decode_greedy(
             np.array([input_ids], dtype=np.int64),
             position_ids,
             merged,
             request,
             settings,
         )
+        # The prompt is text *plus* image tokens, so its length is only known
+        # here. A serving front end reports it as usage.prompt_tokens.
+        return token_ids, finish_reason, len(input_ids)
 
 
 def make_surya_generator_gpu(
