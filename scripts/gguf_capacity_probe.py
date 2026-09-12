@@ -47,6 +47,16 @@ def main() -> int:
     parser.add_argument("--prompt-length", type=int, default=2048,
                         help="Short prompt (memory validity does not need the full context)")
     parser.add_argument("--decode-tokens", type=int, default=4)
+    parser.add_argument(
+        "--max-batch-size",
+        type=int,
+        default=1,
+        help=(
+            "Resident slot count to size for. The server reserves one full-context "
+            "KV plane per slot, so a probe that must certify a serving envelope has "
+            "to pass the same slot count the server uses (4 for auto-selected GGUF)."
+        ),
+    )
     parser.add_argument("--json", type=Path, default=None)
     args = parser.parse_args()
 
@@ -65,6 +75,7 @@ def main() -> int:
         "kv_storage": str(args.kv_storage),
         "prompt_length": int(args.prompt_length),
         "decode_tokens": int(args.decode_tokens),
+        "max_batch_size": int(args.max_batch_size),
     }
     prompt_ids = [9707] * int(args.prompt_length)
     runtime = get_hip_runtime()
@@ -81,6 +92,7 @@ def main() -> int:
             kv_policy=policy.create_policy(),
             kv_scale_dtype=str(args.kv_scale_dtype),
             kv_scale_granularity=str(policy.scale_granularity),
+            max_batch_size=int(args.max_batch_size),
         ) as session:
             first = session.prefill(prompt_ids, use_bulk=True, return_logits=True)
             logits = np.asarray(first.logits, dtype=np.float32)

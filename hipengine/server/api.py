@@ -4756,6 +4756,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             time.perf_counter() - prepare_started,
             "unknown" if effective is None else str(effective),
         )
+        # Reports the resolved context, the KV policy, and the capacity headroom
+        # on the logger the server already configures, so an automatic context
+        # selection is visible without extra flags.
+        _log_kv_capacity_summary(engine)
         return effective
 
     def mark_startup_failed(
@@ -10512,11 +10516,12 @@ def _log_kv_capacity_summary(engine: Any) -> None:
     if estimate is not None:
         model_max = int(getattr(estimate, "model_max_context_tokens", 0) or 0)
         _LOGGER.info(
-            "KVCache: storage=%s scale=%s max_context_tokens=%d model_max_context_tokens=%s "
-            "allocatable_context_tokens=%d requested_kv=%s metadata=%s total=%s "
-            "bytes_per_token=%d usable=%s reserve=%s",
+            "KVCache: storage=%s scale=%s slots=%d max_context_tokens=%d "
+            "model_max_context_tokens=%s allocatable_context_tokens=%d requested_kv=%s "
+            "metadata=%s total=%s bytes_per_token=%d usable=%s reserve=%s",
             getattr(estimate, "kv_storage_dtype", "unknown"),
             getattr(estimate, "kv_scale_dtype", None) or "none",
+            int(getattr(estimate, "max_batch_size", 0) or 0),
             int(getattr(estimate, "requested_context_tokens", 0) or 0),
             "unknown" if model_max <= 0 else str(model_max),
             int(getattr(estimate, "allocatable_context_tokens", 0) or 0),
@@ -10529,9 +10534,13 @@ def _log_kv_capacity_summary(engine: Any) -> None:
         )
         if model_max > 0 and not bool(getattr(estimate, "fits_model_max", True)):
             _LOGGER.warning(
-                "KVCache: selected policy can fit allocatable_context_tokens=%d, "
-                "below model_max_context_tokens=%d",
-                int(getattr(estimate, "allocatable_context_tokens", 0) or 0),
+                "KVCache: the selected context (%d tokens) is the largest that fits in "
+                "%s free for %d resident slot(s); model_max_context_tokens=%d needs more "
+                "memory. Lower --max-active-requests, use --kv-storage "
+                "int8_per_token_head, or pass an explicit --max-context-tokens.",
+                int(getattr(estimate, "requested_context_tokens", 0) or 0),
+                _format_bytes(int(getattr(estimate, "usable_bytes", 0) or 0)),
+                int(getattr(estimate, "max_batch_size", 0) or 0),
                 model_max,
             )
     int8_estimate = getattr(session, "kv_capacity_int8_estimate", None)
@@ -10565,6 +10574,7 @@ def _kv_capacity_estimate_payload(engine: Any | None) -> dict[str, Any] | None:
         "requested_context_tokens",
         "model_max_context_tokens",
         "allocatable_context_tokens",
+        "max_batch_size",
         "requested_kv_bytes",
         "bytes_per_token",
         "usable_bytes",
