@@ -37,6 +37,7 @@ import math
 
 import numpy as np
 
+from hipengine.core.device import Device
 from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.core.memory import (
     DeviceBuffer,
@@ -47,6 +48,7 @@ from hipengine.core.memory import (
 )
 from hipengine.core.memory import free as hip_free
 from hipengine.core.rocblas import Rocblas
+from hipengine.core.tensor import Tensor
 from hipengine.kernels.cpu_reference.evie import text_rope_tables
 from hipengine.kernels.cpu_reference.surya import SuryaSpec, SuryaWeights
 from hipengine.kernels.hip_gfx1100.evie.evie_ops import build_evie_ops
@@ -61,12 +63,17 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_prefill_recurrent_normalized_cluster8_f32,
 )
 from hipengine.kernels.hip_gfx1100.surya.surya_ops import (
+    SURYA_DECODE_HEAD_DIM,
+    SURYA_DECODE_Q_PER_KV,
     build_surya_ops,
+    plan_surya_dense_spans,
     surya_causal_mask_scale_f32,
+    surya_full_attn_decode_f32_spans,
     surya_gdn_l2norm_f32,
-    surya_scatter_kv_f32,
+    surya_scatter_kv_f32_spans,
     surya_split_qgate_f32,
 )
+from hipengine.kvcache import KVLiveSpans
 
 _P = ctypes.c_void_p
 _F = ctypes.c_float
@@ -161,6 +168,88 @@ def _raw_buffer(ptr: int, nbytes: int) -> DeviceBuffer:
     """A non-owning view over an existing device pointer (for copies)."""
 
     return DeviceBuffer(ptr=ptr, nbytes=nbytes)
+
+
+def attention_decode_rocblas_f32(
+    rocblas,
+    evie_library,
+    runtime: HipRuntime,
+    ptr_array,
+    *,
+    q_ptr: int,
+    k_cache_ptr: int,
+    v_cache_ptr: int,
+    out_ptr: int,
+    scores_ptr: int,
+    total: int,
+    num_q_heads: int,
+    num_key_value_heads: int,
+    head_dim: int,
+    max_seq: int,
+) -> None:
+    """Strict unfused single-query attention: batched SGEMM, scale, softmax, AV.
+
+    The pre-``KVLiveSpans`` Surya decode path, kept as the registered fallback
+    for :func:`surya_full_attn_decode_f32_spans` and as its parent-parity
+    oracle.  ``scores`` is the ``(num_q_heads, max_seq)`` fp32 scratch row the
+    four dispatches round-trip through.  ``ptr_array`` uploads (and may cache)
+    an int64 device pointer array for a batched call.
+    """
+
+    repeat = num_q_heads // num_key_value_heads
+    head_stride = max_seq
+    plane = max_seq * head_dim
+    k_planes = [k_cache_ptr + (h // repeat) * plane * 4 for h in range(num_q_heads)]
+    q_rows = [q_ptr + h * head_dim * 4 for h in range(num_q_heads)]
+    score_rows = [scores_ptr + h * head_stride * 4 for h in range(num_q_heads)]
+    v_planes = [v_cache_ptr + (h // repeat) * plane * 4 for h in range(num_q_heads)]
+    out_rows = [out_ptr + h * head_dim * 4 for h in range(num_q_heads)]
+
+    rocblas.sgemm_batched(
+        ptr_array(k_planes).ptr,
+        ptr_array(q_rows).ptr,
+        ptr_array(score_rows).ptr,
+        batch=num_q_heads, m=total, n=1, k=head_dim,
+        lda=head_dim, ldb=head_dim, ldc=head_stride,
+        trans_a=True, trans_b=False,
+    )
+    scale = _fn_evie(evie_library, "hipengine_evie_scale_f32", [_P, _P, _F, _I, _S])
+    _check_err(
+        scale(_P(scores_ptr), _P(scores_ptr), _F(head_dim ** -0.5),
+              _I(num_q_heads * head_stride), _S(0)),
+        runtime,
+        "surya decode scale",
+    )
+    softmax = _fn_evie(
+        evie_library, "hipengine_evie_softmax_rows_f32", [_P, _I, _I, _I, _I, _S]
+    )
+    _check_err(
+        softmax(_P(scores_ptr), _I(num_q_heads), _I(total), _I(1), _I(head_stride), _S(0)),
+        runtime,
+        "surya decode softmax",
+    )
+    rocblas.sgemm_batched(
+        ptr_array(v_planes).ptr,
+        ptr_array(score_rows).ptr,
+        ptr_array(out_rows).ptr,
+        batch=num_q_heads, m=head_dim, n=1, k=total,
+        lda=head_dim, ldb=head_stride, ldc=num_q_heads * head_dim,
+        trans_a=False, trans_b=False,
+    )
+
+
+def _fn_evie(library, symbol: str, argtypes: list):
+    fn = getattr(library, symbol, None)
+    if fn is None:
+        raise SuryaGpuRuntimeError(f"missing symbol {symbol}")
+    fn.argtypes = argtypes
+    fn.restype = ctypes.c_int
+    return fn
+
+
+def _check_err(err: int, runtime: HipRuntime, what: str) -> None:
+    if err != 0:
+        raise SuryaGpuRuntimeError(f"{what} failed: {err}")
 
 
 class SuryaGpuRunner:
@@ -292,6 +381,72 @@ class SuryaGpuRunner:
                     self._permanent(nk * self.max_seq * hd * 4),
                     self._permanent(nk * self.max_seq * hd * 4),
                 )
+        self._alloc_span_state()
+
+    def _alloc_span_state(self) -> None:
+        """Dense uniform ``KVLiveSpans`` backing store for the KV path.
+
+        The page table, absolute token positions, and eviction mask are static
+        for a dense fill, so they are uploaded once; only ``live_counts`` and
+        ``row_positions`` move per decode step.  The scalar host mirrors stay
+        alive for the process lifetime so a per-step H2D does not need the
+        synchronizing ``_upload`` path (which exists for transient temporaries).
+        """
+
+        s = self.spec
+        self._span_plan = plan_surya_dense_spans(self.max_seq)
+        plan = self._span_plan
+        self._span_page_table = self._permanent(plan.page_table.nbytes)
+        self._span_token_positions = self._permanent(plan.token_positions.nbytes)
+        self._span_evict_mask = self._permanent(plan.evict_mask.nbytes)
+        self._span_live_counts = self._permanent(8)
+        self._span_row_positions = self._permanent(8)
+        self._span_live_host = np.zeros(1, dtype=np.int64)
+        self._span_row_host = np.zeros(1, dtype=np.int64)
+        self._upload(self._span_page_table, plan.page_table, dtype=np.int32)
+        self._upload(self._span_token_positions, plan.token_positions, dtype=np.int64)
+        self._upload(self._span_evict_mask, plan.evict_mask, dtype=np.bool_)
+        nq, hd = s.num_attention_heads, s.head_dim
+        splits = plan.num_splits
+        self._span_partial_out = self._permanent(nq * splits * hd * 4)
+        self._span_partial_m = self._permanent(nq * splits * 4)
+        self._span_partial_l = self._permanent(nq * splits * 4)
+        # One immutable view per request: only the live-count/row-position device
+        # values move, so rebuilding the dataclass per layer would be pure host
+        # overhead on the decode path.
+        self._span_view = KVLiveSpans.paged_dense(
+            block_table=Tensor.from_handle(
+                self._span_page_table.ptr, (plan.block_table_len,), "int32",
+                Device("hip", 0)),
+            live_counts=Tensor.from_handle(
+                self._span_live_counts.ptr, (1,), "int64", Device("hip", 0)),
+            token_positions=Tensor.from_handle(
+                self._span_token_positions.ptr, (self.max_seq,), "int64",
+                Device("hip", 0)),
+            evict_mask=Tensor.from_handle(
+                self._span_evict_mask.ptr, (self.max_seq,), "bool",
+                Device("hip", 0)),
+            row_positions=Tensor.from_handle(
+                self._span_row_positions.ptr, (1,), "int64", Device("hip", 0)),
+            capacity=self.max_seq,
+            block_size=plan.block_size,
+            storage_dtype="fp32",
+        )
+
+    def _set_span_extent(self, live_count: int, row_position: int) -> None:
+        """Publish the current live-token count and query row for this step."""
+
+        self._span_live_host[0] = int(live_count)
+        self._span_row_host[0] = int(row_position)
+        copy_host_to_device(
+            self._span_live_counts, host_array_ptr(self._span_live_host), 8)
+        copy_host_to_device(
+            self._span_row_positions, host_array_ptr(self._span_row_host), 8)
+
+    def _spans(self) -> KVLiveSpans:
+        """The request's dense uniform spans over the persistent KV planes."""
+
+        return self._span_view
 
     def _permanent(self, nbytes: int) -> DeviceBuffer:
         buf = malloc(nbytes + _GEMM_PAD_BYTES)
@@ -452,33 +607,39 @@ class SuryaGpuRunner:
             )
 
     def _attention_decode(self, q_ptr, k_cache_ptr, v_cache_ptr, out_ptr, total) -> None:
-        """Single-query attention against the persistent KV cache planes."""
+        """Strict unfused decode fallback (batched SGEMM + row softmax).
+
+        The default route is :func:`surya_full_attn_decode_f32_spans`; this
+        parent path stays registered for shapes the fused kernel does not
+        compile for (head_dim != 256, GQA repeat != 4) and as the bisection
+        oracle.  It reads no span metadata, which is exactly why it is the
+        fallback rather than the contract.
+        """
         s = self.spec
         nq, nk, hd = s.num_attention_heads, s.num_key_value_heads, s.head_dim
-        repeat = nq // nk
-        head_stride = self.max_seq
-        scores = self._buf("scores", nq * head_stride * 4)
-        self.rocblas.sgemm_batched(
-            self._dev_ptr_array([k_cache_ptr + (h // repeat) * self.max_seq * hd * 4 for h in range(nq)]).ptr,
-            self._dev_ptr_array([q_ptr + h * hd * 4 for h in range(nq)]).ptr,
-            self._dev_ptr_array([scores.ptr + h * head_stride * 4 for h in range(nq)]).ptr,
-            batch=nq, m=total, n=1, k=hd,
-            lda=hd, ldb=hd, ldc=head_stride,
-            trans_a=True, trans_b=False,
+        scores = self._buf("scores", nq * self.max_seq * 4)
+        attention_decode_rocblas_f32(
+            self.rocblas, self.library, self.runtime, self._dev_ptr_array,
+            q_ptr=q_ptr, k_cache_ptr=k_cache_ptr, v_cache_ptr=v_cache_ptr,
+            out_ptr=out_ptr, scores_ptr=scores.ptr, total=total,
+            num_q_heads=nq, num_key_value_heads=nk, head_dim=hd,
+            max_seq=self.max_seq,
         )
-        err = self._k("hipengine_evie_scale_f32", [_P, _P, _F, _I, _S])(
-            _P(scores.ptr), _P(scores.ptr), _F(hd ** -0.5), _I(nq * head_stride), _S(0))
-        self._check(err, "scale scores")
-        err = self._k("hipengine_evie_softmax_rows_f32", [_P, _I, _I, _I, _I, _S])(
-            _P(scores.ptr), _I(nq), _I(total), _I(1), _I(head_stride), _S(0))
-        self._check(err, "softmax decode")
-        self.rocblas.sgemm_batched(
-            self._dev_ptr_array([v_cache_ptr + (h // repeat) * self.max_seq * hd * 4 for h in range(nq)]).ptr,
-            self._dev_ptr_array([scores.ptr + h * head_stride * 4 for h in range(nq)]).ptr,
-            self._dev_ptr_array([out_ptr + h * hd * 4 for h in range(nq)]).ptr,
-            batch=nq, m=hd, n=1, k=total,
-            lda=hd, ldb=head_stride, ldc=nq * hd,
-            trans_a=False, trans_b=False,
+
+    def _attention_decode_spans(self, q_ptr, k_cache_ptr, v_cache_ptr, out_ptr) -> None:
+        """Fused fp32 GQA decode over the request's ``KVLiveSpans``."""
+        s = self.spec
+        nq, nk, hd = s.num_attention_heads, s.num_key_value_heads, s.head_dim
+        if hd != SURYA_DECODE_HEAD_DIM or nq != SURYA_DECODE_Q_PER_KV * nk:
+            self._attention_decode(q_ptr, k_cache_ptr, v_cache_ptr, out_ptr,
+                                   self._seq_len + 1)
+            return
+        surya_full_attn_decode_f32_spans(
+            q_ptr, k_cache_ptr, v_cache_ptr, out_ptr,
+            self._span_partial_out.ptr, self._span_partial_m.ptr,
+            self._span_partial_l.ptr, self._spans(),
+            self._span_plan.block_size, nq, nk, hd, hd ** -0.5,
+            library=self.surya_library, runtime=self.runtime,
         )
 
     def _fn_surya(self, symbol: str, argtypes: list) -> ctypes._FuncPtr:
@@ -650,12 +811,18 @@ class SuryaGpuRunner:
             _P(k.ptr), _P(cos_buf.ptr), _P(sin_buf.ptr), _I(tokens), _I(nk),
             _I(hd), _I(int(hd * s.partial_rotary_factor)), _I(nk * hd), _S(0))
         self._check(err, "rope k")
-        # write k/v into the persistent cache planes, then attend causally
+        # write k/v into the persistent cache planes through the span ABI, then
+        # attend causally (prefill attention is not a decode/paged-write kernel,
+        # so it keeps the dense plane view)
         k_cache, v_cache = self._kv_cache[layer]
-        surya_scatter_kv_f32(k.ptr, k_cache.ptr, tokens, 0, nk, hd, self.max_seq,
-                             library=self.surya_library, runtime=self.runtime)
-        surya_scatter_kv_f32(v.ptr, v_cache.ptr, tokens, 0, nk, hd, self.max_seq,
-                             library=self.surya_library, runtime=self.runtime)
+        spans = self._spans()
+        block_size = self._span_plan.block_size
+        surya_scatter_kv_f32_spans(k.ptr, k_cache.ptr, spans, tokens, 0,
+                                   block_size, nk, hd,
+                                   library=self.surya_library, runtime=self.runtime)
+        surya_scatter_kv_f32_spans(v.ptr, v_cache.ptr, spans, tokens, 0,
+                                   block_size, nk, hd,
+                                   library=self.surya_library, runtime=self.runtime)
         self._attention_packed(q.ptr, k_cache.ptr, v_cache.ptr, heads_out.ptr, tokens)
         err = self._k("hipengine_evie_sigmoid_mul_f32", [_P, _P, _I, _S])(
             _P(gate.ptr), _P(heads_out.ptr), _I(tokens * nq * hd), _S(0))
@@ -693,11 +860,15 @@ class SuryaGpuRunner:
         self._check(err, "rope k decode")
         k_cache, v_cache = self._kv_cache[layer]
         pos = self._seq_len
-        surya_scatter_kv_f32(k.ptr, k_cache.ptr, 1, pos, nk, hd, self.max_seq,
-                             library=self.surya_library, runtime=self.runtime)
-        surya_scatter_kv_f32(v.ptr, v_cache.ptr, 1, pos, nk, hd, self.max_seq,
-                             library=self.surya_library, runtime=self.runtime)
-        self._attention_decode(q.ptr, k_cache.ptr, v_cache.ptr, heads_out.ptr, pos + 1)
+        spans = self._spans()
+        block_size = self._span_plan.block_size
+        surya_scatter_kv_f32_spans(k.ptr, k_cache.ptr, spans, 1, pos,
+                                   block_size, nk, hd,
+                                   library=self.surya_library, runtime=self.runtime)
+        surya_scatter_kv_f32_spans(v.ptr, v_cache.ptr, spans, 1, pos,
+                                   block_size, nk, hd,
+                                   library=self.surya_library, runtime=self.runtime)
+        self._attention_decode_spans(q.ptr, k_cache.ptr, v_cache.ptr, heads_out.ptr)
         err = self._k("hipengine_evie_sigmoid_mul_f32", [_P, _P, _I, _S])(
             _P(gate.ptr), _P(heads_out.ptr), _I(nq * hd), _S(0))
         self._check(err, "attn gate decode")
@@ -1181,6 +1352,7 @@ class SuryaGpuRunner:
         # here, not after embed, rope, and a failed multi-GB allocation.
         self.check_prefill_capacity(len(ids))
         self._seq_len = len(ids)
+        self._set_span_extent(len(ids), len(ids) - 1)
         x = self._embed(ids, visual_features)
         cos_buf, sin_buf = self._rope_tables_device(np.ascontiguousarray(pos, dtype=np.int64))
         self._decode_stack(x.ptr, len(ids), cos_buf, sin_buf, decode=False)
@@ -1195,7 +1367,9 @@ class SuryaGpuRunner:
         # into that slot and attends over ``_seq_len + 1`` positions. Advance it
         # only after the step, otherwise the scatter lands one slot too high and
         # attention reads a slot this request never wrote -- stale KV from any
-        # earlier, longer request on the same runner.
+        # earlier, longer request on the same runner. ``_set_span_extent``
+        # publishes the same extent through ``KVLiveSpans`` for this step.
+        self._set_span_extent(self._seq_len + 1, self._seq_len)
         self._decode_stack(x.ptr, 1, cos_buf, sin_buf, decode=True)
         self._seq_len += 1
         return self._logits_last()

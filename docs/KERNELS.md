@@ -323,12 +323,20 @@ small Surya-specific op set. These families are direct-launched through their
 Python wrappers with no four-axis registry entries; the runtime-level strict
 fallback is the contract of record (see `docs/REFACTOR.md`).
 
+The KV write and decode kernels read the complete
+`(base_offsets, live_counts, token_positions, evict_mask)` span ABI over the
+same head-major fp32 `(nk, max_seq, hd)` planes the prefill path addresses. The
+dense policy fills every field uniformly (identity page table, `arange`
+positions, empty eviction mask) rather than leaving them null, so the default
+path exercises the metadata it claims to honour.
+
 | Functional family | Source / wrapper | Principal entry points | Notes |
 | --- | --- | --- | --- |
 | Split q / gate | `surya/surya_ops.{hip,py}` | `surya_split_qgate_f32` | Separates the fused q+gate projection into query and gate planes for the GDN output gate. |
 | GDN q/k L2 norm | `surya/surya_ops.{hip,py}` | `surya_gdn_l2norm_f32` | Strided-source, plain-output per-head L2 normalization of the recurrent q/k; the repeat variant in the shared GDN family writes a doubled per-head layout Surya does not use. |
 | Plain-weight RMSNorm | `surya/surya_ops.{hip,py}` | `surya_rmsnorm_f32` | Plain `w` convention. Surya's GDN `RMSNormGated` uses plain weights, unlike the standalone Qwen `(1+w)` norm. |
-| Dense KV scatter | `surya/surya_ops.{hip,py}` | `surya_scatter_kv_f32` | Strided scatter into the contiguous `(nk, max_seq, hd)` cache, replacing the per-head `memcpy` loop in decode. Bespoke dense offsets, not `KVLiveSpans` (see `docs/REFACTOR.md`). |
+| Dense KV scatter | `surya/surya_ops.{hip,py}` | `surya_scatter_kv_f32_spans` | Spans-aware strided scatter into the contiguous `(nk, max_seq, hd)` cache: the logical token index is mapped through the page table and skipped when it is outside `live_counts`, has a negative `token_positions` entry, or is marked in `evict_mask`. The pre-spans `surya_scatter_kv_f32(tokens, token_offset)` parent stays registered as the bisection oracle. |
+| Decode attention | `surya/surya_ops.{hip,py}` | `surya_full_attn_decode_f32_spans`, `..._split_k_reduce_f32` | Fused fp32 GQA-4 split-K decode attention over complete `KVLiveSpans`: one producer block per `(kv_head, context chunk)` computes all four query heads of that KV head, so each K/V plane is read once per KV head instead of once per query head, and no `(nq, max_seq)` score row is materialized. Replaces the batched-SGEMM scores + scale + row-softmax + AV chain; `attention_decode_rocblas_f32` in `runtime/surya.py` is the registered strict fallback for head_dim != 256 or GQA repeat != 4. |
 | Causal mask + scale | `surya/surya_ops.{hip,py}` | `surya_causal_mask_scale_f32` | Builds the scaled causal score mask for the packed full-attention layers. Takes the tile's first query as a `query_offset`, because a query-row tile's mask is relative to the absolute query position, not the tile-local row index. |
 | Vision tower | `hip_gfx1100/evie/evie_ops.{hip,py}` | `build_evie_ops` symbol set | Reused EVIE JIT library: patch embed, learned position add, bidirectional attention, LayerNorm, GELU, merger GEMMs. Surya vision has biases where EVIE does not. |
 | Linear attention | `hip_gfx1100/linear_attn/conv.{hip,py}`, `gdn.{hip,py}` | `qwen35_linear_attn_conv_*`, `qwen35_gdn_prefill_recurrent_*` | Reused Qwen3.5 GDN prefill/decode kernels; Surya has 12 GDN and 12 full-attention layers. |
