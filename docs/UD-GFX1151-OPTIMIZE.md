@@ -467,14 +467,20 @@ Before automatic MTP admission, complete the U6 envelope:
   so rows 2-8 are covered and rows 5 is numerically qualified. Rows 1 and 9+
   remain outside the graph, and the prefill tile/chunk boundaries are unstarted.
 - [ ] c1/c2/c4/c8, ragged and sparse rows, permutations, delayed arrivals,
-  neighbor replacement, cancellation, reclaim, and width transitions.
+  neighbor replacement, cancellation, reclaim, and width transitions. The width
+  axis is now measured rather than open: c1 engages and holds `ar_exact`,
+  c2 engages and holds `ar_exact` at 1.0418x, c4 has no production physical
+  width cell, and c8 runs out of memory at capacity 8 on the default GPU. Ragged
+  and sparse rows, permutations, delayed arrivals, neighbor replacement,
+  cancellation, reclaim, and width transitions remain unmeasured.
 - [ ] Exact speculative accept/reject commit and rollback. The U6 control item
   `exact_ar_mtp_control_behavior` is qualified on both UD records; the
   production rollback path at width is unmeasured.
 - [ ] Draft/verifier state disjointness, aliases, and teardown.
 - [ ] Block-64 Q6 `eh_proj`, attention, and FFN operations.
 - [ ] Explicit artifact-scoped strict manifest.
-- [ ] Explicit backend/profile/context/width scope.
+- [x] Explicit backend/profile/context/width scope. Closed on measurement:
+  backend hip_gfx1100, profile production, context 1023, width c1.
 
 The pin is now minted: both UD records are complete, `_UD_MTP_PRESET_FINGERPRINTS`
 carries both fingerprints, and the artifacts derive `GGUF_PRESET_SCOPE_MTP`. The
