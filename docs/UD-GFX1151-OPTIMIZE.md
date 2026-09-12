@@ -517,11 +517,14 @@ capped at 1023 context, and that cap is real rather than bookkeeping: above
 suppresses the batched exact rows chain and the layer falls through to a
 per-row loop that is bit-identical to the single-row AR route. The 4096-token
 point was measured and returned zero KL over 162 rows because there is no
-multi-row verifier above that line, so it is evidence about the fallback rather
-than a long-context pass. The optimization is to admit the batched exact rows
-chain under split decode (see `docs/REFACTOR.md`), after which the long-context
-point has something to measure. Rows 9+ are outside the native target graph,
-and the prefill tile/chunk boundaries are unstarted. Evidence:
+multi-row verifier above that line, so it is evidence about the retained RF1
+strict per-row fallback rather than a long-context pass. That fallback is
+deliberate: the batched staging above 1024 crossed a BF16 rounding boundary
+versus scalar AR (layer 46 row 3, max abs 0.015625). Long-context MTP
+acceleration is therefore blocked on RF2 context-bucketed graphs, whose
+candidate measured 0.9989x and is not auto-routed. Rows 9+ are outside the
+native target graph, and the prefill tile/chunk boundaries are unstarted.
+Evidence:
 `worklog/entries/20260912T172746.747765Z-lhl-ud-phase5-width-scope-14e699.md`,
 `worklog/entries/20260912T212716.391678Z-lhl-ud-mtp-long-context-verifier-126dac.md`.
 
