@@ -7,8 +7,11 @@ ceiling (65536). Those grids cannot run densely, so they have no dense baseline.
 
 This measures the grids that *can* run both ways, so the tiling's cost is known
 rather than assumed: ``None`` disables the budget and runs one dense tile, and a
-byte budget selects the largest query block whose tile fits. One runner per
-budget, warm-up call discarded, median of ``--reps``.
+byte budget selects the largest query block whose tile fits *and* that the
+planner's shape envelope admits. ``--blocks`` measures named shapes directly,
+lifting the envelope so shapes the planner would not choose are still on the
+curve; byte-budget rows always keep it, because those rows are the production
+plan. One runner per shape, warm-up call discarded, median of ``--reps``.
 
 Usage::
 
@@ -32,13 +35,56 @@ FIXTURES = Path("tests/fixtures/surya")
 MODEL = "datalab-to/surya-ocr-2"
 MIB = 1024 * 1024
 
+
+def _production_envelope() -> tuple[int, int, int]:
+    """The planner's shipped shape envelope, read before anything lifts it."""
+
+    from hipengine.runtime.surya import (
+        SHAPE_TILE_DIVISOR,
+        SHAPE_TILE_MULTIPLE,
+        SHAPE_TILE_ROWS,
+    )
+
+    return (
+        int(SHAPE_TILE_ROWS),
+        int(SHAPE_TILE_DIVISOR),
+        int(SHAPE_TILE_MULTIPLE),
+    )
+
+
+_ENVELOPE = _production_envelope()
+
 # (fixture, patch count). 1024 patches is a 512x512 page; 4096 is the 1024x1024
-# Japanese page at grid 1x64x64. Both are admissible densely.
-CASES = (("page_dense.png", 1024), ("page_ja.png", 4096))
+# Japanese page at grid 1x64x64; 6400 is the 1024x1600 long page at 1x100x64;
+# 34320 is the 300-DPI A4 page at 220x156, the grid the memory plan is written
+# against and the only one of the four that cannot run densely. The first three
+# give a dense baseline and span the range where the optimal block moves.
+CASES = (
+    ("page_small.png", 256),
+    ("page_dense.png", 1024),
+    ("page_ja.png", 4096),
+    ("page_long.png", 6400),
+    ("page_a4.png", 34320),
+)
+
+# A page-scale grid costs ~30-60 s per forward, so the default page set is the
+# three that have a dense baseline; the A4 grid is opt-in.
+DEFAULT_PAGES: tuple[str, ...] = ("page_dense.png", "page_ja.png", "page_long.png")
 
 # None = dense (one tile). The rest are tile budgets, smallest last so the
 # printed curve reads largest-tile-first.
 BUDGETS: tuple[int | None, ...] = (None, 512 * MIB, 64 * MIB, 8 * MIB)
+
+# Explicit query-block sweep. The budget is an awkward knob for shape work:
+# ``block = budget // (heads * rows * 4)``, so the interesting shapes (a block
+# that divides the grid, a block one row either side of a divisor) need the
+# budget solved backwards. ``--blocks`` does that, so the same runner and the
+# same timed region are used for every shape.
+SWEEP_BLOCKS: tuple[int, ...] = (
+    16, 21, 22, 32, 42, 48, 56, 64, 72, 80, 85, 96, 100, 112, 128, 144, 160,
+    170, 171, 192, 200, 256, 341, 342, 512, 683, 1024, 1365, 2048, 2730, 2731,
+    4096,
+)
 
 
 def _git(*args: str) -> str | None:
@@ -87,7 +133,39 @@ def _provenance(argv: list[str]) -> dict[str, object]:
     return info
 
 
-def _timings(page: str, budget: int | None, reps: int) -> dict[str, object]:
+def _shape_envelope(enable: bool) -> None:
+    """Turn the planner's shape envelope on or off for the next measurement.
+
+    Byte-budget rows are the production plan, so they keep the envelope and the
+    wavefront rounding. Shape rows measure the landscape, so they lift both: a
+    width the planner would never choose still has to be measured to know what
+    it costs, and the envelope's own constants were chosen from widths outside
+    it — including the non-multiples of 32 that justify the rounding.
+    """
+
+    import hipengine.runtime.surya as surya
+
+    if enable:
+        (
+            surya.SHAPE_TILE_ROWS,
+            surya.SHAPE_TILE_DIVISOR,
+            surya.SHAPE_TILE_MULTIPLE,
+        ) = _ENVELOPE
+    else:
+        surya.SHAPE_TILE_ROWS = 1 << 40
+        surya.SHAPE_TILE_DIVISOR = 1 << 40
+        surya.SHAPE_TILE_MULTIPLE = 1
+
+
+def _timings(page: str, budget: int | None, reps: int,
+             block: int | None = None) -> dict[str, object]:
+    """Time ``vision_forward`` once per repeat under one tile shape.
+
+    ``block`` names a query-block shape and solves the budget backwards
+    (``heads * rows * block * 4``); ``budget`` is the byte form used when the
+    shape is not what is being varied.
+    """
+
     from PIL import Image
 
     from hipengine.loading.surya import (
@@ -106,6 +184,13 @@ def _timings(page: str, budget: int | None, reps: int) -> dict[str, object]:
     )
     patches = int(grid[1]) * int(grid[2])
 
+    if block is not None:
+        if not 1 <= int(block) <= patches:
+            raise SystemExit(
+                f"block {block} is outside 1..{patches} for {page}"
+            )
+        budget = int(spec.vision_num_heads) * patches * int(block) * 4
+
     runner = SuryaGpuRunner(
         weights, spec, max_seq=4096, max_vision_scratch_bytes=budget
     )
@@ -116,19 +201,28 @@ def _timings(page: str, budget: int | None, reps: int) -> dict[str, object]:
             start = time.perf_counter()
             runner.vision_forward(pixel_rows, [grid])
             samples.append(time.perf_counter() - start)
-        block = int(runner.vision_block([grid]))
+        planned = int(runner.vision_block([grid]))
         scratch = int(runner.vision_scratch_bytes([grid]))
     finally:
         runner.close()
 
+    if block is not None and planned != int(block):
+        raise SystemExit(
+            f"asked for block {block} on {page} but the planner returned "
+            f"{planned}"
+        )
+
     dense_bytes = int(spec.vision_num_heads) * patches * patches * 4
+    tiles = -(-patches // planned)
     return {
         "page": page,
         "grid": [int(v) for v in grid],
         "patches": patches,
         "budget_bytes": budget,
-        "query_block": block,
-        "tiles": -(-patches // block),
+        "query_block": planned,
+        "tiles": tiles,
+        "tail_rows": patches - (tiles - 1) * planned,
+        "even": patches % planned == 0,
         "scratch_bytes": scratch,
         "scratch_mib": round(scratch / MIB, 1),
         "dense_score_bytes": dense_bytes,
@@ -143,28 +237,80 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--reps", type=int, default=5)
     parser.add_argument(
+        "--blocks", default=None,
+        help="comma-separated explicit query-block shapes; the budget is "
+             "solved backwards for each, so this is the shape sweep",
+    )
+    parser.add_argument(
+        "--pages", default=None,
+        help="comma-separated fixture names; default is the three grids that "
+             "also have a dense baseline",
+    )
+    parser.add_argument(
         "--out", type=Path,
         default=Path("benchmarks/results/2026-09-12-gfx1151-surya-vision-tiling-cost.json"),
+    )
+    parser.add_argument(
+        "--with-budgets", action="store_true",
+        help="with --blocks, run the byte-budget plans first so one artifact "
+             "holds both the default path and the shape sweep",
     )
     args = parser.parse_args()
 
     import sys
 
+
+    selected = (
+        tuple(value.strip() for value in args.pages.split(",") if value.strip())
+        if args.pages else DEFAULT_PAGES
+    )
+    known = {page for page, _ in CASES}
+    unknown = [page for page in selected if page not in known]
+    if unknown:
+        raise SystemExit(f"unknown page(s) {unknown}; known: {sorted(known)}")
+    blocks = (
+        [int(value) for value in args.blocks.split(",") if value.strip()]
+        if args.blocks else None
+    )
     rows: list[dict[str, object]] = []
     for page, expected in CASES:
+        if page not in selected:
+            continue
         if not (FIXTURES / page).exists():
             raise SystemExit(f"missing {FIXTURES / page}")
-        for budget in BUDGETS:
-            row = _timings(page, budget, args.reps)
+        if blocks is None:
+            plans: list[dict[str, object]] = [
+                {"budget": budget, "block": None} for budget in BUDGETS
+            ]
+        else:
+            plans = [
+                {"budget": None, "block": block}
+                for block in blocks
+                if block <= expected  # a block larger than the grid is dense
+            ]
+            if args.with_budgets:
+                plans = [
+                    {"budget": budget, "block": None} for budget in BUDGETS
+                ] + plans
+        for plan in plans:
+            budget, block = plan["budget"], plan["block"]
+            # budget rows are the production plan; named shapes lift the
+            # envelope so the whole landscape is on the curve
+            _shape_envelope(block is None)
+            row = _timings(page, budget, args.reps, block=block)
+            row["envelope_lifted"] = block is not None
             if row["patches"] != expected:
                 raise SystemExit(
                     f"{page} produced {row['patches']} patches, expected {expected}"
                 )
             rows.append(row)
-            label = "dense" if budget is None else f"{budget // MIB} MiB"
+            label = "dense" if budget is None and block is None else (
+                f"block={block}" if block is not None else f"{budget // MIB} MiB"
+            )
             print(
-                f"{page:18s} {label:>8s} block={row['query_block']:5d} "
-                f"tiles={row['tiles']:4d} scratch={row['scratch_mib']:7.1f} MiB "
+                f"{page:18s} {label:>12s} block={row['query_block']:5d} "
+                f"tiles={row['tiles']:4d} tail={row['tail_rows']:5d} "
+                f"scratch={row['scratch_mib']:7.1f} MiB "
                 f"median={row['median_ms']:9.2f} ms"
             )
 
@@ -173,26 +319,48 @@ def main() -> None:
     by_page: dict[str, dict[str, object]] = {}
     for row in rows:
         page = str(row["page"])
-        if row["budget_bytes"] is None:
+        if row["budget_bytes"] is None and row["query_block"] == row["patches"]:
             by_page[page] = {"dense_median_ms": row["median_ms"]}
     for row in rows:
         dense = by_page.get(str(row["page"]), {}).get("dense_median_ms")
         if dense:
             row["vs_dense"] = round(float(dense) / float(row["median_ms"]), 3)
 
+    # Best measured shape per page, so a rule can be scored against the shape
+    # the sweep actually found rather than against the dense tile alone.
+    best: dict[str, dict[str, object]] = {}
+    for row in rows:
+        page = str(row["page"])
+        if page not in best or row["median_ms"] < best[page]["median_ms"]:
+            best[page] = {"query_block": row["query_block"],
+                          "median_ms": row["median_ms"]}
+    for row in rows:
+        found = best.get(str(row["page"]))
+        if found:
+            row["vs_best_shape"] = round(
+                float(found["median_ms"]) / float(row["median_ms"]), 3
+            )
+
     artifact = {
         "date": time.strftime("%Y-%m-%d", time.gmtime()),
         "model": MODEL,
         "provenance": _provenance(sys.argv),
         "protocol": (
-            "one runner per budget; one discarded warm-up vision_forward; "
+            "one runner per shape; one discarded warm-up vision_forward; "
             "median of --reps wall-clock timings around vision_forward only "
             "(preprocessing and scratch allocation excluded)"
         ),
         "boundary": (
             "None disables the tile budget and runs one dense tile; a byte "
             "budget selects the largest query block whose "
-            "vision_num_heads * n * block * 4 tile fits"
+            "vision_num_heads * n * block * 4 tile fits; --blocks names the "
+            "block directly and solves the budget backwards so the shapes can "
+            "be swept without the budget's rounding"
+        ),
+        "shape_envelope": (
+            "byte-budget rows are the production plan (envelope and wavefront "
+            "rounding respected); --blocks rows lift both so shapes the "
+            "planner would not choose are still measured"
         ),
         "note": (
             "Grids that cannot run densely have no dense baseline: the dense "

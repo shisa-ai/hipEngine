@@ -40,37 +40,53 @@ differently-measured runs. Decode is now timed directly.
 
 Surya OCR 2 tiles both of its attention score matrices by query rows, so the
 live score scratch is bounded by a budget rather than quadratic in the
-sequence. A 300-DPI A4 page (220x156 patch grid, 34320 patches) needs a 535 MB
+sequence. A 300-DPI A4 page (220x156 patch grid, 34320 patches) needs a 527 MB
 vision score tile instead of the 56.5 GB a dense score matrix would require,
 and the checkpoint's 16.7 MP preprocessor ceiling (256x256, 65536 patches)
-535 MB instead of 206 GB. Each tile still attends over the full key range, so
+1.01 GB instead of 206 GB. Each tile still attends over the full key range, so
 the result is the dense full-image attention result: under a 12 MiB budget
 (4-10 tiles per page, partial tiles included) the tiled and dense paths are
 bit-identical over 4562 teacher-forced full-vocabulary rows — mean/p95/p99/max
 KL `0.000e+00`, top-1 `100%` — and the lane reproduces the torch fp32 reference
 ids exactly on six of the seven acceptance pages. The text prefill uses the
-same query-row tiling and the same planner, so its causal scores are 537 MB
-rather than 2.36 GB for the page's 8580 image tokens and 537 MB rather than
+same query-row tiling and the same planner, so its causal scores are 70 MB
+rather than 2.36 GB for the page's 8580 image tokens and 268 MB rather than
 8.59 GB at a full 16384-token prompt; the measured prefill peak falls 7.03 ->
-5.21 GB and 14.71 -> 6.66 GB for 0.8% wall-clock at 16384 tokens, and the tiled
-logits are bit-identical to the dense path. The generator's default text
-context is 16384 tokens, set with `LLM(max_sequence_length=...)`, so a 300-DPI
-A4 page's 8580 image tokens fit with room for a full-page output; the two score
-tiles are `LLM(vision_max_scratch_bytes=...)` and
-`LLM(prefill_max_scratch_bytes=...)`.
+4.75 GB for the page and 14.71 -> 6.39 GB at a full prompt for 0.7% and 3.1%
+wall-clock, and the tiled logits are bit-identical to the dense path. The
+generator's default text context is 16384 tokens, set with
+`LLM(max_sequence_length=...)`, so a 300-DPI A4 page's 8580 image tokens fit
+with room for a full-page output; the two score tiles are
+`LLM(vision_max_scratch_bytes=...)` and `LLM(prefill_max_scratch_bytes=...)`.
 [Attention memory](results/2026-09-12-gfx1151-surya-attention-memory.json),
-[text-prefill tiling](results/2026-09-12-gfx1151-surya-text-prefill-tiling.json),
+[text-prefill tiling](results/2026-09-13-gfx1151-surya-text-prefill-tiling.json),
 [numerical gate](results/2026-09-12-gfx1151-surya-numerical-gate.json),
-[vision tiling cost](results/2026-09-12-gfx1151-surya-vision-tiling-cost.json).
+[vision tiling cost](results/2026-09-13-gfx1151-surya-vision-tiling-cost.json).
 
-The tiling's wall-clock cost is measured on the grids that run both ways, since
-the page-scale grids have no dense baseline. At 1024 patches an 8 MiB tile
-budget is 138.26 ms against 192.27 ms dense (1.391x faster) while cutting score
-scratch from 48.0 to 8.0 MiB; at 4096 patches the same budget is 1129.09 ms
-against 1045.58 ms dense (0.926x) while cutting scratch from 768.0 to 7.9 MiB.
-At 4096 patches the 512 MiB default is 1118.47 ms (0.935x) at 511.9 MiB and a
-64 MiB budget is 1177.79 ms (0.888x) at 63.9 MiB, so the cost is 7-11% there and
-is not monotonic in tile count.
+The budget bounds the tile, but it is not the shape rule. The widest tile that
+fits is a bad shape wherever the dense score matrix is small: at 1024 patches
+the 512 MiB budget admits the whole dense matrix (193.54 ms) where a 128-row
+tile runs 135.52 ms (1.428x), and at 4096 patches it admits 2730 rows
+(1123.42 ms) where 128 rows runs 874.38 ms (1.285x). The block is therefore
+capped at `max(128, ceil(rows / 32))` rows — 128 for every grid up to 4096
+patches, growing with the grid above that — so the budget stays the binding
+constraint at page scale, where a wider tile is what the page wants. The width
+is then rounded down to a whole number of 32-lane wavefronts, which is the line
+the page-scale curve actually separates on: on the A4 page every measured width
+that is a multiple of 32 runs 43862-44668 ms and every width that is not runs
+45050-48496 ms, and the 512 MiB budget derives 325 rows, on the slow side of
+that line, so rounding down to 320 rows takes **48496.26 -> 43862.87 ms
+(1.106x)** while shrinking the tile 510.6 -> 502.7 MiB. The envelope is not
+optimal at every grid, and the misses are reported rather than hidden: at 6400
+patches a 96-row tile is 1940.93 ms against the 2130.11 ms the cap picks (10%),
+and the A4 page's own best measured width is 2048 rows at 41622.25 ms (5.1%
+below the default). Measured with `python3
+scripts/surya_vision_tiling_cost.py --reps 7` for the 256-6400-patch grids and
+`--reps 2` for the A4 grid, one runner per shape, one discarded warm-up,
+median wall clock around `vision_forward` only.
+[Old vs new default in one run](results/2026-09-13-gfx1151-surya-tile-shape-ab.json),
+[vision tiling cost](results/2026-09-13-gfx1151-surya-vision-tiling-cost.json),
+[A4 page shapes](results/2026-09-13-gfx1151-surya-vision-tiling-a4.json).
 
 Surya's KV write and decode read the same `KVLiveSpans` `(base_offsets,
 live_counts, token_positions, evict_mask)` metadata the rest of the engine uses,
