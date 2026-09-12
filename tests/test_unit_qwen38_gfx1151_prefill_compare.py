@@ -35,7 +35,7 @@ def test_unknown_candidate_fails_closed():
 
 def test_dispatch_probe_resolves_real_backend_keys_without_launching():
     with dispatch_counts() as counts:
-        assert len(counts) == 3
+        assert len(counts) == 4
         assert set(counts.values()) == {0}
 
 
@@ -52,3 +52,13 @@ def test_unequal_probe_counts_the_runtime_pair_dispatch_key():
             assert counts[key.variant] == 1
     finally:
         register(key, original, replace=True)
+
+
+def test_row48_scope_restores_backend_capability():
+    name = "GGUF_Q4_DUAL_SILU_PREFILL_ROW48_MAX_ROWS"
+    present = hasattr(hip_gfx1151, name)
+    previous = getattr(hip_gfx1151, name, None)
+    with candidate_scope("row48"):
+        assert getattr(hip_gfx1151, name) == 48
+    assert hasattr(hip_gfx1151, name) is present
+    assert getattr(hip_gfx1151, name, None) is previous

@@ -27,12 +27,14 @@ from scripts.gguf_mtp_bench import build_chat_prompt
 from scripts.execution_profile_gguf_fp16_state_gate import _run_logits_trajectory
 from scripts.qwen38_production_ar_gate import profile_session
 
-MODES = ("shipped", "unequal_pair", "no_retiles")
+MODES = ("shipped", "unequal_pair", "no_retiles", "row48")
 CAPABILITY = "GGUF_Q4_T16_UNEQUAL_PAIR_PREFILL_POLICIES"
+ROW48_CAPABILITY = "GGUF_Q4_DUAL_SILU_PREFILL_ROW48_MAX_ROWS"
 TRACKED = (
     ("linear_pair", "dense_unequal_dual_wmma_prefill_bf16_bf16_out"),
     ("linear_pair_silu", "dense_dual_wmma_prefill_row64_bf16_bf16_out"),
     ("linear_pair_silu", "dense_dual_wmma_prefill_row128_bf16_bf16_out"),
+    ("linear_pair_silu", "dense_dual_wmma_prefill_row48_bf16_bf16_out"),
 )
 
 
@@ -40,23 +42,29 @@ TRACKED = (
 def candidate_scope(mode):
     if mode not in MODES:
         raise ValueError(f"unknown candidate {mode}")
-    present = hasattr(hip_gfx1151, CAPABILITY)
-    previous = getattr(hip_gfx1151, CAPABILITY, None)
+    updates = {}
+    if mode == "unequal_pair":
+        updates[CAPABILITY] = {
+            (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): True,
+        }
+    elif mode == "row48":
+        updates[ROW48_CAPABILITY] = 48
+    originals = {name: (hasattr(hip_gfx1151, name), getattr(hip_gfx1151, name, None))
+                 for name in updates}
     retile = gguf_linear._Q4_T16_DUAL_SILU_RETILE_RESOLVED
     try:
-        if mode == "unequal_pair":
-            setattr(hip_gfx1151, CAPABILITY, {
-                (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): True,
-            })
+        for name, value in updates.items():
+            setattr(hip_gfx1151, name, value)
         if mode == "no_retiles":
             gguf_linear._Q4_T16_DUAL_SILU_RETILE_RESOLVED = False
         yield
     finally:
         gguf_linear._Q4_T16_DUAL_SILU_RETILE_RESOLVED = retile
-        if present:
-            setattr(hip_gfx1151, CAPABILITY, previous)
-        elif hasattr(hip_gfx1151, CAPABILITY):
-            delattr(hip_gfx1151, CAPABILITY)
+        for name, (present, previous) in originals.items():
+            if present:
+                setattr(hip_gfx1151, name, previous)
+            else:
+                delattr(hip_gfx1151, name)
 
 
 @contextmanager
@@ -155,11 +163,15 @@ def run(args):
         for mode in modes
     }
     if "unequal_pair" in modes:
-        engaged = counts["unequal_pair"][TRACKED[0][1]] > 0
+        other = next(mode for mode in modes if mode != "unequal_pair")
+        engaged = counts["unequal_pair"][TRACKED[0][1]] > counts[other][TRACKED[0][1]]
+    elif "row48" in modes:
+        other = next(mode for mode in modes if mode != "row48")
+        engaged = counts["row48"][TRACKED[3][1]] > counts[other][TRACKED[3][1]]
     else:
         engaged = all(counts["shipped"][variant] > 0
                       and counts["no_retiles"][variant] == 0
-                      for _, variant in TRACKED[1:])
+                      for _, variant in TRACKED[1:3])
     provenance = collect_artifact_provenance(
         repo_root=ROOT, configured_backend="hip_gfx1151", resolved_backend="hip_gfx1151",
         target_arch="gfx1151", model_path=args.model, quant="gguf_q4_k_m",
