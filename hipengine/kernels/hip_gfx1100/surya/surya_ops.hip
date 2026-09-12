@@ -241,23 +241,29 @@ extern "C" int hipengine_surya_scatter_kv_f32(
 }
 
 // Causal mask + 1/sqrt(d_k) scale over batched score rows.
-//   scores layout: (heads, tokens, head_stride) row-major; entry
-//   (h, i, j) with j > i becomes -inf, everything else is scaled.
+//   scores layout: (heads, queries, head_stride) row-major; entry
+//   (h, i, j) with j > query_offset + i becomes -inf, everything else is
+//   scaled. The dense prefill is the case queries == keys == head_stride and
+//   query_offset == 0; a query-row tile passes its first query as
+//   query_offset, because the causal condition is relative to the tile's
+//   first query, not to the tile's own row index.
 __global__ void surya_causal_mask_scale_kernel(
     float* __restrict__ scores,
     float scale,
     int64_t heads,
-    int64_t tokens,
-    int64_t head_stride) {
+    int64_t queries,
+    int64_t head_stride,
+    int64_t query_offset) {
   const int64_t row = blockIdx.x;
-  if (row >= heads * tokens) {
+  if (row >= heads * queries) {
     return;
   }
-  const int64_t head = row / tokens;
-  const int64_t query = row % tokens;
-  float* sr = scores + head * tokens * head_stride + query * head_stride;
+  const int64_t head = row / queries;
+  const int64_t query = row % queries;
+  float* sr = scores + head * queries * head_stride + query * head_stride;
+  const int64_t causal = query_offset + query;
   for (int64_t j = threadIdx.x; j < head_stride; j += blockDim.x) {
-    sr[j] = (j <= query) ? sr[j] * scale : -INFINITY;
+    sr[j] = (j <= causal) ? sr[j] * scale : -INFINITY;
   }
 }
 
@@ -265,15 +271,16 @@ extern "C" int hipengine_surya_causal_mask_scale_f32(
     float* scores,
     float scale,
     int64_t heads,
-    int64_t tokens,
+    int64_t queries,
     int64_t head_stride,
+    int64_t query_offset,
     hipStream_t stream) {
-  if (heads <= 0 || tokens <= 0 || head_stride <= 0) {
+  if (heads <= 0 || queries <= 0 || head_stride <= 0 || query_offset < 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
   hipLaunchKernelGGL(
       surya_causal_mask_scale_kernel,
-      dim3(static_cast<unsigned int>(heads * tokens)), dim3(256), 0, stream,
-      scores, scale, heads, tokens, head_stride);
+      dim3(static_cast<unsigned int>(heads * queries)), dim3(256), 0, stream,
+      scores, scale, heads, queries, head_stride, query_offset);
   return static_cast<int>(hipGetLastError());
 }

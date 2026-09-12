@@ -12,9 +12,9 @@ Runs the Surya text decoder on the HIP device, mirroring the CPU reference
   per-layer state), RMSNormGated, out projection,
 - 6 causal full-attention layers: per-head RMSNorm, per-head fused q|gate
   deinterleave, interleaved partial mRoPE (tables built on the host with
-  the shared family helper), batched SGEMM scores + causal mask + softmax,
-  GQA-mapped AV product, sigmoid gate, o projection, persistent per-layer
-  KV caches that decode continues from,
+  the shared family helper), batched SGEMM scores + causal mask + softmax
+  over query-row tiles, GQA-mapped AV product, sigmoid gate, o projection,
+  persistent per-layer KV caches that decode continues from,
 - SiLU MLPs, final RMSNorm, tied LM head over the embedding table.
 
 The single-token decode step reuses the prefill recurrence kernel with
@@ -91,6 +91,14 @@ _GEMM_PAD_BYTES = 512
 # single dense tile.
 DEFAULT_MAX_VISION_SCRATCH_BYTES = 512 * 1024**2
 
+# Text prefill has the same shape of problem: the causal score matrix for `t`
+# tokens is `num_attention_heads * t^2 * 4` bytes, so a 300-DPI A4 page's 8580
+# image tokens need 2.36 GB and a full 16384-token prompt 8.59 GB. The prefill
+# walks it in query-row tiles the same way, so the two paths share one planner.
+# The default matches the vision budget so there is a single number to reason
+# about; pass ``max_prefill_scratch_bytes=None`` to run a single dense tile.
+DEFAULT_MAX_PREFILL_SCRATCH_BYTES = 512 * 1024**2
+
 # Text-decoder context the generator admits by default. Upstream Surya budgets
 # 12,288 context tokens per OCR slot (image prefill + full-page output +
 # chat-template overhead) and sizes its vLLM lane at 18,000. A 300-DPI A4 page
@@ -99,23 +107,29 @@ DEFAULT_MAX_VISION_SCRATCH_BYTES = 512 * 1024**2
 DEFAULT_MAX_SEQ = 16384
 
 
-def plan_vision_attention(
-    n_patches: int, num_heads: int, budget_bytes: int | None
+def plan_score_tiles(
+    rows: int, num_heads: int, budget_bytes: int | None
 ) -> tuple[int, int]:
-    """Plan one vision grid's score tile: ``(query_block, scratch_bytes)``.
+    """Plan one query-row tile of an attention score matrix.
 
-    The tile is ``num_heads * n_patches * block`` fp32 elements — the full key
-    range for ``block`` query rows. ``block`` is the largest value whose tile
-    fits ``budget_bytes``; ``None`` disables the budget and returns one tile
+    Shared by the vision tower and the text prefill: both materialize
+    ``num_heads * rows * rows`` fp32 scores unless the queries are tiled, and
+    both attend over the full key range from every query row, so the tiles
+    partition the queries and not the keys. ``rows`` is the patch count for
+    vision and the token count for text.
+
+    The tile is ``num_heads * rows * block`` fp32 elements — the full key range
+    for ``block`` query rows. ``block`` is the largest value whose tile fits
+    ``budget_bytes``; ``None`` disables the budget and returns one tile
     covering every query. A budget too small for even one query row still
     returns ``block == 1`` so admission can report the shortfall instead of
     silently producing an unusable plan.
     """
 
-    n = int(n_patches)
+    n = int(rows)
     heads = int(num_heads)
     if n <= 0 or heads <= 0:
-        raise ValueError("vision attention needs a positive patch count and head count")
+        raise ValueError("attention tiling needs a positive row count and head count")
     per_row = heads * n * 4
     if budget_bytes is None:
         return n, per_row * n
@@ -125,6 +139,18 @@ def plan_vision_attention(
     elif block > n:
         block = n
     return block, per_row * block
+
+
+def plan_vision_attention(
+    n_patches: int, num_heads: int, budget_bytes: int | None
+) -> tuple[int, int]:
+    """Vision-shaped name for :func:`plan_score_tiles`.
+
+    Kept because the vision path, its tests, and its recorded evidence refer to
+    the planner by this name; the arithmetic is shared with the text prefill.
+    """
+
+    return plan_score_tiles(n_patches, num_heads, budget_bytes)
 
 
 class SuryaGpuRuntimeError(RuntimeError):
@@ -147,6 +173,7 @@ class SuryaGpuRunner:
         *,
         max_seq: int = 2048,
         max_vision_scratch_bytes: int | None = DEFAULT_MAX_VISION_SCRATCH_BYTES,
+        max_prefill_scratch_bytes: int | None = DEFAULT_MAX_PREFILL_SCRATCH_BYTES,
         rocblas: Rocblas | None = None,
         runtime: HipRuntime | None = None,
         library: ctypes.CDLL | None = None,
@@ -159,12 +186,19 @@ class SuryaGpuRunner:
             raise ValueError("max_seq must be positive")
         if max_vision_scratch_bytes is not None and int(max_vision_scratch_bytes) <= 0:
             raise ValueError("max_vision_scratch_bytes must be positive when set")
+        if max_prefill_scratch_bytes is not None and int(max_prefill_scratch_bytes) <= 0:
+            raise ValueError("max_prefill_scratch_bytes must be positive when set")
         self.spec = spec or SuryaSpec()
         self.max_seq = int(max_seq)
         self.max_vision_scratch_bytes = (
             None
             if max_vision_scratch_bytes is None
             else int(max_vision_scratch_bytes)
+        )
+        self.max_prefill_scratch_bytes = (
+            None
+            if max_prefill_scratch_bytes is None
+            else int(max_prefill_scratch_bytes)
         )
         self.runtime = runtime or get_hip_runtime()
         self.rocblas = rocblas or Rocblas.load()
@@ -366,6 +400,14 @@ class SuryaGpuRunner:
         """Causal prompt attention against the planar KV cache planes.
 
         q: (tokens, nq*hd); k/v caches: (nk, max_seq, hd) per-head planes.
+
+        Tiled by query rows under ``max_prefill_scratch_bytes``: each tile holds
+        the full key range for ``bq`` queries, so a softmax row is the same
+        ``tokens``-long row the dense path computed and the causal mask stays
+        absolute through ``query_offset``. The tile's scores are the col-major
+        ``(tokens x bq)`` C of a batched SGEMM with ``ldc=tokens``, so tile h
+        starts at ``h * tokens * bq``. ``block >= tokens`` reproduces the dense
+        call exactly (one tile, ``bq == tokens``).
         """
         s = self.spec
         nq, nk, hd = s.num_attention_heads, s.num_key_value_heads, s.head_dim
@@ -373,34 +415,41 @@ class SuryaGpuRunner:
         q_row = nq * hd
         plane = self.max_seq * hd
         head_stride = tokens
-        scores = self._buf("scores", nq * tokens * head_stride * 4)
-        # scores tile h is the col-major (tokens x tokens) C of batch h with
-        # ldc=head_stride, so tile h starts at h*tokens*head_stride (the mask
-        # and softmax kernels index the same (heads, tokens, head_stride)
-        # row-major layout).
-        self.rocblas.sgemm_batched(
-            self._dev_ptr_array([k_ptr + (h // repeat) * plane * 4 for h in range(nq)]).ptr,
-            self._dev_ptr_array([q_ptr + h * hd * 4 for h in range(nq)]).ptr,
-            self._dev_ptr_array([scores.ptr + h * tokens * head_stride * 4 for h in range(nq)]).ptr,
-            batch=nq, m=tokens, n=tokens, k=hd,
-            lda=hd, ldb=q_row, ldc=head_stride,
-            trans_a=True, trans_b=False,
-        )
-        err = self._fn_surya("hipengine_surya_causal_mask_scale_f32",
-                             [_P, _F, _I, _I, _I, _S])(
-            _P(scores.ptr), _F(hd ** -0.5), _I(nq), _I(tokens), _I(head_stride), _S(0))
-        self._check(err, "causal mask")
-        err = self._k("hipengine_evie_softmax_rows_f32", [_P, _I, _I, _I, _I, _S])(
-            _P(scores.ptr), _I(nq * tokens), _I(tokens), _I(tokens), _I(tokens * head_stride), _S(0))
-        self._check(err, "softmax")
-        self.rocblas.sgemm_batched(
-            self._dev_ptr_array([v_ptr + (h // repeat) * plane * 4 for h in range(nq)]).ptr,
-            self._dev_ptr_array([scores.ptr + h * tokens * head_stride * 4 for h in range(nq)]).ptr,
-            self._dev_ptr_array([out_ptr + h * hd * 4 for h in range(nq)]).ptr,
-            batch=nq, m=hd, n=tokens, k=tokens,
-            lda=hd, ldb=head_stride, ldc=q_row,
-            trans_a=False, trans_b=False,
-        )
+        block = self.prefill_block(tokens)
+        scores = self._text_scores(tokens, block)
+        k_planes = [k_ptr + (h // repeat) * plane * 4 for h in range(nq)]
+        v_planes = [v_ptr + (h // repeat) * plane * 4 for h in range(nq)]
+        for start in range(0, tokens, block):
+            bq = min(block, tokens - start)
+            tile = tokens * bq
+            # scores tile h is the col-major (tokens x bq) C of batch h with
+            # ldc=head_stride, so tile h starts at h*tokens*bq (the mask and
+            # softmax kernels index the same (heads, bq, head_stride) row-major
+            # layout).
+            self.rocblas.sgemm_batched(
+                self._dev_ptr_array(k_planes).ptr,
+                self._dev_ptr_array([q_ptr + h * hd * 4 + start * q_row * 4 for h in range(nq)]).ptr,
+                self._dev_ptr_array([scores.ptr + h * tile * 4 for h in range(nq)]).ptr,
+                batch=nq, m=tokens, n=bq, k=hd,
+                lda=hd, ldb=q_row, ldc=head_stride,
+                trans_a=True, trans_b=False,
+            )
+            err = self._fn_surya("hipengine_surya_causal_mask_scale_f32",
+                                 [_P, _F, _I, _I, _I, _I, _S])(
+                _P(scores.ptr), _F(hd ** -0.5), _I(nq), _I(bq), _I(head_stride),
+                _I(start), _S(0))
+            self._check(err, "causal mask")
+            err = self._k("hipengine_evie_softmax_rows_f32", [_P, _I, _I, _I, _I, _S])(
+                _P(scores.ptr), _I(nq * bq), _I(tokens), _I(bq), _I(tile), _S(0))
+            self._check(err, "softmax")
+            self.rocblas.sgemm_batched(
+                self._dev_ptr_array(v_planes).ptr,
+                self._dev_ptr_array([scores.ptr + h * tile * 4 for h in range(nq)]).ptr,
+                self._dev_ptr_array([out_ptr + h * hd * 4 + start * q_row * 4 for h in range(nq)]).ptr,
+                batch=nq, m=hd, n=bq, k=tokens,
+                lda=hd, ldb=head_stride, ldc=q_row,
+                trans_a=False, trans_b=False,
+            )
 
     def _attention_decode(self, q_ptr, k_cache_ptr, v_cache_ptr, out_ptr, total) -> None:
         """Single-query attention against the persistent KV cache planes."""
@@ -886,6 +935,81 @@ class SuryaGpuRunner:
         tile = self._vis_tile_elements(n, block)
         return self._buf("vis_scores", heads * tile * 4)
 
+    @staticmethod
+    def _text_tile_elements(tokens: int, block: int) -> int:
+        """Elements per head in one query-row tile of the causal scores."""
+
+        return tokens * block
+
+    def _text_scores(self, tokens: int, block: int) -> DeviceBuffer:
+        """Score scratch for one query tile of a ``tokens``-long prefill."""
+
+        tile = self._text_tile_elements(tokens, block)
+        return self._buf("scores", self.spec.num_attention_heads * tile * 4)
+
+    # -- text-prefill admission --------------------------------------------
+
+    def prefill_block(self, tokens: int) -> int:
+        """Query rows per causal score tile for a ``tokens``-long prefill."""
+
+        return plan_score_tiles(
+            tokens,
+            self.spec.num_attention_heads,
+            self.max_prefill_scratch_bytes,
+        )[0]
+
+    def prefill_scratch_bytes(self, tokens: int) -> int:
+        """Peak causal score-tile bytes a ``tokens``-long prefill needs.
+
+        Linear in the token count once the query block is bounded, and derived
+        from the same plan the allocation uses so admission can never disagree
+        with it. The dense path this replaced was quadratic
+        (``nq * tokens^2 * 4``).
+        """
+
+        _, need = plan_score_tiles(
+            tokens,
+            self.spec.num_attention_heads,
+            self.max_prefill_scratch_bytes,
+        )
+        return need
+
+    def check_prefill_capacity(self, tokens: int) -> None:
+        """Admit a prompt length before any device work or allocation runs.
+
+        The same two independent checks as the vision tower: the configured
+        budget bounds one request regardless of free memory, and free device
+        memory catches weights plus other live runners having consumed it.
+        """
+
+        need = self.prefill_scratch_bytes(tokens)
+        cap = self.max_prefill_scratch_bytes
+        if cap is not None and need > cap:
+            raise SuryaGpuRuntimeError(
+                f"text prefill score tile for {tokens} tokens is "
+                f"{need / 1e9:.2f} GB, above the {cap / 1e9:.2f} GB budget; "
+                f"one query row needs "
+                f"{self.spec.num_attention_heads * tokens * 4 / 1e6:.1f} MB, "
+                f"so raise SuryaGpuRunner(max_prefill_scratch_bytes=...) to at "
+                f"least that"
+            )
+        # the scratch buffer is cached per key and reused when it is already big
+        # enough, so only the growth is charged against free memory
+        existing = self._scratch.get("scores")
+        growth = max(0, need + _GEMM_PAD_BYTES - (existing.nbytes if existing else 0))
+        if growth == 0:
+            return
+        try:
+            free_bytes, _total = self.runtime.mem_get_info()
+        except Exception:  # runtime without mem_get_info: budget is the only bound
+            return
+        if growth > int(free_bytes):
+            raise SuryaGpuRuntimeError(
+                f"text prefill score tile for {tokens} tokens needs "
+                f"{growth / 1e9:.2f} GB more device memory but only "
+                f"{int(free_bytes) / 1e9:.2f} GB is free"
+            )
+
     # -- vision admission --------------------------------------------------
 
     def vision_block(self, grid_thw) -> int:
@@ -1053,6 +1177,9 @@ class SuryaGpuRunner:
             pos = pos[0]
         if pos.ndim != 2 or pos.shape[0] != 3:
             raise ValueError(f"positions must be (3, s); got {pos.shape}")
+        # Admit before any device work: an over-budget prompt must be rejected
+        # here, not after embed, rope, and a failed multi-GB allocation.
+        self.check_prefill_capacity(len(ids))
         self._seq_len = len(ids)
         x = self._embed(ids, visual_features)
         cos_buf, sin_buf = self._rope_tables_device(np.ascontiguousarray(pos, dtype=np.int64))

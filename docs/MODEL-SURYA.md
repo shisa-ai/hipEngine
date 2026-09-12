@@ -589,19 +589,25 @@ page latency, pages/s, output tokens, peak memory, and quality.
 Measured memory envelope (gfx1151, fp32, `scripts/surya_attention_memory.py`):
 the runner holds 2663 MB of fp32 weights, `2 * nk * max_seq * hd * 4` bytes per
 full-attention layer of KV planes (403 MB at `max_seq` 16384), 18.9 MB of GDN
-recurrence state, and 1.8 MB of conv windows. On top of that, vision attention
-is tiled by query rows under a 512 MiB score tile, so a 300-DPI A4 page
-(220x156 grid, 34320 patches) needs 535 MB instead of the 56.5 GB a dense score
-matrix would, and the `SURYA_MAX_PIXELS` ceiling (256x256, 65536 patches) needs
-535 MB instead of 206 GB. The text prefill is not yet tiled: it materializes
-`8 * tokens^2 * 4` bytes of causal scores plus 180.8 KiB/token of activations,
-so a 300-DPI A4 page's 8580 image tokens peak at 7.03 GB total and a full
-16384-token prompt at 14.71 GB. The generator admits `max_seq` 16384 by default
-(upstream Surya budgets 12,288 context tokens per OCR slot and 18,000 for
-vLLM), configurable through `LLM(max_sequence_length=...)`; a 300-DPI A4 page's
-8580 image tokens fit that context with room for a full-page output, whereas
-the previous 2048 default rejected every real document. The vision score tile
-is configurable through `LLM(vision_max_scratch_bytes=...)`.
+recurrence state, and 1.8 MB of conv windows. Both attention score matrices are
+tiled by query rows under a 512 MiB score-tile budget. The vision tower's is
+`12 * n^2 * 4` bytes dense, so a 300-DPI A4 page (220x156 grid, 34320 patches)
+needs 535 MB instead of the 56.5 GB a dense score matrix would, and the
+`SURYA_MAX_PIXELS` ceiling (256x256, 65536 patches) needs 535 MB instead of
+206 GB. The text prefill's causal scores are `8 * tokens^2 * 4` bytes dense, so
+the page's 8580 image tokens need 537 MB instead of 2.36 GB and a full
+16384-token prompt 537 MB instead of 8.59 GB; the measured prefill peak at
+`max_seq` 16384 falls from 7.03 GB to 5.21 GB for the page and from 14.71 GB to
+6.66 GB at a full prompt, with the remaining scratch linear at 180.8 KiB/token
+and the tiling costing 0.8% wall-clock at 16384 tokens. The generator admits
+`max_seq` 16384 by default (upstream Surya budgets 12,288 context tokens per OCR
+slot and 18,000 for vLLM), configurable through `LLM(max_sequence_length=...)`;
+a 300-DPI A4 page's 8580 image tokens fit that context with room for a
+full-page output, whereas the previous 2048 default rejected every real
+document. The two score tiles are configurable through
+`LLM(vision_max_scratch_bytes=...)` and `LLM(prefill_max_scratch_bytes=...)`; a
+budget that cannot hold even one query row is a configuration-time rejection,
+not a silent fallback to the quadratic matrix.
 
 No Surya rate or memory target is established here. EVIE retrieval throughput
 and upstream NVIDIA/Apple results are not hipEngine OCR baselines. Begin on
