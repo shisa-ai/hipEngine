@@ -621,8 +621,8 @@ is safe and the limitation is explicit.
   batched KV append remain excluded and need their transaction/state and
   graph/launch gates. The Q4 col4 and residual rowtiles are admitted with
   shape crossover and full-model evidence in section K; their admission
-  packet still needs the explicit CPU-reference linkage and gfx1151
-  rocprofv3 trace before qualification is fully closed.
+  packet now links the explicit CPU-reference floor and cached-only gfx1151
+  actual-weight rocprofv3 trace. Those two evidence gaps are closed.
   Every candidate also needs the applicable
   production review if strict equality fails, plus a same-host performance
   decision and strict fallback.
@@ -856,9 +856,12 @@ each other.
 
 ### The two withheld dense Q4T16 rowtiles are admitted (2026-09-12)
 
-Admission and the measured leaf/full-model gates are complete. Full
-qualification still needs the explicit CPU-reference gate linkage and
-gfx1151 rocprofv3 kernel trace; the table is not evidence of those missing gates:
+Admission and the measured leaf/full-model gates are complete. The
+[CPU-reference and trace follow-up](../benchmarks/results/2026-09-12-gfx1151-qwen38-rowtile-cpu-reference-followup.json)
+closes the review's two missing kernel gates: ten synthetic CPU-reference
+cases pass at 100% top-1 and maximum KL 0.00919, and the uncontended cached-only
+actual-weight trace names both families at rows 2/3/4 with zero scratch.
+This does not qualify the separate production-profile composition.
 
 | Step | Result |
 | --- | --- |
@@ -873,6 +876,22 @@ per-token AR-active weight stream, which projects to roughly 0.06% and 0.09% of
 decode, so this is not a topline move. The gate harness also needed a fix: the
 batch diagnostic created an `LLM` per arm without closing it, so multi-arm runs
 leaked a full model each and triggered a host-wide OOM kill.
+
+### Longer-horizon FP16 state qualification fails (2026-09-12 UTC)
+
+The new [D128 packed-state packet](../benchmarks/results/2026-09-12-gfx1151-qwen38-fp16-packed-d128-rejected.json)
+covers 6,394 teacher-forced rows, all ten canonical prompts plus eight
+category heldouts, static C4/C8, dynamic C8-to-C1 retirement, sparse C8,
+and a 512-token-prompt/D128 group. Three repeats, isolation, and dispatch
+identity pass. Mean/p95/p99 KL passes, but maximum KL **0.22994** exceeds
+the binding **0.05** ceiling. Failures include ordinary C4/C8 and sparse
+continuations, plus the 512-token prompt at decode step 28.
+
+This is FP16 versus FP32 storage on the same packed production arithmetic,
+not the named strict-profile denominator. It supplies a concrete blocker to
+unbounded FP16 admission; a named-profile C1 AR check and a scoped fallback
+decision are in progress. It does not revoke the independently measured D24
+verifier cells or qualify a replacement by itself.
 
 ### The Q4_K_M scratch-row clamp is not needed on gfx1151 (2026-09-12)
 

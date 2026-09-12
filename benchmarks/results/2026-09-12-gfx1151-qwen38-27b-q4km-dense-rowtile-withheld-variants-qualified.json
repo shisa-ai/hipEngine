@@ -343,6 +343,9 @@
   },
   "date": "2026-09-12",
   "gates": {
+    "cpu_reference_floor_passed": true,
+    "gfx1151_cached_actual_weight_kernel_trace_passed": true,
+    "followup_artifact": "benchmarks/results/2026-09-12-gfx1151-qwen38-rowtile-cpu-reference-followup.json",
     "full_suite_windows_passed": true,
     "leaf_bit_exact": true,
     "leaf_never_slower": true,

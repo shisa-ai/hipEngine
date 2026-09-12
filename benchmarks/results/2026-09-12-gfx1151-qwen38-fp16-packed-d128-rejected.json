@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "kind": "qwen38_fp16_state_long_horizon_qualification",
+  "status": "rejected_numerical_envelope",
+  "measurement_valid": true,
+  "performance_claim": false,
+  "hardware": {
+    "host": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "hip_version": "7.15.26333"
+  },
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "kv": "bf16",
+  "teacher": "same packed production route with FP32 recurrent state; not a named strict-profile certification",
+  "candidate": "FP16 recurrent state, FP32 accumulation, same packed production route",
+  "command": "GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python scripts/execution_profile_gguf_fp16_state_batch_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant-label gguf_q4_k_m --decode-steps 128 --long-decode-steps 128 --long-prompt-tokens 512 --repeat-runs 3 --compiler-version-file /tmp/hip1151-t6/hipcc-version-gfx1151.txt --json /tmp/qwen38-release-20260913/fp16-packed-d128.json",
+  "protocol": {
+    "prompt_count": 18,
+    "canonical_prompts": 10,
+    "category_heldouts": 8,
+    "decode_steps": 128,
+    "long_prompt_tokens": 512,
+    "long_decode_steps": 128,
+    "candidate_repeats": 3,
+    "teacher_rows": 6394,
+    "static_widths": [4, 8],
+    "dynamic_schedule": [[0, 8], [6, 4], [12, 2], [18, 1]],
+    "sparse_c8_slots": [0, 2, 5, 7]
+  },
+  "quality": {
+    "kl_mean": 0.0003604204738600712,
+    "kl_p95": 0.0007210328970281755,
+    "kl_p99": 0.004571447588775442,
+    "kl_max": 0.2299443479508773,
+    "top1_agreement": 0.9957772912105098,
+    "top1_matches": 6367,
+    "deterministic": true,
+    "isolation_passed": true,
+    "dispatch_manifest_gate_passed": true,
+    "max_kl_ceiling": 0.05,
+    "hard_gate_passed": false
+  },
+  "localized_failures": [
+    {"prompt": "mixed_ja_en_translate", "widths": [4, 8], "teacher_step": 94, "kl": 0.2299443479508773, "top1_equal": true},
+    {"prompt": "heldout_mixed_summary", "widths": [4, 8], "teacher_step": 65, "kl": 0.050520856548346815, "top1_equal": true},
+    {"prompt": "heldout_mixed_review", "widths": [4, 8], "sparse_c8": true, "teacher_step": 43, "kl": 0.05716791118118497, "top1_equal": false},
+    {"prompt": "general_en_plan", "widths": [8], "prompt_tokens": 512, "teacher_step": 28, "kl": 0.10386600337218353, "top1_equal": true}
+  ],
+  "raw_evidence": {
+    "path": "/tmp/qwen38-release-20260913/fp16-packed-d128.json",
+    "sha256": "52643c49cdf619c3f08eb15bbd21749b0d94725d7f2b2af21fac9c1f9468d917",
+    "runtime_source_unchanged_during_capture": true,
+    "note": "Only separate harness, tests, and documentation commits landed during capture. Short independent GPU fixture checks overlapped this quality-only run; no performance claim."
+  },
+  "decision": "Do not authorize unbounded FP16 recurrent state from short-horizon evidence. Named-profile C1/default check and a scoped fallback decision are the next gates; no token-specific exception is permitted."
+}
