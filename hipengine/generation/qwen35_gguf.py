@@ -327,14 +327,11 @@ _LLAMA_COMPAT_MTP_ENV = {
 _GGUF_MTP_CONTEXT_REPLAY_MIN_PROMPT_TOKENS = 4
 _MTP_SERVING_TARGET_BATCH_MAX_SLOTS = 4
 _GGUF_AR_NATIVE_MAX_SLOTS = 8
-# Resident slot count for the dense GGUF route when the caller does not set
-# --max-active-requests. Each slot reserves a full-context KV plane, so this is
-# the dominant multiplier on KV memory: four slots cost roughly four times the
-# context that one slot fits, because the lease and the union geometry follow
-# the same capacity. One slot is the default because the dense 27B is
-# weight-bound on 24 GB-class cards, where the four-slot reservation left room
-# for only about 3.3K tokens. Pass --max-active-requests to raise it.
-_GGUF_RESIDENT_MODEL_LOOP_DEFAULT_CAPACITY = 1
+# Resident request concurrency for the dense GGUF route when the caller does
+# not set --max-active-requests. This is scheduler admission, not a KV-memory
+# multiplier: the shared pool grows against its independent device budget.
+# Pass --max-active-requests to change how many requests may be in flight.
+_GGUF_RESIDENT_MODEL_LOOP_DEFAULT_CAPACITY = 4
 # Superset of every shared-slot AR physical width a backend may register and use.
 # Direct widths c3/c5/c6/c7 are admitted here so they can be certified via an
 # explicit env override before the default advertised capability is expanded
@@ -1748,8 +1745,8 @@ class Qwen35GGUFBringupGenerator:
     def _packed_workspace_lease_needed(self, *, max_batch_size: int) -> bool:
         """Mirror ``configure_engine_loop``'s packed-KV lease decision.
 
-        The lease reserves a second full-context KV plane in the page pool. The
-        capacity estimate has to know about it before the pool exists, so the
+        The lease is an execution workspace floor, separate from request
+        concurrency. The capacity estimate has to know about it before the pool exists, so the
         decision is reproduced here from the same inputs. The policy lives on the
         resident model runner, not on the generator, so it is read from there.
         While that runner has not resolved its engine-loop policy yet the lease
@@ -1818,6 +1815,13 @@ class Qwen35GGUFBringupGenerator:
             "per_token_head",
         )
         storage, storage_layout, scale_dtype, granularity = (str(part) for part in signature)
+        configured_budget_mib = getattr(self, "_kv_pool_memory_budget_mib", None)
+        if configured_budget_mib is not None:
+            free_bytes = min(
+                int(free_bytes),
+                int(configured_budget_mib) * 1024**2
+                + _gguf_auto_context_reserve_bytes(),
+            )
         model_max = int(getattr(cfg, "context_length", 0) or 0)
         requested = int(requested_context_tokens or 0) or model_max or _GGUF_AUTO_CONTEXT_BLOCK_SIZE
         qualified = _qualified_no_mirror_int8_capability(
@@ -1847,7 +1851,10 @@ class Qwen35GGUFBringupGenerator:
                 kv_width=kv_width,
                 linear_qkv_width=linear_qkv_width,
                 fp16_recurrent_state=bool(getattr(shared_runner, "fp16_recurrent_state", False)),
-                max_batch_size=int(max_batch_size),
+                # Context admission is per request.  The shared device pool
+                # grows against its memory budget, so scheduler concurrency
+                # must not multiply the resident KV footprint estimate.
+                max_batch_size=1,
                 kv_storage_dtype=storage,
                 kv_storage_layout=storage_layout,
                 kv_scale_dtype=scale_dtype,
@@ -1869,7 +1876,8 @@ class Qwen35GGUFBringupGenerator:
     def _auto_context_cache_key(
         self, *, max_batch_size: int, defer_kv_allocation: bool
     ) -> tuple[int, bool]:
-        return (int(max_batch_size), bool(defer_kv_allocation))
+        del max_batch_size
+        return (1, bool(defer_kv_allocation))
 
     def _record_auto_context_selection(
         self,
@@ -1881,10 +1889,9 @@ class Qwen35GGUFBringupGenerator:
     ) -> None:
         """Remember a resolved context and keep the reported value conservative.
 
-        Different batch sizes price differently and already own separate session
-        pools, so the cache is keyed the same way. ``_auto_resolved_max_sequence_length``
-        stays the smallest context any caller was given, which is the honest
-        single number to report for the process.
+        The cache is keyed only by allocation mode. Scheduler concurrency does
+        not change the per-request context ceiling when KV pages come from the
+        shared elastic pool.
         """
 
         key = self._auto_context_cache_key(
@@ -1910,10 +1917,9 @@ class Qwen35GGUFBringupGenerator:
     ) -> int | None:
         """Choose the resident context when the caller did not pin one.
 
-        The selection is cached per batch size: every session sharing a pool key
-        must agree on the context, and free memory only shrinks as sessions are
-        created, so re-pricing per session would drift the answer downward for
-        no reason.
+        The selection is cached per allocation mode. Every request shares the
+        same context ceiling; concurrency is enforced by the scheduler and does
+        not cause a second context calculation.
         """
 
         cached = self._auto_resolved_max_sequence_lengths.get(
@@ -6011,6 +6017,9 @@ class Qwen35GGUFResidentModelRunner:
         self._observe_graph_handles(sessions)
         pool = self._kv_pool
         pool_stats = None if pool is None else pool.stats.to_json_dict()
+        if pool_stats is not None:
+            pool_stats["max_pages"] = getattr(pool, "max_pages", None)
+            pool_stats["budget_bytes"] = getattr(pool, "budget_bytes", None)
         active_entries: Counter[str] = Counter()
         for handle in self._graph_handles_for_sessions(sessions):
             if bool(getattr(handle, "closed", False)):
@@ -6040,6 +6049,14 @@ class Qwen35GGUFResidentModelRunner:
         return {
             "model_runner": {
                 "capacity": int(self.capacity),
+                "max_active_requests": int(self.capacity),
+                "max_context_tokens": getattr(
+                    self._available[-1].session,
+                    "max_sequence_length",
+                    None,
+                )
+                if self._available
+                else None,
                 "active_request_ids": list(self.active_request_ids),
                 "active_requests": len(self._rows),
                 "available_sessions": len(self._available),
@@ -6286,15 +6303,25 @@ class Qwen35GGUFResidentModelRunner:
         scratch = getattr(factory_session, "scratch", None)
         if scratch is None:
             raise RuntimeError("GGUF deferred session has no scratch capacity")
+        setattr(
+            factory_session,
+            "kv_pool_memory_budget_mib",
+            getattr(config, "kv_pool_memory_budget_mib", None),
+        )
         max_pages_per_request = max(1, (int(scratch.max_positions) + 255) // 256)
-        total_pages = self.capacity * max_pages_per_request
-        initial_pages = min(int(config.kv_pool_initial_pages), total_pages)
+        initial_pages = int(config.kv_pool_initial_pages)
+        self._kv_pool_memory_budget_mib = getattr(
+            config, "kv_pool_memory_budget_mib", None
+        )
         low_water_pages = min(int(config.kv_pool_low_water_pages), initial_pages)
         requested_high = getattr(config, "kv_pool_high_water_pages", None)
         high_water_pages = None if requested_high is None else int(requested_high)
-        chunk_pages = min(max(1, int(config.kv_pool_chunk_pages)), total_pages)
+        chunk_pages = max(1, int(config.kv_pool_chunk_pages))
         if callable(create_global_pool):
-            global_capacity = total_pages
+            # The initial device backing is a pool floor, not a
+            # max_active_requests * max_context reservation.  The pool grows
+            # on demand up to the runtime-derived memory budget.
+            global_capacity = initial_pages
             if high_water_pages is not None:
                 global_capacity = min(global_capacity, high_water_pages)
             if global_capacity <= 0:
@@ -6310,7 +6337,11 @@ class Qwen35GGUFResidentModelRunner:
                 max_pages_per_request,
                 _PACKED_VERIFY_MIN_MAX_SEQUENCE // 256,
             )
-            workspace_slots = max(1, int(self.capacity))
+            # Workspace is an execution scratch budget, not one full-context
+            # KV reservation per admitted request.  Multi-row execution grows
+            # or falls back to request-owned storage when this shared floor is
+            # insufficient.
+            workspace_slots = 1
             workspace_pages = workspace_slots * workspace_pages_per_slot
             # P4 (roadmap F2): the packed KV plane lease exists only for
             # plane consumers - non-slot-local packed prefill (prefix-cache
@@ -7039,6 +7070,21 @@ class Qwen35GGUFResidentModelRunner:
     def _clear_prefix_snapshots(self) -> None:
         for tokens in tuple(self._prefix_state_snapshots):
             self._evict_prefix_snapshot(tokens)
+
+    def evict_prefix_cache_for_pressure(self, required_pages: int) -> int:
+        """Release reclaimable prefix pages before device-pool growth."""
+
+        needed = max(1, int(required_pages))
+        released = 0
+        for tokens, entry in tuple(self._prefix_state_snapshots.items()):
+            if not entry.retained:
+                continue
+            pages = len(tuple(entry.block_ids))
+            if self._evict_prefix_snapshot(tokens):
+                released += pages
+            if released >= needed:
+                break
+        return released
 
     def rollback_admission(self, request: RequestState) -> None:
         """Undo a bound KV/session lease that was never published active."""

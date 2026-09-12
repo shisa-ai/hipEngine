@@ -57,6 +57,28 @@ def _pool() -> GlobalKVPoolSet:
     )
 
 
+def test_global_pool_appends_pages_without_rewriting_existing_ids() -> None:
+    pool = _pool()
+    before = pool.page_pointer("k_payload", 0)
+    old_generation = pool.generation
+    pool.append_pages(
+        {
+            "k_payload": (0x30000000, 0x30001000),
+            "v_payload": (0x40000000, 0x40001000),
+        },
+        {"k_payload": 0x22000000, "v_payload": 0x23000000},
+    )
+
+    assert pool.page_capacity == 7
+    assert pool.free_pages == 7
+    assert pool.page_pointer("k_payload", 0) == before
+    assert pool.page_pointer("k_payload", 5) == 0x30000000
+    assert pool.generation == old_generation + 1
+    assert pool.storage_view().planes[0].ptr == 0x22000000
+    assert pool.storage_view().planes[0].shape == (7,)
+    pool.assert_conserved()
+
+
 def test_global_pool_uses_stable_arbitrary_page_indirection_across_segments() -> None:
     pool = _pool()
     before = pool.storage_view()

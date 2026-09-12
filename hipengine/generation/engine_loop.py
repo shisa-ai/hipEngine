@@ -88,6 +88,7 @@ class EngineLoopConfig:
     kv_pool_low_water_pages: int = DEFAULT_KV_POOL_LOW_WATER_PAGES
     kv_pool_high_water_pages: int | None = None
     kv_pool_chunk_pages: int = DEFAULT_KV_POOL_CHUNK_PAGES
+    kv_pool_memory_budget_mib: int | None = None
     kv_pool_idle_grace_seconds: float = DEFAULT_KV_POOL_IDLE_GRACE_SECONDS
     max_pending_requests: int | None = None
     prefix_cache: str = "off"
@@ -120,6 +121,8 @@ class EngineLoopConfig:
             raise ValueError("kv_pool_high_water_pages cannot be below kv_pool_initial_pages")
         if self.kv_pool_chunk_pages <= 0:
             raise ValueError("kv_pool_chunk_pages must be positive")
+        if self.kv_pool_memory_budget_mib is not None and self.kv_pool_memory_budget_mib <= 0:
+            raise ValueError("kv_pool_memory_budget_mib must be positive when set")
         if self.kv_pool_idle_grace_seconds < 0:
             raise ValueError("kv_pool_idle_grace_seconds must be non-negative")
         if self.max_pending_requests is not None and self.max_pending_requests <= 0:
@@ -1712,6 +1715,12 @@ def add_engine_loop_config_args(
         help="KV pool grow/shrink chunk size in pages (env HIPENGINE_KV_POOL_CHUNK_PAGES; default: 128)",
     )
     parser.add_argument(
+        "--kv-pool-memory-budget-mib",
+        type=_positive_int_arg,
+        default=_env_optional_positive_int(env, "HIPENGINE_KV_POOL_MEMORY_BUDGET_MIB"),
+        help="Optional KV pool memory budget in MiB (env HIPENGINE_KV_POOL_MEMORY_BUDGET_MIB; default: automatic)",
+    )
+    parser.add_argument(
         "--kv-pool-idle-grace-seconds",
         type=_nonnegative_float_arg,
         default=_env_nonnegative_float(
@@ -1769,6 +1778,11 @@ def engine_loop_config_from_args(args: object) -> EngineLoopConfig:
             else int(getattr(args, "kv_pool_high_water_pages"))
         ),
         kv_pool_chunk_pages=int(getattr(args, "kv_pool_chunk_pages")),
+        kv_pool_memory_budget_mib=(
+            None
+            if getattr(args, "kv_pool_memory_budget_mib", None) is None
+            else int(getattr(args, "kv_pool_memory_budget_mib"))
+        ),
         kv_pool_idle_grace_seconds=float(getattr(args, "kv_pool_idle_grace_seconds")),
         max_pending_requests=(
             None
@@ -1944,6 +1958,7 @@ class ResidentEngineLoop:
             "kv_pool_low_water_pages",
             "kv_pool_high_water_pages",
             "kv_pool_chunk_pages",
+            "kv_pool_memory_budget_mib",
             "kv_pool_idle_grace_seconds",
             "prefix_cache",
         )

@@ -194,6 +194,62 @@ class GlobalKVPoolSet:
         except IndexError as exc:
             raise IndexError(f"KV page_id {page_id} is outside the global pool") from exc
 
+    def append_pages(
+        self,
+        plane_page_pointers: dict[str, tuple[int, ...]],
+        pointer_table_pointers: dict[str, int] | None = None,
+    ) -> None:
+        """Append device pages while preserving all existing page IDs.
+
+        The caller owns the device pointer-table update.  This method only
+        extends the host ledger and publishes the new table shape.  Existing
+        pointers must remain unchanged because captured kernels may still hold
+        them until the caller invalidates those graphs.
+        """
+
+        roles = set(self._plane_page_pointers)
+        if set(plane_page_pointers) != roles:
+            raise ValueError("appended storage planes must match existing roles")
+        counts = {len(tuple(pointers)) for pointers in plane_page_pointers.values()}
+        if len(counts) != 1:
+            raise ValueError("appended storage planes must have equal page counts")
+        added = next(iter(counts), 0)
+        if added <= 0:
+            raise ValueError("appended storage planes must contain pages")
+        with self._lock:
+            for role in sorted(roles):
+                pointers = tuple(int(pointer) for pointer in plane_page_pointers[role])
+                if any(pointer <= 0 for pointer in pointers):
+                    raise ValueError("appended storage pointers must be positive")
+                self._plane_page_pointers[role] += pointers
+            if pointer_table_pointers is not None:
+                if set(pointer_table_pointers) != roles:
+                    raise ValueError("appended pointer tables must match existing roles")
+                self._pointer_table_pointers = {
+                    role: int(pointer_table_pointers[role]) for role in roles
+                }
+            start = len(self._pages)
+            self._pages.extend(_Page(page_id) for page_id in range(start, start + added))
+            self._free_page_ids.update(range(start, start + added))
+            self.generation += 1
+            self._storage_view = KVStorageView(
+                layout_key=f"global-arbitrary-pages:g{self.generation}",
+                generation=self.generation,
+                planes=tuple(
+                    KVPlaneView(
+                        role=f"{role}.page_table",
+                        dtype="int64",
+                        ptr=self._pointer_table_pointers[role],
+                        shape=(len(self._pages),),
+                        strides=(1,),
+                    )
+                    for role in sorted(self._plane_page_pointers)
+                ),
+                artifact_fingerprint=self.backend_fingerprint,
+                metadata_descriptor_ptr=self._storage_view.metadata_descriptor_ptr,
+                metadata_descriptor_bytes=self._storage_view.metadata_descriptor_bytes,
+            )
+
     def allocate(
         self,
         lease_id: str,

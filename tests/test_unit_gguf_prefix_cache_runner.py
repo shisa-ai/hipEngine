@@ -672,6 +672,7 @@ class _FakeGlobalPoolSession:
         # 768-token scratch: 3 pages per request, below the packed workspace's
         # 1024-token (4-page) per-slot union floor.
         self.scratch = SimpleNamespace(max_positions=768)
+        self.max_sequence_length = 768
         self.created_pools = []
         self.bound_workspace_pools = []
         self.workspace_release_calls = 0
@@ -758,12 +759,17 @@ def test_configure_engine_loop_leases_packed_workspace_pages() -> None:
     # on top (the lease is capacity-honest: serving can never open more
     # resident slots than max_active_requests, and the 1024-token per-slot
     # union floor still applies to short request contexts).
-    assert pool.current_pages == 14
+    assert pool.current_pages == 12
     lease = pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY)
-    assert lease is not None and len(lease) == 8
-    assert pool.stats.free_pages == 6
-    assert pool.stats.pinned_pages == 8
+    assert lease is not None and len(lease) == 4
+    assert pool.stats.free_pages == 8
+    assert pool.stats.pinned_pages == 4
     assert batch_owner.bound_workspace_pools == [pool]
+    snapshot = runner.observability_snapshot()
+    assert snapshot["model_runner"]["max_active_requests"] == 2
+    assert snapshot["model_runner"]["max_context_tokens"] == 768
+    assert "max_pages" in snapshot["kv_pool"]
+    assert "budget_bytes" in snapshot["kv_pool"]
 
     # Reconfiguration releases the lease and the idle workspace before the
     # old pool closes, then re-leases on the fresh pool.
@@ -772,7 +778,7 @@ def test_configure_engine_loop_leases_packed_workspace_pages() -> None:
     assert new_pool is not pool
     assert batch_owner.workspace_release_calls == 1
     assert pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY) is None
-    assert len(new_pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY)) == 8
+    assert len(new_pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY)) == 4
     assert batch_owner.bound_workspace_pools[-1] is new_pool
 
     runner.close()
@@ -805,11 +811,11 @@ def test_configure_engine_loop_leases_single_slot_workspace_at_c1() -> None:
     assert pool is not None
     # capacity=1 request * 3 pages/request = 3 request pages; the workspace
     # lease is one slot * max(3, 4) = 4 pages.
-    assert pool.current_pages == 7
+    assert pool.current_pages == 12
     lease = pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY)
     assert lease is not None and len(lease) == 4
     assert pool.stats.pinned_pages == 4
-    assert pool.stats.free_pages == 3
+    assert pool.stats.free_pages == 8
 
     runner.close()
 

@@ -17127,6 +17127,7 @@ def test_engine_loop_cli_env_defaults_match_docs() -> None:
     assert config.kv_pool_low_water_pages == 128
     assert config.kv_pool_high_water_pages is None
     assert config.kv_pool_chunk_pages == 128
+    assert config.kv_pool_memory_budget_mib is None
     assert config.kv_pool_idle_grace_seconds == 30.0
     assert config.max_pending_requests is None
     assert config.prefix_cache == "off"
@@ -17162,6 +17163,7 @@ def test_engine_loop_cli_env_overrides() -> None:
         "HIPENGINE_KV_POOL_LOW_WATER_PAGES": "8",
         "HIPENGINE_KV_POOL_HIGH_WATER_PAGES": "64",
         "HIPENGINE_KV_POOL_CHUNK_PAGES": "4",
+        "HIPENGINE_KV_POOL_MEMORY_BUDGET_MIB": "2048",
         "HIPENGINE_KV_POOL_IDLE_GRACE_SECONDS": "1.5",
         "HIPENGINE_MAX_PENDING_REQUESTS": "6",
         "HIPENGINE_PREFIX_CACHE": "radix",
@@ -17176,6 +17178,7 @@ def test_engine_loop_cli_env_overrides() -> None:
         kv_pool_low_water_pages=8,
         kv_pool_high_water_pages=64,
         kv_pool_chunk_pages=4,
+        kv_pool_memory_budget_mib=2048,
         kv_pool_idle_grace_seconds=1.5,
         max_pending_requests=6,
         prefix_cache="radix",
@@ -17202,6 +17205,8 @@ def test_engine_loop_cli_env_overrides() -> None:
                 "96",
                 "--kv-pool-chunk-pages",
                 "8",
+                "--kv-pool-memory-budget-mib",
+                "3072",
                 "--kv-pool-idle-grace-seconds",
                 "2.5",
                 "--max-pending-requests",
@@ -17219,6 +17224,7 @@ def test_engine_loop_cli_env_overrides() -> None:
     assert cli_config.kv_pool_low_water_pages == 16
     assert cli_config.kv_pool_high_water_pages == 96
     assert cli_config.kv_pool_chunk_pages == 8
+    assert cli_config.kv_pool_memory_budget_mib == 3072
     assert cli_config.kv_pool_idle_grace_seconds == 2.5
     assert cli_config.max_pending_requests == 9
     assert cli_config.prefix_cache == "off"

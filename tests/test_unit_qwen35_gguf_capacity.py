@@ -640,8 +640,23 @@ def test_auto_context_resolves_and_caches_a_context_that_fits(monkeypatch) -> No
     assert generator._auto_context_estimate.allocatable_context_tokens == selected
 
 
-def test_auto_context_cache_is_keyed_by_batch_size(monkeypatch) -> None:
-    """A larger batch prices tighter and must not inherit the batch-1 context."""
+def test_auto_context_honours_explicit_pool_memory_budget(monkeypatch) -> None:
+    monkeypatch.delenv("HIPENGINE_GGUF_AUTO_CONTEXT", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_KV_CAPACITY_RESERVE_MIB", raising=False)
+    generator = _auto_context_generator()
+    generator._kv_pool_memory_budget_mib = 4096
+    runner = _auto_context_runner(free_gib=8.0)
+
+    selected = generator._resolve_auto_context(
+        runner, max_batch_size=4, defer_kv_allocation=True
+    )
+    assert selected is not None
+    assert selected < 262_144
+    assert generator._auto_context_estimate.usable_bytes <= 4096 * 1024**2
+
+
+def test_auto_context_is_independent_of_batch_size(monkeypatch) -> None:
+    """Scheduler concurrency does not shrink the per-request context ceiling."""
 
     monkeypatch.delenv("HIPENGINE_GGUF_AUTO_CONTEXT", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_KV_CAPACITY_RESERVE_MIB", raising=False)
@@ -655,9 +670,8 @@ def test_auto_context_cache_is_keyed_by_batch_size(monkeypatch) -> None:
         runner, max_batch_size=8, defer_kv_allocation=True
     )
 
-    assert single is not None and batched is not None
-    assert batched <= single
-    assert generator._auto_resolved_max_sequence_length == min(single, batched)
+    assert single is not None and batched == single
+    assert generator._auto_resolved_max_sequence_length == single
 
 
 def test_auto_context_honours_the_disable_flag(monkeypatch) -> None:
@@ -988,13 +1002,13 @@ def test_resident_slot_default_is_one(monkeypatch) -> None:
     it again is a deliberate act with a failing test attached.
     """
 
-    assert qwen35_gguf._GGUF_RESIDENT_MODEL_LOOP_DEFAULT_CAPACITY == 1
+    assert qwen35_gguf._GGUF_RESIDENT_MODEL_LOOP_DEFAULT_CAPACITY == 4
 
     # The runner's own default has to flow from that constant, and an explicit
     # capacity has to win. Inspected rather than constructed because building a
     # runner needs a real model path.
     signature = inspect.signature(qwen35_gguf.Qwen35GGUFResidentModelRunner.__init__)
-    assert signature.parameters["capacity"].default == 1
+    assert signature.parameters["capacity"].default == 4
 
 
 def test_server_defaults_to_int8_kv_storage() -> None:
