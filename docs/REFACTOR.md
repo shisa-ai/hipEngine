@@ -7229,6 +7229,35 @@ admission no longer rejects a routine document. Evidence:
 `benchmarks/results/2026-09-12-gfx1151-surya-attention-memory.json`,
 `tests/test_surya_gpu.py::test_gpu_tiled_vision_matches_dense_and_oracle`.
 
+The "result is unchanged" claim is now measured, not inferred: under a 12 MiB
+budget (4-10 tiles per page, partial tiles included) the tiled and dense paths
+are bit-identical over 4562 teacher-forced full-vocabulary rows — mean/p95/p99/
+max KL `0.000e+00`, top-1 `100%`. Evidence:
+`benchmarks/results/2026-09-12-gfx1151-surya-numerical-gate.json`.
+
+## 2026-09-12 Surya bench-suite pages clip their own text — open
+
+Four of the seven pages in `scripts/surya_bench_pages.py` draw text past the
+canvas, so the text the suite claims to measure is not the text in the image:
+`ja` body lines are 576-663 px wide on a 512 px page (480 px usable), `mixed`
+Latin lines are 503/506 px against 480, `scan` reaches ~531 px against 476, and
+`page_long` draws six 224 px blocks from y=168 so blocks 5 and 6 fall off a
+1024 px canvas. Scoring against the intended text therefore reads correct model
+output as error, which is how the earlier `line.` -> `literature` "hallucination"
+arose: the model completed a clipped word.
+
+Worked around, not fixed: the transcription acceptance test scores
+`page_<name>_fit.png` for those four pages (`scripts/surya_bench_pages.py
+--fit`, with `_draw_text_fit` refusing to draw off-canvas) and the bench page
+for the other three. The bench pages are left byte-identical so
+`oracle_bench.json` and
+`benchmarks/results/2026-09-11-gfx1151-surya-suite-baseline.json` stay valid.
+
+Remove this split when the bench suite is re-cut onto fitting pages: regenerate
+the four pages, re-capture `oracle_bench.json` with
+`scripts/surya_oracle_greedy.py --case bench`, re-run the lane comparison, and
+then drop the `_fit` variants and `acceptance_page`.
+
 ## 2026-09-12 Surya text prefill: quadratic causal score scratch — open
 
 `SuryaGpuRunner._attention_packed` still materializes the full causal score

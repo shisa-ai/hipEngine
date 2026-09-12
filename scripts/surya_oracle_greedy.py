@@ -56,6 +56,9 @@ from surya_oracle_torch import (  # noqa: E402
     _make_synthetic_page_full,
     _make_synthetic_page_list,
 )
+from surya_bench_pages import acceptance_page  # noqa: E402
+
+from hipengine.generation.surya_protocol import FULL_PAGE_HTML_PROMPT  # noqa: E402
 
 DEFAULT_OUT_DIR = Path("tests/fixtures/surya")
 # matches the committed oracle_greedy.json (64 ids, no EOS before the limit)
@@ -73,6 +76,21 @@ CORPUS_PAGES = {
 # this captures their torch fp32 reference ids so the GPU lanes can be gated
 # against torch rather than only against the CPU reference.
 BENCH_PAGES = ("ja", "mixed", "dense", "table", "blank", "scan", "long")
+
+# Full-page HTML transcription protocol oracle: the same page names, but scored
+# on the fitting acceptance fixtures and driven by the checkpoint's real
+# training-time prompt instead of the ad-hoc "Transcribe this page." text. The
+# budgets are the smallest that let every page reach a natural EOS, measured on
+# the fp32 HIP lane; a budget that truncates would gate only a prefix.
+PROTOCOL_MAX_TOKENS = {
+    "ja": 600,
+    "mixed": 600,
+    "dense": 1500,
+    "table": 640,
+    "blank": 64,
+    "scan": 640,
+    "long": 2600,
+}
 # The blank page stops almost immediately; the long page needs room to finish.
 # The default is generous on purpose: at 128 the Japanese, mixed, dense and scan
 # pages all hit the cap instead of reaching EOS, which would gate only their
@@ -100,6 +118,7 @@ def _greedy_from_page(
     *,
     device: str,
     max_tokens: int,
+    prompt: str = PROMPT_TEXT,
 ) -> tuple[dict, dict, list[int], str]:
     """Run one image page through prefill + greedy decode.
 
@@ -114,7 +133,7 @@ def _greedy_from_page(
             "role": "user",
             "content": [
                 {"type": "image", "image": str(page_path)},
-                {"type": "text", "text": PROMPT_TEXT},
+                {"type": "text", "text": prompt},
             ],
         }
     ]
@@ -275,16 +294,81 @@ def _run_bench(model, processor, out_dir: Path, device: str) -> None:
     print(f"wrote {out_dir}/oracle_bench.json — {len(oracle)} pages")
 
 
+def _run_protocol(model, processor, out_dir: Path, device: str,
+                  only: list[str] | None = None,
+                  page_dir: Path | None = None) -> None:
+    """Capture torch fp32 ids for the full-page HTML transcription protocol.
+
+    This is the reference the transcription acceptance test gates on. The
+    ad-hoc-prompt bench oracle cannot serve: the model's continuation there is
+    layout JSON or a degenerate repeat, so it says nothing about whether the
+    page was transcribed.
+    """
+
+    names = list(PROTOCOL_MAX_TOKENS) if not only else list(only)
+    unknown = [name for name in names if name not in PROTOCOL_MAX_TOKENS]
+    if unknown:
+        raise SystemExit(
+            f"unknown protocol page(s) {unknown}; "
+            f"known: {sorted(PROTOCOL_MAX_TOKENS)}"
+        )
+    oracle: dict[str, dict[str, object]] = {}
+    pages = page_dir if page_dir is not None else out_dir
+    for name in names:
+        page_name = acceptance_page(name)
+        page_path = pages / page_name
+        if not page_path.exists():
+            raise SystemExit(
+                f"missing {page_path}; run scripts/surya_bench_pages.py --fit first"
+            )
+        max_tokens = PROTOCOL_MAX_TOKENS[name]
+        caps, _captured, ids, text = _greedy_from_page(
+            model, processor, page_path, device=device, max_tokens=max_tokens,
+            prompt=FULL_PAGE_HTML_PROMPT,
+        )
+        reached_limit = len(ids) >= max_tokens
+        oracle[name] = {
+            "page": page_name,
+            "prompt": FULL_PAGE_HTML_PROMPT,
+            "ids": ids,
+            "text": text,
+            "max_tokens": max_tokens,
+            "reached_limit": reached_limit,
+            "finish_reason": "length" if reached_limit else "eos",
+            "grid_thw": caps["image_grid_thw"].tolist(),
+        }
+        print(
+            f"wrote protocol oracle for {page_name} — {len(ids)} greedy ids "
+            f"(limit {max_tokens}, {'length' if reached_limit else 'eos'}), "
+            f"grid_thw={caps['image_grid_thw'].tolist()}"
+        )
+    (out_dir / "oracle_fullpage_protocol.json").write_text(json.dumps(oracle, indent=1))
+    print(f"wrote {out_dir}/oracle_fullpage_protocol.json — {len(oracle)} pages")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--case", choices=("all", "image", "fullpage", "corpus", "bench"),
+        "--case",
+        choices=("all", "image", "fullpage", "corpus", "bench", "protocol"),
         default="all",
     )
     parser.add_argument("--out-dir", type=Path, default=DEFAULT_OUT_DIR)
     parser.add_argument("--device", default="cpu")
+    parser.add_argument(
+        "--only", default=None,
+        help="comma-separated page names, applied to --case protocol",
+    )
+    parser.add_argument(
+        "--page-dir", type=Path, default=None,
+        help="directory holding the page fixtures; defaults to --out-dir",
+    )
     args = parser.parse_args()
     args.out_dir.mkdir(parents=True, exist_ok=True)
+    only = (
+        [name.strip() for name in args.only.split(",") if name.strip()]
+        if args.only else None
+    )
 
     from transformers import AutoProcessor, Qwen3_5ForConditionalGeneration
 
@@ -302,6 +386,9 @@ def main() -> None:
         _run_corpus(model, processor, args.out_dir, args.device)
     if args.case in ("all", "bench"):
         _run_bench(model, processor, args.out_dir, args.device)
+    if args.case in ("all", "protocol"):
+        _run_protocol(model, processor, args.out_dir, args.device, only,
+                      args.page_dir)
 
 
 if __name__ == "__main__":
