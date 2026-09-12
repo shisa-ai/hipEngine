@@ -66,26 +66,22 @@ error rate 0.0000, and zero reading-order violations; the ruled table reads as
 is reported as truncation with omissions rather than passing a prefix. The A4
 page is the page-scale case at 2480x3508 (220x156 patch grid, 8580 image
 tokens): 2108 tokens to a natural EOS, vision 47.7 s, prefill 8.0 s, decode
-58.4 s (27.7 ms/token, 36.1 tok/s), 114.3 s end to end. Scoring it initially
-read as a failure — recall 0.241, CER 0.890 — because the ground truth split its
-wrapped prose into physical lines while the model correctly returns a paragraph
-as one block; the A4 ground truth is now paragraph-level and all 12 units match
-at similarity 1.0. One caveat is recorded: on the degraded scan the HIP lane
-differs from torch fp32 on 21 of 616 ids, all bbox coordinate digits, with
-identical labels and text and a worst coordinate delta of 4 of 1000 — and torch
-bf16 differs from torch fp32 on 15 ids there and changes the decoded text, so
-the drift is a property of that page's coordinates rather than of the HIP route.
+58.4 s (27.7 ms/token, 36.1 tok/s), 114.3 s end to end; its ground truth is
+paragraph-level because its body is wrapped prose. One caveat is recorded: on
+the degraded scan the HIP lane differs from torch fp32 on 21 of 616 ids, all
+bbox coordinate digits, with identical labels and text and a worst coordinate
+delta of 4 of 1000 — and torch bf16 differs from torch fp32 on 15 ids there and
+changes the decoded text, so the drift is a property of that page's coordinates
+rather than of the HIP route.
 [Transcription acceptance](results/2026-09-12-gfx1151-surya-transcription-acceptance.json).
 
-Surya OCR 2 is also reachable through hipEngine's own OpenAI-compatible server.
-`scripts/surya_http_e2e.py` serves the 300-DPI A4 page over
-`/v1/chat/completions` against a loaded checkpoint and asserts equality with the
-direct-call row above rather than similarity: 2108 completion tokens, 8701
-prompt tokens (121 text plus 8580 image), 13 blocks, 12/12 paragraph units, CER
-0.0000, 32/32 table cells, zero reading-order violations, `stop`, 119.9 s wall
-against the direct call's 114.3 s. The vision bounds and media form are engine
-declarations, so a page-scale model is admitted without editing the server, and
-an engine that declares nothing keeps the previous 1 MP / 1024 px / 8 MiB scope.
+Surya OCR 2 is also reachable through hipEngine's OpenAI-compatible server.
+`scripts/surya_http_e2e.py` serves the A4 page over `/v1/chat/completions` and
+asserts equality with the direct-call row above: 2108 completion tokens, 8701
+prompt tokens (121 text plus 8580 image), 13 blocks, 12/12 units, CER 0.0000,
+32/32 table cells, `stop`, 119.9 s wall against 114.3 s direct. Vision bounds
+and media form are engine declarations, so a page-scale model is admitted
+without editing the server.
 [HTTP serving e2e](results/2026-09-12-gfx1151-surya-http-serving-e2e.json).
 
 Non-GR linear structural floor measured on Framework gfx1151:
