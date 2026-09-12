@@ -28,7 +28,7 @@ vision tower and text decoder on gfx1151.
 | Greedy reference fixtures are reproducible | done | `scripts/surya_oracle_greedy.py --case all` regenerates `oracle_greedy.json`, `oracle_fullpage_greedy.json` and `oracle_corpus.json` byte-for-byte |
 | Multi-page held-out OCR corpus | done | `page_columns.png` (two-column) and `page_list.png` (numbered list) via `tests/test_surya_gpu.py::test_gpu_ocr_corpus_matches_oracle` |
 | 300-DPI A4 page fixture and its transcription measurement | done | `scripts/surya_bench_pages.py:make_page_a4`, gated by `tests/test_surya_transcription.py::test_transcription_meets_ground_truth[a4]` |
-| OpenAI-compatible HTTP serving (`hipserver`) | done (fake-generator tested) | `hipengine/server/multimodal.py`, `tests/test_surya_server_multimodal.py` |
+| OpenAI-compatible HTTP serving (`hipserver`) | done | `hipengine/server/multimodal.py`, `scripts/surya_http_e2e.py`, `tests/test_surya_server_multimodal.py` |
 | Registry migration + `KVLiveSpans` KV ABI | pending | tracked in `docs/REFACTOR.md` |
 | Quantized (GGUF) Surya decoder | pending | safetensors fp32 is the implementation target |
 | MTP / speculative decoding | pending | 15 MTP tensors inventoried, unused |
@@ -278,11 +278,31 @@ exactly, which `tests/test_surya_server_multimodal.py` pins in both directions
 using the committed A4 fixture. `--vision-max-pixels` and
 `--vision-max-image-bytes` override either bound.
 
-Tested against a fake generator behind `create_app(llm=...)`: the transport,
-bounds, media adaptation, and prompt selection. **No HTTP request has been
-served by a loaded Surya checkpoint**, so the quality of the transcription over
-this path is unmeasured, and the direct-call measurement it would be compared
-against is the A4 failure above.
+**The declarations live on the generator, not on the engine the server holds.**
+The serving front end holds an `LLM`, which wraps the generator, so `LLM`
+forwards `vision_max_pixels`, `vision_media_input`, `vision_prompt_marker`,
+`vision_video_prompt_marker` and `vision_default_prompt` from it. It forwards
+them *by raising `AttributeError`* when the generator declares nothing, so
+`getattr(engine, name, default)` in a caller still sees the absence and applies
+its own default — Qwen4Exp declares no bounds and must keep the caller's,
+including its inline prompt marker. An earlier version of this path read the
+declarations off `LLM`, got `None`, silently kept the 1 MP default, and rejected
+every real A4 page; `supports_vision` was true throughout, which is why the
+failure looked like a bound problem rather than a missing forward.
+
+`usage.prompt_tokens` comes from the generator when it reports one, because a
+vision prompt is text *plus* image tokens: the A4 request is 8701 tokens, of
+which 121 are text and 8580 are image. `GenerationOutput.prompt_tokens` carries
+it and the Surya generators set it from the prompt they built; the server falls
+back to a tokenizer count for generators that report nothing.
+
+**Verified end to end against a loaded checkpoint.**
+`scripts/surya_http_e2e.py` serves one page through `TestClient`, scores it with
+the same ground-truth scorer the direct path is gated by, and asserts equality
+with the committed direct-call row rather than similarity: 2108 completion
+tokens, 13 blocks, 12/12 paragraph units, CER 0.0000, 32/32 table cells, 0
+reading-order violations, `stop`, 119.9 s wall against the direct call's 114.3 s
+(artifact `benchmarks/results/2026-09-12-gfx1151-surya-http-serving-e2e.json`).
 
 ### Measured inventory (2026-09-11, revision `3b3d4cdf`)
 

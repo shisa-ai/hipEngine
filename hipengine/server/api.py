@@ -7245,7 +7245,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 if finish is not None and finish.reason == "length"
                 else "stop"
             )
-            prompt_tokens = int(engine.count_tokens(prompt))
+            # The generator knows the exact prompt length when it built the
+            # prompt (a vision prompt is text plus image tokens, which a text
+            # tokenizer count cannot recover). Fall back to the tokenizer for
+            # the text-only generators that report nothing.
+            reported_prompt_tokens = getattr(detail, "prompt_tokens", None)
+            if reported_prompt_tokens is None:
+                reported_prompt_tokens = int(engine.count_tokens(prompt))
+            prompt_tokens = int(reported_prompt_tokens)
             completion_tokens = len(generated_ids)
             return {
                 "id": f"chatcmpl-{uuid.uuid4().hex}",
