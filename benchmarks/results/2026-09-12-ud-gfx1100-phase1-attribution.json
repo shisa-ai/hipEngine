@@ -2417,5 +2417,13 @@
     "The verifier path is capped at four rows: the fused add/RMSNorm and device accept/commit kernels are B1-B3, so rows 5-8 cannot be measured or run. The row sweep stops at 4.",
     "The leaf replays a fixed synthetic block ([root]*rows), not the real accepted-draft chain; absolute ms is a per-verifier-block figure, not the paired tok/s rate.",
     "c1/c2/c4/c8 concurrency widths need a multi-request caller the census does not implement."
-  ]
+  ],
+  "correction": {
+    "date": "2026-09-12",
+    "field": "rows_cap_attribution",
+    "was": "rows 5-8 raise 'rows must be 2, 3, or 4' from the fused rounded add/RMSNorm and the device accept/commit kernels",
+    "is": "Only the fused rounded add/RMSNorm wrapper capped the chain. Its device kernel is one block per row with an identical reduction tree, so lifting that one guard makes rows 5-8 run. The device accept/commit path was never row-capped: it binds positions from a device array (prepare_packed_decode_metadata_from_positions), and the four-scalar position0..position3 ABI belongs to prepare_packed_decode_metadata, which has no in-tree runtime caller.",
+    "evidence": "benchmarks/results/2026-09-12-ud-gfx1100-verifier-rows-4-8-census.json",
+    "worklog": "worklog/entries/20260912T150309.673218Z-lhl-ud-phase5-rows-envelope-8351b3.md"
+  }
 }

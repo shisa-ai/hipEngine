@@ -157,10 +157,12 @@ visible.
   SGPR). Memory traffic counters were not collected.
 - [ ] Capture c1, c2, c4, and c8 where the caller supports them. The census is
   a single-request leaf; width capture needs a multi-request caller.
-- [ ] Capture representative verifier rows such as 6, 9, 12, 16, 28, and 32.
-  The production native verifier path is capped at four rows (B1-B3): the fused
-  rounded add/RMSNorm and the device accept/commit kernels raise `rows must be
-  2, 3, or 4`. Rows 2 and 4 were captured.
+- [x] Capture representative verifier rows such as 6, 9, 12, 16, 28, and 32.
+  Rows 4, 5, 6, and 8 were captured in Phase 5, after the four-row cap was
+  lifted. Rows 9 and above are not reachable: the native target graph is
+  defined for two to eight rows, so 9/12/16/28/32 would need either a different
+  verifier shape or a caller that splits the block. Evidence:
+  `benchmarks/results/2026-09-12-ud-gfx1100-verifier-rows-4-8-census.json`.
 
 Decision gate:
 
@@ -460,16 +462,51 @@ diagnostic unless the absolute result is still an explicitly accepted tradeoff.
 
 Before automatic MTP admission, complete the U6 envelope:
 
-- [ ] Caller ABI rows 1/2/3/4/5/7/8 and prefill tile/chunk boundaries.
+- [ ] Caller ABI rows 1/2/3/4/5/7/8 and prefill tile/chunk boundaries. The
+  native verifier cycle now runs the whole declared two-to-eight row envelope,
+  so rows 2-8 are covered and rows 5 is numerically qualified. Rows 1 and 9+
+  remain outside the graph, and the prefill tile/chunk boundaries are unstarted.
 - [ ] c1/c2/c4/c8, ragged and sparse rows, permutations, delayed arrivals,
   neighbor replacement, cancellation, reclaim, and width transitions.
-- [ ] Exact speculative accept/reject commit and rollback.
+- [ ] Exact speculative accept/reject commit and rollback. The U6 control item
+  `exact_ar_mtp_control_behavior` is qualified on both UD records; the
+  production rollback path at width is unmeasured.
 - [ ] Draft/verifier state disjointness, aliases, and teardown.
 - [ ] Block-64 Q6 `eh_proj`, attention, and FFN operations.
 - [ ] Explicit artifact-scoped strict manifest.
 - [ ] Explicit backend/profile/context/width scope.
 
 The pin remains empty until all declared certification items are complete.
+
+**Result (2026-09-12, physical GPU1 / RX 7900 XTX / gfx1100).** Two units are
+closed.
+
+U6 item 5 is qualified on both UD records, so the unit's only open item is the
+declared backend/profile/context/width scope. The evidence is the
+teacher-forced section-6.1 gate: all four arms pass with top-1 1.0000 in every
+category and at every budget, worst row-mean KL 4.23e-05 against the 1e-03
+envelope, and a fresh-process reproduction matches all sixteen arm numbers to
+the last digit. Evidence:
+`benchmarks/results/2026-09-12-ud-gfx1100-phase5-ar-verify-numerics.json`,
+`worklog/entries/20260912T143946.885296Z-lhl-ud-phase5-u6-item5-0988ce.md`.
+
+The rows 5-8 verifier cap is lifted. The cap was one wrapper guard on the fused
+rounded add/RMSNorm, whose device kernel is one block per row with an identical
+reduction tree; the device accept/commit path was never row-capped, so the
+earlier attribution that named it was wrong. Rows 5 is the only newly reachable
+production shape (budget 4, since `_GGUF_MTP_CANDIDATE_BUDGETS` is 1-4) and it
+passes the same gate at top-1 1.0000, but it is not economical: above four rows
+the IQ family leaves the rows 2-4 local32 verifier sibling and reverts to
+`gguf_iq_dense_strict`, which then owns 59.5-61.8% of verifier kernel time, so
+rows 5 costs 18.26 ms/row against 12.79 at rows 4. Extending the sibling's
+policy to rows 5-8 is the follow-up that makes budget 4 worth using. Evidence:
+`benchmarks/results/2026-09-12-ud-gfx1100-verifier-rows-4-8-census.json`,
+`benchmarks/results/2026-09-12-ud-gfx1100-rows5-budget4-gate.json`,
+`worklog/entries/20260912T150309.673218Z-lhl-ud-phase5-rows-envelope-8351b3.md`.
+
+Still open: c2/c4/c8 and width transitions need a multi-request caller; the
+4096-token and long-context points are unmeasured; rows 9+ are outside the
+native target graph; and the prefill tile/chunk boundaries are unstarted.
 
 ### Phase 6: Re-run the complete paired economics gate
 
