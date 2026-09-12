@@ -7,13 +7,20 @@ the same host iGPU, over 12 pages covering layout-JSON and markup output,
 Japanese and mixed script, dense small text, a ruled table, a blank page, a
 degraded scan, and long block-heavy pages: decode 51.7-55.4 tok/s vs
 20.4-26.6, a median 2.25x faster (2.03x-2.60x across every page), and
-end-to-end 0.21-9.88 s vs 0.32-20.99 s. Both lanes reproduce the torch fp32
-oracle exactly on all 12 pages, and each decode stage repeats identically.
-Every lane times the same region — page image plus prompt in, greedy token ids
-out — with checkpoint load and runner construction reported separately as
-`init_s`. Decode is weight-bandwidth-bound: one token streams 2342 MB of fp32
-weights at 136-143 GB/s, and 88% of decode kernel time is the projection GEMMs.
+end-to-end 0.21-9.88 s vs 0.32-20.99 s. Both lanes reproduce their declared
+reference exactly on all 12 pages — a captured torch fp32 fixture for 11 and the
+oracle-gated CPU reference for the rectangular page — and each decode stage
+repeats identically. A lane is reported PASS only when a reference is present,
+the full sequence matches it, it terminated the way the reference did, the
+isolated decode repeats agree, the timed decode stage and the end-to-end run
+agree on both ids and termination, and the declared output format holds;
+`gate_failures` names every condition that did not. Every lane times the same
+region — page image plus prompt in, greedy token ids out — with checkpoint load
+and runner construction reported separately as `init_s`. Decode is
+weight-bandwidth-bound: one token streams 2342 MB of fp32 weights at 136-143
+GB/s, and 88% of decode kernel time is the projection GEMMs.
 [Suite baseline](results/2026-09-11-gfx1151-surya-suite-baseline.json),
+[rect re-qualification](results/2026-09-12-gfx1151-surya-rect-reference.json),
 [phase-attributed profile](results/2026-09-12-gfx1151-surya-phase-attributed-profile.json).
 Earlier Surya rows here reported decode trailing torch at 55.5 vs 68.2 tok/s;
 that comparison came from a harness defect in which the torch prefill stage was
