@@ -19,7 +19,7 @@ from hipengine.speculative.serving import SpeculativeMTPStaticEligibility
 AUTO_QUANT = "auto"
 
 
-def _factory_capacity_kwargs(factory, *, max_sequence_length, resident_capacity, vision_max_scratch_bytes=None):
+def _factory_capacity_kwargs(factory, *, max_sequence_length, resident_capacity, vision_max_scratch_bytes=None, prefill_max_scratch_bytes=None):
     """Forward configured limits only to factories that explicitly declare them."""
     try:
         parameters = inspect.signature(factory).parameters
@@ -28,7 +28,8 @@ def _factory_capacity_kwargs(factory, *, max_sequence_length, resident_capacity,
     return {
         name: value for name,value in (
             ("max_sequence_length",max_sequence_length),("resident_capacity",resident_capacity),
-            ("vision_max_scratch_bytes",vision_max_scratch_bytes))
+            ("vision_max_scratch_bytes",vision_max_scratch_bytes),
+            ("prefill_max_scratch_bytes",prefill_max_scratch_bytes))
         if value is not None and name in parameters and parameters[name].kind in (
             inspect.Parameter.POSITIONAL_OR_KEYWORD,inspect.Parameter.KEYWORD_ONLY)
     }
@@ -263,6 +264,7 @@ class LLM:
         max_active_requests: int | None = None,
         max_sequence_length: int | None = None,
         vision_max_scratch_bytes: int | None = None,
+        prefill_max_scratch_bytes: int | None = None,
         prefix_cache: str | None = None,
         speculative_mtp_serving: str | None = None,
         speculative_provider: str | None = None,
@@ -279,6 +281,8 @@ class LLM:
             raise ValueError("max_sequence_length must be positive when set")
         if vision_max_scratch_bytes is not None and int(vision_max_scratch_bytes) <= 0:
             raise ValueError("vision_max_scratch_bytes must be positive when set")
+        if prefill_max_scratch_bytes is not None and int(prefill_max_scratch_bytes) <= 0:
+            raise ValueError("prefill_max_scratch_bytes must be positive when set")
         provider = (
             None
             if speculative_provider is None
@@ -315,6 +319,11 @@ class LLM:
             None
             if vision_max_scratch_bytes is None
             else int(vision_max_scratch_bytes)
+        )
+        self.prefill_max_scratch_bytes = (
+            None
+            if prefill_max_scratch_bytes is None
+            else int(prefill_max_scratch_bytes)
         )
         self.speculative_provider = provider
         self.draft_model = drafter
@@ -988,6 +997,7 @@ class LLM:
         factory_kwargs.update(_factory_capacity_kwargs(
             effective_factory,max_sequence_length=self.max_sequence_length,
             vision_max_scratch_bytes=self.vision_max_scratch_bytes,
+            prefill_max_scratch_bytes=self.prefill_max_scratch_bytes,
             resident_capacity=(self.max_active_requests if self.max_active_requests is not None
                                else base_loop_config.max_active_requests)))
         generator = (

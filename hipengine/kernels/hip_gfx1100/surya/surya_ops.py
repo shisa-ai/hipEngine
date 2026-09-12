@@ -142,17 +142,28 @@ def surya_causal_mask_scale_f32(
     scores_ptr: int,
     scale: float,
     heads: int,
-    tokens: int,
+    queries: int,
     head_stride: int,
+    query_offset: int = 0,
     *,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
+    """Mask and scale a causal score block.
+
+    ``queries`` is the number of query rows in ``scores`` and ``head_stride``
+    is both the key count and the row stride; entry ``(h, i, j)`` is dropped to
+    ``-inf`` when ``j > query_offset + i``. A query-row tile passes the index
+    of its first query as ``query_offset`` so the mask stays absolute.
+    """
+
     runtime = runtime or get_hip_runtime()
     library = library or build_surya_ops(load=True)
-    fn = _fn(library, "hipengine_surya_causal_mask_scale_f32", [_P, _F, _I, _I, _I, _S])
-    err = fn(_P(scores_ptr), _F(scale), _I(heads), _I(tokens), _I(head_stride), _S(stream))
+    fn = _fn(library, "hipengine_surya_causal_mask_scale_f32",
+             [_P, _F, _I, _I, _I, _I, _S])
+    err = fn(_P(scores_ptr), _F(scale), _I(heads), _I(queries), _I(head_stride),
+             _I(query_offset), _S(stream))
     _check(err, runtime, "surya causal_mask_scale")
 
 

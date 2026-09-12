@@ -13,11 +13,13 @@ Supported request controls are ``max_tokens``, ``ignore_eos``,
 its neutral default or the request is rejected (see
 ``hipengine.generation.surya_contract``).
 
-Three budgets are explicit, validated, and advertised on the generator:
-the text context (``max_seq``, from ``LLM(max_sequence_length=...)``), the
-per-request output budget (``max_tokens``), and the vision-attention score
-tile (``max_vision_scratch_bytes``). Prompt plus output capacity is validated
-before any device work runs, including before the vision tower.
+Four budgets are explicit, validated, and advertised on the generator: the
+text context (``max_seq``, from ``LLM(max_sequence_length=...)``), the
+per-request output budget (``max_tokens``), and the two attention score tiles
+(``max_vision_scratch_bytes`` for the vision tower,
+``max_prefill_scratch_bytes`` for the text prefill). Prompt plus output
+capacity is validated before any device work runs, including before the
+vision tower.
 
 Registered under ``(surya_ocr2, hip_gfx1151, fp32)`` through
 ``register_builtin_generators()``. Correctness contract: greedy IDs must
@@ -59,7 +61,7 @@ _QUANT = "fp32"
 class SuryaOCRGeneratorGPU:
     """Greedy OCR generator running vision + text on the HIP device.
 
-    Three budgets are explicit and advertised so a caller can admit a request
+    Four budgets are explicit and advertised so a caller can admit a request
     before submitting it:
 
     - ``max_seq`` — text context (prompt plus output). Defaults to
@@ -70,6 +72,9 @@ class SuryaOCRGeneratorGPU:
     - ``max_vision_scratch_bytes`` — the peak vision-attention score tile.
       ``None`` means the runner default; pass a value to trade GEMM width for
       memory. The vision path never allocates the quadratic score matrix.
+    - ``max_prefill_scratch_bytes`` — the peak text-prefill causal score tile.
+      ``None`` means the runner default; pass a value to trade GEMM width for
+      memory. The prefill never allocates the quadratic score matrix.
 
     Vision-input capabilities for a serving front end:
 
@@ -97,6 +102,7 @@ class SuryaOCRGeneratorGPU:
         vision_model_path: str | Path | None = None,
         max_seq: int | None = None,
         max_vision_scratch_bytes: int | None = None,
+        max_prefill_scratch_bytes: int | None = None,
     ) -> None:
         self.model_dir = resolve_surya_path(model_path)
         self.spec: SuryaSpec = load_surya_spec(self.model_dir)
@@ -109,13 +115,17 @@ class SuryaOCRGeneratorGPU:
             raise ValueError(
                 "max_vision_scratch_bytes must be positive when set"
             )
+        if max_prefill_scratch_bytes is not None and int(max_prefill_scratch_bytes) <= 0:
+            raise ValueError(
+                "max_prefill_scratch_bytes must be positive when set"
+            )
         # `None` at this layer means "use the runner default"; only an explicit
         # value is forwarded, because the runner reads `None` as "no budget".
-        scratch_kwargs = (
-            {}
-            if max_vision_scratch_bytes is None
-            else {"max_vision_scratch_bytes": int(max_vision_scratch_bytes)}
-        )
+        scratch_kwargs: dict[str, int] = {}
+        if max_vision_scratch_bytes is not None:
+            scratch_kwargs["max_vision_scratch_bytes"] = int(max_vision_scratch_bytes)
+        if max_prefill_scratch_bytes is not None:
+            scratch_kwargs["max_prefill_scratch_bytes"] = int(max_prefill_scratch_bytes)
         self.runner = SuryaGpuRunner(
             weights, self.spec, max_seq=resolved_max_seq, **scratch_kwargs
         )
@@ -125,6 +135,7 @@ class SuryaOCRGeneratorGPU:
         # Advertised so a caller can admit a request before submitting it.
         self.max_seq = self.runner.max_seq
         self.max_vision_scratch_bytes = self.runner.max_vision_scratch_bytes
+        self.max_prefill_scratch_bytes = self.runner.max_prefill_scratch_bytes
 
     # -- TextGenerator protocol (text-only) --------------------------------
 
@@ -257,6 +268,7 @@ def make_surya_generator_gpu(
     vision_model_path: str | Path | None = None,
     max_sequence_length: int | None = None,
     vision_max_scratch_bytes: int | None = None,
+    prefill_max_scratch_bytes: int | None = None,
 ) -> SuryaOCRGeneratorGPU:
     """Registered ``(surya_ocr2, hip_gfx1151, fp32)`` factory.
 
@@ -273,6 +285,7 @@ def make_surya_generator_gpu(
         vision_model_path=vision_model_path,
         max_seq=max_sequence_length,
         max_vision_scratch_bytes=vision_max_scratch_bytes,
+        max_prefill_scratch_bytes=prefill_max_scratch_bytes,
     )
 
 

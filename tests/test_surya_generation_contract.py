@@ -200,6 +200,79 @@ def test_vision_tile_plan_shrinks_to_one_row_under_a_tiny_budget() -> None:
     assert scratch == heads * n * 4
 
 
+def test_prefill_tile_plan_stays_inside_the_budget() -> None:
+    """The causal prefill score tile must never exceed the configured budget.
+
+    The dense path allocated ``nq * tokens^2 * 4`` bytes: 2.36 GB for the 8580
+    image tokens of a 300-DPI A4 page and 8.59 GB at the default 16384-token
+    context. Tiling by query rows makes the live tile ``nq * tokens * block *
+    4`` instead, and this pins the bound on the token counts the envelope was
+    measured at.
+    """
+
+    from hipengine.runtime.surya import plan_score_tiles
+
+    heads = 8
+    budget = 512 * _MIB
+    for tokens in (256, 1024, 8580, 16384):
+        block, scratch = plan_score_tiles(tokens, heads, budget)
+        assert 1 <= block <= tokens, (tokens, block)
+        assert scratch == heads * tokens * block * 4, (tokens, block, scratch)
+        assert scratch <= budget, f"{tokens} tokens need {scratch} > {budget}"
+        # a prompt whose dense matrix already fits keeps the single dense tile,
+        # so the tiled tile can only ever be smaller
+        assert scratch <= heads * tokens * tokens * 4
+
+    # the two measured peaks: the 8580-token page and the full 16384-token
+    # context, against the dense matrices they used to materialize
+    for tokens, dense in ((8580, 2_355_724_800), (16384, 8_589_934_592)):
+        _, scratch = plan_score_tiles(tokens, heads, budget)
+        assert heads * tokens * tokens * 4 == dense
+        assert scratch <= budget < dense
+
+
+def test_prefill_and_vision_share_one_planner() -> None:
+    """Both score matrices are planned by the same arithmetic.
+
+    The vision tower and the text prefill tile the same ``heads * rows * rows``
+    matrix, so a fix or a tuning change to one must not leave the other behind.
+    """
+
+    from hipengine.runtime.surya import plan_score_tiles, plan_vision_attention
+
+    for rows, heads, budget in (
+        (256, 12, 64 * _MIB),
+        (4096, 12, 512 * _MIB),
+        (16384, 8, 512 * _MIB),
+        (16384, 8, None),
+        (4096, 12, 1),
+    ):
+        assert plan_vision_attention(rows, heads, budget) == plan_score_tiles(
+            rows, heads, budget
+        ), (rows, heads, budget)
+
+
+def test_prefill_tile_plan_uses_one_tile_when_it_fits() -> None:
+    """A prompt whose dense matrix fits the budget must not be split.
+
+    ``block >= tokens`` is what makes the tiled path a strict superset of the
+    dense one: one tile with ``bq == tokens`` issues exactly the dense calls.
+    """
+
+    from hipengine.runtime.surya import plan_score_tiles
+
+    heads = 8
+    tokens = 1024
+    dense = heads * tokens * tokens * 4
+    block, scratch = plan_score_tiles(tokens, heads, dense)
+    assert block == tokens
+    assert scratch == dense
+    # and one byte less must split it
+    block, scratch = plan_score_tiles(tokens, heads, dense - 1)
+    assert 1 <= block < tokens
+    assert scratch == heads * tokens * block * 4 <= dense - 1
+
+
 def test_gpu_factory_declares_the_budgets_it_honors() -> None:
     """The registered factory must not swallow capacity configuration.
 
@@ -218,15 +291,43 @@ def test_gpu_factory_declares_the_budgets_it_honors() -> None:
     parameters = inspect.signature(make_surya_generator_gpu).parameters
     assert "max_sequence_length" in parameters
     assert "vision_max_scratch_bytes" in parameters
+    assert "prefill_max_scratch_bytes" in parameters
 
     forwarded = _factory_capacity_kwargs(
         make_surya_generator_gpu,
         max_sequence_length=16384,
         resident_capacity=None,
         vision_max_scratch_bytes=256 * _MIB,
+        prefill_max_scratch_bytes=128 * _MIB,
     )
     assert forwarded["max_sequence_length"] == 16384
     assert forwarded["vision_max_scratch_bytes"] == 256 * _MIB
+    assert forwarded["prefill_max_scratch_bytes"] == 128 * _MIB
+
+    # an unset prefill budget is left to the runner default rather than
+    # forwarded as an explicit ``None`` (which the runner reads as "no budget")
+    forwarded = _factory_capacity_kwargs(
+        make_surya_generator_gpu,
+        max_sequence_length=None,
+        resident_capacity=None,
+    )
+    assert forwarded == {}
+
+
+def test_llm_rejects_a_non_positive_score_tile_budget() -> None:
+    """``LLM`` validates both score-tile budgets before it loads anything.
+
+    A zero or negative budget would otherwise be read as "no budget" and
+    silently restore the quadratic score matrix, which is the failure mode the
+    budgets exist to prevent.
+    """
+
+    from hipengine.llm import LLM
+
+    with pytest.raises(ValueError, match="prefill_max_scratch_bytes"):
+        LLM("datalab-to/surya-ocr-2", prefill_max_scratch_bytes=0)
+    with pytest.raises(ValueError, match="vision_max_scratch_bytes"):
+        LLM("datalab-to/surya-ocr-2", vision_max_scratch_bytes=-1)
 
 
 def _settings(**overrides) -> SuryaGreedySettings:
@@ -338,6 +439,7 @@ class _StubRunner:
         self.calls = calls
         self.max_seq = 4096
         self.max_vision_scratch_bytes = 0
+        self.max_prefill_scratch_bytes = 0
 
     def check_vision_capacity(self, grid_thw: object) -> None:
         self.calls.append("check_vision_capacity")
@@ -375,6 +477,7 @@ def _gpu_generator(calls: list[str]) -> object:
     generator.tokenizer = None
     generator.max_seq = generator.runner.max_seq
     generator.max_vision_scratch_bytes = 0
+    generator.max_prefill_scratch_bytes = 0
     return generator
 
 

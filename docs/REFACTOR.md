@@ -7285,19 +7285,45 @@ the four pages, re-capture `oracle_bench.json` with
 `scripts/surya_oracle_greedy.py --case bench`, re-run the lane comparison, and
 then drop the `_fit` variants and `acceptance_page`.
 
-## 2026-09-12 Surya text prefill: quadratic causal score scratch — open
+## 2026-09-12 Surya text prefill: quadratic causal score scratch — closed
 
-`SuryaGpuRunner._attention_packed` still materializes the full causal score
-matrix for the text prefill, `num_attention_heads * tokens^2 * 4`
+`SuryaGpuRunner._attention_packed` materialized the full causal score matrix
+for the text prefill, `num_attention_heads * tokens^2 * 4` bytes
 (`num_attention_heads` 8). Measured on gfx1151 with
-`scripts/surya_attention_memory.py`: at `max_seq` 16384 the score matrix is
+`scripts/surya_attention_memory.py`: at `max_seq` 16384 the score matrix was
 2.36 GB of a 7.03 GB peak for the 8580 image tokens of a 300-DPI A4 page, and
 8.59 GB of a 14.71 GB peak at a full 16384-token prompt; the remaining scratch
-is linear at 180.8 KiB/token. Tiling it needs the same treatment as vision
-plus a query offset in `surya_causal_mask_scale_f32` (the causal mask is
-relative to the tile's first query). Do it when a page-scale prefill peak
-matters on a smaller device, or when the prefill block size is wanted as a
-tunable; the measured envelope is recorded in `docs/MODEL-SURYA.md`.
+was linear at 180.8 KiB/token.
+
+Closed by the same query-row tiling the vision tower uses: `plan_score_tiles`
+(one implementation, shared by both paths; `plan_vision_attention` is now the
+vision-shaped name for it) derives a query block from
+`max_prefill_scratch_bytes` (512 MiB default) and `_attention_packed` walks the
+score matrix one tile at a time. Each tile still holds the full key range, so
+the softmax rows are exactly the rows the dense path computed, and the mask
+stays absolute through a new `query_offset` argument on
+`surya_causal_mask_scale_f32` (the causal condition is relative to the tile's
+first query, not the tile-local row index). The measured prefill peak falls
+7.03 -> 5.21 GB for the page and 14.71 -> 6.66 GB at a full prompt for 0.8%
+wall-clock at 16384 tokens, and `block >= tokens` reproduces the dense calls
+exactly, so the dense plan remains the strict fallback. Evidence:
+`benchmarks/results/2026-09-12-gfx1151-surya-text-prefill-tiling.json`,
+`tests/test_surya_gpu.py::test_gpu_tiled_prefill_matches_dense_and_cpu_reference`,
+`tests/test_surya_gpu.py::test_gpu_causal_mask_honors_the_query_offset`.
+
+## 2026-09-12 Surya prefill tiles still compute the masked-away keys — open
+
+The text-prefill tiling bounds the *memory* but not the QK^T arithmetic: every
+tile passes `m=tokens` (the full key range) to the score GEMM and then masks the
+keys beyond its last query, so the tiled prefill does the same ~`nq * tokens^2`
+multiply-adds the dense path did, of which only the lower triangle survives.
+Bounding each tile's keys to `start + bq` would halve the QK^T FLOPs
+(`sum_t bq * (start + bq) ~ tokens^2 / 2`), at the cost of a per-tile `keys`
+argument in `surya_causal_mask_scale_f32` and a per-tile `head_stride` in the
+tile layout (`evie_softmax_rows_f32` already takes `cols` and `tokens`
+separately, so it needs no new argument). Do it when the prefill's score-GEMM
+share is measured to matter; it is a separate change from the memory fix, which
+neither added nor removed QK^T work.
 
 ## 2026-09-12 Surya A4 page has no torch fp32 reference — open
 
