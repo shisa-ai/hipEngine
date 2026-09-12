@@ -388,18 +388,38 @@ prompts, two repeats):
 
 | Tier | UD AR | Plain AR | UD / plain AR | UD MTP B3 | Plain MTP B3 | UD / plain MTP | UD MTP / AR |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| `Q4_K_M` | 31.993 | 37.186 | **0.860x** | 35.541 | 63.465 | **0.560x** | **1.1109x** |
-| `Q4_K_S` | 31.311 | 39.565 | **0.791x** | 33.061 | 64.094 | **0.516x** | **1.0559x** |
+| `Q4_K_M` | 31.927 | 37.181 | **0.859x** | 43.830 | 63.088 | **0.695x** | **1.3728x** |
+| `Q4_K_S` | 31.339 | 39.796 | **0.788x** | 44.456 | 65.067 | **0.683x** | **1.4186x** |
 
 All four arms have complete 20-row-per-group evidence, deterministic repeats,
-GPU/CPU acceptance agreement, and a positive MTP/AR ratio. K_M and both plain
-controls are generated-ID exact. UD K_S repeats the two recorded
-`general_ja_plan` near-tie divergences; its suite-level speed-claim flag remains
-false until the section 6.1 teacher-forced production gate is captured. These
-rates are U6 diagnostic evidence, not automatic MTP admission. The remaining
-gap is concentrated in MTP compute: UD trails plain by 14.0%/20.9% in AR but
-44.0%/48.4% in MTP.
-([valid paired diagnostic](results/paired-ud-plain-mtp-c1-natural25-b3-graph-xtx.json),
+GPU/CPU acceptance agreement, a positive MTP/AR ratio, and generated-ID
+exactness. These rates are U6 diagnostic evidence, not automatic MTP admission.
+The remaining gap is concentrated in MTP compute: UD trails plain by
+14.1%/21.3% in AR but 30.5%/31.7% in MTP.
+([paired artifact](results/paired-ud-plain-mtp-c1-natural25-b3-phase4.json),
+[worklog](../worklog/entries/20260912T125745.171165Z-ud-phase4-lane-ud-phase4-rows-sibling-retained-43a671.md).)
+
+Those rates follow the rows 2-4 local32 IQ verifier sibling
+(`2ac44d7a7`), which moved UD MTP B3 35.541 -> **43.830** (K_M, +23.3%) and
+33.061 -> **44.456** (K_S, +34.5%) at flat AR, and made both UD arms
+generated-ID exact. The sibling gives each block several prompt rows over the
+same local32 IQ decode geometry, with every row bit-identical to the rows == 1
+owner's output for that row; at kernel level it is 2.0-4.3x the strict per-row
+GEMV at rows 2-4 and covers 94.1% (K_M) / 85.9% (K_S) of the rows 2-7
+dead-zone MACs. The block verifier also had to bind the dense-IQ
+execution-owner session, without which its raw-IQ rows 2-4 kept the strict
+owner. All four section-6.1 arms still pass with at least 24x margin on the
+binding mean limit and 100% top-1 overall and per category.
+([kernel headroom](results/2026-09-12-ud-gfx1100-phase4-local32-rows-headroom.json),
+[numerics gate](results/2026-09-12-ud-gfx1100-phase4-ar-verify-numerics.json),
+[implementation entry](../worklog/entries/20260912T092947.074218Z-ud-phase4-lane-ud-phase4-local32-rows-sibling-103062.md).)
+
+The 2026-09-11 baseline this compares against measured UD-Q4_K_M 31.993 AR /
+35.541 MTP B3 (1.1109x) and UD-Q4_K_S 31.311 / 33.061 (1.0559x), with plain
+controls at 37.186 / 63.465 and 39.565 / 64.094. The plain controls moved by
+-0.6% and +1.5% between the two runs, which bounds the run-to-run MTP spread
+at a few percent; both UD AR arms are flat to within 0.2%.
+([baseline artifact](results/paired-ud-plain-mtp-c1-natural25-b3-graph-xtx.json),
 [invalidated eager-denominator attempt](results/paired-ud-plain-mtp-c1-natural25-b3-xtx.json).)
 
 Earlier revisions of this section published a W7900/XTX census comparison
