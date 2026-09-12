@@ -30,7 +30,7 @@ from scripts.qwen38_production_ar_gate import profile_session
 MODES = ("shipped", "unequal_pair", "no_retiles")
 CAPABILITY = "GGUF_Q4_T16_UNEQUAL_PAIR_PREFILL_POLICIES"
 TRACKED = (
-    ("linear", "dense_unequal_dual_wmma_prefill_bf16_bf16_out"),
+    ("linear_pair", "dense_unequal_dual_wmma_prefill_bf16_bf16_out"),
     ("linear_pair_silu", "dense_dual_wmma_prefill_row64_bf16_bf16_out"),
     ("linear_pair_silu", "dense_dual_wmma_prefill_row128_bf16_bf16_out"),
 )
