@@ -9,6 +9,30 @@ import pytest
 from scripts import execution_profile_gguf_fp16_state_batch_gate as gate
 
 
+def test_public_profile_factory_bypasses_legacy_storage_flags(monkeypatch):
+    expected = (object(), (), "hip_gfx1151", "gfx1151")
+    calls = []
+
+    def factory(args, *, candidate, max_sequence_length):
+        calls.append((candidate, max_sequence_length))
+        return expected
+
+    monkeypatch.setattr(gate, "_make_public_profile_sessions", factory)
+    result = gate._make_sessions(
+        SimpleNamespace(public_profiles=True), fp16=True, max_sequence_length=1024)
+    assert result is expected
+    assert calls == [(True, 1024)]
+
+
+def test_public_static_matrix_can_cover_c2():
+    rows = _rows()
+    scenarios = gate.build_static_scenarios(
+        rows, {str(row["id"]): (1, 2, 3) for row in rows},
+        widths=(2, 4, 8), decode_steps=128,
+        long_prompt_tokens=512, long_decode_steps=128)
+    assert len([row for row in scenarios if row.width == 2]) == 9
+
+
 def _rows() -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     counts = {
