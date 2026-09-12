@@ -56,7 +56,7 @@ from surya_oracle_torch import (  # noqa: E402
     _make_synthetic_page_full,
     _make_synthetic_page_list,
 )
-from surya_bench_pages import acceptance_page  # noqa: E402
+from surya_bench_pages import page_filename  # noqa: E402
 
 from hipengine.generation.surya_protocol import FULL_PAGE_HTML_PROMPT  # noqa: E402
 
@@ -259,17 +259,28 @@ def _run_corpus(model, processor, out_dir: Path, device: str) -> None:
     print(f"wrote {out_dir}/oracle_corpus.json — {len(oracle)} pages")
 
 
-def _run_bench(model, processor, out_dir: Path, device: str) -> None:
+def _run_bench(model, processor, out_dir: Path, device: str,
+               only: list[str] | None = None) -> None:
     """Capture torch fp32 reference ids for the representative bench pages.
 
     The pages are inputs, not outputs: ``scripts/surya_bench_pages.py`` writes
     them, and this records what torch fp32 greedily produces so the hipEngine
     lanes have a real oracle and the text can be judged for OCR quality rather
     than only for id parity.
+
+    ``--only`` restricts the capture to a subset; a partial capture writes only
+    those pages into ``oracle_bench.json``, so use a scratch ``--out-dir`` when
+    the result is a device-equivalence spot check rather than the fixture.
     """
 
+    names = list(BENCH_PAGES) if not only else list(only)
+    unknown = [name for name in names if name not in BENCH_PAGES]
+    if unknown:
+        raise SystemExit(
+            f"unknown bench page(s) {unknown}; known: {list(BENCH_PAGES)}"
+        )
     oracle: dict[str, dict[str, object]] = {}
-    for name in BENCH_PAGES:
+    for name in names:
         page_path = out_dir / f"page_{name}.png"
         if not page_path.exists():
             raise SystemExit(
@@ -315,11 +326,11 @@ def _run_protocol(model, processor, out_dir: Path, device: str,
     oracle: dict[str, dict[str, object]] = {}
     pages = page_dir if page_dir is not None else out_dir
     for name in names:
-        page_name = acceptance_page(name)
+        page_name = page_filename(name)
         page_path = pages / page_name
         if not page_path.exists():
             raise SystemExit(
-                f"missing {page_path}; run scripts/surya_bench_pages.py --fit first"
+                f"missing {page_path}; run scripts/surya_bench_pages.py first"
             )
         max_tokens = PROTOCOL_MAX_TOKENS[name]
         caps, _captured, ids, text = _greedy_from_page(
@@ -357,7 +368,7 @@ def main() -> None:
     parser.add_argument("--device", default="cpu")
     parser.add_argument(
         "--only", default=None,
-        help="comma-separated page names, applied to --case protocol",
+        help="comma-separated page names, applied to --case bench/protocol",
     )
     parser.add_argument(
         "--page-dir", type=Path, default=None,
@@ -385,7 +396,7 @@ def main() -> None:
     if args.case in ("all", "corpus"):
         _run_corpus(model, processor, args.out_dir, args.device)
     if args.case in ("all", "bench"):
-        _run_bench(model, processor, args.out_dir, args.device)
+        _run_bench(model, processor, args.out_dir, args.device, only)
     if args.case in ("all", "protocol"):
         _run_protocol(model, processor, args.out_dir, args.device, only,
                       args.page_dir)

@@ -7259,28 +7259,33 @@ are bit-identical over 4562 teacher-forced full-vocabulary rows — mean/p95/p99
 max KL `0.000e+00`, top-1 `100%`. Evidence:
 `benchmarks/results/2026-09-12-gfx1151-surya-numerical-gate.json`.
 
-## 2026-09-12 Surya bench-suite pages clip their own text — open
+## 2026-09-12 Surya bench-suite pages clip their own text — closed 2026-09-13
 
-Four of the seven pages in `scripts/surya_bench_pages.py` draw text past the
-canvas, so the text the suite claims to measure is not the text in the image:
-`ja` body lines are 576-663 px wide on a 512 px page (480 px usable), `mixed`
-Latin lines are 503/506 px against 480, `scan` reaches ~531 px against 476, and
-`page_long` draws six 224 px blocks from y=168 so blocks 5 and 6 fall off a
-1024 px canvas. Scoring against the intended text therefore reads correct model
-output as error, which is how the earlier `line.` -> `literature` "hallucination"
-arose: the model completed a clipped word.
+Four of the seven pages in `scripts/surya_bench_pages.py` drew text past the
+canvas, so the text the suite claimed to measure was not the text in the image:
+`ja` body lines 576-663 px wide on a 512 px page (480 px usable), `mixed` Latin
+lines 503/506 px against 480, `scan` ~531 px against 476, and `page_long` six
+224 px blocks from y=168 so blocks 5 and 6 fell off a 1024 px canvas. Scoring
+against the intended text read correct model output as error, which is how the
+earlier `line.` -> `literature` "hallucination" arose: the model completed a
+clipped word.
 
-Worked around, not fixed: the transcription acceptance test scores
-`page_<name>_fit.png` for those four pages (`scripts/surya_bench_pages.py
---fit`, with `_draw_text_fit` refusing to draw off-canvas) and the bench page
-for the other three. The bench pages are left byte-identical so
-`oracle_bench.json` and
-`benchmarks/results/2026-09-11-gfx1151-surya-suite-baseline.json` stay valid.
+The four pages are re-cut onto canvases the fit assertion accepts (1024x1024
+for `ja`/`mixed`/`scan`, 1024x1600 for `long`) and every text page now draws
+through `_draw_text_fit`, which raises rather than clipping. The re-cut bytes
+are exactly the former `page_<name>_fit.png` bytes, which is why the captured
+full-page-protocol oracle only needed its `page` field renamed: the images did
+not change. `FIT_PAGES`, `write_fit_pages`, `acceptance_page` and the `--fit`
+flag are gone; `page_filename` returns `page_<name>.png` for every page, and
+`tests/test_surya_transcription_fixtures.py` asserts each generator still
+rejects the old clipping geometry so the pages cannot silently clip again.
 
-Remove this split when the bench suite is re-cut onto fitting pages: regenerate
-the four pages, re-capture `oracle_bench.json` with
-`scripts/surya_oracle_greedy.py --case bench`, re-run the lane comparison, and
-then drop the `_fit` variants and `acceptance_page`.
+`oracle_bench.json` was re-captured (torch fp32, 7 pages) and the lane
+comparison re-run, both recorded in
+`benchmarks/results/2026-09-13-gfx1151-surya-suite-recut.json`. The vision grids
+grew with the canvas (`ja`/`mixed`/`scan` 32x32 -> 64x64, `long` 64x64 ->
+100x64), so the absolute rates are not comparable with the superseded
+2026-09-11 baseline.
 
 ## 2026-09-12 Surya text prefill: quadratic causal score scratch — closed
 
@@ -7307,6 +7312,22 @@ exactly, so the dense plan remains the strict fallback. Evidence:
 `benchmarks/results/2026-09-12-gfx1151-surya-text-prefill-tiling.json`,
 `tests/test_surya_gpu.py::test_gpu_tiled_prefill_matches_dense_and_cpu_reference`,
 `tests/test_surya_gpu.py::test_gpu_causal_mask_honors_the_query_offset`.
+
+## 2026-09-13 Surya lane comparison is measured one process per lane — open
+
+`benchmarks/results/2026-09-13-gfx1151-surya-suite-recut.json` is built from
+one `surya_perf_compare.py` run per lane merged with `--merge`, because both
+lanes in one process return the last three hipEngine rows (`full`, `columns`,
+`list`) degenerate from the first generated token with every stage time
+unchanged. Measuring hipEngine alone over the same 12 cases passes every gate,
+so the corruption rides on shared-process device state left by the torch lane
+rather than on the pages or the harness. This is task #80's bug.
+
+When #80 is fixed, re-run the suite as a single combined invocation
+(`--split all --runs 3 --lanes hipengine_gpu,torch_cuda`), confirm all 24 rows
+pass, and drop the `lane_isolation` protocol note and the per-lane caveat from
+`benchmarks/README.md`. `--merge` itself stays: merging per-lane artifacts is a
+legitimate way to keep a comparison honest when one lane perturbs the other.
 
 ## 2026-09-12 Surya prefill tiles still compute the masked-away keys — open
 

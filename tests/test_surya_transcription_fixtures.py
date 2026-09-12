@@ -1,10 +1,10 @@
-"""Fixture-integrity tests for the Surya transcription-acceptance pages.
+"""Fixture-integrity tests for the Surya benchmark pages.
 
-The bench pages silently draw text past the canvas edge on four of seven pages,
-which makes their intended text an invalid ground truth (the model is scored
-against characters that are not in the image). The acceptance fixtures assert
-fit at generation time; these tests keep that assertion live and keep the
-committed PNGs reproducible.
+Four of the seven text pages used to draw past the canvas edge, which made
+their intended text an invalid ground truth (the model is scored against
+characters that are not in the image). The generators now assert fit at
+drawing time and the pages were re-cut onto canvases that hold them; these
+tests keep that assertion live and keep the committed PNGs reproducible.
 """
 
 from __future__ import annotations
@@ -17,11 +17,12 @@ import pytest
 PIL = pytest.importorskip("PIL")
 
 from scripts.surya_bench_pages import (  # noqa: E402
-    FIT_PAGES,
+    BENCH_LONG_HEIGHT,
+    BENCH_PAGE_SIZE,
     GROUND_TRUTH,
-    acceptance_page,
+    PAGES,
     expected_lines,
-    write_fit_pages,
+    page_filename,
 )
 
 FIXTURES = Path("tests/fixtures/surya")
@@ -34,50 +35,78 @@ def test_every_page_has_ground_truth() -> None:
     }
 
 
-def test_acceptance_page_uses_fit_variant_only_where_needed() -> None:
-    assert acceptance_page("ja") == "page_ja_fit.png"
-    assert acceptance_page("mixed") == "page_mixed_fit.png"
-    assert acceptance_page("scan") == "page_scan_fit.png"
-    assert acceptance_page("long") == "page_long_fit.png"
-    # These bench pages already fit their canvas.
-    assert acceptance_page("dense") == "page_dense.png"
-    assert acceptance_page("table") == "page_table.png"
-    assert acceptance_page("blank") == "page_blank.png"
-    # The A4 page is generated with the same fit assertion, so it needs no
-    # variant; it is its own page-scale fixture.
-    assert acceptance_page("a4") == "page_a4.png"
+def test_page_filename_is_the_bench_page_for_every_name() -> None:
+    for name in GROUND_TRUTH:
+        assert page_filename(name) == f"page_{name}.png"
 
 
-def test_acceptance_page_rejects_an_unknown_name() -> None:
+def test_page_filename_rejects_an_unknown_name() -> None:
     with pytest.raises(KeyError):
-        acceptance_page("nope")
+        page_filename("nope")
 
 
-def test_fit_pages_regenerate_byte_identically(tmp_path: Path) -> None:
-    written = write_fit_pages(tmp_path)
+def test_pages_regenerate_byte_identically(tmp_path: Path) -> None:
+    """Every page except the A4 fixture, which has its own test below."""
 
-    assert len(written) == len(FIT_PAGES)
-    for path in written:
-        committed = FIXTURES / path.name
+    for name, generator in PAGES.items():
+        if name == "a4":
+            continue
+        written = tmp_path / page_filename(name)
+        generator(written)
+        committed = FIXTURES / page_filename(name)
         assert committed.exists(), f"{committed} is not committed"
-        assert path.read_bytes() == committed.read_bytes(), (
-            f"{path.name} is not reproducible; regenerate the fixtures"
+        assert written.read_bytes() == committed.read_bytes(), (
+            f"{page_filename(name)} is not reproducible; regenerate the fixtures"
         )
 
 
-def test_fit_assertion_rejects_the_clipping_bench_geometry(tmp_path: Path) -> None:
-    """The check must actually fire, or the fixtures can silently clip again."""
+def test_fit_assertion_rejects_the_old_clipping_geometry(tmp_path: Path) -> None:
+    """The check must actually fire, or the pages can silently clip again.
 
-    from scripts.surya_bench_pages import make_page_ja_fit, make_page_long_fit
+    512x512 is the canvas the Japanese and mixed pages used to be drawn on,
+    where their lines are 576-663 px and 503/506 px wide against 480 px of
+    usable width; 1024 px tall is where the long page's blocks 5 and 6 fell off
+    the bottom.
+    """
 
-    # 512x512 is the bench canvas, where the Japanese body lines are 576-663 px
-    # wide against 480 px of usable width.
+    from scripts.surya_bench_pages import (
+        make_page_ja,
+        make_page_long,
+        make_page_mixed,
+        make_page_scan,
+    )
+
     with pytest.raises(ValueError, match="runs off the page"):
-        make_page_ja_fit(tmp_path / "ja512.png", size=512)
-
-    # 1024 px tall is the bench canvas, where blocks 5 and 6 fall off the bottom.
+        make_page_ja(tmp_path / "ja512.png", size=512)
     with pytest.raises(ValueError, match="runs off the page"):
-        make_page_long_fit(tmp_path / "long1024.png", height=1024)
+        make_page_mixed(tmp_path / "mixed512.png", size=512)
+    with pytest.raises(ValueError, match="runs off the page"):
+        make_page_scan(tmp_path / "scan512.png", size=512)
+    with pytest.raises(ValueError, match="runs off the page"):
+        make_page_long(tmp_path / "long1024.png", height=1024)
+
+
+def test_text_pages_fit_the_canvas_they_are_drawn_on() -> None:
+    """Every text page is on a canvas the fit assertion accepts.
+
+    Pins the canvas sizes: the four re-cut pages need the larger ones, and a
+    silent shrink back to the old geometry would fail the generators above.
+    """
+
+    from PIL import Image
+
+    expected = {
+        "ja": (BENCH_PAGE_SIZE, BENCH_PAGE_SIZE),
+        "mixed": (BENCH_PAGE_SIZE, BENCH_PAGE_SIZE),
+        "scan": (BENCH_PAGE_SIZE, BENCH_PAGE_SIZE),
+        "long": (BENCH_PAGE_SIZE, BENCH_LONG_HEIGHT),
+        "dense": (512, 512),
+        "table": (512, 512),
+        "blank": (512, 512),
+    }
+    for name, size in expected.items():
+        with Image.open(FIXTURES / page_filename(name)) as image:
+            assert image.size == size, f"{name} is {image.size}, expected {size}"
 
 
 @pytest.mark.parametrize("page", ["ja", "mixed", "dense", "scan", "long"])
