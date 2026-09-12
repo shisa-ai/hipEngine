@@ -366,25 +366,42 @@ implementation.
 
 Likely investigation order:
 
-- [ ] Multi-row target verifier launch and row packing.
+- [x] Multi-row target verifier launch and row packing. Done 2026-09-12: the
+  local32 IQ decode family gained a `ROWS` template parameter and a rows 2-4
+  verifier sibling. Each row is bit-identical to the rows == 1 owner's output
+  for that row, so the sibling adds no arithmetic of its own. At kernel level
+  it is 2.0-4.3x the strict per-row GEMV on the same real tensors and 1.4-2.9x
+  the rows == 1 owner launched once per row, covering 94.1% (K_M) / 85.9%
+  (K_S) of the dead-zone MACs. The block verifier also had to bind the
+  dense-IQ execution-owner session: without it every raw-IQ verifier
+  projection kept the strict GEMV. End to end, UD MTP B3 rose 35.54 -> 43.69
+  (K_M) and 33.06 -> 45.46 (K_S) tok/s on the same host and protocol, and both
+  UD arms are now generated-ID exact. See
+  `benchmarks/results/2026-09-12-ud-gfx1100-phase4-*.json`.
 - [ ] UD Q5 selected-expert path.
-- [ ] Q3_K strict decode.
+- [ ] Q3_K strict decode. Q3_K has no rows==1 local32 owner, so it has no
+  rows 2-4 sibling either; it keeps the strict per-row GEMV.
 - [ ] Q5 gate/up dual execution.
 - [ ] Q5/Q6 compact residency and raw consumer qualification.
 - [ ] IQ/Q3 decoder vectorization and memory access.
 - [ ] Norm, SiLU, residual, and logits tail overhead.
 - [ ] Graph capture/replay ownership and synchronization.
+- [ ] The t16 decode-versus-rowtile accumulation order (Q4_K 27.4% + Q5_K
+  25.7% + Q6_K 8.1% of rank-2 MACs) is the dominant remaining source of
+  verification-specific drift: the rows 2-4 t16 rowtile owners are not
+  bit-identical to the rows 1 t16 decode owners, so the AR route and the
+  verifier still disagree on those tensors after the IQ family is aligned.
 
 For each candidate:
 
-- [ ] Record the exact kernel/dispatch registry key and source lineage.
-- [ ] Add or update the focused RED test before implementation.
-- [ ] Preserve raw-pointer ABI and four-axis registry dispatch.
-- [ ] Keep the strict unfused or strict decode fallback registered.
-- [ ] Run CPU-reference and applicable production numerical gates.
-- [ ] Run a kernel trace proving the intended kernel actually ran.
-- [ ] Run the full paired benchmark before calling it a win.
-- [ ] Report absolute rates and all three ratios.
+- [x] Record the exact kernel/dispatch registry key and source lineage.
+- [x] Add or update the focused RED test before implementation.
+- [x] Preserve raw-pointer ABI and four-axis registry dispatch.
+- [x] Keep the strict unfused or strict decode fallback registered.
+- [x] Run CPU-reference and applicable production numerical gates.
+- [x] Run a kernel trace proving the intended kernel actually ran.
+- [x] Run the full paired benchmark before calling it a win.
+- [x] Report absolute rates and all three ratios.
 
 Promotion rule: retain only changes that are correct, reproducible, and
 non-regressive on the declared suite. A ratio gain with lower UD tok/s is
