@@ -818,6 +818,307 @@ def test_gpu_runner_repeated_create_use_close_releases_memory(runner) -> None:
         assert stats["current_allocated_bytes"] == baseline_bytes
 
 
+# -- text-prefill causal score tiling ---------------------------------------
+
+
+def test_gpu_causal_mask_honors_the_query_offset(runner) -> None:
+    """A score tile's mask must use its first query's absolute position.
+
+    The causal condition is ``j <= query_offset + i``. Without the offset every
+    tile would behave as if it started at query 0, so a later tile would attend
+    to keys it must not see — and the result would still be finite and
+    plausible, which is why this is pinned on the kernel directly and not only
+    through the end-to-end logits.
+    """
+
+    r, _, _ = runner
+    from hipengine.core.memory import copy_device_to_host, host_array_ptr, malloc
+    from hipengine.core.memory import free as hip_free
+    from hipengine.kernels.hip_gfx1100.surya.surya_ops import (
+        surya_causal_mask_scale_f32,
+    )
+
+    heads, tokens, scale = 2, 12, 0.5
+    rng = np.random.default_rng(20260912)
+    full = rng.standard_normal((heads, tokens, tokens)).astype(np.float32)
+    keys = np.arange(tokens)
+    queries = np.arange(tokens)
+    # the dense reference: entry (h, i, j) keeps j <= i
+    dense = np.where(
+        (keys[None, :] <= queries[:, None])[None, :, :], full * scale, -np.inf
+    )
+
+    buf = malloc(full.nbytes)
+    try:
+        # start 0 is the dense case; 7 and 11 fall off the tile grid so an
+        # off-by-one or a tile-relative mask cannot pass by luck
+        for start, bq in ((0, 5), (7, 5), (tokens - 1, 1)):
+            tile = np.ascontiguousarray(full[:, start:start + bq, :])
+            r._upload(buf, tile)
+            surya_causal_mask_scale_f32(
+                buf.ptr, scale, heads, bq, tokens, start,
+                library=r.surya_library, runtime=r.runtime,
+            )
+            r.runtime.device_synchronize()
+            out = np.empty((heads, bq, tokens), dtype=np.float32)
+            copy_device_to_host(host_array_ptr(out), buf, nbytes=out.nbytes)
+            want = dense[:, start:start + bq, :]
+            finite = np.isfinite(want)
+            assert np.array_equal(np.isfinite(out), finite), (start, bq)
+            np.testing.assert_array_equal(out[finite], want[finite])
+            assert (out[~finite] == -np.inf).all(), (start, bq)
+    finally:
+        hip_free(buf)
+
+
+def test_gpu_tiled_prefill_matches_dense_and_cpu_reference(runner) -> None:
+    """Tiling the causal prefill must not change the logits or the greedy ids.
+
+    Each tile still attends over the full key range, so the softmax rows are
+    the rows the dense path computed and the result is the dense result. A
+    64 KiB budget over a page-scale prompt is a real partition (dozens of
+    tiles, partial tile included), not a single dense tile in disguise.
+    Checked bit-for-bit against the dense GPU path and independently against
+    the NumPy CPU reference.
+    """
+
+    r, weights, spec = runner
+    from hipengine.kernels.cpu_reference.surya import text_prefill
+    from hipengine.loading.surya import (
+        SuryaTokenizer,
+        compute_mrope_positions,
+        render_chat_prompt,
+        resolve_surya_path,
+    )
+    from hipengine.runtime.surya import SuryaGpuRunner
+
+    pixel_rows, grid = _page_inputs()
+    tokenizer = SuryaTokenizer(resolve_surya_path(MODEL_ID))
+    merged = r.vision_forward(pixel_rows, [grid])
+    n_img = (grid[1] // 2) * (grid[2] // 2)
+    ids, mm = render_chat_prompt(tokenizer, "Transcribe this page.", n_img)
+    ids = np.asarray(ids, dtype=np.int64)
+    pos = compute_mrope_positions(mm, grid, spec.vision_spatial_merge_size)
+
+    dense_logits = r.prefill(ids, pos, visual_features=merged)
+
+    tiled = SuryaGpuRunner(
+        weights, spec, max_seq=r.max_seq, max_prefill_scratch_bytes=64 * 1024
+    )
+    try:
+        block = tiled.prefill_block(len(ids))
+        assert 1 <= block < len(ids), (
+            f"expected a real partition, got block={block} of {len(ids)}"
+        )
+        tiled_logits = tiled.prefill(ids, pos, visual_features=merged)
+    finally:
+        tiled.close()
+
+    assert np.array_equal(dense_logits, tiled_logits), (
+        "text-prefill tiling changed the logits: max|"
+        f"dense-tiled|={np.abs(dense_logits - tiled_logits).max():.3e}"
+    )
+
+    # independent oracle: the NumPy CPU reference on the same features
+    hidden, _state = text_prefill(
+        weights, spec, ids[None, :], pos, visual_features=merged[None]
+    )
+    emb = weights["model.language_model.embed_tokens.weight"]
+    cpu_logits = (hidden[:, -1] @ emb.T)[0]
+
+    def _prob(x):
+        x = np.asarray(x, dtype=np.float64)
+        e = np.exp(x - x.max())
+        return e / e.sum()
+
+    p, q = _prob(tiled_logits), _prob(cpu_logits)
+    kl = float((q * (np.log(q + 1e-300) - np.log(p + 1e-300))).sum())
+    assert kl < 1e-4, f"tiled prefill KL vs CPU reference = {kl:.3e}"
+    assert int(np.argmax(tiled_logits)) == int(np.argmax(cpu_logits)), (
+        "tiled prefill argmax diverged from the CPU reference"
+    )
+
+
+def test_gpu_tiled_prefill_is_bit_identical_at_the_default_budget(runner) -> None:
+    """The default budget's page-scale split must not perturb the logits.
+
+    Below ~512 MB of dense score the default budget keeps one tile, so the
+    default path *is* the dense path there. At the 8580 image tokens of a
+    300-DPI A4 page the default splits into 5 tiles of 1955 query rows, which
+    is the regime the production numerical gate runs in — so this pins the
+    claim that the gate's recorded numbers still describe the default path.
+    """
+
+    _, weights, spec = runner
+    from hipengine.runtime.surya import SuryaGpuRunner
+
+    tokens = 8580
+    ids = (np.arange(1, tokens + 1, dtype=np.int64) % 1000) + 1
+    axis = np.arange(tokens, dtype=np.int64)
+    pos = np.stack([axis, axis, axis])
+
+    dense = SuryaGpuRunner(
+        weights, spec, max_seq=16384, max_prefill_scratch_bytes=None
+    )
+    try:
+        dense_logits = dense.prefill(ids, pos)
+    finally:
+        dense.close()
+
+    tiled = SuryaGpuRunner(weights, spec, max_seq=16384)
+    try:
+        block = tiled.prefill_block(tokens)
+        assert 1 <= block < tokens, (
+            f"the default budget must split this prompt, got block={block}"
+        )
+        tiled_logits = tiled.prefill(ids, pos)
+    finally:
+        tiled.close()
+
+    assert np.array_equal(dense_logits, tiled_logits), (
+        f"the default budget changed the {tokens}-token prefill logits: max|"
+        f"dense-tiled|={np.abs(dense_logits - tiled_logits).max():.3e}"
+    )
+
+
+def test_gpu_prefill_scratch_admission_matches_the_allocation(runner) -> None:
+    """The admitted prefill tile must match what the score buffer allocates.
+
+    They are separate computations, so drift between them would let a prompt
+    through admission and then allocate more than was admitted.
+    """
+
+    _, weights, spec = runner
+    from hipengine.runtime.surya import SuryaGpuRunner, plan_score_tiles
+
+    r = SuryaGpuRunner(weights, spec)
+    try:
+        for tokens in (64, 257, 1024):
+            block, scratch = plan_score_tiles(
+                tokens, spec.num_attention_heads, r.max_prefill_scratch_bytes
+            )
+            assert r.prefill_block(tokens) == block
+            admitted = r.prefill_scratch_bytes(tokens)
+            tile = r._text_tile_elements(tokens, block)
+            assert tile == tokens * block
+            assert tile * spec.num_attention_heads * 4 == admitted == scratch
+            buf = r._text_scores(tokens, block)
+            assert buf.nbytes >= admitted, (
+                f"{tokens} tokens admitted {admitted} bytes but allocated "
+                f"{buf.nbytes}"
+            )
+    finally:
+        r.close()
+
+
+def test_gpu_prefill_scratch_admission_matches_the_allocation_when_tiled(
+    runner,
+) -> None:
+    """A prompt that needs many tiles must still be admitted exactly."""
+
+    _, weights, spec = runner
+    from hipengine.runtime.surya import SuryaGpuRunner
+
+    # 1024 tokens need 32 MiB dense; a 64 KiB budget forces a few query rows
+    # per tile, i.e. many tiles, and the admitted size must follow.
+    r = SuryaGpuRunner(weights, spec, max_prefill_scratch_bytes=64 * 1024)
+    try:
+        tokens = 1024
+        block = r.prefill_block(tokens)
+        assert 1 <= block < tokens
+        admitted = r.prefill_scratch_bytes(tokens)
+        assert admitted <= 64 * 1024
+        assert admitted < spec.num_attention_heads * tokens * tokens * 4
+        tile = r._text_tile_elements(tokens, block)
+        assert tile * spec.num_attention_heads * 4 == admitted
+        assert r._text_scores(tokens, block).nbytes >= admitted
+    finally:
+        r.close()
+
+
+def test_gpu_prefill_admits_the_default_context_without_allocating(runner) -> None:
+    """The 16384-token default context must pass admission, allocating nothing.
+
+    Dense scores needed 8.59 GB there; the default budget bounds the live tile
+    at 512 MiB, so admission is a host-side computation.
+    """
+
+    _, weights, spec = runner
+    from hipengine.runtime.surya import SuryaGpuRunner
+
+    r = SuryaGpuRunner(weights, spec)
+    try:
+        assert spec.num_attention_heads * 16384 * 16384 * 4 == 8_589_934_592
+        need = r.prefill_scratch_bytes(16384)
+        assert need <= r.max_prefill_scratch_bytes
+        r.check_prefill_capacity(16384)
+        assert "scores" not in r._scratch, "admission must not allocate"
+    finally:
+        r.close()
+
+
+def test_gpu_prefill_admission_rejects_a_prompt_below_one_query_row(runner) -> None:
+    """A budget that cannot hold even one query row is a real rejection."""
+
+    _, weights, spec = runner
+    from hipengine.runtime.surya import SuryaGpuRunner, SuryaGpuRuntimeError
+
+    tokens = 1024
+    floor = spec.num_attention_heads * tokens * 4
+    r = SuryaGpuRunner(weights, spec, max_prefill_scratch_bytes=floor - 1)
+    try:
+        with pytest.raises(SuryaGpuRuntimeError, match="above the .* budget"):
+            r.check_prefill_capacity(tokens)
+        # and the rejected check allocated nothing
+        assert "scores" not in r._scratch
+    finally:
+        r.close()
+
+
+def test_gpu_prefill_admission_can_be_disabled(runner) -> None:
+    """``max_prefill_scratch_bytes=None`` runs one dense tile."""
+
+    _, weights, spec = runner
+    from hipengine.runtime.surya import SuryaGpuRunner
+
+    r = SuryaGpuRunner(weights, spec, max_prefill_scratch_bytes=None)
+    try:
+        assert r.prefill_block(2048) == 2048
+        assert r.prefill_scratch_bytes(2048) == spec.num_attention_heads * 2048 * 2048 * 4
+        r.check_prefill_capacity(2048)
+    finally:
+        r.close()
+
+
+def test_gpu_prefill_rejects_an_over_budget_prompt_before_any_device_work(
+    runner,
+) -> None:
+    """A prompt whose tile cannot fit must be rejected before embed and rope.
+
+    ``prefill`` admitted nothing until it was already inside the layer stack,
+    so an over-budget prompt still paid for the embedding lookup and the rope
+    tables before failing.
+    """
+
+    _, weights, spec = runner
+    from hipengine.runtime.surya import SuryaGpuRunner, SuryaGpuRuntimeError
+
+    tokens = 1024
+    r = SuryaGpuRunner(
+        weights, spec, max_prefill_scratch_bytes=spec.num_attention_heads * tokens * 4 - 1
+    )
+    try:
+        ids = (np.arange(1, tokens + 1, dtype=np.int64) % 1000) + 1
+        axis = np.arange(tokens, dtype=np.int64)
+        pos = np.stack([axis, axis, axis])
+        with pytest.raises(SuryaGpuRuntimeError, match="above the .* budget"):
+            r.prefill(ids, pos)
+        assert "scores" not in r._scratch
+        assert r._visual_buf is None
+    finally:
+        r.close()
+
+
 def test_gpu_vision_scratch_admission_matches_the_allocation(runner) -> None:
     """The admitted size must match what the score tile actually allocates.
 
@@ -981,6 +1282,7 @@ def test_gpu_generator_checks_capacity_before_vision() -> None:
         # the advertised budget is the runner's, so callers can admit up front
         assert gen.max_seq == gen.runner.max_seq
         assert gen.max_vision_scratch_bytes == gen.runner.max_vision_scratch_bytes
+        assert gen.max_prefill_scratch_bytes == gen.runner.max_prefill_scratch_bytes
     finally:
         gen.runner.vision_forward = real_vision
         gen.close()
@@ -1104,13 +1406,15 @@ def test_gpu_generator_multi_prompt_isolation() -> None:
         gen.close()
 
 
-def test_gpu_generator_forwards_context_and_vision_budgets() -> None:
+def test_gpu_generator_forwards_context_and_scratch_budgets() -> None:
     """The registered factory must honor the budgets it advertises.
 
     ``LLM._factory_capacity_kwargs`` forwards a limit only to a factory that
     declares the parameter by name. ``make_surya_generator_gpu`` used to accept
     ``**_kwargs`` and drop them, so ``LLM(max_sequence_length=...)`` never
-    reached the runner.
+    reached the runner. The same applies to the two score-tile budgets: a
+    budget the factory does not declare is silently dropped and the runner
+    keeps its default.
     """
 
     from hipengine.generation.surya_gpu import (
@@ -1124,21 +1428,26 @@ def test_gpu_generator_forwards_context_and_vision_budgets() -> None:
         max_sequence_length=16384,
         resident_capacity=None,
         vision_max_scratch_bytes=64 * 1024 * 1024,
+        prefill_max_scratch_bytes=32 * 1024 * 1024,
     )
     assert forwarded == {
         "max_sequence_length": 16384,
         "vision_max_scratch_bytes": 64 * 1024 * 1024,
+        "prefill_max_scratch_bytes": 32 * 1024 * 1024,
     }
 
     gen = make_surya_generator_gpu(
         model_path=_model_dir(),
         max_sequence_length=16384,
         vision_max_scratch_bytes=64 * 1024 * 1024,
+        prefill_max_scratch_bytes=32 * 1024 * 1024,
     )
     try:
         assert gen.max_seq == 16384 == gen.runner.max_seq
         assert gen.max_vision_scratch_bytes == 64 * 1024 * 1024
         assert gen.runner.max_vision_scratch_bytes == 64 * 1024 * 1024
+        assert gen.max_prefill_scratch_bytes == 32 * 1024 * 1024
+        assert gen.runner.max_prefill_scratch_bytes == 32 * 1024 * 1024
     finally:
         gen.close()
 
@@ -1146,6 +1455,8 @@ def test_gpu_generator_forwards_context_and_vision_budgets() -> None:
     # fall back to the default
     with pytest.raises(ValueError, match="max_seq"):
         SuryaOCRGeneratorGPU(model_path=_model_dir(), max_seq=0)
+    with pytest.raises(ValueError, match="max_prefill_scratch_bytes"):
+        SuryaOCRGeneratorGPU(model_path=_model_dir(), max_prefill_scratch_bytes=0)
 
 
 def test_gpu_generator_default_context_admits_a_300dpi_a4_page() -> None:
