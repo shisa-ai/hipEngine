@@ -505,8 +505,10 @@ policy to rows 5-8 is the follow-up that makes budget 4 worth using. Evidence:
 `worklog/entries/20260912T150309.673218Z-lhl-ud-phase5-rows-envelope-8351b3.md`.
 
 Still open: the width scope is c1 only, and that is structural rather than a
-missing run. Above resident capacity 1 the C1 singleton MTP route is refused
-(`physical_singleton=False`) and the physical route needs a
+missing run. The context bound is now declared as `_UD_MTP_DECLARED_CONTEXT_MAX
+= 1023`; that is the sentinel the adapter and the verifier already share, and it
+is measured rather than assumed. Above resident capacity 1 the C1 singleton MTP
+route is refused (`physical_singleton=False`) and the physical route needs a
 `SpeculativeMTPServingEvidence` row for the artifact with
 `realized_group_rows > 1`; the evidence tables cover only
 `weight_quant="gguf_q4_k_m"`, so no UD artifact has one. The unblock is an
