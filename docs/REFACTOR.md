@@ -6690,3 +6690,40 @@ The `_auto_resolved_max_sequence_length` / `_auto_resolved_max_sequence_lengths`
 `_auto_context_estimate` fields on `Qwen35GGUFBringupGenerator` exist only to feed
 the server's KVCache summary and `/ready` payload. If the reporting path ever
 reads the estimate from the session alone, drop the generator-side copies.
+
+## 2026-09-12 GGUF serving defaults: INT8 KV, fp32 scales, one slot
+
+The dense GGUF serving defaults changed so that a zero-flag `hipengine serve`
+reaches the context the INT8 KV work makes available. Three coupled defaults:
+`--kv-storage` is `int8_per_token_head` (was `auto`, which resolved to BF16),
+`--kv-scale-dtype` is `fp32` (was `fp16`), and
+`_GGUF_RESIDENT_MODEL_LOOP_DEFAULT_CAPACITY` is `1` (was `4`).
+
+`HIPENGINE_KV_STORAGE`, `HIPENGINE_KV_SCALE_DTYPE`, and `--max-active-requests`
+are the rollbacks and are documented in `docs/API.md`; they are the supported
+tuning surface, not temporary flags, so no removal condition applies to them.
+
+The `scale_dtype` coupling is the one that needs watching. Qualification is keyed
+on the exact artifact SHA-256, size, backend, target, weight quant, layout, and
+scale dtype, so `fp16` scales build a key that matches no retained contract and
+INT8 fails closed to BF16 **without an error**: the server reports the requested
+storage while the estimator and the pool allocate BF16. That failure mode is
+silent by construction, because a fallback is a normal outcome. Two guards now
+exist: `test_server_defaults_match_the_qualified_int8_contract` asserts the CLI
+defaults key a registered `qualified` contract, and the KVCache summary line
+reports the effective storage. If a future artifact's evidence is keyed on a
+different scale dtype, that test fails rather than the context silently shrinking.
+
+`admission_gated_int8` in `hipengine/kvcache/policy.py` remains unused. It was
+the intended mechanism for "`auto` means INT8 when qualified", but the INT8
+capability gate lives only in `qwen35_gguf.py`, so routing `auto` through it would
+give the PARO route unqualified INT8 — the PARO call sites have no gate. The
+server therefore reaches INT8 through an explicit storage request instead. Either
+remove `admission_gated_int8` or give PARO a gate and use it; leaving it defined
+and unwired invites someone to wire it and silently break PARO.
+
+The KV policy comparison in `hipengine/server/api.py` now resolves the
+*effective* storage from the engine's capability provenance rather than
+re-resolving `config.kv_storage`. Before that, an artifact that failed closed to
+BF16 would reject an explicit BF16 request, because the comparison still believed
+the server was on INT8.

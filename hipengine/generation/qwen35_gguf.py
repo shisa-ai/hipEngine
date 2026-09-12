@@ -327,7 +327,14 @@ _LLAMA_COMPAT_MTP_ENV = {
 _GGUF_MTP_CONTEXT_REPLAY_MIN_PROMPT_TOKENS = 4
 _MTP_SERVING_TARGET_BATCH_MAX_SLOTS = 4
 _GGUF_AR_NATIVE_MAX_SLOTS = 8
-_GGUF_RESIDENT_MODEL_LOOP_DEFAULT_CAPACITY = 4
+# Resident slot count for the dense GGUF route when the caller does not set
+# --max-active-requests. Each slot reserves a full-context KV plane, so this is
+# the dominant multiplier on KV memory: four slots cost roughly four times the
+# context that one slot fits, because the lease and the union geometry follow
+# the same capacity. One slot is the default because the dense 27B is
+# weight-bound on 24 GB-class cards, where the four-slot reservation left room
+# for only about 3.3K tokens. Pass --max-active-requests to raise it.
+_GGUF_RESIDENT_MODEL_LOOP_DEFAULT_CAPACITY = 1
 # Superset of every shared-slot AR physical width a backend may register and use.
 # Direct widths c3/c5/c6/c7 are admitted here so they can be certified via an
 # explicit env override before the default advertised capability is expanded

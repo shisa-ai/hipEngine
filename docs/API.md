@@ -73,7 +73,30 @@ visible in ordinary server logs.
 The resident KV policy is server-wide: set `--kv-storage` (`auto`, `bf16`, or
 `int8_per_token_head`), `--kv-scale-dtype`, and `--kv-scale-granularity` at
 startup. Requests that ask for a different KV policy are rejected instead of
-rebuilding the resident model. Startup logs include a compact KVCache summary
+rebuilding the resident model.
+
+The defaults are `--kv-storage int8_per_token_head`, `--kv-scale-dtype fp32`,
+`--kv-scale-granularity per_token_head`, and one resident slot. On the supported
+dense GGUF artifact this selects **176,128 tokens** of resident context on a
+48 GiB W7900 at 32.5 GiB of whole-card use, against 40,960 tokens at 40.7 GiB
+for the previous BF16/four-slot defaults.
+
+INT8 KV is used only when the loaded artifact is qualified for it. Qualification
+is keyed on the exact artifact SHA-256, size, backend, target architecture,
+weight quant, storage layout, **and scale dtype** — the retained evidence for the
+supported dense artifacts is keyed on `fp32` scales, so `--kv-scale-dtype fp16`
+matches no contract and the server falls back to BF16. An unqualified or unknown
+artifact also falls back to BF16; the reason is recorded in `/ready` and the
+KVCache summary rather than raised. Pass `--kv-storage bf16` to force the
+previous behavior outright.
+
+Set `--max-active-requests` to raise the resident slot count. Each slot reserves
+a full-context KV plane, so four slots cost roughly four times the context that
+one slot fits: the same 48 GiB card carries 176,128 tokens at one slot and about
+40,960 at four with BF16 storage. The trade is context against concurrent
+requests, not correctness.
+
+Startup logs include a compact KVCache summary
 from current HIP free memory and warn when even INT8 KV is below the model's
 advertised max context. The KVCache summary is emitted for both eager and lazy
 startup once the resident session is prepared, and it reports the context that

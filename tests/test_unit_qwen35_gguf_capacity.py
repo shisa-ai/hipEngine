@@ -9,6 +9,7 @@ real allocation path.
 
 from __future__ import annotations
 
+import inspect
 from types import SimpleNamespace
 
 from hipengine.core.memory import DeviceBuffer
@@ -976,3 +977,71 @@ def test_recalibrated_auto_context_is_strictly_smaller_and_aligned(monkeypatch) 
         assert smaller < failed
         assert smaller % 256 == 0
         assert smaller >= 256
+
+
+def test_resident_slot_default_is_one(monkeypatch) -> None:
+    """One slot is the default; each slot reserves a full-context KV plane.
+
+    Four slots cost roughly four times the context one slot fits, because the
+    packed-workspace lease and the union geometry follow the same capacity, so
+    the default is the dominant multiplier on KV memory. Pinned here so raising
+    it again is a deliberate act with a failing test attached.
+    """
+
+    assert qwen35_gguf._GGUF_RESIDENT_MODEL_LOOP_DEFAULT_CAPACITY == 1
+
+    # The runner's own default has to flow from that constant, and an explicit
+    # capacity has to win. Inspected rather than constructed because building a
+    # runner needs a real model path.
+    signature = inspect.signature(qwen35_gguf.Qwen35GGUFResidentModelRunner.__init__)
+    assert signature.parameters["capacity"].default == 1
+
+
+def test_server_defaults_to_int8_kv_storage() -> None:
+    """The serve CLI default is INT8, gated by artifact qualification."""
+
+    from hipengine.server.__main__ import build_parser
+
+    parser = build_parser()
+    assert parser.parse_args(["--model", "/tmp/m.gguf"]).kv_storage == "int8_per_token_head"
+
+    # Both rollbacks stay available.
+    assert parser.parse_args(["--model", "/tmp/m.gguf", "--kv-storage", "bf16"]).kv_storage == "bf16"
+    assert parser.parse_args(["--model", "/tmp/m.gguf", "--kv-storage", "auto"]).kv_storage == "auto"
+
+
+def test_server_defaults_match_the_qualified_int8_contract(monkeypatch) -> None:
+    """The CLI defaults have to key the registered qualification contract.
+
+    The retained evidence for the supported dense GGUF artifacts is keyed on
+    ``scale_dtype="fp32"``. A server defaulting to fp16 scales builds a key that
+    matches no evidence row, so INT8 silently fails closed to BF16 and the whole
+    context gain is lost without any error. Pinned here because the failure mode
+    is invisible: the server reports the requested storage while allocating BF16.
+    """
+
+    from hipengine.models.kv_capabilities import KVCapabilityKey
+    from hipengine.models.qwen35 import _QWEN38_GGUF_KV_CAPABILITY_EVIDENCE
+    from hipengine.server.__main__ import build_parser
+
+    args = build_parser().parse_args(["--model", "/tmp/m.gguf"])
+    assert args.kv_storage == "int8_per_token_head"
+    assert args.kv_scale_dtype == "fp32"
+    assert args.kv_scale_granularity == "per_token_head"
+
+    # At least one retained contract must match those defaults for the target
+    # artifact, or the default is a no-op that reports INT8 and allocates BF16.
+    key = KVCapabilityKey(
+        artifact_sha256="7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+        artifact_size_bytes=17_106_773_984,
+        backend="hip_gfx1100",
+        target_arch="gfx1100",
+        weight_quant="gguf_q4_k_m",
+        kv_storage=args.kv_storage,
+        storage_layout="uniform",
+        scale_dtype=args.kv_scale_dtype,
+        scale_granularity=args.kv_scale_granularity,
+    )
+    matches = [row for row in _QWEN38_GGUF_KV_CAPABILITY_EVIDENCE if row.key == key]
+    assert matches, "the default KV policy matches no retained qualification contract"
+    assert matches[0].decision == "qualified"

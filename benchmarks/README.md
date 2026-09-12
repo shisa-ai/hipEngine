@@ -162,11 +162,29 @@ no sizing flags. After weights load the server prices the resident footprint
 against free HIP memory and takes the largest block-aligned context that fits,
 with one full-context KV plane per resident slot (4 for auto-selected GGUF):
 
-| Model | Selected context | BF16 KV per token, 4 slots | Usable at selection |
-| --- | ---: | ---: | ---: |
-| Qwen3.8-27B `Q4_K_M` | 40,960 | 600,963 B | 24.62 GiB |
-| Qwen3.6-35B-A3B `UD-Q4_K_M` | 87,040 | 240,386 B | 20.77 GiB |
-| Qwen3.8-27B `Q4_K_M`, 24 GB-class budget | 3,328 | 600,963 B | 3.60 GiB |
+The serving defaults are INT8 KV (`int8_per_token_head`), fp32 scales, and one
+resident slot. Measured on the W7900 (48 GiB), one short chat request, no sizing
+or KV flags, `Qwen3.8-27B-Q4_K_M.gguf` (SHA-256 `7b2aec3b…c89f1b`):
+
+| KV storage | Slots | Selected context | Bytes/token | Usable | Whole-card use |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| INT8, fp32 scales | 1 | **176,128** | 142,944 B | 24.62 GiB | 32.5 GiB |
+| BF16 | 1 | 121,344 | 207,456 B | 24.62 GiB | 34.4 GiB |
+| BF16 | 4 | 40,960 | 600,963 B | 24.62 GiB | 40.7 GiB |
+
+INT8 KV is used only when the loaded artifact is qualified for it; the gate is
+keyed on the exact artifact SHA-256, size, backend, target, weight quant, layout,
+and scale dtype. An unqualified artifact falls back to BF16 with the reason
+recorded in `/ready`, so the row above is specific to the qualified artifact.
+
+The selection follows each model's own KV growth rate, so models differ
+by their attention geometry rather than by a per-model table. The 3 GiB reserve
+covers 2.66 GiB of device memory the capacity model does not price at all — HIP
+context, JIT kernel modules, AOTriton, and KV pool pointer tables — which is
+allocated after the free-memory reading the model prices against. The resident
+growth rate is validated against prediction: two Tier-1 probes at 16,384 and
+45,568 give a measured slope of 263,156 B/token against a predicted 262,979, a
+**+0.067%** error
 
 The selection follows each model's own KV growth rate, so the two models differ
 by their attention geometry rather than by a per-model table. The 3 GiB reserve
@@ -182,11 +200,11 @@ growth rate is validated against prediction: two Tier-1 probes at 16,384 and
 context that cannot be allocated — automatic or requested — backs off with a
 logged warning naming the size that was asked for, and
 `HIPENGINE_GGUF_AUTO_CONTEXT=0` disables both the sizing and the backoff. The
-24 GB-class row is the arithmetic that matters most for that class of card: with
-4 resident slots a 27B `Q4_K_M` is weight-bound and leaves room for only about
-3.3K tokens, and the slot count is the lever — the same budget at one slot
-carries roughly three times the context, because each slot takes a full-context
-KV plane.
+24 GB-class arithmetic is the one that matters most for that class of card: at 4
+resident slots with BF16 storage a 27B `Q4_K_M` is weight-bound and leaves room
+for only about 3.3K tokens, and both the storage class and the slot count are
+levers — each slot takes a full-context KV plane, so one slot carries roughly
+three times the context of four.
 
 [Full comparison and source review](results/2026-09-08-rx7900xtx-engine-comparison.md)
 and [commands, samples and checks](results/2026-09-08-rx7900xtx-engine-comparison.json).

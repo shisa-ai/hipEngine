@@ -11678,8 +11678,20 @@ def _validate_generation_request(
     try:
         from hipengine.kvcache import resolve_kv_policy
 
+        # Compare against the policy the server actually allocated, not the one
+        # it was asked for. A generator that is not qualified for the requested
+        # storage fails closed to BF16 (for example an artifact with no INT8 KV
+        # qualification evidence), and rejecting an explicit request that
+        # matches what is really resident would be wrong. The capability
+        # provenance reports the effective storage in all three cases: the BF16
+        # default, a qualified request, and a failed-closed request.
+        effective_storage = config.kv_storage
+        capability = _kv_capability_provenance(engine)
+        reported_storage = capability.get("effective_kv_storage")
+        if isinstance(reported_storage, str) and reported_storage:
+            effective_storage = reported_storage
         server_policy = resolve_kv_policy(
-            config.kv_storage,
+            effective_storage,
             scale_dtype=config.kv_scale_dtype,
             scale_granularity=config.kv_scale_granularity,
         )
