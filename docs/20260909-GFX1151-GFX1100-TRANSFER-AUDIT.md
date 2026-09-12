@@ -567,12 +567,11 @@ is safe and the limitation is explicit.
   explicitly withholds long-horizon authorization after a failed D120
   diagnostic. Establish independent longer-horizon AR/default coverage or
   narrow admission; that MTP diagnostic is not itself proof of an AR failure.
-- [ ] **Close the Q4_K_M scratch-row safety question from section I.**
-  gfx1151's `GGUF_DENSE_PREFILL_SCRATCH_ROW_CAP_POLICIES` still has only a
-  `MOSTLY_Q4_K_S` key. Check allocation-sized position/metadata buffers
-  against auto query-chunk selection at the 1K/4K/8K boundaries, including
-  tails and packed requests. Prove the Q4_K_M route is safe without a cap,
-  or qualify the necessary cap; absence alone is not proof of an overflow.
+- [x] **Decide the Q4_K_M scratch-row clamp question from section I.**
+  Section K records the no-clamp decision and focused selection-invariant
+  tests. This closes the known allocation/chunk mismatch at source level;
+  the confirming 1K/4K/8K GPU boundary matrix, including tails and packed
+  requests, is still outstanding and is not claimed as passed.
 - [ ] **Audit the newly default-on layer-outer route's reachable scope.**
   `7444dd705` promotes `HIPENGINE_GGUF_PACKED_LAYER_OUTER=1` globally, with
   W7900 INT8 evidence. Establish which gfx1151 artifact/KV combinations can
@@ -617,12 +616,14 @@ is safe and the limitation is explicit.
   still warrants an integrated non-regression decision rather than automatic
   rejection under that historical threshold — the ledger records the reopen
   condition, it does not settle the measurement.
-- [ ] **Finish the three dense-path registry decisions.** The excluded keys
-  in section H are still excluded: Q4 col4 rowtile, Q4 rowtile+residual,
-  fused alpha/beta+conv+snapshot, chunked state-pair copy, and N1 graph
-  batched KV append. The two Q4 rowtiles need independent shape crossover
-  and full-model gates; the remaining three need their transaction/state
-  and graph/launch gates. Every candidate also needs the applicable
+- [ ] **Finish the three remaining dense-path registry decisions.**
+  Fused alpha/beta+conv+snapshot, chunked state-pair copy, and N1 graph
+  batched KV append remain excluded and need their transaction/state and
+  graph/launch gates. The Q4 col4 and residual rowtiles are admitted with
+  shape crossover and full-model evidence in section K; their admission
+  packet still needs the explicit CPU-reference linkage and gfx1151
+  rocprofv3 trace before qualification is fully closed.
+  Every candidate also needs the applicable
   production review if strict equality fails, plus a same-host performance
   decision and strict fallback.
 - [ ] **Close prefill and optional DMS follow-ups with scoped verdicts.**
@@ -655,11 +656,10 @@ is safe and the limitation is explicit.
   failed gfx1151-body substitution (`6150ace4b`, section I). It is not an
   outstanding one-line backend correction for dense Qwen3.8.
 
-Local work in progress: the untracked
-`scripts/qwen38_q4_dense_rowtile_gfx1151_screen.py` and
-`scripts/qwen38_gfx1151_q4_dense_rowtile_gate.py` target the two Q4 exclusions.
-Their presence and draft docstrings are not committed qualification evidence;
-this audit neither modifies them nor marks those two transfers complete.
+The tracked scripts `scripts/qwen38_q4_dense_rowtile_gfx1151_screen.py` and
+`scripts/qwen38_gfx1151_q4_dense_rowtile_gate.py` produced the two Q4 rowtile
+admission packet in section K. Single-arm diagnostics are supported after the
+KeyError repair in `d4c8e12b1`; they do not constitute a two-arm gate.
 
 Audit verification: the focused current tests
 `tests/test_unit_execution_profile_defaults.py` and
@@ -827,7 +827,7 @@ each other.
   also that this host holds `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`, while the W7900
   MoE rows are standard `Q4_K_M` — a different artifact, so re-measure rather
   than inherit.
-- [x] gfx1100-only capability settings (sections I/J) — **closed**, all 19
+- [x] gfx1100-only capability inventory (sections I/J) — **documented**, all 19
   names now carry a gfx1151 verdict in the ledger below. Derived at this commit
   over `hipengine/**/*.py`: **47** `GGUF_*` names are defined on gfx1100 and
   absent on gfx1151; **19** of those are live-read through
@@ -854,9 +854,11 @@ each other.
   low-VGPR/shared-B2W2 override.
 - [x] gfx1100 items G2 and G3 (section G) — **out of scope**, backlog.
 
-### The two withheld dense Q4T16 rowtiles are qualified and admitted (2026-09-12)
+### The two withheld dense Q4T16 rowtiles are admitted (2026-09-12)
 
-This was the section's open work item. It is closed:
+Admission and the measured leaf/full-model gates are complete. Full
+qualification still needs the explicit CPU-reference gate linkage and
+gfx1151 rocprofv3 kernel trace; the table is not evidence of those missing gates:
 
 | Step | Result |
 | --- | --- |
@@ -924,6 +926,10 @@ not a correctness one.
 
 Nineteen `GGUF_*` capability names are defined on gfx1100, absent on gfx1151,
 and live-read through `backend_package_capability` somewhere in the package.
+The table contains **12 declined and 7 N/A** dispositions. It closes the
+inventory, not independent measurement of the disabled optimizations. In
+particular, the positive unequal-pair leaf screen still needs its integrated
+non-regression decision under the small-win policy.
 This is the section I defect closed: none of them appeared in the gfx1151
 package, so each absence read as an ordinary call-site default. Each now has a
 gfx1151 verdict below. Nothing in this pass changes a shipped value.
