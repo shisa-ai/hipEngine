@@ -6340,27 +6340,38 @@ shared with the Qwen3.5 decode path — whichever comes first. Until then the
 dense offset scheme is the contract of record, and `docs/MODEL-SURYA.md`
 records the gap.
 
-## 2026-09-11 Surya vision attention: quadratic score scratch — open
+## 2026-09-11 Surya vision attention: quadratic score scratch — closed
 
-`hipengine/runtime/surya.py` `_vis_scores` materializes the full vision
+`hipengine/runtime/surya.py` `_vis_scores` materialized the full vision
 attention score matrix, `vision_num_heads * n^2 * 4` bytes for `n` patches.
 `vision_num_heads` is 12 and patches are 16 px (`SURYA_RESIZE_FACTOR` 32 is
 patch size times spatial merge), and attention runs *before* the merger, so `n`
 is the full patch grid `h * w` — four times the merged vision token count.
-Scratch is therefore quadratic in page area: 3.15 MB for the 256x256 fixture
-(16x16 grid, 256 patches), 805 MB for the 1024x1024 fixture (64x64, 4096),
-4.08 GB for 1536x1536 (96x96, 9216), 12.88 GB for 2048x2048 (128x128, 16384).
+Scratch was therefore quadratic in page area: 805 MB for the 1024x1024 fixture
+(64x64, 4096), 12.88 GB for 2048x2048 (128x128, 16384), **56.5 GB for a
+300-DPI A4 page (220x156, 34320 patches)** and **206 GB at the checkpoint's
+`SURYA_MAX_PIXELS` ceiling** (256x256, 65536).
 
-Admission now bounds it (`DEFAULT_MAX_VISION_SCRATCH_BYTES`, 4 GiB) so an
-over-budget page fails with a clear error before any device work or allocation
-rather than attempting the allocation. The cap admits at most ~9459 patches (a
-97x97 grid, 1552 px square). Bounding is not a fix, and the ceiling sits far
-above the cap: `SURYA_MAX_PIXELS` (16,777,216 px) admits a 4096x4096 page whose
-256x256 grid needs **206 GB**. A 300-DPI A4 page is worse than it looks — it
-resizes to 2496x3520 (220x156, 34320 patches) and needs **56.5 GB**, so the cap
-rejects a routine document by 13x, not marginally.
+Closed by query-row tiling: `plan_vision_attention` derives a query block from
+`max_vision_scratch_bytes` (512 MiB default) and `_vision_attention_packed`
+walks the score matrix one tile at a time. Each tile still holds the full key
+range, so the softmax rows are exactly the rows the dense path computed and
+the result is unchanged; only `heads * n * block * 4` bytes are live. The A4
+grid now needs 535 MB (106x smaller) and the ceiling 535 MB (386x smaller), and
+admission no longer rejects a routine document. Evidence:
+`benchmarks/results/2026-09-12-gfx1151-surya-attention-memory.json`,
+`tests/test_surya_gpu.py::test_gpu_tiled_vision_matches_dense_and_oracle`.
 
-Replace with tiled vision attention, which needs no full score matrix. Until
-then `SURYA_MAX_PIXELS` admits pages the vision path cannot run, so
-`smart_resize` and the runtime disagree above the cap; resolve that in the same
-change. `docs/MODEL-SURYA.md` records the current envelope.
+## 2026-09-12 Surya text prefill: quadratic causal score scratch — open
+
+`SuryaGpuRunner._attention_packed` still materializes the full causal score
+matrix for the text prefill, `num_attention_heads * tokens^2 * 4`
+(`num_attention_heads` 8). Measured on gfx1151 with
+`scripts/surya_attention_memory.py`: at `max_seq` 16384 the score matrix is
+2.36 GB of a 7.03 GB peak for the 8580 image tokens of a 300-DPI A4 page, and
+8.59 GB of a 14.71 GB peak at a full 16384-token prompt; the remaining scratch
+is linear at 180.8 KiB/token. Tiling it needs the same treatment as vision
+plus a query offset in `surya_causal_mask_scale_f32` (the causal mask is
+relative to the tile's first query). Do it when a page-scale prefill peak
+matters on a smaller device, or when the prefill block size is wanted as a
+tunable; the measured envelope is recorded in `docs/MODEL-SURYA.md`.

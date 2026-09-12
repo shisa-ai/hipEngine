@@ -473,6 +473,97 @@ def test_gpu_full_page_vision_matches_oracle(runner) -> None:
     assert d.mean() < 1e-5, f"full-page vision drift: mean|d|={d.mean():.3e}"
 
 
+def test_gpu_tiled_vision_matches_dense_and_oracle(runner) -> None:
+    """Tiling by query rows must not change the full-image attention result.
+
+    Independently cropping the page would change what each patch attends to;
+    the tiled path instead keeps the full key range and only bounds how many
+    query rows are live at once. The 4096-patch page under a 8 MiB budget needs
+    many tiles, so this is a real partition, not a single dense tile in
+    disguise. Checked against both the dense GPU result and the torch oracle.
+    """
+
+    r, weights, spec = runner
+    from hipengine.runtime.surya import SuryaGpuRunner
+
+    path = FIXTURES / "oracle_fullpage.npz"
+    if not path.exists():
+        pytest.skip("oracle_fullpage.npz not present")
+    with np.load(path) as z:
+        if "vision_merged" not in z.files:
+            pytest.skip("oracle_fullpage.npz has no vision_merged features")
+        merged_oracle = z["vision_merged"]
+
+    pixel_rows, grid = _full_page_inputs()
+    n = grid[1] * grid[2]
+    tiled = SuryaGpuRunner(weights, spec, max_vision_scratch_bytes=8 * 1024 * 1024)
+    try:
+        block = tiled.vision_block([grid])
+        assert 1 <= block < n, f"expected a real partition, got block={block} of {n}"
+        merged_tiled = tiled.vision_forward(pixel_rows, [grid])
+    finally:
+        tiled.close()
+
+    merged_dense = r.vision_forward(pixel_rows, [grid])
+    assert np.isfinite(merged_tiled).all()
+
+    d_tiled_oracle = np.abs(merged_tiled - merged_oracle)
+    assert d_tiled_oracle.max() < 2e-3, (
+        f"tiled vision diverged from the oracle: max|d|={d_tiled_oracle.max():.3e}"
+    )
+    assert d_tiled_oracle.mean() < 1e-5, (
+        f"tiled vision drifted from the oracle: mean|d|={d_tiled_oracle.mean():.3e}"
+    )
+
+    d_tiled_dense = np.abs(merged_tiled - merged_dense)
+    assert d_tiled_dense.max() < 1e-4, (
+        "tiling changed the full-image attention result: "
+        f"max|tiled-dense|={d_tiled_dense.max():.3e}"
+    )
+
+
+def test_gpu_tiled_vision_matches_oracle_at_every_geometry(runner) -> None:
+    """The tiled path must hold on the non-square grids too.
+
+    The tile boundaries fall at query-row multiples that do not line up with
+    the 22x12 / 12x22 geometry, so a row/column mix-up in the block offset
+    would show up here and not on a square page.
+    """
+
+    _, weights, spec = runner
+    from hipengine.kernels.cpu_reference.surya import vision_forward
+    from hipengine.loading.surya import preprocess_image_surya
+    from hipengine.runtime.surya import SuryaGpuRunner
+    from PIL import Image, ImageDraw
+
+    for size in ((128, 256), (256, 128)):
+        width, height = size
+        img = Image.new("RGB", (width, height), (255, 255, 255))
+        draw = ImageDraw.Draw(img)
+        y = 8
+        while y < height - 12:
+            draw.rectangle([8, y, max(9, width - 8), y + 4], fill=(40, 40, 40))
+            y += 14
+        pixel_rows, grid = preprocess_image_surya(img)
+        n = grid[1] * grid[2]
+
+        _, _, merged_cpu = vision_forward(weights, spec, pixel_rows, [grid])
+        tiled = SuryaGpuRunner(
+            weights, spec, max_vision_scratch_bytes=2 * 1024 * 1024
+        )
+        try:
+            block = tiled.vision_block([grid])
+            assert 1 <= block < n, (size, block, n)
+            merged_tiled = tiled.vision_forward(pixel_rows, [grid])
+        finally:
+            tiled.close()
+
+        d = np.abs(merged_tiled - merged_cpu)
+        assert d.max() < 0.5, f"{size} tiled vision diverged: max|d|={d.max():.3e}"
+        assert d.mean() < 0.05, f"{size} tiled vision drift: mean|d|={d.mean():.3e}"
+        assert np.isfinite(merged_tiled).all()
+
+
 @pytest.mark.parametrize("page_name", ["columns", "list"])
 def test_gpu_ocr_corpus_matches_oracle(runner, page_name: str) -> None:
     """Held-out layouts (two-column, numbered list) vs the torch oracle.
@@ -728,23 +819,27 @@ def test_gpu_runner_repeated_create_use_close_releases_memory(runner) -> None:
 
 
 def test_gpu_vision_scratch_admission_matches_the_allocation(runner) -> None:
-    """The admitted size must match what ``_vis_scores`` actually allocates.
+    """The admitted size must match what the score tile actually allocates.
 
     They are separate computations, so drift between them would let a grid
     through admission and then allocate more than was admitted.
     """
 
     _, weights, spec = runner
-    from hipengine.runtime.surya import SuryaGpuRunner
+    from hipengine.runtime.surya import SuryaGpuRunner, plan_vision_attention
 
     r = SuryaGpuRunner(weights, spec)
     try:
         for grid in ((1, 16, 16), (1, 22, 12), (1, 32, 32)):
             n = grid[1] * grid[2]
-            buf, stride = r._vis_scores(n, spec.vision_num_heads)
+            block, scratch = plan_vision_attention(
+                n, spec.vision_num_heads, r.max_vision_scratch_bytes
+            )
+            buf = r._vis_scores(n, spec.vision_num_heads, block)
             admitted = r.vision_scratch_bytes([grid])
-            assert stride % 4 == 0, "stride must stay 16-byte aligned"
-            assert stride * spec.vision_num_heads * 4 == admitted
+            tile = r._vis_tile_elements(n, block)
+            assert tile == n * block
+            assert tile * spec.vision_num_heads * 4 == admitted == scratch
             assert buf.nbytes >= admitted, (
                 f"grid {grid} admitted {admitted} bytes but allocated "
                 f"{buf.nbytes}"
@@ -753,21 +848,65 @@ def test_gpu_vision_scratch_admission_matches_the_allocation(runner) -> None:
         r.close()
 
 
-def test_gpu_vision_admission_rejects_over_budget_grid_before_allocating(runner) -> None:
-    """An over-budget page must be rejected before any device work runs."""
+def test_gpu_vision_scratch_admission_matches_the_allocation_when_tiled(
+    runner,
+) -> None:
+    """A grid that needs several query tiles must still be admitted exactly."""
+
+    _, weights, spec = runner
+    from hipengine.runtime.surya import SuryaGpuRunner
+
+    # 4096 patches need 805 MB dense; an 8 MiB budget forces ~40 query rows
+    # per tile, i.e. many tiles, and the admitted size must follow.
+    r = SuryaGpuRunner(weights, spec, max_vision_scratch_bytes=8 * 1024 * 1024)
+    try:
+        grid = (1, 64, 64)
+        n = 64 * 64
+        admitted = r.vision_scratch_bytes([grid])
+        assert admitted <= 8 * 1024 * 1024
+        assert admitted < spec.vision_num_heads * n * n * 4
+        buf = r._vis_scores(n, spec.vision_num_heads, r.vision_block([grid]))
+        tile = r._vis_tile_elements(n, r.vision_block([grid]))
+        assert tile * spec.vision_num_heads * 4 == admitted
+        assert buf.nbytes >= admitted
+    finally:
+        r.close()
+
+
+def test_gpu_vision_admits_the_grids_the_dense_scratch_could_not(runner) -> None:
+    """The A4 page and the checkpoint ceiling must both pass admission.
+
+    Dense scores needed 56.5 GB at 34320 patches (300-DPI A4) and 206 GB at
+    65536 (``SURYA_MAX_PIXELS``). Both are now admitted inside the default
+    budget without any device allocation.
+    """
+
+    _, weights, spec = runner
+    from hipengine.runtime.surya import SuryaGpuRunner
+
+    r = SuryaGpuRunner(weights, spec)
+    try:
+        for grid in ((1, 220, 156), (1, 256, 256)):
+            need = r.vision_scratch_bytes([grid])
+            assert need <= r.max_vision_scratch_bytes, (grid, need)
+            r.check_vision_capacity([grid])
+        assert "vis_scores" not in r._scratch, "admission must not allocate"
+    finally:
+        r.close()
+
+
+def test_gpu_vision_admission_rejects_a_grid_below_one_query_row(runner) -> None:
+    """A budget that cannot hold even one query row is a real rejection."""
 
     _, weights, spec = runner
     from hipengine.runtime.surya import SuryaGpuRunner, SuryaGpuRuntimeError
 
-    # 64x64 = 4096 patches needs ~805 MB; cap well below that
-    r = SuryaGpuRunner(weights, spec, max_vision_scratch_bytes=64 * 1024 * 1024)
+    n = 64 * 64
+    floor = spec.vision_num_heads * n * 4
+    r = SuryaGpuRunner(weights, spec, max_vision_scratch_bytes=floor - 1)
     try:
-        assert r.vision_scratch_bytes([(1, 64, 64)]) > 64 * 1024 * 1024
-        with pytest.raises(SuryaGpuRuntimeError, match="above the .* GB cap"):
+        with pytest.raises(SuryaGpuRuntimeError, match="above the .* budget"):
             r.check_vision_capacity([(1, 64, 64)])
-        # a grid inside the cap is admitted
-        r.check_vision_capacity([(1, 16, 16)])
-        assert r.vision_scratch_bytes([(1, 16, 16)]) <= 64 * 1024 * 1024
         # and the rejected check allocated nothing
         assert "vis_scores" not in r._scratch
     finally:
@@ -782,7 +921,7 @@ def test_gpu_vision_admission_can_be_disabled(runner) -> None:
 
     r = SuryaGpuRunner(weights, spec, max_vision_scratch_bytes=None)
     try:
-        # far past the default cap, but well inside free device memory here
+        # far past the default budget, but well inside free device memory here
         r.check_vision_capacity([(1, 64, 64)])
     finally:
         r.close()
@@ -962,4 +1101,109 @@ def test_gpu_generator_multi_prompt_isolation() -> None:
             "prompts ran before it in the same request"
         )
     finally:
+        gen.close()
+
+
+def test_gpu_generator_forwards_context_and_vision_budgets() -> None:
+    """The registered factory must honor the budgets it advertises.
+
+    ``LLM._factory_capacity_kwargs`` forwards a limit only to a factory that
+    declares the parameter by name. ``make_surya_generator_gpu`` used to accept
+    ``**_kwargs`` and drop them, so ``LLM(max_sequence_length=...)`` never
+    reached the runner.
+    """
+
+    from hipengine.generation.surya_gpu import (
+        SuryaOCRGeneratorGPU,
+        make_surya_generator_gpu,
+    )
+    from hipengine.llm import _factory_capacity_kwargs
+
+    forwarded = _factory_capacity_kwargs(
+        make_surya_generator_gpu,
+        max_sequence_length=16384,
+        resident_capacity=None,
+        vision_max_scratch_bytes=64 * 1024 * 1024,
+    )
+    assert forwarded == {
+        "max_sequence_length": 16384,
+        "vision_max_scratch_bytes": 64 * 1024 * 1024,
+    }
+
+    gen = make_surya_generator_gpu(
+        model_path=_model_dir(),
+        max_sequence_length=16384,
+        vision_max_scratch_bytes=64 * 1024 * 1024,
+    )
+    try:
+        assert gen.max_seq == 16384 == gen.runner.max_seq
+        assert gen.max_vision_scratch_bytes == 64 * 1024 * 1024
+        assert gen.runner.max_vision_scratch_bytes == 64 * 1024 * 1024
+    finally:
+        gen.close()
+
+    # a non-positive context budget is a configuration error, not a silent
+    # fall back to the default
+    with pytest.raises(ValueError, match="max_seq"):
+        SuryaOCRGeneratorGPU(model_path=_model_dir(), max_seq=0)
+
+
+def test_gpu_generator_default_context_admits_a_300dpi_a4_page() -> None:
+    """The default context must admit a routine page, not just a small crop.
+
+    A 300-DPI A4 page resizes to a 220x156 grid: 8580 image tokens before the
+    prompt and any output. The old 2048-token default rejected every real
+    document; upstream Surya budgets 12,288 context tokens per OCR slot.
+    """
+
+    from hipengine.generation.surya_contract import check_prompt_capacity
+    from hipengine.generation.surya_gpu import SuryaOCRGeneratorGPU
+
+    gen = SuryaOCRGeneratorGPU(model_path=_model_dir())
+    try:
+        image_tokens = (220 // 2) * (156 // 2)
+        assert image_tokens == 8580
+        # the prompt and a full-page output budget must both fit
+        check_prompt_capacity(image_tokens + 64, 4096, gen.max_seq)
+        assert gen.max_seq >= 12288
+        # and the page's vision grid must pass the default memory budget
+        gen.runner.check_vision_capacity([(1, 220, 156)])
+    finally:
+        gen.close()
+
+
+def test_gpu_generator_rejection_names_the_required_context() -> None:
+    """An over-context page must fail before vision and say what to raise."""
+
+    from hipengine.generation.registry import GenerationRequest
+    from hipengine.generation.surya_contract import SuryaRequestError
+    from hipengine.generation.surya_gpu import SuryaOCRGeneratorGPU
+
+    page = FIXTURES / "page_small.png"
+    if not page.exists():
+        pytest.skip("page_small.png fixture not present")
+
+    gen = SuryaOCRGeneratorGPU(model_path=_model_dir(), max_seq=2048)
+    ran: list[str] = []
+    real_vision = gen.runner.vision_forward
+    gen.runner.vision_forward = lambda *a, **kw: (
+        ran.append("vision"),
+        real_vision(*a, **kw),
+    )[1]
+    try:
+        with pytest.raises(SuryaRequestError, match="max_sequence_length"):
+            gen.generate_multimodal_detailed(
+                "Transcribe this page.",
+                str(page),
+                GenerationRequest(
+                    prompts=["Transcribe this page."],
+                    max_tokens=4096,
+                    temperature=0.0,
+                    top_p=1.0,
+                    ignore_eos=False,
+                ),
+            )
+        assert ran == [], f"vision ran before the capacity rejection: {ran}"
+    finally:
+        gen.runner.vision_forward = real_vision
         gen.close()
