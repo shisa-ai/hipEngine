@@ -6314,7 +6314,7 @@ four-axis registry with their strict fallback chains when a second consumer
 of the kernels appears; until then the runtime-level fallback is the
 contract of record (see docs/MODEL-TIMESFM3.md).
 
-## 2026-09-11 Surya HIP runtime: direct backend imports and bespoke KV scatter — open
+## 2026-09-11 Surya HIP runtime: direct backend imports — open
 
 `hipengine/runtime/surya.py` imports its JIT libraries directly from
 `hipengine.kernels.hip_gfx1100` (`evie_ops`, `linear_attn.conv`,
@@ -6327,45 +6327,42 @@ EVIE and Surya together onto a backend-keyed kernel-library resolver when the
 runtime runners become a second consumer of shared linear-attention kernels;
 until then the direct import is the contract of record.
 
-Separately, the Surya KV write and decode kernels use a bespoke dense scheme:
-`surya_scatter_kv_f32(k, cache, tokens, base_pos, nk, hd, max_seq, row)` writes
-into a contiguous `(nk, max_seq, hd)` plane, and `_attention_decode` builds
-per-head cache pointer arrays from `max_seq * hd` strides. The architectural
-invariant is that every paged-KV-write and attention-decode kernel reads
-`KVLiveSpans` `(base_offsets, live_counts, token_positions, evict_mask)`. Dense
-Surya KV is a uniform fill, so the behaviour is equivalent, but the ABI is not.
+## 2026-09-11 Surya KV write and decode: dense offset scheme — closed 2026-09-13
 
-Assessed 2026-09-12; the blocker is device-side and concrete, not a matter of
-wiring. `hipengine.kvcache.KVLiveSpans` is a frozen dataclass over hipEngine
-`Tensor` descriptors, and `Tensor.from_handle` wraps a raw device pointer, so
-the *host* half is small: build one `KVLiveSpans` per request from the runner's
-existing plane pointers plus two int32 `base_offsets`/`live_counts` device
-arrays. The *kernel* half has no drop-in:
+`surya_scatter_kv_f32(k, cache, tokens, base_pos, nk, hd, max_seq, row)` wrote
+into a contiguous `(nk, max_seq, hd)` plane from a host-supplied
+`(tokens, token_offset)` pair, and `_attention_decode` built per-head cache
+pointer arrays from `max_seq * hd` strides. Both read no span metadata, which
+the architectural invariant forbids.
 
-- Every spans-aware attention or KV-write kernel in `hip_gfx1100` stores BF16
-  (`laguna_kv_attention`, `paged_attn_decode`, `paged_kv_write`) or int8 with
-  per-token-head scales (`..._int8_scale_f32_spans`). Surya stores fp32 KV, so
-  none of them can be registered for it.
-- The one plain dense-context decode kernel
-  (`hipengine_qwen35_full_attn_decode_context_bf16`) is BF16-only, takes a
-  device `context_len` scalar rather than the spans ABI, and reserves
-  `(max_context_len + 256) * 4` bytes of LDS. At Surya's 16384-token default
-  context that is 66560 bytes, above the 64 KiB per-workgroup LDS limit on
-  gfx11, so it cannot run there even at the right dtype.
+Closed by two spans-aware kernels in `surya/surya_ops.{hip,py}` plus the runtime
+wiring: `surya_scatter_kv_f32_spans` resolves each logical token index through
+`base_offsets` and skips tokens outside `live_counts` with a negative
+`token_positions` entry or an `evict_mask` mark, and
+`surya_full_attn_decode_f32_spans` is a fused fp32 head_dim-256 GQA-4 split-K
+producer plus `..._split_k_reduce_f32`. The producer runs one block per
+`(kv_head, context chunk)` so all four query heads of a KV head share one K/V
+read, and the split count comes from `plan_surya_decode_splits`, which targets a
+constant split count rather than a constant chunk because the launch has to stay
+wide enough to fill the machine at every context length. The dense policy fills
+all four span fields uniformly (identity page table, `arange` positions, empty
+eviction mask), so the default path exercises the ABI.
 
-So the migration is a new fp32-KV spans-aware decode-attention kernel for
-head_dim 256 with GQA repeat 4 (plus a spans-aware `surya_scatter_kv_f32`), and
-that kernel is a fused replacement for the current per-layer sequence of three
-rocBLAS batched GEMMs plus three elementwise kernels over a materialized
-`(heads, total)` score row. That is worth doing for the decode cost as well as
-the ABI, which is why it belongs in its own unit with its own strict RED gate
-against the current path, its own numerical gate, and launch/cycle evidence —
-not as a side effect of a lifecycle change. Adopt it when a second KV policy
-(DMS/H2O/SnapKV) is wired to the Surya model, when the Surya attention kernels
-are shared with the Qwen3.5 decode path, or when Surya decode launch count or
-score-matrix traffic becomes the measured bottleneck — whichever comes first.
-Until then the dense offset scheme is the contract of record, and
-`docs/MODEL-SURYA.md` records the gap.
+Retained as explicit fallbacks/bisection oracles, not dead code:
+`attention_decode_rocblas_f32` (the four-dispatch parent) is the strict
+fallback for head_dim != 256 or GQA repeat != 4 and is what
+`tests/test_surya_kv_spans.py` measures parent parity against;
+`surya_scatter_kv_f32` (the pre-spans scatter) is used by
+`scripts/surya_gpu_debug_attn.py`. Remove both when the fp32 spans decode kernel
+is shared with the Qwen3.5 decode path or when the debug script no longer needs
+the parent, whichever comes first.
+
+The fused producer still passes `chunk_size` as the score GEMM's `m`, so its
+QK^T work is `q_per_kv * head_dim * chunk_size` regardless of how many tokens in
+the chunk are invisible; a chunk whose tokens are mostly evicted or empty does
+the same dot products as a full one. Bounding each chunk's keys to its last
+visible token would cut that, but the dense policy has no invisible tokens, so
+there is nothing to measure yet.
 
 ## 2026-09-11 Surya vision attention: quadratic score scratch — closed
 
