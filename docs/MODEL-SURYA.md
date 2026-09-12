@@ -55,6 +55,104 @@ just text finding. `page_list.png` (512x512) decodes to
 the list label. Both are 1x32x32 grids and both reach a natural EOS (94 and 46
 tokens).
 
+### Transcription acceptance (2026-09-12)
+
+Agreeing with a captured oracle is regression coverage, not transcription
+qualification. Surya is prompt-driven: the wording *is* the task, and the
+ad-hoc prompt `"Transcribe this page."` used by the early fixtures is not one
+of the checkpoint's training-time prompts. Its continuation is layout JSON or a
+degenerate repeated `<ul><li>` run, so a lane could pass by reproducing
+garbage.
+
+`hipengine/generation/surya_protocol.py` pins the real contract
+(`FULL_PAGE_HTML_PROMPT`, `LAYOUT_JSON_PROMPT`, `BLOCK_HTML_PROMPT`) and parses
+full-page output with `parse_full_page_html` / `extract_text` / `extract_tables`
+(stdlib `html.parser` only, no torch and no third-party HTML library).
+`scripts/surya_transcription_score.py` scores a page against the text actually
+drawn on it — reading order, line recall and omissions, line exact rate,
+character error rate, table shape/header/cells, and truncation — and
+`scripts/surya_transcription_report.py` emits the measurement artifact.
+
+Measured fp32 on gfx1151 with `FULL_PAGE_HTML_PROMPT`, one page per scope:
+
+| page | tokens | finish | recall | exact | CER | order violations | table cells |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| ja | 287 | eos | 1.000 | 1.000 | 0.0000 | 0 | — |
+| mixed | 341 | eos | 1.000 | 1.000 | 0.0000 | 0 | — |
+| dense | 1054 | eos | 1.000 | 1.000 | 0.0000 | 0 | — |
+| table | 448 | eos | 1.000 | 1.000 | 0.0000 | 0 | 1.000 (32/32) |
+| blank | 12 | eos | 1.000 | 1.000 | 0.0000 | 0 | — |
+| scan | 616 | eos | 1.000 | 1.000 | 0.0000 | 0 | — |
+| long | 1804 | eos | 1.000 | 1.000 | 0.0000 | 0 | — |
+
+The gate is `tests/test_surya_transcription.py` (ROCm- and checkpoint-gated):
+exact id parity with a captured torch fp32 protocol oracle on six pages, a
+bounded coordinate drift on the seventh, plus the ground-truth bars above, plus
+a starved-budget case that must report truncation and omissions rather than
+pass a prefix.
+
+**Parity caveat: the degraded scan's bbox digits.** Six of the seven pages
+reproduce the oracle's greedy ids exactly. On the degraded scan the HIP lane
+differs on 21 of 616 ids (3.4%), all of them bbox coordinate digits: the parsed
+labels and texts are identical and the worst coordinate delta is 4 of 1000.
+This is intrinsic fragility of that page rather than a HIP-specific defect —
+torch bf16 against torch fp32 differs on 15 ids there and even changes the
+decoded text, and the scan carries every HIP-versus-torch row above the review
+bar in the numerical gate, with teacher probability margins of 0.002-0.099 and
+top-5 overlap 3-5. The test therefore splits into `EXACT_ID_CASES` (full id
+equality) and `COORDINATE_CASES` (equal finish reason, under 5% coordinate-id
+diff, identical labels and texts, worst bbox delta under 8 of 1000).
+
+**Fixture defect found and worked around.** Four of the seven bench pages draw
+text past the canvas, so their intended text is not what is in the image:
+`ja` body lines are 576-663 px wide on a 512 px page, `mixed` Latin lines
+503/506 px against 480 usable, `scan` up to ~531 px against 476, and
+`page_long` draws six 224 px blocks from y=168 so blocks 5 and 6 fall off a
+1024 px canvas. Scored against the intended text those pages read as CER 0.220
+(`ja`) and 0.039 (`mixed`), and the apparent hallucination `line.` ->
+`literature` was the model completing a clipped word. The bench pages are left
+byte-identical so their captured oracles and benchmark artifacts stay valid;
+the acceptance test scores `page_<name>_fit.png` for those four and the bench
+page for the other three. Re-cutting the bench suite is tracked as follow-up.
+
+### Numerical gate (2026-09-12)
+
+The lane's arithmetic gate was exact greedy-id equality: all-or-nothing, and
+unable to qualify a reassociation or report how much drift a route introduced.
+`scripts/surya_numerical_gate.py` measures the project's declared production
+envelope instead (`docs/EXECUTION-PROFILES.md` section 6): mean/p95/p99/max row
+KL of a candidate against the teacher over teacher-forced full-vocabulary rows,
+top-1 agreement globally and per page, and the BF16-relative comparison. The
+teacher's own greedy chain is forced into every arm; vision features stay
+arm-specific, because the vision-attention tiling is the arithmetic under test.
+
+The 512 MiB default budget is a no-op at these page sizes (one tile covers all
+queries), so the measurement forces the reassociation with a 12 MiB budget
+(4-10 tiles per page, including partial tiles). Across 4562 teacher-forced rows
+spanning all seven pages the tiled and dense paths are **bit-identical**:
+mean/p95/p99/max KL `0.000e+00`, top-1 agreement `100%`, no row above the
+`2e-2` review bar. The tiling partitions queries rather than keys and reduces
+over the same full key range, so it is arithmetic-neutral rather than a
+reassociation — a stronger statement than the earlier "agree within 1e-4".
+Artifact: [numerical gate](benchmarks/results/2026-09-12-gfx1151-surya-numerical-gate.json).
+
+The BF16-relative block of the same artifact is a **cross-implementation**
+diagnostic, not the binding production-versus-strict comparison: the teacher is
+torch fp32 and the candidates are hipEngine's GEMM routes, whose reduction
+orders differ from torch's. Recorded for context (4562 rows):
+
+| arm | mean KL | p95 | p99 | max | top-1 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| hipEngine dense | 7.157e-04 | 1.947e-03 | 1.988e-01 | 7.706e-01 | 0.99868 |
+| hipEngine tiled | 7.157e-04 | 1.947e-03 | 1.988e-01 | 7.706e-01 | 0.99868 |
+| torch bf16 | 2.429e-04 | 1.114e-03 | 1.219e-02 | 3.386e-01 | 0.99605 |
+
+The two hipEngine arms are identical to the last digit, confirming the tiling is
+arithmetic-neutral end to end. The HIP route's top-1 is higher than bf16's while
+its KL tail is larger, and its tail is concentrated on the degraded scan where
+the teacher distribution is flat. Every row above the review bar records top-5
+overlap, the teacher's probability and logit margin, and the flip flag.
+
 Decode is one row per step, and rocBLAS SGEMM is tuned for a wide `n`: at
 `n == 1` it reads the weights at roughly a third of the bandwidth SGEMV
 reaches. `SuryaGpuRunner._gemm` therefore routes `rows == 1` to
