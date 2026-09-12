@@ -205,6 +205,134 @@ def make_page_table(path: Path, size: int = 512) -> None:
     img.save(path)
 
 
+_A4_TITLE = "Process qualification report"
+_A4_META = "Document PQ-2026-014  |  Revision C  |  Issued 2026-09-12"
+_A4_ABSTRACT = (
+    "This report records the qualification of the deposition and inspection",
+    "line against the acceptance thresholds agreed at the start of the",
+    "campaign. Every measured quantity is traceable to a calibrated",
+    "instrument and to the raw data retained with this document.",
+)
+_A4_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    (
+        "1. Scope and method",
+        (
+            "The qualification covers film thickness, uniformity, roughness and",
+            "resistivity across the full operating envelope of the tool. Sampling",
+            "followed a stratified plan: three wafers per lot, five sites per",
+            "wafer, and one repeat measurement per site to bound repeatability.",
+            "Instruments were calibrated within seven days of every measurement.",
+        ),
+    ),
+    (
+        "2. Results",
+        (
+            "Thickness and uniformity met their thresholds with margin. Roughness",
+            "was the single nonconformance: the measured 0.52 nm exceeds the",
+            "0.40 nm limit, and the excursion is correlated with the chamber that",
+            "was serviced during the campaign. Resistivity and defect density both",
+            "remained inside their windows for every lot measured.",
+        ),
+    ),
+    (
+        "3. Conclusion",
+        (
+            "The line is qualified for production with one open nonconformance",
+            "and a narrowed process window on the serviced chamber. Yield and",
+            "uptime improved together over the campaign, which is consistent with",
+            "the reduced detection delay reported in the previous interval.",
+        ),
+    ),
+    (
+        "4. Open items",
+        (
+            "Repeat the roughness measurement on the serviced chamber after its",
+            "next preventive maintenance. Extend the sampling plan to the second",
+            "deposition module, and re-derive the uncertainty budget once the",
+            "additional data is available.",
+        ),
+    ),
+)
+_A4_TABLE_CAPTION = "Table 1. Process measurement summary"
+
+
+# A4 at 300 DPI. smart_resize rounds 2480x3508 to 2496x3520, i.e. exactly the
+# 220x156 patch grid and 8580 merged image tokens the page-scale memory plan is
+# written against, so this fixture is the grid that plan describes.
+A4_300DPI_SIZE = (2480, 3508)
+
+
+def make_page_a4(path: Path) -> None:
+    """A real 300-DPI A4 page: the page-scale transcription case.
+
+    Every line is drawn through :func:`_draw_text_fit`, so the ground truth is
+    exactly the text on the page. The table is ruled, so the table scorer has a
+    real grid to read.
+    """
+
+    from PIL import Image, ImageDraw
+
+    width, height = A4_300DPI_SIZE
+    img = Image.new("RGB", (width, height), (255, 255, 255))
+    draw = ImageDraw.Draw(img)
+    title = _font(LATIN_FONT_CANDIDATES, 96)
+    meta = _font(LATIN_FONT_CANDIDATES, 44)
+    heading = _font(LATIN_FONT_CANDIDATES, 52)
+    body = _font(LATIN_FONT_CANDIDATES, 44)
+    cell = _font(LATIN_FONT_CANDIDATES, 40)
+
+    left, right = 300, width - 300
+    _draw_text_fit(draw, (left, 300), _A4_TITLE, title,
+                   max_x=right, max_y=height, fill=(10, 10, 10))
+    _draw_text_fit(draw, (left, 430), _A4_META, meta,
+                   max_x=right, max_y=height, fill=(60, 60, 60))
+    draw.rectangle([left, 500, right, 504], fill=(70, 70, 70))
+
+    y = 560
+    for line in _A4_ABSTRACT:
+        _draw_text_fit(draw, (left, y), line, body,
+                       max_x=right, max_y=height, fill=(35, 35, 35))
+        y += 60
+
+    for heading_text, lines in _A4_SECTIONS:
+        y += 60
+        _draw_text_fit(draw, (left, y), heading_text, heading,
+                       max_x=right, max_y=height, fill=(10, 10, 10))
+        y += 70
+        for line in lines:
+            _draw_text_fit(draw, (left, y), line, body,
+                           max_x=right, max_y=height, fill=(35, 35, 35))
+            y += 60
+        if heading_text.startswith("2."):
+            y += 40
+            _draw_text_fit(draw, (left, y), _A4_TABLE_CAPTION, meta,
+                           max_x=right, max_y=height, fill=(45, 45, 45))
+            y += 60
+            row_h = 58
+            columns = [left, left + 620, left + 1020, left + 1400, right]
+            rows = len(_TABLE_ROWS) + 1
+            for index in range(rows + 1):
+                line_y = y + index * row_h
+                draw.line([left, line_y, right, line_y], fill=(90, 90, 90), width=2)
+            for column_x in columns:
+                draw.line([column_x, y, column_x, y + row_h * rows],
+                          fill=(90, 90, 90), width=2)
+            for column, text in enumerate(_TABLE_HEADER):
+                _draw_text_fit(draw, (columns[column] + 12, y + 10), text, cell,
+                               max_x=right, max_y=height, fill=(10, 10, 10))
+            for row, values in enumerate(_TABLE_ROWS):
+                for column, text in enumerate(values):
+                    _draw_text_fit(
+                        draw, (columns[column] + 12, y + row_h * (row + 1) + 10),
+                        text, cell, max_x=right, max_y=height, fill=(35, 35, 35),
+                    )
+            y += row_h * rows
+
+    if y > height - 300:
+        raise ValueError(f"A4 page overflows its bottom margin (y={y})")
+    img.save(path)
+
+
 def make_page_blank(path: Path, size: int = 512) -> None:
     """A blank page with a faint border: the empty-output edge case."""
 
@@ -297,6 +425,7 @@ PAGES = {
     "blank": make_page_blank,
     "scan": make_page_scan,
     "long": make_page_long,
+    "a4": make_page_a4,
 }
 
 
@@ -449,6 +578,29 @@ FIT_PAGES = {
 # its mistakes) cannot satisfy it. ``lines`` is in drawn reading order.
 # ``table`` is the ruled grid for pages that have one.
 
+def _a4_paragraphs() -> tuple[str, ...]:
+    """The A4 page's text in reading order, as logical paragraphs.
+
+    Every other fixture draws one logical unit per physical line, so its ground
+    truth is the drawn lines. The A4 body is *wrapped prose*: a paragraph of
+    4-5 physical lines is one sentence-flow, and a transcription that returns
+    it as one block is correct. Scoring the wrapped lines as separate units
+    reads that correct output as 22 omissions and CER 0.89, so the ground truth
+    is the paragraph — the same text, joined at the wrap points.
+
+    Shared by :func:`make_page_a4`'s source constants and :data:`GROUND_TRUTH`
+    so the drawn page and its expected text cannot drift apart.
+    """
+
+    paragraphs = [_A4_TITLE, _A4_META, " ".join(_A4_ABSTRACT)]
+    for heading_text, lines in _A4_SECTIONS:
+        paragraphs.append(heading_text)
+        paragraphs.append(" ".join(lines))
+        if heading_text.startswith("2."):
+            paragraphs.append(_A4_TABLE_CAPTION)
+    return tuple(paragraphs)
+
+
 GROUND_TRUTH: dict[str, dict[str, object]] = {
     "ja": {"lines": (_JA_HEADING, *_JA_BODY)},
     "mixed": {"lines": (_MIXED_HEADING, *_MIXED_LINES)},
@@ -469,11 +621,20 @@ GROUND_TRUTH: dict[str, dict[str, object]] = {
             ),
         )
     },
+    "a4": {
+        # Paragraph-level, not drawn-line-level: the body is wrapped prose.
+        "lines": _a4_paragraphs(),
+        "table": {"header": _TABLE_HEADER, "rows": _TABLE_ROWS},
+    },
 }
 
 
 def expected_lines(page: str) -> tuple[str, ...]:
-    """Drawn reading-order text lines for a fixture page name."""
+    """Reading-order text units for a fixture page name.
+
+    One unit per drawn line for a page whose lines are one logical unit each,
+    and one unit per paragraph for a page whose body is wrapped prose.
+    """
 
     return tuple(GROUND_TRUTH[page]["lines"])  # type: ignore[arg-type]
 
