@@ -37,7 +37,7 @@ row, not across them.
 | Qwen3.6-35B-A3B | GGUF `UD-Q4_K_M` | **1369.5** | **54.3** | 80.1 (opt-in) | — |
 | Laguna S 2.1 | GGUF `Q4_K_M` | **654.2** | **23.2** | — | — |
 | Qwen3.8-27B Dense | GGUF `Q4_K_S` | **396.1** | **13.1** | **23.9** | — |
-| Qwen3.8-27B Dense | GGUF `Q4_K_M` | — | — | **15.6** | — |
+| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **380.4** | **12.2** | **15.6** | — |
 
 **Time-series forecasting (TimesFM 2.5 200M).** hipEngine decodes batch=8,
 context 8192, horizon 512 forecasts in **0.082 s** on the power-limited HP ZBook
@@ -69,7 +69,9 @@ published only where a dedicated ceiling run exists.
   | DMS INT8 | 232,448 | 100% | 0.001 |
 
   The model's full 262,144 context needs a predicted 24.8 GiB and does not
-  fit. [Capacity
+  fit. The direct-INT8 figures come from a route the suite rejects: 9 of 11
+  prompts fail, so it is an opt-in lever with a measured quality cost, not a
+  default. [Capacity
   evidence](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-capacity.json)
 
 ### Serving several requests at once
@@ -240,7 +242,14 @@ Reducing the packed one-row frontier overhead gates any packed-route
 product registration. Until then the legacy route is the only
 measured single-request MTP path.
 
-Strix Halo `Q4_K_M`: strict C1/K3 automatic at **18.191 tok/s (1.6445x AR)**; production explicit/K0. Production C8/K3 is **52.103 vs 52.025 AR tok/s**. Detailed gfx1151 evidence remains in result artifacts.
+Strix Halo `Q4_K_M`: strict C1/K3 automatic at **15.609 tok/s (1.5916x AR)**
+([d7 closure](results/2026-08-27-gfx1151-qwen38-dynamic-admission-d7-closure.json));
+production explicit/K0. Production C8/K3 is **52.103 vs 52.025 AR tok/s**
+([width policy](results/2026-09-05-gfx1151-qwen38-c8-k3-width-policy-retained.json)).
+The 18.191 tok/s / 1.6445x cell measured on the 2026-08-29 baseline is an
+aspiration target rather than the default: the retained production path
+measured 15.646 tok/s / 1.408x
+([streaming width-1](results/2026-08-31-gfx1151-qwen38-mtp-c1-streaming-width1-retained.json)).
 
 TimesFM 2.5 200M GPU decode (batch 8, context 8192, horizon 512) — **two
 physical Strix Halo `gfx1151` hosts, recorded as separate lanes**: **0.082 s**
@@ -655,10 +664,61 @@ Speculative decode and single-request decode versus the same GGUF on llama.cpp:
 | Exact native B3 spec-decode (tok/s, speedup) | 23.85263 (1.7845x) | — | — |
 | Process memory (GiB) | 15.899 | 16.358 | — |
 Evidence: [`clean Q4_K_S`](results/2026-08-16-gfx1151-qwen38-27b-q4ks-clean-publication.json),
-[`exact B3`](results/2026-08-17-gfx1151-qwen38-27b-q4ks-exact-native-b3.json),
-[`memory package`](results/2026-08-17-gfx1151-qwen38-27b-q4ks-memory-parity-retained.json),
-[`G6 closure`](results/2026-08-17-gfx1151-qwen38-27b-q4ks-g6-closure.json), and the
+[`Q5 source-F16 prefill retention`](results/2026-08-17-gfx1151-qwen38-27b-q4ks-q5-source-f16-prefill-retention.json)
+(the source of the prefill and AR columns above),
+[`G6 closure`](results/2026-08-17-gfx1151-qwen38-27b-q4ks-g6-closure.json)
+(the source of the true-AR and B3 rows above),
+[`exact B3`](results/2026-08-17-gfx1151-qwen38-27b-q4ks-exact-native-b3.json)
+(the earlier task-23 retention measurement, 24.19347 tok/s at 1.82281x on a
+source that predates `fix: make Qwen3.8 Q4_K_S native B3 exact`),
+[`memory package`](results/2026-08-17-gfx1151-qwen38-27b-q4ks-memory-parity-retained.json), and the
 [`campaign plan`](../docs/QWEN38-27B-GFX1151-CAMPAIGN.md).
+
+The standard (non-UD) `Q4_K_M` file is a separate lane: a different model
+artifact, so its rates are not comparable with the `Q4_K_S` row above. One
+warmup and three measured resident resets per shape, production bulk WMMA
+prefill and HIP graph replay decode:
+
+| Shape | Prefill | AR decode | Tracked peak |
+| --- | ---: | ---: | ---: |
+| 512/128 | **380.366 tok/s** | **12.213 tok/s** | 16.087 GiB |
+| 1K/128 | **377.605 tok/s** | **11.980 tok/s** | 16.510 GiB |
+| 4K/128 | **361.497 tok/s** | **12.130 tok/s** | 18.859 GiB |
+
+Every prefill and decode CV is below 0.15%, all final token IDs are stable and
+finite, and every shape tears its tracked allocation down to zero. Dense decode
+streams about 89% of the documented practical read roof for `gfx1151`, so the
+remaining headroom on this file is small and is not concentrated in the GEMV
+owners. [`Q4_K_M AR/prefill refresh`](results/2026-09-12-gfx1151-qwen38-27b-q4km-ar-prefill-refresh.json).
+
+This is the one `gfx1151` Qwen3.8-27B lane measured against llama.cpp on the
+same file. Both engines ran back to back on one host with BF16 K/V:
+
+| Shape | hipEngine prefill | llama.cpp HIP prefill | hipEngine AR | llama.cpp HIP AR |
+| --- | ---: | ---: | ---: | ---: |
+| 512/128 | 380.132 tok/s | **383.191 tok/s** | 12.222 tok/s | **12.230 tok/s** |
+| 1K/128 | 378.444 tok/s | **385.116 tok/s** | 11.989 tok/s | **12.137 tok/s** |
+| 4K/128 | 361.622 tok/s | **374.692 tok/s** | **12.141 tok/s** | 11.592 tok/s |
+
+On this file hipEngine and llama.cpp HIP stay within about 3.5% and neither
+leads everywhere: llama.cpp HIP is ahead on prefill at all three shapes, while
+hipEngine is ahead on decode at 4K/128 and level at 512/128 and 1K/128. Against
+llama.cpp Vulkan, hipEngine leads prefill at 512/128 and 1K/128 by about 0.6%,
+trails prefill at 4K/128 by 1.1%, and trails Vulkan decode at every shape by
+4.1-6.4%. The `Q4_K_S` row above leads its comparator on every axis; this row
+does not, so the two lanes do not carry the same result.
+
+The llama.cpp columns above come from `llama-bench`, which generates its own
+prompts and cannot take the repeated-token prompt hipEngine uses, so that tier
+is a split-timing comparator rather than a token-exact one. A stricter
+explicit-token-array tier on the same file, gated on a uniform token hash, puts
+hipEngine prefill 7.9% ahead of llama.cpp HIP at 512/128 and 3.8% ahead at
+1K/128 but 1.7% behind at 4K/128, with decode 0.6% behind at 512/128, 0.6%
+behind at 1K/128, and 5.5% ahead at 4K/128. The tier changes the prefill
+verdict, so both are recorded. hipEngine `Tracked peak` counts hipEngine
+allocator ownership and the llama.cpp peak is an external whole-process GTT
+delta; the two are different scopes and are not comparable as a memory result.
+[`same-file llama.cpp comparator`](results/2026-09-12-gfx1151-qwen38-27b-q4km-same-file-llama-comparator.json).
 
 ### Radeon 8060S: Qwen3.6-35B-A3B GGUF
 

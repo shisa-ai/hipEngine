@@ -6585,3 +6585,32 @@ separate var-q/k normalization chain). Register both families under the
 four-axis registry with their strict fallback chains when a second consumer
 of the kernels appears; until then the runtime-level fallback is the
 contract of record (see docs/MODEL-TIMESFM3.md).
+
+## 2026-09-12 PARO paged-attention backend pin - removal rejected
+
+`hipengine/runtime/qwen35_paro.py` sets
+`_PAGED_KV_REGISTRY_BACKEND = "hip_gfx1100"` and passes it to
+`resolve_paged_kv_write`, `resolve_paged_attn_decode`, and
+`resolve_paged_attn_prefill`. The class docstring on
+`Qwen35ParoDecodeState` states the assumption explicitly ("Kernel selection
+still flows through the registry/wrappers added in the gfx1100 backend tree"),
+and PARO is a live gfx1151 lane.
+
+Consequence on gfx1151: PARO gets the gfx1100 body for every key it resolves.
+For `paged_attn_decode / w4_paro / bf16_context_batch_c1_exact_spans` that is
+visible, because `hipengine/kernels/hip_gfx1151/__init__.py` deliberately
+overrides that key to `..._fixed256_spans` ("Keep gfx1151 on the generic
+reduction, but pin its geometry to the c4/c8-proven 256-thread shape"). PARO
+therefore runs the c1-exact kernel on gfx1151 while every other gfx1151
+paged-attention caller runs the pinned generic reduction. The later same-host
+PARO comparison showed that this difference is load-bearing: resolving against
+gfx1151 diverged from independent c1 at decode token 25 of 137, twice, while
+the current pin and the per-row control both matched all 137 tokens. The
+generic override's GGUF qualification does not establish its correctness for
+this PARO route.
+
+Do not remove the pin as cleanup. Any replacement requires a separately
+qualified PARO route preserving its declared profile and ownership contracts.
+The open follow-up is to understand and separate the PARO and GGUF semantics
+sharing this registry key, not to substitute the session backend unconditionally.
+See the [upstream decision and reproduction protocol](../worklog/entries/20260912T044256.896835Z-lhl-paro-paged-kv-backend-pin-load-bearing-e64405.md).

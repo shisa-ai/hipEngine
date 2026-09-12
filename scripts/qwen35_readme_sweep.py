@@ -6,9 +6,12 @@ single resident session is created for the largest requested workload, then each
 prompt/decode shape is run multiple times with ``session.reset()`` between runs.
 The measured timing window excludes load/build and PARO graph capture; load is
 still reported once so GGUF decode-repack cost remains visible without
-multiplying it by every shape/repetition. GGUF resident decode is eager by
-default because the retired GGUF decode-graph path corrupted recurrent state on
-relaunch.
+multiplying it by every shape/repetition. Leaving ``--graph-replay-decode``
+unset resolves each workload through the engine's own admission rule, so a
+sweep reproduces the configuration production runs: GGUF decode uses a captured
+graph when ``HIPENGINE_GGUF_DECODE_GRAPH`` is enabled and the shape covers the
+backend's published graph break-even, and eager decode otherwise. Pass
+``--graph-replay-decode``/``--no-graph-replay-decode`` to force one arm.
 """
 
 from __future__ import annotations
@@ -34,6 +37,7 @@ from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
 from scripts.qwen35_gguf_bench import (
     _RoctxProfilerControl,
+    _default_decode_graph_request,
     _memory_snapshot as _gguf_memory_snapshot,
     _memory_summary as _gguf_memory_summary,
     _prefill_chunk_sizes as _gguf_prefill_chunk_sizes,
@@ -175,8 +179,8 @@ def main() -> int:
     )
     parser.add_argument("--json", type=Path, default=None)
     args = parser.parse_args()
-    if args.graph_replay_decode is None:
-        args.graph_replay_decode = args.engine == "paro"
+    if args.graph_replay_decode is None and args.engine == "paro":
+        args.graph_replay_decode = True
 
     workloads = [_parse_workload(item) for item in args.workloads]
     workloads.sort(key=lambda item: (item[0], item[1]))
@@ -484,6 +488,19 @@ def _measured_graph_replay_requested(*, requested: bool, measured: bool) -> bool
     return bool(requested and measured)
 
 
+def _resolve_gguf_graph_request(
+    *,
+    requested: bool | None,
+    session: Qwen35GGUFResidentSession,
+    decode_tokens: int,
+) -> bool:
+    """Resolve an unset GGUF graph flag through the engine's admission rule."""
+
+    if requested is not None:
+        return bool(requested)
+    return _default_decode_graph_request(session, decode_tokens)
+
+
 def _run_gguf_sweep(
     args: argparse.Namespace,
     model: Path,
@@ -535,12 +552,22 @@ def _run_gguf_sweep(
         for prompt_length, decode_tokens in workloads:
             label = _format_workload(prompt_length, decode_tokens)
             prompt_tokens = [int(args.token_id)] * int(prompt_length)
+            resolved_graph_request = _resolve_gguf_graph_request(
+                requested=args.graph_replay_decode,
+                session=session,
+                decode_tokens=decode_tokens,
+            )
+            if resolved_graph_request and decode_tokens % args.graph_steps_per_replay != 0:
+                raise ValueError(
+                    f"decode tokens for {prompt_length}/{decode_tokens} must be divisible by "
+                    "--graph-steps-per-replay"
+                )
             runs: list[dict[str, Any]] = []
             for raw_index in range(args.warmup_runs + args.measured_runs):
                 measured = raw_index >= args.warmup_runs
                 run_index = raw_index - args.warmup_runs + 1 if measured else raw_index + 1
                 effective_graph_replay = _measured_graph_replay_requested(
-                    requested=args.graph_replay_decode,
+                    requested=resolved_graph_request,
                     measured=measured,
                 )
                 graph_holder: dict[str, Any] | None = {} if effective_graph_replay else None
