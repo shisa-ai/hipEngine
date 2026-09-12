@@ -898,7 +898,7 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
 
 ### Packet 2 — Reduce exact allocation costs
 
-- [ ] **PARTIAL — AR-only omission proven and K0-off baselines measured; only the "after active MTP" half remains (cross-campaign MTP blocker).** Prove AR-only omits NextN weights and MTP-only state/graphs/hidden capture.
+- [ ] **PARTIAL — AR-only omission proven and K0-off baselines measured; only the "after active MTP" half remains (MTP serving starts and serves as of 2026-09-08, so this half is measurable rather than blocked).** Prove AR-only omits NextN weights and MTP-only state/graphs/hidden capture.
   Measure MTP-capable K0 both before and after active MTP; do not call it unloaded.
   AR-only omission proven 2026-09-06: with MTP serving off the materialization
   plan omits the 4 NextN tensors (0.052 GiB source bytes), the resident census
@@ -967,10 +967,14 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
 - [ ] Provide a true AR-only configuration. Optional lazy MTP activation must
   reserve its full peak before mutation; unloading must not free borrowed or
   in-flight graph assets. Do not load/unload weights per decode cycle.
-  **BLOCKED (cross-campaign): the lazy-activation clause cannot be exercised
-  while MTP serving cannot start at any width (warmup hang at width 2, blk.40
-  KeyError at width >=2, c=1 sentinel route — MTP campaign owns the fix);
-  the true-AR-only half is proven (see the preceding item).**
+  **UNBLOCKED 2026-09-08: MTP serving starts and serves. `6c01f1f1c` repaired the
+  native MTP scratch lifetimes and graph fallback; `02072ff08` then ran 40
+  sequential K0<->MTP legs on one resident owner, every leg token-exact with a
+  clean exit, and `4682267d4` proved mixed MTP+AR cohort isolation at capacities
+  8 and 2. The lazy-activation clause is therefore exercisable. The remaining
+  known hang is narrower than a warmup failure at every width: an engine-close
+  shutdown timeout after a policy-refused sequence, plus the `opt_in` route.
+  The true-AR-only half is proven (see the preceding item).**
 
 ### Packet 3 — Qualify smaller weights and compact INT8
 

@@ -1640,8 +1640,15 @@ multiple later gates.
     against the CPU reference and independent c1 for c1/c2/c4/c8, and the
     committed `rocprofv3` ownership trace shows one batch producer plus one
     strided reducer launch for all four rows.
-22. **Then — IKV-C3/C4:** prevent N-copy prefill scratch from erasing savings
-    and reject the complete resource budget before HIP OOM.
+22. **Partly completed — IKV-C3/C4:** the `IKV-C3` half landed and was promoted
+    to the default path on 2026-09-11 (`117ca5cab` one shared BF16 oracle pair
+    per session, global row space, per-layer rebind, fails closed on
+    non-slot-stable rounds; `7444dd705` layer-outer packed prefill, wall parity
+    within a 1.5% noise floor, identical generated IDs, and 0.438 GiB lower
+    tracked peak at every multi-chunk length). N-copy prefill scratch therefore
+    no longer erases the KV saving at C1. `IKV-C3`'s c2/c4 memory-positive gate
+    and the `IKV-C4` complete resource-budget rejection before HIP OOM remain
+    open.
 23. **Then — IKV-C5/C6:** close cancellation, grow/shrink, overload/recovery,
     direct-vs-mirror telemetry, and artifact-scoped quality/capacity.
 24. **Then — IKV-C7:** run matched BF16/serial/direct economics, promote or

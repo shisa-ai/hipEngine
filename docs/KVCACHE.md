@@ -1472,7 +1472,13 @@ These are deliberately after dense INT8 and DMS:
     finer-group K with higher-precision V—across multiple fixed mixed/natural
     prompts before implementing another native storage contract.
 14. [ ] Stream/remove the transient BF16 INT8-prefill oracle only as additional
-    capacity work; do not confuse this with a fidelity fix.
+    capacity work; do not confuse this with a fidelity fix. Substantially
+    advanced by `IKV-C3` (`117ca5cab`, `7444dd705`): the oracle is now one shared
+    pair per session, rebound per INT8 layer and reused across chunks, instead
+    of one pair per round, worth 0.438 GiB of tracked peak at every multi-chunk
+    length. Full removal is
+    still open; note the repair also means the withdrawn 54,272 server ceiling
+    was measured on the cheaper pre-repair route.
 15. [x] Complete `IKV-C0`: integrate the divergent Qwen3.8 branches and add
     fail-closed artifact/backend/target/quant/layout/scale capability identity.
 16. [x] Complete `IKV-C1`: no-mirror c2/c4 through a declared serial c1-per-row
@@ -1486,6 +1492,14 @@ These are deliberately after dense INT8 and DMS:
     strided reducer launch for all four rows.
 18. [ ] Complete `IKV-C3/C4`: shared prefill ownership and complete admission
     accounting for KV, scales, mirrors, workspace, oracle, graphs, and reserve.
+    The `IKV-C3` half landed and was promoted to the default path on 2026-09-11:
+    `117ca5cab` gave the packed INT8 prefill one shared BF16 oracle pair per
+    session (global row space, per-layer rebind, fails closed on non-slot-stable
+    rounds and non-shared plans), and `7444dd705` promoted the layer-outer
+    executor after same-host A/B at 1K/2K/4K/8K showed wall parity within a 1.5%
+    noise floor, identical generated IDs, and 0.438 GiB lower tracked peak at
+    every multi-chunk length. `IKV-C3`'s c2/c4 memory-positive gate and all of
+    `IKV-C4` remain open.
 19. [ ] Complete `IKV-C5/C6`: cancellation, compaction, grow/shrink,
     overload/recovery, explicit direct-vs-mirror telemetry, and artifact-scoped
     quality/capacity matrices.

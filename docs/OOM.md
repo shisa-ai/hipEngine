@@ -645,9 +645,22 @@ server.
 - Done: include startup checks and memory snapshots in `/ready`.
 - Open: reject unsupported c>N/int8 request shapes before closing/reallocating
   the current resident session.
+  Partly addressed 2026-09-13 audit: the KV-policy half is now pre-flight —
+  `_validate_generation_request` (api.py:11607) runs at the top of the batch path
+  (api.py:5335) and raises 400 `unsupported_kv_policy` before any session
+  acquire/close. The c>N half no longer looks like a rejection path at all:
+  `n > 1` is handled as a supported shape with per-choice request IDs
+  (api.py:6915, 7354), and no test covers an n=2/int8 refusal, so the original
+  n=2 teardown symptom is unverified rather than proven fixed.
 - Open: ensure cancellation interrupts long backend decode promptly.
 - Open: auto-reduce context when KV-only auto-selection passes but scratch probe
   fails.
+  Still open as of 2026-09-13: a probe failure records
+  `startup_checks["scratch_probe"]["status"] = "failed"` and logs a remediation
+  hint (api.py:4995) but does not lower the context. GGUF auto-context sizing
+  reduces how often the probe can fail, because the calibrated model reserves
+  the prompt-scaled transient, but the auto-reduce path itself is not
+  implemented.
 
 ### P1: build an exact memory ledger
 
