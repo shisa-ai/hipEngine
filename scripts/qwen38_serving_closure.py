@@ -59,9 +59,10 @@ def validate_response(body):
             "hipengine": body.get("hipengine", {})}
 
 
-def payload(prompt, count, *, stream=False, mtp=False):
+def payload(prompt, count, *, stream=False, mtp=False, ignore_eos=None):
     result = {"model": "qwen38-closure", "prompt": list(prompt), "max_tokens": count,
-              "temperature": 0.0, "top_p": 1.0, "ignore_eos": True,
+              "temperature": 0.0, "top_p": 1.0,
+              "ignore_eos": (mtp is False) if ignore_eos is None else ignore_eos,
               "stream": stream}
     if mtp is not None:
         result["speculative_mtp"] = mtp
@@ -168,7 +169,8 @@ def run(args):
         if not _wait_for(lambda: server.started, timeout=120):
             raise RuntimeError("server startup timed out")
         base = f"http://127.0.0.1:{port}"
-        references = [request(base, payload(prompt, args.tokens)) for prompt in prompts]
+        references = [request(base, payload(prompt, args.tokens, ignore_eos=mtp is False))
+                      for prompt in prompts]
         report["references"] = references
         for streaming in ((True,) if args.streaming_only else (False, True)):
             for width in widths:

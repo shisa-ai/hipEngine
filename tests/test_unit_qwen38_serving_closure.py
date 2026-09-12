@@ -43,3 +43,4 @@ def test_stream_uses_authoritative_terminal_ids_without_resident_request_id():
 def test_automatic_mtp_payload_omits_request_override():
     assert "speculative_mtp" not in payload([1, 2], 25, mtp=None)
     assert payload([1, 2], 25, mtp=False)["speculative_mtp"] is False
+    assert payload([1, 2], 25, mtp=None)["ignore_eos"] is False
