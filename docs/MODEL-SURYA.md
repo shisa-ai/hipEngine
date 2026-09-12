@@ -27,6 +27,8 @@ vision tower and text decoder on gfx1151.
 | OCR output quality check (labels + bboxes vs drawn geometry) | done | `tests/test_surya_gpu.py::test_gpu_full_page_layout_matches_oracle` second half |
 | Greedy reference fixtures are reproducible | done | `scripts/surya_oracle_greedy.py --case all` regenerates `oracle_greedy.json`, `oracle_fullpage_greedy.json` and `oracle_corpus.json` byte-for-byte |
 | Multi-page held-out OCR corpus | done | `page_columns.png` (two-column) and `page_list.png` (numbered list) via `tests/test_surya_gpu.py::test_gpu_ocr_corpus_matches_oracle` |
+| 300-DPI A4 page fixture and its transcription measurement | measured, failing | `scripts/surya_bench_pages.py:make_page_a4`, `benchmarks/results/2026-09-12-gfx1151-surya-a4-transcription.json` |
+| OpenAI-compatible HTTP serving (`hipserver`) | done (fake-generator tested) | `hipengine/server/multimodal.py`, `tests/test_surya_server_multimodal.py` |
 | Registry migration + `KVLiveSpans` KV ABI | pending | tracked in `docs/REFACTOR.md` |
 | Quantized (GGUF) Surya decoder | pending | safetensors fp32 is the implementation target |
 | MTP / speculative decoding | pending | 15 MTP tensors inventoried, unused |
@@ -114,6 +116,40 @@ text past the canvas, so their intended text is not what is in the image:
 byte-identical so their captured oracles and benchmark artifacts stay valid;
 the acceptance test scores `page_<name>_fit.png` for those four and the bench
 page for the other three. Re-cutting the bench suite is tracked as follow-up.
+
+#### The 300-DPI A4 page does not pass
+
+The seven pages above are 512-1024 px on a side. `page_a4.png` is the real
+page-scale case: 2480x3508 at 300 DPI, which `smart_resize` rounds to 2496x3520
+— exactly the 220x156 patch grid and 8580 merged image tokens the page-scale
+memory plan is written against. Its ground truth is the text drawn through
+`_draw_text_fit`, so no line is clipped.
+
+Measured fp32 on gfx1151 with `FULL_PAGE_HTML_PROMPT`,
+`scripts/surya_transcription_report.py`, artifact
+`benchmarks/results/2026-09-12-gfx1151-surya-a4-transcription.json`:
+
+| metric | value | gate |
+| --- | ---: | --- |
+| `line_recall` | 0.2414 (7/29) | 1.0000 |
+| `line_exact_rate` | 0.2414 | 0.9500 |
+| `cer` | 0.8901 | 0.0100 |
+| reading-order violations | 1 | 0 |
+| `table_cell_accuracy` | 1.0000 (32/32) | 1.0000 |
+| finish | eos, 2108 tokens, not truncated | eos |
+
+Stages: vision 47.4 s, prefill 7.7 s, decode 58.4 s (2108 steps, 27.7 ms/step,
+36.1 tok/s), 113.7 s total.
+
+The split is diagnostic. The ruled table transcribes perfectly — all 32 cells,
+correct shape and header — and the run reaches a natural EOS well inside its
+4000-token budget, so the text decoder, the protocol prompt, and the stop-token
+rule are all doing their job. What is missing is 22 of the 29 paragraph lines:
+the model produced 13 blocks and 44 candidate lines, so it saw structure but
+not the body text. Two candidates explain that and are not yet separated: the
+vision resolution at this grid, or the tiled vision path (this run was
+`tiled: True`). Both are cheap to test — the dense vision path against the same
+page, and a smaller `SURYA_MAX_PIXELS` — and neither has been run.
 
 ### Numerical gate (2026-09-12)
 
@@ -211,6 +247,34 @@ decode kernel is BF16-only and reserves more LDS than gfx11 has at Surya's
 head_dim-256 decode-attention kernel, which would also replace three rocBLAS
 batched GEMMs and three elementwise kernels per layer. The work breakdown and
 the adoption triggers are in `docs/REFACTOR.md`.
+
+### HTTP serving (2026-09-12)
+
+Surya is reachable through `hipserver`'s `/v1/chat/completions` multimodal
+branch. That branch was written for Qwen4Exp and hardcoded three things that
+made it unusable for a page-scale OCR model; each is now an engine declaration
+resolved from the attached generator, so a new vision model declares its
+bounds instead of editing the server.
+
+| declaration | Surya value | why |
+| --- | --- | --- |
+| `vision_max_pixels` | `SURYA_MAX_PIXELS` (16.78 MP) | the checkpoint's own preprocessor ceiling; a 300-DPI A4 page is 8.7 MP and the old 1024 px per-side cap rejected every real page |
+| `vision_media_input` | `"image_array"` | the Surya generator takes one RGB array, not the Qwen4Exp `{"items": [...]}` mapping |
+| `vision_prompt_marker` | `""` | `render_chat_prompt` derives the image pad span from the patch grid, so the prompt is the bare text; Qwen4Exp needs an inline `<\|vision_start\|>...` marker |
+| `vision_default_prompt` | `FULL_PAGE_HTML_PROMPT` | the text *is* the task, so an image-only request means the default task, not an empty prompt |
+
+The compressed-payload bound scales with the admitted pixel area (16 MiB at
+16.78 MP), because a 300-DPI document does not compress like a thumbnail. An
+engine that declares nothing keeps the previous 1 MP / 1024 px / 8 MiB scope
+exactly, which `tests/test_surya_server_multimodal.py` pins in both directions
+using the committed A4 fixture. `--vision-max-pixels` and
+`--vision-max-image-bytes` override either bound.
+
+Tested against a fake generator behind `create_app(llm=...)`: the transport,
+bounds, media adaptation, and prompt selection. **No HTTP request has been
+served by a loaded Surya checkpoint**, so the quality of the transcription over
+this path is unmeasured, and the direct-call measurement it would be compared
+against is the A4 failure above.
 
 ### Measured inventory (2026-09-11, revision `3b3d4cdf`)
 

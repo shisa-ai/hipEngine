@@ -39,8 +39,10 @@ from hipengine.generation.surya_contract import (
     greedy_decode_tokens,
     resolve_surya_greedy_settings,
 )
+from hipengine.generation.surya_protocol import FULL_PAGE_HTML_PROMPT
 from hipengine.kernels.cpu_reference.surya import SuryaSpec, SuryaWeights
 from hipengine.loading.surya import (
+    SURYA_MAX_PIXELS,
     SuryaTokenizer,
     compute_mrope_positions,
     load_surya_spec,
@@ -68,7 +70,23 @@ class SuryaOCRGeneratorGPU:
     - ``max_vision_scratch_bytes`` — the peak vision-attention score tile.
       ``None`` means the runner default; pass a value to trade GEMM width for
       memory. The vision path never allocates the quadratic score matrix.
+
+    Vision-input capabilities for a serving front end:
+
+    - ``vision_max_pixels`` — the checkpoint's own preprocessor ceiling, so an
+      HTTP layer can bound a decoded page without guessing.
+    - ``vision_media_input = "image_array"`` — one RGB array per request.
+    - ``vision_default_prompt`` — the checkpoint's full-page transcription
+      prompt, which is the task. Surya is prompt-driven, so a caller that sends
+      no instruction wants this rather than an empty prompt.
     """
+
+    vision_max_pixels = SURYA_MAX_PIXELS
+    vision_media_input = "image_array"
+    vision_default_prompt = FULL_PAGE_HTML_PROMPT
+    # render_chat_prompt derives the image pad span from the patch grid,
+    # so the prompt is the bare text with no inline placeholder.
+    vision_prompt_marker = ""
 
     def __init__(
         self,
