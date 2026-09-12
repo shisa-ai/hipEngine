@@ -6,6 +6,10 @@ plan it serves: finish the remaining gfx1100 optimizations, close gfx1100,
 run this gfx1151 pass, then ship "finished" Qwen3.8-27B support on both
 backends.
 
+**Current release checklist:** [section J](#j-current-v050-release-checklist).
+Sections A-I preserve the earlier audit and its dated corrections; section J
+records what still needs a decision after the September 12 pull.
+
 Two structural facts shape every row:
 
 - **The gfx1151 backend shares the gfx11 device sources** and adds peer
@@ -504,3 +508,148 @@ shared source.
 
 Decode is not on this list. A1 closed it at 88.9% of the practical read roof, and
 C4 closed the INT8 K/V route as representation-owned.
+
+## J. Current v0.5.0 release checklist
+
+Updated September 12, 2026 against `1c9f2471c61b00199c8d47481db75c3e854ebe6c`,
+including the pull from local `6150ace4b`. This is a source/evidence audit,
+not a new gfx1151 GPU qualification. **The transfer review is not fully
+closed.** Shared source is not independent backend qualification, and an
+unqualified optimization need not block release when its existing fallback
+is safe and the limitation is explicit.
+
+### Release safety and default-behavior checks
+
+- [ ] **Qualify or backend-gate inherited Q4 fused-prefill retiles.**
+  `hipengine/runtime/gguf_linear.py::_q4_t16_dual_silu_retile_enabled`
+  defaults on, and fused-pair dispatch selects row64/row128 variants when
+  registered. gfx1151 aliases both registrations without an override or
+  exclusion. The [W7900 promotion artifact](../benchmarks/results/2026-08-31-w7900-q4km-fused-q4-prefill-retiles-retained.json)
+  instead says peer backends retain prior owners. Resolve this actual
+  source/evidence scope mismatch with independent gfx1151 shape/model,
+  numerical and performance gates or backend-owned admission. The later
+  row48 capability gate does not gate row64/row128. No gfx1151 numerical
+  regression is demonstrated by this source audit.
+- [ ] **Resolve the production-default / automatic-MTP interaction.**
+  `8899172e5` makes omitted profiles resolve to production, including dense
+  gfx1151 Q4_K_M (`hipengine/llm.py::_resolve_execution_profile`). However,
+  `hipengine/models/qwen35.py::_QWEN38_Q4KM_MTP_SERVING_EVIDENCE` marks only
+  the two gfx1151 strict C1/K3 rows automatic; every production row is
+  explicit-only. `hipengine/speculative/serving.py::_evidence_checks` matches
+  profile and manifest exactly. Consequently the former strict automatic
+  cell is not available to a no-profile production request. Confirm this at
+  the public server boundary, then either document explicit `strict` as
+  necessary for that automatic cell or independently qualify a production
+  automatic cell. Do not copy the strict admission bit.
+- [ ] **Verify the shipped production composition on gfx1151.** The default
+  flip's [worklog](../worklog/entries/20260912T081647.658257Z-lhl-exec-profile-default-production-48e246.md)
+  explicitly reuses prior certification and did not rerun GPU numerical or
+  serving gates. Check current manifest identity, omitted versus explicit
+  production, strict fallback, C1/C2/C4/C8 and occupancy transitions,
+  blocking/SSE cancellation/refill, determinism/isolation and the applicable
+  production numerical/task gates. Tie published no-flag performance to
+  that actual profile rather than assuming older profile-less rows still
+  measure the shipped composition.
+  In particular, `qwen38_gguf_profiles.py::_production_binder` enables FP16
+  recurrent storage before allocation without a context/horizon gate.
+  [Execution profiles section 2.4](EXECUTION-PROFILES.md#24-qwen38-q4_k_m-production-c2k3-decision)
+  explicitly withholds long-horizon authorization after a failed D120
+  diagnostic. Establish independent longer-horizon AR/default coverage or
+  narrow admission; that MTP diagnostic is not itself proof of an AR failure.
+- [ ] **Close the Q4_K_M scratch-row safety question from section I.**
+  gfx1151's `GGUF_DENSE_PREFILL_SCRATCH_ROW_CAP_POLICIES` still has only a
+  `MOSTLY_Q4_K_S` key. Check allocation-sized position/metadata buffers
+  against auto query-chunk selection at the 1K/4K/8K boundaries, including
+  tails and packed requests. Prove the Q4_K_M route is safe without a cap,
+  or qualify the necessary cap; absence alone is not proof of an overflow.
+- [ ] **Audit the newly default-on layer-outer route's reachable scope.**
+  `7444dd705` promotes `HIPENGINE_GGUF_PACKED_LAYER_OUTER=1` globally, with
+  W7900 INT8 evidence. Establish which gfx1151 artifact/KV combinations can
+  actually enter the one-shot or resumable executor, and assert that rejected
+  Q4_K_M INT8 falls back to BF16 without engaging it. Any reachable INT8/DMS
+  diagnostic scope needs independent layer-boundary state/KV, ragged/tail,
+  hidden-alias, cancellation/allocation-failure, decode-handoff and speed
+  checks before qualification. Validate executor telemetry from the leased
+  session after `1d02aa05f`; do not mistake a fallback run for this gate.
+  Include `_gguf_int8_prefill_slot_local_aotriton_enabled`: it also defaults
+  on globally, explicitly changes reduction order, and cites W7900-only
+  qualification. Ordinary BF16 reachability must be distinguished from
+  transient-oracle INT8 reachability for both settings.
+  Keep native sampling outside a completion claim until the documented
+  [zero-capacity packed-sampler failure](../worklog/entries/20260911T220357.309195Z-lhl-p6-native-sampling-blocked-16d72c.md)
+  is repaired and independently checked. Its existing failure is not a
+  measured gfx1151 reproduction, and a skipped sampling arm is not a pass.
+- [ ] **Close release validation and wording gaps.**
+  [Test migration](testing/TEST-MIGRATION.md) still records eight source-pin
+  failures and a failing published-command gate, and explicitly does not
+  claim full GPU/live execution. Repair the focused failures without blind
+  hash refreshes; the milestone/release run must use `--suite all`, not
+  unit-only default discovery. Scope `CHANGELOG.md`'s INT8 c4 and layer-outer
+  gains to their measured artifact/backend, and reconcile its broad
+  "Everything below was tested ... on ... both" introduction and automatic
+  MTP wording with the actual per-backend evidence.
+  Refresh `docs/KERNELS.md`'s small-row single-wave description against the
+  actual gfx1151 low-VGPR/shared-B2W2 override.
+
+### Optimization transfer decisions still open
+
+- [ ] **Give all 18 gfx1100-only capability settings a gfx1151 verdict.**
+  Section I's ledger remains open: record qualified, rejected with evidence,
+  pending a named gate, or N/A for this artifact. Prioritize applicable dense
+  prefill pair/rows6/row48 settings, scratch liveness, F16 rocBLAS settings,
+  and verifier settings. Do not treat MoE/raw-quant-only settings as dense
+  Q4_K_M gaps, and do not copy W7900 thresholds wholesale.
+  Re-review the [unequal Q4 pair decision](../worklog/entries/20260815T191659.162367Z-pi-qwen38-gfx1151-p4-unequal-q4-pair-69a5bb.md):
+  its exact positive leaf screen was declined before integration solely
+  below a projected 1% request-saving threshold. Today's small-win policy
+  warrants an integrated non-regression decision, not automatic rejection
+  under that historical threshold.
+- [ ] **Finish the five dense-path registry decisions.** The excluded keys
+  in section H are still excluded: Q4 col4 rowtile, Q4 rowtile+residual,
+  fused alpha/beta+conv+snapshot, chunked state-pair copy, and N1 graph
+  batched KV append. The two Q4 rowtiles need independent shape crossover
+  and full-model gates; the remaining three need their transaction/state
+  and graph/launch gates. Every candidate also needs the applicable
+  production review if strict equality fails, plus a same-host performance
+  decision and strict fallback.
+- [ ] **Close prefill and optional DMS follow-ups with scoped verdicts.**
+  Refresh the gfx1151 prefill family trace before choosing a transfer
+  target. Direct INT8 prefill remains conditional on representation
+  admission and a speed premise; DMS speed/lifetime checks are separate
+  from public dense BF16 qualification. Do not rerun the XTX capacity
+  ladders on the APU. The selected-expert pair-reuse geometry is a
+  Qwen3.6-35B-A3B MoE follow-up, not this dense release checklist.
+- [ ] **Make every published artifact reproducible or name the limitation.**
+  The Q4_K_M same-file comparator is closed, but section H records the
+  original Q4_K_S artifact as absent from this host. Re-fetch it for any
+  claimed current-head Q4_K_S refresh; local UD-Q4_K_S is not a substitute.
+
+### Reviewed outcomes not to reopen without a new premise
+
+- [x] Registry inventory reproduced on this HEAD with `.venv/bin/python`:
+  **1307 shared, 105 gfx1100-only, 7 gfx1151-only**. Most exclusions are
+  outside dense Qwen3.8; do not describe all 105 as missing dense ports.
+- [x] gfx1151 has its own prefill/GDN/attention overrides and planar-Q6
+  integer-MMQ admission. Integer MMQ is a gfx1151 donor, not a missing
+  gfx1100-to-gfx1151 transfer.
+- [x] The September 12 Q4_K_M INT8 quality recheck reproduces the rejection.
+  Preserve artifact-scoped BF16 fallback; gfx1100 physical-c4 INT8 evidence
+  does not qualify the different gfx1151 model file.
+- [x] Decode-floor attribution and the same-file Q4_K_M llama.cpp comparator
+  have measured verdicts (sections H/I). This is not a new measurement or
+  a claim that post-default-flip performance is unchanged.
+- [x] The PARO gfx1100 KV registry pin is deliberately retained after the
+  failed gfx1151-body substitution (`6150ace4b`, section I). It is not an
+  outstanding one-line backend correction for dense Qwen3.8.
+
+Local work in progress: the untracked
+`scripts/qwen38_q4_dense_rowtile_gfx1151_screen.py` and
+`scripts/qwen38_gfx1151_q4_dense_rowtile_gate.py` target the two Q4 exclusions.
+Their presence and draft docstrings are not committed qualification evidence;
+this audit neither modifies them nor marks those two transfers complete.
+
+Audit verification: the focused current tests
+`tests/test_unit_execution_profile_defaults.py` and
+`tests/test_unit_speculative_mtp_serving_capability.py` pass together
+(60 tests). They establish resolver/evidence contracts, not the requested
+public-server or hardware gates above.
