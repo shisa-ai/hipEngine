@@ -71,6 +71,7 @@ from hipengine.server.api import (
     _sampling_for_realized_generation_route,
     _serving_plan_route_decision,
     _ServerMetrics,
+    _log_pretty_startup_summary,
     _startup_memory_summary,
     _mtp_accepted_rejected_counts,
     _mtp_response_summary,
@@ -3268,6 +3269,42 @@ def test_startup_memory_summary_counts_live_scratch_probe_peak() -> None:
         "min_free_bytes": 250,
         "total_bytes": 1000,
     }
+
+
+def test_pretty_startup_summary_contains_operational_limits(monkeypatch) -> None:
+    messages: list[str] = []
+    monkeypatch.setattr("hipengine.server.api._LOGGER.info", lambda message, *args: messages.append(message % args))
+    config = ServerConfig(model="/models/example.gguf", served_model_name="example")
+    estimate = SimpleNamespace(
+        requested_context_tokens=176128,
+        model_max_context_tokens=262144,
+        kv_storage_dtype="int8_per_token_head",
+        kv_scale_dtype="fp32",
+        usable_bytes=24 * 1024**3,
+    )
+    engine = SimpleNamespace(
+        kv_capacity_estimate=estimate,
+        live_loop_snapshot=lambda: {
+            "runner": {
+                "max_active_requests": 4,
+                "kv_pool": {"budget_bytes": 24 * 1024**3},
+            }
+        },
+    )
+    _log_pretty_startup_summary(
+        config,
+        engine=engine,
+        memory={
+            "final_used_bytes": 28 * 1024**3,
+            "total_bytes": 48 * 1024**3,
+        },
+    )
+    rendered = messages[-1]
+    assert "176,128 / 262,144 tokens" in rendered
+    assert "4 requests in flight" in rendered
+    assert "24.00 GiB" in rendered
+    assert "28.00 GiB / 48.00 GiB used" in rendered
+    assert "Ready for requests" in rendered
 
 
 def test_health_and_ready_report_eager_startup_diagnostics() -> None:
