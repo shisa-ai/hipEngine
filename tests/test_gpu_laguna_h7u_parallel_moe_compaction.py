@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import ctypes
 import hashlib
+import inspect
 import json
+from importlib import import_module
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +33,7 @@ from hipengine.kernels.hip_gfx1100.moe import (
 )
 from hipengine.kernels.registry import resolve
 from hipengine.runtime.laguna_moe import resolve_laguna_group_compact_mode
+from tests._laguna_policy_pin import assert_laguna_policy_pinned
 
 _ROOT = Path(__file__).parents[1]
 _ARTIFACT = (
@@ -42,29 +45,45 @@ _ARTIFACT = (
 _ARTIFACT_SHA256 = (
     "f9b9669ec935585fe425617db138751c75aa3f0aa12d67e7139061bcb9c8c4c3"
 )
-_POST_MERGE_PACKAGE_SHA256 = (
-    # Audited Qwen-only policy additions; all 39 Laguna assignments are unchanged.
-    "714910eca69c3633d3c810d9647beacb6f28e0830df173f8ca88708d0ae28ea9"
-)
+_RENAMED_SOURCES = {
+    # The 2026-09-12 tier migration renamed these modules; the artifact records
+    # their pre-migration paths.
+    "tests/test_laguna_moe_gpu.py": "tests/test_live_laguna_moe_gpu.py",
+    "tests/test_qwen35_moe_group_scatter_plan.py": (
+        "tests/test_gpu_qwen35_moe_group_scatter_plan.py"
+    ),
+}
+_SOURCE_SYMBOL_SHA256 = {
+    # Both group_scatter files later gained the unrelated PF-4 fused routing-map
+    # kernel, so a whole-file hash pinned that campaign with them. These are the
+    # H7U symbols, byte-identical to the 12106b8a4 rev the artifact recorded.
+    "hipengine/kernels/hip_gfx1100/moe/group_scatter.hip": {
+        "qwen35_moe_group_count_active_parallel_kernel": (
+            "a71617a446e5d98b079f749217daa8babd072cb743c3f87558eadcba55c3cda2"
+        ),
+        "qwen35_moe_group_prefix_active_parallel_kernel": (
+            "adf563754a2dd735143081edc7f2d75bae7763265e69ca4bae4dd565c20fbbef"
+        ),
+        "qwen35_moe_group_scatter_active_parallel_kernel": (
+            "ed3cdd2522e949f13a53f15137f8044e11741155cf62a519681d93adff9e785e"
+        ),
+    },
+    "hipengine/kernels/hip_gfx1100/moe/group_scatter.py": {
+        "qwen35_moe_group_compact_active_parallel": (
+            "7895c5e42beaaf80f85195acbc42bd4dabcc5b99dc68450f59182683abef7156"
+        ),
+        "qwen35_moe_group_compact_active_source_rows_parallel": (
+            "5ea97a17d8d16516755fe5c1e3d5d000bebcddf6ac610d11963aa9e3e8b54a82"
+        ),
+    },
+}
 _POST_MERGE_SOURCE_SHA256 = {
-    # Maple P1 templates the existing stable parallel count/scatter bodies so
-    # int32 route IDs share the exact H7U implementation; the original int64
-    # symbols, launch geometry, and Laguna source owner remain unchanged.
-    "hipengine/kernels/hip_gfx1100/moe/group_scatter.hip": (
-        "19a4f3f9b55ef7258b63b30fc243613a6951e67b3f1e9df4f66cb37ca5ad3b07"
-    ),
-    "hipengine/kernels/hip_gfx1100/moe/group_scatter.py": (
-        "4ede6f2c6932eb992b148f8b3040d2aa49a27f0b7e11d69c708b166ef5c8916b"
-    ),
-    # Later Qwen3.8 and execution-profile package policies are orthogonal to
-    # H7U's unchanged gfx1151 parallel-compaction owner.
-    "hipengine/kernels/hip_gfx1151/__init__.py": (
-        "ae4375a31bf62afe3ef341dfaf26cbd1c6bf456097f63567d521c59ab3a0c82b"
-    ),
     "hipengine/runtime/laguna_moe.py": (
         "b37bc2a1aaadbf94700dad9a67f90815b69d783a8a82fcc47b5496a17de83987"
     ),
     "tests/test_live_laguna_moe_gpu.py": (
+        # The migration renamed this module and rewrote three of its imports; the
+        # serial/parallel mode assertions it pins are byte-identical.
         "8776311fb4f64bbf0c050a18fb85525abb418b7e89a0877b214afcaac69b8396"
     ),
 }
@@ -126,6 +145,48 @@ _TIMING_CONTRACT = {
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _sha256_text(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+def _hip_symbol_source(source: str, name: str) -> str:
+    """One ``__global__`` kernel plus its ``template``/``__launch_bounds__`` header."""
+    lines = source.splitlines(keepends=True)
+    anchor = next(
+        index
+        for index, line in enumerate(lines)
+        if f"__global__ void {name}(" in line
+    )
+    start = anchor
+    while start > 0 and (
+        lines[start - 1].startswith("template <")
+        or lines[start - 1].startswith("__launch_bounds__(")
+    ):
+        start -= 1
+    end = next(
+        index
+        for index in range(anchor, len(lines))
+        if lines[index].rstrip("\n") == "}"
+    )
+    return "".join(lines[start : end + 1])
+
+
+def _source_symbol_digests(relative: str, path: Path) -> dict[str, str]:
+    """Digest each pinned symbol in the live file, keyed by symbol name."""
+    symbols = _SOURCE_SYMBOL_SHA256[relative]
+    if relative.endswith(".hip"):
+        source = path.read_text()
+        return {
+            symbol: _sha256_text(_hip_symbol_source(source, symbol))
+            for symbol in symbols
+        }
+    module = import_module("hipengine.kernels.hip_gfx1100.moe.group_scatter")
+    return {
+        symbol: _sha256_text(inspect.getsource(getattr(module, symbol)))
+        for symbol in symbols
+    }
 
 
 def _hip_available() -> bool:
@@ -429,8 +490,19 @@ def test_h7u_frozen_target_source_physical_trace_and_timing_contract() -> None:
         )
     )
 
-    for relative, expected in artifact["source_sha256"].items():
+    for recorded, expected in artifact["source_sha256"].items():
+        relative = _RENAMED_SOURCES.get(recorded, recorded)
         path = _ROOT / relative
+        if relative == "hipengine/kernels/hip_gfx1151/__init__.py":
+            # gfx1151 is a peer backend shared with every campaign. H7U's contract
+            # there is the capability isolation asserted by
+            # test_h7u_package_mode_keeps_serial_rollback_and_gfx1151_isolation.
+            continue
+        if relative in _SOURCE_SYMBOL_SHA256:
+            assert _source_symbol_digests(relative, path) == _SOURCE_SYMBOL_SHA256[
+                relative
+            ]
+            continue
         if relative == "tests/test_live_laguna_moe_gpu.py":
             test_source = path.read_text()
             old_count = test_source.count(_OLD_MODE_TEST_BLOCK)
@@ -450,11 +522,11 @@ def test_h7u_frozen_target_source_physical_trace_and_timing_contract() -> None:
         bounded_count = package_source.count(_H7U_PACKAGE_BLOCK)
         source_count = package_source.count(_H7U_SOURCE_BLOCK)
         assert bounded_count + source_count in (0, 1)
-        normalized = package_source.replace(_H7U_PACKAGE_BLOCK, "").replace(
-            _H7U_SOURCE_BLOCK, ""
-        )
-        assert hashlib.sha256(normalized.encode()).hexdigest() == (
-            _POST_MERGE_PACKAGE_SHA256
+        # Every other Laguna policy in the shared gfx1100 registry module is frozen
+        # by source; the two H7U flags are excluded because flipping between them
+        # is the promotion under test.
+        assert_laguna_policy_pinned(
+            exclude=frozenset({_H7U_CAPABILITY, _SOURCE_CAPABILITY})
         )
 
 

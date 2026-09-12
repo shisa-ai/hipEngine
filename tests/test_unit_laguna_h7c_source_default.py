@@ -43,7 +43,13 @@ _GENERIC_VARIANTS = {
     _ROLES[2]: "coltile4_rowbatch8_bf16_bf16_out",
 }
 _RUNTIME_DISPATCH_SHA256 = (
-    "c12ea5317a53973204166ffe5589d44674e4f9d8df3b9f9964fb5656bce4df92"
+    # 665e9a147 added the Q8_0 rowbatch/coltile branch to this shared selector and
+    # 053165acc scoped it to gfx1151. For the Q5/Q6 roles below every branch is
+    # unchanged: the rowbatch capability read, the in_features multiple, the
+    # `prefill_` variant strip, the coltile2_rowbatch16/coltile4_rowbatch8 choice,
+    # and the role-variant lookup. `_assert_policy_routes` exercises those roles
+    # through the live selector.
+    "4c41d131adf76ed82199b1fde6b693a43c4ca62ce613048cacd53492aa1a4342"
 )
 
 

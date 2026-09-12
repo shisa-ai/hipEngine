@@ -42,10 +42,18 @@ _H7C_MOVE_HELPER = "h7c_dpp_move_f32"
 _H7C_ADD_HELPER = "h7c_dpp_add_row_shl1_f32"
 _GENERIC_KERNEL = "gguf_k_prefill_out_coltile_rowbatch_kernel"
 _GENERIC_KERNEL_SHA256 = (
-    "087a8fa301661f159dbd7625aac7226b0772a4a75a149c069988cb2ea6832e51"
+    # 2026-09-12: four post-H7C Q8/Qwen4Exp campaigns added an `if constexpr
+    # (qtype == 8)` row_bytes/weight branch and widened the accumulator
+    # static_assert from `== 32` to `== 32 || == 64`. Every Q6_K and Q5_K
+    # instantiation keeps the same else-branches and still tiles 32 accumulators,
+    # so the generic incumbent H7C compares against is unchanged.
+    "80604fbc8a10fecf7a4b99f486ade1348a969f042d16a2b8a3f97d615e269102"
 )
 _GENERIC_LAUNCH_SHA256 = (
-    "ff7a1bd655828d7880c62d57550704793aea339369af4c459f9d4d34d070dd31"
+    # Same campaigns: the shape check became `qtype == 8 ? in_features % Q8_0_BLOCK
+    # : in_features % QK_K`, and the kernel template gained a trailing WAVE_SCALE
+    # argument. For Q5/Q6 both reduce to the pre-H7C behavior.
+    "aa4fcfbc047b9baa9fdb9896f5550891ac4b2197dc3869e18af4acff89d867f2"
 )
 _GENERIC_WRAPPER_FACTORY_SHA256 = (
     "86e9b569b72c127e8b5be9633bf01da01b01940a83aef187fb6c126b26564cea"
@@ -57,7 +65,12 @@ _GENERIC_VALIDATE_SHA256 = (
     "bf1cd90230a61312a75acd401fe3a8c67eac00b59476d655c0d67db354a63e11"
 )
 _RAW_DISPATCH_SHA256 = (
-    "c12ea5317a53973204166ffe5589d44674e4f9d8df3b9f9964fb5656bce4df92"
+    # 665e9a147 added the Q8_0 rowbatch/coltile branch to this shared selector and
+    # 053165acc scoped it to gfx1151. For the Q5/Q6 roles below every branch is
+    # unchanged: the rowbatch capability read, the in_features multiple, the
+    # `prefill_` variant strip, the coltile2_rowbatch16/coltile4_rowbatch8 choice,
+    # and the role-variant lookup.
+    "4c41d131adf76ed82199b1fde6b693a43c4ca62ce613048cacd53492aa1a4342"
 )
 _SELECTION_ARITHMETIC = {
     "bf16_calls": 2,

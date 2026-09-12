@@ -2565,21 +2565,20 @@
     },
     {
       "old": "tests/test_generation_qwen4_exp_gguf.py",
-      "new": "tests/test_gpu_generation_qwen4_exp_gguf.py",
-      "tier": "gpu",
+      "new": "tests/test_unit_generation_qwen4_exp_gguf.py",
+      "tier": "unit",
       "evidence": {},
       "test_imports": [],
       "issues": [
-        "BLOCKER: incomplete synthetic context-admission fixture attempts get_hip_runtime; repair mocks and restore unit tier.",
-        "Review remaining CPU cases for extraction.",
-        "Guarded CPU run had failures; see report before claiming this module passes."
+        "Resolved 2026-09-12 follow-up: the synthetic context-admission fixture supplies a fake HIP runtime and admission record, so the construction-failure case no longer reaches get_hip_runtime().",
+        "All eight cases are CPU-only and run at unit tier."
       ],
       "deferred": false,
-      "sha256": "28b2248c4c0533bb0293f13b965a224fb49fae054e484f9dbcbcceb6ea8b710f",
-      "validation": "guarded_cpu_executed",
+      "sha256": "d51ea15dac78128a14af3ae61cb20339b0c2da10de1e558d9258264e39814956",
+      "validation": "unit_executed_after_followup_repair",
       "guarded_cpu_result": {
-        "passed": 7,
-        "failed": 1
+        "passed": 8,
+        "failed": 0
       }
     },
     {
@@ -23533,9 +23532,9 @@
     "remaining_cpu_failures": "Eight pre-existing source-pin assertions and one published-command drift gate."
   },
   "tier_counts": {
-    "unit": 793,
+    "unit": 794,
     "integration": 57,
-    "gpu": 306,
+    "gpu": 305,
     "live": 72,
     "benchmark": 2
   },

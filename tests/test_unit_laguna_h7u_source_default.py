@@ -16,6 +16,7 @@ from hipengine.kernels.hip_gfx1100.moe import (
 )
 from hipengine.kernels.registry import resolve
 from hipengine.runtime.laguna_moe import resolve_laguna_group_compact_mode
+from tests._laguna_policy_pin import assert_laguna_policy_pinned
 
 _ROOT = Path(__file__).parents[1]
 _ARTIFACT = (
@@ -27,13 +28,6 @@ _ARTIFACT_SHA256 = (
     "1555285431d0ae5ee2771a0840ccd4fa2eb101ff0513cf595ab97711d74c1caf"
 )
 _PACKAGE = _ROOT / "hipengine/kernels/hip_gfx1100/__init__.py"
-_TARGET_PACKAGE_SHA256 = (
-    "9cf784e41d9f77983373f60c543342cfb7659a736ce84cdc762bb2bc93ab6abf"
-)
-_POST_MERGE_PACKAGE_SHA256 = (
-    # Audited Qwen-only policy additions; all 39 Laguna assignments are unchanged.
-    "714910eca69c3633d3c810d9647beacb6f28e0830df173f8ca88708d0ae28ea9"
-)
 _CANDIDATE_CAPABILITY = "LAGUNA_MOE_GROUP_COMPACT_H7U_MODE"
 _SOURCE_CAPABILITY = "LAGUNA_MOE_GROUP_COMPACT_MODE"
 _CANDIDATE_BLOCK = (
@@ -55,12 +49,14 @@ def _sha256(path: Path) -> str:
 
 
 def _package_state() -> str:
+    """Which H7U seam the package carries, with the rest of the Laguna policy pinned."""
     source = _PACKAGE.read_text()
     candidate_count = source.count(_CANDIDATE_BLOCK)
     promoted_count = source.count(_SOURCE_BLOCK)
     assert candidate_count + promoted_count == 1
-    normalized = source.replace(_CANDIDATE_BLOCK, "").replace(_SOURCE_BLOCK, "")
-    assert hashlib.sha256(normalized.encode()).hexdigest() == _POST_MERGE_PACKAGE_SHA256
+    assert_laguna_policy_pinned(
+        exclude=frozenset({_CANDIDATE_CAPABILITY, _SOURCE_CAPABILITY})
+    )
     return "candidate" if candidate_count else "source"
 
 

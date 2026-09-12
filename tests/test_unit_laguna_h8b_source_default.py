@@ -9,6 +9,8 @@ from pathlib import Path
 
 import pytest
 
+from tests._laguna_policy_pin import assert_laguna_policy_pinned
+
 _ROOT = Path(__file__).resolve().parents[1]
 _RUNTIME_ARTIFACT = _ROOT / (
     "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-"
@@ -17,13 +19,9 @@ _RUNTIME_ARTIFACT = _ROOT / (
 _RUNTIME_ARTIFACT_SHA256 = (
     "ed3ee363ceb8b095b38fd28c0ebd1eb692d22dce61a4ce4ebd9e14be25cd73e7"
 )
-_PACKAGE = _ROOT / "hipengine/kernels/hip_gfx1100/__init__.py"
+_PEER_PACKAGE = "hipengine/kernels/hip_gfx1151/__init__.py"
 _SOURCE_CAPABILITY = "LAGUNA_ACTIVATION_PACK_REUSE"
 _REMOVED_SUPPORTED_CAPABILITY = "LAGUNA_ACTIVATION_PACK_REUSE_SUPPORTED"
-_NORMALIZED_PACKAGE_SHA256 = (
-    # Audited Qwen-only policy additions; all 39 Laguna assignments are unchanged.
-    "929d84ee84df3ed9e2c3264d6a2d92417ab1f66947a3c217f17bb18c7220c02b"
-)
 _RUNTIME_ARTIFACT_RUNNER_SHA256 = (
     "2f505e84319e7a3f8eecc6df69d521d8d0d66b47f6571f67a185629de86a6bbf"
 )
@@ -58,9 +56,6 @@ _SOURCE_SHA256 = {
 }
 _POST_MERGE_SOURCE_SHA256 = {
     # Later Qwen3.8 and execution-profile policies do not alter H8B's owner.
-    "hipengine/kernels/hip_gfx1151/__init__.py": (
-        "ae4375a31bf62afe3ef341dfaf26cbd1c6bf456097f63567d521c59ab3a0c82b"
-    ),
     "hipengine/runtime/laguna_gguf_runner.py": (
         "ae45f9e3e39fd93f971e5aa0b3394b3e5ce0a797b7cef8a9e1a20b1f2a133825"
     ),
@@ -103,21 +98,6 @@ _SOURCE_ADMISSION = {
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
-def _normalized_package_sha256() -> str:
-    source = _PACKAGE.read_text()
-    disabled = f"{_SOURCE_CAPABILITY} = False"
-    enabled = f"{_SOURCE_CAPABILITY} = True"
-    assert source.count(disabled) + source.count(enabled) == 1
-    normalized = source.replace(
-        disabled,
-        f"{_SOURCE_CAPABILITY} = <SOURCE>",
-    ).replace(
-        enabled,
-        f"{_SOURCE_CAPABILITY} = <SOURCE>",
-    )
-    return hashlib.sha256(normalized.encode()).hexdigest()
 
 
 def test_h8b_source_red_pins_qualified_owner_and_promotion_contract() -> None:
@@ -203,7 +183,9 @@ def test_h8b_source_red_pins_qualified_owner_and_promotion_contract() -> None:
     assert _REMOVED_SUPPORTED_CAPABILITY not in hip_gfx1100.__all__
     assert not hasattr(hip_gfx1151, _SOURCE_CAPABILITY)
     assert not hasattr(hip_gfx1151, _REMOVED_SUPPORTED_CAPABILITY)
-    assert _normalized_package_sha256() == _NORMALIZED_PACKAGE_SHA256
+    # Every other Laguna policy in the shared gfx1100 registry module is frozen by
+    # source; the flag under test is excluded because flipping it is the point.
+    assert_laguna_policy_pinned(exclude=frozenset({_SOURCE_CAPABILITY}))
 
     parameters = inspect.signature(runner.LagunaGGUFResidentSession.__init__).parameters
     assert "use_activation_pack_reuse" in parameters
@@ -219,9 +201,6 @@ def test_h8b_source_red_pins_qualified_owner_and_promotion_contract() -> None:
         _RUNTIME_ARTIFACT_REFACTOR_SHA256
     )
     for relative, expected in _SOURCE_SHA256.items():
-        assert _sha256(_ROOT / relative) == _POST_MERGE_SOURCE_SHA256.get(
-            relative, expected
-        )
         artifact_expected = {
             "hipengine/runtime/laguna_gguf_runner.py": (
                 _RUNTIME_ARTIFACT_RUNNER_SHA256
@@ -232,6 +211,14 @@ def test_h8b_source_red_pins_qualified_owner_and_promotion_contract() -> None:
         }.get(relative, expected)
         assert artifact["source_sha256"].get(relative, artifact_expected) == (
             artifact_expected
+        )
+        if relative == _PEER_PACKAGE:
+            # gfx1151 is a peer backend shared with every other campaign. H8B's
+            # contract there is that it owns no H8B capability, asserted above;
+            # the whole-file hash only pinned unrelated gfx1151 policy churn.
+            continue
+        assert _sha256(_ROOT / relative) == _POST_MERGE_SOURCE_SHA256.get(
+            relative, expected
         )
 
 
@@ -257,4 +244,4 @@ def test_h8b_source_default_selects_complete_owner_and_preserves_rollback() -> N
         resolve_laguna_activation_pack_reuse("hip_gfx1100", True)
     with pytest.raises(ValueError, match="positive selector was removed"):
         resolve_laguna_activation_pack_reuse("hip_gfx1151", True)
-    assert _normalized_package_sha256() == _NORMALIZED_PACKAGE_SHA256
+    assert_laguna_policy_pinned(exclude=frozenset({_SOURCE_CAPABILITY}))

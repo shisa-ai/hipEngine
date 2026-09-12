@@ -87,9 +87,18 @@ _SOURCE_IQ3_WRAPPER_SHA256 = (
 _SOURCE_IQ4_WRAPPER_SHA256 = (
     "f84b5a079e5e1d7e391e2567ad5a4941f4ffad9a3576574d201c03fef7b1d946"
 )
-_PRODUCER_HIP_SHA256 = (
-    "e648f8f1977aa959c1ba310e6f0d13e74142a2e05cef4b9bf194eecb0d5da56e"
-)
+_PRODUCER_SYMBOL_SHA256 = {
+    # This producer gained 512 lines of unrelated f32/prepacked/tile MMQ kernels
+    # after the H7E run, so a whole-file hash pinned those campaigns too. These
+    # are the d4x2 fallback symbols, byte-identical to the f5f03c272 rev the
+    # artifact recorded.
+    'extern "C" int hipengine_gguf_q8_0_mmq128_quantize_bf16_d4(': (
+        "3acc39863672abc71291d1bf441e27723516fc05491731a33e9b2d1f356daa56"
+    ),
+    'extern "C" int hipengine_gguf_q8_0_mmq128_quantize_bf16_d4x2(': (
+        "90aed7b5a5cee4c55a869ef36522286609b651254d1b890091604c69bc595b5b"
+    ),
+}
 _PRODUCER_WRAPPER_SHA256 = (
     "de71344a8271ed33f148e003acb2b70ad5459b050a3319f124299d0c0cae1d0e"
 )
@@ -519,9 +528,11 @@ def test_h7e_registry_source_policy_fallback_and_gfx1151_isolation() -> None:
             module.gguf_iq4_xs_selected_mmq_i128_j128_k256_q8_1_ds4_prefill_compact_bf16_bf16_out
         )
     ) == _SOURCE_IQ4_WRAPPER_SHA256
-    assert hashlib.sha256(_PRODUCER_HIP.read_bytes()).hexdigest() == (
-        _PRODUCER_HIP_SHA256
-    )
+    producer_source = _PRODUCER_HIP.read_text()
+    assert {
+        anchor: _sha256(_declaration(producer_source, anchor))
+        for anchor in _PRODUCER_SYMBOL_SHA256
+    } == _PRODUCER_SYMBOL_SHA256
     assert _sha256(
         inspect.getsource(residual_d4.gguf_q8_0_mmq128_quantize_bf16_d4x2)
     ) == _PRODUCER_WRAPPER_SHA256
