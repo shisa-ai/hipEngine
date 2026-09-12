@@ -11,8 +11,13 @@ Supported request controls are ``max_tokens``, ``ignore_eos``,
 ``eos_token_id``, ``stop_token_ids``, ``deadline_at``, and
 ``cancellation_token``; any other sampling/constraint control must stay at
 its neutral default or the request is rejected (see
-``hipengine.generation.surya_contract``). Prompt plus output capacity is
-validated against the runner context before any device work runs.
+``hipengine.generation.surya_contract``).
+
+Three budgets are explicit, validated, and advertised on the generator:
+the text context (``max_seq``, from ``LLM(max_sequence_length=...)``), the
+per-request output budget (``max_tokens``), and the vision-attention score
+tile (``max_vision_scratch_bytes``). Prompt plus output capacity is validated
+before any device work runs, including before the vision tower.
 
 Registered under ``(surya_ocr2, hip_gfx1151, fp32)`` through
 ``register_builtin_generators()``. Correctness contract: greedy IDs must
@@ -43,13 +48,26 @@ from hipengine.loading.surya import (
     render_chat_prompt,
     resolve_surya_path,
 )
-from hipengine.runtime.surya import SuryaGpuRunner
+from hipengine.runtime.surya import DEFAULT_MAX_SEQ, SuryaGpuRunner
 
 _QUANT = "fp32"
 
 
 class SuryaOCRGeneratorGPU:
-    """Greedy OCR generator running vision + text on the HIP device."""
+    """Greedy OCR generator running vision + text on the HIP device.
+
+    Three budgets are explicit and advertised so a caller can admit a request
+    before submitting it:
+
+    - ``max_seq`` — text context (prompt plus output). Defaults to
+      ``DEFAULT_MAX_SEQ``, which admits a 300-DPI A4 page's 8580 image tokens;
+      set it from ``LLM(max_sequence_length=...)``.
+    - ``max_tokens`` — the per-request output budget, validated against
+      ``max_seq`` before any device work.
+    - ``max_vision_scratch_bytes`` — the peak vision-attention score tile.
+      ``None`` means the runner default; pass a value to trade GEMM width for
+      memory. The vision path never allocates the quadratic score matrix.
+    """
 
     def __init__(
         self,
@@ -58,13 +76,30 @@ class SuryaOCRGeneratorGPU:
         weight_index: Any = None,
         model_plugin: Any = None,
         vision_model_path: str | Path | None = None,
-        max_seq: int = 2048,
+        max_seq: int | None = None,
+        max_vision_scratch_bytes: int | None = None,
     ) -> None:
         self.model_dir = resolve_surya_path(model_path)
         self.spec: SuryaSpec = load_surya_spec(self.model_dir)
         weights = load_surya_weights(self.model_dir)
         self.tokenizer = SuryaTokenizer(self.model_dir)
-        self.runner = SuryaGpuRunner(weights, self.spec, max_seq=max_seq)
+        resolved_max_seq = DEFAULT_MAX_SEQ if max_seq is None else int(max_seq)
+        if resolved_max_seq <= 0:
+            raise ValueError("max_seq must be positive")
+        if max_vision_scratch_bytes is not None and int(max_vision_scratch_bytes) <= 0:
+            raise ValueError(
+                "max_vision_scratch_bytes must be positive when set"
+            )
+        # `None` at this layer means "use the runner default"; only an explicit
+        # value is forwarded, because the runner reads `None` as "no budget".
+        scratch_kwargs = (
+            {}
+            if max_vision_scratch_bytes is None
+            else {"max_vision_scratch_bytes": int(max_vision_scratch_bytes)}
+        )
+        self.runner = SuryaGpuRunner(
+            weights, self.spec, max_seq=resolved_max_seq, **scratch_kwargs
+        )
         self.model_plugin = model_plugin
         self.supports_vision = True
         self.speculative_candidate_budget = 0
@@ -119,7 +154,10 @@ class SuryaOCRGeneratorGPU:
         settings: Any,
     ) -> tuple[list[int], str]:
         check_prompt_capacity(
-            int(input_ids.shape[-1]), settings.max_tokens, self.runner.max_seq
+            int(input_ids.shape[-1]),
+            settings.max_tokens,
+            self.runner.max_seq,
+            hint="raise LLM(max_sequence_length=...)",
         )
         logits = self.runner.prefill(
             input_ids[0], position_ids, visual_features=visual_features
@@ -162,7 +200,10 @@ class SuryaOCRGeneratorGPU:
         # over-budget page must be rejected before it runs. `_decode_greedy`
         # repeats the context check for its own callers; it is O(1).
         check_prompt_capacity(
-            len(input_ids), settings.max_tokens, self.runner.max_seq
+            len(input_ids),
+            settings.max_tokens,
+            self.runner.max_seq,
+            hint="raise LLM(max_sequence_length=...)",
         )
         self.runner.check_vision_capacity([grid])
         merged = self.runner.vision_forward(pixel_rows, [grid])
@@ -180,12 +221,25 @@ def make_surya_generator_gpu(
     model_path: str | Path,
     weight_index: Any = None,
     model_plugin: Any = None,
-    **_kwargs: Any,
+    vision_model_path: str | Path | None = None,
+    max_sequence_length: int | None = None,
+    vision_max_scratch_bytes: int | None = None,
 ) -> SuryaOCRGeneratorGPU:
+    """Registered ``(surya_ocr2, hip_gfx1151, fp32)`` factory.
+
+    The capacity parameters are declared by name because
+    ``LLM._factory_capacity_kwargs`` forwards a limit only to a factory that
+    accepts it: an earlier ``**_kwargs`` signature silently dropped
+    ``max_sequence_length``, leaving the runner at its low-level 2048 default.
+    """
+
     return SuryaOCRGeneratorGPU(
         model_path=model_path,
         weight_index=weight_index,
         model_plugin=model_plugin,
+        vision_model_path=vision_model_path,
+        max_seq=max_sequence_length,
+        max_vision_scratch_bytes=vision_max_scratch_bytes,
     )
 
 

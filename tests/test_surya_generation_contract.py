@@ -126,6 +126,109 @@ def test_capacity_validation() -> None:
         check_prompt_capacity(0, 1, 16)
 
 
+# ---------------------------------------------------------------------------
+# budget contract: the registered HIP generator must honor what it advertises
+# ---------------------------------------------------------------------------
+
+
+_MIB = 1024 * 1024
+
+
+def test_vision_tile_plan_stays_inside_the_budget() -> None:
+    """The vision score tile must never exceed the configured memory budget.
+
+    The dense path allocated ``heads * n^2 * 4`` bytes: 56.5 GB for a 300-DPI
+    A4 page (220x156 grid, 34320 patches) and 206 GB at the checkpoint's
+    ``max_pixels`` ceiling (256x256, 65536 patches). Tiling by query rows makes
+    the live tile ``heads * n * block * 4`` instead, and this pins the bound.
+    """
+
+    from hipengine.runtime.surya import plan_vision_attention
+
+    heads = 12
+    budget = 512 * _MIB
+    for n in (256, 4096, 34320, 65536):
+        block, scratch = plan_vision_attention(n, heads, budget)
+        assert 1 <= block <= n, (n, block)
+        assert scratch == heads * n * block * 4, (n, block, scratch)
+        assert scratch <= budget, f"grid of {n} patches needs {scratch} > {budget}"
+
+    # the two grids the dense path could not run are now well inside a
+    # half-gigabyte tile budget
+    assert plan_vision_attention(34320, heads, budget)[1] <= budget
+    assert plan_vision_attention(65536, heads, budget)[1] <= budget
+
+
+def test_vision_tile_plan_uses_one_tile_when_it_fits() -> None:
+    """Small grids must keep the single dense tile, not be split for nothing."""
+
+    from hipengine.runtime.surya import plan_vision_attention
+
+    heads = 12
+    # 4096 patches x 12 heads x 4 B = 196 KiB per query row; the whole grid is
+    # 805 MiB, so a 1 GiB budget keeps it in one tile and a 512 MiB budget must
+    # split it
+    dense = heads * 4096 * 4096 * 4
+    block, scratch = plan_vision_attention(4096, heads, 1024 * _MIB)
+    assert block == 4096
+    assert scratch == dense
+
+    block, scratch = plan_vision_attention(4096, heads, 512 * _MIB)
+    assert 1 <= block < 4096
+    assert scratch == heads * 4096 * block * 4 <= 512 * _MIB
+
+
+def test_vision_tile_plan_honors_a_disabled_budget() -> None:
+    from hipengine.runtime.surya import plan_vision_attention
+
+    block, scratch = plan_vision_attention(4096, 12, None)
+    assert block == 4096
+    assert scratch == 12 * 4096 * 4096 * 4
+
+
+def test_vision_tile_plan_shrinks_to_one_row_under_a_tiny_budget() -> None:
+    from hipengine.runtime.surya import plan_vision_attention
+
+    heads, n = 12, 4096
+    block, scratch = plan_vision_attention(n, heads, heads * n * 4)
+    assert block == 1
+    assert scratch == heads * n * 4
+    # below a single row there is nothing left to give: the plan still returns
+    # a valid tile and the caller's admission check is what rejects the grid
+    block, scratch = plan_vision_attention(n, heads, 1)
+    assert block == 1
+    assert scratch == heads * n * 4
+
+
+def test_gpu_factory_declares_the_budgets_it_honors() -> None:
+    """The registered factory must not swallow capacity configuration.
+
+    ``LLM._factory_capacity_kwargs`` forwards a limit only to a factory that
+    declares the parameter by name. ``make_surya_generator_gpu`` used to take
+    ``**_kwargs``, so ``LLM(max_sequence_length=...)`` was silently dropped and
+    the runner stayed at its 2048-token default — below the 8580 image tokens
+    a 300-DPI A4 page needs.
+    """
+
+    import inspect
+
+    from hipengine.generation.surya_gpu import make_surya_generator_gpu
+    from hipengine.llm import _factory_capacity_kwargs
+
+    parameters = inspect.signature(make_surya_generator_gpu).parameters
+    assert "max_sequence_length" in parameters
+    assert "vision_max_scratch_bytes" in parameters
+
+    forwarded = _factory_capacity_kwargs(
+        make_surya_generator_gpu,
+        max_sequence_length=16384,
+        resident_capacity=None,
+        vision_max_scratch_bytes=256 * _MIB,
+    )
+    assert forwarded["max_sequence_length"] == 16384
+    assert forwarded["vision_max_scratch_bytes"] == 256 * _MIB
+
+
 def _settings(**overrides) -> SuryaGreedySettings:
     base = dict(
         max_tokens=4,

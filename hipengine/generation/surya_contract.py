@@ -114,15 +114,27 @@ def resolve_surya_greedy_settings(request: Any, spec: Any) -> SuryaGreedySetting
     )
 
 
-def check_prompt_capacity(prompt_len: int, max_tokens: int, max_seq: int) -> None:
-    """Reject a request whose prompt plus output cannot fit in the context."""
+def check_prompt_capacity(
+    prompt_len: int,
+    max_tokens: int,
+    max_seq: int,
+    *,
+    hint: str | None = None,
+) -> None:
+    """Reject a request whose prompt plus output cannot fit in the context.
+
+    ``hint`` names the knob that raises the limit, so the failure says what to
+    change instead of only what did not fit.
+    """
 
     if prompt_len <= 0:
         raise SuryaRequestError("prompt produced no tokens")
     if prompt_len + max_tokens > max_seq:
+        suffix = "" if hint is None else f"; {hint}"
         raise SuryaRequestError(
             f"prompt ({prompt_len}) + max_tokens ({max_tokens}) exceeds the "
-            f"runner context capacity ({max_seq}); reduce the prompt or max_tokens"
+            f"runner context capacity ({max_seq}); reduce the prompt or "
+            f"max_tokens{suffix}"
         )
 
 
