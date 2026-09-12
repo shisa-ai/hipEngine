@@ -198,51 +198,72 @@ not as an automatic verifier default.
 
 For every retained prefill owner, classify its verifier behavior:
 
-- [ ] **Direct transfer:** the same resident, layout, kernel family, and
-  dispatch are efficient at verifier rows.
-- [ ] **Verifier sibling:** the same resident/layout is retained, but a
-  small-row or row-tile kernel is required.
-- [ ] **Prefill-only:** the route is efficient for large M but loses at
-  verifier rows and remains scoped to prefill.
-- [ ] **Shared bottleneck:** both paths lose; optimize the underlying
-  resident, decoder, or consumer before adding another dispatch.
-- [ ] **Non-transferable:** ownership, arithmetic, or ABI constraints make
-  reuse invalid; document the reason and retain the qualified fallback.
+- [x] **Direct transfer:** the same resident, layout, kernel family, and
+  dispatch are efficient at verifier rows. Q4_K/Q5_K/Q6_K/Q8_0 (rowtile),
+  norm/residual, gate/up SiLU, and attention/GDN.
+- [x] **Verifier sibling:** the same resident/layout is retained, but a
+  small-row or row-tile kernel is required. IQ4_XS/IQ4_NL/IQ3_S/IQ3_XXS/
+  IQ2_S/IQ2_XS: the rows==1 local32 owner already wins 2.0-7.4x at rows 2-4.
+- [x] **Prefill-only:** the route is efficient for large M but loses at
+  verifier rows and remains scoped to prefill. The W4A16 IQ prefill owner
+  loses at rows 2-4 on every IQ quant and wins from 8-16 rows.
+- [x] **Shared bottleneck:** none found. The dominant loss is local to one
+  kernel family, not shared across residents or consumers.
+- [x] **Non-transferable:** none found. Q3_K is *not* non-transferable; it
+  needs a verifier sibling that does not exist yet.
 
 Measure each classification with the same tensor and resident where possible:
 
 | Measurement | Required values |
 | --- | --- |
-| Prefill M | representative retained prefill M values |
-| Verifier rows | 2, 4, 8, 12, 16, 28, and 32 where supported |
-| Physical decomposition | actual row tiles and remainder launches |
-| Kernel family | selected registry key and kernel name |
-| Launch count | per logical target-verification transition |
-| Device time | total and time per logical output row |
-| Residency | source format, resident layout, expansion status, sidecars |
-| Correctness | strict/production gate, KL, top-1, repeatability |
+| Prefill M | representative retained prefill M values. Rows 1-128 were swept. |
+| Verifier rows | 2, 4, 8, 12, 16, 28, and 32 where supported. The production
+  verifier is capped at four rows, so 2 and 4 are the verifier shapes; 8-32
+  are the prefill crossover. |
+| Physical decomposition | actual row tiles and remainder launches. The strict
+  GEMV does not retile by row; it decodes once per output block. |
+| Kernel family | selected registry key and kernel name. Recorded per family. |
+| Launch count | per logical target-verification transition. 135 IQ strict
+  launches/step at rows 4. |
+| Device time | total and time per logical output row. Recorded. |
+| Residency | source format, resident layout, expansion status, sidecars. Raw
+  IQ blocks, no expansion. |
+| Correctness | strict/production gate, KL, top-1, repeatability. Per-cell max
+  relative error <= 5.4e-3; the production gate is Phase 3. |
 
 Prioritize the families already implicated by the gfx1151 differential
 evidence:
 
-- [ ] Q6 lm-head and other wide-Q6 verifier sweeps.
-- [ ] Q5 `ssm_out` and selected-expert/direct Q5 consumers.
-- [ ] Q4/IQ gate-up and SiLU paths.
-- [ ] IQ4_XS, IQ4_NL, IQ3_S, IQ3_XXS, and IQ2_S small-row consumers.
-- [ ] Norm, residual, activation, and logits work surrounding the GEMMs.
-- [ ] Row packing, launch reuse, and graph synchronization between those
-  consumers.
+- [x] Q6 lm-head and other wide-Q6 verifier sweeps. Direct transfer
+  (`q6_k_t16_qmicro_planar_gemv_rowtile_col8`).
+- [x] Q5 `ssm_out` and selected-expert/direct Q5 consumers. The Q5_K
+  gate/up dual already runs the WMMA prefill kernel at verifier rows and is
+  the cheapest gate/up arm measured. The selected/direct tail
+  (`qk_t16_selected_direct_gemv`, 0.6% of kernel time) is classified from the
+  census, not re-measured.
+- [x] Q4/IQ gate-up and SiLU paths. Direct transfer.
+- [x] IQ4_XS, IQ4_NL, IQ3_S, IQ3_XXS, and IQ2_S small-row consumers.
+  Verifier sibling required; headroom measured.
+- [x] Norm, residual, activation, and logits work surrounding the GEMMs.
+  Direct transfer.
+- [x] Row packing, launch reuse, and graph synchronization between those
+  consumers. No per-row-tile weight rescan, so the sibling keeps the same
+  135 launches/step and only cuts per-launch cost.
 
 For each transferred candidate:
 
-- [ ] Confirm UD and plain select comparable resident/layout routes.
-- [ ] Confirm the optimized route is not accidentally selected only for one
-  artifact or fixed prompt.
-- [ ] Compare the prefill winner against the current verifier owner at every
-  declared row shape.
-- [ ] Check whether the verifier is rescanning the same weights per row tile.
-- [ ] Check whether a batched owner reduces launches without changing exact
-  ownership, masks, or rollback semantics.
+- [x] Confirm UD and plain select comparable resident/layout routes. Both
+  arms run the same t16 rowtile kernels for Q4_K/Q5_K/Q6_K/Q8_0.
+- [x] Confirm the optimized route is not accidentally selected only for one
+  artifact or fixed prompt. `GGUF_IQ_DENSE_PREFILL_POLICY` is keyed by quant
+  and rows only.
+- [x] Compare the prefill winner against the current verifier owner at every
+  declared row shape. Rows 1-128 swept for all seven IQ quants.
+- [x] Check whether the verifier is rescanning the same weights per row tile.
+  No: the strict GEMV's time is flat from rows 1 to 4.
+- [x] Check whether a batched owner reduces launches without changing exact
+  ownership, masks, or rollback semantics. It does not reduce launches here;
+  the win is per-launch decode cost.
 - [ ] Add a focused RED test for the row-shape/dispatch contract.
 - [ ] Keep the existing strict verifier fallback registered.
 - [ ] Capture a kernel trace showing the intended owner actually ran.
@@ -268,6 +289,23 @@ This phase is complete only when every important prefill owner is classified as
 direct transfer, verifier sibling, prefill-only, shared bottleneck, or
 non-transferable. Unknown transfer behavior is an attribution gap, not a
 negative result.
+
+**Result (2026-09-12, physical GPU1 / RX 7900 XTX / gfx1100).** Every
+important dense owner is classified. The rowtile family, norm/residual, gate/up
+SiLU, and attention/GDN transfer directly. The W4A16 IQ prefill owner is
+prefill-only: it loses at rows 2-4 on all seven IQ quants (0.21x-0.74x) and
+wins from 8-16 rows. The IQ family needs a verifier sibling, and the rows==1
+local32 decode owner already beats the strict per-row GEMV by **2.0-7.4x at
+rows 2-4** on the same tensors, so the sibling is a small-row geometry of an
+already-admitted owner. A rows 2-4 sibling covers **94.1% (K_M) / 85.9%
+(K_S)** of the dead-zone MACs; Q3_K (2.28% / 8.57%) has no rows==1 owner and
+needs separate work. The strict GEMV is weight-decode-bound, not row-bound (its
+time is flat from rows 1 to 4), so there is no per-row-tile rescan and launch
+reduction is not the lever. Evidence:
+`benchmarks/results/2026-09-12-ud-gfx1100-phase2-owner-transfer.json`,
+`worklog/entries/20260912T081726.905837Z-lhl-ud-phase2-owner-transfer-67c4cc.md`.
+The candidate/result table below is filled by Phase 4 (local transfer effect)
+and Phase 6 (full economics).
 
 ### Phase 3: Establish the teacher-forced numerical gate
 
