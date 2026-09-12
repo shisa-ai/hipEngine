@@ -7,8 +7,14 @@ The single current statement of what is promoted and what is not lives in
 [`SERVER-DIRECT-PARITY-ROADMAP.md` §1.1](SERVER-DIRECT-PARITY-ROADMAP.md#11-execution-status).
 Sections of this campaign document that predate the 2026-09-11 promotion
 describe the earlier physical-C1 state and are kept as history, not as current
-status: the ledger rows for `IKV-C3`..`IKV-C7` remain `blocked`, and `IKV-C2`'s
-promotion covers eager physical-C4 decode only. INT8 KV decode graphs are
+status: the ledger rows for `IKV-C3`..`IKV-C7` remain `blocked` or `partial`,
+and `IKV-C2`'s promotion covers eager physical-C4 decode only. Since that
+promotion, `IKV-C3`'s implementation landed and was promoted to the default
+path on 2026-09-11 (`117ca5cab` one shared BF16 oracle pair per session,
+`7444dd705` layer-outer packed prefill promotion); its c2/c4 memory-positive
+gate is still open, so the row reads `partial` rather than `completed`.
+`IKV-C6`'s C1 capacity bracket is complete at 155,648+ declared context
+(`c7eb76b88`). INT8 KV decode graphs are
 default-off and native sampling on the resumable INT8 route is blocked.
 
 Planning baseline was local commit `c791ca3c9`; merge commit `6cff90213`
@@ -487,10 +493,10 @@ failure in a completed broad run, follow the focused-repair rule in
 | IKV-C0 integration + capability identity | `completed` | approved campaign | passing/rejected/unknown identities resolve correctly |
 | IKV-C1 compact serial c>N | `completed` | C0 | no-mirror c2/c4 lifecycle exact |
 | IKV-C2 row-batched INT8 attention | `completed and promoted` | C0, C1 oracle | CPU/model/trace gates pass |
-| IKV-C3 shared prefill ownership | `blocked` | C1/C2 measured ownership | c2/c4 remains memory-positive |
+| IKV-C3 shared prefill ownership | `partial` — implementation landed and promoted to default 2026-09-11 (`117ca5cab`, `7444dd705`); c2/c4 memory-positive gate open | C1/C2 measured ownership | c2/c4 remains memory-positive |
 | IKV-C4 complete admission | `blocked` | C3 byte plan | pressure rejects before OOM and recovers |
 | IKV-C5 lifecycle/telemetry | `blocked` | C2-C4 | cancellation/grow/shrink/overload matrix passes |
-| IKV-C6 quality/capacity | `blocked` | C2-C5 | artifact-scoped complete gates pass |
+| IKV-C6 quality/capacity | `partial` — C1 capacity bracket complete at 155,648+ (`c7eb76b88`); quality suites and c2/c4/c8 brackets open | C2-C5 | artifact-scoped complete gates pass |
 | IKV-C7 economics/promotion | `blocked` | C6 | retained decision and cleanup published |
 
 The **IKV-C2** kernel and its runtime integration already existed in-tree:
