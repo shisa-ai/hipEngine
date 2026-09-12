@@ -63,12 +63,16 @@ in [`benchmarks/CHANGELOG.md`](benchmarks/CHANGELOG.md).
   host, so a `reasoning_effort` request can stay on the exact speculative route;
   `hard` keeps full enforcement and decodes such requests normally instead. The
   policy actually used is reported in the response.
-- **Pick a kernel plan explicitly.** `LLM(execution_profile=...)`,
-  `--execution-profile`, and `HIPENGINE_EXECUTION_PROFILE` accept `strict`,
-  `production`, or `batch_invariant`. hipEngine checks that the plan's kernels
-  and their plain-decoding fallbacks are installed, refuses an unregistered
-  combination instead of guessing one, and reports the plan's hash in server
-  metadata. Leave it unset to keep the behaviour you had in v0.4.0.
+- **Pick a kernel plan explicitly, and get the fast one by default.**
+  `LLM(execution_profile=...)`, `--execution-profile`, and
+  `HIPENGINE_EXECUTION_PROFILE` accept `strict`, `production`, or
+  `batch_invariant`. hipEngine checks that the plan's kernels and their
+  plain-decoding fallbacks are installed, refuses an unregistered combination
+  instead of guessing one, and reports the plan's hash in server metadata.
+  Leaving it unset now selects `production` for every model, backend, and
+  quantization with a certified plan, so a default run gets the measured fast
+  composition instead of the exact one; models with no certified plan keep
+  their previous behaviour. Use `strict` for exact arithmetic.
 - **Controls for the GGUF speculative path.**
   `HIPENGINE_GGUF_MTP_VERIFY_MODE` chooses the fast candidate checker (`native`,
   the default) or the one that replays normal decoding for each candidate and

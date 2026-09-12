@@ -343,6 +343,12 @@ hipEngine exposes exactly three execution profiles:
   slots, neighbors, batch widths, admission order, cancellation, and
   compaction. Its first implementation may reuse strict variants.
 
+An omitted profile resolves to `production` for a model, backend, and
+quantization combination with a certified production plan, and keeps the
+pre-profile migration path otherwise. `strict` stays the exact oracle and is
+always selectable. See [EXECUTION-PROFILES.md](EXECUTION-PROFILES.md) §2.1 for
+the registered combinations and the default decision.
+
 Execution profile is orthogonal to model weights, quant, KV storage, sampling,
 and speculative policy. Weight/KV representation changes and approximate
 routing, acceptance, or sampling remain explicit product/experiment choices.

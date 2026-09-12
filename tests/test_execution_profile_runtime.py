@@ -239,7 +239,7 @@ def test_runtime_profile_resolution_rejects_missing_strict_or_unregistered_varia
         )
 
 
-def test_llm_explicit_profile_constructs_from_resolved_plan_without_changing_legacy_default(
+def test_llm_explicit_profile_constructs_from_resolved_plan_and_strict_only_keeps_migration_path(
     monkeypatch,
 ) -> None:
     import hipengine.generation as generation
@@ -331,6 +331,164 @@ def test_llm_explicit_profile_constructs_from_resolved_plan_without_changing_leg
     assert legacy.resolved_execution_profile is None
     assert legacy.execution_profile_manifest is None
     assert calls == ["strict", "legacy"]
+
+
+def test_llm_omitted_profile_defaults_to_production_for_a_certified_combination(
+    monkeypatch,
+) -> None:
+    import hipengine.generation as generation
+
+    _register_kernel("strict_exact")
+    _register_kernel("production_online")
+    calls: list[str] = []
+
+    class FakeGenerator:
+        def __init__(self, source: str) -> None:
+            self.source = source
+
+        def generate(self, request: GenerationRequest) -> list[str]:
+            return [f"{prompt}:{self.source}" for prompt in request.prompts]
+
+    def legacy_factory(**kwargs):
+        del kwargs
+        calls.append("legacy")
+        return FakeGenerator("legacy")
+
+    def strict_factory(**kwargs):
+        del kwargs
+        calls.append("strict")
+        return FakeGenerator("strict")
+
+    def production_factory(**kwargs):
+        del kwargs
+        calls.append("production")
+        return FakeGenerator("production")
+
+    monkeypatch.setattr(generation, "register_builtin_generators", lambda: None)
+    register_text_generator(
+        model="profile_default_llm",
+        backend="profile_test_backend",
+        quant="profile_test_quant",
+        factory=legacy_factory,
+        replace=True,
+    )
+    register_runtime_profile_plan(
+        model="profile_default_llm",
+        backend="profile_test_backend",
+        quant="profile_test_quant",
+        profile="strict",
+        plan=RuntimeProfilePlan(
+            selections=(_selection("strict_exact", "strict_exact"),),
+            kv_policy="request_resolved",
+            graph_policy="shape_bucketed",
+            factory=strict_factory,
+        ),
+        replace=True,
+    )
+    register_runtime_profile_plan(
+        model="profile_default_llm",
+        backend="profile_test_backend",
+        quant="profile_test_quant",
+        profile="production",
+        plan=RuntimeProfilePlan(
+            selections=(_selection("production_online", "strict_exact"),),
+            kv_policy="request_resolved",
+            graph_policy="shape_bucketed",
+            factory=production_factory,
+        ),
+        replace=True,
+    )
+    plugin = SimpleNamespace(
+        name="profile_default_llm", default_quant="profile_test_quant"
+    )
+    index = SimpleNamespace(model_path="/tmp/profile-default-test", config={})
+
+    default = LLM(
+        "/tmp/profile-default-test",
+        backend="profile_test_backend",
+        quant="profile_test_quant",
+    )
+    monkeypatch.setattr(default, "_load_model_metadata", lambda: (index, plugin))
+    strict = LLM(
+        "/tmp/profile-default-test",
+        backend="profile_test_backend",
+        quant="profile_test_quant",
+        execution_profile="strict",
+    )
+    monkeypatch.setattr(strict, "_load_model_metadata", lambda: (index, plugin))
+
+    assert default.execution_profile is None
+    assert default.generate("hello", SamplingParams(max_tokens=1)) == ["hello:production"]
+    assert default.resolved_execution_profile == "production"
+    assert default.execution_profile_fell_back_to_strict is False
+    assert default.execution_profile_manifest["execution_profile"] == "production"
+    assert default._text_generator.execution_profile == "production"
+
+    assert strict.generate("hello", SamplingParams(max_tokens=1)) == ["hello:strict"]
+    assert strict.resolved_execution_profile == "strict"
+    assert strict.execution_profile_fell_back_to_strict is False
+    assert calls == ["production", "strict"]
+
+
+def test_default_profile_resolution_needs_a_certified_production_plan() -> None:
+    from hipengine.execution_profiles import resolve_default_execution_profile
+
+    _register_kernel("strict_exact")
+
+    def strict_factory(**kwargs):
+        return SimpleNamespace(factory="strict", kwargs=kwargs)
+
+    register_runtime_profile_plan(
+        model="profile_default_unit",
+        backend="profile_test_backend",
+        quant="profile_test_quant",
+        profile="strict",
+        plan=RuntimeProfilePlan(
+            selections=(_selection("strict_exact", "strict_exact"),),
+            kv_policy="request_resolved",
+            graph_policy="shape_bucketed",
+            factory=strict_factory,
+        ),
+        replace=True,
+    )
+    assert (
+        resolve_default_execution_profile(
+            model="profile_default_unit",
+            backend="profile_test_backend",
+            quant="profile_test_quant",
+        )
+        is None
+    )
+    assert (
+        resolve_default_execution_profile(
+            model="profile_default_unknown",
+            backend="profile_test_backend",
+            quant="profile_test_quant",
+        )
+        is None
+    )
+
+    register_runtime_profile_plan(
+        model="profile_default_unit",
+        backend="profile_test_backend",
+        quant="profile_test_quant",
+        profile="production",
+        plan=RuntimeProfilePlan(
+            selections=(_selection("strict_exact", "strict_exact"),),
+            kv_policy="request_resolved",
+            graph_policy="shape_bucketed",
+            factory=strict_factory,
+        ),
+        replace=True,
+    )
+    assert (
+        resolve_default_execution_profile(
+            model="profile_default_unit",
+            backend="profile_test_backend",
+            quant="profile_test_quant",
+        )
+        is ExecutionProfile.PRODUCTION
+    )
 
 
 def test_profile_request_normalization_and_server_cli_env(monkeypatch) -> None:

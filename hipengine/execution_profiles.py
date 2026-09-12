@@ -311,6 +311,37 @@ def resolve_requested_execution_profile(
     return _profile(str(raw).strip())
 
 
+def resolve_default_execution_profile(
+    *,
+    model: str,
+    backend: str,
+    quant: str,
+) -> ExecutionProfile | None:
+    """Return the shipped default profile for a registered combination.
+
+    A combination with both a registered strict plan and a certified production
+    plan runs ``production`` when the caller requests no profile. Anything else
+    returns ``None``, which keeps the migration path: the pre-profile package
+    selection, which is not a fourth named profile.
+    """
+
+    model_key = _nonempty(model, field="model")
+    backend_key = _nonempty(backend, field="backend")
+    quant_key = _nonempty(quant, field="quant")
+    for profile in (ExecutionProfile.PRODUCTION, ExecutionProfile.STRICT):
+        if (
+            RuntimeProfileKey(
+                model=model_key,
+                backend=backend_key,
+                quant=quant_key,
+                profile=profile,
+            )
+            not in _RUNTIME_PROFILE_PLANS
+        ):
+            return None
+    return ExecutionProfile.PRODUCTION
+
+
 def register_runtime_profile_plan(
     *,
     model: str,
@@ -570,6 +601,7 @@ __all__ = [
     "manifest_sha256",
     "register_runtime_profile_plan",
     "registered_runtime_profile_keys",
+    "resolve_default_execution_profile",
     "resolve_requested_execution_profile",
     "resolve_runtime_profile",
     "restore_runtime_profile_registry_for_tests",
