@@ -437,7 +437,9 @@ eight cover the SPECDEC2 verifier (`GGUF_SPECDEC2_*`), and two are unclassified
 One of the prefill eight is not this artifact's: the raw-K prefill family admits
 quants `{gguf_q8_0, gguf_q5_k, gguf_q6_k}` and never `gguf_q4_k_t16_v1`, so
 `GGUF_RAW_K_PREFILL_ROLE_VARIANTS` is N/A for Qwen3.8-27B `Q4_K_M` and matters
-only to raw-Q5/Q6 artifacts.
+only to raw-Q5/Q6 artifacts. Every one of the 18, plus
+`GGUF_SPECDEC2_MTP2_PHYSICAL_C1`, now carries a gfx1151 verdict in section K's
+ledger; that ledger is the replacement for this paragraph's grouping.
 
 ### The geometry pin is in shared device source, not in a package
 
@@ -602,17 +604,19 @@ is safe and the limitation is explicit.
 
 ### Optimization transfer decisions still open
 
-- [ ] **Give all 18 gfx1100-only capability settings a gfx1151 verdict.**
-  Section I's ledger remains open: record qualified, rejected with evidence,
-  pending a named gate, or N/A for this artifact. Prioritize applicable dense
-  prefill pair/rows6/row48 settings, scratch liveness, F16 rocBLAS settings,
-  and verifier settings. Do not treat MoE/raw-quant-only settings as dense
-  Q4_K_M gaps, and do not copy W7900 thresholds wholesale.
+- [x] **Give all 18 gfx1100-only capability settings a gfx1151 verdict.**
+  Closed by the section K ledger, which covers those 18 plus
+  `GGUF_SPECDEC2_MTP2_PHYSICAL_C1`: qualified, rejected with evidence, pending a
+  named gate, or N/A for this artifact, one row per name. The applicable dense
+  prefill pair/row48 settings, scratch liveness, the three F16 rocBLAS settings,
+  and the verifier settings are all in it, and no W7900 threshold was copied.
   Re-review the [unequal Q4 pair decision](../worklog/entries/20260815T191659.162367Z-pi-qwen38-gfx1151-p4-unequal-q4-pair-69a5bb.md):
   its exact positive leaf screen was declined before integration solely
-  below a projected 1% request-saving threshold. Today's small-win policy
-  warrants an integrated non-regression decision, not automatic rejection
-  under that historical threshold.
+  below a projected 1% request-saving threshold. The ledger's verdict for that
+  setting is "declined" on the gfx1151 default, so today's small-win policy
+  still warrants an integrated non-regression decision rather than automatic
+  rejection under that historical threshold — the ledger records the reopen
+  condition, it does not settle the measurement.
 - [ ] **Finish the three dense-path registry decisions.** The excluded keys
   in section H are still excluded: Q4 col4 rowtile, Q4 rowtile+residual,
   fused alpha/beta+conv+snapshot, chunked state-pair copy, and N1 graph
@@ -827,17 +831,20 @@ each other.
   also that this host holds `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`, while the W7900
   MoE rows are standard `Q4_K_M` — a different artifact, so re-measure rather
   than inherit.
-- [ ] gfx1100-only capability settings (sections I/J) — stays, and the ledger is
-  one name larger than either section states. Derived at this commit over
-  `hipengine/**/*.py`: **47** `GGUF_*` names are defined on gfx1100 and absent
-  on gfx1151; **19** of those are live-read through
+- [x] gfx1100-only capability settings (sections I/J) — **closed**, all 19
+  names now carry a gfx1151 verdict in the ledger below. Derived at this commit
+  over `hipengine/**/*.py`: **47** `GGUF_*` names are defined on gfx1100 and
+  absent on gfx1151; **19** of those are live-read through
   `backend_package_capability` anywhere in the package, and
   `GGUF_SPECDEC2_MTP2_PHYSICAL_C1` (`generation/qwen35_gguf_mtp2.py`) is missing
   from section J's list of 18. The other 28 sit in the gfx1100 package's
   `__all__` without being read that way; most are internal composition blocks
   folded into a parent policy in the same file (`GGUF_Q5_F32_ORDERED_PREFILL_H7G_POLICY`
-  is merged into a combined policy a few lines below its definition). Give all
-  19 a gfx1151 verdict. With the MoE lane in scope, section J's "do not treat
+  is merged into a combined policy a few lines below its definition). The
+  section's defect (section I: no gfx1100-only name appears anywhere in the
+  gfx1151 package) is answered by the ledger below, which records a verdict for
+  all 19 and why the ledger is written in this document rather than in the
+  package. With the MoE lane in scope, section J's "do not treat
   MoE/raw-quant-only settings as dense `Q4_K_M` gaps" now applies only to the
   primary dense artifact, not to Qwen3.6-35B-A3B.
 - [ ] Three dense-path registry decisions (sections H/J) — stays.
@@ -869,6 +876,84 @@ decode, so this is not a topline move. The gate harness also needed a fix: the
 batch diagnostic created an `LLM` per arm without closing it, so multi-arm runs
 leaked a full model each and triggered a host-wide OOM kill.
 
+### gfx1100-only capability ledger: one gfx1151 verdict per name (2026-09-12)
+
+Nineteen `GGUF_*` capability names are defined on gfx1100, absent on gfx1151,
+and live-read through `backend_package_capability` somewhere in the package.
+This is the section I defect closed: none of them appeared in the gfx1151
+package, so each absence read as an ordinary call-site default. Each now has a
+gfx1151 verdict below. Nothing in this pass changes a shipped value.
+
+The ledger is written here rather than as an inline comment in the gfx1151
+package on purpose: four tests pin that package's bytes
+(`test_unit_laguna_h8a_source_default`, `test_unit_laguna_h8b_source_default`,
+`test_gpu_laguna_h7u_parallel_moe_compaction`,
+`test_gpu_laguna_h7y_swa_lane_major_cache`), so an inline ledger would force a
+re-pin of four other campaigns' source audits for a comment-only change.
+`tests/test_unit_gfx1151_backend.py::test_gfx1151_capability_ledger_covers_gfx1100_only_live_reads`
+keeps this table and the live-read set in step instead.
+
+Verdict vocabulary: **N/A** means the name cannot select anything on gfx1151;
+**declined** means the gfx1151 default disables a W7900-measured optimization
+and the retained owner runs instead. Every declined row is fail-closed (the
+call site's default is the conservative value) and every row names its reopen
+condition. Reachability is stated against the two in-scope artifacts: Qwen3.8-27B
+`Q4_K_M` dense and Qwen3.6-35B-A3B `UD-Q4_K_M`.
+
+| Name | gfx1151 read | What runs instead | Verdict |
+| --- | --- | --- | --- |
+| `GGUF_Q4_T16_GROUPED_PAIR_ROWS6_POLICY` | `{}` — and unreachable | its only call site is nested inside the absent `GGUF_SPECDEC2_TARGET_VERIFY_PAD_ROW_COUNTS` gate, so no gfx1151 route reaches it; the rows6 sibling is registered but unselectable | N/A |
+| `GGUF_Q4_T16_UNEQUAL_PAIR_PREFILL_POLICIES` | `{}` → identity miss | retained pair route; `dense_unequal_dual_wmma_prefill_bf16_bf16_out` is registered but never selected | declined |
+| `GGUF_Q4_DUAL_SILU_PREFILL_ROW48_MAX_ROWS` | `0` → rows 33-48 fall to `rows <= 64` | `dense_dual_wmma_prefill_row64_bf16_bf16_out` instead of the row48 variant (registered, unreachable) | declined |
+| `GGUF_DENSE_PREFILL_SCRATCH_LIVENESS_POLICIES` | `{}` → `None` | no scratch liveness aliasing (more scratch, no arithmetic change) | declined |
+| `GGUF_RAW_K_PREFILL_ROLE_VARIANTS` | `{}` | computed `coltile*_rowbatch*` geometry; all three W7900 entries are `gguf_q6_k`, whose raw coltile family gfx1151 declines upstream | N/A |
+| `GGUF_T16_F16_ROCBLAS_SOLUTION_VERSION_PREFIX` | `""` → guard fails | the F16 rocBLAS pair route is not selected; its kernel is not registered on gfx1151 | N/A |
+| `GGUF_T16_F16_ROCBLAS_SOLUTION_INDICES` | `{}` | as above; the indices are keyed to one rocBLAS build hash | N/A |
+| `GGUF_T16_F16_ROCBLAS_PAIR_ONLY_POLICIES` | `{}` | as above | N/A |
+| `GGUF_C8_Q5_RAW_MMQ_SSM_OUT` | `False` | C8 Q5-K MMQ SSM-out route closed; `q5_raw_mmq_target_session` gets no library and the retained owner runs | declined |
+| `GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS_BY_MAX_SEQUENCE_LENGTH` | `{}` | gfx1151's own flat `GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS = 8` | N/A |
+| `GGUF_SPECDEC2_MTP2_PHYSICAL_C1` | `False` | legacy singleton; the call site's own comment records that gfx1151 evidence retains it | declined |
+| `GGUF_SPECDEC2_PRODUCTION_PHYSICAL_PROMPT_STREAMING` | `False` | no production prompt streaming | declined |
+| `GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXTRA_ROWTILE_SHAPES` | `()` | no extra verifier rowtile shapes | declined |
+| `GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q5_ROWTILE_ROWS` | `()` | no Q5 verifier rowtiles | declined |
+| `GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q6_ROWTILE_ROWS` | `()` | no Q6 verifier rowtiles | declined |
+| `GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q6_MIXED_ROWTILE_CHUNKS` | `{}` | doubly off: also ANDed with the Q6 rowtile name above | declined |
+| `GGUF_SPECDEC2_TARGET_VERIFY_PAD_ROW_COUNTS` | `()` | no padded target-verify row counts | declined |
+| `GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXACT_ROWTILE_ROWS` | `()` | no exact-rowtile target rows | declined |
+| `GGUF_SPECDEC2_NATIVE_TARGET_CACHE_CAPACITY_POLICIES` | `()` | gfx1151's own `GGUF_SPECDEC2_NATIVE_TARGET_MAX_CONTEXT` / `_GRAPH_MAX_CONTEXT = 65544`, already the cache capacity | N/A |
+
+Three properties make the declined rows safe rather than gaps:
+
+- **Every one is fail-closed.** The call-site defaults are `False`, `()`, `{}`,
+  or `0`, so an absent name closes a route. No name in this set has a
+  permissive default that an absent definition could leave open.
+- **Every gated route has a registered owner on gfx1151.** The retained
+  rowtile16/pair/singleton/legacy-verifier owners are registered and are what
+  the gfx1151 evidence for these artifacts was measured on.
+- **The numeric rows are W7900-measured values that must not be copied.** The
+  rocBLAS solution indices are bound to one library build
+  (`5.2.0.dabb6df2b98`); the row48 crossover (rows 33-48) and the per-context
+  server admission (`{768: 13}`) are W7900 measurements, and the gfx1151
+  package already carries its own admission number.
+
+Named reopen conditions, one per declined group:
+
+| Group | Reopen when |
+| --- | --- |
+| Q4 prefill geometry (unequal pair, row48) | an independent gfx1151 crossover measurement at the affected shapes and row bands exists (the admitted rowtile qualifications above are the pattern: leaf screen plus complete-model token gate) |
+| Dense scratch liveness | an independent gfx1151 scratch-lifetime measurement reproduces the W7900 field set (`priority_min_rows`, `hidden_inplace_min_rows`, `priority_min_live_stages`) on the gfx1151 geometry/file-type identity |
+| C8 Q5 raw MMQ | an independent gfx1151 c=8 Q5-K SSM-out measurement |
+| SPECDEC2 production physical routes | a gfx1151 production-profile MTP verifier measurement on the full mtp-bench category suite |
+
+Two consequences are recorded rather than fixed. First, the gfx1151 package
+registers three variants that no gfx1151 policy can select
+(`dense_rowtile16_w2_grouped_rows6_bf16_bf16_out`,
+`dense_unequal_dual_wmma_prefill_bf16_bf16_out`, and
+`dense_dual_wmma_prefill_row48_bf16_bf16_out`): they are shared aliases, so the
+registration is inert rather than wrong, and it becomes reachable if a reopen
+condition above is met. Second, the dense scratch policy divergence is a memory
+observation, not a correctness one — no aliasing means more scratch, never less.
+
 ### Backlog (named reopen condition, no work this pass)
 
 - **A3** nasone32 RDNA3.5-guarded donors — the gfx1100 VDR rejection is the
@@ -881,9 +966,10 @@ leaked a full model each and triggered a host-wide OOM kill.
   non-regression only.
 - **D2** MTP numbers — governed by the gfx1151 scaling campaign's own-AR rule.
 - **Other gfx1100-only capability names outside the two artifacts.** 2 `PARO_*`
-  names are defined on gfx1100, absent on gfx1151, and — like the 47 `GGUF_*`
-  ones — carry no comment, constant, or exclusion entry anywhere in the gfx1151
-  package. This is the same defect class as the ledger above, outside this
-  release's two artifacts. No artifact that reaches those names is on this host,
-  so it is backlog by the rule above.
+  names are defined on gfx1100, absent on gfx1151, and — like the 28 `GGUF_*`
+  names that are not live-read — carry no comment, constant, or exclusion entry
+  anywhere in the gfx1151 package. This is the same defect class as the ledger
+  above, outside this release's two artifacts. No artifact that reaches those
+  names is on this host, so it is backlog by the rule above. The 19 live-read
+  `GGUF_*` names no longer fall in this class: the ledger above covers them.
 - **G2/G3** gfx1100 open items — gfx1100, out of scope.

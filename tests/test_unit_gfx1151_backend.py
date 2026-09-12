@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import inspect
 import json
+import re
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -3366,6 +3367,72 @@ def test_gguf_fused_linear_matching_uses_resident_backend() -> None:
         )
         == "q8_raw_dual"
     )
+
+
+def test_gfx1151_capability_ledger_covers_gfx1100_only_live_reads() -> None:
+    """Every gfx1100-only live-read capability name carries a written verdict.
+
+    A name defined on gfx1100 and absent on gfx1151 resolves to the call-site
+    default, so a gfx1151 regression from its absence is invisible in review.
+    The transfer audit's section K ledger therefore gives each one a gfx1151
+    verdict; this test keeps that ledger and the live-read set in step.
+
+    The ledger lives in the audit document rather than as an inline comment in
+    the gfx1151 package because four pinned-source tests
+    (``test_unit_laguna_h8a_source_default``, ``test_unit_laguna_h8b_source_default``,
+    ``test_gpu_laguna_h7u_parallel_moe_compaction``, ``test_gpu_laguna_h7y_swa_lane_major_cache``)
+    hash that package's bytes.
+    """
+
+    import hipengine
+
+    def assigned_names(path: Path) -> set[str]:
+        return set(
+            re.findall(r"^([A-Z][A-Z0-9_]+)\s*=", path.read_text(), re.MULTILINE)
+        )
+
+    package_root = Path(hipengine.__file__).parent
+    gfx1100_only = assigned_names(package_root / "kernels" / "hip_gfx1100" / "__init__.py")
+    gfx1100_only -= assigned_names(package_root / "kernels" / "hip_gfx1151" / "__init__.py")
+
+    live_read: set[str] = set()
+    for module_path in package_root.rglob("*.py"):
+        try:
+            tree = ast.parse(module_path.read_text())
+        except SyntaxError:  # pragma: no cover - defensive
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
+            if name != "backend_package_capability":
+                continue
+            for argument in node.args[1:]:
+                if isinstance(argument, ast.Constant) and isinstance(argument.value, str):
+                    live_read.add(argument.value)
+                    break
+
+    expected = {
+        name
+        for name in gfx1100_only & live_read
+        if name.startswith("GGUF_")
+    }
+    assert len(expected) == 19
+
+    ledger_path = (
+        Path(__file__).resolve().parents[1]
+        / "docs"
+        / "20260909-GFX1151-GFX1100-TRANSFER-AUDIT.md"
+    )
+    ledger_text = ledger_path.read_text()
+    ledger_start = ledger_text.index("### gfx1100-only capability ledger")
+    ledger_text = ledger_text[ledger_start:]
+    ledger_text = ledger_text[: ledger_text.index("\n### ", 1)]
+    ledger_names = set(
+        re.findall(r"^\| `(GGUF_[A-Z0-9_]+)` ", ledger_text, re.MULTILINE)
+    )
+    assert ledger_names == expected
 
 
 def test_gguf_runtime_has_no_literal_gfx1100_resolver_backend() -> None:
