@@ -120,12 +120,14 @@ def test_rich_chat_renders_status_reasoning_markdown_and_stats(monkeypatch: pyte
         return StreamResponse() if request.full_url.endswith("/chat/completions") else JsonResponse()
 
     monkeypatch.setattr("hipengine.chat_cli.urlopen", fake_urlopen)
-    lines = iter(["hi", "/retry", "/think high", "/temp abc", "/bogus", "/quit"])
+    lines = iter(["hi", "/status", "/retry", "/think high", "/temp abc", "/bogus", "/quit"])
     console = Console(file=io.StringIO(), theme=Theme(_THEME), width=100, record=True)
     settings = _Settings(build_parser().parse_args([]))
     chat = _RichChat(console, "http://x", "local-model", settings, read_line=lambda: next(lines))
     assert chat.loop() == 0
     text = console.export_text()
+    # the opening card and the /status redraw
+    assert text.count("176,128 tokens") == 2
     assert "176,128 tokens" in text and "concurrency auto" in text
     assert "thought for" in text
     assert "hello" in text and "**" not in text
@@ -133,6 +135,95 @@ def test_rich_chat_renders_status_reasoning_markdown_and_stats(monkeypatch: pyte
     assert "unknown command /bogus" in text
     assert "reasoning: high" in text and "expects a float" in text
     assert [turn["role"] for turn in chat.convo.turns] == ["user", "assistant"]
+
+
+@pytest.mark.parametrize("interrupt", [KeyboardInterrupt, EOFError])
+def test_rich_chat_loop_exits_on_ctrl_c_or_ctrl_d(
+    monkeypatch: pytest.MonkeyPatch, interrupt: type[BaseException]
+) -> None:
+    pytest.importorskip("rich")
+    from rich.console import Console
+    from rich.theme import Theme
+
+    from hipengine.chat_cli import _THEME, _RichChat, _Settings
+
+    class JsonResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self):
+            return json.dumps({"context": {}, "kv_capacity": {}}).encode()
+
+    monkeypatch.setattr("hipengine.chat_cli.urlopen", lambda request, timeout=None: JsonResponse())
+    console = Console(file=io.StringIO(), theme=Theme(_THEME), width=100, record=True)
+
+    def reader() -> str:
+        raise interrupt
+
+    chat = _RichChat(console, "http://x", "m", _Settings(build_parser().parse_args([])), read_line=reader)
+    assert chat.loop() == 0
+    assert "bye" in console.export_text()
+
+
+def test_prompt_toolkit_ctrl_c_clears_typed_input_before_quitting() -> None:
+    pytest.importorskip("prompt_toolkit")
+    from hipengine.chat_cli import _prompt_bindings
+
+    class Buffer:
+        def __init__(self, text: str) -> None:
+            self.text = text
+            self.resets = 0
+
+        def reset(self) -> None:
+            self.resets += 1
+            self.text = ""
+
+    class App:
+        def __init__(self) -> None:
+            self.exited = None
+            self.invalidated = 0
+
+        def exit(self, exception=None, style=None) -> None:
+            self.exited = exception
+
+        def invalidate(self) -> None:
+            self.invalidated += 1
+
+    class Event:
+        def __init__(self, text: str) -> None:
+            self.current_buffer = Buffer(text)
+            self.app = App()
+
+    handler = next(binding.handler for binding in _prompt_bindings().bindings if "c-c" in binding.keys)
+
+    typed = Event("a half-typed question")
+    handler(typed)
+    assert typed.app.exited is None
+    assert typed.current_buffer.text == ""
+    assert typed.current_buffer.resets == 1
+
+    empty = Event("")
+    handler(empty)
+    assert empty.app.exited is EOFError
+
+
+def test_prompt_toolkit_session_quits_on_ctrl_c() -> None:
+    pytest.importorskip("prompt_toolkit")
+    from prompt_toolkit.input import create_pipe_input
+    from prompt_toolkit.output import DummyOutput
+    from prompt_toolkit.shortcuts import PromptSession
+
+    from hipengine.chat_cli import _prompt_bindings
+
+    with create_pipe_input() as pipe:
+        pipe.send_text("a half-typed question\x03")  # first Ctrl-C clears the line
+        pipe.send_text("\x03")  # Ctrl-C at the empty prompt quits
+        session = PromptSession(input=pipe, output=DummyOutput(), key_bindings=_prompt_bindings())
+        with pytest.raises(EOFError):
+            session.prompt()
 
 
 def test_chat_settings_map_reasoning_and_sampling_to_request_fields() -> None:
