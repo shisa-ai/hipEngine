@@ -6,21 +6,38 @@ enforced at runtime by ``tests/_poison_probe.py`` (poison a device buffer with
 *source text* of an H2D upload and cannot be observed by running the code, so it
 is enforced here.
 
-Why the source rule needs a guard at all: on this stack the DMA of an *unpinned*
-host source reads the host buffer after ``hipMemcpy`` returns. A temporary
-inlined into the call can therefore be freed and recycled before the copy lands,
-and the destination silently receives stale heap bytes. The failure is
-heap-layout dependent, so it shows up as "this test passes alone and fails after
-another test" -- ``tests/test_surya_kv_spans.py`` did exactly that with 4
-denormal values in slots the scatter never writes. Nothing about the call site
-looks wrong, which is why it needs a lint rather than a review convention.
+Why the source rule needs a guard: ``copy_host_to_device`` takes a bare integer
+address, so the array has to outlive the call by itself. In
+``copy(buf, host_array_ptr(np.zeros_like(x)))`` CPython drops the temporary's
+last reference when ``host_array_ptr`` returns, so the array is already freed
+*before the copy is entered* -- measured on gfx1151, the freed block is handed
+straight back to the next same-size allocation at the same address, and the copy
+then reads whatever that allocation wrote. The failure is heap-layout dependent,
+so it shows up as "this test passes alone and fails after another test" --
+``tests/test_surya_kv_spans.py`` did exactly that with 4 denormal values in
+slots the scatter never writes. Nothing about the call site looks wrong, which is
+why it needs a lint rather than a review convention.
 
-Only *always*-allocating sources are flagged: ``np.zeros``/``np.ones``/
-``np.full``/``np.array``/``np.asarray``/``np.tile``/``.astype(...)``/``.copy()``
-and friends. ``host_array_ptr(np.ascontiguousarray(x))`` is deliberately *not*
-flagged: on a contiguous ``x`` it returns the same object and the caller keeps it
-alive, which is the common case. It is still a latent violation for a
-non-contiguous ``x``, and that residue is recorded in ``docs/REFACTOR.md``.
+The transfer itself does not need the source after it returns: overwriting the
+source in place immediately after ``copy_host_to_device`` returns leaves the
+destination untouched at 1, 16, 64, and 128 MiB on gfx1151. So a *named* local is
+sufficient, and the guard is about the missing reference, not about DMA timing.
+
+**This is a partial lint.** It flags an always-allocating call in the argument
+position, which is the form that can never be correct. It does not flag:
+
+- an allocating expression hidden under a view, e.g.
+  ``host_array_ptr(np.zeros(n).reshape(2, -1))`` (the ``reshape`` is the outer
+  call, and the allocation happens inside it);
+- ``host_array_ptr(np.ascontiguousarray(x))``, which copies only when ``x`` is
+  non-contiguous. Flagging it would mean editing ~100 call sites that are safe
+  as written, so the conditional case is recorded in ``docs/REFACTOR.md``
+  instead;
+- ``np.asarray`` on an array that is already the right dtype, which returns its
+  argument rather than allocating. It stays in the flagged set because the
+  cheap way to satisfy the lint (bind it to a local) is also correct for the
+  allocating case, and because a guard that silently misses a real allocation is
+  worse than one that asks for a local.
 """
 
 from __future__ import annotations
@@ -117,9 +134,9 @@ def _inline_temporary_uploads() -> list[str]:
 def test_unpinned_h2d_source_is_never_an_inline_temporary() -> None:
     offenders = _inline_temporary_uploads()
     assert not offenders, (
-        "these unpinned H2D copies use a same-statement temporary as the host source; "
-        "the DMA can read the freed buffer (docs/KERNELS.md \"Device-memory hygiene\"). "
-        "Hoist the array into a local and device_synchronize() before releasing it:\n  "
+        "these H2D copies use a same-statement temporary as the host source; the array "
+        "is freed when host_array_ptr returns, before the copy is entered "
+        "(docs/KERNELS.md \"Device-memory hygiene\"). Bind it to a local:\n  "
         + "\n  ".join(offenders)
     )
 
@@ -151,6 +168,34 @@ def test_the_lint_flags_the_pattern_it_is_meant_to_catch() -> None:
         assert not _is_always_allocating(node), sample
 
 
+def test_the_lint_is_documented_as_partial_and_its_gaps_are_pinned() -> None:
+    """Pin the known misses, so "partial lint" is a measured statement.
+
+    These are the forms the guard does *not* catch.  If one of them is ever
+    closed, this test fails and the docstring's list has to shrink with it --
+    the point is that the module never claims more coverage than it has.
+    """
+
+    known_misses = [
+        "np.zeros(8).reshape(2, -1)",   # allocation hidden under the outer call
+        "np.ascontiguousarray(x.T)",    # copies only when x.T is non-contiguous
+    ]
+    for sample in known_misses:
+        node = ast.parse(sample).body[0].value
+        assert not _is_always_allocating(node), (
+            f"{sample} is now flagged; remove it from the documented gaps in the "
+            "module docstring and from this list"
+        )
+    # A deliberate over-flag: np.asarray returns its argument when the dtype
+    # already matches, so this can be a false positive.  It stays flagged
+    # because binding it to a local is correct either way and a guard that
+    # misses a real allocation is worse than one that asks for a local.
+    assert _is_always_allocating(ast.parse("np.asarray(x)").body[0].value)
+    docstring = __doc__ or ""
+    for phrase in ("partial lint", "does not flag", "docs/REFACTOR.md"):
+        assert phrase in docstring, phrase
+
+
 @pytest.mark.parametrize("name", ["tests/_poison_probe.py"])
 def test_poison_probe_helper_is_present(name: str) -> None:
     """The runtime half of the hygiene rules must stay available to runners."""
@@ -178,9 +223,8 @@ def test_cached_dev_ptr_array_uploads_once_and_keeps_its_source_alive(
 
     The cache key is the whole pointer list, so a hit is already correct.  The
     pre-fix version re-uploaded on every call from a host array that went out of
-    scope when the method returned; on this stack the DMA of an unpinned source
-    reads the host buffer *after* ``hipMemcpy`` returns, so the device array
-    could receive stale heap bytes (``docs/KERNELS.md`` "Device-memory
+    scope when the method returned, so the array could be freed and its block
+    recycled before the copy read it (``docs/KERNELS.md`` "Device-memory
     hygiene").  Surya's twin of this method was already fixed; this pins Evie's.
 
     The upload count is the RED assertion: the fix is that a hit transfers

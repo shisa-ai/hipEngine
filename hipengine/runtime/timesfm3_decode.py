@@ -363,16 +363,16 @@ class TimesFM3GPUDecoder:
         dt = "f16" if self.precision == "fp16" else "f32"
         itemsize = 2 if self.precision == "fp16" else 4
 
-        # The host source of an unpinned H2D copy must outlive the transfer:
-        # on this stack the DMA reads it after ``copy_host_to_device`` returns,
-        # so an ``astype`` result inlined into the call can be freed and
-        # recycled first (docs/KERNELS.md "Device-memory hygiene").
+        # ``copy_host_to_device`` takes a bare address, so the source has to
+        # outlive the call: an ``astype`` result inlined into it is freed when
+        # ``host_array_ptr`` returns and the copy then reads recycled heap
+        # (docs/KERNELS.md "Device-memory hygiene").  Named locals are alive
+        # through the call, which is all the transfer needs -- it is complete on
+        # return, so no synchronization is required here.
         front_masked_i32 = np.ascontiguousarray(front_masked_host.astype(np.int32))
         copy_host_to_device(bufs.front_masked, host_array_ptr(front_masked_i32))
         pos_host = np.tile(np.arange(n, dtype=np.float32), (seq_batch, 1))
         copy_host_to_device(bufs.pos, host_array_ptr(np.ascontiguousarray(pos_host)))
-        # The copies above must have landed before these locals are released.
-        get_hip_runtime().device_synchronize()
 
         # Tokenizer ResidualBlock (ReLU, no biases).
         self._gemm(bufs.tok_in.ptr, self._w["tok_hidden"], bufs.hidden.ptr, rows, spec.tokenizer_input_dims, d)
