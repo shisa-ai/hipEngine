@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 
 import pytest
 
@@ -337,6 +338,84 @@ def test_plain_chat_usage_command_reports_tokens(monkeypatch: pytest.MonkeyPatch
     text = output.getvalue()
     assert "300 tokens" in text and "312 tokens" in text
     assert "300 / 1,000 tokens  ·  30.0% used" in text
+
+
+def test_quiet_tty_degrades_when_the_stream_cannot_be_reconfigured() -> None:
+    from hipengine.chat_cli import _quiet_tty
+
+    with open(os.devnull, "rb") as stream:
+        with _quiet_tty(stream):
+            pass  # a non-tty fd (termios.error) must not escape
+
+    class NoFileno:
+        pass
+
+    with _quiet_tty(NoFileno()):
+        pass  # nor a stream without a file descriptor
+
+
+def test_quiet_tty_disables_echo_on_a_tty_and_restores_it() -> None:
+    termios = pytest.importorskip("termios")
+    if not hasattr(os, "openpty"):
+        pytest.skip("no pty support on this platform")
+
+    from hipengine.chat_cli import _quiet_tty
+
+    try:
+        master, slave = os.openpty()
+    except OSError:  # pragma: no cover - depends on the sandbox
+        pytest.skip("no pty available")
+    try:
+        with os.fdopen(slave, "rb", buffering=0) as stream:
+            initial = list(termios.tcgetattr(stream.fileno()))
+            initial[3] |= termios.ECHO  # do not depend on the platform's pty defaults
+            termios.tcsetattr(stream.fileno(), termios.TCSANOW, initial)
+            before = termios.tcgetattr(stream.fileno())
+            with _quiet_tty(stream):
+                inside = termios.tcgetattr(stream.fileno())
+            after = termios.tcgetattr(stream.fileno())
+    finally:
+        os.close(master)
+
+    assert before[3] & termios.ECHO
+    assert not inside[3] & termios.ECHO
+    assert inside[3] & termios.NOFLSH
+    assert after[3] == before[3]
+
+
+def test_quiet_tty_reports_a_failed_restore_without_raising(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    termios = pytest.importorskip("termios")
+    if not hasattr(os, "openpty"):
+        pytest.skip("no pty support on this platform")
+
+    from hipengine.chat_cli import _quiet_tty
+
+    try:
+        master, slave = os.openpty()
+    except OSError:  # pragma: no cover - depends on the sandbox
+        pytest.skip("no pty available")
+
+    real_tcsetattr = termios.tcsetattr
+    calls = {"count": 0}
+
+    def flaky_tcsetattr(fd, when, attributes):
+        calls["count"] += 1
+        if calls["count"] > 1:
+            raise termios.error(5, "Input/output error")
+        return real_tcsetattr(fd, when, attributes)
+
+    monkeypatch.setattr(termios, "tcsetattr", flaky_tcsetattr)
+    try:
+        with os.fdopen(slave, "rb", buffering=0) as stream:
+            with _quiet_tty(stream):
+                pass  # a failed restore must warn, not abort the chat
+    finally:
+        os.close(master)
+
+    assert calls["count"] == 2
+    assert "could not restore terminal settings" in capsys.readouterr().err
 
 
 def test_chat_settings_map_reasoning_and_sampling_to_request_fields() -> None:
