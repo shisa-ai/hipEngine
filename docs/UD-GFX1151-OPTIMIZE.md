@@ -690,7 +690,16 @@ Likely investigation order:
   the native target cycle, so the register pressure of two accumulator sets
   (`acc_a[ROWS][8] + acc_b[ROWS][8] + xv[ROWS][8]`) loses more occupancy than
   the shared activation window and codebook LUT win back. Do not re-open
-  without a register-lean accumulator scheme.
+  without a register-lean accumulator scheme. **The rows=1 instantiation is that
+  scheme and it was measured separately on 2026-09-13: at rows=1 (one
+  accumulator set per matrix) the fused owner is bit-exact against
+  single + single + f32 SiLU with bf16 rounding (0 of 5120 columns differing)
+  and 1.336x, 1.144x, 1.212x and 1.366x faster than two `launch_local32` calls
+  at (5120, 17408), (5120, 5120), (17408, 5120) and (5120, 13824). It is already
+  admitted -- `hipengine/runtime/gguf_linear.py` resolves it whenever both
+  operands take the local32 decode owner at rows == 1 -- so those rates are
+  current behaviour, and the rows 2-4 rejection above does not apply to it. See
+  `benchmarks/results/2026-09-13-ud-gfx1100-iq4-xs-rows1-dual-silu.json`.
   (b) Q5_K has only **12** gate/up pairs, so a Q5_K T16 dense dual rowtile
   SiLU sibling of `q4_k_t16_dense_dual_rowtile_silu_gemv` (762 GB/s on the
   Q4 pairs) is worth at most ~0.8 ms/step; (c) the IQ4_XS T16 repack above.
