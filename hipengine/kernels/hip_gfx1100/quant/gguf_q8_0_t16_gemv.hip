@@ -34,6 +34,18 @@ bool valid_threads(int64_t threads) {
   return threads == 64 || threads == 128;
 }
 
+// q8_0_t16_dual_split_gemv_kernel is a 32-lane-wave split owner whose block
+// size only sets how many waves share the k chain, so it accepts wider blocks
+// than the rest of the family. Its small-output callers (for example
+// ssm_alpha/ssm_beta at 48 columns) get a grid of a handful of blocks, and a
+// wider block is the only way to shorten the per-wave k chain there; 256
+// threads measured 1.51x faster than 128 on that shape and never slower on
+// the shapes this owner serves.
+bool valid_split_threads(int64_t threads) {
+  return threads == 64 || threads == 128 || threads == 256 || threads == 512
+         || threads == 1024;
+}
+
 __device__ inline float bf16_bits_to_float(uint16_t value) {
   union {
     uint32_t u32;
@@ -346,7 +358,7 @@ __global__ __launch_bounds__(128, 4) void q8_0_t16_dual_gemv_kernel(
 }
 
 template <typename scalar_t, typename out_t, bool WAVE_BLOCK_INDEX>
-__global__ __launch_bounds__(128, 4) void q8_0_t16_dual_split_gemv_kernel(
+__global__ __launch_bounds__(1024, 1) void q8_0_t16_dual_split_gemv_kernel(
     const scalar_t* __restrict__ x,
     const uint8_t* __restrict__ tiles_a,
     const uint8_t* __restrict__ tiles_b,
@@ -420,7 +432,10 @@ __global__ __launch_bounds__(128, 4) void q8_0_t16_dual_split_gemv_kernel(
     GGUF_T16_WAVE_REDUCE(acc[col]);
   }
 
-  __shared__ float xchg[4 * T16_COLS];
+  // Sized for the widest block this owner accepts (1024 threads = 32
+  // waves); the reduction below walks blockDim.x >> 5 groups, so a
+  // fixed four-wave buffer would silently drop the extra waves.
+  __shared__ float xchg[32 * T16_COLS];
   const int sub_id = tid >> 5;
   const int sub_lane = tid & 31;
   if (sub_lane == 0) {
@@ -992,7 +1007,7 @@ int launch_dual_split(const void* x,
   if (!x || !tiles_a || !tiles_b || !out_a || !out_b || rows <= 0 || in_features <= 0 ||
       out_features_a <= 0 || out_features_b <= 0 || (in_features % Q8_0_BLOCK) != 0 ||
       (out_features_a % T16_COLS) != 0 || (out_features_b % T16_COLS) != 0 ||
-      !valid_threads(threads)) {
+      !valid_split_threads(threads)) {
     return hipErrorInvalidValue;
   }
   const dim3 block(static_cast<unsigned int>(threads));
