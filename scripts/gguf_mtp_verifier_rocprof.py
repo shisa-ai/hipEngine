@@ -36,10 +36,23 @@ from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+# The venv installs ``hipengine`` as an editable pointing at another worktree, and
+# child mode re-runs this file, so ``sys.path[0]`` is this script's directory and
+# ``hipengine`` would otherwise resolve to that other tree. Put this worktree
+# first, as every sibling script does.
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 DEFAULT_PROMPT_IDS = "760,4087,369,220,16,17,18,19"
 SERIAL_MARKER_PREFIX = "gguf_mtp_verify_serial_"
 BLOCK_MARKER_PREFIX = "gguf_mtp_verify_block_"
+# The native target graph admits two to eight rows (one root row plus B1-B7
+# drafts).  The old cap of four came from the fused rounded add/RMSNorm
+# wrapper; its device kernel is one block per row with an identical reduction
+# tree, so the wrapper now matches the graph envelope.  The device
+# accept/commit path was never row-capped: it binds positions from a device
+# array, not from the four-scalar ``prepare_packed_decode_metadata`` ABI.
+NATIVE_SPEC_TARGET_ROWS = frozenset({2, 3, 4, 5, 6, 7, 8})
 
 
 def _marker_prefix(mode: str) -> str:
@@ -180,6 +193,12 @@ def _run_child(args: argparse.Namespace) -> int:
         use_wmma_prefill=True,
         use_gemv_decode=True,
     ) as session:
+        if args.quant:
+            # The four-axis prefill plugins resolve against this axis. The
+            # verifier's own dispatch reads the per-tensor quant key, so this
+            # only affects the warmup prefill, but a mismatched axis can still
+            # return a sentinel token id that aborts the run.
+            session.select_prefill_quant(str(args.quant))
         first = session.prefill(prompt_ids, use_bulk=True, return_logits=False)
         cur = int(first.token_id)
         if args.mode == "serial-step":
@@ -223,6 +242,10 @@ def _run_child(args: argparse.Namespace) -> int:
                         block_inputs,
                         fallback=False,
                         cycle_id=0 if index is None else int(index),
+                        transaction_id=0 if index is None else int(index) + 1,
+                        request_id=1,
+                        device_accept_commit=bool(args.native_device_accept_commit),
+                        remaining_decode=block_rows - 1,
                         bulk_attention_mode=str(args.block_verify_mode),
                         use_wmma_prefill=bool(args.block_wmma_prefill),
                         capture_linear_state_rows=bool(args.direct_state_commit),
@@ -240,7 +263,10 @@ def _run_child(args: argparse.Namespace) -> int:
                         sync_stage_timings=bool(args.sync_stage_timings),
                         defer_linear_state_commit=bool(args.direct_state_commit),
                     )
-                if args.direct_state_commit:
+                device_committed = bool(
+                    args.native_spec_target_cycle and args.native_device_accept_commit
+                )
+                if args.direct_state_commit and not device_committed:
                     if not result.linear_state_rows_captured:
                         raise RuntimeError("direct-state block profile did not capture linear-state rows")
                     session._commit_verify_linear_state_row(block_rows - 1, position=start_position + block_rows)
@@ -267,6 +293,7 @@ def _run_child(args: argparse.Namespace) -> int:
     payload = {
         "schema": "hipengine.gguf_mtp_verifier_rocprof.child.v1",
         "mode": str(args.mode),
+        "quant": (str(args.quant) if args.quant else None),
         "steps": int(args.steps),
         "warmup": int(args.warmup),
         "return_logits": bool(args.return_logits),
@@ -275,6 +302,7 @@ def _run_child(args: argparse.Namespace) -> int:
         "block_wmma_prefill": bool(args.block_wmma_prefill) if args.mode == "block-verify" else None,
         "direct_state_commit": bool(args.direct_state_commit) if args.mode == "block-verify" else None,
         "native_spec_target_cycle": bool(args.native_spec_target_cycle),
+        "native_device_accept_commit": bool(args.native_device_accept_commit),
         "verify_dp4a": bool(args.verify_dp4a),
         "verify_dense_q8_dp4a": bool(args.verify_dense_q8_dp4a),
         "verify_dense_q8_dp4a_all": bool(args.verify_dense_q8_dp4a_all),
@@ -300,9 +328,35 @@ def _run_child(args: argparse.Namespace) -> int:
     return 0
 
 
+def _default_raw_root(args: argparse.Namespace) -> Path:
+    """A per-shape scratch root for the profiler's raw trace.
+
+    The default used to be one fixed path that every run deleted first, so a
+    sweep over verifier row counts kept only the last run's kernel trace while
+    every earlier artifact still recorded a pointer to it.
+    """
+
+    base = Path("/tmp/hipengine-gguf-mtp-verifier-rocprof")
+    if args.mode == "block-verify":
+        shape = f"block-verify-rows{int(args.block_rows)}"
+    else:
+        shape = str(args.mode)
+    if args.quant:
+        shape = f"{shape}-{args.quant}"
+    return base / shape
+
+
+def _resolve_raw_root(args: argparse.Namespace) -> Path:
+    """The scratch root for this run: explicit when given, else per-shape."""
+
+    if args.raw_root is not None:
+        return Path(args.raw_root)
+    return _default_raw_root(args)
+
+
 def _run_parent(args: argparse.Namespace) -> int:
     rocprofv3 = shutil.which(args.rocprofv3) or args.rocprofv3
-    raw_root = Path(args.raw_root)
+    raw_root = _resolve_raw_root(args)
     if raw_root.exists():
         shutil.rmtree(raw_root)
     raw_root.mkdir(parents=True, exist_ok=True)
@@ -347,8 +401,12 @@ def _run_parent(args: argparse.Namespace) -> int:
         "--child-json",
         str(child_json),
     ]
+    if args.quant:
+        child_base.extend(["--quant", str(args.quant)])
     if args.native_spec_target_cycle:
         child_base.append("--native-spec-target-cycle")
+        if not args.native_device_accept_commit:
+            child_base.append("--no-native-device-accept-commit")
     if args.return_logits:
         child_base.append("--return-logits")
     else:
@@ -422,11 +480,13 @@ def _run_parent(args: argparse.Namespace) -> int:
         "model": str(args.model),
         "hardware": _hardware_label(),
         "mode": str(args.mode),
+        "quant": (str(args.quant) if args.quant else None),
         "block_rows": int(args.block_rows) if args.mode == "block-verify" else None,
         "block_verify_mode": str(args.block_verify_mode) if args.mode == "block-verify" else None,
         "block_wmma_prefill": bool(args.block_wmma_prefill) if args.mode == "block-verify" else None,
         "direct_state_commit": bool(args.direct_state_commit) if args.mode == "block-verify" else None,
         "native_spec_target_cycle": bool(args.native_spec_target_cycle),
+        "native_device_accept_commit": bool(args.native_device_accept_commit),
         "return_logits": bool(args.return_logits),
         "verify_dp4a": bool(args.verify_dp4a),
         "verify_dense_q8_dp4a": bool(args.verify_dense_q8_dp4a),
@@ -461,7 +521,37 @@ def _run_parent(args: argparse.Namespace) -> int:
     return 0
 
 
+def _visible_gpu_index() -> int:
+    """The rocminfo ordinal this process will actually use.
+
+    ``HIP_VISIBLE_DEVICES``/``ROCR_VISIBLE_DEVICES`` renumber the visible set,
+    so ordinal 0 is the first listed entry, not the first card in the machine.
+    Returns ``-1`` when the selection cannot be mapped to an ordinal (a UUID
+    entry, for example).
+    """
+
+    for name in ("HIP_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES"):
+        raw = os.environ.get(name)
+        if raw is None:
+            continue
+        entries = [part.strip() for part in raw.split(",") if part.strip()]
+        if not entries:
+            continue
+        if not entries[0].isdigit():
+            return -1
+        return int(entries[0])
+    return 0
+
+
 def _hardware_label() -> str:
+    """Label the GPU this process will actually use.
+
+    ``rocminfo`` lists every card in the machine, so the first gfx agent is
+    only the right answer on a single-card host or at ordinal 0.  The evidence
+    policy binds a rate to a physical device, so the label has to name the card
+    that was measured.
+    """
+
     result = subprocess.run(
         ["rocminfo"],
         capture_output=True,
@@ -469,20 +559,25 @@ def _hardware_label() -> str:
         check=False,
         timeout=15,
     )
-    marketing = "unknown AMD GPU"
-    arch = "unknown"
-    waiting_for_marketing = False
+    devices: list[tuple[str, str]] = []
+    arch: str | None = None
     for line in result.stdout.splitlines():
         text = line.strip()
-        if text.startswith("Name:") and arch == "unknown":
+        if text.startswith("Name:"):
             candidate = text.split(":", 1)[1].strip()
-            if candidate.startswith("gfx"):
-                arch = candidate
-                waiting_for_marketing = True
-        elif text.startswith("Marketing Name:") and waiting_for_marketing:
-            marketing = text.split(":", 1)[1].strip()
-            break
-    return f"{marketing} ({arch})"
+            arch = candidate if candidate.startswith("gfx") else None
+        elif text.startswith("Marketing Name:") and arch is not None:
+            devices.append((arch, text.split(":", 1)[1].strip()))
+            arch = None
+    if not devices:
+        return "unknown AMD GPU (unknown)"
+    index = _visible_gpu_index()
+    if not 0 <= index < len(devices):
+        return "unknown AMD GPU (unknown)"
+    arch, marketing = devices[index]
+    if len(devices) == 1:
+        return f"{marketing} ({arch})"
+    return f"{marketing} ({arch}), visible ordinal {index} of {len(devices)}"
 
 
 def _prepare_roctx_override(sdk_path: Path) -> Path:
@@ -702,6 +797,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--child", action="store_true", help="internal: process run under rocprofv3")
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
+    parser.add_argument(
+        "--quant",
+        default=None,
+        help="Four-axis prefill quant plugin to select (e.g. gguf_ud_q4_k_m, gguf_q4_k_m).",
+    )
     parser.add_argument("--prompt-ids", default=DEFAULT_PROMPT_IDS)
     parser.add_argument("--steps", type=int, default=12)
     parser.add_argument("--warmup", type=int, default=3)
@@ -724,6 +824,15 @@ def main() -> int:
         "--native-spec-target-cycle",
         action="store_true",
         help="Submit fixed three-row block verification through NativeSpecCycle N1.",
+    )
+    parser.add_argument(
+        "--native-device-accept-commit",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Match the production native target graph's device-side accept/commit "
+            "(default on; the same graph bucket production replays)."
+        ),
     )
     parser.add_argument(
         "--direct-state-commit",
@@ -780,7 +889,16 @@ def main() -> int:
     parser.add_argument("--skip-warmbuild", action="store_true")
     parser.add_argument("--compiler-version-file", type=Path, default=Path("/tmp/hipengine-hipcc-version.txt"))
     parser.add_argument("--child-json", type=Path, default=None)
-    parser.add_argument("--raw-root", type=Path, default=Path("/tmp/hipengine-gguf-mtp-verifier-rocprof"))
+    parser.add_argument(
+        "--raw-root",
+        type=Path,
+        default=None,
+        help=(
+            "scratch directory for the raw rocprofv3 trace. Defaults to a "
+            "per-shape path (mode, block rows, quant) so a sweep over shapes "
+            "does not delete the previous shape's trace."
+        ),
+    )
     parser.add_argument("--rocprofv3", default="rocprofv3")
     parser.add_argument("--roctx-sdk", type=Path, default=_default_roctx_sdk())
     parser.add_argument("--top", type=int, default=24)
@@ -791,10 +909,14 @@ def main() -> int:
     )
     args = parser.parse_args()
     if args.native_spec_target_cycle:
-        if args.mode != "block-verify" or int(args.block_rows) != 3:
-            parser.error("--native-spec-target-cycle requires --mode block-verify --block-rows 3")
-        if args.block_verify_mode != "bulk" or args.block_wmma_prefill:
-            parser.error("--native-spec-target-cycle requires bulk non-WMMA block verification")
+        if args.mode != "block-verify" or int(args.block_rows) not in NATIVE_SPEC_TARGET_ROWS:
+            parser.error(
+                "--native-spec-target-cycle requires --mode block-verify --block-rows "
+                f"in {sorted(NATIVE_SPEC_TARGET_ROWS)} (one root row plus B1-B7 drafts; "
+                "the native target graph is defined for two to eight rows)"
+            )
+        if args.block_wmma_prefill:
+            parser.error("--native-spec-target-cycle requires non-WMMA block verification")
         if args.return_logits or args.sync_stage_timings:
             parser.error("--native-spec-target-cycle does not support logits or synchronized timings")
     return _run_child(args) if args.child else _run_parent(args)

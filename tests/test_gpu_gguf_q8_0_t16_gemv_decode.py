@@ -534,8 +534,16 @@ def test_p9_d6_dual_split_bf16_bf16_matches_cpu_oracle(
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
-@pytest.mark.parametrize("threads", [64, 128])
+@pytest.mark.parametrize("threads", [0, 64, 128, 256, 512])
 def test_q8_t16_dual_split_thread_override_matches_cpu_oracle(threads: int, q8_t16_library) -> None:
+    """threads=0 exercises the standalone reference default, which is 128.
+
+    The dual_split owner is a 32-lane-wave split kernel whose block size only
+    sets how many waves share the k chain, so every allowed block size must
+    agree with the CPU oracle within the same tolerance. This is the contract
+    that lets the small-output callers (ssm_alpha/ssm_beta at 48 columns, six
+    blocks of grid) use a wide block to shorten the per-wave k chain.
+    """
     rows, in_features, out_features_a, out_features_b = 3, 512, 64, 128
     rng = np.random.default_rng(5600 + threads)
     qa = make_q8_0_weight(out_features_a, in_features)

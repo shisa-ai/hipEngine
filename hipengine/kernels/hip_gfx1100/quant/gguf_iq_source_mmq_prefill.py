@@ -1,17 +1,33 @@
-"""Source-shaped IQ3_XXS/IQ4_XS selected-down integer-MMQ wrappers."""
+"""Source-shaped IQ3_XXS/IQ4_XS integer-MMQ wrappers, selected and dense.
+
+The kernel addresses weights as
+
+    qweight + expert*expert_bytes + out_row*weight_row_bytes + block*block_bytes
+
+with ``expert_bytes = out_features * weight_row_bytes``, so at ``expert == 0``
+it reads exactly the dense raw GGUF layout. The dense route is therefore the
+degenerate single-expert case of the selected route: no repack, no weight
+sidecar, only trivial per-``rows`` metadata and a Q8_1 activation plane.
+"""
 
 from __future__ import annotations
 
+import contextlib
 import ctypes
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import hashlib
+from contextvars import ContextVar
 from pathlib import Path
-from typing import Sequence
+from typing import Iterator, Sequence
 
 import numpy as np
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
 from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
+from hipengine.kernels.hip_gfx1100.quant.gguf_k_mmq_prefill import (
+    gguf_q8_1_ds4_quantize_bf16_kmajor,
+    q8_1_ds4_kmajor_nbytes,
+)
 from hipengine.kernels.registry import KernelKey, register
 
 _SOURCE = Path(__file__).with_name("gguf_iq_source_mmq_prefill.hip")
@@ -21,6 +37,11 @@ _VARIANT = "selected_mmq_i128_j128_k256_q8_1_ds4_prefill_compact_bf16_bf16_out"
 _D4X2_VARIANT = (
     "selected_mmq_i128_j128_k256_q8_1_ds4x2_prefill_compact_bf16_bf16_out"
 )
+_DENSE_VARIANT = "dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out"
+# int64 metadata the kernel reads: expert_start_compact[2], expert_start_mmq[2],
+# tile_expert[ceil(rows/128)]. Sized for the largest admitted prefill slab.
+_METADATA_MAX_TILES = 1024
+_METADATA_NBYTES = (2 + 2 + _METADATA_MAX_TILES) * 8
 _D4X2_SYMBOL = (
     "hipengine_gguf_iq3_xxs_selected_mmq_i128_j128_k256_q8_1_ds4x2_"
     "prefill_compact_bf16_bf16_out"
@@ -258,6 +279,262 @@ def gguf_iq3_xxs_selected_mmq_i128_j128_k256_q8_1_ds4x2_prefill_compact_bf16_bf1
         runtime.check(int(err))
 
 
+# --- dense route -----------------------------------------------------------
+#
+# The caller owns one bounded workspace holding the Q8_1 activation plane and
+# the small per-``rows`` metadata, exactly as the dense planar-Q6 integer MMQ
+# route does. Binding it is what admits the route; without a workspace the
+# dispatcher keeps the strict GEMV owner.
+
+
+@dataclass
+class IQDenseMMQWorkspace:
+    """Caller-owned bounded workspace for the dense IQ integer-MMQ route."""
+
+    ptr: int
+    nbytes: int
+    library: object = None
+    producer_library: object = None
+    # Metadata depends only on ``rows``; upload once per distinct value.
+    _uploaded_rows: int = field(default=0, repr=False)
+
+    def metadata_ptr(self) -> int:
+        return int(self.ptr) + int(self.nbytes) - _METADATA_NBYTES
+
+
+_iq_dense_mmq_workspace: ContextVar[IQDenseMMQWorkspace | None] = ContextVar(
+    "iq_dense_mmq_workspace", default=None
+)
+# Slot paths an owning session pinned to the strict per-row GEMV for its
+# artifact (per-stamp quality admission); the dispatch keeps their strict
+# owner. Empty for sessions opened without an artifact identity.
+_iq_dense_mmq_strict_slots: ContextVar[frozenset[str]] = ContextVar(
+    "iq_dense_mmq_strict_slots", default=frozenset()
+)
+# Slot paths an owning session pinned to the strict per-row GEMV for its
+# artifact on the DECODE side (per-stamp quality admission, the decode
+# sibling of the prefill pin above); the decode dispatch keeps their
+# strict owner. Kept in its own set so a prefill pin never unroutes decode
+# and vice versa.
+_iq_dense_decode_strict_slots: ContextVar[frozenset[str]] = ContextVar(
+    "iq_dense_decode_strict_slots", default=frozenset()
+)
+
+
+def iq_dense_mmq_activation_nbytes(rows: int, hidden: int) -> int:
+    """Return the Q8_1 activation-plane bytes one dense launch consumes."""
+
+    return q8_1_ds4_kmajor_nbytes(int(rows), int(hidden))
+
+
+def iq_dense_mmq_nbytes(rows: int, hidden: int) -> int:
+    """Return total workspace bytes: activation plane plus metadata tail."""
+
+    if (int(rows) + _MMQ_ROWS - 1) // _MMQ_ROWS > _METADATA_MAX_TILES:
+        raise ValueError(
+            f"dense IQ MMQ supports at most {_METADATA_MAX_TILES * _MMQ_ROWS} rows"
+        )
+    return iq_dense_mmq_activation_nbytes(rows, hidden) + _METADATA_NBYTES
+
+
+def iq_dense_mmq_strict_slots() -> frozenset[str]:
+    """Slot paths the owning session pinned to the strict owner, if any."""
+
+    return _iq_dense_mmq_strict_slots.get()
+
+
+def iq_dense_decode_strict_slots() -> frozenset[str]:
+    """Slot paths pinned to the strict decode owner, if any."""
+
+    return _iq_dense_decode_strict_slots.get()
+
+
+def iq_dense_mmq_workspace() -> IQDenseMMQWorkspace | None:
+    """Return the active dense IQ prefill session, if an owner opened one.
+
+    A session with ``nbytes == 0`` marks the owner without providing an
+    activation plane; that is valid for W4A16 and rejected by the integer-MMQ
+    launcher, which checks its own sizing.
+    """
+
+    return _iq_dense_mmq_workspace.get()
+
+
+def iq_dense_mmq_has_workspace() -> bool:
+    """True when the active session carries a usable activation plane."""
+
+    workspace = _iq_dense_mmq_workspace.get()
+    return workspace is not None and int(workspace.nbytes) > _METADATA_NBYTES
+
+
+@contextlib.contextmanager
+def iq_dense_mmq_session(
+    enabled: bool = True,
+    *,
+    workspace_ptr: int = 0,
+    workspace_nbytes: int = 0,
+    library: object = None,
+    producer_library: object = None,
+    strict_slots: Iterable[str] = (),
+    decode_strict_slots: Iterable[str] = (),
+) -> Iterator[None]:
+    """Bind a bounded workspace for the dense IQ integer-MMQ prefill route."""
+
+    workspace = None
+    if enabled:
+        if int(workspace_ptr) or int(workspace_nbytes):
+            if int(workspace_ptr) <= 0 or int(workspace_nbytes) <= _METADATA_NBYTES:
+                raise ValueError(
+                    "dense IQ MMQ requires a positive workspace larger than its metadata tail"
+                )
+        # A workspace-free session still marks the execution owner: the W4A16
+        # route needs no activation plane but must not engage for ad-hoc
+        # callers, who would silently get approximate results where they had
+        # the strict owner.
+        workspace = IQDenseMMQWorkspace(
+            ptr=int(workspace_ptr),
+            nbytes=int(workspace_nbytes),
+            library=library,
+            producer_library=producer_library,
+        )
+    token = _iq_dense_mmq_workspace.set(workspace)
+    pinned = frozenset(str(s) for s in strict_slots)
+    pinned_token = _iq_dense_mmq_strict_slots.set(pinned)
+    decode_pinned = frozenset(str(s) for s in decode_strict_slots)
+    decode_pinned_token = _iq_dense_decode_strict_slots.set(decode_pinned)
+    try:
+        yield
+    finally:
+        _iq_dense_decode_strict_slots.reset(decode_pinned_token)
+        _iq_dense_mmq_strict_slots.reset(pinned_token)
+        _iq_dense_mmq_workspace.reset(token)
+
+
+def _upload_dense_metadata(
+    workspace: IQDenseMMQWorkspace,
+    rows: int,
+    runtime: HipRuntime | None,
+):
+    """Write the single-expert metadata for ``rows`` into the workspace tail.
+
+    Returns ``(compact_ptr, mmq_start_ptr, tile_ptr, mmq_total_rows)``. The
+    upload is skipped when the workspace already holds this row count, so a
+    whole prefill pass pays it once rather than once per projection.
+    """
+
+    from hipengine.core.memory import host_array_ptr
+    from hipengine.core.runtime import MemcpyKind
+
+    metadata = build_iq_source_mmq128_metadata([int(rows)])
+    base = workspace.metadata_ptr()
+    compact_ptr = base
+    mmq_start_ptr = base + 16
+    tile_ptr = base + 32
+    if workspace._uploaded_rows != int(rows):
+        payload = np.ascontiguousarray(
+            np.concatenate(
+                (
+                    np.array([0, int(rows)], dtype=np.int64),
+                    metadata.expert_start_mmq.astype(np.int64),
+                    metadata.tile_expert.astype(np.int64),
+                )
+            )
+        )
+        nbytes = int(payload.nbytes)
+        if nbytes > _METADATA_NBYTES:
+            raise ValueError("dense IQ MMQ metadata exceeds its workspace tail")
+        (runtime or get_hip_runtime()).memcpy(
+            base, host_array_ptr(payload), nbytes, MemcpyKind.HOST_TO_DEVICE
+        )
+        workspace._uploaded_rows = int(rows)
+    return compact_ptr, mmq_start_ptr, tile_ptr, int(metadata.mmq_total_rows)
+
+
+def _launch_iq_dense_mmq(
+    quant: str,
+    x_ptr: int,
+    qweight_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+    **_ignored,
+) -> None:
+    """Dense IQ integer-MMQ prefill through the caller-owned workspace.
+
+    Signature matches the raw GGUF linear launch ABI so the dispatcher can swap
+    this in by variant name alone. ``library`` is the caller's raw-IQ library
+    and is deliberately ignored: this route's libraries come from the
+    workspace, which is what binds the route.
+    """
+
+    workspace = iq_dense_mmq_workspace()
+    if workspace is None:
+        raise RuntimeError("dense IQ integer MMQ requires an active workspace session")
+    required = iq_dense_mmq_nbytes(rows, in_features)
+    if required > int(workspace.nbytes):
+        raise ValueError(
+            f"dense IQ MMQ workspace holds {workspace.nbytes} bytes, needs {required}"
+        )
+    compact_ptr, mmq_start_ptr, tile_ptr, mmq_total_rows = _upload_dense_metadata(
+        workspace, rows, runtime
+    )
+    gguf_q8_1_ds4_quantize_bf16_kmajor(
+        int(x_ptr),
+        int(workspace.ptr),
+        int(rows),
+        int(in_features),
+        stream=stream,
+        library=workspace.producer_library,
+        runtime=runtime,
+    )
+    _launch_iq_source_mmq(
+        quant,
+        int(workspace.ptr),
+        compact_ptr,
+        mmq_start_ptr,
+        tile_ptr,
+        int(qweight_ptr),
+        int(out_ptr),
+        compact_rows=int(rows),
+        in_features=int(in_features),
+        out_features=int(out_features),
+        num_experts=1,
+        mmq_total_rows=mmq_total_rows,
+        stream=stream,
+        library=workspace.library,
+        runtime=runtime,
+    )
+
+
+def gguf_iq4_xs_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out(
+    *args, **kwargs
+) -> None:
+    _launch_iq_dense_mmq("gguf_iq4_xs", *args, **kwargs)
+
+
+def gguf_iq3_xxs_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out(
+    *args, **kwargs
+) -> None:
+    _launch_iq_dense_mmq("gguf_iq3_xxs", *args, **kwargs)
+
+
+def gguf_iq4_nl_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out(
+    *args, **kwargs
+) -> None:
+    _launch_iq_dense_mmq("gguf_iq4_nl", *args, **kwargs)
+
+
+def gguf_iq3_s_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out(
+    *args, **kwargs
+) -> None:
+    _launch_iq_dense_mmq("gguf_iq3_s", *args, **kwargs)
+
+
 def register_gguf_iq_source_mmq_prefill_kernels(*, replace: bool = True) -> None:
     for quant, function in (
         (
@@ -279,18 +556,38 @@ def register_gguf_iq_source_mmq_prefill_kernels(*, replace: bool = True) -> None
         gguf_iq3_xxs_selected_mmq_i128_j128_k256_q8_1_ds4x2_prefill_compact_bf16_bf16_out,
         replace=replace,
     )
+    for quant, function in (
+        ("gguf_iq4_xs", gguf_iq4_xs_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out),
+        ("gguf_iq3_xxs", gguf_iq3_xxs_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out),
+        ("gguf_iq4_nl", gguf_iq4_nl_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out),
+        ("gguf_iq3_s", gguf_iq3_s_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out),
+    ):
+        register(
+            KernelKey("hip_gfx1100", "linear", quant, _DENSE_VARIANT),
+            function,
+            replace=replace,
+        )
 
 
 register_gguf_iq_source_mmq_prefill_kernels()
 
 
 __all__ = [
+    "IQDenseMMQWorkspace",
     "IQSourceMMQ128Metadata",
     "build_gguf_iq_source_mmq_prefill",
     "build_iq_source_mmq128_metadata",
     "gguf_iq3_xxs_selected_mmq_i128_j128_k256_q8_1_ds4_prefill_compact_bf16_bf16_out",
     "gguf_iq3_xxs_selected_mmq_i128_j128_k256_q8_1_ds4x2_prefill_compact_bf16_bf16_out",
     "gguf_iq4_xs_selected_mmq_i128_j128_k256_q8_1_ds4_prefill_compact_bf16_bf16_out",
+    "gguf_iq3_xxs_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out",
+    "gguf_iq3_s_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out",
+    "gguf_iq4_nl_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out",
+    "gguf_iq4_xs_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out",
+    "iq_dense_mmq_activation_nbytes",
+    "iq_dense_mmq_nbytes",
+    "iq_dense_mmq_session",
+    "iq_dense_mmq_workspace",
     "plan_gguf_iq_source_mmq_prefill_build",
     "register_gguf_iq_source_mmq_prefill_kernels",
 ]

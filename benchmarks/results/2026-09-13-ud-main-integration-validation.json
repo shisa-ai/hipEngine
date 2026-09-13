@@ -1,0 +1,773 @@
+{
+  "schema": 1,
+  "kind": "ud_main_integration_validation",
+  "date": "2026-09-13 UTC",
+  "performance_claim": false,
+  "main_base": "d26cd792fa6b1189def3dc4edb6b6f4a3e4a8403",
+  "pre_rebase_ud": "3eaab7c30",
+  "rebased_head_before_repairs": "32f83d906e89f9f1c67d3ef0e04c0d8bb40cadfb",
+  "backup_ref": "backup/ud-quants-pre-main-rebase-20260913-3eaab7c30",
+  "replayed_commits": 236,
+  "scope": "epyc / physical GPU1 / RX 7900 XTX / gfx1100",
+  "source_note": "Integration diagnostics ran on the working repair tree. The final Q8 scope guard preserves 256-thread arguments on the measured SSM shape and restores main's 128-thread reference elsewhere. No clean-tree speed promotion is claimed.",
+  "paired": {
+    "candidate_mode": "the U6 admission pin is complete for every measured artifact, so this artifact is retained admission evidence. The in-process MTP scope grant is kept only so the measurement cannot depend on admission state, and it is a no-op once the pin is derived.",
+    "comparisons": {
+      "q4_k_m": {
+        "gap_to_plain_pct": {
+          "mtp_b3": 23.832991099593904,
+          "true_ar": 14.280712434609466
+        },
+        "plain_label": "plain-q4-k-m",
+        "ud_label": "ud-q4-k-m",
+        "ud_over_plain": {
+          "mtp_b3": 0.761670089004061,
+          "true_ar": 0.8571928756539053
+        }
+      },
+      "q4_k_s": {
+        "gap_to_plain_pct": {
+          "mtp_b3": 29.52412165368692,
+          "true_ar": 21.32916087038249
+        },
+        "plain_label": "plain-q4-k-s",
+        "ud_label": "ud-q4-k-s",
+        "ud_over_plain": {
+          "mtp_b3": 0.7047587834631308,
+          "true_ar": 0.7867083912961751
+        }
+      }
+    },
+    "device": {
+      "device_index": 1,
+      "expect_device": "7900 XTX",
+      "note": "The device is declared, never inferred. A rate measured while another worker shares the card is not evidence.",
+      "selected_environment": {
+        "HIP_VISIBLE_DEVICES": "1",
+        "ROCR_VISIBLE_DEVICES": null
+      }
+    },
+    "host_note": "single host/GPU by construction; no concurrent GPU work is enforced by the operator, not by this script",
+    "pairs": [
+      {
+        "command": "scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf --quant gguf_ud_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --candidate-budgets 3 --runs 2 --max-new-tokens 25 --target-verify-mode native --ar-decode-mode graph --draft-hidden-variant pre_output_norm --output /tmp/ud-rebase-validation/paired/paired-ud-q4-k-m.json",
+        "evidence": {
+          "best_candidate_budget": "3",
+          "best_mtp_tok_s": 51.032581205552994,
+          "best_mtp_vs_true_ar": 1.539501473348721,
+          "binding_gates": {
+            "all_gpu_accept_match_cpu": true,
+            "deterministic_repeats": true,
+            "evidence_complete": true,
+            "faster_than_true_ar": true,
+            "timing_evidence_valid": true,
+            "true_ar_denominator_present": true
+          },
+          "binding_passed": true,
+          "determinism": {
+            "deterministic": true,
+            "runs": 2,
+            "unstable": {}
+          },
+          "evidence_completeness": {
+            "complete": true,
+            "expected_rows_per_group": 20,
+            "problems": []
+          },
+          "recorded": {
+            "all_exact_greedy": true,
+            "exactness": {
+              "binding": false,
+              "divergent_count": 0,
+              "divergent_rows": [],
+              "note": "docs/EXECUTION-PROFILES.md section 6: free-running generated-ID equality is recorded but is not the denominator; section 4.1 permits logits and generated IDs to differ at near ties in the production profile.",
+              "rows": 20
+            },
+            "suite_status": "complete_exact"
+          },
+          "runs": 2,
+          "timing_as_measured": {
+            "faster_than_true_ar": true,
+            "true_ar_denominator_present": true
+          },
+          "timing_evidence_valid": true,
+          "true_ar_tok_s": 33.14877061763833
+        },
+        "family": "ud",
+        "label": "ud-q4-k-m",
+        "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+        "provenance": {
+          "device_name": "AMD Radeon RX 7900 XTX",
+          "dirty": true,
+          "git_branch": "ud-quants",
+          "hipengine_commit": "32f83d906e89f9f1c67d3ef0e04c0d8bb40cadfb",
+          "host_name": "epyc",
+          "model_file_type": "MOSTLY_Q4_K_M",
+          "model_path": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+          "model_size_bytes": 16464440224,
+          "prompt_file": "/home/lhl/hipEngine-ud/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+          "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+          "resolved_backend": "hip_gfx1100",
+          "speed_claim_eligible": false,
+          "suite_status": "complete_exact",
+          "target_arch": "gfx1100",
+          "untracked_count": 1
+        },
+        "quant": "gguf_ud_q4_k_m",
+        "raw_payload": "/tmp/ud-rebase-validation/paired/paired-ud-q4-k-m.json"
+      },
+      {
+        "command": "scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf --quant gguf_ud_q4_k_s --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --candidate-budgets 3 --runs 2 --max-new-tokens 25 --target-verify-mode native --ar-decode-mode graph --draft-hidden-variant pre_output_norm --output /tmp/ud-rebase-validation/paired/paired-ud-q4-k-s.json",
+        "evidence": {
+          "best_candidate_budget": "3",
+          "best_mtp_tok_s": 49.92605987418964,
+          "best_mtp_vs_true_ar": 1.535849432572922,
+          "binding_gates": {
+            "all_gpu_accept_match_cpu": true,
+            "deterministic_repeats": true,
+            "evidence_complete": true,
+            "faster_than_true_ar": true,
+            "timing_evidence_valid": true,
+            "true_ar_denominator_present": true
+          },
+          "binding_passed": true,
+          "determinism": {
+            "deterministic": true,
+            "runs": 2,
+            "unstable": {}
+          },
+          "evidence_completeness": {
+            "complete": true,
+            "expected_rows_per_group": 20,
+            "problems": []
+          },
+          "recorded": {
+            "all_exact_greedy": false,
+            "exactness": {
+              "binding": false,
+              "divergent_count": 2,
+              "divergent_rows": [
+                "general_ja_plan#run0",
+                "general_ja_plan#run1"
+              ],
+              "note": "docs/EXECUTION-PROFILES.md section 6: free-running generated-ID equality is recorded but is not the denominator; section 4.1 permits logits and generated IDs to differ at near ties in the production profile.",
+              "rows": 20
+            },
+            "suite_status": "correctness_failed"
+          },
+          "runs": 2,
+          "timing_as_measured": {
+            "faster_than_true_ar": true,
+            "true_ar_denominator_present": true
+          },
+          "timing_evidence_valid": true,
+          "true_ar_tok_s": 32.507131763919936
+        },
+        "family": "ud",
+        "label": "ud-q4-k-s",
+        "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf",
+        "provenance": {
+          "device_name": "AMD Radeon RX 7900 XTX",
+          "dirty": true,
+          "git_branch": "ud-quants",
+          "hipengine_commit": "32f83d906e89f9f1c67d3ef0e04c0d8bb40cadfb",
+          "host_name": "epyc",
+          "model_file_type": "MOSTLY_Q4_K_S",
+          "model_path": "/models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf",
+          "model_size_bytes": 15358213024,
+          "prompt_file": "/home/lhl/hipEngine-ud/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+          "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+          "resolved_backend": "hip_gfx1100",
+          "speed_claim_eligible": false,
+          "suite_status": "correctness_failed",
+          "target_arch": "gfx1100",
+          "untracked_count": 2
+        },
+        "quant": "gguf_ud_q4_k_s",
+        "raw_payload": "/tmp/ud-rebase-validation/paired/paired-ud-q4-k-s.json"
+      },
+      {
+        "command": "scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --candidate-budgets 3 --runs 2 --max-new-tokens 25 --target-verify-mode native --ar-decode-mode graph --draft-hidden-variant pre_output_norm --output /tmp/ud-rebase-validation/paired/paired-plain-q4-k-m.json",
+        "evidence": {
+          "best_candidate_budget": "3",
+          "best_mtp_tok_s": 67.0008996575956,
+          "best_mtp_vs_true_ar": 1.7325738716335206,
+          "binding_gates": {
+            "all_gpu_accept_match_cpu": true,
+            "deterministic_repeats": true,
+            "evidence_complete": true,
+            "faster_than_true_ar": true,
+            "timing_evidence_valid": true,
+            "true_ar_denominator_present": true
+          },
+          "binding_passed": true,
+          "determinism": {
+            "deterministic": true,
+            "runs": 2,
+            "unstable": {}
+          },
+          "evidence_completeness": {
+            "complete": true,
+            "expected_rows_per_group": 20,
+            "problems": []
+          },
+          "recorded": {
+            "all_exact_greedy": true,
+            "exactness": {
+              "binding": false,
+              "divergent_count": 0,
+              "divergent_rows": [],
+              "note": "docs/EXECUTION-PROFILES.md section 6: free-running generated-ID equality is recorded but is not the denominator; section 4.1 permits logits and generated IDs to differ at near ties in the production profile.",
+              "rows": 20
+            },
+            "suite_status": "complete_exact"
+          },
+          "runs": 2,
+          "timing_as_measured": {
+            "faster_than_true_ar": true,
+            "true_ar_denominator_present": true
+          },
+          "timing_evidence_valid": true,
+          "true_ar_tok_s": 38.67130905906206
+        },
+        "family": "plain",
+        "label": "plain-q4-k-m",
+        "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "provenance": {
+          "device_name": "AMD Radeon RX 7900 XTX",
+          "dirty": true,
+          "git_branch": "ud-quants",
+          "hipengine_commit": "32f83d906e89f9f1c67d3ef0e04c0d8bb40cadfb",
+          "host_name": "epyc",
+          "model_file_type": "MOSTLY_Q4_K_M",
+          "model_path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+          "model_size_bytes": 17106773984,
+          "prompt_file": "/home/lhl/hipEngine-ud/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+          "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+          "resolved_backend": "hip_gfx1100",
+          "speed_claim_eligible": false,
+          "suite_status": "complete_exact",
+          "target_arch": "gfx1100",
+          "untracked_count": 2
+        },
+        "quant": "gguf_q4_k_m",
+        "raw_payload": "/tmp/ud-rebase-validation/paired/paired-plain-q4-k-m.json"
+      },
+      {
+        "command": "scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.8-27B-Q4_K_S.gguf --quant gguf_q4_k_s --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --candidate-budgets 3 --runs 2 --max-new-tokens 25 --target-verify-mode native --ar-decode-mode graph --draft-hidden-variant pre_output_norm --output /tmp/ud-rebase-validation/paired/paired-plain-q4-k-s.json",
+        "evidence": {
+          "best_candidate_budget": "3",
+          "best_mtp_tok_s": 70.8413446496641,
+          "best_mtp_vs_true_ar": 1.714438563553989,
+          "binding_gates": {
+            "all_gpu_accept_match_cpu": true,
+            "deterministic_repeats": true,
+            "evidence_complete": true,
+            "faster_than_true_ar": true,
+            "timing_evidence_valid": true,
+            "true_ar_denominator_present": true
+          },
+          "binding_passed": true,
+          "determinism": {
+            "deterministic": true,
+            "runs": 2,
+            "unstable": {}
+          },
+          "evidence_completeness": {
+            "complete": true,
+            "expected_rows_per_group": 20,
+            "problems": []
+          },
+          "recorded": {
+            "all_exact_greedy": false,
+            "exactness": {
+              "binding": false,
+              "divergent_count": 2,
+              "divergent_rows": [
+                "general_ja_plan#run0",
+                "general_ja_plan#run1"
+              ],
+              "note": "docs/EXECUTION-PROFILES.md section 6: free-running generated-ID equality is recorded but is not the denominator; section 4.1 permits logits and generated IDs to differ at near ties in the production profile.",
+              "rows": 20
+            },
+            "suite_status": "correctness_failed"
+          },
+          "runs": 2,
+          "timing_as_measured": {
+            "faster_than_true_ar": true,
+            "true_ar_denominator_present": true
+          },
+          "timing_evidence_valid": true,
+          "true_ar_tok_s": 41.320433496789605
+        },
+        "family": "plain",
+        "label": "plain-q4-k-s",
+        "model": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+        "provenance": {
+          "device_name": "AMD Radeon RX 7900 XTX",
+          "dirty": true,
+          "git_branch": "ud-quants",
+          "hipengine_commit": "32f83d906e89f9f1c67d3ef0e04c0d8bb40cadfb",
+          "host_name": "epyc",
+          "model_file_type": "MOSTLY_Q4_K_S",
+          "model_path": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+          "model_size_bytes": 16121359328,
+          "prompt_file": "/home/lhl/hipEngine-ud/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+          "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+          "resolved_backend": "hip_gfx1100",
+          "speed_claim_eligible": false,
+          "suite_status": "correctness_failed",
+          "target_arch": "gfx1100",
+          "untracked_count": 2
+        },
+        "quant": "gguf_q4_k_s",
+        "raw_payload": "/tmp/ud-rebase-validation/paired/paired-plain-q4-k-s.json"
+      }
+    ],
+    "protocol": {
+      "ar_baseline": "suite true no-MTP single-row greedy per artifact through recorded production decode-graph replay",
+      "ar_decode_mode": "graph",
+      "candidate_budgets": [
+        3
+      ],
+      "correctness_gates": {
+        "binding": [
+          "true_ar_denominator_present",
+          "all_gpu_accept_match_cpu",
+          "deterministic_repeats",
+          "faster_than_true_ar"
+        ],
+        "note": "docs/EXECUTION-PROFILES.md section 6: free-running generated-ID equality is recorded but is not the denominator, and section 4.1 permits logits and generated IDs to differ at near ties under the production profile. The control-plane gates are binding in every profile.",
+        "recorded_not_binding": [
+          "status_complete_exact",
+          "all_exact_greedy"
+        ]
+      },
+      "draft_hidden_variant": "pre_output_norm",
+      "kv_layout": "resident session default (Qwen35GGUFResidentSession, wmma prefill, gemv decode)",
+      "max_new_tokens": 25,
+      "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "runs": 2,
+      "suite": "scripts/qwen36_dense_gguf_suite.py",
+      "target_verify_mode": "native",
+      "warmup": true
+    },
+    "timing_evidence_valid": true,
+    "timing_evidence_valid_note": "False means every rate-derived binding gate is failed by construction: an invalidated run may not satisfy a performance gate. Token-ID exactness and determinism are unaffected and stay recorded.",
+    "u6_gate": {
+      "gate_passed": true,
+      "gated": {
+        "ud-q4-k-m": {
+          "blockers": {},
+          "measurement_blockers": [],
+          "measurement_ready": true,
+          "open_items": [],
+          "pin_complete": true,
+          "preset_key": "gguf_ud_q4_k_m"
+        },
+        "ud-q4-k-s": {
+          "blockers": {},
+          "measurement_blockers": [],
+          "measurement_ready": true,
+          "open_items": [],
+          "pin_complete": true,
+          "preset_key": "gguf_ud_q4_k_s"
+        }
+      },
+      "pin_fingerprints": [
+        "5535c5bd7a3e84c6381de70bf8ca5c6f4bcd804dabf8435b85c8418038c8619f",
+        "91130e1698bb7fc24c89f94e8b1043dd788769682b56c6514d70b6d2cdea068c"
+      ]
+    },
+    "unit": "paired-ud-plain-mtp"
+  },
+  "pre_post_output_and_accounting": [
+    {
+      "label": "ud-q4-k-m",
+      "rows": 40,
+      "matched": true
+    },
+    {
+      "label": "ud-q4-k-s",
+      "rows": 40,
+      "matched": true
+    },
+    {
+      "label": "plain-q4-k-m",
+      "rows": 40,
+      "matched": true
+    },
+    {
+      "label": "plain-q4-k-s",
+      "rows": 40,
+      "matched": true
+    }
+  ],
+  "test_packets": {
+    "unit-post-scope": {
+      "name": "pytest",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "13",
+      "tests": "8596",
+      "time": "37.517",
+      "timestamp": "2026-09-14T01:53:34.170650+09:00",
+      "hostname": "epyc"
+    },
+    "gpu-q8-final": {
+      "name": "pytest",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "tests": "42",
+      "time": "16.921",
+      "timestamp": "2026-09-14T01:55:55.869852+09:00",
+      "hostname": "epyc"
+    },
+    "state-only": {
+      "name": "pytest",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "tests": "1",
+      "time": "78.355",
+      "timestamp": "2026-09-14T01:07:18.470388+09:00",
+      "hostname": "epyc"
+    }
+  },
+  "all_tier_run": {
+    "status": "aborted_then_completed_with_focused_repairs_and_isolated_groups",
+    "command": "HIP_VISIBLE_DEVICES=1 python3 -m pytest --suite all -v",
+    "completed_before_abort": {
+      "passed": 7327,
+      "failed": 18,
+      "skipped": 294,
+      "xfail": 4
+    },
+    "abort": "SIGABRT in HIP malloc during test_advance_state_only_matches_full_replay",
+    "abort_note": "The triggering test passed in a fresh process; the remaining seven state/rollback tests also passed. Root cause of the monolithic allocator abort was not established. No GPU reset or cache purge was performed. This is not a claim of one all-green monolithic execution.",
+    "remaining_live": {
+      "tests": 117,
+      "passed": 92,
+      "skipped": 25,
+      "failures": 0
+    },
+    "repaired_prefix_failures": 18,
+    "composed_coverage": {
+      "tests": 16356,
+      "passed": 16020,
+      "skipped": 332,
+      "xfail": 4,
+      "note": "Composed coverage, including eleven added scope tests; not a single run."
+    },
+    "logs": "/tmp/ud-rebase-validation"
+  },
+  "numerical_gates": [
+    {
+      "name": "numerics-km-p64",
+      "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+      "protocol": {
+        "teacher": "production single-row AR route (session.step, return_logits)",
+        "candidate": "production native target block (device accept/commit, bulk_attention_mode=native, remaining_decode=budget)",
+        "prompts": [
+          "/home/lhl/hipEngine-ud/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+          "/home/lhl/hipEngine-ud/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+        ],
+        "prompt_tokens": 64,
+        "budgets": [
+          1,
+          2,
+          3
+        ],
+        "repeat_runs": 2,
+        "envelope": {
+          "mean": 0.001,
+          "p95": 0.005,
+          "p99": 0.02,
+          "max": 0.05
+        },
+        "top1_overall": 0.99,
+        "top1_per_scope": 0.97
+      },
+      "deterministic": true,
+      "repeats": 2,
+      "passed": true,
+      "pooled": {
+        "rows": 162,
+        "kl_mean": 3.287083985379324e-05,
+        "kl_p95": 0.00017588888307085442,
+        "kl_p99": 0.0002351064538379335,
+        "kl_max": 0.0002432202413359906,
+        "top1_agreement": 1.0,
+        "top1_by_scope": {
+          "code": {
+            "rows": 54,
+            "agreement": 1.0
+          },
+          "general_en": {
+            "rows": 36,
+            "agreement": 1.0
+          },
+          "general_ja": {
+            "rows": 36,
+            "agreement": 1.0
+          },
+          "mixed_ja_en": {
+            "rows": 36,
+            "agreement": 1.0
+          }
+        },
+        "top1_by_budget": {
+          "1": {
+            "rows": 36,
+            "agreement": 1.0
+          },
+          "2": {
+            "rows": 54,
+            "agreement": 1.0
+          },
+          "3": {
+            "rows": 72,
+            "agreement": 1.0
+          }
+        },
+        "kl_by_budget": {
+          "1": {
+            "rows": 36,
+            "mean": 3.18982005349424e-05,
+            "max": 0.0002299189503555694
+          },
+          "2": {
+            "rows": 54,
+            "mean": 3.5755784151182855e-05,
+            "max": 0.0002432202413359906
+          },
+          "3": {
+            "rows": 72,
+            "mean": 3.1193451290176443e-05,
+            "max": 0.0002432202413359906
+          }
+        },
+        "rows_above_p99": [
+          {
+            "id": "code_merge_intervals",
+            "category": "code",
+            "budget": 2,
+            "row": 2,
+            "kl": 0.0002432202413359906
+          },
+          {
+            "id": "code_merge_intervals",
+            "category": "code",
+            "budget": 3,
+            "row": 2,
+            "kl": 0.0002432202413359906
+          }
+        ]
+      },
+      "raw_result": "/tmp/ud-rebase-validation/numerics-km-p64.json",
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/ud_mtp_ar_verify_numerics_gate.py --model /models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf --quant gguf_ud_q4_k_m --prompt-tokens 64 --budgets 1,2,3 --repeat-runs 2 --json /tmp/ud-rebase-validation/numerics-km-p64.json --require-native-graph"
+    },
+    {
+      "name": "numerics-km-p512",
+      "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+      "protocol": {
+        "teacher": "production single-row AR route (session.step, return_logits)",
+        "candidate": "production native target block (device accept/commit, bulk_attention_mode=native, remaining_decode=budget)",
+        "prompts": [
+          "/home/lhl/hipEngine-ud/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+          "/home/lhl/hipEngine-ud/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+        ],
+        "prompt_tokens": 512,
+        "budgets": [
+          1,
+          2,
+          3
+        ],
+        "repeat_runs": 2,
+        "envelope": {
+          "mean": 0.001,
+          "p95": 0.005,
+          "p99": 0.02,
+          "max": 0.05
+        },
+        "top1_overall": 0.99,
+        "top1_per_scope": 0.97
+      },
+      "deterministic": true,
+      "repeats": 2,
+      "passed": true,
+      "pooled": {
+        "rows": 162,
+        "kl_mean": 4.275014821133193e-05,
+        "kl_p95": 0.0003025889376755088,
+        "kl_p99": 0.0004981662654148252,
+        "kl_max": 0.0007805575594865609,
+        "top1_agreement": 0.9938271604938271,
+        "top1_by_scope": {
+          "code": {
+            "rows": 54,
+            "agreement": 1.0
+          },
+          "general_en": {
+            "rows": 36,
+            "agreement": 1.0
+          },
+          "general_ja": {
+            "rows": 36,
+            "agreement": 0.9722222222222222
+          },
+          "mixed_ja_en": {
+            "rows": 36,
+            "agreement": 1.0
+          }
+        },
+        "top1_by_budget": {
+          "1": {
+            "rows": 36,
+            "agreement": 1.0
+          },
+          "2": {
+            "rows": 54,
+            "agreement": 1.0
+          },
+          "3": {
+            "rows": 72,
+            "agreement": 0.9861111111111112
+          }
+        },
+        "kl_by_budget": {
+          "1": {
+            "rows": 36,
+            "mean": 2.5820882496781764e-05,
+            "max": 0.00040996640077103083
+          },
+          "2": {
+            "rows": 54,
+            "mean": 3.5974842001055574e-05,
+            "max": 0.00040996640077103083
+          },
+          "3": {
+            "rows": 72,
+            "mean": 5.629626072631428e-05,
+            "max": 0.0007805575594865609
+          }
+        },
+        "rows_above_p99": [
+          {
+            "id": "code_lru_cache",
+            "category": "code",
+            "budget": 3,
+            "row": 3,
+            "kl": 0.0007805575594865609
+          },
+          {
+            "id": "general_en_plan",
+            "category": "general_en",
+            "budget": 3,
+            "row": 3,
+            "kl": 0.0005138316832991533
+          }
+        ]
+      },
+      "raw_result": "/tmp/ud-rebase-validation/numerics-km-p512.json",
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/ud_mtp_ar_verify_numerics_gate.py --model /models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf --quant gguf_ud_q4_k_m --prompt-tokens 512 --budgets 1,2,3 --repeat-runs 2 --json /tmp/ud-rebase-validation/numerics-km-p512.json"
+    },
+    {
+      "name": "numerics-ks-p64",
+      "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf",
+      "protocol": {
+        "teacher": "production single-row AR route (session.step, return_logits)",
+        "candidate": "production native target block (device accept/commit, bulk_attention_mode=native, remaining_decode=budget)",
+        "prompts": [
+          "/home/lhl/hipEngine-ud/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+          "/home/lhl/hipEngine-ud/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+        ],
+        "prompt_tokens": 64,
+        "budgets": [
+          1,
+          2,
+          3
+        ],
+        "repeat_runs": 2,
+        "envelope": {
+          "mean": 0.001,
+          "p95": 0.005,
+          "p99": 0.02,
+          "max": 0.05
+        },
+        "top1_overall": 0.99,
+        "top1_per_scope": 0.97
+      },
+      "deterministic": true,
+      "repeats": 2,
+      "passed": true,
+      "pooled": {
+        "rows": 162,
+        "kl_mean": 3.007989225822537e-05,
+        "kl_p95": 0.00011868019253021662,
+        "kl_p99": 0.0005713542189418023,
+        "kl_max": 0.0005713542189418023,
+        "top1_agreement": 1.0,
+        "top1_by_scope": {
+          "code": {
+            "rows": 54,
+            "agreement": 1.0
+          },
+          "general_en": {
+            "rows": 36,
+            "agreement": 1.0
+          },
+          "general_ja": {
+            "rows": 36,
+            "agreement": 1.0
+          },
+          "mixed_ja_en": {
+            "rows": 36,
+            "agreement": 1.0
+          }
+        },
+        "top1_by_budget": {
+          "1": {
+            "rows": 36,
+            "agreement": 1.0
+          },
+          "2": {
+            "rows": 54,
+            "agreement": 1.0
+          },
+          "3": {
+            "rows": 72,
+            "agreement": 1.0
+          }
+        },
+        "kl_by_budget": {
+          "1": {
+            "rows": 36,
+            "mean": 2.9981079905598946e-05,
+            "max": 0.0005713542189418023
+          },
+          "2": {
+            "rows": 54,
+            "mean": 3.126180678581369e-05,
+            "max": 0.0005713542189418023
+          },
+          "3": {
+            "rows": 72,
+            "mean": 2.9242862538847335e-05,
+            "max": 0.0005713542189418023
+          }
+        },
+        "rows_above_p99": []
+      },
+      "raw_result": "/tmp/ud-rebase-validation/numerics-ks-p64.json",
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/ud_mtp_ar_verify_numerics_gate.py --model /models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf --quant gguf_ud_q4_k_s --prompt-tokens 64 --budgets 1,2,3 --repeat-runs 2 --require-native-graph --json /tmp/ud-rebase-validation/numerics-ks-p64.json"
+    }
+  ],
+  "not_claimed": [
+    "K_S speed eligibility; its known generated-ID divergence remains.",
+    "Fresh K_S 512-token numerical recertification; the queued run was cancelled before starting.",
+    "gfx1151 or CUDA hardware qualification.",
+    "Wider serving or long-context MTP admission."
+  ]
+}

@@ -1,0 +1,350 @@
+{
+  "schema_version": 1,
+  "status": "independent_teacher_context512_gate",
+  "diagnostic_only": true,
+  "promotion_qualified": false,
+  "host": "zbook",
+  "hardware": "AMD RYZEN AI MAX+ PRO 395 / Radeon 8060S",
+  "backend": "hip_gfx1151",
+  "model": "Qwen3.8-27B-UD-Q4_K_S.gguf",
+  "model_sha256": "75bc9c8adba2842e72f0ab5201aaa07133c5010b566305c09187fcbdcd364017",
+  "teacher": {
+    "commit": "17252c769a63c1cb650ce98ae309cf4de0da7778",
+    "binary": "/tmp/ud-llama-teacher-tokenwise",
+    "capture": "/tmp/ud-llama-context512-S.f32",
+    "capture_sha256": "2ae6a592e861ce221be004809695f7515c5e5df6b080eb631f65d52443ff380b",
+    "input": "/tmp/ud-llama-context512-M.bin",
+    "input_sha256": "f3557b7c5ed80cf84be9e83266e531351caeff0bcb0c88980a3beae5fb7445d1",
+    "command": "/tmp/ud-llama-teacher-tokenwise /models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf /tmp/ud-llama-context512-M.bin /tmp/ud-llama-context512-S.f32 16 999",
+    "bf16kv_capture": "/tmp/ud-llama-context512-S-bf16kv.f32",
+    "bf16kv_capture_sha256": "5635ea87bb70cdbe379b5cfea00079095c4df778e6c77fb40f50c054508ba4cd",
+    "bf16kv_command": "/tmp/ud-llama-teacher-bf16kv /models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf /tmp/ud-llama-context512-M.bin /tmp/ud-llama-context512-S-bf16kv.f32 16 999"
+  },
+  "workload": {
+    "prompt_count": 18,
+    "context_tokens": 512,
+    "forced_positions_per_prompt": 9,
+    "synthetic_repeated_chat_tokens": true,
+    "task_quality_evaluation": false
+  },
+  "thresholds": {
+    "mean_kl_max": 0.001,
+    "p95_kl_max": 0.005,
+    "p99_kl_max": 0.02,
+    "max_kl_max": 0.05,
+    "overall_top1_min": 0.99
+  },
+  "arms": {
+    "bf16_expanded_iq2_xs": {
+      "capture_note": "pre-integration default (IQ2_XS expanded dense-BF16); /tmp/ud-q56-context512-S-baseline.npz",
+      "position_count": 162,
+      "kl_mean": 0.40966170538390023,
+      "kl_p95": 0.006135693281424105,
+      "kl_p99": 15.77476764804726,
+      "kl_max": 22.042846373749864,
+      "top1_matches": 156,
+      "failed_aggregate_gates": [
+        "mean",
+        "p95",
+        "p99",
+        "max",
+        "top1"
+      ],
+      "worst": {
+        "prompt_id": "general_ja_explain",
+        "step_after_prefill": 5,
+        "kl": 22.042846373749864
+      },
+      "by_prompt": [
+        {
+          "prompt_id": "code_merge_intervals",
+          "category": "code",
+          "mean_kl": 0.0006084613786916659,
+          "max_kl": 0.0029123106753634427,
+          "top1_matches": 9
+        },
+        {
+          "prompt_id": "code_topological_sort",
+          "category": "code",
+          "mean_kl": 0.0015235417197543284,
+          "max_kl": 0.006161951392502363,
+          "top1_matches": 9
+        },
+        {
+          "prompt_id": "code_lru_cache",
+          "category": "code",
+          "mean_kl": 0.0004465443129371594,
+          "max_kl": 0.0020903000965289548,
+          "top1_matches": 8
+        },
+        {
+          "prompt_id": "code_markdown_table",
+          "category": "code",
+          "mean_kl": 0.0006182749130672692,
+          "max_kl": 0.005456103785093088,
+          "top1_matches": 9
+        },
+        {
+          "prompt_id": "general_en_plan",
+          "category": "general_en",
+          "mean_kl": 0.003420304969882918,
+          "max_kl": 0.019241269250926885,
+          "top1_matches": 9
+        },
+        {
+          "prompt_id": "general_en_explain",
+          "category": "general_en",
+          "mean_kl": 0.00057535444842105,
+          "max_kl": 0.0028825975566747,
+          "top1_matches": 9
+        },
+        {
+          "prompt_id": "general_ja_plan",
+          "category": "general_ja",
+          "mean_kl": 0.00013544465360328104,
+          "max_kl": 0.000458978343502032,
+          "top1_matches": 9
+        },
+        {
+          "prompt_id": "general_ja_explain",
+          "category": "general_ja",
+          "mean_kl": 7.356240373285562,
+          "max_kl": 22.042846373749864,
+          "top1_matches": 4
+        },
+        {
+          "prompt_id": "mixed_ja_en_translate",
+          "category": "mixed_ja_en",
+          "mean_kl": 0.0006186748254040724,
+          "max_kl": 0.0035356698579123644,
+          "top1_matches": 9
+        },
+        {
+          "prompt_id": "mixed_ja_en_review",
+          "category": "mixed_ja_en",
+          "mean_kl": 0.0002304908723540292,
+          "max_kl": 0.0008073581241220141,
+          "top1_matches": 9
+        },
+        {
+          "prompt_id": "heldout_code_rate_limiter",
+          "category": "code",
+          "mean_kl": 0.00047114181783154474,
+          "max_kl": 0.002130200734256179,
+          "top1_matches": 9
+        },
+        {
+          "prompt_id": "heldout_code_interval_schedule",
+          "category": "code",
+          "mean_kl": 0.0015798116237506759,
+          "max_kl": 0.011685236496134798,
+          "top1_matches": 9
+        },
+        {
+          "prompt_id": "heldout_general_en_incident",
+          "category": "general_en",
+          "mean_kl": 0.004554419157294224,
+          "max_kl": 0.020703871632212476,
+          "top1_matches": 9
+        },
+        {
+          "prompt_id": "heldout_general_en_quant",
+          "category": "general_en",
+          "mean_kl": 0.0007474477688772489,
+          "max_kl": 0.003612540413264173,
+          "top1_matches": 9
+        },
+        {
+          "prompt_id": "heldout_general_ja_migration",
+          "category": "general_ja",
+          "mean_kl": 0.0011018747629800805,
+          "max_kl": 0.0035348328050077054,
+          "top1_matches": 9
+        },
+        {
+          "prompt_id": "heldout_general_ja_speculative",
+          "category": "general_ja",
+          "mean_kl": 0.00024280137126076967,
+          "max_kl": 0.0008453777321093187,
+          "top1_matches": 9
+        },
+        {
+          "prompt_id": "heldout_mixed_summary",
+          "category": "mixed_ja_en",
+          "mean_kl": 0.0006206213422232933,
+          "max_kl": 0.0048157164658073764,
+          "top1_matches": 9
+        },
+        {
+          "prompt_id": "heldout_mixed_review",
+          "category": "mixed_ja_en",
+          "mean_kl": 0.0001751136863081629,
+          "max_kl": 0.0006016268464056364,
+          "top1_matches": 9
+        }
+      ]
+    },
+    "raw_iq2_xs_default": {
+      "capture_note": "current production default (layer IQ2_XS raw residency); /tmp/ud-context512-S-current-default.npz",
+      "position_count": 162,
+      "kl_mean": 0.40918046158837856,
+      "kl_p95": 0.008943297253633582,
+      "kl_p99": 15.704595250145132,
+      "kl_max": 22.079430685040137,
+      "top1_matches": 157,
+      "failed_aggregate_gates": [
+        "mean",
+        "p95",
+        "p99",
+        "max",
+        "top1"
+      ],
+      "worst": {
+        "prompt_id": "general_ja_explain",
+        "step_after_prefill": 5,
+        "kl": 22.079430685040137
+      },
+      "by_prompt": [
+        {
+          "prompt_id": "code_merge_intervals",
+          "category": "code",
+          "mean_kl": 0.00024331031213302825,
+          "max_kl": 0.0012317489689210868,
+          "top1_matches": 9
+        },
+        {
+          "prompt_id": "code_topological_sort",
+          "category": "code",
+          "mean_kl": 0.0008112039210358263,
+          "max_kl": 0.003545957519014048,
+          "top1_matches": 9
+        },
+        {
+          "prompt_id": "code_lru_cache",
+          "category": "code",
+          "mean_kl": 0.00031834067684723046,
+          "max_kl": 0.001725539861547647,
+          "top1_matches": 9
+        },
+        {
+          "prompt_id": "code_markdown_table",
+          "category": "code",
+          "mean_kl": 0.0006611370976571875,
+          "max_kl": 0.004380582228779973,
+          "top1_matches": 9
+        },
+        {
+          "prompt_id": "general_en_plan",
+          "category": "general_en",
+          "mean_kl": 0.0017922707721653784,
+          "max_kl": 0.008000180594917538,
+          "top1_matches": 9
+        },
+        {
+          "prompt_id": "general_en_explain",
+          "category": "general_en",
+          "mean_kl": 0.0009227220606910906,
+          "max_kl": 0.005781218929945174,
+          "top1_matches": 9
+        },
+        {
+          "prompt_id": "general_ja_plan",
+          "category": "general_ja",
+          "mean_kl": 0.00021966235032996846,
+          "max_kl": 0.0009692546922279608,
+          "top1_matches": 9
+        },
+        {
+          "prompt_id": "general_ja_explain",
+          "category": "general_ja",
+          "mean_kl": 7.346930100262422,
+          "max_kl": 22.079430685040137,
+          "top1_matches": 4
+        },
+        {
+          "prompt_id": "mixed_ja_en_translate",
+          "category": "mixed_ja_en",
+          "mean_kl": 0.0004958758195769329,
+          "max_kl": 0.00248940423249866,
+          "top1_matches": 9
+        },
+        {
+          "prompt_id": "mixed_ja_en_review",
+          "category": "mixed_ja_en",
+          "mean_kl": 0.00042697466839447155,
+          "max_kl": 0.0023710495639526334,
+          "top1_matches": 9
+        },
+        {
+          "prompt_id": "heldout_code_rate_limiter",
+          "category": "code",
+          "mean_kl": 0.00233817177634774,
+          "max_kl": 0.01779679513699786,
+          "top1_matches": 9
+        },
+        {
+          "prompt_id": "heldout_code_interval_schedule",
+          "category": "code",
+          "mean_kl": 0.0012773201195377486,
+          "max_kl": 0.00921683914036763,
+          "top1_matches": 9
+        },
+        {
+          "prompt_id": "heldout_general_en_incident",
+          "category": "general_en",
+          "mean_kl": 0.004579389679986825,
+          "max_kl": 0.02010620165602251,
+          "top1_matches": 9
+        },
+        {
+          "prompt_id": "heldout_general_en_quant",
+          "category": "general_en",
+          "mean_kl": 0.0007752872196760136,
+          "max_kl": 0.003295648925013326,
+          "top1_matches": 9
+        },
+        {
+          "prompt_id": "heldout_general_ja_migration",
+          "category": "general_ja",
+          "mean_kl": 0.00118952509746291,
+          "max_kl": 0.0038067730793643687,
+          "top1_matches": 9
+        },
+        {
+          "prompt_id": "heldout_general_ja_speculative",
+          "category": "general_ja",
+          "mean_kl": 0.0006296264544754337,
+          "max_kl": 0.00343455443337364,
+          "top1_matches": 9
+        },
+        {
+          "prompt_id": "heldout_mixed_summary",
+          "category": "mixed_ja_en",
+          "mean_kl": 0.0014027776489392296,
+          "max_kl": 0.008992934972513387,
+          "top1_matches": 9
+        },
+        {
+          "prompt_id": "heldout_mixed_review",
+          "category": "mixed_ja_en",
+          "mean_kl": 0.00023461265313438938,
+          "max_kl": 0.001089819564004929,
+          "top1_matches": 9
+        }
+      ]
+    }
+  },
+  "limitations": [
+    "Synthetic repeated-chat 512-token contexts; state-length gate, not task quality.",
+    "Aggregate gate outcome only; category/shape/transition and determinism gates are separate.",
+    "No production default change made by this artifact.",
+    "Localization of the general_ja_explain step-5 divergence (layer-boundary capture at 512 context) is open and out of scope for this artifact."
+  ],
+  "characterization": {
+    "summary": "Both hipEngine residency arms fail identically; 157/162 positions have mean KL 0.00094. All catastrophic divergence is general_ja_explain steps 5-8 (step 5: teacher entropy 0.011, top prob 0.999, hipEngine top-1 differs; steps 6-8 are numerical propagation).",
+    "not_the_iq2_xs_integration": "bf16_expanded_iq2_xs and raw_iq2_xs_default arms agree with each other (KL between arms far below gate scale); failure predates the raw residency integration.",
+    "not_kv_precision_chaos": "llama.cpp S F16-KV vs BF16-KV (same file/inputs/schedule): mean KL 0.000496, max 0.013253, 161/162 top-1 \u2014 llama.cpp is self-consistent under KV precision change.",
+    "not_a_comparison_pipeline_artifact": "The same compare() pipeline reproduces the K_M final-gates numbers exactly (mean 0.0013153006, p95 0.0051019837, max 0.0346252307, 161/162).",
+    "conclusion": "Genuine hipEngine-vs-llama.cpp numerical divergence specific to K_S at 512-token context, concentrated in one prompt, located in the shared hipEngine execution path (attention/KV/GDN/raw-kernel accumulation), not in any single integrated residency change. Localization beyond this point requires layer-boundary capture at 512 context and is recorded as the open blocker."
+  }
+}

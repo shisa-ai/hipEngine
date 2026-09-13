@@ -101,6 +101,7 @@ from hipengine.kernels.hip_gfx1100.fused import (
     gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight,
     gguf_rmsnorm_bf16_f32_weight,
     gguf_rmsnorm_bf16_f32_weight_out_f32,
+    gguf_rounded_add_rmsnorm_bf16_f32_weight,
     gguf_rmsnorm_f32_f32_weight,
     gguf_rmsnorm_f32_f32_weight_out_f32,
     register_paro_combine_kernels,
@@ -224,6 +225,11 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import 
     gguf_q8_1_mmq_ds4_pack_bf16,
     q6_dense_integer_mmq_session,
     register_gguf_q4_k_q8_1_selected_prefill_kernels,
+)
+from hipengine.kernels.hip_gfx1100.quant.gguf_iq_source_mmq_prefill import (
+    build_gguf_iq_source_mmq_prefill,
+    iq_dense_mmq_nbytes,
+    iq_dense_mmq_session,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_t16_selected_prefill import (
     register_gguf_q4_k_t16_selected_prefill_kernels,
@@ -2622,22 +2628,12 @@ def _launch_qwen35_router_logits_bf16_hidden(
     preserving the BF16-weight path for fixtures and legacy materializations.
     """
 
-    fn = resolve(
-        backend=weight.backend,
-        layer="router_logits",
-        quant=weight.spec.quant_key,
-        variant="bf16_hidden",
-    )
-    fn(
-        hidden_ptr,
-        weight.allocation().tensor.ptr,
-        logits_ptr,
-        tokens,
-        hidden_size,
-        num_rows,
-        stream=stream,
-        runtime=runtime,
-    )
+    from hipengine.loading.qwen35_gguf_consumer_surface import resolve_router_consumer_contract
+    contract = resolve_router_consumer_contract(weight.spec.layout, weight.spec.quant_key, "bf16")
+    key = contract.key(weight.backend)
+    fn = resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant)
+    weight_ptr = weight.allocation().tensor.ptr
+    contract.call(fn, locals(), stream=stream, runtime=runtime)
 
 
 def _launch_qwen35_router_logits_f32_hidden(
@@ -2653,22 +2649,12 @@ def _launch_qwen35_router_logits_f32_hidden(
 ) -> None:
     """Launch F32-hidden router logits through the kernel registry."""
 
-    fn = resolve(
-        backend=weight.backend,
-        layer="router_logits",
-        quant=weight.spec.quant_key,
-        variant="f32_hidden",
-    )
-    fn(
-        hidden_ptr,
-        weight.allocation().tensor.ptr,
-        logits_ptr,
-        tokens,
-        hidden_size,
-        num_rows,
-        stream=stream,
-        runtime=runtime,
-    )
+    from hipengine.loading.qwen35_gguf_consumer_surface import resolve_router_consumer_contract
+    contract = resolve_router_consumer_contract(weight.spec.layout, weight.spec.quant_key, "f32")
+    key = contract.key(weight.backend)
+    fn = resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant)
+    weight_ptr = weight.allocation().tensor.ptr
+    contract.call(fn, locals(), stream=stream, runtime=runtime)
 
 
 def _try_launch_qwen35_router_topk_split_shared_bf16_f32w(
@@ -3003,6 +2989,7 @@ class Qwen35GGUFFullStackRunner:
     require_cached_build: bool = False
     backend: str = "auto"
     resident_weights: Qwen35GGUFResidentWeights | None = field(default=None, repr=False)
+    execution_routes: tuple[str, ...] = ("eager",)
     owns_resident_weights: bool = False
     token_embedding_placement: str = "device"
     use_selective_weight_arena: bool = False
@@ -3048,10 +3035,19 @@ class Qwen35GGUFFullStackRunner:
         self.token_embedding_placement = placement
         self.weights = self.resident_weights
         if self.weights is None:
+            from hipengine.loading.qwen35_gguf_execution import execution_operations
             materialize_kwargs = {
                 "runtime": self.runtime,
                 "backend": self.backend,
+                "requested_operations": execution_operations(self.execution_routes),
             }
+            if "ar_decode_native_rows" in materialize_kwargs["requested_operations"]:
+                info = GGUFReader(self.model_path).info
+                native_fp16 = _gguf_fp16_recurrent_state_enabled(
+                    backend=self.backend, file_type_name=info.file_type_name,
+                    artifact_preset_key=_gguf_model_info_artifact_preset_key(info),
+                )
+                materialize_kwargs["recurrent_state_dtype"] = "fp16" if native_fp16 else "f32"
             if placement == "host":
                 materialize_kwargs["deferred_device_slots"] = ("root.token_embedding",)
             if self.use_selective_weight_arena:
@@ -3072,10 +3068,15 @@ class Qwen35GGUFFullStackRunner:
         # Recurrent-state dtype is an allocation ABI, not a per-call toggle.
         # Freeze it after file-type discovery but before any session/scratch
         # allocation so later environment mutation cannot mismatch storage and
-        # writers. An explicit env value remains the rollback override.
+        # writers. An explicit env value remains the rollback override. The
+        # default binds the loader-resolved artifact qualification: only a
+        # qualified plain control (artifact_preset_key=None from admission)
+        # may inherit the stamp-certified backend default; preset-bound and
+        # unknown-manifest artifacts resolve the generic strict FP32 storage.
         self.fp16_recurrent_state = _gguf_fp16_recurrent_state_enabled(
             backend=self.backend,
             file_type_name=getattr(self.weights, "file_type_name", None),
+            artifact_preset_key=getattr(self.weights, "artifact_preset_key", None),
         )
         cfg = getattr(self.weights, "config", None)
         feed_forward_length = getattr(cfg, "feed_forward_length", None)
@@ -3230,6 +3231,8 @@ class Qwen35GGUFFullStackRunner:
                 allocation_arena=resident.allocation_arena,
                 allocation_mode=resident.allocation_mode,
                 allocation_arena_reason=resident.allocation_arena_reason,
+                artifact_preset_key=resident.artifact_preset_key,
+                admission_certificate=resident.admission_certificate,
             )
             self.token_embedding_placement = "device"
             return materialized
@@ -3268,11 +3271,23 @@ class Qwen35GGUFFullStackRunner:
             self._gguf_gdn_decode_output_cast_fn_cache = fn
         return fn
 
-    def _rounded_add_rmsnorm_fn(self):
-        """Resolve the exact rounded-add plus next-input RMSNorm composite."""
+    def _rounded_add_rmsnorm_fn(self, *, rows: int = 0):
+        """Resolve the exact rounded-add plus next-input RMSNorm composite.
+
+        ``rows`` selects the fixed-5120 register-cached sibling when the
+        backend declares one for the shape; ``rows=0`` returns the generic
+        owner unconditionally.
+        """
 
         missing = object()
-        fn = getattr(self, "_gguf_rounded_add_rmsnorm_fn_cache", missing)
+        cache = self.__dict__.setdefault(
+            "_gguf_rounded_add_rmsnorm_fn_cache", {}
+        )
+        if not isinstance(cache, dict):
+            cache = {}
+            self._gguf_rounded_add_rmsnorm_fn_cache = cache
+        key = int(rows) if rows and self.hidden_size == 5_120 else 0
+        fn = cache.get(key, missing)
         if fn is missing:
             load_backend_kernel_package(self.backend)
             fn = resolve(
@@ -3282,25 +3297,29 @@ class Qwen35GGUFFullStackRunner:
                 variant="rounded_bf16_out",
                 missing="none",
             )
-            self._gguf_rounded_add_rmsnorm_fn_cache = fn
+            if fn is not None and key:
+                # Keep the per-backend resolution as the fallback so a backend
+                # without the capability does not inherit another backend's
+                # wrapper.
+                fn = _gguf_norm_residual_decode_kernel(
+                    self,
+                    layer="add+rmsnorm",
+                    rows=key,
+                    hidden_size=self.hidden_size,
+                    fallback=fn,
+                )
+            cache[key] = fn
         return fn
 
     def _gdn_decode_output_cast_for_weight(self, weight, *, rows: int = 1):
         """Return the plugin cast or the unfused cast required by weight layout."""
 
+        from hipengine.loading.qwen35_gguf_consumer_surface import resolve_gdn_output_handoff
         output_cast = self._gdn_decode_output_cast_fn()
+        handoff = resolve_gdn_output_handoff(weight.spec.layout, force_bf16=output_cast is not None)
         if output_cast is not None:
             return output_cast
-        try:
-            resolve_gguf_linear_dispatch(
-                weight,
-                activation_dtype=GGUF_ACTIVATION_F32,
-                backend=self.backend,
-                rows=rows,
-            )
-        except ValueError:
-            return f32_to_bf16
-        return None
+        return f32_to_bf16 if handoff.adapters else None
 
     def _gdn_decode_output_fusion_for_weight(self, weight):
         """Resolve a weight-plugin scalar GDN FP32+BF16 boundary owner.
@@ -3929,25 +3948,18 @@ class Qwen35GGUFFullStackRunner:
             "chain_wave32_tree",
         } or (plan.has_chain and not use_fused)
         if use_fused:
-            plan.fused_decode_order(
-                scratch.conv_out.ptr,
-                scratch.linear_z.ptr,
-                scratch.linear_alpha.ptr,
-                scratch.linear_beta.ptr,
-                layer.weight("ssm_dt_bias").allocation().tensor.ptr,
-                layer.weight("ssm_a").allocation().tensor.ptr,
-                layer.weight("ssm_norm").allocation().tensor.ptr,
-                recurrent_state.ptr,
-                scratch.recurrent_bf16.ptr,
-                cfg.rms_norm_eps,
-                rows,
-                cfg.ssm_group_count,
-                cfg.ssm_time_step_rank,
-                cfg.ssm_state_size,
-                self.ssm_value_dim,
-                stream=stream,
-                runtime=runtime,
-            )
+            from hipengine.loading.qwen35_gguf_consumer_surface import GDN_PREFILL
+            GDN_PREFILL.call(plan.fused_decode_order, {
+                "conv_out_ptr": scratch.conv_out.ptr, "gate_ptr": scratch.linear_z.ptr,
+                "a_ptr": scratch.linear_alpha.ptr, "b_ptr": scratch.linear_beta.ptr,
+                "dt_bias_ptr": layer.weight("ssm_dt_bias").allocation().tensor.ptr,
+                "a_log_ptr": layer.weight("ssm_a").allocation().tensor.ptr,
+                "norm_weight_ptr": layer.weight("ssm_norm").allocation().tensor.ptr,
+                "recurrent_state_ptr": recurrent_state.ptr, "out_ptr": scratch.recurrent_bf16.ptr,
+                "eps": cfg.rms_norm_eps, "tokens": rows,
+                "num_k_heads": cfg.ssm_group_count, "num_v_heads": cfg.ssm_time_step_rank,
+                "head_k_dim": cfg.ssm_state_size, "head_v_dim": self.ssm_value_dim,
+            }, stream=stream, runtime=runtime)
             return
         if use_chain:
             if use_direct_lds32 and direct_route_available:
@@ -4295,7 +4307,9 @@ class Qwen35GGUFFullStackRunner:
     @property
     def ssm_value_dim(self) -> int:
         assert self.weights is not None
-        return self.weights.config.ssm_inner_size // self.weights.config.ssm_time_step_rank
+        from hipengine.loading.qwen35_gguf_consumer_surface import gdn_value_head_dim
+        return gdn_value_head_dim(self.weights.config.ssm_inner_size,
+                                  self.weights.config.ssm_time_step_rank)
 
     def run_prompt_hidden(
         self,
@@ -7265,8 +7279,7 @@ class Qwen35GGUFFullStackRunner:
         state_indices_ptr: int,
         stream: int = 0,
     ) -> str:
-        """Run independent decode rows through the Q3 indexed-state contract."""
-
+        """Run session-owned rows through the Q3 indexed-state contract."""
         assert self.weights is not None
         if rows <= 1:
             raise ValueError("native linear-attention batch requires rows > 1")
@@ -7324,26 +7337,15 @@ class Qwen35GGUFFullStackRunner:
 
         # Keep the scalar dense reduction association on the two rank-16
         # projections; the indexed GDN ABI consumes separate row-major arrays.
-        dense_gemv_out_bf16(
-            scratch.norm.ptr,
-            layer.weight("ssm_alpha").allocation("raw").tensor.ptr,
-            scratch.linear_alpha.ptr,
-            rows,
-            self.hidden_size,
-            cfg.ssm_time_step_rank,
-            stream=stream,
-            runtime=runtime,
-        )
-        dense_gemv_out_bf16(
-            scratch.norm.ptr,
-            layer.weight("ssm_beta").allocation("raw").tensor.ptr,
-            scratch.linear_beta.ptr,
-            rows,
-            self.hidden_size,
-            cfg.ssm_time_step_rank,
-            stream=stream,
-            runtime=runtime,
-        )
+        from hipengine.loading.qwen35_gguf_consumer_surface import native_alpha_beta_consumer_contract
+        alpha_beta = native_alpha_beta_consumer_contract()
+        for weight_name, output in (("ssm_alpha", scratch.linear_alpha), ("ssm_beta", scratch.linear_beta)):
+            alpha_beta.call(dense_gemv_out_bf16, {
+                "x_ptr": scratch.norm.ptr,
+                "raw": layer.weight(weight_name).allocation("raw").tensor.ptr,
+                "out_ptr": output.ptr, "rows": rows,
+                "in_features": self.hidden_size, "out_features": cfg.ssm_time_step_rank,
+            }, stream=stream, runtime=runtime)
         qwen35_linear_attn_conv_decode_indexed_bf16(
             scratch.linear_qkv.ptr,
             conv_state.ptr,
@@ -7417,8 +7419,7 @@ class Qwen35GGUFFullStackRunner:
         rows: int,
         stream: int = 0,
     ) -> str:
-        """Run one compact row-batched full-attention decode layer."""
-
+        """Run one session-owned row-batched full-attention decode layer."""
         assert self.weights is not None
         if rows <= 1:
             raise ValueError("native full-attention batch requires rows > 1")
@@ -9607,7 +9608,7 @@ class Qwen35GGUFFullStackRunner:
         if next_norm_weight_ptr is not None and f32_residual:
             raise ValueError("dense next RMSNorm fusion requires a BF16 residual")
         rounded_next_rms_fn = (
-            self._rounded_add_rmsnorm_fn()
+            self._rounded_add_rmsnorm_fn(rows=rows)
             if next_norm_weight_ptr is not None and rows <= 8
             else None
         )
@@ -10244,8 +10245,13 @@ class Qwen35GGUFFullStackRunner:
             scratch,
             bool(prefer_f32_selected_down),
         )
+        gate_call, down_call = selected_ffn_modes(
+            gate_weight.spec.quant_key, up_weight.spec.quant_key, down_weight.spec.quant_key,
+            allow_legacy_silu=True, f32_gate=post_norm_f32_ptr is not None,
+            f32_intermediate=f32_selected_intermediate, f32_down=prefer_f32_selected_down,
+        )
         expert_silu_ready = False
-        if post_norm_f32_ptr is None and not f32_selected_intermediate:
+        if gate_call == "dual_silu":
             expert_silu_ready = _launch_selected_raw_gguf_moe_pair_silu(
                 gate_weight,
                 up_weight,
@@ -10272,51 +10278,15 @@ class Qwen35GGUFFullStackRunner:
                     or _selected_pair_requires_q8_1_input(gate_weight, up_weight)
                 ),
             )
-            if not _launch_selected_raw_gguf_moe_pair(
-                gate_weight,
-                up_weight,
-                scratch.post_norm.ptr,
-                scratch.moe_selected_experts.ptr,
-                scratch.ffn_gate_up.ptr,
+            _launch_selected_raw_gguf_moe_dual(
+                gate_weight, up_weight, scratch.post_norm.ptr,
+                scratch.moe_selected_experts.ptr, scratch.ffn_gate_up.ptr,
                 scratch.ffn_gate_up.ptr + gate_rows_nbytes,
-                x_rows=1,
-                rows=selected_rows,
-                num_experts=cfg.expert_count,
-                in_features=self.hidden_size,
-                out_features=cfg.expert_feed_forward_length,
-                q8_1_workspace_ptr=q8_1_workspace_ptr,
-                x_f32_ptr=post_norm_f32_ptr,
-                stream=stream,
-                runtime=runtime,
-            ):
-                _launch_selected_raw_gguf_moe_linear(
-                    gate_weight,
-                    scratch.post_norm.ptr,
-                    scratch.moe_selected_experts.ptr,
-                    scratch.ffn_gate_up.ptr,
-                    x_rows=1,
-                    rows=selected_rows,
-                    num_experts=cfg.expert_count,
-                    in_features=self.hidden_size,
-                    out_features=cfg.expert_feed_forward_length,
-                    x_f32_ptr=post_norm_f32_ptr,
-                    stream=stream,
-                    runtime=runtime,
-                )
-                _launch_selected_raw_gguf_moe_linear(
-                    up_weight,
-                    scratch.post_norm.ptr,
-                    scratch.moe_selected_experts.ptr,
-                    scratch.ffn_gate_up.ptr + gate_rows_nbytes,
-                    x_rows=1,
-                    rows=selected_rows,
-                    num_experts=cfg.expert_count,
-                    in_features=self.hidden_size,
-                    out_features=cfg.expert_feed_forward_length,
-                    x_f32_ptr=post_norm_f32_ptr,
-                    stream=stream,
-                    runtime=runtime,
-                )
+                x_rows=1, rows=selected_rows, num_experts=cfg.expert_count,
+                in_features=self.hidden_size, out_features=cfg.expert_feed_forward_length,
+                q8_1_workspace_ptr=q8_1_workspace_ptr, x_f32_ptr=post_norm_f32_ptr,
+                stream=stream, runtime=runtime,
+            )
             if f32_selected_intermediate:
                 silu_mul_separate_out_f32(
                     scratch.ffn_gate_up.ptr,
@@ -10347,7 +10317,7 @@ class Qwen35GGUFFullStackRunner:
                 )
         f32_selected_down = bool(prefer_f32_selected_down)
         expert_down_weighted = False
-        if not f32_selected_down:
+        if down_call == "weighted_down":
             expert_down_weighted = _launch_weighted_selected_raw_gguf_moe_linear(
                 down_weight,
                 scratch.ffn_intermediate.ptr,
@@ -10359,6 +10329,7 @@ class Qwen35GGUFFullStackRunner:
                 num_experts=cfg.expert_count,
                 in_features=cfg.expert_feed_forward_length,
                 out_features=self.hidden_size,
+                backend=self.backend,
                 stream=stream,
                 runtime=runtime,
             )
@@ -10606,7 +10577,10 @@ class Qwen35GGUFFullStackRunner:
                 runtime=runtime,
                 library=getattr(self, "_expert_pack8_library", None),
             )
-        elif _launch_selected_raw_gguf_moe_pair_silu(
+        elif selected_ffn_modes(
+            gate_weight.spec.quant_key, up_weight.spec.quant_key, down_weight.spec.quant_key,
+            allow_legacy_silu=False,
+        )[0] == "dual_silu" and _launch_selected_raw_gguf_moe_pair_silu(
             gate_weight,
             up_weight,
             scratch.post_norm.ptr,
@@ -10637,54 +10611,16 @@ class Qwen35GGUFFullStackRunner:
                     or _selected_pair_requires_q8_1_input(gate_weight, up_weight)
                 ),
             )
-            if not _launch_selected_raw_gguf_moe_pair(
-                gate_weight,
-                up_weight,
-                scratch.post_norm.ptr,
-                scratch.moe_selected_experts.ptr,
-                scratch.ffn_gate_up.ptr,
+            _launch_selected_raw_gguf_moe_dual(
+                gate_weight, up_weight, scratch.post_norm.ptr,
+                scratch.moe_selected_experts.ptr, scratch.ffn_gate_up.ptr,
                 scratch.ffn_gate_up.ptr + gate_rows_nbytes,
-                x_rows=rows,
-                rows=selected_rows,
-                num_experts=cfg.expert_count,
-                in_features=self.hidden_size,
-                out_features=cfg.expert_feed_forward_length,
-                q8_1_workspace_ptr=q8_1_workspace_ptr,
-                x_f32_ptr=selected_f32_ptr,
-                stream=stream,
-                runtime=runtime,
-                stage_timings=stage_timings,
-                sync_stage_timings=sync_stages,
-                stage_prefix=f"{stage_prefix}_expert_gate_up",
-            ):
-                _launch_selected_raw_gguf_moe_linear(
-                    gate_weight,
-                    scratch.post_norm.ptr,
-                    scratch.moe_selected_experts.ptr,
-                    scratch.ffn_gate_up.ptr,
-                    x_rows=rows,
-                    rows=selected_rows,
-                    num_experts=cfg.expert_count,
-                    in_features=self.hidden_size,
-                    out_features=cfg.expert_feed_forward_length,
-                    x_f32_ptr=selected_f32_ptr,
-                    stream=stream,
-                    runtime=runtime,
-                )
-                _launch_selected_raw_gguf_moe_linear(
-                    up_weight,
-                    scratch.post_norm.ptr,
-                    scratch.moe_selected_experts.ptr,
-                    scratch.ffn_gate_up.ptr + gate_rows_nbytes,
-                    x_rows=rows,
-                    rows=selected_rows,
-                    num_experts=cfg.expert_count,
-                    in_features=self.hidden_size,
-                    out_features=cfg.expert_feed_forward_length,
-                    x_f32_ptr=selected_f32_ptr,
-                    stream=stream,
-                    runtime=runtime,
-                )
+                x_rows=rows, rows=selected_rows, num_experts=cfg.expert_count,
+                in_features=self.hidden_size, out_features=cfg.expert_feed_forward_length,
+                q8_1_workspace_ptr=q8_1_workspace_ptr, x_f32_ptr=selected_f32_ptr,
+                stream=stream, runtime=runtime, stage_timings=stage_timings,
+                sync_stage_timings=sync_stages, stage_prefix=f"{stage_prefix}_expert_gate_up",
+            )
         t_stage = _mark_sync_stage(
             runtime,
             stage_timings,
@@ -10752,7 +10688,11 @@ class Qwen35GGUFFullStackRunner:
             )
         else:
             selected_down_is_f32 = prefer_f32_selected_down
-            if not selected_down_is_f32 and not f32_residual:
+            if selected_ffn_modes(
+                gate_weight.spec.quant_key, up_weight.spec.quant_key, down_weight.spec.quant_key,
+                allow_legacy_silu=False, f32_down=selected_down_is_f32,
+                weighted_down=not f32_residual,
+            )[1] == "weighted_down":
                 expert_down_weighted = _launch_weighted_selected_raw_gguf_moe_linear(
                     down_weight,
                     scratch.ffn_intermediate.ptr,
@@ -11472,7 +11412,17 @@ def _env_flag(name: str, default: bool, *aliases: str) -> bool:
 
 def _gguf_policy_identity(
     weights: object,
-) -> tuple[GGUFModelGeometry, str | None] | None:
+) -> tuple[GGUFModelGeometry, str | None] | tuple[GGUFModelGeometry, str | None, str] | None:
+    """Policy-table identity for one resident artifact.
+
+    Plain artifacts keep the historical ``(geometry, file_type)`` key so every
+    qualified plain control resolves unchanged. An artifact with a bound UD
+    admission preset extends the key with the preset key, so certified-plain
+    policy rows (tuned per stamp) can never silently apply to a UD artifact
+    that merely shares the stamp: the extended key misses the table and the
+    caller falls back to the generic path.
+    """
+
     geometry = getattr(weights, "geometry", None)
     if geometry is None:
         geometry = GGUFModelGeometry.try_from_config(getattr(weights, "config", None))
@@ -11481,7 +11431,14 @@ def _gguf_policy_identity(
     if not isinstance(geometry, GGUFModelGeometry):
         return None
     file_type_name = getattr(weights, "file_type_name", None)
-    return geometry, None if file_type_name is None else str(file_type_name)
+    artifact_preset_key = getattr(weights, "artifact_preset_key", None)
+    if artifact_preset_key is None:
+        return geometry, None if file_type_name is None else str(file_type_name)
+    return (
+        geometry,
+        None if file_type_name is None else str(file_type_name),
+        str(artifact_preset_key),
+    )
 
 
 def _resolve_gguf_packed_decode_graph_min_replay_steps(
@@ -11491,6 +11448,7 @@ def _resolve_gguf_packed_decode_graph_min_replay_steps(
     file_type_name: str | None,
     physical_rows: int,
     default_minimum: int,
+    artifact_preset_key: str | None = None,
 ) -> int:
     """Resolve a packed-graph floor from backend model/quant/width policy."""
 
@@ -11506,7 +11464,14 @@ def _resolve_gguf_packed_decode_graph_min_replay_steps(
     )
     if not isinstance(package_policies, Mapping):
         raise RuntimeError("backend packed decode graph floor policies must be a mapping")
-    policy = package_policies.get((geometry, file_type_name), {})
+    if artifact_preset_key is None:
+        policy = package_policies.get((geometry, file_type_name), {})
+    else:
+        # A preset-bound artifact never reads plain-stamp-keyed rows; only an
+        # exact preset-keyed row (if a backend ships one) applies.
+        policy = package_policies.get(
+            (geometry, file_type_name, artifact_preset_key), {}
+        )
     if not isinstance(policy, Mapping):
         raise RuntimeError("backend packed decode graph floor policy must be a mapping")
     raw = policy.get(rows)
@@ -11528,8 +11493,17 @@ def _resolve_gguf_decode_graph_submission_transport(
     steps_per_replay: int = 1,
     requested: str | None = None,
     env: Mapping[str, str] | None = None,
+    artifact_preset_key: str | None = None,
 ) -> str:
-    """Resolve explicit/env selection over measured model/quant/shape policy."""
+    """Resolve explicit/env selection over measured model/quant/shape policy.
+
+    The package policy rows are certified per artifact ``(geometry, stamp)``.
+    ``artifact_preset_key=None`` keeps the historical plain-identity row;
+    preset-bound and unknown-manifest artifacts resolve only an exact
+    preset-keyed row (if a backend ships one) and otherwise the generic
+    hipgraph fallback — they never inherit a plain-certified row from the
+    stamp alone.
+    """
 
     from hipengine.core.pm4.transport import select_submission_transport
 
@@ -11540,7 +11514,12 @@ def _resolve_gguf_decode_graph_submission_transport(
     )
     if not isinstance(package_policies, Mapping):
         raise RuntimeError("backend GGUF decode graph transport policies must be a mapping")
-    policy = package_policies.get((geometry, file_type_name), {})
+    if artifact_preset_key is None:
+        policy = package_policies.get((geometry, file_type_name), {})
+    else:
+        policy = package_policies.get(
+            (geometry, file_type_name, artifact_preset_key), {}
+        )
     if not isinstance(policy, Mapping):
         raise RuntimeError("backend GGUF decode graph transport policy must be a mapping")
     package_default = str(policy.get("transport", "hipgraph"))
@@ -11835,15 +11814,23 @@ def _gguf_norm_residual_decode_kernel(
     layer: str,
     rows: int,
     hidden_size: int,
+    fallback: object = None,
 ):
     """Resolve one exact model/backend/shape-qualified D5 norm leaf."""
 
-    fallback = {
-        "rmsnorm": gguf_rmsnorm_bf16_f32_weight,
-        "add_rmsnorm": gguf_add_rmsnorm_bf16_f32_weight,
-    }.get(layer)
     if fallback is None:
-        raise ValueError(f"unsupported norm/residual registry layer {layer!r}")
+        fallback = {
+            "rmsnorm": gguf_rmsnorm_bf16_f32_weight,
+            "add_rmsnorm": gguf_add_rmsnorm_bf16_f32_weight,
+            "add+rmsnorm": gguf_rounded_add_rmsnorm_bf16_f32_weight,
+        }.get(layer)
+        if fallback is None:
+            raise ValueError(f"unsupported norm/residual registry layer {layer!r}")
+    capability = {
+        "rmsnorm": "GGUF_NORM_RESIDUAL_DECODE_POLICIES",
+        "add_rmsnorm": "GGUF_NORM_RESIDUAL_DECODE_POLICIES",
+        "add+rmsnorm": "GGUF_ROUNDED_NORM_RESIDUAL_DECODE_POLICIES",
+    }[layer]
     weights = getattr(runner, "weights", None)
     cfg = getattr(weights, "config", None)
     backend = getattr(runner, "backend", None)
@@ -11857,7 +11844,9 @@ def _gguf_norm_residual_decode_kernel(
     if identity is None:
         return fallback
     shape = (int(rows), int(hidden_size))
-    policy_key = (backend, identity, shape)
+    # The layer is part of the memo key: the plain and the rounded layers share
+    # a shape table shape but select different kernels.
+    policy_key = (backend, layer, identity, shape)
     cached_policy = getattr(runner, "_norm_residual_decode_policy_cache", None)
     if (
         isinstance(cached_policy, tuple)
@@ -11867,11 +11856,20 @@ def _gguf_norm_residual_decode_kernel(
         variant = cached_policy[1]
     else:
         try:
-            policies = backend_package_capability(
-                backend, "GGUF_NORM_RESIDUAL_DECODE_POLICIES", {}
-            )
+            policies = backend_package_capability(backend, capability, {})
         except (ImportError, ValueError):
             return fallback
+        if isinstance(policies, Mapping):
+            enabled_env = policies.get("enabled_env")
+            if isinstance(enabled_env, str) and enabled_env:
+                raw = os.environ.get(enabled_env)
+                enabled = (
+                    bool(policies.get("enabled_default", False))
+                    if raw is None
+                    else raw.strip().lower() not in {"0", "false", "no", "off"}
+                )
+                if not enabled:
+                    return fallback
         shapes = policies.get(identity, {}) if isinstance(policies, Mapping) else {}
         variant = shapes.get(shape) if isinstance(shapes, Mapping) else None
         try:
@@ -12350,6 +12348,24 @@ def _gguf_mapped_host_token_embedding_storage(
     return source, "hip_registered_gguf_mmap"
 
 
+def _gguf_model_info_artifact_preset_key(model_info: object) -> str | None:
+    """Loader-equivalent artifact admission key from one GGUF model info.
+
+    Header-only (no payload read, no device): builds the production tensor
+    map plus the structural NextN map exactly like the materializer and
+    resolves the same admission qualification — ``None`` for a pinned
+    qualified plain control, a UD preset key, or the unqualified-manifest
+    sentinel. Session-level policy callers use this so their stamp-keyed
+    admissions bind the actual manifest, not the header stamp alone.
+    """
+
+    from hipengine.loading.qwen35_gguf_admission import (
+        qwen35_gguf_artifact_identity_from_info,
+    )
+
+    return qwen35_gguf_artifact_identity_from_info(model_info)[1]
+
+
 def _resolve_gguf_private_c1_small_weight_arena(
     *,
     backend: str,
@@ -12358,8 +12374,16 @@ def _resolve_gguf_private_c1_small_weight_arena(
     geometry: GGUFModelGeometry | None = None,
     file_type_name: str | None = None,
     requested: bool | None = None,
+    artifact_preset_key: str | None = None,
 ) -> tuple[bool, str]:
-    """Select the retained allocator-owned private-c1 path with explicit opt-out."""
+    """Select the retained allocator-owned private-c1 path with explicit opt-out.
+
+    The policy-table admission route is certified per artifact
+    ``(geometry, stamp)``: ``artifact_preset_key=None`` keeps the plain row,
+    preset-bound/unknown identities resolve only an exact preset-keyed row
+    (none ship today). ``requested`` (and its env) is an opt-OUT seam only —
+    ``True`` never bypasses the artifact-qualified admission.
+    """
 
     enabled = (
         _env_flag(_GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_ENV, True)
@@ -12387,7 +12411,10 @@ def _resolve_gguf_private_c1_small_weight_arena(
         )
         if not isinstance(policies, Mapping):
             return False, "backend_capability_fallback"
-        policy = policies.get((geometry, file_type_name))
+        if artifact_preset_key is None:
+            policy = policies.get((geometry, file_type_name))
+        else:
+            policy = policies.get((geometry, file_type_name, artifact_preset_key))
         admitted = isinstance(policy, Mapping) and bool(
             policy.get("enabled", False)
         )
@@ -12404,8 +12431,14 @@ def _resolve_gguf_private_c1_decode_scratch_arena(
     geometry: GGUFModelGeometry | None = None,
     file_type_name: str | None = None,
     requested: bool | None = None,
+    artifact_preset_key: str | None = None,
 ) -> tuple[bool, str]:
-    """Select one physical owner for geometry-qualified private-c1 scratch."""
+    """Select one physical owner for geometry-qualified private-c1 scratch.
+
+    The admission row is certified per artifact ``(geometry, stamp)`` and now
+    identity-keyed: preset-bound/unknown artifacts resolve only an exact
+    preset-keyed row (none ship today) and otherwise keep dedicated owners.
+    """
 
     if requested is None:
         raw = _env_value(_GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA_ENV)
@@ -12428,7 +12461,10 @@ def _resolve_gguf_private_c1_decode_scratch_arena(
     )
     if not isinstance(policies, Mapping):
         return False, "backend_capability_fallback"
-    policy = policies.get((geometry, file_type_name))
+    if artifact_preset_key is None:
+        policy = policies.get((geometry, file_type_name))
+    else:
+        policy = policies.get((geometry, file_type_name, artifact_preset_key))
     if not isinstance(policy, Mapping) or not bool(policy.get("enabled", False)):
         return False, "backend_capability_fallback"
     return True, "private_c1_geometry_policy"
@@ -12439,8 +12475,14 @@ def _resolve_gguf_private_c1_weight_arena_max_allocation_bytes(
     backend: str,
     geometry: GGUFModelGeometry | None = None,
     file_type_name: str | None = None,
+    artifact_preset_key: str | None = None,
 ) -> int:
-    """Resolve the geometry-scoped arena cutoff without changing peer defaults."""
+    """Resolve the geometry-scoped arena cutoff without changing peer defaults.
+
+    The cutoff row is certified per artifact ``(geometry, stamp)`` and
+    identity-keyed like the arena admission: preset-bound/unknown artifacts
+    keep the default cutoff instead of a plain-certified row.
+    """
 
     default = GGUF_SELECTIVE_WEIGHT_ARENA_MAX_ALLOCATION_BYTES
     policies = backend_package_capability(
@@ -12450,7 +12492,10 @@ def _resolve_gguf_private_c1_weight_arena_max_allocation_bytes(
     )
     if not isinstance(policies, Mapping):
         return default
-    policy = policies.get((geometry, file_type_name))
+    if artifact_preset_key is None:
+        policy = policies.get((geometry, file_type_name))
+    else:
+        policy = policies.get((geometry, file_type_name, artifact_preset_key))
     if not isinstance(policy, Mapping):
         return default
     parsed = int(policy.get("max_allocation_bytes", default))
@@ -12708,11 +12753,11 @@ def _q8_0_embedding_rows_to_bf16(
 
 
 def _gguf_q4k_selected_dual_dp4a_enabled() -> bool:
-    return _env_flag(_GGUF_Q4K_SELECTED_DUAL_DP4A_ENV, False)
+    return selected_adapter_enabled(_GGUF_Q4K_SELECTED_DUAL_DP4A_ENV)
 
 
 def _gguf_t16_selected_dp4a_enabled() -> bool:
-    return _env_flag(_GGUF_T16_SELECTED_DP4A_ENV, False)
+    return selected_adapter_enabled(_GGUF_T16_SELECTED_DP4A_ENV)
 
 
 def _gguf_q8_t16_decode_rowtile_all_for_rows(backend: str, *, rows: int) -> bool:
@@ -12796,6 +12841,42 @@ def _gguf_q5_t16_selected_qwen_tile8_enabled(backend: str | None) -> bool:
     )
 
 
+def _gguf_t16_selected_c1_variant(
+    backend: str | None,
+    quant_key: str,
+    *,
+    x_rows: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> str | None:
+    """Resolve a backend-qualified selected-expert single-token owner by shape.
+
+    In the selected-expert path ``x_rows == rows == selected_rows`` (top_k) for a
+    single token, and ``x_rows`` counts tokens only when a caller batches several
+    of them. The shape policy is the admission, not ``x_rows``: the row-to-x
+    mapping is the same one the direct selected owner uses, so this resolver only
+    requires the geometry the kernel supports.
+    """
+
+    if backend is None or int(rows) <= 0 or int(x_rows) <= 0:
+        return None
+    if int(rows) % int(x_rows) != 0:
+        return None
+    policies = backend_package_capability(
+        backend,
+        "GGUF_T16_SELECTED_C1_VARIANTS_BY_QUANT_SHAPE",
+        {},
+    )
+    if not isinstance(policies, Mapping):
+        return None
+    quant_policies = policies.get(str(quant_key), {})
+    if not isinstance(quant_policies, Mapping):
+        return None
+    variant = quant_policies.get((int(in_features), int(out_features)))
+    return variant if isinstance(variant, str) and variant else None
+
+
 @contextmanager
 def _gguf_t16_selected_q6_down_pairreuse_min_rows_scope(min_rows: int | None):
     """Apply a backend-certified Q6 selected-down reuse width floor."""
@@ -12824,7 +12905,7 @@ def _gguf_t16_ds4_prefill_enabled() -> bool:
 
 
 def _gguf_raw_selected_dp4a_enabled() -> bool:
-    return _env_flag(_GGUF_RAW_SELECTED_DP4A_ENV, False)
+    return selected_adapter_enabled(_GGUF_RAW_SELECTED_DP4A_ENV)
 
 
 def _gguf_dense_q8_dp4a_enabled() -> bool:
@@ -12958,18 +13039,27 @@ def _gguf_fp16_recurrent_state_enabled(
     *,
     backend: str | None = None,
     file_type_name: str | None = None,
+    artifact_preset_key: str | None = None,
 ) -> bool:
     """Resolve the frozen recurrent-state storage dtype.
 
-    An explicit environment value always wins and remains the rollback seam.
-    Otherwise the backend package admits only model file types with complete
-    correctness and same-scope performance evidence. Registered FP32 kernels
-    remain the strict-storage fallback; incompatible chain-journal/MTP paths
-    still fail closed (see docs/REFACTOR.md).
+    An explicit environment value always wins and remains the rollback seam
+    (a supported developer opt-out for every artifact identity). Otherwise the
+    backend package admits only model file types with complete correctness and
+    same-scope performance evidence, and only for artifacts the admission
+    pipeline bound as qualified plain controls: ``artifact_preset_key=None``
+    means the caller holds a loader-resolved plain identity, so the
+    stamp-membership default applies. A preset-bound (UD) or unknown-manifest
+    (sentinel) key never inherits the artifact-qualified default from the
+    stamp alone and resolves the generic strict FP32 fallback. Registered FP32
+    kernels remain the strict-storage fallback; incompatible chain-journal/MTP
+    paths still fail closed (see docs/REFACTOR.md).
     """
 
     if _env_value(_GGUF_FP16_RECURRENT_STATE_ENV) is not None:
         return _env_flag(_GGUF_FP16_RECURRENT_STATE_ENV, False)
+    if artifact_preset_key is not None:
+        return False
     if backend is None or file_type_name is None:
         return False
     defaults = backend_package_capability(
@@ -12994,20 +13084,17 @@ def _resolve_fp16_recurrent_state_flag(use_fp16_state: bool | None) -> bool:
 
 
 def _gdn_decode_gate_kernel(use_fp16_state: bool | None = None):
-    fn = (
-        qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16_fp16state
-        if _resolve_fp16_recurrent_state_flag(use_fp16_state)
-        else qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16
-    )
-    return fn
+    from hipengine.loading.qwen35_gguf_consumer_surface import resolve_gdn_operation_contract
+    contract = resolve_gdn_operation_contract(
+        "ar_decode_c1", "fp16" if _resolve_fp16_recurrent_state_flag(use_fp16_state) else "f32")
+    return globals()[contract.symbol.removeprefix("hipengine_")]
 
 
 def _gdn_decode_segments_kernel(use_fp16_state: bool | None = None):
-    return (
-        qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16_fp16state
-        if _resolve_fp16_recurrent_state_flag(use_fp16_state)
-        else qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16
-    )
+    from hipengine.loading.qwen35_gguf_consumer_surface import resolve_gdn_segments_contract
+    contract = resolve_gdn_segments_contract(
+        "fp16" if _resolve_fp16_recurrent_state_flag(use_fp16_state) else "f32")
+    return globals()[contract.symbol.removeprefix("hipengine_")]
 
 
 def _gdn_decode_order_state_rows_kernel(use_fp16_state: bool | None = None):
@@ -13479,24 +13566,10 @@ def _quantize_activation_q8_1(
     stream: int,
     runtime: HipRuntime,
 ) -> None:
-    if x_f32_ptr is None:
-        gguf_q4_k_quantize_bf16_q8_1(
-            x_ptr,
-            q8_1_workspace_ptr,
-            rows,
-            in_features,
-            stream=stream,
-            runtime=runtime,
-        )
-    else:
-        gguf_q4_k_quantize_f32_q8_1(
-            int(x_f32_ptr),
-            q8_1_workspace_ptr,
-            rows,
-            in_features,
-            stream=stream,
-            runtime=runtime,
-        )
+    input_dtype = "bf16" if x_f32_ptr is None else "f32"
+    fn = globals()[selected_input_adapter(input_dtype)]
+    fn(x_ptr if x_f32_ptr is None else int(x_f32_ptr), q8_1_workspace_ptr,
+       rows, in_features, stream=stream, runtime=runtime)
 
 
 def _try_launch_dense_q8_single_dp4a(
@@ -15098,6 +15171,7 @@ class Qwen35GGUFResidentSession:
     require_cached_build: bool = False
     backend: str = "auto"
     shared_runner: Qwen35GGUFFullStackRunner | None = None
+    execution_routes: tuple[str, ...] = ("eager",)
     max_sequence_length: int | None = None
     max_batch_size: int = 1
     use_expert_sidecar: bool = False
@@ -15145,6 +15219,7 @@ class Qwen35GGUFResidentSession:
     _logits_buf: object | None = field(default=None, init=False)
     _native_cu_seqlens_buf: object | None = field(default=None, init=False)
     _native_state_indices_buf: object | None = field(default=None, init=False)
+    _native_rows_ready: bool = field(default=False, init=False, repr=False)
     _native_token_ids_host: np.ndarray | None = field(default=None, init=False)
     _lm_block_values: object | None = field(default=None, init=False)
     _lm_block_indices: object | None = field(default=None, init=False)
@@ -15290,7 +15365,10 @@ class Qwen35GGUFResidentSession:
     _prefill_hidden_b: object | None = field(default=None, init=False)
     _bulk_prefill_scratch: object | None = field(default=None, init=False)
     _prefill_f16_staging_buf: object | None = field(default=None, init=False)
+    _iq_dense_mmq_buf: object | None = field(default=None, init=False)
     _q6_integer_mmq_library: object | None = field(default=None, init=False)
+    _iq_dense_mmq_library: object | None = field(default=None, init=False)
+    _iq_dense_mmq_producer_library: object | None = field(default=None, init=False)
     _q6_f16_rocblas_prefill_library: object | None = field(default=None, init=False)
     _q6_f16_rocblas: Rocblas | None = field(default=None, init=False)
     _q8_mmq_prefill_library: object | None = field(default=None, init=False)
@@ -15417,6 +15495,14 @@ class Qwen35GGUFResidentSession:
     _dms_decode_seen: set[int] = field(default_factory=set, init=False, repr=False)
 
     def __post_init__(self) -> None:
+        from hipengine.loading.qwen35_gguf_execution import execution_operations
+        if "ar_decode_native_rows" in execution_operations(self.execution_routes):
+            if not 2 <= int(self.max_batch_size) <= 8:
+                raise ValueError("ar_decode_native_rows capacity must be within [2, 8] before allocation")
+            if self.use_expert_sidecar or self.token_embedding_placement == "host":
+                raise ValueError("ar_decode_native_rows has no pre-certified host/sidecar adapter")
+            if self.kv_policy is not None and DType.parse(self.kv_policy.storage_dtype) != DType.BF16:
+                raise ValueError("ar_decode_native_rows requires BF16 KV before allocation")
         self.dms_decision_mode = _normalize_external_dms_decision_mode(
             self.dms_decision_mode
         )
@@ -15455,6 +15541,7 @@ class Qwen35GGUFResidentSession:
         )
         model_geometry = None
         model_file_type_name = None
+        model_artifact_preset_key = None
         token_embedding_type_name = None
         small_weight_policies = backend_package_capability(
             resolved_backend,
@@ -15466,14 +15553,13 @@ class Qwen35GGUFResidentSession:
             "GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA_POLICIES",
             {},
         )
+        arena_policies_present = (
+            isinstance(small_weight_policies, Mapping) and small_weight_policies
+        ) or (isinstance(decode_scratch_policies, Mapping) and decode_scratch_policies)
         if (
             host_embedding
             or mapped_host_embedding
-            or (isinstance(small_weight_policies, Mapping) and small_weight_policies)
-            or (
-                isinstance(decode_scratch_policies, Mapping)
-                and decode_scratch_policies
-            )
+            or arena_policies_present
         ):
             model_info = GGUFReader(self.model_path).info
             model_geometry = GGUFModelGeometry.from_config(
@@ -15484,6 +15570,13 @@ class Qwen35GGUFResidentSession:
                 if model_info.file_type_name is None
                 else str(model_info.file_type_name)
             )
+            if arena_policies_present:
+                # Stamp-keyed arena admissions bind the actual artifact
+                # qualification (pinned plain control / UD preset / unknown
+                # manifest sentinel), never the header stamp alone.
+                model_artifact_preset_key = _gguf_model_info_artifact_preset_key(
+                    model_info
+                )
             if host_embedding or mapped_host_embedding:
                 token_embedding_type_name = next(
                     (
@@ -15508,6 +15601,7 @@ class Qwen35GGUFResidentSession:
                 geometry=model_geometry,
                 file_type_name=model_file_type_name,
                 requested=self.use_small_weight_arena,
+                artifact_preset_key=model_artifact_preset_key,
             )
         )
         if self.small_weight_arena_enabled:
@@ -15516,6 +15610,7 @@ class Qwen35GGUFResidentSession:
                     backend=resolved_backend,
                     geometry=model_geometry,
                     file_type_name=model_file_type_name,
+                    artifact_preset_key=model_artifact_preset_key,
                 )
             )
         self.decode_scratch_arena_enabled, self.decode_scratch_arena_reason = (
@@ -15526,6 +15621,7 @@ class Qwen35GGUFResidentSession:
                 geometry=model_geometry,
                 file_type_name=model_file_type_name,
                 requested=self.use_decode_scratch_arena,
+                artifact_preset_key=model_artifact_preset_key,
             )
         )
         if self.shared_runner is None:
@@ -15536,6 +15632,7 @@ class Qwen35GGUFResidentSession:
                 require_cached_build=self.require_cached_build,
                 backend=resolved_backend,
                 token_embedding_placement=embedding_placement,
+                execution_routes=self.execution_routes,
                 use_selective_weight_arena=self.small_weight_arena_enabled,
                 selective_weight_max_allocation_bytes=(
                     self.small_weight_arena_max_allocation_bytes
@@ -15558,6 +15655,13 @@ class Qwen35GGUFResidentSession:
         )
         if self.runner.weights is None:
             raise RuntimeError("GGUF full-stack runner did not materialize weights")
+        from hipengine.loading.qwen35_gguf_execution import execution_operations, authorize_native_execution
+        if "ar_decode_native_rows" in execution_operations(self.execution_routes):
+            authorize_native_execution(
+                self.runner.weights, backend=self.backend, rows=int(self.max_batch_size),
+                recurrent_state_dtype="fp16" if self.runner.fp16_recurrent_state else "f32",
+            )
+            self._native_rows_ready = True
         if self.small_weight_arena_enabled:
             resident = self.runner.weights
             arena = resident.allocation_arena
@@ -17830,13 +17934,26 @@ class Qwen35GGUFResidentSession:
         if default is None or self.runner is None or self.runner.weights is None:
             return None
         identity = _gguf_policy_identity(self.runner.weights)
-        geometry, file_type_name = (None, None) if identity is None else identity
+        # Identity is a 2-tuple for plain artifacts and a 3-tuple when a UD
+        # admission preset is bound.  Never unpack destructively: threading
+        # the preset key through preserves the qualification boundary — a
+        # preset-bound resident must not resolve plain-stamp-keyed rows.
+        if identity is None:
+            geometry = None
+            file_type_name = None
+            artifact_preset_key = None
+        elif len(identity) == 2:
+            geometry, file_type_name = identity
+            artifact_preset_key = None
+        else:
+            geometry, file_type_name, artifact_preset_key = identity
         return _resolve_gguf_packed_decode_graph_min_replay_steps(
             str(self.runner.backend),
             geometry=geometry,
             file_type_name=file_type_name,
             physical_rows=int(physical_rows),
             default_minimum=int(default),
+            artifact_preset_key=artifact_preset_key,
         )
 
     def _resolve_decode_graph_min_replay_steps(self) -> int | None:
@@ -19324,6 +19441,227 @@ class Qwen35GGUFResidentSession:
             workspace_nbytes=int(buffer.nbytes),
         )
 
+    def _ensure_iq_dense_mmq_buffer(self):
+        """Return this session's bounded dense raw-IQ integer-MMQ workspace.
+
+        Deliberately not the F16 staging allocation: the planar-Q6 integer route
+        already aliases that buffer and both contexts are entered together, so a
+        shared buffer would couple two independent owners for no saving worth
+        having (this one is ~10 MB against a 15 GB model).
+        """
+
+        if self.runner is None or self.runner.weights is None:
+            raise RuntimeError("GGUF resident session is closed")
+        config = self.runner.weights.config
+        max_in_features = max(
+            int(config.hidden_size),
+            int(config.feed_forward_length),
+            int(config.ssm_inner_size),
+        )
+        required_nbytes = iq_dense_mmq_nbytes(
+            int(PREFILL_F16_STAGING_MAX_ROWS), max_in_features
+        )
+        buffer = self._iq_dense_mmq_buf
+        if buffer is None:
+            runtime = self.runtime or get_hip_runtime()
+            buffer = malloc(required_nbytes, runtime=runtime)
+            self._iq_dense_mmq_buf = buffer
+            self._buffers = (*self._buffers, buffer)
+        if int(buffer.nbytes) < required_nbytes:
+            raise RuntimeError("resident dense IQ MMQ workspace is undersized")
+        return buffer
+
+    def _iq_dense_mmq_strict_slots(self) -> tuple[str, ...]:
+        """Per-stamp strict slots declared for this artifact, if any.
+
+        The backend table is keyed by ``(file_type, artifact preset key)`` -
+        the same policy identity the dense-pair tables use - so a pinned
+        qualified plain control (preset ``None``) never matches a UD row and
+        an unqualified manifest cannot borrow one either. Slots listed for
+        the stamp keep the strict per-row GEMV in prefill; every other slot
+        resolves the backend's dense-IQ policy unchanged.
+        """
+
+        weights = getattr(self, "weights", None)
+        if weights is None:
+            # The resident session carries its weights on the runner.
+            weights = getattr(getattr(self, "runner", None), "weights", None)
+        identity = _gguf_policy_identity(weights)
+        if identity is None:
+            return ()
+        file_type = identity[1]
+        preset = identity[2] if len(identity) > 2 else None
+        if file_type is None:
+            return ()
+        table = backend_package_capability(
+            self.backend, "GGUF_IQ_DENSE_PREFILL_STRICT_SLOTS", {}
+        )
+        if not isinstance(table, Mapping):
+            return ()
+        slots = table.get((str(file_type), preset))
+        if not isinstance(slots, (tuple, list)):
+            return ()
+        return tuple(str(s) for s in slots)
+
+    def _iq_dense_decode_strict_slots(self) -> tuple[str, ...]:
+        """Per-stamp decode strict slots declared for this artifact, if any.
+
+        Same identity keying as the prefill table; the two pin sets are
+        deliberately separate so a prefill admission never unroutes decode
+        and a decode admission never unroutes prefill.
+        """
+
+        weights = getattr(self, "weights", None)
+        if weights is None:
+            weights = getattr(getattr(self, "runner", None), "weights", None)
+        identity = _gguf_policy_identity(weights)
+        if identity is None:
+            return ()
+        file_type = identity[1]
+        preset = identity[2] if len(identity) > 2 else None
+        if file_type is None:
+            return ()
+        table = backend_package_capability(
+            self.backend, "GGUF_IQ_DENSE_DECODE_STRICT_SLOTS", {}
+        )
+        if not isinstance(table, Mapping):
+            return ()
+        slots = table.get((str(file_type), preset))
+        if not isinstance(slots, (tuple, list)):
+            return ()
+        return tuple(str(s) for s in slots)
+
+    def _iq_dense_policy_present(self) -> bool:
+        """True when this backend declares any dense raw-IQ owner policy.
+
+        Any one of the three row regimes is reason enough to bind the
+        execution-owner session: a backend that routes only decode, only
+        prefill, or only verifier rows must not be silently left unrouted.
+        """
+
+        return any(
+            bool(backend_package_capability(self.backend, name, {}))
+            for name in (
+                "GGUF_IQ_DENSE_PREFILL_POLICY",
+                "GGUF_IQ_DENSE_DECODE_POLICY",
+                "GGUF_IQ_DENSE_VERIFY_POLICY",
+            )
+        )
+
+    def _iq_dense_verify_binding_needed(self, rows: int) -> bool:
+        """True when a dense-IQ verifier policy declares this row count.
+
+        The binding is deliberately scoped to the row window the verifier
+        policies actually declare. Binding it unconditionally would also open
+        the dense-IQ *prefill* policy (min_rows 8) inside the verifier, which
+        is a different owner with a different arithmetic and was measured
+        slower than the strict GEMV at exactly 8 rows - a change outside this
+        unit. Rows outside every verifier window keep their previous owner.
+        """
+
+        policy = backend_package_capability(
+            self.backend, "GGUF_IQ_DENSE_VERIFY_POLICY", {}
+        )
+        if not isinstance(policy, Mapping):
+            return False
+        for entry in policy.values():
+            if not isinstance(entry, Mapping):
+                continue
+            try:
+                if int(entry["min_rows"]) <= int(rows) <= int(entry["max_rows"]):
+                    return True
+            except (KeyError, TypeError, ValueError):
+                continue
+        return False
+
+    def _iq_dense_mmq_verify_context(self, *, rows: int):
+        """Bind the dense raw-IQ execution-owner session around the verifier.
+
+        The block verifier runs the same raw-IQ projections the single-row AR
+        route runs, at rows 2-4 instead of row 1, so it needs the same
+        execution-owner binding for the backend's verifier-row policy to
+        admit a multi-row sibling. Without the binding every raw-IQ
+        projection in the verifier keeps the strict per-row GEMV owner even
+        when the AR route alongside it uses the local32 owner, which is what
+        leaves a verification-specific residual in the section-6.1 screen.
+
+        The session is deliberately workspace-less: the dense-IQ prefill
+        policy starts at 8 rows and cannot engage at verifier row counts, and
+        this path runs inside stream capture for the native target graph,
+        where allocating a workspace is not an option. Only the strict-slot
+        pins and the row-regime policies matter here, and the binding is
+        entered only for row counts a verifier policy actually declares.
+        """
+
+        if not bool(getattr(self, "use_iq_dense_mmq", True)):
+            return iq_dense_mmq_session(False)
+        if not self._iq_dense_verify_binding_needed(rows):
+            return iq_dense_mmq_session(False)
+        return iq_dense_mmq_session(
+            True,
+            strict_slots=self._iq_dense_mmq_strict_slots(),
+            decode_strict_slots=self._iq_dense_decode_strict_slots(),
+        )
+
+    def _iq_dense_mmq_context(self):
+        """Bind the dense raw-IQ execution-owner session (UD items 3 and C).
+
+        Binding is what admits the approximate dense-IQ routes; the backend
+        policies then decide which quants and row counts take them. Without
+        this context every raw-IQ projection keeps the strict per-row GEMV
+        owner. The prefill policy (W4A16 / integer MMQ) and the decode policy
+        (local32) are gated independently; either one is reason to open the
+        session, so a decode-only backend is not silently unrouted.
+        """
+
+        if not bool(getattr(self, "use_iq_dense_mmq", True)):
+            return iq_dense_mmq_session(False)
+        strict_slots = self._iq_dense_mmq_strict_slots()
+        decode_strict_slots = self._iq_dense_decode_strict_slots()
+        policy = backend_package_capability(
+            self.backend, "GGUF_IQ_DENSE_PREFILL_POLICY", {}
+        )
+        if not policy:
+            if not self._iq_dense_policy_present():
+                return iq_dense_mmq_session(False)
+            # Decode-only owners read the caller's buffer like W4A16; a
+            # workspace-less session is enough and allocates nothing.
+            return iq_dense_mmq_session(True, strict_slots=strict_slots,
+                              decode_strict_slots=decode_strict_slots)
+        # Only the integer-MMQ route consumes an activation plane. When the
+        # backend routes dense IQ prefill through W4A16, open the session
+        # without one: it still marks this prefill as the execution owner, but
+        # allocates nothing.
+        if not any(
+            str(entry.get("variant", "")).startswith("dense_mmq_")
+            for entry in policy.values()
+            if isinstance(entry, Mapping)
+        ):
+            return iq_dense_mmq_session(True, strict_slots=strict_slots,
+                              decode_strict_slots=decode_strict_slots)
+        buffer = self._ensure_iq_dense_mmq_buffer()
+        if self._iq_dense_mmq_library is None:
+            self._iq_dense_mmq_library = build_gguf_iq_source_mmq_prefill(
+                load=True,
+                compiler_version=getattr(self, "compiler_version", None),
+                require_cached=bool(getattr(self, "require_cached_build", False)),
+            )
+        if self._iq_dense_mmq_producer_library is None:
+            self._iq_dense_mmq_producer_library = build_gguf_k_mmq_prefill(
+                load=True,
+                compiler_version=getattr(self, "compiler_version", None),
+                require_cached=bool(getattr(self, "require_cached_build", False)),
+            )
+        return iq_dense_mmq_session(
+            True,
+            workspace_ptr=int(buffer.ptr),
+            workspace_nbytes=int(buffer.nbytes),
+            library=self._iq_dense_mmq_library,
+            producer_library=self._iq_dense_mmq_producer_library,
+            strict_slots=strict_slots,
+            decode_strict_slots=decode_strict_slots,
+        )
+
     def _q6_integer_mmq_context(self, *, target_verifier: bool = False):
         """Bind the B5 workspace only in its qualified target-verifier phase."""
 
@@ -19583,6 +19921,7 @@ class Qwen35GGUFResidentSession:
                 ),
                 self._prefill_f16_staging_context(),
                 self._q6_integer_mmq_context(),
+                self._iq_dense_mmq_context(),
                 self._q8_mmq_prefill_context(),
                 self._q6_f16_rocblas_prefill_context(request_rows=len(token_ids)),
             ):
@@ -20596,6 +20935,7 @@ class Qwen35GGUFResidentSession:
                 request_count=len(job_list),
             ),
             self._q6_integer_mmq_context(target_verifier=True),
+            self._iq_dense_mmq_context(),
         ):
             for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
                 layer_start = time.perf_counter()
@@ -21066,13 +21406,14 @@ class Qwen35GGUFResidentSession:
                 and rows <= 8
                 and not capture_layer_boundary_ids
                 and full_attention_prefused_ready
-                and self.runner._rounded_add_rmsnorm_fn() is not None
+                and self.runner._rounded_add_rmsnorm_fn(rows=rows) is not None
             )
             input_norm_ptr: int | None = None
             with (
                 wmma_prefill_session(block_wmma_prefill),
                 gemv_decode_session(self.use_gemv_decode),
                 native_batch_decode_session(bulk_attention_mode == "native"),
+                self._iq_dense_mmq_verify_context(rows=rows),
             ):
                 for layer_id, layer_type in enumerate(layer_types):
                     if use_f32_residual and layer_id >= f32_residual_layer_limit:
@@ -21833,6 +22174,20 @@ class Qwen35GGUFResidentSession:
             decode_spans=decode_spans,
         )
 
+    def _require_native_rows(self, rows: int) -> None:
+        """Check the load-time route choice, not a fresh ownership inventory.
+
+        Resident weights and scratch are private session-owned allocations.
+        Replacing their views or geometry while this session is live is not a
+        supported API. Graphs share that lifetime contract.
+        """
+        if not self._native_rows_ready:
+            raise ValueError("ar_decode_native_rows must be requested at session construction")
+        if self.use_expert_sidecar or self.host_token_embedding_enabled:
+            raise ValueError("ar_decode_native_rows does not support host embedding or expert sidecars")
+        if not 2 <= int(rows) <= min(8, int(self.max_batch_size)):
+            raise ValueError("ar_decode_native_rows rows must be within [2, min(8, max_batch_size)]")
+
     def _enqueue_native_rows_model(
         self,
         scratch,
@@ -21984,6 +22339,7 @@ class Qwen35GGUFResidentSession:
             raise RuntimeError("GGUF resident native-row buffers are closed")
         tokens = tuple(int(token) for token in token_ids)
         rows = len(tokens)
+        self._require_native_rows(rows)
         if rows <= 1:
             raise ValueError("native GGUF target execution requires at least two rows")
         if rows > int(self.max_batch_size):
@@ -22081,8 +22437,7 @@ class Qwen35GGUFResidentSession:
 
         if self.runner is None or self.runner.weights is None or self._target_scratch_owner is None:
             raise RuntimeError("GGUF resident session is closed")
-        if self.host_token_embedding_enabled:
-            self._device_token_embedding_weight(reason="native_rows_graph")
+        self._require_native_rows(int(rows))
         rows = int(rows)
         if rows <= 1 or rows > int(self.max_batch_size):
             raise ValueError("native row graph rows must be within [2, max_batch_size]")
@@ -22212,7 +22567,7 @@ class Qwen35GGUFResidentSession:
         src = self._hidden_a
         dst = self._hidden_b
         captures: dict[int, np.ndarray] = {}
-        with gemv_decode_session(self.use_gemv_decode):
+        with gemv_decode_session(self.use_gemv_decode), self._iq_dense_mmq_context():
             for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
                 for slot in slots:
                     scratch = slot_scratch[slot]
@@ -22411,7 +22766,7 @@ class Qwen35GGUFResidentSession:
         gpu_stage_recorder.start()
         try:
             self._refresh_dms_decode_owner_marker()
-            with gemv_decode_session(self.use_gemv_decode):
+            with gemv_decode_session(self.use_gemv_decode), self._iq_dense_mmq_context():
                 hidden_ptr = self._run_token_to_final_hidden(
                     int(token_id),
                     position=self._position,
@@ -22441,7 +22796,7 @@ class Qwen35GGUFResidentSession:
         if position is not None and int(position) != self._position:
             raise ValueError(f"position {position} does not match session cursor {self._position}")
         self._refresh_dms_decode_owner_marker()
-        with gemv_decode_session(self.use_gemv_decode):
+        with gemv_decode_session(self.use_gemv_decode), self._iq_dense_mmq_context():
             hidden_ptr = self._run_token_to_final_hidden(
                 int(token_id),
                 position=self._position,
@@ -22605,6 +22960,7 @@ class Qwen35GGUFResidentSession:
                 ),
                 self._prefill_f16_staging_context(),
                 self._q6_integer_mmq_context(),
+                self._iq_dense_mmq_context(),
             ):
                 return self._prefill_batch_native_impl(
                     prompt_token_ids,
@@ -29757,6 +30113,9 @@ class Qwen35GGUFResidentSession:
                 self.runner.backend,
                 geometry=getattr(resident_weights, "geometry", None),
                 file_type_name=getattr(resident_weights, "file_type_name", None),
+                artifact_preset_key=getattr(
+                    resident_weights, "artifact_preset_key", None
+                ),
                 physical_rows=1,
                 replay_steps=(
                     int(steps_per_replay)
@@ -29827,6 +30186,9 @@ class Qwen35GGUFResidentSession:
                 self.runner.backend,
                 geometry=getattr(resident_weights, "geometry", None),
                 file_type_name=getattr(resident_weights, "file_type_name", None),
+                artifact_preset_key=getattr(
+                    resident_weights, "artifact_preset_key", None
+                ),
                 physical_rows=(
                     len(token_ids) if physical_rows is None else int(physical_rows)
                 ),
@@ -29933,6 +30295,7 @@ class Qwen35GGUFResidentSession:
                 free(buffer, runtime=runtime)
         self._buffers = ()
         self._prefill_f16_staging_buf = None
+        self._iq_dense_mmq_buf = None
         self._q6_integer_mmq_library = None
         self._verify_linear_state_src_conv_table_buf = None
         self._verify_linear_state_src_recurrent_table_buf = None
@@ -30065,6 +30428,7 @@ class Qwen35GGUFResidentSession:
                 free(buffer, runtime=runtime)
         self._buffers = ()
         self._prefill_f16_staging_buf = None
+        self._iq_dense_mmq_buf = None
         self._q6_integer_mmq_library = None
         self._native_spec_selected_hidden_bf16 = None
         for buffer in reversed(self._linear_state_snapshot_backups):
@@ -30086,6 +30450,7 @@ class Qwen35GGUFResidentSession:
         self._logits_buf = None
         self._native_cu_seqlens_buf = None
         self._native_state_indices_buf = None
+        self._native_rows_ready = False
         self._native_token_ids_host = None
         self._lm_block_values = None
         self._lm_block_indices = None
@@ -36256,8 +36621,7 @@ def _resolve_compact_moe_gemv_kernels(
 
 
 def _selected_gemv_allocation_name(weight: Qwen35GGUFDeviceWeight) -> str:
-    quant_key = weight.spec.quant_key
-    return "tiles" if quant_key.endswith("_t16_v1") or quant_key.endswith("_x8_v1") else "raw"
+    return selected_allocation(weight.spec.quant_key)
 
 
 def _selected_gemv_requires_q8_1_input(weight: Qwen35GGUFDeviceWeight) -> bool:
@@ -36372,9 +36736,14 @@ def _read_i64_device_scalar(buffer, host: np.ndarray, *, stream: int = 0, runtim
     return int(host[0])
 
 
-_SELECTED_MOE_SINGLE_VARIANT = "selected_gemv_decode_bf16_bf16_out"
-_SELECTED_MOE_DUAL_SILU_VARIANT = "selected_dual_silu_gemv_decode_bf16_bf16_out"
-_SELECTED_MOE_WEIGHTED_DOWN_VARIANT = "selected_weighted_down_gemv_decode_bf16_bf16_out"
+from hipengine.loading.gguf_selected_contract import (
+    SELECTED_VARIANTS, selected_abi, selected_allocation, selected_ffn_modes,
+    selected_input_adapter, selected_adapter_enabled, selected_f32_output_supported,
+)
+
+_SELECTED_MOE_SINGLE_VARIANT = SELECTED_VARIANTS["single"]
+_SELECTED_MOE_DUAL_SILU_VARIANT = SELECTED_VARIANTS["dual_silu"]
+_SELECTED_MOE_WEIGHTED_DOWN_VARIANT = SELECTED_VARIANTS["weighted_down"]
 
 
 def _resolve_exact_selected_moe_kernel(quant_key: str, variant: str):
@@ -36434,19 +36803,10 @@ def _launch_selected_raw_gguf_moe_pair_silu(
                 in_features=in_features,
                 out_features=out_features,
             )
-            fn(
-                x_ptr,
-                selected_ptr,
-                _selected_moe_weight_ptr(weight_a),
-                _selected_moe_weight_ptr(weight_b),
-                out_ptr,
-                x_rows=x_rows,
-                rows=rows,
-                num_experts=num_experts,
-                in_features=in_features,
-                out_features=out_features,
-                stream=stream,
-                runtime=runtime,
+            selected_abi("dual_silu").call(
+                fn, (x_ptr, selected_ptr, _selected_moe_weight_ptr(weight_a),
+                     _selected_moe_weight_ptr(weight_b), out_ptr), locals(),
+                stream=stream, runtime=runtime,
             )
             return True
     if not allow_legacy:
@@ -36456,22 +36816,40 @@ def _launch_selected_raw_gguf_moe_pair_silu(
         # production c1 trace regressed it on gfx1151. Keep c1 on the exact
         # float-dequant fused kernel and reserve dp4a routing for rows>1 split
         # gate/up where it measured faster.
-        gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out(
-            x_ptr,
-            selected_ptr,
-            weight_a.allocation("tiles").tensor.ptr,
-            weight_b.allocation("tiles").tensor.ptr,
-            out_ptr,
-            x_rows,
-            rows,
-            num_experts,
-            in_features,
-            out_features,
-            stream=stream,
-            runtime=runtime,
+        selected_abi("dual_silu").call(
+            gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out,
+            (x_ptr, selected_ptr, weight_a.allocation("tiles").tensor.ptr,
+             weight_b.allocation("tiles").tensor.ptr, out_ptr), locals(),
+            positional_dimensions=True, stream=stream, runtime=runtime,
         )
         return True
     return False
+
+
+def _launch_selected_raw_gguf_moe_dual(
+    weight_a, weight_b, x_ptr, selected_ptr, out_a_ptr, out_b_ptr, *,
+    x_rows, rows, num_experts, in_features, out_features,
+    q8_1_workspace_ptr=None, x_f32_ptr=None, stream, runtime, **timing,
+) -> None:
+    """Complete ordered dual boundary, including the strict two-single chain.
+
+    This is the old caller sequence factored once; no input conversions are
+    invented in the fallback. In particular it does not pass a Q8_1 workspace
+    to a singleton when the dual probe refuses that format pair.
+    """
+    geometry = dict(x_rows=x_rows, rows=rows, num_experts=num_experts,
+                    in_features=in_features, out_features=out_features)
+    if _launch_selected_raw_gguf_moe_pair(
+        weight_a, weight_b, x_ptr, selected_ptr, out_a_ptr, out_b_ptr,
+        **geometry, q8_1_workspace_ptr=q8_1_workspace_ptr, x_f32_ptr=x_f32_ptr,
+        stream=stream, runtime=runtime, **timing,
+    ):
+        return
+    for weight, output in ((weight_a, out_a_ptr), (weight_b, out_b_ptr)):
+        _launch_selected_raw_gguf_moe_linear(
+            weight, x_ptr, selected_ptr, output, **geometry,
+            x_f32_ptr=x_f32_ptr, stream=stream, runtime=runtime,
+        )
 
 
 def _launch_selected_raw_gguf_moe_pair(
@@ -36540,20 +36918,11 @@ def _launch_selected_raw_gguf_moe_pair(
                 t_stage,
             )
         else:
-            gguf_q4_k_selected_dual_gemv_bf16_bf16_out(
-                x_ptr,
-                selected_ptr,
-                weight_a.allocation("raw").tensor.ptr,
-                weight_b.allocation("raw").tensor.ptr,
-                out_a_ptr,
-                out_b_ptr,
-                x_rows,
-                rows,
-                num_experts,
-                in_features,
-                out_features,
-                stream=stream,
-                runtime=runtime,
+            selected_abi("dual").call(
+                gguf_q4_k_selected_dual_gemv_bf16_bf16_out,
+                (x_ptr, selected_ptr, weight_a.allocation("raw").tensor.ptr,
+                 weight_b.allocation("raw").tensor.ptr, out_a_ptr, out_b_ptr), locals(),
+                positional_dimensions=True, stream=stream, runtime=runtime,
             )
             _mark_sync_stage(
                 runtime,
@@ -36623,20 +36992,11 @@ def _launch_selected_raw_gguf_moe_pair(
                 )
                 else gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out
             )
-            selected_dual_fn(
-                x_ptr,
-                selected_ptr,
-                weight_a.allocation("tiles").tensor.ptr,
-                weight_b.allocation("tiles").tensor.ptr,
-                out_a_ptr,
-                out_b_ptr,
-                x_rows,
-                rows,
-                num_experts,
-                in_features,
-                out_features,
-                stream=stream,
-                runtime=runtime,
+            selected_abi("dual").call(
+                selected_dual_fn,
+                (x_ptr, selected_ptr, weight_a.allocation("tiles").tensor.ptr,
+                 weight_b.allocation("tiles").tensor.ptr, out_a_ptr, out_b_ptr), locals(),
+                positional_dimensions=True, stream=stream, runtime=runtime,
             )
             _mark_sync_stage(
                 runtime,
@@ -36665,20 +37025,11 @@ def _launch_selected_raw_gguf_moe_pair(
             f"{stage_prefix}_q8_quantize",
             t_stage,
         )
-        gguf_q4_k_x8_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out(
-            q8_1_workspace_ptr,
-            selected_ptr,
-            weight_a.allocation("tiles").tensor.ptr,
-            weight_b.allocation("tiles").tensor.ptr,
-            out_a_ptr,
-            out_b_ptr,
-            x_rows,
-            rows,
-            num_experts,
-            in_features,
-            out_features,
-            stream=stream,
-            runtime=runtime,
+        selected_abi("dual", input_dtype="q8_1").call(
+            gguf_q4_k_x8_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out,
+            (q8_1_workspace_ptr, selected_ptr, weight_a.allocation("tiles").tensor.ptr,
+             weight_b.allocation("tiles").tensor.ptr, out_a_ptr, out_b_ptr), locals(),
+            positional_dimensions=True, stream=stream, runtime=runtime,
         )
         _mark_sync_stage(
             runtime,
@@ -36717,6 +37068,38 @@ def _launch_selected_raw_gguf_moe_linear(
     use_q8_1_input = False
     sync_stages = bool(sync_stage_timings and stage_timings is not None and stage_prefix)
     t_stage = time.perf_counter() if sync_stages else 0.0
+    selected_c1_variant = _gguf_t16_selected_c1_variant(
+        backend,
+        quant_key,
+        x_rows=x_rows,
+        rows=rows,
+        in_features=in_features,
+        out_features=out_features,
+    )
+    if selected_c1_variant is not None:
+        fn = _resolve_exact_selected_moe_kernel(quant_key, selected_c1_variant)
+        if fn is not None:
+            _validate_raw_rank3_expert_weight(
+                weight,
+                num_experts=num_experts,
+                in_features=in_features,
+                out_features=out_features,
+            )
+            selected_abi("single").call(
+                fn,
+                (x_ptr, selected_ptr, _selected_moe_weight_ptr(weight), out_ptr),
+                locals(),
+                stream=stream,
+                runtime=runtime,
+            )
+            _mark_sync_stage(
+                runtime,
+                stage_timings,
+                sync_stages,
+                f"{stage_prefix}_gemv",
+                t_stage,
+            )
+            return
     fn = _resolve_exact_selected_moe_kernel(quant_key, _SELECTED_MOE_SINGLE_VARIANT)
     if fn is not None:
         _validate_raw_rank3_expert_weight(
@@ -36725,18 +37108,9 @@ def _launch_selected_raw_gguf_moe_linear(
             in_features=in_features,
             out_features=out_features,
         )
-        fn(
-            x_ptr,
-            selected_ptr,
-            _selected_moe_weight_ptr(weight),
-            out_ptr,
-            x_rows=x_rows,
-            rows=rows,
-            num_experts=num_experts,
-            in_features=in_features,
-            out_features=out_features,
-            stream=stream,
-            runtime=runtime,
+        selected_abi("single").call(
+            fn, (x_ptr, selected_ptr, _selected_moe_weight_ptr(weight), out_ptr),
+            locals(), stream=stream, runtime=runtime,
         )
         _mark_sync_stage(
             runtime,
@@ -36907,18 +37281,11 @@ def _launch_selected_raw_gguf_moe_linear(
         )
     else:
         raise ValueError(f"unsupported selected GGUF MoE quant {quant_key!r} for {weight.spec.source.name}")
-    fn(
-        q8_1_workspace_ptr if use_q8_1_input else x_ptr,
-        selected_ptr,
-        weight.allocation(allocation).tensor.ptr,
-        out_ptr,
-        x_rows,
-        rows,
-        num_experts,
-        in_features,
-        out_features,
-        stream=stream,
-        runtime=runtime,
+    selected_abi("single", input_dtype="q8_1" if use_q8_1_input else "bf16",
+                 output_dtype="f32" if prefer_f32_out and selected_f32_output_supported(quant_key) else "bf16").call(
+        fn, (q8_1_workspace_ptr if use_q8_1_input else x_ptr,
+             selected_ptr, weight.allocation(allocation).tensor.ptr, out_ptr),
+        locals(), positional_dimensions=True, stream=stream, runtime=runtime,
     )
     _mark_sync_stage(
         runtime,
@@ -36956,19 +37323,9 @@ def _launch_weighted_selected_raw_gguf_moe_linear(
         in_features=in_features,
         out_features=out_features,
     )
-    fn(
-        x_ptr,
-        selected_ptr,
-        routing_weights_ptr,
-        _selected_moe_weight_ptr(weight),
-        out_ptr,
-        tokens=tokens,
-        top_k=top_k,
-        num_experts=num_experts,
-        in_features=in_features,
-        out_features=out_features,
-        stream=stream,
-        runtime=runtime,
+    selected_abi("weighted_down").call(
+        fn, (x_ptr, selected_ptr, routing_weights_ptr, _selected_moe_weight_ptr(weight), out_ptr),
+        locals(), stream=stream, runtime=runtime,
     )
     return True
 
@@ -37014,6 +37371,7 @@ class Qwen35GGUFNativeRowsGraph:
             raise RuntimeError("GGUF native row graph is closed")
         if self.session._token_buf is None or self.session._native_token_ids_host is None:
             raise RuntimeError("GGUF resident native-row buffers are closed")
+        self.session._require_native_rows(self.rows)
         tokens = tuple(int(token) for token in token_ids)
         if len(tokens) != int(self.rows):
             raise ValueError("native row graph token count must match captured rows")

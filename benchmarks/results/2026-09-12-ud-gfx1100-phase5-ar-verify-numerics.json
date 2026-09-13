@@ -1,0 +1,304 @@
+{
+  "schema": "hipengine.ud_gfx1100_phase5_ar_verify_numerics.v1",
+  "kind": "correctness_gate",
+  "performance_claim": false,
+  "date": "2026-09-12",
+  "plan": "docs/UD-GFX1151-OPTIMIZE.md",
+  "phase": "Phase 5: lifecycle and serving coverage",
+  "unit": "Independently reproduce the four-arm section-6.1 gate in fresh processes on the post-Phase-4 tree, and use that reproduction to qualify U6 item 5 (exact_ar_mtp_control_behavior).",
+  "host": {
+    "hostname": "epyc",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+    "physical_gpu": "GPU1 = AMD Radeon RX 7900 XTX, gfx1100 / RDNA3, rocminfo uuid GPU-cc4d02090dc9c3ff",
+    "gpu_selection": "HIP_VISIBLE_DEVICES=1 (device 0 is the W7900, uuid GPU-e282895b62c2b295)",
+    "note": "Single physical GPU by construction; no concurrent GPU work."
+  },
+  "provenance": {
+    "tree": "HEAD 9b4b700e7; kernel/quant/runtime sources are byte-identical to the retained Phase 4 kernel commit 2ac44d7a7 (git diff --stat 2ac44d7a7..HEAD -- hipengine/kernels hipengine/runtime hipengine/quant is empty)",
+    "why": "The Phase 3 gate artifact predates the retained Phase 4 rows 2-4 local32 IQ verifier sibling, so its numbers describe a tree that no longer exists.",
+    "reproduces": "benchmarks/results/2026-09-12-ud-gfx1100-phase4-ar-verify-numerics.json 'after' values. All sixteen reported numbers (mean/p95/p99/max for all four arms) are identical to the last digit, so this run is a fresh-process determinism reproduction of that gate rather than a new measurement."
+  },
+  "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/ud_mtp_ar_verify_numerics_gate.py --model <artifact> --quant <axis> --prompt-tokens {64|512} --budgets 1,2,3 --repeat-runs 2 {--require-native-graph|--allow-eager-fallback} --json <out>",
+  "protocol": {
+    "teacher": "production single-row AR route (session.step, return_logits)",
+    "candidate": "production native target block (device accept/commit, bulk_attention_mode=native, remaining_decode=budget)",
+    "prompts": [
+      "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+    ],
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "prompt_points": [
+      64,
+      512
+    ],
+    "envelope": {
+      "mean": 0.001,
+      "p95": 0.005,
+      "p99": 0.02,
+      "max": 0.05
+    },
+    "top1_overall": 0.99,
+    "top1_per_scope": 0.97
+  },
+  "arms": {
+    "ud_q4_k_m_short": {
+      "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+      "quant_axis": "gguf_ud_q4_k_m",
+      "verifier_route": "native_graph",
+      "prompt_tokens": 64,
+      "budgets": [
+        1,
+        2,
+        3
+      ],
+      "repeat_runs": 2,
+      "pooled_rows_per_repeat": [
+        162,
+        162
+      ],
+      "kl_mean": 3.4986783009064285e-05,
+      "kl_p95": 0.00016958210187115207,
+      "kl_p99": 0.00022811105746648353,
+      "kl_max": 0.00029988316261982725,
+      "kl_mean_all_repeats": [
+        3.4986783009064285e-05,
+        3.4986783009064285e-05
+      ],
+      "top1_agreement": 1.0,
+      "top1_min_by_scope": 1.0,
+      "top1_by_scope": {
+        "code": {
+          "rows": 54,
+          "agreement": 1.0
+        },
+        "general_en": {
+          "rows": 36,
+          "agreement": 1.0
+        },
+        "general_ja": {
+          "rows": 36,
+          "agreement": 1.0
+        },
+        "mixed_ja_en": {
+          "rows": 36,
+          "agreement": 1.0
+        }
+      },
+      "top1_by_budget": {
+        "1": {
+          "rows": 36,
+          "agreement": 1.0
+        },
+        "2": {
+          "rows": 54,
+          "agreement": 1.0
+        },
+        "3": {
+          "rows": 72,
+          "agreement": 1.0
+        }
+      },
+      "deterministic": true,
+      "passed": true
+    },
+    "ud_q4_k_s_short": {
+      "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf",
+      "quant_axis": "gguf_ud_q4_k_s",
+      "verifier_route": "native_graph",
+      "prompt_tokens": 64,
+      "budgets": [
+        1,
+        2,
+        3
+      ],
+      "repeat_runs": 2,
+      "pooled_rows_per_repeat": [
+        162,
+        162
+      ],
+      "kl_mean": 4.230791511883112e-05,
+      "kl_p95": 0.0002636637848926801,
+      "kl_p99": 0.0003764282870898504,
+      "kl_max": 0.0003764282870898504,
+      "kl_mean_all_repeats": [
+        4.230791511883112e-05,
+        4.230791511883112e-05
+      ],
+      "top1_agreement": 1.0,
+      "top1_min_by_scope": 1.0,
+      "top1_by_scope": {
+        "code": {
+          "rows": 54,
+          "agreement": 1.0
+        },
+        "general_en": {
+          "rows": 36,
+          "agreement": 1.0
+        },
+        "general_ja": {
+          "rows": 36,
+          "agreement": 1.0
+        },
+        "mixed_ja_en": {
+          "rows": 36,
+          "agreement": 1.0
+        }
+      },
+      "top1_by_budget": {
+        "1": {
+          "rows": 36,
+          "agreement": 1.0
+        },
+        "2": {
+          "rows": 54,
+          "agreement": 1.0
+        },
+        "3": {
+          "rows": 72,
+          "agreement": 1.0
+        }
+      },
+      "deterministic": true,
+      "passed": true
+    },
+    "ud_q4_k_m_512": {
+      "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+      "quant_axis": "gguf_ud_q4_k_m",
+      "verifier_route": "eager_multi_row",
+      "prompt_tokens": 512,
+      "budgets": [
+        1,
+        2,
+        3
+      ],
+      "repeat_runs": 2,
+      "pooled_rows_per_repeat": [
+        162,
+        162
+      ],
+      "kl_mean": 1.824337886612259e-05,
+      "kl_p95": 8.366344730553955e-05,
+      "kl_p99": 0.0002673812654761259,
+      "kl_max": 0.0004341159594029189,
+      "kl_mean_all_repeats": [
+        1.824337886612259e-05,
+        1.824337886612259e-05
+      ],
+      "top1_agreement": 1.0,
+      "top1_min_by_scope": 1.0,
+      "top1_by_scope": {
+        "code": {
+          "rows": 54,
+          "agreement": 1.0
+        },
+        "general_en": {
+          "rows": 36,
+          "agreement": 1.0
+        },
+        "general_ja": {
+          "rows": 36,
+          "agreement": 1.0
+        },
+        "mixed_ja_en": {
+          "rows": 36,
+          "agreement": 1.0
+        }
+      },
+      "top1_by_budget": {
+        "1": {
+          "rows": 36,
+          "agreement": 1.0
+        },
+        "2": {
+          "rows": 54,
+          "agreement": 1.0
+        },
+        "3": {
+          "rows": 72,
+          "agreement": 1.0
+        }
+      },
+      "deterministic": true,
+      "passed": true
+    },
+    "ud_q4_k_s_512": {
+      "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf",
+      "quant_axis": "gguf_ud_q4_k_s",
+      "verifier_route": "eager_multi_row",
+      "prompt_tokens": 512,
+      "budgets": [
+        1,
+        2,
+        3
+      ],
+      "repeat_runs": 2,
+      "pooled_rows_per_repeat": [
+        162,
+        162
+      ],
+      "kl_mean": 1.5020886317025114e-05,
+      "kl_p95": 9.61485290006624e-05,
+      "kl_p99": 0.00019545491243377252,
+      "kl_max": 0.00029349908113794534,
+      "kl_mean_all_repeats": [
+        1.5020886317025114e-05,
+        1.5020886317025114e-05
+      ],
+      "top1_agreement": 1.0,
+      "top1_min_by_scope": 1.0,
+      "top1_by_scope": {
+        "code": {
+          "rows": 54,
+          "agreement": 1.0
+        },
+        "general_en": {
+          "rows": 36,
+          "agreement": 1.0
+        },
+        "general_ja": {
+          "rows": 36,
+          "agreement": 1.0
+        },
+        "mixed_ja_en": {
+          "rows": 36,
+          "agreement": 1.0
+        }
+      },
+      "top1_by_budget": {
+        "1": {
+          "rows": 36,
+          "agreement": 1.0
+        },
+        "2": {
+          "rows": 54,
+          "agreement": 1.0
+        },
+        "3": {
+          "rows": 72,
+          "agreement": 1.0
+        }
+      },
+      "deterministic": true,
+      "passed": true
+    }
+  },
+  "verdict": {
+    "all_arms_passed": true,
+    "worst_kl_mean": 4.230791511883112e-05,
+    "worst_kl_max": 0.0004341159594029189,
+    "min_top1_agreement": 1.0,
+    "all_deterministic": true,
+    "margin_on_mean": 23.63623915740776
+  },
+  "notes": [
+    "Every arm is top-1 1.0000 in every category and at every budget, so the multi-row verify route picks the same argmax as the single-row AR route at both prompt points.",
+    "The short point is the captured native graph bucket; the 512-token point crosses the graph context bucket and runs the eager multi-row route, so both verifier routes are covered.",
+    "All sixteen numbers match the Phase 4 gate artifact exactly. Report this run as a reproduction: it establishes that the gate is deterministic across fresh processes, not that the tree changed.",
+    "This artifact is correctness evidence only. It carries no rate and no ratio, and it is not a performance claim."
+  ]
+}

@@ -73,6 +73,7 @@ def _fake_runner_session(
 ) -> Qwen35GGUFResidentSession:
     _install_fake_device(monkeypatch)
     session = object.__new__(Qwen35GGUFResidentSession)
+    session.use_iq_dense_mmq = False
     session.__dict__.update(
         runner=_fake_dense_qwen36_runner(),
         runtime=SimpleNamespace(),
@@ -103,6 +104,7 @@ def _layer_outer_owner(
 ) -> Qwen35GGUFResidentSession:
     _install_fake_device(monkeypatch)
     owner = object.__new__(Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner.__dict__.update(
         _int8_prefill_lifetime_plan=(
             None
@@ -254,6 +256,7 @@ def _dispatch_recorder(
 
 def _bare_owner(row_capacity: int) -> Qwen35GGUFResidentSession:
     owner = object.__new__(Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner._bulk_prefill_scratch = SimpleNamespace(rows=int(row_capacity))
     return owner
 

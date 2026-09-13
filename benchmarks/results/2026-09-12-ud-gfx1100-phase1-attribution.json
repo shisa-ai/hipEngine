@@ -1,0 +1,2429 @@
+{
+  "schema": "hipengine.ud-gfx1100-phase1-attribution.v1",
+  "date": "2026-09-12",
+  "kind": "diagnostic_attribution",
+  "performance_claim": false,
+  "plan": "docs/UD-GFX1151-OPTIMIZE.md Phase 1",
+  "purpose": "Attribute the UD MTP deficit at the leaf target-verification workload and decide between device work, host/sync, expansion/residency, and narrow shape.",
+  "host": {
+    "device_index": 1,
+    "device_name": "AMD Radeon RX 7900 XTX",
+    "backend": "hip_gfx1100",
+    "arch": "gfx1100",
+    "note": "physical GPU1 only; GPU0 (W7900) untouched"
+  },
+  "protocol": {
+    "tool": "scripts/gguf_mtp_verifier_rocprof.py",
+    "mode": "block-verify",
+    "native_spec_target_cycle": true,
+    "block_verify_mode": "native",
+    "rows": [
+      2,
+      4
+    ],
+    "steps": 8,
+    "warmup": 2,
+    "rocprof": "rocprofv3 --kernel-trace --marker-trace",
+    "note": "Production-matching native target graph: device_accept_commit=True, bulk_attention_mode='native', remaining_decode=rows-1. Kernel rows are filtered to the ROCTX verify windows of the 8 measured steps."
+  },
+  "native_bucket_cap": {
+    "supported_rows": [
+      2,
+      3,
+      4
+    ],
+    "evidence": "rows=5..8 raise 'rows must be 2, 3, or 4' from the fused rounded add/RMSNorm (hipengine/kernels/hip_gfx1100/fused/gguf_ops.py) and the device accept/commit kernels, with and without --native-device-accept-commit. The production caller reaches B1-B3 (candidate budgets 1-3)."
+  },
+  "hypothesis": "UD IQ-family quants have no weight-amortized owner at rows 2-7: the dense-IQ decode owner is rows==1 and the dense-IQ prefill owner has min_rows 8. Plain Q4_K/Q5_K/Q6_K/Q8_0 use the rowtile family at rows 2-8.",
+  "verdict": "confirmed",
+  "owner_map": {
+    "rowtile_rows2_8": [
+      "gguf_q4_k",
+      "gguf_q5_k",
+      "gguf_q6_k",
+      "gguf_q8_0"
+    ],
+    "iq_prefill_rows": [
+      8,
+      131072
+    ],
+    "iq_decode_rows": 1,
+    "iq_prefill_quants": [
+      "gguf_iq4_xs",
+      "gguf_iq3_xxs",
+      "gguf_iq3_s",
+      "gguf_iq4_nl",
+      "gguf_q3_k",
+      "gguf_iq2_s",
+      "gguf_iq2_xs"
+    ],
+    "strict_rows2_7_quants": [
+      "gguf_iq4_xs",
+      "gguf_iq3_xxs",
+      "gguf_iq3_s",
+      "gguf_iq4_nl",
+      "gguf_q3_k",
+      "gguf_iq2_s",
+      "gguf_iq2_xs"
+    ]
+  },
+  "rank2_matmul_route_mix_pct": {
+    "Qwen3.8-27B-UD-Q4_K_M.gguf": {
+      "rowtile_rows2_8": 61.46,
+      "iq_dead_zone_rows2_7": 38.53,
+      "dead_zone_detail": {
+        "IQ4_XS": 32.8,
+        "Q3_K": 2.28,
+        "IQ4_NL": 2.15,
+        "IQ3_S": 1.3
+      }
+    },
+    "Qwen3.8-27B-Q4_K_M.gguf": {
+      "rowtile_rows2_8": 99.91,
+      "iq_dead_zone_rows2_7": 0.0
+    },
+    "Qwen3.8-27B-UD-Q4_K_S.gguf": {
+      "rowtile_rows2_8": 39.38,
+      "iq_dead_zone_rows2_7": 60.61,
+      "dead_zone_detail": {
+        "IQ4_XS": 43.37,
+        "Q3_K": 8.57,
+        "IQ3_S": 4.89,
+        "IQ3_XXS": 1.63,
+        "IQ4_NL": 1.5,
+        "IQ2_XS": 0.33,
+        "IQ2_S": 0.33
+      }
+    },
+    "Qwen3.8-27B-Q4_K_S.gguf": {
+      "rowtile_rows2_8": 99.91,
+      "iq_dead_zone_rows2_7": 0.0
+    }
+  },
+  "measurements": {
+    "ud-km-n2": {
+      "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+      "quant": "gguf_ud_q4_k_m",
+      "rows": 2,
+      "native_device_accept_commit": true,
+      "host_ms": 58.273,
+      "kernel_ms": 53.465,
+      "kernel_share_of_host_wall": 0.9175,
+      "host_residual_ms_per_step": 4.808,
+      "kernel_calls_per_step": 903.0,
+      "native_capture_ms": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "native_submit_ms": [
+        56.14621378481388,
+        56.98549747467041,
+        57.74948187172413,
+        57.956705801188946,
+        57.85129405558109,
+        57.958755642175674,
+        58.05203877389431,
+        58.059027418494225
+      ],
+      "native_readback_ms": [
+        0.187593512237072,
+        0.16435235738754272,
+        0.14986377209424973,
+        0.15645287930965424,
+        0.13805367052555084,
+        0.18861331045627594,
+        0.12971274554729462,
+        0.19083358347415924
+      ],
+      "categories_ms_per_step": {
+        "decoder_gemv": 43.202,
+        "projection_wmma": 5.4856,
+        "norm": 2.7329,
+        "other": 0.8179,
+        "attention": 0.5291,
+        "sync_transfer": 0.3864,
+        "gate_up_silu": 0.1421
+      },
+      "top_kernels": [
+        {
+          "name": "gguf_iq_dense_strict",
+          "calls": 1080,
+          "ms_per_step": 26.9878,
+          "us_per_call": 199.91,
+          "pct_kernel": 50.48,
+          "grid_x": [
+            81920,
+            98304,
+            163840,
+            196608,
+            278528
+          ],
+          "block_x": [
+            128
+          ],
+          "streams": [
+            0,
+            1
+          ],
+          "vgpr": [
+            48,
+            56,
+            80,
+            96,
+            136
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "q5_k_t16_dense_rowtile_gemv",
+          "calls": 864,
+          "ms_per_step": 8.292,
+          "us_per_call": 76.78,
+          "pct_kernel": 15.51,
+          "grid_x": [
+            32768,
+            163840,
+            196608,
+            327680,
+            393216,
+            557056
+          ],
+          "block_x": [
+            128
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            40
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "gguf_q5_k_t16_dense_dual_wmma_prefill_silu_bf16",
+          "calls": 72,
+          "ms_per_step": 5.4856,
+          "us_per_call": 609.51,
+          "pct_kernel": 10.26,
+          "grid_x": [
+            69632
+          ],
+          "block_x": [
+            128
+          ],
+          "streams": [
+            0,
+            1
+          ],
+          "vgpr": [
+            256
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "q4_k_t16_dense_rowtile_gemv",
+          "calls": 736,
+          "ms_per_step": 3.997,
+          "us_per_call": 43.45,
+          "pct_kernel": 7.48,
+          "grid_x": [
+            20480,
+            24576,
+            40960,
+            49152,
+            69632
+          ],
+          "block_x": [
+            32
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            120
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "q6_k_t16_qmicro_planar_gemv_rowtile",
+          "calls": 8,
+          "ms_per_step": 1.2294,
+          "us_per_call": 1229.41,
+          "pct_kernel": 2.3,
+          "grid_x": [
+            1986560
+          ],
+          "block_x": [
+            128
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            96
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop",
+          "calls": 384,
+          "ms_per_step": 1.083,
+          "us_per_call": 22.56,
+          "pct_kernel": 2.03,
+          "grid_x": [
+            6144
+          ],
+          "block_x": [
+            128
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            80
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "gguf_rounded_add_rmsnorm_bf16_f32_weight",
+          "calls": 504,
+          "ms_per_step": 0.8283,
+          "us_per_call": 13.15,
+          "pct_kernel": 1.55,
+          "grid_x": [
+            512
+          ],
+          "block_x": [
+            256
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            16
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "gguf_q8_0_t16_prefill_wmma",
+          "calls": 56,
+          "ms_per_step": 0.8179,
+          "us_per_call": 116.84,
+          "pct_kernel": 1.53,
+          "grid_x": [
+            96,
+            1024
+          ],
+          "block_x": [
+            32
+          ],
+          "streams": [
+            0,
+            1
+          ],
+          "vgpr": [
+            64,
+            88
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "q8_0_t16_dual_split_gemv",
+          "calls": 384,
+          "ms_per_step": 0.8118,
+          "us_per_call": 16.91,
+          "pct_kernel": 1.52,
+          "grid_x": [
+            768
+          ],
+          "block_x": [
+            128
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            64
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "gguf_add_rmsnorm_bf16_f32_weight",
+          "calls": 512,
+          "ms_per_step": 0.75,
+          "us_per_call": 11.72,
+          "pct_kernel": 1.4,
+          "grid_x": [
+            512,
+            2048
+          ],
+          "block_x": [
+            256
+          ],
+          "streams": [
+            0,
+            1
+          ],
+          "vgpr": [
+            24
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "q4_k_t16_dense_dual_rowtile_silu_gemv",
+          "calls": 40,
+          "ms_per_step": 0.6628,
+          "us_per_call": 132.55,
+          "pct_kernel": 1.24,
+          "grid_x": [
+            139264
+          ],
+          "block_x": [
+            64
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            120
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "q6_k_t16_qmicro_planar_gemv_rowtile_col8",
+          "calls": 104,
+          "ms_per_step": 0.5663,
+          "us_per_call": 43.56,
+          "pct_kernel": 1.06,
+          "grid_x": [
+            16384,
+            81920,
+            278528
+          ],
+          "block_x": [
+            128
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            64
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "linear_state_pair_commit_chunked_i32",
+          "calls": 8,
+          "ms_per_step": 0.3484,
+          "us_per_call": 348.44,
+          "pct_kernel": 0.65,
+          "grid_x": [
+            12288
+          ],
+          "block_x": [
+            256
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            16
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "q6_k_t16_qmicro_planar_gemv_bf16",
+          "calls": 144,
+          "ms_per_step": 0.3366,
+          "us_per_call": 18.7,
+          "pct_kernel": 0.63,
+          "grid_x": [
+            8192,
+            1986560
+          ],
+          "block_x": [
+            128
+          ],
+          "streams": [
+            0,
+            1
+          ],
+          "vgpr": [
+            96
+          ],
+          "sgpr": [
+            128
+          ]
+        }
+      ],
+      "iq_strict_calls_per_step": 135.0,
+      "iq_strict_ms_per_step": 26.9878
+    },
+    "ud-km-n4": {
+      "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+      "quant": "gguf_ud_q4_k_m",
+      "rows": 4,
+      "native_device_accept_commit": true,
+      "host_ms": 67.316,
+      "kernel_ms": 62.03,
+      "kernel_share_of_host_wall": 0.9215,
+      "host_residual_ms_per_step": 5.285,
+      "kernel_calls_per_step": 1032.0,
+      "native_capture_ms": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "native_submit_ms": [
+        64.54818416386843,
+        66.285346634686,
+        66.67239964008331,
+        66.80659204721451,
+        67.23231635987759,
+        66.91736355423927,
+        66.96729455143213,
+        66.92734267562628
+      ],
+      "native_readback_ms": [
+        0.15788152813911438,
+        0.1748623326420784,
+        0.11566095054149628,
+        0.23235194385051727,
+        0.15797186642885208,
+        0.16759149730205536,
+        0.16398169100284576,
+        0.1355418935418129
+      ],
+      "categories_ms_per_step": {
+        "decoder_gemv": 50.4866,
+        "projection_wmma": 5.5691,
+        "norm": 3.5527,
+        "attention": 0.8914,
+        "other": 0.8602,
+        "sync_transfer": 0.3889,
+        "gate_up_silu": 0.1567
+      },
+      "top_kernels": [
+        {
+          "name": "gguf_iq_dense_strict",
+          "calls": 1080,
+          "ms_per_step": 31.9917,
+          "us_per_call": 236.98,
+          "pct_kernel": 51.57,
+          "grid_x": [
+            81920,
+            98304,
+            163840,
+            196608,
+            278528
+          ],
+          "block_x": [
+            128
+          ],
+          "streams": [
+            0,
+            1
+          ],
+          "vgpr": [
+            72,
+            80,
+            96,
+            112,
+            136
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "q5_k_t16_dense_rowtile_gemv",
+          "calls": 864,
+          "ms_per_step": 9.0076,
+          "us_per_call": 83.4,
+          "pct_kernel": 14.52,
+          "grid_x": [
+            32768,
+            163840,
+            196608,
+            327680,
+            393216,
+            557056
+          ],
+          "block_x": [
+            128
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            56
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "gguf_q5_k_t16_dense_dual_wmma_prefill_silu_bf16",
+          "calls": 72,
+          "ms_per_step": 5.5691,
+          "us_per_call": 618.79,
+          "pct_kernel": 8.98,
+          "grid_x": [
+            69632
+          ],
+          "block_x": [
+            128
+          ],
+          "streams": [
+            0,
+            1
+          ],
+          "vgpr": [
+            256
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "q4_k_t16_dense_rowtile_gemv",
+          "calls": 736,
+          "ms_per_step": 4.716,
+          "us_per_call": 51.26,
+          "pct_kernel": 7.6,
+          "grid_x": [
+            20480,
+            24576,
+            40960,
+            49152,
+            69632
+          ],
+          "block_x": [
+            32
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            144
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "q6_k_t16_qmicro_planar_gemv_rowtile_col8",
+          "calls": 120,
+          "ms_per_step": 2.1915,
+          "us_per_call": 146.1,
+          "pct_kernel": 3.53,
+          "grid_x": [
+            16384,
+            81920,
+            278528,
+            3973120
+          ],
+          "block_x": [
+            128
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            80
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop",
+          "calls": 384,
+          "ms_per_step": 1.9078,
+          "us_per_call": 39.75,
+          "pct_kernel": 3.08,
+          "grid_x": [
+            6144
+          ],
+          "block_x": [
+            128
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            80
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "q8_0_t16_dual_split_gemv",
+          "calls": 384,
+          "ms_per_step": 0.8647,
+          "us_per_call": 18.02,
+          "pct_kernel": 1.39,
+          "grid_x": [
+            768
+          ],
+          "block_x": [
+            128
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            64
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "gguf_q8_0_t16_prefill_wmma",
+          "calls": 56,
+          "ms_per_step": 0.8297,
+          "us_per_call": 118.53,
+          "pct_kernel": 1.34,
+          "grid_x": [
+            96,
+            1024
+          ],
+          "block_x": [
+            32
+          ],
+          "streams": [
+            0,
+            1
+          ],
+          "vgpr": [
+            64,
+            88
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "gguf_rounded_add_rmsnorm_bf16_f32_weight",
+          "calls": 504,
+          "ms_per_step": 0.8165,
+          "us_per_call": 12.96,
+          "pct_kernel": 1.32,
+          "grid_x": [
+            1024
+          ],
+          "block_x": [
+            256
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            16
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "gguf_add_rmsnorm_bf16_f32_weight",
+          "calls": 512,
+          "ms_per_step": 0.7553,
+          "us_per_call": 11.8,
+          "pct_kernel": 1.22,
+          "grid_x": [
+            1024,
+            2048
+          ],
+          "block_x": [
+            256
+          ],
+          "streams": [
+            0,
+            1
+          ],
+          "vgpr": [
+            24
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "q4_k_t16_dense_dual_rowtile_silu_gemv",
+          "calls": 40,
+          "ms_per_step": 0.6958,
+          "us_per_call": 139.15,
+          "pct_kernel": 1.12,
+          "grid_x": [
+            139264
+          ],
+          "block_x": [
+            64
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            144
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "q6_k_t16_qmicro_planar_gemv_bf16",
+          "calls": 288,
+          "ms_per_step": 0.6083,
+          "us_per_call": 16.9,
+          "pct_kernel": 0.98,
+          "grid_x": [
+            8192,
+            1986560
+          ],
+          "block_x": [
+            128
+          ],
+          "streams": [
+            0,
+            1
+          ],
+          "vgpr": [
+            96
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "qwen35_paged_full_attn_decode_context_tensor",
+          "calls": 512,
+          "ms_per_step": 0.4354,
+          "us_per_call": 6.8,
+          "pct_kernel": 0.7,
+          "grid_x": [
+            6144
+          ],
+          "block_x": [
+            256
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            40
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "qk_t16_selected_direct_gemv",
+          "calls": 160,
+          "ms_per_step": 0.3601,
+          "us_per_call": 18.0,
+          "pct_kernel": 0.58,
+          "grid_x": [
+            8192
+          ],
+          "block_x": [
+            128
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            128
+          ],
+          "sgpr": [
+            128
+          ]
+        }
+      ],
+      "iq_strict_calls_per_step": 135.0,
+      "iq_strict_ms_per_step": 31.9917
+    },
+    "plain-km-n2": {
+      "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+      "quant": "gguf_q4_k_m",
+      "rows": 2,
+      "native_device_accept_commit": true,
+      "host_ms": 31.624,
+      "kernel_ms": 27.36,
+      "kernel_share_of_host_wall": 0.8652,
+      "host_residual_ms_per_step": 4.263,
+      "kernel_calls_per_step": 789.0,
+      "native_capture_ms": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "native_submit_ms": [
+        30.223864130675793,
+        30.304554849863052,
+        30.320853926241398,
+        30.514548532664776,
+        31.233099289238453,
+        31.548693776130676,
+        31.57441597431898,
+        31.50215372443199
+      ],
+      "native_readback_ms": [
+        0.14177151024341583,
+        0.23564323782920837,
+        0.18274225294589996,
+        0.12638233602046967,
+        0.1402227208018303,
+        0.22771302610635757,
+        0.17242133617401123,
+        0.12842286378145218
+      ],
+      "categories_ms_per_step": {
+        "decoder_gemv": 23.5898,
+        "norm": 2.7884,
+        "attention": 0.4645,
+        "sync_transfer": 0.4057,
+        "gate_up_silu": 0.0525,
+        "other": 0.029,
+        "logits": 0.0073
+      },
+      "top_kernels": [
+        {
+          "name": "q4_k_t16_dense_dual_rowtile_silu_gemv",
+          "calls": 512,
+          "ms_per_step": 8.372,
+          "us_per_call": 130.81,
+          "pct_kernel": 30.6,
+          "grid_x": [
+            139264
+          ],
+          "block_x": [
+            64
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            120
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "q6_k_t16_qmicro_planar_gemv_rowtile_col8",
+          "calls": 504,
+          "ms_per_step": 5.348,
+          "us_per_call": 84.89,
+          "pct_kernel": 19.55,
+          "grid_x": [
+            16384,
+            81920,
+            163840
+          ],
+          "block_x": [
+            128
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            64
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "q4_k_t16_dense_rowtile_gemv",
+          "calls": 1088,
+          "ms_per_step": 5.2433,
+          "us_per_call": 38.55,
+          "pct_kernel": 19.16,
+          "grid_x": [
+            20480,
+            24576,
+            40960,
+            49152
+          ],
+          "block_x": [
+            32
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            120
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "q5_k_t16_dense_rowtile_gemv",
+          "calls": 384,
+          "ms_per_step": 2.5833,
+          "us_per_call": 53.82,
+          "pct_kernel": 9.44,
+          "grid_x": [
+            163840
+          ],
+          "block_x": [
+            128
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            40
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "q6_k_t16_qmicro_planar_gemv_rowtile",
+          "calls": 8,
+          "ms_per_step": 1.2456,
+          "us_per_call": 1245.61,
+          "pct_kernel": 4.55,
+          "grid_x": [
+            1986560
+          ],
+          "block_x": [
+            128
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            96
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop",
+          "calls": 384,
+          "ms_per_step": 1.0966,
+          "us_per_call": 22.85,
+          "pct_kernel": 4.01,
+          "grid_x": [
+            6144
+          ],
+          "block_x": [
+            128
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            80
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "gguf_rounded_add_rmsnorm_bf16_f32_weight",
+          "calls": 504,
+          "ms_per_step": 0.8439,
+          "us_per_call": 13.4,
+          "pct_kernel": 3.08,
+          "grid_x": [
+            512
+          ],
+          "block_x": [
+            256
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            16
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "gguf_add_rmsnorm_bf16_f32_weight",
+          "calls": 512,
+          "ms_per_step": 0.7478,
+          "us_per_call": 11.68,
+          "pct_kernel": 2.73,
+          "grid_x": [
+            512,
+            2048
+          ],
+          "block_x": [
+            256
+          ],
+          "streams": [
+            0,
+            1
+          ],
+          "vgpr": [
+            24
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "dense_gemv_bf16_f32w_bf16_out",
+          "calls": 768,
+          "ms_per_step": 0.4359,
+          "us_per_call": 4.54,
+          "pct_kernel": 1.59,
+          "grid_x": [
+            12288
+          ],
+          "block_x": [
+            256
+          ],
+          "streams": [
+            0,
+            1
+          ],
+          "vgpr": [
+            24
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "linear_state_pair_commit_chunked_i32",
+          "calls": 8,
+          "ms_per_step": 0.3496,
+          "us_per_call": 349.63,
+          "pct_kernel": 1.28,
+          "grid_x": [
+            12288
+          ],
+          "block_x": [
+            256
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            16
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "q4_k_t16_dense_rowtile_col4_gemv",
+          "calls": 192,
+          "ms_per_step": 0.2451,
+          "us_per_call": 10.21,
+          "pct_kernel": 0.9,
+          "grid_x": [
+            8192
+          ],
+          "block_x": [
+            32
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            72
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "qwen35_paged_full_attn_decode_context_tensor_batch",
+          "calls": 128,
+          "ms_per_step": 0.2006,
+          "us_per_call": 12.54,
+          "pct_kernel": 0.73,
+          "grid_x": [
+            6144
+          ],
+          "block_x": [
+            256
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            40
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "qwen35_linear_attn_chain_conv_decode_lowp_tloop",
+          "calls": 384,
+          "ms_per_step": 0.1649,
+          "us_per_call": 3.44,
+          "pct_kernel": 0.6,
+          "grid_x": [
+            10240
+          ],
+          "block_x": [
+            256
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            32
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "q6_k_t16_qmicro_planar_gemv_rowtile_col8_residual",
+          "calls": 8,
+          "ms_per_step": 0.1165,
+          "us_per_call": 116.53,
+          "pct_kernel": 0.43,
+          "grid_x": [
+            81920
+          ],
+          "block_x": [
+            128
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            80
+          ],
+          "sgpr": [
+            128
+          ]
+        }
+      ],
+      "iq_strict_calls_per_step": 0.0,
+      "iq_strict_ms_per_step": 0
+    },
+    "plain-km-n4": {
+      "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+      "quant": "gguf_q4_k_m",
+      "rows": 4,
+      "native_device_accept_commit": true,
+      "host_ms": 35.899,
+      "kernel_ms": 31.496,
+      "kernel_share_of_host_wall": 0.8774,
+      "host_residual_ms_per_step": 4.403,
+      "kernel_calls_per_step": 824.0,
+      "native_capture_ms": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "native_submit_ms": [
+        34.184955060482025,
+        34.360687248408794,
+        34.37876608222723,
+        35.75763385742903,
+        35.89123487472534,
+        35.92075500637293,
+        35.98216641694307,
+        35.943325608968735
+      ],
+      "native_readback_ms": [
+        0.14545023441314697,
+        0.1375516876578331,
+        0.13803131878376007,
+        0.12445077300071716,
+        0.13032089918851852,
+        0.1259809359908104,
+        0.20653195679187775,
+        0.14251191169023514
+      ],
+      "categories_ms_per_step": {
+        "decoder_gemv": 26.6423,
+        "norm": 3.7095,
+        "attention": 0.6146,
+        "sync_transfer": 0.4032,
+        "gate_up_silu": 0.0543,
+        "other": 0.0437,
+        "logits": 0.0104
+      },
+      "top_kernels": [
+        {
+          "name": "q4_k_t16_dense_dual_rowtile_silu_gemv",
+          "calls": 512,
+          "ms_per_step": 8.8474,
+          "us_per_call": 138.24,
+          "pct_kernel": 28.09,
+          "grid_x": [
+            139264
+          ],
+          "block_x": [
+            64
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            144
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "q6_k_t16_qmicro_planar_gemv_rowtile_col8",
+          "calls": 520,
+          "ms_per_step": 7.7674,
+          "us_per_call": 119.5,
+          "pct_kernel": 24.66,
+          "grid_x": [
+            16384,
+            81920,
+            163840,
+            3973120
+          ],
+          "block_x": [
+            128
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            80
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "q4_k_t16_dense_rowtile_gemv",
+          "calls": 1088,
+          "ms_per_step": 6.4364,
+          "us_per_call": 47.33,
+          "pct_kernel": 20.44,
+          "grid_x": [
+            20480,
+            24576,
+            40960,
+            49152
+          ],
+          "block_x": [
+            32
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            144
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "q5_k_t16_dense_rowtile_gemv",
+          "calls": 384,
+          "ms_per_step": 2.8477,
+          "us_per_call": 59.33,
+          "pct_kernel": 9.04,
+          "grid_x": [
+            163840
+          ],
+          "block_x": [
+            128
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            56
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop",
+          "calls": 384,
+          "ms_per_step": 1.9725,
+          "us_per_call": 41.09,
+          "pct_kernel": 6.26,
+          "grid_x": [
+            6144
+          ],
+          "block_x": [
+            128
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            80
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "gguf_rounded_add_rmsnorm_bf16_f32_weight",
+          "calls": 504,
+          "ms_per_step": 0.8415,
+          "us_per_call": 13.36,
+          "pct_kernel": 2.67,
+          "grid_x": [
+            1024
+          ],
+          "block_x": [
+            256
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            16
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "gguf_add_rmsnorm_bf16_f32_weight",
+          "calls": 512,
+          "ms_per_step": 0.7936,
+          "us_per_call": 12.4,
+          "pct_kernel": 2.52,
+          "grid_x": [
+            1024,
+            2048
+          ],
+          "block_x": [
+            256
+          ],
+          "streams": [
+            0,
+            1
+          ],
+          "vgpr": [
+            24
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "dense_gemv_bf16_f32w_bf16_out",
+          "calls": 768,
+          "ms_per_step": 0.4497,
+          "us_per_call": 4.68,
+          "pct_kernel": 1.43,
+          "grid_x": [
+            12288
+          ],
+          "block_x": [
+            256
+          ],
+          "streams": [
+            0,
+            1
+          ],
+          "vgpr": [
+            24
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "linear_state_pair_commit_chunked_i32",
+          "calls": 8,
+          "ms_per_step": 0.3459,
+          "us_per_call": 345.87,
+          "pct_kernel": 1.1,
+          "grid_x": [
+            12288
+          ],
+          "block_x": [
+            256
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            16
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "q4_k_t16_dense_rowtile_col4_gemv",
+          "calls": 192,
+          "ms_per_step": 0.2937,
+          "us_per_call": 12.24,
+          "pct_kernel": 0.93,
+          "grid_x": [
+            8192
+          ],
+          "block_x": [
+            32
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            96
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "qwen35_paged_full_attn_decode_context_tensor_batch",
+          "calls": 128,
+          "ms_per_step": 0.2329,
+          "us_per_call": 14.56,
+          "pct_kernel": 0.74,
+          "grid_x": [
+            6144
+          ],
+          "block_x": [
+            256
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            40
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "qwen35_linear_attn_chain_conv_decode_lowp_tloop",
+          "calls": 384,
+          "ms_per_step": 0.2089,
+          "us_per_call": 4.35,
+          "pct_kernel": 0.66,
+          "grid_x": [
+            10240
+          ],
+          "block_x": [
+            256
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            32
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "qwen35_write_paged_kv_mixed_value_position_tensor",
+          "calls": 512,
+          "ms_per_step": 0.1412,
+          "us_per_call": 2.21,
+          "pct_kernel": 0.45,
+          "grid_x": [
+            1024
+          ],
+          "block_x": [
+            256
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            8
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "gguf_head_rmsnorm_partial_rotary_positions_f32_weight",
+          "calls": 128,
+          "ms_per_step": 0.0741,
+          "us_per_call": 4.63,
+          "pct_kernel": 0.24,
+          "grid_x": [
+            7168
+          ],
+          "block_x": [
+            256
+          ],
+          "streams": [
+            0,
+            1
+          ],
+          "vgpr": [
+            16
+          ],
+          "sgpr": [
+            128
+          ]
+        }
+      ],
+      "iq_strict_calls_per_step": 0.0,
+      "iq_strict_ms_per_step": 0
+    },
+    "ud-ks-n4": {
+      "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf",
+      "quant": "gguf_ud_q4_k_s",
+      "rows": 4,
+      "native_device_accept_commit": true,
+      "host_ms": 72.251,
+      "kernel_ms": 67.058,
+      "kernel_share_of_host_wall": 0.9281,
+      "host_residual_ms_per_step": 5.192,
+      "kernel_calls_per_step": 1051.0,
+      "native_capture_ms": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "native_submit_ms": [
+        69.4153904914856,
+        71.34386338293552,
+        72.27073516696692,
+        71.67421746999025,
+        72.0634926110506,
+        71.98925036936998,
+        72.11116328835487,
+        72.1379928290844
+      ],
+      "native_readback_ms": [
+        0.1338217407464981,
+        0.13999268412590027,
+        0.11697132140398026,
+        0.20410306751728058,
+        0.12522190809249878,
+        0.13594143092632294,
+        0.19224267452955246,
+        0.1410422846674919
+      ],
+      "categories_ms_per_step": {
+        "decoder_gemv": 58.1318,
+        "projection_wmma": 3.6937,
+        "norm": 3.522,
+        "attention": 0.8785,
+        "sync_transfer": 0.3929,
+        "other": 0.1682,
+        "gate_up_silu": 0.1618
+      },
+      "top_kernels": [
+        {
+          "name": "gguf_iq_dense_strict",
+          "calls": 1704,
+          "ms_per_step": 45.6271,
+          "us_per_call": 214.21,
+          "pct_kernel": 68.04,
+          "grid_x": [
+            81920,
+            98304,
+            163840,
+            196608,
+            278528
+          ],
+          "block_x": [
+            128
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            72,
+            80,
+            96,
+            112
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "q5_k_t16_dense_rowtile_gemv",
+          "calls": 472,
+          "ms_per_step": 4.3727,
+          "us_per_call": 74.11,
+          "pct_kernel": 6.52,
+          "grid_x": [
+            32768,
+            163840,
+            196608,
+            557056
+          ],
+          "block_x": [
+            128
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            56
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "q4_k_t16_dense_rowtile_gemv",
+          "calls": 696,
+          "ms_per_step": 4.3312,
+          "us_per_call": 49.78,
+          "pct_kernel": 6.46,
+          "grid_x": [
+            20480,
+            24576,
+            40960,
+            49152,
+            69632
+          ],
+          "block_x": [
+            32
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            144
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "gguf_q5_k_t16_dense_dual_wmma_prefill_silu_bf16",
+          "calls": 48,
+          "ms_per_step": 3.6937,
+          "us_per_call": 615.61,
+          "pct_kernel": 5.51,
+          "grid_x": [
+            69632
+          ],
+          "block_x": [
+            128
+          ],
+          "streams": [
+            0,
+            1
+          ],
+          "vgpr": [
+            256
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop",
+          "calls": 384,
+          "ms_per_step": 1.8849,
+          "us_per_call": 39.27,
+          "pct_kernel": 2.81,
+          "grid_x": [
+            6144
+          ],
+          "block_x": [
+            128
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            80
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "q6_k_t16_qmicro_planar_gemv_rowtile_col8",
+          "calls": 64,
+          "ms_per_step": 1.7019,
+          "us_per_call": 212.74,
+          "pct_kernel": 2.54,
+          "grid_x": [
+            16384,
+            81920,
+            278528,
+            3973120
+          ],
+          "block_x": [
+            128
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            80
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "q8_0_t16_dual_split_gemv",
+          "calls": 384,
+          "ms_per_step": 0.8549,
+          "us_per_call": 17.81,
+          "pct_kernel": 1.27,
+          "grid_x": [
+            768
+          ],
+          "block_x": [
+            128
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            64
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "gguf_rounded_add_rmsnorm_bf16_f32_weight",
+          "calls": 504,
+          "ms_per_step": 0.8203,
+          "us_per_call": 13.02,
+          "pct_kernel": 1.22,
+          "grid_x": [
+            1024
+          ],
+          "block_x": [
+            256
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            16
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "gguf_add_rmsnorm_bf16_f32_weight",
+          "calls": 512,
+          "ms_per_step": 0.7448,
+          "us_per_call": 11.64,
+          "pct_kernel": 1.11,
+          "grid_x": [
+            1024,
+            2048
+          ],
+          "block_x": [
+            256
+          ],
+          "streams": [
+            0,
+            1
+          ],
+          "vgpr": [
+            24
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "qk_t16_selected_direct_gemv",
+          "calls": 288,
+          "ms_per_step": 0.6465,
+          "us_per_call": 17.96,
+          "pct_kernel": 0.96,
+          "grid_x": [
+            8192
+          ],
+          "block_x": [
+            128
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            128
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "qwen35_paged_full_attn_decode_context_tensor",
+          "calls": 512,
+          "ms_per_step": 0.4311,
+          "us_per_call": 6.74,
+          "pct_kernel": 0.64,
+          "grid_x": [
+            6144
+          ],
+          "block_x": [
+            256
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            40
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "linear_state_pair_commit_chunked_i32",
+          "calls": 8,
+          "ms_per_step": 0.3543,
+          "us_per_call": 354.3,
+          "pct_kernel": 0.53,
+          "grid_x": [
+            12288
+          ],
+          "block_x": [
+            256
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            16
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "q4_k_t16_dense_dual_rowtile_silu_gemv",
+          "calls": 16,
+          "ms_per_step": 0.276,
+          "us_per_call": 138.01,
+          "pct_kernel": 0.41,
+          "grid_x": [
+            139264
+          ],
+          "block_x": [
+            64
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            144
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "q6_k_t16_qmicro_planar_gemv_bf16",
+          "calls": 128,
+          "ms_per_step": 0.2709,
+          "us_per_call": 16.93,
+          "pct_kernel": 0.4,
+          "grid_x": [
+            8192,
+            1986560
+          ],
+          "block_x": [
+            128
+          ],
+          "streams": [
+            0,
+            1
+          ],
+          "vgpr": [
+            96
+          ],
+          "sgpr": [
+            128
+          ]
+        }
+      ],
+      "iq_strict_calls_per_step": 213.0,
+      "iq_strict_ms_per_step": 45.6271
+    },
+    "plain-ks-n4": {
+      "model": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+      "quant": "gguf_q4_k_s",
+      "rows": 4,
+      "native_device_accept_commit": true,
+      "host_ms": 34.547,
+      "kernel_ms": 29.739,
+      "kernel_share_of_host_wall": 0.8608,
+      "host_residual_ms_per_step": 4.808,
+      "kernel_calls_per_step": 919.0,
+      "native_capture_ms": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "native_submit_ms": [
+        32.821645960211754,
+        32.93404821306467,
+        32.801417633891106,
+        33.87056943029165,
+        34.451366402208805,
+        34.39504653215408,
+        34.7483204677701,
+        34.38536636531353
+      ],
+      "native_readback_ms": [
+        0.1491224393248558,
+        0.14029256999492645,
+        0.1430511474609375,
+        0.2375226467847824,
+        0.23814290761947632,
+        0.14130119234323502,
+        0.1435317099094391,
+        0.13996195048093796
+      ],
+      "categories_ms_per_step": {
+        "decoder_gemv": 24.6653,
+        "norm": 3.6286,
+        "attention": 0.9178,
+        "sync_transfer": 0.4039,
+        "gate_up_silu": 0.0544,
+        "other": 0.0364,
+        "logits": 0.0101
+      },
+      "top_kernels": [
+        {
+          "name": "q4_k_t16_dense_rowtile_gemv",
+          "calls": 1440,
+          "ms_per_step": 9.1445,
+          "us_per_call": 50.8,
+          "pct_kernel": 30.75,
+          "grid_x": [
+            20480,
+            24576,
+            40960,
+            49152
+          ],
+          "block_x": [
+            32
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            144
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "q4_k_t16_dense_dual_rowtile_silu_gemv",
+          "calls": 512,
+          "ms_per_step": 8.8105,
+          "us_per_call": 137.66,
+          "pct_kernel": 29.63,
+          "grid_x": [
+            139264
+          ],
+          "block_x": [
+            64
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            144
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "q5_k_t16_dense_rowtile_gemv",
+          "calls": 480,
+          "ms_per_step": 4.3584,
+          "us_per_call": 72.64,
+          "pct_kernel": 14.66,
+          "grid_x": [
+            32768,
+            163840,
+            327680
+          ],
+          "block_x": [
+            128
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            56
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop",
+          "calls": 384,
+          "ms_per_step": 1.9141,
+          "us_per_call": 39.88,
+          "pct_kernel": 6.44,
+          "grid_x": [
+            6144
+          ],
+          "block_x": [
+            128
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            80
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "q6_k_t16_qmicro_planar_gemv_rowtile_col8",
+          "calls": 8,
+          "ms_per_step": 1.4727,
+          "us_per_call": 1472.68,
+          "pct_kernel": 4.95,
+          "grid_x": [
+            3973120
+          ],
+          "block_x": [
+            128
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            80
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "gguf_rounded_add_rmsnorm_bf16_f32_weight",
+          "calls": 504,
+          "ms_per_step": 0.8457,
+          "us_per_call": 13.42,
+          "pct_kernel": 2.84,
+          "grid_x": [
+            1024
+          ],
+          "block_x": [
+            256
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            16
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "gguf_add_rmsnorm_bf16_f32_weight",
+          "calls": 512,
+          "ms_per_step": 0.7737,
+          "us_per_call": 12.09,
+          "pct_kernel": 2.6,
+          "grid_x": [
+            1024,
+            2048
+          ],
+          "block_x": [
+            256
+          ],
+          "streams": [
+            0,
+            1
+          ],
+          "vgpr": [
+            24
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "qwen35_paged_full_attn_decode_context_tensor",
+          "calls": 512,
+          "ms_per_step": 0.4492,
+          "us_per_call": 7.02,
+          "pct_kernel": 1.51,
+          "grid_x": [
+            6144
+          ],
+          "block_x": [
+            256
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            40
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "dense_gemv_bf16_f32w_bf16_out",
+          "calls": 768,
+          "ms_per_step": 0.4466,
+          "us_per_call": 4.65,
+          "pct_kernel": 1.5,
+          "grid_x": [
+            12288
+          ],
+          "block_x": [
+            256
+          ],
+          "streams": [
+            0,
+            1
+          ],
+          "vgpr": [
+            24
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "q4_k_t16_dense_rowtile_col4_gemv",
+          "calls": 248,
+          "ms_per_step": 0.3506,
+          "us_per_call": 11.31,
+          "pct_kernel": 1.18,
+          "grid_x": [
+            8192
+          ],
+          "block_x": [
+            32
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            96
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "linear_state_pair_commit_chunked_i32",
+          "calls": 8,
+          "ms_per_step": 0.3477,
+          "us_per_call": 347.74,
+          "pct_kernel": 1.17,
+          "grid_x": [
+            12288
+          ],
+          "block_x": [
+            256
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            16
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "qwen35_linear_attn_chain_conv_decode_lowp_tloop",
+          "calls": 384,
+          "ms_per_step": 0.23,
+          "us_per_call": 4.79,
+          "pct_kernel": 0.77,
+          "grid_x": [
+            10240
+          ],
+          "block_x": [
+            256
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            32
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "qwen35_write_paged_kv_mixed_value_position_tensor",
+          "calls": 512,
+          "ms_per_step": 0.1356,
+          "us_per_call": 2.12,
+          "pct_kernel": 0.46,
+          "grid_x": [
+            1024
+          ],
+          "block_x": [
+            256
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            8
+          ],
+          "sgpr": [
+            128
+          ]
+        },
+        {
+          "name": "qwen35_full_attn_gate_mul_bf16",
+          "calls": 512,
+          "ms_per_step": 0.103,
+          "us_per_call": 1.61,
+          "pct_kernel": 0.35,
+          "grid_x": [
+            6144
+          ],
+          "block_x": [
+            256
+          ],
+          "streams": [
+            1
+          ],
+          "vgpr": [
+            16
+          ],
+          "sgpr": [
+            128
+          ]
+        }
+      ],
+      "iq_strict_calls_per_step": 0.0,
+      "iq_strict_ms_per_step": 0
+    }
+  },
+  "comparison_rows4": {
+    "q4_k_m": {
+      "ud_label": "ud-km-n4",
+      "plain_label": "plain-km-n4",
+      "ud_over_plain_host": 1.8751,
+      "ud_over_plain_kernel": 1.9695,
+      "ud_iq_strict_ms_per_step": 31.9917,
+      "plain_iq_strict_ms_per_step": 0,
+      "ud_iq_strict_pct_of_ud_kernel": 51.57
+    },
+    "q4_k_s": {
+      "ud_label": "ud-ks-n4",
+      "plain_label": "plain-ks-n4",
+      "ud_over_plain_host": 2.0914,
+      "ud_over_plain_kernel": 2.2549,
+      "ud_iq_strict_ms_per_step": 45.6271,
+      "plain_iq_strict_ms_per_step": 0,
+      "ud_iq_strict_pct_of_ud_kernel": 68.04
+    }
+  },
+  "decision_gate": {
+    "device_work_dominates": true,
+    "device_share_range": [
+      0.8608,
+      0.9281
+    ],
+    "host_residual_ms_per_step_range": [
+      4.263,
+      5.285
+    ],
+    "expansion_residency": "No dequantize/expand/repack kernels appear in the verifier windows; UD reads raw IQ bytes in gguf_iq_dense_strict. Expansion is not the verifier deficit.",
+    "narrow_shape": "The verifier-relevant loss is rows 2-4: the production native bucket is B1-B3. The owner-map dead zone runs to row 7; the dense-IQ prefill owner would engage at row 8, but the verifier path cannot reach it (fused add/RMSNorm and device accept/commit are fixed to four rows).",
+    "selected_action": "Optimize the responsible kernel family: add a verifier-sibling small-row IQ owner for the B1-B3 verifier rows (Phase 2), scoped to those rows."
+  },
+  "limitations": [
+    "The verifier path is capped at four rows: the fused add/RMSNorm and device accept/commit kernels are B1-B3, so rows 5-8 cannot be measured or run. The row sweep stops at 4.",
+    "The leaf replays a fixed synthetic block ([root]*rows), not the real accepted-draft chain; absolute ms is a per-verifier-block figure, not the paired tok/s rate.",
+    "c1/c2/c4/c8 concurrency widths need a multi-request caller the census does not implement."
+  ],
+  "correction": {
+    "date": "2026-09-12",
+    "field": "rows_cap_attribution",
+    "was": "rows 5-8 raise 'rows must be 2, 3, or 4' from the fused rounded add/RMSNorm and the device accept/commit kernels",
+    "is": "Only the fused rounded add/RMSNorm wrapper capped the chain. Its device kernel is one block per row with an identical reduction tree, so lifting that one guard makes rows 5-8 run. The device accept/commit path was never row-capped: it binds positions from a device array (prepare_packed_decode_metadata_from_positions), and the four-scalar position0..position3 ABI belongs to prepare_packed_decode_metadata, which has no in-tree runtime caller.",
+    "evidence": "benchmarks/results/2026-09-12-ud-gfx1100-verifier-rows-4-8-census.json",
+    "worklog": "worklog/entries/20260912T150309.673218Z-lhl-ud-phase5-rows-envelope-8351b3.md"
+  }
+}

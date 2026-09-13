@@ -67,7 +67,7 @@ def _norm_quant(text: str) -> str:
     out = re.sub(r"[^A-Z0-9]", "", (text or "").upper())
     for prefix in ("GGUF", "UD", "IQ"):
         if out.startswith(prefix):
-            return out[len(prefix):]
+            out = out[len(prefix):]
     return out
 
 

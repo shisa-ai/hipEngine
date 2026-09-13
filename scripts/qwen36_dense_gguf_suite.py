@@ -363,25 +363,57 @@ def _run_ar(
     prompt_tokens: Sequence[int],
     *,
     max_new_tokens: int,
+    ar_decode_mode: str,
 ) -> dict[str, object]:
+    mode = str(ar_decode_mode)
+    if mode not in {"graph", "eager"}:
+        raise ValueError(f"unsupported AR decode mode: {mode!r}")
     target.reset()
     request_started = time.perf_counter()
     prefill_started = request_started
     first = target.prefill(prompt_tokens, use_bulk=False, return_logits=False)
     prefill_seconds = time.perf_counter() - prefill_started
     generated = [int(first.token_id)]
-    decode_started = time.perf_counter()
-    while len(generated) < int(max_new_tokens):
-        generated.append(int(target.step(generated[-1], return_logits=False).token_id))
-    decode_seconds = time.perf_counter() - decode_started
-    request_wall_seconds = time.perf_counter() - request_started
     transitions = timed_transition_count(max_new_tokens)
+    graph_capture_seconds = 0.0
+    graph_readback_seconds = 0.0
+    decode_graph_transport: dict[str, object] | None = None
+    if mode == "graph":
+        capture_started = time.perf_counter()
+        graph = target.capture_decode_graph(
+            position=int(target.position),
+            steps_per_replay=1,
+            max_replay_steps=transitions,
+            record_steps=transitions,
+            input_token_id=generated[-1],
+        )
+        graph_capture_seconds = time.perf_counter() - capture_started
+        try:
+            decode_started = time.perf_counter()
+            graph.replay(transitions)
+            decode_seconds = time.perf_counter() - decode_started
+            readback_started = time.perf_counter()
+            generated.extend(graph.read_generated_token_ids(transitions))
+            graph_readback_seconds = time.perf_counter() - readback_started
+            decode_graph_transport = dict(graph.transport_provenance())
+        finally:
+            graph.close()
+    else:
+        decode_started = time.perf_counter()
+        while len(generated) < int(max_new_tokens):
+            generated.append(int(target.step(generated[-1], return_logits=False).token_id))
+        decode_seconds = time.perf_counter() - decode_started
+    request_wall_seconds = time.perf_counter() - request_started
     return {
         "token_ids": generated,
         "token_sha256_i64": _token_sha256(generated),
+        "ar_decode_mode": mode,
         "visible_outputs": len(generated),
         "timed_transitions": transitions,
         "prefill_seconds": prefill_seconds,
+        "graph_capture_seconds": graph_capture_seconds,
+        "graph_readback_seconds": graph_readback_seconds,
+        "decode_graph_transport": decode_graph_transport,
         "decode_seconds": decode_seconds,
         "request_wall_seconds": request_wall_seconds,
         "client_transition_tok_s": (
@@ -397,7 +429,13 @@ def _run_ar(
         "cycles": 0,
         "target_passes": 0,
         "target_forward_rows": transitions,
-        "stage_seconds": {"autoregressive_step": decode_seconds},
+        "stage_seconds": {
+            (
+                "autoregressive_graph_replay"
+                if mode == "graph"
+                else "autoregressive_step"
+            ): decode_seconds
+        },
     }
 
 
@@ -555,6 +593,12 @@ def build_parser() -> argparse.ArgumentParser:
         default="native",
         help="dense target block route; serial-exact is the rollback control",
     )
+    parser.add_argument(
+        "--ar-decode-mode",
+        choices=("graph", "eager"),
+        default="graph",
+        help="true no-MTP AR denominator; eager is a synchronous diagnostic control",
+    )
     parser.add_argument("--runs", type=int, default=1)
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--warmup", action=argparse.BooleanOptionalAction, default=True)
@@ -711,7 +755,12 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 )
                 warmup_outputs = min(int(args.max_new_tokens), max(5, max(args.candidate_budgets) + 2))
                 ledger.recording = False
-                _run_ar(target, warmup_tokens, max_new_tokens=warmup_outputs)
+                _run_ar(
+                    target,
+                    warmup_tokens,
+                    max_new_tokens=warmup_outputs,
+                    ar_decode_mode=str(args.ar_decode_mode),
+                )
                 for budget in decoder_budgets:
                     _run_mtp(
                         decoders[int(budget)],
@@ -730,6 +779,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                             target,
                             prompt_tokens,
                             max_new_tokens=int(args.max_new_tokens),
+                            ar_decode_mode=str(args.ar_decode_mode),
                         ),
                         prompt=prompt,
                         run_index=run_index,
@@ -835,7 +885,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         build_profile="qwen36_dense_gguf_ar_mtp_suite",
         timing_protocol=(
             f"natural{int(args.max_new_tokens)} first-output-from-prefill; "
-            f"{timed_transition_count(args.max_new_tokens)} transition-normalized decode steps"
+            f"{timed_transition_count(args.max_new_tokens)} transition-normalized "
+            f"{args.ar_decode_mode} AR decode steps"
         ),
         warmups=1 if bool(args.warmup) else 0,
         repetitions=int(args.runs),
@@ -908,6 +959,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 ),
             },
             "target_verify_mode": str(args.target_verify_mode),
+            "ar_decode_mode": str(args.ar_decode_mode),
             "draft_hidden_variant": str(args.draft_hidden_variant),
             "draft_hidden_manifest": decoders[min(decoders)].draft_hidden_manifest,
             "runs": int(args.runs),
@@ -925,6 +977,17 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "first_visible_output": "target prefill sample; excluded from decode wall",
             "decode_numerator": "max_new_tokens - 1 timed transitions",
             "prefill": "excluded from AR and MTP decode wall",
+            "true_ar_decode_path": str(args.ar_decode_mode),
+            "true_ar_graph_capture": (
+                "excluded from decode wall; included in request wall"
+                if args.ar_decode_mode == "graph"
+                else "not applicable"
+            ),
+            "true_ar_graph_recording": (
+                "one device-recorded token id per timed transition; read back after decode wall"
+                if args.ar_decode_mode == "graph"
+                else "not applicable"
+            ),
             "mtp_complete_wall": "proposal + target_verify + target_commit_finish + scheduler_accept_replay_host_residual",
             "profile_markers": bool(args.roctx_markers),
             "roctx_marker_prefix": ROCTX_MARKER_PREFIX,

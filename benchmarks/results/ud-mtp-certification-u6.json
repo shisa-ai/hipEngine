@@ -1,0 +1,4196 @@
+{
+  "artifacts": [
+    {
+      "artifact": "ud-q4-k-m",
+      "command": "python scripts/ud_mtp_certification.py --artifact ud-q4-k-m --runs 2 --candidate-budgets 3 --output benchmarks/results/ud-mtp-certification-u6.json",
+      "correctness": {
+        "all_exact_greedy": true,
+        "all_gpu_accept_match_cpu": true
+      },
+      "evidence": {
+        "best_candidate_budget": "3",
+        "best_mtp_tok_s": 30.634787422066218,
+        "best_mtp_vs_true_ar": 1.9851761371118573,
+        "categories": {
+          "code": {
+            "accept_match_runs": 8,
+            "acceptance": 0.8734177215189873,
+            "accepted": 138,
+            "exact_runs": 8,
+            "proposed": 158,
+            "runs": 8
+          },
+          "general_en": {
+            "accept_match_runs": 4,
+            "acceptance": 0.41935483870967744,
+            "accepted": 52,
+            "exact_runs": 4,
+            "proposed": 124,
+            "runs": 4
+          },
+          "general_ja": {
+            "accept_match_runs": 4,
+            "acceptance": 0.4745762711864407,
+            "accepted": 56,
+            "exact_runs": 4,
+            "proposed": 118,
+            "runs": 4
+          },
+          "mixed_ja_en": {
+            "accept_match_runs": 4,
+            "acceptance": 0.6,
+            "accepted": 60,
+            "exact_runs": 4,
+            "proposed": 100,
+            "runs": 4
+          }
+        },
+        "gates": {
+          "all_exact_greedy": true,
+          "all_gpu_accept_match_cpu": true,
+          "faster_than_true_ar": true,
+          "status_complete_exact": true,
+          "true_ar_denominator_present": true
+        },
+        "gates_passed": true,
+        "runs": 2,
+        "true_ar_tok_s": 15.43177295423034
+      },
+      "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+      "preflight": {
+        "draft_dtypes": {
+          "attn_k": "Q8_0",
+          "attn_k_norm": "F32",
+          "attn_norm": "F32",
+          "attn_output": "Q6_K",
+          "attn_q": "Q6_K",
+          "attn_q_norm": "F32",
+          "attn_v": "Q8_0",
+          "eh_proj": "Q6_K",
+          "enorm": "F32",
+          "ffn_down": "Q6_K",
+          "ffn_gate": "Q6_K",
+          "ffn_up": "Q6_K",
+          "hnorm": "F32",
+          "post_attention_norm": "F32",
+          "shared_head_norm": "F32"
+        },
+        "manifest_fingerprint": "5535c5bd7a3e84c6381de70bf8ca5c6f4bcd804dabf8435b85c8418038c8619f",
+        "preset_key": "gguf_ud_q4_k_m",
+        "scopes": [
+          "ar"
+        ]
+      },
+      "quant": "gguf_ud_q4_k_m",
+      "rows": [
+        {
+          "accepted_draft_tokens": 17,
+          "exact_greedy_match": true,
+          "gpu_accept_match_cpu": true,
+          "id": "code_merge_intervals",
+          "proposed_draft_tokens": 19,
+          "run": 0,
+          "token_sha256_i64": "1c62b99125e865e81420325bb70fea8f511694021f6cc2d2c4abbe6c6db1fc36"
+        },
+        {
+          "accepted_draft_tokens": 17,
+          "exact_greedy_match": true,
+          "gpu_accept_match_cpu": true,
+          "id": "code_topological_sort",
+          "proposed_draft_tokens": 21,
+          "run": 0,
+          "token_sha256_i64": "0ed2978626ce329177527a4138d9f76eb56e74349e01e9be515b3fc0de137fa7"
+        },
+        {
+          "accepted_draft_tokens": 17,
+          "exact_greedy_match": true,
+          "gpu_accept_match_cpu": true,
+          "id": "code_lru_cache",
+          "proposed_draft_tokens": 21,
+          "run": 0,
+          "token_sha256_i64": "ae6764d9b4e0c0ef5a2e4c7b2752c50005f4237b067074ca24096a95ffa2338d"
+        },
+        {
+          "accepted_draft_tokens": 18,
+          "exact_greedy_match": true,
+          "gpu_accept_match_cpu": true,
+          "id": "code_markdown_table",
+          "proposed_draft_tokens": 18,
+          "run": 0,
+          "token_sha256_i64": "8a799a4ae13839f06e4a94d449fbfef1a7bd085624603f39fa7db435260cb23b"
+        },
+        {
+          "accepted_draft_tokens": 12,
+          "exact_greedy_match": true,
+          "gpu_accept_match_cpu": true,
+          "id": "general_en_plan",
+          "proposed_draft_tokens": 34,
+          "run": 0,
+          "token_sha256_i64": "f6d3341e6a666220ab47799f6af0967cd2ac7c742e0c350b68d07ddd6341c1d3"
+        },
+        {
+          "accepted_draft_tokens": 14,
+          "exact_greedy_match": true,
+          "gpu_accept_match_cpu": true,
+          "id": "general_en_explain",
+          "proposed_draft_tokens": 28,
+          "run": 0,
+          "token_sha256_i64": "e1a4ccb33e2a3fc0702c83c7f46fe8f8f449684242aa4d7670bb51e399d59063"
+        },
+        {
+          "accepted_draft_tokens": 14,
+          "exact_greedy_match": true,
+          "gpu_accept_match_cpu": true,
+          "id": "general_ja_plan",
+          "proposed_draft_tokens": 30,
+          "run": 0,
+          "token_sha256_i64": "4c3556d7ebea8a0eccd82fd6441ea781091978c3164b6338f2dbec9b661fdf06"
+        },
+        {
+          "accepted_draft_tokens": 14,
+          "exact_greedy_match": true,
+          "gpu_accept_match_cpu": true,
+          "id": "general_ja_explain",
+          "proposed_draft_tokens": 29,
+          "run": 0,
+          "token_sha256_i64": "6a28b86a7eb2ccb64bd32e126371a11e61d29d073e0b11c17db4d26c0cd7aee1"
+        },
+        {
+          "accepted_draft_tokens": 15,
+          "exact_greedy_match": true,
+          "gpu_accept_match_cpu": true,
+          "id": "mixed_ja_en_translate",
+          "proposed_draft_tokens": 26,
+          "run": 0,
+          "token_sha256_i64": "53ce1570acd947b5179c719cb4527920622b03b7d4b4071cb1c41962e67770be"
+        },
+        {
+          "accepted_draft_tokens": 15,
+          "exact_greedy_match": true,
+          "gpu_accept_match_cpu": true,
+          "id": "mixed_ja_en_review",
+          "proposed_draft_tokens": 24,
+          "run": 0,
+          "token_sha256_i64": "625504c65e439ffc8940ec1299fe882db901878e9a344dfd88688b63706c5863"
+        },
+        {
+          "accepted_draft_tokens": 17,
+          "exact_greedy_match": true,
+          "gpu_accept_match_cpu": true,
+          "id": "code_merge_intervals",
+          "proposed_draft_tokens": 19,
+          "run": 1,
+          "token_sha256_i64": "1c62b99125e865e81420325bb70fea8f511694021f6cc2d2c4abbe6c6db1fc36"
+        },
+        {
+          "accepted_draft_tokens": 17,
+          "exact_greedy_match": true,
+          "gpu_accept_match_cpu": true,
+          "id": "code_topological_sort",
+          "proposed_draft_tokens": 21,
+          "run": 1,
+          "token_sha256_i64": "0ed2978626ce329177527a4138d9f76eb56e74349e01e9be515b3fc0de137fa7"
+        },
+        {
+          "accepted_draft_tokens": 17,
+          "exact_greedy_match": true,
+          "gpu_accept_match_cpu": true,
+          "id": "code_lru_cache",
+          "proposed_draft_tokens": 21,
+          "run": 1,
+          "token_sha256_i64": "ae6764d9b4e0c0ef5a2e4c7b2752c50005f4237b067074ca24096a95ffa2338d"
+        },
+        {
+          "accepted_draft_tokens": 18,
+          "exact_greedy_match": true,
+          "gpu_accept_match_cpu": true,
+          "id": "code_markdown_table",
+          "proposed_draft_tokens": 18,
+          "run": 1,
+          "token_sha256_i64": "8a799a4ae13839f06e4a94d449fbfef1a7bd085624603f39fa7db435260cb23b"
+        },
+        {
+          "accepted_draft_tokens": 12,
+          "exact_greedy_match": true,
+          "gpu_accept_match_cpu": true,
+          "id": "general_en_plan",
+          "proposed_draft_tokens": 34,
+          "run": 1,
+          "token_sha256_i64": "f6d3341e6a666220ab47799f6af0967cd2ac7c742e0c350b68d07ddd6341c1d3"
+        },
+        {
+          "accepted_draft_tokens": 14,
+          "exact_greedy_match": true,
+          "gpu_accept_match_cpu": true,
+          "id": "general_en_explain",
+          "proposed_draft_tokens": 28,
+          "run": 1,
+          "token_sha256_i64": "e1a4ccb33e2a3fc0702c83c7f46fe8f8f449684242aa4d7670bb51e399d59063"
+        },
+        {
+          "accepted_draft_tokens": 14,
+          "exact_greedy_match": true,
+          "gpu_accept_match_cpu": true,
+          "id": "general_ja_plan",
+          "proposed_draft_tokens": 30,
+          "run": 1,
+          "token_sha256_i64": "4c3556d7ebea8a0eccd82fd6441ea781091978c3164b6338f2dbec9b661fdf06"
+        },
+        {
+          "accepted_draft_tokens": 14,
+          "exact_greedy_match": true,
+          "gpu_accept_match_cpu": true,
+          "id": "general_ja_explain",
+          "proposed_draft_tokens": 29,
+          "run": 1,
+          "token_sha256_i64": "6a28b86a7eb2ccb64bd32e126371a11e61d29d073e0b11c17db4d26c0cd7aee1"
+        },
+        {
+          "accepted_draft_tokens": 15,
+          "exact_greedy_match": true,
+          "gpu_accept_match_cpu": true,
+          "id": "mixed_ja_en_translate",
+          "proposed_draft_tokens": 26,
+          "run": 1,
+          "token_sha256_i64": "53ce1570acd947b5179c719cb4527920622b03b7d4b4071cb1c41962e67770be"
+        },
+        {
+          "accepted_draft_tokens": 15,
+          "exact_greedy_match": true,
+          "gpu_accept_match_cpu": true,
+          "id": "mixed_ja_en_review",
+          "proposed_draft_tokens": 24,
+          "run": 1,
+          "token_sha256_i64": "625504c65e439ffc8940ec1299fe882db901878e9a344dfd88688b63706c5863"
+        }
+      ],
+      "status": "complete_exact",
+      "strict_manifest_bundle_sha256": "8940119e41f2fe8653c7129f9e31711f608da4a8dc4c68186e22497f83162109",
+      "strict_manifest_scope": {
+        "consumer_modules": [
+          "hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv"
+        ],
+        "coverage_records_in_scope": 249,
+        "coverage_records_named_by_consumer_module": 4,
+        "coverage_records_named_by_registry_key": 245,
+        "coverage_records_total": 327,
+        "ggml_types_present": [
+          "F32",
+          "IQ3_S",
+          "IQ4_NL",
+          "IQ4_XS",
+          "Q3_K",
+          "Q4_K",
+          "Q5_K",
+          "Q6_K",
+          "Q8_0"
+        ],
+        "owner_classes": [
+          "dense",
+          "other",
+          "pack8",
+          "selected"
+        ],
+        "registry_quants": [
+          "bf16",
+          "f32",
+          "gguf_f32_weight",
+          "gguf_iq3_s",
+          "gguf_iq4_nl",
+          "gguf_iq4_xs",
+          "gguf_q3_k",
+          "gguf_q4_k",
+          "gguf_q4_k_qmicro_t16_v1",
+          "gguf_q4_k_t16_v1",
+          "gguf_q4_k_x8_v1",
+          "gguf_q5_k",
+          "gguf_q5_k_qmicro_t16_v1",
+          "gguf_q5_k_t16_v1",
+          "gguf_q5_k_x8_v1",
+          "gguf_q6_k",
+          "gguf_q6_k_t16_qmicro_planar_v1",
+          "gguf_q6_k_t16_v1",
+          "gguf_q6_k_x8_v1",
+          "gguf_q8_0",
+          "gguf_q8_0_t16_v1",
+          "gguf_qwen35",
+          "w4_paro"
+        ],
+        "selections": 102,
+        "source": "artifact GGUF tensor types x CERTIFIED_OPERATION_COVERAGE",
+        "tensors": 866,
+        "variants_verified_registered": 152
+      },
+      "strict_manifests": [
+        {
+          "alternate_output_dtype_owners": {
+            "dense_gemv/rows_1_8_row_local": [
+              "f32_out"
+            ]
+          },
+          "coverage_records": 34,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "dense",
+          "registry_quant": "bf16",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_m",
+            "quant": "gguf_ud_q4_k_m",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "dense_gemv",
+                "registry_quant": "bf16",
+                "scope": "prefill_rows",
+                "selected_variant": "out",
+                "strict_fallback_variant": "out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "dense_gemv",
+                "registry_quant": "bf16",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "out",
+                "strict_fallback_variant": "out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "dense_gemv",
+                "registry_quant": "bf16",
+                "scope": "rows_2_8_native",
+                "selected_variant": "f32_out",
+                "strict_fallback_variant": "f32_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "dense_gemv",
+                "registry_quant": "bf16",
+                "scope": "rows_2_8_native_bf16_ptr",
+                "selected_variant": "out",
+                "strict_fallback_variant": "out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "41eed2deba5d8bd19c77dca7cf40e60662bd491035fe76d1c7b5c32b646c69d1"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 4,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "other",
+          "registry_quant": "bf16",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_m",
+            "quant": "gguf_ud_q4_k_m",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "router_logits",
+                "registry_quant": "bf16",
+                "scope": "prefill_rows",
+                "selected_variant": "bf16_hidden",
+                "strict_fallback_variant": "bf16_hidden"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "router_logits",
+                "registry_quant": "bf16",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "bf16_hidden",
+                "strict_fallback_variant": "bf16_hidden"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "router_logits",
+                "registry_quant": "bf16",
+                "scope": "rows_2_8_native",
+                "selected_variant": "bf16_hidden",
+                "strict_fallback_variant": "bf16_hidden"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "50b488eed672ea81ed5efd2655b2de95b10b4571721a2f6a0fa0a83883673be4"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 7,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "dense",
+          "registry_quant": "f32",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_m",
+            "quant": "gguf_ud_q4_k_m",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "dense_gemv",
+                "registry_quant": "f32",
+                "scope": "prefill_rows",
+                "selected_variant": "bf16_hidden_bf16_out",
+                "strict_fallback_variant": "bf16_hidden_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "dense_gemv",
+                "registry_quant": "f32",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "bf16_hidden_bf16_out",
+                "strict_fallback_variant": "bf16_hidden_bf16_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "19a2a79e56208268630944f0bfb96bb34e6f952eb135c3ebe77143253628ebc2"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 4,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "other",
+          "registry_quant": "f32",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_m",
+            "quant": "gguf_ud_q4_k_m",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "router_logits",
+                "registry_quant": "f32",
+                "scope": "prefill_rows",
+                "selected_variant": "bf16_hidden",
+                "strict_fallback_variant": "bf16_hidden"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "router_logits",
+                "registry_quant": "f32",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "bf16_hidden",
+                "strict_fallback_variant": "bf16_hidden"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "router_logits",
+                "registry_quant": "f32",
+                "scope": "rows_2_8_native",
+                "selected_variant": "bf16_hidden",
+                "strict_fallback_variant": "bf16_hidden"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "58d1248dc2b7df5c8247d2135d8fb57320091743fe87eaeb73eee19242f04615"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 5,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "dense",
+          "registry_quant": "gguf_f32_weight",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_m",
+            "quant": "gguf_ud_q4_k_m",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "rmsnorm",
+                "registry_quant": "gguf_f32_weight",
+                "scope": "prefill_rows",
+                "selected_variant": "bf16_out",
+                "strict_fallback_variant": "bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "rmsnorm",
+                "registry_quant": "gguf_f32_weight",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "bf16_out",
+                "strict_fallback_variant": "bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "rmsnorm",
+                "registry_quant": "gguf_f32_weight",
+                "scope": "rows_any",
+                "selected_variant": "bf16_out",
+                "strict_fallback_variant": "bf16_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "d2ac3b55b32c84d0e3c9f2c2181c3c8bd78660c38a8c668034fb3ce49c6b0bf9"
+        },
+        {
+          "alternate_output_dtype_owners": {
+            "linear/rows_1_8_row_local": [
+              "gemv_bf16_f32_out"
+            ]
+          },
+          "coverage_records": 10,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "dense",
+          "registry_quant": "gguf_iq3_s",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_m",
+            "quant": "gguf_ud_q4_k_m",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_iq3_s",
+                "scope": "prefill_rows",
+                "selected_variant": "gemv_bf16_bf16_out",
+                "strict_fallback_variant": "gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_iq3_s",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "gemv_bf16_bf16_out",
+                "strict_fallback_variant": "gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_iq3_s",
+                "scope": "rows_2_8_native",
+                "selected_variant": "gemv_bf16_f32_out",
+                "strict_fallback_variant": "gemv_bf16_f32_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "c9ef1d619f1d016d125e08ba839469bf2e806dcdfab4131b7abd0ef5af901acb"
+        },
+        {
+          "alternate_output_dtype_owners": {
+            "linear/rows_1_8_row_local": [
+              "gemv_bf16_f32_out"
+            ]
+          },
+          "coverage_records": 10,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "dense",
+          "registry_quant": "gguf_iq4_nl",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_m",
+            "quant": "gguf_ud_q4_k_m",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_iq4_nl",
+                "scope": "prefill_rows",
+                "selected_variant": "gemv_bf16_bf16_out",
+                "strict_fallback_variant": "gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_iq4_nl",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "gemv_bf16_bf16_out",
+                "strict_fallback_variant": "gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_iq4_nl",
+                "scope": "rows_2_8_native",
+                "selected_variant": "gemv_bf16_f32_out",
+                "strict_fallback_variant": "gemv_bf16_f32_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "d212e5d3c5aea9782d210e5a87e2e9f17ff69be9ed29236d60182a6738d733d8"
+        },
+        {
+          "alternate_output_dtype_owners": {
+            "linear/rows_1_8_row_local": [
+              "gemv_bf16_f32_out"
+            ]
+          },
+          "coverage_records": 10,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "dense",
+          "registry_quant": "gguf_iq4_xs",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_m",
+            "quant": "gguf_ud_q4_k_m",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_iq4_xs",
+                "scope": "prefill_rows",
+                "selected_variant": "gemv_bf16_bf16_out",
+                "strict_fallback_variant": "gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_iq4_xs",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "gemv_bf16_bf16_out",
+                "strict_fallback_variant": "gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_iq4_xs",
+                "scope": "rows_2_8_native",
+                "selected_variant": "gemv_bf16_f32_out",
+                "strict_fallback_variant": "gemv_bf16_f32_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "1ff822c1d56b061c26465ab3e20574c9defcdbbe73964d1bed5976a5d1f987c1"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 4,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "selected",
+          "registry_quant": "gguf_iq4_xs",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_m",
+            "quant": "gguf_ud_q4_k_m",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_iq4_xs",
+                "scope": "prefill_rows",
+                "selected_variant": "selected_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_iq4_xs",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "selected_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_iq4_xs",
+                "scope": "rows_2_8_native",
+                "selected_variant": "selected_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_gemv_decode_bf16_bf16_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "ead108d95bcdb739072ff74a8cc44eda96b7ba81b617b0e41558c2b8e9787296"
+        },
+        {
+          "alternate_output_dtype_owners": {
+            "linear/rows_1_8_row_local": [
+              "gemv_bf16_f32_out"
+            ]
+          },
+          "coverage_records": 12,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "dense",
+          "registry_quant": "gguf_q3_k",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_m",
+            "quant": "gguf_ud_q4_k_m",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "embedding",
+                "registry_quant": "gguf_q3_k",
+                "scope": "rows_2_8_native",
+                "selected_variant": "lookup_bf16_out",
+                "strict_fallback_variant": "lookup_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "embedding",
+                "registry_quant": "gguf_q3_k",
+                "scope": "rows_any",
+                "selected_variant": "lookup_bf16_out",
+                "strict_fallback_variant": "lookup_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q3_k",
+                "scope": "prefill_rows",
+                "selected_variant": "gemv_bf16_bf16_out",
+                "strict_fallback_variant": "gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q3_k",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "gemv_bf16_bf16_out",
+                "strict_fallback_variant": "gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q3_k",
+                "scope": "rows_2_8_native",
+                "selected_variant": "gemv_bf16_f32_out",
+                "strict_fallback_variant": "gemv_bf16_f32_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "ac887d184eeaba63f864579c642ce8f6cc3ddfa34936cac16b936070f774fcf3"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 4,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "selected",
+          "registry_quant": "gguf_q3_k",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_m",
+            "quant": "gguf_ud_q4_k_m",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q3_k",
+                "scope": "prefill_rows",
+                "selected_variant": "selected_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q3_k",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "selected_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q3_k",
+                "scope": "rows_2_8_native",
+                "selected_variant": "selected_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_gemv_decode_bf16_bf16_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "1e3ece85fda2f8e452ecad1fd7afbd1c403f0f1e0bd38f3541bcce2e7ce7784e"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 2,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "dense",
+          "registry_quant": "gguf_q4_k",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_m",
+            "quant": "gguf_ud_q4_k_m",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "embedding",
+                "registry_quant": "gguf_q4_k",
+                "scope": "rows_2_8_native",
+                "selected_variant": "lookup_bf16_out",
+                "strict_fallback_variant": "lookup_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "embedding",
+                "registry_quant": "gguf_q4_k",
+                "scope": "rows_any",
+                "selected_variant": "lookup_bf16_out",
+                "strict_fallback_variant": "lookup_bf16_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "64401a7bcdb77d2658f9a4048b2da7a7360a03594c58bc109a6bcbdd8a01f81e"
+        },
+        {
+          "alternate_output_dtype_owners": {
+            "linear/rows_1_8_row_local": [
+              "pack8_bf16_f32_out"
+            ]
+          },
+          "coverage_records": 9,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "pack8",
+          "registry_quant": "gguf_q4_k",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_m",
+            "quant": "gguf_ud_q4_k_m",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q4_k",
+                "scope": "prefill_rows",
+                "selected_variant": "pack8_bf16_bf16_out",
+                "strict_fallback_variant": "pack8_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q4_k",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "pack8_bf16_bf16_out",
+                "strict_fallback_variant": "pack8_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q4_k",
+                "scope": "rows_2_8_native",
+                "selected_variant": "pack8_bf16_f32_out",
+                "strict_fallback_variant": "pack8_bf16_f32_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "346ae76ae58e38a33a78881e06d30e4cb90340670bac5c164be52620eeffa1c5"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 7,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "dense",
+          "registry_quant": "gguf_q4_k_qmicro_t16_v1",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_m",
+            "quant": "gguf_ud_q4_k_m",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q4_k_qmicro_t16_v1",
+                "scope": "prefill_rows",
+                "selected_variant": "dense_single_local32_bf16_bf16_out",
+                "strict_fallback_variant": "dense_single_local32_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q4_k_qmicro_t16_v1",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "dense_single_local32_bf16_bf16_out",
+                "strict_fallback_variant": "dense_single_local32_bf16_bf16_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "bcf4813645fc3852c8bbb5d57130bbf885b48aa7a145d3ad380a83a92622d9b0"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 4,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "selected",
+          "registry_quant": "gguf_q4_k_qmicro_t16_v1",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_m",
+            "quant": "gguf_ud_q4_k_m",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q4_k_qmicro_t16_v1",
+                "scope": "prefill_rows",
+                "selected_variant": "selected_dual_t16_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_dual_t16_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q4_k_qmicro_t16_v1",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "selected_dual_t16_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_dual_t16_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q4_k_qmicro_t16_v1",
+                "scope": "rows_2_8_native",
+                "selected_variant": "selected_dual_t16_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_dual_t16_gemv_decode_bf16_bf16_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "0ca62dab7cac50442c8a5680ab0cc9bf512415758b1e290b0b89d347416716f4"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 7,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "dense",
+          "registry_quant": "gguf_q4_k_t16_v1",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_m",
+            "quant": "gguf_ud_q4_k_m",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q4_k_t16_v1",
+                "scope": "prefill_rows",
+                "selected_variant": "dense_single_local32_bf16_bf16_out",
+                "strict_fallback_variant": "dense_single_local32_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q4_k_t16_v1",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "dense_single_local32_bf16_bf16_out",
+                "strict_fallback_variant": "dense_single_local32_bf16_bf16_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "e574f11b3c6bb7e44da8b6f44c46ba59b615f4873b10ee9b184e78dcfa68bcec"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 4,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "selected",
+          "registry_quant": "gguf_q4_k_t16_v1",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_m",
+            "quant": "gguf_ud_q4_k_m",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q4_k_t16_v1",
+                "scope": "prefill_rows",
+                "selected_variant": "selected_t16_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_t16_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q4_k_t16_v1",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "selected_t16_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_t16_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q4_k_t16_v1",
+                "scope": "rows_2_8_native",
+                "selected_variant": "selected_t16_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_t16_gemv_decode_bf16_bf16_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "bdeb359ca540f78e12cc4d5f0087c93a82ab9eb0098c7b9a59834550c2927fe1"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 4,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "selected",
+          "registry_quant": "gguf_q4_k_x8_v1",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_m",
+            "quant": "gguf_ud_q4_k_m",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q4_k_x8_v1",
+                "scope": "prefill_rows",
+                "selected_variant": "selected_dual_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_dual_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q4_k_x8_v1",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "selected_dual_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_dual_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q4_k_x8_v1",
+                "scope": "rows_2_8_native",
+                "selected_variant": "selected_dual_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_dual_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "66ba9f04fd627dfe2cf88283b728d796ceef951abd4bec4b64ebf6c42128ff4f"
+        },
+        {
+          "alternate_output_dtype_owners": {
+            "linear/rows_1_8_row_local": [
+              "gemv_bf16_f32_out"
+            ]
+          },
+          "coverage_records": 12,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "dense",
+          "registry_quant": "gguf_q5_k",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_m",
+            "quant": "gguf_ud_q4_k_m",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "embedding",
+                "registry_quant": "gguf_q5_k",
+                "scope": "rows_2_8_native",
+                "selected_variant": "lookup_bf16_out",
+                "strict_fallback_variant": "lookup_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "embedding",
+                "registry_quant": "gguf_q5_k",
+                "scope": "rows_any",
+                "selected_variant": "lookup_bf16_out",
+                "strict_fallback_variant": "lookup_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q5_k",
+                "scope": "prefill_rows",
+                "selected_variant": "gemv_bf16_bf16_out",
+                "strict_fallback_variant": "gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q5_k",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "gemv_bf16_bf16_out",
+                "strict_fallback_variant": "gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q5_k",
+                "scope": "rows_2_8_native",
+                "selected_variant": "gemv_bf16_f32_out",
+                "strict_fallback_variant": "gemv_bf16_f32_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "39e0b685cb5e523a0d4afa05dff2e9cd6ee58fedb5be8c0ed0911ca7060c41be"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 4,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "selected",
+          "registry_quant": "gguf_q5_k",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_m",
+            "quant": "gguf_ud_q4_k_m",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q5_k",
+                "scope": "prefill_rows",
+                "selected_variant": "selected_gemv_bf16_bf16_out",
+                "strict_fallback_variant": "selected_gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q5_k",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "selected_gemv_bf16_bf16_out",
+                "strict_fallback_variant": "selected_gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q5_k",
+                "scope": "rows_2_8_native",
+                "selected_variant": "selected_gemv_bf16_bf16_out",
+                "strict_fallback_variant": "selected_gemv_bf16_bf16_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "de3e722bc38edf93ad87d3c8b261b49ebea2070ccec9e37ddcae807f83e7c1a5"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 4,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "selected",
+          "registry_quant": "gguf_q5_k_qmicro_t16_v1",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_m",
+            "quant": "gguf_ud_q4_k_m",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q5_k_qmicro_t16_v1",
+                "scope": "prefill_rows",
+                "selected_variant": "selected_t16_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_t16_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q5_k_qmicro_t16_v1",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "selected_t16_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_t16_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q5_k_qmicro_t16_v1",
+                "scope": "rows_2_8_native",
+                "selected_variant": "selected_t16_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_t16_gemv_decode_bf16_bf16_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "ec6d6875195e25433c9a1972a9effa155c863114a12c6ce160c9b18e22e1a97e"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 7,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "dense",
+          "registry_quant": "gguf_q5_k_t16_v1",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_m",
+            "quant": "gguf_ud_q4_k_m",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q5_k_t16_v1",
+                "scope": "prefill_rows",
+                "selected_variant": "t16_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "t16_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q5_k_t16_v1",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "t16_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "t16_gemv_decode_bf16_bf16_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "90d22d1b5a8b49207b6a72b9c39e178c8bbd0c0e011e6612c1b939a7bba89f67"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 4,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "selected",
+          "registry_quant": "gguf_q5_k_x8_v1",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_m",
+            "quant": "gguf_ud_q4_k_m",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q5_k_x8_v1",
+                "scope": "prefill_rows",
+                "selected_variant": "selected_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q5_k_x8_v1",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "selected_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q5_k_x8_v1",
+                "scope": "rows_2_8_native",
+                "selected_variant": "selected_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "f0853c7e463bac4a7a025d964d6475acce26f85682c50047c276d9020107a655"
+        },
+        {
+          "alternate_output_dtype_owners": {
+            "linear/rows_1_8_row_local": [
+              "gemv_bf16_f32_out"
+            ]
+          },
+          "coverage_records": 12,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "dense",
+          "registry_quant": "gguf_q6_k",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_m",
+            "quant": "gguf_ud_q4_k_m",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "embedding",
+                "registry_quant": "gguf_q6_k",
+                "scope": "rows_2_8_native",
+                "selected_variant": "lookup_bf16_out",
+                "strict_fallback_variant": "lookup_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "embedding",
+                "registry_quant": "gguf_q6_k",
+                "scope": "rows_any",
+                "selected_variant": "lookup_bf16_out",
+                "strict_fallback_variant": "lookup_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q6_k",
+                "scope": "prefill_rows",
+                "selected_variant": "gemv_bf16_bf16_out",
+                "strict_fallback_variant": "gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q6_k",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "gemv_bf16_bf16_out",
+                "strict_fallback_variant": "gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q6_k",
+                "scope": "rows_2_8_native",
+                "selected_variant": "gemv_bf16_f32_out",
+                "strict_fallback_variant": "gemv_bf16_f32_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "ec04a5e6d60f2765cd833151c4d9428ad7e41d8ee6dd7b7a2679309d085a7b3f"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 4,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "selected",
+          "registry_quant": "gguf_q6_k",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_m",
+            "quant": "gguf_ud_q4_k_m",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q6_k",
+                "scope": "prefill_rows",
+                "selected_variant": "selected_gemv_bf16_bf16_out",
+                "strict_fallback_variant": "selected_gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q6_k",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "selected_gemv_bf16_bf16_out",
+                "strict_fallback_variant": "selected_gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q6_k",
+                "scope": "rows_2_8_native",
+                "selected_variant": "selected_gemv_bf16_bf16_out",
+                "strict_fallback_variant": "selected_gemv_bf16_bf16_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "5e00cb6f5be2959a5553f73fa5584ae5ea90a9ea729ee51004bb3dce8b6baa9b"
+        },
+        {
+          "alternate_output_dtype_owners": {
+            "linear/rows_1_8_row_local": [
+              "t16_gemv_decode_bf16_f32_out"
+            ]
+          },
+          "coverage_records": 9,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "dense",
+          "registry_quant": "gguf_q6_k_t16_qmicro_planar_v1",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_m",
+            "quant": "gguf_ud_q4_k_m",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q6_k_t16_qmicro_planar_v1",
+                "scope": "prefill_rows",
+                "selected_variant": "t16_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "t16_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q6_k_t16_qmicro_planar_v1",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "t16_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "t16_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q6_k_t16_qmicro_planar_v1",
+                "scope": "rows_2_8_native",
+                "selected_variant": "t16_gemv_decode_bf16_f32_out",
+                "strict_fallback_variant": "t16_gemv_decode_bf16_f32_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "395aa21c0337334b059d6eda211ae2d8547cc7baa3f2ad5c9eaa8e107538b89a"
+        },
+        {
+          "alternate_output_dtype_owners": {
+            "linear/rows_1_8_row_local": [
+              "t16_gemv_decode_bf16_f32_out"
+            ]
+          },
+          "coverage_records": 9,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "dense",
+          "registry_quant": "gguf_q6_k_t16_v1",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_m",
+            "quant": "gguf_ud_q4_k_m",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q6_k_t16_v1",
+                "scope": "prefill_rows",
+                "selected_variant": "t16_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "t16_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q6_k_t16_v1",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "t16_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "t16_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q6_k_t16_v1",
+                "scope": "rows_2_8_native",
+                "selected_variant": "t16_gemv_decode_bf16_f32_out",
+                "strict_fallback_variant": "t16_gemv_decode_bf16_f32_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "fadf13fc2931294518caf170af64f1c6d076d0055811044367db06846f6ab93e"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 4,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "selected",
+          "registry_quant": "gguf_q6_k_t16_v1",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_m",
+            "quant": "gguf_ud_q4_k_m",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q6_k_t16_v1",
+                "scope": "prefill_rows",
+                "selected_variant": "selected_t16_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_t16_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q6_k_t16_v1",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "selected_t16_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_t16_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q6_k_t16_v1",
+                "scope": "rows_2_8_native",
+                "selected_variant": "selected_t16_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_t16_gemv_decode_bf16_bf16_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "d4013746598649f5a3c7eb76f5103b27685879dda371bfa39405e03f9dc5a35a"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 4,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "selected",
+          "registry_quant": "gguf_q6_k_x8_v1",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_m",
+            "quant": "gguf_ud_q4_k_m",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q6_k_x8_v1",
+                "scope": "prefill_rows",
+                "selected_variant": "selected_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q6_k_x8_v1",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "selected_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q6_k_x8_v1",
+                "scope": "rows_2_8_native",
+                "selected_variant": "selected_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "a172f67b0b2be46d1af8fe447a254ad39b48c0c155267cce83884a275b515b89"
+        },
+        {
+          "alternate_output_dtype_owners": {
+            "linear/rows_1_8_row_local": [
+              "gemv_bf16_f32_out"
+            ]
+          },
+          "coverage_records": 12,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "dense",
+          "registry_quant": "gguf_q8_0",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_m",
+            "quant": "gguf_ud_q4_k_m",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "embedding",
+                "registry_quant": "gguf_q8_0",
+                "scope": "rows_2_8_native",
+                "selected_variant": "lookup_bf16_out",
+                "strict_fallback_variant": "lookup_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "embedding",
+                "registry_quant": "gguf_q8_0",
+                "scope": "rows_any",
+                "selected_variant": "lookup_bf16_out",
+                "strict_fallback_variant": "lookup_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q8_0",
+                "scope": "prefill_rows",
+                "selected_variant": "gemv_bf16_bf16_out",
+                "strict_fallback_variant": "gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q8_0",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "gemv_bf16_bf16_out",
+                "strict_fallback_variant": "gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q8_0",
+                "scope": "rows_2_8_native",
+                "selected_variant": "gemv_bf16_f32_out",
+                "strict_fallback_variant": "gemv_bf16_f32_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "cf9e187c569677157935e39a3750c31ce83ebe74c8c8be92dac7c41c307ef6a2"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 7,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "dense",
+          "registry_quant": "gguf_q8_0_t16_v1",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_m",
+            "quant": "gguf_ud_q4_k_m",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q8_0_t16_v1",
+                "scope": "prefill_rows",
+                "selected_variant": "t16_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "t16_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q8_0_t16_v1",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "t16_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "t16_gemv_decode_bf16_bf16_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "a9c5577b01583bc80e98f76842d7d2e3e2bbe7623d3bca82c8f8261adee87185"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 6,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "other",
+          "registry_quant": "gguf_qwen35",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_m",
+            "quant": "gguf_ud_q4_k_m",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "gdn_prefill_recurrent",
+                "registry_quant": "gguf_qwen35",
+                "scope": "prefill_rows",
+                "selected_variant": "decode_order_bf16",
+                "strict_fallback_variant": "decode_order_bf16"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "gdn_recurrent_rmsnorm_gate",
+                "registry_quant": "gguf_qwen35",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "bf16_segments",
+                "strict_fallback_variant": "bf16_segments"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear_attn_conv_decode",
+                "registry_quant": "gguf_qwen35",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "bf16_indexed",
+                "strict_fallback_variant": "bf16_indexed"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear_attn_conv_prefill",
+                "registry_quant": "gguf_qwen35",
+                "scope": "prefill_rows",
+                "selected_variant": "f32_baseline",
+                "strict_fallback_variant": "f32_baseline"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "b906a790cb5e255e587576ae15c006212348fa62e6c89acd3d4b0206601b7974"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 6,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "other",
+          "registry_quant": "w4_paro",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_m",
+            "quant": "gguf_ud_q4_k_m",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "gdn_recurrent_rmsnorm_gate",
+                "registry_quant": "w4_paro",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "bf16_lowp",
+                "strict_fallback_variant": "bf16_lowp"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear_attn_conv_decode",
+                "registry_quant": "w4_paro",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "bf16",
+                "strict_fallback_variant": "bf16"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "4cce15c3c0e787fa4b66d8f9d7568ce743913bca12383df2ee2e77d42a9fbad2"
+        }
+      ],
+      "suite_exit_code": 0,
+      "true_ar_rows": [
+        {
+          "decode_tok_s_transition_normalized": 15.9798194414609,
+          "id": "code_merge_intervals",
+          "run": 0,
+          "token_sha256_i64": "1c62b99125e865e81420325bb70fea8f511694021f6cc2d2c4abbe6c6db1fc36"
+        },
+        {
+          "decode_tok_s_transition_normalized": 15.790242647890008,
+          "id": "code_topological_sort",
+          "run": 0,
+          "token_sha256_i64": "0ed2978626ce329177527a4138d9f76eb56e74349e01e9be515b3fc0de137fa7"
+        },
+        {
+          "decode_tok_s_transition_normalized": 15.72925355993348,
+          "id": "code_lru_cache",
+          "run": 0,
+          "token_sha256_i64": "ae6764d9b4e0c0ef5a2e4c7b2752c50005f4237b067074ca24096a95ffa2338d"
+        },
+        {
+          "decode_tok_s_transition_normalized": 15.547876163130269,
+          "id": "code_markdown_table",
+          "run": 0,
+          "token_sha256_i64": "8a799a4ae13839f06e4a94d449fbfef1a7bd085624603f39fa7db435260cb23b"
+        },
+        {
+          "decode_tok_s_transition_normalized": 15.157347669163496,
+          "id": "general_en_plan",
+          "run": 0,
+          "token_sha256_i64": "f6d3341e6a666220ab47799f6af0967cd2ac7c742e0c350b68d07ddd6341c1d3"
+        },
+        {
+          "decode_tok_s_transition_normalized": 15.541930999865123,
+          "id": "general_en_explain",
+          "run": 0,
+          "token_sha256_i64": "e1a4ccb33e2a3fc0702c83c7f46fe8f8f449684242aa4d7670bb51e399d59063"
+        },
+        {
+          "decode_tok_s_transition_normalized": 15.879137804388614,
+          "id": "general_ja_plan",
+          "run": 0,
+          "token_sha256_i64": "4c3556d7ebea8a0eccd82fd6441ea781091978c3164b6338f2dbec9b661fdf06"
+        },
+        {
+          "decode_tok_s_transition_normalized": 15.926557878581368,
+          "id": "general_ja_explain",
+          "run": 0,
+          "token_sha256_i64": "6a28b86a7eb2ccb64bd32e126371a11e61d29d073e0b11c17db4d26c0cd7aee1"
+        },
+        {
+          "decode_tok_s_transition_normalized": 15.664959453925348,
+          "id": "mixed_ja_en_translate",
+          "run": 0,
+          "token_sha256_i64": "53ce1570acd947b5179c719cb4527920622b03b7d4b4071cb1c41962e67770be"
+        },
+        {
+          "decode_tok_s_transition_normalized": 15.627070650609879,
+          "id": "mixed_ja_en_review",
+          "run": 0,
+          "token_sha256_i64": "625504c65e439ffc8940ec1299fe882db901878e9a344dfd88688b63706c5863"
+        },
+        {
+          "decode_tok_s_transition_normalized": 13.990838717105982,
+          "id": "code_merge_intervals",
+          "run": 1,
+          "token_sha256_i64": "1c62b99125e865e81420325bb70fea8f511694021f6cc2d2c4abbe6c6db1fc36"
+        },
+        {
+          "decode_tok_s_transition_normalized": 15.798005412390049,
+          "id": "code_topological_sort",
+          "run": 1,
+          "token_sha256_i64": "0ed2978626ce329177527a4138d9f76eb56e74349e01e9be515b3fc0de137fa7"
+        },
+        {
+          "decode_tok_s_transition_normalized": 15.59636323956255,
+          "id": "code_lru_cache",
+          "run": 1,
+          "token_sha256_i64": "ae6764d9b4e0c0ef5a2e4c7b2752c50005f4237b067074ca24096a95ffa2338d"
+        },
+        {
+          "decode_tok_s_transition_normalized": 13.669897603306024,
+          "id": "code_markdown_table",
+          "run": 1,
+          "token_sha256_i64": "8a799a4ae13839f06e4a94d449fbfef1a7bd085624603f39fa7db435260cb23b"
+        },
+        {
+          "decode_tok_s_transition_normalized": 15.743181303179766,
+          "id": "general_en_plan",
+          "run": 1,
+          "token_sha256_i64": "f6d3341e6a666220ab47799f6af0967cd2ac7c742e0c350b68d07ddd6341c1d3"
+        },
+        {
+          "decode_tok_s_transition_normalized": 15.110366104776594,
+          "id": "general_en_explain",
+          "run": 1,
+          "token_sha256_i64": "e1a4ccb33e2a3fc0702c83c7f46fe8f8f449684242aa4d7670bb51e399d59063"
+        },
+        {
+          "decode_tok_s_transition_normalized": 15.440031425047053,
+          "id": "general_ja_plan",
+          "run": 1,
+          "token_sha256_i64": "4c3556d7ebea8a0eccd82fd6441ea781091978c3164b6338f2dbec9b661fdf06"
+        },
+        {
+          "decode_tok_s_transition_normalized": 15.693286705083203,
+          "id": "general_ja_explain",
+          "run": 1,
+          "token_sha256_i64": "6a28b86a7eb2ccb64bd32e126371a11e61d29d073e0b11c17db4d26c0cd7aee1"
+        },
+        {
+          "decode_tok_s_transition_normalized": 15.60430382329215,
+          "id": "mixed_ja_en_translate",
+          "run": 1,
+          "token_sha256_i64": "53ce1570acd947b5179c719cb4527920622b03b7d4b4071cb1c41962e67770be"
+        },
+        {
+          "decode_tok_s_transition_normalized": 15.625431942949337,
+          "id": "mixed_ja_en_review",
+          "run": 1,
+          "token_sha256_i64": "625504c65e439ffc8940ec1299fe882db901878e9a344dfd88688b63706c5863"
+        }
+      ]
+    },
+    {
+      "artifact": "ud-q4-k-s",
+      "command": "python scripts/ud_mtp_certification.py --artifact ud-q4-k-s --runs 2 --candidate-budgets 3 --output benchmarks/results/ud-mtp-certification-u6.json",
+      "correctness": {
+        "all_exact_greedy": false,
+        "all_gpu_accept_match_cpu": true
+      },
+      "evidence": {
+        "best_candidate_budget": "3",
+        "best_mtp_tok_s": 28.81036209301905,
+        "best_mtp_vs_true_ar": 1.7028767979149595,
+        "categories": {
+          "code": {
+            "accept_match_runs": 8,
+            "acceptance": 0.85,
+            "accepted": 136,
+            "exact_runs": 8,
+            "proposed": 160,
+            "runs": 8
+          },
+          "general_en": {
+            "accept_match_runs": 4,
+            "acceptance": 0.41935483870967744,
+            "accepted": 52,
+            "exact_runs": 4,
+            "proposed": 124,
+            "runs": 4
+          },
+          "general_ja": {
+            "accept_match_runs": 4,
+            "acceptance": 0.4745762711864407,
+            "accepted": 56,
+            "exact_runs": 2,
+            "proposed": 118,
+            "runs": 4
+          },
+          "mixed_ja_en": {
+            "accept_match_runs": 4,
+            "acceptance": 0.6,
+            "accepted": 60,
+            "exact_runs": 4,
+            "proposed": 100,
+            "runs": 4
+          }
+        },
+        "gates": {
+          "all_exact_greedy": false,
+          "all_gpu_accept_match_cpu": true,
+          "faster_than_true_ar": true,
+          "status_complete_exact": false,
+          "true_ar_denominator_present": true
+        },
+        "gates_passed": false,
+        "runs": 2,
+        "true_ar_tok_s": 16.91864151786853
+      },
+      "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf",
+      "preflight": {
+        "draft_dtypes": {
+          "attn_k": "Q8_0",
+          "attn_k_norm": "F32",
+          "attn_norm": "F32",
+          "attn_output": "Q6_K",
+          "attn_q": "Q6_K",
+          "attn_q_norm": "F32",
+          "attn_v": "Q8_0",
+          "eh_proj": "Q6_K",
+          "enorm": "F32",
+          "ffn_down": "Q6_K",
+          "ffn_gate": "Q6_K",
+          "ffn_up": "Q6_K",
+          "hnorm": "F32",
+          "post_attention_norm": "F32",
+          "shared_head_norm": "F32"
+        },
+        "manifest_fingerprint": "91130e1698bb7fc24c89f94e8b1043dd788769682b56c6514d70b6d2cdea068c",
+        "preset_key": "gguf_ud_q4_k_s",
+        "scopes": [
+          "ar"
+        ]
+      },
+      "quant": "gguf_ud_q4_k_s",
+      "rows": [
+        {
+          "accepted_draft_tokens": 17,
+          "exact_greedy_match": true,
+          "gpu_accept_match_cpu": true,
+          "id": "code_merge_intervals",
+          "proposed_draft_tokens": 19,
+          "run": 0,
+          "token_sha256_i64": "1c62b99125e865e81420325bb70fea8f511694021f6cc2d2c4abbe6c6db1fc36"
+        },
+        {
+          "accepted_draft_tokens": 17,
+          "exact_greedy_match": true,
+          "gpu_accept_match_cpu": true,
+          "id": "code_topological_sort",
+          "proposed_draft_tokens": 21,
+          "run": 0,
+          "token_sha256_i64": "0ed2978626ce329177527a4138d9f76eb56e74349e01e9be515b3fc0de137fa7"
+        },
+        {
+          "accepted_draft_tokens": 17,
+          "exact_greedy_match": true,
+          "gpu_accept_match_cpu": true,
+          "id": "code_lru_cache",
+          "proposed_draft_tokens": 21,
+          "run": 0,
+          "token_sha256_i64": "ae6764d9b4e0c0ef5a2e4c7b2752c50005f4237b067074ca24096a95ffa2338d"
+        },
+        {
+          "accepted_draft_tokens": 17,
+          "exact_greedy_match": true,
+          "gpu_accept_match_cpu": true,
+          "id": "code_markdown_table",
+          "proposed_draft_tokens": 19,
+          "run": 0,
+          "token_sha256_i64": "8a799a4ae13839f06e4a94d449fbfef1a7bd085624603f39fa7db435260cb23b"
+        },
+        {
+          "accepted_draft_tokens": 12,
+          "exact_greedy_match": true,
+          "gpu_accept_match_cpu": true,
+          "id": "general_en_plan",
+          "proposed_draft_tokens": 34,
+          "run": 0,
+          "token_sha256_i64": "0a1210453902f6e2a44b2009672994f0758abe1ec11add71f12fb5bfd9dca8fb"
+        },
+        {
+          "accepted_draft_tokens": 14,
+          "exact_greedy_match": true,
+          "gpu_accept_match_cpu": true,
+          "id": "general_en_explain",
+          "proposed_draft_tokens": 28,
+          "run": 0,
+          "token_sha256_i64": "e1a4ccb33e2a3fc0702c83c7f46fe8f8f449684242aa4d7670bb51e399d59063"
+        },
+        {
+          "accepted_draft_tokens": 14,
+          "exact_greedy_match": false,
+          "gpu_accept_match_cpu": true,
+          "id": "general_ja_plan",
+          "proposed_draft_tokens": 30,
+          "run": 0,
+          "token_sha256_i64": "4c3556d7ebea8a0eccd82fd6441ea781091978c3164b6338f2dbec9b661fdf06"
+        },
+        {
+          "accepted_draft_tokens": 14,
+          "exact_greedy_match": true,
+          "gpu_accept_match_cpu": true,
+          "id": "general_ja_explain",
+          "proposed_draft_tokens": 29,
+          "run": 0,
+          "token_sha256_i64": "6a28b86a7eb2ccb64bd32e126371a11e61d29d073e0b11c17db4d26c0cd7aee1"
+        },
+        {
+          "accepted_draft_tokens": 15,
+          "exact_greedy_match": true,
+          "gpu_accept_match_cpu": true,
+          "id": "mixed_ja_en_translate",
+          "proposed_draft_tokens": 26,
+          "run": 0,
+          "token_sha256_i64": "53ce1570acd947b5179c719cb4527920622b03b7d4b4071cb1c41962e67770be"
+        },
+        {
+          "accepted_draft_tokens": 15,
+          "exact_greedy_match": true,
+          "gpu_accept_match_cpu": true,
+          "id": "mixed_ja_en_review",
+          "proposed_draft_tokens": 24,
+          "run": 0,
+          "token_sha256_i64": "625504c65e439ffc8940ec1299fe882db901878e9a344dfd88688b63706c5863"
+        },
+        {
+          "accepted_draft_tokens": 17,
+          "exact_greedy_match": true,
+          "gpu_accept_match_cpu": true,
+          "id": "code_merge_intervals",
+          "proposed_draft_tokens": 19,
+          "run": 1,
+          "token_sha256_i64": "1c62b99125e865e81420325bb70fea8f511694021f6cc2d2c4abbe6c6db1fc36"
+        },
+        {
+          "accepted_draft_tokens": 17,
+          "exact_greedy_match": true,
+          "gpu_accept_match_cpu": true,
+          "id": "code_topological_sort",
+          "proposed_draft_tokens": 21,
+          "run": 1,
+          "token_sha256_i64": "0ed2978626ce329177527a4138d9f76eb56e74349e01e9be515b3fc0de137fa7"
+        },
+        {
+          "accepted_draft_tokens": 17,
+          "exact_greedy_match": true,
+          "gpu_accept_match_cpu": true,
+          "id": "code_lru_cache",
+          "proposed_draft_tokens": 21,
+          "run": 1,
+          "token_sha256_i64": "ae6764d9b4e0c0ef5a2e4c7b2752c50005f4237b067074ca24096a95ffa2338d"
+        },
+        {
+          "accepted_draft_tokens": 17,
+          "exact_greedy_match": true,
+          "gpu_accept_match_cpu": true,
+          "id": "code_markdown_table",
+          "proposed_draft_tokens": 19,
+          "run": 1,
+          "token_sha256_i64": "8a799a4ae13839f06e4a94d449fbfef1a7bd085624603f39fa7db435260cb23b"
+        },
+        {
+          "accepted_draft_tokens": 12,
+          "exact_greedy_match": true,
+          "gpu_accept_match_cpu": true,
+          "id": "general_en_plan",
+          "proposed_draft_tokens": 34,
+          "run": 1,
+          "token_sha256_i64": "0a1210453902f6e2a44b2009672994f0758abe1ec11add71f12fb5bfd9dca8fb"
+        },
+        {
+          "accepted_draft_tokens": 14,
+          "exact_greedy_match": true,
+          "gpu_accept_match_cpu": true,
+          "id": "general_en_explain",
+          "proposed_draft_tokens": 28,
+          "run": 1,
+          "token_sha256_i64": "e1a4ccb33e2a3fc0702c83c7f46fe8f8f449684242aa4d7670bb51e399d59063"
+        },
+        {
+          "accepted_draft_tokens": 14,
+          "exact_greedy_match": false,
+          "gpu_accept_match_cpu": true,
+          "id": "general_ja_plan",
+          "proposed_draft_tokens": 30,
+          "run": 1,
+          "token_sha256_i64": "4c3556d7ebea8a0eccd82fd6441ea781091978c3164b6338f2dbec9b661fdf06"
+        },
+        {
+          "accepted_draft_tokens": 14,
+          "exact_greedy_match": true,
+          "gpu_accept_match_cpu": true,
+          "id": "general_ja_explain",
+          "proposed_draft_tokens": 29,
+          "run": 1,
+          "token_sha256_i64": "6a28b86a7eb2ccb64bd32e126371a11e61d29d073e0b11c17db4d26c0cd7aee1"
+        },
+        {
+          "accepted_draft_tokens": 15,
+          "exact_greedy_match": true,
+          "gpu_accept_match_cpu": true,
+          "id": "mixed_ja_en_translate",
+          "proposed_draft_tokens": 26,
+          "run": 1,
+          "token_sha256_i64": "53ce1570acd947b5179c719cb4527920622b03b7d4b4071cb1c41962e67770be"
+        },
+        {
+          "accepted_draft_tokens": 15,
+          "exact_greedy_match": true,
+          "gpu_accept_match_cpu": true,
+          "id": "mixed_ja_en_review",
+          "proposed_draft_tokens": 24,
+          "run": 1,
+          "token_sha256_i64": "625504c65e439ffc8940ec1299fe882db901878e9a344dfd88688b63706c5863"
+        }
+      ],
+      "status": "correctness_failed",
+      "strict_manifest_bundle_sha256": "8e0741e0fbf6f136abbaa842caeec92c2ce501fff6ff0abeb558a959380a284f",
+      "strict_manifest_scope": {
+        "consumer_modules": [
+          "hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv"
+        ],
+        "coverage_records_in_scope": 297,
+        "coverage_records_named_by_consumer_module": 4,
+        "coverage_records_named_by_registry_key": 293,
+        "coverage_records_total": 327,
+        "ggml_types_present": [
+          "F32",
+          "IQ2_S",
+          "IQ2_XS",
+          "IQ3_S",
+          "IQ3_XXS",
+          "IQ4_NL",
+          "IQ4_XS",
+          "Q3_K",
+          "Q4_K",
+          "Q5_K",
+          "Q6_K",
+          "Q8_0"
+        ],
+        "owner_classes": [
+          "dense",
+          "other",
+          "pack8",
+          "selected"
+        ],
+        "registry_quants": [
+          "bf16",
+          "f32",
+          "gguf_f32_weight",
+          "gguf_iq2_s",
+          "gguf_iq2_xs",
+          "gguf_iq3_s",
+          "gguf_iq3_xxs",
+          "gguf_iq4_nl",
+          "gguf_iq4_xs",
+          "gguf_q3_k",
+          "gguf_q4_k",
+          "gguf_q4_k_qmicro_t16_v1",
+          "gguf_q4_k_t16_v1",
+          "gguf_q4_k_x8_v1",
+          "gguf_q5_k",
+          "gguf_q5_k_qmicro_t16_v1",
+          "gguf_q5_k_t16_v1",
+          "gguf_q5_k_x8_v1",
+          "gguf_q6_k",
+          "gguf_q6_k_t16_qmicro_planar_v1",
+          "gguf_q6_k_t16_v1",
+          "gguf_q6_k_x8_v1",
+          "gguf_q8_0",
+          "gguf_q8_0_t16_v1",
+          "gguf_qwen35",
+          "w4_paro"
+        ],
+        "selections": 117,
+        "source": "artifact GGUF tensor types x CERTIFIED_OPERATION_COVERAGE",
+        "tensors": 866,
+        "variants_verified_registered": 182
+      },
+      "strict_manifests": [
+        {
+          "alternate_output_dtype_owners": {
+            "dense_gemv/rows_1_8_row_local": [
+              "f32_out"
+            ]
+          },
+          "coverage_records": 44,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "dense",
+          "registry_quant": "bf16",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_s",
+            "quant": "gguf_ud_q4_k_s",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "dense_gemv",
+                "registry_quant": "bf16",
+                "scope": "prefill_rows",
+                "selected_variant": "out",
+                "strict_fallback_variant": "out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "dense_gemv",
+                "registry_quant": "bf16",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "out",
+                "strict_fallback_variant": "out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "dense_gemv",
+                "registry_quant": "bf16",
+                "scope": "rows_2_8_native",
+                "selected_variant": "f32_out",
+                "strict_fallback_variant": "f32_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "dense_gemv",
+                "registry_quant": "bf16",
+                "scope": "rows_2_8_native_bf16_ptr",
+                "selected_variant": "out",
+                "strict_fallback_variant": "out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "25ae9ecbc64414a6ec099a6b6bf4c5f9c6add0eb8b77c18e7834dca52d3c612c"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 4,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "other",
+          "registry_quant": "bf16",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_s",
+            "quant": "gguf_ud_q4_k_s",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "router_logits",
+                "registry_quant": "bf16",
+                "scope": "prefill_rows",
+                "selected_variant": "bf16_hidden",
+                "strict_fallback_variant": "bf16_hidden"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "router_logits",
+                "registry_quant": "bf16",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "bf16_hidden",
+                "strict_fallback_variant": "bf16_hidden"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "router_logits",
+                "registry_quant": "bf16",
+                "scope": "rows_2_8_native",
+                "selected_variant": "bf16_hidden",
+                "strict_fallback_variant": "bf16_hidden"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "56aa6d4eeebbf9c7ca826133e72c2c0d3f8900b77c305db89ecd64b1da6a5a43"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 7,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "dense",
+          "registry_quant": "f32",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_s",
+            "quant": "gguf_ud_q4_k_s",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "dense_gemv",
+                "registry_quant": "f32",
+                "scope": "prefill_rows",
+                "selected_variant": "bf16_hidden_bf16_out",
+                "strict_fallback_variant": "bf16_hidden_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "dense_gemv",
+                "registry_quant": "f32",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "bf16_hidden_bf16_out",
+                "strict_fallback_variant": "bf16_hidden_bf16_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "72ac3724ddf90fca716b6ba4725f5edf149413712a11620fcef349f40260f5e0"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 4,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "other",
+          "registry_quant": "f32",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_s",
+            "quant": "gguf_ud_q4_k_s",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "router_logits",
+                "registry_quant": "f32",
+                "scope": "prefill_rows",
+                "selected_variant": "bf16_hidden",
+                "strict_fallback_variant": "bf16_hidden"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "router_logits",
+                "registry_quant": "f32",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "bf16_hidden",
+                "strict_fallback_variant": "bf16_hidden"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "router_logits",
+                "registry_quant": "f32",
+                "scope": "rows_2_8_native",
+                "selected_variant": "bf16_hidden",
+                "strict_fallback_variant": "bf16_hidden"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "9fff4f82263995b04ac35e90492bc73131aaaff8b5a284c27068ed3b7397c8a8"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 5,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "dense",
+          "registry_quant": "gguf_f32_weight",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_s",
+            "quant": "gguf_ud_q4_k_s",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "rmsnorm",
+                "registry_quant": "gguf_f32_weight",
+                "scope": "prefill_rows",
+                "selected_variant": "bf16_out",
+                "strict_fallback_variant": "bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "rmsnorm",
+                "registry_quant": "gguf_f32_weight",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "bf16_out",
+                "strict_fallback_variant": "bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "rmsnorm",
+                "registry_quant": "gguf_f32_weight",
+                "scope": "rows_any",
+                "selected_variant": "bf16_out",
+                "strict_fallback_variant": "bf16_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "0ba8a433a759b8af6566b9508f7b40962ac116f682f1fb283706fb79a035a525"
+        },
+        {
+          "alternate_output_dtype_owners": {
+            "linear/rows_1_8_row_local": [
+              "gemv_bf16_f32_out"
+            ]
+          },
+          "coverage_records": 10,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "dense",
+          "registry_quant": "gguf_iq2_s",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_s",
+            "quant": "gguf_ud_q4_k_s",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_iq2_s",
+                "scope": "prefill_rows",
+                "selected_variant": "gemv_bf16_bf16_out",
+                "strict_fallback_variant": "gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_iq2_s",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "gemv_bf16_bf16_out",
+                "strict_fallback_variant": "gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_iq2_s",
+                "scope": "rows_2_8_native",
+                "selected_variant": "gemv_bf16_f32_out",
+                "strict_fallback_variant": "gemv_bf16_f32_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "ad0dffcbf778adf6fb94b31bc201569e91c8feb0748ae07be0daefbef7dbda6d"
+        },
+        {
+          "alternate_output_dtype_owners": {
+            "linear/rows_1_8_row_local": [
+              "gemv_bf16_f32_out"
+            ]
+          },
+          "coverage_records": 10,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "dense",
+          "registry_quant": "gguf_iq2_xs",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_s",
+            "quant": "gguf_ud_q4_k_s",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_iq2_xs",
+                "scope": "prefill_rows",
+                "selected_variant": "gemv_bf16_bf16_out",
+                "strict_fallback_variant": "gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_iq2_xs",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "gemv_bf16_bf16_out",
+                "strict_fallback_variant": "gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_iq2_xs",
+                "scope": "rows_2_8_native",
+                "selected_variant": "gemv_bf16_f32_out",
+                "strict_fallback_variant": "gemv_bf16_f32_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "eae5abca5144b033492fa770ab419cc53fadfa927406f041856979f50a7e0947"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 4,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "selected",
+          "registry_quant": "gguf_iq2_xs",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_s",
+            "quant": "gguf_ud_q4_k_s",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_iq2_xs",
+                "scope": "prefill_rows",
+                "selected_variant": "selected_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_iq2_xs",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "selected_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_iq2_xs",
+                "scope": "rows_2_8_native",
+                "selected_variant": "selected_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_gemv_decode_bf16_bf16_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "ff41e1ce05e8d0b23431b3d5aebe00b57a72f843884c6dcb0f10f3131a92cd6d"
+        },
+        {
+          "alternate_output_dtype_owners": {
+            "linear/rows_1_8_row_local": [
+              "gemv_bf16_f32_out"
+            ]
+          },
+          "coverage_records": 10,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "dense",
+          "registry_quant": "gguf_iq3_s",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_s",
+            "quant": "gguf_ud_q4_k_s",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_iq3_s",
+                "scope": "prefill_rows",
+                "selected_variant": "gemv_bf16_bf16_out",
+                "strict_fallback_variant": "gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_iq3_s",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "gemv_bf16_bf16_out",
+                "strict_fallback_variant": "gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_iq3_s",
+                "scope": "rows_2_8_native",
+                "selected_variant": "gemv_bf16_f32_out",
+                "strict_fallback_variant": "gemv_bf16_f32_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "026b1a284021ecf154816a2df42450d1b2a6711b673d9e0ce25cb843abe61610"
+        },
+        {
+          "alternate_output_dtype_owners": {
+            "linear/rows_1_8_row_local": [
+              "gemv_bf16_f32_out"
+            ]
+          },
+          "coverage_records": 10,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "dense",
+          "registry_quant": "gguf_iq3_xxs",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_s",
+            "quant": "gguf_ud_q4_k_s",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_iq3_xxs",
+                "scope": "prefill_rows",
+                "selected_variant": "gemv_bf16_bf16_out",
+                "strict_fallback_variant": "gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_iq3_xxs",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "gemv_bf16_bf16_out",
+                "strict_fallback_variant": "gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_iq3_xxs",
+                "scope": "rows_2_8_native",
+                "selected_variant": "gemv_bf16_f32_out",
+                "strict_fallback_variant": "gemv_bf16_f32_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "07edd3a6b9abe7cecceec0b627cbfdebe9ce64f9fbccff545cc672eae0a9e482"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 4,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "selected",
+          "registry_quant": "gguf_iq3_xxs",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_s",
+            "quant": "gguf_ud_q4_k_s",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_iq3_xxs",
+                "scope": "prefill_rows",
+                "selected_variant": "selected_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_iq3_xxs",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "selected_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_iq3_xxs",
+                "scope": "rows_2_8_native",
+                "selected_variant": "selected_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_gemv_decode_bf16_bf16_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "d609b7a53113beed1c5619931a480d983751a121810a1fec590f005651c8462a"
+        },
+        {
+          "alternate_output_dtype_owners": {
+            "linear/rows_1_8_row_local": [
+              "gemv_bf16_f32_out"
+            ]
+          },
+          "coverage_records": 10,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "dense",
+          "registry_quant": "gguf_iq4_nl",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_s",
+            "quant": "gguf_ud_q4_k_s",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_iq4_nl",
+                "scope": "prefill_rows",
+                "selected_variant": "gemv_bf16_bf16_out",
+                "strict_fallback_variant": "gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_iq4_nl",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "gemv_bf16_bf16_out",
+                "strict_fallback_variant": "gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_iq4_nl",
+                "scope": "rows_2_8_native",
+                "selected_variant": "gemv_bf16_f32_out",
+                "strict_fallback_variant": "gemv_bf16_f32_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "54f28e2fd8af1808f7c208c1dd074ba95413c7178f57dd8b2ae6b54cf635ca8c"
+        },
+        {
+          "alternate_output_dtype_owners": {
+            "linear/rows_1_8_row_local": [
+              "gemv_bf16_f32_out"
+            ]
+          },
+          "coverage_records": 10,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "dense",
+          "registry_quant": "gguf_iq4_xs",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_s",
+            "quant": "gguf_ud_q4_k_s",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_iq4_xs",
+                "scope": "prefill_rows",
+                "selected_variant": "gemv_bf16_bf16_out",
+                "strict_fallback_variant": "gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_iq4_xs",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "gemv_bf16_bf16_out",
+                "strict_fallback_variant": "gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_iq4_xs",
+                "scope": "rows_2_8_native",
+                "selected_variant": "gemv_bf16_f32_out",
+                "strict_fallback_variant": "gemv_bf16_f32_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "10330c86cdfd9aa0b3ab79b0f83494e87ecba8b016ef062944e3951ba8005468"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 4,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "selected",
+          "registry_quant": "gguf_iq4_xs",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_s",
+            "quant": "gguf_ud_q4_k_s",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_iq4_xs",
+                "scope": "prefill_rows",
+                "selected_variant": "selected_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_iq4_xs",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "selected_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_iq4_xs",
+                "scope": "rows_2_8_native",
+                "selected_variant": "selected_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_gemv_decode_bf16_bf16_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "d09413ab09092019da5dc7ed8a10aa08a7bc3d0e9a1273a80d2aa665260b074b"
+        },
+        {
+          "alternate_output_dtype_owners": {
+            "linear/rows_1_8_row_local": [
+              "gemv_bf16_f32_out"
+            ]
+          },
+          "coverage_records": 12,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "dense",
+          "registry_quant": "gguf_q3_k",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_s",
+            "quant": "gguf_ud_q4_k_s",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "embedding",
+                "registry_quant": "gguf_q3_k",
+                "scope": "rows_2_8_native",
+                "selected_variant": "lookup_bf16_out",
+                "strict_fallback_variant": "lookup_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "embedding",
+                "registry_quant": "gguf_q3_k",
+                "scope": "rows_any",
+                "selected_variant": "lookup_bf16_out",
+                "strict_fallback_variant": "lookup_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q3_k",
+                "scope": "prefill_rows",
+                "selected_variant": "gemv_bf16_bf16_out",
+                "strict_fallback_variant": "gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q3_k",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "gemv_bf16_bf16_out",
+                "strict_fallback_variant": "gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q3_k",
+                "scope": "rows_2_8_native",
+                "selected_variant": "gemv_bf16_f32_out",
+                "strict_fallback_variant": "gemv_bf16_f32_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "b88f6f6c799987fd0df723e82ccc5f999ca912e8aee01025155e42e9cb1875f2"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 4,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "selected",
+          "registry_quant": "gguf_q3_k",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_s",
+            "quant": "gguf_ud_q4_k_s",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q3_k",
+                "scope": "prefill_rows",
+                "selected_variant": "selected_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q3_k",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "selected_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q3_k",
+                "scope": "rows_2_8_native",
+                "selected_variant": "selected_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_gemv_decode_bf16_bf16_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "431c4372bf21266dc691364fcf4c040a0a841941e100b2da0284bd9dddf65ec3"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 2,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "dense",
+          "registry_quant": "gguf_q4_k",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_s",
+            "quant": "gguf_ud_q4_k_s",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "embedding",
+                "registry_quant": "gguf_q4_k",
+                "scope": "rows_2_8_native",
+                "selected_variant": "lookup_bf16_out",
+                "strict_fallback_variant": "lookup_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "embedding",
+                "registry_quant": "gguf_q4_k",
+                "scope": "rows_any",
+                "selected_variant": "lookup_bf16_out",
+                "strict_fallback_variant": "lookup_bf16_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "042f1170727928a3fcf0ec3c5fb018a87265714248c9bc09dd87f38ac76cf787"
+        },
+        {
+          "alternate_output_dtype_owners": {
+            "linear/rows_1_8_row_local": [
+              "pack8_bf16_f32_out"
+            ]
+          },
+          "coverage_records": 9,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "pack8",
+          "registry_quant": "gguf_q4_k",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_s",
+            "quant": "gguf_ud_q4_k_s",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q4_k",
+                "scope": "prefill_rows",
+                "selected_variant": "pack8_bf16_bf16_out",
+                "strict_fallback_variant": "pack8_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q4_k",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "pack8_bf16_bf16_out",
+                "strict_fallback_variant": "pack8_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q4_k",
+                "scope": "rows_2_8_native",
+                "selected_variant": "pack8_bf16_f32_out",
+                "strict_fallback_variant": "pack8_bf16_f32_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "2ac391f967973d7d36c918b1c79a35d6743e3843b5b42435e59b00e72279b63c"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 7,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "dense",
+          "registry_quant": "gguf_q4_k_qmicro_t16_v1",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_s",
+            "quant": "gguf_ud_q4_k_s",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q4_k_qmicro_t16_v1",
+                "scope": "prefill_rows",
+                "selected_variant": "dense_single_local32_bf16_bf16_out",
+                "strict_fallback_variant": "dense_single_local32_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q4_k_qmicro_t16_v1",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "dense_single_local32_bf16_bf16_out",
+                "strict_fallback_variant": "dense_single_local32_bf16_bf16_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "db965061a40d78dd781e0619fb3d65344210f0d7cd32fefbb8d5f959dfdab5d4"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 4,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "selected",
+          "registry_quant": "gguf_q4_k_qmicro_t16_v1",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_s",
+            "quant": "gguf_ud_q4_k_s",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q4_k_qmicro_t16_v1",
+                "scope": "prefill_rows",
+                "selected_variant": "selected_dual_t16_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_dual_t16_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q4_k_qmicro_t16_v1",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "selected_dual_t16_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_dual_t16_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q4_k_qmicro_t16_v1",
+                "scope": "rows_2_8_native",
+                "selected_variant": "selected_dual_t16_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_dual_t16_gemv_decode_bf16_bf16_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "154c87ae253f50de9b2ce020bcc67e30ac7c843c5f4779cba2b3e21c1612e683"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 7,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "dense",
+          "registry_quant": "gguf_q4_k_t16_v1",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_s",
+            "quant": "gguf_ud_q4_k_s",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q4_k_t16_v1",
+                "scope": "prefill_rows",
+                "selected_variant": "dense_single_local32_bf16_bf16_out",
+                "strict_fallback_variant": "dense_single_local32_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q4_k_t16_v1",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "dense_single_local32_bf16_bf16_out",
+                "strict_fallback_variant": "dense_single_local32_bf16_bf16_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "2cad7ecd4de299497acae2eeb3471ba73bc6c4b43a95d7a33f31a461c4d55677"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 4,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "selected",
+          "registry_quant": "gguf_q4_k_t16_v1",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_s",
+            "quant": "gguf_ud_q4_k_s",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q4_k_t16_v1",
+                "scope": "prefill_rows",
+                "selected_variant": "selected_t16_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_t16_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q4_k_t16_v1",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "selected_t16_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_t16_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q4_k_t16_v1",
+                "scope": "rows_2_8_native",
+                "selected_variant": "selected_t16_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_t16_gemv_decode_bf16_bf16_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "11b3e12fd6374b3d3a761047adff79130570358a42823316622470ce4454aa17"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 4,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "selected",
+          "registry_quant": "gguf_q4_k_x8_v1",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_s",
+            "quant": "gguf_ud_q4_k_s",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q4_k_x8_v1",
+                "scope": "prefill_rows",
+                "selected_variant": "selected_dual_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_dual_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q4_k_x8_v1",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "selected_dual_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_dual_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q4_k_x8_v1",
+                "scope": "rows_2_8_native",
+                "selected_variant": "selected_dual_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_dual_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "7b51d2057f00084b5020c6dc64c009d9c6c16a3c8df7726792d47c178c8fcb1b"
+        },
+        {
+          "alternate_output_dtype_owners": {
+            "linear/rows_1_8_row_local": [
+              "gemv_bf16_f32_out"
+            ]
+          },
+          "coverage_records": 12,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "dense",
+          "registry_quant": "gguf_q5_k",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_s",
+            "quant": "gguf_ud_q4_k_s",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "embedding",
+                "registry_quant": "gguf_q5_k",
+                "scope": "rows_2_8_native",
+                "selected_variant": "lookup_bf16_out",
+                "strict_fallback_variant": "lookup_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "embedding",
+                "registry_quant": "gguf_q5_k",
+                "scope": "rows_any",
+                "selected_variant": "lookup_bf16_out",
+                "strict_fallback_variant": "lookup_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q5_k",
+                "scope": "prefill_rows",
+                "selected_variant": "gemv_bf16_bf16_out",
+                "strict_fallback_variant": "gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q5_k",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "gemv_bf16_bf16_out",
+                "strict_fallback_variant": "gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q5_k",
+                "scope": "rows_2_8_native",
+                "selected_variant": "gemv_bf16_f32_out",
+                "strict_fallback_variant": "gemv_bf16_f32_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "785681c94fb68aafeb71f0c1b254cfc945e6533f4886f9002a35231ffef10c45"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 4,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "selected",
+          "registry_quant": "gguf_q5_k",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_s",
+            "quant": "gguf_ud_q4_k_s",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q5_k",
+                "scope": "prefill_rows",
+                "selected_variant": "selected_gemv_bf16_bf16_out",
+                "strict_fallback_variant": "selected_gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q5_k",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "selected_gemv_bf16_bf16_out",
+                "strict_fallback_variant": "selected_gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q5_k",
+                "scope": "rows_2_8_native",
+                "selected_variant": "selected_gemv_bf16_bf16_out",
+                "strict_fallback_variant": "selected_gemv_bf16_bf16_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "1e069c7bc82e7751b3fd06e71b63ec6a285e7c2734d3d3f411ceee7416eaca9f"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 4,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "selected",
+          "registry_quant": "gguf_q5_k_qmicro_t16_v1",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_s",
+            "quant": "gguf_ud_q4_k_s",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q5_k_qmicro_t16_v1",
+                "scope": "prefill_rows",
+                "selected_variant": "selected_t16_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_t16_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q5_k_qmicro_t16_v1",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "selected_t16_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_t16_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q5_k_qmicro_t16_v1",
+                "scope": "rows_2_8_native",
+                "selected_variant": "selected_t16_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_t16_gemv_decode_bf16_bf16_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "9c2a78b53608b28d2e2a2163bbb4fc78c3046f3c16d3de9e3409cf37920229eb"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 7,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "dense",
+          "registry_quant": "gguf_q5_k_t16_v1",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_s",
+            "quant": "gguf_ud_q4_k_s",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q5_k_t16_v1",
+                "scope": "prefill_rows",
+                "selected_variant": "t16_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "t16_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q5_k_t16_v1",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "t16_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "t16_gemv_decode_bf16_bf16_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "5dca901fa02bd83f1bbbe627efffc10cbf3a04af6f7fa55b8ce3765104dd14f6"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 4,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "selected",
+          "registry_quant": "gguf_q5_k_x8_v1",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_s",
+            "quant": "gguf_ud_q4_k_s",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q5_k_x8_v1",
+                "scope": "prefill_rows",
+                "selected_variant": "selected_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q5_k_x8_v1",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "selected_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q5_k_x8_v1",
+                "scope": "rows_2_8_native",
+                "selected_variant": "selected_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "25743958ccabae66c4b92a8d9dacca72d2f873a8b80244f3337a17eebbaf32e4"
+        },
+        {
+          "alternate_output_dtype_owners": {
+            "linear/rows_1_8_row_local": [
+              "gemv_bf16_f32_out"
+            ]
+          },
+          "coverage_records": 12,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "dense",
+          "registry_quant": "gguf_q6_k",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_s",
+            "quant": "gguf_ud_q4_k_s",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "embedding",
+                "registry_quant": "gguf_q6_k",
+                "scope": "rows_2_8_native",
+                "selected_variant": "lookup_bf16_out",
+                "strict_fallback_variant": "lookup_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "embedding",
+                "registry_quant": "gguf_q6_k",
+                "scope": "rows_any",
+                "selected_variant": "lookup_bf16_out",
+                "strict_fallback_variant": "lookup_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q6_k",
+                "scope": "prefill_rows",
+                "selected_variant": "gemv_bf16_bf16_out",
+                "strict_fallback_variant": "gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q6_k",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "gemv_bf16_bf16_out",
+                "strict_fallback_variant": "gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q6_k",
+                "scope": "rows_2_8_native",
+                "selected_variant": "gemv_bf16_f32_out",
+                "strict_fallback_variant": "gemv_bf16_f32_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "99345d20294c5c9269b7880f965ed8783133eeec90f60256a97b654ea098c58d"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 4,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "selected",
+          "registry_quant": "gguf_q6_k",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_s",
+            "quant": "gguf_ud_q4_k_s",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q6_k",
+                "scope": "prefill_rows",
+                "selected_variant": "selected_gemv_bf16_bf16_out",
+                "strict_fallback_variant": "selected_gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q6_k",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "selected_gemv_bf16_bf16_out",
+                "strict_fallback_variant": "selected_gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q6_k",
+                "scope": "rows_2_8_native",
+                "selected_variant": "selected_gemv_bf16_bf16_out",
+                "strict_fallback_variant": "selected_gemv_bf16_bf16_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "3f2c7e612aa7ce100c59aff967c447905a9c54854a8d444ce7c8a046e61db010"
+        },
+        {
+          "alternate_output_dtype_owners": {
+            "linear/rows_1_8_row_local": [
+              "t16_gemv_decode_bf16_f32_out"
+            ]
+          },
+          "coverage_records": 9,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "dense",
+          "registry_quant": "gguf_q6_k_t16_qmicro_planar_v1",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_s",
+            "quant": "gguf_ud_q4_k_s",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q6_k_t16_qmicro_planar_v1",
+                "scope": "prefill_rows",
+                "selected_variant": "t16_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "t16_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q6_k_t16_qmicro_planar_v1",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "t16_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "t16_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q6_k_t16_qmicro_planar_v1",
+                "scope": "rows_2_8_native",
+                "selected_variant": "t16_gemv_decode_bf16_f32_out",
+                "strict_fallback_variant": "t16_gemv_decode_bf16_f32_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "44b69ac55d857c0a417c672d131ca6c157b1faba64b3f7f69068cfe3deb5be71"
+        },
+        {
+          "alternate_output_dtype_owners": {
+            "linear/rows_1_8_row_local": [
+              "t16_gemv_decode_bf16_f32_out"
+            ]
+          },
+          "coverage_records": 9,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "dense",
+          "registry_quant": "gguf_q6_k_t16_v1",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_s",
+            "quant": "gguf_ud_q4_k_s",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q6_k_t16_v1",
+                "scope": "prefill_rows",
+                "selected_variant": "t16_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "t16_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q6_k_t16_v1",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "t16_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "t16_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q6_k_t16_v1",
+                "scope": "rows_2_8_native",
+                "selected_variant": "t16_gemv_decode_bf16_f32_out",
+                "strict_fallback_variant": "t16_gemv_decode_bf16_f32_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "8ab96346a0b163b0aedb27a38769c8b691d4214d9dfd520e0e3610286ee0e09a"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 4,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "selected",
+          "registry_quant": "gguf_q6_k_t16_v1",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_s",
+            "quant": "gguf_ud_q4_k_s",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q6_k_t16_v1",
+                "scope": "prefill_rows",
+                "selected_variant": "selected_t16_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_t16_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q6_k_t16_v1",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "selected_t16_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_t16_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q6_k_t16_v1",
+                "scope": "rows_2_8_native",
+                "selected_variant": "selected_t16_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_t16_gemv_decode_bf16_bf16_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "8ec9017e7bd1b5ab88892d327d799fb9639ae9f86e8d8e0dc8c919d368d588ec"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 4,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "selected",
+          "registry_quant": "gguf_q6_k_x8_v1",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_s",
+            "quant": "gguf_ud_q4_k_s",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q6_k_x8_v1",
+                "scope": "prefill_rows",
+                "selected_variant": "selected_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q6_k_x8_v1",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "selected_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "moe_linear",
+                "registry_quant": "gguf_q6_k_x8_v1",
+                "scope": "rows_2_8_native",
+                "selected_variant": "selected_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "selected_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "4d19b32b16a93675bebfd049f21b4a47702414baa3582a9fae5f5a25abe18106"
+        },
+        {
+          "alternate_output_dtype_owners": {
+            "linear/rows_1_8_row_local": [
+              "gemv_bf16_f32_out"
+            ]
+          },
+          "coverage_records": 12,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "dense",
+          "registry_quant": "gguf_q8_0",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_s",
+            "quant": "gguf_ud_q4_k_s",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "embedding",
+                "registry_quant": "gguf_q8_0",
+                "scope": "rows_2_8_native",
+                "selected_variant": "lookup_bf16_out",
+                "strict_fallback_variant": "lookup_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "embedding",
+                "registry_quant": "gguf_q8_0",
+                "scope": "rows_any",
+                "selected_variant": "lookup_bf16_out",
+                "strict_fallback_variant": "lookup_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q8_0",
+                "scope": "prefill_rows",
+                "selected_variant": "gemv_bf16_bf16_out",
+                "strict_fallback_variant": "gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q8_0",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "gemv_bf16_bf16_out",
+                "strict_fallback_variant": "gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q8_0",
+                "scope": "rows_2_8_native",
+                "selected_variant": "gemv_bf16_f32_out",
+                "strict_fallback_variant": "gemv_bf16_f32_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "a696cf56ccd72de53769d26a96db90c74688735582293322fab416032dd74133"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 7,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "dense",
+          "registry_quant": "gguf_q8_0_t16_v1",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_s",
+            "quant": "gguf_ud_q4_k_s",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q8_0_t16_v1",
+                "scope": "prefill_rows",
+                "selected_variant": "t16_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "t16_gemv_decode_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q8_0_t16_v1",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "t16_gemv_decode_bf16_bf16_out",
+                "strict_fallback_variant": "t16_gemv_decode_bf16_bf16_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "49b2fd96a1089f1f80762a6615a8d7eec558adf1db7cddc037424218cee40cf6"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 6,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "other",
+          "registry_quant": "gguf_qwen35",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_s",
+            "quant": "gguf_ud_q4_k_s",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "gdn_prefill_recurrent",
+                "registry_quant": "gguf_qwen35",
+                "scope": "prefill_rows",
+                "selected_variant": "decode_order_bf16",
+                "strict_fallback_variant": "decode_order_bf16"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "gdn_recurrent_rmsnorm_gate",
+                "registry_quant": "gguf_qwen35",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "bf16_segments",
+                "strict_fallback_variant": "bf16_segments"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear_attn_conv_decode",
+                "registry_quant": "gguf_qwen35",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "bf16_indexed",
+                "strict_fallback_variant": "bf16_indexed"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear_attn_conv_prefill",
+                "registry_quant": "gguf_qwen35",
+                "scope": "prefill_rows",
+                "selected_variant": "f32_baseline",
+                "strict_fallback_variant": "f32_baseline"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "9366f0e196a3e9045e87b5b7a6194c85c14b9677d22f2ca0fb9b05a6e3535f42"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 6,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "other",
+          "registry_quant": "w4_paro",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_s",
+            "quant": "gguf_ud_q4_k_s",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "gdn_recurrent_rmsnorm_gate",
+                "registry_quant": "w4_paro",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "bf16_lowp",
+                "strict_fallback_variant": "bf16_lowp"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear_attn_conv_decode",
+                "registry_quant": "w4_paro",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "bf16",
+                "strict_fallback_variant": "bf16"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "d9be776598a46e06a33ae0694c1f47e118ef8b45deeb0e6dcfd2b12326b6cbd8"
+        }
+      ],
+      "suite_exit_code": 1,
+      "true_ar_rows": [
+        {
+          "decode_tok_s_transition_normalized": 17.106160630923128,
+          "id": "code_merge_intervals",
+          "run": 0,
+          "token_sha256_i64": "1c62b99125e865e81420325bb70fea8f511694021f6cc2d2c4abbe6c6db1fc36"
+        },
+        {
+          "decode_tok_s_transition_normalized": 16.8884078368453,
+          "id": "code_topological_sort",
+          "run": 0,
+          "token_sha256_i64": "0ed2978626ce329177527a4138d9f76eb56e74349e01e9be515b3fc0de137fa7"
+        },
+        {
+          "decode_tok_s_transition_normalized": 16.608150755981132,
+          "id": "code_lru_cache",
+          "run": 0,
+          "token_sha256_i64": "ae6764d9b4e0c0ef5a2e4c7b2752c50005f4237b067074ca24096a95ffa2338d"
+        },
+        {
+          "decode_tok_s_transition_normalized": 16.93162081853809,
+          "id": "code_markdown_table",
+          "run": 0,
+          "token_sha256_i64": "8a799a4ae13839f06e4a94d449fbfef1a7bd085624603f39fa7db435260cb23b"
+        },
+        {
+          "decode_tok_s_transition_normalized": 17.018639584708747,
+          "id": "general_en_plan",
+          "run": 0,
+          "token_sha256_i64": "0a1210453902f6e2a44b2009672994f0758abe1ec11add71f12fb5bfd9dca8fb"
+        },
+        {
+          "decode_tok_s_transition_normalized": 17.033354052425842,
+          "id": "general_en_explain",
+          "run": 0,
+          "token_sha256_i64": "e1a4ccb33e2a3fc0702c83c7f46fe8f8f449684242aa4d7670bb51e399d59063"
+        },
+        {
+          "decode_tok_s_transition_normalized": 17.035212575406387,
+          "id": "general_ja_plan",
+          "run": 0,
+          "token_sha256_i64": "18fe905824016f32e4287c5b4980fafb40c7414eef4af6383d3a3b2a3ed16d13"
+        },
+        {
+          "decode_tok_s_transition_normalized": 16.791341508338494,
+          "id": "general_ja_explain",
+          "run": 0,
+          "token_sha256_i64": "6a28b86a7eb2ccb64bd32e126371a11e61d29d073e0b11c17db4d26c0cd7aee1"
+        },
+        {
+          "decode_tok_s_transition_normalized": 16.88156608157115,
+          "id": "mixed_ja_en_translate",
+          "run": 0,
+          "token_sha256_i64": "53ce1570acd947b5179c719cb4527920622b03b7d4b4071cb1c41962e67770be"
+        },
+        {
+          "decode_tok_s_transition_normalized": 16.981961674358413,
+          "id": "mixed_ja_en_review",
+          "run": 0,
+          "token_sha256_i64": "625504c65e439ffc8940ec1299fe882db901878e9a344dfd88688b63706c5863"
+        },
+        {
+          "decode_tok_s_transition_normalized": 17.00004560295308,
+          "id": "code_merge_intervals",
+          "run": 1,
+          "token_sha256_i64": "1c62b99125e865e81420325bb70fea8f511694021f6cc2d2c4abbe6c6db1fc36"
+        },
+        {
+          "decode_tok_s_transition_normalized": 17.019026932902374,
+          "id": "code_topological_sort",
+          "run": 1,
+          "token_sha256_i64": "0ed2978626ce329177527a4138d9f76eb56e74349e01e9be515b3fc0de137fa7"
+        },
+        {
+          "decode_tok_s_transition_normalized": 17.01625903318984,
+          "id": "code_lru_cache",
+          "run": 1,
+          "token_sha256_i64": "ae6764d9b4e0c0ef5a2e4c7b2752c50005f4237b067074ca24096a95ffa2338d"
+        },
+        {
+          "decode_tok_s_transition_normalized": 16.535474595681276,
+          "id": "code_markdown_table",
+          "run": 1,
+          "token_sha256_i64": "8a799a4ae13839f06e4a94d449fbfef1a7bd085624603f39fa7db435260cb23b"
+        },
+        {
+          "decode_tok_s_transition_normalized": 16.85276652442673,
+          "id": "general_en_plan",
+          "run": 1,
+          "token_sha256_i64": "0a1210453902f6e2a44b2009672994f0758abe1ec11add71f12fb5bfd9dca8fb"
+        },
+        {
+          "decode_tok_s_transition_normalized": 16.93953678425448,
+          "id": "general_en_explain",
+          "run": 1,
+          "token_sha256_i64": "e1a4ccb33e2a3fc0702c83c7f46fe8f8f449684242aa4d7670bb51e399d59063"
+        },
+        {
+          "decode_tok_s_transition_normalized": 16.78922471158466,
+          "id": "general_ja_plan",
+          "run": 1,
+          "token_sha256_i64": "18fe905824016f32e4287c5b4980fafb40c7414eef4af6383d3a3b2a3ed16d13"
+        },
+        {
+          "decode_tok_s_transition_normalized": 17.12012684642381,
+          "id": "general_ja_explain",
+          "run": 1,
+          "token_sha256_i64": "6a28b86a7eb2ccb64bd32e126371a11e61d29d073e0b11c17db4d26c0cd7aee1"
+        },
+        {
+          "decode_tok_s_transition_normalized": 16.94753859740057,
+          "id": "mixed_ja_en_translate",
+          "run": 1,
+          "token_sha256_i64": "53ce1570acd947b5179c719cb4527920622b03b7d4b4071cb1c41962e67770be"
+        },
+        {
+          "decode_tok_s_transition_normalized": 16.901918719439184,
+          "id": "mixed_ja_en_review",
+          "run": 1,
+          "token_sha256_i64": "625504c65e439ffc8940ec1299fe882db901878e9a344dfd88688b63706c5863"
+        }
+      ]
+    }
+  ],
+  "candidate_mode": "MTP scope granted in-process; no admission pin was written. A pass is evidence for a pin, not a pin, and it is not automatic admission.",
+  "control": {
+    "artifact": "plain Qwen3.8-27B-Q4_K_S.gguf (gguf_q4_k_s)",
+    "note": "Plain K_S AR and MTP agree at output position 12 of general_ja_plan, matching UD K_M and UD K_S MTP. The UD K_S AR path is the outlier.",
+    "protocol": "same suite, --limit 7 (includes general_ja_plan), 1 run, B3",
+    "status": "complete_exact"
+  },
+  "decision": "_UD_MTP_PRESET_FINGERPRINTS stays empty. K_M clears the exactness gate but the complete U6 scope is open; K_S additionally fails exactness, and the control run shows the UD K_S AR path is the outlier, so the K_S blocker is an AR-path investigation rather than an MTP-admission one.",
+  "measurement_note": "Token rates in this artifact are correctness-run rates measured while an unrelated full pytest suite was running on the host, so they are not a performance claim and must not be compared against scoreboard rows. The exactness, acceptance-agreement, and determinism evidence is unaffected.",
+  "protocol": {
+    "candidate_budgets": [
+      3
+    ],
+    "host": "AMD Radeon Pro W7900 (gfx1100), HIP_VISIBLE_DEVICES=0",
+    "max_new_tokens": 25,
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "runs": 2,
+    "suite": "scripts/qwen36_dense_gguf_suite.py"
+  },
+  "unit": "U6-ud-mtp-certification"
+}

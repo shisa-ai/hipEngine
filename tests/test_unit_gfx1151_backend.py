@@ -1803,7 +1803,10 @@ def test_gfx1151_backend_admits_dense_q5_t16_ssm_out_and_08b_roles() -> None:
         "GGUF_DENSE_Q5_T16_SSM_OUT",
         False,
     )
-    assert not backend_package_capability(
+    # Route-plan item F: the H5120 Q5 role coverage is ported to gfx1100
+    # (UD-Q4 files on the W7900); the 0.8B-model roles below stay gfx1151-only
+    # until independently gated.
+    assert backend_package_capability(
         "hip_gfx1100",
         "GGUF_DENSE_Q5_T16_H5120",
         False,
@@ -1882,6 +1885,14 @@ def test_gfx1151_backend_admits_dense_q5_t16_ssm_out_and_08b_roles() -> None:
     ) == {
         (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {
             (1, 5_120, 17_408): "dense_dual_local32_bf16_bf16_out",
+        },
+        # The Q5 decode dual admitted in the UD campaign (8r2 lane): same-
+        # launch gate+up SiLU GEMV for the Q5 FFN role, keyed by the stamp.
+        (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "gguf_ud_q4_k_m"): {
+            (1, 5_120, 17_408): "q5_dense_dual_silu_gemv_decode_bf16_bf16_out",
+        },
+        (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S", "gguf_ud_q4_k_s"): {
+            (1, 5_120, 17_408): "q5_dense_dual_silu_gemv_decode_bf16_bf16_out",
         },
     }
     assert backend_package_capability(
@@ -2034,9 +2045,54 @@ def test_gfx1151_fixed_norm_residual_policies_are_exact() -> None:
     assert backend_package_capability(
         "hip_gfx1151", "GGUF_NORM_RESIDUAL_DECODE_POLICIES", {}
     ) == expected
+    # 2026-09-13: gfx1100 declares the same leaf for every verifier row count
+    # and for both the plain and the UD-preset-extended policy keys.
+    fixed5120_rows = {
+        (rows, 5_120): "bf16_out_fixed5120_wave256" for rows in range(1, 9)
+    }
     assert backend_package_capability(
         "hip_gfx1100", "GGUF_NORM_RESIDUAL_DECODE_POLICIES", {}
+    ) == {
+        (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): fixed5120_rows,
+        (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): fixed5120_rows,
+        (
+            QWEN35_DENSE_H5120_GEOMETRY,
+            "MOSTLY_Q4_K_M",
+            "gguf_ud_q4_k_m",
+        ): fixed5120_rows,
+        (
+            QWEN35_DENSE_H5120_GEOMETRY,
+            "MOSTLY_Q4_K_S",
+            "gguf_ud_q4_k_s",
+        ): fixed5120_rows,
+    }
+    # 2026-09-13: the rounded add+rmsnorm layer has its own shape table, because
+    # it selects a different kernel for the same shape.
+    rounded_rows = {
+        (rows, 5_120): "rounded_bf16_out_fixed5120_wave256"
+        for rows in range(2, 9)
+    }
+    assert backend_package_capability(
+        "hip_gfx1151", "GGUF_ROUNDED_NORM_RESIDUAL_DECODE_POLICIES", {}
     ) == {}
+    assert backend_package_capability(
+        "hip_gfx1100", "GGUF_ROUNDED_NORM_RESIDUAL_DECODE_POLICIES", {}
+    ) == {
+        "enabled_env": "HIPENGINE_GGUF_ROUNDED_NORM_FIXED5120",
+        "enabled_default": True,
+        (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): rounded_rows,
+        (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): rounded_rows,
+        (
+            QWEN35_DENSE_H5120_GEOMETRY,
+            "MOSTLY_Q4_K_M",
+            "gguf_ud_q4_k_m",
+        ): rounded_rows,
+        (
+            QWEN35_DENSE_H5120_GEOMETRY,
+            "MOSTLY_Q4_K_S",
+            "gguf_ud_q4_k_s",
+        ): rounded_rows,
+    }
     for layer in ("rmsnorm", "add_rmsnorm"):
         for variant in (
             "bf16_out_fixed1024_wave256",
@@ -2582,9 +2638,25 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS == 8
     assert GFX1100_GGUF_Q5_T16_SELECTED_QWEN_TILE8 is False
     assert GGUF_Q5_T16_SELECTED_QWEN_TILE8 is True
+    # 2026-09-13: the Q5T16 single-wave verifier rowtile (43fdf9129) registered
+    # its own c1 variant table on this backend, so the alias check is no longer
+    # an empty-table equality.
     assert backend_package_capability(
         "hip_gfx1100", "GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE", None
-    ) == {}
+    ) == {
+        "gguf_q5_k_t16_v1": {
+            shape: "dense_single_local32_bf16_bf16_out"
+            for shape in (
+                (1_024, 5_120),
+                (5_120, 6_144),
+                (5_120, 10_240),
+                (5_120, 12_288),
+                (5_120, 17_408),
+                (6_144, 5_120),
+                (17_408, 5_120),
+            )
+        }
+    }
     assert backend_package_capability(
         "hip_gfx1151", "GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE", None
     ) == {
@@ -3052,9 +3124,9 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         variant="dense_rowtile_col4_bf16_bf16_out",
     )
     for quant in ("gguf_q5_k", "gguf_q6_k"):
-        for row_batch in (4, 8):
+        for row_batch in (4, 8, 16, 32):
             for output_dtype in ("bf16", "f32"):
-                assert not is_registered(
+                assert is_registered(
                     KernelKey(
                         "hip_gfx1151",
                         "linear",
@@ -3258,7 +3330,7 @@ def test_gguf_router_resolve_uses_weight_backend(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(qwen35_gguf_runner, "resolve", fake_resolve)
     weight = SimpleNamespace(
         backend="hip_gfx1151",
-        spec=SimpleNamespace(quant_key="f32"),
+        spec=SimpleNamespace(layout="dense_f32", quant_key="f32"),
         allocation=lambda: SimpleNamespace(tensor=SimpleNamespace(ptr=22)),
     )
 
@@ -3313,8 +3385,8 @@ def test_gguf_runner_loads_backend_aliases_and_tags_resident_weights(
         lambda backend: loaded.append(backend),
     )
 
-    def fake_materialize(model_path, *, runtime, backend):
-        del model_path, runtime
+    def fake_materialize(model_path, *, runtime, backend, **kwargs):
+        del model_path, runtime, kwargs
         materialized.append(backend)
         return fake_weights
 
@@ -3418,7 +3490,7 @@ def test_gfx1151_capability_ledger_covers_gfx1100_only_live_reads() -> None:
         for name in gfx1100_only & live_read
         if name.startswith("GGUF_")
     }
-    assert len(expected) == 18
+    assert len(expected) == 25
 
     ledger_path = (
         Path(__file__).resolve().parents[1]

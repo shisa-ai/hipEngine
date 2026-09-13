@@ -1,0 +1,56 @@
+{
+ "schema": 1,
+ "date": "2026-09-09",
+ "status": "retained_blocked",
+ "host": "w7900-desktop",
+ "hardware": "AMD Radeon RX 7900 XTX (gfx1100, GPU1)",
+ "backend": "hip_gfx1100",
+ "purpose": "UD route-plan item B (impact-list task 2): the Q3_K-over-W4A16 mean-gate investigation - production-config gate numbers on this host, the operand-precision analysis, and the quantified upside.",
+ "findings": {
+  "upside": "prefill 477.1 -> 545.1 tok/s (+14.3%) with Q3_K routed, production config",
+  "gate_probe_production_config": {
+   "method": "incumbent = shipped 4-quant policy; candidate = same + gguf_q3_k; teacher-forced on the incumbent trajectory; 512-token contexts, 65 positions; null control (same policy both arms) is exactly 0",
+   "seed_7": {
+    "kl_mean": 0.0011263,
+    "kl_max": 0.058162
+   },
+   "seed_11": {
+    "kl_mean": 0.0011527,
+    "kl_max": 0.01173
+   },
+   "seed_23": {
+    "kl_mean": 0.00027715,
+    "kl_max": 0.0060803
+   },
+   "verdict": "BLOCKED: 2/3 contexts over the 1e-3 mean, one breach of the 5e-2 absolute ceiling (5.82e-2 at seed 7). Consistent with and worse than the zbook recorded 6.1% mean overage; the route stays unrouted."
+  },
+  "operand_precision_analysis": {
+   "fp16_weight_rounding_mean_rel": {
+    "Q3_K": 0.0001302,
+    "IQ4_XS": 0.000159,
+    "IQ4_NL": 0.0001622,
+    "IQ3_S": 0.000176,
+    "note": "Q3_K rounds to fp16 BETTER than every routed quant - the operand-precision hypothesis for Q3_K specifically is ruled out at the weight level"
+   },
+   "per_element_route_error_512_rows": {
+    "Q3_K": {
+     "mean_rel": 0.0029434
+    },
+    "IQ4_XS": {
+     "mean_rel": 0.0019177
+    },
+    "note": "both at the bf16-output floor; Q3_K is only 1.5x IQ4_XS per element - the mean delta is share (bytes) x noise volume, not a defect"
+   },
+   "conclusion": "The zbook int8-vs-fp16 equality (routes differing in which operand is rounded, same mean) plus Q3_K rounding best-of-class points at accumulation structure, but no error-reduction lever is identified that provably clears the envelope; the hi/lo fp16 split addresses operand rounding only. The unblock is the recorded human decision: envelope re-calibration for UD scope (the 1e-3 was frozen on a 2026-08-16 Qwen3.5 calibration; hipEngine strict itself sits at 0.001271 vs the llama.cpp teacher) or a task gate."
+  },
+  "methodology_note": "The first probe round ran with use_wmma_prefill=None (not production config); all numbers above are production config. The local32 decode probe was likewise re-run in production config after fixing a candidate-policy capture bug (the shipped empty policy made the candidate arm a no-op): means 8.0e-4/9.0e-4/1.6e-4 now pass but seed 23 fails top-1 (98.44%) - mixed failure modes, unrouted stays correct."
+ },
+ "changes": {
+  "scripts/gguf_iq_q3k_w4a16_gate.py": "new teacher-forced probe for the Q3_K route",
+  "scripts/gguf_iq_local32_decode_gate.py": "production config + explicit candidate policy fix"
+ },
+ "limitations": [
+  "Random-token 512-contexts, not the campaign 18-prompt category fixture (not present in this tree).",
+  "Three seeds; the zbook 162-row gate remains the definitive measurement."
+ ]
+}

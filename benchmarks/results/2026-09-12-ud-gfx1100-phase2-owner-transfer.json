@@ -1,0 +1,334 @@
+{
+  "schema": 1,
+  "date": "2026-09-12",
+  "kind": "diagnostic",
+  "performance_claim": false,
+  "plan": "docs/UD-GFX1151-OPTIMIZE.md",
+  "phase": "Phase 2: transfer prefill wins into verifier shapes",
+  "host": {
+    "device_index": 1,
+    "device_name": "AMD Radeon RX 7900 XTX",
+    "backend": "hip_gfx1100",
+    "arch": "gfx1100",
+    "note": "physical GPU1 only; GPU0 (W7900) untouched"
+  },
+  "purpose": "Classify every important dense prefill owner by its verifier-row behavior, and bound the rows 2-4 IQ sibling headroom with measured numbers.",
+  "protocol": {
+    "prefill_vs_verifier": "scripts/gguf_iq_w4a16_crossover.py, interleaved min-of-5 rounds x 2 reps, 4 largest tensors per quant, rows 1-128, agreement screened per row.",
+    "rows1_sibling": "rows==1 local32 decode owner vs the strict per-row GEMV on the same tensors at rows 1/2/4, interleaved min-of-5 x 3 reps.",
+    "launch_breakdown": "Phase 1 rocprofv3 census, rows=4 native B1-B3 leaf, 8 steps."
+  },
+  "route_mix_pct": {
+    "Qwen3.8-27B-UD-Q4_K_M.gguf": {
+      "IQ4_XS": 32.8,
+      "Q4_K": 27.36,
+      "Q5_K": 25.73,
+      "Q6_K": 8.09,
+      "Q3_K": 2.28,
+      "IQ4_NL": 2.15,
+      "IQ3_S": 1.3,
+      "Q8_0": 0.28,
+      "F32": 0.01
+    },
+    "Qwen3.8-27B-Q4_K_M.gguf": {
+      "Q4_K": 73.99,
+      "Q6_K": 20.2,
+      "Q5_K": 5.53,
+      "Q8_0": 0.19,
+      "F32": 0.09
+    },
+    "Qwen3.8-27B-UD-Q4_K_S.gguf": {
+      "IQ4_XS": 43.37,
+      "Q4_K": 19.06,
+      "Q5_K": 13.4,
+      "Q3_K": 8.57,
+      "Q6_K": 6.78,
+      "IQ3_S": 4.89,
+      "IQ3_XXS": 1.63,
+      "IQ4_NL": 1.5,
+      "IQ2_XS": 0.33,
+      "IQ2_S": 0.33,
+      "Q8_0": 0.14,
+      "F32": 0.01
+    },
+    "Qwen3.8-27B-Q4_K_S.gguf": {
+      "Q4_K": 86.33,
+      "Q5_K": 8.73,
+      "Q6_K": 4.65,
+      "Q8_0": 0.19,
+      "F32": 0.09
+    }
+  },
+  "dead_zone_coverage_pct": {
+    "ud_q4_k_m": {
+      "dead_zone_pct": 38.53,
+      "local32_capable_pct": 36.25,
+      "q3_k_pct": 2.28
+    },
+    "ud_q4_k_s": {
+      "dead_zone_pct": 60.61,
+      "local32_capable_pct": 52.05,
+      "q3_k_pct": 8.57
+    },
+    "note": "local32-capable = IQ4_XS + IQ4_NL + IQ3_S + IQ3_XXS + IQ2_S + IQ2_XS. A rows 2-4 sibling covers 94.1% (K_M) / 85.9% (K_S) of the dead-zone MACs; Q3_K needs separate work."
+  },
+  "iq_family": {
+    "gguf_iq4_xs": {
+      "model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+      "verifier_owner": "gguf_iq_dense_strict (strict per-row GEMV)",
+      "rows1_sibling": "gguf_iq4_xs_local32_gemv (rows==1 only)",
+      "prefill_owner": "gguf_iq_wmma_prefill (W4A16), min_rows=8",
+      "prefill_owner_vs_strict_gemv": {
+        "1": 0.357,
+        "2": 0.288,
+        "4": 0.307,
+        "8": 0.785,
+        "12": 1.071,
+        "16": 1.203,
+        "24": 1.605,
+        "32": 2.318,
+        "48": 3.113,
+        "64": 4.28,
+        "96": 4.759,
+        "128": 6.349
+      },
+      "rows1_sibling_vs_strict_gemv": {
+        "1": 2.353,
+        "2": 2.404,
+        "4": 3.042
+      },
+      "classification": "prefill-only + verifier sibling required",
+      "reason": "The W4A16 prefill owner loses at rows 2-4; the resident/layout is fine but the large-M tiling is the wrong geometry."
+    },
+    "gguf_iq4_nl": {
+      "model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+      "verifier_owner": "gguf_iq_dense_strict (strict per-row GEMV)",
+      "rows1_sibling": "gguf_iq4_nl_local32_gemv (rows==1 only)",
+      "prefill_owner": "gguf_iq_wmma_prefill (W4A16), min_rows=8",
+      "prefill_owner_vs_strict_gemv": {
+        "1": 0.704,
+        "2": 0.727,
+        "4": 0.74,
+        "8": 1.256,
+        "12": 1.987,
+        "16": 2.078,
+        "24": 2.89,
+        "32": 3.876,
+        "48": 5.624,
+        "64": 7.612,
+        "96": 8.187,
+        "128": 11.051
+      },
+      "rows1_sibling_vs_strict_gemv": {
+        "1": 4.085,
+        "2": 4.448,
+        "4": 5.188
+      },
+      "classification": "prefill-only + verifier sibling required",
+      "reason": "The W4A16 prefill owner loses at rows 2-4; the resident/layout is fine but the large-M tiling is the wrong geometry."
+    },
+    "gguf_iq3_s": {
+      "model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+      "verifier_owner": "gguf_iq_dense_strict (strict per-row GEMV)",
+      "rows1_sibling": "gguf_iq_split_local32_gemv (rows==1 only)",
+      "prefill_owner": "gguf_iq_wmma_prefill (W4A16), min_rows=8",
+      "prefill_owner_vs_strict_gemv": {
+        "1": 0.267,
+        "2": 0.229,
+        "4": 0.465,
+        "8": 0.75,
+        "12": 1.211,
+        "16": 1.538,
+        "24": 1.911,
+        "32": 2.645,
+        "48": 3.756,
+        "64": 5.375,
+        "96": 5.713,
+        "128": 7.474
+      },
+      "rows1_sibling_vs_strict_gemv": {
+        "1": 1.919,
+        "2": 1.985,
+        "4": 3.19
+      },
+      "classification": "prefill-only + verifier sibling required",
+      "reason": "The W4A16 prefill owner loses at rows 2-4; the resident/layout is fine but the large-M tiling is the wrong geometry."
+    },
+    "gguf_q3_k": {
+      "model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+      "verifier_owner": "gguf_iq_dense_strict (strict per-row GEMV)",
+      "rows1_sibling": null,
+      "prefill_owner": "gguf_iq_wmma_prefill (W4A16), min_rows=8",
+      "prefill_owner_vs_strict_gemv": {
+        "1": 0.195,
+        "2": 0.21,
+        "4": 0.266,
+        "8": 0.639,
+        "12": 0.855,
+        "16": 0.999,
+        "24": 1.353,
+        "32": 1.862,
+        "48": 2.676,
+        "64": 3.623,
+        "96": 3.827,
+        "128": 5.154
+      },
+      "rows1_sibling_vs_strict_gemv": null,
+      "classification": "verifier sibling required (no rows==1 owner exists)",
+      "reason": "Q3_K has no local32 rows==1 sibling, so a rows 2-4 owner is new work rather than an extension."
+    },
+    "gguf_iq3_xxs": {
+      "model": "Qwen3.8-27B-UD-Q4_K_S.gguf",
+      "verifier_owner": "gguf_iq_dense_strict (strict per-row GEMV)",
+      "rows1_sibling": "gguf_iq_split_local32_gemv (rows==1 only)",
+      "prefill_owner": "gguf_iq_wmma_prefill (W4A16), min_rows=8",
+      "prefill_owner_vs_strict_gemv": {
+        "1": 0.254,
+        "2": 0.223,
+        "4": 0.289,
+        "8": 0.727,
+        "12": 0.936,
+        "16": 1.089,
+        "24": 1.496,
+        "32": 2.148,
+        "48": 3.014,
+        "64": 3.996,
+        "96": 4.467,
+        "128": 5.271
+      },
+      "rows1_sibling_vs_strict_gemv": {
+        "1": 2.024,
+        "2": 2.213,
+        "4": 3.047
+      },
+      "classification": "prefill-only + verifier sibling required",
+      "reason": "The W4A16 prefill owner loses at rows 2-4; the resident/layout is fine but the large-M tiling is the wrong geometry."
+    },
+    "gguf_iq2_s": {
+      "model": "Qwen3.8-27B-UD-Q4_K_S.gguf",
+      "verifier_owner": "gguf_iq_dense_strict (strict per-row GEMV)",
+      "rows1_sibling": "gguf_iq_split_local32_gemv (rows==1 only)",
+      "prefill_owner": "gguf_iq_wmma_prefill (W4A16), min_rows=8",
+      "prefill_owner_vs_strict_gemv": {
+        "1": 0.561,
+        "2": 0.451,
+        "4": 0.532,
+        "8": 0.856,
+        "12": 1.454,
+        "16": 1.544,
+        "24": 2.209,
+        "32": 3.229,
+        "48": 4.21,
+        "64": 5.601,
+        "96": 5.298,
+        "128": 6.833
+      },
+      "rows1_sibling_vs_strict_gemv": {
+        "1": 2.86,
+        "2": 2.635,
+        "4": 3.038
+      },
+      "classification": "prefill-only + verifier sibling required",
+      "reason": "The W4A16 prefill owner loses at rows 2-4; the resident/layout is fine but the large-M tiling is the wrong geometry."
+    },
+    "gguf_iq2_xs": {
+      "model": "Qwen3.8-27B-UD-Q4_K_S.gguf",
+      "verifier_owner": "gguf_iq_dense_strict (strict per-row GEMV)",
+      "rows1_sibling": "gguf_iq_split_local32_gemv (rows==1 only)",
+      "prefill_owner": "gguf_iq_wmma_prefill (W4A16), min_rows=8",
+      "prefill_owner_vs_strict_gemv": {
+        "1": 0.496,
+        "2": 0.384,
+        "4": 0.43,
+        "8": 0.644,
+        "12": 1.096,
+        "16": 1.198,
+        "24": 1.707,
+        "32": 2.287,
+        "48": 3.329,
+        "64": 4.336,
+        "96": 3.908,
+        "128": 5.149
+      },
+      "rows1_sibling_vs_strict_gemv": {
+        "1": 2.397,
+        "2": 2.434,
+        "4": 2.848
+      },
+      "classification": "prefill-only + verifier sibling required",
+      "reason": "The W4A16 prefill owner loses at rows 2-4; the resident/layout is fine but the large-M tiling is the wrong geometry."
+    }
+  },
+  "rowtile_family": {
+    "gguf_q4_k": {
+      "verifier_owner": "q4_k_t16_dense_rowtile_gemv / _dual_rowtile_silu_gemv",
+      "classification": "direct transfer",
+      "reason": "The t16 resident layout is shared with the cooperative WMMA prefill owner and the registered rowtile verifier sibling runs it at rows 2-4 in both UD and plain censuses; no prefill-only scoping is needed."
+    },
+    "gguf_q5_k": {
+      "verifier_owner": "q5_k_t16_dense_rowtile_gemv",
+      "classification": "direct transfer",
+      "reason": "The t16 resident layout is shared with the cooperative WMMA prefill owner and the registered rowtile verifier sibling runs it at rows 2-4 in both UD and plain censuses; no prefill-only scoping is needed."
+    },
+    "gguf_q6_k": {
+      "verifier_owner": "q6_k_t16_qmicro_planar_gemv_rowtile_col8",
+      "classification": "direct transfer",
+      "reason": "The t16 resident layout is shared with the cooperative WMMA prefill owner and the registered rowtile verifier sibling runs it at rows 2-4 in both UD and plain censuses; no prefill-only scoping is needed."
+    },
+    "gguf_q8_0": {
+      "verifier_owner": "q8_0_t16_dual_split_gemv",
+      "classification": "direct transfer",
+      "reason": "The t16 resident layout is shared with the cooperative WMMA prefill owner and the registered rowtile verifier sibling runs it at rows 2-4 in both UD and plain censuses; no prefill-only scoping is needed."
+    }
+  },
+  "elementwise_family": {
+    "norm_residual": {
+      "kernels": [
+        "gguf_add_rmsnorm_bf16_f32_weight",
+        "gguf_rounded_add_rmsnorm_bf16_f32_weight"
+      ],
+      "ud_ms_per_step": 3.553,
+      "plain_ms_per_step": 3.709,
+      "classification": "direct transfer",
+      "reason": "Identical kernel names and comparable cost in both arms."
+    },
+    "gate_up_silu": {
+      "ud_kernel": "gguf_q5_k_t16_dense_dual_wmma_prefill_silu_bf16",
+      "ud_ms_per_step": 5.569,
+      "ud_category": "projection_wmma",
+      "plain_kernel": "q4_k_t16_dense_dual_rowtile_silu_gemv",
+      "plain_ms_per_step": 0.054,
+      "plain_category": "gate_up_silu",
+      "classification": "direct transfer",
+      "reason": "UD already runs the Q5_K WMMA prefill dual at verifier rows and it is the cheapest gate/up arm measured; the dual SiLU path transfers without a small-row rewrite."
+    },
+    "attention_and_gdn": {
+      "ud_gdn_ms_per_step": 1.908,
+      "plain_gdn_ms_per_step": 1.972,
+      "ud_attention_ms_per_step": 0.891,
+      "plain_attention_ms_per_step": 0.615,
+      "classification": "direct transfer",
+      "reason": "The GDN recurrent owner is the same kernel at the same cost in both arms; attention differs only by batch decomposition."
+    }
+  },
+  "launch_breakdown": {
+    "ud_km_rows4_calls_per_step": 1032.0,
+    "plain_km_rows4_calls_per_step": 824.0,
+    "iq_strict_calls_per_step": 135.0,
+    "note": "The +208 launches/step over plain is dominated by the 135 IQ strict launches; the rest is quant-mix (Q5/Q6/Q8 tensors plain does not carry). A rows 2-4 IQ sibling keeps the same 135 launches/step and only cuts each from ~237 us to the measured local32 cost (~45-115 us on the same shapes), so launch-count reduction is not part of this candidate."
+  },
+  "findings": [
+    "The strict per-row GEMV is weight-decode-bound, not row-bound: its time is flat from rows 1 to 4 (e.g. IQ4_NL ffn_down 0.554/0.530/0.534 ms). It does not rescan weights per row tile; it decodes them once per output block, and that decode is 2-7x slower than the local32 decode owner.",
+    "The W4A16 prefill owner is prefill-only at verifier rows: it loses at rows 2-4 on every IQ quant (0.21x-1.20x) and wins from 8-16 rows. Routing MTP through it is not the fix.",
+    "The rows==1 local32 decode owner already beats the strict GEMV by 2.0-7.4x at rows 2-4 on the same tensors, so the sibling is a small-row geometry of an admitted, already-measured owner, not a new arithmetic path.",
+    "Q3_K has no rows==1 local32 owner and is 2.28% (K_M) / 8.57% (K_S) of rank-2 MACs, so it stays on the strict GEMV until it gets its own owner.",
+    "No per-row-tile weight rescan was found, so row packing and launch reuse are not the lever: the same 135 launches/step stay and each one gets cheaper."
+  ],
+  "selected_action": "Phase 4 candidate A: extend the local32 IQ decode family to rows 2-4 (weight decode once per output block, row loop for the activation MACs), registered as a verifier sibling with the strict GEMV retained as the fallback. Covers 94.1% (K_M) / 85.9% (K_S) of the dead-zone MACs at a measured 2.0-7.4x headroom.",
+  "limitations": [
+    "Static MAC shares and leaf microbenchmarks, not end-to-end rates.",
+    "The local32 owner is approximate (max relative error <= 5.4e-3 vs the strict GEMV on these shapes) and owes the production numerical gate before any default flips.",
+    "Q3_K has no measured sibling; its rows 2-4 behavior is unknown.",
+    "Attention and GDN owners were classified from the Phase 1 census rather than re-measured at every declared row shape."
+  ]
+}

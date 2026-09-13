@@ -8,6 +8,7 @@ draft model so they can never be mistaken for an additional AR layer.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 from types import MappingProxyType
 from typing import Mapping
 
@@ -228,7 +229,11 @@ def required_qwen35_gguf_nextn_tensor_names(
     return tuple(prefix + suffix for suffix in (*layer_slots.values(), *_NEXTN_SLOTS.values()))
 
 
-def validate_qwen35_gguf_nextn_tensor_map(info: GGUFModelInfo) -> Qwen35GGUFNextNValidation:
+def validate_qwen35_gguf_nextn_tensor_map(
+    info: GGUFModelInfo,
+    *,
+    pinned_qtypes: Mapping[str, GGMLQuantizationType] | None = None,
+) -> Qwen35GGUFNextNValidation:
     config = qwen35_gguf_config_from_metadata(info)
     if len(config.ignored_block_ids) != 1:
         block_id = config.block_count
@@ -261,17 +266,57 @@ def validate_qwen35_gguf_nextn_tensor_map(info: GGUFModelInfo) -> Qwen35GGUFNext
         manifest_sha256 = str(
             info.metadata.get("hipengine.quant.output_type_manifest_sha256", "") or ""
         )
-        if manifest_sha256 != QWEN38_NATIVE_XL_OUTPUT_TYPE_MANIFEST_SHA256:
+        # UD-U1: the variant exception is bound to the ACTUAL artifact, not to
+        # the claim. Recompute the canonical output-type manifest from the
+        # file's own tensors (same canonical form as
+        # scripts/qwen38_mixed_quant_plan.py) and require the claim to match
+        # reality AND reality to match the certified native-XL manifest. A
+        # foreign artifact that merely stamps the variant metadata and the
+        # pinned digest (e.g. a UD file whose draft qtypes coincide with the
+        # expected map) is refused here.
+        actual_manifest = hashlib.sha256(
+            "\n".join(
+                f"{tensor.name}={tensor.ggml_type_name}"
+                for tensor in sorted(info.tensors, key=lambda tensor: tensor.name)
+            ).encode("utf-8")
+        ).hexdigest()
+        if manifest_sha256 != actual_manifest:
             dtype_errors.append(
-                "hipengine.quant.output_type_manifest_sha256: expected "
-                f"{QWEN38_NATIVE_XL_OUTPUT_TYPE_MANIFEST_SHA256}, got "
-                f"{manifest_sha256 or '<missing>'}"
+                "hipengine.quant.output_type_manifest_sha256 does not match the "
+                f"actual tensor type manifest: recomputed {actual_manifest}, "
+                f"claimed {manifest_sha256 or '<missing>'}"
             )
-    for slot, expected in _expected_qtypes(
+        if actual_manifest != QWEN38_NATIVE_XL_OUTPUT_TYPE_MANIFEST_SHA256:
+            dtype_errors.append(
+                "actual output-type manifest is not the certified native-XL "
+                f"manifest: expected {QWEN38_NATIVE_XL_OUTPUT_TYPE_MANIFEST_SHA256}, "
+                f"recomputed {actual_manifest}"
+            )
+    expected_qtypes = _expected_qtypes(
         config,
         file_type_name=info.file_type_name,
         quant_variant=quant_variant,
-    ).items():
+    )
+    if pinned_qtypes is not None:
+        # U6: an artifact-pinned draft dtype manifest.  The caller resolves it
+        # from the *admitted artifact identity* (an admission preset bound to a
+        # role-manifest fingerprint), never from file metadata and never from a
+        # caller-supplied variant, so a foreign file that merely coincides with
+        # the same qtypes cannot claim it.  The pin must cover exactly the
+        # validated slots: a partial pin would silently fall back to the plain
+        # control's expectation for the rest of the draft block.
+        unknown = sorted(set(pinned_qtypes) - set(expected_qtypes))
+        uncovered = sorted(set(expected_qtypes) - set(pinned_qtypes))
+        if unknown or uncovered:
+            dtype_errors.append(
+                "pinned draft dtype manifest must cover exactly the validated "
+                f"slots: unknown={unknown}, missing={uncovered}"
+            )
+        expected_qtypes = {
+            **expected_qtypes,
+            **{slot: qtype for slot, qtype in pinned_qtypes.items() if slot in expected_qtypes},
+        }
+    for slot, expected in expected_qtypes.items():
         tensor = actual.get(slot_names[slot])
         if tensor is not None and int(tensor.ggml_type) != int(expected):
             dtype_errors.append(
@@ -313,8 +358,9 @@ def build_qwen35_gguf_nextn_tensor_map(
     info: GGUFModelInfo,
     *,
     strict: bool = True,
+    pinned_qtypes: Mapping[str, GGMLQuantizationType] | None = None,
 ) -> Qwen35GGUFNextNMap:
-    validation = validate_qwen35_gguf_nextn_tensor_map(info)
+    validation = validate_qwen35_gguf_nextn_tensor_map(info, pinned_qtypes=pinned_qtypes)
     if strict:
         validation.raise_for_errors()
     actual = {tensor.name: tensor for tensor in info.tensors}

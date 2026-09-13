@@ -1,0 +1,464 @@
+{
+  "schema": 1,
+  "date": "2026-09-12",
+  "kind": "correctness_gate",
+  "performance_claim": false,
+  "plan": "docs/UD-GFX1151-OPTIMIZE.md",
+  "phase": "Phase 4 candidate A: rows 2-4 local32 IQ verifier sibling",
+  "host": {
+    "device_index": 1,
+    "device_name": "AMD Radeon RX 7900 XTX",
+    "backend": "hip_gfx1100",
+    "arch": "gfx1100",
+    "note": "physical GPU1 only; GPU0 (W7900) untouched"
+  },
+  "protocol": {
+    "tool": "scripts/ud_mtp_ar_verify_numerics_gate.py",
+    "teacher": "production single-row AR route (session.step, return_logits)",
+    "candidate": "production native target block (device accept/commit, bulk_attention_mode=native, remaining_decode=budget)",
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl (10) + benchmarks/prompts/gdn-prefill-category-heldouts.jsonl (8)",
+    "prompt_tokens": [
+      64,
+      512
+    ],
+    "budgets": [
+      1,
+      2,
+      3
+    ],
+    "repeat_runs": 2,
+    "envelope": {
+      "mean": 0.001,
+      "p95": 0.005,
+      "p99": 0.02,
+      "max": 0.05
+    },
+    "top1_overall": 0.99,
+    "top1_per_scope": 0.97,
+    "before": "the Phase 3 artifact, taken before the verifier bound the dense-IQ execution owner"
+  },
+  "arms": {
+    "KM-64": {
+      "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+      "prompt_tokens": 64,
+      "rows": 162,
+      "deterministic": true,
+      "screen": {
+        "checks": {
+          "mean_kl": true,
+          "p95_kl": true,
+          "p99_kl": true,
+          "max_kl": true,
+          "top1_overall": true,
+          "top1_per_scope": true
+        },
+        "passed": true
+      },
+      "top1_agreement": 1.0,
+      "top1_by_scope": {
+        "code": {
+          "rows": 54,
+          "agreement": 1.0
+        },
+        "general_en": {
+          "rows": 36,
+          "agreement": 1.0
+        },
+        "general_ja": {
+          "rows": 36,
+          "agreement": 1.0
+        },
+        "mixed_ja_en": {
+          "rows": 36,
+          "agreement": 1.0
+        }
+      },
+      "kl_by_budget": {
+        "1": {
+          "rows": 36,
+          "mean": 3.3763659163407764e-05,
+          "max": 0.00022811105746648353
+        },
+        "2": {
+          "rows": 54,
+          "mean": 3.3376619000929466e-05,
+          "max": 0.00022811105746648353
+        },
+        "3": {
+          "rows": 72,
+          "mean": 3.680596793799366e-05,
+          "max": 0.00029988316261982725
+        }
+      },
+      "after": {
+        "kl_mean": 3.4986783009064285e-05,
+        "kl_p95": 0.00016958210187115207,
+        "kl_p99": 0.00022811105746648353,
+        "kl_max": 0.00029988316261982725
+      },
+      "before": {
+        "kl_mean": 3.445529651819754e-05,
+        "kl_p95": 0.00020319760256222637,
+        "kl_p99": 0.00025602689674705467,
+        "kl_max": 0.00034753386512826896
+      },
+      "delta_pct": {
+        "kl_mean": 1.5425393033144768,
+        "kl_p95": -16.543256547911298,
+        "kl_p99": -10.903479140377575,
+        "kl_max": -13.711096180757703
+      }
+    },
+    "KM-512": {
+      "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+      "prompt_tokens": 512,
+      "rows": 162,
+      "deterministic": true,
+      "screen": {
+        "checks": {
+          "mean_kl": true,
+          "p95_kl": true,
+          "p99_kl": true,
+          "max_kl": true,
+          "top1_overall": true,
+          "top1_per_scope": true
+        },
+        "passed": true
+      },
+      "top1_agreement": 1.0,
+      "top1_by_scope": {
+        "code": {
+          "rows": 54,
+          "agreement": 1.0
+        },
+        "general_en": {
+          "rows": 36,
+          "agreement": 1.0
+        },
+        "general_ja": {
+          "rows": 36,
+          "agreement": 1.0
+        },
+        "mixed_ja_en": {
+          "rows": 36,
+          "agreement": 1.0
+        }
+      },
+      "kl_by_budget": {
+        "1": {
+          "rows": 36,
+          "mean": 1.285304276110898e-05,
+          "max": 0.00016078039558851026
+        },
+        "2": {
+          "rows": 54,
+          "mean": 2.124659688940437e-05,
+          "max": 0.0004341159594029189
+        },
+        "3": {
+          "rows": 72,
+          "mean": 1.8686133401168052e-05,
+          "max": 0.0004341159594029189
+        }
+      },
+      "after": {
+        "kl_mean": 1.824337886612259e-05,
+        "kl_p95": 8.366344730553955e-05,
+        "kl_p99": 0.0002673812654761259,
+        "kl_max": 0.0004341159594029189
+      },
+      "before": {
+        "kl_mean": 3.509611678012856e-05,
+        "kl_p95": 0.0002458006126001231,
+        "kl_p99": 0.00043917473307311796,
+        "kl_max": 0.0007002887779799689
+      },
+      "delta_pct": {
+        "kl_mean": -48.01881079774615,
+        "kl_p95": -65.96288088116114,
+        "kl_p99": -39.11733864898604,
+        "kl_max": -38.00900813302246
+      }
+    },
+    "KS-64": {
+      "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf",
+      "prompt_tokens": 64,
+      "rows": 162,
+      "deterministic": true,
+      "screen": {
+        "checks": {
+          "mean_kl": true,
+          "p95_kl": true,
+          "p99_kl": true,
+          "max_kl": true,
+          "top1_overall": true,
+          "top1_per_scope": true
+        },
+        "passed": true
+      },
+      "top1_agreement": 1.0,
+      "top1_by_scope": {
+        "code": {
+          "rows": 54,
+          "agreement": 1.0
+        },
+        "general_en": {
+          "rows": 36,
+          "agreement": 1.0
+        },
+        "general_ja": {
+          "rows": 36,
+          "agreement": 1.0
+        },
+        "mixed_ja_en": {
+          "rows": 36,
+          "agreement": 1.0
+        }
+      },
+      "kl_by_budget": {
+        "1": {
+          "rows": 36,
+          "mean": 4.28309374102951e-05,
+          "max": 0.0003764282870898504
+        },
+        "2": {
+          "rows": 54,
+          "mean": 4.306231124629363e-05,
+          "max": 0.0003764282870898504
+        },
+        "3": {
+          "rows": 72,
+          "mean": 4.1480606877502254e-05,
+          "max": 0.0003764282870898504
+        }
+      },
+      "after": {
+        "kl_mean": 4.230791511883112e-05,
+        "kl_p95": 0.0002636637848926801,
+        "kl_p99": 0.0003764282870898504,
+        "kl_max": 0.0003764282870898504
+      },
+      "before": {
+        "kl_mean": 3.0559893825852e-05,
+        "kl_p95": 0.0001311838583111999,
+        "kl_p99": 0.0002598182843931018,
+        "kl_max": 0.0006979716486436704
+      },
+      "delta_pct": {
+        "kl_mean": 38.44261161352903,
+        "kl_p95": 100.98797846546464,
+        "kl_p99": 44.88136890332134,
+        "kl_max": -46.06825537665568
+      }
+    },
+    "KS-512": {
+      "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf",
+      "prompt_tokens": 512,
+      "rows": 162,
+      "deterministic": true,
+      "screen": {
+        "checks": {
+          "mean_kl": true,
+          "p95_kl": true,
+          "p99_kl": true,
+          "max_kl": true,
+          "top1_overall": true,
+          "top1_per_scope": true
+        },
+        "passed": true
+      },
+      "top1_agreement": 1.0,
+      "top1_by_scope": {
+        "code": {
+          "rows": 54,
+          "agreement": 1.0
+        },
+        "general_en": {
+          "rows": 36,
+          "agreement": 1.0
+        },
+        "general_ja": {
+          "rows": 36,
+          "agreement": 1.0
+        },
+        "mixed_ja_en": {
+          "rows": 36,
+          "agreement": 1.0
+        }
+      },
+      "kl_by_budget": {
+        "1": {
+          "rows": 36,
+          "mean": 1.1273592601790508e-05,
+          "max": 0.00018595817022052969
+        },
+        "2": {
+          "rows": 54,
+          "mean": 1.2751580212876192e-05,
+          "max": 0.00018595817022052969
+        },
+        "3": {
+          "rows": 72,
+          "mean": 1.8596512752754104e-05,
+          "max": 0.00029349908113794534
+        }
+      },
+      "after": {
+        "kl_mean": 1.5020886317025114e-05,
+        "kl_p95": 9.61485290006624e-05,
+        "kl_p99": 0.00019545491243377252,
+        "kl_max": 0.00029349908113794534
+      },
+      "before": {
+        "kl_mean": 1.0264501430710349e-05,
+        "kl_p95": 6.645526999900682e-05,
+        "kl_p99": 8.268847495319231e-05,
+        "kl_max": 0.0001069187520156235
+      },
+      "delta_pct": {
+        "kl_mean": 46.33819692483205,
+        "kl_p95": 44.68157153239967,
+        "kl_p99": 136.37503599433197,
+        "kl_max": 174.50664696783758
+      }
+    }
+  },
+  "kernel_trace": [
+    {
+      "kernel": "void (anonymous namespace)::gguf_iq4_xs_local32_gemv_kernel<2, 1>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+      "launches": 1610,
+      "median_ns": 97121
+    },
+    {
+      "kernel": "void (anonymous namespace)::gguf_iq4_xs_local32_gemv_kernel<2, 2>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+      "launches": 150,
+      "median_ns": 101042
+    },
+    {
+      "kernel": "void (anonymous namespace)::gguf_iq4_xs_local32_gemv_kernel<2, 3>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+      "launches": 150,
+      "median_ns": 107842
+    },
+    {
+      "kernel": "void (anonymous namespace)::gguf_iq4_xs_local32_gemv_kernel<2, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+      "launches": 150,
+      "median_ns": 116362
+    },
+    {
+      "kernel": "void (anonymous namespace)::gguf_iq4_xs_local32_gemv_kernel<4, 1>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+      "launches": 1932,
+      "median_ns": 87721
+    },
+    {
+      "kernel": "void (anonymous namespace)::gguf_iq4_xs_local32_gemv_kernel<4, 2>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+      "launches": 84,
+      "median_ns": 102602
+    },
+    {
+      "kernel": "void (anonymous namespace)::gguf_iq4_xs_local32_gemv_kernel<4, 3>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+      "launches": 84,
+      "median_ns": 110001
+    },
+    {
+      "kernel": "void (anonymous namespace)::gguf_iq4_xs_local32_gemv_kernel<4, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+      "launches": 84,
+      "median_ns": 116201
+    },
+    {
+      "kernel": "void (anonymous namespace)::gguf_iq_dense_strict_kernel<2, true, 8, 1>(unsigned short const*, unsigned char const*, void*, long, long, long)",
+      "launches": 184,
+      "median_ns": 267444
+    },
+    {
+      "kernel": "void (anonymous namespace)::gguf_iq_dense_strict_kernel<2, true, 8, 2>(unsigned short const*, unsigned char const*, void*, long, long, long)",
+      "launches": 16,
+      "median_ns": 420965
+    },
+    {
+      "kernel": "void (anonymous namespace)::gguf_iq_dense_strict_kernel<2, true, 8, 4>(unsigned short const*, unsigned char const*, void*, long, long, long)",
+      "launches": 8,
+      "median_ns": 404446
+    },
+    {
+      "kernel": "void (anonymous namespace)::gguf_iq_dense_strict_kernel<3, true, 8, 1>(unsigned short const*, unsigned char const*, void*, long, long, long)",
+      "launches": 322,
+      "median_ns": 250604
+    },
+    {
+      "kernel": "void (anonymous namespace)::gguf_iq_dense_strict_kernel<3, true, 8, 2>(unsigned short const*, unsigned char const*, void*, long, long, long)",
+      "launches": 28,
+      "median_ns": 412805
+    },
+    {
+      "kernel": "void (anonymous namespace)::gguf_iq_dense_strict_kernel<3, true, 8, 4>(unsigned short const*, unsigned char const*, void*, long, long, long)",
+      "launches": 14,
+      "median_ns": 274923
+    },
+    {
+      "kernel": "void (anonymous namespace)::gguf_iq_dense_strict_kernel<3, true, 8, 8>(unsigned short const*, unsigned char const*, void*, long, long, long)",
+      "launches": 10,
+      "median_ns": 4038053
+    },
+    {
+      "kernel": "void (anonymous namespace)::q4_k_t16_dense_single_local32_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+      "launches": 4738,
+      "median_ns": 42681
+    },
+    {
+      "kernel": "void (anonymous namespace)::q5_k_t16_dense_single_local32_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+      "launches": 4692,
+      "median_ns": 45721
+    },
+    {
+      "kernel": "void gguf_iq4_nl_local32_gemv_kernel<2, 1>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+      "launches": 184,
+      "median_ns": 105641
+    },
+    {
+      "kernel": "void gguf_iq4_nl_local32_gemv_kernel<2, 2>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+      "launches": 8,
+      "median_ns": 103241
+    },
+    {
+      "kernel": "void gguf_iq4_nl_local32_gemv_kernel<2, 3>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+      "launches": 8,
+      "median_ns": 107402
+    },
+    {
+      "kernel": "void gguf_iq4_nl_local32_gemv_kernel<2, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+      "launches": 8,
+      "median_ns": 119002
+    },
+    {
+      "kernel": "void gguf_iq4_nl_local32_gemv_kernel<4, 1>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+      "launches": 138,
+      "median_ns": 87281
+    },
+    {
+      "kernel": "void gguf_iq4_nl_local32_gemv_kernel<4, 2>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+      "launches": 6,
+      "median_ns": 193323
+    },
+    {
+      "kernel": "void gguf_iq4_nl_local32_gemv_kernel<4, 3>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+      "launches": 6,
+      "median_ns": 218723
+    },
+    {
+      "kernel": "void gguf_iq4_nl_local32_gemv_kernel<4, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+      "launches": 6,
+      "median_ns": 234724
+    }
+  ],
+  "findings": [
+    "The verifier now reaches the rows 2-4 local32 sibling: the trace shows gguf_iq4_xs_local32_gemv_kernel<2,2>, <2,3>, <2,4>, <4,2>, <4,3> in the verifier path, and the strict gguf_iq_dense_strict_kernel is left at rows 1.",
+    "Binding the dense-IQ execution owner in the block verifier was necessary: the verifier's raw-IQ rows 2-4 arrive under the prefill_bf16_bf16_out parent variant, and without the binding every raw-IQ projection kept the strict per-row GEMV.",
+    "All four arms still pass the complete section-6.1 screen with at least 24x margin on the binding mean limit and 100% top-1 overall and per category, with two bit-identical repeats.",
+    "The residual did not collapse. It is dominated by the t16 decode-versus-rowtile accumulation order (Q4_K 27.4% + Q5_K 25.7% + Q6_K 8.1% of rank-2 MACs), not by the IQ owner, so the IQ-owner mismatch was a smaller share of the Phase 3 residual than the Phase 3 note implied."
+  ],
+  "limitations": [
+    "Four arms, budgets B1-B3, contexts 64 and 512. c2/c4/c8, contexts above 512, Q8 alpha/beta transitions, and sampling remain open (unchanged from Phase 3).",
+    "The rows 5-8 verifier is deliberately outside this binding: the verifier context is entered only for row counts a verifier policy declares, so the dense-IQ prefill policy (min_rows 8) cannot be reached through it.",
+    "Kernel-level rates for the sibling are in 2026-09-12-ud-gfx1100-phase4-local32-rows-headroom.json; the end-to-end effect is in the paired artifact."
+  ]
+}

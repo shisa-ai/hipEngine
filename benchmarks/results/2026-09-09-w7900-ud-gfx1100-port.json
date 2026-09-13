@@ -1,0 +1,91 @@
+{
+ "schema": 1,
+ "date": "2026-09-09",
+ "status": "retained",
+ "host": "w7900-desktop",
+ "hardware": "AMD Radeon Pro W7900 (gfx1100), GPU0; host shared with a concurrent GPU1 job during the pre-port baseline only",
+ "backend": "hip_gfx1100",
+ "purpose": "UD route-plan item F: port the dense-IQ W4A16 prefill policy and the item-2 Q5 T16 dense role coverage to gfx1100, then measure the UD vs plain Q4_K_M/S comparison on the W7900 under the published protocol.",
+ "changes": {
+  "hipengine/kernels/hip_gfx1100/__init__.py": [
+   "GGUF_IQ_DENSE_PREFILL_POLICY added (4-quant W4A16 set, mirrors the gfx1151 default)",
+   "GGUF_DENSE_Q5_T16_H5120 = True (item-2 Q5 dense role coverage port)"
+  ]
+ },
+ "commands": {
+  "common": "HIP_VISIBLE_DEVICES=0 ... scripts/qwen35_readme_sweep.py --engine gguf --backend hip_gfx1100 --workloads 512/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/ud-hipcc-version.txt",
+  "ud_km": "--model /models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf --quant gguf_ud_q4_k_m",
+  "ud_ks": "--model /models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf --quant gguf_ud_q4_k_s",
+  "plain_km": "--model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m",
+  "plain_ks": "--model /models/gguf/Qwen3.8-27B-Q4_K_S.gguf --quant gguf_q4_k_s"
+ },
+ "measurements": {
+  "before_port_ud_km": {
+   "prefill_tok_s_median": 68.12,
+   "decode_tok_s_median": 3.73,
+   "note": "contended run (concurrent GPU1 job); clean census showed prefill 137.6 / decode 15.52 pre-Q5T16, so the Q5T16 deltas below use the clean pre-state 137.6/15.52"
+  },
+  "ud_km": {
+   "prefill_tok_s_median": 413.27,
+   "decode_tok_s_median": 16.5,
+   "tracked_peak_gib": 15.97
+  },
+  "ud_ks": {
+   "prefill_tok_s_median": 343.46,
+   "decode_tok_s_median": 14.81,
+   "tracked_peak_gib": 15.28
+  },
+  "plain_km": {
+   "prefill_tok_s_median": 856.23,
+   "decode_tok_s_median": 28.57,
+   "tracked_peak_gib": 16.55
+  },
+  "plain_ks": {
+   "prefill_tok_s_median": 460.77,
+   "decode_tok_s_median": 28.54,
+   "tracked_peak_gib": 16.18
+  },
+  "ratios_after_port": {
+   "ud_km_prefill_vs_plain_km": 0.483,
+   "ud_km_decode_vs_plain_km": 0.578,
+   "ud_ks_prefill_vs_plain_ks": 0.745,
+   "ud_ks_decode_vs_plain_ks": 0.519
+  }
+ },
+ "route_ab_8layers": {
+  "noroute_prefill": 80.2,
+  "route_prefill": 136.8,
+  "note": "W4A16 policy A/B at max-layers=8; the dense-IQ route engages on gfx1100"
+ },
+ "prefill_census_after_port": {
+  "workload": "512/8",
+  "top_owners_gpu_time": [
+   [
+    "gguf_iq_prefill_wmma_kernel<0> (IQ4_XS W4A16)",
+    "26.1%"
+   ],
+   [
+    "gguf_q5_t16_dense_wmma_prefill_bf16_kernel<4,2> (Q5 T16)",
+    "16.4%"
+   ],
+   [
+    "gguf_iq_dense_strict_kernel<0> (IQ4_XS decode GEMV)",
+    "13.9%"
+   ],
+   [
+    "gguf_iq_dense_strict_kernel<3> (Q3_K prefill, unrouted by the mean gate)",
+    "10.2%"
+   ],
+   [
+    "gguf_q4_t16_dense_wmma_prefill_shared_b (Q4 T16)",
+    "8.1%"
+   ]
+  ],
+  "note": "rocprofv3 kernel trace /tmp/ud-census2; materialization plan now identical between hip_gfx1100 and hip_gfx1151 (61.3% optimized bytes on K_M)"
+ },
+ "limitations": [
+  "Gross rates from a desktop host; no power/thermal caveat needed (unlike the zbook laptop numbers).",
+  "Plain arms were measured while the host was contended by a concurrent GPU1 job; the plain arm was verified contention-insensitive (868.7 clean vs 856.2 contended prefill, 26.58 vs 28.57 decode).",
+  "The pre-port UD baseline was contended; use the clean census numbers (137.6/15.52) for pre/post deltas."
+ ]
+}

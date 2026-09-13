@@ -1,0 +1,762 @@
+{
+ "unit": "ud-local32-column-unroll",
+ "candidate": "remove the dead per-column bounds checks in gguf_iq4_xs_local32_gemv_kernel so the eight-column loop fully unrolls and the compiler can hoist all eight 136-byte column records",
+ "verdict": "rejected",
+ "reason": "the per-column branches are load-bearing: they bound each column's live range, and forcing the full unroll raises register pressure instead of memory-level parallelism",
+ "device": {
+  "device_index": 1,
+  "expect_device": "7900 XTX",
+  "hardware": "AMD Radeon RX 7900 XTX (gfx1100)"
+ },
+ "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+ "quant": "IQ4_XS",
+ "command": "scripts/gguf_iq_local32_rows_headroom.py --model /models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf --quant IQ4_XS --reps 3",
+ "rounds": 5,
+ "runs": {
+  "baseline": [
+   {
+    "tensor": "blk.0.ffn_down.weight",
+    "n": 5120,
+    "k": 17408,
+    "rows": [
+     {
+      "rows": 1,
+      "gemv_ms": 0.4031251495083173,
+      "local32_ms": 0.1286951204140981,
+      "sibling_ms": null,
+      "headroom": 3.13240430725885,
+      "sibling_headroom": null,
+      "sibling_vs_local32": null,
+      "max_rel": 6.220143312101911e-06,
+      "corr": 0.9999999999985573,
+      "sibling_bit_exact": null,
+      "sibling_max_rel": null
+     },
+     {
+      "rows": 2,
+      "gemv_ms": 0.30950115372737247,
+      "local32_ms": 0.18933570633331934,
+      "sibling_ms": 0.11309453596671422,
+      "headroom": 1.634668704182537,
+      "sibling_headroom": 2.7366587703093304,
+      "sibling_vs_local32": 1.6741366390065413,
+      "max_rel": 4.810652709359606e-06,
+      "corr": 0.9999999999987553,
+      "sibling_bit_exact": true,
+      "sibling_max_rel": 4.810652709359606e-06
+     },
+     {
+      "rows": 4,
+      "gemv_ms": 0.3083944320678711,
+      "local32_ms": 0.286053866147995,
+      "sibling_ms": 0.11904165148735046,
+      "headroom": 1.0780991574094574,
+      "sibling_headroom": 2.590643091847911,
+      "sibling_vs_local32": 2.402972930683774,
+      "max_rel": 1.9242610837438424e-05,
+      "corr": 0.9999999999937426,
+      "sibling_bit_exact": true,
+      "sibling_max_rel": 1.9242610837438424e-05
+     }
+    ]
+   },
+   {
+    "tensor": "blk.0.ffn_gate.weight",
+    "n": 17408,
+    "k": 5120,
+    "rows": [
+     {
+      "rows": 1,
+      "gemv_ms": 0.2506099020441373,
+      "local32_ms": 0.10111493368943532,
+      "sibling_ms": null,
+      "headroom": 2.4784657705840094,
+      "sibling_headroom": null,
+      "sibling_vs_local32": null,
+      "max_rel": 2.417233910891089e-06,
+      "corr": 0.9999999999999948,
+      "sibling_bit_exact": null,
+      "sibling_max_rel": null
+     },
+     {
+      "rows": 2,
+      "gemv_ms": 0.23744006951649985,
+      "local32_ms": 0.16579528649648032,
+      "sibling_ms": 0.09215126434961955,
+      "headroom": 1.4321279846610144,
+      "sibling_headroom": 2.5766338768360058,
+      "sibling_vs_local32": 1.799164533081795,
+      "max_rel": 1.9337871287128713e-05,
+      "corr": 0.9999999999998401,
+      "sibling_bit_exact": true,
+      "sibling_max_rel": 1.9337871287128713e-05
+     },
+     {
+      "rows": 4,
+      "gemv_ms": 0.2516905466715495,
+      "local32_ms": 0.26653024057547253,
+      "sibling_ms": 0.10384464015563329,
+      "headroom": 0.9443226634550651,
+      "sibling_headroom": 2.42372207457542,
+      "sibling_vs_local32": 2.566624913678937,
+      "max_rel": 0.0012376237623762376,
+      "corr": 0.9999999996717189,
+      "sibling_bit_exact": true,
+      "sibling_max_rel": 0.0012376237623762376
+     }
+    ]
+   },
+   {
+    "tensor": "blk.11.attn_q.weight",
+    "n": 12288,
+    "k": 5120,
+    "rows": [
+     {
+      "rows": 1,
+      "gemv_ms": 0.14290524025758108,
+      "local32_ms": 0.05294724057118098,
+      "sibling_ms": null,
+      "headroom": 2.6990120488991822,
+      "sibling_headroom": null,
+      "sibling_vs_local32": null,
+      "max_rel": 9.245562130177515e-05,
+      "corr": 0.9999999999056068,
+      "sibling_bit_exact": null,
+      "sibling_max_rel": null
+     },
+     {
+      "rows": 2,
+      "gemv_ms": 0.14217539379994074,
+      "local32_ms": 0.09781153251727422,
+      "sibling_ms": 0.060824366907278694,
+      "headroom": 1.4535647294436527,
+      "sibling_headroom": 2.3374742891557654,
+      "sibling_vs_local32": 1.6080978313572774,
+      "max_rel": 9.245562130177515e-05,
+      "corr": 0.999999999953956,
+      "sibling_bit_exact": true,
+      "sibling_max_rel": 9.245562130177515e-05
+     },
+     {
+      "rows": 4,
+      "gemv_ms": 0.16742230703433356,
+      "local32_ms": 0.17116560290257135,
+      "sibling_ms": 0.07905438542366028,
+      "headroom": 0.9781305600847355,
+      "sibling_headroom": 2.1178117587923913,
+      "sibling_vs_local32": 2.1651626533465276,
+      "max_rel": 9.245562130177515e-05,
+      "corr": 0.9999999999528754,
+      "sibling_bit_exact": true,
+      "sibling_max_rel": 9.245562130177515e-05
+     }
+    ]
+   },
+   {
+    "tensor": "blk.36.attn_qkv.weight",
+    "n": 10240,
+    "k": 5120,
+    "rows": [
+     {
+      "rows": 1,
+      "gemv_ms": 0.11986494064331055,
+      "local32_ms": 0.046484172344207764,
+      "sibling_ms": null,
+      "headroom": 2.5786183683282577,
+      "sibling_headroom": null,
+      "sibling_vs_local32": null,
+      "max_rel": 0.0002281021897810219,
+      "corr": 0.999999999945946,
+      "sibling_bit_exact": null,
+      "sibling_max_rel": null
+     },
+     {
+      "rows": 2,
+      "gemv_ms": 0.11957840373118718,
+      "local32_ms": 0.08513468007246654,
+      "sibling_ms": 0.056797328094641365,
+      "headroom": 1.404579234095931,
+      "sibling_headroom": 2.1053526238405746,
+      "sibling_vs_local32": 1.4989205113769903,
+      "max_rel": 0.0004562043795620438,
+      "corr": 0.9999999998671901,
+      "sibling_bit_exact": true,
+      "sibling_max_rel": 0.0004562043795620438
+     },
+     {
+      "rows": 4,
+      "gemv_ms": 0.14894207318623862,
+      "local32_ms": 0.16323539117972055,
+      "sibling_ms": 0.06817436466614406,
+      "headroom": 0.9124373832771036,
+      "sibling_headroom": 2.1847225700689874,
+      "sibling_vs_local32": 2.3943808201088315,
+      "max_rel": 0.0004562043795620438,
+      "corr": 0.9999999999202062,
+      "sibling_bit_exact": true,
+      "sibling_max_rel": 0.0004562043795620438
+     }
+    ]
+   }
+  ],
+  "unroll_run1": [
+   {
+    "tensor": "blk.0.ffn_down.weight",
+    "n": 5120,
+    "k": 17408,
+    "rows": [
+     {
+      "rows": 1,
+      "gemv_ms": 0.40250861396392185,
+      "local32_ms": 0.15518193443616232,
+      "sibling_ms": null,
+      "headroom": 2.5937852587441683,
+      "sibling_headroom": null,
+      "sibling_vs_local32": null,
+      "max_rel": 6.220143312101911e-06,
+      "corr": 0.9999999999985573,
+      "sibling_bit_exact": null,
+      "sibling_max_rel": null
+     },
+     {
+      "rows": 2,
+      "gemv_ms": 0.3020772710442543,
+      "local32_ms": 0.22619652251402536,
+      "sibling_ms": 0.11614182343085606,
+      "headroom": 1.3354638156540357,
+      "sibling_headroom": 2.6009344620294614,
+      "sibling_vs_local32": 1.9475888687823928,
+      "max_rel": 4.810652709359606e-06,
+      "corr": 0.9999999999987553,
+      "sibling_bit_exact": true,
+      "sibling_max_rel": 4.810652709359606e-06
+     },
+     {
+      "rows": 4,
+      "gemv_ms": 0.300083930293719,
+      "local32_ms": 0.36512501537799835,
+      "sibling_ms": 0.12495182454586029,
+      "headroom": 0.8218662585554564,
+      "sibling_headroom": 2.4015970265690765,
+      "sibling_vs_local32": 2.922126321124577,
+      "max_rel": 1.9242610837438424e-05,
+      "corr": 0.9999999999937426,
+      "sibling_bit_exact": true,
+      "sibling_max_rel": 1.9242610837438424e-05
+     }
+    ]
+   },
+   {
+    "tensor": "blk.0.ffn_gate.weight",
+    "n": 17408,
+    "k": 5120,
+    "rows": [
+     {
+      "rows": 1,
+      "gemv_ms": 0.1964094117283821,
+      "local32_ms": 0.11152494698762894,
+      "sibling_ms": null,
+      "headroom": 1.7611253538651679,
+      "sibling_headroom": null,
+      "sibling_vs_local32": null,
+      "max_rel": 2.417233910891089e-06,
+      "corr": 0.9999999999999948,
+      "sibling_bit_exact": null,
+      "sibling_max_rel": null
+     },
+     {
+      "rows": 2,
+      "gemv_ms": 0.1887862260142962,
+      "local32_ms": 0.18387256811062494,
+      "sibling_ms": 0.10273139923810959,
+      "headroom": 1.0267231700419555,
+      "sibling_headroom": 1.8376682047981239,
+      "sibling_vs_local32": 1.7898380580259337,
+      "max_rel": 1.9337871287128713e-05,
+      "corr": 0.9999999999998401,
+      "sibling_bit_exact": true,
+      "sibling_max_rel": 1.9337871287128713e-05
+     },
+     {
+      "rows": 4,
+      "gemv_ms": 0.22891288002332053,
+      "local32_ms": 0.3948320324222247,
+      "sibling_ms": 0.13207178562879562,
+      "headroom": 0.5797728178713882,
+      "sibling_headroom": 1.7332458930078298,
+      "sibling_vs_local32": 2.9895259653106367,
+      "max_rel": 0.0012376237623762376,
+      "corr": 0.9999999996717189,
+      "sibling_bit_exact": true,
+      "sibling_max_rel": 0.0012376237623762376
+     }
+    ]
+   },
+   {
+    "tensor": "blk.11.attn_q.weight",
+    "n": 12288,
+    "k": 5120,
+    "rows": [
+     {
+      "rows": 1,
+      "gemv_ms": 0.12850482016801834,
+      "local32_ms": 0.060344114899635315,
+      "sibling_ms": null,
+      "headroom": 2.1295335987900113,
+      "sibling_headroom": null,
+      "sibling_vs_local32": null,
+      "max_rel": 9.245562130177515e-05,
+      "corr": 0.9999999999056068,
+      "sibling_bit_exact": null,
+      "sibling_max_rel": null
+     },
+     {
+      "rows": 2,
+      "gemv_ms": 0.13065182914336523,
+      "local32_ms": 0.1119679460922877,
+      "sibling_ms": 0.060937367379665375,
+      "headroom": 1.166868141313208,
+      "sibling_headroom": 2.144034682846561,
+      "sibling_vs_local32": 1.837426703957859,
+      "max_rel": 9.245562130177515e-05,
+      "corr": 0.999999999953956,
+      "sibling_bit_exact": true,
+      "sibling_max_rel": 9.245562130177515e-05
+     },
+     {
+      "rows": 4,
+      "gemv_ms": 0.16853896280129751,
+      "local32_ms": 0.21268644680579504,
+      "sibling_ms": 0.08659095813830693,
+      "headroom": 0.7924292559891755,
+      "sibling_headroom": 1.9463806201578182,
+      "sibling_vs_local32": 2.456220041659347,
+      "max_rel": 9.245562130177515e-05,
+      "corr": 0.9999999999528754,
+      "sibling_bit_exact": true,
+      "sibling_max_rel": 9.245562130177515e-05
+     }
+    ]
+   },
+   {
+    "tensor": "blk.36.attn_qkv.weight",
+    "n": 10240,
+    "k": 5120,
+    "rows": [
+     {
+      "rows": 1,
+      "gemv_ms": 0.11986152579387029,
+      "local32_ms": 0.0580872098604838,
+      "sibling_ms": null,
+      "headroom": 2.063475351661037,
+      "sibling_headroom": null,
+      "sibling_vs_local32": null,
+      "max_rel": 0.0002281021897810219,
+      "corr": 0.999999999945946,
+      "sibling_bit_exact": null,
+      "sibling_max_rel": null
+     },
+     {
+      "rows": 2,
+      "gemv_ms": 0.12466497719287872,
+      "local32_ms": 0.10971818119287491,
+      "sibling_ms": 0.05669053643941879,
+      "headroom": 1.136228980807918,
+      "sibling_headroom": 2.199043879679979,
+      "sibling_vs_local32": 1.935387951569713,
+      "max_rel": 0.0004562043795620438,
+      "corr": 0.9999999998671901,
+      "sibling_bit_exact": true,
+      "sibling_max_rel": 0.0004562043795620438
+     },
+     {
+      "rows": 4,
+      "gemv_ms": 0.16599241644144058,
+      "local32_ms": 0.20405929535627365,
+      "sibling_ms": 0.08384107301632564,
+      "headroom": 0.8134518751112471,
+      "sibling_headroom": 1.97984604048565,
+      "sibling_vs_local32": 2.433882201347053,
+      "max_rel": 0.0004562043795620438,
+      "corr": 0.9999999999202062,
+      "sibling_bit_exact": true,
+      "sibling_max_rel": 0.0004562043795620438
+     }
+    ]
+   }
+  ],
+  "unroll_run2": [
+   {
+    "tensor": "blk.0.ffn_down.weight",
+    "n": 5120,
+    "k": 17408,
+    "rows": [
+     {
+      "rows": 1,
+      "gemv_ms": 0.3994951645533244,
+      "local32_ms": 0.15365518629550934,
+      "sibling_ms": null,
+      "headroom": 2.599945853991652,
+      "sibling_headroom": null,
+      "sibling_vs_local32": null,
+      "max_rel": 6.220143312101911e-06,
+      "corr": 0.9999999999985573,
+      "sibling_bit_exact": null,
+      "sibling_max_rel": null
+     },
+     {
+      "rows": 2,
+      "gemv_ms": 0.3002605711420377,
+      "local32_ms": 0.22766273468732834,
+      "sibling_ms": 0.12018500516812007,
+      "headroom": 1.3188832663124033,
+      "sibling_headroom": 2.498319742317438,
+      "sibling_vs_local32": 1.8942690427051503,
+      "max_rel": 4.810652709359606e-06,
+      "corr": 0.9999999999987553,
+      "sibling_bit_exact": true,
+      "sibling_max_rel": 4.810652709359606e-06
+     },
+     {
+      "rows": 4,
+      "gemv_ms": 0.3029440219203631,
+      "local32_ms": 0.3562883163491885,
+      "sibling_ms": 0.12379822631676993,
+      "headroom": 0.8502777330016511,
+      "sibling_headroom": 2.4470788551138214,
+      "sibling_vs_local32": 2.8779759367273345,
+      "max_rel": 1.9242610837438424e-05,
+      "corr": 0.9999999999937426,
+      "sibling_bit_exact": true,
+      "sibling_max_rel": 1.9242610837438424e-05
+     }
+    ]
+   },
+   {
+    "tensor": "blk.0.ffn_gate.weight",
+    "n": 17408,
+    "k": 5120,
+    "rows": [
+     {
+      "rows": 1,
+      "gemv_ms": 0.19526947289705276,
+      "local32_ms": 0.1100484902660052,
+      "sibling_ms": null,
+      "headroom": 1.7743948365402789,
+      "sibling_headroom": null,
+      "sibling_vs_local32": null,
+      "max_rel": 2.417233910891089e-06,
+      "corr": 0.9999999999999948,
+      "sibling_bit_exact": null,
+      "sibling_max_rel": null
+     },
+     {
+      "rows": 2,
+      "gemv_ms": 0.18903923531373343,
+      "local32_ms": 0.18744574238856634,
+      "sibling_ms": 0.1037546123067538,
+      "headroom": 1.0085010889277168,
+      "sibling_headroom": 1.8219839206264195,
+      "sibling_vs_local32": 1.8066256354404473,
+      "max_rel": 1.9337871287128713e-05,
+      "corr": 0.9999999999998401,
+      "sibling_bit_exact": true,
+      "sibling_max_rel": 1.9337871287128713e-05
+     },
+     {
+      "rows": 4,
+      "gemv_ms": 0.2377734829982122,
+      "local32_ms": 0.3808482239643733,
+      "sibling_ms": 0.12419838458299637,
+      "headroom": 0.6243260911739341,
+      "sibling_headroom": 1.9144651824301187,
+      "sibling_vs_local32": 3.0664507049998626,
+      "max_rel": 0.0012376237623762376,
+      "corr": 0.9999999996717189,
+      "sibling_bit_exact": true,
+      "sibling_max_rel": 0.0012376237623762376
+     }
+    ]
+   },
+   {
+    "tensor": "blk.11.attn_q.weight",
+    "n": 12288,
+    "k": 5120,
+    "rows": [
+     {
+      "rows": 1,
+      "gemv_ms": 0.1277985672156016,
+      "local32_ms": 0.06194102267424266,
+      "sibling_ms": null,
+      "headroom": 2.063229854755771,
+      "sibling_headroom": null,
+      "sibling_vs_local32": null,
+      "max_rel": 9.245562130177515e-05,
+      "corr": 0.9999999999056068,
+      "sibling_bit_exact": null,
+      "sibling_max_rel": null
+     },
+     {
+      "rows": 2,
+      "gemv_ms": 0.1297052949666977,
+      "local32_ms": 0.1074913889169693,
+      "sibling_ms": 0.05964407076438268,
+      "headroom": 1.2066575404183055,
+      "sibling_headroom": 2.1746553061256355,
+      "sibling_vs_local32": 1.8022141604251354,
+      "max_rel": 9.245562130177515e-05,
+      "corr": 0.999999999953956,
+      "sibling_bit_exact": true,
+      "sibling_max_rel": 9.245562130177515e-05
+     },
+     {
+      "rows": 4,
+      "gemv_ms": 0.17064592490593591,
+      "local32_ms": 0.21968626727660498,
+      "sibling_ms": 0.08699484169483185,
+      "headroom": 0.776771015418443,
+      "sibling_headroom": 1.9615637155193946,
+      "sibling_vs_local32": 2.5252792349141777,
+      "max_rel": 9.245562130177515e-05,
+      "corr": 0.9999999999528754,
+      "sibling_bit_exact": true,
+      "sibling_max_rel": 9.245562130177515e-05
+     }
+    ]
+   },
+   {
+    "tensor": "blk.36.attn_qkv.weight",
+    "n": 10240,
+    "k": 5120,
+    "rows": [
+     {
+      "rows": 1,
+      "gemv_ms": 0.12083817273378372,
+      "local32_ms": 0.05810738851626714,
+      "sibling_ms": null,
+      "headroom": 2.079566399717914,
+      "sibling_headroom": null,
+      "sibling_vs_local32": null,
+      "max_rel": 0.0002281021897810219,
+      "corr": 0.999999999945946,
+      "sibling_bit_exact": null,
+      "sibling_max_rel": null
+     },
+     {
+      "rows": 2,
+      "gemv_ms": 0.1260349527001381,
+      "local32_ms": 0.11216166118780772,
+      "sibling_ms": 0.06113046159346898,
+      "headroom": 1.1236901394416796,
+      "sibling_headroom": 2.061737297818856,
+      "sibling_vs_local32": 1.8347916613767363,
+      "max_rel": 0.0004562043795620438,
+      "corr": 0.9999999998671901,
+      "sibling_bit_exact": true,
+      "sibling_max_rel": 0.0004562043795620438
+     },
+     {
+      "rows": 4,
+      "gemv_ms": 0.15711194525162378,
+      "local32_ms": 0.1966860145330429,
+      "sibling_ms": 0.07507453362147014,
+      "headroom": 0.798795713180864,
+      "sibling_headroom": 2.092746203976314,
+      "sibling_vs_local32": 2.619876608554699,
+      "max_rel": 0.0004562043795620438,
+      "corr": 0.9999999999202062,
+      "sibling_bit_exact": true,
+      "sibling_max_rel": 0.0004562043795620438
+     }
+    ]
+   }
+  ],
+  "reverted": [
+   {
+    "tensor": "blk.0.ffn_down.weight",
+    "n": 5120,
+    "k": 17408,
+    "rows": [
+     {
+      "rows": 1,
+      "gemv_ms": 0.4022888218363126,
+      "local32_ms": 0.13627825925747553,
+      "sibling_ms": null,
+      "headroom": 2.9519662492625,
+      "sibling_headroom": null,
+      "sibling_vs_local32": null,
+      "max_rel": 6.220143312101911e-06,
+      "corr": 0.9999999999985573,
+      "sibling_bit_exact": null,
+      "sibling_max_rel": null
+     },
+     {
+      "rows": 2,
+      "gemv_ms": 0.3125142926971118,
+      "local32_ms": 0.18897621581951776,
+      "sibling_ms": 0.11392838011185329,
+      "headroom": 1.6537228843421194,
+      "sibling_headroom": 2.7430767679685224,
+      "sibling_vs_local32": 1.6587281907632108,
+      "max_rel": 4.810652709359606e-06,
+      "corr": 0.9999999999987553,
+      "sibling_bit_exact": true,
+      "sibling_max_rel": 4.810652709359606e-06
+     },
+     {
+      "rows": 4,
+      "gemv_ms": 0.31473425527413684,
+      "local32_ms": 0.31257420778274536,
+      "sibling_ms": 0.12144166976213455,
+      "headroom": 1.0069105109686236,
+      "sibling_headroom": 2.591649603390671,
+      "sibling_vs_local32": 2.573862895618764,
+      "max_rel": 1.9242610837438424e-05,
+      "corr": 0.9999999999937426,
+      "sibling_bit_exact": true,
+      "sibling_max_rel": 1.9242610837438424e-05
+     }
+    ]
+   },
+   {
+    "tensor": "blk.0.ffn_gate.weight",
+    "n": 17408,
+    "k": 5120,
+    "rows": [
+     {
+      "rows": 1,
+      "gemv_ms": 0.2063428983092308,
+      "local32_ms": 0.07788122942050298,
+      "sibling_ms": null,
+      "headroom": 2.6494560993012404,
+      "sibling_headroom": null,
+      "sibling_vs_local32": null,
+      "max_rel": 2.417233910891089e-06,
+      "corr": 0.9999999999999948,
+      "sibling_bit_exact": null,
+      "sibling_max_rel": null
+     },
+     {
+      "rows": 2,
+      "gemv_ms": 0.20053951690594354,
+      "local32_ms": 0.14427521576484045,
+      "sibling_ms": 0.07857754826545715,
+      "headroom": 1.3899789776284956,
+      "sibling_headroom": 2.552122347066167,
+      "sibling_vs_local32": 1.8360870114888037,
+      "max_rel": 1.9337871287128713e-05,
+      "corr": 0.9999999999998401,
+      "sibling_bit_exact": true,
+      "sibling_max_rel": 1.9337871287128713e-05
+     },
+     {
+      "rows": 4,
+      "gemv_ms": 0.22015285988648733,
+      "local32_ms": 0.25912001729011536,
+      "sibling_ms": 0.10945492734511693,
+      "headroom": 0.8496173402149796,
+      "sibling_headroom": 2.0113563201438542,
+      "sibling_vs_local32": 2.367367313424793,
+      "max_rel": 0.0012376237623762376,
+      "corr": 0.9999999996717189,
+      "sibling_bit_exact": true,
+      "sibling_max_rel": 0.0012376237623762376
+     }
+    ]
+   },
+   {
+    "tensor": "blk.11.attn_q.weight",
+    "n": 12288,
+    "k": 5120,
+    "rows": [
+     {
+      "rows": 1,
+      "gemv_ms": 0.12763186047474542,
+      "local32_ms": 0.05455718686183294,
+      "sibling_ms": null,
+      "headroom": 2.339414251654423,
+      "sibling_headroom": null,
+      "sibling_vs_local32": null,
+      "max_rel": 9.245562130177515e-05,
+      "corr": 0.9999999999056068,
+      "sibling_bit_exact": null,
+      "sibling_max_rel": null
+     },
+     {
+      "rows": 2,
+      "gemv_ms": 0.13001170009374619,
+      "local32_ms": 0.09218479196230571,
+      "sibling_ms": 0.05834735929965973,
+      "headroom": 1.4103378369276776,
+      "sibling_headroom": 2.228236233040702,
+      "sibling_vs_local32": 1.5799308326682628,
+      "max_rel": 9.245562130177515e-05,
+      "corr": 0.999999999953956,
+      "sibling_bit_exact": true,
+      "sibling_max_rel": 9.245562130177515e-05
+     },
+     {
+      "rows": 4,
+      "gemv_ms": 0.1723958800236384,
+      "local32_ms": 0.18671248108148575,
+      "sibling_ms": 0.08286784092585246,
+      "headroom": 0.9233227421384902,
+      "sibling_headroom": 2.0803713249617886,
+      "sibling_vs_local32": 2.253135583061108,
+      "max_rel": 9.245562130177515e-05,
+      "corr": 0.9999999999528754,
+      "sibling_bit_exact": true,
+      "sibling_max_rel": 9.245562130177515e-05
+     }
+    ]
+   },
+   {
+    "tensor": "blk.36.attn_qkv.weight",
+    "n": 10240,
+    "k": 5120,
+    "rows": [
+     {
+      "rows": 1,
+      "gemv_ms": 0.11991150677204132,
+      "local32_ms": 0.04535044233004252,
+      "sibling_ms": null,
+      "headroom": 2.6441088688699654,
+      "sibling_headroom": null,
+      "sibling_vs_local32": null,
+      "max_rel": 0.0002281021897810219,
+      "corr": 0.999999999945946,
+      "sibling_bit_exact": null,
+      "sibling_max_rel": null
+     },
+     {
+      "rows": 2,
+      "gemv_ms": 0.11971841255823772,
+      "local32_ms": 0.07980099568764369,
+      "sibling_ms": 0.055567361414432526,
+      "headroom": 1.5002120152339753,
+      "sibling_headroom": 2.1544735886477278,
+      "sibling_vs_local32": 1.436112740579346,
+      "max_rel": 0.0004562043795620438,
+      "corr": 0.9999999998671901,
+      "sibling_bit_exact": true,
+      "sibling_max_rel": 0.0004562043795620438
+     },
+     {
+      "rows": 4,
+      "gemv_ms": 0.15277881175279617,
+      "local32_ms": 0.16580863545338312,
+      "sibling_ms": 0.07137097418308258,
+      "headroom": 0.9214164951966554,
+      "sibling_headroom": 2.140629485606911,
+      "sibling_vs_local32": 2.3231942305852056,
+      "max_rel": 0.0004562043795620438,
+      "corr": 0.9999999999202062,
+      "sibling_bit_exact": true,
+      "sibling_max_rel": 0.0004562043795620438
+     }
+    ]
+   }
+  ]
+ },
+ "bit_exact_throughout": true
+}

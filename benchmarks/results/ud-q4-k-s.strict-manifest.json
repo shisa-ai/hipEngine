@@ -1,0 +1,1821 @@
+{
+  "artifact": "ud-q4-k-s",
+  "gguf_path": "/models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf",
+  "quant_identity": "gguf_ud_q4_k_s",
+  "scope": {
+    "consumer_modules": [
+      "hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv"
+    ],
+    "coverage_records_in_scope": 297,
+    "coverage_records_named_by_consumer_module": 4,
+    "coverage_records_named_by_registry_key": 293,
+    "coverage_records_total": 327,
+    "ggml_types_present": [
+      "F32",
+      "IQ2_S",
+      "IQ2_XS",
+      "IQ3_S",
+      "IQ3_XXS",
+      "IQ4_NL",
+      "IQ4_XS",
+      "Q3_K",
+      "Q4_K",
+      "Q5_K",
+      "Q6_K",
+      "Q8_0"
+    ],
+    "owner_classes": [
+      "dense",
+      "other",
+      "pack8",
+      "selected"
+    ],
+    "registry_quants": [
+      "bf16",
+      "f32",
+      "gguf_f32_weight",
+      "gguf_iq2_s",
+      "gguf_iq2_xs",
+      "gguf_iq3_s",
+      "gguf_iq3_xxs",
+      "gguf_iq4_nl",
+      "gguf_iq4_xs",
+      "gguf_q3_k",
+      "gguf_q4_k",
+      "gguf_q4_k_qmicro_t16_v1",
+      "gguf_q4_k_t16_v1",
+      "gguf_q4_k_x8_v1",
+      "gguf_q5_k",
+      "gguf_q5_k_qmicro_t16_v1",
+      "gguf_q5_k_t16_v1",
+      "gguf_q5_k_x8_v1",
+      "gguf_q6_k",
+      "gguf_q6_k_t16_qmicro_planar_v1",
+      "gguf_q6_k_t16_v1",
+      "gguf_q6_k_x8_v1",
+      "gguf_q8_0",
+      "gguf_q8_0_t16_v1",
+      "gguf_qwen35",
+      "w4_paro"
+    ],
+    "selections": 117,
+    "source": "artifact GGUF tensor types x CERTIFIED_OPERATION_COVERAGE",
+    "tensors": 866,
+    "variants_verified_registered": 182
+  },
+  "strict_manifest_bundle_sha256": "8e0741e0fbf6f136abbaa842caeec92c2ce501fff6ff0abeb558a959380a284f",
+  "strict_manifests": [
+    {
+      "alternate_output_dtype_owners": {
+        "dense_gemv/rows_1_8_row_local": [
+          "f32_out"
+        ]
+      },
+      "coverage_records": 44,
+      "output_dtype_preference": "_bf16_out",
+      "owner_class": "dense",
+      "registry_quant": "bf16",
+      "strict_manifest": {
+        "backend": "hip_gfx1100",
+        "execution_profile": "strict",
+        "graph_policy": "serial_c1",
+        "kind": "hipengine_execution_profile_manifest",
+        "kv_policy": "paged_bf16",
+        "model": "gguf_ud_q4_k_s",
+        "quant": "gguf_ud_q4_k_s",
+        "schema_version": 1,
+        "selections": [
+          {
+            "evidence_artifact": null,
+            "layer": "dense_gemv",
+            "registry_quant": "bf16",
+            "scope": "prefill_rows",
+            "selected_variant": "out",
+            "strict_fallback_variant": "out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "dense_gemv",
+            "registry_quant": "bf16",
+            "scope": "rows_1_8_row_local",
+            "selected_variant": "out",
+            "strict_fallback_variant": "out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "dense_gemv",
+            "registry_quant": "bf16",
+            "scope": "rows_2_8_native",
+            "selected_variant": "f32_out",
+            "strict_fallback_variant": "f32_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "dense_gemv",
+            "registry_quant": "bf16",
+            "scope": "rows_2_8_native_bf16_ptr",
+            "selected_variant": "out",
+            "strict_fallback_variant": "out"
+          }
+        ]
+      },
+      "strict_manifest_sha256": "25ae9ecbc64414a6ec099a6b6bf4c5f9c6add0eb8b77c18e7834dca52d3c612c"
+    },
+    {
+      "alternate_output_dtype_owners": {},
+      "coverage_records": 4,
+      "output_dtype_preference": "_bf16_out",
+      "owner_class": "other",
+      "registry_quant": "bf16",
+      "strict_manifest": {
+        "backend": "hip_gfx1100",
+        "execution_profile": "strict",
+        "graph_policy": "serial_c1",
+        "kind": "hipengine_execution_profile_manifest",
+        "kv_policy": "paged_bf16",
+        "model": "gguf_ud_q4_k_s",
+        "quant": "gguf_ud_q4_k_s",
+        "schema_version": 1,
+        "selections": [
+          {
+            "evidence_artifact": null,
+            "layer": "router_logits",
+            "registry_quant": "bf16",
+            "scope": "prefill_rows",
+            "selected_variant": "bf16_hidden",
+            "strict_fallback_variant": "bf16_hidden"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "router_logits",
+            "registry_quant": "bf16",
+            "scope": "rows_1_8_row_local",
+            "selected_variant": "bf16_hidden",
+            "strict_fallback_variant": "bf16_hidden"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "router_logits",
+            "registry_quant": "bf16",
+            "scope": "rows_2_8_native",
+            "selected_variant": "bf16_hidden",
+            "strict_fallback_variant": "bf16_hidden"
+          }
+        ]
+      },
+      "strict_manifest_sha256": "56aa6d4eeebbf9c7ca826133e72c2c0d3f8900b77c305db89ecd64b1da6a5a43"
+    },
+    {
+      "alternate_output_dtype_owners": {},
+      "coverage_records": 7,
+      "output_dtype_preference": "_bf16_out",
+      "owner_class": "dense",
+      "registry_quant": "f32",
+      "strict_manifest": {
+        "backend": "hip_gfx1100",
+        "execution_profile": "strict",
+        "graph_policy": "serial_c1",
+        "kind": "hipengine_execution_profile_manifest",
+        "kv_policy": "paged_bf16",
+        "model": "gguf_ud_q4_k_s",
+        "quant": "gguf_ud_q4_k_s",
+        "schema_version": 1,
+        "selections": [
+          {
+            "evidence_artifact": null,
+            "layer": "dense_gemv",
+            "registry_quant": "f32",
+            "scope": "prefill_rows",
+            "selected_variant": "bf16_hidden_bf16_out",
+            "strict_fallback_variant": "bf16_hidden_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "dense_gemv",
+            "registry_quant": "f32",
+            "scope": "rows_1_8_row_local",
+            "selected_variant": "bf16_hidden_bf16_out",
+            "strict_fallback_variant": "bf16_hidden_bf16_out"
+          }
+        ]
+      },
+      "strict_manifest_sha256": "72ac3724ddf90fca716b6ba4725f5edf149413712a11620fcef349f40260f5e0"
+    },
+    {
+      "alternate_output_dtype_owners": {},
+      "coverage_records": 4,
+      "output_dtype_preference": "_bf16_out",
+      "owner_class": "other",
+      "registry_quant": "f32",
+      "strict_manifest": {
+        "backend": "hip_gfx1100",
+        "execution_profile": "strict",
+        "graph_policy": "serial_c1",
+        "kind": "hipengine_execution_profile_manifest",
+        "kv_policy": "paged_bf16",
+        "model": "gguf_ud_q4_k_s",
+        "quant": "gguf_ud_q4_k_s",
+        "schema_version": 1,
+        "selections": [
+          {
+            "evidence_artifact": null,
+            "layer": "router_logits",
+            "registry_quant": "f32",
+            "scope": "prefill_rows",
+            "selected_variant": "bf16_hidden",
+            "strict_fallback_variant": "bf16_hidden"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "router_logits",
+            "registry_quant": "f32",
+            "scope": "rows_1_8_row_local",
+            "selected_variant": "bf16_hidden",
+            "strict_fallback_variant": "bf16_hidden"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "router_logits",
+            "registry_quant": "f32",
+            "scope": "rows_2_8_native",
+            "selected_variant": "bf16_hidden",
+            "strict_fallback_variant": "bf16_hidden"
+          }
+        ]
+      },
+      "strict_manifest_sha256": "9fff4f82263995b04ac35e90492bc73131aaaff8b5a284c27068ed3b7397c8a8"
+    },
+    {
+      "alternate_output_dtype_owners": {},
+      "coverage_records": 5,
+      "output_dtype_preference": "_bf16_out",
+      "owner_class": "dense",
+      "registry_quant": "gguf_f32_weight",
+      "strict_manifest": {
+        "backend": "hip_gfx1100",
+        "execution_profile": "strict",
+        "graph_policy": "serial_c1",
+        "kind": "hipengine_execution_profile_manifest",
+        "kv_policy": "paged_bf16",
+        "model": "gguf_ud_q4_k_s",
+        "quant": "gguf_ud_q4_k_s",
+        "schema_version": 1,
+        "selections": [
+          {
+            "evidence_artifact": null,
+            "layer": "rmsnorm",
+            "registry_quant": "gguf_f32_weight",
+            "scope": "prefill_rows",
+            "selected_variant": "bf16_out",
+            "strict_fallback_variant": "bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "rmsnorm",
+            "registry_quant": "gguf_f32_weight",
+            "scope": "rows_1_8_row_local",
+            "selected_variant": "bf16_out",
+            "strict_fallback_variant": "bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "rmsnorm",
+            "registry_quant": "gguf_f32_weight",
+            "scope": "rows_any",
+            "selected_variant": "bf16_out",
+            "strict_fallback_variant": "bf16_out"
+          }
+        ]
+      },
+      "strict_manifest_sha256": "0ba8a433a759b8af6566b9508f7b40962ac116f682f1fb283706fb79a035a525"
+    },
+    {
+      "alternate_output_dtype_owners": {
+        "linear/rows_1_8_row_local": [
+          "gemv_bf16_f32_out"
+        ]
+      },
+      "coverage_records": 10,
+      "output_dtype_preference": "_bf16_out",
+      "owner_class": "dense",
+      "registry_quant": "gguf_iq2_s",
+      "strict_manifest": {
+        "backend": "hip_gfx1100",
+        "execution_profile": "strict",
+        "graph_policy": "serial_c1",
+        "kind": "hipengine_execution_profile_manifest",
+        "kv_policy": "paged_bf16",
+        "model": "gguf_ud_q4_k_s",
+        "quant": "gguf_ud_q4_k_s",
+        "schema_version": 1,
+        "selections": [
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_iq2_s",
+            "scope": "prefill_rows",
+            "selected_variant": "gemv_bf16_bf16_out",
+            "strict_fallback_variant": "gemv_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_iq2_s",
+            "scope": "rows_1_8_row_local",
+            "selected_variant": "gemv_bf16_bf16_out",
+            "strict_fallback_variant": "gemv_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_iq2_s",
+            "scope": "rows_2_8_native",
+            "selected_variant": "gemv_bf16_f32_out",
+            "strict_fallback_variant": "gemv_bf16_f32_out"
+          }
+        ]
+      },
+      "strict_manifest_sha256": "ad0dffcbf778adf6fb94b31bc201569e91c8feb0748ae07be0daefbef7dbda6d"
+    },
+    {
+      "alternate_output_dtype_owners": {
+        "linear/rows_1_8_row_local": [
+          "gemv_bf16_f32_out"
+        ]
+      },
+      "coverage_records": 10,
+      "output_dtype_preference": "_bf16_out",
+      "owner_class": "dense",
+      "registry_quant": "gguf_iq2_xs",
+      "strict_manifest": {
+        "backend": "hip_gfx1100",
+        "execution_profile": "strict",
+        "graph_policy": "serial_c1",
+        "kind": "hipengine_execution_profile_manifest",
+        "kv_policy": "paged_bf16",
+        "model": "gguf_ud_q4_k_s",
+        "quant": "gguf_ud_q4_k_s",
+        "schema_version": 1,
+        "selections": [
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_iq2_xs",
+            "scope": "prefill_rows",
+            "selected_variant": "gemv_bf16_bf16_out",
+            "strict_fallback_variant": "gemv_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_iq2_xs",
+            "scope": "rows_1_8_row_local",
+            "selected_variant": "gemv_bf16_bf16_out",
+            "strict_fallback_variant": "gemv_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_iq2_xs",
+            "scope": "rows_2_8_native",
+            "selected_variant": "gemv_bf16_f32_out",
+            "strict_fallback_variant": "gemv_bf16_f32_out"
+          }
+        ]
+      },
+      "strict_manifest_sha256": "eae5abca5144b033492fa770ab419cc53fadfa927406f041856979f50a7e0947"
+    },
+    {
+      "alternate_output_dtype_owners": {},
+      "coverage_records": 4,
+      "output_dtype_preference": "_bf16_out",
+      "owner_class": "selected",
+      "registry_quant": "gguf_iq2_xs",
+      "strict_manifest": {
+        "backend": "hip_gfx1100",
+        "execution_profile": "strict",
+        "graph_policy": "serial_c1",
+        "kind": "hipengine_execution_profile_manifest",
+        "kv_policy": "paged_bf16",
+        "model": "gguf_ud_q4_k_s",
+        "quant": "gguf_ud_q4_k_s",
+        "schema_version": 1,
+        "selections": [
+          {
+            "evidence_artifact": null,
+            "layer": "moe_linear",
+            "registry_quant": "gguf_iq2_xs",
+            "scope": "prefill_rows",
+            "selected_variant": "selected_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "selected_gemv_decode_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "moe_linear",
+            "registry_quant": "gguf_iq2_xs",
+            "scope": "rows_1_8_row_local",
+            "selected_variant": "selected_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "selected_gemv_decode_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "moe_linear",
+            "registry_quant": "gguf_iq2_xs",
+            "scope": "rows_2_8_native",
+            "selected_variant": "selected_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "selected_gemv_decode_bf16_bf16_out"
+          }
+        ]
+      },
+      "strict_manifest_sha256": "ff41e1ce05e8d0b23431b3d5aebe00b57a72f843884c6dcb0f10f3131a92cd6d"
+    },
+    {
+      "alternate_output_dtype_owners": {
+        "linear/rows_1_8_row_local": [
+          "gemv_bf16_f32_out"
+        ]
+      },
+      "coverage_records": 10,
+      "output_dtype_preference": "_bf16_out",
+      "owner_class": "dense",
+      "registry_quant": "gguf_iq3_s",
+      "strict_manifest": {
+        "backend": "hip_gfx1100",
+        "execution_profile": "strict",
+        "graph_policy": "serial_c1",
+        "kind": "hipengine_execution_profile_manifest",
+        "kv_policy": "paged_bf16",
+        "model": "gguf_ud_q4_k_s",
+        "quant": "gguf_ud_q4_k_s",
+        "schema_version": 1,
+        "selections": [
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_iq3_s",
+            "scope": "prefill_rows",
+            "selected_variant": "gemv_bf16_bf16_out",
+            "strict_fallback_variant": "gemv_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_iq3_s",
+            "scope": "rows_1_8_row_local",
+            "selected_variant": "gemv_bf16_bf16_out",
+            "strict_fallback_variant": "gemv_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_iq3_s",
+            "scope": "rows_2_8_native",
+            "selected_variant": "gemv_bf16_f32_out",
+            "strict_fallback_variant": "gemv_bf16_f32_out"
+          }
+        ]
+      },
+      "strict_manifest_sha256": "026b1a284021ecf154816a2df42450d1b2a6711b673d9e0ce25cb843abe61610"
+    },
+    {
+      "alternate_output_dtype_owners": {
+        "linear/rows_1_8_row_local": [
+          "gemv_bf16_f32_out"
+        ]
+      },
+      "coverage_records": 10,
+      "output_dtype_preference": "_bf16_out",
+      "owner_class": "dense",
+      "registry_quant": "gguf_iq3_xxs",
+      "strict_manifest": {
+        "backend": "hip_gfx1100",
+        "execution_profile": "strict",
+        "graph_policy": "serial_c1",
+        "kind": "hipengine_execution_profile_manifest",
+        "kv_policy": "paged_bf16",
+        "model": "gguf_ud_q4_k_s",
+        "quant": "gguf_ud_q4_k_s",
+        "schema_version": 1,
+        "selections": [
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_iq3_xxs",
+            "scope": "prefill_rows",
+            "selected_variant": "gemv_bf16_bf16_out",
+            "strict_fallback_variant": "gemv_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_iq3_xxs",
+            "scope": "rows_1_8_row_local",
+            "selected_variant": "gemv_bf16_bf16_out",
+            "strict_fallback_variant": "gemv_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_iq3_xxs",
+            "scope": "rows_2_8_native",
+            "selected_variant": "gemv_bf16_f32_out",
+            "strict_fallback_variant": "gemv_bf16_f32_out"
+          }
+        ]
+      },
+      "strict_manifest_sha256": "07edd3a6b9abe7cecceec0b627cbfdebe9ce64f9fbccff545cc672eae0a9e482"
+    },
+    {
+      "alternate_output_dtype_owners": {},
+      "coverage_records": 4,
+      "output_dtype_preference": "_bf16_out",
+      "owner_class": "selected",
+      "registry_quant": "gguf_iq3_xxs",
+      "strict_manifest": {
+        "backend": "hip_gfx1100",
+        "execution_profile": "strict",
+        "graph_policy": "serial_c1",
+        "kind": "hipengine_execution_profile_manifest",
+        "kv_policy": "paged_bf16",
+        "model": "gguf_ud_q4_k_s",
+        "quant": "gguf_ud_q4_k_s",
+        "schema_version": 1,
+        "selections": [
+          {
+            "evidence_artifact": null,
+            "layer": "moe_linear",
+            "registry_quant": "gguf_iq3_xxs",
+            "scope": "prefill_rows",
+            "selected_variant": "selected_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "selected_gemv_decode_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "moe_linear",
+            "registry_quant": "gguf_iq3_xxs",
+            "scope": "rows_1_8_row_local",
+            "selected_variant": "selected_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "selected_gemv_decode_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "moe_linear",
+            "registry_quant": "gguf_iq3_xxs",
+            "scope": "rows_2_8_native",
+            "selected_variant": "selected_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "selected_gemv_decode_bf16_bf16_out"
+          }
+        ]
+      },
+      "strict_manifest_sha256": "d609b7a53113beed1c5619931a480d983751a121810a1fec590f005651c8462a"
+    },
+    {
+      "alternate_output_dtype_owners": {
+        "linear/rows_1_8_row_local": [
+          "gemv_bf16_f32_out"
+        ]
+      },
+      "coverage_records": 10,
+      "output_dtype_preference": "_bf16_out",
+      "owner_class": "dense",
+      "registry_quant": "gguf_iq4_nl",
+      "strict_manifest": {
+        "backend": "hip_gfx1100",
+        "execution_profile": "strict",
+        "graph_policy": "serial_c1",
+        "kind": "hipengine_execution_profile_manifest",
+        "kv_policy": "paged_bf16",
+        "model": "gguf_ud_q4_k_s",
+        "quant": "gguf_ud_q4_k_s",
+        "schema_version": 1,
+        "selections": [
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_iq4_nl",
+            "scope": "prefill_rows",
+            "selected_variant": "gemv_bf16_bf16_out",
+            "strict_fallback_variant": "gemv_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_iq4_nl",
+            "scope": "rows_1_8_row_local",
+            "selected_variant": "gemv_bf16_bf16_out",
+            "strict_fallback_variant": "gemv_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_iq4_nl",
+            "scope": "rows_2_8_native",
+            "selected_variant": "gemv_bf16_f32_out",
+            "strict_fallback_variant": "gemv_bf16_f32_out"
+          }
+        ]
+      },
+      "strict_manifest_sha256": "54f28e2fd8af1808f7c208c1dd074ba95413c7178f57dd8b2ae6b54cf635ca8c"
+    },
+    {
+      "alternate_output_dtype_owners": {
+        "linear/rows_1_8_row_local": [
+          "gemv_bf16_f32_out"
+        ]
+      },
+      "coverage_records": 10,
+      "output_dtype_preference": "_bf16_out",
+      "owner_class": "dense",
+      "registry_quant": "gguf_iq4_xs",
+      "strict_manifest": {
+        "backend": "hip_gfx1100",
+        "execution_profile": "strict",
+        "graph_policy": "serial_c1",
+        "kind": "hipengine_execution_profile_manifest",
+        "kv_policy": "paged_bf16",
+        "model": "gguf_ud_q4_k_s",
+        "quant": "gguf_ud_q4_k_s",
+        "schema_version": 1,
+        "selections": [
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_iq4_xs",
+            "scope": "prefill_rows",
+            "selected_variant": "gemv_bf16_bf16_out",
+            "strict_fallback_variant": "gemv_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_iq4_xs",
+            "scope": "rows_1_8_row_local",
+            "selected_variant": "gemv_bf16_bf16_out",
+            "strict_fallback_variant": "gemv_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_iq4_xs",
+            "scope": "rows_2_8_native",
+            "selected_variant": "gemv_bf16_f32_out",
+            "strict_fallback_variant": "gemv_bf16_f32_out"
+          }
+        ]
+      },
+      "strict_manifest_sha256": "10330c86cdfd9aa0b3ab79b0f83494e87ecba8b016ef062944e3951ba8005468"
+    },
+    {
+      "alternate_output_dtype_owners": {},
+      "coverage_records": 4,
+      "output_dtype_preference": "_bf16_out",
+      "owner_class": "selected",
+      "registry_quant": "gguf_iq4_xs",
+      "strict_manifest": {
+        "backend": "hip_gfx1100",
+        "execution_profile": "strict",
+        "graph_policy": "serial_c1",
+        "kind": "hipengine_execution_profile_manifest",
+        "kv_policy": "paged_bf16",
+        "model": "gguf_ud_q4_k_s",
+        "quant": "gguf_ud_q4_k_s",
+        "schema_version": 1,
+        "selections": [
+          {
+            "evidence_artifact": null,
+            "layer": "moe_linear",
+            "registry_quant": "gguf_iq4_xs",
+            "scope": "prefill_rows",
+            "selected_variant": "selected_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "selected_gemv_decode_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "moe_linear",
+            "registry_quant": "gguf_iq4_xs",
+            "scope": "rows_1_8_row_local",
+            "selected_variant": "selected_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "selected_gemv_decode_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "moe_linear",
+            "registry_quant": "gguf_iq4_xs",
+            "scope": "rows_2_8_native",
+            "selected_variant": "selected_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "selected_gemv_decode_bf16_bf16_out"
+          }
+        ]
+      },
+      "strict_manifest_sha256": "d09413ab09092019da5dc7ed8a10aa08a7bc3d0e9a1273a80d2aa665260b074b"
+    },
+    {
+      "alternate_output_dtype_owners": {
+        "linear/rows_1_8_row_local": [
+          "gemv_bf16_f32_out"
+        ]
+      },
+      "coverage_records": 12,
+      "output_dtype_preference": "_bf16_out",
+      "owner_class": "dense",
+      "registry_quant": "gguf_q3_k",
+      "strict_manifest": {
+        "backend": "hip_gfx1100",
+        "execution_profile": "strict",
+        "graph_policy": "serial_c1",
+        "kind": "hipengine_execution_profile_manifest",
+        "kv_policy": "paged_bf16",
+        "model": "gguf_ud_q4_k_s",
+        "quant": "gguf_ud_q4_k_s",
+        "schema_version": 1,
+        "selections": [
+          {
+            "evidence_artifact": null,
+            "layer": "embedding",
+            "registry_quant": "gguf_q3_k",
+            "scope": "rows_2_8_native",
+            "selected_variant": "lookup_bf16_out",
+            "strict_fallback_variant": "lookup_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "embedding",
+            "registry_quant": "gguf_q3_k",
+            "scope": "rows_any",
+            "selected_variant": "lookup_bf16_out",
+            "strict_fallback_variant": "lookup_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_q3_k",
+            "scope": "prefill_rows",
+            "selected_variant": "gemv_bf16_bf16_out",
+            "strict_fallback_variant": "gemv_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_q3_k",
+            "scope": "rows_1_8_row_local",
+            "selected_variant": "gemv_bf16_bf16_out",
+            "strict_fallback_variant": "gemv_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_q3_k",
+            "scope": "rows_2_8_native",
+            "selected_variant": "gemv_bf16_f32_out",
+            "strict_fallback_variant": "gemv_bf16_f32_out"
+          }
+        ]
+      },
+      "strict_manifest_sha256": "b88f6f6c799987fd0df723e82ccc5f999ca912e8aee01025155e42e9cb1875f2"
+    },
+    {
+      "alternate_output_dtype_owners": {},
+      "coverage_records": 4,
+      "output_dtype_preference": "_bf16_out",
+      "owner_class": "selected",
+      "registry_quant": "gguf_q3_k",
+      "strict_manifest": {
+        "backend": "hip_gfx1100",
+        "execution_profile": "strict",
+        "graph_policy": "serial_c1",
+        "kind": "hipengine_execution_profile_manifest",
+        "kv_policy": "paged_bf16",
+        "model": "gguf_ud_q4_k_s",
+        "quant": "gguf_ud_q4_k_s",
+        "schema_version": 1,
+        "selections": [
+          {
+            "evidence_artifact": null,
+            "layer": "moe_linear",
+            "registry_quant": "gguf_q3_k",
+            "scope": "prefill_rows",
+            "selected_variant": "selected_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "selected_gemv_decode_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "moe_linear",
+            "registry_quant": "gguf_q3_k",
+            "scope": "rows_1_8_row_local",
+            "selected_variant": "selected_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "selected_gemv_decode_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "moe_linear",
+            "registry_quant": "gguf_q3_k",
+            "scope": "rows_2_8_native",
+            "selected_variant": "selected_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "selected_gemv_decode_bf16_bf16_out"
+          }
+        ]
+      },
+      "strict_manifest_sha256": "431c4372bf21266dc691364fcf4c040a0a841941e100b2da0284bd9dddf65ec3"
+    },
+    {
+      "alternate_output_dtype_owners": {},
+      "coverage_records": 2,
+      "output_dtype_preference": "_bf16_out",
+      "owner_class": "dense",
+      "registry_quant": "gguf_q4_k",
+      "strict_manifest": {
+        "backend": "hip_gfx1100",
+        "execution_profile": "strict",
+        "graph_policy": "serial_c1",
+        "kind": "hipengine_execution_profile_manifest",
+        "kv_policy": "paged_bf16",
+        "model": "gguf_ud_q4_k_s",
+        "quant": "gguf_ud_q4_k_s",
+        "schema_version": 1,
+        "selections": [
+          {
+            "evidence_artifact": null,
+            "layer": "embedding",
+            "registry_quant": "gguf_q4_k",
+            "scope": "rows_2_8_native",
+            "selected_variant": "lookup_bf16_out",
+            "strict_fallback_variant": "lookup_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "embedding",
+            "registry_quant": "gguf_q4_k",
+            "scope": "rows_any",
+            "selected_variant": "lookup_bf16_out",
+            "strict_fallback_variant": "lookup_bf16_out"
+          }
+        ]
+      },
+      "strict_manifest_sha256": "042f1170727928a3fcf0ec3c5fb018a87265714248c9bc09dd87f38ac76cf787"
+    },
+    {
+      "alternate_output_dtype_owners": {
+        "linear/rows_1_8_row_local": [
+          "pack8_bf16_f32_out"
+        ]
+      },
+      "coverage_records": 9,
+      "output_dtype_preference": "_bf16_out",
+      "owner_class": "pack8",
+      "registry_quant": "gguf_q4_k",
+      "strict_manifest": {
+        "backend": "hip_gfx1100",
+        "execution_profile": "strict",
+        "graph_policy": "serial_c1",
+        "kind": "hipengine_execution_profile_manifest",
+        "kv_policy": "paged_bf16",
+        "model": "gguf_ud_q4_k_s",
+        "quant": "gguf_ud_q4_k_s",
+        "schema_version": 1,
+        "selections": [
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_q4_k",
+            "scope": "prefill_rows",
+            "selected_variant": "pack8_bf16_bf16_out",
+            "strict_fallback_variant": "pack8_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_q4_k",
+            "scope": "rows_1_8_row_local",
+            "selected_variant": "pack8_bf16_bf16_out",
+            "strict_fallback_variant": "pack8_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_q4_k",
+            "scope": "rows_2_8_native",
+            "selected_variant": "pack8_bf16_f32_out",
+            "strict_fallback_variant": "pack8_bf16_f32_out"
+          }
+        ]
+      },
+      "strict_manifest_sha256": "2ac391f967973d7d36c918b1c79a35d6743e3843b5b42435e59b00e72279b63c"
+    },
+    {
+      "alternate_output_dtype_owners": {},
+      "coverage_records": 7,
+      "output_dtype_preference": "_bf16_out",
+      "owner_class": "dense",
+      "registry_quant": "gguf_q4_k_qmicro_t16_v1",
+      "strict_manifest": {
+        "backend": "hip_gfx1100",
+        "execution_profile": "strict",
+        "graph_policy": "serial_c1",
+        "kind": "hipengine_execution_profile_manifest",
+        "kv_policy": "paged_bf16",
+        "model": "gguf_ud_q4_k_s",
+        "quant": "gguf_ud_q4_k_s",
+        "schema_version": 1,
+        "selections": [
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_q4_k_qmicro_t16_v1",
+            "scope": "prefill_rows",
+            "selected_variant": "dense_single_local32_bf16_bf16_out",
+            "strict_fallback_variant": "dense_single_local32_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_q4_k_qmicro_t16_v1",
+            "scope": "rows_1_8_row_local",
+            "selected_variant": "dense_single_local32_bf16_bf16_out",
+            "strict_fallback_variant": "dense_single_local32_bf16_bf16_out"
+          }
+        ]
+      },
+      "strict_manifest_sha256": "db965061a40d78dd781e0619fb3d65344210f0d7cd32fefbb8d5f959dfdab5d4"
+    },
+    {
+      "alternate_output_dtype_owners": {},
+      "coverage_records": 4,
+      "output_dtype_preference": "_bf16_out",
+      "owner_class": "selected",
+      "registry_quant": "gguf_q4_k_qmicro_t16_v1",
+      "strict_manifest": {
+        "backend": "hip_gfx1100",
+        "execution_profile": "strict",
+        "graph_policy": "serial_c1",
+        "kind": "hipengine_execution_profile_manifest",
+        "kv_policy": "paged_bf16",
+        "model": "gguf_ud_q4_k_s",
+        "quant": "gguf_ud_q4_k_s",
+        "schema_version": 1,
+        "selections": [
+          {
+            "evidence_artifact": null,
+            "layer": "moe_linear",
+            "registry_quant": "gguf_q4_k_qmicro_t16_v1",
+            "scope": "prefill_rows",
+            "selected_variant": "selected_dual_t16_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "selected_dual_t16_gemv_decode_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "moe_linear",
+            "registry_quant": "gguf_q4_k_qmicro_t16_v1",
+            "scope": "rows_1_8_row_local",
+            "selected_variant": "selected_dual_t16_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "selected_dual_t16_gemv_decode_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "moe_linear",
+            "registry_quant": "gguf_q4_k_qmicro_t16_v1",
+            "scope": "rows_2_8_native",
+            "selected_variant": "selected_dual_t16_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "selected_dual_t16_gemv_decode_bf16_bf16_out"
+          }
+        ]
+      },
+      "strict_manifest_sha256": "154c87ae253f50de9b2ce020bcc67e30ac7c843c5f4779cba2b3e21c1612e683"
+    },
+    {
+      "alternate_output_dtype_owners": {},
+      "coverage_records": 7,
+      "output_dtype_preference": "_bf16_out",
+      "owner_class": "dense",
+      "registry_quant": "gguf_q4_k_t16_v1",
+      "strict_manifest": {
+        "backend": "hip_gfx1100",
+        "execution_profile": "strict",
+        "graph_policy": "serial_c1",
+        "kind": "hipengine_execution_profile_manifest",
+        "kv_policy": "paged_bf16",
+        "model": "gguf_ud_q4_k_s",
+        "quant": "gguf_ud_q4_k_s",
+        "schema_version": 1,
+        "selections": [
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_q4_k_t16_v1",
+            "scope": "prefill_rows",
+            "selected_variant": "dense_single_local32_bf16_bf16_out",
+            "strict_fallback_variant": "dense_single_local32_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_q4_k_t16_v1",
+            "scope": "rows_1_8_row_local",
+            "selected_variant": "dense_single_local32_bf16_bf16_out",
+            "strict_fallback_variant": "dense_single_local32_bf16_bf16_out"
+          }
+        ]
+      },
+      "strict_manifest_sha256": "2cad7ecd4de299497acae2eeb3471ba73bc6c4b43a95d7a33f31a461c4d55677"
+    },
+    {
+      "alternate_output_dtype_owners": {},
+      "coverage_records": 4,
+      "output_dtype_preference": "_bf16_out",
+      "owner_class": "selected",
+      "registry_quant": "gguf_q4_k_t16_v1",
+      "strict_manifest": {
+        "backend": "hip_gfx1100",
+        "execution_profile": "strict",
+        "graph_policy": "serial_c1",
+        "kind": "hipengine_execution_profile_manifest",
+        "kv_policy": "paged_bf16",
+        "model": "gguf_ud_q4_k_s",
+        "quant": "gguf_ud_q4_k_s",
+        "schema_version": 1,
+        "selections": [
+          {
+            "evidence_artifact": null,
+            "layer": "moe_linear",
+            "registry_quant": "gguf_q4_k_t16_v1",
+            "scope": "prefill_rows",
+            "selected_variant": "selected_t16_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "selected_t16_gemv_decode_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "moe_linear",
+            "registry_quant": "gguf_q4_k_t16_v1",
+            "scope": "rows_1_8_row_local",
+            "selected_variant": "selected_t16_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "selected_t16_gemv_decode_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "moe_linear",
+            "registry_quant": "gguf_q4_k_t16_v1",
+            "scope": "rows_2_8_native",
+            "selected_variant": "selected_t16_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "selected_t16_gemv_decode_bf16_bf16_out"
+          }
+        ]
+      },
+      "strict_manifest_sha256": "11b3e12fd6374b3d3a761047adff79130570358a42823316622470ce4454aa17"
+    },
+    {
+      "alternate_output_dtype_owners": {},
+      "coverage_records": 4,
+      "output_dtype_preference": "_bf16_out",
+      "owner_class": "selected",
+      "registry_quant": "gguf_q4_k_x8_v1",
+      "strict_manifest": {
+        "backend": "hip_gfx1100",
+        "execution_profile": "strict",
+        "graph_policy": "serial_c1",
+        "kind": "hipengine_execution_profile_manifest",
+        "kv_policy": "paged_bf16",
+        "model": "gguf_ud_q4_k_s",
+        "quant": "gguf_ud_q4_k_s",
+        "schema_version": 1,
+        "selections": [
+          {
+            "evidence_artifact": null,
+            "layer": "moe_linear",
+            "registry_quant": "gguf_q4_k_x8_v1",
+            "scope": "prefill_rows",
+            "selected_variant": "selected_dual_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "selected_dual_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "moe_linear",
+            "registry_quant": "gguf_q4_k_x8_v1",
+            "scope": "rows_1_8_row_local",
+            "selected_variant": "selected_dual_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "selected_dual_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "moe_linear",
+            "registry_quant": "gguf_q4_k_x8_v1",
+            "scope": "rows_2_8_native",
+            "selected_variant": "selected_dual_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "selected_dual_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out"
+          }
+        ]
+      },
+      "strict_manifest_sha256": "7b51d2057f00084b5020c6dc64c009d9c6c16a3c8df7726792d47c178c8fcb1b"
+    },
+    {
+      "alternate_output_dtype_owners": {
+        "linear/rows_1_8_row_local": [
+          "gemv_bf16_f32_out"
+        ]
+      },
+      "coverage_records": 12,
+      "output_dtype_preference": "_bf16_out",
+      "owner_class": "dense",
+      "registry_quant": "gguf_q5_k",
+      "strict_manifest": {
+        "backend": "hip_gfx1100",
+        "execution_profile": "strict",
+        "graph_policy": "serial_c1",
+        "kind": "hipengine_execution_profile_manifest",
+        "kv_policy": "paged_bf16",
+        "model": "gguf_ud_q4_k_s",
+        "quant": "gguf_ud_q4_k_s",
+        "schema_version": 1,
+        "selections": [
+          {
+            "evidence_artifact": null,
+            "layer": "embedding",
+            "registry_quant": "gguf_q5_k",
+            "scope": "rows_2_8_native",
+            "selected_variant": "lookup_bf16_out",
+            "strict_fallback_variant": "lookup_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "embedding",
+            "registry_quant": "gguf_q5_k",
+            "scope": "rows_any",
+            "selected_variant": "lookup_bf16_out",
+            "strict_fallback_variant": "lookup_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_q5_k",
+            "scope": "prefill_rows",
+            "selected_variant": "gemv_bf16_bf16_out",
+            "strict_fallback_variant": "gemv_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_q5_k",
+            "scope": "rows_1_8_row_local",
+            "selected_variant": "gemv_bf16_bf16_out",
+            "strict_fallback_variant": "gemv_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_q5_k",
+            "scope": "rows_2_8_native",
+            "selected_variant": "gemv_bf16_f32_out",
+            "strict_fallback_variant": "gemv_bf16_f32_out"
+          }
+        ]
+      },
+      "strict_manifest_sha256": "785681c94fb68aafeb71f0c1b254cfc945e6533f4886f9002a35231ffef10c45"
+    },
+    {
+      "alternate_output_dtype_owners": {},
+      "coverage_records": 4,
+      "output_dtype_preference": "_bf16_out",
+      "owner_class": "selected",
+      "registry_quant": "gguf_q5_k",
+      "strict_manifest": {
+        "backend": "hip_gfx1100",
+        "execution_profile": "strict",
+        "graph_policy": "serial_c1",
+        "kind": "hipengine_execution_profile_manifest",
+        "kv_policy": "paged_bf16",
+        "model": "gguf_ud_q4_k_s",
+        "quant": "gguf_ud_q4_k_s",
+        "schema_version": 1,
+        "selections": [
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_q5_k",
+            "scope": "prefill_rows",
+            "selected_variant": "selected_gemv_bf16_bf16_out",
+            "strict_fallback_variant": "selected_gemv_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_q5_k",
+            "scope": "rows_1_8_row_local",
+            "selected_variant": "selected_gemv_bf16_bf16_out",
+            "strict_fallback_variant": "selected_gemv_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_q5_k",
+            "scope": "rows_2_8_native",
+            "selected_variant": "selected_gemv_bf16_bf16_out",
+            "strict_fallback_variant": "selected_gemv_bf16_bf16_out"
+          }
+        ]
+      },
+      "strict_manifest_sha256": "1e069c7bc82e7751b3fd06e71b63ec6a285e7c2734d3d3f411ceee7416eaca9f"
+    },
+    {
+      "alternate_output_dtype_owners": {},
+      "coverage_records": 4,
+      "output_dtype_preference": "_bf16_out",
+      "owner_class": "selected",
+      "registry_quant": "gguf_q5_k_qmicro_t16_v1",
+      "strict_manifest": {
+        "backend": "hip_gfx1100",
+        "execution_profile": "strict",
+        "graph_policy": "serial_c1",
+        "kind": "hipengine_execution_profile_manifest",
+        "kv_policy": "paged_bf16",
+        "model": "gguf_ud_q4_k_s",
+        "quant": "gguf_ud_q4_k_s",
+        "schema_version": 1,
+        "selections": [
+          {
+            "evidence_artifact": null,
+            "layer": "moe_linear",
+            "registry_quant": "gguf_q5_k_qmicro_t16_v1",
+            "scope": "prefill_rows",
+            "selected_variant": "selected_t16_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "selected_t16_gemv_decode_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "moe_linear",
+            "registry_quant": "gguf_q5_k_qmicro_t16_v1",
+            "scope": "rows_1_8_row_local",
+            "selected_variant": "selected_t16_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "selected_t16_gemv_decode_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "moe_linear",
+            "registry_quant": "gguf_q5_k_qmicro_t16_v1",
+            "scope": "rows_2_8_native",
+            "selected_variant": "selected_t16_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "selected_t16_gemv_decode_bf16_bf16_out"
+          }
+        ]
+      },
+      "strict_manifest_sha256": "9c2a78b53608b28d2e2a2163bbb4fc78c3046f3c16d3de9e3409cf37920229eb"
+    },
+    {
+      "alternate_output_dtype_owners": {},
+      "coverage_records": 7,
+      "output_dtype_preference": "_bf16_out",
+      "owner_class": "dense",
+      "registry_quant": "gguf_q5_k_t16_v1",
+      "strict_manifest": {
+        "backend": "hip_gfx1100",
+        "execution_profile": "strict",
+        "graph_policy": "serial_c1",
+        "kind": "hipengine_execution_profile_manifest",
+        "kv_policy": "paged_bf16",
+        "model": "gguf_ud_q4_k_s",
+        "quant": "gguf_ud_q4_k_s",
+        "schema_version": 1,
+        "selections": [
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_q5_k_t16_v1",
+            "scope": "prefill_rows",
+            "selected_variant": "t16_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "t16_gemv_decode_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_q5_k_t16_v1",
+            "scope": "rows_1_8_row_local",
+            "selected_variant": "t16_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "t16_gemv_decode_bf16_bf16_out"
+          }
+        ]
+      },
+      "strict_manifest_sha256": "5dca901fa02bd83f1bbbe627efffc10cbf3a04af6f7fa55b8ce3765104dd14f6"
+    },
+    {
+      "alternate_output_dtype_owners": {},
+      "coverage_records": 4,
+      "output_dtype_preference": "_bf16_out",
+      "owner_class": "selected",
+      "registry_quant": "gguf_q5_k_x8_v1",
+      "strict_manifest": {
+        "backend": "hip_gfx1100",
+        "execution_profile": "strict",
+        "graph_policy": "serial_c1",
+        "kind": "hipengine_execution_profile_manifest",
+        "kv_policy": "paged_bf16",
+        "model": "gguf_ud_q4_k_s",
+        "quant": "gguf_ud_q4_k_s",
+        "schema_version": 1,
+        "selections": [
+          {
+            "evidence_artifact": null,
+            "layer": "moe_linear",
+            "registry_quant": "gguf_q5_k_x8_v1",
+            "scope": "prefill_rows",
+            "selected_variant": "selected_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "selected_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "moe_linear",
+            "registry_quant": "gguf_q5_k_x8_v1",
+            "scope": "rows_1_8_row_local",
+            "selected_variant": "selected_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "selected_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "moe_linear",
+            "registry_quant": "gguf_q5_k_x8_v1",
+            "scope": "rows_2_8_native",
+            "selected_variant": "selected_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "selected_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out"
+          }
+        ]
+      },
+      "strict_manifest_sha256": "25743958ccabae66c4b92a8d9dacca72d2f873a8b80244f3337a17eebbaf32e4"
+    },
+    {
+      "alternate_output_dtype_owners": {
+        "linear/rows_1_8_row_local": [
+          "gemv_bf16_f32_out"
+        ]
+      },
+      "coverage_records": 12,
+      "output_dtype_preference": "_bf16_out",
+      "owner_class": "dense",
+      "registry_quant": "gguf_q6_k",
+      "strict_manifest": {
+        "backend": "hip_gfx1100",
+        "execution_profile": "strict",
+        "graph_policy": "serial_c1",
+        "kind": "hipengine_execution_profile_manifest",
+        "kv_policy": "paged_bf16",
+        "model": "gguf_ud_q4_k_s",
+        "quant": "gguf_ud_q4_k_s",
+        "schema_version": 1,
+        "selections": [
+          {
+            "evidence_artifact": null,
+            "layer": "embedding",
+            "registry_quant": "gguf_q6_k",
+            "scope": "rows_2_8_native",
+            "selected_variant": "lookup_bf16_out",
+            "strict_fallback_variant": "lookup_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "embedding",
+            "registry_quant": "gguf_q6_k",
+            "scope": "rows_any",
+            "selected_variant": "lookup_bf16_out",
+            "strict_fallback_variant": "lookup_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_q6_k",
+            "scope": "prefill_rows",
+            "selected_variant": "gemv_bf16_bf16_out",
+            "strict_fallback_variant": "gemv_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_q6_k",
+            "scope": "rows_1_8_row_local",
+            "selected_variant": "gemv_bf16_bf16_out",
+            "strict_fallback_variant": "gemv_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_q6_k",
+            "scope": "rows_2_8_native",
+            "selected_variant": "gemv_bf16_f32_out",
+            "strict_fallback_variant": "gemv_bf16_f32_out"
+          }
+        ]
+      },
+      "strict_manifest_sha256": "99345d20294c5c9269b7880f965ed8783133eeec90f60256a97b654ea098c58d"
+    },
+    {
+      "alternate_output_dtype_owners": {},
+      "coverage_records": 4,
+      "output_dtype_preference": "_bf16_out",
+      "owner_class": "selected",
+      "registry_quant": "gguf_q6_k",
+      "strict_manifest": {
+        "backend": "hip_gfx1100",
+        "execution_profile": "strict",
+        "graph_policy": "serial_c1",
+        "kind": "hipengine_execution_profile_manifest",
+        "kv_policy": "paged_bf16",
+        "model": "gguf_ud_q4_k_s",
+        "quant": "gguf_ud_q4_k_s",
+        "schema_version": 1,
+        "selections": [
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_q6_k",
+            "scope": "prefill_rows",
+            "selected_variant": "selected_gemv_bf16_bf16_out",
+            "strict_fallback_variant": "selected_gemv_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_q6_k",
+            "scope": "rows_1_8_row_local",
+            "selected_variant": "selected_gemv_bf16_bf16_out",
+            "strict_fallback_variant": "selected_gemv_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_q6_k",
+            "scope": "rows_2_8_native",
+            "selected_variant": "selected_gemv_bf16_bf16_out",
+            "strict_fallback_variant": "selected_gemv_bf16_bf16_out"
+          }
+        ]
+      },
+      "strict_manifest_sha256": "3f2c7e612aa7ce100c59aff967c447905a9c54854a8d444ce7c8a046e61db010"
+    },
+    {
+      "alternate_output_dtype_owners": {
+        "linear/rows_1_8_row_local": [
+          "t16_gemv_decode_bf16_f32_out"
+        ]
+      },
+      "coverage_records": 9,
+      "output_dtype_preference": "_bf16_out",
+      "owner_class": "dense",
+      "registry_quant": "gguf_q6_k_t16_qmicro_planar_v1",
+      "strict_manifest": {
+        "backend": "hip_gfx1100",
+        "execution_profile": "strict",
+        "graph_policy": "serial_c1",
+        "kind": "hipengine_execution_profile_manifest",
+        "kv_policy": "paged_bf16",
+        "model": "gguf_ud_q4_k_s",
+        "quant": "gguf_ud_q4_k_s",
+        "schema_version": 1,
+        "selections": [
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_q6_k_t16_qmicro_planar_v1",
+            "scope": "prefill_rows",
+            "selected_variant": "t16_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "t16_gemv_decode_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_q6_k_t16_qmicro_planar_v1",
+            "scope": "rows_1_8_row_local",
+            "selected_variant": "t16_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "t16_gemv_decode_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_q6_k_t16_qmicro_planar_v1",
+            "scope": "rows_2_8_native",
+            "selected_variant": "t16_gemv_decode_bf16_f32_out",
+            "strict_fallback_variant": "t16_gemv_decode_bf16_f32_out"
+          }
+        ]
+      },
+      "strict_manifest_sha256": "44b69ac55d857c0a417c672d131ca6c157b1faba64b3f7f69068cfe3deb5be71"
+    },
+    {
+      "alternate_output_dtype_owners": {
+        "linear/rows_1_8_row_local": [
+          "t16_gemv_decode_bf16_f32_out"
+        ]
+      },
+      "coverage_records": 9,
+      "output_dtype_preference": "_bf16_out",
+      "owner_class": "dense",
+      "registry_quant": "gguf_q6_k_t16_v1",
+      "strict_manifest": {
+        "backend": "hip_gfx1100",
+        "execution_profile": "strict",
+        "graph_policy": "serial_c1",
+        "kind": "hipengine_execution_profile_manifest",
+        "kv_policy": "paged_bf16",
+        "model": "gguf_ud_q4_k_s",
+        "quant": "gguf_ud_q4_k_s",
+        "schema_version": 1,
+        "selections": [
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_q6_k_t16_v1",
+            "scope": "prefill_rows",
+            "selected_variant": "t16_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "t16_gemv_decode_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_q6_k_t16_v1",
+            "scope": "rows_1_8_row_local",
+            "selected_variant": "t16_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "t16_gemv_decode_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_q6_k_t16_v1",
+            "scope": "rows_2_8_native",
+            "selected_variant": "t16_gemv_decode_bf16_f32_out",
+            "strict_fallback_variant": "t16_gemv_decode_bf16_f32_out"
+          }
+        ]
+      },
+      "strict_manifest_sha256": "8ab96346a0b163b0aedb27a38769c8b691d4214d9dfd520e0e3610286ee0e09a"
+    },
+    {
+      "alternate_output_dtype_owners": {},
+      "coverage_records": 4,
+      "output_dtype_preference": "_bf16_out",
+      "owner_class": "selected",
+      "registry_quant": "gguf_q6_k_t16_v1",
+      "strict_manifest": {
+        "backend": "hip_gfx1100",
+        "execution_profile": "strict",
+        "graph_policy": "serial_c1",
+        "kind": "hipengine_execution_profile_manifest",
+        "kv_policy": "paged_bf16",
+        "model": "gguf_ud_q4_k_s",
+        "quant": "gguf_ud_q4_k_s",
+        "schema_version": 1,
+        "selections": [
+          {
+            "evidence_artifact": null,
+            "layer": "moe_linear",
+            "registry_quant": "gguf_q6_k_t16_v1",
+            "scope": "prefill_rows",
+            "selected_variant": "selected_t16_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "selected_t16_gemv_decode_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "moe_linear",
+            "registry_quant": "gguf_q6_k_t16_v1",
+            "scope": "rows_1_8_row_local",
+            "selected_variant": "selected_t16_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "selected_t16_gemv_decode_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "moe_linear",
+            "registry_quant": "gguf_q6_k_t16_v1",
+            "scope": "rows_2_8_native",
+            "selected_variant": "selected_t16_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "selected_t16_gemv_decode_bf16_bf16_out"
+          }
+        ]
+      },
+      "strict_manifest_sha256": "8ec9017e7bd1b5ab88892d327d799fb9639ae9f86e8d8e0dc8c919d368d588ec"
+    },
+    {
+      "alternate_output_dtype_owners": {},
+      "coverage_records": 4,
+      "output_dtype_preference": "_bf16_out",
+      "owner_class": "selected",
+      "registry_quant": "gguf_q6_k_x8_v1",
+      "strict_manifest": {
+        "backend": "hip_gfx1100",
+        "execution_profile": "strict",
+        "graph_policy": "serial_c1",
+        "kind": "hipengine_execution_profile_manifest",
+        "kv_policy": "paged_bf16",
+        "model": "gguf_ud_q4_k_s",
+        "quant": "gguf_ud_q4_k_s",
+        "schema_version": 1,
+        "selections": [
+          {
+            "evidence_artifact": null,
+            "layer": "moe_linear",
+            "registry_quant": "gguf_q6_k_x8_v1",
+            "scope": "prefill_rows",
+            "selected_variant": "selected_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "selected_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "moe_linear",
+            "registry_quant": "gguf_q6_k_x8_v1",
+            "scope": "rows_1_8_row_local",
+            "selected_variant": "selected_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "selected_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "moe_linear",
+            "registry_quant": "gguf_q6_k_x8_v1",
+            "scope": "rows_2_8_native",
+            "selected_variant": "selected_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "selected_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out"
+          }
+        ]
+      },
+      "strict_manifest_sha256": "4d19b32b16a93675bebfd049f21b4a47702414baa3582a9fae5f5a25abe18106"
+    },
+    {
+      "alternate_output_dtype_owners": {
+        "linear/rows_1_8_row_local": [
+          "gemv_bf16_f32_out"
+        ]
+      },
+      "coverage_records": 12,
+      "output_dtype_preference": "_bf16_out",
+      "owner_class": "dense",
+      "registry_quant": "gguf_q8_0",
+      "strict_manifest": {
+        "backend": "hip_gfx1100",
+        "execution_profile": "strict",
+        "graph_policy": "serial_c1",
+        "kind": "hipengine_execution_profile_manifest",
+        "kv_policy": "paged_bf16",
+        "model": "gguf_ud_q4_k_s",
+        "quant": "gguf_ud_q4_k_s",
+        "schema_version": 1,
+        "selections": [
+          {
+            "evidence_artifact": null,
+            "layer": "embedding",
+            "registry_quant": "gguf_q8_0",
+            "scope": "rows_2_8_native",
+            "selected_variant": "lookup_bf16_out",
+            "strict_fallback_variant": "lookup_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "embedding",
+            "registry_quant": "gguf_q8_0",
+            "scope": "rows_any",
+            "selected_variant": "lookup_bf16_out",
+            "strict_fallback_variant": "lookup_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_q8_0",
+            "scope": "prefill_rows",
+            "selected_variant": "gemv_bf16_bf16_out",
+            "strict_fallback_variant": "gemv_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_q8_0",
+            "scope": "rows_1_8_row_local",
+            "selected_variant": "gemv_bf16_bf16_out",
+            "strict_fallback_variant": "gemv_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_q8_0",
+            "scope": "rows_2_8_native",
+            "selected_variant": "gemv_bf16_f32_out",
+            "strict_fallback_variant": "gemv_bf16_f32_out"
+          }
+        ]
+      },
+      "strict_manifest_sha256": "a696cf56ccd72de53769d26a96db90c74688735582293322fab416032dd74133"
+    },
+    {
+      "alternate_output_dtype_owners": {},
+      "coverage_records": 7,
+      "output_dtype_preference": "_bf16_out",
+      "owner_class": "dense",
+      "registry_quant": "gguf_q8_0_t16_v1",
+      "strict_manifest": {
+        "backend": "hip_gfx1100",
+        "execution_profile": "strict",
+        "graph_policy": "serial_c1",
+        "kind": "hipengine_execution_profile_manifest",
+        "kv_policy": "paged_bf16",
+        "model": "gguf_ud_q4_k_s",
+        "quant": "gguf_ud_q4_k_s",
+        "schema_version": 1,
+        "selections": [
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_q8_0_t16_v1",
+            "scope": "prefill_rows",
+            "selected_variant": "t16_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "t16_gemv_decode_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_q8_0_t16_v1",
+            "scope": "rows_1_8_row_local",
+            "selected_variant": "t16_gemv_decode_bf16_bf16_out",
+            "strict_fallback_variant": "t16_gemv_decode_bf16_bf16_out"
+          }
+        ]
+      },
+      "strict_manifest_sha256": "49b2fd96a1089f1f80762a6615a8d7eec558adf1db7cddc037424218cee40cf6"
+    },
+    {
+      "alternate_output_dtype_owners": {},
+      "coverage_records": 6,
+      "output_dtype_preference": "_bf16_out",
+      "owner_class": "other",
+      "registry_quant": "gguf_qwen35",
+      "strict_manifest": {
+        "backend": "hip_gfx1100",
+        "execution_profile": "strict",
+        "graph_policy": "serial_c1",
+        "kind": "hipengine_execution_profile_manifest",
+        "kv_policy": "paged_bf16",
+        "model": "gguf_ud_q4_k_s",
+        "quant": "gguf_ud_q4_k_s",
+        "schema_version": 1,
+        "selections": [
+          {
+            "evidence_artifact": null,
+            "layer": "gdn_prefill_recurrent",
+            "registry_quant": "gguf_qwen35",
+            "scope": "prefill_rows",
+            "selected_variant": "decode_order_bf16",
+            "strict_fallback_variant": "decode_order_bf16"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "gdn_recurrent_rmsnorm_gate",
+            "registry_quant": "gguf_qwen35",
+            "scope": "rows_1_8_row_local",
+            "selected_variant": "bf16_segments",
+            "strict_fallback_variant": "bf16_segments"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear_attn_conv_decode",
+            "registry_quant": "gguf_qwen35",
+            "scope": "rows_1_8_row_local",
+            "selected_variant": "bf16_indexed",
+            "strict_fallback_variant": "bf16_indexed"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear_attn_conv_prefill",
+            "registry_quant": "gguf_qwen35",
+            "scope": "prefill_rows",
+            "selected_variant": "f32_baseline",
+            "strict_fallback_variant": "f32_baseline"
+          }
+        ]
+      },
+      "strict_manifest_sha256": "9366f0e196a3e9045e87b5b7a6194c85c14b9677d22f2ca0fb9b05a6e3535f42"
+    },
+    {
+      "alternate_output_dtype_owners": {},
+      "coverage_records": 6,
+      "output_dtype_preference": "_bf16_out",
+      "owner_class": "other",
+      "registry_quant": "w4_paro",
+      "strict_manifest": {
+        "backend": "hip_gfx1100",
+        "execution_profile": "strict",
+        "graph_policy": "serial_c1",
+        "kind": "hipengine_execution_profile_manifest",
+        "kv_policy": "paged_bf16",
+        "model": "gguf_ud_q4_k_s",
+        "quant": "gguf_ud_q4_k_s",
+        "schema_version": 1,
+        "selections": [
+          {
+            "evidence_artifact": null,
+            "layer": "gdn_recurrent_rmsnorm_gate",
+            "registry_quant": "w4_paro",
+            "scope": "rows_1_8_row_local",
+            "selected_variant": "bf16_lowp",
+            "strict_fallback_variant": "bf16_lowp"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear_attn_conv_decode",
+            "registry_quant": "w4_paro",
+            "scope": "rows_1_8_row_local",
+            "selected_variant": "bf16",
+            "strict_fallback_variant": "bf16"
+          }
+        ]
+      },
+      "strict_manifest_sha256": "d9be776598a46e06a33ae0694c1f47e118ef8b45deeb0e6dcfd2b12326b6cbd8"
+    }
+  ]
+}

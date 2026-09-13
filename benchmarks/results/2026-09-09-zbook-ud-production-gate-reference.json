@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-09",
+  "status": "diagnostic",
+  "host": "zbook",
+  "hardware": "AMD RYZEN AI MAX+ PRO 395 / Radeon 8060S (laptop; provisional pending the desktop gfx1151)",
+  "backend": "hip_gfx1151",
+  "finding": "Every numerics decision in this UD campaign was scored against an independent llama.cpp teacher. docs/EXECUTION-PROFILES.md section 6 defines the production gate as hipEngine strict versus candidate production on the same artifact, and section 7.1 states that an external engine is a comparison oracle, not the definition of hipEngine strict bytes. Re-scored against the correct reference the ranking inverts: the shipped four-quant integer-MMQ default breaches the binding absolute maximum-row ceiling, and W4A16 passes every threshold.",
+  "reference": "The pre-MMQ capture with every IQ tensor on the strict dense GEMV, same production config, same 18 prompts x 9 forced tokens. This isolates the IQ routing change and subtracts the hipEngine-versus-llama.cpp codec gap common to every arm. It is the previous production default rather than a full strict profile: Q4/Q5/Q6 sit on T16 WMMA prefill in both reference and candidates, so they cancel for attribution but are not themselves strict.",
+  "calibrated_envelope": {
+    "source": "docs/EXECUTION-PROFILES.md section 6.1, binding automatic-admission limits",
+    "mean_kl": 1e-3, "p95_row_kl": 5e-3, "p99_row_kl": 2e-2,
+    "max_row_kl_absolute_ceiling": 5e-2,
+    "top1_overall": 0.99, "top1_per_scope": 0.97,
+    "note": "Rows above 2e-2 require explicit diagnosis even when the 5e-2 ceiling passes; they are never admitted automatically."
+  },
+  "production_vs_strict": {
+    "two_quant_mmq": {"prefill_tok_s": 127.20, "mean": 0.001038, "p95": 0.003479, "p99": 0.014385, "max": 0.049730, "top1": "99.4%", "rows_over_2e-2": 1, "rows_over_5e-2": 0, "verdict": "FAIL on mean (1.038e-3 against 1e-3); max 0.0497 is just inside the ceiling"},
+    "four_quant_mmq_shipped_default": {"prefill_tok_s": 171.86, "mean": 0.002110, "p95": 0.006797, "p99": 0.024044, "max": 0.170390, "top1": "100.0%", "rows_over_2e-2": 2, "rows_over_5e-2": 1, "verdict": "FAIL - maximum row KL is 3.4x the absolute ceiling"},
+    "four_quant_w4a16": {"prefill_tok_s": 150.85, "mean": 0.000827, "p95": 0.004547, "p99": 0.012475, "max": 0.023513, "top1": "100.0%", "rows_over_2e-2": 1, "rows_over_5e-2": 0, "verdict": "PASS on every threshold"}
+  },
+  "worst_row_detail": {
+    "position": 91,
+    "prompt_step": "prompt 10, step 1",
+    "four_quant_mmq_kl": 0.1704,
+    "w4a16_kl": 0.0003,
+    "reading": "570x apart at the integer route's worst position, so this is a real failure of that route there rather than measurement noise. Top-1 still agrees at that row, so it is a distribution failure rather than a token flip."
+  },
+  "why_the_teacher_reference_misled": {
+    "hipengine_strict_vs_llamacpp_teacher_mean": 0.001271,
+    "explanation": "That gap is common to every arm and dominates the teacher-referenced numbers, which compresses differences between arms and, for the maximum, reorders them. Against the teacher the four-quant MMQ had the BEST max of all arms (0.0297) and W4A16 the worst (0.0409). Against strict those are 0.1704 and 0.0235. It also made every arm appear to 'fail' a 1e-3 mean limit that was never intended for that comparison - hipEngine strict itself sits at 0.001271 against the teacher.",
+    "campaign_pattern": "Third cheap-proxy error of this campaign, all the same shape: bisecting IQ4_NL on divergence-from-default rather than teacher KL; validating W4A16 at the bf16 output floor; and scoring admission against an external oracle rather than strict."
+  },
+  "consequence": "By AGENTS.md - never land a production win that fails a binding threshold - the shipped four-quant integer-MMQ default should not stand as-is. W4A16 passes the envelope at a 12% throughput cost (150.9 against 171.9 tok/s). The policy was not changed in this unit: the human lead selected the current one explicitly, on the teacher-referenced numbers, and the decision is theirs with the corrected data.",
+  "limitations": [
+    "The reference is the previous production default, not a full strict profile; a full strict run would be stricter still.",
+    "The earlier campaign decisions (per-tensor repack eligibility, dense T16 role coverage) were also taken on teacher-referenced numbers and have not been re-scored against strict.",
+    "Single host, laptop clocks; the accuracy ranking is same-host and deterministic, but absolute rates are provisional."
+  ]
+}

@@ -52,8 +52,18 @@ def gguf_tokenizer_tokens_sha256(info: GGUFModelInfo) -> str:
     return digest.hexdigest()
 
 
-def default_gguf_hot_vocab_path(info: GGUFModelInfo) -> Path | None:
-    """Resolve a packaged model-plugin selection by exact model/tokenizer identity."""
+def default_gguf_hot_vocab_path(
+    info: GGUFModelInfo,
+    artifact_preset_key: str | None = None,
+) -> Path | None:
+    """Resolve a packaged model-plugin selection by exact model/tokenizer identity.
+
+    The identity is (architecture, basename, block count, file-type stamp,
+    tokenizer hash) plus, when the caller binds one, the artifact admission
+    preset key. A preset-qualified artifact therefore never reuses a packaged
+    selection that was certified for the plain artifact sharing its stamp;
+    unknown preset keys resolve to no packaged map instead.
+    """
 
     metadata = info.metadata
     key = (
@@ -63,6 +73,8 @@ def default_gguf_hot_vocab_path(info: GGUFModelInfo) -> Path | None:
         str(info.file_type_name),
         gguf_tokenizer_tokens_sha256(info),
     )
+    if artifact_preset_key is not None:
+        key = key + (str(artifact_preset_key),)
     filename = _DEFAULT_HOT_VOCAB_IDENTITIES.get(key)
     if filename is None:
         return None

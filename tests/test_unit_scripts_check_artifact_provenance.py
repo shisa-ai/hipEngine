@@ -102,6 +102,14 @@ def test_model_without_a_quant_token_is_not_a_conflict(tmp_path):
     assert _load().check_repo(repo)["violations"] == []
 
 
+def test_nested_gguf_ud_quant_prefix_matches_the_model(tmp_path):
+    repo = _pair(tmp_path, {
+        "model": "Qwen3.8-27B-UD-Q4_K_M",
+        "quant": "gguf_ud_q4_k_m",
+    })
+    assert _load().check_repo(repo)["violations"] == []
+
+
 def test_missing_artifact_cited_by_readme_fails(tmp_path):
     repo = _repo(
         tmp_path,

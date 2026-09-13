@@ -1,0 +1,29 @@
+# Pre-fix reproduction: native MTP crashes past the gfx1100 native context limit
+
+Command (plain Qwen3.8-27B-Q4_K_M, XTX GPU1, dirty pre-fix tree):
+
+  HIP_VISIBLE_DEVICES=1 .venv/bin/python scripts/qwen36_dense_gguf_suite.py \
+    --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m \
+    --candidate-budgets 3 --output /tmp/ud-mtp-suite-plainkm.json
+
+Nine prompts complete (AR plus exact MTP B3); the tenth prompt is the
+first whose decode end position exceeds 95:
+
+AR run=0 prompt=general_ja_explain tok_s=36.919977
+AR run=0 prompt=mixed_ja_en_translate tok_s=36.585164
+AR run=0 prompt=mixed_ja_en_review tok_s=34.490804
+
+  File "/home/lhl/hipEngine-ud/scripts/qwen36_dense_gguf_suite.py", line 414, in _run_mtp
+    result = decoder.generate(
+             ^^^^^^^^^^^^^^^^^
+  File "/home/lhl/hipEngine-ud/hipengine/runtime/qwen35_gguf_mtp.py", line 1898, in generate
+    prepared = self.verifier.prepare(
+               ^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lhl/hipEngine-ud/scripts/qwen36_dense_gguf_suite.py", line 343, in prepare
+    return self._verifier.prepare(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lhl/hipEngine-ud/hipengine/runtime/qwen35_gguf_mtp.py", line 1328, in prepare
+    self.journal.capture_row(row, stream=stream)
+  File "/home/lhl/hipEngine-ud/hipengine/runtime/qwen35_gguf_mtp.py", line 733, in capture_row
+    raise RuntimeError("initial-state-only journal cannot capture serial rows")
+RuntimeError: initial-state-only journal cannot capture serial rows

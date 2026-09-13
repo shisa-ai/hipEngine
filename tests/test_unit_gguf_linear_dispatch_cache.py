@@ -27,17 +27,27 @@ from hipengine.loading.qwen35_gguf_materialize import (
 from hipengine.runtime.gguf_linear import launch_gguf_linear, launch_gguf_linear_pair
 
 _KEY = KernelKey("hip_gfx1100", "linear", "gguf_q8_0", "pack8_gemv_bf16_bf16_out")
+_IQ_STRICT_KEY = KernelKey(
+    "hip_gfx1100", "linear", "gguf_iq4_xs", "gemv_bf16_bf16_out"
+)
+_IQ_LOCAL32_KEY = KernelKey(
+    "hip_gfx1100", "linear", "gguf_iq4_xs", "local32_gemv_bf16_bf16_out"
+)
 _PAIR_KEY = KernelKey(
     "hip_gfx1100", "linear", "gguf_q8_0_t16_v1", "t16_dual_gemv_decode_bf16_bf16_out"
 )
 
 
-def _fake_weight(*, layout: str, quant_key: str):
+def _fake_weight(*, layout: str, quant_key: str, slot_path: str | None = None):
     alloc = SimpleNamespace(tensor=SimpleNamespace(ptr=10))
 
     class Weight:
         def __init__(self) -> None:
-            self.spec = SimpleNamespace(layout=layout, quant_key=quant_key)
+            self.spec = SimpleNamespace(
+                layout=layout,
+                quant_key=quant_key,
+                slot_path=slot_path,
+            )
 
         def allocation(self, name: str = "raw"):
             return alloc
@@ -92,6 +102,174 @@ def test_dispatch_cache_memoizes_and_invalidates_on_registry_change(monkeypatch)
         else:
             register(_KEY, saved, replace=True)
         gl.clear_gguf_linear_dispatch_cache()
+
+
+def test_dispatch_cache_reuses_equivalent_iq_owner_contexts(monkeypatch) -> None:
+    """Re-entering the same semantic owner must not invalidate every raw-IQ weight."""
+
+    from hipengine.kernels.hip_gfx1100.quant import (
+        gguf_iq_source_mmq_prefill as iq_mmq,
+    )
+
+    gl.clear_gguf_linear_dispatch_cache()
+    calls = {"n": 0}
+    orig_resolve_dispatch = gl.resolve_gguf_linear_dispatch
+
+    def counting(*args, **kwargs):
+        calls["n"] += 1
+        return orig_resolve_dispatch(*args, **kwargs)
+
+    monkeypatch.setattr(gl, "resolve_gguf_linear_dispatch", counting)
+    weight = _fake_weight(
+        layout=LAYOUT_RAW_GGUF,
+        quant_key="gguf_iq4_xs",
+        slot_path="layers.0.ffn_gate",
+    )
+    fired: list[str] = []
+    saved_strict = resolve(
+        backend=_IQ_STRICT_KEY.backend,
+        layer=_IQ_STRICT_KEY.layer,
+        quant=_IQ_STRICT_KEY.quant,
+        variant=_IQ_STRICT_KEY.variant,
+        missing="none",
+    )
+    saved_local32 = resolve(
+        backend=_IQ_LOCAL32_KEY.backend,
+        layer=_IQ_LOCAL32_KEY.layer,
+        quant=_IQ_LOCAL32_KEY.quant,
+        variant=_IQ_LOCAL32_KEY.variant,
+        missing="none",
+    )
+    register(_IQ_STRICT_KEY, lambda *args, **kwargs: fired.append("strict"), replace=True)
+    register(_IQ_LOCAL32_KEY, lambda *args, **kwargs: fired.append("local32"), replace=True)
+    try:
+        for _ in range(2):
+            with iq_mmq.iq_dense_mmq_session(True):
+                launch_gguf_linear(
+                    weight,
+                    x_ptr=1,
+                    out_ptr=2,
+                    rows=1,
+                    in_features=5120,
+                    out_features=17408,
+                    runtime="rt",
+                )
+        assert fired == ["local32", "local32"]
+        assert calls["n"] == 1
+    finally:
+        if saved_strict is None:
+            _KERNELS.pop(_IQ_STRICT_KEY, None)
+        else:
+            register(_IQ_STRICT_KEY, saved_strict, replace=True)
+        if saved_local32 is None:
+            _KERNELS.pop(_IQ_LOCAL32_KEY, None)
+        else:
+            register(_IQ_LOCAL32_KEY, saved_local32, replace=True)
+        gl.clear_gguf_linear_dispatch_cache()
+
+
+def test_dispatch_cache_separates_iq_owner_and_decode_pin(monkeypatch) -> None:
+    """A stable owner key must still keep disabled and slot-pinned routes distinct."""
+
+    from hipengine.kernels.hip_gfx1100.quant import (
+        gguf_iq_source_mmq_prefill as iq_mmq,
+    )
+
+    gl.clear_gguf_linear_dispatch_cache()
+    weight = _fake_weight(
+        layout=LAYOUT_RAW_GGUF,
+        quant_key="gguf_iq4_xs",
+        slot_path="layers.0.ffn_gate",
+    )
+    fired: list[str] = []
+    saved_strict = resolve(
+        backend=_IQ_STRICT_KEY.backend,
+        layer=_IQ_STRICT_KEY.layer,
+        quant=_IQ_STRICT_KEY.quant,
+        variant=_IQ_STRICT_KEY.variant,
+        missing="none",
+    )
+    saved_local32 = resolve(
+        backend=_IQ_LOCAL32_KEY.backend,
+        layer=_IQ_LOCAL32_KEY.layer,
+        quant=_IQ_LOCAL32_KEY.quant,
+        variant=_IQ_LOCAL32_KEY.variant,
+        missing="none",
+    )
+    register(_IQ_STRICT_KEY, lambda *args, **kwargs: fired.append("strict"), replace=True)
+    register(_IQ_LOCAL32_KEY, lambda *args, **kwargs: fired.append("local32"), replace=True)
+    try:
+        launch_gguf_linear(
+            weight,
+            x_ptr=1,
+            out_ptr=2,
+            rows=1,
+            in_features=5120,
+            out_features=17408,
+            runtime="rt",
+        )
+        with iq_mmq.iq_dense_mmq_session(True):
+            launch_gguf_linear(
+                weight,
+                x_ptr=1,
+                out_ptr=2,
+                rows=1,
+                in_features=5120,
+                out_features=17408,
+                runtime="rt",
+            )
+        with iq_mmq.iq_dense_mmq_session(
+            True,
+            decode_strict_slots={"layers.0.ffn_gate"},
+        ):
+            launch_gguf_linear(
+                weight,
+                x_ptr=1,
+                out_ptr=2,
+                rows=1,
+                in_features=5120,
+                out_features=17408,
+                runtime="rt",
+            )
+        assert fired == ["strict", "local32", "strict"]
+    finally:
+        if saved_strict is None:
+            _KERNELS.pop(_IQ_STRICT_KEY, None)
+        else:
+            register(_IQ_STRICT_KEY, saved_strict, replace=True)
+        if saved_local32 is None:
+            _KERNELS.pop(_IQ_LOCAL32_KEY, None)
+        else:
+            register(_IQ_LOCAL32_KEY, saved_local32, replace=True)
+        gl.clear_gguf_linear_dispatch_cache()
+
+
+def test_iq_dispatch_cache_state_tracks_workspace_and_both_pin_sets() -> None:
+    from hipengine.kernels.hip_gfx1100.quant import (
+        gguf_iq_source_mmq_prefill as iq_mmq,
+    )
+
+    assert gl._iq_dense_dispatch_cache_state() is None
+    with iq_mmq.iq_dense_mmq_session(
+        True,
+        strict_slots={"layers.0.ffn_up"},
+        decode_strict_slots={"layers.1.ffn_down"},
+    ):
+        assert gl._iq_dense_dispatch_cache_state() == (
+            False,
+            frozenset({"layers.0.ffn_up"}),
+            frozenset({"layers.1.ffn_down"}),
+        )
+    with iq_mmq.iq_dense_mmq_session(
+        True,
+        workspace_ptr=1 << 20,
+        workspace_nbytes=1 << 24,
+    ):
+        assert gl._iq_dense_dispatch_cache_state() == (
+            True,
+            frozenset(),
+            frozenset(),
+        )
 
 
 def test_prefill_f16_staging_works_after_bf16_dispatch_cache_hit(monkeypatch) -> None:

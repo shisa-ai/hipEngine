@@ -57,6 +57,11 @@ Use semver-style bumps while the public API is still alpha:
       including cached-build profiler guidance.
 - [ ] Remove stale build artifacts before rebuilding: `rm -rf dist/`.
 - [ ] Build fresh artifacts: `python3 -m build`.
+- [ ] Check both distribution sizes before any upload:
+      `python3 scripts/check_distribution_size.py dist/*.whl dist/*.tar.gz`.
+      The gate rejects missing, empty, or oversized files, using a conservative
+      100,000,000-byte per-file limit. CI runs it before artifact upload; the
+      PyPI publish job depends on that check succeeding for the whole batch.
 - [ ] Confirm the wheel is not pure-any. For the current bundled AOTriton runtime,
       expect `hipengine-X.Y.Z-py3-none-manylinux_2_39_x86_64.whl` and
       `Root-Is-Purelib: false`.
@@ -94,6 +99,17 @@ Use semver-style bumps while the public API is still alpha:
 
 - Do not publish from a dirty tree.
 - Do not reuse old `dist/` artifacts; rebuild for every release.
+- The sdist uses an explicit `only-include` list in `pyproject.toml`: application
+  and kernel source/assets, packaged CLI helpers under `scripts/`, build files,
+  license, README, and changelog. Repository benchmark results, external surveys,
+  worklogs, docs, and test fixtures are not installation inputs and are excluded.
+  Keep kernel sources and bundled AOTriton assets intact. The default
+  `python -m build` builds the wheel from the sdist, validating that it is
+  self-contained; use a repository checkout for the full test/evidence corpus.
+- Check sizes before manual uploads too. Uploading the wheel first and then
+  discovering an oversized sdist leaves a partially published release.
+  Do not move published tags or replace already-published files to fix this;
+  apply packaging changes to the next release.
 - Release validation is a correctness and packaging gate, not an automatic
   benchmark refresh. Existing retained performance evidence remains valid when
   later release-only changes are limited to documentation and package metadata.

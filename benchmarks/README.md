@@ -1,9 +1,14 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-13 UTC**
+Last updated: **2026-09-13**
+
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
+
+UD/main integration validation is documented in the
+[integration report](../docs/UD-MAIN-INTEGRATION.md); its working-tree timings
+do not replace the published performance rows.
 
 ## Root README performance summary
 
@@ -351,6 +356,249 @@ in the artifacts
 ([sprint](results/gfx1151-evie-4p5b-fp16-perf-sprint-2026-09-09.json),
 [cluster8](results/gfx1151-evie-4p5b-cluster8-recurrence-2026-09-10.json)).
 
+### XTX (RX 7900 XTX) Qwen3.8 `UD-Q4_K_M` / `UD-Q4_K_S` dynamic-routing stack
+
+No valid final W7900 parity row exists: the four-arm A/B below was measured on
+the XTX, and the W7900 paired MTP run is withdrawn as invalid (see the dated
+retraction in [`CHANGELOG.md`](CHANGELOG.md)).
+
+2026-09-11 four-arm A/B (hipEngine direct, p512/d128, graph-replay decode,
+medians of 3, all four arms same-conditions): the UD artifacts vs their plain
+counterparts. Prefill is tokens/s.
+
+| Model | Prefill plain | Prefill UD | Ratio | Decode plain | Decode UD | Decode ratio |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `UD-Q4_K_M` | 986.0 | **905.6** | **0.918x** | 35.37 | **29.98** | **0.848x** |
+| `UD-Q4_K_S` | 946.0 | **893.7** | **0.944x** | 36.66 | **29.49** | **0.804x** |
+
+2026-09-11 decode-parity campaign final re-measure (same conditions; the
+plain arms also gained from the shared Q5 local32 owner — plain K_M
+34.12 -> 35.37, plain K_S 30.55 -> 36.66): the four levers — IQ4_XS
+gate/up dual+SiLU, IQ4_NL local32, the split/scale IQ (IQ3_S/IQ3_XXS/
+IQ2_S/IQ2_XS) local32 family, and the Q5 dense local32 single — took UD
+decode 26.20 -> **29.98** (K_M, +14.4%) and 25.53 -> **29.49** (K_S,
++15.5%), pure-kernel 35.23 -> 30.26 and 36.16 -> 30.02 ms/tok, 898 ->
+831 and 918 -> 839 launches/tok. Both artifacts pass the tokenized
+category gate on the final stack (K_M max 1.484e-2, K_S max 2.014e-2,
+top-1 99.91%); K_M's local32-family tail is pinned at its admitted
+state (all four IQ3_S decode slots strict). Remaining decode levers:
+the Q5 MoE selected-expert path (2.22 ms/tok K_M on the direct GEMV),
+Q3_K strict decode (1.43/2.43 ms/tok), and the Q5 gate/up dual.
+([final rollup](results/final-decode-campaign-2026-09-11/).)
+
+MTP for these artifacts is now **admitted**: the U6 certification records are
+complete, `_UD_MTP_PRESET_FINGERPRINTS` carries both fingerprints, and the
+artifacts derive the `mtp` scope alongside `ar`. The admitted scope is width c1
+and the 4-95 token context bucket, and it is the measured scope — c2 K2 engages
+and holds `ar_exact` but reaches only 1.0418x, c4 has no production physical
+width cell, c8 runs out of memory at capacity 8 on a 24 GB card, and above 1023
+context the adapter refuses MTP while the packed verifier stops batching. An
+admission check with no request field, no diagnostic flag and no in-process
+grant measures `UD-Q4_K_M` AR 14.23 -> MTP **34.32** tok/s (**2.4126x**) and
+`UD-Q4_K_S` AR 15.19 -> MTP **35.71** tok/s (**2.3517x**), 10/10 engaged and
+10/10 `ar_exact`, on the server-path diagnostic denominator
+([admission check](results/2026-09-12-ud-gfx1100-mtp-automatic-admission.json),
+[width census](results/2026-09-12-ud-gfx1100-mtp-width-cells.json)). That
+denominator is not the resident graph-replay leaf used below, so it does not
+replace these rates.
+
+The retained paired measurement (c1, natural25, B3, ten prompts, two repeats,
+recorded production graph replay for the true-AR arm), taken on a clean
+worktree at `92c7e3dc4`:
+
+| Tier | UD AR | Plain AR | UD / plain AR | UD MTP B3 | Plain MTP B3 | UD / plain MTP | UD MTP / AR |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `Q4_K_M` | 32.922 | 38.373 | **0.858x** | 50.231 | 65.347 | **0.769x** | **1.5258x** |
+| `Q4_K_S` | 32.311 | 41.135 | **0.785x** | 49.356 | 70.092 | **0.704x** | **1.5275x** |
+
+All four arms have complete 20-row-per-group evidence, deterministic repeats,
+GPU/CPU acceptance agreement, and a positive MTP/AR ratio. The `Q4_K_M` arms
+are generated-ID exact and both carry `speed_claim_eligible: true` from a clean
+worktree. `Q4_K_S` carries the recorded `general_ja_plan` exactness divergence
+(2/20 rows) described below, which the suite scores as `correctness_failed` and
+so marks `speed_claim_eligible: false`; the `Q4_K_S` row is published as a
+measured rate with that caveat, not as an eligible speed claim. The remaining
+gap is concentrated in MTP compute: UD trails plain by 14.2%/21.5% in AR but
+23.1%/29.6% in MTP.
+([paired artifact](results/2026-09-13-ud-gfx1100-paired-clean-provenance.json),
+[predecessor, superseded](results/2026-09-13-ud-gfx1100-rounded-norm-fixed5120.json),
+[provenance audit](../worklog/entries/20260913T114312.816781Z-lhl-ud-claim-evidence-audit-c22a97.md).)
+
+Those rates follow the rows 2-4 local32 IQ verifier sibling
+(`2ac44d7a7`), the Q5_K gate/up pair row gate, the Q8_0 attention K/V
+rowtile route, the Q5T16 single-wave verifier rowtile, and the rounded
+fixed-5120 norm leaf (all `2026-09-13`), which together moved UD MTP B3
+35.541 -> **50.231** (K_M, +41.3%) at flat AR; the K_S progression
+33.061 -> **49.356** carries the same exactness divergence at both ends.
+
+**Provenance of the per-lever deltas.** The incremental before/after figures
+quoted in the per-lever paragraphs below were measured on worktrees that the
+suite records as `dirty: true`, so their own provenance gate marks them
+`speed_claim_eligible: false`. They remain valid as kernel- and
+verifier-level diagnostics, and the verifier sub-window A/Bs they rest on are
+separate measurements, but only the retained table above carries
+`speed_claim_eligible: true`. Re-deriving each lever's end-to-end delta on a
+clean tree is tracked in the provenance audit entry.
+
+The rows 2-4 local32 IQ verifier sibling gives each block
+several prompt rows over the same local32 IQ decode geometry, with every row
+bit-identical to the rows == 1 owner's output for that row; at kernel level it
+is 2.0-4.3x the strict per-row GEMV at rows 2-4 and covers 94.1% (K_M) / 85.9%
+(K_S) of the rows 2-7 dead-zone MACs. The block verifier also had to bind the
+dense-IQ execution-owner session, without which its raw-IQ rows 2-4 kept the
+strict owner. All four section-6.1 arms still pass with at least 24x margin on
+the binding mean limit and 100% top-1 overall and per category, and a
+fresh-process reproduction matches all sixteen arm numbers to the last digit.
+([kernel headroom](results/2026-09-12-ud-gfx1100-phase4-local32-rows-headroom.json),
+[numerics gate](results/2026-09-12-ud-gfx1100-phase4-ar-verify-numerics.json),
+[gate reproduction](results/2026-09-12-ud-gfx1100-phase5-ar-verify-numerics.json),
+[implementation entry](../worklog/entries/20260912T092947.074218Z-ud-phase4-lane-ud-phase4-local32-rows-sibling-103062.md).)
+
+The Q8_0 attention K/V route removes the last prefill-sized owner from the
+verifier. `gguf_q8_0_t16_prefill_wmma` ran the ten `(5120, 1024)` Q8_0
+`attn_k`/`attn_v` projections at verifier rows as one wave32 per block with 32
+blocks total — 122.6 us per call, 45 GB/s on 5.6 MB tensors — for 0.858 ms/step,
+or 2.0% of verifier kernel time. Admitting those shapes to the 128-thread
+`q8_0_t16_rowtile_gemv` owner, which reads each tile once for four rows, runs
+the same 84 calls per step at 51.8 us each for 0.363 ms/step: **-0.495 ms/step
+on the Q8_0 family (-57.7%)** at an unchanged call count. The generated token
+sequence is unchanged, and the section-6.1 gate improves on every metric —
+mean/p95/p99/max KL **3.02e-05 / 1.23e-04 / 2.81e-04 / 3.66e-04** against
+3.92e-05 / 1.88e-04 / 4.06e-04 / 4.06e-04 before, top-1 1.0000, two
+deterministic repeats. The paired arm measures UD-Q4_K_M 45.973 -> **46.192**
+tok/s (+0.48%) against a plain-control spread of -0.31%/+0.18%, and UD-Q4_K_S
+46.990 -> **47.023** (+0.07%), which tracks the shape count: K_M carries ten of
+these projections and K_S three.
+([census](results/2026-09-13-ud-gfx1100-q8-rowtile-attn-kv-census.json),
+[numerics gate](results/2026-09-13-ud-gfx1100-q8-rowtile-attn-kv-ar-verify.json).)
+
+The rounded add+rmsnorm leaf now has a fixed-5120 owner too. It was the last
+norm-family item in the verifier without one, and it carried the same defect the
+plain generic owner had: one block per row, but a runtime-trip-count loop over
+`hidden_size` with no register cache, so it read the residual and the addend
+twice and paid the nine-barrier tree. `gguf_norm_fixed5120_wave256_kernel` gains
+a `kRoundSum` template parameter that makes both the reduction and the residual
+output consume `bf16(bf16(x) + bf16(add))`, the `add+rmsnorm` layer gets a
+`rounded_bf16_out_fixed5120_wave256` variant of it, and gfx1100 declares
+`GGUF_ROUNDED_NORM_RESIDUAL_DECODE_POLICIES` for `2 <= rows <= 8`. The
+interleaved A/B (three baseline runs, two candidate runs) puts the family at
+**12.640 -> 5.171 ms over 12 steps** (**1.053 -> 0.431 ms/step**, 13.38 ->
+5.47 us per call, -59.1%) and the whole verifier at **36.760 -> 36.321
+ms/step (-1.19%)** at an unchanged 985 calls/step, with the two bands not
+overlapping. The leaves are **byte-identical to their generic counterparts at
+rows 2/3/4/5/6/8**, so the section-6.1 gate is **identical to the last digit**
+to the parent commit's run (mean/p95/p99/max KL **2.503e-05 / 1.654e-04 /
+2.930e-04 / 2.971e-04**, top-1 **1.0000** overall and per category and per
+budget). The paired suite follows: MTP B3 rises **49.371 -> 50.131 tok/s**
+(UD-Q4_K_M, +1.54%) and **48.294 -> 48.634** (UD-Q4_K_S, +0.70%) while the
+true-AR denominator stays flat (32.750 -> 32.705 and 32.098 -> 32.081), which is
+what a verifier-only change must do. All four paired arms are `binding_passed`
+with `timing_evidence_valid`. Rollback:
+`HIPENGINE_GGUF_ROUNDED_NORM_FIXED5120=0`.
+([artifact](results/2026-09-13-ud-gfx1100-rounded-norm-fixed5120.json),
+[worklog](../worklog/entries/20260913T090609.044291Z-lhl-ud-rounded-norm-fixed5120-fa5016.md).)
+
+The fixed-5120 norm leaf now reaches the verifier row slab. The kernel and both
+of its registry keys already existed on this backend, but only the gfx1151
+package declared `GGUF_NORM_RESIDUAL_DECODE_POLICIES` and its table admits
+`rows == 1` alone, so every W7900 call fell through to the generic
+local256 owner - which has a runtime-trip-count loop and no register cache, so
+it reloads `x` and `add` for its second pass and pays nine tree barriers. That
+covers the rows-3 verifier slab and the rows-1 decode alike. Both fixed-5120 entry
+points now accept rows 1-8 and launch one block per row, and the gfx1100 package
+declares the policy for rows 1-8 under both the plain and the
+UD-preset-extended keys. One block owns one row, so every per-thread partial,
+the reduction tree, the `rsqrtf` argument and the epilogue are unchanged, and
+the leaves are **byte-identical to their generic counterparts at rows
+1/2/3/4/6/8**. The verifier A/B puts the `add_rmsnorm` leaf at **0.770 ->
+0.329 ms/step** (770.07 -> 328.56 us/step, 64 calls, **12.03 -> 5.13 us** per
+call, -57.3%) and the whole verifier at **37.067 -> 36.6206 ms/step (-1.21%)** at
+an unchanged 985 calls/step. Because the change is bit-identical, the movement it
+produces is a pure speed effect: the same 64 norm launches per step at 16.9 ->
+5.9 us each is about -0.7 ms on a 30.5 ms single-row step, and the paired suite
+measures true-AR decode at
+**31.904 -> 32.750 tok/s** (UD-Q4_K_M, +2.65%) and **31.303 -> 32.098**
+(UD-Q4_K_S, +2.54%). The MTP B3 step is roughly twice as long, so the same
+absolute saving is about half the percentage and sits inside the
+acceptance-driven spread (UD-Q4_K_M 49.408 -> 49.371, UD-Q4_K_S 48.548 ->
+48.294). The section-6.1 teacher-forced gate passes on both repeats at
+mean/p95/p99/max KL **2.503e-05 / 1.654e-04 / 2.930e-04 / 2.971e-04** with top-1
+**1.0000 overall and in every category and at every budget**, and all four
+paired arms are `binding_passed` with `timing_evidence_valid`.
+([artifact](results/2026-09-13-ud-gfx1100-norm-fixed5120-row-slab.json),
+[worklog](../worklog/entries/20260913T073710.202482Z-lhl-ud-norm-fixed5120-rowslab-8c2632.md).)
+
+The strict dense IQ row slab now covers the verifier's row count instead of
+sitting below it. `gguf_iq_dense_strict_kernel` is the exactness-contract owner
+for Q3_K/IQ3_S/IQ3_XXS/IQ2_S/IQ2_XS, and `grid.y` is `ceil(rows/R)`, so at the
+3-row native verifier the old largest-slab-at-or-below rule picked `R=2` and
+read every weight slice **twice**. The smallest slab at or above the row count
+makes `grid.y` one. An interleaved A/B (three old-rule runs, two new-rule runs)
+puts the strict family at **4.264 -> 3.179 ms/step (-25.4%)** and the whole
+verifier at **38.275 -> 37.039 ms/step (-3.23%)**, with no overlap between the
+two bands. The change is arithmetic-neutral by the kernel's declared contract -
+`R` only changes which prompt rows share a block, padding rows load `0.0f` and
+are never stored - and the section-6.1 gate confirms it directly by reporting
+**identical numbers to the last digit** under both rules on UD-Q4_K_M
+(mean/p95/p99/max **3.435e-05 / 2.112e-04 / 2.904e-04 / 2.952e-04**, top-1
+1.0000, two deterministic repeats); UD-Q4_K_S passes at
+1.871e-05 / 1.115e-04 / 3.704e-04 / 4.865e-04. The paired suite does not
+separate this change from run-to-run spread (UD-Q4_K_M flat, UD-Q4_K_S +3.39%
+against an AR denominator that moved +2.9%), so the retention rests on the
+verifier sub-window A/B and the exact gate identity.
+([artifact](results/2026-09-13-ud-gfx1100-iq-dense-strict-row-slab-cover.json),
+[worklog](../worklog/entries/20260913T063400.608406Z-lhl-ud-iq-dense-row-slab-cover-5bb456.md).)
+
+The Q5T16 single-wave route retires the four-wave WG128 geometry from the
+verifier rows-2-8 rowtile. The four-wave owner runs four wave32 waves and sums
+their partial vectors through shared memory; the single-wave owner runs one
+wave32 per output block over eight columns with each lane owning eight
+contiguous `k` inside the 256-element block, so the subblock `d`/`dmin` decode
+hoists out of the inner loop and the block needs no cross-wave exchange or
+`__syncthreads()`. On the verifier the Q5_K family falls **11.75 -> 7.98
+ms/step (-32%)** across 126 in-window calls per step, at 1.05x-1.58x per call
+on all six Q5_K shapes, and the whole-kernel step falls 40.9 -> 38.4 ms/step.
+The paired arm measures UD-Q4_K_M MTP B3 46.192 -> **49.409** tok/s (+6.96%)
+at an unchanged AR denominator (31.909 -> 31.904), so MTP/AR rises
+1.4476 -> **1.5487x**. The plain control arms carry no Q5_K weights and move
++1.16%/+0.41%, which bounds the session spread. The four-wave entry point
+stays registered as the parent-parity owner that the grouped rows6/rows8
+variants are bit-identical to, and the single-wave owner is selected by policy
+with `HIPENGINE_GGUF_Q5_T16_ROWTILE_SINGLE_WAVE=0` as the rollback.
+([artifact](results/2026-09-13-ud-gfx1100-q5t16-single-wave-rowtile.json),
+[worklog](../worklog/entries/20260913T041334.891199Z-lhl-ud-q5t16-single-wave-rowtile-06039f.md).)
+
+The 2026-09-11 baseline this compares against measured UD-Q4_K_M 31.993 AR /
+35.541 MTP B3 (1.1109x) and UD-Q4_K_S 31.311 / 33.061 (1.0559x), with plain
+controls at 37.186 / 63.465 and 39.565 / 64.094. Across the runs since, both UD
+AR arms have stayed within 0.3% and the plain controls within 3.2%, which
+bounds the run-to-run spread.
+([baseline artifact](results/paired-ud-plain-mtp-c1-natural25-b3-graph-xtx.json),
+[invalidated eager-denominator attempt](results/paired-ud-plain-mtp-c1-natural25-b3-xtx.json).)
+
+Earlier revisions of this section published a W7900/XTX census comparison
+(46,913 vs 30,263 µs/token pure, localised to two local32 GEMV kernels at 3.84x
+and 3.33x). **That is withdrawn**: it read a contended GPU0 census as a clean
+device property.
+
+Both artifacts pass the tokenized 18-prompt category/heldout screen
+(`scripts/gguf_ud_combined_stack_gate.py --category-heldout`, real tokenizer
++ chat template, incumbent-extended 512-token prompts, 1170 teacher-forced
+positions, seeds 7/11/23): K_S with the full shipped stack (max 5.1e-3,
+top-1 99.83%); K_M with the Q3_K W4A16 prefill route pinned strict for
+`layers.0.ffn_up` only - the per-tensor bisection showed that earliest Q3_K
+tensor carries ~92% of the route's max-row KL tail (its 1-ULP
+accumulation-order flips get the most downstream amplification), so pinning
+it recovers the envelope (max 2.8e-2, p99 1.9e-3, top-1 99.74%) at ~3.4%
+prefill cost. Everything else - IQ4_XS dual, coop64/coop32 owners, IQ2
+additions, local32 decode - is bit-exact vs the incumbent once that slot
+reverts. Next lever: a precision-preserving Q3_K owner (strict accumulation
+association with shared decoded weights, or a higher-precision split
+representation); cooperative geometry alone cannot help.
+([gate artifacts](results/combined-stack-gate2/perslot-2026-09-11/),
+[four-arm artifacts + bisection](results/final-four-arm-perslot-2026-09-11/),
+[pre-pin record](results/final-four-arm-2026-09-10/).)
+
 ### W7900 Qwen3.8 `Q4_K_M` C1-C8
 
 #### Server performance on the INT8 KV route
@@ -627,6 +875,77 @@ All lanes exceed2% per-case CV somewhere; these are sequential screening
 comparisons, not statistical parity.
 [Frozen baseline evidence](results/2026-09-05-framework-qwen4exp-refreshed-baselines.json).
 
+## Qwen3.8-27B UD short-context diagnostic
+
+On zbook / Radeon 8060S, both published UD files match 162/162 next-token
+choices against tokenwise llama.cpp HIP using the same artifact, 18
+category/heldout prompts (39–71 tokens) and nine forced logit positions per
+prompt. Both engines process the prompt serially in this comparison.
+
+| UD file | Default mean/max KL vs llama.cpp | Q5/Q6 candidate allocated weight bytes | Status |
+| --- | ---: | ---: | --- |
+| `UD-Q4_K_M` | 0.000192 / 0.002185 | 26,396,502,016 → 21,526,849,536 (−18.45%) | Diagnostic only |
+| `UD-Q4_K_S` | 0.000230 / 0.002833 | 21,125,912,576 → 18,599,622,656 (−11.96%) | Diagnostic only |
+
+The candidate changes Q5/Q6 residency, matches all 162 baseline top-1 choices
+per file, and is not enabled by default. Maximum tokenwise-teacher KL is
+0.002724 (K_M) and 0.004469 (K_S). Batched llama.cpp instead matches 161/162
+choices per file, so these results depend on the execution schedule; they do
+not establish batch invariance. Weight-buffer sums exclude load peak, scratch
+and KV. No speed, BF16-model quality, long-context or serving qualification is
+claimed. [Tokenwise protocol and category results](results/2026-09-07-zbook-ud-tokenwise-teacher.json);
+[batched-teacher protocol and memory results](results/2026-09-07-zbook-ud-c1-residency-logits-diagnostic.json).
+
+### Raw IQ dense prefill (gfx1151)
+
+The published UD files reached none of hipEngine's optimized kernels: a
+model-wide veto stripped the repacked layouts from every rank-2 tensor whenever
+any raw-IQ tensor was present, so 0% of their weight bytes were in a layout the
+optimized families can consume, against 94.8% for the plain `Q4_K_S` file of the
+same model. Making that veto per-tensor, widening the dense T16 role coverage,
+and routing raw IQ prefill through the integer-MMQ kernel took `UD-Q4_K_M`
+prefill from 22.1 to 150.3 tok/s on the published sweep protocol (512/128,
+zbook / Radeon 8060S), choosing the route that is admissible under the
+production envelope over a faster one that is not.
+
+| Stage | Optimized weight bytes | Prefill | Decode |
+| --- | ---: | ---: | ---: |
+| Start | 0.0% | 22.1 tok/s | 6.21 tok/s |
+| Per-tensor repack eligibility | 44.2% | 29.9 | 7.24 |
+| Dense T16 role coverage | 61.3% | 41.5 | 7.62 |
+| Dense IQ integer MMQ | 61.3% | 127.2 | 7.63 |
+| Four-quant integer MMQ | 61.3% | 171.9 | 7.71 |
+| Four-quant W4A16 (current) | 61.3% | **150.3** | 7.69 |
+
+The same host and protocol run the plain `Qwen3.8-27B-Q4_K_S` file at 294.8
+tok/s, so the gap between the two files narrowed from 13.3x to 1.96x.
+
+**Accuracy is ranked against hipEngine strict, not against an external engine.**
+`docs/EXECUTION-PROFILES.md` section 6 defines the production gate as strict
+versus candidate production on the same artifact, and section 7.1 is explicit
+that another engine is a comparison oracle rather than the definition of strict
+bytes. Scored that way, over 162 teacher-forced rows:
+
+| Route | Mean | p95 | p99 | Max | Rows over the 5e-2 ceiling |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Two-quant MMQ | 0.001038 | 0.003479 | 0.014385 | 0.049730 | 0 |
+| Four-quant MMQ (current) | 0.002110 | 0.006797 | 0.024044 | **0.170390** | **1** |
+| Four-quant W4A16 | **0.000827** | 0.004547 | 0.012475 | **0.023513** | 0 |
+
+The integer-MMQ route **exceeds the binding 5e-2 absolute maximum-row ceiling
+at one position**, so it is not admissible under that envelope. **W4A16 is
+therefore the default**, passing every threshold at a 12% throughput cost; the
+integer route stays registered. See
+[`gate reference`](results/2026-09-09-zbook-ud-production-gate-reference.json).
+
+Every rate here is gross, from a power- and thermal-limited laptop whose
+plain-file result is 294.8 tok/s against a published 396.1 for the same
+model/quant on a desktop part. Treat the absolute numbers as provisional
+pending that re-measure; the ratios and the accuracy ranking are same-host.
+
+The older raw-IQ2_XS residency experiment is recorded in
+[benchmark history](HISTORY.md#ud-raw-iq2-xs-residency-diagnostic).
+
 ## Current Qwen3.6-35B quantization quality
 
 The current gate scores 90 full-vocabulary BF16-teacher positions across all ten
@@ -872,7 +1191,7 @@ for the current gfx1151 FP32 production profile.
 
 | Platform / model | Contract | True AR | MTP | MTP / AR | Status and evidence |
 | --- | --- | ---: | ---: | ---: | --- |
-| RX 7900 XTX / Qwen3.8-27B Dense `Q4_K_M` | Exact/default natural25 B3 | 35.287 | **62.440** | **1.7695x** | Clean idle-card correction; exact greedy and GPU/CPU acceptance, retained fusion improves matched AR 3.764% and B3 0.439% with every category non-regressive. [`artifact`](results/2026-08-15-qwen38-27b-xtx-clean-idle-performance-correction.json) |
+| RX 7900 XTX / Qwen3.8-27B Dense `Q4_K_M` | Exact/default natural25 B3 | 38.373 | **65.347** | **1.7029x** | Current `ud-quants` paired control on a clean worktree at `92c7e3dc4`; `complete_exact`, all ten prompts exact across two runs with identical token IDs, GPU/CPU acceptance agree, `speed_claim_eligible: true`, and the true-AR arm uses recorded production graph replay. [`artifact`](results/2026-09-13-ud-gfx1100-paired-clean-provenance.json) |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Historical direct-leaf natural25 B3 | 11.692 | 21.158 | 1.8095x | August 26 direct-leaf protocol, not the public-server headline. [`artifact`](results/2026-08-26-gfx1151-qwen38-current-main-ar-mtp.json) |
 | W7900 / Qwen3.6-35B-A3B `UD-Q4_K_M` | Public production/BF16 resident-C2 K2 D24, automatic | 80.973 | **93.644** | **1.1565x** | Latest-source 10/10 engaged and MTP self-exact; three-run ratio 1.1368x; all categories non-regressive; strict-teacher, blocking/SSE/cancel/drain pass. Shares the artifact linked in the row above. |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Public strict/BF16 cap4 realized-C1 K3, natural25 | 11.150 | **20.985** | **1.882x** | Three full-suite runs; all 30 cells exact, engaged and budget-conformed; every category faster. Blocking/SSE and cancellation/refill pass. Production default is AR. [`artifact`](results/2026-09-12-gfx1151-qwen38-final-headline-refresh.json) |

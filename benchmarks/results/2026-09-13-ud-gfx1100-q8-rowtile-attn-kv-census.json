@@ -1,0 +1,115 @@
+{
+ "kind": "ud_gfx1100_q8_t16_attn_kv_rowtile_route_census",
+ "date": "2026-09-13",
+ "host": "physical GPU1, RX 7900 XTX (gfx1100)",
+ "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+ "quant": "gguf_ud_q4_k_m",
+ "protocol": "scripts/gguf_mtp_verifier_rocprof.py --mode block-verify --block-rows 3 --block-verify-mode native --native-spec-target-cycle --steps 12 --warmup 3",
+ "verdict": "retained",
+ "change": "shape-explicit Q8T16 rowtile admission for (in_features, out_features) == (5120, 1024) at rows 2-8, replacing the 32-thread WMMA prefill owner",
+ "kernel_family": {
+  "baseline": {
+   "gguf_q8_0_t16_prefill_wmma": {
+    "ms_per_step": 0.8581,
+    "in_window_calls": 84,
+    "us_per_call": 122.6,
+    "grid": [
+     1024,
+     32
+    ],
+    "note": "one wave32 per block, 32 blocks total"
+   }
+  },
+  "after": {
+   "q8_0_t16_rowtile_gemv": {
+    "ms_per_step": 0.3627,
+    "in_window_calls": 84,
+    "us_per_call": 51.8,
+    "grid": [
+     8192,
+     128
+    ]
+   }
+  },
+  "family_ms_per_step": {
+   "baseline": 0.9,
+   "after": 0.4044
+  },
+  "family_delta_ms_per_step": -0.4954,
+  "per_call_speedup": 2.37
+ },
+ "aggregate": {
+  "baseline_kernel_ms": 42.872482,
+  "after_kernel_ms": 42.53732483333334,
+  "baseline_host_ms": 48.08228804419438,
+  "after_host_ms": 47.87284787744284,
+  "calls_per_step": {
+   "baseline": 985,
+   "after": 985
+  }
+ },
+ "attribution_note": "the Q8_0 family drop is -0.4954 ms/step at an unchanged 84 in-window calls; the net aggregate is -0.335 ms/step because the seven unrelated kernels moved +0.002 to +0.045 ms/step (sum +0.155), which is run-to-run drift. An identical-configuration repeat (census-ud-base2) measured -0.106 ms/step aggregate drift with individual kernels moving +-0.03.",
+ "per_kernel_delta": {
+  "gguf_add_rmsnorm_bf16_f32_weight": 0.0002,
+  "gguf_head_rmsnorm_partial_rotary_positions_f32_weight": 0.0003,
+  "gguf_iq4_nl_local32_gemv": 0.0006,
+  "gguf_iq4_xs_local32_gemv": 0.0095,
+  "gguf_iq_dense_strict": 0.0372,
+  "gguf_q8_0_t16_prefill_wmma": -0.8581,
+  "gguf_rounded_add_rmsnorm_bf16_f32_weight": 0.0024,
+  "linear_state_pair_commit_chunked_i32": -0.0031,
+  "q4_k_t16_dense_dual_rowtile_silu_gemv": 0.0006,
+  "q4_k_t16_dense_rowtile_gemv": 0.0219,
+  "q5_k_t16_dense_rowtile_gemv": 0.0452,
+  "q6_k_t16_qmicro_planar_gemv_bf16": 0.0003,
+  "q6_k_t16_qmicro_planar_gemv_rowtile_col8": 0.0143,
+  "q6_k_t16_qmicro_planar_gemv_rowtile_col8_residual": 0.0018,
+  "q8_0_t16_dual_split_gemv": 0.0102,
+  "q8_0_t16_gemv": 0.0001,
+  "q8_0_t16_rowtile_gemv": 0.3627,
+  "qk_t16_selected_direct_gemv": 0.0012,
+  "qwen35_full_attn_gate_mul_bf16": -0.0001,
+  "qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop": 0.0139,
+  "qwen35_linear_attn_chain_conv_decode_lowp_tloop": 0.0006,
+  "qwen35_paged_full_attn_decode_context_tensor": 0.0018,
+  "qwen35_split_qgate_bf16": 0.0012,
+  "qwen35_write_paged_kv_mixed_value_position_tensor": -0.0004,
+  "silu_mul_separate_out": 0.0012
+ },
+ "exactness": {
+  "token_ids_baseline": [
+   24,
+   13,
+   271,
+   9764,
+   579,
+   1436,
+   1204,
+   567,
+   628,
+   615,
+   1017,
+   13
+  ],
+  "token_ids_after": [
+   24,
+   13,
+   271,
+   9764,
+   579,
+   1436,
+   1204,
+   567,
+   628,
+   615,
+   1017,
+   13
+  ],
+  "identical": true,
+  "note": "a baseline repeat produced identical token_ids, so the comparison is against a bit-deterministic baseline"
+ },
+ "related": {
+  "ar_verify_gate": "benchmarks/results/2026-09-13-ud-gfx1100-q8-rowtile-attn-kv-ar-verify.json",
+  "paired": "benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-q8-rowtile-attn-kv.json"
+ }
+}

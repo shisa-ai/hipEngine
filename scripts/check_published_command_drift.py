@@ -80,6 +80,7 @@ EXCEPTIONS: dict[str, str] = {
 # own record is the rename map: resolving through it keeps a historical command checkable without
 # editing the artifact or hiding the redirect behind an exception.
 TIER_RENAME_RECORD = "docs/testing/test-tier-migration-2026-09-12.json"
+UD_TIER_RENAME_RECORD = "docs/testing/test-tier-migration-ud-2026-09-13.json"
 
 
 def exception_key(artifact: str, problem: str, detail: str) -> str:
@@ -273,13 +274,14 @@ def _declared_flags(script: Path, repo: Path) -> frozenset[str] | None:
 @lru_cache(maxsize=None)
 def _tier_renames(repo: Path) -> dict[str, str]:
     """Recorded old -> new test paths from the explicit-tier migration."""
-    try:
-        payload = json.loads((repo / TIER_RENAME_RECORD).read_text())
-    except (OSError, json.JSONDecodeError):
-        return {}
-    modules = payload.get("modules")
-    if not isinstance(modules, list):
-        return {}
+    modules = []
+    for record in (TIER_RENAME_RECORD, UD_TIER_RENAME_RECORD):
+        try:
+            payload = json.loads((repo / record).read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(payload.get("modules"), list):
+            modules.extend(payload["modules"])
     return {
         str(module["old"]): str(module["new"])
         for module in modules
