@@ -1,4 +1,5 @@
 from scripts.qwen4exp_chunk_memory_probe import allocation_margins
+import pytest
 
 
 def test_allowance_separates_scratch_from_reserve():
@@ -10,3 +11,12 @@ def test_allowance_separates_scratch_from_reserve():
         scratch_allowance_bytes=20,scratch_margin_bytes=10,
         including_reserve_margin_bytes=40)
     assert allocation_margins(plan,145)["scratch_margin_bytes"] == -5
+
+
+def test_bounded_probe_context_does_not_silently_use_native():
+    from scripts.qwen4exp_chunk_memory_probe import resolve_context_length
+
+    assert resolve_context_length(None, 262144) == 262144
+    assert resolve_context_length(4352, 262144) == 4352
+    with pytest.raises(ValueError):
+        resolve_context_length(0, 262144)
