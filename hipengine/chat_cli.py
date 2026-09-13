@@ -27,6 +27,7 @@ _THINK_EFFORTS = ("minimal", "low", "medium", "high", "xhigh")
 _COMMANDS = (
     ("/help", "show commands"),
     ("/status", "show model, context, and KV pool"),
+    ("/usage", "show messages, turns, and token counts"),
     ("/params", "show sampling and reasoning settings"),
     ("/think <mode>", "reasoning: default, off, on, " + ", ".join(_THINK_EFFORTS) + ", or a token budget"),
     ("/show", "toggle showing reasoning text"),
@@ -48,6 +49,14 @@ _THEME = {
     "hip.warn": "#ffaf5f",
     "hip.err": "bold #ff5f5f",
     "hip.border": "#4e4e4e",
+}
+
+# /usage row -> value style
+_USAGE_STYLES = {
+    "messages": "bold",
+    "in": "hip.user",
+    "out": "hip.accent",
+    "total": "bold",
 }
 
 
@@ -258,6 +267,16 @@ def _print_status(server: str, model: str, *, output_stream=None) -> None:
     )
 
 
+def _max_context(server: str) -> int | None:
+    """The server's effective context limit in tokens, or None when unavailable."""
+
+    try:
+        context = _status_fields(_get_json(f"{server.rstrip('/')}/ready"))["context"]
+    except _REQUEST_ERRORS:
+        return None
+    return context if isinstance(context, int) and not isinstance(context, bool) else None
+
+
 def _stream_events(
     server: str,
     *,
@@ -320,6 +339,49 @@ def _http_error_text(exc: Exception) -> str:
     return str(exc)
 
 
+def _as_int(value: object) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+class _Usage:
+    """Conversation token accounting, summed from server-reported usage payloads."""
+
+    def __init__(self) -> None:
+        self.reset()
+
+    def reset(self) -> None:
+        self.requests = 0
+        self.unreported = 0
+        self.prompt_tokens = 0
+        self.completion_tokens = 0
+        self.reasoning_tokens = 0
+        self.last_prompt_tokens = 0
+
+    def add(self, usage: object) -> None:
+        """Count one finished request; ``usage`` is the server payload when it arrived."""
+
+        self.requests += 1
+        if not isinstance(usage, dict):
+            self.unreported += 1
+            return
+        prompt = _as_int(usage.get("prompt_tokens"))
+        completion = _as_int(usage.get("completion_tokens"))
+        if prompt is None and completion is None:
+            self.unreported += 1
+            return
+        if prompt is not None:
+            self.prompt_tokens += prompt
+            self.last_prompt_tokens = prompt
+        if completion is not None:
+            self.completion_tokens += completion
+        details = usage.get("completion_tokens_details")
+        reasoning = _as_int(usage.get("reasoning_tokens"))
+        if reasoning is None and isinstance(details, dict):
+            reasoning = _as_int(details.get("reasoning_tokens"))
+        if reasoning:
+            self.reasoning_tokens += reasoning
+
+
 class _Conversation:
     """Chat turns plus a stash of the last prompt whose reply was abandoned."""
 
@@ -327,6 +389,7 @@ class _Conversation:
         self.settings = settings
         self.turns: list[dict[str, str]] = []
         self.pending: str | None = None
+        self.usage = _Usage()
 
     def messages(self) -> list[dict[str, str]]:
         system = self.settings.system
@@ -350,6 +413,56 @@ class _Conversation:
     def clear(self) -> None:
         self.turns.clear()
         self.pending = None
+        self.usage.reset()
+
+
+def _plural(count: int, word: str) -> str:
+    return f"{count:,} {word}" if count == 1 else f"{count:,} {word}s"
+
+
+def _usage_rows(convo: _Conversation, max_context: int | None = None) -> list[tuple[str, str]]:
+    """Return ``(label, value)`` rows for /usage; shared by the rich and plain clients."""
+
+    usage = convo.usage
+    turns = sum(1 for message in convo.turns if message["role"] == "assistant")
+    rows = [
+        ("messages", f"{_plural(len(convo.messages()), 'message')}  ·  {_plural(turns, 'turn')}"),
+        ("in", f"{usage.prompt_tokens:,} tokens"),
+        ("out", f"{usage.completion_tokens:,} tokens"),
+    ]
+    if usage.reasoning_tokens:
+        rows[-1] = (
+            "out",
+            f"{usage.completion_tokens:,} tokens  ·  reasoning {usage.reasoning_tokens:,}",
+        )
+    rows.append(("total", f"{usage.prompt_tokens + usage.completion_tokens:,} tokens"))
+    if max_context and usage.last_prompt_tokens:
+        share = 100.0 * usage.last_prompt_tokens / max_context
+        rows.append(
+            (
+                "context",
+                f"{usage.last_prompt_tokens:,} / {max_context:,} tokens  ·  {share:.1f}% used",
+            )
+        )
+    return rows
+
+
+def _usage_note(usage: _Usage) -> str | None:
+    if not usage.unreported:
+        return None
+    noun = "request" if usage.unreported == 1 else "requests"
+    return f"{usage.unreported} {noun} reported no token usage (stopped or failed)"
+
+
+def _print_usage(convo: _Conversation, server: str, *, output_stream=None) -> None:
+    output_stream = sys.stdout if output_stream is None else output_stream
+    rows = _usage_rows(convo, _max_context(server))
+    width = max(len(label) for label, _ in rows)
+    for label, value in rows:
+        print(f"{label:<{width}}  {value}", file=output_stream)
+    note = _usage_note(convo.usage)
+    if note:
+        print(note, file=output_stream)
 
 
 # -- entry point ---------------------------------------------------------------
@@ -479,18 +592,25 @@ def _run_plain(settings: _Settings, server: str, model: str, input_stream, outpu
             convo.turns.append({"role": "user", "content": prompt})
         print("assistant> ", end="", file=output_stream, flush=True)
         answer_parts: list[str] = []
+        usage: dict | None = None
+        failure: Exception | None = None
         try:
             for kind, text in _stream_events(
                 server, model=model, messages=convo.messages(), fields=settings.request_fields()
             ):
                 if kind == "content":
                     answer_parts.append(str(text))
+                elif kind == "usage":
+                    usage = text if isinstance(text, dict) else None
                 elif kind == "reasoning" and settings.show_thinking:
                     print(text, end="", file=output_stream, flush=True)
         except KeyboardInterrupt:
             print("\n[stopped]", file=output_stream)
         except (HTTPError, URLError, OSError, ValueError) as exc:
-            print(f"\nrequest failed: {_http_error_text(exc)}", file=sys.stderr)
+            failure = exc
+        convo.usage.add(usage)
+        if failure is not None:
+            print(f"\nrequest failed: {_http_error_text(failure)}", file=sys.stderr)
             convo.abandon()
             continue
         print(file=output_stream)
@@ -518,6 +638,8 @@ def _plain_command(name, rest, settings, convo, server, model, output_stream) ->
             _print_status(server, model, output_stream=output_stream)
         except _REQUEST_ERRORS as exc:
             print(f"status unavailable: {exc}", file=sys.stderr)
+    elif name == "/usage":
+        _print_usage(convo, server, output_stream=output_stream)
     else:
         try:
             message = settings.command(name, rest)
@@ -826,6 +948,21 @@ class _RichChat:
             table.add_row(name, value)
         return Padding(table, (0, 0, 0, 2))
 
+    def usage_table(self):
+        from rich.padding import Padding
+        from rich.table import Table
+        from rich.text import Text
+
+        table = Table.grid(padding=(0, 3))
+        table.add_column(style="hip.label", justify="right")
+        table.add_column()
+        for label, value in _usage_rows(self.convo, _max_context(self.server)):
+            table.add_row(label, Text(value, style=_USAGE_STYLES.get(label, "")))
+        note = _usage_note(self.convo.usage)
+        if note:
+            table.add_row("", Text(note, style="hip.dim"))
+        return Padding(table, (0, 0, 0, 2))
+
     # -- loop ------------------------------------------------------------------
 
     def loop(self) -> int:
@@ -860,6 +997,8 @@ class _RichChat:
             self.console.print(self.help_table())
         elif name == "/status":
             self.console.print(self.status_card())
+        elif name == "/usage":
+            self.console.print(self.usage_table())
         elif name == "/params":
             self.console.print(self.params_table())
         elif name == "/clear":
@@ -910,6 +1049,7 @@ class _RichChat:
             except (HTTPError, URLError, OSError, ValueError) as exc:
                 error = exc
         turn.finished = time.perf_counter()
+        self.convo.usage.add(turn.usage)
 
         if turn.reasoning:
             summary = f"∴ thought for {turn.thinking_seconds():.1f}s"
