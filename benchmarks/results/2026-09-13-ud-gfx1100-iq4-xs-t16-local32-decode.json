@@ -1,36 +1,110 @@
 {
-  "schema": 1,
-  "kind": "kernel-parity-and-rate",
-  "performance_claim": false,
-  "date": "2026-09-13",
-  "plan": "docs/UD-GFX1151-OPTIMIZE.md",
-  "phase": "IQ4_XS T16 consumer",
-  "model": "Qwen3.8-27B-UD-Q4_K_M",
   "backend": "hip_gfx1100",
-  "execution_profile": "strict-parity candidate",
-  "protocol": {
-    "harness": "/tmp/phase8/t16-bench.py",
-    "shape": "synthetic IQ4_XS bytes, d forced to f16 1.0, random payload",
-    "repeats": 60,
-    "warmup": 15,
-    "timing": "hipDeviceSynchronize around the timed loop, per-launch mean",
-    "correctness_contract": "bit-exact uint16 equality against gguf_iq4_xs_local32_gemv_kernel"
-  },
   "cells": [
-    {"k": 17408, "n": 5120, "raw_ms": 0.067, "t16_ms": 0.098, "speedup": 0.679, "raw_gb_s": 711.0, "t16_gb_s": 482.6, "bit_exact": true},
-    {"k": 5120, "n": 17408, "raw_ms": 0.093, "t16_ms": 0.134, "speedup": 0.695, "raw_gb_s": 507.4, "t16_gb_s": 352.6, "bit_exact": true},
-    {"k": 5120, "n": 13824, "raw_ms": 0.080, "t16_ms": 0.135, "speedup": 0.597, "raw_gb_s": 467.5, "t16_gb_s": 278.9, "bit_exact": true},
-    {"k": 17408, "n": 2048, "raw_ms": 0.053, "t16_ms": 0.041, "speedup": 1.281, "raw_gb_s": 357.7, "t16_gb_s": 458.0, "bit_exact": true}
+    {
+      "bit_exact": true,
+      "k": 17408,
+      "n": 5120,
+      "ratio_max": 0.962,
+      "ratio_median": 0.803,
+      "ratio_min": 0.646,
+      "raw_ms": 0.11,
+      "t16_ms": 0.138
+    },
+    {
+      "bit_exact": true,
+      "k": 5120,
+      "n": 17408,
+      "ratio_max": 0.911,
+      "ratio_median": 0.791,
+      "ratio_min": 0.717,
+      "raw_ms": 0.112,
+      "t16_ms": 0.142
+    },
+    {
+      "bit_exact": true,
+      "k": 5120,
+      "n": 13824,
+      "ratio_max": 0.883,
+      "ratio_median": 0.773,
+      "ratio_min": 0.663,
+      "raw_ms": 0.099,
+      "t16_ms": 0.128
+    },
+    {
+      "bit_exact": true,
+      "k": 17408,
+      "n": 2048,
+      "ratio_max": 2.219,
+      "ratio_median": 1.044,
+      "ratio_min": 0.857,
+      "raw_ms": 0.061,
+      "t16_ms": 0.058
+    },
+    {
+      "bit_exact": true,
+      "k": 5120,
+      "n": 5120,
+      "ratio_max": 1.844,
+      "ratio_median": 0.633,
+      "ratio_min": 0.483,
+      "raw_ms": 0.026,
+      "t16_ms": 0.041
+    }
   ],
-  "decision": "Not promoted to the default path. The T16 consumer is bit-exact on every measured shape, but it is slower on the wide-N shapes (0.60-0.70x) where the raw owner already runs at 467-711 GB/s, and a win only at narrow N (1.281x at N=2048). Halving the payload bytes does not help when the wide-N bottleneck is load issue and latency rather than DRAM traffic: the raw owner's duplicate 8-byte window reads are L1 hits, so the two owners issue the same number of load requests. The T16 path additionally reads three header fields per column instead of two and carries 8 live per-column scales, and the compiled kernel misses its occupancy target (14 of 16 waves per EU).",
+  "date": "2026-09-13",
+  "decision": "Not promoted to the default path. The T16 consumer is bit-exact on every measured shape, but under the interleaved paired protocol it is 0.773-0.803x on the wide-N shapes and 0.633x at K=5120/N=5120. Those ranges top out below 1.0 (max 0.962, 0.911, 0.883, 1.844), so the wide-N deficit is a real effect and not drift. The one narrow-N shape (N=2048) has a median of 1.044 but spans 0.857-2.219, which is too wide to call a win. Halving payload bytes does not help where the raw owner already saturates the machine; the duplicate 8-byte window reads it performs are L1 hits, so both owners issue the same number of load requests and the T16 path only adds header work and register pressure. The wide-header variant narrowed the deficit but did not flip it.",
+  "execution_profile": "strict-parity candidate",
+  "hardware": {
+    "arch": "gfx1100 / RDNA3",
+    "device": "AMD Radeon Pro W7900",
+    "host": "hipEngine-ud worktree, HIP_VISIBLE_DEVICES=1"
+  },
+  "kind": "kernel-parity-and-rate",
+  "model": "Qwen3.8-27B-UD-Q4_K_M",
   "not_measured": {
     "real_ud_tensor_rates": "the per-tensor rates use synthetic payload bytes, not the 117 resident UD-Q4_K_M IQ4_XS tensors",
     "rocprofv3_kernel_trace": "not captured for this candidate",
     "wide_header_loads": "the variant that reads d/hi/lo for eight columns as contiguous u32 vectors (16 loads instead of 24) is not implemented"
   },
-  "hardware": {
-    "device": "AMD Radeon Pro W7900",
-    "arch": "gfx1100 / RDNA3",
-    "host": "hipEngine-ud worktree, HIP_VISIBLE_DEVICES=1"
+  "performance_claim": false,
+  "phase": "IQ4_XS T16 consumer",
+  "plan": "docs/UD-GFX1151-OPTIMIZE.md",
+  "protocol": {
+    "correctness_contract": "bit-exact uint16 equality against gguf_iq4_xs_local32_gemv_kernel",
+    "harness": "/tmp/phase8/t16-paired.py",
+    "method": "interleaved paired rounds: both owners timed back to back inside one process, 40 launches per round, 15 rounds after 8 warmup pairs",
+    "reported": "median per-launch ms per owner, and the median/min/max of the per-round raw/T16 ratio",
+    "shape": "synthetic IQ4_XS bytes, d forced to f16 1.0, random payload"
+  },
+  "schema": 1,
+  "superseded": {
+    "invalidated_rows": [
+      {
+        "k": 17408,
+        "n": 5120,
+        "speedup": 0.679
+      },
+      {
+        "k": 5120,
+        "n": 17408,
+        "speedup": 0.695
+      },
+      {
+        "k": 5120,
+        "n": 13824,
+        "speedup": 0.597
+      },
+      {
+        "k": 17408,
+        "n": 2048,
+        "speedup": 1.281
+      }
+    ],
+    "protocol_fix": "interleaved paired rounds, see protocol.method",
+    "reason": "The first version of this artifact reported a sequential A-then-B protocol. Re-running unchanged raw-kernel code under that protocol moved the raw owner from 711.0 to 417.2 GB/s on the same shape, so the sequential ratios were not measuring the kernel. Those rows are withdrawn rather than restated."
+  },
+  "variant": {
+    "header_loads": "wide: d and scales_h as 4 u32 each, scales_l as 8 u32, extracted in registers (16 loads per lane per block instead of 24 mixed-width loads)"
   }
 }
