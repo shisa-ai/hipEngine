@@ -657,24 +657,33 @@ def _quiet_tty(stream=None):
 
     Without NOFLSH the tty driver discards pending output on SIGINT, which can drop
     Rich Live's erase sequence and leave a ghost of the streaming view on screen.
+    A stream that cannot be reconfigured (no termios, no file descriptor, not a tty)
+    is used as-is rather than aborting the reply.
     """
 
     stream = sys.stdin if stream is None else stream
     try:
         import termios
-
-        fd = stream.fileno()
-        saved = termios.tcgetattr(fd)
-    except (ImportError, AttributeError, OSError, ValueError):
+    except ImportError:
         yield
         return
-    quiet = list(saved)
-    quiet[3] = (quiet[3] | termios.NOFLSH) & ~(termios.ECHO | getattr(termios, "ECHOCTL", 0))
     try:
+        fd = stream.fileno()
+        saved = termios.tcgetattr(fd)
+        quiet = list(saved)
+        quiet[3] = (quiet[3] | termios.NOFLSH) & ~(termios.ECHO | getattr(termios, "ECHOCTL", 0))
         termios.tcsetattr(fd, termios.TCSANOW, quiet)
+    except (AttributeError, OSError, ValueError, termios.error):
+        yield
+        return
+    try:
         yield
     finally:
-        termios.tcsetattr(fd, termios.TCSANOW, saved)
+        try:
+            termios.tcsetattr(fd, termios.TCSANOW, saved)
+        except (OSError, ValueError, termios.error) as exc:
+            # The tty went away mid-stream; warn instead of losing the reply.
+            print(f"hipengine chat: could not restore terminal settings: {exc}", file=sys.stderr)
 
 
 def _prompt_bindings():
