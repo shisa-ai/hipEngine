@@ -34,7 +34,11 @@ from typing import Any
 
 import numpy as np
 
-from hipengine.generation.deadline import raise_if_generation_deadline_expired
+from hipengine.generation.deadline import (
+    GenerationDeadlineExceeded,
+    generation_deadline_remaining,
+    raise_if_generation_deadline_expired,
+)
 from hipengine.generation.registry import register_text_generator
 from hipengine.generation.surya_contract import (
     check_prompt_capacity,
@@ -61,7 +65,7 @@ _QUANT = "fp32"
 class SuryaOCRGeneratorGPU:
     """Greedy OCR generator running vision + text on the HIP device.
 
-    Four budgets are explicit and advertised so a caller can admit a request
+    Five budgets are explicit and advertised so a caller can admit a request
     before submitting it:
 
     - ``max_seq`` — text context (prompt plus output). Defaults to
@@ -72,6 +76,13 @@ class SuryaOCRGeneratorGPU:
     - ``max_vision_scratch_bytes`` — the peak vision-attention score tile.
       ``None`` means the runner default; pass a value to trade GEMM width for
       memory. The vision path never allocates the quadratic score matrix.
+    - ``max_vision_seconds`` — the wall-clock budget for one vision forward.
+      ``None`` means the runner default (``DEFAULT_MAX_VISION_SECONDS``, which
+      admits every page the benchmark suite measures and rejects the 65536-
+      patch ``vision_max_pixels`` ceiling); ``math.inf`` disables it. This is
+      what actually bounds a page-scale grid: 65536 patches is 1.7e14 FLOPs of
+      vision attention and about 2.7 minutes on gfx1151, and the byte budget
+      only sees the 502 MB score tile.
     - ``max_prefill_scratch_bytes`` — the peak text-prefill causal score tile.
       ``None`` means the runner default; pass a value to trade GEMM width for
       memory. The prefill never allocates the quadratic score matrix.
@@ -102,6 +113,7 @@ class SuryaOCRGeneratorGPU:
         vision_model_path: str | Path | None = None,
         max_seq: int | None = None,
         max_vision_scratch_bytes: int | None = None,
+        max_vision_seconds: float | None = None,
         max_prefill_scratch_bytes: int | None = None,
     ) -> None:
         self.model_dir = resolve_surya_path(model_path)
@@ -115,19 +127,24 @@ class SuryaOCRGeneratorGPU:
             raise ValueError(
                 "max_vision_scratch_bytes must be positive when set"
             )
+        if max_vision_seconds is not None and not float(max_vision_seconds) > 0:
+            raise ValueError("max_vision_seconds must be positive when set")
         if max_prefill_scratch_bytes is not None and int(max_prefill_scratch_bytes) <= 0:
             raise ValueError(
                 "max_prefill_scratch_bytes must be positive when set"
             )
         # `None` at this layer means "use the runner default"; only an explicit
         # value is forwarded, because the runner reads `None` as "no budget".
-        scratch_kwargs: dict[str, int] = {}
+        # An unbounded vision time budget is `math.inf`, not `None`.
+        capacity_kwargs: dict[str, Any] = {}
         if max_vision_scratch_bytes is not None:
-            scratch_kwargs["max_vision_scratch_bytes"] = int(max_vision_scratch_bytes)
+            capacity_kwargs["max_vision_scratch_bytes"] = int(max_vision_scratch_bytes)
+        if max_vision_seconds is not None:
+            capacity_kwargs["max_vision_seconds"] = float(max_vision_seconds)
         if max_prefill_scratch_bytes is not None:
-            scratch_kwargs["max_prefill_scratch_bytes"] = int(max_prefill_scratch_bytes)
+            capacity_kwargs["max_prefill_scratch_bytes"] = int(max_prefill_scratch_bytes)
         self.runner = SuryaGpuRunner(
-            weights, self.spec, max_seq=resolved_max_seq, **scratch_kwargs
+            weights, self.spec, max_seq=resolved_max_seq, **capacity_kwargs
         )
         self.model_plugin = model_plugin
         self.supports_vision = True
@@ -135,6 +152,7 @@ class SuryaOCRGeneratorGPU:
         # Advertised so a caller can admit a request before submitting it.
         self.max_seq = self.runner.max_seq
         self.max_vision_scratch_bytes = self.runner.max_vision_scratch_bytes
+        self.max_vision_seconds = self.runner.max_vision_seconds
         self.max_prefill_scratch_bytes = self.runner.max_prefill_scratch_bytes
 
     # -- TextGenerator protocol (text-only) --------------------------------
@@ -247,6 +265,14 @@ class SuryaOCRGeneratorGPU:
         )
         raise_if_generation_deadline_expired(request)
         self.runner.check_vision_capacity([grid])
+        # The deadline is otherwise only observed at phase boundaries, so a page
+        # whose vision forward cannot finish inside the remaining budget would
+        # still run to completion before the client's timeout was noticed.
+        # Reject it now, as the timeout it is, rather than after the wait.
+        deadline_at = getattr(request, "deadline_at", None)
+        remaining = generation_deadline_remaining(deadline_at)
+        if remaining is not None and self.runner.vision_time_seconds([grid]) > remaining:
+            raise GenerationDeadlineExceeded(deadline_at=deadline_at)
         merged = self.runner.vision_forward(pixel_rows, [grid])
         token_ids, finish_reason = self._decode_greedy(
             np.array([input_ids], dtype=np.int64),
@@ -269,6 +295,7 @@ def make_surya_generator_gpu(
     max_sequence_length: int | None = None,
     vision_max_scratch_bytes: int | None = None,
     prefill_max_scratch_bytes: int | None = None,
+    vision_max_seconds: float | None = None,
 ) -> SuryaOCRGeneratorGPU:
     """Registered ``(surya_ocr2, hip_gfx1151, fp32)`` factory.
 
@@ -285,6 +312,7 @@ def make_surya_generator_gpu(
         vision_model_path=vision_model_path,
         max_seq=max_sequence_length,
         max_vision_scratch_bytes=vision_max_scratch_bytes,
+        max_vision_seconds=vision_max_seconds,
         max_prefill_scratch_bytes=prefill_max_scratch_bytes,
     )
 

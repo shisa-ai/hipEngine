@@ -289,6 +289,26 @@ again immediately before the vision tower, and again before the text prefill;
 only check was per generated token, so an abandoned request still ran the whole
 vision tower and prefill first.
 
+**Vision admission is memory *and* time (2026-09-13).** `check_vision_capacity`
+runs three checks before the patch embed, because they fail for different
+reasons: the declared score-tile bytes, the declared vision seconds
+(`max_vision_seconds`), and free device memory. The byte budget alone admitted
+a page nothing downstream could serve — `SURYA_MAX_PIXELS` (256x256, 65536
+patches) fits the 512 MiB tile at 502 MB, but one forward there is 1.7e14
+FLOPs, 93% of it bidirectional attention, and about 2.7 minutes on gfx1151 — so
+the time budget is what actually bounds a page-scale grid.
+`vision_forward_seconds` estimates a forward from the plan the runner will
+execute: the linear GEMMs, the quadratic attention, and the per-tile key/value
+re-read, which is why the estimate follows `max_vision_scratch_bytes` (the same
+A4 page estimates at 43.4 s under the default budget and 195.7 s under an 8 MiB
+one). It is calibrated against the retained tiling sweeps to -6%/+14% at
+production shapes. The default budget is 120 s, which admits the 34320-patch A4
+page at 43.4 s with 2.8x headroom and rejects the ceiling at 161.4 s, naming
+the largest patch count that would fit. The same estimate rejects a page that
+cannot finish inside the request's remaining `deadline_at` as
+`GenerationDeadlineExceeded`; without it the deadline was only noticed at the
+next stage boundary, after the client's timeout had already elapsed.
+
 **Failure recovery is exact.** An abandoned request leaves the runner holding a
 partially written KV cache and advanced conv/GDN state — and, because the
 abandoned request is typically the longer one, more written KV slots than the
@@ -664,7 +684,9 @@ slot and 18,000 for vLLM), configurable through `LLM(max_sequence_length=...)`;
 a 300-DPI A4 page's 8580 image tokens fit that context with room for a
 full-page output, whereas the previous 2048 default rejected every real
 document. The two score tiles are configurable through
-`LLM(vision_max_scratch_bytes=...)` and `LLM(prefill_max_scratch_bytes=...)`; a
+`LLM(vision_max_scratch_bytes=...)` and `LLM(prefill_max_scratch_bytes=...)`,
+and the vision forward's wall-clock budget through
+`LLM(vision_max_seconds=...)` (120 s by default, `math.inf` for unbounded); a
 budget that cannot hold even one query row is a configuration-time rejection,
 not a silent fallback to the quadratic matrix.
 

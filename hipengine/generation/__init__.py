@@ -48,6 +48,7 @@ from hipengine.generation.deadline import (
     GenerationCancelled,
     GenerationDeadlineExceeded,
     generation_deadline_expired,
+    generation_deadline_remaining,
     raise_if_generation_cancelled,
     raise_if_generation_deadline_expired,
 )
@@ -257,6 +258,7 @@ __all__ = [
     "engine_loop_config_from_args",
     "engine_loop_config_from_env",
     "generation_deadline_expired",
+    "generation_deadline_remaining",
     "normalize_token_sequences",
     "normalize_logit_bias_pairs",
     "plan_execution_groups",
