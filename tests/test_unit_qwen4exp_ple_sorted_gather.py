@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from hipengine.loading.qwen4_exp_materialize import Qwen4ExpPLEMMapTable
-from scripts.qwen4exp_ple_gather_screen import PreadGather, gather_sorted_unique, pread_exact
+from scripts.qwen4exp_ple_gather_screen import PreadGather, gather_sorted_unique, measure, pread_exact
 from tests.test_live_qwen4_exp_residency import _iq4_nl_rows, _ple_tensor
 
 
@@ -92,3 +92,25 @@ def test_pread_scatter_offsets_tail_and_teardown(tmp_path, workers):
         reader.close()
     with pytest.raises(RuntimeError):
         reader.gather([0])
+
+
+def test_mapping_only_advice_preserves_values_and_records_io(tmp_path):
+    from dataclasses import replace
+
+    raw = _iq4_nl_rows((1., 2., 3.))
+    path = tmp_path / "mapped-rows"
+    path.write_bytes(b"x" * 17 + raw.tobytes())
+    table = Qwen4ExpPLEMMapTable(
+        SimpleNamespace(path=path, tensor_data=lambda _: np.memmap(
+            path, dtype=np.uint8, mode="r", offset=17, shape=(3, 90),
+        )),
+        replace(_ple_tensor(3), data_offset=17), semantic_rows=3,
+    )
+    try:
+        result = measure(table, np.array([2, 0, 2]), cache_mode="cold",
+                         repetitions=2, method="mmap_random")
+        assert result["bit_exact"]
+        assert len(result["samples"]) == 4
+        assert all(row["process_read_bytes"] >= 0 for row in result["samples"])
+    finally:
+        table.close()
