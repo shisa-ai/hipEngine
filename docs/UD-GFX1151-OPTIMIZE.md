@@ -353,7 +353,17 @@ verification. This separates arithmetic drift from control and batching bugs.
 - [ ] Cover c2/c4/c8 and the relevant verifier row shapes. Verifier rows 2/3/4
   (B1-B3) are covered at c1; c2/c4/c8 need a multi-request caller.
 - [ ] Cover short, 512, 4096, and a separately budgeted long context such as
-  32768. Short (64) and 512 are covered; 4096/32768 are open.
+  32768. Short (64) and 512 are covered; 4096/32768 are open. Measured
+  2026-09-13: 4096 **cannot** use the graph-replay arm. The native target
+  graph is captured for the declared context bucket 1023, so
+  `ud_mtp_ar_verify_numerics_gate.py --prompt-tokens 4096
+  --max-sequence-length 8192 --require-native-graph` aborts with
+  `NativeSpecTargetGraphUnsupportedError: target_graph_context_bucket_miss`
+  before producing any rows. This is the same split the item above records
+  for the 512-token arms, which already run the eager multi-row verifier, so
+  4096 must run eager too. The eager 4096 arm is the one to run; the graph
+  arm is not merely missing, it is out of the captured envelope by
+  construction.
 - [ ] Cover Q8 alpha/beta recurrent transitions. Not isolated as its own
   scope; the prompt set exercises them implicitly.
 - [x] Cover full attention and mixed FFN gate/up pairs. The four categories
