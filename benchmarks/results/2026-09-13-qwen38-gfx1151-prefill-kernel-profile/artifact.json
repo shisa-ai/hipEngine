@@ -1,0 +1,3371 @@
+{
+ "schema": 1,
+ "status": "accepted",
+ "date": "2026-09-13",
+ "kind": "qwen38_gfx1151_prefill_kernel_profile",
+ "performance_claim": false,
+ "purpose": "Name the kernels that own gfx1151 Qwen3.8-27B Q4_K_M prefill time, with the registered variant, tile geometry, register footprint and resident-wave count for each owner. This is attribution, not a performance claim: the prefill rates are recorded as protocol context for the published resident-sweep row.",
+ "hardware": {
+  "host_name": "gfx1151",
+  "device_name": "AMD Radeon 8060S Graphics",
+  "target_arch": "gfx1151",
+  "agent": {
+   "cpu": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+   "cu_count": 40,
+   "simd_count": 80,
+   "max_waves_per_simd": 16,
+   "max_waves_per_cu": 32,
+   "wave_front_size": 32,
+   "lds_size_in_kb": 64,
+   "max_workgroup_size": 1024,
+   "max_engine_clk_ccompute_raw": 5187,
+   "max_engine_clk_fcompute_raw": 2900,
+   "name": "gfx1151",
+   "product_name": "AMD Radeon 8060S Graphics"
+  },
+  "agent_source": "rocprofv3 agent_info.csv of this run"
+ },
+ "model": {
+  "backend": "hip_gfx1151",
+  "kv_storage": "bf16",
+  "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
+ },
+ "workload": {
+  "prompt_lengths": [
+   512,
+   1024,
+   4096
+  ],
+  "prompt": "one repeated token id (9707), matching the resident-sweep protocol",
+  "bulk_prefill": true,
+  "bulk_attention_mode": "bulk",
+  "kv_storage": "bf16",
+  "max_sequence_length": 8192
+ },
+ "protocol": {
+  "timing": "one_discarded_warmup_prefill_then_one_measured_prefill_per_length",
+  "repetitions": 1,
+  "profiler": {
+   "kind": "rocprofv3",
+   "selected_regions": true
+  },
+  "profiler_note": "rocprofv3 --kernel-trace with --selected-regions, one profiled child per prompt length; the JIT cache is populated and then proven compiler-free (HIPENGINE_REQUIRE_CACHED_BUILD=1, empty compiler guard, unchanged cache-tree hash) before the profiled child starts.",
+  "kernel_time_scope": "device duration of every dispatch inside the ROCTx prefill region; excludes model load, the discarded warmup prefill and session teardown.",
+  "kernel_share_of_wall": {
+   "512": 0.9811,
+   "1024": 0.9913,
+   "4096": 0.994
+  }
+ },
+ "correctness": {
+  "gate": "the child records the first token and the finiteness of the logits at every length, and all three profiled children agree on both; each child runs under the production execution profile with the Q4 rowtile and GDN capture verifiers enabled, and the warm child must start compiler-free",
+  "first_token_id": {
+   "512": 9707,
+   "1024": 9707,
+   "4096": 9707
+  },
+  "first_token_identical_across_lengths": true,
+  "logits_finite": {
+   "512": true,
+   "1024": true,
+   "4096": true
+  },
+  "environment": {
+   "GPU_MAX_HW_QUEUES": "2",
+   "HIPENGINE_BUILD_CACHE_ROOT": "/tmp/qwen38-prefill-profile/cache",
+   "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hip1151-t6/hipcc-version-gfx1151.txt",
+   "HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256": "c4a4a342e2243c2dcc430174606dde682393a2bd2e30acc83129027fcf572acc",
+   "HIPENGINE_GGUF_FP16_RECURRENT_STATE": "0",
+   "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+   "HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE": "1",
+   "HIPENGINE_HIP_ARCH": "gfx1151",
+   "HIPENGINE_REQUIRE_CACHED_BUILD": "1"
+  }
+ },
+ "prefill": {
+  "512": {
+   "wall_seconds": 1.1873234929516912,
+   "tok_s": 431.22199050164994,
+   "warmup_seconds": 1.4401294416747987,
+   "kernel_ms": 1164.905,
+   "dispatches": 2627
+  },
+  "1024": {
+   "wall_seconds": 2.4812792586162686,
+   "tok_s": 412.6903477084045,
+   "warmup_seconds": 2.6903453040868044,
+   "kernel_ms": 2459.624,
+   "dispatches": 2627
+  },
+  "4096": {
+   "wall_seconds": 10.246021404862404,
+   "tok_s": 399.7649271019658,
+   "warmup_seconds": 10.475501940120012,
+   "kernel_ms": 10184.927,
+   "dispatches": 9023
+  }
+ },
+ "families": {
+  "512": [
+   {
+    "family": "q4",
+    "total_ms": 673.581,
+    "share_pct": 57.82,
+    "launches": 225,
+    "distinct_kernels": 3
+   },
+   {
+    "family": "q6",
+    "total_ms": 217.488,
+    "share_pct": 18.67,
+    "launches": 65,
+    "distinct_kernels": 4
+   },
+   {
+    "family": "gdn",
+    "total_ms": 149.411,
+    "share_pct": 12.83,
+    "launches": 240,
+    "distinct_kernels": 5
+   },
+   {
+    "family": "other",
+    "total_ms": 41.556,
+    "share_pct": 3.57,
+    "launches": 1178,
+    "distinct_kernels": 11
+   },
+   {
+    "family": "blas",
+    "total_ms": 36.433,
+    "share_pct": 3.13,
+    "launches": 192,
+    "distinct_kernels": 1
+   },
+   {
+    "family": "elementwise",
+    "total_ms": 15.532,
+    "share_pct": 1.33,
+    "launches": 358,
+    "distinct_kernels": 6
+   },
+   {
+    "family": "norm_rope",
+    "total_ms": 11.685,
+    "share_pct": 1.0,
+    "launches": 145,
+    "distinct_kernels": 3
+   },
+   {
+    "family": "attention",
+    "total_ms": 11.041,
+    "share_pct": 0.95,
+    "launches": 32,
+    "distinct_kernels": 2
+   },
+   {
+    "family": "q5",
+    "total_ms": 8.177,
+    "share_pct": 0.7,
+    "launches": 192,
+    "distinct_kernels": 1
+   }
+  ],
+  "1024": [
+   {
+    "family": "q4",
+    "total_ms": 1360.429,
+    "share_pct": 55.31,
+    "launches": 225,
+    "distinct_kernels": 3
+   },
+   {
+    "family": "q6",
+    "total_ms": 443.705,
+    "share_pct": 18.04,
+    "launches": 65,
+    "distinct_kernels": 4
+   },
+   {
+    "family": "gdn",
+    "total_ms": 369.94,
+    "share_pct": 15.04,
+    "launches": 240,
+    "distinct_kernels": 5
+   },
+   {
+    "family": "blas",
+    "total_ms": 101.852,
+    "share_pct": 4.14,
+    "launches": 192,
+    "distinct_kernels": 1
+   },
+   {
+    "family": "other",
+    "total_ms": 86.78,
+    "share_pct": 3.53,
+    "launches": 1178,
+    "distinct_kernels": 11
+   },
+   {
+    "family": "elementwise",
+    "total_ms": 32.573,
+    "share_pct": 1.32,
+    "launches": 358,
+    "distinct_kernels": 6
+   },
+   {
+    "family": "attention",
+    "total_ms": 28.023,
+    "share_pct": 1.14,
+    "launches": 32,
+    "distinct_kernels": 2
+   },
+   {
+    "family": "norm_rope",
+    "total_ms": 24.781,
+    "share_pct": 1.01,
+    "launches": 145,
+    "distinct_kernels": 3
+   },
+   {
+    "family": "q5",
+    "total_ms": 11.542,
+    "share_pct": 0.47,
+    "launches": 192,
+    "distinct_kernels": 1
+   }
+  ],
+  "4096": [
+   {
+    "family": "q4",
+    "total_ms": 5604.763,
+    "share_pct": 55.03,
+    "launches": 657,
+    "distinct_kernels": 4
+   },
+   {
+    "family": "q6",
+    "total_ms": 1777.257,
+    "share_pct": 17.45,
+    "launches": 209,
+    "distinct_kernels": 5
+   },
+   {
+    "family": "gdn",
+    "total_ms": 1475.423,
+    "share_pct": 14.49,
+    "launches": 960,
+    "distinct_kernels": 5
+   },
+   {
+    "family": "blas",
+    "total_ms": 419.152,
+    "share_pct": 4.12,
+    "launches": 768,
+    "distinct_kernels": 1
+   },
+   {
+    "family": "other",
+    "total_ms": 347.147,
+    "share_pct": 3.41,
+    "launches": 4265,
+    "distinct_kernels": 11
+   },
+   {
+    "family": "attention",
+    "total_ms": 304.181,
+    "share_pct": 2.99,
+    "launches": 32,
+    "distinct_kernels": 2
+   },
+   {
+    "family": "norm_rope",
+    "total_ms": 112.692,
+    "share_pct": 1.11,
+    "launches": 433,
+    "distinct_kernels": 3
+   },
+   {
+    "family": "elementwise",
+    "total_ms": 98.679,
+    "share_pct": 0.97,
+    "launches": 931,
+    "distinct_kernels": 6
+   },
+   {
+    "family": "q5",
+    "total_ms": 45.633,
+    "share_pct": 0.45,
+    "launches": 768,
+    "distinct_kernels": 1
+   }
+  ]
+ },
+ "owners": {
+  "512": [
+   {
+    "kernel": "gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel",
+    "template_arguments": "false, false, 4, 4",
+    "template_parameter_names": [
+     "qmicro",
+     "expanded_meta",
+     "row_tiles_per_wave",
+     "waves_per_block"
+    ],
+    "registered_variant": "dense_dual_wmma_prefill_bf16_bf16_out",
+    "quant_family": "q4",
+    "layer": "linear_pair_silu",
+    "columns_per_block": 32,
+    "rows_per_block": 256,
+    "columns_total": 17408,
+    "columns_covered": "(17376, 17408]",
+    "rows_per_launch": 512,
+    "grid": [
+     544,
+     2,
+     1
+    ],
+    "workgroup": [
+     128
+    ],
+    "vgpr": 248,
+    "sgpr": [
+     128
+    ],
+    "lds_bytes": 32768,
+    "waves_per_simd": 2,
+    "launches": 64,
+    "total_ms": 424.762,
+    "share_pct": 36.46
+   },
+   {
+    "kernel": "q6_k_t16_qmicro_planar_wmma_prefill_shared_bf16_kernel",
+    "template_arguments": "4, 4, 2, false",
+    "template_parameter_names": [
+     "waves_per_block",
+     "row_tiles_per_wave",
+     "out_tiles_per_block",
+     "pair_decode"
+    ],
+    "registered_variant": "qmicro_planar_wmma_prefill_shared4r4_bf16_bf16_out",
+    "quant_family": "q6",
+    "layer": "linear",
+    "columns_per_block": 32,
+    "rows_per_block": 256,
+    "columns_total": 5120,
+    "columns_covered": "(5088, 5120]",
+    "rows_per_launch": 512,
+    "grid": [
+     160,
+     2,
+     1
+    ],
+    "workgroup": [
+     128
+    ],
+    "vgpr": 176,
+    "sgpr": [
+     128
+    ],
+    "lds_bytes": 16384,
+    "waves_per_simd": 2,
+    "launches": 32,
+    "total_ms": 126.513,
+    "share_pct": 10.86
+   },
+   {
+    "kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel",
+    "template_arguments": "3, 4, 4, _Float16, false",
+    "template_parameter_names": [
+     "out_tiles_per_block",
+     "row_tiles_per_wave",
+     "waves_per_block",
+     "scalar_t",
+     "skip_inactive_waves"
+    ],
+    "registered_variant": "t16_wmma_prefill_shared_b_bf16_bf16_out (fp16 activations)",
+    "quant_family": "q4",
+    "layer": "linear",
+    "columns_per_block": 48,
+    "rows_per_block": 256,
+    "columns_total": 5136,
+    "columns_covered": "(5088, 5136]",
+    "rows_per_launch": 512,
+    "grid": [
+     107,
+     2,
+     1
+    ],
+    "workgroup": [
+     128
+    ],
+    "vgpr": 256,
+    "sgpr": [
+     128
+    ],
+    "lds_bytes": 24576,
+    "waves_per_simd": 2,
+    "launches": 48,
+    "total_ms": 119.653,
+    "share_pct": 10.27
+   },
+   {
+    "kernel": "q6_k_t16_wmma_prefill_shared_bf16_kernel",
+    "template_arguments": "8, 3, 2",
+    "template_parameter_names": [
+     "waves_per_block",
+     "row_tiles_per_wave",
+     "out_tiles_per_block"
+    ],
+    "registered_variant": "t16_wmma_prefill_shared8r3_bf16_bf16_out",
+    "quant_family": "q6",
+    "layer": "linear",
+    "columns_per_block": 32,
+    "rows_per_block": 384,
+    "columns_total": 10240,
+    "columns_covered": "(10208, 10240]",
+    "rows_per_launch": 768,
+    "grid": [
+     320,
+     2,
+     1
+    ],
+    "workgroup": [
+     256
+    ],
+    "vgpr": 96,
+    "sgpr": [
+     128
+    ],
+    "lds_bytes": 16384,
+    "waves_per_simd": 5,
+    "launches": 24,
+    "total_ms": 82.521,
+    "share_pct": 7.08
+   },
+   {
+    "kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel",
+    "template_arguments": "3, 4, 4, _Float16, false",
+    "template_parameter_names": [
+     "out_tiles_per_block",
+     "row_tiles_per_wave",
+     "waves_per_block",
+     "scalar_t",
+     "skip_inactive_waves"
+    ],
+    "registered_variant": "t16_wmma_prefill_shared_b_bf16_bf16_out (fp16 activations)",
+    "quant_family": "q4",
+    "layer": "linear",
+    "columns_per_block": 48,
+    "rows_per_block": 256,
+    "columns_total": 6144,
+    "columns_covered": "(6096, 6144]",
+    "rows_per_launch": 512,
+    "grid": [
+     128,
+     2,
+     1
+    ],
+    "workgroup": [
+     128
+    ],
+    "vgpr": 256,
+    "sgpr": [
+     128
+    ],
+    "lds_bytes": 24576,
+    "waves_per_simd": 2,
+    "launches": 48,
+    "total_ms": 50.561,
+    "share_pct": 4.34
+   },
+   {
+    "kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel",
+    "template_arguments": "3, 4, 4, _Float16, false",
+    "template_parameter_names": [
+     "out_tiles_per_block",
+     "row_tiles_per_wave",
+     "waves_per_block",
+     "scalar_t",
+     "skip_inactive_waves"
+    ],
+    "registered_variant": "t16_wmma_prefill_shared_b_bf16_bf16_out (fp16 activations)",
+    "quant_family": "q4",
+    "layer": "linear",
+    "columns_per_block": 48,
+    "rows_per_block": 256,
+    "columns_total": 10272,
+    "columns_covered": "(10224, 10272]",
+    "rows_per_launch": 512,
+    "grid": [
+     214,
+     2,
+     1
+    ],
+    "workgroup": [
+     128
+    ],
+    "vgpr": 256,
+    "sgpr": [
+     128
+    ],
+    "lds_bytes": 24576,
+    "waves_per_simd": 2,
+    "launches": 24,
+    "total_ms": 40.545,
+    "share_pct": 3.48
+   },
+   {
+    "kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel",
+    "template_arguments": "3, 4, 4, _Float16, false",
+    "template_parameter_names": [
+     "out_tiles_per_block",
+     "row_tiles_per_wave",
+     "waves_per_block",
+     "scalar_t",
+     "skip_inactive_waves"
+    ],
+    "registered_variant": "t16_wmma_prefill_shared_b_bf16_bf16_out (fp16 activations)",
+    "quant_family": "q4",
+    "layer": "linear",
+    "columns_per_block": 48,
+    "rows_per_block": 256,
+    "columns_total": 12288,
+    "columns_covered": "(12240, 12288]",
+    "rows_per_launch": 512,
+    "grid": [
+     256,
+     2,
+     1
+    ],
+    "workgroup": [
+     128
+    ],
+    "vgpr": 256,
+    "sgpr": [
+     128
+    ],
+    "lds_bytes": 24576,
+    "waves_per_simd": 2,
+    "launches": 16,
+    "total_ms": 31.267,
+    "share_pct": 2.68
+   },
+   {
+    "kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel",
+    "template_arguments": "3, 4, 4, _Float16, false",
+    "template_parameter_names": [
+     "out_tiles_per_block",
+     "row_tiles_per_wave",
+     "waves_per_block",
+     "scalar_t",
+     "skip_inactive_waves"
+    ],
+    "registered_variant": "t16_wmma_prefill_shared_b_bf16_bf16_out (fp16 activations)",
+    "quant_family": "q4",
+    "layer": "linear",
+    "columns_per_block": 48,
+    "rows_per_block": 256,
+    "columns_total": 1056,
+    "columns_covered": "(1008, 1056]",
+    "rows_per_launch": 512,
+    "grid": [
+     22,
+     2,
+     1
+    ],
+    "workgroup": [
+     128
+    ],
+    "vgpr": 256,
+    "sgpr": [
+     128
+    ],
+    "lds_bytes": 24576,
+    "waves_per_simd": 2,
+    "launches": 24,
+    "total_ms": 6.739,
+    "share_pct": 0.58
+   },
+   {
+    "kernel": "q6_k_t16_qmicro_planar_wmma_prefill_shared_bf16_kernel",
+    "template_arguments": "4, 6, 2, true",
+    "template_parameter_names": [
+     "waves_per_block",
+     "row_tiles_per_wave",
+     "out_tiles_per_block",
+     "pair_decode"
+    ],
+    "registered_variant": "qmicro_planar_wmma_prefill_shared4r6_bf16_bf16_out",
+    "quant_family": "q6",
+    "layer": "linear",
+    "columns_per_block": 32,
+    "rows_per_block": 384,
+    "columns_total": 1024,
+    "columns_covered": "(992, 1024]",
+    "rows_per_launch": 768,
+    "grid": [
+     32,
+     2,
+     1
+    ],
+    "workgroup": [
+     128
+    ],
+    "vgpr": 200,
+    "sgpr": [
+     128
+    ],
+    "lds_bytes": 16384,
+    "waves_per_simd": 2,
+    "launches": 8,
+    "total_ms": 3.82,
+    "share_pct": 0.33
+   }
+  ],
+  "1024": [
+   {
+    "kernel": "gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel",
+    "template_arguments": "false, false, 4, 4",
+    "template_parameter_names": [
+     "qmicro",
+     "expanded_meta",
+     "row_tiles_per_wave",
+     "waves_per_block"
+    ],
+    "registered_variant": "dense_dual_wmma_prefill_bf16_bf16_out",
+    "quant_family": "q4",
+    "layer": "linear_pair_silu",
+    "columns_per_block": 32,
+    "rows_per_block": 256,
+    "columns_total": 17408,
+    "columns_covered": "(17376, 17408]",
+    "rows_per_launch": 1024,
+    "grid": [
+     544,
+     4,
+     1
+    ],
+    "workgroup": [
+     128
+    ],
+    "vgpr": 248,
+    "sgpr": [
+     128
+    ],
+    "lds_bytes": 32768,
+    "waves_per_simd": 2,
+    "launches": 64,
+    "total_ms": 841.75,
+    "share_pct": 34.22
+   },
+   {
+    "kernel": "q6_k_t16_qmicro_planar_wmma_prefill_shared_bf16_kernel",
+    "template_arguments": "4, 4, 2, false",
+    "template_parameter_names": [
+     "waves_per_block",
+     "row_tiles_per_wave",
+     "out_tiles_per_block",
+     "pair_decode"
+    ],
+    "registered_variant": "qmicro_planar_wmma_prefill_shared4r4_bf16_bf16_out",
+    "quant_family": "q6",
+    "layer": "linear",
+    "columns_per_block": 32,
+    "rows_per_block": 256,
+    "columns_total": 5120,
+    "columns_covered": "(5088, 5120]",
+    "rows_per_launch": 1024,
+    "grid": [
+     160,
+     4,
+     1
+    ],
+    "workgroup": [
+     128
+    ],
+    "vgpr": 176,
+    "sgpr": [
+     128
+    ],
+    "lds_bytes": 16384,
+    "waves_per_simd": 2,
+    "launches": 32,
+    "total_ms": 274.752,
+    "share_pct": 11.17
+   },
+   {
+    "kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel",
+    "template_arguments": "3, 4, 4, _Float16, false",
+    "template_parameter_names": [
+     "out_tiles_per_block",
+     "row_tiles_per_wave",
+     "waves_per_block",
+     "scalar_t",
+     "skip_inactive_waves"
+    ],
+    "registered_variant": "t16_wmma_prefill_shared_b_bf16_bf16_out (fp16 activations)",
+    "quant_family": "q4",
+    "layer": "linear",
+    "columns_per_block": 48,
+    "rows_per_block": 256,
+    "columns_total": 5136,
+    "columns_covered": "(5088, 5136]",
+    "rows_per_launch": 1024,
+    "grid": [
+     107,
+     4,
+     1
+    ],
+    "workgroup": [
+     128
+    ],
+    "vgpr": 256,
+    "sgpr": [
+     128
+    ],
+    "lds_bytes": 24576,
+    "waves_per_simd": 2,
+    "launches": 48,
+    "total_ms": 259.258,
+    "share_pct": 10.54
+   },
+   {
+    "kernel": "q6_k_t16_wmma_prefill_shared_bf16_kernel",
+    "template_arguments": "8, 3, 2",
+    "template_parameter_names": [
+     "waves_per_block",
+     "row_tiles_per_wave",
+     "out_tiles_per_block"
+    ],
+    "registered_variant": "t16_wmma_prefill_shared8r3_bf16_bf16_out",
+    "quant_family": "q6",
+    "layer": "linear",
+    "columns_per_block": 32,
+    "rows_per_block": 384,
+    "columns_total": 10240,
+    "columns_covered": "(10208, 10240]",
+    "rows_per_launch": 1152,
+    "grid": [
+     320,
+     3,
+     1
+    ],
+    "workgroup": [
+     256
+    ],
+    "vgpr": 96,
+    "sgpr": [
+     128
+    ],
+    "lds_bytes": 16384,
+    "waves_per_simd": 5,
+    "launches": 24,
+    "total_ms": 155.599,
+    "share_pct": 6.33
+   },
+   {
+    "kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel",
+    "template_arguments": "3, 4, 4, _Float16, false",
+    "template_parameter_names": [
+     "out_tiles_per_block",
+     "row_tiles_per_wave",
+     "waves_per_block",
+     "scalar_t",
+     "skip_inactive_waves"
+    ],
+    "registered_variant": "t16_wmma_prefill_shared_b_bf16_bf16_out (fp16 activations)",
+    "quant_family": "q4",
+    "layer": "linear",
+    "columns_per_block": 48,
+    "rows_per_block": 256,
+    "columns_total": 6144,
+    "columns_covered": "(6096, 6144]",
+    "rows_per_launch": 1024,
+    "grid": [
+     128,
+     4,
+     1
+    ],
+    "workgroup": [
+     128
+    ],
+    "vgpr": 256,
+    "sgpr": [
+     128
+    ],
+    "lds_bytes": 24576,
+    "waves_per_simd": 2,
+    "launches": 48,
+    "total_ms": 94.312,
+    "share_pct": 3.83
+   },
+   {
+    "kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel",
+    "template_arguments": "3, 4, 4, _Float16, false",
+    "template_parameter_names": [
+     "out_tiles_per_block",
+     "row_tiles_per_wave",
+     "waves_per_block",
+     "scalar_t",
+     "skip_inactive_waves"
+    ],
+    "registered_variant": "t16_wmma_prefill_shared_b_bf16_bf16_out (fp16 activations)",
+    "quant_family": "q4",
+    "layer": "linear",
+    "columns_per_block": 48,
+    "rows_per_block": 256,
+    "columns_total": 10272,
+    "columns_covered": "(10224, 10272]",
+    "rows_per_launch": 1024,
+    "grid": [
+     214,
+     4,
+     1
+    ],
+    "workgroup": [
+     128
+    ],
+    "vgpr": 256,
+    "sgpr": [
+     128
+    ],
+    "lds_bytes": 24576,
+    "waves_per_simd": 2,
+    "launches": 24,
+    "total_ms": 81.295,
+    "share_pct": 3.31
+   },
+   {
+    "kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel",
+    "template_arguments": "3, 4, 4, _Float16, false",
+    "template_parameter_names": [
+     "out_tiles_per_block",
+     "row_tiles_per_wave",
+     "waves_per_block",
+     "scalar_t",
+     "skip_inactive_waves"
+    ],
+    "registered_variant": "t16_wmma_prefill_shared_b_bf16_bf16_out (fp16 activations)",
+    "quant_family": "q4",
+    "layer": "linear",
+    "columns_per_block": 48,
+    "rows_per_block": 256,
+    "columns_total": 12288,
+    "columns_covered": "(12240, 12288]",
+    "rows_per_launch": 1024,
+    "grid": [
+     256,
+     4,
+     1
+    ],
+    "workgroup": [
+     128
+    ],
+    "vgpr": 256,
+    "sgpr": [
+     128
+    ],
+    "lds_bytes": 24576,
+    "waves_per_simd": 2,
+    "launches": 16,
+    "total_ms": 63.762,
+    "share_pct": 2.59
+   },
+   {
+    "kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel",
+    "template_arguments": "3, 4, 4, _Float16, false",
+    "template_parameter_names": [
+     "out_tiles_per_block",
+     "row_tiles_per_wave",
+     "waves_per_block",
+     "scalar_t",
+     "skip_inactive_waves"
+    ],
+    "registered_variant": "t16_wmma_prefill_shared_b_bf16_bf16_out (fp16 activations)",
+    "quant_family": "q4",
+    "layer": "linear",
+    "columns_per_block": 48,
+    "rows_per_block": 256,
+    "columns_total": 1056,
+    "columns_covered": "(1008, 1056]",
+    "rows_per_launch": 1024,
+    "grid": [
+     22,
+     4,
+     1
+    ],
+    "workgroup": [
+     128
+    ],
+    "vgpr": 256,
+    "sgpr": [
+     128
+    ],
+    "lds_bytes": 24576,
+    "waves_per_simd": 2,
+    "launches": 24,
+    "total_ms": 19.951,
+    "share_pct": 0.81
+   },
+   {
+    "kernel": "q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel",
+    "template_arguments": "4, 3",
+    "template_parameter_names": [
+     "row_tiles_per_wave",
+     "out_tiles_per_block"
+    ],
+    "registered_variant": "qmicro_planar_wmma_prefill_bf16_bf16_out",
+    "quant_family": "q6",
+    "layer": "linear",
+    "columns_per_block": 48,
+    "rows_per_block": 64,
+    "columns_total": 1056,
+    "columns_covered": "(1008, 1056]",
+    "rows_per_launch": 1024,
+    "grid": [
+     22,
+     16,
+     1
+    ],
+    "workgroup": [
+     32
+    ],
+    "vgpr": 184,
+    "sgpr": [
+     128
+    ],
+    "lds_bytes": 0,
+    "waves_per_simd": 2,
+    "launches": 8,
+    "total_ms": 8.737,
+    "share_pct": 0.36
+   }
+  ],
+  "4096": [
+   {
+    "kernel": "gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel",
+    "template_arguments": "false, false, 4, 4",
+    "template_parameter_names": [
+     "qmicro",
+     "expanded_meta",
+     "row_tiles_per_wave",
+     "waves_per_block"
+    ],
+    "registered_variant": "dense_dual_wmma_prefill_bf16_bf16_out",
+    "quant_family": "q4",
+    "layer": "linear_pair_silu",
+    "columns_per_block": 32,
+    "rows_per_block": 256,
+    "columns_total": 17408,
+    "columns_covered": "(17376, 17408]",
+    "rows_per_launch": 1024,
+    "grid": [
+     544,
+     4,
+     1
+    ],
+    "workgroup": [
+     128
+    ],
+    "vgpr": 248,
+    "sgpr": [
+     128
+    ],
+    "lds_bytes": 32768,
+    "waves_per_simd": 2,
+    "launches": 192,
+    "total_ms": 2526.682,
+    "share_pct": 24.81
+   },
+   {
+    "kernel": "gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel",
+    "template_arguments": "false, false, 4, 4",
+    "template_parameter_names": [
+     "qmicro",
+     "expanded_meta",
+     "row_tiles_per_wave",
+     "waves_per_block"
+    ],
+    "registered_variant": "dense_dual_wmma_prefill_bf16_bf16_out",
+    "quant_family": "q4",
+    "layer": "linear_pair_silu",
+    "columns_per_block": 32,
+    "rows_per_block": 256,
+    "columns_total": 17408,
+    "columns_covered": "(17376, 17408]",
+    "rows_per_launch": 4096,
+    "grid": [
+     544,
+     16,
+     1
+    ],
+    "workgroup": [
+     128
+    ],
+    "vgpr": 248,
+    "sgpr": [
+     128
+    ],
+    "lds_bytes": 32768,
+    "waves_per_simd": 2,
+    "launches": 16,
+    "total_ms": 835.218,
+    "share_pct": 8.2
+   },
+   {
+    "kernel": "q6_k_t16_qmicro_planar_wmma_prefill_shared_bf16_kernel",
+    "template_arguments": "4, 4, 2, false",
+    "template_parameter_names": [
+     "waves_per_block",
+     "row_tiles_per_wave",
+     "out_tiles_per_block",
+     "pair_decode"
+    ],
+    "registered_variant": "qmicro_planar_wmma_prefill_shared4r4_bf16_bf16_out",
+    "quant_family": "q6",
+    "layer": "linear",
+    "columns_per_block": 32,
+    "rows_per_block": 256,
+    "columns_total": 5120,
+    "columns_covered": "(5088, 5120]",
+    "rows_per_launch": 1024,
+    "grid": [
+     160,
+     4,
+     1
+    ],
+    "workgroup": [
+     128
+    ],
+    "vgpr": 176,
+    "sgpr": [
+     128
+    ],
+    "lds_bytes": 16384,
+    "waves_per_simd": 2,
+    "launches": 96,
+    "total_ms": 823.621,
+    "share_pct": 8.09
+   },
+   {
+    "kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel",
+    "template_arguments": "3, 4, 4, _Float16, false",
+    "template_parameter_names": [
+     "out_tiles_per_block",
+     "row_tiles_per_wave",
+     "waves_per_block",
+     "scalar_t",
+     "skip_inactive_waves"
+    ],
+    "registered_variant": "t16_wmma_prefill_shared_b_bf16_bf16_out (fp16 activations)",
+    "quant_family": "q4",
+    "layer": "linear",
+    "columns_per_block": 48,
+    "rows_per_block": 256,
+    "columns_total": 5136,
+    "columns_covered": "(5088, 5136]",
+    "rows_per_launch": 1024,
+    "grid": [
+     107,
+     4,
+     1
+    ],
+    "workgroup": [
+     128
+    ],
+    "vgpr": 256,
+    "sgpr": [
+     128
+    ],
+    "lds_bytes": 24576,
+    "waves_per_simd": 2,
+    "launches": 96,
+    "total_ms": 637.316,
+    "share_pct": 6.26
+   },
+   {
+    "kernel": "q6_k_t16_wmma_prefill_shared_bf16_kernel",
+    "template_arguments": "8, 3, 2",
+    "template_parameter_names": [
+     "waves_per_block",
+     "row_tiles_per_wave",
+     "out_tiles_per_block"
+    ],
+    "registered_variant": "t16_wmma_prefill_shared8r3_bf16_bf16_out",
+    "quant_family": "q6",
+    "layer": "linear",
+    "columns_per_block": 32,
+    "rows_per_block": 384,
+    "columns_total": 10240,
+    "columns_covered": "(10208, 10240]",
+    "rows_per_launch": 1152,
+    "grid": [
+     320,
+     3,
+     1
+    ],
+    "workgroup": [
+     256
+    ],
+    "vgpr": 96,
+    "sgpr": [
+     128
+    ],
+    "lds_bytes": 16384,
+    "waves_per_simd": 5,
+    "launches": 96,
+    "total_ms": 622.628,
+    "share_pct": 6.11
+   },
+   {
+    "kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel",
+    "template_arguments": "3, 4, 4, unsigned short, false",
+    "template_parameter_names": [
+     "out_tiles_per_block",
+     "row_tiles_per_wave",
+     "waves_per_block",
+     "scalar_t",
+     "skip_inactive_waves"
+    ],
+    "registered_variant": "t16_wmma_prefill_shared_b_bf16_bf16_out (bf16 activations)",
+    "quant_family": "q4",
+    "layer": "linear",
+    "columns_per_block": 48,
+    "rows_per_block": 256,
+    "columns_total": 5136,
+    "columns_covered": "(5088, 5136]",
+    "rows_per_launch": 4096,
+    "grid": [
+     107,
+     16,
+     1
+    ],
+    "workgroup": [
+     128
+    ],
+    "vgpr": 256,
+    "sgpr": [
+     128
+    ],
+    "lds_bytes": 24576,
+    "waves_per_simd": 2,
+    "launches": 24,
+    "total_ms": 502.043,
+    "share_pct": 4.93
+   },
+   {
+    "kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel",
+    "template_arguments": "3, 4, 4, _Float16, false",
+    "template_parameter_names": [
+     "out_tiles_per_block",
+     "row_tiles_per_wave",
+     "waves_per_block",
+     "scalar_t",
+     "skip_inactive_waves"
+    ],
+    "registered_variant": "t16_wmma_prefill_shared_b_bf16_bf16_out (fp16 activations)",
+    "quant_family": "q4",
+    "layer": "linear",
+    "columns_per_block": 48,
+    "rows_per_block": 256,
+    "columns_total": 6144,
+    "columns_covered": "(6096, 6144]",
+    "rows_per_launch": 1024,
+    "grid": [
+     128,
+     4,
+     1
+    ],
+    "workgroup": [
+     128
+    ],
+    "vgpr": 256,
+    "sgpr": [
+     128
+    ],
+    "lds_bytes": 24576,
+    "waves_per_simd": 2,
+    "launches": 192,
+    "total_ms": 378.196,
+    "share_pct": 3.71
+   },
+   {
+    "kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel",
+    "template_arguments": "3, 4, 4, unsigned short, false",
+    "template_parameter_names": [
+     "out_tiles_per_block",
+     "row_tiles_per_wave",
+     "waves_per_block",
+     "scalar_t",
+     "skip_inactive_waves"
+    ],
+    "registered_variant": "t16_wmma_prefill_shared_b_bf16_bf16_out (bf16 activations)",
+    "quant_family": "q4",
+    "layer": "linear",
+    "columns_per_block": 48,
+    "rows_per_block": 256,
+    "columns_total": 12288,
+    "columns_covered": "(12240, 12288]",
+    "rows_per_launch": 4096,
+    "grid": [
+     256,
+     16,
+     1
+    ],
+    "workgroup": [
+     128
+    ],
+    "vgpr": 256,
+    "sgpr": [
+     128
+    ],
+    "lds_bytes": 24576,
+    "waves_per_simd": 2,
+    "launches": 16,
+    "total_ms": 348.502,
+    "share_pct": 3.42
+   },
+   {
+    "kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel",
+    "template_arguments": "3, 4, 4, _Float16, false",
+    "template_parameter_names": [
+     "out_tiles_per_block",
+     "row_tiles_per_wave",
+     "waves_per_block",
+     "scalar_t",
+     "skip_inactive_waves"
+    ],
+    "registered_variant": "t16_wmma_prefill_shared_b_bf16_bf16_out (fp16 activations)",
+    "quant_family": "q4",
+    "layer": "linear",
+    "columns_per_block": 48,
+    "rows_per_block": 256,
+    "columns_total": 10272,
+    "columns_covered": "(10224, 10272]",
+    "rows_per_launch": 1024,
+    "grid": [
+     214,
+     4,
+     1
+    ],
+    "workgroup": [
+     128
+    ],
+    "vgpr": 256,
+    "sgpr": [
+     128
+    ],
+    "lds_bytes": 24576,
+    "waves_per_simd": 2,
+    "launches": 96,
+    "total_ms": 321.781,
+    "share_pct": 3.16
+   },
+   {
+    "kernel": "q6_k_t16_qmicro_planar_wmma_prefill_shared_bf16_kernel",
+    "template_arguments": "4, 4, 3, false",
+    "template_parameter_names": [
+     "waves_per_block",
+     "row_tiles_per_wave",
+     "out_tiles_per_block",
+     "pair_decode"
+    ],
+    "registered_variant": "qmicro_planar_wmma_prefill_shared4_gfx1100_bf16_bf16_out",
+    "quant_family": "q6",
+    "layer": "linear",
+    "columns_per_block": 48,
+    "rows_per_block": 256,
+    "columns_total": 5136,
+    "columns_covered": "(5088, 5136]",
+    "rows_per_launch": 4096,
+    "grid": [
+     107,
+     16,
+     1
+    ],
+    "workgroup": [
+     128
+    ],
+    "vgpr": 248,
+    "sgpr": [
+     128
+    ],
+    "lds_bytes": 24576,
+    "waves_per_simd": 2,
+    "launches": 8,
+    "total_ms": 287.111,
+    "share_pct": 2.82
+   },
+   {
+    "kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel",
+    "template_arguments": "3, 4, 4, unsigned short, false",
+    "template_parameter_names": [
+     "out_tiles_per_block",
+     "row_tiles_per_wave",
+     "waves_per_block",
+     "scalar_t",
+     "skip_inactive_waves"
+    ],
+    "registered_variant": "t16_wmma_prefill_shared_b_bf16_bf16_out (bf16 activations)",
+    "quant_family": "q4",
+    "layer": "linear",
+    "columns_per_block": 48,
+    "rows_per_block": 256,
+    "columns_total": 1056,
+    "columns_covered": "(1008, 1056]",
+    "rows_per_launch": 4096,
+    "grid": [
+     22,
+     16,
+     1
+    ],
+    "workgroup": [
+     128
+    ],
+    "vgpr": 256,
+    "sgpr": [
+     128
+    ],
+    "lds_bytes": 24576,
+    "waves_per_simd": 2,
+    "launches": 24,
+    "total_ms": 54.611,
+    "share_pct": 0.54
+   },
+   {
+    "kernel": "q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel",
+    "template_arguments": "4, 3",
+    "template_parameter_names": [
+     "row_tiles_per_wave",
+     "out_tiles_per_block"
+    ],
+    "registered_variant": "qmicro_planar_wmma_prefill_bf16_bf16_out",
+    "quant_family": "q6",
+    "layer": "linear",
+    "columns_per_block": 48,
+    "rows_per_block": 64,
+    "columns_total": 1056,
+    "columns_covered": "(1008, 1056]",
+    "rows_per_launch": 4096,
+    "grid": [
+     22,
+     64,
+     1
+    ],
+    "workgroup": [
+     32
+    ],
+    "vgpr": 184,
+    "sgpr": [
+     128
+    ],
+    "lds_bytes": 0,
+    "waves_per_simd": 2,
+    "launches": 8,
+    "total_ms": 39.266,
+    "share_pct": 0.39
+   }
+  ]
+ },
+ "attribution": {
+  "512": {
+   "rows": [
+    {
+     "kernel": "q6_k_t16_qmicro_planar_wmma_prefill_shared_bf16_kernel",
+     "template_arguments": "4, 6, 2, true",
+     "registered_variant": "qmicro_planar_wmma_prefill_shared4r6_bf16_bf16_out",
+     "grid": [
+      32,
+      2,
+      1
+     ],
+     "rows_per_launch": 768,
+     "chunks_per_tensor": 1,
+     "pass_mode": "single-pass",
+     "launches": 8,
+     "total_ms": 3.82,
+     "tensor_slots_expected": 8,
+     "tensor_slots_listed": 8,
+     "composition": [
+      {
+       "suffix": "attn_v.weight",
+       "count": 8
+      }
+     ],
+     "arithmetic": {
+      "in_features": 5120,
+      "out_features": 1024,
+      "rows_processed": 4096,
+      "flops": 42949672960.0,
+      "tflops": 11.24,
+      "weight_bytes_per_launch": 4300800,
+      "weight_bytes_total": 34406400,
+      "implied_weight_gbps": 9.01,
+      "implied_weight_and_activation_gbps": 22.18
+     },
+     "matches": true
+    },
+    {
+     "kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel",
+     "template_arguments": "3, 4, 4, _Float16, false",
+     "registered_variant": "t16_wmma_prefill_shared_b_bf16_bf16_out (fp16 activations)",
+     "grid": [
+      22,
+      2,
+      1
+     ],
+     "rows_per_launch": 512,
+     "chunks_per_tensor": 1,
+     "pass_mode": "single-pass",
+     "launches": 24,
+     "total_ms": 6.739,
+     "tensor_slots_expected": 24,
+     "tensor_slots_listed": 24,
+     "composition": [
+      {
+       "suffix": "attn_k.weight",
+       "count": 16
+      },
+      {
+       "suffix": "attn_v.weight",
+       "count": 8
+      }
+     ],
+     "arithmetic": {
+      "in_features": 5120,
+      "out_features": 1024,
+      "rows_processed": 12288,
+      "flops": 128849018880.0,
+      "tflops": 19.12,
+      "weight_bytes_per_launch": 3399680,
+      "weight_bytes_total": 81592320,
+      "implied_weight_gbps": 12.11,
+      "implied_weight_and_activation_gbps": 34.51
+     },
+     "matches": true
+    },
+    {
+     "kernel": "q6_k_t16_qmicro_planar_wmma_prefill_shared_bf16_kernel",
+     "template_arguments": "4, 4, 2, false",
+     "registered_variant": "qmicro_planar_wmma_prefill_shared4r4_bf16_bf16_out",
+     "grid": [
+      160,
+      2,
+      1
+     ],
+     "rows_per_launch": 512,
+     "chunks_per_tensor": 1,
+     "pass_mode": "single-pass",
+     "launches": 32,
+     "total_ms": 126.513,
+     "tensor_slots_expected": 32,
+     "tensor_slots_listed": 32,
+     "composition": [
+      {
+       "suffix": "ffn_down.weight",
+       "count": 24
+      },
+      {
+       "suffix": "ffn_down.weight",
+       "count": 8
+      }
+     ],
+     "arithmetic": {
+      "in_features": 17408,
+      "out_features": 5120,
+      "rows_processed": 16384,
+      "flops": 2920577761280.0,
+      "tflops": 23.09,
+      "weight_bytes_per_launch": 73113600,
+      "weight_bytes_total": 2339635200,
+      "implied_weight_gbps": 18.49,
+      "implied_weight_and_activation_gbps": 24.33
+     },
+     "matches": true
+    },
+    {
+     "kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel",
+     "template_arguments": "3, 4, 4, _Float16, false",
+     "registered_variant": "t16_wmma_prefill_shared_b_bf16_bf16_out (fp16 activations)",
+     "grid": [
+      107,
+      2,
+      1
+     ],
+     "rows_per_launch": 512,
+     "chunks_per_tensor": 1,
+     "pass_mode": "single-pass",
+     "launches": 48,
+     "total_ms": 119.653,
+     "tensor_slots_expected": 48,
+     "tensor_slots_listed": 48,
+     "composition": [
+      {
+       "suffix": "ffn_down.weight",
+       "count": 24
+      },
+      {
+       "suffix": "ffn_down.weight",
+       "count": 8
+      },
+      {
+       "suffix": "attn_output.weight",
+       "count": 16
+      }
+     ],
+     "arithmetic": null,
+     "matches": true
+    },
+    {
+     "kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel",
+     "template_arguments": "3, 4, 4, _Float16, false",
+     "registered_variant": "t16_wmma_prefill_shared_b_bf16_bf16_out (fp16 activations)",
+     "grid": [
+      128,
+      2,
+      1
+     ],
+     "rows_per_launch": 512,
+     "chunks_per_tensor": 1,
+     "pass_mode": "single-pass",
+     "launches": 48,
+     "total_ms": 50.561,
+     "tensor_slots_expected": 48,
+     "tensor_slots_listed": 48,
+     "composition": [
+      {
+       "suffix": "attn_gate.weight",
+       "count": 48
+      }
+     ],
+     "arithmetic": {
+      "in_features": 5120,
+      "out_features": 6144,
+      "rows_processed": 24576,
+      "flops": 1546188226560.0,
+      "tflops": 30.58,
+      "weight_bytes_per_launch": 17694720,
+      "weight_bytes_total": 849346560,
+      "implied_weight_gbps": 16.8,
+      "implied_weight_and_activation_gbps": 27.75
+     },
+     "matches": true
+    },
+    {
+     "kernel": "q6_k_t16_wmma_prefill_shared_bf16_kernel",
+     "template_arguments": "8, 3, 2",
+     "registered_variant": "t16_wmma_prefill_shared8r3_bf16_bf16_out",
+     "grid": [
+      320,
+      2,
+      1
+     ],
+     "rows_per_launch": 768,
+     "chunks_per_tensor": 1,
+     "pass_mode": "single-pass",
+     "launches": 24,
+     "total_ms": 82.521,
+     "tensor_slots_expected": 24,
+     "tensor_slots_listed": 24,
+     "composition": [
+      {
+       "suffix": "attn_qkv.weight",
+       "count": 24
+      }
+     ],
+     "arithmetic": {
+      "in_features": 5120,
+      "out_features": 10240,
+      "rows_processed": 12288,
+      "flops": 1288490188800.0,
+      "tflops": 15.61,
+      "weight_bytes_per_launch": 43008000,
+      "weight_bytes_total": 1032192000,
+      "implied_weight_gbps": 12.51,
+      "implied_weight_and_activation_gbps": 17.08
+     },
+     "matches": true
+    },
+    {
+     "kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel",
+     "template_arguments": "3, 4, 4, _Float16, false",
+     "registered_variant": "t16_wmma_prefill_shared_b_bf16_bf16_out (fp16 activations)",
+     "grid": [
+      214,
+      2,
+      1
+     ],
+     "rows_per_launch": 512,
+     "chunks_per_tensor": 1,
+     "pass_mode": "single-pass",
+     "launches": 24,
+     "total_ms": 40.545,
+     "tensor_slots_expected": 24,
+     "tensor_slots_listed": 24,
+     "composition": [
+      {
+       "suffix": "attn_qkv.weight",
+       "count": 24
+      }
+     ],
+     "arithmetic": {
+      "in_features": 5120,
+      "out_features": 10240,
+      "rows_processed": 12288,
+      "flops": 1288490188800.0,
+      "tflops": 31.78,
+      "weight_bytes_per_launch": 43008000,
+      "weight_bytes_total": 1032192000,
+      "implied_weight_gbps": 25.46,
+      "implied_weight_and_activation_gbps": 34.77
+     },
+     "matches": true
+    },
+    {
+     "kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel",
+     "template_arguments": "3, 4, 4, _Float16, false",
+     "registered_variant": "t16_wmma_prefill_shared_b_bf16_bf16_out (fp16 activations)",
+     "grid": [
+      256,
+      2,
+      1
+     ],
+     "rows_per_launch": 512,
+     "chunks_per_tensor": 1,
+     "pass_mode": "single-pass",
+     "launches": 16,
+     "total_ms": 31.267,
+     "tensor_slots_expected": 16,
+     "tensor_slots_listed": 16,
+     "composition": [
+      {
+       "suffix": "attn_q.weight",
+       "count": 16
+      }
+     ],
+     "arithmetic": {
+      "in_features": 5120,
+      "out_features": 12288,
+      "rows_processed": 8192,
+      "flops": 1030792151040.0,
+      "tflops": 32.97,
+      "weight_bytes_per_launch": 35389440,
+      "weight_bytes_total": 566231040,
+      "implied_weight_gbps": 18.11,
+      "implied_weight_and_activation_gbps": 27.23
+     },
+     "matches": true
+    },
+    {
+     "kernel": "gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel",
+     "template_arguments": "false, false, 4, 4",
+     "registered_variant": "dense_dual_wmma_prefill_bf16_bf16_out",
+     "grid": [
+      544,
+      2,
+      1
+     ],
+     "rows_per_launch": 512,
+     "chunks_per_tensor": 1,
+     "pass_mode": "single-pass",
+     "launches": 64,
+     "total_ms": 424.762,
+     "tensor_slots_expected": 128,
+     "tensor_slots_listed": 128,
+     "composition": [
+      {
+       "suffix": "ffn_gate.weight",
+       "count": 48
+      },
+      {
+       "suffix": "ffn_up.weight",
+       "count": 48
+      },
+      {
+       "suffix": "ffn_gate.weight",
+       "count": 16
+      },
+      {
+       "suffix": "ffn_up.weight",
+       "count": 16
+      }
+     ],
+     "arithmetic": {
+      "in_features": 5120,
+      "out_features": 17408,
+      "rows_processed": 32768,
+      "flops": 11682311045120.0,
+      "tflops": 27.5,
+      "weight_bytes_per_launch": 100270080,
+      "weight_bytes_total": 6417285120,
+      "implied_weight_gbps": 15.11,
+      "implied_weight_and_activation_gbps": 22.06
+     },
+     "matches": true
+    }
+   ],
+   "rows_matched": 9,
+   "rows_total": 9,
+   "tensor_groups": [
+    {
+     "suffix": "attn_gate.weight",
+     "ggml_type": "Q4_K",
+     "tensors_in_model": 48,
+     "tensors_attributed": 48,
+     "unattributed": 0,
+     "unattributed_note": null
+    },
+    {
+     "suffix": "attn_k.weight",
+     "ggml_type": "Q4_K",
+     "tensors_in_model": 17,
+     "tensors_attributed": 16,
+     "unattributed": 1,
+     "unattributed_note": "the MTP nextn layer's copy is not on the prefill path"
+    },
+    {
+     "suffix": "attn_output.weight",
+     "ggml_type": "Q4_K",
+     "tensors_in_model": 17,
+     "tensors_attributed": 16,
+     "unattributed": 1,
+     "unattributed_note": "the MTP nextn layer's copy is not on the prefill path"
+    },
+    {
+     "suffix": "attn_q.weight",
+     "ggml_type": "Q4_K",
+     "tensors_in_model": 17,
+     "tensors_attributed": 16,
+     "unattributed": 1,
+     "unattributed_note": "the MTP nextn layer's copy is not on the prefill path"
+    },
+    {
+     "suffix": "attn_qkv.weight",
+     "ggml_type": "Q4_K",
+     "tensors_in_model": 24,
+     "tensors_attributed": 24,
+     "unattributed": 0,
+     "unattributed_note": null
+    },
+    {
+     "suffix": "attn_qkv.weight",
+     "ggml_type": "Q6_K",
+     "tensors_in_model": 24,
+     "tensors_attributed": 24,
+     "unattributed": 0,
+     "unattributed_note": null
+    },
+    {
+     "suffix": "attn_v.weight",
+     "ggml_type": "Q4_K",
+     "tensors_in_model": 8,
+     "tensors_attributed": 8,
+     "unattributed": 0,
+     "unattributed_note": null
+    },
+    {
+     "suffix": "attn_v.weight",
+     "ggml_type": "Q6_K",
+     "tensors_in_model": 9,
+     "tensors_attributed": 8,
+     "unattributed": 1,
+     "unattributed_note": "the MTP nextn layer's copy is not on the prefill path"
+    },
+    {
+     "suffix": "ffn_down.weight",
+     "ggml_type": "Q4_K",
+     "tensors_in_model": 32,
+     "tensors_attributed": 32,
+     "unattributed": 0,
+     "unattributed_note": null
+    },
+    {
+     "suffix": "ffn_down.weight",
+     "ggml_type": "Q6_K",
+     "tensors_in_model": 33,
+     "tensors_attributed": 32,
+     "unattributed": 1,
+     "unattributed_note": "the MTP nextn layer's copy is not on the prefill path"
+    },
+    {
+     "suffix": "ffn_gate.weight",
+     "ggml_type": "Q4_K",
+     "tensors_in_model": 65,
+     "tensors_attributed": 64,
+     "unattributed": 1,
+     "unattributed_note": "the MTP nextn layer's copy is not on the prefill path"
+    },
+    {
+     "suffix": "ffn_up.weight",
+     "ggml_type": "Q4_K",
+     "tensors_in_model": 65,
+     "tensors_attributed": 64,
+     "unattributed": 1,
+     "unattributed_note": "the MTP nextn layer's copy is not on the prefill path"
+    }
+   ],
+   "tensor_groups_explained": 12,
+   "tensor_groups_total": 12
+  },
+  "1024": {
+   "rows": [
+    {
+     "kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel",
+     "template_arguments": "3, 4, 4, _Float16, false",
+     "registered_variant": "t16_wmma_prefill_shared_b_bf16_bf16_out (fp16 activations)",
+     "grid": [
+      22,
+      4,
+      1
+     ],
+     "rows_per_launch": 1024,
+     "chunks_per_tensor": 1,
+     "pass_mode": "single-pass",
+     "launches": 24,
+     "total_ms": 19.951,
+     "tensor_slots_expected": 24,
+     "tensor_slots_listed": 24,
+     "composition": [
+      {
+       "suffix": "attn_k.weight",
+       "count": 16
+      },
+      {
+       "suffix": "attn_v.weight",
+       "count": 8
+      }
+     ],
+     "arithmetic": {
+      "in_features": 5120,
+      "out_features": 1024,
+      "rows_processed": 24576,
+      "flops": 257698037760.0,
+      "tflops": 12.92,
+      "weight_bytes_per_launch": 3399680,
+      "weight_bytes_total": 81592320,
+      "implied_weight_gbps": 4.09,
+      "implied_weight_and_activation_gbps": 19.23
+     },
+     "matches": true
+    },
+    {
+     "kernel": "q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel",
+     "template_arguments": "4, 3",
+     "registered_variant": "qmicro_planar_wmma_prefill_bf16_bf16_out",
+     "grid": [
+      22,
+      16,
+      1
+     ],
+     "rows_per_launch": 1024,
+     "chunks_per_tensor": 1,
+     "pass_mode": "single-pass",
+     "launches": 8,
+     "total_ms": 8.737,
+     "tensor_slots_expected": 8,
+     "tensor_slots_listed": 8,
+     "composition": [
+      {
+       "suffix": "attn_v.weight",
+       "count": 8
+      }
+     ],
+     "arithmetic": {
+      "in_features": 5120,
+      "out_features": 1024,
+      "rows_processed": 8192,
+      "flops": 85899345920.0,
+      "tflops": 9.83,
+      "weight_bytes_per_launch": 4300800,
+      "weight_bytes_total": 34406400,
+      "implied_weight_gbps": 3.94,
+      "implied_weight_and_activation_gbps": 15.46
+     },
+     "matches": true
+    },
+    {
+     "kernel": "q6_k_t16_qmicro_planar_wmma_prefill_shared_bf16_kernel",
+     "template_arguments": "4, 4, 2, false",
+     "registered_variant": "qmicro_planar_wmma_prefill_shared4r4_bf16_bf16_out",
+     "grid": [
+      160,
+      4,
+      1
+     ],
+     "rows_per_launch": 1024,
+     "chunks_per_tensor": 1,
+     "pass_mode": "single-pass",
+     "launches": 32,
+     "total_ms": 274.752,
+     "tensor_slots_expected": 32,
+     "tensor_slots_listed": 32,
+     "composition": [
+      {
+       "suffix": "ffn_down.weight",
+       "count": 24
+      },
+      {
+       "suffix": "ffn_down.weight",
+       "count": 8
+      }
+     ],
+     "arithmetic": {
+      "in_features": 17408,
+      "out_features": 5120,
+      "rows_processed": 32768,
+      "flops": 5841155522560.0,
+      "tflops": 21.26,
+      "weight_bytes_per_launch": 73113600,
+      "weight_bytes_total": 2339635200,
+      "implied_weight_gbps": 8.52,
+      "implied_weight_and_activation_gbps": 13.89
+     },
+     "matches": true
+    },
+    {
+     "kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel",
+     "template_arguments": "3, 4, 4, _Float16, false",
+     "registered_variant": "t16_wmma_prefill_shared_b_bf16_bf16_out (fp16 activations)",
+     "grid": [
+      107,
+      4,
+      1
+     ],
+     "rows_per_launch": 1024,
+     "chunks_per_tensor": 1,
+     "pass_mode": "single-pass",
+     "launches": 48,
+     "total_ms": 259.258,
+     "tensor_slots_expected": 48,
+     "tensor_slots_listed": 48,
+     "composition": [
+      {
+       "suffix": "ffn_down.weight",
+       "count": 24
+      },
+      {
+       "suffix": "ffn_down.weight",
+       "count": 8
+      },
+      {
+       "suffix": "attn_output.weight",
+       "count": 16
+      }
+     ],
+     "arithmetic": null,
+     "matches": true
+    },
+    {
+     "kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel",
+     "template_arguments": "3, 4, 4, _Float16, false",
+     "registered_variant": "t16_wmma_prefill_shared_b_bf16_bf16_out (fp16 activations)",
+     "grid": [
+      128,
+      4,
+      1
+     ],
+     "rows_per_launch": 1024,
+     "chunks_per_tensor": 1,
+     "pass_mode": "single-pass",
+     "launches": 48,
+     "total_ms": 94.312,
+     "tensor_slots_expected": 48,
+     "tensor_slots_listed": 48,
+     "composition": [
+      {
+       "suffix": "attn_gate.weight",
+       "count": 48
+      }
+     ],
+     "arithmetic": {
+      "in_features": 5120,
+      "out_features": 6144,
+      "rows_processed": 49152,
+      "flops": 3092376453120.0,
+      "tflops": 32.79,
+      "weight_bytes_per_launch": 17694720,
+      "weight_bytes_total": 849346560,
+      "implied_weight_gbps": 9.01,
+      "implied_weight_and_activation_gbps": 20.75
+     },
+     "matches": true
+    },
+    {
+     "kernel": "q6_k_t16_wmma_prefill_shared_bf16_kernel",
+     "template_arguments": "8, 3, 2",
+     "registered_variant": "t16_wmma_prefill_shared8r3_bf16_bf16_out",
+     "grid": [
+      320,
+      3,
+      1
+     ],
+     "rows_per_launch": 1152,
+     "chunks_per_tensor": 1,
+     "pass_mode": "single-pass",
+     "launches": 24,
+     "total_ms": 155.599,
+     "tensor_slots_expected": 24,
+     "tensor_slots_listed": 24,
+     "composition": [
+      {
+       "suffix": "attn_qkv.weight",
+       "count": 24
+      }
+     ],
+     "arithmetic": {
+      "in_features": 5120,
+      "out_features": 10240,
+      "rows_processed": 24576,
+      "flops": 2576980377600.0,
+      "tflops": 16.56,
+      "weight_bytes_per_launch": 43008000,
+      "weight_bytes_total": 1032192000,
+      "implied_weight_gbps": 6.63,
+      "implied_weight_and_activation_gbps": 11.49
+     },
+     "matches": true
+    },
+    {
+     "kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel",
+     "template_arguments": "3, 4, 4, _Float16, false",
+     "registered_variant": "t16_wmma_prefill_shared_b_bf16_bf16_out (fp16 activations)",
+     "grid": [
+      214,
+      4,
+      1
+     ],
+     "rows_per_launch": 1024,
+     "chunks_per_tensor": 1,
+     "pass_mode": "single-pass",
+     "launches": 24,
+     "total_ms": 81.295,
+     "tensor_slots_expected": 24,
+     "tensor_slots_listed": 24,
+     "composition": [
+      {
+       "suffix": "attn_qkv.weight",
+       "count": 24
+      }
+     ],
+     "arithmetic": {
+      "in_features": 5120,
+      "out_features": 10240,
+      "rows_processed": 24576,
+      "flops": 2576980377600.0,
+      "tflops": 31.7,
+      "weight_bytes_per_launch": 43008000,
+      "weight_bytes_total": 1032192000,
+      "implied_weight_gbps": 12.7,
+      "implied_weight_and_activation_gbps": 21.98
+     },
+     "matches": true
+    },
+    {
+     "kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel",
+     "template_arguments": "3, 4, 4, _Float16, false",
+     "registered_variant": "t16_wmma_prefill_shared_b_bf16_bf16_out (fp16 activations)",
+     "grid": [
+      256,
+      4,
+      1
+     ],
+     "rows_per_launch": 1024,
+     "chunks_per_tensor": 1,
+     "pass_mode": "single-pass",
+     "launches": 16,
+     "total_ms": 63.762,
+     "tensor_slots_expected": 16,
+     "tensor_slots_listed": 16,
+     "composition": [
+      {
+       "suffix": "attn_q.weight",
+       "count": 16
+      }
+     ],
+     "arithmetic": {
+      "in_features": 5120,
+      "out_features": 12288,
+      "rows_processed": 16384,
+      "flops": 2061584302080.0,
+      "tflops": 32.33,
+      "weight_bytes_per_launch": 35389440,
+      "weight_bytes_total": 566231040,
+      "implied_weight_gbps": 8.88,
+      "implied_weight_and_activation_gbps": 17.83
+     },
+     "matches": true
+    },
+    {
+     "kernel": "gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel",
+     "template_arguments": "false, false, 4, 4",
+     "registered_variant": "dense_dual_wmma_prefill_bf16_bf16_out",
+     "grid": [
+      544,
+      4,
+      1
+     ],
+     "rows_per_launch": 1024,
+     "chunks_per_tensor": 1,
+     "pass_mode": "single-pass",
+     "launches": 64,
+     "total_ms": 841.75,
+     "tensor_slots_expected": 128,
+     "tensor_slots_listed": 128,
+     "composition": [
+      {
+       "suffix": "ffn_gate.weight",
+       "count": 48
+      },
+      {
+       "suffix": "ffn_up.weight",
+       "count": 48
+      },
+      {
+       "suffix": "ffn_gate.weight",
+       "count": 16
+      },
+      {
+       "suffix": "ffn_up.weight",
+       "count": 16
+      }
+     ],
+     "arithmetic": {
+      "in_features": 5120,
+      "out_features": 17408,
+      "rows_processed": 65536,
+      "flops": 23364622090240.0,
+      "tflops": 27.76,
+      "weight_bytes_per_launch": 100270080,
+      "weight_bytes_total": 6417285120,
+      "implied_weight_gbps": 7.62,
+      "implied_weight_and_activation_gbps": 14.64
+     },
+     "matches": true
+    }
+   ],
+   "rows_matched": 9,
+   "rows_total": 9,
+   "tensor_groups": [
+    {
+     "suffix": "attn_gate.weight",
+     "ggml_type": "Q4_K",
+     "tensors_in_model": 48,
+     "tensors_attributed": 48,
+     "unattributed": 0,
+     "unattributed_note": null
+    },
+    {
+     "suffix": "attn_k.weight",
+     "ggml_type": "Q4_K",
+     "tensors_in_model": 17,
+     "tensors_attributed": 16,
+     "unattributed": 1,
+     "unattributed_note": "the MTP nextn layer's copy is not on the prefill path"
+    },
+    {
+     "suffix": "attn_output.weight",
+     "ggml_type": "Q4_K",
+     "tensors_in_model": 17,
+     "tensors_attributed": 16,
+     "unattributed": 1,
+     "unattributed_note": "the MTP nextn layer's copy is not on the prefill path"
+    },
+    {
+     "suffix": "attn_q.weight",
+     "ggml_type": "Q4_K",
+     "tensors_in_model": 17,
+     "tensors_attributed": 16,
+     "unattributed": 1,
+     "unattributed_note": "the MTP nextn layer's copy is not on the prefill path"
+    },
+    {
+     "suffix": "attn_qkv.weight",
+     "ggml_type": "Q4_K",
+     "tensors_in_model": 24,
+     "tensors_attributed": 24,
+     "unattributed": 0,
+     "unattributed_note": null
+    },
+    {
+     "suffix": "attn_qkv.weight",
+     "ggml_type": "Q6_K",
+     "tensors_in_model": 24,
+     "tensors_attributed": 24,
+     "unattributed": 0,
+     "unattributed_note": null
+    },
+    {
+     "suffix": "attn_v.weight",
+     "ggml_type": "Q4_K",
+     "tensors_in_model": 8,
+     "tensors_attributed": 8,
+     "unattributed": 0,
+     "unattributed_note": null
+    },
+    {
+     "suffix": "attn_v.weight",
+     "ggml_type": "Q6_K",
+     "tensors_in_model": 9,
+     "tensors_attributed": 8,
+     "unattributed": 1,
+     "unattributed_note": "the MTP nextn layer's copy is not on the prefill path"
+    },
+    {
+     "suffix": "ffn_down.weight",
+     "ggml_type": "Q4_K",
+     "tensors_in_model": 32,
+     "tensors_attributed": 32,
+     "unattributed": 0,
+     "unattributed_note": null
+    },
+    {
+     "suffix": "ffn_down.weight",
+     "ggml_type": "Q6_K",
+     "tensors_in_model": 33,
+     "tensors_attributed": 32,
+     "unattributed": 1,
+     "unattributed_note": "the MTP nextn layer's copy is not on the prefill path"
+    },
+    {
+     "suffix": "ffn_gate.weight",
+     "ggml_type": "Q4_K",
+     "tensors_in_model": 65,
+     "tensors_attributed": 64,
+     "unattributed": 1,
+     "unattributed_note": "the MTP nextn layer's copy is not on the prefill path"
+    },
+    {
+     "suffix": "ffn_up.weight",
+     "ggml_type": "Q4_K",
+     "tensors_in_model": 65,
+     "tensors_attributed": 64,
+     "unattributed": 1,
+     "unattributed_note": "the MTP nextn layer's copy is not on the prefill path"
+    }
+   ],
+   "tensor_groups_explained": 12,
+   "tensor_groups_total": 12
+  },
+  "4096": {
+   "rows": [
+    {
+     "kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel",
+     "template_arguments": "3, 4, 4, unsigned short, false",
+     "registered_variant": "t16_wmma_prefill_shared_b_bf16_bf16_out (bf16 activations)",
+     "grid": [
+      22,
+      16,
+      1
+     ],
+     "rows_per_launch": 4096,
+     "chunks_per_tensor": 1,
+     "pass_mode": "single-pass",
+     "launches": 24,
+     "total_ms": 54.611,
+     "tensor_slots_expected": 24,
+     "tensor_slots_listed": 24,
+     "composition": [
+      {
+       "suffix": "attn_k.weight",
+       "count": 16
+      },
+      {
+       "suffix": "attn_v.weight",
+       "count": 8
+      }
+     ],
+     "arithmetic": {
+      "in_features": 5120,
+      "out_features": 1024,
+      "rows_processed": 98304,
+      "flops": 1030792151040.0,
+      "tflops": 18.88,
+      "weight_bytes_per_launch": 3399680,
+      "weight_bytes_total": 81592320,
+      "implied_weight_gbps": 1.49,
+      "implied_weight_and_activation_gbps": 23.61
+     },
+     "matches": true
+    },
+    {
+     "kernel": "q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel",
+     "template_arguments": "4, 3",
+     "registered_variant": "qmicro_planar_wmma_prefill_bf16_bf16_out",
+     "grid": [
+      22,
+      64,
+      1
+     ],
+     "rows_per_launch": 4096,
+     "chunks_per_tensor": 1,
+     "pass_mode": "single-pass",
+     "launches": 8,
+     "total_ms": 39.266,
+     "tensor_slots_expected": 8,
+     "tensor_slots_listed": 8,
+     "composition": [
+      {
+       "suffix": "attn_v.weight",
+       "count": 8
+      }
+     ],
+     "arithmetic": {
+      "in_features": 5120,
+      "out_features": 1024,
+      "rows_processed": 32768,
+      "flops": 343597383680.0,
+      "tflops": 8.75,
+      "weight_bytes_per_launch": 4300800,
+      "weight_bytes_total": 34406400,
+      "implied_weight_gbps": 0.88,
+      "implied_weight_and_activation_gbps": 11.13
+     },
+     "matches": true
+    },
+    {
+     "kernel": "q6_k_t16_qmicro_planar_wmma_prefill_shared_bf16_kernel",
+     "template_arguments": "4, 4, 2, false",
+     "registered_variant": "qmicro_planar_wmma_prefill_shared4r4_bf16_bf16_out",
+     "grid": [
+      160,
+      4,
+      1
+     ],
+     "rows_per_launch": 1024,
+     "chunks_per_tensor": 4,
+     "pass_mode": "chunked",
+     "launches": 96,
+     "total_ms": 823.621,
+     "tensor_slots_expected": 24,
+     "tensor_slots_listed": 24,
+     "composition": [
+      {
+       "suffix": "ffn_down.weight",
+       "count": 24
+      }
+     ],
+     "arithmetic": {
+      "in_features": 17408,
+      "out_features": 5120,
+      "rows_processed": 98304,
+      "flops": 17523466567680.0,
+      "tflops": 21.28,
+      "weight_bytes_per_launch": 292454400,
+      "weight_bytes_total": 7018905600,
+      "implied_weight_gbps": 8.52,
+      "implied_weight_and_activation_gbps": 13.9
+     },
+     "matches": true
+    },
+    {
+     "kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel",
+     "template_arguments": "3, 4, 4, _Float16, false",
+     "registered_variant": "t16_wmma_prefill_shared_b_bf16_bf16_out (fp16 activations)",
+     "grid": [
+      107,
+      4,
+      1
+     ],
+     "rows_per_launch": 1024,
+     "chunks_per_tensor": 4,
+     "pass_mode": "chunked",
+     "launches": 96,
+     "total_ms": 637.316,
+     "tensor_slots_expected": 24,
+     "tensor_slots_listed": 24,
+     "composition": [
+      {
+       "suffix": "ffn_down.weight",
+       "count": 24
+      }
+     ],
+     "arithmetic": {
+      "in_features": 17408,
+      "out_features": 5120,
+      "rows_processed": 98304,
+      "flops": 17523466567680.0,
+      "tflops": 27.5,
+      "weight_bytes_per_launch": 292454400,
+      "weight_bytes_total": 7018905600,
+      "implied_weight_gbps": 11.01,
+      "implied_weight_and_activation_gbps": 17.96
+     },
+     "matches": true
+    },
+    {
+     "kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel",
+     "template_arguments": "3, 4, 4, unsigned short, false",
+     "registered_variant": "t16_wmma_prefill_shared_b_bf16_bf16_out (bf16 activations)",
+     "grid": [
+      107,
+      16,
+      1
+     ],
+     "rows_per_launch": 4096,
+     "chunks_per_tensor": 1,
+     "pass_mode": "single-pass",
+     "launches": 24,
+     "total_ms": 502.043,
+     "tensor_slots_expected": 24,
+     "tensor_slots_listed": 24,
+     "composition": [
+      {
+       "suffix": "ffn_down.weight",
+       "count": 8
+      },
+      {
+       "suffix": "attn_output.weight",
+       "count": 16
+      }
+     ],
+     "arithmetic": null,
+     "matches": true
+    },
+    {
+     "kernel": "q6_k_t16_qmicro_planar_wmma_prefill_shared_bf16_kernel",
+     "template_arguments": "4, 4, 3, false",
+     "registered_variant": "qmicro_planar_wmma_prefill_shared4_gfx1100_bf16_bf16_out",
+     "grid": [
+      107,
+      16,
+      1
+     ],
+     "rows_per_launch": 4096,
+     "chunks_per_tensor": 1,
+     "pass_mode": "single-pass",
+     "launches": 8,
+     "total_ms": 287.111,
+     "tensor_slots_expected": 8,
+     "tensor_slots_listed": 8,
+     "composition": [
+      {
+       "suffix": "ffn_down.weight",
+       "count": 8
+      }
+     ],
+     "arithmetic": {
+      "in_features": 17408,
+      "out_features": 5120,
+      "rows_processed": 32768,
+      "flops": 5841155522560.0,
+      "tflops": 20.34,
+      "weight_bytes_per_launch": 73113600,
+      "weight_bytes_total": 584908800,
+      "implied_weight_gbps": 2.04,
+      "implied_weight_and_activation_gbps": 7.18
+     },
+     "matches": true
+    },
+    {
+     "kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel",
+     "template_arguments": "3, 4, 4, _Float16, false",
+     "registered_variant": "t16_wmma_prefill_shared_b_bf16_bf16_out (fp16 activations)",
+     "grid": [
+      128,
+      4,
+      1
+     ],
+     "rows_per_launch": 1024,
+     "chunks_per_tensor": 4,
+     "pass_mode": "chunked",
+     "launches": 192,
+     "total_ms": 378.196,
+     "tensor_slots_expected": 48,
+     "tensor_slots_listed": 48,
+     "composition": [
+      {
+       "suffix": "attn_gate.weight",
+       "count": 48
+      }
+     ],
+     "arithmetic": {
+      "in_features": 5120,
+      "out_features": 6144,
+      "rows_processed": 196608,
+      "flops": 12369505812480.0,
+      "tflops": 32.71,
+      "weight_bytes_per_launch": 70778880,
+      "weight_bytes_total": 3397386240,
+      "implied_weight_gbps": 8.98,
+      "implied_weight_and_activation_gbps": 20.69
+     },
+     "matches": true
+    },
+    {
+     "kernel": "q6_k_t16_wmma_prefill_shared_bf16_kernel",
+     "template_arguments": "8, 3, 2",
+     "registered_variant": "t16_wmma_prefill_shared8r3_bf16_bf16_out",
+     "grid": [
+      320,
+      3,
+      1
+     ],
+     "rows_per_launch": 1152,
+     "chunks_per_tensor": 4,
+     "pass_mode": "chunked",
+     "launches": 96,
+     "total_ms": 622.628,
+     "tensor_slots_expected": 24,
+     "tensor_slots_listed": 24,
+     "composition": [
+      {
+       "suffix": "attn_qkv.weight",
+       "count": 24
+      }
+     ],
+     "arithmetic": {
+      "in_features": 5120,
+      "out_features": 10240,
+      "rows_processed": 110592,
+      "flops": 11596411699200.0,
+      "tflops": 18.62,
+      "weight_bytes_per_launch": 172032000,
+      "weight_bytes_total": 4128768000,
+      "implied_weight_gbps": 6.63,
+      "implied_weight_and_activation_gbps": 12.09
+     },
+     "matches": true
+    },
+    {
+     "kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel",
+     "template_arguments": "3, 4, 4, _Float16, false",
+     "registered_variant": "t16_wmma_prefill_shared_b_bf16_bf16_out (fp16 activations)",
+     "grid": [
+      214,
+      4,
+      1
+     ],
+     "rows_per_launch": 1024,
+     "chunks_per_tensor": 4,
+     "pass_mode": "chunked",
+     "launches": 96,
+     "total_ms": 321.781,
+     "tensor_slots_expected": 24,
+     "tensor_slots_listed": 24,
+     "composition": [
+      {
+       "suffix": "attn_qkv.weight",
+       "count": 24
+      }
+     ],
+     "arithmetic": {
+      "in_features": 5120,
+      "out_features": 10240,
+      "rows_processed": 98304,
+      "flops": 10307921510400.0,
+      "tflops": 32.03,
+      "weight_bytes_per_launch": 172032000,
+      "weight_bytes_total": 4128768000,
+      "implied_weight_gbps": 12.83,
+      "implied_weight_and_activation_gbps": 22.22
+     },
+     "matches": true
+    },
+    {
+     "kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel",
+     "template_arguments": "3, 4, 4, unsigned short, false",
+     "registered_variant": "t16_wmma_prefill_shared_b_bf16_bf16_out (bf16 activations)",
+     "grid": [
+      256,
+      16,
+      1
+     ],
+     "rows_per_launch": 4096,
+     "chunks_per_tensor": 1,
+     "pass_mode": "single-pass",
+     "launches": 16,
+     "total_ms": 348.502,
+     "tensor_slots_expected": 16,
+     "tensor_slots_listed": 16,
+     "composition": [
+      {
+       "suffix": "attn_q.weight",
+       "count": 16
+      }
+     ],
+     "arithmetic": {
+      "in_features": 5120,
+      "out_features": 12288,
+      "rows_processed": 65536,
+      "flops": 8246337208320.0,
+      "tflops": 23.66,
+      "weight_bytes_per_launch": 35389440,
+      "weight_bytes_total": 566231040,
+      "implied_weight_gbps": 1.62,
+      "implied_weight_and_activation_gbps": 8.17
+     },
+     "matches": true
+    },
+    {
+     "kernel": "gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel",
+     "template_arguments": "false, false, 4, 4",
+     "registered_variant": "dense_dual_wmma_prefill_bf16_bf16_out",
+     "grid": [
+      544,
+      4,
+      1
+     ],
+     "rows_per_launch": 1024,
+     "chunks_per_tensor": 4,
+     "pass_mode": "chunked",
+     "launches": 192,
+     "total_ms": 2526.682,
+     "tensor_slots_expected": 96,
+     "tensor_slots_listed": 96,
+     "composition": [
+      {
+       "suffix": "ffn_gate.weight",
+       "count": 48
+      },
+      {
+       "suffix": "ffn_up.weight",
+       "count": 48
+      }
+     ],
+     "arithmetic": {
+      "in_features": 5120,
+      "out_features": 17408,
+      "rows_processed": 196608,
+      "flops": 70093866270720.0,
+      "tflops": 27.74,
+      "weight_bytes_per_launch": 401080320,
+      "weight_bytes_total": 19251855360,
+      "implied_weight_gbps": 7.62,
+      "implied_weight_and_activation_gbps": 14.63
+     },
+     "matches": true
+    },
+    {
+     "kernel": "gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel",
+     "template_arguments": "false, false, 4, 4",
+     "registered_variant": "dense_dual_wmma_prefill_bf16_bf16_out",
+     "grid": [
+      544,
+      16,
+      1
+     ],
+     "rows_per_launch": 4096,
+     "chunks_per_tensor": 1,
+     "pass_mode": "single-pass",
+     "launches": 16,
+     "total_ms": 835.218,
+     "tensor_slots_expected": 32,
+     "tensor_slots_listed": 32,
+     "composition": [
+      {
+       "suffix": "ffn_gate.weight",
+       "count": 16
+      },
+      {
+       "suffix": "ffn_up.weight",
+       "count": 16
+      }
+     ],
+     "arithmetic": {
+      "in_features": 5120,
+      "out_features": 17408,
+      "rows_processed": 65536,
+      "flops": 23364622090240.0,
+      "tflops": 27.97,
+      "weight_bytes_per_launch": 100270080,
+      "weight_bytes_total": 1604321280,
+      "implied_weight_gbps": 1.92,
+      "implied_weight_and_activation_gbps": 8.99
+     },
+     "matches": true
+    }
+   ],
+   "rows_matched": 12,
+   "rows_total": 12,
+   "tensor_groups": [
+    {
+     "suffix": "attn_gate.weight",
+     "ggml_type": "Q4_K",
+     "tensors_in_model": 48,
+     "tensors_attributed": 48,
+     "unattributed": 0,
+     "unattributed_note": null
+    },
+    {
+     "suffix": "attn_k.weight",
+     "ggml_type": "Q4_K",
+     "tensors_in_model": 17,
+     "tensors_attributed": 16,
+     "unattributed": 1,
+     "unattributed_note": "the MTP nextn layer's copy is not on the prefill path"
+    },
+    {
+     "suffix": "attn_output.weight",
+     "ggml_type": "Q4_K",
+     "tensors_in_model": 17,
+     "tensors_attributed": 16,
+     "unattributed": 1,
+     "unattributed_note": "the MTP nextn layer's copy is not on the prefill path"
+    },
+    {
+     "suffix": "attn_q.weight",
+     "ggml_type": "Q4_K",
+     "tensors_in_model": 17,
+     "tensors_attributed": 16,
+     "unattributed": 1,
+     "unattributed_note": "the MTP nextn layer's copy is not on the prefill path"
+    },
+    {
+     "suffix": "attn_qkv.weight",
+     "ggml_type": "Q4_K",
+     "tensors_in_model": 24,
+     "tensors_attributed": 24,
+     "unattributed": 0,
+     "unattributed_note": null
+    },
+    {
+     "suffix": "attn_qkv.weight",
+     "ggml_type": "Q6_K",
+     "tensors_in_model": 24,
+     "tensors_attributed": 24,
+     "unattributed": 0,
+     "unattributed_note": null
+    },
+    {
+     "suffix": "attn_v.weight",
+     "ggml_type": "Q4_K",
+     "tensors_in_model": 8,
+     "tensors_attributed": 8,
+     "unattributed": 0,
+     "unattributed_note": null
+    },
+    {
+     "suffix": "attn_v.weight",
+     "ggml_type": "Q6_K",
+     "tensors_in_model": 9,
+     "tensors_attributed": 8,
+     "unattributed": 1,
+     "unattributed_note": "the MTP nextn layer's copy is not on the prefill path"
+    },
+    {
+     "suffix": "ffn_down.weight",
+     "ggml_type": "Q4_K",
+     "tensors_in_model": 32,
+     "tensors_attributed": 32,
+     "unattributed": 0,
+     "unattributed_note": null
+    },
+    {
+     "suffix": "ffn_down.weight",
+     "ggml_type": "Q6_K",
+     "tensors_in_model": 33,
+     "tensors_attributed": 32,
+     "unattributed": 1,
+     "unattributed_note": "the MTP nextn layer's copy is not on the prefill path"
+    },
+    {
+     "suffix": "ffn_gate.weight",
+     "ggml_type": "Q4_K",
+     "tensors_in_model": 65,
+     "tensors_attributed": 64,
+     "unattributed": 1,
+     "unattributed_note": "the MTP nextn layer's copy is not on the prefill path"
+    },
+    {
+     "suffix": "ffn_up.weight",
+     "ggml_type": "Q4_K",
+     "tensors_in_model": 65,
+     "tensors_attributed": 64,
+     "unattributed": 1,
+     "unattributed_note": "the MTP nextn layer's copy is not on the prefill path"
+    }
+   ],
+   "tensor_groups_explained": 12,
+   "tensor_groups_total": 12
+  }
+ },
+ "tensor_type_table": {
+  "tensor_count": 866,
+  "type_histogram": {
+   "F32": 456,
+   "Q4_K": 294,
+   "Q5_K": 48,
+   "Q6_K": 67,
+   "Q8_0": 1
+  },
+  "groups": [
+   {
+    "suffix": "attn_norm.weight",
+    "ggml_type": "F32",
+    "dims": [
+     5120
+    ],
+    "count": 65
+   },
+   {
+    "suffix": "post_attention_norm.weight",
+    "ggml_type": "F32",
+    "dims": [
+     5120
+    ],
+    "count": 65
+   },
+   {
+    "suffix": "ffn_gate.weight",
+    "ggml_type": "Q4_K",
+    "dims": [
+     5120,
+     17408
+    ],
+    "count": 65
+   },
+   {
+    "suffix": "ffn_up.weight",
+    "ggml_type": "Q4_K",
+    "dims": [
+     5120,
+     17408
+    ],
+    "count": 65
+   },
+   {
+    "suffix": "ssm_a",
+    "ggml_type": "F32",
+    "dims": [
+     48
+    ],
+    "count": 48
+   },
+   {
+    "suffix": "ssm_alpha.weight",
+    "ggml_type": "F32",
+    "dims": [
+     5120,
+     48
+    ],
+    "count": 48
+   },
+   {
+    "suffix": "ssm_beta.weight",
+    "ggml_type": "F32",
+    "dims": [
+     5120,
+     48
+    ],
+    "count": 48
+   },
+   {
+    "suffix": "ssm_conv1d.weight",
+    "ggml_type": "F32",
+    "dims": [
+     4,
+     10240
+    ],
+    "count": 48
+   },
+   {
+    "suffix": "ssm_dt.bias",
+    "ggml_type": "F32",
+    "dims": [
+     48
+    ],
+    "count": 48
+   },
+   {
+    "suffix": "ssm_norm.weight",
+    "ggml_type": "F32",
+    "dims": [
+     128
+    ],
+    "count": 48
+   },
+   {
+    "suffix": "attn_gate.weight",
+    "ggml_type": "Q4_K",
+    "dims": [
+     5120,
+     6144
+    ],
+    "count": 48
+   },
+   {
+    "suffix": "ssm_out.weight",
+    "ggml_type": "Q5_K",
+    "dims": [
+     6144,
+     5120
+    ],
+    "count": 48
+   },
+   {
+    "suffix": "ffn_down.weight",
+    "ggml_type": "Q6_K",
+    "dims": [
+     17408,
+     5120
+    ],
+    "count": 33
+   },
+   {
+    "suffix": "ffn_down.weight",
+    "ggml_type": "Q4_K",
+    "dims": [
+     17408,
+     5120
+    ],
+    "count": 32
+   },
+   {
+    "suffix": "attn_qkv.weight",
+    "ggml_type": "Q4_K",
+    "dims": [
+     5120,
+     10240
+    ],
+    "count": 24
+   },
+   {
+    "suffix": "attn_qkv.weight",
+    "ggml_type": "Q6_K",
+    "dims": [
+     5120,
+     10240
+    ],
+    "count": 24
+   },
+   {
+    "suffix": "attn_k_norm.weight",
+    "ggml_type": "F32",
+    "dims": [
+     256
+    ],
+    "count": 17
+   },
+   {
+    "suffix": "attn_q_norm.weight",
+    "ggml_type": "F32",
+    "dims": [
+     256
+    ],
+    "count": 17
+   },
+   {
+    "suffix": "attn_k.weight",
+    "ggml_type": "Q4_K",
+    "dims": [
+     5120,
+     1024
+    ],
+    "count": 17
+   },
+   {
+    "suffix": "attn_output.weight",
+    "ggml_type": "Q4_K",
+    "dims": [
+     6144,
+     5120
+    ],
+    "count": 17
+   },
+   {
+    "suffix": "attn_q.weight",
+    "ggml_type": "Q4_K",
+    "dims": [
+     5120,
+     12288
+    ],
+    "count": 17
+   },
+   {
+    "suffix": "attn_v.weight",
+    "ggml_type": "Q6_K",
+    "dims": [
+     5120,
+     1024
+    ],
+    "count": 9
+   },
+   {
+    "suffix": "attn_v.weight",
+    "ggml_type": "Q4_K",
+    "dims": [
+     5120,
+     1024
+    ],
+    "count": 8
+   },
+   {
+    "suffix": "nextn.enorm.weight",
+    "ggml_type": "F32",
+    "dims": [
+     5120
+    ],
+    "count": 1
+   },
+   {
+    "suffix": "nextn.hnorm.weight",
+    "ggml_type": "F32",
+    "dims": [
+     5120
+    ],
+    "count": 1
+   },
+   {
+    "suffix": "nextn.shared_head_norm.weight",
+    "ggml_type": "F32",
+    "dims": [
+     5120
+    ],
+    "count": 1
+   },
+   {
+    "suffix": "output_norm.weight",
+    "ggml_type": "F32",
+    "dims": [
+     5120
+    ],
+    "count": 1
+   },
+   {
+    "suffix": "token_embd.weight",
+    "ggml_type": "Q4_K",
+    "dims": [
+     5120,
+     248320
+    ],
+    "count": 1
+   },
+   {
+    "suffix": "output.weight",
+    "ggml_type": "Q6_K",
+    "dims": [
+     5120,
+     248320
+    ],
+    "count": 1
+   },
+   {
+    "suffix": "nextn.eh_proj.weight",
+    "ggml_type": "Q8_0",
+    "dims": [
+     10240,
+     5120
+    ],
+    "count": 1
+   }
+  ]
+ },
+ "host_stage_timers": {
+  "note": "the bulk path also records per-stage host timers; their sum exceeds the measured wall time because a fallback alias is recorded alongside its parent, so they are not used for attribution here",
+  "per_length": {
+   "512": {
+    "stage_total_ms": 1391.5,
+    "measured_wall_ms": 1187.3,
+    "aliased_pairs": [
+     "prefill_linear_attn_alpha_beta_fallback",
+     "prefill_linear_attn_attn_qkv_gate_fallback"
+    ]
+   },
+   "1024": {
+    "stage_total_ms": 2881.4,
+    "measured_wall_ms": 2481.3,
+    "aliased_pairs": [
+     "prefill_linear_attn_alpha_beta_fallback",
+     "prefill_linear_attn_attn_qkv_gate_fallback"
+    ]
+   },
+   "4096": {
+    "stage_total_ms": 11841.3,
+    "measured_wall_ms": 10246.0,
+    "aliased_pairs": [
+     "prefill_linear_attn_alpha_beta_fallback",
+     "prefill_linear_attn_attn_qkv_gate_fallback"
+    ]
+   }
+  }
+ },
+ "findings": [
+  {
+   "id": "q4-dense-wmma-owns-prefill",
+   "statement": "Dense K-quant WMMA prefill owns 55.0-57.8% of prefill kernel time at every prompt length, and its two largest owners are the fused gate+up (dual) kernel and the 48-column shared-weight kernel.",
+   "measured": {
+    "512": {
+     "q4_family_share_pct": 57.82,
+     "q6_family_share_pct": 18.67,
+     "dual_share_pct": 36.46,
+     "dual_tflops": {
+      "chunked": 27.74,
+      "single_pass": 27.5
+     }
+    },
+    "1024": {
+     "q4_family_share_pct": 55.31,
+     "q6_family_share_pct": 18.04,
+     "dual_share_pct": 34.22,
+     "dual_tflops": {
+      "chunked": 27.74,
+      "single_pass": 27.76
+     }
+    },
+    "4096": {
+     "q4_family_share_pct": 55.03,
+     "q6_family_share_pct": 17.45,
+     "dual_share_pct": 33.01,
+     "dual_tflops": {
+      "chunked": 27.74,
+      "single_pass": 27.97
+     }
+    }
+   }
+  },
+  {
+   "id": "prefill-is-kernel-bound",
+   "statement": "Traced device time is 98.1-99.4% of the measured prefill wall time, so prefill cost is kernel execution and not launch gaps."
+  },
+  {
+   "id": "layer-type-drives-chunking",
+   "statement": "The 48 linear-attention layers are prefilled in 1024-row chunks and the 16 full-attention layers in one pass over the prompt, which is why the same owner appears twice at 4096 tokens with different grid heights.",
+   "measured": {
+    "chunked_rows_at_4096": 192,
+    "single_pass_rows_at_4096": 16,
+    "dual_chunked_tflops": 27.74,
+    "dual_single_pass_tflops": 27.97
+   }
+  },
+  {
+   "id": "q6-wide-down-trails-q4-on-the-same-shape",
+   "statement": "On the identical wide-down shape (K 17408, N 5120), the Q4_K shared-weight owner reaches 27.50 TFLOP/s in 1024-row chunks while the Q6_K planar owners reach 21.28 TFLOP/s in 1024-row chunks and 20.34 TFLOP/s in a single 4096-row pass. Quant size does not explain the gap: both owners move weights far below the memory system's capability, so neither is bandwidth-bound: 8.5 GB/s for the Q6 owner against 11.0 GB/s for the Q4 owner. They differ in columns per block (48 versus 32 or 48), LDS per block (24 versus 16 or 24 KiB) and VGPR (256 versus 176 or 248) at the same 2 waves per SIMD.",
+   "measured": {
+    "q4_k_shared_b_tflops": 27.5,
+    "q4_k_shared_b_ms": 637.316,
+    "q4_k_shared_b_implied_weight_gbps": 11.01,
+    "q6_k_planar_shared4r4_tflops": 21.28,
+    "q6_k_planar_shared4r4_ms": 823.621,
+    "q6_k_planar_shared4r4_implied_weight_gbps": 8.52,
+    "q6_k_planar_48col_tflops": 20.34,
+    "q6_k_planar_48col_ms": 287.111,
+    "q6_k_planar_wide_down_total_ms": 1110.732,
+    "q6_k_planar_wide_down_share_pct": 10.91
+   }
+  },
+  {
+   "id": "weights-are-not-the-bottleneck",
+   "statement": "The dense prefill re-reads 12.4 GB of weights at 512 tokens and 47.8 GB at 4096 tokens, because the 48 linear-attention layers are re-read once per 1024-row chunk; the aggregate rate is 4.7-10.4 GB/s and the busiest single owner is 25 GB/s. That is a few percent of the memory system, so prefill is WMMA-throughput and latency bound, and the weight re-read that chunking costs is not what limits it.",
+   "measured": {
+    "512": {
+     "dense_weight_traffic_gb": 12.35,
+     "prefill_wall_seconds": 1.1873234929516912,
+     "aggregate_weight_gbps": 10.4,
+     "max_owner_weight_gbps": 25.46
+    },
+    "1024": {
+     "dense_weight_traffic_gb": 12.35,
+     "prefill_wall_seconds": 2.4812792586162686,
+     "aggregate_weight_gbps": 4.98,
+     "max_owner_weight_gbps": 12.7
+    },
+    "4096": {
+     "dense_weight_traffic_gb": 47.82,
+     "prefill_wall_seconds": 10.246021404862404,
+     "aggregate_weight_gbps": 4.67,
+     "max_owner_weight_gbps": 12.83
+    }
+   }
+  },
+  {
+   "id": "occupancy-is-vgpr-limited",
+   "statement": "Every dense Q4/Q6 owner runs at 2 waves per SIMD because its 248-256 VGPR footprint only fits twice into the 512-VGPR per-thread budget; dropping below 171 VGPR would admit a third wave. The 96-VGPR shared8r3 owner is the only dense owner above 2 waves, and it is also the slowest per output element on the 10240-wide QKV shape (18.62 versus 32.03 TFLOP/s for the 48-column owner on the same shape).",
+   "measured": {
+    "4096": {
+     "dense_dual_wmma_prefill_bf16_bf16_out": {
+      "vgpr": 248,
+      "waves_per_simd": 2
+     },
+     "qmicro_planar_wmma_prefill_shared4r4_bf16_bf16_out": {
+      "vgpr": 176,
+      "waves_per_simd": 2
+     },
+     "t16_wmma_prefill_shared_b_bf16_bf16_out (fp16 activations)": {
+      "vgpr": 256,
+      "waves_per_simd": 2
+     },
+     "t16_wmma_prefill_shared8r3_bf16_bf16_out": {
+      "vgpr": 96,
+      "waves_per_simd": 5
+     },
+     "t16_wmma_prefill_shared_b_bf16_bf16_out (bf16 activations)": {
+      "vgpr": 256,
+      "waves_per_simd": 2
+     },
+     "qmicro_planar_wmma_prefill_shared4_gfx1100_bf16_bf16_out": {
+      "vgpr": 248,
+      "waves_per_simd": 2
+     },
+     "qmicro_planar_wmma_prefill_bf16_bf16_out": {
+      "vgpr": 184,
+      "waves_per_simd": 2
+     }
+    }
+   }
+  },
+  {
+   "id": "narrow-column-shapes-run-slow",
+   "statement": "Owners whose output is 1024 columns wide (attention K and V) run at 8.75-19.12 TFLOP/s while the same kernel families reach 30-33 TFLOP/s on 6144- to 12288-wide outputs. The profile does not establish the mechanism, and grid occupancy does not explain it on its own: the 1024-wide row runs faster at 512 tokens (44 workgroups, 19.12 TFLOP/s) than at 1024 tokens (88 workgroups, 12.92 TFLOP/s).",
+   "measured": {
+    "n1024_owners": {
+     "512": [
+      {
+       "variant": "t16_wmma_prefill_shared_b_bf16_bf16_out (fp16 activations)",
+       "grid": [
+        22,
+        2,
+        1
+       ],
+       "tflops": 19.12
+      },
+      {
+       "variant": "qmicro_planar_wmma_prefill_shared4r6_bf16_bf16_out",
+       "grid": [
+        32,
+        2,
+        1
+       ],
+       "tflops": 11.24
+      }
+     ],
+     "1024": [
+      {
+       "variant": "t16_wmma_prefill_shared_b_bf16_bf16_out (fp16 activations)",
+       "grid": [
+        22,
+        4,
+        1
+       ],
+       "tflops": 12.92
+      },
+      {
+       "variant": "qmicro_planar_wmma_prefill_bf16_bf16_out",
+       "grid": [
+        22,
+        16,
+        1
+       ],
+       "tflops": 9.83
+      }
+     ],
+     "4096": [
+      {
+       "variant": "t16_wmma_prefill_shared_b_bf16_bf16_out (bf16 activations)",
+       "grid": [
+        22,
+        16,
+        1
+       ],
+       "tflops": 18.88
+      },
+      {
+       "variant": "qmicro_planar_wmma_prefill_bf16_bf16_out",
+       "grid": [
+        22,
+        64,
+        1
+       ],
+       "tflops": 8.75
+      }
+     ]
+    },
+    "resident_workgroups_needed": 400,
+    "resident_workgroups_note": "40 CUs x 10 workgroups per CU at 2 waves per SIMD and 4 waves per 128-thread workgroup"
+   }
+  }
+ ],
+ "provenance": {
+  "build_profile": "qwen38_gfx1151_prefill_kernel_profile",
+  "collected_at": "2026-09-13T12:06:36.892886+00:00",
+  "command": [
+   "/home/lhl/hipEngine/.venv/bin/python",
+   "scripts/qwen38_gfx1151_prefill_kernel_profile.py",
+   "--model",
+   "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+   "--backend",
+   "hip_gfx1151",
+   "--quant",
+   "gguf_q4_k_m",
+   "--prompt-lengths",
+   "512",
+   "1024",
+   "4096",
+   "--compiler-version-file",
+   "/tmp/hip1151-t6/hipcc-version-gfx1151.txt",
+   "--cache-root",
+   "/tmp/qwen38-prefill-profile/cache",
+   "--run-root",
+   "/tmp/qwen38-prefill-profile/run",
+   "--run-tag",
+   "qwen38-gfx1151-prefill-kernel-profile",
+   "--python",
+   "/home/lhl/hipEngine/.venv/bin/python",
+   "--rocprofv3",
+   "/home/lhl/miniforge3/envs/therock/bin/rocprofv3",
+   "--roctx-sdk",
+   "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib/librocprofiler-sdk-roctx.so.1",
+   "--gpu-max-hw-queues",
+   "2",
+   "--out",
+   "/tmp/qwen38-prefill-profile/profile.json"
+  ],
+  "configured_backend": "hip_gfx1151",
+  "device_name": "AMD Radeon 8060S Graphics",
+  "dirty": true,
+  "environment": {
+   "GPU_MAX_HW_QUEUES": "2",
+   "HIPENGINE_BUILD_CACHE_ROOT": "/tmp/qwen38-prefill-profile/cache",
+   "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hip1151-t6/hipcc-version-gfx1151.txt",
+   "HIPENGINE_HIP_ARCH": "gfx1151"
+  },
+  "git_branch": "qwen3.8-flash-next",
+  "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+  "hipengine_commit": "1da58eced9c62e7984fa967f994e314775d07ec8",
+  "host_name": "gfx1151",
+  "kind": "hipengine_artifact_provenance",
+  "kv_dtype": "bf16",
+  "model_fingerprint": {
+   "algorithm": "sha256-sampled-v1",
+   "exists": true,
+   "path_type": "file",
+   "sample_offsets": [
+    0,
+    8552863216,
+    17105726432
+   ],
+   "sampled_bytes": 3145728,
+   "size_bytes": 17106775008,
+   "value": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5"
+  },
+  "model_path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "model_revision": null,
+  "profiler": {
+   "kind": "rocprofv3",
+   "selected_regions": true
+  },
+  "quant": "gguf_q4_k_m",
+  "repetitions": 1,
+  "repo_root": "/home/lhl/hipEngine",
+  "resolved_backend": "hip_gfx1151",
+  "rocm_version": "HIP version: 7.15.26333-0000000",
+  "schema_version": 2,
+  "staged_dirty": false,
+  "target_arch": "gfx1151",
+  "timing_protocol": "one_discarded_warmup_prefill_then_one_measured_prefill_per_length",
+  "unstaged_dirty": false,
+  "untracked_count": 4,
+  "untracked_dirty": true,
+  "warmups": 1
+ },
+ "limitations": [
+  "One profiled prefill per prompt length (one discarded warmup, one measured pass), matching the published resident-sweep protocol; the family split is stable across the three lengths but no per-kernel confidence interval is claimed.",
+  "Prompt tokens are one repeated id, so attention is not representative of natural text; kernel selection is shape-driven, and the two attention owners stay under 3% at every length.",
+  "Owner-to-tensor attribution is a launch-count and column-count consistency argument over the GGUF tensor-type table, not a per-dispatch tensor probe; a group's unattributed residual is the MTP nextn layer, which the prefill path does not run.",
+  "VGPR/SGPR/LDS are the dispatch-recorded resource counts; resident waves per SIMD is derived from the VGPR budget and is not measured from hardware counters. Device clock fields are copied from the trace with their rocprofv3 names because the trace states no unit.",
+  "Host-stage timers are recorded but not used: an aliased fallback timer makes their sum exceed the measured wall time."
+ ]
+}
