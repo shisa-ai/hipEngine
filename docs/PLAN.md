@@ -1115,26 +1115,30 @@ Phase-0 targets (driven by the current research focus):
 | **Qwen3.5 0.8B** dense | full_attention + dense_mlp | Phase 0 correctness |
 | **Qwen3.5 27B** dense | full_attention + dense_mlp | Phase 1 perf target |
 | **Qwen3.6 35B-A3B** MoE hybrid | full_attention + linear_attention + gdn + moe_top2 | Phase 2 perf target; the ZBook quant/runtime campaign and quality-only automatic-tool/task [`AGENTIC-QUALITY2`](AGENTIC-QUALITY2.md) follow-up are closed, with no quality runtime mechanism retained |
-| **Qwen3.8-Flash-Next 125B-A6B + 51B PLE** Qwen4 experimental MoE | QSA + GDN + gated residual + top-10 MoE + sparse host n-gram embedding | Bounded gfx1151 `UD-Q4_K_XL` text/QSA/PLE/MTP/multimodal/c2 support is working. Current production manifest `37d59564…` passes the 450-row numerical/task/state/c2/lifecycle gate and deterministic p512/p1024/p4096-tg128 at 83.35/14.18, 82.93/14.16, and 69.20/12.16 pp/tok/s; exact ordered sparse QSA is default. MTP remains explicit/default-off at 0.7407x same-command true AR and is capped at 1K. Rows<=8 verifier storage, pooled D2D state transactions, serial oracle, and rejection-depth controls are retained, but final-head-only public verification regresses every category. Final five-pair comparator freeze and 4K MTP remain blocked. See [`QWEN3.8-FLASH-NEXT.md`](QWEN3.8-FLASH-NEXT.md) and the [performance campaign](QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md); gfx1100 performance and 128K+/262K inference remain unverified/unsupported. |
+| **Qwen3.8-Flash-Next 125B-A6B + 51B PLE** Qwen4 experimental MoE | QSA + GDN + gated residual + top-10 MoE + sparse host n-gram embedding | Bounded gfx1151 `UD-Q4_K_XL` text/QSA/PLE/MTP/multimodal/c2 support is working. BF16 KV and ordered selected QSA are the comparison contract. MTP is explicit/default-off and capped at 1K; rows<=8 verifier storage, pooled state transactions and the serial oracle exist, but final-head-only verification did not improve public economics. The September 2 manifest `37d59564` and its 83.35/14.18 p512 rates belong to historical zbook evidence, not current Framework performance. The [September 13 journey campaign](QWEN4EXP-STRIX-JOURNEY-CAMPAIGN.md) owns the new source-pinned Framework comparison, overlap exclusions and next plan; it does not replace production numerical/task gates. See [model scope](QWEN3.8-FLASH-NEXT.md) and [historical experiments](QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md). Five-pair comparison closure and 4K MTP are open; gfx1100 performance and 128K+/262K inference are not certified. |
 | **Moonshine ASR** encoder-decoder | conv encoder + self/cross attention + gated decoder MLP | HIP FP16 graph decoder and selected encoder hybrids promoted internally; `cuda_sm120a` C0-C8 includes a torch-free encoder, static/continuous batching, and device-owned decode but remains outside public model admission; gfx1151 transfer campaign: [`MOONSHINE.md`](MOONSHINE.md) |
 | **Maple-Preview 20B-A1B** ternary MoE | GQA sliding/global attention + top-8/256 MoE + packed ternary/affine4 | gfx11 public c1/c2/c4/c8 path promoted; `cuda_sm120a` c1 generation, native prefill through p512 performance / 770 state, exact wave32 direct decode, and exact split-K global decode through a full p512 suite are retained on GPU0, while CUDA resident batching/serving remain pending |
 | **Gemma 4** | sliding_attention + global_attention + dense_mlp | Phase 3 |
 | **Llama 3** | full_attention + dense_mlp | Phase 3 |
 | **sansho** (custom) | (your arch; see `/home/lhl/amd-gpu-tuning/reference/sansho/`) | Phase 3+ |
 
-Qwen3.8-Flash-Next gap-closure priority (review 2026-09-08): R1-R3 committed-source
-QSA provenance and combined-default owner/throughput refresh are retained;
-the canonical-sequence drift mechanism remains open. Qualify repair, building
-on `62dffb872`, then conditionally screen Q5_1 down and GR. Add a bounded
-direct-Q4 IU4 grouped-prefill screen against the current repaired IU8 route,
-preserving weights and charging activation precision, corrections and repair.
-Next target MoE decode, exact linear/three-plane scheduling, measured
-submission/drift costs and secondary QSA/GDN work, reranked after each win.
-Existing promotions stay retained; no sidecar, numerical-policy change,
-whole-family closure or Vulkan parity is admitted by this plan. See the
-[active campaign punchlist](QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md#active-review-punchlist-september-8-2026),
-and [ranked experiments](QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md#ranked-targets-and-iu4-experiments-september-8-2026),
-which supersede the September 5 halo queue without relaxing profile gates.
+Qwen3.8-Flash-Next priority (September 13): follow the
+[Strix journey plan and punchlist](QWEN4EXP-STRIX-JOURNEY-CAMPAIGN.md).
+Keep UD-Q4_K_XL, the existing Q8_0 draft and BF16 KV fixed. Compare pwilkin's
+integration/transfer sources with halo-box HEAD `65480351` in HIP and Vulkan;
+their IQ4_NL/FP16 headlines are not this model configuration. Exclude the
+overlapped attempt and keep earlier timing screens provisional. The clean
+HIP MTP restart faults in a gather kernel; independent HIP health passes,
+while Vulkan MTP is own-AR exact but slower in Japanese despite a positive
+overall request-throughput ratio. Neither establishes MTP promotion.
+Refresh complete owner costs and incumbent numerical quality before ranking
+PLE I/O, GDN instruction selection, quant-aware matrix prefill, remaining
+fusions and BF16 QSA. GDN tiling and HC work already exist here and in
+halo-box; test implementation deltas instead of repeating completed ports.
+MTP must reduce target-body verification work, not optimize its negligible
+acceptance bookkeeping. Preserve the older campaign's measured rejections,
+strict fallbacks and calibrated gates; no default or numerical-policy change
+is made by this planning unit.
 September6 owner detour enables admission-aware native context through the public
 Qwen4Exp factory and `prepare()`. The immutable QSA2051 dense-equivalence constant
 is not runner capacity. Auto resolves artifact/plugin native262144 within memory
