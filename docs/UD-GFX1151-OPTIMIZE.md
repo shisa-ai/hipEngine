@@ -474,6 +474,22 @@ Likely investigation order:
   `in_features == _Q8_T16_QWEN35_ATTN_IN`, which these shapes do not satisfy.
   A real repair is a dispatch change plus a check that the replacement owner
   is correct at these shapes.
+- [ ] IQ4_XS repack into a tile layout. `gguf_iq4_xs_local32_gemv` runs at
+  396-461 GB/s across all five of its verifier shapes (11.44 ms/step, 26.7% of
+  the UD-Q4_K_M verifier), while the t16 rowtile owner reaches **704 GB/s on the
+  same (5120, 17408) shape**. That 1.53x is structural to the two owner
+  families, not a tuning miss: IQ4_XS has no tile layout, so the local32 owner
+  is the only option for it. Closing the gap means repacking IQ4_XS into a tile
+  layout at load time plus a new owner, at the cost of the repacked resident
+  footprint.
+- [ ] Q5_K t16 rowtile short-K steady state. Closed for now. The 704 GB/s at
+  (5120, 17408) against 454 GB/s at (17408, 5120) is not per-block amortization:
+  `TILE_COLS` 4 -> 8 halves the block count and leaves the ffn_gate/ffn_up shape
+  bit-identical at 135.1 us/call, and it is worse on ffn_down (87.1 -> 91.4) and
+  attn_k/attn_v (20.5 -> 29.4). See
+  `benchmarks/results/2026-09-13-ud-gfx1100-q5-rowtile-col8-pershape-rejected.json`.
+  Two tilings and two instruction-level changes have failed on this shape; the
+  next attempt needs hardware counters.
 - [ ] The t16 decode-versus-rowtile accumulation order (Q4_K 27.4% + Q5_K
   25.7% + Q6_K 8.1% of rank-2 MACs) is the dominant remaining source of
   verification-specific drift: the rows 2-4 t16 rowtile owners are not
