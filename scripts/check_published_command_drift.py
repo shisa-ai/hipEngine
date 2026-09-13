@@ -73,13 +73,6 @@ EXCEPTIONS: dict[str, str] = {
         "2026-08-08 gfx1151 lane: maple_c1_bench.py dropped --comparison after the run; the row "
         "is a selector snapshot on hardware not present here. Owner to re-measure or annotate."
     ),
-    "2026-08-31-gfx1151-qwen38-mtp-c1-streaming-width1-retained.json::SCRIPT-MISSING::"
-    ".worklog/tmp_m3_bench.py": (
-        "2026-08-31 gfx1151 lane: the recorded command ran a scratch script from the untracked "
-        ".worklog/ area, so the row was never reproducible from the repo. Not rewritten here "
-        "because a published row's provenance belongs to its author; the owner should "
-        "re-measure with a committed tool or annotate the row as a one-off probe."
-    ),
 }
 
 # The explicit-tier migration renamed every test module. Published artifacts recorded the paths

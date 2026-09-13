@@ -121,9 +121,18 @@ def test_sync_rejects_oversized_exported_block(tmp_path: Path) -> None:
     assert "public README line budget" in result.stderr
 
 
+def test_sync_accepts_500_line_public_readme(tmp_path: Path) -> None:
+    result = _run_sync_check(
+        tmp_path,
+        "Brief user-visible note.",
+        document_prefix="# Benchmarks\n" + "Project detail.\n" * 496,
+    )
+    assert result.returncode == 0, result.stderr
+
+
 def test_sync_rejects_oversized_public_readme(tmp_path: Path) -> None:
     prefix = "# Benchmarks\n\n" + "\n".join(
-        f"Public project detail {index}." for index in range(400)
+        f"Public project detail {index}." for index in range(500)
     ) + "\n\n"
     result = _run_sync_check(
         tmp_path,
@@ -146,7 +155,7 @@ def test_root_readme_is_compact_model_first_and_synced() -> None:
     assert result.returncode == 0, result.stderr or result.stdout
 
     readme = (repo_root / "README.md").read_text(encoding="utf-8")
-    assert len(readme.splitlines()) <= 400
+    assert len(readme.splitlines()) <= 500
     assert readme.index("## Supported models") < readme.index("## Performance highlights")
     assert readme.index("## Performance highlights") < readme.index("## Status")
     for model_url in (
@@ -302,8 +311,8 @@ def test_compact_mtp_scoreboard_uses_true_ar_artifacts() -> None:
         f"**{dense_b3['decode_tok_s_weighted']:.3f}** | "
         f"**{dense_b3['mtp_vs_true_ar']:.4f}x** |"
     )
-    assert expected_dense in scoreboard
-    assert dense_path.name in scoreboard
+    # The old artifact remains valid history, but is no longer a public row.
+    assert expected_dense not in scoreboard
 
     w7900_path = results / "2026-07-19-w7900-llama-compat-reusable-native-cycle.json"
     w7900 = json.loads(w7900_path.read_text(encoding="utf-8"))

@@ -211,10 +211,12 @@ def test_global_device_pool_pressure_can_reclaim_cached_pages_without_growth() -
         pool.release_blocks(source.block_ids)
 
     pool._on_pressure = reclaim
-    pool.allocate(2, 2)
+    pool.allocate(2, 3)
 
     assert pressure_calls == [1]
     assert pool.stats.grow_events == 0
+    assert pool.current_pages == 3
+    assert pool.stats.free_pages == 0
     pool.release(2)
     pool.close()
 
