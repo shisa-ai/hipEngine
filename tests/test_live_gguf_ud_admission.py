@@ -992,7 +992,7 @@ def test_coverage_records_use_existing_registry_layer_names():
     # placeholder layers "moe_selected"/"gdn_chain" never existed; the real
     # selected-expert consumers are registered under moe_linear and the GDN
     # chain under gdn_recurrent_rmsnorm_gate).  The full registration parity
-    # is proven in tests/test_qwen35_gguf_consumer_surface_parity.py.
+    # is proven in tests/test_integration_qwen35_gguf_consumer_surface_parity.py.
     known_layers = {
         "linear",
         "dense_gemv",
@@ -1853,7 +1853,7 @@ def test_coverage_families_are_registered_consumers_not_just_valid_keys():
     the direct-wrapper consumer (raw rank-3 Q4_K selected experts) exists
     as a module symbol.  The complete no-skip parity (all records, both
     row-mode variants, both backends) lives in
-    tests/test_qwen35_gguf_consumer_surface_parity.py; this test keeps the
+    tests/test_integration_qwen35_gguf_consumer_surface_parity.py; this test keeps the
     in-file invariant independently of that module."""
 
     import importlib

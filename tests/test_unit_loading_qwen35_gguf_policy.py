@@ -6,7 +6,7 @@ capability + environment-override semantics used by
 audit (source-reading reader). These tests pin the pure resolution behavior
 with stub readers and dict environments; cross-caller parity against the real
 backend packages is guarded separately in
-``tests/test_qwen35_gguf_policy_capability_parity.py`` because it imports
+``tests/test_gpu_qwen35_gguf_policy_capability_parity.py`` because it imports
 kernel packages and needs the HIP runtime.
 """
 

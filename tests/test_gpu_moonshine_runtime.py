@@ -356,8 +356,14 @@ def fake_loaded_model(
     )
 
 
-def setup_function() -> None:
-    reset_memory_stats()
+@pytest.fixture(autouse=True)
+def isolated_runtime_memory_tracker(monkeypatch):
+    import hipengine.core.memory as memory_module
+
+    tracker = memory_module._MemoryStatsTracker()
+    monkeypatch.setattr(memory_module, "_MEMORY_STATS", tracker)
+    yield
+    assert tracker.snapshot()["active_allocations"] == 0
 
 
 def test_moonshine_self_attention_thread_buckets() -> None:

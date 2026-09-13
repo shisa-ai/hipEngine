@@ -89,6 +89,7 @@ def test_resident_session_honors_plugin_selected_bulk_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = object.__new__(qgr.Qwen35GGUFResidentSession)
+    session.use_iq_dense_mmq = False
     session.runner = SimpleNamespace(
         weights=SimpleNamespace(config=SimpleNamespace(ssm_conv_kernel=4))
     )

@@ -1024,7 +1024,7 @@ these quants than the shared DS4 plane, which would likely recover the mean.
   `tests/test_scripts_gguf_quant_route_audit.py::test_fresh_process_audit_never_imports_gpu_backend_packages`
   (fresh subprocess, meta-path guard rejects `hipengine.kernels.hip_*` /
   `cuda_*` / torch before any import, then runs the real CLI) and
-  `tests/test_hipengine_public_api.py` (lazy-export identity/caching/`dir`
+  `tests/test_integration_hipengine_public_api.py` (lazy-export identity/caching/`dir`
   contracts). Remaining honest limitation: actually touching `LLM` or importing
   `hipengine.llm` still loads the speculative package and kernel modules -- by
   design, that is the runtime registration path -- so anything needing true
@@ -6343,7 +6343,7 @@ other means and were not touched.
   (3328 B/block; measured 5120x6144 ssm_out sidecar = 25,559,040 bytes),
   gated to Q5_K T16 residents exactly like the materializer's own sidecar
   gate. Byte-exactness is pinned against the real CPU converter in
-  `tests/test_gguf_ud_admission.py`; the audit reports the sidecar
+  `tests/test_live_gguf_ud_admission.py`; the audit reports the sidecar
   formula-sized. No kernel, dispatch, or default-change is involved.
 - Remove the kernel, wrapper, registry entry, session/runner/env wiring,
   loader sidecar, leaf script, and tests if the P2 residual closes by
@@ -7163,7 +7163,7 @@ declared fallback for every shape the policy does not cover.
 **What.** `hipengine/quant/gguf_t16.py` carries the IQ4_XS T16 layout
 constants, `GGUFIQ4XSTile16`, `repack_gguf_iq4_xs_tile16` and
 `unpack_gguf_iq4_xs_tile16`, plus `IQ4_XS_T16_SHAPE` in
-`hipengine/quant/gguf_repack.py` and `tests/test_gguf_iq4_xs_t16_layout.py`.
+`hipengine/quant/gguf_repack.py` and `tests/test_live_gguf_iq4_xs_t16_layout.py`.
 
 **Why it is unused.** It was built as the first half of the "IQ4_XS repack
 into a tile layout" item in `docs/UD-GFX1151-OPTIMIZE.md`, on the assumption
@@ -7175,7 +7175,7 @@ nothing consumes the layout.
 
 **Removal trigger.** If no IQ4_XS T16 owner lands, delete the layout
 constants, the dataclass, both functions, their `__all__` entries,
-`IQ4_XS_T16_SHAPE`, and `tests/test_gguf_iq4_xs_t16_layout.py`. The layout is
+`IQ4_XS_T16_SHAPE`, and `tests/test_live_gguf_iq4_xs_t16_layout.py`. The layout is
 byte-neutral and correct, so it is cheap to keep as a tested primitive; the
 reason to remove it is that dead code in the quant layer reads as a live
 option. If it is removed and the item is ever re-opened, the test file is the

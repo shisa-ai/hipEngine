@@ -10,7 +10,7 @@ from hipengine.loading.qwen35_gguf_admission import (
     certificate_covers_artifact,
     preflight_qwen35_gguf_artifact,
 )
-from test_gguf_ud_admission import _synthetic_moe_model_map
+from test_live_gguf_ud_admission import _synthetic_moe_model_map
 
 
 @pytest.mark.parametrize("backend", ("hip_gfx1100", "hip_gfx1151"))

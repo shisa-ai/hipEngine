@@ -244,8 +244,12 @@ def _record_rename(root: pathlib.Path, old: str, new: str) -> None:
     )
 
 
+@pytest.mark.parametrize("record", [
+    "docs/testing/test-tier-migration-2026-09-12.json",
+    "docs/testing/test-tier-migration-ud-2026-09-13.json",
+])
 def test_a_renamed_test_target_resolves_through_the_migration_record(
-    tool, tmp_path: pathlib.Path
+    tool, tmp_path: pathlib.Path, record: str
 ) -> None:
     """A historical test path stays checkable without rewriting the published row."""
     repo = _make_repo(
@@ -254,6 +258,10 @@ def test_a_renamed_test_target_resolves_through_the_migration_record(
     (repo / "tests").mkdir()
     (repo / "tests" / "test_unit_new_name.py").write_text("")
     _record_rename(repo, "tests/test_old_name.py", "tests/test_unit_new_name.py")
+    original = repo / tool.TIER_RENAME_RECORD
+    target = repo / record
+    if target != original:
+        original.rename(target)
     report = tool.check_repo(repo)
     assert report["violations"] == []
     assert report["renamed_targets"] == [
@@ -308,7 +316,10 @@ def test_the_real_repository_passes_the_gate_with_recorded_exceptions(tool) -> N
     assert report["exceptions_unmatched"] == []
     # The tier migration renamed the DMS targets this published row recorded. Resolved, not
     # hidden: the artifact keeps the path that existed when the row was measured.
-    assert report["renamed_targets"] == [
+    assert [
+        name for name in report["renamed_targets"]
+        if name.startswith("2026-09-07-rx7900xtx-dms-int8-postfix-audit.json::")
+    ] == [
         "2026-09-07-rx7900xtx-dms-int8-postfix-audit.json::tests/"
         "test_dms_int8_backend_integration.py->tests/test_gpu_dms_int8_backend_integration.py",
         "2026-09-07-rx7900xtx-dms-int8-postfix-audit.json::tests/"

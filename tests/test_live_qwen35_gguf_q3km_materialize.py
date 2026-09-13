@@ -71,7 +71,7 @@ def test_rank3_iq_and_q3_experts_stay_raw_without_model_fixture(
 
 
 @pytest.mark.parametrize("qtype", [GGMLQuantizationType.IQ2_XS])
-def test_rank2_iq2_xs_keeps_dense_bf16_fallback_without_model_fixture(
+def test_rank2_iq2_xs_keeps_raw_consumer_without_model_fixture(
     qtype: GGMLQuantizationType,
 ) -> None:
     tensor = _tensor_info(
@@ -82,7 +82,7 @@ def test_rank2_iq2_xs_keeps_dense_bf16_fallback_without_model_fixture(
 
     spec = _spec_for_tensor("layers.0.ffn_gate", tensor, decode_repack=False)
 
-    assert spec.layout == LAYOUT_DENSE_BF16
+    assert spec.layout == LAYOUT_RAW_GGUF
     assert spec.quant_key == f"gguf_{qtype.name.lower()}"
     assert spec.allocation_names == ("raw",)
 

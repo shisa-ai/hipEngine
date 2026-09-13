@@ -2,7 +2,7 @@
 
 Pure metadata/admission tests on the real pinned K_M artifact: no device
 allocation, no kernel launch, no torch. Device numerical leaves for raw
-Q5/Q6 live in ``tests/test_gguf_ud_q56_roles.py``; full-model context
+Q5/Q6 live in ``tests/test_live_gguf_ud_q56_roles.py``; full-model context
 evidence lives in the UD campaign artifacts.
 """
 from __future__ import annotations

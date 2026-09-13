@@ -25,7 +25,7 @@ from hipengine.quant.gguf_x8 import (
     repack_gguf_q5_k_x8,
     repack_gguf_q6_k_x8,
 )
-from tests.test_gguf_ud_admission import _synthetic_model_map, _tensor
+from tests.test_live_gguf_ud_admission import _synthetic_model_map, _tensor
 
 
 @pytest.mark.parametrize("qtype,slot,shape,flags,env,converter", [

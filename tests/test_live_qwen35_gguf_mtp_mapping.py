@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import inspect
+import hashlib
+from dataclasses import replace
 from math import prod
 from pathlib import Path
 
@@ -688,9 +690,21 @@ def test_qwen35_dense_gguf_mtp_maps_architecture_shaped_blk2() -> None:
     assert nextn_map.fallback("lm_head").ggml_type_name == "Q6_K"
 
 
-def test_qwen38_native_xl_nextn_manifest_accepts_exact_mixed_qtypes() -> None:
+def test_qwen38_native_xl_nextn_manifest_accepts_exact_mixed_qtypes(monkeypatch) -> None:
     info = _synthetic_qwen35_dense_mtp_info(native_xl=True)
 
+    # A tiny fixture cannot borrow the shipped artifact's digest. Bind a
+    # fixture-specific certificate only after proving that spoofing is refused.
+    assert not validate_qwen35_gguf_nextn_tensor_map(info).passed
+    digest = hashlib.sha256("\n".join(
+        f"{tensor.name}={tensor.ggml_type_name}"
+        for tensor in sorted(info.tensors, key=lambda tensor: tensor.name)
+    ).encode("utf-8")).hexdigest()
+    import hipengine.loading.qwen35_gguf_nextn as nextn
+    monkeypatch.setattr(nextn, "QWEN38_NATIVE_XL_OUTPUT_TYPE_MANIFEST_SHA256", digest)
+    info = replace(info, metadata={
+        **info.metadata, "hipengine.quant.output_type_manifest_sha256": digest,
+    })
     validation = validate_qwen35_gguf_nextn_tensor_map(info)
 
     assert validation.passed
@@ -714,9 +728,8 @@ def test_qwen38_native_xl_nextn_manifest_rejects_weakened_slot() -> None:
     validation = validate_qwen35_gguf_nextn_tensor_map(info)
 
     assert not validation.passed
-    assert validation.dtype_errors == (
-        "blk.2.nextn.eh_proj.weight: expected Q6_K, got Q4_K",
-    )
+    assert "blk.2.nextn.eh_proj.weight: expected Q6_K, got Q4_K" in validation.dtype_errors
+    assert any("actual tensor type manifest" in error for error in validation.dtype_errors)
 
 
 def test_qwen35_dense_gguf_mtp_plans_dense_ffn_slots_and_materialization() -> None:

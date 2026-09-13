@@ -218,6 +218,13 @@ GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS = 0
 # arm-identical state/lifecycle differentials). Rows below the floor keep
 # the per-row dual owner.
 GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS = 8
+# Qualified SSM alpha/beta wide-block route, not a shared-wrapper default.
+GGUF_Q8_T16_DUAL_SPLIT_THREADS_BY_SHAPE = {
+    (1, 5120, 48, 48): 256,
+    (2, 5120, 48, 48): 256,
+    (3, 5120, 48, 48): 256,
+    (4, 5120, 48, 48): 256,
+}
 # The exact c8 selected-expert pair-reuse dual owner is admitted only on
 # independently measured backends; gfx1100 qualified it at physical c8 on
 # the W7900 (2026-09-05 audit packet D1: +5.0% native_c8, exact
@@ -1434,6 +1441,7 @@ GGUF_CONSUMER_LAYERS: frozenset[str] = frozenset(
 )
 
 __all__ = [
+    "LAGUNA_ACTIVATION_PACK_REUSE",
     "GGUF_CONSUMER_LAYERS",
     "GGUF_IQ_DENSE_PREFILL_POLICY",
     "GGUF_IQ_DENSE_PREFILL_STRICT_SLOTS",
@@ -1579,6 +1587,7 @@ __all__ = [
     "PARO_SPECDEC2_MTP2_C1",
     "PARO_SPECDEC2_MTP2_C4",
     "GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS",
+    "GGUF_Q8_T16_DUAL_SPLIT_THREADS_BY_SHAPE",
     "GGUF_Q8_T16_DECODE_ROWTILE_ALL",
     "GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE",

@@ -207,7 +207,7 @@ def test_direct_hot_vocab_shape_checks_precede_payload(monkeypatch, tmp_path, ba
     if bad == "source_vocab":
         # A valid resident from a different tokenizer extent is not a valid
         # source for this selection; no payload read should discover that.
-        from tests.test_gguf_ud_admission import _tensor
+        from tests.test_live_gguf_ud_admission import _tensor
         borrowed.spec = replace(borrowed.spec, source=_tensor("output.weight", (32, 256), Q.Q6_K))
     calls = _forbid_payload_and_allocation(monkeypatch)
     with pytest.raises(ValueError, match="divisible by 16|unexpected shape|outside"):

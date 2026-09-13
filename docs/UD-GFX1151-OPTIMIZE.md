@@ -2,6 +2,10 @@
 
 Last updated: 2026-09-13.
 
+Main integration decisions, validation results and remaining limitations are
+recorded in [UD-MAIN-INTEGRATION.md](UD-MAIN-INTEGRATION.md). The campaign
+measurements below retain their original source identity.
+
 This is the active optimization and certification handoff for the published
 Qwen3.8-27B Unsloth Dynamic `Q4_K_M` and `Q4_K_S` artifacts on the active
 gfx1100 lane: host `epyc`, RX 7900 XTX in physical GPU1. The filename is kept
@@ -302,7 +306,7 @@ For each transferred candidate:
   ownership, masks, or rollback semantics. It does not reduce launches here;
   the win is per-launch decode cost.
 - [x] Add a focused RED test for the row-shape/dispatch contract.
-  `tests/test_gguf_iq_local32_rows.py` covers registration on both HIP
+  `tests/test_gpu_gguf_iq_local32_rows.py` covers registration on both HIP
   backends, the declined slots (no execution owner, no policy entry, an
   unregistered variant, decode-strict, `n` not a multiple of 8, above four
   rows, no prefill alias parent, prefill or non-raw dispatch), and argument
@@ -736,7 +740,11 @@ Phase 6 and the final scorecard rows are the current paired comparison.
   `valid_split_threads` that admits 64/128/256/512/1024 for this owner only,
   `xchg[32 * T16_COLS]` instead of `xchg[4 * T16_COLS]` (the four-wave buffer
   silently dropped the extra waves and produced 99% mismatched elements at
-  256 threads), and `_resolve_threads(default=..., allowed=...)`. The default is now **256**.
+  256 threads), and `_resolve_threads(default=..., allowed=...)`. After main
+  integration, the runtime selects **256** only through
+  `GGUF_Q8_T16_DUAL_SPLIT_THREADS_BY_SHAPE` on gfx1100 at rows 1-4 and
+  `(5120, 48, 48)`. Standalone reference calls, peer backends and shape/row
+  misses retain main's **128** default; see the integration report.
   A wider block changes the wave count and so the k-split summation order for
   `ssm_alpha`/`ssm_beta`, so it was held at 128 until it cleared the same
   evidence bar the 2026-09-13 Q8T16 rowtile change used, which recorded that
@@ -791,7 +799,7 @@ Phase 6 and the final scorecard rows are the current paired comparison.
   Q4 pairs) is worth at most ~0.8 ms/step; (c) the IQ4_XS T16 repack above.
   **(c) closed 2026-09-13 by direct measurement.** The layout's first consumer
   is built and bit-exact (`gguf_iq4_xs_t16_local32_gemv_kernel`, 16 parity tests
-  in `tests/test_gguf_iq4_xs_t16_local32_parity.py`), and under an interleaved
+  in `tests/test_gpu_gguf_iq4_xs_t16_local32_parity.py`), and under an interleaved
   paired protocol it is 0.803x at (17408, 5120), 0.791x at (5120, 17408), 0.773x
   at (5120, 13824) and 0.633x at (5120, 5120), with every cell bit-exact. The
   reason is now known rather than guessed: the raw owner's duplicate 8-byte
@@ -933,7 +941,7 @@ Before automatic MTP admission, complete the U6 envelope:
   lifecycle coverage remain to be mapped to tests before closing this item.
   Evidence: `benchmarks/results/2026-09-12-ud-gfx1100-mtp-width-cells.json`,
   `benchmarks/results/ud-mtp-certification-u6.json`,
-  `tests/test_ud_mtp_certification.py`.
+  `tests/test_live_ud_mtp_certification.py`.
 - [ ] Draft/verifier state disjointness, aliases, and teardown. State
   disjointness is measured and gated — the draft executor's 62 device buffers
   intersect neither the target session's 188 nor the verifier journal's 381 —
@@ -966,7 +974,7 @@ Before automatic MTP admission, complete the U6 envelope:
   182 named variants each verified against the live registry. Records with
   `consumer_module` are certified by a module symbol rather than a registry key,
   so they contribute provenance (`consumer_modules`) and cannot be selections.
-  `tests/test_ud_strict_manifest.py` validates every manifest with the profile
+  `tests/test_live_ud_strict_manifest.py` validates every manifest with the profile
   gate's own `validate_variant_manifest`, re-derives the GGML types and in-scope
   record count from the GGUF bytes, checks the registry keys, and asserts the
   certification's bundle hash matches the manifest file.

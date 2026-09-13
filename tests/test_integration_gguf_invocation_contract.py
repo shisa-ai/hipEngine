@@ -3,7 +3,7 @@ from dataclasses import replace
 
 import pytest
 
-from test_gguf_ud_admission import _synthetic_model_map
+from test_live_gguf_ud_admission import _synthetic_model_map
 from hipengine.loading.qwen35_gguf_admission import (
     QWEN35_GGUF_OP_AR_DECODE_C1 as C1,
     QWEN35_GGUF_OP_AR_PREFILL as PREFILL,
@@ -165,7 +165,7 @@ def test_native_caller_supplies_mixed_gdn_operands_and_executes_cast(monkeypatch
     scratch = NS(**buffers, post_norm=buffer("bf16"), slot_count=2,
                  recurrent_zero=np.zeros(1, dtype=np.float32),
                  layer_conv_states=[buffer("f32")], layer_recurrent_states=[buffer("f32")])
-    from tests.test_gguf_execution_authorization import native_resident
+    from tests.test_integration_gguf_execution_authorization import native_resident
     from hipengine.core.dtype import DType
     resident = native_resident(monkeypatch, tmp_path)
     model = NS(config=resident.config)
@@ -199,7 +199,7 @@ def test_native_caller_supplies_mixed_gdn_operands_and_executes_cast(monkeypatch
                  fp16_recurrent_state=False, hidden_size=256, vocab_size=64, linear_qkv_width=192,
                  ssm_value_dim=32, _cast_library=lambda: object(),
                  _run_post_attention_ffn_rows=lambda *a, **kw: None)
-    from tests.test_gguf_ud_admission import _native_entry_session
+    from tests.test_live_gguf_ud_admission import _native_entry_session
     scratch.calls = []
     owner_session = _native_entry_session(resident, scratch_owner=scratch)
     owner_session.runner = session
@@ -348,12 +348,12 @@ def test_prefill_fp16_state_cannot_borrow_baseline_f32_certificate():
         refused.certificate()
 
 
-def test_all_twenty_rows_resolve_and_marshal_production_operands():
+def test_all_dispatch_rows_resolve_and_marshal_production_operands():
     from types import SimpleNamespace
     import hipengine.runtime.gguf_linear as runtime
     from hipengine.loading.qwen35_gguf_consumer_surface import GGUF_LINEAR_DISPATCH_SURFACE, linear_consumer_contract
     addresses = {"raw": 101, "tiles": 102, "qweight": 103, "scales": 104, "mins": 105}
-    assert len(GGUF_LINEAR_DISPATCH_SURFACE) == 20
+    assert len(GGUF_LINEAR_DISPATCH_SURFACE) == 22
     for row in GGUF_LINEAR_DISPATCH_SURFACE:
         weight = SimpleNamespace(backend="hip_gfx1151", spec=SimpleNamespace(layout=row.layout, quant_key="gguf_q8_0"),
             allocation=lambda name: SimpleNamespace(tensor=SimpleNamespace(ptr=addresses[name])))
