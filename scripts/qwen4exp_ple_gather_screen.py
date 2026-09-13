@@ -10,6 +10,7 @@ import argparse
 import fcntl
 import hashlib
 import json
+import mmap
 import os
 from pathlib import Path
 import statistics
@@ -159,7 +160,7 @@ def canonical_rows(case, cfg):
 
 
 def measure(table, indices, *, cache_mode, repetitions, method="sorted_unique", reader=None):
-    candidate_fn = reader.gather if reader is not None else (
+    candidate_fn = table.gather_rows if method == "mmap_random" else reader.gather if reader is not None else (
         lambda ids: gather_sorted_unique(table, ids, method=method)
     )
     reference = table.gather_rows(indices)
@@ -173,14 +174,18 @@ def measure(table, indices, *, cache_mode, repetitions, method="sorted_unique", 
         for name in order:
             if cache_mode == "cold":
                 table.advise_cache("cold")
+            if method == "mmap_random":
+                table._raw._mmap.madvise(mmap.MADV_RANDOM if name == "candidate" else mmap.MADV_NORMAL)
             fn = table.gather_rows if name == "parent" else candidate_fn
+            before_io = process_read_bytes()
             started = time.perf_counter_ns()
             values = fn(indices)
             np.copyto(staging, values)
             elapsed = time.perf_counter_ns() - started
+            read_bytes = process_read_bytes() - before_io
             if staging.tobytes() != reference.tobytes():
                 raise ValueError("timed gather/scatter/staging output changed")
-            samples.append({"arm": name, "repetition": rep, "ns": elapsed})
+            samples.append({"arm": name, "repetition": rep, "ns": elapsed, "process_read_bytes": read_bytes})
     medians = {arm: statistics.median(s["ns"] for s in samples if s["arm"] == arm)
                for arm in ("parent", "candidate")}
     return {
@@ -192,13 +197,18 @@ def measure(table, indices, *, cache_mode, repetitions, method="sorted_unique", 
     }
 
 
+def process_read_bytes():
+    fields = dict(line.split(": ", 1) for line in Path("/proc/self/io").read_text().splitlines())
+    return int(fields["read_bytes"])
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model-root", type=Path, required=True)
     parser.add_argument("--fixture", type=Path, default=DEFAULT_FIXTURE)
     parser.add_argument("--repetitions", type=int, default=6)
     parser.add_argument("--cache-mode", choices=("warm", "cold"), default="warm")
-    parser.add_argument("--method", choices=("sorted_unique", "copy_elision", "dedup_elision", "sampled_dedup_elision", "pread", "pread_workers"), default="sorted_unique")
+    parser.add_argument("--method", choices=("sorted_unique", "copy_elision", "dedup_elision", "sampled_dedup_elision", "pread", "pread_workers", "mmap_random"), default="sorted_unique")
     parser.add_argument("--case-id", action="append")
     parser.add_argument("--skip-synthetic", action="store_true")
     parser.add_argument("--output", type=Path, required=True)
