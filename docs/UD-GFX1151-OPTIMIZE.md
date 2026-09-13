@@ -596,8 +596,8 @@ Likely investigation order:
   capacity) and payload over-fetch (1.25x) rule out request and bandwidth
   limits. The layout primitive is retained but has no consumer; see
   `docs/REFACTOR.md`.
-- [ ] Q8_0 `ssm_alpha`/`ssm_beta` dual_split block width. Measured
-  2026-09-13. `q8_0_t16_dual_split_gemv` costs 0.877 ms/step over 576 calls
+- [x] Q8_0 `ssm_alpha`/`ssm_beta` dual_split block width. **Retained
+  2026-09-13.** Measured 2026-09-13. `q8_0_t16_dual_split_gemv` costs 0.877 ms/step over 576 calls
   (48/step) at 18.28 us for 25 MB, which is 28.6 GB/s. The cause is grid
   parallelism, not bandwidth: the launcher sets
   `grid.x = (out_features_a + out_features_b) / T16_COLS`, so the 48-column
@@ -614,17 +614,24 @@ Likely investigation order:
   `valid_split_threads` that admits 64/128/256/512/1024 for this owner only,
   `xchg[32 * T16_COLS]` instead of `xchg[4 * T16_COLS]` (the four-wave buffer
   silently dropped the extra waves and produced 99% mismatched elements at
-  256 threads), and `_resolve_threads(default=..., allowed=...)`. **The default
-  is deliberately still 128.** A wider block changes the wave count and so the
-  k-split summation order for `ssm_alpha`/`ssm_beta`, and the 2026-09-13
-  Q8T16 rowtile entry records that changing this path's arithmetic diverges
-  generated tokens. Promote the default to 256 only with the section-6.1
-  teacher-forced gate and the paired AR/MTP protocol. The bit-identical
-  alternative is block-level split-K: give each output tile S blocks that each
-  own a contiguous, wave-aligned k range and write ordered partials, then
-  reduce `for wave: for split:` so the concatenation reproduces the original
-  order exactly. That keeps the grid at 6 x S without touching the arithmetic,
-  and it is the route to prefer if the gate blocks the wide block.
+  256 threads), and `_resolve_threads(default=..., allowed=...)`. The default is now **256**.
+  A wider block changes the wave count and so the k-split summation order for
+  `ssm_alpha`/`ssm_beta`, so it was held at 128 until it cleared the same
+  evidence bar the 2026-09-13 Q8T16 rowtile change used, which recorded that
+  changing this path's arithmetic diverges generated tokens. It cleared it:
+  `scripts/qwen35_gguf_mtp_e2e.py` gives a **bit-identical AR and MTP token
+  sequence** (12 tokens, `271, 248068, 198, 760, 1156, 6587, 264, 12654, 709,
+  421, 25, 198`), and the section-6.1 teacher-forced gate passes and
+  **improves on every KL metric** in a same-session A/B at 162 rows, two
+  deterministic repeats each: mean/p95/p99/max KL `3.471e-05 / 1.927e-04 /
+  2.459e-04 / 2.517e-04` at 128 against `3.287e-05 / 1.759e-04 / 2.351e-04 /
+  2.432e-04` at 256, top-1 `1.0000` both, all limits passed. The paired
+  AR/MTP economics protocol was not re-run, so no decode topline row moves.
+  The bit-identical alternative, kept on record in case a later change needs
+  it, is block-level split-K: give each output tile S blocks that each own a
+  contiguous, wave-aligned k range and write ordered partials, then reduce
+  `for wave: for split:` so the concatenation reproduces the original order
+  exactly. That keeps the grid at 6 x S without touching the arithmetic.
 - [ ] UD-versus-plain family budget. Measured 2026-09-13 from two rocprofv3
   verifier-window censuses on the same host and protocol: UD-Q4_K_M is
   435.74 ms total kernel time (36.31 ms/step) against plain Q4_K_M at
