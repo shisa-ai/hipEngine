@@ -508,6 +508,24 @@ Likely investigation order:
   rejected, including the direct full-unroll route to more loads in flight, so
   the remaining lever is explicit prefetch or a wider row/wave split, which
   needs a hardware-counter unit plus a new bit-exactness contract.
+- [ ] Strict Q3_K/IQ3_S owner geometry and decode. Swept 2026-09-13.
+  `gguf_iq_dense_strict` owns all eleven Q3_K/IQ3_S verifier tensors, every
+  one 38.30 MB, and moves 421.3 MB/step in eleven calls at 258-361 us/call =
+  106-148 GB/s against 600-704 GB/s for the t16 rowtile owners on the same
+  shapes and byte counts. The shipped geometry is already the best of every
+  bit-identical axis measured on `blk.0.ffn_up` at rows=3: T=8 R=4 is 221 us
+  against T=4 242, T=16 297, R=8 303, R=2 363, R=1 522; RB=2 (218 us) ties
+  the shipped RB=4; `__launch_bounds__` min-blocks 2 -> 8 is neutral. Mutation
+  bisection puts the residual in memory access, not ALU: deleting the Q3_K
+  decode gives a 138.50 us floor (276 GB/s) and keeping one payload byte load
+  with no bit arithmetic gives 195.55 us, so the two payload byte loads cost
+  82 us and the bit arithmetic plus the hmask load only 25 us. The 138.50 us
+  floor is 63% of the shipped time at 1.4 waves of 128-thread blocks, so the
+  binding constraint is neither the decode nor the tiling: the structure
+  (one 128-thread block per 8 columns, one scalar byte per lane per payload
+  element) cannot reach the t16 rate. Closing it means split-K or a tile
+  repack, both of which change the declared accumulation order and owe the
+  full production profile gate.
 - [x] Norm, SiLU, residual, and logits tail overhead. Closed 2026-09-12:
   1.885 ms/step, 4.00% of the UD-Q4_K_M verifier, below the repair threshold.
 - [ ] Graph capture/replay ownership and synchronization. The host residual is
