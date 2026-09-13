@@ -451,6 +451,35 @@ these projections and K_S three.
 ([census](results/2026-09-13-ud-gfx1100-q8-rowtile-attn-kv-census.json),
 [numerics gate](results/2026-09-13-ud-gfx1100-q8-rowtile-attn-kv-ar-verify.json).)
 
+The fixed-5120 norm leaf now reaches the verifier row slab. The kernel and both
+of its registry keys already existed on this backend, but only the gfx1151
+package declared `GGUF_NORM_RESIDUAL_DECODE_POLICIES` and its table admits
+`rows == 1` alone, so every W7900 call fell through to the generic
+local256 owner - which has a runtime-trip-count loop and no register cache, so
+it reloads `x` and `add` for its second pass and pays nine tree barriers. That
+covers the rows-3 verifier slab and the rows-1 decode alike. Both fixed-5120 entry
+points now accept rows 1-8 and launch one block per row, and the gfx1100 package
+declares the policy for rows 1-8 under both the plain and the
+UD-preset-extended keys. One block owns one row, so every per-thread partial,
+the reduction tree, the `rsqrtf` argument and the epilogue are unchanged, and
+the leaves are **byte-identical to their generic counterparts at rows
+1/2/3/4/6/8**. The verifier A/B puts the `add_rmsnorm` leaf at **770.07 ->
+328.56 ms/step** (64 calls, **12.03 -> 5.13 us** per call, -57.3%) and the whole
+verifier at **37.067 -> 36.6206 ms/step (-1.21%)** at an unchanged 985
+calls/step. Because the change is bit-identical, the movement it produces is a
+pure speed effect: 127 norm launches per step at 12.0 -> 5.1 us is about -0.9 ms
+on a 31.3 ms single-row step, and the paired suite measures true-AR decode at
+**31.904 -> 32.750 tok/s** (UD-Q4_K_M, +2.65%) and **31.303 -> 32.098**
+(UD-Q4_K_S, +2.54%). The MTP B3 step is roughly twice as long, so the same
+absolute saving is about half the percentage and sits inside the
+acceptance-driven spread (UD-Q4_K_M 49.408 -> 49.371, UD-Q4_K_S 48.548 ->
+48.294). The section-6.1 teacher-forced gate passes on both repeats at
+mean/p95/p99/max KL **2.503e-05 / 1.654e-04 / 2.930e-04 / 2.971e-04** with top-1
+**1.0000 overall and in every category and at every budget**, and all four
+paired arms are `binding_passed` with `timing_evidence_valid`.
+([artifact](results/2026-09-13-ud-gfx1100-norm-fixed5120-row-slab.json),
+[worklog](../worklog/entries/20260913T073710.202482Z-lhl-ud-norm-fixed5120-rowslab-8c2632.md).)
+
 The strict dense IQ row slab now covers the verifier's row count instead of
 sitting below it. `gguf_iq_dense_strict_kernel` is the exactness-contract owner
 for Q3_K/IQ3_S/IQ3_XXS/IQ2_S/IQ2_XS, and `grid.y` is `ceil(rows/R)`, so at the

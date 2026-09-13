@@ -58,8 +58,11 @@ def test_fixed5120_wave256_registry_and_preload_contract(monkeypatch: pytest.Mon
         raise AssertionError("invalid fixed shape must fail before build")
 
     monkeypatch.setattr(gguf_ops, "build_gguf_ops", fail_build)
-    with pytest.raises(ValueError, match="rows must be exactly 1"):
-        rms_fn(1, 2, 3, 2, _HIDDEN, _EPS)
+    # 2026-09-13: both fixed-5120 wrappers now accept the verifier row slab.
+    with pytest.raises(ValueError, match="rows must be between 1 and 8"):
+        rms_fn(1, 2, 3, 9, _HIDDEN, _EPS)
+    with pytest.raises(ValueError, match="rows must be between 1 and 8"):
+        add_fn(1, 2, 3, 4, 5, 9, _HIDDEN, _EPS)
     with pytest.raises(ValueError, match="hidden_size must be exactly 5120"):
         rms_fn(1, 2, 3, 1, 1_024, _EPS)
     with pytest.raises(ValueError, match="threads must be exactly 256"):

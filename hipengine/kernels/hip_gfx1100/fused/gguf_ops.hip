@@ -265,13 +265,17 @@ __global__ void gguf_norm_fixed5120_wave256_kernel(
   constexpr int kWave = 32;
   const int tid = static_cast<int>(threadIdx.x);
   const int lane = tid & (kWave - 1);
+  // One block per row, so the row slab (2026-09-13) costs nothing but the
+  // block index: every per-thread partial, the tree shape and the epilogue are
+  // unchanged, and each row's output is bit-identical to the rows == 1 launch.
+  const int64_t row_base = static_cast<int64_t>(blockIdx.x) * kHidden;
   float values[kValuesPerThread];
   float sum = 0.0f;
 #pragma unroll
   for (int i = 0; i < kValuesPerThread; ++i) {
     const int idx = tid + i * kThreads;
-    const float value = bf16_bits_to_float(x[idx]) +
-        (kAddResidual ? bf16_bits_to_float(add[idx]) : 0.0f);
+    const float value = bf16_bits_to_float(x[row_base + idx]) +
+        (kAddResidual ? bf16_bits_to_float(add[row_base + idx]) : 0.0f);
     values[i] = value;
     sum += value * value;
   }
@@ -307,9 +311,10 @@ __global__ void gguf_norm_fixed5120_wave256_kernel(
   for (int i = 0; i < kValuesPerThread; ++i) {
     const int idx = tid + i * kThreads;
     const float value = values[i];
-    norm_out[idx] = float_to_bf16_bits(value * inv_rms * weight[idx]);
+    norm_out[row_base + idx] =
+        float_to_bf16_bits(value * inv_rms * weight[idx]);
     if constexpr (kAddResidual) {
-      residual_out[idx] = float_to_bf16_bits(value);
+      residual_out[row_base + idx] = float_to_bf16_bits(value);
     }
   }
 }
@@ -1019,12 +1024,12 @@ extern "C" int hipengine_gguf_rmsnorm_bf16_f32_weight_fixed5120_wave256(
     float eps,
     int64_t threads,
     hipStream_t stream) {
-  if (x == nullptr || weight == nullptr || out == nullptr || rows != 1 ||
-      hidden_size != 5120 || threads != 256) {
+  if (x == nullptr || weight == nullptr || out == nullptr || rows < 1 ||
+      rows > 8 || hidden_size != 5120 || threads != 256) {
     return static_cast<int>(hipErrorInvalidValue);
   }
-  gguf_norm_fixed5120_wave256_kernel<false><<<dim3(1), dim3(256), 0, stream>>>(
-      x, nullptr, weight, out, nullptr, eps);
+  gguf_norm_fixed5120_wave256_kernel<false><<<dim3(static_cast<unsigned int>(rows)),
+      dim3(256), 0, stream>>>(x, nullptr, weight, out, nullptr, eps);
   return static_cast<int>(hipGetLastError());
 }
 
@@ -1040,12 +1045,12 @@ extern "C" int hipengine_gguf_add_rmsnorm_bf16_f32_weight_fixed5120_wave256(
     int64_t threads,
     hipStream_t stream) {
   if (x == nullptr || add == nullptr || weight == nullptr || norm_out == nullptr ||
-      residual_out == nullptr || rows != 1 || hidden_size != 5120 ||
+      residual_out == nullptr || rows < 1 || rows > 8 || hidden_size != 5120 ||
       threads != 256) {
     return static_cast<int>(hipErrorInvalidValue);
   }
-  gguf_norm_fixed5120_wave256_kernel<true><<<dim3(1), dim3(256), 0, stream>>>(
-      x, add, weight, norm_out, residual_out, eps);
+  gguf_norm_fixed5120_wave256_kernel<true><<<dim3(static_cast<unsigned int>(rows)),
+      dim3(256), 0, stream>>>(x, add, weight, norm_out, residual_out, eps);
   return static_cast<int>(hipGetLastError());
 }
 

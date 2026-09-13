@@ -134,6 +134,7 @@ def gguf_rmsnorm_bf16_f32_weight_fixed5120_wave256(
             rows=rows,
             hidden_size=hidden_size,
             threads=threads,
+            max_rows=8,
         )
     _launch_rmsnorm(
         "hipengine_gguf_rmsnorm_bf16_f32_weight_fixed5120_wave256",
@@ -385,6 +386,7 @@ def gguf_add_rmsnorm_bf16_f32_weight_fixed5120_wave256(
             rows=rows,
             hidden_size=hidden_size,
             threads=threads,
+            max_rows=8,
         )
     _launch_add_rmsnorm(
         "hipengine_gguf_add_rmsnorm_bf16_f32_weight_fixed5120_wave256",
@@ -1407,9 +1409,13 @@ def _check_fixed5120_wave256(
     rows: int,
     hidden_size: int,
     threads: int,
+    max_rows: int = 1,
 ) -> None:
-    if rows != 1:
-        raise ValueError("rows must be exactly 1")
+    if rows < 1 or rows > max_rows:
+        raise ValueError(
+            "rows must be exactly 1" if max_rows == 1
+            else f"rows must be between 1 and {max_rows}"
+        )
     if hidden_size != 5_120:
         raise ValueError("hidden_size must be exactly 5120")
     if threads != 256:

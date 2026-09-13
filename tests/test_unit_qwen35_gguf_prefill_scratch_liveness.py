@@ -414,15 +414,29 @@ def test_fixed5120_norm_residual_decode_kernel_is_exactly_scoped(
         runner, layer="rmsnorm", rows=2, hidden_size=5_120
     ) is gguf_runner.gguf_rmsnorm_bf16_f32_weight
     runner.backend = "hip_gfx1100"
-    assert gguf_runner._gguf_norm_residual_decode_kernel(
+    # 2026-09-13: this backend now declares the same rows 1-8 fixed-5120
+    # add+rmsnorm leaf instead of falling through to the generic local256
+    # owner; a shape the policy does not cover still falls back.
+    selected = gguf_runner._gguf_norm_residual_decode_kernel(
         runner, layer="add_rmsnorm", rows=1, hidden_size=5_120
+    )
+    assert selected.func is candidate
+    assert selected.keywords == {"_prevalidated": True}
+    assert resolved[-1] == {
+        "backend": "hip_gfx1100",
+        "layer": "add_rmsnorm",
+        "quant": "gguf_f32_weight",
+        "variant": "bf16_out_fixed5120_wave256",
+    }
+    assert gguf_runner._gguf_norm_residual_decode_kernel(
+        runner, layer="add_rmsnorm", rows=9, hidden_size=5_120
     ) is gguf_runner.gguf_add_rmsnorm_bf16_f32_weight
     runner.backend = "hip_gfx1151"
     runner.weights.file_type_name = "MOSTLY_Q8_0"
     assert gguf_runner._gguf_norm_residual_decode_kernel(
         runner, layer="rmsnorm", rows=1, hidden_size=5_120
     ) is gguf_runner.gguf_rmsnorm_bf16_f32_weight
-    assert len(resolved) == 2
+    assert len(resolved) == 3
 
 
 def test_attention_norm_rows_uses_fixed1024_registry_selection(
