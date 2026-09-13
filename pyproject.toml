@@ -72,6 +72,15 @@ packages = ["hipengine", "scripts"]
 
 [tool.hatch.build.targets.sdist]
 core-metadata-version = "2.4"
+only-include = [
+  "hipengine",
+  "scripts",
+  "pyproject.toml",
+  "hatch_build.py",
+  "README.md",
+  "CHANGELOG.md",
+  "LICENSE",
+]
 
 [tool.hatch.build.targets.wheel.hooks.custom]
 path = "hatch_build.py"
