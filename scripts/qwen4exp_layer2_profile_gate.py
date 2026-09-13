@@ -56,12 +56,22 @@ class CandidateSpec:
     environment: Mapping[str, str]
     base_profile: str
     scenario_id: str
-    candidate_key: tuple[str, str, str, str]
-    fallback_key: tuple[str, str, str, str]
+    candidate_key: tuple[str, str, str, str] | None
+    fallback_key: tuple[str, str, str, str] | None
     compact_output: bool = False
 
 
 CANDIDATES = {
+    "production_baseline": CandidateSpec(
+        name="production_baseline",
+        classification="diagnostic",
+        mechanism="unmodified named production profile versus strict",
+        environment={},
+        base_profile="production",
+        scenario_id="qwen4exp-ud-q4-k-xl-production-baseline",
+        candidate_key=None,
+        fallback_key=None,
+    ),
     "layer2_grouped_q5k": CandidateSpec(
         name="layer2_grouped_q5k_wmma",
         classification="T2",
@@ -430,13 +440,13 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
 
     register_gfx1151_kernels(replace=True)
     register_qwen4_exp_gfx1151_profiles()
-    candidate_kernel = resolve(
+    candidate_kernel = None if candidate_spec.candidate_key is None else resolve(
         backend=candidate_spec.candidate_key[0],
         layer=candidate_spec.candidate_key[1],
         quant=candidate_spec.candidate_key[2],
         variant=candidate_spec.candidate_key[3],
     )
-    strict_fallback = resolve(
+    strict_fallback = None if candidate_spec.fallback_key is None else resolve(
         backend=candidate_spec.fallback_key[0],
         layer=candidate_spec.fallback_key[1],
         quant=candidate_spec.fallback_key[2],
@@ -660,10 +670,10 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "environment": dict(candidate_spec.environment),
             "base_profile": candidate_spec.base_profile,
             "bound_environment": bound_environment,
-            "candidate_kernel": getattr(candidate_kernel, "__name__", str(candidate_kernel)),
-            "strict_fallback": getattr(strict_fallback, "__name__", str(strict_fallback)),
-            "candidate_kernel_registered": True,
-            "strict_fallback_registered": True,
+            "candidate_kernel": getattr(candidate_kernel, "__name__", None),
+            "strict_fallback": getattr(strict_fallback, "__name__", None),
+            "candidate_kernel_registered": candidate_kernel is not None,
+            "strict_fallback_registered": strict_fallback is not None,
         },
         "profiles": {
             "strict_manifest": _json_value(strict_profile.manifest),
@@ -671,7 +681,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "candidate_base_profile": candidate_spec.base_profile,
             "candidate_manifest": _json_value(candidate_profile.manifest),
             "candidate_manifest_sha256": candidate_profile.manifest_sha256,
-            "candidate_named_profile_intact": False,
+            "candidate_named_profile_intact": not bool(candidate_spec.environment),
         },
         "protocol": {
             "prompt_suites": [str(path.resolve()) for path in args.prompts],

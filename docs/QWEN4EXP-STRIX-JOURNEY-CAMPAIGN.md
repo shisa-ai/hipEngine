@@ -1,7 +1,27 @@
 # Flash-Next Strix Journey Campaign
 
 Date: September 13, 2026 UTC (runs span September 13-14 JST).
-Status: source review and baseline-attempt campaign plan; optimization not started.
+Status: execution authorized September 14 JST; J2 numerical/owner refresh in progress.
+
+### Active Execution
+
+The user has authorized testing every remaining mechanism and adopting
+qualified improvements. Each experiment gets an immutable worklog entry and
+compact result. No item is closed by source review alone.
+
+| Work | State | Next evidence |
+| --- | --- | --- |
+| J2 named production versus strict | In progress | Full18, 594 shared-chain rows, three candidate repeats, free trajectories |
+| J2 prefill/decode/PLE/routing census | Pending | Cached-only owner capture, interval-safe gaps, actual profile/source identity |
+| J3 PLE sorted/deduplicated mmap | Pending | Exact gather tests, cold/warm/unique owner A/B, full-model validation |
+| J3 bounded pread / persistent workers / staging | Pending | Separate independent arms and lifetime gates |
+| J4 GDN ISA / DPP / multi-column | Pending | Prefix/suffix engagement and numerical gates; no blind all-layer widening |
+| J5 chunks / mixed-quant matrix owners / routing | Pending | Allocation probes, real expert populations, complete-owner comparisons |
+| J6 HC/BF16/conv/gather fusions | Pending | Last-reader census and operation-complete gates |
+| J7 QSA indexer/top-k/packing/attention | Pending | Ordered BF16 selected-position gates and depth-specific cost |
+| J8 graph/PM4 transport | Pending | Exposed submission bound, exact runtime-pin review, isolated qualification if justified |
+| J9 batched MTP target verification | Pending | Rejection-depth/accepted-prefix state gates and full-suite true-AR economics |
+| J1 external compatibility gaps / J10 closure | Pending | No unchanged replay of known faults; final counterbalanced comparison |
 
 Independent September 14 JST audit:
 [Prefill and Wilkin audit](PREFILL-WILKIN-INDEPENDENT-AUDIT.md).
