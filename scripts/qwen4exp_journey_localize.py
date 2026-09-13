@@ -42,6 +42,10 @@ ARMS["gdn_flags_strict"] = {}
 ARMS["base_plus_moe_flags"] = {}
 ARMS["base_plus_q8_gr_flags"] = {}
 ARMS["base_plus_gdn_flags"] = {}
+ARMS["q8_selected_down_strict"] = {PREFIX + "Q8_0_SELECTED_WMMA_DOWN": "0"}
+ARMS["base_plus_q8_selected_down_strict"] = {
+    **ARMS["all_numerics_strict"], **ARMS["q8_selected_down_strict"],
+}
 OUTLIER = "heldout_general_ja_speculative"
 
 

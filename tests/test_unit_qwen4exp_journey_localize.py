@@ -14,6 +14,15 @@ def test_localization_disables_only_named_families():
             assert ARMS["all_numerics_strict"][key] == "0"
 
 
+def test_selected_down_control_is_a_single_numerical_override():
+    assert ARMS["q8_selected_down_strict"] == {
+        PREFIX + "Q8_0_SELECTED_WMMA_DOWN": "0",
+    }
+    assert ARMS["base_plus_q8_selected_down_strict"] == {
+        **ARMS["all_numerics_strict"], PREFIX + "Q8_0_SELECTED_WMMA_DOWN": "0",
+    }
+
+
 def test_localization_outlier_is_a_real_heldout_not_a_performance_prompt():
     rows = _load_suites(DEFAULT_PROMPTS)
     matches = [r for r in rows if r["id"] == OUTLIER]
