@@ -17,7 +17,8 @@ import numpy as np
 from hipengine.quant.gguf import QK_K, unpack_q4_k_scale_min
 from hipengine.quant.registry import register_quant
 from hipengine.quant.gguf_repack import (
-    GGUFRepackShape, Q5_K_T16_SHAPE, Q6_K_T16_SHAPE, Q8_0_T16_SHAPE,
+    GGUFRepackShape, IQ4_XS_T16_SHAPE, Q5_K_T16_SHAPE, Q6_K_T16_SHAPE,
+    Q8_0_T16_SHAPE,
 )
 
 GGUF_T16_COLS = 16
@@ -77,6 +78,27 @@ GGUF_Q8_0_QK = 32
 GGUF_Q8_0_T16_D_OFFSET = 0
 GGUF_Q8_0_T16_Q_OFFSET = GGUF_Q8_0_T16_D_OFFSET + GGUF_T16_COLS * 2
 GGUF_Q8_0_T16_BLOCK_BYTES = GGUF_Q8_0_T16_Q_OFFSET + GGUF_Q8_0_QK * GGUF_T16_COLS
+
+# IQ4_XS T16. The raw 136-byte block is d (f16), scales_h (u16, 2 bits per
+# 32-element group), scales_l (4 bytes, one nibble per group) and 128 bytes of
+# qs, where group g's 16 bytes hold element e = nibble*16 + byte. The tile
+# keeps d, scales_h and scales_l as per-column records and transposes the qs
+# plane to [group][element][column pair], so one u32 read at a fixed element
+# yields eight columns' nibbles instead of one column's eight elements. Every
+# byte is preserved exactly once, so the layout is byte-neutral:
+# 2176 bytes == 16 * 136, i.e. no resident-footprint growth over raw.
+GGUF_IQ4_XS_BLOCK_BYTES = 136
+GGUF_IQ4_XS_GROUPS = 8
+GGUF_IQ4_XS_GROUP = 32
+GGUF_IQ4_XS_T16_D_OFFSET = 0
+GGUF_IQ4_XS_T16_SCALES_H_OFFSET = GGUF_IQ4_XS_T16_D_OFFSET + GGUF_T16_COLS * 2
+GGUF_IQ4_XS_T16_SCALES_L_OFFSET = GGUF_IQ4_XS_T16_SCALES_H_OFFSET + GGUF_T16_COLS * 2
+GGUF_IQ4_XS_T16_QS_OFFSET = GGUF_IQ4_XS_T16_SCALES_L_OFFSET + GGUF_T16_COLS * 4
+GGUF_IQ4_XS_T16_QS_BYTES = (
+    GGUF_IQ4_XS_GROUPS * GGUF_IQ4_XS_GROUP * (GGUF_T16_COLS // 2)
+)
+GGUF_IQ4_XS_T16_BLOCK_BYTES = GGUF_IQ4_XS_T16_QS_OFFSET + GGUF_IQ4_XS_T16_QS_BYTES
+assert GGUF_IQ4_XS_T16_BLOCK_BYTES == GGUF_T16_COLS * GGUF_IQ4_XS_BLOCK_BYTES
 
 
 @dataclass(frozen=True)
@@ -222,6 +244,26 @@ class GGUFQ80Tile16:
     @property
     def blocks_per_row(self) -> int:
         return self.in_features // GGUF_Q8_0_QK
+
+
+@dataclass(frozen=True)
+class GGUFIQ4XSTile16:
+    """Tile-major IQ4_XS dense replacement layout.
+
+    ``tiles`` has shape ``[out_tiles16, blocks_per_row, 2176]``.
+    """
+
+    tiles: np.ndarray
+    out_features: int
+    in_features: int
+
+    @property
+    def out_tiles(self) -> int:
+        return self.out_features // GGUF_T16_COLS
+
+    @property
+    def blocks_per_row(self) -> int:
+        return self.in_features // QK_K
 
 
 GGUF_Q5_K_T16_V1 = register_quant(GGUFQ5KT16Quant())
@@ -1063,6 +1105,126 @@ def unpack_gguf_q8_0_tile16(packed: GGUFQ80Tile16 | np.ndarray, *, out_features:
     return blocks.reshape(inferred_out, blocks_per_row * GGUF_Q8_0_BLOCK_BYTES)
 
 
+def repack_gguf_iq4_xs_tile16(raw_qweight: Any) -> GGUFIQ4XSTile16:
+    """Repack rank-2 raw GGUF IQ4_XS weights into bit-lossless IQ4_XS T16 tiles."""
+
+    raw, out_features, _bytes_per_row, blocks_per_row = _as_dense_raw(
+        raw_qweight,
+        shape=IQ4_XS_T16_SHAPE,
+    )
+    out_tiles = out_features // GGUF_T16_COLS
+    blocks = raw.reshape(out_features, blocks_per_row, GGUF_IQ4_XS_BLOCK_BYTES)
+    tiles = np.empty(
+        (out_tiles, blocks_per_row, GGUF_IQ4_XS_T16_BLOCK_BYTES), dtype=np.uint8
+    )
+
+    for out_tile in range(out_tiles):
+        cols = blocks[out_tile * GGUF_T16_COLS : (out_tile + 1) * GGUF_T16_COLS]
+        dst = tiles[out_tile]
+        dst[:, GGUF_IQ4_XS_T16_D_OFFSET:GGUF_IQ4_XS_T16_SCALES_H_OFFSET] = (
+            cols[:, :, 0:2].transpose(1, 0, 2).reshape(blocks_per_row, GGUF_T16_COLS * 2)
+        )
+        dst[:, GGUF_IQ4_XS_T16_SCALES_H_OFFSET:GGUF_IQ4_XS_T16_SCALES_L_OFFSET] = (
+            cols[:, :, 2:4].transpose(1, 0, 2).reshape(blocks_per_row, GGUF_T16_COLS * 2)
+        )
+        dst[:, GGUF_IQ4_XS_T16_SCALES_L_OFFSET:GGUF_IQ4_XS_T16_QS_OFFSET] = (
+            cols[:, :, 4:8].transpose(1, 0, 2).reshape(blocks_per_row, GGUF_T16_COLS * 4)
+        )
+        # (column, block, group, byte) -> one nibble per (group, element)
+        qs = cols[:, :, 8:GGUF_IQ4_XS_BLOCK_BYTES].reshape(
+            GGUF_T16_COLS, blocks_per_row, GGUF_IQ4_XS_GROUPS, GGUF_IQ4_XS_GROUP // 2
+        )
+        packed = np.empty(
+            (blocks_per_row, GGUF_IQ4_XS_GROUPS, GGUF_IQ4_XS_GROUP, GGUF_T16_COLS // 2),
+            dtype=np.uint8,
+        )
+        for half, nibbles in ((0, qs & np.uint8(0x0F)), (1, qs >> np.uint8(4))):
+            by_column = nibbles.transpose(1, 2, 3, 0)  # (block, group, byte, column)
+            packed[
+                :,
+                :,
+                half * (GGUF_IQ4_XS_GROUP // 2) : (half + 1) * (GGUF_IQ4_XS_GROUP // 2),
+                :,
+            ] = (by_column[..., 0::2] & np.uint8(0x0F)) | (
+                (by_column[..., 1::2] & np.uint8(0x0F)) << np.uint8(4)
+            )
+        dst[:, GGUF_IQ4_XS_T16_QS_OFFSET:] = packed.reshape(
+            blocks_per_row, GGUF_IQ4_XS_T16_QS_BYTES
+        )
+
+    return GGUFIQ4XSTile16(
+        tiles=tiles,
+        out_features=out_features,
+        in_features=blocks_per_row * QK_K,
+    )
+
+
+def unpack_gguf_iq4_xs_tile16(
+    packed: GGUFIQ4XSTile16 | np.ndarray, *, out_features: int | None = None
+) -> np.ndarray:
+    """Reconstruct raw GGUF IQ4_XS dense bytes from IQ4_XS T16 tiles."""
+
+    if isinstance(packed, GGUFIQ4XSTile16):
+        tiles = np.asarray(packed.tiles, dtype=np.uint8)
+        expected_out = packed.out_features
+    else:
+        tiles = np.asarray(packed, dtype=np.uint8)
+        expected_out = out_features
+    if tiles.ndim != 3 or tiles.shape[-1] != GGUF_IQ4_XS_T16_BLOCK_BYTES:
+        raise ValueError("tiles must have shape [out_tiles16, blocks_per_row, 2176]")
+    out_tiles, blocks_per_row = int(tiles.shape[0]), int(tiles.shape[1])
+    inferred_out = out_tiles * GGUF_T16_COLS
+    if expected_out is not None and int(expected_out) != inferred_out:
+        raise ValueError(
+            f"out_features mismatch: expected {expected_out}, tile layout implies {inferred_out}"
+        )
+
+    blocks = np.empty(
+        (inferred_out, blocks_per_row, GGUF_IQ4_XS_BLOCK_BYTES), dtype=np.uint8
+    )
+    for out_tile in range(out_tiles):
+        src = tiles[out_tile]
+        cols = blocks[out_tile * GGUF_T16_COLS : (out_tile + 1) * GGUF_T16_COLS]
+        cols[:, :, 0:2] = src[
+            :, GGUF_IQ4_XS_T16_D_OFFSET:GGUF_IQ4_XS_T16_SCALES_H_OFFSET
+        ].reshape(blocks_per_row, GGUF_T16_COLS, 2).transpose(1, 0, 2)
+        cols[:, :, 2:4] = src[
+            :, GGUF_IQ4_XS_T16_SCALES_H_OFFSET:GGUF_IQ4_XS_T16_SCALES_L_OFFSET
+        ].reshape(blocks_per_row, GGUF_T16_COLS, 2).transpose(1, 0, 2)
+        cols[:, :, 4:8] = src[
+            :, GGUF_IQ4_XS_T16_SCALES_L_OFFSET:GGUF_IQ4_XS_T16_QS_OFFSET
+        ].reshape(blocks_per_row, GGUF_T16_COLS, 4).transpose(1, 0, 2)
+        tiled = src[:, GGUF_IQ4_XS_T16_QS_OFFSET:].reshape(
+            blocks_per_row, GGUF_IQ4_XS_GROUPS, GGUF_IQ4_XS_GROUP, GGUF_T16_COLS // 2
+        )
+        # One raw byte holds element `byte` in its low nibble and element
+        # `byte + 16` in its high nibble, so each tile half restores one nibble.
+        qs = np.zeros(
+            (GGUF_T16_COLS, blocks_per_row, GGUF_IQ4_XS_GROUPS, GGUF_IQ4_XS_GROUP // 2),
+            dtype=np.uint8,
+        )
+        for half in (0, 1):
+            lo = half * (GGUF_IQ4_XS_GROUP // 2)
+            window = tiled[:, :, lo : lo + GGUF_IQ4_XS_GROUP // 2, :]
+            by_column = np.empty(
+                (
+                    blocks_per_row,
+                    GGUF_IQ4_XS_GROUPS,
+                    GGUF_IQ4_XS_GROUP // 2,
+                    GGUF_T16_COLS,
+                ),
+                dtype=np.uint8,
+            )
+            by_column[..., 0::2] = window & np.uint8(0x0F)
+            by_column[..., 1::2] = (window >> np.uint8(4)) & np.uint8(0x0F)
+            qs |= by_column.transpose(3, 0, 1, 2) << np.uint8(4 * half)
+        cols[:, :, 8:GGUF_IQ4_XS_BLOCK_BYTES] = qs.reshape(
+            GGUF_T16_COLS, blocks_per_row, GGUF_IQ4_XS_BLOCK_BYTES - 8
+        )
+
+    return blocks.reshape(inferred_out, blocks_per_row * GGUF_IQ4_XS_BLOCK_BYTES)
+
+
 __all__ = [
     "GGUF_Q5_K_BLOCK_BYTES",
     "GGUF_Q5_K_QMICRO_T16_BLOCK_BYTES",
@@ -1080,6 +1242,15 @@ __all__ = [
     "GGUF_Q6_K_T16_QMICRO_PLANAR_V1",
     "GGUF_Q6_K_T16_QMICRO_RECORD_BYTES",
     "GGUF_Q6_K_T16_V1",
+    "GGUF_IQ4_XS_BLOCK_BYTES",
+    "GGUF_IQ4_XS_T16_BLOCK_BYTES",
+    "GGUF_IQ4_XS_T16_D_OFFSET",
+    "GGUF_IQ4_XS_T16_QS_OFFSET",
+    "GGUF_IQ4_XS_T16_SCALES_H_OFFSET",
+    "GGUF_IQ4_XS_T16_SCALES_L_OFFSET",
+    "GGUFIQ4XSTile16",
+    "repack_gguf_iq4_xs_tile16",
+    "unpack_gguf_iq4_xs_tile16",
     "GGUF_Q8_0_BLOCK_BYTES",
     "GGUF_Q8_0_T16_BLOCK_BYTES",
     "GGUF_Q8_0_T16_V1",
