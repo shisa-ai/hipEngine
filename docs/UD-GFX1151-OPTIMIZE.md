@@ -1,26 +1,32 @@
-# UD gfx1151 Optimization Plan
+# UD RX 7900 XTX (gfx1100) Optimization Plan
 
 Last updated: 2026-09-13.
 
 This is the active optimization and certification handoff for the published
 Qwen3.8-27B Unsloth Dynamic `Q4_K_M` and `Q4_K_S` artifacts on the active
-gfx1151 lane: the RX 7900 XTX in physical GPU1. It starts from the valid
+gfx1100 lane: host `epyc`, RX 7900 XTX in physical GPU1. The filename is kept
+for existing links; it does not identify the measured backend. No gfx1151
+qualification follows from this campaign. It starts from the valid
 graph-replay paired measurement and tracks absolute throughput as well as
 relative parity. A ratio improvement is not sufficient if both paths get
 slower; an absolute improvement is not sufficient if it makes UD MTP
 economically unattractive.
 
-**Status:** phases 0-7 are closed. Both tiers are promoted within width c1 and
-the 4-95 token context bucket, and automatic MTP admission is live there for
-both artifacts. The retained paired result, re-measured on a clean worktree at
+**Status:** the c1 optimization and admission implementation is landed, but
+the broader coverage checklist is not complete and this document is not a
+merge-readiness certificate. Automatic MTP admission is implemented for both
+artifacts at resident capacity 1, width c1, context 4-95, greedy sampling,
+B3, and output horizon exactly 24 tokens. The current paired result,
+re-measured on a clean worktree at
 `92c7e3dc4`, is `UD-Q4_K_M` MTP **50.231** tok/s at **1.5258x** over its own AR
 and `UD-Q4_K_S` **49.356** at **1.5275x**
 (`benchmarks/results/2026-09-13-ud-gfx1100-paired-clean-provenance.json`). The
 `Q4_K_M` arms carry `speed_claim_eligible: true`; the `Q4_K_S` arms carry the
 recorded `general_ja_plan` exactness divergence and are published as measured
-rates rather than as eligible speed claims. The 16 unchecked items below are
-follow-on work with recorded blockers, not unfinished phases; each names what
-is missing.
+rates rather than as eligible speed claims. Runtime admission, numerical
+qualification, generated-ID equality, and speed-claim eligibility are separate
+statuses. Open coverage and K_S eligibility work remain below; this cleanup
+does not change runtime policy or waive any gate.
 
 ## References
 
@@ -51,7 +57,8 @@ is missing.
 - [Benchmark changelog](../benchmarks/CHANGELOG.md)
 - [U6 certification artifact](../benchmarks/results/ud-mtp-certification-u6.json)
 - [K_S near-tie localization](../benchmarks/results/ud-mtp-ks-near-tie-localization.json)
-- [Latest paired-run worklog](../worklog/entries/20260911T214114.050532Z-lhl-publish-graph-baseline-ud-mtp-parity-62f377.md)
+- [Clean-provenance claims audit](../worklog/entries/20260913T114312.816781Z-lhl-ud-claim-evidence-audit-c22a97.md)
+- [Original paired-run worklog](../worklog/entries/20260911T214114.050532Z-lhl-publish-graph-baseline-ud-mtp-parity-62f377.md)
 - [U6 certification worklog](../worklog/entries/20260911T162055.348538Z-lhl-ud-mtp-certification-u6-unit-564c7d.md)
 - [Published UD campaign](QWEN38-UD-Q4KM-GFX11-CAMPAIGN.md)
 
@@ -67,7 +74,7 @@ is missing.
 
 ## 1. Objective
 
-Close the UD/plain performance gap on gfx1151 while preserving the
+Close the UD/plain performance gap on the GPU1 gfx1100 lane while preserving the
 artifact-qualified correctness and admission contracts.
 
 The primary objective is:
@@ -90,10 +97,12 @@ throughput:
 No optimization is retained from a single prompt, fixed token sequence,
 candidate-specific branch, or verifier-only denominator.
 
-## 2. Current Starting Point
+## 2. Historical Starting Point (2026-09-11)
 
 The following is the valid GPU1 / RX 7900 XTX baseline from the paired
-graph-replay artifact. Rates are tokens per second.
+graph-replay artifact at campaign start. Rates are tokens per second.
+These tables and their interpretation describe that snapshot, not current
+admission or performance; section 4, Phase 6 contains the current result.
 
 ### Absolute throughput
 
@@ -118,7 +127,7 @@ graph-replay artifact. Rates are tokens per second.
   `0.944x` K_S parity; it is not the first optimization target.
 - The largest deficit is MTP target verification, not the repaired AR host
   denominator.
-- Both UD MTP admission pins remain empty.
+- Both UD MTP admission pins were empty at this snapshot; they are now populated.
 
 Every future result must report the equivalent absolute and ratio fields. A
 ratio-only table is insufficient.
@@ -246,9 +255,7 @@ Measure each classification with the same tensor and resident where possible:
 | Measurement | Required values |
 | --- | --- |
 | Prefill M | representative retained prefill M values. Rows 1-128 were swept. |
-| Verifier rows | 2, 4, 8, 12, 16, 28, and 32 where supported. The production
-  verifier is capped at four rows, so 2 and 4 are the verifier shapes; 8-32
-  are the prefill crossover. |
+| Verifier rows | The Phase 2 sweep used verifier rows 2/4 and prefill crossover rows 8-32. Phase 5 subsequently lifted the native wrapper cap to rows 2-8; that does not qualify serving widths c2-c8. |
 | Physical decomposition | actual row tiles and remainder launches. The strict
   GEMV does not retile by row; it decodes once per output block. |
 | Kernel family | selected registry key and kernel name. Recorded per family. |
@@ -266,8 +273,9 @@ evidence:
 - [x] Q6 lm-head and other wide-Q6 verifier sweeps. Direct transfer
   (`q6_k_t16_qmicro_planar_gemv_rowtile_col8`).
 - [x] Q5 `ssm_out` and selected-expert/direct Q5 consumers. The Q5_K
-  gate/up dual already runs the WMMA prefill kernel at verifier rows and is
-  the cheapest gate/up arm measured. The selected/direct tail
+  gate/up dual was initially classified as the cheapest arm, but that comparison
+  used unequal tensor counts. Phase 4's corrected same-work measurement selects
+  rowtile singles below a full WMMA row tile. The selected/direct tail
   (`qk_t16_selected_direct_gemv`, 0.6% of kernel time) is classified from the
   census, not re-measured.
 - [x] Q4/IQ gate-up and SiLU paths. Direct transfer.
@@ -364,11 +372,14 @@ verification. This separates arithmetic drift from control and batching bugs.
   `ud_mtp_ar_verify_numerics_gate.py --prompt-tokens 4096
   --max-sequence-length 8192 --require-native-graph` aborts with
   `NativeSpecTargetGraphUnsupportedError: target_graph_context_bucket_miss`
-  before producing any rows. This is the same split the item above records
-  for the 512-token arms, which already run the eager multi-row verifier, so
-  4096 must run eager too. The eager 4096 arm is the one to run; the graph
-  arm is not merely missing, it is out of the captured envelope by
-  construction.
+  before producing any rows. An eager run at 4096 exercises the RF1
+  scalar-equivalent fallback described in Phase 5, not the accelerated
+  multi-row path. Its completion or zero KL cannot close accelerated
+  long-context qualification. Before another expensive run, capture a short
+  path-identification trace and declare whether the test covers fallback
+  correctness or a new accelerated candidate. Checkpointed shards may bound
+  runtime, but must preserve all prompt/budget/repeat identities and reject
+  incomplete aggregates; scheduling changes alone do not extend coverage.
 - [ ] Cover Q8 alpha/beta recurrent transitions. Not isolated as its own
   scope; the prompt set exercises them implicitly.
 - [x] Cover full attention and mixed FFN gate/up pairs. The four categories
@@ -377,21 +388,20 @@ verification. This separates arithmetic drift from control and batching bugs.
   logits are the gate's comparison surface; the serving path here is greedy.
 - [x] Repeat under eager and graph replay. The 64-token arms use the captured
   native graph; the 512-token arms use the eager multi-row verifier.
-- [x] Check deterministic replay and batch-composition invariance. **Closed
-  2026-09-13 on the width census.** Deterministic replay passes: every retained
-  paired arm is generated-ID exact across two deterministic fresh-process
-  repeats, and the section-6.1 gate is bit-reproducible (two deterministic
-  repeats, `deterministic=True`). Batch composition is measured at every width
-  cell that exists rather than assumed.
+- [ ] Complete batch-composition invariance coverage. Deterministic replay
+  passes in the clean paired artifact for all four arms, but determinism does
+  not mean AR/MTP generated-ID equality: both K_S arms diverge on two rows.
+  The section-6.1 gate records deterministic numerical repeats.
+  The width census supplies bounded generated-ID evidence:
   `benchmarks/results/2026-09-12-ud-gfx1100-mtp-width-cells.json`
   (`scripts/gguf_mtp_c1c8_server_bench.py`, server `/v1/completions`
   barrier-to-last-completion, the canonical ten prompts, `max_tokens` 24,
   `correctness_contract: ar_exact`) records c1 K3 and c2 K2 each at
   `cells: 10`, `exact_cells: 10`, `engaged_cells: 10`,
   `budget_conformed_cells: 10`, `route_expectation_passed: true`. So the
-  two-request batched path is bit-exact against the single-request AR route at
-  every one of its ten cells, which is the batch-composition check. The
-  remaining cells are structurally unavailable, not unattempted, and the
+  two-request batched path passes the reported `ar_exact` comparisons in those
+  ten cells. This does not replace full-logit neighbor-replacement,
+  permutation, or width-transition isolation tests. The
   artifact says so in `not_measured`: c4 K3 because c4 is not in
   `GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS['production']`
   (`((1,2),(1,3),(2,2),(8,3))`) and therefore has no physical kernel cell to
@@ -415,9 +425,11 @@ magnitude of margin, at a short root and at a 512-token root:
 | UD-Q4_K_S | 162 | 512 | eager multi-row | 1.03e-05 | 6.65e-05 | 8.27e-05 | 1.07e-04 | 100% |
 
 Top-1 is 100% in every category and both repeats of every arm are
-bit-identical. The K_S generated-ID near-ties are therefore **permitted
-production drift**, not a batch-composition failure: at identical contexts the
-verifier reproduces the AR logits to max row KL 1.07e-04. Also recorded:
+bit-identical in this dated packet. It supports numerical qualification for
+that stack and those shapes; it is not proof of general batch-composition
+invariance or eligibility for every later build. The current clean K_S
+free-running result and its unresolved eligibility status are in Phase 6.
+Also recorded:
 gfx1100 caps the captured native target graph at position 95
 (`GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT`), so a 512-token root takes
 the eager multi-row verifier rather than a serial route. The residual KL is the
@@ -434,6 +446,11 @@ implementation.
 
 Likely investigation order:
 
+The dated per-candidate rates below are historical diagnostics, not current
+eligible per-lever speed claims. Several were captured on dirty worktrees or
+without per-arm provenance, as documented by the clean-provenance claims audit.
+Phase 6 and the final scorecard rows are the current paired comparison.
+
 - [x] Multi-row target verifier launch and row packing. Done 2026-09-12: the
   local32 IQ decode family gained a `ROWS` template parameter and a rows 2-4
   verifier sibling. Each row is bit-identical to the rows == 1 owner's output
@@ -444,7 +461,7 @@ Likely investigation order:
   dense-IQ execution-owner session: without it every raw-IQ verifier
   projection kept the strict GEMV. End to end, UD MTP B3 rose 35.54 -> 43.83
   (K_M) and 33.06 -> 44.46 (K_S) tok/s on the same host and protocol, and both
-  UD arms are now generated-ID exact. See
+  UD arms were generated-ID exact in that run, not in every subsequent build. See
   `benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-phase4.json` and
   `benchmarks/results/2026-09-12-ud-gfx1100-phase4-*.json`.
 - [x] UD Q5 selected-expert path. Closed 2026-09-12 on the post-rows
@@ -899,22 +916,21 @@ Before automatic MTP admission, complete the U6 envelope:
   width cell, and c8 runs out of memory at capacity 8 on the default GPU. Ragged
   and sparse rows, permutations, delayed arrivals, neighbor replacement,
   cancellation, reclaim, and width transitions remain unmeasured.
-- [x] Exact speculative accept/reject commit and rollback. **Closed
-  2026-09-13 on the control item's own contract plus the width census.** The U6
+- [ ] Complete explicit accept/reject commit-and-rollback coverage. The U6
   control item `exact_ar_mtp_control_behavior` is qualified on both UD records,
   and its contract in `hipengine/loading/qwen35_gguf_admission.py` is exactly
   this concern: "accepted-token accounting and speculative transaction
   accounting are exact, GPU and CPU acceptance agree, and repeats are
-  deterministic." A speculative transaction that is rejected rolls back, so
-  transaction accounting exactness is the commit-and-rollback property rather
-  than something adjacent to it, and it is qualified on `ud-q4-k-m` and
-  `ud-q4-k-s` alike. The residual phrase "at width" is answered by the width
-  census: c1 is the only production width, c2 K2 holds `ar_exact` with 10 of 10
+  deterministic." This establishes the recorded accounting contract; the
+  contract text alone does not demonstrate rejected-state restoration for
+  every lifecycle scenario. The width census adds bounded evidence:
+  c1 is the admitted width, c2 K2 holds `ar_exact` with 10 of 10
   exact, engaged and budget-conformed cells, c4 is not in
   `GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS['production']` and so has no physical
   cell, and c8 fails every request with `HIP error 2: out of memory` at capacity
-  8. So the production rollback path is measured at every width that exists, and
-  the widths that are not measured do not exist rather than being untested.
+  8. The c8 cell exists but was not successfully exercised; OOM is not a
+  rollback correctness pass. Explicit rejection/state-restoration and
+  lifecycle coverage remain to be mapped to tests before closing this item.
   Evidence: `benchmarks/results/2026-09-12-ud-gfx1100-mtp-width-cells.json`,
   `benchmarks/results/ud-mtp-certification-u6.json`,
   `tests/test_ud_mtp_certification.py`.
@@ -980,8 +996,9 @@ c1 and the 4-95 token context bucket. Evidence:
 **Result (2026-09-12, physical GPU1 / RX 7900 XTX / gfx1100).** Two units are
 closed, and the scope item is now closed on measurement rather than left open.
 
-U6 item 5 is qualified on both UD records, so the unit's only open item is the
-declared backend/profile/context/width scope. The evidence is the
+At that intermediate snapshot, U6 item 5 was qualified on both UD records and
+the remaining record item was the backend/profile/context/width scope, which
+was subsequently populated. The evidence was the
 teacher-forced section-6.1 gate: all four arms pass with top-1 1.0000 in every
 category and at every budget, worst row-mean KL 4.23e-05 against the 1e-03
 envelope, and a fresh-process reproduction matches all sixteen arm numbers to
@@ -1018,8 +1035,9 @@ c4 is not in `GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS["production"]`
 (`((1,2),(1,3),(2,2),(8,3))`), so it has no physical kernel cell to qualify. c8
 K3 is policy-admitted but fails every request with `HIP error 2: out of memory`
 at capacity 8 on the 25.75 GB default GPU against the 16.46 GB artifact. Both
-measured cells hold `ar_exact`, so c2 is correct but not useful: two requests in
-flight nearly double the server path's own AR rate while MTP barely moves. Those
+measured cells hold `ar_exact`; c2 shows a small positive 1.0418x ratio in that
+diagnostic, not a zero or negative gain. It does not establish the complete
+numerical/lifecycle envelope or automatic c2 eligibility. Those
 are server-path diagnostic rates and do not replace the retained paired rates.
 
 MTP serving is also capped at 1023 context, and that cap is real rather than
@@ -1041,40 +1059,50 @@ Evidence:
 `worklog/entries/20260912T214335.416137Z-lhl-ud-mtp-width-cells-8e85ce.md`,
 `benchmarks/results/2026-09-12-ud-gfx1100-mtp-width-cells.json`.
 
-### Phase 6: Re-run the complete paired economics gate
+### Phase 6: Current paired economics and remaining coverage
 
 Run the final paired protocol for each tier and candidate:
 
 - [x] True no-MTP UD AR graph-replay baseline.
-- [x] UD MTP budgets including B3 and the declared positive budgets.
+- [x] UD MTP B3. This paired artifact measures B3 only.
 - [x] Plain AR and plain MTP controls under the same protocol.
 - [x] Full four-category prompt suite.
-- [x] Category-heldouts.
-- [x] Required context and width points.
+- [x] The canonical ten-prompt fixture, including its benchmark heldout split.
+- [ ] Additional certification heldouts, budgets and width/context points on
+  the final stack. Earlier numerical packets are separate evidence, not rows
+  in this paired result.
 - [x] Two or more deterministic fresh-process repeats.
-- [x] GPU/CPU acceptance and lifecycle accounting.
+- [x] GPU/CPU acceptance agreement. Broader lifecycle coverage is tracked in
+  Phase 5 and is not inferred from this acceptance predicate.
 
-Run on 2026-09-13 on physical GPU1 (RX 7900 XTX, gfx1100) with the U6 pin
-complete, so this is retained admission evidence rather than the in-process
-grant the Phase 4 run needed. c1 / natural25 / B3, ten prompts, two repeats,
-recorded production graph replay for the true-AR arm:
+Run on 2026-09-13 on host `epyc`, physical GPU1 (RX 7900 XTX, gfx1100), at
+clean commit `92c7e3dc45aba24e46d6e1aab8a22df032dda629`. The artifact records
+model paths, quant identities, exact per-arm commands and the protocol:
+c1 / natural25 / B3, ten prompts, two repeats, recorded production graph
+replay for the true-AR arm. Rates are tok/s:
 
 | Tier | UD AR | Plain AR | UD / plain AR | UD MTP B3 | Plain MTP B3 | UD / plain MTP | UD MTP / AR |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| `UD-Q4_K_M` | 31.909 | 37.201 | 0.858x | 46.192 | 63.153 | 0.731x | **1.4476x** |
-| `UD-Q4_K_S` | 31.313 | 39.706 | 0.789x | 47.023 | 66.437 | 0.708x | **1.5017x** |
+| `UD-Q4_K_M` | 32.922 | 38.373 | 0.858x | 50.231 | 65.347 | 0.769x | **1.5258x** |
+| `UD-Q4_K_S` | 32.311 | 41.135 | 0.785x | 49.356 | 70.092 | 0.704x | 1.5275x |
 
-All four arms are `complete_exact`, generated-ID exact across two deterministic
-repeats, GPU/CPU acceptance agreement, `timing_evidence_valid`, and have a
-positive MTP/AR ratio. The context and width points are the declared scope: c1
-is the only width with a positive measured ratio (c2 is 1.0418x, c4 is not a
-policy cell, c8 runs out of memory), and the served context bucket is 4-95
-tokens with the adapter cap at 1023. Those points are recorded in the Phase 5
-census artifacts rather than re-measured here, because the paired protocol is
-pinned to the natural-25 shape that produced the retained ratio.
+All four arms have clean provenance, deterministic repeats, GPU/CPU acceptance
+agreement, `binding_passed: true` and `timing_evidence_valid: true`.
+Both K_M arms are `complete_exact` and `speed_claim_eligible: true`.
+Both K_S arms record `general_ja_plan#run0` and `#run1` divergences (2/20),
+`suite_status: correctness_failed` and `speed_claim_eligible: false`.
+K_S rates and ratios are diagnostic measurements, not eligible speed claims.
+Production permits some near-tie ID drift, but that does not silently override
+the suite's eligibility field; its reconciliation requires an explicit,
+evidence-backed decision on the current stack.
+
+This run does not remeasure c2/c4/c8 or long context. The earlier c2 census
+has a positive 1.0418x ratio on a different server timing protocol; it does not
+authorize a c2 speed claim here. Automatic admission remains narrower than the
+1023 adapter cap: c1/capacity1, context 4-95, greedy, B3, D24.
 
 Evidence:
-`benchmarks/results/2026-09-13-ud-gfx1100-iq-dense-strict-row-slab-cover.json`,
+`benchmarks/results/2026-09-13-ud-gfx1100-paired-clean-provenance.json`,
 `benchmarks/results/2026-09-12-ud-gfx1100-mtp-width-cells.json`.
 
 Required result fields:
@@ -1098,15 +1126,20 @@ Promote a tier only when:
 - [x] `UD MTP / UD AR > 1.0x` on the complete declared suite.
 - [x] The production teacher-forced gate passes.
 - [x] Control-plane acceptance and deterministic repeat gates pass.
-- [x] Width, context, lifecycle, and heldout coverage are complete.
+- [ ] Complete the broader width/context/lifecycle/heldout envelope; see
+  Phases 3, 5 and 6. Do not infer it from the populated admission record.
+- [ ] Resolve K_S speed-claim eligibility against current-stack production
+  evidence. Both K_S arms in the clean run remain ineligible.
 - [x] The result is not prompt-conditioned or candidate-conditioned.
 - [x] The artifact, worklog, benchmark README, and changelog are updated.
 - [x] The certification record is complete and the derived U6 pin is populated.
 
-Both tiers are **promoted within the declared scope**: width c1 and the 4-95
-token context bucket. The promotion is the populated pin plus the serving
-evidence rows, so automatic MTP admission is live for `gguf_ud_q4_k_m` and
-`gguf_ud_q4_k_s` at that scope. It is not a blanket enablement: c2 measured
+Both tiers have **implemented automatic admission**, distinct from speed-claim
+eligibility: width c1, resident capacity 1, context 4-95, greedy, B3, D24.
+The populated pin plus serving evidence rows enable `gguf_ud_q4_k_m` and
+`gguf_ud_q4_k_s` there. K_M has an eligible clean paired speed claim; K_S does
+not. This documentation correction changes neither runtime admission nor the
+eligibility predicate. It is not a blanket enablement: c2 measured
 1.0418x, c4 has no production physical width cell, c8 fails with out-of-memory
 at capacity 8, and above 1023 the adapter refuses MTP while the verifier stops
 batching. A request outside the scope stays on the strict AR route.
@@ -1117,7 +1150,9 @@ within its already-qualified AR scope; MTP is not implicitly enabled.
 
 ## 5. Optimization Scorecard
 
-Use this table for every retained candidate. Add absolute values before ratios.
+The earlier rows are historical diagnostics and do not independently prove
+eligible per-lever speedups. The final two rows reproduce the clean artifact
+in Phase 6; only K_M is speed-claim eligible. Rates are tok/s.
 
 | Candidate | Tier | Scope | UD AR | UD MTP | Plain AR | Plain MTP | UD MTP/AR | UD/plain AR | UD/plain MTP | Result |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
@@ -1129,10 +1164,12 @@ Use this table for every retained candidate. Add absolute values before ratios.
 | Q5_K gate/up pair row gate | K_S | GPU1, c1, B3 | 31.358 | 46.990 | 39.690 | 66.318 | 1.4985x | 0.790x | 0.709x | Superseded |
 | Q8_0 attn_k/attn_v rowtile route | K_M | GPU1, c1, B3 | 31.909 | 46.192 | 37.201 | 63.153 | 1.4476x | 0.858x | 0.731x | Superseded |
 | Q8_0 attn_k/attn_v rowtile route | K_S | GPU1, c1, B3 | 31.313 | 47.023 | 39.706 | 66.437 | 1.5017x | 0.789x | 0.708x | Superseded |
-| Q5T16 single-wave verifier rowtile | K_M | GPU1, c1, B3 | 31.904 | 49.409 | 37.313 | 63.885 | **1.5487x** | 0.855x | **0.773x** | Promoted |
-| Q5T16 single-wave verifier rowtile | K_S | GPU1, c1, B3 | 30.428 | 46.955 | 39.774 | 66.709 | **1.5432x** | 0.765x | 0.704x | Promoted |
-| Strict dense IQ row slab covers the verifier rows | K_M | GPU1, c1, B3 | 31.913 | 49.408 | 37.283 | 63.997 | **1.5482x** | 0.856x | 0.772x | Promoted |
-| Strict dense IQ row slab covers the verifier rows | K_S | GPU1, c1, B3 | 31.303 | 48.548 | 39.815 | 66.344 | **1.5509x** | 0.786x | 0.732x | Promoted |
+| Q5T16 single-wave verifier rowtile | K_M | GPU1, c1, B3 | 31.904 | 49.409 | 37.313 | 63.885 | 1.5487x | 0.855x | 0.773x | Historical diagnostic |
+| Q5T16 single-wave verifier rowtile | K_S | GPU1, c1, B3 | 30.428 | 46.955 | 39.774 | 66.709 | 1.5432x | 0.765x | 0.704x | Historical diagnostic |
+| Strict dense IQ row slab covers the verifier rows | K_M | GPU1, c1, B3 | 31.913 | 49.408 | 37.283 | 63.997 | 1.5482x | 0.856x | 0.772x | Historical diagnostic |
+| Strict dense IQ row slab covers the verifier rows | K_S | GPU1, c1, B3 | 31.303 | 48.548 | 39.815 | 66.344 | 1.5509x | 0.786x | 0.732x | Historical diagnostic |
+| Clean final-stack paired run | K_M | GPU1, c1, B3 | 32.922 | 50.231 | 38.373 | 65.347 | **1.5258x** | 0.858x | 0.769x | Speed-claim eligible |
+| Clean final-stack paired run | K_S | GPU1, c1, B3 | 32.311 | 49.356 | 41.135 | 70.092 | 1.5275x | 0.785x | 0.704x | Diagnostic; ineligible |
 
 Interpret results in this order:
 
@@ -1170,19 +1207,33 @@ This plan is complete for a tier when the tier has:
 6. Synchronized benchmark rollup, changelog, result JSON, worklog entry, and
    commit.
 
-Both `UD-Q4_K_M` and `UD-Q4_K_S` meet all six within width c1 and the 4-95
-token context bucket, so UD MTP is an admitted production capability there.
+These remain completion requirements, not a statement that both tiers meet
+all six. The c1 automatic admission implementation is present for both tiers
+under the precise Phase 7 restrictions. The clean paired run establishes an
+eligible K_M speed claim; K_S eligibility and the broader coverage checklist
+remain open. Runtime scope must not be widened based on this document.
 
-Two items stay open and neither is a correctness gate on the promoted scope:
+Remaining work includes:
+
+- **K_S claim status.** Reconcile the production numerical evidence with the
+  current suite's `correctness_failed`/`speed_claim_eligible: false` result.
+  Do not relabel the two divergent rows as exact or waive the gate.
+- **Coverage.** Complete or explicitly scope out the open Phase 3/5 numerical,
+  isolation, lifecycle, alias/teardown and prefill-boundary items with evidence.
+- **Merge validation.** The latest claims-audit worklog records an outstanding
+  segfaulting test and a failing benchmark README line-budget check. This
+  documentation-only cleanup neither fixes those nor certifies merge readiness.
 
 - **Budget 4 is correct but uneconomical.** Rows 5 is the only newly reachable
   production shape and it costs 18.26 ms/row against 12.79 at rows 4, because
   the IQ family leaves the rows 2-4 sibling and reverts to
   `gguf_iq_dense_strict`. Extending the sibling's policy to rows 5-8 is the
-  follow-up that makes budget 4 worth using. The default `max_candidate_budget`
+  candidate follow-up; a fresh economics gate must establish whether budget 4
+  becomes worthwhile. The default `max_candidate_budget`
   stays 3.
-- **The width and long-context envelopes are structural, not untested.** c2
+- **Width and long-context expansion.** c2
   measured 1.0418x, c4 has no production physical cell, c8 runs out of memory
   at capacity 8, and beyond 1023 the adapter refuses MTP while the verifier
   stops batching. Widening any of them is a separate optimization unit with its
-  own evidence, not an unfinished gate here.
+  own evidence. Policy refusal, OOM, or a scalar fallback pass are not
+  substitutes for the missing accelerated-path numerical and lifecycle gates.
