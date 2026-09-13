@@ -77,6 +77,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
     gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared3r1_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out,
+    gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_gfx1100_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r3_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r6_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r9_bf16_bf16_out,
@@ -719,7 +720,9 @@ def gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1151_bf16_bf16_out(
 
     Rows17-144 use measured periodic low-VGPR/shared4 bands (bit-exact
     siblings; low-VGPR cuts 184 -> 88 VGPR). Rows145-255 keep plain, and the
-    six physical shapes use shared4 from row256. Shape misses keep plain.
+    six physical shapes use shared4 from row256, except the wide down shape,
+    whose rows288+ bands follow its own 256-4096 row screen. Shape misses
+    keep plain.
     """
 
     row_count = int(rows)
@@ -734,6 +737,17 @@ def gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1151_bf16_bf16_out(
         <= GGUF_Q6_PLANAR_PREFILL_SHARED4R6_MAX_ROWS_BY_SHAPE.get(shape, -1)
     ):
         fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r6_bf16_bf16_out
+    elif (
+        GGUF_Q6_PLANAR_PREFILL_SHARED4R4_MIN_ROWS <= row_count
+        <= GGUF_Q6_PLANAR_PREFILL_SHARED4R4_MAX_ROWS
+        and shape in GGUF_Q6_PLANAR_PREFILL_SHARED4R4_SHAPES
+    ):
+        fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r4_bf16_bf16_out
+    elif (
+        row_count >= GGUF_Q6_PLANAR_PREFILL_SHARED4_GFX1100_MIN_ROWS
+        and shape in GGUF_Q6_PLANAR_PREFILL_SHARED4_GFX1100_SHAPES
+    ):
+        fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_gfx1100_bf16_bf16_out
     elif (
         GGUF_Q6_PREFILL_SHARED3R1_MIN_ROWS <= row_count
         <= GGUF_Q6_PREFILL_SHARED3R1_MAX_ROWS
@@ -2135,11 +2149,22 @@ GGUF_Q6_PLANAR_PREFILL_SHARED4R9_ROWS = 536
 GGUF_Q6_PLANAR_PREFILL_SHARED4R9_SHAPE = (17_408, 5_120)
 GGUF_Q6_PLANAR_PREFILL_SHARED4R6_MIN_ROWS = 288
 GGUF_Q6_PLANAR_PREFILL_SHARED4R6_MAX_ROWS_BY_SHAPE = {
-    (17_408, 5_120): 1_024,
     (5_120, 1_024): 536,
 }
+# The 2026-09-13 wide-down row screen (rows 256-4096, bit-exact to the plain
+# parent at every screened row) supersedes the rows256/384/480/536 screen for
+# (17_408, 5_120): the 4x4 shared tile owns rows288-1024 and the 48-column
+# four-wave tile owns rows1025 and above. The 32-row shared4 owner that shape
+# previously used from row256 is 1.4-1.7x slower inside the band and 2.4x
+# slower above it. Evidence:
+# scripts/qwen38_q6_planar_prefill_large_row_screen.py and
+# benchmarks/results/2026-09-13-q6-planar-prefill-large-row-screen.json
+GGUF_Q6_PLANAR_PREFILL_SHARED4R4_MIN_ROWS = 288
+GGUF_Q6_PLANAR_PREFILL_SHARED4R4_MAX_ROWS = 1_024
 GGUF_Q6_PLANAR_PREFILL_SHARED4R4_ROWS = 256
 GGUF_Q6_PLANAR_PREFILL_SHARED4R4_SHAPES = frozenset({(17_408, 5_120)})
+GGUF_Q6_PLANAR_PREFILL_SHARED4_GFX1100_MIN_ROWS = 1_025
+GGUF_Q6_PLANAR_PREFILL_SHARED4_GFX1100_SHAPES = frozenset({(17_408, 5_120)})
 GGUF_Q6_PLANAR_PREFILL_SHARED4R3_ROWS = 256
 GGUF_Q6_PLANAR_PREFILL_SHARED4R3_SHAPES = frozenset(
     {(5_120, 1_024), (17_408, 5_120)}

@@ -740,6 +740,16 @@ def test_gfx1151_q6_planar_shared4r6_routes_high_rows_by_shape(
     )
     monkeypatch.setattr(
         gfx1151_backend,
+        "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r4_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("shared4r4"),
+    )
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_gfx1100_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("shared4_gfx1100"),
+    )
+    monkeypatch.setattr(
+        gfx1151_backend,
         "gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out",
         lambda *args, **kwargs: calls.append("fallback"),
     )
@@ -747,7 +757,15 @@ def test_gfx1151_q6_planar_shared4r6_routes_high_rows_by_shape(
     fn(1, 2, 3, 1_024, 17_408, 5_120)
     fn(1, 2, 3, 536, 5_120, 1_024)
     fn(1, 2, 3, 1_024, 5_120, 1_024)
-    assert calls == ["shared4r6", "shared4r6", "fallback"]
+    fn(1, 2, 3, 4_096, 17_408, 5_120)
+    fn(1, 2, 3, 4_096, 5_120, 1_024)
+    assert calls == [
+        "shared4r4",
+        "shared4r6",
+        "fallback",
+        "shared4_gfx1100",
+        "fallback",
+    ]
 
 
 def test_gfx1151_q6_standard_prefill_shared4_is_qkv_shape_only(
@@ -834,6 +852,14 @@ def test_gfx1151_q6_planar_prefill_shared4_covers_physical_shapes_from_row256(
     def shared4r9(*args, **kwargs):
         calls.append(("shared4r9", args, kwargs))
 
+    def shared4_gfx1100(*args, **kwargs):
+        calls.append(("shared4_gfx1100", args, kwargs))
+
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_gfx1100_bf16_bf16_out",
+        shared4_gfx1100,
+    )
     monkeypatch.setattr(
         gfx1151_backend,
         "gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out",
@@ -872,15 +898,17 @@ def test_gfx1151_q6_planar_prefill_shared4_covers_physical_shapes_from_row256(
     fn(1, 2, 3, 255, 5_120, 6_144, stream=10)
     fn(1, 2, 3, 1_024, 5_120, 1_024, stream=11)
     fn(1, 2, 3, 512, 5_120, 248_320, stream=12)
+    fn(1, 2, 3, 4_096, 17_408, 5_120, stream=14)
 
     assert calls == [
-        ("shared4r6", (1, 2, 3, 512, 17_408, 5_120), {"stream": 7}),
+        ("shared4r4", (1, 2, 3, 512, 17_408, 5_120), {"stream": 7}),
         ("shared4r4", (1, 2, 3, 256, 17_408, 5_120), {"stream": 8}),
         ("shared4r3", (1, 2, 3, 256, 5_120, 1_024), {"stream": 13}),
         ("shared4", (1, 2, 3, 256, 5_120, 6_144), {"stream": 9}),
         ("retained", (1, 2, 3, 255, 5_120, 6_144), {"stream": 10}),
         ("retained", (1, 2, 3, 1_024, 5_120, 1_024), {"stream": 11}),
         ("retained", (1, 2, 3, 512, 5_120, 248_320), {"stream": 12}),
+        ("shared4_gfx1100", (1, 2, 3, 4_096, 17_408, 5_120), {"stream": 14}),
     ]
 
 
@@ -975,8 +1003,8 @@ def test_gfx1151_q6_planar_prefill_lowvgpr_bands_route_by_rows_and_shape(
         expected += ["lowvgpr"] * len(lowvgpr80_shapes)
         expected += ["lowvgpr48"] * len(set(shapes) - lowvgpr80_shapes)
     # rows45 (5_120, 1_024) is the other retained shared3r1 shape and rows512
-    # (17_408, 5_120) is the retained shared4r6 band; both must stay stubbed.
-    expected += ["plain", "plain", "shared3r1", "shared4r6"]
+    # (17_408, 5_120) is the retained shared4r4 band; both must stay stubbed.
+    expected += ["plain", "plain", "shared3r1", "shared4r4"]
     assert calls == expected
 
 
@@ -1106,6 +1134,9 @@ def test_gfx1151_highrow_prefill_bands_route_by_family_and_shape(
         "gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr_bf16_bf16_out": "q6_lv",
         "gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr48_bf16_bf16_out": "q6_lv48",
         "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out": "q6_shared4",
+        "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_gfx1100_bf16_bf16_out": (
+            "q6_shared4_gfx1100"
+        ),
         "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r3_bf16_bf16_out": "q6_shared4r3",
         "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r4_bf16_bf16_out": "q6_shared4r4",
         "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r6_bf16_bf16_out": "q6_shared4r6",
@@ -1270,7 +1301,9 @@ def test_gfx1151_highrow_prefill_bands_route_by_family_and_shape(
     )
     assert_routes(q6, (145, 255), {shape: "q6_plain" for shape in shapes})
     # The retained Y2 high-row owners take (17_408, 5_120) at exact bands:
-    # shared4r4 at rows256, shared4r6 from row288, shared4r9 at rows536.
+    # shared4r4 at rows256, shared4r4 through row1024, shared4r9 at rows536,
+    # and the 48-column four-wave owner from row1025 (2026-09-13 wide-down
+    # row screen). Every other shape keeps shared4 from row256.
     assert_routes(
         q6,
         (256,),
@@ -1281,10 +1314,10 @@ def test_gfx1151_highrow_prefill_bands_route_by_family_and_shape(
     )
     assert_routes(
         q6,
-        (288,),
+        (288, 512, 1_024),
         {
             **{shape: "q6_shared4" for shape in shapes},
-            (17_408, 5_120): "q6_shared4r6",
+            (17_408, 5_120): "q6_shared4r4",
         },
     )
     assert_routes(
@@ -1293,6 +1326,14 @@ def test_gfx1151_highrow_prefill_bands_route_by_family_and_shape(
         {
             **{shape: "q6_shared4" for shape in shapes},
             (17_408, 5_120): "q6_shared4r9",
+        },
+    )
+    assert_routes(
+        q6,
+        (1_025, 2_048, 4_096),
+        {
+            **{shape: "q6_shared4" for shape in shapes},
+            (17_408, 5_120): "q6_shared4_gfx1100",
         },
     )
 
