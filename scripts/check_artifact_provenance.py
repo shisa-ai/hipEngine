@@ -42,8 +42,12 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 from pathlib import Path
 from typing import Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from scripts._published_results import cited_result_paths
 
 SUPERSESSION_KEYS = ("supersedes", "superseded_by", "links", "supersedes_detail")
 JSON_TOKEN = re.compile(r"([A-Za-z0-9._-]+\.json)")
@@ -51,7 +55,6 @@ JSON_TOKEN = re.compile(r"([A-Za-z0-9._-]+\.json)")
 QUANT_SHAPE = re.compile(
     r"((?:gguf_|UD-|IQ)?Q\d(?:_[A-Za-z0-9]{1,3}){0,3}|BF16|FP16|FP8|F16)", re.IGNORECASE
 )
-READ_CITATION = re.compile(r"([A-Za-z0-9._-]+\.json)(?!l)")
 
 # Provenance problems owned by another lane: key -> dated reason. A stale entry fails the gate, so
 # this is what prunes them.
@@ -269,7 +272,7 @@ def check_repo(repo: Path, exceptions: dict[str, str] | None = None) -> dict[str
     results = repo / "benchmarks" / "results"
     if not readme.is_file():
         raise FileNotFoundError(f"no benchmarks/README.md under {repo}")
-    cited = sorted(set(READ_CITATION.findall(readme.read_text())))
+    cited = cited_result_paths(readme.read_text())
     existing = {p.name for p in results.glob("*.json")} if results.is_dir() else set()
 
     payloads: dict[str, Any] = {}

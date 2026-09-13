@@ -50,8 +50,10 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from scripts._published_results import cited_result_paths
+
 COMMAND_KEYS = ("command", "source_command")
-CITATION = re.compile(r"([A-Za-z0-9._-]+\.json)(?!l)")
 
 # Pre-existing drift owned by another lane: key -> dated reason. Removing an entry here means the
 # artifact was fixed (or the row was re-measured); leaving one that no longer matches fails the
@@ -201,20 +203,35 @@ def _helper_target(call: ast.Call, *, imports: dict[str, Path]) -> tuple[Path, s
 
 def _call_bindings(target: ast.FunctionDef, call: ast.Call) -> dict[str, tuple[str, ...]]:
     """Literal string tuples bound to `target`'s parameters at this call site."""
-    positional = [argument.arg for argument in target.args.args]
+    positional = [argument.arg for argument in (*target.args.posonlyargs, *target.args.args)]
     bindings: dict[str, tuple[str, ...]] = {}
+    defaults = zip(positional[len(positional) - len(target.args.defaults):], target.args.defaults)
+    for name, default in defaults:
+        values = _literal_strings(default)
+        if values is not None:
+            bindings[name] = values
+    for parameter, default in zip(target.args.kwonlyargs, target.args.kw_defaults):
+        values = _literal_strings(default) if default is not None else None
+        if values is not None:
+            bindings[parameter.arg] = values
     for index, argument in enumerate(call.args):
-        if isinstance(argument, ast.Starred) or index >= len(positional):
+        if isinstance(argument, ast.Starred):
+            return {}
+        if index >= len(positional):
             continue
         values = _literal_strings(argument)
         if values is not None:
             bindings[positional[index]] = values
+        else:
+            bindings.pop(positional[index], None)
     for keyword in call.keywords:
         if keyword.arg is None:
-            continue
+            return {}
         values = _literal_strings(keyword.value)
         if values is not None:
             bindings[keyword.arg] = values
+        else:
+            bindings.pop(keyword.arg, None)
     return bindings
 
 
@@ -401,7 +418,7 @@ def check_repo(repo: Path, exceptions: dict[str, str] | None = None) -> dict[str
     readme = repo / "benchmarks" / "README.md"
     if not readme.is_file():
         raise FileNotFoundError(f"no benchmarks/README.md under {repo}")
-    cited = sorted(set(CITATION.findall(readme.read_text())))
+    cited = cited_result_paths(readme.read_text())
     violations: list[dict[str, str]] = []
     renamed: list[dict[str, str]] = []
     skipped: set[str] = set()
