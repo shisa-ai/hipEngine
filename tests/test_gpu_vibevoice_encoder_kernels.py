@@ -212,8 +212,9 @@ def test_frontend_matches_torch_gpu_bf16(frontend) -> None:
     with np.load(GPU_FIXTURE) as data:
         fx = {k: data[k] for k in data.files}
     pcm = fx["pcm_short"].astype(np.float32)
-    noise = fx["acoustic_noise"].astype(np.float32).reshape(1, -1, specs["acoustic"].hidden_size)
+    hidden_ac = specs["acoustic"][0].hidden_size
+    noise = fx["acoustic_noise"].astype(np.float32).reshape(-1, hidden_ac)
     scale = fx["acoustic_noise_scale"].astype(np.float32).reshape(1)
-    got = runtime.forward(pcm, noise=noise[0], noise_scale=scale[0])
+    got = runtime.forward(pcm, noise=noise, noise_scale=scale[0])
     ref = fx["connector_combined"].astype(np.float32)
     _assert_rel("frontend_vs_torch_gpu_bf16", got, ref, 5e-2)
