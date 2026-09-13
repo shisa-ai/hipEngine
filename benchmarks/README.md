@@ -939,6 +939,13 @@ N=3 is refused (the GDN key-head axis holds 16 groups) and N=8 is refused
 any allocation. Weights are copied as original quant blocks; there is no
 dequantize or requantize step in the path.
 
+Each rank also owns only its own KV planes: at 8192 context a TP2 rank holds
+**258 MiB** against 514 MiB for the whole pool (16 full-attention layers, 2 of
+the 4 KV heads, 32 KiB per token, plus 2 MiB of `KVLiveSpans` metadata), and at
+32768 context 1032 MiB against 2056 MiB. A group is admitted only when every
+rank can claim its share; N=3 is refused for the same reason the weight planner
+refuses it.
+
 The loader path streams one tensor at a time (`iter_rank_payloads`), so a rank
 never needs a full model copy: streaming rank 1's 7.01 GiB shard set at N=2 grows
 anonymous memory by **36.1 MiB** against a 34.9 MiB largest tensor and a 7.01 GiB

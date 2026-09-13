@@ -11,6 +11,17 @@ without ROCm.
 """
 
 from hipengine.distributed.context import DistributedContext, RankRuntime
+from hipengine.distributed.kv import (
+    KvClaim,
+    KvClaimSet,
+    KvPoolError,
+    KvPoolGeometry,
+    claim_all,
+    full_attention_layer_count,
+    local_kv_head_counts,
+    resolve_kv_claims,
+    resolve_kv_geometry,
+)
 from hipengine.distributed.plan import (
     RANK_ROLES,
     SCHEMA_VERSION,
@@ -44,6 +55,10 @@ __all__ = [
     "DistributedContext",
     "DistributedPlan",
     "EnqueueRecorder",
+    "KvClaim",
+    "KvClaimSet",
+    "KvPoolError",
+    "KvPoolGeometry",
     "PlanError",
     "RANK_ROLES",
     "RankRuntime",
@@ -55,8 +70,13 @@ __all__ = [
     "TransportError",
     "TransportStateError",
     "TransportUnavailableError",
+    "claim_all",
     "device_ids",
     "dtype_bytes",
+    "full_attention_layer_count",
+    "local_kv_head_counts",
     "payload_bytes",
     "plan_from_mapping",
+    "resolve_kv_claims",
+    "resolve_kv_geometry",
 ]
