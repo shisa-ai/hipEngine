@@ -769,6 +769,55 @@ def test_gpu_text_only_matches_oracle(runner) -> None:
     )
 
 
+def test_gpu_state_rezero_clears_recycled_nan(runner) -> None:
+    """A prefill must not inherit NaN from recycled device memory.
+
+    The conv and GDN states are persistent buffers that must be zero before
+    every prefill. They were zeroed with a scale-by-zero kernel (``x * 0.0``),
+    which is a no-op for a NaN (``NaN * 0 == NaN``): the full-suite run
+    recycled another test's NaN-filled device memory into those buffers, so the
+    first GDN layer produced NaN and every text logit was NaN -- which is the
+    observed full-suite signature (``generated_token_ids=(0, 0, 0, ...)``,
+    ``text=''``, KL ``nan`` against the torch oracle, while every vision-only
+    test in the same file passed).
+
+    Poison the state buffers with NaN bytes and require the next prefill to be
+    finite and bit-identical to the unpoisoned one. The poison is deterministic,
+    so this catches the defect without depending on suite order or on what the
+    suite's last GPU test happened to leave in device memory.
+    """
+
+    r, _weights, _spec = runner
+    from hipengine.loading.surya import (
+        SuryaTokenizer,
+        compute_mrope_positions,
+        render_chat_prompt,
+        resolve_surya_path,
+    )
+
+    tokenizer = SuryaTokenizer(resolve_surya_path(MODEL_ID))
+    ids, mm = render_chat_prompt(tokenizer, "Transcribe this page.")
+    pos = compute_mrope_positions(mm, None)
+    ids_arr = np.asarray(ids, dtype=np.int64)
+
+    ref = r.prefill(ids_arr, pos, visual_features=None)
+    assert np.isfinite(ref).all(), "unpoisoned prefill is not finite"
+
+    states = [*r._conv_state.values(), *r._gdn_state.values()]
+    assert states, "expected persistent conv/GDN state buffers"
+    for buf in states:
+        # 0xFFFFFFFF is a quiet NaN in fp32
+        r.runtime.memset(buf.ptr, 0xFF, buf.nbytes)
+    r.runtime.device_synchronize()
+
+    after = r.prefill(ids_arr, pos, visual_features=None)
+    assert np.isfinite(after).all(), (
+        "state re-zeroing let NaN survive into the prefill: "
+        f"{int((~np.isfinite(after)).sum())} of {after.size} logits are not finite"
+    )
+    np.testing.assert_array_equal(after, ref)
+
+
 def test_gpu_runner_repeated_create_use_close_releases_memory(runner) -> None:
     """Repeated create/use/close must not leak tracked device allocations.
 
