@@ -536,7 +536,7 @@ def test_p9_d6_dual_split_bf16_bf16_matches_cpu_oracle(
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
 @pytest.mark.parametrize("threads", [0, 64, 128, 256, 512])
 def test_q8_t16_dual_split_thread_override_matches_cpu_oracle(threads: int, q8_t16_library) -> None:
-    """threads=0 exercises the dual_split default, which is 256.
+    """threads=0 exercises the standalone reference default, which is 128.
 
     The dual_split owner is a 32-lane-wave split kernel whose block size only
     sets how many waves share the k chain, so every allowed block size must

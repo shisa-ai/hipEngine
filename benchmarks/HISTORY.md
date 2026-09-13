@@ -1580,3 +1580,15 @@ requires a shisa correctness gate before promotion.
   fixture results belong in the JSON artifact.
 - For parent/source-lineage rows, use the parent doc path as `Source` and keep
   them clearly separated from hipEngine measurements.
+
+## UD raw IQ2-XS residency diagnostic
+
+The September 7 zbook K_S raw-IQ2_XS candidate measured counted weight buffers
+of 21,125,912,576 versus 20,973,418,496 bytes (-0.72%), 162/162 baseline top-1
+matches and maximum baseline-relative KL 0.000923. Three fresh-process
+captures recorded byte-identical logits and forced tokens. Against the
+tokenwise teacher it matched 162/162 choices with maximum KL 0.003912.
+This was a default-off diagnostic, not current production evidence.
+Its command references `/tmp/ud-iq2-xs-suite.py`, which was not committed;
+the experiment cannot be reproduced solely from this repository.
+[Original artifact](results/2026-09-07-zbook-ud-iq2-xs-diagnostic.json).

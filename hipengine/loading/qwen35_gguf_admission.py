@@ -384,7 +384,7 @@ def _ud_mtp_items(
             ),
             evidence=(
                 "preflight fallback_unowned stage (nextn fallback identity) + "
-                "tests/test_ud_mtp_certification.py "
+                "tests/test_live_ud_mtp_certification.py "
                 "test_nextn_draft_owns_block_and_borrows_embedding_and_head"
             ),
             qualified=True,
@@ -398,7 +398,7 @@ def _ud_mtp_items(
             ),
             evidence=(
                 "admission._draft_coverage() + slot-scoped checked_ops + "
-                "tests/test_ud_mtp_certification.py "
+                "tests/test_live_ud_mtp_certification.py "
                 "test_draft_operation_set_is_slot_scoped_and_certified"
             ),
             qualified=True,
@@ -429,7 +429,7 @@ def _ud_mtp_items(
             evidence=(
                 "hipengine.runtime.qwen35_gguf_mtp._verify_journal_plan + "
                 "tests/test_qwen35_gguf_mtp_session.py journal contract tests + "
-                "tests/test_ud_mtp_certification.py "
+                "tests/test_live_ud_mtp_certification.py "
                 "test_ud_journal_is_row_capable_across_the_declared_context"
             ),
             qualified=True,

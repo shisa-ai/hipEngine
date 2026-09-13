@@ -14,7 +14,7 @@ independent block sizes and the generation command:
 
 ```bash
 PYTHONPATH=. .venv/bin/python scripts/gguf_ud_codec_fixture.py
-.venv/bin/python -m pytest -o addopts='' -q tests/test_gguf_ud_codecs.py
+.venv/bin/python -m pytest -o addopts='' -q tests/test_unit_gguf_ud_codecs.py
 ```
 
 The tests assert codebook index, sign selector, packed high-bit and subscale
@@ -35,7 +35,7 @@ extraction; regeneration requires that verification again.
 Codec output is F32. No BF16/FP16 weight cast or activation conversion belongs
 to codec equality. Comparing rounded values alone cannot pass this gate.
 
-The strict raw dense leaves in `tests/test_gguf_ud_dense.py` use:
+The strict raw dense leaves in `tests/test_gpu_gguf_ud_dense.py` use:
 
 - BF16 input bits widened exactly to F32; decoded weights remain F32, without
   an intermediate BF16 weight rounding boundary.

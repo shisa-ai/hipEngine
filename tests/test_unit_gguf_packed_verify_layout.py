@@ -116,6 +116,7 @@ def test_gguf_resident_reset_invalidates_packed_state_metadata(monkeypatch) -> N
         lambda self, position, *, stream=0: calls.append(("set_position", int(position), int(stream))),
     )
     session = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    session.use_iq_dense_mmq = False
     session.scratch = FakeScratch()
     session._target_scratch_owner = object()
     session._reset_current_slot_only = True
@@ -175,10 +176,12 @@ def test_gguf_direct_resident_verify_route_requires_multi_session(monkeypatch) -
     """
 
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner.backend = "hip_gfx1100"
     slab = SimpleNamespace(slot_count=17)
     owner._target_scratch_owner = slab
     peer = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    peer.use_iq_dense_mmq = False
     peer._resident_batch_owner = owner
     peer._target_scratch_owner = slab
     peer._resident_slot_index = 5
@@ -208,10 +211,12 @@ def test_gguf_direct_resident_verify_route_requires_multi_session(monkeypatch) -
 
 def test_gguf_direct_resident_linear_state_maps_owner_slots(monkeypatch) -> None:
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner.backend = "hip_gfx1100"
     slab = SimpleNamespace(slot_count=17)
     owner._target_scratch_owner = slab
     peer = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    peer.use_iq_dense_mmq = False
     peer._resident_batch_owner = owner
     peer._target_scratch_owner = slab
     peer._resident_slot_index = 5
@@ -253,6 +258,7 @@ def test_gguf_direct_resident_linear_state_maps_owner_slots(monkeypatch) -> None
 
 def test_gguf_packed_verify_initial_state_uses_fused_pair_copy_when_enabled() -> None:
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner.runner = SimpleNamespace(
         weights=SimpleNamespace(config=SimpleNamespace(layer_types=(LINEAR_ATTENTION,)))
     )
@@ -334,6 +340,7 @@ def test_gguf_packed_verify_initial_state_uses_fused_pair_copy_when_enabled() ->
 
 def test_gguf_packed_verify_binds_direct_resident_initial_state() -> None:
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     slab = SimpleNamespace(
         slot_count=8,
         layer_conv_states=(object(),),
@@ -380,6 +387,7 @@ def test_gguf_packed_verify_binds_direct_resident_initial_state() -> None:
 
 def test_gguf_fused_linear_state_pair_copy_batches_and_caches_tables(monkeypatch) -> None:
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner._buffers = ()
     owner.runner = SimpleNamespace(
         weights=SimpleNamespace(
@@ -447,6 +455,7 @@ def test_gfx1100_fused_linear_state_transfer_policy_is_default_on(
     monkeypatch,
 ) -> None:
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner.backend = "hip_gfx1100"
 
     monkeypatch.delenv("HIPENGINE_GGUF_FUSED_PACKED_STATE_TRANSFER", raising=False)
@@ -462,6 +471,7 @@ def test_gfx1100_fused_linear_state_transfer_policy_is_default_on(
 
 def test_gguf_single_slot_state_import_uses_strict_unfused_copy() -> None:
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner.backend = "hip_gfx1151"
     owner.runner = SimpleNamespace(
         weights=SimpleNamespace(
@@ -479,6 +489,7 @@ def test_gguf_single_slot_state_import_uses_strict_unfused_copy() -> None:
 
 def test_gguf_resident_discards_terminal_packed_decode_state_without_scatter() -> None:
     session = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    session.use_iq_dense_mmq = False
     session._packed_decode_sessions = (object(),)
     session._packed_decode_last_layout = object()
     session._packed_decode_state_dirty = True
@@ -504,6 +515,7 @@ def test_gguf_resident_release_idle_packed_workspace_requires_safe_lifecycle(
         lambda buffer, *, runtime: freed.append((int(buffer.ptr), int(buffer.nbytes))),
     )
     session = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    session.use_iq_dense_mmq = False
     session.runtime = SimpleNamespace(name="runtime")
     session._packed_ar_attention_workspace = SimpleNamespace(
         buffers=(DeviceBuffer(ptr=0x1000, nbytes=10),)
@@ -798,6 +810,7 @@ def test_gguf_packed_ar_prefill_executes_each_round_with_all_active_slots(
         lambda: SimpleNamespace(attn_aotriton_min_tokens=4),
     )
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner._bulk_prefill_scratch = SimpleNamespace(rows=8)
     prompts = tuple(tuple(slot * 100 + row for row in range(6)) for slot in range(4))
 
@@ -847,6 +860,7 @@ def test_gguf_packed_ar_prefill_samples_only_each_slots_final_round(
         raising=False,
     )
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner.backend = "hip_gfx1151"
     owner._bulk_prefill_scratch = SimpleNamespace(rows=4)
 
@@ -889,6 +903,7 @@ def test_gguf_packed_ar_prefill_forwards_unsampled_rounds(
         raising=False,
     )
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner._bulk_prefill_scratch = SimpleNamespace(rows=4)
 
     results = owner.prefill_batch_native(
@@ -933,6 +948,7 @@ def test_gguf_packed_ar_prefill_preserves_full_prompt_attention_route_across_sch
         lambda: SimpleNamespace(attn_aotriton_min_tokens=4),
     )
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner._bulk_prefill_scratch = SimpleNamespace(rows=8)
 
     for chunk in ((10, 11), (12, 13), (14, 15)):
@@ -978,6 +994,7 @@ def test_gguf_packed_ar_prefill_concatenates_hidden_seed_rounds(
         fake_single_slab,
     )
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner._bulk_prefill_scratch = SimpleNamespace(rows=4)
     prompts = ((10, 11, 12, 13), (20, 21, 22, 23))
 
@@ -1238,6 +1255,7 @@ def test_gguf_packed_workspace_resize_scatters_deferred_decode_state_first(
     monkeypatch,
 ) -> None:
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner.runner = SimpleNamespace()
     owner._packed_verify_state = SimpleNamespace(slot_count=1, max_sequence_length=1024)
     owner._packed_verify_scratch = SimpleNamespace(
@@ -1415,6 +1433,7 @@ def test_gguf_packed_int8_copy_moves_payload_mirror_and_scale_planes() -> None:
         bf16_mirror_layer_indices=(0,),
     )
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner.runner = SimpleNamespace(weights=SimpleNamespace(config=cfg))
     owner._device_kv_layout = layout
 
@@ -1511,6 +1530,7 @@ def test_gguf_packed_single_row_prefill_uses_transient_oracle_without_persistent
         full_bf16_mirror_cache=lambda layer_id: None,
     )
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner._int8_prefill_oracle_cache_for_layer = lambda layer_id: (oracle_key, oracle_value)
     scratch = _DirectInt8PrefillScratch(
         append_spans=_DirectInt8PrefillSpans(kind="append_position"),
@@ -1586,7 +1606,9 @@ def test_gguf_packed_ar_admits_mirrored_int8_and_fails_closed_without_mirror() -
         layer_storage_dtypes=(DType.INT8_PER_TOKEN_HEAD,),
     )
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     peer = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    peer.use_iq_dense_mmq = False
     owner._device_kv_layout = mirrored
     peer._device_kv_layout = mirrored
 
@@ -1864,6 +1886,7 @@ def test_gguf_deferred_packed_decode_flush_copies_full_live_kv(monkeypatch) -> N
         key_length=4,
     )
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner.runner = SimpleNamespace(weights=SimpleNamespace(config=cfg))
     layout = _build_gguf_packed_verify_layout(
         (
@@ -2059,6 +2082,7 @@ def test_gguf_deferred_packed_state_scatter_follows_noncontiguous_device_pages(
         key_length=4,
     )
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner.runner = SimpleNamespace(weights=SimpleNamespace(config=cfg))
     layout = _build_gguf_packed_verify_layout(
         (_GGUFPackedVerifySlotBlock(input_token_ids=(11, 12), start_position=255),),
@@ -2311,6 +2335,7 @@ def test_gguf_session_packed_kv_segments_walk_both_page_tables() -> None:
 
     layout = _segment_test_layout()
     session = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    session.use_iq_dense_mmq = False
     session.runner = SimpleNamespace(
         weights=SimpleNamespace(
             config=SimpleNamespace(
@@ -2707,8 +2732,10 @@ def test_gguf_session_workspace_pool_binding_delegates_to_owner() -> None:
         close_storage=lambda: None,
     )
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner._workspace_kv_pool = None
     view = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    view.use_iq_dense_mmq = False
     view._workspace_kv_pool = None
     view._resident_batch_owner = owner
 

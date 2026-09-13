@@ -59,6 +59,7 @@ def test_fp32_hidden_seed_contract_marks_m25_target_buffer_unpopulated() -> None
 
 def test_resident_session_reports_current_and_fp32_hidden_seed_contracts_without_gpu_init() -> None:
     session = object.__new__(Qwen35GGUFResidentSession)
+    session.use_iq_dense_mmq = False
     session.runner = SimpleNamespace(hidden_size=8192)
     session.scratch = SimpleNamespace(hidden_seed_fp32=SimpleNamespace(ptr=12345))
     session._hidden_seed_fp32_populated = False
@@ -154,6 +155,7 @@ def test_run_current_hidden_to_final_hidden_populates_fp32_seed_only_when_reques
     monkeypatch.setattr(gguf_runner, "gguf_rmsnorm_bf16_f32_weight_out_f32", fake_f32)
 
     session = object.__new__(Qwen35GGUFResidentSession)
+    session.use_iq_dense_mmq = False
     output_norm = SimpleNamespace(allocation=lambda: SimpleNamespace(tensor=SimpleNamespace(ptr=200)))
     weights = SimpleNamespace(
         config=SimpleNamespace(layer_types=(), rms_norm_eps=1.0e-6, is_moe=False),
@@ -190,6 +192,7 @@ def test_run_current_hidden_to_final_hidden_populates_fp32_seed_only_when_reques
 
 def test_resident_prefill_capture_marks_only_final_serial_prompt_token() -> None:
     session = object.__new__(Qwen35GGUFResidentSession)
+    session.use_iq_dense_mmq = False
     session.runner = SimpleNamespace(
         weights=SimpleNamespace(config=SimpleNamespace(ssm_conv_kernel=99))
     )
@@ -242,6 +245,7 @@ def test_resident_prefill_capture_marks_only_final_serial_prompt_token() -> None
 
 def test_resident_prefill_forwards_capture_request_to_bulk_prefill() -> None:
     session = object.__new__(Qwen35GGUFResidentSession)
+    session.use_iq_dense_mmq = False
     session.runner = SimpleNamespace(
         backend="hip_gfx1100",
         weights=SimpleNamespace(config=SimpleNamespace(ssm_conv_kernel=2)),
@@ -297,6 +301,7 @@ def test_resident_prefill_forwards_capture_request_to_bulk_prefill() -> None:
 
 def test_resident_prefill_forwards_target_hidden_rows_to_bulk_prefill() -> None:
     session = object.__new__(Qwen35GGUFResidentSession)
+    session.use_iq_dense_mmq = False
     session.runner = SimpleNamespace(
         backend="hip_gfx1100",
         weights=SimpleNamespace(config=SimpleNamespace(ssm_conv_kernel=2)),
@@ -335,6 +340,7 @@ def test_resident_prefill_forwards_target_hidden_rows_to_bulk_prefill() -> None:
 
 def test_resident_prefill_forwards_request_owned_target_hidden_sink() -> None:
     session = object.__new__(Qwen35GGUFResidentSession)
+    session.use_iq_dense_mmq = False
     session.runner = SimpleNamespace(
         backend="hip_gfx1100",
         hidden_size=8,
@@ -376,6 +382,7 @@ def test_resident_prefill_forwards_request_owned_target_hidden_sink() -> None:
 
 def test_resident_prefill_rejects_target_hidden_sink_owner_mismatch() -> None:
     session = object.__new__(Qwen35GGUFResidentSession)
+    session.use_iq_dense_mmq = False
     session.runner = SimpleNamespace(
         hidden_size=8,
         weights=SimpleNamespace(config=SimpleNamespace(ssm_conv_kernel=2)),
@@ -460,6 +467,7 @@ def test_bulk_prefill_capture_populates_all_prompt_hidden_rows(monkeypatch: pyte
         root=lambda name: output_norm if name == "output_norm" else token_embedding,
     )
     session = object.__new__(Qwen35GGUFResidentSession)
+    session.use_iq_dense_mmq = False
     session.runner = SimpleNamespace(weights=weights, hidden_size=8, vocab_size=100)
     session.runtime = runtime
     session.scratch = SimpleNamespace(
@@ -593,6 +601,7 @@ def test_bulk_prefill_without_capture_keeps_last_row_output_norm(monkeypatch: py
         )
 
     session = object.__new__(Qwen35GGUFResidentSession)
+    session.use_iq_dense_mmq = False
     session.runner = SimpleNamespace(
         weights=weights,
         hidden_size=8,
@@ -719,6 +728,7 @@ def test_resident_output_norm_hidden_populates_fp32_seed_for_bulk_and_decode(mon
     monkeypatch.setattr(gguf_runner, "gguf_rmsnorm_bf16_f32_weight_out_f32", fake_f32)
 
     session = object.__new__(Qwen35GGUFResidentSession)
+    session.use_iq_dense_mmq = False
     output_norm = SimpleNamespace(allocation=lambda: SimpleNamespace(tensor=SimpleNamespace(ptr=200)))
     weights = SimpleNamespace(
         config=SimpleNamespace(rms_norm_eps=1.0e-6),
@@ -801,6 +811,7 @@ def test_linear_attention_boundary_capture_runs_decode_tap_and_copies_buffers(
 
     runtime = FakeRuntime()
     session = object.__new__(Qwen35GGUFResidentSession)
+    session.use_iq_dense_mmq = False
     session.runtime = runtime
     session._hidden_a = SimpleNamespace(ptr=1234)
     session._hidden_seed_fp32_populated = True
@@ -954,6 +965,7 @@ def test_linear_attention_layer_capture_runs_full_layer_and_copies_post_ffn_buff
 
     runtime = FakeRuntime()
     session = object.__new__(Qwen35GGUFResidentSession)
+    session.use_iq_dense_mmq = False
     session.runtime = runtime
     session._hidden_a = SimpleNamespace(ptr=100)
     session._hidden_b = SimpleNamespace(ptr=200)
@@ -1112,6 +1124,7 @@ def test_attention_layer_capture_runs_full_attention_layer_for_full_type(
 
     runtime = FakeRuntime()
     session = object.__new__(Qwen35GGUFResidentSession)
+    session.use_iq_dense_mmq = False
     session.runtime = runtime
     session._hidden_a = SimpleNamespace(ptr=100)
     session._hidden_b = SimpleNamespace(ptr=200)
@@ -1207,6 +1220,7 @@ def test_attention_layer_capture_can_run_preceding_layers(
 
     runtime = FakeRuntime()
     session = object.__new__(Qwen35GGUFResidentSession)
+    session.use_iq_dense_mmq = False
     session.runtime = runtime
     session._hidden_a = SimpleNamespace(ptr=100)
     session._hidden_b = SimpleNamespace(ptr=200)
@@ -1260,6 +1274,7 @@ def test_attention_layer_capture_can_run_preceding_layers(
 
 def test_resident_session_reset_clears_hidden_seed_populated_flag_without_gpu_init() -> None:
     session = object.__new__(Qwen35GGUFResidentSession)
+    session.use_iq_dense_mmq = False
     session.scratch = SimpleNamespace(zero_states=lambda runtime, **kwargs: None)
     session._target_scratch_owner = session.scratch
     session.runtime = object()
@@ -1275,6 +1290,7 @@ def test_resident_session_reset_clears_hidden_seed_populated_flag_without_gpu_in
 
 def test_resident_session_hidden_seed_contract_rejects_closed_session() -> None:
     session = object.__new__(Qwen35GGUFResidentSession)
+    session.use_iq_dense_mmq = False
     session.runner = None
 
     with pytest.raises(RuntimeError, match="GGUF resident session is closed"):
@@ -1326,6 +1342,7 @@ def test_resident_session_stages_current_hidden_seed_as_verify_row_without_gpu_i
 
     runtime = Runtime()
     session = object.__new__(Qwen35GGUFResidentSession)
+    session.use_iq_dense_mmq = False
     session.runner = SimpleNamespace(hidden_size=8)
     session.scratch = SimpleNamespace(hidden_seed_fp32=SimpleNamespace(ptr=0x1000))
     session.runtime = runtime
@@ -1364,6 +1381,7 @@ def test_resident_session_stages_current_hidden_seed_as_verify_row_without_gpu_i
 
 def test_resident_session_describes_external_native_verify_seed_rows() -> None:
     session = object.__new__(Qwen35GGUFResidentSession)
+    session.use_iq_dense_mmq = False
     session.runner = SimpleNamespace(hidden_size=8)
     session._verify_hidden_seed_rows_populated = 0
 

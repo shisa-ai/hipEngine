@@ -2,7 +2,7 @@
 
 Pure metadata/admission tests on the real pinned K_S artifact: no device
 allocation, no kernel launch, no torch. Device numerical leaves for raw
-IQ2_XS live in ``tests/test_gguf_ud_dense.py``; full-model context evidence
+IQ2_XS live in ``tests/test_gpu_gguf_ud_dense.py``; full-model context evidence
 lives in ``benchmarks/results/2026-09-07-zbook-ud-iq2-xs-diagnostic.json``.
 """
 from __future__ import annotations

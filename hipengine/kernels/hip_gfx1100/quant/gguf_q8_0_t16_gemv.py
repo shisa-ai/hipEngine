@@ -43,15 +43,10 @@ _ALLOWED_THREADS = frozenset({64, 128})
 # The dual_split owner is the only member of this family that takes a wider
 # block; see valid_split_threads in the .hip.
 _ALLOWED_SPLIT_THREADS = frozenset({64, 128, 256, 512, 1024})
-# 256 measured 1.51x faster than 128 on the ssm_alpha/ssm_beta shape (48
-# columns, 5120 in, 3 rows), where the grid is six blocks and the per-wave k
-# chain is 40 blocks deep, and never slower on the shapes this owner serves.
-# The default stays at 128 because the wider block changes the wave count and
-# therefore the k-split summation order for ssm_alpha/ssm_beta, which this
-# repository has already recorded as a token-diverging path. Promote it to 256
-# only with the section-6.1 teacher-forced gate and the paired AR/MTP
-# protocol; see docs/UD-GFX1151-OPTIMIZE.md.
-_DUAL_SPLIT_DEFAULT_THREADS = 256
+# Preserve the reference wrapper default. The runtime's backend/row/shape
+# capability selects 256 explicitly for the qualified gfx1100 SSM pair.
+# Other shapes, peer backends and standalone reference calls retain 128.
+_DUAL_SPLIT_DEFAULT_THREADS = 128
 # Only the two plain dual_split entry points drive q8_0_t16_dual_split_gemv_
 # kernel, whose block size only sets how many waves share the k chain. The
 # rowtile and dp4a entry points share this Python launcher but drive kernels

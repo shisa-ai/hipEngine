@@ -6,6 +6,10 @@ This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
 
+UD/main integration validation is documented in the
+[integration report](../docs/UD-MAIN-INTEGRATION.md); its working-tree timings
+do not replace the published performance rows.
+
 ## Root README performance summary
 
 The root README exports this compact retained summary verbatim.
@@ -939,12 +943,8 @@ plain-file result is 294.8 tok/s against a published 396.1 for the same
 model/quant on a desktop part. Treat the absolute numbers as provisional
 pending that re-measure; the ratios and the accuracy ranking are same-host.
 
-A separate K_S raw IQ2_XS candidate reduces counted weight buffers from
-21,125,912,576 to 20,973,418,496 bytes (−0.72%), with 162/162 baseline top-1
-matches and maximum baseline-relative KL 0.000923. Three fresh-process captures
-have byte-identical logits and forced tokens. Against the tokenwise teacher,
-it matches 162/162 choices with maximum KL 0.003912. It is also off by default.
-[IQ2_XS diagnostic](results/2026-09-07-zbook-ud-iq2-xs-diagnostic.json).
+The older raw-IQ2_XS residency experiment is recorded in
+[benchmark history](HISTORY.md#ud-raw-iq2-xs-residency-diagnostic).
 
 ## Current Qwen3.6-35B quantization quality
 

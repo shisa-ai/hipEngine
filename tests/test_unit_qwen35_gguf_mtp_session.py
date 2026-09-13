@@ -184,12 +184,12 @@ def test_native_target_rows_follow_implementation_ladder_and_context_limit(monke
         "native",
         max_candidate_budget=3,
         backend="hip_gfx1151",
-        max_end_position=4096,
+        max_end_position=95,
     )
     for budget in range(4, 8):
         assert mtp_module._initial_state_only_journal_applies(
             "native", max_candidate_budget=budget,
-            backend="hip_gfx1151", max_end_position=4096,
+            backend="hip_gfx1151", max_end_position=95,
         )
     assert not mtp_module._initial_state_only_journal_applies(
         "native", max_candidate_budget=8,
@@ -398,7 +398,7 @@ def test_prepare_selects_serial_journal_before_context_fallback_mutation(monkeyp
         raise RuntimeError("stop after serial snapshot")
 
     primary = SimpleNamespace(initial_state_only=True)
-    serial = SimpleNamespace(capture_initial=capture_serial)
+    serial = SimpleNamespace(capture_initial=capture_serial, initial_state_only=False)
     verifier = mtp_module.Qwen35GGUFTransactionalVerifier.__new__(
         mtp_module.Qwen35GGUFTransactionalVerifier
     )

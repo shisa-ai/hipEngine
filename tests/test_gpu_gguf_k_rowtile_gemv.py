@@ -384,8 +384,8 @@ def test_raw_k_prefill_coltile_dispatch_is_exactly_scoped(monkeypatch) -> None:
                     f"rowbatch{row_batch}_bf16_{output_dtype}_out"
                 )
 
-    # gfx1151 now shares the qualified WPF-1 raw-K row-reuse selectors;
-    # a backend that declares no such capability still passes through.
+    # Main keeps gfx1151's raw-K coltile route declined. Registration of
+    # shared leaves alone must not widen its independently qualified policy.
     supported_gfx1151 = GGUFLinearDispatch(
         KernelKey(
             "hip_gfx1151",
@@ -403,7 +403,7 @@ def test_raw_k_prefill_coltile_dispatch_is_exactly_scoped(monkeypatch) -> None:
         row_batch=32,
         variant="coltile",
     )
-    assert selected_gfx1151.key.variant == "coltile4_rowbatch8_bf16_bf16_out"
+    assert selected_gfx1151 is supported_gfx1151
     unsupported = GGUFLinearDispatch(
         KernelKey(
             "cuda_sm120a",

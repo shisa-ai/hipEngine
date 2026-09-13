@@ -19613,10 +19613,10 @@ class Qwen35GGUFResidentSession:
         session, so a decode-only backend is not silently unrouted.
         """
 
-        strict_slots = self._iq_dense_mmq_strict_slots()
-        decode_strict_slots = self._iq_dense_decode_strict_slots()
         if not bool(getattr(self, "use_iq_dense_mmq", True)):
             return iq_dense_mmq_session(False)
+        strict_slots = self._iq_dense_mmq_strict_slots()
+        decode_strict_slots = self._iq_dense_decode_strict_slots()
         policy = backend_package_capability(
             self.backend, "GGUF_IQ_DENSE_PREFILL_POLICY", {}
         )

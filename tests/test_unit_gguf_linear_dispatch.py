@@ -71,7 +71,8 @@ def _isolate_wmma_axis_from_rowtile():
 
     set_q4k_rowtile_enabled(False)
     try:
-        yield
+        with gguf_linear_module.raw_k_prefill_rowbatch_session(0):
+            yield
     finally:
         set_q4k_rowtile_enabled(None)
 

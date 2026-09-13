@@ -1639,6 +1639,24 @@ def _q8_t16_threads_override_active(threads: int = 0) -> bool:
     return int(threads) != 0 or bool(os.environ.get(_Q8_T16_THREADS_ENV, "").strip())
 
 
+def _resolve_q8_t16_dual_split_threads(
+    backend: str, rows: int, in_features: int,
+    out_features_a: int, out_features_b: int, threads: int,
+) -> int:
+    override = _resolve_q8_t16_threads(threads)
+    if override:
+        return override
+    policy = backend_package_capability(
+        backend, "GGUF_Q8_T16_DUAL_SPLIT_THREADS_BY_SHAPE", {}
+    )
+    value = int(policy.get(
+        (int(rows), int(in_features), int(out_features_a), int(out_features_b)), 0
+    ))
+    if value not in {0, 64, 128, 256, 512, 1024}:
+        raise ValueError("invalid Q8 T16 dual-split thread policy")
+    return value
+
+
 def set_q8_t16_pair_rowtile_min_rows(min_rows: int | None) -> None:
     """Set the owner-scoped minimum width for exact Q8T16 pair rowtiling."""
 
@@ -5205,7 +5223,9 @@ def launch_gguf_linear_pair(
             in_features,
             out_features,
             out_features_b,
-            threads=_resolve_q8_t16_threads(threads),
+            threads=_resolve_q8_t16_dual_split_threads(
+                resolved_backend, rows, in_features, out_features, out_features_b, threads
+            ),
             stream=stream,
             runtime=runtime,
         )

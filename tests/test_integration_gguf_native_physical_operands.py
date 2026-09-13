@@ -5,8 +5,8 @@ replace the experimental per-call pointer-inventory/authorization contracts.
 """
 import pytest
 
-from tests.test_gguf_execution_authorization import native_resident
-from tests.test_gguf_ud_admission import _native_entry_session, _PositionOwnerSentinel
+from tests.test_integration_gguf_execution_authorization import native_resident
+from tests.test_live_gguf_ud_admission import _native_entry_session, _PositionOwnerSentinel
 
 
 @pytest.mark.parametrize("entry", ["eager", "capture"])

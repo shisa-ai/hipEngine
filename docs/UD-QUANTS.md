@@ -691,7 +691,7 @@ No speculative optimization precedes its strict fallback.
 Dependencies: none; CPU-only.
 Files: `scripts/gguf_quant_route_audit.py`,
 `tests/test_unit_scripts_gguf_quant_route_audit.py`,
-`tests/test_hipengine_public_api.py`, `hipengine/__init__.py` (startup
+`tests/test_integration_hipengine_public_api.py`, `hipengine/__init__.py` (startup
 isolation only; no runtime arithmetic or dispatch change);
 loader scanner/model-map modules are references, not automatic edits.
 
@@ -722,7 +722,7 @@ loader scanner/model-map modules are references, not automatic edits.
   both the runtime loader and this audit; the per-slot fallback now applies
   the model-wide F32 contraction, and cross-caller parity against the real
   backend packages is HIP-guarded in
-  `tests/test_qwen35_gguf_policy_capability_parity.py`.
+  `tests/test_gpu_qwen35_gguf_policy_capability_parity.py`.
 - [x] Reproduce this snapshot and version the repaired report schema.
   `docs/UD-QUANTS-REVIEW-v2.json` (`schema_version` 2) is the exact CLI output
   over the three real files; regeneration commands and the snapshot's
@@ -736,7 +736,7 @@ loader scanner/model-map modules are references, not automatic edits.
   planned byte or route).
 
 Run: `.venv/bin/python -m pytest tests/test_unit_scripts_gguf_quant_route_audit.py
-tests/test_loading_qwen35_gguf_policy.py -q`.
+tests/test_unit_loading_qwen35_gguf_policy.py -q`.
 Exit: real planner accounting without device use, clearly distinct from consumer
 qualification. U0 is complete (parser validation, production AR/NextN maps,
 shared-policy capability resolution, allocation accounting, identity pins,
@@ -753,7 +753,7 @@ unchanged. Bound by
 (fresh subprocess installs a meta-path guard rejecting
 `hipengine.kernels.hip_*` / `cuda_*` / torch before any import, then runs the
 actual CLI over a deterministic fixture) and the lazy-export contracts in
-`tests/test_hipengine_public_api.py`. Deliberately untouched: the audit's
+`tests/test_integration_hipengine_public_api.py`. Deliberately untouched: the audit's
 planner, policy, and report logic, and every runtime numerical or dispatch
 path.
 
@@ -775,7 +775,7 @@ and serving acceptance belongs to U2–U6, not further generic U1 authorization.
 Dependencies: U0; CPU tests first.
 Files: `hipengine/loading/qwen35_gguf_materialize.py`,
 `hipengine/loading/qwen35_gguf_nextn.py`, backend policy/capabilities,
-profile binders; proposed `tests/test_gguf_ud_admission.py`.
+profile binders; proposed `tests/test_live_gguf_ud_admission.py`.
 
 - [x] Define cold-path operation coverage records with role/shape/type/layout/
   input-output dtype/rows/fallback, using existing registry conventions.
@@ -824,7 +824,7 @@ profile binders; proposed `tests/test_gguf_ud_admission.py`.
   raw-IQ contract (rank-3 MoE exemptions preserved in both);
   `plan_qwen35_gguf_materialization` takes `repack_veto`/`contract_f32_linear`
   overrides and derives the previous combined behavior when unset. RED tests
-  in `tests/test_loading_qwen35_gguf_policy.py` and
+  in `tests/test_unit_loading_qwen35_gguf_policy.py` and
   `tests/test_qwen35_gguf_materialize_helpers.py`.
 - [x] Preflight all requested operations before allocating; report every
   unsupported slot, not just first exception. `materialize_qwen35_gguf_weights`
@@ -852,7 +852,7 @@ profile binders; proposed `tests/test_gguf_ud_admission.py`.
   allocation.
 
 Run after creating the file:
-`.venv/bin/python -m pytest tests/test_gguf_ud_admission.py -q`.
+`.venv/bin/python -m pytest tests/test_live_gguf_ud_admission.py -q`.
 Exit: unknown layouts fail closed, no plain-artifact certificate reuse for UD.
 
 #### U1 review repairs (2026-09-07)
@@ -874,7 +874,7 @@ The table records repair history, not current closure:
 | F5 | HIGH | Unknown manifests (preset=None) inherited the plain stamp-based policy identity and the packaged hot-vocabulary selection. | `GGUF_UNQUALIFIED_MANIFEST_PRESET` sentinel + seven pinned plain-control fingerprints; loader and NextN materializer bind the qualification (`95f9fa2fd`). Fifth-round repair: the actual stamp-only policy callers (runner FP16 recurrent-state default, graph submission transport, private-c1 arena admissions) now bind the artifact qualification too (see the round-5 subsection below) |
 | F6 | MEDIUM | `packed_decode_graph_min_replay_steps` destructively unpacked a 2-tuple identity that now optionally carries a preset key → `ValueError` for preset-bound residents. | Arity-safe unpack; preset-bound identities resolve only preset-keyed rows, never plain rows (`e2bb6d5e2`) |
 
-These repairs closed the round-1 findings: `tests/test_gguf_ud_admission.py`
+These repairs closed the round-1 findings: `tests/test_live_gguf_ud_admission.py`
 is green on CPU (real-artifact tests skip without the pinned files), admission binds to
 actual role/shape/type manifests rather than stamps or histograms, the loader
 preflights backend/materializability/scope before any allocation, both
@@ -1107,7 +1107,7 @@ ABIs, and storing an F32-input declaration does not bind authorization.
   capability-reader convention: never an import, never evaluation;
   annotated and plain assignments); a slot whose certified consumer layer
   is not declared is refused with the missing layer named, aggregated
-  before any allocation. `tests/test_qwen35_gguf_consumer_surface_parity.py`
+  before any allocation. `tests/test_integration_qwen35_gguf_consumer_surface_parity.py`
   proves the declarations are neither lies nor stale: every concrete
   consumer key named by every certified record (both row-mode variants) is
   actually registered on every declaring backend — with no placeholder
@@ -1406,7 +1406,7 @@ independent review; U1 is not complete until its integrated audit.**
 
 Dependencies: U0; CPU-only before GPU leaf tests.
 Files: `hipengine/quant/gguf.py`, codebook module only if existing conventions
-justify it, proposed `tests/test_gguf_ud_codecs.py`, `tests/fixtures/gguf_ud/`.
+justify it, proposed `tests/test_unit_gguf_ud_codecs.py`, `tests/fixtures/gguf_ud/`.
 
 - [x] Add llama.cpp-pinned IQ3_S/IQ2_S byte-to-F32 fixtures before CPU decoders;
   add standalone IQ4_NL independent coverage. Synthetic fixtures cover all seven
@@ -1434,7 +1434,7 @@ justify it, proposed `tests/test_gguf_ud_codecs.py`, `tests/fixtures/gguf_ud/`.
   F32 or final RNE-BF16 output. FP16 is unsupported, not implicitly qualified.
   The CPU codec suite passes 42 tests; model-quality gates remain separate.
 
-Run: `.venv/bin/python -m pytest tests/test_gguf_ud_codecs.py -q`.
+Run: `.venv/bin/python -m pytest tests/test_unit_gguf_ud_codecs.py -q`.
 Exit: independent oracles for all seven type ABIs.
 
 ### U3. Recover Q5/Q6 Roles And Add Raw Dense IQ4_XS
@@ -1444,7 +1444,7 @@ Files: existing `hipengine/kernels/hip_gfx11*/quant/gguf_k_gemv.py`,
 IQ decode/source-MMQ donors, proposed
 `hipengine/kernels/hip_gfx1100/quant/gguf_iq_dense.{hip,py}`,
 gfx1151 peer registration, materializer/dense capability maps;
-proposed `tests/test_gguf_ud_dense.py`.
+proposed `tests/test_gpu_gguf_ud_dense.py`.
 
 - [ ] RED role-shaped dispatch/math tests for raw Q5/Q6 in expanded slots;
   use existing registered variants where operation-complete. An 84-case
@@ -1455,7 +1455,7 @@ proposed `tests/test_gguf_ud_dense.py`.
   Three full-N BF16 cases miss the unrounded FP64 top-1 threshold because
   rounding merges distinct maxima into ties; these are not model-quality
   passes. Runtime dispatch and repack qualification are separate. See
-  `tests/test_gguf_ud_q56_roles.py` and the `ud-q56-full-n` worklog entry.
+  `tests/test_live_gguf_ud_q56_roles.py` and the `ud-q56-full-n` worklog entry.
 - [ ] Add raw IQ4_XS dense c1 strict GEMV for actual K/N, BF16/F32 outputs,
   and supported tail-N; reuse block math without forcing rank-3 runtime paths.
 - [ ] Supply correct row-batched and bounded prefill execution. A bring-up
@@ -1467,12 +1467,12 @@ proposed `tests/test_gguf_ud_dense.py`.
   unfused norm, gate/up, SiLU, down and residual chain with exact pointer and
   call-order checks. Numerical leaves are captured; this does not qualify
   GPU math, other mixed residents or graph execution. See
-  `tests/test_gguf_ud_ffn_callers.py` and the `ud-ffn-caller-abi` worklog entry.
+  `tests/test_unit_gguf_ud_ffn_callers.py` and the `ud-ffn-caller-abi` worklog entry.
 - [ ] Verify no duplicate dense resident; account planned/measured bytes,
   transient load peak and scratch owners.
 - [ ] Register strict fallbacks; qualify gfx1100 and gfx1151 independently.
 
-Run: `.venv/bin/python -m pytest tests/test_gguf_ud_dense.py -q`.
+Run: `.venv/bin/python -m pytest tests/test_gpu_gguf_ud_dense.py -q`.
 Every GPU test needs a HIP availability guard.
 Exit: IQ4_XS/known-format coverage, not yet complete published UD support.
 
@@ -1480,7 +1480,7 @@ Exit: IQ4_XS/known-format coverage, not yet complete published UD support.
 
 Dependencies: U3 and U2 oracles.
 Files: Q3 donor, proposed dense IQ family, materializer/registry consumers;
-proposed `tests/test_gguf_ud_km.py`.
+proposed `tests/test_unit_gguf_ud_km.py`.
 
 - [ ] Add dense Q3_K from existing math and explicit dtype contracts.
   Raw BF16-input BF16/F32-output leaf passes exact real-row gates on gfx1151;
@@ -1525,7 +1525,7 @@ proposed `tests/test_gguf_ud_km.py`.
   `worklog/entries/20260907T041214.806691Z-lhl-ud-ks-integration-e0d117.md`.
 - [ ] Reject unsupported requested modes in preflight; c1 is not full serving.
 
-Run: `.venv/bin/python -m pytest tests/test_gguf_ud_km.py -q`.
+Run: `.venv/bin/python -m pytest tests/test_unit_gguf_ud_km.py -q`.
 Exit: qualified declared K_M AR scope; U6 controls public/batch/MTP completion.
 
 ### U5. Published UD K_S And Embedding
@@ -1536,7 +1536,7 @@ completion cannot precede those shared prerequisites.
 Files: IQ2/IQ3 donors, proposed dense family,
 `hipengine/kernels/hip_gfx1100/quant/gguf_q3_k_embedding.{hip,py}`,
 gfx1151 peer, `runtime/gguf_embedding.py`;
-proposed `tests/test_gguf_ud_ks.py`.
+proposed `tests/test_live_gguf_ud_ks.py`.
 
 - [x] Q3 embedding lookup RED: repeated/boundary IDs, prompt/decode gather,
   row output ownership and vocabulary bounds. The real embedding fixture
@@ -1547,7 +1547,7 @@ proposed `tests/test_gguf_ud_ks.py`.
   bounded gfx1151 numerical evidence. IQ2_XS passes exact BF16/F32 real-row
   projection gates and synthetic one-hot decode coverage; rank-2 layer
   IQ2_XS now plans raw residency in the production loading path
-  (`tests/test_gguf_ud_ks.py`), removing the 152,494,080-byte dense-BF16
+  (`tests/test_live_gguf_ud_ks.py`), removing the 152,494,080-byte dense-BF16
   expansion of `blk.0.ffn_gate.weight` in normal K_S loads. A raw-resident
   K_S diagnostic matches all 162 baseline top-1 choices on 18 category/heldout
   prompts, max KL 0.000923. The batched-teacher prefill miss persists. Three
@@ -1561,12 +1561,12 @@ proposed `tests/test_gguf_ud_ks.py`.
 - [ ] IQ2_S device decoder/strict consumers from U2 oracle.
 - [x] Clear 41 refusals and IQ2_XS expansion; any temporary fallback reports
   bytes/removal trigger, not silent permanent debt. Layer rank-2 IQ2_XS now
-  plans raw residency in production loading (`tests/test_gguf_ud_ks.py`);
+  plans raw residency in production loading (`tests/test_live_gguf_ud_ks.py`);
   the remaining dense-BF16 IQ2_XS/IQ4_XS fallback covers only non-layer and
   rank-3 slots, which the published files do not exercise.
 - [ ] Same c1 AR/logit/memory gates as K_M before broader admission.
 
-Run: `.venv/bin/python -m pytest tests/test_gguf_ud_ks.py -q`.
+Run: `.venv/bin/python -m pytest tests/test_live_gguf_ud_ks.py -q`.
 Exit: both artifacts have complete declared AR coverage; no one-tensor omission.
 
 ### U6. Prefill, Batch, NextN And Serving
@@ -1683,7 +1683,7 @@ materializing a silent extra resident.
   unless both conditions above hold, grants the MTP scope in-process (candidate
   mode — it never writes a pin), and runs the full category suite with a true
   no-MTP AR denominator.
-- `tests/test_ud_mtp_certification.py` gates the mechanism: identity binding,
+- `tests/test_live_ud_mtp_certification.py` gates the mechanism: identity binding,
   exact slot coverage, the AR-only default, and scope composition once a pin
   exists.
 
@@ -1723,7 +1723,7 @@ Remaining before `_UD_MTP_PRESET_FINGERPRINTS` may be populated:
   integrated raw IQ/Q3 formats on both backend declarations, BF16/F32 output,
   all those rows and 511/512/513. It checks actual registry resolution and
   pointer/dimension/stream/library forwarding with captured leaves, not GPU
-  numerics. See `tests/test_gguf_ud_linear_callers.py` and the
+  numerics. See `tests/test_unit_gguf_ud_linear_callers.py` and the
   `ud-dense-caller-abi` worklog entry.
 - [ ] Short/512/4096 prompts and separately budgeted long-context point such
   as 32768. Short gates do not authorize long trajectories.

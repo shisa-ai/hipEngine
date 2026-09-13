@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Mapping, Sequence
+from typing import TYPE_CHECKING, Mapping, Sequence
 
-from hipengine.generation.concurrency2_simulator import SimulatedResourceLedger
+if TYPE_CHECKING:
+    from hipengine.generation.concurrency2_simulator import SimulatedResourceLedger
 from hipengine.kvcache import ResourceClaimSet
 from hipengine.speculative.frontier import SpecPlanReason, SpecTransactionMode
 from hipengine.speculative.interfaces import AcceptResult, DraftBatch
@@ -78,6 +79,10 @@ class SpeculativeCycleSimulator:
         ledger: SimulatedResourceLedger,
         states: Sequence[SpeculativeRequestState],
     ) -> None:
+        # Generation imports speculative serving metadata before its registry
+        # classes exist. The simulation-only ledger must not close that cycle.
+        from hipengine.generation.concurrency2_simulator import SimulatedResourceLedger
+
         if not isinstance(ledger, SimulatedResourceLedger):
             raise TypeError("ledger must be SimulatedResourceLedger")
         normalized = tuple(states)

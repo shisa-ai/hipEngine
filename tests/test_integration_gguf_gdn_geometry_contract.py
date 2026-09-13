@@ -4,7 +4,7 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-from test_gguf_ud_admission import _synthetic_model_map
+from test_live_gguf_ud_admission import _synthetic_model_map
 from hipengine.loading.qwen35_gguf_admission import (
     preflight_qwen35_gguf_artifact, certificate_covers_artifact,
 )

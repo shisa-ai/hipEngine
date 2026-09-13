@@ -3071,28 +3071,28 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
             "hip_gfx1151",
             "GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED",
         )
-        is True
+        is False
     )
     assert (
         backend_package_capability(
             "hip_gfx1151",
             "GGUF_RAW_K_PREFILL_ROWBATCH",
         )
-        == 32
+        == 0
     )
     assert (
         backend_package_capability(
             "hip_gfx1151",
             "GGUF_RAW_K_PREFILL_VARIANT",
         )
-        == "coltile"
+        == "rowbatch"
     )
     assert (
         backend_package_capability(
             "hip_gfx1151",
             "GGUF_RAW_K_PREFILL_COLTILE_SUPPORTED",
         )
-        is True
+        is False
     )
     assert (
         backend_package_capability(
@@ -3490,7 +3490,7 @@ def test_gfx1151_capability_ledger_covers_gfx1100_only_live_reads() -> None:
         for name in gfx1100_only & live_read
         if name.startswith("GGUF_")
     }
-    assert len(expected) == 18
+    assert len(expected) == 25
 
     ledger_path = (
         Path(__file__).resolve().parents[1]

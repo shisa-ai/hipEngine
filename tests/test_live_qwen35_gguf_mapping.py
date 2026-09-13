@@ -32,6 +32,7 @@ from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_GGUF_Q6_K_T16,
     LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
     LAYOUT_Q4_K_PACK8,
+    LAYOUT_RAW_GGUF,
     materialize_qwen35_gguf_weights,
     plan_qwen35_gguf_materialization,
     plan_qwen35_gguf_weight_spec,
@@ -697,6 +698,7 @@ def test_qwen38_dense_q4ks_q5_t16_planning_is_role_and_shape_bounded() -> None:
         ("layers.0.ffn_down", (5_120, 17_408)),
         ("layers.0.attn_qkv", (10_240, 5_120)),
         ("layers.3.attn_v", (1_024, 5_120)),
+        ("layers.0.ffn_gate", (17_408, 5_120)),
     )
     for slot_path, shape in admitted:
         baseline = plan_qwen35_gguf_weight_spec(
@@ -710,13 +712,12 @@ def test_qwen38_dense_q4ks_q5_t16_planning_is_role_and_shape_bounded() -> None:
             decode_repack=True,
             dense_q5_t16_h5120=True,
         )
-        assert baseline.layout == LAYOUT_DENSE_BF16
+        assert baseline.layout == LAYOUT_RAW_GGUF
         assert candidate.layout == LAYOUT_GGUF_Q5_K_T16
         assert candidate.quant_key == "gguf_q5_k_t16_v1"
         assert candidate.allocation_names == ("tiles",)
 
     for slot_path, shape in (
-        ("layers.0.ffn_gate", (17_408, 5_120)),
         ("layers.0.ffn_down", (5_120, 3_584)),
         ("root.lm_head", (248_320, 5_120)),
     ):
@@ -726,7 +727,7 @@ def test_qwen38_dense_q4ks_q5_t16_planning_is_role_and_shape_bounded() -> None:
             decode_repack=True,
             dense_q5_t16_h5120=True,
         )
-        assert spec.layout == LAYOUT_DENSE_BF16
+        assert spec.layout == LAYOUT_RAW_GGUF
 
 
 def test_qwen38_dense_q5_ssm_out_plan_uses_one_t16_payload_per_owner() -> None:

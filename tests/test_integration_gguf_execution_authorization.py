@@ -11,7 +11,7 @@ NATIVE = "ar_decode_native_rows"
 
 
 def native_resident(monkeypatch, tmp_path):
-    from tests.test_gguf_ud_admission import _materialize_fixture_on_cpu
+    from tests.test_live_gguf_ud_admission import _materialize_fixture_on_cpu
     return _materialize_fixture_on_cpu(tiny_native(tmp_path), monkeypatch,
                                        decode_repack=False, requested_operations=(NATIVE,))
 
@@ -103,7 +103,7 @@ def test_known_unsupported_session_modes_refuse_before_device_or_loader(monkeypa
 
 def test_qualified_capture_reaches_stream_only_after_entry_contract(monkeypatch, tmp_path):
     from types import SimpleNamespace
-    from tests.test_gguf_ud_admission import _native_entry_session, _PositionOwnerSentinel
+    from tests.test_live_gguf_ud_admission import _native_entry_session, _PositionOwnerSentinel
     resident = native_resident(monkeypatch, tmp_path)
     owner = _PositionOwnerSentinel()
     session = _native_entry_session(resident, scratch_owner=owner)
@@ -121,7 +121,7 @@ def test_qualified_capture_reaches_stream_only_after_entry_contract(monkeypatch,
 
 @pytest.mark.parametrize("deferred", [False, True])
 def test_real_loader_preserves_deferred_embedding_and_arena_denial(monkeypatch, tmp_path, deferred):
-    from tests.test_gguf_ud_admission import _cpu_allocation_fakes
+    from tests.test_live_gguf_ud_admission import _cpu_allocation_fakes
     _cpu_allocation_fakes(monkeypatch)
     monkeypatch.setattr(loader.DeviceMemoryArena, "create",
                         lambda *a, **kw: (_ for _ in ()).throw(MemoryError("owner denied")))
@@ -143,7 +143,7 @@ def test_real_loader_preserves_deferred_embedding_and_arena_denial(monkeypatch, 
 def test_native_moe_full_closure_and_gate_only_certificate_refusal(monkeypatch, tmp_path):
     from hipengine.loading.gguf_selected_contract import SelectedCallIntent
     from hipengine.loading.qwen35_gguf_execution import authorize_native_execution
-    from tests.test_gguf_ud_admission import _cpu_allocation_fakes
+    from tests.test_live_gguf_ud_admission import _cpu_allocation_fakes
     tensors = [t for t in default_fixture_tensors(1, alpha_beta_type=Q.BF16)
                if not t[0].startswith("blk.0.ffn_")]
     tensors += [("output.weight", (64, 256), Q.Q8_0),

@@ -4,7 +4,7 @@ from types import MappingProxyType
 
 import pytest
 
-from test_gguf_ud_admission import _synthetic_moe_model_map
+from test_live_gguf_ud_admission import _synthetic_moe_model_map
 from hipengine.loading.qwen35_gguf_admission import (
     preflight_qwen35_gguf_artifact, certificate_covers_artifact,
     QWEN35_GGUF_OP_AR_DECODE_C1 as C1,
@@ -204,7 +204,7 @@ def test_x8_actual_input_adapters_and_output_contracts_bind(monkeypatch):
 
 def test_two_successful_partner_layouts_bind_with_identical_gate():
     from hipengine.quant.gguf import GGMLQuantizationType as Q
-    from test_gguf_ud_admission import _tensor
+    from test_live_gguf_ud_admission import _tensor
     model = _synthetic_moe_model_map(expert_type=Q.Q3_K)
     tensors = dict(model.layers[0].tensors)
     tensors["ffn_up_exps"] = _tensor("blk.0.ffn_up_exps.weight", (4, 256, 256), Q.Q5_K)
@@ -292,7 +292,8 @@ def test_shared_full_model_default_is_the_actual_c1_caller_plan(monkeypatch):
     monkeypatch.setattr(runner, "_launch_selected_raw_gguf_moe_pair_silu", paired)
     monkeypatch.setattr(runner, "_launch_weighted_selected_raw_gguf_moe_linear", weighted)
     monkeypatch.setattr(runner, "_gguf_use_f32_selected_intermediate", lambda *a: False)
-    self = NS(weights=NS(config=_synthetic_moe_model_map().config), hidden_size=256)
+    self = NS(weights=NS(config=_synthetic_moe_model_map().config), hidden_size=256,
+              backend="hip_gfx1100")
     assert runner.Qwen35GGUFFullStackRunner._run_post_attention_moe_c1_unfused_selected_ffn(
         self, *weights, scratch, selected_rows=2, stream=0, runtime="fake") == (False, True)
     assert calls == [(item.kind, item.weight_slots) for item in plan]
