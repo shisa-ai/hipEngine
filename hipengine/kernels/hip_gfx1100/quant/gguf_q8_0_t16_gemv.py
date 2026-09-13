@@ -40,6 +40,23 @@ _Q8_0_BLOCK = 32
 _T16_COLS = 16
 _DEFAULT_THREADS = 128
 _ALLOWED_THREADS = frozenset({64, 128})
+# The dual_split owner is the only member of this family that takes a wider
+# block; see valid_split_threads in the .hip.
+_ALLOWED_SPLIT_THREADS = frozenset({64, 128, 256, 512, 1024})
+# 256 measured 1.51x faster than 128 on the ssm_alpha/ssm_beta shape (48
+# columns, 5120 in, 3 rows), where the grid is six blocks and the per-wave k
+# chain is 40 blocks deep, and never slower on the shapes this owner serves.
+# The default stays at 128 because the wider block changes the wave count and
+# therefore the k-split summation order for ssm_alpha/ssm_beta, which this
+# repository has already recorded as a token-diverging path. Promote it to 256
+# only with the section-6.1 teacher-forced gate and the paired AR/MTP
+# protocol; see docs/UD-GFX1151-OPTIMIZE.md.
+_DUAL_SPLIT_DEFAULT_THREADS = _DEFAULT_THREADS
+# Only the two plain dual_split entry points drive q8_0_t16_dual_split_gemv_
+# kernel, whose block size only sets how many waves share the k chain. The
+# rowtile and dp4a entry points share this Python launcher but drive kernels
+# with narrower launch bounds, so they keep the family default.
+_WIDE_SPLIT_SYMBOLS = frozenset({_Q8_0_DUAL_SPLIT_BF16, _Q8_0_DUAL_SPLIT_FP16})
 
 
 def plan_gguf_q8_0_t16_gemv_build(
@@ -784,7 +801,12 @@ def _launch_dual_split(
         raise ValueError("out_features_a/out_features_b must be positive")
     if out_features_a % _T16_COLS != 0 or out_features_b % _T16_COLS != 0:
         raise ValueError("out_features_a/out_features_b must be multiples of 16 (T16 tile)")
-    threads = _resolve_threads(threads)
+    wide = symbol in _WIDE_SPLIT_SYMBOLS
+    threads = _resolve_threads(
+        threads,
+        default=_DUAL_SPLIT_DEFAULT_THREADS if wide else _DEFAULT_THREADS,
+        allowed=_ALLOWED_SPLIT_THREADS if wide else _ALLOWED_THREADS,
+    )
     library = library or _q8_0_t16_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, symbol)
@@ -894,11 +916,16 @@ def _check_common(rows: int, in_features: int) -> None:
         raise ValueError("in_features must be divisible by GGUF Q8_0 block size 32")
 
 
-def _resolve_threads(threads: int) -> int:
-    threads = _DEFAULT_THREADS if int(threads) == 0 else int(threads)
-    if threads not in _ALLOWED_THREADS:
-        allowed = ", ".join(str(value) for value in sorted(_ALLOWED_THREADS))
-        raise ValueError(f"threads must be one of {allowed} or 0 for default")
+def _resolve_threads(
+    threads: int,
+    *,
+    default: int = _DEFAULT_THREADS,
+    allowed: frozenset[int] = _ALLOWED_THREADS,
+) -> int:
+    threads = default if int(threads) == 0 else int(threads)
+    if threads not in allowed:
+        values = ", ".join(str(value) for value in sorted(allowed))
+        raise ValueError(f"threads must be one of {values} or 0 for default")
     return threads
 
 

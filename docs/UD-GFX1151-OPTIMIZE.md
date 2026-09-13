@@ -596,6 +596,35 @@ Likely investigation order:
   capacity) and payload over-fetch (1.25x) rule out request and bandwidth
   limits. The layout primitive is retained but has no consumer; see
   `docs/REFACTOR.md`.
+- [ ] Q8_0 `ssm_alpha`/`ssm_beta` dual_split block width. Measured
+  2026-09-13. `q8_0_t16_dual_split_gemv` costs 0.877 ms/step over 576 calls
+  (48/step) at 18.28 us for 25 MB, which is 28.6 GB/s. The cause is grid
+  parallelism, not bandwidth: the launcher sets
+  `grid.x = (out_features_a + out_features_b) / T16_COLS`, so the 48-column
+  `ssm_alpha`/`ssm_beta` pair gets **six blocks** on a 96-CU part, and with a
+  128-thread block and four waves each wave walks a 40-block serial k chain.
+  Widening the grid by tiling the same tensor to N=1536 reaches **1097 GB/s**
+  on the same kernel, so the kernel is capable and the small shape is pure
+  exposed latency. Widening the block instead is one line and measured
+  **1.51x** on the real shape (25.44 -> 16.83 us wall at rows 3, best of
+  4 x 30 launches after warmup; 256 beats both 128 and 512 at every width
+  tested, and the census re-run puts the kernel at **18.28 -> 13.54 us/call,
+  0.877 -> 0.650 ms/step, -25.9%**, with `avg_kernel_ms` 36.311 -> 36.077 and
+  every other kernel flat). The enabling infrastructure is landed: a dedicated
+  `valid_split_threads` that admits 64/128/256/512/1024 for this owner only,
+  `xchg[32 * T16_COLS]` instead of `xchg[4 * T16_COLS]` (the four-wave buffer
+  silently dropped the extra waves and produced 99% mismatched elements at
+  256 threads), and `_resolve_threads(default=..., allowed=...)`. **The default
+  is deliberately still 128.** A wider block changes the wave count and so the
+  k-split summation order for `ssm_alpha`/`ssm_beta`, and the 2026-09-13
+  Q8T16 rowtile entry records that changing this path's arithmetic diverges
+  generated tokens. Promote the default to 256 only with the section-6.1
+  teacher-forced gate and the paired AR/MTP protocol. The bit-identical
+  alternative is block-level split-K: give each output tile S blocks that each
+  own a contiguous, wave-aligned k range and write ordered partials, then
+  reduce `for wave: for split:` so the concatenation reproduces the original
+  order exactly. That keeps the grid at 6 x S without touching the arithmetic,
+  and it is the route to prefer if the gate blocks the wide block.
 - [ ] UD-versus-plain family budget. Measured 2026-09-13 from two rocprofv3
   verifier-window censuses on the same host and protocol: UD-Q4_K_M is
   435.74 ms total kernel time (36.31 ms/step) against plain Q4_K_M at
