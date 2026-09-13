@@ -126,13 +126,17 @@ ratio-only table is insufficient.
 
 ### Phase 0: Freeze and reproduce the baseline
 
-- [ ] Verify a clean worktree and record the starting commit.
-- [ ] Reproduce the paired artifact from its raw payloads with
+- [x] Verify a clean worktree and record the starting commit. Recorded as
+  `base_commit` in each unit's worklog entry.
+- [x] Reproduce the paired artifact from its raw payloads with
   `--from-raw`; confirm byte-identical regeneration.
-- [ ] Run a short smoke to confirm physical GPU1, model identity, graph replay,
-  and expected UD/plain route selection.
-- [ ] Copy the baseline rates into the new optimization result manifest.
-- [ ] Create a new immutable worklog entry for the optimization unit.
+- [x] Run a short smoke to confirm physical GPU1, model identity, graph replay,
+  and expected UD/plain route selection. The harness now requires
+  `--device-index` and `--expect-device` for a real run, so an undeclared card
+  cannot be measured by accident.
+- [x] Copy the baseline rates into the new optimization result manifest. They
+  are the first two rows of the section 5 scorecard, marked `Superseded`.
+- [x] Create a new immutable worklog entry for the optimization unit.
 
 Exit criteria: baseline artifact validates, device identity is correct, and
 all future comparisons can be traced to this exact starting point.
@@ -155,8 +159,12 @@ visible.
   overhead. It is steady per-step verifier work.
 - [x] Check Q5/Q6/IQ/Q3 decoder launch count and occupancy (grid, block, VGPR,
   SGPR). Memory traffic counters were not collected.
-- [ ] Capture c1, c2, c4, and c8 where the caller supports them. The census is
-  a single-request leaf; width capture needs a multi-request caller.
+- [x] Capture c1, c2, c4, and c8 where the caller supports them. The single
+  request leaf cannot, so Phase 5 added a multi-request caller
+  (`scripts/gguf_mtp_c1c8_server_bench.py`): c1 K3 2.4624x, c2 K2 1.0418x, c4
+  refused by policy (no production physical cell), c8 admitted by policy but
+  out of memory at capacity 8. Evidence:
+  `benchmarks/results/2026-09-12-ud-gfx1100-mtp-width-cells.json`.
 - [x] Capture representative verifier rows such as 6, 9, 12, 16, 28, and 32.
   Rows 4, 5, 6, and 8 were captured in Phase 5, after the four-row cap was
   lifted. Rows 9 and above are not reachable: the native target graph is
@@ -266,9 +274,19 @@ For each transferred candidate:
 - [x] Check whether a batched owner reduces launches without changing exact
   ownership, masks, or rollback semantics. It does not reduce launches here;
   the win is per-launch decode cost.
-- [ ] Add a focused RED test for the row-shape/dispatch contract.
-- [ ] Keep the existing strict verifier fallback registered.
-- [ ] Capture a kernel trace showing the intended owner actually ran.
+- [x] Add a focused RED test for the row-shape/dispatch contract.
+  `tests/test_gguf_iq_local32_rows.py` covers registration on both HIP
+  backends, the declined slots (no execution owner, no policy entry, an
+  unregistered variant, decode-strict, `n` not a multiple of 8, above four
+  rows, no prefill alias parent, prefill or non-raw dispatch), and argument
+  validation before the launch is built.
+- [x] Keep the existing strict verifier fallback registered.
+  `test_strict_per_row_gemv_stays_registered_as_the_fallback` pins it, and the
+  strict per-row GEMV keeps rows 1, 5+, Q3_K and gfx1151.
+- [x] Capture a kernel trace showing the intended owner actually ran.
+  `rocprofv3 --kernel-trace` shows `gguf_iq4_xs_local32_gemv_kernel<2,2>`,
+  `<2,3>`, `<2,4>`, `<4,2>`, `<4,3>` in the verifier path with the strict
+  kernel left at rows 1.
 
 Transfer decision:
 
@@ -476,7 +494,10 @@ Before automatic MTP admission, complete the U6 envelope:
 - [ ] Exact speculative accept/reject commit and rollback. The U6 control item
   `exact_ar_mtp_control_behavior` is qualified on both UD records; the
   production rollback path at width is unmeasured.
-- [ ] Draft/verifier state disjointness, aliases, and teardown.
+- [ ] Draft/verifier state disjointness, aliases, and teardown. State
+  disjointness is measured and gated — the draft executor's 62 device buffers
+  intersect neither the target session's 188 nor the verifier journal's 381 —
+  but aliases and teardown remain open.
 - [ ] Block-64 Q6 `eh_proj`, attention, and FFN operations.
 - [ ] Explicit artifact-scoped strict manifest.
 - [x] Explicit backend/profile/context/width scope. Closed on measurement:
