@@ -16,6 +16,10 @@ def test_mapping_arms_reset_hint_after_each_cold_remap():
                 madvise=lambda hint: calls.append(("advice", hint)),
             ))
 
+        def configure_mapping_access(self, mode):
+            self._raw._mmap.madvise(mmap.MADV_RANDOM if mode == "random" else mmap.MADV_NORMAL)
+            return True
+
     table = Table()
     original = lambda ids: ids
     for mode in ("after", "before"):
