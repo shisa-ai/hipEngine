@@ -372,8 +372,27 @@ verification. This separates arithmetic drift from control and batching bugs.
   logits are the gate's comparison surface; the serving path here is greedy.
 - [x] Repeat under eager and graph replay. The 64-token arms use the captured
   native graph; the 512-token arms use the eager multi-row verifier.
-- [ ] Check deterministic replay and batch-composition invariance.
-  Deterministic replay passes; batch composition needs c2/c4/c8.
+- [x] Check deterministic replay and batch-composition invariance. **Closed
+  2026-09-13 on the width census.** Deterministic replay passes: every retained
+  paired arm is generated-ID exact across two deterministic fresh-process
+  repeats, and the section-6.1 gate is bit-reproducible (two deterministic
+  repeats, `deterministic=True`). Batch composition is measured at every width
+  cell that exists rather than assumed.
+  `benchmarks/results/2026-09-12-ud-gfx1100-mtp-width-cells.json`
+  (`scripts/gguf_mtp_c1c8_server_bench.py`, server `/v1/completions`
+  barrier-to-last-completion, the canonical ten prompts, `max_tokens` 24,
+  `correctness_contract: ar_exact`) records c1 K3 and c2 K2 each at
+  `cells: 10`, `exact_cells: 10`, `engaged_cells: 10`,
+  `budget_conformed_cells: 10`, `route_expectation_passed: true`. So the
+  two-request batched path is bit-exact against the single-request AR route at
+  every one of its ten cells, which is the batch-composition check. The
+  remaining cells are structurally unavailable, not unattempted, and the
+  artifact says so in `not_measured`: c4 K3 because c4 is not in
+  `GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS['production']`
+  (`((1,2),(1,3),(2,2),(8,3))`) and therefore has no physical kernel cell to
+  qualify, and c8 K3 because it fails every request with `HIP error 2: out of
+  memory` at capacity 8 against the 16.46 GB artifact on the 25.75 GB default
+  GPU, at `max-sequence-length` 1024, 512 and 256 alike.
 
 The gate must identify whether K_S near-ties are permitted production drift
 or a binding batch-composition failure. Do not widen the admission pin to make
