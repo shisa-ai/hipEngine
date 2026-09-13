@@ -203,7 +203,38 @@ __global__ void vv_add_bias_kernel(
   }
 }
 
+// out[i] = x[i] + b[i % width]  (fp32 bias add for GEMV chains)
+__global__ void vv_add_bias_f32_kernel(
+    const float* __restrict__ x,
+    const float* __restrict__ b,
+    float* __restrict__ out,
+    int64_t total,
+    int64_t width) {
+  const int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (idx < total) {
+    const int64_t col = idx % width;
+    out[idx] = x[idx] + b[col];
+  }
+}
+
 }  // namespace
+
+extern "C" int hipengine_vv_add_bias_f32(
+    const float* x,
+    const float* b,
+    float* out,
+    int64_t total,
+    int64_t width,
+    hipStream_t stream) {
+  if (total <= 0 || width <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t blocks = (total + 255) / 256;
+  hipLaunchKernelGGL(
+      vv_add_bias_f32_kernel, dim3(static_cast<unsigned int>(blocks)), dim3(256),
+      0, stream, x, b, out, total, width);
+  return static_cast<int>(hipGetLastError());
+}
 
 extern "C" int hipengine_vv_add_bias_bf16(
     const uint16_t* x,
