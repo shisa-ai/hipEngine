@@ -358,13 +358,24 @@ def run_surya_ocr(
     The work runs through the registered ``(surya_ocr2, cpu_reference, fp32)``
     generator, so this public entry point and ``LLM(...)`` share one
     implementation: the same capacity admission, stop-token handling, and
-    cancellation/deadline checks. ``deadline_at`` is an absolute
-    ``time.perf_counter()`` value; ``cancellation_token`` is a
+    cancellation/deadline checks. Registration is performed here, so the call
+    works from a fresh process that never touched ``hipengine.LLM``.
+    ``deadline_at`` is an absolute ``time.perf_counter()`` value;
+    ``cancellation_token`` is a
     :class:`~hipengine.generation.deadline.GenerationCancellationToken`.
     """
 
+    from hipengine.generation import register_builtin_generators
     from hipengine.generation.registry import GenerationRequest, resolve_text_generator
     from hipengine.generation.surya_protocol import FULL_PAGE_HTML_PROMPT
+
+    # Resolving a generator needs a populated registry, and the registration is
+    # an import-time side effect of ``hipengine.generation.surya``. Do it here so
+    # this entry point is self-contained rather than depending on a caller -- or,
+    # in a test, on another test module's import -- having imported it.
+    # ``LLM._get_text_generator`` calls the same function. The import is local
+    # because ``hipengine.generation.surya`` imports this module.
+    register_builtin_generators()
 
     resolved_prompt = FULL_PAGE_HTML_PROMPT if prompt is None else str(prompt)
     factory = resolve_text_generator(
