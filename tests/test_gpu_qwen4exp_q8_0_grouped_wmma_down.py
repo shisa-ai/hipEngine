@@ -1,7 +1,7 @@
 """#19 R9: Q8_0 selected grouped WMMA down kernel vs dequant reference.
 
 Pins the kernel's arithmetic against a NumPy dequant reference at the
-production geometry (in=512, out=2560, 4 experts, compact rows with
+reduced geometry (in=512, out=320, 4 experts, compact rows with
 ragged per-expert row counts) through the same tile-map contract the
 runner uses (qwen35_moe_wmma_tile_map). Tolerance is the f16-WMMA class
 (same as the promoted Q5_1 grouped WMMA down), not bit-exactness.
@@ -49,9 +49,9 @@ def _quantize_q8_0(w: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     raw = np.empty((out, blocks * 34), dtype=np.uint8)
     for b in range(blocks):
         d16 = d[:, b].astype(np.float16).view(np.uint16)
-        raw[:, b * 34:b * 34 + 2] = d16[:, None]
+        raw[:, b * 34:b * 34 + 2] = d16.view(np.uint8).reshape(out, 2)
         raw[:, b * 34 + 2:b * 34 + 34] = qs[:, b].view(np.uint8).reshape(out, 32)
-    return raw.reshape(-1), d
+    return raw, d
 
 
 def _tile_map(expert_rows: list[int]) -> tuple[np.ndarray, np.ndarray, int]:
@@ -86,6 +86,8 @@ def test_q8_0_selected_grouped_wmma_matches_reference():
     x_bf16 = _f32_to_bf16_bits(x)
 
     starts, wmma_start, total_tiles = _tile_map(expert_rows)
+    tiles = np.repeat(np.arange(experts, dtype=np.int64),
+                      [(n + 15) // 16 for n in expert_rows])
     wmma_total_rows = total_tiles * 16
 
     runtime = get_hip_runtime()
@@ -96,7 +98,7 @@ def test_q8_0_selected_grouped_wmma_matches_reference():
         d_wmma = _upload(wmma_start, runtime, allocations)
         d_tiles = _upload(np.asarray(tiles, dtype=np.int64), runtime, allocations)
         dw = _upload(raw_all.reshape(-1), runtime, allocations)
-        out = _alloc(compact * out_f, np.float32, runtime, allocations)
+        out = _alloc(compact * out_f, np.uint16, runtime, allocations)
 
         gguf_q8_0_selected_grouped_wmma_prefill_compact_bf16_bf16_out(
             dx.ptr, d_starts.ptr, d_wmma.ptr, d_tiles.ptr, dw.ptr, out.ptr,
@@ -104,7 +106,8 @@ def test_q8_0_selected_grouped_wmma_matches_reference():
             runtime=runtime, library=None,
         )
         runtime.device_synchronize()
-        got = _download(out, (compact, out_f), np.float32, runtime)
+        bits = _download(out, (compact, out_f), np.uint16, runtime)
+        got = (bits.astype(np.uint32) << 16).view(np.float32)
     finally:
         while allocations:
             free(allocations.pop())
@@ -129,12 +132,24 @@ def test_q8_0_selected_grouped_wmma_matches_reference():
         # The kernel converts activations and dequantized weights to f16
         # before the WMMA dot; emulate both roundings.
         we16 = we.astype(np.float16).astype(np.float32)
-        x16 = x[row:row + n].astype(np.float16).astype(np.float32)
+        rounded_x = (x_bf16[row:row + n].astype(np.uint32) << 16).view(np.float32)
+        x16 = rounded_x.astype(np.float16).astype(np.float32)
         ref = x16 @ we16.T
+        ref = (_f32_to_bf16_bits(ref).astype(np.uint32) << 16).view(np.float32)
         rel = np.abs(got[row:row + n] - ref) / np.maximum(np.abs(ref), 1e-6)
         worst = max(worst, float(np.quantile(rel, 0.999)))
         row += n
-    assert worst < 5e-3, f"f16-WMMA reference drift too large: {worst}"
+    assert np.isfinite(got).all()
+    assert worst < 5e-3, f"f16-WMMA/BF16-output reference drift too large: {worst}"
+
+
+def test_q8_fixture_scale_bytes_and_layout_are_exact():
+    raw, _ = _quantize_q8_0(np.full((2, 32), 1.0, dtype=np.float32))
+    assert raw.shape == (2, 34)
+    expected = np.float16(1.0 / 127.0)
+    np.testing.assert_array_equal(raw[:, :2].copy().view(np.float16).reshape(-1),
+                                  np.full(2, expected, dtype=np.float16))
+    np.testing.assert_array_equal(raw[:, 2:].view(np.int8), np.full((2, 32), 127, dtype=np.int8))
 
 
 def _f32_to_bf16_bits(x: np.ndarray) -> np.ndarray:
