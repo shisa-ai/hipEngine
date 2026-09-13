@@ -106,3 +106,43 @@ def test_doc_embeddings_and_maxsim_match_oracle(runner, fixture) -> None:
     )
     np.testing.assert_array_equal(doc, doc2)
 
+
+def test_state_rezero_clears_recycled_nan(runner, fixture) -> None:
+    """The conv/GDN re-zero must clear a NaN, not multiply it by zero.
+
+    Both state buffers are persistent and re-zeroed before every layer with a
+    GPU-side kernel. A scale-by-zero kernel (``x * 0.0``) is a no-op for a NaN
+    (``NaN * 0 == NaN``), so a NaN left in recycled device memory survives the
+    re-zero and turns the whole encoder's output into NaN -- which is what the
+    Surya runner, which shares this idiom, did after a long test suite had run.
+    A fresh process only masked it because hipMalloc returns zeroed pages for
+    allocations this size.
+    """
+
+    args = (
+        fixture["input_ids"][0],
+        fixture["attention_mask"][0],
+        fixture["pixel_values"][0],
+        fixture["image_grid_thw"],
+    )
+    ref = runner.encode_document(*args)
+    assert np.isfinite(ref).all(), "unpoisoned encode is not finite"
+
+    states = [
+        buf
+        for buf in (runner._zero_conv_state, runner._gdn_state_zero)
+        if buf is not None
+    ]
+    assert len(states) == 2, "expected the conv and GDN zero-state buffers"
+    for buf in states:
+        # 0xFFFFFFFF is a quiet NaN in fp32
+        runner.runtime.memset(buf.ptr, 0xFF, buf.nbytes)
+    runner.runtime.device_synchronize()
+
+    after = runner.encode_document(*args)
+    assert np.isfinite(after).all(), (
+        "state re-zeroing let NaN survive into the encoder: "
+        f"{int((~np.isfinite(after)).sum())} of {after.size} values are not finite"
+    )
+    np.testing.assert_array_equal(after, ref)
+
