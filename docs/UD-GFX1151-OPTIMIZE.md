@@ -577,6 +577,25 @@ Likely investigation order:
   is the only option for it. Closing the gap means repacking IQ4_XS into a tile
   layout at load time plus a new owner, at the cost of the repacked resident
   footprint.
+- [ ] UD-versus-plain family budget. Measured 2026-09-13 from two rocprofv3
+  verifier-window censuses on the same host and protocol: UD-Q4_K_M is
+  435.74 ms total kernel time (36.31 ms/step) against plain Q4_K_M at
+  351.98 ms (29.33 ms/step), so UD carries 83.8 ms of extra kernel time.
+  The whole of it is the IQ family, which has no plain counterpart:
+  `gguf_iq4_xs_local32_gemv` 11.37 ms/step (31.3%), `gguf_iq_dense_strict`
+  3.22 (8.9%), `gguf_iq4_nl_local32_gemv` 0.78 (2.1%) = 15.37 ms/step,
+  against UD savings of 9.2 ms/step on Q4_K, 5.0 on Q6_K and 1.0 on the norm
+  tail. Ranked next steps, with the measured pair counts that bound each:
+  (a) IQ4_XS has **30** gate/up pairs (60 of its 117 tensors), so the
+  already-written `gguf_iq4_xs_local32_dual_silu_kernel` would remove 30
+  launches/step and share the activation window, but it is `template<int
+  WAVES>` with no `ROWS` and its `extern "C"` rejects `rows != 1`, and a
+  `ROWS = 4` sibling needs `acc_a[4][8] + acc_b[4][8] + xv[4][8]` = 96 float
+  registers against the single owner's measured 168 VGPRs, so the register
+  budget is the open question and must be measured before the plumbing;
+  (b) Q5_K has only **12** gate/up pairs, so a Q5_K T16 dense dual rowtile
+  SiLU sibling of `q4_k_t16_dense_dual_rowtile_silu_gemv` (762 GB/s on the
+  Q4 pairs) is worth at most ~0.8 ms/step; (c) the IQ4_XS T16 repack above.
 - [ ] Q5_K t16 rowtile short-K steady state. **Re-opened and closed again
   2026-09-13.** The 704 GB/s at (5120, 17408) against 454 GB/s at (17408, 5120)
   is not per-block amortization: `TILE_COLS` 4 -> 8 halves the block count and
