@@ -1,0 +1,1334 @@
+{
+ "date": "2026-09-13",
+ "generated_utc": "2026-09-13T02:36:06Z",
+ "model": "datalab-to/surya-ocr-2",
+ "provenance": {
+  "timestamp_utc": "2026-09-13T02:36:06Z",
+  "hostname": "zbook",
+  "cpu": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S",
+  "os": "Linux 6.18.42-1-cachyos-lts",
+  "python": "3.13.13",
+  "numpy": "2.4.4",
+  "command": "scripts/surya_attention_memory.py --max-seq 8192 12288 16384 20480 32768 --tokens 256,1024,4096,8580,12288,16384 --runs 3 --decode-steps 16 --out benchmarks/results/2026-09-13-gfx1151-surya-context-default.json",
+  "git_revision": "bd6ffdf2320ecddc7da8874bf2b5991af3bd0b1a",
+  "git_branch": "surya",
+  "git_dirty": true,
+  "torch": "2.13.0+rocm10.0.0",
+  "torch_hip": "7.15.26333",
+  "gpu": "AMD Radeon 8060S Graphics"
+ },
+ "vision_attention": {
+  "budget_bytes": 536870912,
+  "grids": [
+   {
+    "grid": [
+     1,
+     220,
+     156
+    ],
+    "patches": 34320,
+    "merged_image_tokens": 8580,
+    "dense_score_bytes": 56537395200,
+    "query_block": 320,
+    "tiled_score_bytes": 527155200,
+    "reduction_x": 107.25
+   },
+   {
+    "grid": [
+     1,
+     256,
+     256
+    ],
+    "patches": 65536,
+    "merged_image_tokens": 16384,
+    "dense_score_bytes": 206158430208,
+    "query_block": 160,
+    "tiled_score_bytes": 503316480,
+    "reduction_x": 409.6
+   }
+  ]
+ },
+ "text_attention": {
+  "budget_bytes_list": [
+   536870912
+  ],
+  "runs": 3,
+  "decode_steps": 16,
+  "tile_plan": [
+   {
+    "tokens": 256,
+    "dense_score_bytes": 2097152,
+    "plans": [
+     {
+      "budget_bytes": 536870912,
+      "query_block": 128,
+      "score_tile_bytes": 1048576,
+      "reduction_x": 2.0
+     }
+    ]
+   },
+   {
+    "tokens": 1024,
+    "dense_score_bytes": 33554432,
+    "plans": [
+     {
+      "budget_bytes": 536870912,
+      "query_block": 128,
+      "score_tile_bytes": 4194304,
+      "reduction_x": 8.0
+     }
+    ]
+   },
+   {
+    "tokens": 4096,
+    "dense_score_bytes": 536870912,
+    "plans": [
+     {
+      "budget_bytes": 536870912,
+      "query_block": 128,
+      "score_tile_bytes": 16777216,
+      "reduction_x": 32.0
+     }
+    ]
+   },
+   {
+    "tokens": 8580,
+    "dense_score_bytes": 2355724800,
+    "plans": [
+     {
+      "budget_bytes": 536870912,
+      "query_block": 256,
+      "score_tile_bytes": 70287360,
+      "reduction_x": 33.515625
+     }
+    ]
+   },
+   {
+    "tokens": 12288,
+    "dense_score_bytes": 4831838208,
+    "plans": [
+     {
+      "budget_bytes": 536870912,
+      "query_block": 384,
+      "score_tile_bytes": 150994944,
+      "reduction_x": 32.0
+     }
+    ]
+   },
+   {
+    "tokens": 16384,
+    "dense_score_bytes": 8589934592,
+    "plans": [
+     {
+      "budget_bytes": 536870912,
+      "query_block": 512,
+      "score_tile_bytes": 268435456,
+      "reduction_x": 32.0
+     }
+    ]
+   }
+  ]
+ },
+ "protocol": {
+  "measurement": "hipengine.core.memory process-local device allocation counter (hipEngine-owned buffers)",
+  "boundary": "peak scratch = peak_allocated_bytes - resident_bytes, where resident is the runner's long-lived allocation after construction",
+  "prompt": "synthetic text-only ids of the given length with plain 1-D rope positions; no image, so this isolates the text stack",
+  "isolation": "a fresh runner per token count, with reset_memory_stats() after construction, so the peak is one prefill's footprint and not a previous run's high-water mark",
+  "score_tile_bytes": "the planner's causal score tile (nq * tokens * block * 4) for the row's budget; budget_bytes null means the dense path",
+  "timing": "prefill_seconds is the mean of prefill_seconds_runs, which are wall-clock repeats on an already-warm runner",
+  "decode_timing": "decode_seconds_runs are per-step wall clocks at the row's live token count; each decode_step ends in _logits_last, which synchronizes before the logits D2H, so a step is launch plus execution plus the copy the greedy loop needs. A row whose token count equals max_seq has no free KV slot and records decode_steps 0"
+ },
+ "page_tokens": {
+  "300dpi_a4": 8580
+ },
+ "results": [
+  {
+   "max_seq": 8192,
+   "resident_components": {
+    "weights_bytes": 2663047936,
+    "kv_planes_bytes": 201326592,
+    "gdn_state_bytes": 18883584,
+    "conv_state_bytes": 1778688,
+    "span_metadata_bytes": 73872,
+    "span_decode_partial_bytes": 528384,
+    "span_num_splits": 64,
+    "span_block_size": 256,
+    "resident_bytes": 2885652920
+   },
+   "budgets": [
+    {
+     "max_seq": 8192,
+     "budget_bytes": 536870912,
+     "split_plan": {
+      "chunk_size": 128,
+      "num_splits": 64,
+      "block_size": 256,
+      "block_table_len": 32
+     },
+     "skipped_over_context": [
+      8580,
+      12288,
+      16384
+     ],
+     "rows": [
+      {
+       "tokens": 256,
+       "query_block": 128,
+       "resident_bytes": 2885652920,
+       "peak_scratch_bytes": 48718980,
+       "retained_scratch_bytes": 48718980,
+       "score_tile_bytes": 1048576,
+       "dense_score_bytes": 2097152,
+       "non_attention_scratch_bytes": 47670404,
+       "linear_bytes_per_token": 186212.515625,
+       "peak_total_bytes": 2934371900,
+       "prefill_seconds": 0.19342517852783203,
+       "prefill_seconds_runs": [
+        0.19399142265319824,
+        0.19383740425109863,
+        0.19244670867919922
+       ],
+       "decode_steps": 16,
+       "decode_steps_requested": 16,
+       "decode_seconds_runs": [
+        0.01908588409423828,
+        0.018454313278198242,
+        0.017887592315673828,
+        0.017933368682861328,
+        0.017999649047851562,
+        0.01822042465209961,
+        0.01843547821044922,
+        0.018429279327392578,
+        0.018516063690185547,
+        0.01798534393310547,
+        0.018188953399658203,
+        0.018030166625976562,
+        0.018054723739624023,
+        0.018041133880615234,
+        0.018495559692382812,
+        0.018187284469604492
+       ],
+       "decode_seconds_mean": 0.018246576189994812,
+       "decode_ms_per_token": 18.246576189994812,
+       "decode_tokens_per_s": 54.80480225919492
+      },
+      {
+       "tokens": 1024,
+       "query_block": 128,
+       "resident_bytes": 2885652920,
+       "peak_scratch_bytes": 194025348,
+       "retained_scratch_bytes": 194025348,
+       "score_tile_bytes": 4194304,
+       "dense_score_bytes": 33554432,
+       "non_attention_scratch_bytes": 189831044,
+       "linear_bytes_per_token": 185381.87890625,
+       "peak_total_bytes": 3079678268,
+       "prefill_seconds": 0.7386560440063477,
+       "prefill_seconds_runs": [
+        0.7422506809234619,
+        0.7341902256011963,
+        0.7395272254943848
+       ],
+       "decode_steps": 16,
+       "decode_steps_requested": 16,
+       "decode_seconds_runs": [
+        0.019611835479736328,
+        0.018663406372070312,
+        0.018605470657348633,
+        0.01845073699951172,
+        0.01837158203125,
+        0.018568038940429688,
+        0.01829671859741211,
+        0.018177032470703125,
+        0.018100976943969727,
+        0.018065690994262695,
+        0.018062353134155273,
+        0.017758607864379883,
+        0.018059968948364258,
+        0.018257856369018555,
+        0.01773548126220703,
+        0.018181800842285156
+       ],
+       "decode_seconds_mean": 0.01831047236919403,
+       "decode_ms_per_token": 18.31047236919403,
+       "decode_tokens_per_s": 54.61355555645979
+      },
+      {
+       "tokens": 4096,
+       "query_block": 128,
+       "resident_bytes": 2885652920,
+       "peak_scratch_bytes": 775250820,
+       "retained_scratch_bytes": 775250820,
+       "score_tile_bytes": 16777216,
+       "dense_score_bytes": 536870912,
+       "non_attention_scratch_bytes": 758473604,
+       "linear_bytes_per_token": 185174.2197265625,
+       "peak_total_bytes": 3660903740,
+       "prefill_seconds": 3.3124537467956543,
+       "prefill_seconds_runs": [
+        3.295152425765991,
+        3.3226709365844727,
+        3.319537878036499
+       ],
+       "decode_steps": 16,
+       "decode_steps_requested": 16,
+       "decode_seconds_runs": [
+        0.019159555435180664,
+        0.01820850372314453,
+        0.018187761306762695,
+        0.018225908279418945,
+        0.018106460571289062,
+        0.018227815628051758,
+        0.0182650089263916,
+        0.018196821212768555,
+        0.018202781677246094,
+        0.01827073097229004,
+        0.018337011337280273,
+        0.018209457397460938,
+        0.01816868782043457,
+        0.01804518699645996,
+        0.01822376251220703,
+        0.017927885055541992
+       ],
+       "decode_seconds_mean": 0.018247708678245544,
+       "decode_ms_per_token": 18.247708678245544,
+       "decode_tokens_per_s": 54.80140096669642
+      }
+     ],
+     "fitted_linear_bytes_per_token": 185105.00000000003
+    }
+   ]
+  },
+  {
+   "max_seq": 12288,
+   "resident_components": {
+    "weights_bytes": 2663047936,
+    "kv_planes_bytes": 301989888,
+    "gdn_state_bytes": 18883584,
+    "conv_state_bytes": 1778688,
+    "span_metadata_bytes": 110800,
+    "span_decode_partial_bytes": 528384,
+    "span_num_splits": 64,
+    "span_block_size": 256,
+    "resident_bytes": 2986353144
+   },
+   "budgets": [
+    {
+     "max_seq": 12288,
+     "budget_bytes": 536870912,
+     "split_plan": {
+      "chunk_size": 192,
+      "num_splits": 64,
+      "block_size": 256,
+      "block_table_len": 48
+     },
+     "skipped_over_context": [
+      16384
+     ],
+     "rows": [
+      {
+       "tokens": 256,
+       "query_block": 128,
+       "resident_bytes": 2986353144,
+       "peak_scratch_bytes": 48718980,
+       "retained_scratch_bytes": 48718980,
+       "score_tile_bytes": 1048576,
+       "dense_score_bytes": 2097152,
+       "non_attention_scratch_bytes": 47670404,
+       "linear_bytes_per_token": 186212.515625,
+       "peak_total_bytes": 3035072124,
+       "prefill_seconds": 0.1982425053914388,
+       "prefill_seconds_runs": [
+        0.20178437232971191,
+        0.1967451572418213,
+        0.1961979866027832
+       ],
+       "decode_steps": 16,
+       "decode_steps_requested": 16,
+       "decode_seconds_runs": [
+        0.01904749870300293,
+        0.018500566482543945,
+        0.018454790115356445,
+        0.01818370819091797,
+        0.018327713012695312,
+        0.018265724182128906,
+        0.018420934677124023,
+        0.018254518508911133,
+        0.0183107852935791,
+        0.01825881004333496,
+        0.01840066909790039,
+        0.01832723617553711,
+        0.01833939552307129,
+        0.018280029296875,
+        0.018299341201782227,
+        0.018254756927490234
+       ],
+       "decode_seconds_mean": 0.018370404839515686,
+       "decode_ms_per_token": 18.370404839515686,
+       "decode_tokens_per_s": 54.43538173143297
+      },
+      {
+       "tokens": 1024,
+       "query_block": 128,
+       "resident_bytes": 2986353144,
+       "peak_scratch_bytes": 194025348,
+       "retained_scratch_bytes": 194025348,
+       "score_tile_bytes": 4194304,
+       "dense_score_bytes": 33554432,
+       "non_attention_scratch_bytes": 189831044,
+       "linear_bytes_per_token": 185381.87890625,
+       "peak_total_bytes": 3180378492,
+       "prefill_seconds": 0.7546261151631674,
+       "prefill_seconds_runs": [
+        0.7675478458404541,
+        0.7445464134216309,
+        0.751784086227417
+       ],
+       "decode_steps": 16,
+       "decode_steps_requested": 16,
+       "decode_seconds_runs": [
+        0.019467830657958984,
+        0.018657922744750977,
+        0.018512248992919922,
+        0.01840376853942871,
+        0.018239736557006836,
+        0.018136978149414062,
+        0.017945051193237305,
+        0.01804661750793457,
+        0.018072128295898438,
+        0.017885684967041016,
+        0.018186092376708984,
+        0.018671035766601562,
+        0.018252849578857422,
+        0.01856851577758789,
+        0.018351078033447266,
+        0.01841449737548828
+       ],
+       "decode_seconds_mean": 0.01836325228214264,
+       "decode_ms_per_token": 18.36325228214264,
+       "decode_tokens_per_s": 54.45658452192866
+      },
+      {
+       "tokens": 4096,
+       "query_block": 128,
+       "resident_bytes": 2986353144,
+       "peak_scratch_bytes": 775250820,
+       "retained_scratch_bytes": 775250820,
+       "score_tile_bytes": 16777216,
+       "dense_score_bytes": 536870912,
+       "non_attention_scratch_bytes": 758473604,
+       "linear_bytes_per_token": 185174.2197265625,
+       "peak_total_bytes": 3761603964,
+       "prefill_seconds": 3.3116559187571206,
+       "prefill_seconds_runs": [
+        3.307049512863159,
+        3.322497606277466,
+        3.3054206371307373
+       ],
+       "decode_steps": 16,
+       "decode_steps_requested": 16,
+       "decode_seconds_runs": [
+        0.01954507827758789,
+        0.0189359188079834,
+        0.01840829849243164,
+        0.01876091957092285,
+        0.018924474716186523,
+        0.019060134887695312,
+        0.018224716186523438,
+        0.018311500549316406,
+        0.01833963394165039,
+        0.018949508666992188,
+        0.018842220306396484,
+        0.018720149993896484,
+        0.01830744743347168,
+        0.01884293556213379,
+        0.018445253372192383,
+        0.018615007400512695
+       ],
+       "decode_seconds_mean": 0.018702074885368347,
+       "decode_ms_per_token": 18.702074885368347,
+       "decode_tokens_per_s": 53.47000298786925
+      },
+      {
+       "tokens": 8580,
+       "query_block": 256,
+       "resident_bytes": 2986353144,
+       "peak_scratch_bytes": 1658734308,
+       "retained_scratch_bytes": 1658734308,
+       "score_tile_bytes": 70287360,
+       "dense_score_bytes": 2355724800,
+       "non_attention_scratch_bytes": 1588446948,
+       "linear_bytes_per_token": 185133.6769230769,
+       "peak_total_bytes": 4645087452,
+       "prefill_seconds": 7.538364330927531,
+       "prefill_seconds_runs": [
+        7.527327299118042,
+        7.541011333465576,
+        7.546754360198975
+       ],
+       "decode_steps": 16,
+       "decode_steps_requested": 16,
+       "decode_seconds_runs": [
+        0.020037412643432617,
+        0.019394397735595703,
+        0.019099950790405273,
+        0.018949508666992188,
+        0.01865673065185547,
+        0.018918752670288086,
+        0.019325971603393555,
+        0.019097328186035156,
+        0.019060134887695312,
+        0.01895737648010254,
+        0.019185304641723633,
+        0.019147396087646484,
+        0.018731117248535156,
+        0.01875162124633789,
+        0.018883228302001953,
+        0.0189208984375
+       ],
+       "decode_seconds_mean": 0.019069820642471313,
+       "decode_ms_per_token": 19.069820642471313,
+       "decode_tokens_per_s": 52.438878096884245
+      },
+      {
+       "tokens": 12288,
+       "query_block": 384,
+       "resident_bytes": 2986353144,
+       "peak_scratch_bytes": 2425774980,
+       "retained_scratch_bytes": 2425774980,
+       "score_tile_bytes": 150994944,
+       "dense_score_bytes": 4831838208,
+       "non_attention_scratch_bytes": 2274780036,
+       "linear_bytes_per_token": 185122.0732421875,
+       "peak_total_bytes": 5412128124,
+       "prefill_seconds": 11.680496533711752,
+       "prefill_seconds_runs": [
+        11.679219007492065,
+        11.676080465316772,
+        11.686190128326416
+       ],
+       "decode_steps": 0,
+       "decode_steps_requested": 16,
+       "decode_seconds_runs": [],
+       "decode_seconds_mean": null,
+       "decode_ms_per_token": null,
+       "decode_tokens_per_s": null
+      }
+     ],
+     "fitted_linear_bytes_per_token": 185098.8538736273
+    }
+   ]
+  },
+  {
+   "max_seq": 16384,
+   "resident_components": {
+    "weights_bytes": 2663047936,
+    "kv_planes_bytes": 402653184,
+    "gdn_state_bytes": 18883584,
+    "conv_state_bytes": 1778688,
+    "span_metadata_bytes": 147728,
+    "span_decode_partial_bytes": 528384,
+    "span_num_splits": 64,
+    "span_block_size": 256,
+    "resident_bytes": 3087053368
+   },
+   "budgets": [
+    {
+     "max_seq": 16384,
+     "budget_bytes": 536870912,
+     "split_plan": {
+      "chunk_size": 256,
+      "num_splits": 64,
+      "block_size": 256,
+      "block_table_len": 64
+     },
+     "skipped_over_context": [],
+     "rows": [
+      {
+       "tokens": 256,
+       "query_block": 128,
+       "resident_bytes": 3087053368,
+       "peak_scratch_bytes": 48718980,
+       "retained_scratch_bytes": 48718980,
+       "score_tile_bytes": 1048576,
+       "dense_score_bytes": 2097152,
+       "non_attention_scratch_bytes": 47670404,
+       "linear_bytes_per_token": 186212.515625,
+       "peak_total_bytes": 3135772348,
+       "prefill_seconds": 0.20198527971903482,
+       "prefill_seconds_runs": [
+        0.20482993125915527,
+        0.19954252243041992,
+        0.2015833854675293
+       ],
+       "decode_steps": 16,
+       "decode_steps_requested": 16,
+       "decode_seconds_runs": [
+        0.0195159912109375,
+        0.01875758171081543,
+        0.01855945587158203,
+        0.018754005432128906,
+        0.018758296966552734,
+        0.018788814544677734,
+        0.018634796142578125,
+        0.01893472671508789,
+        0.01862931251525879,
+        0.018751144409179688,
+        0.018957853317260742,
+        0.018886566162109375,
+        0.01908397674560547,
+        0.018761157989501953,
+        0.01869344711303711,
+        0.0187375545501709
+       ],
+       "decode_seconds_mean": 0.018825292587280273,
+       "decode_ms_per_token": 18.825292587280273,
+       "decode_tokens_per_s": 53.12002431641738
+      },
+      {
+       "tokens": 1024,
+       "query_block": 128,
+       "resident_bytes": 3087053368,
+       "peak_scratch_bytes": 194025348,
+       "retained_scratch_bytes": 194025348,
+       "score_tile_bytes": 4194304,
+       "dense_score_bytes": 33554432,
+       "non_attention_scratch_bytes": 189831044,
+       "linear_bytes_per_token": 185381.87890625,
+       "peak_total_bytes": 3281078716,
+       "prefill_seconds": 0.7651645342508951,
+       "prefill_seconds_runs": [
+        0.7918031215667725,
+        0.7562718391418457,
+        0.7474186420440674
+       ],
+       "decode_steps": 16,
+       "decode_steps_requested": 16,
+       "decode_seconds_runs": [
+        0.019881010055541992,
+        0.019096851348876953,
+        0.018642187118530273,
+        0.01891613006591797,
+        0.0189516544342041,
+        0.019185543060302734,
+        0.019109487533569336,
+        0.018682479858398438,
+        0.018505334854125977,
+        0.018636703491210938,
+        0.01877450942993164,
+        0.018425941467285156,
+        0.018720626831054688,
+        0.01883840560913086,
+        0.018863201141357422,
+        0.01883697509765625
+       ],
+       "decode_seconds_mean": 0.01887919008731842,
+       "decode_ms_per_token": 18.87919008731842,
+       "decode_tokens_per_s": 52.96837392784782
+      },
+      {
+       "tokens": 4096,
+       "query_block": 128,
+       "resident_bytes": 3087053368,
+       "peak_scratch_bytes": 775250820,
+       "retained_scratch_bytes": 775250820,
+       "score_tile_bytes": 16777216,
+       "dense_score_bytes": 536870912,
+       "non_attention_scratch_bytes": 758473604,
+       "linear_bytes_per_token": 185174.2197265625,
+       "peak_total_bytes": 3862304188,
+       "prefill_seconds": 3.3186585903167725,
+       "prefill_seconds_runs": [
+        3.3133440017700195,
+        3.3203413486480713,
+        3.3222904205322266
+       ],
+       "decode_steps": 16,
+       "decode_steps_requested": 16,
+       "decode_seconds_runs": [
+        0.019952774047851562,
+        0.01894068717956543,
+        0.018955230712890625,
+        0.019031524658203125,
+        0.01876068115234375,
+        0.019278287887573242,
+        0.018889427185058594,
+        0.018792152404785156,
+        0.019092798233032227,
+        0.018807172775268555,
+        0.018772125244140625,
+        0.018655061721801758,
+        0.018881559371948242,
+        0.018893957138061523,
+        0.01909923553466797,
+        0.01894235610961914
+       ],
+       "decode_seconds_mean": 0.01898406445980072,
+       "decode_ms_per_token": 18.98406445980072,
+       "decode_tokens_per_s": 52.67575877218114
+      },
+      {
+       "tokens": 8580,
+       "query_block": 256,
+       "resident_bytes": 3087053368,
+       "peak_scratch_bytes": 1658734308,
+       "retained_scratch_bytes": 1658734308,
+       "score_tile_bytes": 70287360,
+       "dense_score_bytes": 2355724800,
+       "non_attention_scratch_bytes": 1588446948,
+       "linear_bytes_per_token": 185133.6769230769,
+       "peak_total_bytes": 4745787676,
+       "prefill_seconds": 7.555618604024251,
+       "prefill_seconds_runs": [
+        7.549590110778809,
+        7.5490171909332275,
+        7.568248510360718
+       ],
+       "decode_steps": 16,
+       "decode_steps_requested": 16,
+       "decode_seconds_runs": [
+        0.020196914672851562,
+        0.018848180770874023,
+        0.01922774314880371,
+        0.019271135330200195,
+        0.01909160614013672,
+        0.01910686492919922,
+        0.0193021297454834,
+        0.019049406051635742,
+        0.019324302673339844,
+        0.019350528717041016,
+        0.01923203468322754,
+        0.019218921661376953,
+        0.018825292587280273,
+        0.019135713577270508,
+        0.01907515525817871,
+        0.019184350967407227
+       ],
+       "decode_seconds_mean": 0.019215017557144165,
+       "decode_ms_per_token": 19.215017557144165,
+       "decode_tokens_per_s": 52.042627441066216
+      },
+      {
+       "tokens": 12288,
+       "query_block": 384,
+       "resident_bytes": 3087053368,
+       "peak_scratch_bytes": 2425774980,
+       "retained_scratch_bytes": 2425774980,
+       "score_tile_bytes": 150994944,
+       "dense_score_bytes": 4831838208,
+       "non_attention_scratch_bytes": 2274780036,
+       "linear_bytes_per_token": 185122.0732421875,
+       "peak_total_bytes": 5512828348,
+       "prefill_seconds": 11.697240749994913,
+       "prefill_seconds_runs": [
+        11.699163436889648,
+        11.686095237731934,
+        11.70646357536316
+       ],
+       "decode_steps": 16,
+       "decode_steps_requested": 16,
+       "decode_seconds_runs": [
+        0.02017354965209961,
+        0.01945352554321289,
+        0.020669937133789062,
+        0.019315004348754883,
+        0.019548416137695312,
+        0.01941204071044922,
+        0.0194244384765625,
+        0.019330263137817383,
+        0.01922321319580078,
+        0.019331932067871094,
+        0.019422531127929688,
+        0.01949930191040039,
+        0.019418001174926758,
+        0.019193649291992188,
+        0.019327163696289062,
+        0.01912236213684082
+       ],
+       "decode_seconds_mean": 0.019491583108901978,
+       "decode_ms_per_token": 19.491583108901978,
+       "decode_tokens_per_s": 51.30419599130926
+      },
+      {
+       "tokens": 16384,
+       "query_block": 512,
+       "resident_bytes": 3087053368,
+       "peak_scratch_bytes": 3301368708,
+       "retained_scratch_bytes": 3301368708,
+       "score_tile_bytes": 268435456,
+       "dense_score_bytes": 8589934592,
+       "non_attention_scratch_bytes": 3032933252,
+       "linear_bytes_per_token": 185115.55493164062,
+       "peak_total_bytes": 6388422076,
+       "prefill_seconds": 17.167406002680462,
+       "prefill_seconds_runs": [
+        17.168476343154907,
+        17.175062894821167,
+        17.158678770065308
+       ],
+       "decode_steps": 0,
+       "decode_steps_requested": 16,
+       "decode_seconds_runs": [],
+       "decode_seconds_mean": null,
+       "decode_ms_per_token": null,
+       "decode_tokens_per_s": null
+      }
+     ],
+     "fitted_linear_bytes_per_token": 185097.9658610674
+    }
+   ]
+  },
+  {
+   "max_seq": 20480,
+   "resident_components": {
+    "weights_bytes": 2663047936,
+    "kv_planes_bytes": 503316480,
+    "gdn_state_bytes": 18883584,
+    "conv_state_bytes": 1778688,
+    "span_metadata_bytes": 184656,
+    "span_decode_partial_bytes": 528384,
+    "span_num_splits": 64,
+    "span_block_size": 256,
+    "resident_bytes": 3187753592
+   },
+   "budgets": [
+    {
+     "max_seq": 20480,
+     "budget_bytes": 536870912,
+     "split_plan": {
+      "chunk_size": 320,
+      "num_splits": 64,
+      "block_size": 256,
+      "block_table_len": 80
+     },
+     "skipped_over_context": [],
+     "rows": [
+      {
+       "tokens": 256,
+       "query_block": 128,
+       "resident_bytes": 3187753592,
+       "peak_scratch_bytes": 48718980,
+       "retained_scratch_bytes": 48718980,
+       "score_tile_bytes": 1048576,
+       "dense_score_bytes": 2097152,
+       "non_attention_scratch_bytes": 47670404,
+       "linear_bytes_per_token": 186212.515625,
+       "peak_total_bytes": 3236472572,
+       "prefill_seconds": 0.202925443649292,
+       "prefill_seconds_runs": [
+        0.2075355052947998,
+        0.20187687873840332,
+        0.19936394691467285
+       ],
+       "decode_steps": 16,
+       "decode_steps_requested": 16,
+       "decode_seconds_runs": [
+        0.020100116729736328,
+        0.01885247230529785,
+        0.018936872482299805,
+        0.018476009368896484,
+        0.019037485122680664,
+        0.018484830856323242,
+        0.019010305404663086,
+        0.01891303062438965,
+        0.01871037483215332,
+        0.0186307430267334,
+        0.0189974308013916,
+        0.018692493438720703,
+        0.018971920013427734,
+        0.018791913986206055,
+        0.0188748836517334,
+        0.018754005432128906
+       ],
+       "decode_seconds_mean": 0.01888968050479889,
+       "decode_ms_per_token": 18.88968050479889,
+       "decode_tokens_per_s": 52.93895784769636
+      },
+      {
+       "tokens": 1024,
+       "query_block": 128,
+       "resident_bytes": 3187753592,
+       "peak_scratch_bytes": 194025348,
+       "retained_scratch_bytes": 194025348,
+       "score_tile_bytes": 4194304,
+       "dense_score_bytes": 33554432,
+       "non_attention_scratch_bytes": 189831044,
+       "linear_bytes_per_token": 185381.87890625,
+       "peak_total_bytes": 3381778940,
+       "prefill_seconds": 0.7601402600606283,
+       "prefill_seconds_runs": [
+        0.780203104019165,
+        0.7514607906341553,
+        0.7487568855285645
+       ],
+       "decode_steps": 16,
+       "decode_steps_requested": 16,
+       "decode_seconds_runs": [
+        0.020002365112304688,
+        0.01893019676208496,
+        0.01879096031188965,
+        0.018670082092285156,
+        0.01897883415222168,
+        0.019074201583862305,
+        0.018781661987304688,
+        0.018959760665893555,
+        0.018861055374145508,
+        0.018517255783081055,
+        0.01892995834350586,
+        0.01877593994140625,
+        0.01899266242980957,
+        0.018792152404785156,
+        0.018958330154418945,
+        0.019321918487548828
+       ],
+       "decode_seconds_mean": 0.01895858347415924,
+       "decode_ms_per_token": 18.95858347415924,
+       "decode_tokens_per_s": 52.746556796451124
+      },
+      {
+       "tokens": 4096,
+       "query_block": 128,
+       "resident_bytes": 3187753592,
+       "peak_scratch_bytes": 775250820,
+       "retained_scratch_bytes": 775250820,
+       "score_tile_bytes": 16777216,
+       "dense_score_bytes": 536870912,
+       "non_attention_scratch_bytes": 758473604,
+       "linear_bytes_per_token": 185174.2197265625,
+       "peak_total_bytes": 3963004412,
+       "prefill_seconds": 3.3233460585276284,
+       "prefill_seconds_runs": [
+        3.3143444061279297,
+        3.33463191986084,
+        3.321061849594116
+       ],
+       "decode_steps": 16,
+       "decode_steps_requested": 16,
+       "decode_seconds_runs": [
+        0.019705772399902344,
+        0.018914222717285156,
+        0.018899202346801758,
+        0.019190311431884766,
+        0.01889181137084961,
+        0.019290447235107422,
+        0.01874399185180664,
+        0.019225597381591797,
+        0.019194841384887695,
+        0.019102096557617188,
+        0.01884746551513672,
+        0.01894211769104004,
+        0.018813133239746094,
+        0.019078493118286133,
+        0.018700122833251953,
+        0.01922893524169922
+       ],
+       "decode_seconds_mean": 0.019048035144805908,
+       "decode_ms_per_token": 19.048035144805908,
+       "decode_tokens_per_s": 52.498853157181614
+      },
+      {
+       "tokens": 8580,
+       "query_block": 256,
+       "resident_bytes": 3187753592,
+       "peak_scratch_bytes": 1658734308,
+       "retained_scratch_bytes": 1658734308,
+       "score_tile_bytes": 70287360,
+       "dense_score_bytes": 2355724800,
+       "non_attention_scratch_bytes": 1588446948,
+       "linear_bytes_per_token": 185133.6769230769,
+       "peak_total_bytes": 4846487900,
+       "prefill_seconds": 7.55004088083903,
+       "prefill_seconds_runs": [
+        7.557518243789673,
+        7.54543137550354,
+        7.547173023223877
+       ],
+       "decode_steps": 16,
+       "decode_steps_requested": 16,
+       "decode_seconds_runs": [
+        0.02045917510986328,
+        0.01938915252685547,
+        0.01908278465270996,
+        0.019356727600097656,
+        0.019597291946411133,
+        0.019542455673217773,
+        0.019584178924560547,
+        0.019142866134643555,
+        0.0194089412689209,
+        0.01918315887451172,
+        0.019385576248168945,
+        0.019056320190429688,
+        0.019451379776000977,
+        0.01905202865600586,
+        0.019307374954223633,
+        0.019084692001342773
+       ],
+       "decode_seconds_mean": 0.01938025653362274,
+       "decode_ms_per_token": 19.38025653362274,
+       "decode_tokens_per_s": 51.59890418710936
+      },
+      {
+       "tokens": 12288,
+       "query_block": 384,
+       "resident_bytes": 3187753592,
+       "peak_scratch_bytes": 2425774980,
+       "retained_scratch_bytes": 2425774980,
+       "score_tile_bytes": 150994944,
+       "dense_score_bytes": 4831838208,
+       "non_attention_scratch_bytes": 2274780036,
+       "linear_bytes_per_token": 185122.0732421875,
+       "peak_total_bytes": 5613528572,
+       "prefill_seconds": 11.692040602366129,
+       "prefill_seconds_runs": [
+        11.672281265258789,
+        11.700343608856201,
+        11.703496932983398
+       ],
+       "decode_steps": 16,
+       "decode_steps_requested": 16,
+       "decode_seconds_runs": [
+        0.020377397537231445,
+        0.01946544647216797,
+        0.01960611343383789,
+        0.019573211669921875,
+        0.01947021484375,
+        0.019562482833862305,
+        0.019868850708007812,
+        0.01944708824157715,
+        0.019697904586791992,
+        0.019518613815307617,
+        0.020093441009521484,
+        0.019596338272094727,
+        0.019817352294921875,
+        0.019187211990356445,
+        0.019526958465576172,
+        0.0192413330078125
+       ],
+       "decode_seconds_mean": 0.019628122448921204,
+       "decode_ms_per_token": 19.628122448921204,
+       "decode_tokens_per_s": 50.94730800678094
+      },
+      {
+       "tokens": 16384,
+       "query_block": 512,
+       "resident_bytes": 3187753592,
+       "peak_scratch_bytes": 3301368708,
+       "retained_scratch_bytes": 3301368708,
+       "score_tile_bytes": 268435456,
+       "dense_score_bytes": 8589934592,
+       "non_attention_scratch_bytes": 3032933252,
+       "linear_bytes_per_token": 185115.55493164062,
+       "peak_total_bytes": 6489122300,
+       "prefill_seconds": 17.192163626352947,
+       "prefill_seconds_runs": [
+        17.18650770187378,
+        17.18969750404358,
+        17.20028567314148
+       ],
+       "decode_steps": 16,
+       "decode_steps_requested": 16,
+       "decode_seconds_runs": [
+        0.02098369598388672,
+        0.01999688148498535,
+        0.020244359970092773,
+        0.020397424697875977,
+        0.020627737045288086,
+        0.020574569702148438,
+        0.02039957046508789,
+        0.020073413848876953,
+        0.019901037216186523,
+        0.019885778427124023,
+        0.019916296005249023,
+        0.019844770431518555,
+        0.019860506057739258,
+        0.019986391067504883,
+        0.019800424575805664,
+        0.020072221755981445
+       ],
+       "decode_seconds_mean": 0.020160317420959473,
+       "decode_ms_per_token": 20.160317420959473,
+       "decode_tokens_per_s": 49.602393609158156
+      }
+     ],
+     "fitted_linear_bytes_per_token": 185097.9658610674
+    }
+   ]
+  },
+  {
+   "max_seq": 32768,
+   "resident_components": {
+    "weights_bytes": 2663047936,
+    "kv_planes_bytes": 805306368,
+    "gdn_state_bytes": 18883584,
+    "conv_state_bytes": 1778688,
+    "span_metadata_bytes": 295440,
+    "span_decode_partial_bytes": 528384,
+    "span_num_splits": 64,
+    "span_block_size": 256,
+    "resident_bytes": 3489854264
+   },
+   "budgets": [
+    {
+     "max_seq": 32768,
+     "budget_bytes": 536870912,
+     "split_plan": {
+      "chunk_size": 512,
+      "num_splits": 64,
+      "block_size": 256,
+      "block_table_len": 128
+     },
+     "skipped_over_context": [],
+     "rows": [
+      {
+       "tokens": 256,
+       "query_block": 128,
+       "resident_bytes": 3489854264,
+       "peak_scratch_bytes": 48718980,
+       "retained_scratch_bytes": 48718980,
+       "score_tile_bytes": 1048576,
+       "dense_score_bytes": 2097152,
+       "non_attention_scratch_bytes": 47670404,
+       "linear_bytes_per_token": 186212.515625,
+       "peak_total_bytes": 3538573244,
+       "prefill_seconds": 0.202119509379069,
+       "prefill_seconds_runs": [
+        0.20670628547668457,
+        0.20087623596191406,
+        0.1987760066986084
+       ],
+       "decode_steps": 16,
+       "decode_steps_requested": 16,
+       "decode_seconds_runs": [
+        0.01996779441833496,
+        0.01865839958190918,
+        0.018389463424682617,
+        0.018637895584106445,
+        0.018686771392822266,
+        0.018639087677001953,
+        0.018698453903198242,
+        0.018772602081298828,
+        0.018981218338012695,
+        0.01861739158630371,
+        0.019153356552124023,
+        0.018895626068115234,
+        0.019157886505126953,
+        0.019140243530273438,
+        0.019613981246948242,
+        0.018726825714111328
+       ],
+       "decode_seconds_mean": 0.018921062350273132,
+       "decode_ms_per_token": 18.921062350273132,
+       "decode_tokens_per_s": 52.85115505079262
+      },
+      {
+       "tokens": 1024,
+       "query_block": 128,
+       "resident_bytes": 3489854264,
+       "peak_scratch_bytes": 194025348,
+       "retained_scratch_bytes": 194025348,
+       "score_tile_bytes": 4194304,
+       "dense_score_bytes": 33554432,
+       "non_attention_scratch_bytes": 189831044,
+       "linear_bytes_per_token": 185381.87890625,
+       "peak_total_bytes": 3683879612,
+       "prefill_seconds": 0.7587007681528727,
+       "prefill_seconds_runs": [
+        0.779609203338623,
+        0.7496905326843262,
+        0.746802568435669
+       ],
+       "decode_steps": 16,
+       "decode_steps_requested": 16,
+       "decode_seconds_runs": [
+        0.02020120620727539,
+        0.019371747970581055,
+        0.019533872604370117,
+        0.01941204071044922,
+        0.01981663703918457,
+        0.01952672004699707,
+        0.019622325897216797,
+        0.019578933715820312,
+        0.019272565841674805,
+        0.01941657066345215,
+        0.019430160522460938,
+        0.01957416534423828,
+        0.019545793533325195,
+        0.019594430923461914,
+        0.019330978393554688,
+        0.019524812698364258
+       ],
+       "decode_seconds_mean": 0.019547060132026672,
+       "decode_ms_per_token": 19.547060132026672,
+       "decode_tokens_per_s": 51.158588209464845
+      },
+      {
+       "tokens": 4096,
+       "query_block": 128,
+       "resident_bytes": 3489854264,
+       "peak_scratch_bytes": 775250820,
+       "retained_scratch_bytes": 775250820,
+       "score_tile_bytes": 16777216,
+       "dense_score_bytes": 536870912,
+       "non_attention_scratch_bytes": 758473604,
+       "linear_bytes_per_token": 185174.2197265625,
+       "peak_total_bytes": 4265105084,
+       "prefill_seconds": 3.3272181351979575,
+       "prefill_seconds_runs": [
+        3.3176801204681396,
+        3.328922748565674,
+        3.3350515365600586
+       ],
+       "decode_steps": 16,
+       "decode_steps_requested": 16,
+       "decode_seconds_runs": [
+        0.02062368392944336,
+        0.01963210105895996,
+        0.019680023193359375,
+        0.01953125,
+        0.01949906349182129,
+        0.01952338218688965,
+        0.019622325897216797,
+        0.019769906997680664,
+        0.01965022087097168,
+        0.019255876541137695,
+        0.019510507583618164,
+        0.019794464111328125,
+        0.019668102264404297,
+        0.019554615020751953,
+        0.019609689712524414,
+        0.01945328712463379
+       ],
+       "decode_seconds_mean": 0.019648656249046326,
+       "decode_ms_per_token": 19.648656249046326,
+       "decode_tokens_per_s": 50.89406559537812
+      },
+      {
+       "tokens": 8580,
+       "query_block": 256,
+       "resident_bytes": 3489854264,
+       "peak_scratch_bytes": 1658734308,
+       "retained_scratch_bytes": 1658734308,
+       "score_tile_bytes": 70287360,
+       "dense_score_bytes": 2355724800,
+       "non_attention_scratch_bytes": 1588446948,
+       "linear_bytes_per_token": 185133.6769230769,
+       "peak_total_bytes": 5148588572,
+       "prefill_seconds": 7.565506776173909,
+       "prefill_seconds_runs": [
+        7.5627429485321045,
+        7.5574421882629395,
+        7.576335191726685
+       ],
+       "decode_steps": 16,
+       "decode_steps_requested": 16,
+       "decode_seconds_runs": [
+        0.02082967758178711,
+        0.01993560791015625,
+        0.020073413848876953,
+        0.02008819580078125,
+        0.019968032836914062,
+        0.019920825958251953,
+        0.01978015899658203,
+        0.02007293701171875,
+        0.01968860626220703,
+        0.01967620849609375,
+        0.020148277282714844,
+        0.019911527633666992,
+        0.01986217498779297,
+        0.020130634307861328,
+        0.019837141036987305,
+        0.01999831199645996
+       ],
+       "decode_seconds_mean": 0.019995108246803284,
+       "decode_ms_per_token": 19.995108246803284,
+       "decode_tokens_per_s": 50.01223237487974
+      },
+      {
+       "tokens": 12288,
+       "query_block": 384,
+       "resident_bytes": 3489854264,
+       "peak_scratch_bytes": 2425774980,
+       "retained_scratch_bytes": 2425774980,
+       "score_tile_bytes": 150994944,
+       "dense_score_bytes": 4831838208,
+       "non_attention_scratch_bytes": 2274780036,
+       "linear_bytes_per_token": 185122.0732421875,
+       "peak_total_bytes": 5915629244,
+       "prefill_seconds": 11.686257441838583,
+       "prefill_seconds_runs": [
+        11.68582034111023,
+        11.678605794906616,
+        11.694346189498901
+       ],
+       "decode_steps": 16,
+       "decode_steps_requested": 16,
+       "decode_seconds_runs": [
+        0.02094244956970215,
+        0.0200955867767334,
+        0.020140647888183594,
+        0.01990962028503418,
+        0.01983475685119629,
+        0.020308494567871094,
+        0.0200498104095459,
+        0.020231962203979492,
+        0.020117998123168945,
+        0.020295381546020508,
+        0.019786834716796875,
+        0.01992321014404297,
+        0.020274877548217773,
+        0.020194053649902344,
+        0.020390987396240234,
+        0.020148038864135742
+       ],
+       "decode_seconds_mean": 0.020165294408798218,
+       "decode_ms_per_token": 20.165294408798218,
+       "decode_tokens_per_s": 49.59015126323646
+      },
+      {
+       "tokens": 16384,
+       "query_block": 512,
+       "resident_bytes": 3489854264,
+       "peak_scratch_bytes": 3301368708,
+       "retained_scratch_bytes": 3301368708,
+       "score_tile_bytes": 268435456,
+       "dense_score_bytes": 8589934592,
+       "non_attention_scratch_bytes": 3032933252,
+       "linear_bytes_per_token": 185115.55493164062,
+       "peak_total_bytes": 6791222972,
+       "prefill_seconds": 17.175814867019653,
+       "prefill_seconds_runs": [
+        17.18236804008484,
+        17.162513732910156,
+        17.182562828063965
+       ],
+       "decode_steps": 16,
+       "decode_steps_requested": 16,
+       "decode_seconds_runs": [
+        0.02127552032470703,
+        0.020493030548095703,
+        0.02051520347595215,
+        0.020532846450805664,
+        0.020551443099975586,
+        0.02033090591430664,
+        0.020377159118652344,
+        0.020275592803955078,
+        0.02013564109802246,
+        0.02045893669128418,
+        0.02044987678527832,
+        0.020801782608032227,
+        0.020461559295654297,
+        0.020431041717529297,
+        0.020025968551635742,
+        0.0204007625579834
+       ],
+       "decode_seconds_mean": 0.020469829440116882,
+       "decode_ms_per_token": 20.469829440116882,
+       "decode_tokens_per_s": 48.85238555237762
+      }
+     ],
+     "fitted_linear_bytes_per_token": 185097.9658610674
+    }
+   ]
+  }
+ ]
+}
