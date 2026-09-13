@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from math import prod
 import mmap
 import os
 from types import SimpleNamespace
@@ -8,7 +7,6 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from hipengine.loading.gguf import GGUFTensorInfo
 from hipengine.loading.qwen4_exp_gguf import build_qwen4_exp_gguf_tensor_map
 from hipengine.loading.qwen4_exp_materialize import (
     LAYOUT_PLE_SPARSE_MMAP,
@@ -17,7 +15,7 @@ from hipengine.loading.qwen4_exp_materialize import (
     plan_qwen4_exp_memory_admission,
     plan_qwen4_exp_residency,
 )
-from hipengine.quant.gguf import GGMLQuantizationType
+from tests._qwen4_exp_ple_fixtures import _iq4_nl_rows, _ple_tensor
 from tests.test_live_qwen4_exp_gguf_mapping import _infos
 
 
@@ -102,31 +100,6 @@ def test_qwen4_exp_memory_admission_accounts_kv_index_state_scratch_and_reserve(
     )
     assert rejected.passed is False
     assert rejected.shortfall_bytes == 1
-
-
-def _iq4_nl_rows(scales: tuple[float, ...]) -> np.ndarray:
-    raw = np.zeros((len(scales), 5 * 18), dtype=np.uint8)
-    for row, scale in enumerate(scales):
-        encoded = np.asarray([scale], dtype=np.float16).view(np.uint8)
-        for block in range(5):
-            raw[row, block * 18 : block * 18 + 2] = encoded
-    return raw
-
-
-def _ple_tensor(rows: int) -> GGUFTensorInfo:
-    shape = (rows, 160)
-    return GGUFTensorInfo(
-        name="per_layer_token_embd.weight",
-        shape=shape,
-        ggml_shape=tuple(reversed(shape)),
-        ggml_type=int(GGMLQuantizationType.IQ4_NL),
-        ggml_type_name="IQ4_NL",
-        n_elements=prod(shape),
-        nbytes=rows * 90,
-        offset=0,
-        data_offset=0,
-        byte_shape=(rows, 90),
-    )
 
 
 def test_qwen4_exp_ple_mmap_gathers_only_requested_iq4_nl_rows() -> None:

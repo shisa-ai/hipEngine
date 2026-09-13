@@ -8,7 +8,6 @@ import argparse
 import fcntl
 import hashlib
 import json
-import mmap
 import os
 from pathlib import Path
 import sys
@@ -32,7 +31,8 @@ def select_gather_arm(table, original, *, mode, method, cache_mode):
     if cache_mode == "cold":
         table.advise_cache("cold")
     if method == "mmap_random":
-        table._raw._mmap.madvise(mmap.MADV_RANDOM if mode == "after" else mmap.MADV_NORMAL)
+        if not table.configure_mapping_access("random" if mode == "after" else "normal"):
+            raise RuntimeError("mapping advice did not engage")
         table.gather_rows = original
     else:
         table.gather_rows = original if mode == "before" else (

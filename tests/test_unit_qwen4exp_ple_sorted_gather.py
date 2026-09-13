@@ -5,7 +5,7 @@ import pytest
 
 from hipengine.loading.qwen4_exp_materialize import Qwen4ExpPLEMMapTable
 from scripts.qwen4exp_ple_gather_screen import PreadGather, gather_sorted_unique, measure, pread_exact
-from tests.test_live_qwen4_exp_residency import _iq4_nl_rows, _ple_tensor
+from tests._qwen4_exp_ple_fixtures import _iq4_nl_rows, _ple_tensor
 
 
 @pytest.mark.parametrize("indices", [[], [2, 0, 2, 1], [0], [2, 1, 0]])

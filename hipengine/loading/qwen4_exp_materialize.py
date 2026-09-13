@@ -463,6 +463,32 @@ class Qwen4ExpPLEMMapTable:
         self._random_access_mode = "off"
         self._random_access_requested_mode = "off"
         self._row_prefetch_ranges: list[dict[str, int]] = []
+        self._mapping_access_mode: str | None = None
+        self._mapping_access_applied = False
+        self._mapping_access_effective: str | None = None
+
+    def configure_mapping_access(self, mode: str) -> bool:
+        """Select an instance-owned mapping hint, without per-gather prefetch."""
+        if mode not in {"normal", "random"}:
+            raise ValueError("mapping access must be normal or random")
+        if self._raw is None:
+            raise RuntimeError("PLE mmap table is closed")
+        self._mapping_access_mode = mode
+        return self._apply_mapping_access()
+
+    def _apply_mapping_access(self) -> bool:
+        mapping = getattr(self._raw, "_mmap", None)
+        self._mapping_access_applied = False
+        if self._mapping_access_mode is not None and mapping is not None and hasattr(mapping, "madvise"):
+            advice = mmap.MADV_RANDOM if self._mapping_access_mode == "random" else mmap.MADV_NORMAL
+            try:
+                mapping.madvise(advice)
+                self._mapping_access_applied = True
+                self._mapping_access_effective = self._mapping_access_mode
+            except OSError:
+                # Advice is optional: unsupported hints leave reads unchanged.
+                pass
+        return self._mapping_access_applied
 
     def enable_telemetry(self) -> None:
         """Enable opt-in cumulative PLE I/O telemetry."""
@@ -501,6 +527,9 @@ class Qwen4ExpPLEMMapTable:
                 ranges.append({"first_page": page, "last_page": page, "page_count": 1})
         return {
             **self._telemetry,
+            "mapping_access_default": self._mapping_access_mode,
+            "mapping_access_applied": self._mapping_access_applied,
+            "mapping_access_effective": self._mapping_access_effective,
             "unique_rows": len(self._telemetry_rows),
             "unique_pages": len(pages),
             "adjacent_page_pairs": sum(item["page_count"] - 1 for item in ranges),
@@ -574,9 +603,20 @@ class Qwen4ExpPLEMMapTable:
         started = time.perf_counter()
         total = int(self._raw.shape[0])
         offset = 0
-        while offset < total:
-            _ = self._raw[offset : offset + chunk_rows].sum(dtype=np.uint64)
-            offset += chunk_rows
+        mapping = getattr(self._raw, "_mmap", None)
+        restore_random = self._mapping_access_mode == "random" and self._mapping_access_applied
+        try:
+            if restore_random:
+                try:
+                    mapping.madvise(mmap.MADV_SEQUENTIAL)
+                except OSError:
+                    pass
+            while offset < total:
+                _ = self._raw[offset : offset + chunk_rows].sum(dtype=np.uint64)
+                offset += chunk_rows
+        finally:
+            if restore_random:
+                self._apply_mapping_access()
         return time.perf_counter() - started
 
     def configure_random_access(self, mode: str) -> None:
@@ -629,6 +669,7 @@ class Qwen4ExpPLEMMapTable:
             mapping.madvise(
                 mmap.MADV_RANDOM if selected == "on" else mmap.MADV_NORMAL
             )
+            self._mapping_access_effective = "random" if selected == "on" else "normal"
             mapping_applied = True
         source = getattr(self.reader, "path", None)
         fadvise = getattr(os, "posix_fadvise", None)
@@ -711,6 +752,8 @@ class Qwen4ExpPLEMMapTable:
                 os.close(descriptor)
         if remapped:
             self._raw = self.reader.tensor_data(self.tensor.name)
+            self._mapping_access_effective = None
+            self._apply_mapping_access()
         self._cache_mode = selected
         self._cache_range = {
             "offset": int(self.tensor.data_offset),
@@ -736,6 +779,8 @@ class Qwen4ExpPLEMMapTable:
         if mapping is not None:
             mapping.close()
         self._raw = None
+        self._mapping_access_applied = False
+        self._mapping_access_effective = None
 
 
 class Qwen4ExpPLEStagingRing:
