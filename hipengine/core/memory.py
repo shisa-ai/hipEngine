@@ -134,6 +134,30 @@ def copy_host_to_device(
     runtime.memcpy(buffer.ptr, host_ptr, count, MemcpyKind.HOST_TO_DEVICE)
 
 
+def copy_host_array_to_device(
+    buffer: DeviceBuffer,
+    array: object,
+    nbytes: int | None = None,
+    *,
+    runtime: DeviceRuntime | None = None,
+) -> None:
+    """Upload a contiguous array while retaining its owner through the copy.
+
+    Unlike passing ``host_array_ptr(temporary)`` to the pointer-only API, the
+    array argument remains alive until the synchronous H2D copy returns. This
+    helper adds no device-wide synchronization and is not an async upload API.
+    The default size is the source size, not the possibly padded destination.
+    """
+    flags = getattr(array, "flags", None)
+    if not getattr(flags, "c_contiguous", False):
+        raise ValueError("host upload requires a C-contiguous array")
+    source_size = int(getattr(array, "nbytes"))
+    count = source_size if nbytes is None else nbytes
+    _check_copy_size(count, source_size)
+    _check_copy_size(count, buffer.nbytes)
+    copy_host_to_device(buffer, host_array_ptr(array), count, runtime=runtime)
+
+
 def copy_device_to_host(
     host_ptr: int,
     buffer: DeviceBuffer,

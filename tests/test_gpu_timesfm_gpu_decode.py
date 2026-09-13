@@ -88,3 +88,35 @@ def test_gpu_decode_rejects_unknown_precision() -> None:
             TimesFMGPUDecoder(local, precision="bf16")
     finally:
         local.free()
+
+
+@pytest.mark.parametrize("precision", ["fp32", "fp16"])
+@pytest.mark.parametrize("failed_history", [False, True])
+def test_request_reuse_matches_fresh_runner(precision, failed_history):
+    """Finite and non-finite prior forecasts cannot contaminate a new call."""
+    from hipengine.loading.timesfm import load_timesfm_model
+    from hipengine.runtime.timesfm_decode import TimesFMGPUDecoder
+
+    with np.load(FIXTURE) as fixture:
+        inputs = fixture["inputs"].copy()
+        masks = fixture["masks"].copy()
+        horizon = int(fixture["horizon"])
+    local = load_timesfm_model(str(_snapshot()))
+    decoder = TimesFMGPUDecoder(local, precision=precision)
+    try:
+        masks[:, :decoder.spec.patch_length] = True
+        expected = decoder.decode(horizon, inputs, masks)
+        history = np.ascontiguousarray(inputs[:, ::-1])
+        if failed_history:
+            history[:] = np.nan
+        previous = decoder.decode(horizon, history, np.zeros_like(masks))
+        assert all(np.isfinite(x).all() for x in previous if x is not None) != failed_history
+        actual = decoder.decode(horizon, inputs, masks)
+        for a, b in zip(actual, expected, strict=True):
+            if b is None:
+                assert a is None
+            else:
+                np.testing.assert_array_equal(a, b)
+    finally:
+        decoder.close()
+        local.free()

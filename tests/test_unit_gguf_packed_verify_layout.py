@@ -422,6 +422,11 @@ def test_gguf_fused_linear_state_pair_copy_batches_and_caches_tables(monkeypatch
         "copy_host_to_device",
         lambda buffer, host_ptr, nbytes, *, runtime: uploads.append((int(buffer.ptr), int(nbytes))),
     )
+    monkeypatch.setattr(
+        gguf_runner,
+        "copy_host_array_to_device",
+        lambda buffer, array, nbytes, *, runtime: uploads.append((int(buffer.ptr), int(nbytes))),
+    )
     monkeypatch.setattr(gguf_runner, "build_dflash_commit", lambda **kwargs: object())
     monkeypatch.setattr(
         gguf_runner,

@@ -114,6 +114,32 @@ def test_gpu_decode_deterministic(precision, fixture_path) -> None:
     np.testing.assert_array_equal(out1, out2)
 
 
+@pytest.mark.parametrize("precision", ["fp32", "fp16"])
+def test_cached_runner_isolates_request_history(precision) -> None:
+    """Reuse real buffers without modifying the persistent zero-offset constant."""
+    from hipengine.loading.timesfm3 import load_timesfm3_model
+    from hipengine.runtime.timesfm3_decode import TimesFM3GPUDecoder
+
+    with np.load(FIXTURES[2]) as fixture:
+        target = fixture["target"]
+        horizon = int(fixture["horizon"])
+        kwargs = _fixture_kwargs(fixture)
+    local = load_timesfm3_model(str(_snapshot()))
+    try:
+        decoder = TimesFM3GPUDecoder(local, precision=precision)
+        try:
+            expected = decoder.decode(target, horizon, **kwargs)
+            assert np.isfinite(expected).all()
+            for history in (target[..., ::-1].copy(), np.full_like(target, np.nan)):
+                decoder.decode(history, horizon, **kwargs)
+                actual = decoder.decode(target, horizon, **kwargs)
+                np.testing.assert_array_equal(actual, expected)
+        finally:
+            decoder.close()
+    finally:
+        local.free()
+
+
 def test_gpu_decode_rejects_unknown_precision() -> None:
     from hipengine.loading.timesfm3 import load_timesfm3_model
     from hipengine.runtime.timesfm3_decode import TimesFM3GPUDecoder

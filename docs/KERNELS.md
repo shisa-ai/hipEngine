@@ -1117,6 +1117,22 @@ Stable porting rules:
 
 `hipengine.core.build` calls `hipcc` or `nvcc`, links a shared object, loads it with `ctypes.CDLL`, and caches by source/flags/compiler/target metadata under `~/.cache/hipengine/build/`. It does not use `torch.utils.cpp_extension`.
 
+### Host uploads and reusable device state
+
+Use `hipengine.core.memory.copy_host_array_to_device` for synchronous uploads
+of temporary NumPy arrays. It retains the source through the copy, requires
+C-contiguous storage, and checks both source and destination bounds. Passing
+`host_array_ptr(np.asarray(...))` to the pointer-only copy API erases the owner
+before the copy starts. A named local held through a synchronous copy is also
+valid; no additional device-wide synchronization is required. Async uploads
+need ownership through stream completion and are outside this helper's contract.
+
+Reset mutable scratch at its use boundary when a kernel reads unwritten slots,
+including masked slots in full-capacity GEMMs. Use stream-ordered byte clears
+for zero initialization: multiplication by zero preserves NaNs. Do not poison
+weights or initialized, read-only constants when testing scratch hygiene; test
+request history separately from deliberate scratch corruption.
+
 ### HIP build profiles
 
 | Profile | Important flags | Wavefront | Typical use |
