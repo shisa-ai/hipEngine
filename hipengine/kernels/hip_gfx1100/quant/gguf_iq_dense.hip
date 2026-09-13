@@ -53,6 +53,13 @@ __device__ float half_load(const uint8_t* p) {
     v.u = uint16_t(p[0]) | (uint16_t(p[1]) << 8);
     return float(v.h);
 }
+// Same conversion as half_load, from a value already in a register. Used by the
+// T16 owner, which reads a column's d as one half of a wide u32 header load.
+__device__ float half_from_bits(uint16_t bits) {
+    union { uint16_t u; _Float16 h; } v;
+    v.u = bits;
+    return float(v.h);
+}
 __device__ float bf16_load(uint16_t x) {
     union { uint32_t u; float f; } v;
     v.u = uint32_t(x) << 16; return v.f;
@@ -1260,18 +1267,28 @@ void gguf_iq4_xs_t16_local32_gemv_kernel(
         const uint8_t* blkp = tile + blk * IQ4XS_T16_BLOCK_BYTES;
         // Per-column d*scale for this lane's group, read from this block's own
         // header. The header is inside the 2176-byte block, so it cannot be
-        // hoisted out of the K loop the way a per-column-only scale could.
+        // hoisted out of the K loop. d and scales_h are 16 contiguous bytes for
+        // the eight columns and scales_l is 32, so both are read as wide u32
+        // vectors rather than three mixed-width loads per column.
+        uint32_t dv[4], hv[4];
+#pragma unroll
+        for (int i = 0; i < 4; ++i)
+            dv[i] = *reinterpret_cast<const uint32_t*>(
+                blkp + 2 * ct0 + 4 * i);
+#pragma unroll
+        for (int i = 0; i < 4; ++i)
+            hv[i] = *reinterpret_cast<const uint32_t*>(
+                blkp + IQ4XS_T16_HI_OFFSET + 2 * ct0 + 4 * i);
         float sd[COLS];
 #pragma unroll
         for (int t = 0; t < COLS; ++t) {
-            const int ct = ct0 + t;
-            const uint16_t hi = *reinterpret_cast<const uint16_t*>(
-                blkp + IQ4XS_T16_HI_OFFSET + 2 * ct);
             const uint32_t lo = *reinterpret_cast<const uint32_t*>(
-                blkp + IQ4XS_T16_LO_OFFSET + 4 * ct);
+                blkp + IQ4XS_T16_LO_OFFSET + 4 * (ct0 + t));
+            const uint16_t d16 = uint16_t((dv[t >> 1] >> (16 * (t & 1))) & 0xffffu);
+            const uint16_t hi = uint16_t((hv[t >> 1] >> (16 * (t & 1))) & 0xffffu);
             const int scale = (((lo >> (8 * (g >> 1) + 4 * (g & 1))) & 15) |
                                (((hi >> (2 * g)) & 3) << 4)) - 32;
-            sd[t] = half_load(blkp + 2 * ct) * float(scale);
+            sd[t] = half_from_bits(d16) * float(scale);
         }
         const uint8_t* qsb = blkp
             + IQ4XS_T16_QS_OFFSET + g * IQ4XS_T16_QS_GROUP_STRIDE
