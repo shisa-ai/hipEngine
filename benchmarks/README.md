@@ -841,6 +841,85 @@ are 0.6975x/0.5843x AR; gfx1100 exact speculative cells remain behind direct.
 [`Closure`](results/2026-08-26-gfx1151-specdec2-perf-campaign-closure.json) ·
 [`Recovery`](../docs/MTP-CONCURRENCY2-RECOVERY.md).
 
+## Tensor-parallel screening (W7900 + RX 7900 XTX)
+
+One host, one process, two `gfx1100` GPUs on separate CPU root ports at
+PCIe 4.0 x16: Radeon Pro W7900 (48 GB, HIP 0) and RX 7900 XTX (24 GB, HIP 1).
+Screening measures the collective latency a TP=N decode step would pay and the
+shard plan it would load. **No tensor-parallel engine exists yet, so these are
+screening numbers and a projection, not a speedup claim.**
+
+| All-reduce case, one group | chain 1 p50 | chain 4 p50 | marginal per op |
+| --- | ---: | ---: | ---: |
+| 1 row x 5120 fp32 (20 KB) | 339 us | 443 us | **34.7 us** |
+| 2 rows x 5120 fp32 (41 KB) | 242 us | 333 us | 30.3 us |
+| 3 rows x 5120 fp32 (61 KB) | 259 us | 365 us | 35.3 us |
+| 4 rows x 5120 fp32 (82 KB) | 245 us | 360 us | 38.3 us |
+| 5 rows x 5120 fp32 (102 KB) | 252 us | 399 us | 49.0 us |
+| 128 rows x 5120 fp32 (2.6 MB) | 573 us | 1609 us | 345.5 us (4.6 GB/s payload) |
+| 1024 rows x 5120 fp32 (21 MB) | 2725 us | 10568 us | 2614 us (7.7 GB/s payload) |
+| 1024 rows x 5120 bf16 (10.5 MB) | 1504 us | 5424 us | 1307 us (7.0 GB/s payload) |
+
+"chain N" is N dependent all-reduces inside one `ncclGroupStart`/`ncclGroupEnd`
+group; all 28 cases across both dtypes, both operations, both enqueue modes, and
+both root orders verified with 0 errors. The same 20 KB case measured 28.0 us
+marginal in an earlier run of the same protocol, so small-message latency carries
+roughly +/- 20% run-to-run variance; the decode budget below is stated as a
+range. Broadcast moves each payload once instead of twice, and reaches 1632 us
+marginal (11.5 GB/s payload) on the 1024-row fp32 case against all-reduce's
+2614 us. Threaded enqueue was consistently slower than single-thread group
+enqueue (1-row fp32: 429 vs 339 us device, 280 vs 55 us enqueue; 1024-row fp32:
+2954 vs 2725 us device), and root order did not matter, so the first rank's
+collective does not block the second rank's enqueue in group mode.
+
+**Peer DMA is unavailable on this host, for two independent reasons.**
+`hipDeviceCanAccessPeer` returns false in both directions and
+`hipDeviceEnablePeerAccess` fails with HIP error 101, because both cards expose a
+256 MB BAR while the kernel offers a resize attribute (`resource0_resize`
+`0x1ff00` and `0xff00`). Separately, every bridge between the cards has ACS
+redirection enabled - the CPU root ports `00:03.1`/`00:03.2` and the downstream
+bridges `0c:00.0`/`0f:00.0` all set `SrcValid+ ReqRedir+ CmpltRedir+
+UpstreamFwd+` in `ACSCtl`, which redirects peer TLPs to the root complex. Both
+cards are trained at PCIe 4.0 x16 (`LnkSta: Speed 16GT/s, Width x16`; the `x8`
+in `pp_dpm_pcie` is a DPM capability table, not the live link), so link width is
+not the limiter. Collectives host-stage at about 8 GB/s of payload instead of
+direct peer bandwidth; a 1 MiB peer copy measures 5.89 GB/s bidirectional.
+Resizable BAR / Above 4G Decoding in firmware *and* ACS redirection disabled on
+the path between the cards would both be needed to change this; the second is an
+IOMMU-isolation tradeoff and has not been changed.
+
+Decode budget: 36 all-reduces per token at 28-35 us is about 1.0-1.25 ms per
+token. Against the current same-host single-GPU baselines (W7900 27.9 tok/s;
+XTX 29.82 tok/s at 8192 context), a TP2 decode that halves per-rank weight
+traffic projects near 1.7-1.9x, above the plan's 1.3x target. This is a
+projection from measured collective latency, not a measured engine result.
+
+Shard plan for Qwen3.8-27B `Q4_K_M`: 851 autoregressive tensors, 15.65 GiB, MTP
+block excluded from the AR set. Every degree round-trips every tensor payload
+bit-exactly against the source GGUF.
+
+| TP degree | rank bytes | byte-exact round trip |
+| --- | --- | --- |
+| N=1 | 15.652 GiB | 851/851 tensors |
+| N=2 | 8.646 / 7.009 GiB | 851/851 tensors |
+| N=4 | 5.143 / 3.506 / 3.506 / 3.506 GiB | 851/851 tensors |
+
+N=3 is refused (the GDN key-head axis holds 16 groups) and N=8 is refused
+(17408 MLP input columns per rank is not a 256-element quant block), both before
+any allocation. Weights are copied as original quant blocks; there is no
+dequantize or requantize step in the path.
+
+The loader path streams one tensor at a time (`iter_rank_payloads`), so a rank
+never needs a full model copy: streaming rank 1's 7.01 GiB shard set at N=2 grows
+anonymous memory by **36.1 MiB** against a 34.9 MiB largest tensor and a 7.01 GiB
+full copy (N=4: 37.6 MiB growth, 17.4 MiB largest, 3.51 GiB full copy). The
+reconstruction oracle that holds every rank's payload is a test path, not the
+loader path.
+[Collective screening](results/tp2_collective_bench.json),
+[shard plan and byte preservation](results/tp2_shard_plan_report.json),
+[degree admissibility](results/tp2_shard_plan_degrees.json),
+[topology inventory](results/tp2_host_inventory.json).
+
 ## Where detailed evidence lives
 
 See result artifacts, [`CHANGELOG.md`](CHANGELOG.md), the
@@ -877,6 +956,9 @@ hermetic target-architecture wrapper; see `docs/BENCHMARK.md`.
 | `mtp-bench.py` | llama.cpp-compatible MTP prompt-suite benchmark (server economics); can wrap hipEngine verifier economics | ✓ | ✓ | | ✓ | | | `--mode hipengine-current` |
 | `exact_token_generation.py` | Direct/HTTP generated-token identity gate (correctness, not throughput) | ✓ | ✓ | | | | | `direct --model-path ...` then `http --oracle ...` |
 | `benchmark_matrix.py` | Join exact-token direct/server rows into a validated matrix report | ✓ | ✓ | | | | | `build --manifest ...` |
+| `tp_host_inventory.py` | Two-GPU topology inventory: devices, VRAM, PCIe link state under load, peer-access screen, peer-copy rates | | | | | ✓ | | `--output <json>` |
+| `tp_collective_bench.py` | Grouped RCCL all-reduce/broadcast latency, bandwidth, enqueue cost, rank skew, and correctness across enqueue modes | ✓ | | | ✓ | | | `--rows 1,128,1024 --chain-depth 1,4 --enqueue-modes single,threaded` |
+| `tp_shard_plan_report.py` | TP=N shard manifest and per-tensor byte-preservation round trip for one GGUF | ✓ | | ✓ | | ✓ | | `--model <gguf> --world-size 1 --world-size 2` |
 
 Keep this catalog synchronized whenever a harness gains a measured axis.
 

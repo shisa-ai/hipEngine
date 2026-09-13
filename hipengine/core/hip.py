@@ -13,6 +13,7 @@ from typing import Final
 from hipengine.core.runtime import MemcpyKind
 
 HIP_SUCCESS: Final[int] = 0
+HIP_ERROR_NOT_READY: Final[int] = 600
 HIP_HOST_REGISTER_MAPPED: Final[int] = 0x02
 DEFAULT_HIP_LIBRARY: Final[str] = "libamdhip64.so"
 HIP_GRAPH_NODE_TYPE_KERNEL: Final[int] = 0
@@ -174,6 +175,30 @@ class HipRuntime:
             )
         )
 
+    def memcpy_peer_async(
+        self,
+        dst: int,
+        dst_device: int,
+        src: int,
+        src_device: int,
+        nbytes: int,
+        stream: int,
+    ) -> None:
+        """Async peer copy; the stream must belong to ``dst_device``."""
+
+        if nbytes < 0:
+            raise ValueError("nbytes must be non-negative")
+        self.check(
+            self.library.hipMemcpyPeerAsync(
+                ctypes.c_void_p(dst),
+                ctypes.c_int(int(dst_device)),
+                ctypes.c_void_p(src),
+                ctypes.c_int(int(src_device)),
+                ctypes.c_size_t(nbytes),
+                ctypes.c_void_p(stream),
+            )
+        )
+
     def malloc(self, nbytes: int) -> int:
         if nbytes < 0:
             raise ValueError("nbytes must be non-negative")
@@ -312,6 +337,33 @@ class HipRuntime:
 
     def stream_synchronize(self, stream: int) -> None:
         self.check(self.library.hipStreamSynchronize(ctypes.c_void_p(stream)))
+
+    def stream_query(self, stream: int) -> bool:
+        """Return True when all work on ``stream`` has completed.
+
+        ``hipErrorNotReady`` (600) means outstanding work; anything else is a real
+        error. This is the deadline-polling primitive: callers must not spin on
+        ``hipStreamSynchronize`` when a hung device must remain killable.
+        """
+
+        code = int(self.library.hipStreamQuery(ctypes.c_void_p(stream)))
+        if code == HIP_SUCCESS:
+            return True
+        if code == HIP_ERROR_NOT_READY:
+            return False
+        self.check(code)
+        raise AssertionError("unreachable")  # pragma: no cover - check() always raises
+
+    def event_query(self, event: int) -> bool:
+        """Return True when ``event`` has completed (see :meth:`stream_query`)."""
+
+        code = int(self.library.hipEventQuery(ctypes.c_void_p(event)))
+        if code == HIP_SUCCESS:
+            return True
+        if code == HIP_ERROR_NOT_READY:
+            return False
+        self.check(code)
+        raise AssertionError("unreachable")  # pragma: no cover - check() always raises
 
     def stream_wait_event(self, stream: int, event: int, *, flags: int = 0) -> None:
         self.check(
@@ -502,6 +554,15 @@ class HipRuntime:
             ctypes.c_size_t,
         ]
         self.library.hipMemcpyPeer.restype = ctypes.c_int
+        self.library.hipMemcpyPeerAsync.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_int,
+            ctypes.c_void_p,
+            ctypes.c_int,
+            ctypes.c_size_t,
+            ctypes.c_void_p,
+        ]
+        self.library.hipMemcpyPeerAsync.restype = ctypes.c_int
         self.library.hipMalloc.argtypes = [ctypes.POINTER(ctypes.c_void_p), ctypes.c_size_t]
         self.library.hipMalloc.restype = ctypes.c_int
         self.library.hipFree.argtypes = [ctypes.c_void_p]
@@ -554,6 +615,10 @@ class HipRuntime:
         self.library.hipStreamDestroy.restype = ctypes.c_int
         self.library.hipStreamSynchronize.argtypes = [ctypes.c_void_p]
         self.library.hipStreamSynchronize.restype = ctypes.c_int
+        self.library.hipStreamQuery.argtypes = [ctypes.c_void_p]
+        self.library.hipStreamQuery.restype = ctypes.c_int
+        self.library.hipEventQuery.argtypes = [ctypes.c_void_p]
+        self.library.hipEventQuery.restype = ctypes.c_int
         self.library.hipStreamWaitEvent.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint]
         self.library.hipStreamWaitEvent.restype = ctypes.c_int
         self.library.hipStreamBeginCapture.argtypes = [ctypes.c_void_p, ctypes.c_int]

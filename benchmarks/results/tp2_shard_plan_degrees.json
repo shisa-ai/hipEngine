@@ -1,0 +1,125 @@
+{
+  "degrees": {
+    "1": {
+      "manifest_hash": "c6dc8b6953a626495a765b11456492e8fdbd1407797e0057c5e4c63c82cf749b",
+      "notes": [
+        "excluded 15 MTP/NextN tensors from the AR shard set",
+        "architecture=qwen35 blocks=64"
+      ],
+      "rank_bytes": [
+        16806250496
+      ],
+      "rank_bytes_by_kind": [
+        {
+          "column": 6417285120,
+          "group": 3362998272,
+          "owner": 1758105600,
+          "replicated": 2699264,
+          "row": 5265162240
+        }
+      ],
+      "rank_gib": [
+        15.652
+      ],
+      "tensor_count": 851,
+      "total_sharded_bytes": 16806250496,
+      "world_size": 1
+    },
+    "2": {
+      "manifest_hash": "6ee685942825af3f1b58c639c3d15614969584bb08d0175da0bc19d5a2902ec9",
+      "notes": [
+        "excluded 15 MTP/NextN tensors from the AR shard set",
+        "architecture=qwen35 blocks=64"
+      ],
+      "rank_bytes": [
+        9283527680,
+        7525422080
+      ],
+      "rank_bytes_by_kind": [
+        {
+          "column": 3208642560,
+          "group": 1681499136,
+          "owner": 1758105600,
+          "replicated": 2699264,
+          "row": 2632581120
+        },
+        {
+          "column": 3208642560,
+          "group": 1681499136,
+          "owner": 0,
+          "replicated": 2699264,
+          "row": 2632581120
+        }
+      ],
+      "rank_gib": [
+        8.646,
+        7.009
+      ],
+      "tensor_count": 851,
+      "total_sharded_bytes": 16806250496,
+      "world_size": 2
+    },
+    "4": {
+      "manifest_hash": "a450ff35895770745d15a60b90b8731cffbc06a6f81fe38a975f4dd85e4d8cd4",
+      "notes": [
+        "excluded 15 MTP/NextN tensors from the AR shard set",
+        "architecture=qwen35 blocks=64"
+      ],
+      "rank_bytes": [
+        5522166272,
+        3764060672,
+        3764060672,
+        3764060672
+      ],
+      "rank_bytes_by_kind": [
+        {
+          "column": 1604321280,
+          "group": 840749568,
+          "owner": 1758105600,
+          "replicated": 2699264,
+          "row": 1316290560
+        },
+        {
+          "column": 1604321280,
+          "group": 840749568,
+          "owner": 0,
+          "replicated": 2699264,
+          "row": 1316290560
+        },
+        {
+          "column": 1604321280,
+          "group": 840749568,
+          "owner": 0,
+          "replicated": 2699264,
+          "row": 1316290560
+        },
+        {
+          "column": 1604321280,
+          "group": 840749568,
+          "owner": 0,
+          "replicated": 2699264,
+          "row": 1316290560
+        }
+      ],
+      "rank_gib": [
+        5.143,
+        3.506,
+        3.506,
+        3.506
+      ],
+      "tensor_count": 851,
+      "total_sharded_bytes": 16806250496,
+      "world_size": 4
+    }
+  },
+  "elapsed_seconds": 0.64,
+  "kind": "tp_shard_plan_report",
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "model_bytes": 17106773984,
+  "owner_rank": 0,
+  "rejected_degrees": {
+    "3": "blk.0.attn_gate.weight: segment [0, 2048) holds 16 groups, which does not divide evenly across 3 ranks",
+    "8": "blk.0.ffn_down.weight: row split of [0, 17408) gives 2176 columns per rank, which is not a multiple of the 256-element quant block"
+  },
+  "tensor_count": 866
+}
