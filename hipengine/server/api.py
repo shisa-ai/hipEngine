@@ -19,7 +19,9 @@ import logging
 import math
 import os
 import re
+import signal
 import sys
+import threading
 import time
 import uuid
 from collections import deque
@@ -4721,13 +4723,56 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         if not callable(preparer):
             return effective_max_context_tokens(engine)
         prepare_started = time.perf_counter()
+        prepare_task: asyncio.Task | None = None
+        previous_sigint = None
         try:
-            prepared_result = await run_in_threadpool(
-                lambda: preparer(
+            prepare_task = asyncio.create_task(
+                asyncio.to_thread(
+                    preparer,
                     max_sequence_length=requested_context,
                     sampling_params=sampling,
                 )
             )
+            if threading.current_thread() is threading.main_thread():
+                loop = asyncio.get_running_loop()
+                previous_sigint = signal.getsignal(signal.SIGINT)
+
+                def interrupt_startup(signum, frame) -> None:
+                    del frame
+                    loop.call_soon_threadsafe(prepare_task.cancel)
+                    if callable(previous_sigint):
+                        previous_sigint(signum, None)
+
+                signal.signal(signal.SIGINT, interrupt_startup)
+            while not prepare_task.done():
+                try:
+                    await asyncio.wait_for(asyncio.shield(prepare_task), timeout=10.0)
+                except asyncio.TimeoutError:
+                    live_memory = _device_memory_snapshot()
+                    memory_suffix = (
+                        ""
+                        if live_memory is None
+                        else (
+                            f" gpu_used={_format_bytes(int(live_memory['used_bytes']))}"
+                            f"/{_format_bytes(int(live_memory['total_bytes']))}"
+                        )
+                    )
+                    _LOGGER.info(
+                        "MODEL_LOAD: still preparing phase=%s elapsed=%.1fs%s",
+                        phase,
+                        time.perf_counter() - prepare_started,
+                        memory_suffix,
+                    )
+            prepared_result = await prepare_task
+        except asyncio.CancelledError:
+            if prepare_task is not None and not prepare_task.done():
+                prepare_task.cancel()
+            _LOGGER.warning(
+                "MODEL_LOAD: startup cancelled during %s after %.1fs",
+                phase,
+                time.perf_counter() - prepare_started,
+            )
+            raise
         except MemoryError as exc:
             _LOGGER.error(
                 "hipEngine %s failed to allocate resident KV cache: %s. "
@@ -4744,6 +4789,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 exc,
             )
             raise
+        finally:
+            if previous_sigint is not None:
+                signal.signal(signal.SIGINT, previous_sigint)
         if prepared_result is not None:
             app.state.hipengine_effective_max_context_tokens = max(1, int(prepared_result))
         else:
@@ -4855,7 +4903,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 config.quant,
             )
             try:
-                load_task = asyncio.create_task(run_in_threadpool(get_llm))
+                load_task = asyncio.create_task(asyncio.to_thread(get_llm))
                 while not load_task.done():
                     try:
                         await asyncio.wait_for(asyncio.shield(load_task), timeout=10.0)
@@ -4893,7 +4941,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 return
             engine_create_s = time.perf_counter() - engine_started
             _LOGGER.info(
-                "MODEL_LOAD: model ready elapsed=%.1fs",
+                "MODEL_LOAD: engine created elapsed=%.1fs; preparing weights, "
+                "KV pool, and runtime workspace",
                 engine_create_s,
             )
             prepare_started = time.perf_counter()
