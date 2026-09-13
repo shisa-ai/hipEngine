@@ -6,6 +6,10 @@ implementation-status section. Torch-free preprocessing, vision tower, text
 decoder, and the public OCR API run end to end; the HIP lane executes the
 vision tower and text decoder on gfx1151.
 
+The [main integration report](SURYA-MAIN-INTEGRATION.md) records the rebase
+decisions and test migration. Benchmark artifacts below retain their original
+pre-rebase measurement provenance.
+
 ### Installation and acceptance
 
 From a source checkout, install image preprocessing support with
@@ -17,7 +21,7 @@ HIPENGINE_HIP_ARCH=gfx1151 uv run --extra surya --extra dev python scripts/surya
 ```
 
 The 2026-09-14 gfx1151 qualification passed **415 tests with zero skips**.
-This command discovers every `test_surya*.py` file and fails on skipped tests or modules,
+This command discovers every `test_*_surya*.py` file and fails on skipped tests or modules,
 including missing checkpoint, hardware, or image dependencies. Ordinary pytest
 retains its availability skips for CPU-only CI. The `surya` extra supplies Pillow;
 the production runtime does not require torch.
@@ -36,27 +40,27 @@ and the unchanged torch-oracle tolerances.
 
 | Area | State | Evidence |
 | --- | --- | --- |
-| Model/weight/tokenizer contracts | done | `hipengine/models/surya.py`, `hipengine/loading/surya.py`, `tests/test_surya_model_contract.py` |
-| Torch oracle fixtures | done | `scripts/surya_oracle_torch.py`, `tests/fixtures/surya/*.npz`, `tests/test_surya_oracle_fixtures.py` |
-| CPU-reference text decoder (GDN state, causal cache, mRoPE) | done | `hipengine/kernels/cpu_reference/surya.py`, `tests/test_surya_text_decoder.py` |
-| CPU-reference vision tower + merger | done | `tests/test_surya_vision.py` |
-| Public OCR API, greedy oracle parity | done | `hipengine/loading/surya.py:run_surya_ocr`, `tests/test_surya_e2e.py`, `tests/test_surya_public_api.py` |
-| HIP text decoder on gfx1151 | done | `hipengine/runtime/surya.py`, `tests/test_surya_gpu.py` |
-| HIP vision tower on gfx1151 | done | `tests/test_surya_gpu.py::test_gpu_vision_matches_oracle_features` |
+| Model/weight/tokenizer contracts | done | `hipengine/models/surya.py`, `hipengine/loading/surya.py`, `tests/test_unit_surya_model_contract.py` |
+| Torch oracle fixtures | done | `scripts/surya_oracle_torch.py`, `tests/fixtures/surya/*.npz`, `tests/test_unit_surya_oracle_fixtures.py` |
+| CPU-reference text decoder (GDN state, causal cache, mRoPE) | done | `hipengine/kernels/cpu_reference/surya.py`, `tests/test_live_surya_text_decoder.py` |
+| CPU-reference vision tower + merger | done | `tests/test_live_surya_vision.py` |
+| Public OCR API, greedy oracle parity | done | `hipengine/loading/surya.py:run_surya_ocr`, `tests/test_live_surya_e2e.py`, `tests/test_live_surya_public_api.py` |
+| HIP text decoder on gfx1151 | done | `hipengine/runtime/surya.py`, `tests/test_live_surya_gpu.py` |
+| HIP vision tower on gfx1151 | done | `tests/test_live_surya_gpu.py::test_gpu_vision_matches_oracle_features` |
 | Registered HIP generator (`surya_ocr2`/`hip_gfx1151`/fp32) | done | `hipengine/generation/surya_gpu.py` |
-| Request/resource contracts (greedy-only, capacity, EOS) | done | `hipengine/generation/surya_contract.py`, `tests/test_surya_generation_contract.py` |
+| Request/resource contracts (greedy-only, capacity, EOS) | done | `hipengine/generation/surya_contract.py`, `tests/test_unit_surya_generation_contract.py` |
 | GPU `rocprofv3` kernel-trace evidence | done | `benchmarks/results/2026-09-11-gfx1151-surya-kernel-trace.json` |
-| Multi-prompt `generate` isolation | done | `tests/test_surya_gpu.py::test_gpu_generator_multi_prompt_isolation` |
-| Resize / grid-geometry branches | done | `tests/test_surya_gpu.py::test_gpu_vision_geometry_sweep_matches_cpu_reference` (4 cases; 3:1 aspect ratios measured but uncommitted) |
-| Rectangular-page coverage | done (vision + isolation) | `tests/test_surya_gpu.py` rect vision vs `oracle_rect` `vision_merged` |
-| Full-page coverage (1024x1024, real text) | done | `tests/fixtures/surya/page_full.png`, `scripts/surya_oracle_greedy.py`, `tests/test_surya_gpu.py::test_gpu_full_page_layout_matches_oracle` |
-| OCR output quality check (labels + bboxes vs drawn geometry) | done | `tests/test_surya_gpu.py::test_gpu_full_page_layout_matches_oracle` second half |
+| Multi-prompt `generate` isolation | done | `tests/test_live_surya_gpu.py::test_gpu_generator_multi_prompt_isolation` |
+| Resize / grid-geometry branches | done | `tests/test_live_surya_gpu.py::test_gpu_vision_geometry_sweep_matches_cpu_reference` (4 cases; 3:1 aspect ratios measured but uncommitted) |
+| Rectangular-page coverage | done (vision + isolation) | `tests/test_live_surya_gpu.py` rect vision vs `oracle_rect` `vision_merged` |
+| Full-page coverage (1024x1024, real text) | done | `tests/fixtures/surya/page_full.png`, `scripts/surya_oracle_greedy.py`, `tests/test_live_surya_gpu.py::test_gpu_full_page_layout_matches_oracle` |
+| OCR output quality check (labels + bboxes vs drawn geometry) | done | `tests/test_live_surya_gpu.py::test_gpu_full_page_layout_matches_oracle` second half |
 | Greedy reference fixtures are reproducible | done | `scripts/surya_oracle_greedy.py --case all` regenerates `oracle_greedy.json`, `oracle_fullpage_greedy.json` and `oracle_corpus.json` byte-for-byte |
-| Multi-page held-out OCR corpus | done | `page_columns.png` (two-column) and `page_list.png` (numbered list) via `tests/test_surya_gpu.py::test_gpu_ocr_corpus_matches_oracle` |
-| 300-DPI A4 page fixture and its transcription measurement | done | `scripts/surya_bench_pages.py:make_page_a4`, gated by `tests/test_surya_transcription.py::test_transcription_meets_ground_truth[a4]` |
-| OpenAI-compatible HTTP serving (`hipserver`) | done | `hipengine/server/multimodal.py`, `scripts/surya_http_e2e.py`, `tests/test_surya_server_multimodal.py` |
+| Multi-page held-out OCR corpus | done | `page_columns.png` (two-column) and `page_list.png` (numbered list) via `tests/test_live_surya_gpu.py::test_gpu_ocr_corpus_matches_oracle` |
+| 300-DPI A4 page fixture and its transcription measurement | done | `scripts/surya_bench_pages.py:make_page_a4`, gated by `tests/test_live_surya_transcription.py::test_transcription_meets_ground_truth[a4]` |
+| OpenAI-compatible HTTP serving (`hipserver`) | done | `hipengine/server/multimodal.py`, `scripts/surya_http_e2e.py`, `tests/test_integration_surya_server_multimodal.py` |
 | Registry migration | pending | tracked in `docs/REFACTOR.md` |
-| `KVLiveSpans` KV ABI | done | `surya_scatter_kv_f32_spans`, `surya_full_attn_decode_f32_spans`; `tests/test_surya_kv_spans.py`, `scripts/surya_kv_spans_bench.py` |
+| `KVLiveSpans` KV ABI | done | `surya_scatter_kv_f32_spans`, `surya_full_attn_decode_f32_spans`; `tests/test_gpu_surya_kv_spans.py`, `scripts/surya_kv_spans_bench.py` |
 | Quantized (GGUF) Surya decoder | pending | safetensors fp32 is the implementation target |
 | MTP / speculative decoding | pending | 15 MTP tensors inventoried, unused |
 
@@ -126,7 +130,7 @@ HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/surya_transcription_report.py --stage
 A4 is qualified against visible-text ground truth; it has no captured torch
 fp32 full-page oracle. The other seven pages have the parity coverage below.
 
-The gate is `tests/test_surya_transcription.py` (ROCm- and checkpoint-gated):
+The gate is `tests/test_live_surya_transcription.py` (ROCm- and checkpoint-gated):
 exact id parity with a captured torch fp32 protocol oracle on six pages, a
 bounded coordinate drift on the seventh, plus the ground-truth bars above, plus
 a starved-budget case that must report truncation and omissions rather than
@@ -268,7 +272,7 @@ The 8580-image-token prefill is verified rather than inferred from the grid
 arithmetic: `render_chat_prompt` — the same call the generator makes — returns
 8701 `input_ids` for this page, of which exactly 8580 are contiguous image pads
 (121 text tokens, then the image span), and that list is what the prefill
-receives. `tests/test_surya_transcription_fixtures.py` pins the count, the
+receives. `tests/test_unit_surya_transcription_fixtures.py` pins the count, the
 contiguity, and the absence of any other image flag. The serving path reports
 the same 8701 as `usage.prompt_tokens`, and its HTTP response reproduces this
 row exactly (see "HTTP serving" below).
@@ -284,7 +288,7 @@ verbatim. The A4 ground truth is therefore paragraph-level, because the body is
 wrapped prose; the other seven pages draw one logical unit per physical line, so
 for them the two granularities coincide. `_a4_paragraphs()` builds the units
 from the same constants the page is drawn from, and
-`tests/test_surya_transcription_fixtures.py` pins that a wrapped line is not its
+`tests/test_unit_surya_transcription_fixtures.py` pins that a wrapped line is not its
 own unit. This is the second defect of that shape found in this suite, after the
 four bench pages that draw text past their own canvas.
 
@@ -394,7 +398,7 @@ abandoned request is typically the longer one, more written KV slots than the
 next request will attend over. `prefill` zeroes the conv and GDN state and
 rewrites KV from slot 0, and decode attends only over `_seq_len + 1` slots, so
 the follow-up request is bit-identical to the same request on a runner that
-never saw the abandoned one. `tests/test_surya_gpu.py`
+never saw the abandoned one. `tests/test_live_surya_gpu.py`
 `test_gpu_generator_recovers_after_an_abandoned_request` gates the
 long-then-short ordering, and also that an over-capacity rejection leaves the
 runner usable.
@@ -417,7 +421,7 @@ gfx1151, the fused decode attention is 2.3-9.5x the rocBLAS parent over context
 lengths 128-16384 with the same-fill output agreeing to 3.3e-07 absolute; the
 ratio is monotone from 512 tokens up, while below that both routes are tens of
 microseconds and the ratio moves by ~0.5x between runs
-(`tests/test_surya_kv_spans.py`, `scripts/surya_kv_spans_bench.py`).
+(`tests/test_gpu_surya_kv_spans.py`, `scripts/surya_kv_spans_bench.py`).
 
 ### HTTP serving (2026-09-12)
 
@@ -437,7 +441,7 @@ bounds instead of editing the server.
 The compressed-payload bound scales with the admitted pixel area (16 MiB at
 16.78 MP), because a 300-DPI document does not compress like a thumbnail. An
 engine that declares nothing keeps the previous 1 MP / 1024 px / 8 MiB scope
-exactly, which `tests/test_surya_server_multimodal.py` pins in both directions
+exactly, which `tests/test_integration_surya_server_multimodal.py` pins in both directions
 using the committed A4 fixture. `--vision-max-pixels` and
 `--vision-max-image-bytes` override either bound.
 

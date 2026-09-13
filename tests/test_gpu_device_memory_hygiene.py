@@ -14,7 +14,7 @@ last reference when ``host_array_ptr`` returns, so the array is already freed
 straight back to the next same-size allocation at the same address, and the copy
 then reads whatever that allocation wrote. The failure is heap-layout dependent,
 so it shows up as "this test passes alone and fails after another test" --
-``tests/test_surya_kv_spans.py`` did exactly that with 4 denormal values in
+``tests/test_gpu_surya_kv_spans.py`` did exactly that with 4 denormal values in
 slots the scatter never writes. Nothing about the call site looks wrong, which is
 why it needs a lint rather than a review convention.
 
@@ -197,7 +197,7 @@ def test_the_lint_is_documented_as_partial_and_its_gaps_are_pinned() -> None:
 
 
 @pytest.mark.parametrize("name", ["tests/_poison_probe.py"])
-def test_poison_probe_helper_is_present(name: str) -> None:
+def test_unit_poison_probe_helper_is_present(name: str) -> None:
     """The runtime half of the hygiene rules must stay available to runners."""
 
     text = (ROOT / name).read_text()

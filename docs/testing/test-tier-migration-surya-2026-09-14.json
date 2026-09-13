@@ -1,0 +1,118 @@
+{
+  "schema": 1,
+  "date": "2026-09-14",
+  "purpose": "Surya integration rename evidence; never used for pytest selection.",
+  "classification": "Source-reviewed conservative whole-module tiers; assertions retained.",
+  "modules": [
+    {
+      "old": "tests/test_surya_bench_harness.py",
+      "new": "tests/test_unit_surya_bench_harness.py",
+      "tier": "unit"
+    },
+    {
+      "old": "tests/test_surya_generation_contract.py",
+      "new": "tests/test_unit_surya_generation_contract.py",
+      "tier": "unit"
+    },
+    {
+      "old": "tests/test_surya_model_contract.py",
+      "new": "tests/test_unit_surya_model_contract.py",
+      "tier": "unit"
+    },
+    {
+      "old": "tests/test_surya_numerical_gate.py",
+      "new": "tests/test_unit_surya_numerical_gate.py",
+      "tier": "unit"
+    },
+    {
+      "old": "tests/test_surya_oracle_fixtures.py",
+      "new": "tests/test_unit_surya_oracle_fixtures.py",
+      "tier": "unit"
+    },
+    {
+      "old": "tests/test_surya_profile_report.py",
+      "new": "tests/test_unit_surya_profile_report.py",
+      "tier": "unit"
+    },
+    {
+      "old": "tests/test_surya_protocol.py",
+      "new": "tests/test_unit_surya_protocol.py",
+      "tier": "unit"
+    },
+    {
+      "old": "tests/test_surya_transcription_fixtures.py",
+      "new": "tests/test_unit_surya_transcription_fixtures.py",
+      "tier": "unit"
+    },
+    {
+      "old": "tests/test_surya_transcription_score.py",
+      "new": "tests/test_unit_surya_transcription_score.py",
+      "tier": "unit"
+    },
+    {
+      "old": "tests/test_surya_upload.py",
+      "new": "tests/test_unit_surya_upload.py",
+      "tier": "unit"
+    },
+    {
+      "old": "tests/test_poison_probe_helper.py",
+      "new": "tests/test_unit_poison_probe_helper.py",
+      "tier": "unit"
+    },
+    {
+      "old": "tests/test_surya_acceptance.py",
+      "new": "tests/test_integration_surya_acceptance.py",
+      "tier": "integration"
+    },
+    {
+      "old": "tests/test_surya_server_multimodal.py",
+      "new": "tests/test_integration_surya_server_multimodal.py",
+      "tier": "integration"
+    },
+    {
+      "old": "tests/test_surya_kv_spans.py",
+      "new": "tests/test_gpu_surya_kv_spans.py",
+      "tier": "gpu"
+    },
+    {
+      "old": "tests/test_device_memory_hygiene.py",
+      "new": "tests/test_gpu_device_memory_hygiene.py",
+      "tier": "gpu"
+    },
+    {
+      "old": "tests/test_h2d_source_lifetime.py",
+      "new": "tests/test_gpu_h2d_source_lifetime.py",
+      "tier": "gpu"
+    },
+    {
+      "old": "tests/test_surya_e2e.py",
+      "new": "tests/test_live_surya_e2e.py",
+      "tier": "live"
+    },
+    {
+      "old": "tests/test_surya_gpu.py",
+      "new": "tests/test_live_surya_gpu.py",
+      "tier": "live"
+    },
+    {
+      "old": "tests/test_surya_public_api.py",
+      "new": "tests/test_live_surya_public_api.py",
+      "tier": "live"
+    },
+    {
+      "old": "tests/test_surya_text_decoder.py",
+      "new": "tests/test_live_surya_text_decoder.py",
+      "tier": "live"
+    },
+    {
+      "old": "tests/test_surya_transcription.py",
+      "new": "tests/test_live_surya_transcription.py",
+      "tier": "live"
+    },
+    {
+      "old": "tests/test_surya_vision.py",
+      "new": "tests/test_live_surya_vision.py",
+      "tier": "live"
+    }
+  ]
+}

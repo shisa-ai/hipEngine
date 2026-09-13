@@ -33,7 +33,7 @@ every lane):
 Correctness gate: each case declares an oracle. Where a captured torch fp32
 fixture exists the lane must reproduce its ids exactly; otherwise the
 hipEngine CPU reference is computed in the same process and used as the basis
-(that reference is itself oracle-gated by ``tests/test_surya_e2e.py``). The
+(that reference is itself oracle-gated by ``tests/test_live_surya_e2e.py``). The
 comparison is over the *complete* generated sequence including how it
 terminated, never a prefix. Each case also records whether the decoded text
 parses as the layout JSON Surya OCR is supposed to emit.
@@ -946,7 +946,7 @@ def _cpu_reference(case: Case) -> list[int]:
     ``hipengine_cpu`` lane's, so a GPU lane's ``ids_match`` is a genuine
     cross-implementation comparison; for the CPU lane itself the check is
     self-consistency, and the reference's own accuracy is gated against the
-    torch fixtures by ``tests/test_surya_e2e.py``.
+    torch fixtures by ``tests/test_live_surya_e2e.py``.
     """
 
     return list(lane_hipengine_cpu(case, runs=1).generated)

@@ -8,8 +8,8 @@ imports torch.
 Two cases, both greedy (argmax) with the model's own logits:
 
 - ``image``    — ``page_small.png`` (256x256) -> ``oracle_greedy.json``.
-  This is the reference that ``test_surya_e2e``, ``test_surya_public_api`` and
-  ``test_surya_gpu`` all gate on. It had no committed generator before this
+  This is the reference that ``test_live_surya_e2e``, ``test_live_surya_public_api`` and
+  ``test_live_surya_gpu`` all gate on. It had no committed generator before this
   script: ``scripts/surya_oracle_torch.py`` captures logits and cache states
   but never emits greedy ids.
 - ``fullpage`` — ``page_full.png`` (1024x1024, real words) ->

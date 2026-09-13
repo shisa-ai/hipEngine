@@ -1287,7 +1287,7 @@ runners:
   the Surya text decoder returned all-NaN
   logits after a long test suite and finite logits in isolation, and why the
   failure looked like device-state poisoning:
-  `tests/test_surya_gpu.py::test_gpu_state_rezero_clears_recycled_nan` and
+  `tests/test_live_surya_gpu.py::test_gpu_state_rezero_clears_recycled_nan` and
   `tests/test_evie_gpu_runtime.py::test_state_rezero_clears_recycled_nan` pin
   it by poisoning the state buffers with `0xFF` and requiring an unchanged
   result.
@@ -1313,7 +1313,7 @@ runners:
   block is handed straight back to the next same-size allocation (same address),
   and the copy then reads whatever that allocation wrote. ``SuryaGpuRunner._upload``
   states the contract; hoist the temporary into a local. This made
-  `tests/test_surya_kv_spans.py::test_scatter_f32_spans_honors_page_table_and_eviction`
+  `tests/test_gpu_surya_kv_spans.py::test_scatter_f32_spans_honors_page_table_and_eviction`
   pass or fail depending on which Surya test ran before it -- 4 denormal
   values in the slots the scatter never writes. Hoisting is not optional and is
   not a style question: the same statement can pass alone and fail in a suite,
@@ -1328,7 +1328,7 @@ runners:
   and decode and does not add a device-wide synchronization. An async upload
   must explicitly retain its source until stream completion; changing the copy
   API to async requires updating its callers. Do not add a defensive device-wide
-  drain to a synchronous upload. `tests/test_device_memory_hygiene.py`
+  drain to a synchronous upload. `tests/test_gpu_device_memory_hygiene.py`
   enforces the always-allocating forms (`np.zeros*`, `np.ones*`, `np.full*`,
   `np.array`, `np.asarray`, `np.tile`, `.astype(...)`, `.copy()`, `.flatten()`)
   by AST scan over `hipengine/`, `tests/`, `scripts/`, and `benchmarks/`.
