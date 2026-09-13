@@ -878,3 +878,57 @@ def test_merge_without_out_is_an_error(tmp_path, monkeypatch) -> None:
         "surya_perf_compare.py", "--merge", str(one)])
     with pytest.raises(SystemExit, match="needs --out"):
         H.main()
+
+
+# --- attention-memory shape sweep -------------------------------------------
+
+
+_M_SPEC = importlib.util.spec_from_file_location(
+    "surya_attention_memory", _ROOT / "scripts" / "surya_attention_memory.py"
+)
+assert _M_SPEC is not None and _M_SPEC.loader is not None
+M = importlib.util.module_from_spec(_M_SPEC)
+sys.modules[_M_SPEC.name] = M
+_M_SPEC.loader.exec_module(M)
+
+
+def test_text_shape_sweep_lifts_and_restores_the_planner_envelope() -> None:
+    """A sweep row must measure the width it names, and must not leak.
+
+    ``--text-blocks`` exists to measure shapes the production planner would not
+    choose, so it lifts the shape envelope and the wavefront rounding. If that
+    lift silently failed, every sweep row would be the production shape wearing
+    a different label, which is exactly the failure mode the sweep rules out.
+    The lift is process-global planner state, so it must also be restored, or
+    the next measurement in the process inherits a shape rule it did not ask
+    for.
+    """
+
+    from hipengine.runtime import surya
+
+    shipped = M._production_envelope()
+    assert M._ENVELOPE == shipped, "the shipped constants are captured at import"
+    assert shipped == (
+        int(surya.SHAPE_TILE_ROWS),
+        int(surya.SHAPE_TILE_DIVISOR),
+        int(surya.SHAPE_TILE_MULTIPLE),
+    )
+    heads, tokens = 8, 8580
+    try:
+        # production: the envelope caps the width the byte budget admits
+        assert surya.plan_score_tiles(tokens, heads, 512 * 1024**2)[0] == 256
+        # lifted: the same backwards-solved budget returns the named width,
+        # including a non-multiple of 32 the production planner would round
+        M._shape_envelope(False)
+        assert surya.SHAPE_TILE_MULTIPLE == 1
+        assert surya.plan_score_tiles(
+            tokens, heads, heads * tokens * 1955 * 4
+        )[0] == 1955
+        # the width the envelope's 512-row cap costs the 16384-token prefill
+        assert surya.plan_score_tiles(
+            16384, heads, heads * 16384 * 1024 * 4
+        )[0] == 1024
+    finally:
+        M._shape_envelope(True)
+    assert M._production_envelope() == shipped
+    assert surya.plan_score_tiles(tokens, heads, 512 * 1024**2)[0] == 256
