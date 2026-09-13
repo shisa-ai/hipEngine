@@ -4,32 +4,32 @@ hipEngine is a ROCm-native local inference engine built primarily for AMD
 Radeon GPUs. It pairs a small Python host with custom HIP kernels for torch-free
 model loading, generation, and OpenAI-compatible serving on supported hardware.
 
-**Current release: v0.5.0.** Besides the Qwen 3.6 PARO and GGUF MoE models,
-the latest version of hipEngine now supports inference for more model
-families. These include [Laguna S 2.1](https://poolside.ai/blog/introducing-laguna-s-2-1),
-[Maple ternary](https://github.com/deepgrove-ai/mlx-lm-deepgrove), and [Moonshine ASR](https://github.com/moonshine-ai/moonshine).
-It has also undergone extensive tuning for
+**Current release: v0.5.0.** In addition to the Qwen 3.6 PARO and GGUF MoE models,
+hipEngine now includes extensive tuning for
 [Qwen 3.8 27B Q4_K_M](#performance), including long-context modes that hold
 up to 232K tokens of context on a 24 GB card.
 
+There is also initial support for Qwen 3.8 Flash-Next,
+[Laguna S 2.1](https://poolside.ai/blog/introducing-laguna-s-2-1), [Maple ternary](https://github.com/deepgrove-ai/mlx-lm-deepgrove), and [Moonshine ASR](https://github.com/moonshine-ai/moonshine).
+Additional modalities include TimesFM 2.5 and 3.0, EVIE 4.5B and 8B, and Surya.
+
 ## Why use hipEngine?
 
-- **Native AMD support.** HIP-first kernels directly target and tune for specific
-  published.
+- **Native AMD support.** HIP-first kernels are tuned specifically for
   RDNA 3 (gfx1100) and Strix Halo RDNA 3.5 (gfx1151) instead of being CUDA ports.
 - **No PyTorch runtime required.** There is no PyTorch dependency, which keeps
   hipEngine lightweight. Although it is packaged for Python, almost all of the
   hot path is C++.
 - **Optimized for agents and concurrent requests.** Besides extensive tuning for
   fast single-request performance (especially prefill), hipEngine also has
-  tuned support for multiple concurrent requests.
+  tuned support for multiple concurrent requests, with continuous batching and a shared KV pool.
 - **Drop-in support for existing clients.** The included OpenAI-compatible server
   supports completion, chat, token-level SSE, logprobs, tools, structured-output
   validation, Qwen thinking controls, logprob-biased effort control, and
-  request diagnostics.
-- **Rigorous correctness.** All implementations are checked against a CPU-side 
-  oracle for correctness. There is a *strict* profile which must be an exact/parent-parity
-  match as well as correctness gated *production* defaults. Any optimizations or routes that 
+  request diagnostics. There is also a simple built-in `chat` interface.
+- **Rigorous correctness.** All implementations are checked against a CPU-side
+  oracle. The *strict* profile requires exact or parent-parity
+  results, while *production* defaults must pass correctness gates. Optimizations or routes that
   fail these gates are rejected or made explicitly opt-in with measured costs stated.
 
 hipEngine is a from-scratch project and does not inherit any unvetted code or legacy design.
@@ -51,6 +51,18 @@ backends, measured from one request up to eight running at once. An independent
 [survey of Qwen3.8-27B implementations on Strix Halo](docs/QWEN38-STRIX-HALO-EXTERNAL-SURVEY.md)
 compares hipEngine against other engines on the same host.
 
+hipEngine includes [DMS](https://arxiv.org/abs/2506.05345) support and training code,
+along with a published [DMS checkpoint for Qwen3.8-27B Q4_K_M](https://huggingface.co/shisa-ai/Qwen3.8-27B-Q4_K_M-DMS-W8192).
+The 24 GB context and quality results below show DMS INT8 reaching about 5.7x the BF16 context capacity.
+The quality test reports 100% top-1 agreement and 0.001 mean row-KL; these are test results, not a lossless guarantee.
+
+| KV configuration | Max context | Top-1 agreement vs BF16 | Mean row-KL |
+| --- | ---: | ---: | ---: |
+| BF16 KV | 40,960 | — | — |
+| DMS BF16 | 73,728 | — | — |
+| Direct-INT8 KV | 131,072 | 91.4% | 0.188 |
+| DMS INT8 | 232,448 | 100% | 0.001 |
+
 CPU model generation is not supported. The CPU backend is used for correctness
 tests. On NVIDIA, load Maple with `backend="cuda_sm120a"`; automatic hardware
 selection currently covers AMD only.
@@ -59,136 +71,24 @@ Support is specific to the listed model families and formats. hipEngine does
 not yet run every GGUF model. See the [GGUF](docs/GGUF.md),
 [Laguna](docs/LAGUNA.md), and [Maple](docs/MAPLE.md) guides for model-specific
 limits.
+
 ### GGUF or ParoQuant for Qwen?
 
 For Qwen3.6 35B-A3B on RDNA3, the optimized ParoQuant W4 checkpoint currently
-slightly leads short-context generation and uses less memory, but GGUF now is fully optimized.
+slightly leads short-context generation and uses less memory, but GGUF is now extensively optimized.
 
 GGUF has a much larger model and quantization ecosystem. Current development is
 therefore focused on GGUF compatibility. Choose PARO for this exact optimized
 checkpoint or GGUF for broader compatibility.
 
-## Installation
-
-### Requirements
-
-| Platform | Requirements |
-| --- | --- |
-| AMD | Linux x86-64, Python 3.11+ and ROCm with `hipcc` and `libamdhip64.so` |
-| NVIDIA Blackwell | Linux x86-64, Python 3.11+ and the CUDA toolkit with `nvcc`; Maple only |
-| Published wheel | glibc 2.39 or newer, such as Ubuntu 24.04 |
-
-ROCm 7.x is the safest choice for the current wheel (ROCm 10.0 has been tested and works fine as well).
-See the [TheRock setup guide](docs/THEROCK.md) for retained ROCm 7.13 and gfx1151 ROCm 10 setup/JIT validation.
-The first model load compiles and caches kernels, so it takes longer than later starts.
-
-Install from PyPI:
-
-```bash
-pip install hipengine huggingface_hub
-```
-
-Or install a source checkout:
-
-```bash
-git clone https://github.com/shisa-ai/hipEngine.git
-cd hipEngine
-git lfs install
-git lfs pull
-pip install -e .
-```
-
-Confirm that the command is available:
-
-```bash
-hipengine --help
-hipengine serve --help
-```
-
-## Start a local server
-
-hipEngine does not download model weights during startup. Download a supported
-model first, or use a GGUF file that is already on disk.
-
-For the ParoQuant Qwen checkpoint:
-
-```bash
-hf download shisa-ai/Qwen3.6-35B-A3B-PARO-packed
-
-hipengine serve \
-  --model shisa-ai/Qwen3.6-35B-A3B-PARO-packed \
-  --served-model-name qwen-paro
-```
-
-For GGUF, pass the path to the model file:
-
-```bash
-hipengine serve \
-  --model /path/to/Qwen3.6-35B-A3B-Q4_K_M.gguf \
-  --served-model-name qwen
-```
-
-The server listens on `http://127.0.0.1:8000` by default. Test it with:
-
-```bash
-curl http://127.0.0.1:8000/v1/chat/completions \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "model": "qwen",
-    "messages": [{"role": "user", "content": "Why is the sky blue?"}],
-    "max_tokens": 128
-  }'
-```
-
-Point any client that accepts a custom OpenAI base URL at
-`http://127.0.0.1:8000/v1`. See the [server guide](docs/API.md) for API keys,
-streaming, tools, structured output, and model capability checks.
-
-## Chat in your terminal
-
-With the server running, open another terminal:
-
-```bash
-pip install 'hipengine[chat]'
-hipengine chat
-```
-
-The client connects to `http://127.0.0.1:8000` and discovers the served model.
-No model path is needed, and it does not start another server. For a different
-address, use `hipengine chat --server http://127.0.0.1:8001`.
-
-Replies stream as Markdown, with optional reasoning display and per-turn stats.
-Use `/status` for server limits, `/usage` for conversation token counts,
-`/think off` to disable reasoning, `/retry` to regenerate, and `/clear` to start
-over. `/help` lists all commands; `/quit`, Ctrl-C, or Ctrl-D exits.
-Use `hipengine chat --plain` for plain-text output.
-
-## Use the Python API
-
-```python
-from hipengine import LLM, SamplingParams
-
-llm = LLM("shisa-ai/Qwen3.6-35B-A3B-PARO-packed")
-outputs = llm.generate(
-    ["Hello, hipEngine."],
-    SamplingParams(max_tokens=64, temperature=0.0),
-)
-print(outputs[0])
-llm.close()
-```
-
-`LLM(...)` detects a supported AMD GPU and chooses the model format
-automatically. You can also pass a local GGUF or Maple path. Advanced users can
-override the choice with `backend=` and `quant=`. The
-`execution_profile="strict"|"production"|"batch_invariant"` selector is
-fail-closed to registered kernel plans with exact fallbacks; omitting it selects
-`production` for models with a certified plan and keeps the previous behaviour
-otherwise.
+We've [tested alternative quantization formats](benchmarks/quant/README.md), including ROCmFP4 through ROCmFPX. They trade quality against traditional GGUF Q formats; a smaller format does not necessarily run faster.
 
 ## Performance highlights
 
 These are measured results, not estimates. Prompt processing is the speed of
 reading the input. Text generation is the speed of producing new tokens.
+
+The benchmark summary below is synchronized from the [benchmark report](benchmarks/README.md).
 
 <!-- BEGIN TOPLINE:README_HIGHLIGHTS -->
 Measured tokens/s on each named host. **Prompt processing** measures input;
@@ -338,6 +238,123 @@ Other AMD architecture numbers are not automatically treated as compatible.
 
 You can force a nearby backend, but do so only after checking output quality and
 performance. hipEngine will not silently use PyTorch when a GPU is unsupported.
+
+## Installation
+
+### Requirements
+
+| Platform | Requirements |
+| --- | --- |
+| AMD | Linux x86-64, Python 3.11+ and ROCm with `hipcc` and `libamdhip64.so` |
+| NVIDIA Blackwell | Linux x86-64, Python 3.11+ and the CUDA toolkit with `nvcc`; Maple only |
+| Published wheel | glibc 2.39 or newer, such as Ubuntu 24.04 |
+
+ROCm 7.x is the safest choice for the current wheel (ROCm 10.0 has been tested and works fine as well).
+See the [TheRock setup guide](docs/THEROCK.md) for retained ROCm 7.13 and gfx1151 ROCm 10 setup/JIT validation.
+The first model load compiles and caches kernels, so it takes longer than later starts.
+
+Install from PyPI:
+
+```bash
+pip install hipengine huggingface_hub
+```
+
+Or install a source checkout:
+
+```bash
+git clone https://github.com/shisa-ai/hipEngine.git
+cd hipEngine
+git lfs install
+git lfs pull
+pip install -e .
+```
+
+Confirm that the command is available:
+
+```bash
+hipengine --help
+hipengine serve --help
+```
+
+## Start a local server
+
+hipEngine does not download model weights during startup. Download a supported
+model first, or use a GGUF file that is already on disk.
+
+For the ParoQuant Qwen checkpoint:
+
+```bash
+hf download shisa-ai/Qwen3.6-35B-A3B-PARO-packed
+
+hipengine serve \
+  --model shisa-ai/Qwen3.6-35B-A3B-PARO-packed \
+  --served-model-name qwen-paro
+```
+
+For GGUF, pass the path to the model file:
+
+```bash
+hipengine serve \
+  --model /path/to/Qwen3.6-35B-A3B-Q4_K_M.gguf \
+  --served-model-name qwen
+```
+
+The server listens on `http://127.0.0.1:8000` by default. Test it with:
+
+```bash
+curl http://127.0.0.1:8000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "qwen",
+    "messages": [{"role": "user", "content": "Why is the sky blue?"}],
+    "max_tokens": 128
+  }'
+```
+
+Point any client that accepts a custom OpenAI base URL at
+`http://127.0.0.1:8000/v1`. See the [server guide](docs/API.md) for API keys,
+streaming, tools, structured output, and model capability checks.
+
+## Chat in your terminal
+
+With the server running, open another terminal:
+
+```bash
+pip install 'hipengine[chat]'
+hipengine chat
+```
+
+The client connects to `http://127.0.0.1:8000` and discovers the served model.
+No model path is needed, and it does not start another server. For a different
+address, use `hipengine chat --server http://127.0.0.1:8001`.
+
+Replies stream as Markdown, with optional reasoning display and per-turn stats.
+Use `/status` for server limits, `/usage` for conversation token counts,
+`/think off` to disable reasoning, `/retry` to regenerate, and `/clear` to start
+over. `/help` lists all commands; `/quit`, Ctrl-C, or Ctrl-D exits.
+Use `hipengine chat --plain` for plain-text output.
+
+## Use the Python API
+
+```python
+from hipengine import LLM, SamplingParams
+
+llm = LLM("shisa-ai/Qwen3.6-35B-A3B-PARO-packed")
+outputs = llm.generate(
+    ["Hello, hipEngine."],
+    SamplingParams(max_tokens=64, temperature=0.0),
+)
+print(outputs[0])
+llm.close()
+```
+
+`LLM(...)` detects a supported AMD GPU and chooses the model format
+automatically. You can also pass a local GGUF or Maple path. Advanced users can
+override the choice with `backend=` and `quant=`. The
+`execution_profile="strict"|"production"|"batch_invariant"` selector is
+fail-closed to registered kernel plans with exact fallbacks; omitting it selects
+`production` for models with a certified plan and keeps the previous behaviour
+otherwise.
 
 ## Documentation
 
