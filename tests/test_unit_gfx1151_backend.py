@@ -2045,9 +2045,27 @@ def test_gfx1151_fixed_norm_residual_policies_are_exact() -> None:
     assert backend_package_capability(
         "hip_gfx1151", "GGUF_NORM_RESIDUAL_DECODE_POLICIES", {}
     ) == expected
+    # 2026-09-13: gfx1100 declares the same leaf for every verifier row count
+    # and for both the plain and the UD-preset-extended policy keys.
+    fixed5120_rows = {
+        (rows, 5_120): "bf16_out_fixed5120_wave256" for rows in range(1, 9)
+    }
     assert backend_package_capability(
         "hip_gfx1100", "GGUF_NORM_RESIDUAL_DECODE_POLICIES", {}
-    ) == {}
+    ) == {
+        (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): fixed5120_rows,
+        (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): fixed5120_rows,
+        (
+            QWEN35_DENSE_H5120_GEOMETRY,
+            "MOSTLY_Q4_K_M",
+            "gguf_ud_q4_k_m",
+        ): fixed5120_rows,
+        (
+            QWEN35_DENSE_H5120_GEOMETRY,
+            "MOSTLY_Q4_K_S",
+            "gguf_ud_q4_k_s",
+        ): fixed5120_rows,
+    }
     for layer in ("rmsnorm", "add_rmsnorm"):
         for variant in (
             "bf16_out_fixed1024_wave256",

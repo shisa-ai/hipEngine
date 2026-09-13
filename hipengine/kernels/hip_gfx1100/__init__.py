@@ -504,6 +504,32 @@ GGUF_DENSE_PAIR_SILU_DECODE_POLICIES = {
         (1, 5_120, 17_408): "q5_dense_dual_silu_gemv_decode_bf16_bf16_out",
     },
 }
+# Rows 1-8 fixed-5120 add+rmsnorm leaf (2026-09-13). The kernel and its
+# registry key already existed on this backend but no policy could reach them:
+# only the gfx1151 package declared GGUF_NORM_RESIDUAL_DECODE_POLICIES, and it
+# admitted rows == 1 alone, so the W7900 verifier at rows 3 fell through to the
+# generic local256 owner. That owner reloads x and add for its second pass and
+# pays nine tree barriers; the fixed-5120 leaf caches the 20 per-thread values
+# in registers, fully unrolls both passes, and reproduces the generic reduction
+# tree with two block barriers and five wave exchanges. One block owns one row,
+# so each row's output is bit-identical to the rows == 1 launch. Measured on the
+# W7900 (2026-09-13, 400-launch batch, real tensors): rows=1 16.9 -> 5.9 us per
+# launch. Both the plain and the UD-preset-extended keys are declared, because
+# _gguf_policy_identity extends the key for artifacts with a bound UD preset.
+GGUF_NORM_RESIDUAL_DECODE_POLICIES = {
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {
+        (rows, 5_120): "bf16_out_fixed5120_wave256" for rows in range(1, 9)
+    },
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): {
+        (rows, 5_120): "bf16_out_fixed5120_wave256" for rows in range(1, 9)
+    },
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "gguf_ud_q4_k_m"): {
+        (rows, 5_120): "bf16_out_fixed5120_wave256" for rows in range(1, 9)
+    },
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S", "gguf_ud_q4_k_s"): {
+        (rows, 5_120): "bf16_out_fixed5120_wave256" for rows in range(1, 9)
+    },
+}
 # Production-cache rotation admits sole-resident Q5T16 for the measured dense
 # H5120 K6,144/N5,120 recurrent output projections. The materializer remains
 # shape/role qualified; peer backends keep dense BF16 until independently gated.
@@ -1488,6 +1514,7 @@ __all__ = [
     "GGUF_FULL_ATTN_QK_POSTPROCESS_DECODE_POLICIES",
     "GGUF_C8_Q5_RAW_MMQ_SSM_OUT",
     "GGUF_DENSE_Q5_T16_SSM_OUT",
+    "GGUF_NORM_RESIDUAL_DECODE_POLICIES",
     "GGUF_DENSE_Q5_T16_H5120",
     "GGUF_DENSE_Q6_T16_QMICRO_PLANAR",
     "GGUF_DENSE_T16_F16_ROCBLAS_PREFILL_POLICIES",
