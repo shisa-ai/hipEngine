@@ -12,9 +12,9 @@ economically unattractive.
 
 **Status:** phases 0-7 are closed. Both tiers are promoted within width c1 and
 the 4-95 token context bucket, and automatic MTP admission is live there for
-both artifacts. The retained paired result is `UD-Q4_K_M` MTP **46.192** tok/s
-at **1.4476x** over its own AR and `UD-Q4_K_S` **47.023** at **1.5017x**
-(`benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-q8-rowtile-attn-kv.json`).
+both artifacts. The retained paired result is `UD-Q4_K_M` MTP **49.409** tok/s
+at **1.5487x** over its own AR and `UD-Q4_K_S` **46.955** at **1.5432x**
+(`benchmarks/results/2026-09-13-ud-gfx1100-q5t16-single-wave-rowtile.json`).
 The 13 unchecked items below are follow-on work with recorded blockers, not
 unfinished phases; each names what is missing.
 
@@ -35,7 +35,8 @@ unfinished phases; each names what is missing.
 
 ### Current baseline and evidence
 
-- [Current paired GPU1 artifact](../benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-q8-rowtile-attn-kv.json)
+- [Current paired GPU1 artifact](../benchmarks/results/2026-09-13-ud-gfx1100-q5t16-single-wave-rowtile.json)
+- [Prior paired GPU1 artifact (superseded)](../benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-q8-rowtile-attn-kv.json)
 - [Phase 6 paired artifact (superseded)](../benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-phase6.json)
 - [Phase 4 paired artifact (superseded)](../benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-phase4.json)
 - [Benchmark scoreboard](../benchmarks/README.md)
@@ -477,6 +478,22 @@ Likely investigation order:
   arithmetic and diverges generated tokens, while this shape set does not. See
   `benchmarks/results/2026-09-13-ud-gfx1100-q8-rowtile-attn-kv-census.json` and
   `benchmarks/results/2026-09-13-ud-gfx1100-q8-rowtile-attn-kv-ar-verify.json`.
+- [x] Q5T16 single-wave verifier rowtile. Retained 2026-09-13. The rows-2-8
+  Q5_K owner ran the four-wave WG128 geometry: four wave32 waves with their
+  partial vectors summed through shared memory. The new owner runs **one wave32
+  per output block over eight columns**, each lane owning eight contiguous `k`
+  inside the 256-element block, so the subblock `d`/`dmin`/`scale`/`min` decode
+  hoists out of the inner loop and the block needs neither the cross-wave
+  exchange nor its `__syncthreads()`. This is the geometry the Q4_K rowtile
+  already uses. The Q5_K family falls **11.75 -> 7.98 ms/step (-32%)** across
+  126 in-window calls per step, at **1.05x-1.58x per call on all six Q5_K
+  shapes**, and UD MTP B3 rises 46.192 -> **49.409** (K_M, 1.4476 -> **1.5487x**)
+  at an unchanged AR denominator. The four-wave entry point cannot be rebound:
+  the grouped rows6/rows8 variants declare bit-identity to it applied to
+  six-row chunks, so the single-wave owner is a separately registered variant
+  selected through `GGUF_T16_NATIVE_ROWTILE_SINGLE_WAVE_BY_QUANT`, with
+  `HIPENGINE_GGUF_Q5_T16_ROWTILE_SINGLE_WAVE=0` as the rollback. See
+  `benchmarks/results/2026-09-13-ud-gfx1100-q5t16-single-wave-rowtile.json`.
 - [ ] IQ4_XS repack into a tile layout. `gguf_iq4_xs_local32_gemv` runs at
   396-461 GB/s across all five of its verifier shapes (11.44 ms/step, 26.7% of
   the UD-Q4_K_M verifier), while the t16 rowtile owner reaches **704 GB/s on the
@@ -485,14 +502,19 @@ Likely investigation order:
   is the only option for it. Closing the gap means repacking IQ4_XS into a tile
   layout at load time plus a new owner, at the cost of the repacked resident
   footprint.
-- [ ] Q5_K t16 rowtile short-K steady state. Closed for now. The 704 GB/s at
-  (5120, 17408) against 454 GB/s at (17408, 5120) is not per-block amortization:
-  `TILE_COLS` 4 -> 8 halves the block count and leaves the ffn_gate/ffn_up shape
-  bit-identical at 135.1 us/call, and it is worse on ffn_down (87.1 -> 91.4) and
-  attn_k/attn_v (20.5 -> 29.4). See
+- [ ] Q5_K t16 rowtile short-K steady state. **Re-opened and closed again
+  2026-09-13.** The 704 GB/s at (5120, 17408) against 454 GB/s at (17408, 5120)
+  is not per-block amortization: `TILE_COLS` 4 -> 8 halves the block count and
+  leaves the ffn_gate/ffn_up shape bit-identical at 135.1 us/call, and it is
+  worse on ffn_down (87.1 -> 91.4) and attn_k/attn_v (20.5 -> 29.4). See
   `benchmarks/results/2026-09-13-ud-gfx1100-q5-rowtile-col8-pershape-rejected.json`.
-  Two tilings and two instruction-level changes have failed on this shape; the
-  next attempt needs hardware counters.
+  The column-width sweep missed the actual lever, which is the **wave shape**
+  rather than the tile width: the single-wave geometry above keeps
+  `TILE_COLS` at the same value and moves ffn_gate/ffn_up 135.1 -> 93.9 us and
+  ffn_down 87.1 -> 60.2 us, i.e. it fixes exactly the short-K wide-N shapes the
+  col8 sweep could not. Two tilings and two instruction-level changes failed on
+  this shape before the wave-shape change; a further attempt on the residual
+  gap needs hardware counters.
 - [ ] The t16 decode-versus-rowtile accumulation order (Q4_K 27.4% + Q5_K
   25.7% + Q6_K 8.1% of rank-2 MACs) is the dominant remaining source of
   verification-specific drift: the rows 2-4 t16 rowtile owners are not
@@ -698,7 +720,7 @@ census artifacts rather than re-measured here, because the paired protocol is
 pinned to the natural-25 shape that produced the retained ratio.
 
 Evidence:
-`benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-q8-rowtile-attn-kv.json`,
+`benchmarks/results/2026-09-13-ud-gfx1100-q5t16-single-wave-rowtile.json`,
 `benchmarks/results/2026-09-12-ud-gfx1100-mtp-width-cells.json`.
 
 Required result fields:
@@ -751,8 +773,10 @@ Use this table for every retained candidate. Add absolute values before ratios.
 | Rows 2-4 local32 IQ verifier sibling | K_S | GPU1, c1, B3 | 31.343 | 45.077 | 39.772 | 64.323 | 1.4382x | 0.788x | 0.701x | Superseded |
 | Q5_K gate/up pair row gate | K_M | GPU1, c1, B3 | 31.934 | 45.973 | 37.204 | 63.349 | 1.4396x | 0.858x | 0.726x | Superseded |
 | Q5_K gate/up pair row gate | K_S | GPU1, c1, B3 | 31.358 | 46.990 | 39.690 | 66.318 | 1.4985x | 0.790x | 0.709x | Superseded |
-| Q8_0 attn_k/attn_v rowtile route | K_M | GPU1, c1, B3 | 31.909 | 46.192 | 37.201 | 63.153 | **1.4476x** | 0.858x | 0.731x | Promoted |
-| Q8_0 attn_k/attn_v rowtile route | K_S | GPU1, c1, B3 | 31.313 | 47.023 | 39.706 | 66.437 | **1.5017x** | 0.789x | 0.708x | Promoted |
+| Q8_0 attn_k/attn_v rowtile route | K_M | GPU1, c1, B3 | 31.909 | 46.192 | 37.201 | 63.153 | 1.4476x | 0.858x | 0.731x | Superseded |
+| Q8_0 attn_k/attn_v rowtile route | K_S | GPU1, c1, B3 | 31.313 | 47.023 | 39.706 | 66.437 | 1.5017x | 0.789x | 0.708x | Superseded |
+| Q5T16 single-wave verifier rowtile | K_M | GPU1, c1, B3 | 31.904 | 49.409 | 37.313 | 63.885 | **1.5487x** | 0.855x | **0.773x** | Promoted |
+| Q5T16 single-wave verifier rowtile | K_S | GPU1, c1, B3 | 30.428 | 46.955 | 39.774 | 66.709 | **1.5432x** | 0.765x | 0.704x | Promoted |
 
 Interpret results in this order:
 
