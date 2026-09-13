@@ -19,6 +19,8 @@ For every fixture prompt the gate:
 Reported metrics are the section-6.1 screen on the position-pooled vector:
 mean/p95/p99/max row KL, overall top-1, and top-1 per category and per
 candidate budget. Generated-token agreement is recorded as a diagnostic.
+The command writes its report and exits nonzero when any repeat fails the
+screen, finiteness, requested native-route, or repeat-signature check.
 
 CPU/GPU: needs a GPU. Raw logits never leave the process.
 """
@@ -282,12 +284,24 @@ def main() -> int:
     args = ap.parse_args()
     if args.allow_eager_fallback and args.require_native_graph:
         raise SystemExit("--allow-eager-fallback and --require-native-graph conflict")
+    if args.repeat_runs < 1:
+        ap.error("--repeat-runs must be positive")
+    if args.prompt_tokens < 1:
+        ap.error("--prompt-tokens must be positive")
+    if args.limit is not None and args.limit < 1:
+        ap.error("--limit must be positive")
 
     if args.compiler_version_file is not None:
         os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file)
     budgets = tuple(int(v) for v in str(args.budgets).split(",") if v.strip())
     if not budgets or any(b < 1 for b in budgets):
         raise SystemExit("--budgets must be a CSV of positive integers")
+
+    prompt_rows = _load_prompts(args.prompts)
+    if args.limit is not None:
+        prompt_rows = prompt_rows[: int(args.limit)]
+    if not prompt_rows:
+        ap.error("at least one prompt is required")
 
     from hipengine.loading.gguf import scan_gguf
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
@@ -297,9 +311,6 @@ def main() -> int:
     compiler_version = (Path(args.compiler_version_file).read_text()
                         if args.compiler_version_file else None)
     tokenizer = Qwen35GGUFTokenizer.from_gguf_info(scan_gguf(args.model))
-    prompt_rows = _load_prompts(args.prompts)
-    if args.limit is not None:
-        prompt_rows = prompt_rows[: int(args.limit)]
 
     runs: list[dict] = []
     with Qwen35GGUFResidentSession(
@@ -336,6 +347,17 @@ def main() -> int:
         ]
         signatures.append(json.dumps(signature, sort_keys=True))
     deterministic = len(set(signatures)) == 1
+    cases = [case for run in runs for row in run["results"] for case in row["cases"]]
+    checks = {
+        "nonempty_results": bool(cases) and all(run["pooled"]["rows"] > 0 for run in runs),
+        "numerical_envelope": all(run["screen"]["passed"] for run in runs),
+        "deterministic_repeats": bool(deterministic),
+        "finite_logits": all(case["finite"] for case in cases),
+        "native_graph": not args.require_native_graph or all(
+            case["native_graph"] and case["fallback_reason"] is None for case in cases
+        ),
+    }
+    passed = all(checks.values())
     payload = {
         "schema": "hipengine.ud_mtp_ar_verify_numerics_gate.v1",
         "kind": "correctness_gate",
@@ -358,6 +380,8 @@ def main() -> int:
             "top1_per_scope": TOP1_PER_SCOPE,
         },
         "deterministic": bool(deterministic),
+        "checks": checks,
+        "passed": passed,
         "runs": runs,
     }
     args.json.parent.mkdir(parents=True, exist_ok=True)
@@ -366,8 +390,8 @@ def main() -> int:
     print(f"[ar-verify] rows={pooled['rows']} mean={pooled['kl_mean']:.3e} "
           f"p95={pooled['kl_p95']:.3e} p99={pooled['kl_p99']:.3e} "
           f"max={pooled['kl_max']:.3e} top1={pooled['top1_agreement']:.4f} "
-          f"passed={runs[0]['screen']['passed']} deterministic={deterministic}")
-    return 0
+          f"passed={passed} deterministic={deterministic}")
+    return 0 if passed else 1
 
 
 if __name__ == "__main__":
