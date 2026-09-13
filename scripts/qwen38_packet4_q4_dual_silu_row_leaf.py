@@ -52,6 +52,8 @@ def main() -> int:
     from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_tile16
     from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
         build_gguf_k_t16_selected_prefill,
+        gguf_q4_k_t16_dense_dual_wmma_prefill_col16_row256_silu_bf16_bf16_out,
+        gguf_q4_k_t16_dense_dual_wmma_prefill_col16_row512_silu_bf16_bf16_out,
         gguf_q4_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out,
         gguf_q4_k_t16_dense_dual_wmma_prefill_row32_silu_bf16_bf16_out,
         gguf_q4_k_t16_dense_dual_wmma_prefill_row48_silu_bf16_bf16_out,
@@ -114,8 +116,17 @@ def main() -> int:
         "row48": gguf_q4_k_t16_dense_dual_wmma_prefill_row48_silu_bf16_bf16_out,
         "row64": gguf_q4_k_t16_dense_dual_wmma_prefill_row64_silu_bf16_bf16_out,
         "row128": gguf_q4_k_t16_dense_dual_wmma_prefill_row128_silu_bf16_bf16_out,
+        # 16-column arms: half the per-K-block weight traffic at the parent row
+        # capacity, and the same column width with twice the row tiles per wave.
+        "col16_row256": (
+            gguf_q4_k_t16_dense_dual_wmma_prefill_col16_row256_silu_bf16_bf16_out
+        ),
+        "col16_row512": (
+            gguf_q4_k_t16_dense_dual_wmma_prefill_col16_row512_silu_bf16_bf16_out
+        ),
         "smallm": gguf_q4_k_t16_dense_dual_wmma_smallm_silu_bf16_bf16_out,
     }
+    arms = tuple(name for name in candidates if name != "parent")
 
     gate_device = upload(gate_tiles)
     up_device = upload(up_tiles)
@@ -176,7 +187,7 @@ def main() -> int:
                     "rows": rows,
                     "parent_ms": round(timings["parent"], 4),
                 }
-                for name in ("row32", "row48", "row64", "row128", "smallm"):
+                for name in arms:
                     if name not in timings:
                         continue
                     host_cand = download(outs[name], (rows, out_features))
@@ -191,7 +202,7 @@ def main() -> int:
                     k: v for k, v in row_entry.items() if k.endswith("_ms") or k == "rows"
                 }
                 print(f"rows={rows:4d}: " + "  ".join(f"{k}={v}" for k, v in printable.items()))
-                for name in ("row32", "row48", "row64", "row128", "smallm"):
+                for name in arms:
                     if f"{name}_bit_equal" not in row_entry:
                         continue
                     if not row_entry[f"{name}_bit_equal"]:

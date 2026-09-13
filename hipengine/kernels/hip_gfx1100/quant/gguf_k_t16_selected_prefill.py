@@ -50,6 +50,9 @@ _SOURCE = Path(__file__).with_name("gguf_k_t16_selected_prefill.hip")
 _OUTPUT_NAME = "gguf_k_t16_selected_prefill.so"
 _ENV_LAUNCH_BOUNDS = "HIPENGINE_GGUF_SELECTED_WMMA_LAUNCH_BOUNDS"
 _QK_K = 256
+# Columns per GGUF T16 output tile in the selected prefill family (see
+# ``T16_COLS`` in the kernel source).
+_T16_COLS = 16
 
 _SYMBOLS = {
     ("gguf_q4_k_t16", "bf16"): "hipengine_gguf_q4_k_t16_selected_wmma_prefill_compact_bf16_bf16_out",
@@ -132,6 +135,12 @@ _Q4_DENSE_DUAL_WMMA_ROW64_SILU_BF16 = (
 )
 _Q4_DENSE_DUAL_WMMA_ROW128_SILU_BF16 = (
     "hipengine_gguf_q4_k_t16_dense_dual_wmma_prefill_row128_silu_bf16_bf16_out"
+)
+_Q4_DENSE_DUAL_WMMA_COL16_ROW256_SILU_BF16 = (
+    "hipengine_gguf_q4_k_t16_dense_dual_wmma_prefill_col16_row256_silu_bf16_bf16_out"
+)
+_Q4_DENSE_DUAL_WMMA_COL16_ROW512_SILU_BF16 = (
+    "hipengine_gguf_q4_k_t16_dense_dual_wmma_prefill_col16_row512_silu_bf16_bf16_out"
 )
 _Q4_DENSE_DUAL_WMMA_SMALLM_SILU_BF16 = (
     "hipengine_gguf_q4_k_t16_dense_dual_wmma_smallm_silu_bf16_bf16_out"
@@ -1050,6 +1059,7 @@ def _launch_q4_t16_dense_dual_wmma_silu(
     stream: int,
     library: ctypes.CDLL | None,
     runtime: HipRuntime | None,
+    column_tiles: int = 2,
 ) -> None:
     _check_positive(rows, "rows")
     _check_positive(in_features, "in_features")
@@ -1058,8 +1068,11 @@ def _launch_q4_t16_dense_dual_wmma_silu(
         raise ValueError(
             f"in_features must be divisible by GGUF K-family block size {_QK_K}"
         )
-    if out_features % 32 != 0:
-        raise ValueError("out_features must be a multiple of 32")
+    column_multiple = column_tiles * _T16_COLS
+    if out_features % column_multiple != 0:
+        raise ValueError(
+            f"out_features must be a multiple of {column_multiple}"
+        )
     lib = library or build_gguf_k_t16_selected_prefill(load=True)
     rt = runtime or get_hip_runtime()
     fn = getattr(lib, symbol)
@@ -1235,6 +1248,78 @@ def gguf_q4_k_t16_dense_dual_wmma_prefill_row128_silu_bf16_bf16_out(
         stream=stream,
         library=library,
         runtime=runtime,
+    )
+
+
+def gguf_q4_k_t16_dense_dual_wmma_prefill_col16_row256_silu_bf16_bf16_out(
+    x_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the 16-column 256-row dense Q4T16 gate/up candidate arm.
+
+    Half the per-K-block LDS weight traffic of the 32-column parent at the same
+    row capacity, so the LDS union falls to 16 KiB. Bit-identical to the parent;
+    unselected.
+    """
+
+    _launch_q4_t16_dense_dual_wmma_silu(
+        _Q4_DENSE_DUAL_WMMA_COL16_ROW256_SILU_BF16,
+        x_ptr,
+        tiles_a_ptr,
+        tiles_b_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+        column_tiles=1,
+    )
+
+
+def gguf_q4_k_t16_dense_dual_wmma_prefill_col16_row512_silu_bf16_bf16_out(
+    x_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the 16-column 512-row dense Q4T16 gate/up candidate arm.
+
+    Sixteen columns with eight row tiles per wave: half the LDS weight traffic
+    per WMMA of the 32-column parent at the cost of double the activation reads
+    per FLOP. Bit-identical to the parent; unselected.
+    """
+
+    _launch_q4_t16_dense_dual_wmma_silu(
+        _Q4_DENSE_DUAL_WMMA_COL16_ROW512_SILU_BF16,
+        x_ptr,
+        tiles_a_ptr,
+        tiles_b_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+        column_tiles=1,
     )
 
 
@@ -1957,6 +2042,17 @@ def register_gguf_k_t16_selected_prefill_kernels(*, replace: bool = True) -> Non
             "dense_dual_wmma_prefill_row128_bf16_bf16_out",
             gguf_q4_k_t16_dense_dual_wmma_prefill_row128_silu_bf16_bf16_out,
         ),
+        # 16-column candidate arms, registered unselected. The 32-column
+        # ``dense_dual_wmma_prefill_bf16_bf16_out`` stays the strict owner and
+        # fallback; selection needs the same-protocol gate, not analogy.
+        (
+            "dense_dual_wmma_prefill_col16_row256_bf16_bf16_out",
+            gguf_q4_k_t16_dense_dual_wmma_prefill_col16_row256_silu_bf16_bf16_out,
+        ),
+        (
+            "dense_dual_wmma_prefill_col16_row512_bf16_bf16_out",
+            gguf_q4_k_t16_dense_dual_wmma_prefill_col16_row512_silu_bf16_bf16_out,
+        ),
     ):
         register(
             KernelKey(
@@ -2085,6 +2181,8 @@ __all__ = [
     "gguf_q4_k_t16_dense_dual_wmma_prefill_row48_silu_bf16_bf16_out",
     "gguf_q4_k_t16_dense_dual_wmma_prefill_row64_silu_bf16_bf16_out",
     "gguf_q4_k_t16_dense_dual_wmma_prefill_row128_silu_bf16_bf16_out",
+    "gguf_q4_k_t16_dense_dual_wmma_prefill_col16_row256_silu_bf16_bf16_out",
+    "gguf_q4_k_t16_dense_dual_wmma_prefill_col16_row512_silu_bf16_bf16_out",
     "gguf_q4_k_t16_dense_dual_wmma_smallm_silu_bf16_bf16_out",
     "gguf_q4_k_qmicro_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out",
     "gguf_q4_k_qmicro_t16_dense_dual_wmma_prefill_expanded_meta_silu_bf16_bf16_out",
