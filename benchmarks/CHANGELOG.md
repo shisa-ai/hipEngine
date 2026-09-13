@@ -1,5 +1,11 @@
 # hipEngine Benchmark Changelog
 
+- **2026-09-14 JST**: Framework Flash-Next UD-Q4_K_XL/BF16 tiled-GDN suffix
+  adopts exact DPP: warm PP295.765/312.115/286.962 ->
+  296.136/312.942/287.713 tok/s (+0.125%/+0.265%/+0.262%);
+  all72 samples exact IDs/logits/state, positive complete-owner screen.
+  [Evidence](results/2026-09-14-journey-gdn-dpp/README.md).
+
 - **2026-09-14 JST (September 13 UTC)**: Framework Flash-Next UD-Q4_K_XL/BF16
   PLE mapping-only random advice becomes production default: cold PP
   84.161/134.330/225.864 ->260.484/295.260/290.598 tok/s

@@ -85,7 +85,9 @@ def test_production_binder_selects_random_with_strict_and_explicit_rollback(monk
     generator = SimpleNamespace(_resident=SimpleNamespace(ple_table=table))
     profile = SimpleNamespace(manifest_sha256="test", manifest={"quant": "gguf_ud_q4_k_xl"})
     _bind(generator, profile, production=True)
+    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT"] == "qwen4exp_gdn_tiled16_dpp_prefill"
     _bind(generator, profile, production=False)
+    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT"] == ""
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_PLE_MAPPING_ACCESS", "normal")
     _bind(generator, profile, production=True)
     assert calls == ["random", "normal", "normal"]
