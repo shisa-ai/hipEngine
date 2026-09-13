@@ -1,5 +1,28 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## gfx1151 Q4 dual-SiLU prefill 16-column candidate arms (2026-09-13)
+
+- `dense_dual_wmma_prefill_col16_row256_bf16_bf16_out` and
+  `dense_dual_wmma_prefill_col16_row512_bf16_bf16_out` are registered under
+  `linear_pair_silu`/`gguf_q4_k_t16_v1` on both `hip_gfx1100` and `hip_gfx1151`
+  but are selected by nothing: the 32-column
+  `dense_dual_wmma_prefill_bf16_bf16_out` stays the strict owner and fallback.
+  They exist to measure the 16-column direction the tile-knob screen ranked
+  first, and they are bit-identical to the parent at every row count.
+- Removal condition: once a same-protocol prefill gate decides the column
+  direction, delete the losing arm's `out_tiles_per_block` instantiation, its
+  `extern "C"` export, its Python wrapper, its registry entry, its `__all__`
+  line, and its test rows. Keep `out_tiles_per_block` on the kernel only while a
+  shipped variant uses it. The winning arm either becomes a dispatch owner (with
+  its own dispatch test) or is removed by the same checklist.
+- The screen's occupancy arm (16 columns x 256 rows with
+  `__launch_bounds__(128, 4)`) was built, measured, and dropped inside the same
+  unit: gfx1151 allocates 219 VGPRs with min-blocks 1 and with min-blocks 4,
+  literal and template-parameter spellings both, so the floor cannot raise
+  resident workgroups. Re-attempt occupancy only with a mechanism that caps
+  registers directly (for example `amdgpu_num_vgpr`), and expect accumulator
+  spills once the budget falls to 128 VGPRs.
+
 ## Dense Qwen35 execution-profile module names (architecture-scope rename)
 
 - Three profile modules are named after models but register architecture-scoped
