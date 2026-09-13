@@ -23,11 +23,12 @@ unmeasured results; context limits come from separate capacity tests.
 | --- | --- | ---: | ---: | ---: | ---: |
 | Qwen3.6-35B-A3B | ParoQuant W4 | **2852.1** | **115.8** | **115.8** | — |
 | Qwen3.6-35B-A3B | GGUF `Q4_K_M` | **2763.6** | **94.6** | 122.7 | — |
-| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **868.6** | **27.9** | — | **176,128** |
+| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **868.6** | **27.9** | 39.7 | **176,128** |
 | Laguna S 2.1 | GGUF `UD-Q2_K_XL` | **440.9** | — | — | — |
 
-Laguna prompt processing uses a 4K-token prompt. The 35B-A3B GGUF MTP
-figures use an explicitly enabled mode.
+Laguna: 4K prompts. 35B-A3B GGUF MTP: explicitly enabled.
+Qwen3.8 MTP: legacy BF16/K3, one request, 24 outputs;
+**1.63x versus its matched 24.36 tok/s AR**, not the INT8 column.
 
 #### Strix Halo / Radeon 8060S — 120 GB (`gfx1151`)
 
@@ -264,6 +265,8 @@ token-exact gate against the AR output. Automatic selection stays AR.
 | K0 (control, AR) | 24.42 | — | 0.9995x [0.9993, 0.9996] |
 | K2 (legacy route) | 24.37 | 38.59 | 1.5844x [1.5831, 1.5862] |
 | K3 (legacy route) | 24.36 | 39.70 | 1.6329x [1.6296, 1.6334] |
+
+Source: [September 7 legacy-route measurements](results/2026-09-07-w7900-packed-c1-k0-k3-economics.json).
 
 The K1 screening cell measured 1.3916x on the same legacy route
 ([1.3911, 1.3928]). These rates do not describe the packed target route
