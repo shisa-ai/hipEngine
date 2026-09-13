@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-12 UTC**
+Last updated: **2026-09-13 UTC**
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
@@ -22,8 +22,7 @@ qualified scopes. Compare only matching models and workloads.
 | --- | --- | ---: | ---: | ---: | ---: |
 | Qwen3.6-35B-A3B | ParoQuant W4 | **2852.1** | **115.8** | **115.8** | — |
 | Qwen3.6-35B-A3B | GGUF `Q4_K_M` | **2763.6** | **94.6** | 122.7 (opt-in) | — |
-| Qwen3.6-27B Dense | GGUF `Q4_K_M` | **875.4** | **28.7** | **60.9** | — |
-| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **680.4** | **29.7** | — | — |
+| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **868.6** | **27.9** | — | **176,128** |
 | Laguna S 2.1 | GGUF `UD-Q2_K_XL` | **440.9** (4K) | — | — | — |
 
 #### Strix Halo / Radeon 8060S — 120 GB (`gfx1151`)
@@ -158,12 +157,13 @@ the INT8 KV route runs the same workload at 677 tok/s
 [paired repetitions](results/2026-09-10-w7900-p7-c1-speed-parity-paired-reps.json)).
 
 Automatic resident context, W7900 (48 GiB), `hipengine serve --model <gguf>` with
-no sizing flags. After weights load the server prices the resident footprint
-against free HIP memory and takes the largest block-aligned context that fits,
-with one full-context KV plane per resident slot (4 for auto-selected GGUF):
+no sizing flags. After weights load the server prices the per-request context
+against free HIP memory and grows a shared KV pool on demand within its memory
+budget. Four requests may be in flight by default; concurrency does not reserve
+one full-context KV plane per request:
 
-The serving defaults are INT8 KV (`int8_per_token_head`), fp32 scales, and one
-resident slot. Measured on the W7900 (48 GiB), one short chat request, no sizing
+The serving defaults are INT8 KV (`int8_per_token_head`), fp32 scales, and four
+resident request slots. Measured on the W7900 (48 GiB), one short chat request, no sizing
 or KV flags, `Qwen3.8-27B-Q4_K_M.gguf` (SHA-256 `7b2aec3b…c89f1b`):
 
 | KV storage | Slots | Selected context | Bytes/token | Usable | Whole-card use |
@@ -869,10 +869,8 @@ for the current gfx1151 FP32 production profile.
 
 | Platform / model | Contract | True AR | MTP | MTP / AR | Status and evidence |
 | --- | --- | ---: | ---: | ---: | --- |
-| W7900 / Qwen3.6-27B Dense `Q4_K_M` | Exact/default natural25 B3 | 29.457 | **60.929** | **2.0684x** | Current clean snapshot; all ten prompts, greedy outputs, and GPU/CPU acceptance agree. The ratio replaces stale historical denominators. [`artifact`](results/2026-08-23-w7900-qwen36-27b-current-default-publication.json) |
 | RX 7900 XTX / Qwen3.8-27B Dense `Q4_K_M` | Exact/default natural25 B3 | 35.287 | **62.440** | **1.7695x** | Clean idle-card correction; exact greedy and GPU/CPU acceptance, retained fusion improves matched AR 3.764% and B3 0.439% with every category non-regressive. [`artifact`](results/2026-08-15-qwen38-27b-xtx-clean-idle-performance-correction.json) |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Historical direct-leaf natural25 B3 | 11.692 | 21.158 | 1.8095x | August 26 direct-leaf protocol, not the public-server headline. [`artifact`](results/2026-08-26-gfx1151-qwen38-current-main-ar-mtp.json) |
-| W7900 / Qwen3.6-27B Dense `Q4_K_M` | Public production/BF16 resident-C2 K2 D24, automatic | 30.736 | **34.341** | **1.1173x** | Latest-source 10/10 engaged/exact; all categories non-regressive; blocking/SSE/static-intent/cancel/drain pass. [`artifact`](results/2026-08-28-w7900-dual-model-physical-c2-campaign-final.json) |
 | W7900 / Qwen3.6-35B-A3B `UD-Q4_K_M` | Public production/BF16 resident-C2 K2 D24, automatic | 80.973 | **93.644** | **1.1565x** | Latest-source 10/10 engaged and MTP self-exact; three-run ratio 1.1368x; all categories non-regressive; strict-teacher, blocking/SSE/cancel/drain pass. Shares the artifact linked in the row above. |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Public strict/BF16 cap4 realized-C1 K3, natural25 | 11.150 | **20.985** | **1.882x** | Three full-suite runs; all 30 cells exact, engaged and budget-conformed; every category faster. Blocking/SSE and cancellation/refill pass. Production default is AR. [`artifact`](results/2026-09-12-gfx1151-qwen38-final-headline-refresh.json) |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Historical FP16 production C1 B3, c68-128/h24 | 9.350 | 13.088 | 1.3998x | Older profile certificate; not current FP32-production admission. [`artifact`](results/2026-08-27-gfx1151-qwen38-c68-c128-production-explicit.json) |
