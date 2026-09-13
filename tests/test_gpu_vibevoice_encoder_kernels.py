@@ -11,6 +11,7 @@ checkpoint weights. Skips without a usable HIP runtime or without the local
 from __future__ import annotations
 
 import ctypes
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -198,3 +199,21 @@ def test_frontend_e2e_matches_cpu_reference(frontend) -> None:
     lat_se = vibevoice_tokenizer_encoder_forward(specs["semantic"][0], specs["semantic"][1], pcm)
     ref = vibevoice_connector(conns["acoustic"], lat_ac) + vibevoice_connector(conns["semantic"], lat_se)
     _assert_rel("frontend_e2e", got, ref, 5e-2)
+
+
+GPU_FIXTURE = Path(__file__).parent / "fixtures" / "vibevoice_asr_gpu" / "vibevoice_asr_trace.npz"
+
+
+def test_frontend_matches_torch_gpu_bf16(frontend) -> None:
+    """HIP front-end vs torch-GPU bf16 oracle on the same PCM and noise."""
+    if not GPU_FIXTURE.is_file():
+        pytest.skip("torch-GPU bf16 fixture not present")
+    runtime, specs, conns = frontend
+    with np.load(GPU_FIXTURE) as data:
+        fx = {k: data[k] for k in data.files}
+    pcm = fx["pcm_short"].astype(np.float32)
+    noise = fx["acoustic_noise"].astype(np.float32).reshape(1, -1, specs["acoustic"].hidden_size)
+    scale = fx["acoustic_noise_scale"].astype(np.float32).reshape(1)
+    got = runtime.forward(pcm, noise=noise[0], noise_scale=scale[0])
+    ref = fx["connector_combined"].astype(np.float32)
+    _assert_rel("frontend_vs_torch_gpu_bf16", got, ref, 5e-2)

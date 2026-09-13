@@ -74,7 +74,7 @@ def synth_pcm(seconds: float, seed: int) -> np.ndarray:
 
 def _stage_trace(enc, pcm: "torch.Tensor", prefix: str, out: dict) -> "torch.Tensor":
     """Run one HF tokenizer encoder module-by-module, recording intermediates."""
-    x = pcm.unsqueeze(1)  # (batch=1, channels=1, samples)
+    x = pcm.reshape(1, 1, -1)  # (batch=1, channels=1, samples)
     x = enc.stem.conv(x)
     out[f"{prefix}_stem_conv"] = x.detach().cpu().numpy()
     for i, block in enumerate(enc.stem.stage):
@@ -88,7 +88,8 @@ def _stage_trace(enc, pcm: "torch.Tensor", prefix: str, out: dict) -> "torch.Ten
         out[f"{prefix}_stage{s}_out"] = x.detach().cpu().numpy()
     x = enc.head(x)
     out[f"{prefix}_head_out"] = x.detach().cpu().numpy()
-    return x.permute(0, 2, 1)  # (batch, frames, hidden)
+    # contiguous so randn_like(records) matches HF's concatenated latents
+    return x.permute(0, 2, 1).contiguous()  # (batch, frames, hidden)
 
 
 def main() -> None:
@@ -111,7 +112,7 @@ def main() -> None:
     from transformers import VibeVoiceAsrForConditionalGeneration, VibeVoiceAsrProcessor
 
     model = VibeVoiceAsrForConditionalGeneration.from_pretrained(
-        str(snap), torch_dtype=dtype, device_map=str(device), attn_implementation="sdpa"
+        str(snap), torch_dtype=dtype, device_map=str(device), attn_implementation="eager"
     ).eval()
     torch.set_grad_enabled(False)
     processor = VibeVoiceAsrProcessor.from_pretrained(str(snap))
@@ -152,7 +153,7 @@ def main() -> None:
     # cross-check: HF get_audio_features with the same seed must reproduce
     # the sampled acoustic latents and combined embeddings exactly.
     torch.manual_seed(20260914 + 1)
-    feats = model.model.get_audio_features(input_values=pcm.unsqueeze(0))
+    feats = model.model.get_audio_features(input_values=pcm.reshape(1, 1, -1))
     ref_sampled = feats.last_hidden_state.detach()
     max_diff = (ref_sampled - sampled_ac).abs().max().item()
     max_emb_diff = (feats.pooler_output - combined).abs().max().item()
@@ -163,17 +164,29 @@ def main() -> None:
     np.savez_compressed(args.out_dir / "vibevoice_asr_trace.npz", **trace)
     print("wrote vibevoice_asr_trace.npz")
 
-    # ---------------- boundary fixture (3199/3200/3201 samples) ----------------
+    # ---------------- boundary fixture ----------------
+    # Raw clips below 3200 samples are unprocessable even in HF (the deepest
+    # stage conv would need a padded input shorter than its kernel; the
+    # processor's mandatory pad_to_multiple_of=3200 exists for this reason).
+    # Boundary cases here test the floor(L/3200) frame contract at and above
+    # the 3200 minimum.
     boundary: dict = {}
-    for n in (3199, 3200, 3201):
+    for n in (3200, 3201, 6400, 6401):
         pcm_np = synth_pcm(n / SAMPLING_RATE, seed=100 + n)
         pcm = torch.from_numpy(pcm_np).to(device=device, dtype=dtype)
         torch.manual_seed(20260914)
         la = _stage_trace(enc_ac, pcm, f"ac{n}", boundary)
         boundary[f"acoustic_latent_raw_{n}"] = la.detach().cpu().numpy()
+        torch.manual_seed(20260914)
         ls = _stage_trace(enc_se, pcm, f"se{n}", boundary)
         boundary[f"semantic_latent_raw_{n}"] = ls.detach().cpu().numpy()
         boundary[f"pcm_{n}"] = pcm_np
+        expected = n // HOP
+        if la.shape[1] != expected:
+            raise SystemExit(f"boundary {n}: frames {la.shape[1]} != floor {expected}")
+        # keep only latents + pcm: drop per-stage intermediates to slim the file
+        for k in [k for k in boundary if (k.startswith(f"ac{n}_") or k.startswith(f"se{n}_"))]:
+            del boundary[k]
     np.savez_compressed(args.out_dir / "vibevoice_asr_boundary.npz", **boundary)
     print("wrote vibevoice_asr_boundary.npz")
 
@@ -185,7 +198,7 @@ def main() -> None:
     lat_ac_chunks, lat_se_chunks = [], []
     ac_cache = se_cache = None
     for part in (chunk_a, chunk_b):
-        pcm = torch.from_numpy(part).to(device=device, dtype=dtype).unsqueeze(0)
+        pcm = torch.from_numpy(part).to(device=device, dtype=dtype).reshape(1, 1, -1)
         o = enc_ac(pcm, padding_cache=ac_cache, use_cache=True)
         lat_ac_chunks.append(o.latents)
         ac_cache = o.padding_cache
@@ -197,7 +210,7 @@ def main() -> None:
     chunk_fix["acoustic_latent_chunked"] = lat_ac_full.detach().cpu().numpy()
     chunk_fix["semantic_latent_chunked"] = lat_se_full.detach().cpu().numpy()
     # single-pass equivalence over the joined recording
-    pcm = torch.from_numpy(full).to(device=device, dtype=dtype).unsqueeze(0)
+    pcm = torch.from_numpy(full).to(device=device, dtype=dtype).reshape(1, 1, -1)
     lat_ac_single = enc_ac(pcm).latents
     lat_se_single = enc_se(pcm).latents
     d_ac = (lat_ac_single - lat_ac_full).abs().max().item()
@@ -215,6 +228,10 @@ def main() -> None:
     inputs = processor.apply_transcription_request(audio=pcm_np)
     input_ids = inputs["input_ids"].to(device)
     input_values = inputs["input_values"].to(device=device, dtype=dtype)
+    # transformers 5.15.0 bug: get_audio_features crashes with 2-D (batch,
+    # samples) input because the chunk-cache path indexes 3-D; pass 3-D.
+    if input_values.ndim == 2:
+        input_values = input_values.reshape(1, 1, -1)
     padding_mask = inputs.get("padding_mask")
     lm["input_ids"] = input_ids.detach().cpu().numpy()
     if padding_mask is not None:
@@ -230,7 +247,7 @@ def main() -> None:
     audio_embeds = audio_feats.pooler_output  # flat (num_audio_tokens, text_hidden)
     mask = (input_ids == model.config.audio_token_id).unsqueeze(-1)
     inputs_embeds = embeds.masked_scatter(mask, audio_embeds.to(embeds.dtype))
-    lm["audio_placeholder_positions"] = mask.squeeze(-1).nonzero(as_tuple=True)[0].detach().cpu().numpy()
+    lm["audio_placeholder_positions"] = mask[0].nonzero(as_tuple=True)[0].detach().cpu().numpy()
     lm["audio_embeds"] = audio_embeds.detach().float().cpu().numpy()
 
     with torch.no_grad():
@@ -251,10 +268,17 @@ def main() -> None:
     lm["greedy_tokens"] = gen_only.detach().cpu().numpy()
     lm["greedy_text"] = np.array(processor.decode(gen_only, skip_special_tokens=True))
 
-    # teacher-forced logits per step for the generated continuation
+    # teacher-forced logits per step for the generated continuation.
+    # IMPORTANT: teacher-force through inputs_embeds with the audio
+    # embeddings scattered at placeholder positions - passing raw input_ids
+    # would leave the audio-placeholder token embeddings in place and change
+    # the distribution.
     tf_ids = torch.cat([input_ids, gen_only.unsqueeze(0)], dim=1)
+    tf_embeds = model.model.get_input_embeddings()(tf_ids)
+    tf_mask = (tf_ids == model.config.audio_token_id).unsqueeze(-1)
+    tf_embeds = tf_embeds.masked_scatter(tf_mask, audio_embeds.to(tf_embeds.dtype))
     with torch.no_grad():
-        out = model.model(input_ids=tf_ids)
+        out = model.model(inputs_embeds=tf_embeds)
         logits = model.lm_head(out.last_hidden_state[0, input_ids.shape[1] - 1: -1, :])
     lp = torch.log_softmax(logits.float(), dim=-1)
     topv, topi = lp.topk(10, dim=-1)
