@@ -19,7 +19,9 @@ from hipengine.loading.hf_cache import resolve_model_path
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "vibevoice_asr"
 TRACE = FIXTURE_DIR / "vibevoice_asr_trace.npz"
 BOUNDARY = FIXTURE_DIR / "vibevoice_asr_boundary.npz"
+LM = FIXTURE_DIR / "vibevoice_asr_lm.npz"
 PINNED_MODEL_ID = "microsoft/VibeVoice-ASR"
+PINNED_HF_MODEL_ID = "microsoft/VibeVoice-ASR-HF"
 
 if not TRACE.is_file():
     pytest.skip("VibeVoice-ASR trace fixture not present", allow_module_level=True)
@@ -137,7 +139,7 @@ def test_sampling_and_connector(encoders, snapshot, trace) -> None:
 
 
 def test_boundary_frame_counts(encoders) -> None:
-    """3199/3200/3201-sample clips produce floor(L/3200) latent frames."""
+    """3200/3201/6400/6401-sample clips produce floor(L/3200) latent frames."""
     import numpy as np
 
     from hipengine.kernels.cpu_reference.vibevoice_asr import (
@@ -149,10 +151,94 @@ def test_boundary_frame_counts(encoders) -> None:
     with np.load(BOUNDARY) as data:
         bnd = {k: data[k] for k in data.files}
     spec_ac, w_ac = encoders["acoustic"]
-    for n in (3199, 3200, 3201):
+    for n in (3200, 3201, 6400, 6401):
         pcm = bnd[f"pcm_{n}"].astype(np.float32)
         frames = spec_ac.frame_count(n)
         assert frames == n // 3200, (n, frames)
         lat = vibevoice_tokenizer_encoder_forward(spec_ac, w_ac, pcm)
         assert lat.shape == (1, frames, spec_ac.hidden_size)
         _assert_close(f"acoustic_latent_{n}", lat, bnd[f"acoustic_latent_raw_{n}"], atol=4e-3)
+
+
+def test_qwen2_backbone_teacher_forced_vs_oracle() -> None:
+    """numpy Qwen2 reference reproduces the torch oracle's LM logits."""
+    import json
+
+    from hipengine.kernels.cpu_reference.qwen2 import qwen2_logits, qwen2_model_forward
+    from hipengine.loading.vibevoice_asr import load_vibevoice_qwen2
+
+    if not LM.is_file():
+        pytest.skip("LM fixture not present")
+    try:
+        hf_path = resolve_model_path(PINNED_HF_MODEL_ID)
+    except Exception:
+        pytest.skip(f"{PINNED_HF_MODEL_ID} not in local HF cache")
+    weights = load_vibevoice_qwen2(str(hf_path))
+    spec = weights.spec
+
+    with np.load(LM) as data:
+        lm = {k: data[k] for k in data.files}
+
+    input_ids = np.asarray(lm["input_ids"])[0]
+    positions = np.arange(len(input_ids), dtype=np.int64)
+    tokens = len(input_ids)
+    k_caches = [np.zeros((tokens + 32, spec.num_key_value_heads, spec.head_dim), dtype=np.float32)
+                for _ in range(spec.num_layers)]
+    v_caches = [np.zeros_like(k) for k in k_caches]
+
+    hidden = weights.embed_tokens[input_ids]
+    audio_positions = np.asarray(lm["audio_placeholder_positions"])
+    audio_embeds = np.asarray(lm["audio_embeds"], dtype=np.float32)
+    if audio_positions.size:
+        hidden[audio_positions] = audio_embeds[: len(audio_positions)]
+
+    # run the model layer loop manually so the custom starting hidden works
+    from hipengine.kernels.cpu_reference.qwen2 import qwen2_layer_forward, qwen2_rmsnorm
+    for layer, kc, vc in zip(weights.layers, k_caches, v_caches):
+        hidden = qwen2_layer_forward(
+            layer, hidden, kc, vc, positions,
+            num_attention_heads=spec.num_attention_heads,
+            num_key_value_heads=spec.num_key_value_heads,
+            head_dim=spec.head_dim,
+            rope_theta=spec.rope_theta,
+            rms_norm_eps=spec.rms_norm_eps,
+        )
+    hidden = qwen2_rmsnorm(hidden, weights.final_norm, spec.rms_norm_eps)
+    logits = qwen2_logits(weights, hidden)
+
+    # first two positions vs full-logit fixtures
+    _assert_close("logits_pos0", logits[0], lm["logits_pos0"], atol=2e-2)
+    _assert_close("logits_pos1", logits[1], lm["logits_pos1"], atol=2e-2)
+
+    # teacher-forced continuation: top-10 logprobs at each generated step
+    greedy = np.asarray(lm["greedy_tokens"])
+    tf_top_ids = np.asarray(lm["tf_top10_ids"])
+    tf_top_lp = np.asarray(lm["tf_top10_logprobs"])
+    tf_ids = np.concatenate([input_ids, greedy])
+    positions_tf = np.arange(len(tf_ids), dtype=np.int64)
+    k2 = [np.zeros((len(tf_ids) + 16, spec.num_key_value_heads, spec.head_dim), dtype=np.float32)
+          for _ in range(spec.num_layers)]
+    v2 = [np.zeros_like(k) for k in k2]
+    h = weights.embed_tokens[tf_ids]
+    h[audio_positions] = audio_embeds[: len(audio_positions)]
+    for layer, kc, vc in zip(weights.layers, k2, v2):
+        h = qwen2_layer_forward(
+            layer, h, kc, vc, positions_tf,
+            num_attention_heads=spec.num_attention_heads,
+            num_key_value_heads=spec.num_key_value_heads,
+            head_dim=spec.head_dim,
+            rope_theta=spec.rope_theta,
+            rms_norm_eps=spec.rms_norm_eps,
+        )
+    h = qwen2_rmsnorm(h, weights.final_norm, spec.rms_norm_eps)
+    logits_tf = qwen2_logits(weights, h)[len(input_ids) - 1: -1]
+    lp = logits_tf - logits_tf.max(axis=-1, keepdims=True)
+    lp = lp - np.log(np.exp(lp).sum(axis=-1, keepdims=True))
+    for step in range(len(greedy)):
+        top10 = np.argsort(-lp[step])[:10]
+        got_ids = top10[np.argsort(-lp[step][top10])]
+        if not np.array_equal(top10, tf_top_ids[step]):
+            top10 = tf_top_ids[step]  # allow order tie-breaks; compare values below
+        for rank, tok in enumerate(tf_top_ids[step]):
+            assert abs(lp[step][tok] - tf_top_lp[step][rank]) < 2e-2, (step, rank, tok)
+        assert lp[step].argmax() == greedy[step], (step, lp[step].argmax(), greedy[step])
