@@ -788,7 +788,37 @@ Before automatic MTP admission, complete the U6 envelope:
   intersect neither the target session's 188 nor the verifier journal's 381 —
   but aliases and teardown remain open.
 - [ ] Block-64 Q6 `eh_proj`, attention, and FFN operations.
-- [ ] Explicit artifact-scoped strict manifest.
+- [x] Explicit artifact-scoped strict manifest. **Closed 2026-09-13.**
+  `scripts/ud_strict_manifest.py` derives the strict scope from two sources of
+  truth instead of a hand-written list: the artifact's own GGUF tensor types,
+  read from the file, and `CERTIFIED_OPERATION_COVERAGE`, the U6 admission
+  table, whose records carry `source_ggml_types`, `kernel_layer`, `kernel_quant`,
+  `kernel_variant` and `rows_scope`. A record is in scope when its declared GGML
+  types intersect the types the artifact contains.
+  `benchmarks/results/ud-q4-k-m.strict-manifest.json` and
+  `ud-q4-k-s.strict-manifest.json` hold the result, and
+  `benchmarks/results/ud-mtp-certification-u6.json` now carries
+  `strict_manifest_bundle_sha256`, `strict_manifests` and `strict_manifest_scope`
+  on both artifact entries, so the certification names its own strict variant set.
+  Three schema facts forced the bundle shape rather than one flat manifest. The
+  manifest keys selections by `(layer, scope)`, but the admission table carries
+  several registry quants under one `(layer, scope)` (`dense_gemv/prefill_rows`
+  is both `bf16` and `f32`), so the bundle holds one manifest per registry quant.
+  Within a quant, `linear/prefill_rows` in `gguf_q5_k` carries both the dense
+  owner `gemv_bf16_bf16_out` and the selected-row owner
+  `selected_gemv_bf16_bf16_out`, so the bundle also splits by owner class.
+  Within `(layer, scope)` the table lists one owner per output dtype for the F32
+  comparison surface, so the selection is the serving owner (no `f32`/`fp16`
+  token) and the alternates are recorded in `alternate_output_dtype_owners`
+  rather than dropped. The result is 33 manifests over 23 registry quants for
+  `ud-q4-k-m` and 38 over 26 for `ud-q4-k-s`, 102 and 117 selections, and 152 and
+  182 named variants each verified against the live registry. Records with
+  `consumer_module` are certified by a module symbol rather than a registry key,
+  so they contribute provenance (`consumer_modules`) and cannot be selections.
+  `tests/test_ud_strict_manifest.py` validates every manifest with the profile
+  gate's own `validate_variant_manifest`, re-derives the GGML types and in-scope
+  record count from the GGUF bytes, checks the registry keys, and asserts the
+  certification's bundle hash matches the manifest file.
 - [x] Explicit backend/profile/context/width scope. Closed on measurement:
   backend hip_gfx1100, profile production, context 1023, width c1.
 
