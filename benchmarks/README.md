@@ -463,12 +463,13 @@ declares the policy for rows 1-8 under both the plain and the
 UD-preset-extended keys. One block owns one row, so every per-thread partial,
 the reduction tree, the `rsqrtf` argument and the epilogue are unchanged, and
 the leaves are **byte-identical to their generic counterparts at rows
-1/2/3/4/6/8**. The verifier A/B puts the `add_rmsnorm` leaf at **770.07 ->
-328.56 ms/step** (64 calls, **12.03 -> 5.13 us** per call, -57.3%) and the whole
-verifier at **37.067 -> 36.6206 ms/step (-1.21%)** at an unchanged 985
-calls/step. Because the change is bit-identical, the movement it produces is a
-pure speed effect: 127 norm launches per step at 12.0 -> 5.1 us is about -0.9 ms
-on a 31.3 ms single-row step, and the paired suite measures true-AR decode at
+1/2/3/4/6/8**. The verifier A/B puts the `add_rmsnorm` leaf at **0.770 ->
+0.329 ms/step** (770.07 -> 328.56 us/step, 64 calls, **12.03 -> 5.13 us** per
+call, -57.3%) and the whole verifier at **37.067 -> 36.6206 ms/step (-1.21%)** at
+an unchanged 985 calls/step. Because the change is bit-identical, the movement it
+produces is a pure speed effect: the same 64 norm launches per step at 16.9 ->
+5.9 us each is about -0.7 ms on a 30.5 ms single-row step, and the paired suite
+measures true-AR decode at
 **31.904 -> 32.750 tok/s** (UD-Q4_K_M, +2.65%) and **31.303 -> 32.098**
 (UD-Q4_K_S, +2.54%). The MTP B3 step is roughly twice as long, so the same
 absolute saving is about half the percentage and sits inside the
