@@ -5948,6 +5948,11 @@ class Qwen4ExpGGUFResidentModelRunner:
         self.resident = resident
         self.config = resident.plan.config
         self.backend = str(backend)
+        if not 0 < int(max_sequence_length) <= self.config.context_length:
+            raise ValueError(
+                "Qwen4Exp runner max_sequence_length must be in "
+                f"1..{self.config.context_length}"
+            )
         self.runtime = runtime or get_hip_runtime()
         # R7 wrapper-host route: populate the PLE table into page cache so
         # decode-step row gathers hit warm pages instead of storage faults
@@ -5969,11 +5974,6 @@ class Qwen4ExpGGUFResidentModelRunner:
         self.prefill_chunk_size = int(prefill_chunk_size)
         if self.prefill_chunk_size <= 0:
             raise ValueError("Qwen4Exp prefill_chunk_size must be positive")
-        if not 0 < self.max_sequence_length <= self.config.context_length:
-            raise ValueError(
-                "Qwen4Exp runner max_sequence_length must be in "
-                f"1..{self.config.context_length}"
-            )
         load_backend_kernel_package(self.backend)
         self.gdn_bindings = {
             layer: bind_qwen4_exp_gdn_layer(resident, layer)

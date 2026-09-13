@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -20,6 +21,12 @@ from hipengine.benchmark.agentic_quality2_sandbox import (
 )
 
 SUITE = Path("benchmarks/prompts/agentic-quality2-v2.json")
+
+
+@pytest.fixture
+def bubblewrap_available() -> None:
+    if shutil.which("bwrap") is None:
+        pytest.skip("bubblewrap is required for sandbox execution tests")
 
 
 def _payloads() -> tuple[dict, dict, dict]:
@@ -253,6 +260,7 @@ def test_expanded_oracle_evaluates_single_multiple_no_tool_and_instruction() -> 
     assert wrong["status"] == "failed"
 
 
+@pytest.mark.usefixtures("bubblewrap_available")
 def test_expanded_oracle_runs_code_only_through_qualified_sandbox(tmp_path: Path) -> None:
     loaded = load_agentic_quality2_suite(SUITE)
     calls = [
@@ -377,6 +385,7 @@ def test_quality2_aggregation_rejects_incomplete_and_nondeterministic_rows() -> 
     assert artifact["determinism"]["mismatches"][0]["workload_id"] in loaded.workloads
 
 
+@pytest.mark.usefixtures("bubblewrap_available")
 def test_sandbox_executes_valid_function_and_reports_bounded_result(tmp_path: Path) -> None:
     sandbox = AgenticQuality2Sandbox(
         limits=SandboxLimits(wall_seconds=2.0, cpu_seconds=1, memory_bytes=128 << 20)
@@ -439,6 +448,7 @@ def test_sandbox_executes_valid_function_and_reports_bounded_result(tmp_path: Pa
         ),
     ],
 )
+@pytest.mark.usefixtures("bubblewrap_available")
 def test_sandbox_blocks_host_escape_classes(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -470,6 +480,7 @@ def test_sandbox_blocks_host_escape_classes(
     assert result["device_isolated"] is True
 
 
+@pytest.mark.usefixtures("bubblewrap_available")
 def test_sandbox_never_mounts_hidden_expected_values(tmp_path: Path) -> None:
     marker = "hidden-expected-must-never-enter-sandbox"
     sandbox = AgenticQuality2Sandbox()
@@ -494,6 +505,7 @@ def test_sandbox_never_mounts_hidden_expected_values(tmp_path: Path) -> None:
     assert marker not in result["stderr"]
 
 
+@pytest.mark.usefixtures("bubblewrap_available")
 def test_sandbox_enforces_wall_memory_file_and_output_limits(tmp_path: Path) -> None:
     sandbox = AgenticQuality2Sandbox(
         limits=SandboxLimits(

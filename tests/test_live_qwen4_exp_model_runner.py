@@ -10,10 +10,14 @@ from tests.test_live_qwen4_exp_gguf_config import _info
 from hipengine.loading.qwen4_exp_gguf import qwen4_exp_gguf_config_from_metadata
 
 
-def test_qwen4_exp_model_runner_rejects_context_above_native_limit_before_allocating() -> None:
+def test_qwen4_exp_model_runner_rejects_context_above_native_limit_before_allocating(monkeypatch) -> None:
     config = qwen4_exp_gguf_config_from_metadata(_info())
     resident = SimpleNamespace(plan=SimpleNamespace(config=config))
 
+    def unexpected_runtime():
+        pytest.fail("invalid context must be rejected before initializing HIP")
+
+    monkeypatch.setattr("hipengine.runtime.qwen4_exp_runner.get_hip_runtime", unexpected_runtime)
     with pytest.raises(ValueError, match="1..262144"):
         Qwen4ExpGGUFResidentModelRunner(resident, max_sequence_length=262145)
 
