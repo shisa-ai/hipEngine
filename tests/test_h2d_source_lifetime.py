@@ -90,11 +90,8 @@ def test_the_freed_block_is_available_to_the_next_allocation() -> None:
         if int(candidate.ctypes.data) == pointer:
             reused = candidate
             break
-    assert reused is not None, (
-        "no same-size allocation reused the freed address in 8 attempts; the "
-        "reuse consequence is platform-specific -- keep the dead-at-entry "
-        "assertion above and relax this one"
-    )
+    if reused is None:
+        pytest.skip("allocator did not recycle the address; weakref test proves lifetime independently")
     # Reading through the stale address now yields the new owner's bytes.
     stale = np.frombuffer(ctypes.string_at(pointer, 4096), dtype=np.uint8)
     assert (stale == 0xBB).all()

@@ -75,12 +75,14 @@ def test_collect_skips_weights_runtime_and_other_non_state() -> None:
     class Holder:
         runtime: object
         weights: dict
+        loaded: object
         tokenizer: object
         scratch: DeviceBuffer
 
     holder = Holder(
         runtime=FakeRuntime(),
         weights={"w": DeviceBuffer(0x9000, 128)},
+        loaded=DeviceBuffer(0x9300, 128),
         tokenizer=DeviceBuffer(0x9100, 8),
         scratch=DeviceBuffer(0x9200, 16),
     )
@@ -113,10 +115,52 @@ def test_collect_respects_the_depth_cap() -> None:
     deep = leaf
     for _ in range(8):
         deep = Node(child=deep)
-    assert collect_device_buffers(deep, max_depth=2) == []
+    with pytest.raises(ValueError, match="depth"):
+        collect_device_buffers(deep, max_depth=2)
     deep_paths = dict(collect_device_buffers(deep, max_depth=10))
     assert list(deep_paths) == ["Node." + "child." * 7 + "child"], deep_paths
     assert list(deep_paths.values()) == [leaf]
+
+
+def test_collect_rejects_exhausted_visit_budget(monkeypatch) -> None:
+    import _poison_probe as helper
+
+    monkeypatch.setattr(helper, "_MAX_VISITED", 1)
+    with pytest.raises(ValueError, match="budget"):
+        collect_device_buffers(Scratch(hidden=DeviceBuffer(0x1000, 64)))
+
+
+@pytest.mark.parametrize("groups", [{}, {"scratch": []}, {"scratch": [DeviceBuffer(1, 0)]}])
+def test_probe_rejects_empty_coverage(groups) -> None:
+    with pytest.raises(ValueError, match="empty"):
+        assert_poison_invariant(FakeRuntime(), lambda: groups, lambda: np.zeros(1), label="empty")
+
+
+def test_probe_snapshots_reused_output_arrays() -> None:
+    output = np.zeros(1)
+
+    def run():
+        output[:] += 1
+        return {"value": output}
+
+    with pytest.raises(AssertionError, match="changed the result"):
+        assert_poison_invariant(
+            FakeRuntime(), lambda: {"scratch": [DeviceBuffer(1, 4)]}, run, label="alias",
+        )
+
+
+def test_probe_collects_buffers_after_lazy_allocation() -> None:
+    runtime = FakeRuntime()
+    buffers = []
+
+    def run():
+        if not buffers:
+            buffers.append(DeviceBuffer(0x1000, 4))
+        return np.zeros(1)
+
+    report = assert_poison_invariant(runtime, lambda: {"scratch": list(buffers)}, run, label="lazy")
+    assert report["bytes"] == 4
+    assert runtime.memsets == [(0x1000, POISON_BYTE, 4)]
 
 
 def test_collect_terminates_on_a_cycle() -> None:
@@ -178,6 +222,7 @@ def test_assert_poison_invariant_names_the_offender_group() -> None:
 
     runtime = FakeRuntime()
     state = {"poisoned": False}
+    output = np.zeros(2, dtype=np.float32)
 
     class _Group:
         def __init__(self, name: str, buffer: DeviceBuffer, guilty: bool) -> None:
@@ -192,7 +237,8 @@ def test_assert_poison_invariant_names_the_offender_group() -> None:
     def run() -> np.ndarray:
         # Depends only on the guilty group's poisoned-ness, which the fake
         # runtime records; a real runner depends on the bytes.
-        return np.full(2, 1.0 if state["poisoned"] else 0.0, dtype=np.float32)
+        output[:] = 1.0 if state["poisoned"] else 0.0
+        return output
 
     def reset() -> None:
         state["poisoned"] = False
