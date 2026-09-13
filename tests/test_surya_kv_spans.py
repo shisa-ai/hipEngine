@@ -368,7 +368,15 @@ def test_scatter_f32_spans_honors_page_table_and_eviction() -> None:
         live_buf = malloc(8, runtime=runtime)
         allocations.extend((src_buf, dst_buf, page_buf, pos_buf, mask_buf, live_buf))
         copy_host_to_device(src_buf, host_array_ptr(src), src.nbytes, runtime=runtime)
-        copy_host_to_device(dst_buf, host_array_ptr(np.zeros_like(expected)), expected.nbytes, runtime=runtime)
+        # Keep the destination's zero-fill alive across the copy: on this stack
+        # the DMA of an unpinned source reads the host buffer after the call
+        # returns, so a same-statement temporary is freed and recycled first and
+        # the destination gets stale heap bytes (observed as a handful of
+        # denormal values in the slots the scatter never writes, which made this
+        # test pass or fail depending on what ran before it). The source stays a
+        # local until the device_synchronize() below.
+        initial = np.zeros_like(expected)
+        copy_host_to_device(dst_buf, host_array_ptr(initial), expected.nbytes, runtime=runtime)
         copy_host_to_device(page_buf, host_array_ptr(page_table), page_table.nbytes, runtime=runtime)
         copy_host_to_device(pos_buf, host_array_ptr(token_positions), token_positions.nbytes, runtime=runtime)
         copy_host_to_device(mask_buf, host_array_ptr(evict_mask), evict_mask.nbytes, runtime=runtime)
