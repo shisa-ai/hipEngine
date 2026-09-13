@@ -6534,63 +6534,48 @@ multiple of 32 and the slowest shape measured on that grid.
   `SHAPE_TILE_DIVISOR` / `SHAPE_TILE_MULTIPLE`, or the production cap overrides
   the requested block and the probe reports one block for every shape. That
   happened here and produced a flat, plausible curve that looked like evidence
-  the sweep was wrong. The lift is only needed where the cap applies (the
-  budget alone leaving one or two tiles) or where the probe asks for a width
-  the wavefront rounding would change, but both are common in a shape sweep, so
-  lifting unconditionally stays the rule.
+  the sweep was wrong. The vision envelope applies whenever it is narrower than
+  the tile the byte budget admits, so on any grid where the budget's own tile is
+  wider a probe must lift all three constants; lifting unconditionally stays the
+  rule.
 
-## 2026-09-13 Surya attention tile shape: 6400-patch anomaly and the 3-tile band — open
+## 2026-09-13 Surya attention tile shape: the vision envelope's mid-size anomaly — open
 
-`plan_score_tiles` consults the shape envelope `max(128, ceil(rows / 32))` rows,
-rounded down to a multiple of 32 (`SHAPE_TILE_ROWS`, `SHAPE_TILE_DIVISOR`,
-`SHAPE_TILE_MULTIPLE` in `hipengine/runtime/surya.py`), only while the byte
-budget alone would leave the grid in one or two tiles
-(`SHAPE_TILE_CAP_MAX_TILES`); where the budget already splits the grid further
-its own width is kept. That conditional rule settles the two measured
-disagreements the envelope had, and leaves three things open:
+`plan_score_tiles` takes a per-path shape policy. The vision tower consults the
+envelope `max(128, ceil(rows / 32))` rows, rounded down to a multiple of 32
+(`SHAPE_TILE_ROWS`, `SHAPE_TILE_DIVISOR`, `SHAPE_TILE_MULTIPLE` in
+`hipengine/runtime/surya.py`) whenever it is narrower than the tile the byte
+budget admits; the text prefill passes `shape_envelope=False` and keeps the
+budget's width, because its own sweeps show that is its optimum at every
+measured length (`2026-09-13-gfx1151-surya-text-prefill-shape-sweep.json`,
+`2026-09-13-gfx1151-surya-text-prefill-small-prompts.json`). A conditional
+envelope — applying it only while the budget alone left one or two tiles —
+fixed the text prefill but regressed narrow vision budgets: at 4096 patches a
+64 MiB budget picked 320 rows (1081.07 ms) and a 128 MiB budget 672 rows
+(1378.13 ms), against 882.39 ms at the envelope's 128 rows, because the
+4096-patch curve has a spike band between roughly 256 and 1344 rows
+(`2026-09-13-gfx1151-surya-vision-narrow-budget-check.json`). What stays open:
 
-- **Resolved: the text prefill.** It wants the *widest* tile the byte budget
-admits and is monotone in tile count, so the unconditional cap was a pure loss
-there. Swept across query blocks at `max_seq` 16384 with a reverse second pass
-(`2026-09-13-gfx1151-surya-text-prefill-shape-sweep.json`), the 512 MiB budget's
-own plan beat the envelope at both measured lengths: at 16384 tokens 1024 rows
-(536.9 MB tile) is 16.927 s against the cap's 512 rows (268.4 MB) at 17.436 s, a
-3.0% gap, and at 8580 tokens 1955 rows (536.8 MB) is 7.535 s against 256 rows
-(70.3 MB) at 7.692 s, 2.1%. Every halving of the tile count is faster at 16384
-(128/64/32/16/9/8 tiles = 17.799/17.611/17.397/16.927/16.853/16.808 s, pooled
-over both passes), and both budget widths are at or below the dense time
-(16.984 s and 7.619 s), so the cap was not buying safety the budget does not
-already buy. The arithmetic is shape-invariant — each tile computes the full key
-range and `sum(bq) == tokens` — so the cost was in the batched score GEMM shapes
-and the per-tile key/value re-read, not in extra FLOPs; the phase profile puts
-66% of prefill kernel time in `gemm_library`, 31% in shape-invariant GDN, and
-0.3% in softmax. Fixed in task #86 by the conditional rule, which returns the
-budget's own 1952 and 1024 rows at those two lengths.
-- **Resolved: 6400 patches.** The cap used to pick 192 rows (2130.11 ms across
-34 tiles) where 96 rows is 1938.40 ms; the conditional rule keeps the budget's
-1747 -> 1728 rows instead, measured 2004.85 ms at 4 tiles, 5.7% faster than the
-cap and 4.6% behind the 1-tile dense row (1917.35 ms, 4x the scratch). What is
-not resolved is the grid's own anomaly: 96 rows is still 3.4% faster than the
-budget's 1747, and 6400 remains the only measured grid that wants *more* tiles
-than `rows / 32` while the surrounding points do not separate on the wavefront
-multiple the way the A4 page does (64 rows is 2057.20 ms, 96 is 1938.40, 128 is
-2112.64). Revisit when a sweep over more mid-size grids shows what makes it
-different; special-casing one grid would be overfitting.
-- **Open: the three-tile band.** The threshold is calibrated on two tiles or
-fewer, where the cap helps, against four or more, where the budget's own width
-is at least as good; three tiles is measured on neither path. At the default
-budget the vision crossing is at 4730 patches (the budget's block first exceeds
-half the grid there), so the band is a real page size rather than a corner case.
-A sweep at 4096-6400 patches with budgets landing on three tiles would close it.
-- **Open: the reported time ceiling.** The estimate has exactly one
-non-monotone step, at that crossing: the plan drops from 37 tiles of 128 rows to
-3 of 2336 and `vision_forward_seconds` falls 8.3% (1270.91 -> 1165.67 ms) while
-the grid grows. `vision_patch_ceiling` bisects that estimate, so a time budget
-inside the dip can report a count short of the true maximum (1.20 s returns 4565
-where a brute-force scan finds 4815). It is sound — the reported count's own
-estimate fits — and admission uses `check_vision_capacity` on the requested grid
-rather than the ceiling, so nothing is admitted unsafely. A monotone bound would
-remove the caveat if the reported ceiling ever needs to be exact.
+- **The 6400-patch anomaly.** The envelope picks 192 rows (2130.11 ms across 34
+tiles) where 96 rows is 1938.40 ms, 9% faster, and 6400 remains the only
+measured grid that wants *more* tiles than `rows / 32` while the surrounding
+points do not separate on the wavefront multiple the way the A4 page does
+(64 rows is 2057.20 ms, 96 is 1938.40, 128 is 2112.64). Reaching 96 rows needs
+the divisor near 64 *and* the floor below 128, which costs 2.7% at 1024 patches
+(96 rows 139.65 ms against 136.00 ms at 128). Revisit when a sweep over more
+mid-size grids shows what makes this one different; special-casing one grid
+would be overfitting.
+- **Open: the reported time ceiling.** The estimate has small non-monotone steps
+at the 32-row wavefront boundaries: 14 descending steps in 1..20000 patches,
+the largest -1.8% at 5089 (1435.97 -> 1409.67 ms), as the envelope's
+`ceil(rows / 32)` jumps a row and the block rounds back down to the multiple.
+`vision_patch_ceiling` bisects that estimate, so in principle a time budget
+inside a step can report a count short of the true maximum; it matches a
+brute-force scan at every budget tried from 0.5 s to 200 s, including the 120 s
+default (56856 patches). It is sound — the reported count's own estimate fits —
+and admission uses `check_vision_capacity` on the requested grid rather than the
+ceiling, so nothing is admitted unsafely. A monotone bound would remove the
+caveat if the reported ceiling ever needs to be exact.
 - **Open: the A4 page.** Its time optimum is a plateau at 2048-8192 rows (40076-40618 ms,
 3217.5-12870.0 MiB) and the 320-row default is 7.4% above it, but the byte
 budget is what stops there (512 MiB admits 325 rows), not the envelope — the cap
