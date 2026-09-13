@@ -1,6 +1,7 @@
 """Raw dense IQ projections with a fixed strict F32 reduction."""
 import ctypes
 import hashlib
+import os
 from pathlib import Path
 
 from hipengine.core.build import build_hip
@@ -23,6 +24,10 @@ OUTPUTS = {'f32': 0, 'bf16': 1}
 # weight traffic. Measured on gfx1151: R=1 43 VGPRs, R=2 53, R=4 74 (all still
 # 16 waves/SIMD), R=8 132 VGPRs at 10 waves/SIMD, none with scratch.
 ROW_BATCHES = (1, 2, 4, 8)
+# Rollback and bisection switch for the row-slab rule. Unset/empty keeps the
+# smallest slab at or above the row count, which is the measured default;
+# "1"/"true"/"on" restores the largest slab at or below it.
+_ROW_BATCH_DOWN_ENV = "HIPENGINE_GGUF_IQ_DENSE_ROW_BATCH_DOWN"
 _HANDLES = {}
 _LIBRARY = None
 _LOCAL32_HANDLES = {}
@@ -204,12 +209,51 @@ def launch_local32_dual_silu(x_ptr, qweight_a_ptr, qweight_b_ptr, out_ptr,
         raise RuntimeError(f'local32 dense IQ dual decode failed: {rt.error_string(err)}')
 
 
+def _row_batch_round_down():
+    """True when the pre-2026-09-13 largest-slab-at-or-below rule is requested."""
+
+    raw = os.environ.get(_ROW_BATCH_DOWN_ENV, "").strip().lower()
+    if not raw:
+        return False
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"{_ROW_BATCH_DOWN_ENV} must be a boolean value")
+
+
 def _row_batch(rows):
-    """Largest supported slab that a prompt of ``rows`` rows actually fills."""
-    for candidate in reversed(ROW_BATCHES):
-        if rows >= candidate:
+    """Row slab that keeps this prompt's weight traffic to a single read.
+
+    A block reads its columns' whole weight slice once and applies it to every
+    row it owns, so a prompt of ``rows`` rows is read ``ceil(rows/R)`` times
+    across ``grid.y``. Picking the largest supported slab at or *below* the row
+    count - the original rule - is right only when the kernel is compute-bound:
+    it left rows=3 at R=2 and so read every weight twice. Padding rows load
+    ``0.0f`` and are never stored (``gguf_iq_dense.hip``, phase B), and the
+    declared contract is that every R is bit-identical, so the smallest slab at
+    or *above* the row count is available and removes the re-read. It is never
+    worse on compute either: ``ceil(rows/R) * R`` is the row-lane work, and for
+    every ``rows <= 8`` the new rule returns the next power of two at or above
+    ``rows``, which makes ``grid.y`` one and leaves that product at or below the
+    old rule's. Measured on the gfx1100 UD-Q4_K_M verifier at rows=3, R 2 -> 4
+    takes the ``gguf_iq_dense_strict_kernel`` family from 4.278 to 3.190
+    ms/step (-25.5%), and its largest shape from 380.3 to 252.4 us/call
+    (-33.6%).
+
+    ``HIPENGINE_GGUF_IQ_DENSE_ROW_BATCH_DOWN=1`` restores the largest slab at or
+    below the row count for rollback and bisection.
+    """
+
+    if rows > ROW_BATCHES[-1] or _row_batch_round_down():
+        for candidate in reversed(ROW_BATCHES):
+            if rows >= candidate:
+                return candidate
+        return 1
+    for candidate in ROW_BATCHES:
+        if rows <= candidate:
             return candidate
-    return 1
+    return ROW_BATCHES[-1]
 
 
 def build_gguf_iq_dense(**kwargs):
