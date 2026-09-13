@@ -22,6 +22,13 @@ def allocation_margins(plan, allocated_bytes):
     }
 
 
+def resolve_context_length(requested, native):
+    value = int(native) if requested is None else int(requested)
+    if value <= 0:
+        raise ValueError("positive context length required")
+    return value
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--model-root",type=Path,required=True)
@@ -29,9 +36,13 @@ def main():
     p.add_argument("--output",type=Path,required=True)
     p.add_argument("--chunk-size",type=int,default=1024)
     p.add_argument("--capacity",type=int,choices=(1,2),default=2)
+    p.add_argument("--context-length", type=int,
+                   help="Explicit context for bounded chunk screens; default is model native context")
     args = p.parse_args()
     if args.chunk_size < 1:
         p.error("positive chunk size required")
+    if args.context_length is not None and args.context_length < 1:
+        p.error("positive context length required")
     os.environ["HIPENGINE_HIP_ARCH"] = "gfx1151"
     os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file)
     os.environ["HIPENGINE_REQUIRE_CACHED_BUILD"] = "1"
@@ -56,9 +67,11 @@ def main():
                                       quant=QWEN4_EXP_QUANTS[1],profile=ExecutionProfile.PRODUCTION)
     index = load_gguf_index(discover_gguf_files(args.model_root)[0])
     plugin = resolve_model(index.architecture or "")
+    context_length = resolve_context_length(args.context_length, plugin.native_context_length)
     report = dict(schema=1,status="running",performance_claim=False,source=source,
                   host=_host_metadata(),model_identity=identity,command=sys.argv,
                   chunk_size=args.chunk_size,resident_capacity=args.capacity,
+                  requested_context_length=context_length,
                   manifest_sha256=profile.manifest_sha256,
                   limits="Allocation/admission only,no native-length inference or throughput claim. "
                          "Tracked allocator excludes driver-owned memory;existing reserve remains.")
@@ -67,13 +80,13 @@ def main():
     try:
         generator = profile.construct_generator(lambda: Qwen4ExpGGUFTextGenerator(
             model_path=args.model_root,weight_index=index,model_plugin=plugin,
-            backend="hip_gfx1151",max_sequence_length=int(plugin.native_context_length),
+            backend="hip_gfx1151",max_sequence_length=context_length,
             resident_capacity=args.capacity,prefill_chunk_size=args.chunk_size))
         report["admission"] = generator.context_admission
         report["first_runner_memory"] = memory_stats()
         serving = generator.create_resident_model_runner(capacity=args.capacity)
         context = serving.prepare()
-        assert context == int(plugin.native_context_length)
+        assert context == context_length
         assert len(serving._all_runners) == args.capacity
         report["prepared_context"] = context
         report["prepared_runners"] = len(serving._all_runners)
