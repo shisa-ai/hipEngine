@@ -72,27 +72,40 @@ capped at `max(128, ceil(rows / 32))` rows — 128 for every grid up to 4096
 patches, growing with the grid above that — so the budget stays the binding
 constraint at page scale, where a wider tile is what the page wants. The width
 is then rounded down to a whole number of 32-lane wavefronts, which is the line
-the page-scale curve actually separates on: on the A4 page every measured width
-that is a multiple of 32 runs 43862-44668 ms and every width that is not runs
-45050-48496 ms, and the 512 MiB budget derives 325 rows, on the slow side of
-that line, so rounding down to 320 rows takes **48496.26 -> 43862.87 ms
-(1.106x)** while shrinking the tile 510.6 -> 502.7 MiB. The envelope is not
+the page-scale curve actually separates on: on the A4 page, across the two
+retained sweeps, every measured width that is a multiple of 32 runs
+43318-44831 ms and every width that is not runs 46168-48496 ms, so every
+non-multiple is slower than every multiple in its own sweep and the means differ
+by 7.2%. The 512 MiB budget derives 325 rows, on the slow side of that line, so
+rounding down to 320 rows takes **47836.19 -> 43318.30 ms (1.104x)** while
+shrinking the tile 510.6 -> 502.7 MiB. On the A4 grid the budget, not the cap, is what stops
+the page: the cap admits 1073 rows there and the page's time optimum is a
+plateau at 2048-8192 rows, so the default sits **7.4% above the optimum** for
+1/12.8th of its scratch (502.7 MiB against 6435.0 MiB) and the curve is past its
+knee — same-run 320 rows 43288 ms, 1024 41711, 2048 40618, 3072 40362, 4096
+40076 ms, with the marginal return falling from 5.60 ms/MiB at 256 -> 320 to
+1.43, 0.68 and 0.16, then a 0.93% turn-up at 8192 rows. The envelope is not
 optimal at every grid, and the misses are reported rather than hidden: at 6400
-patches a 96-row tile is 1940.93 ms against the 2130.11 ms the cap picks (10%),
-and the A4 page's own best measured width is 2048 rows at 41622.25 ms (5.1%
-below the default). The shape curve is also not monotone, and the rounding is a
-tie-break rather than a guarantee: at 4096 patches 192/256/341/512/1024 rows
-are 24-89% slower than 128, and 512 — a multiple of 32 — is the slowest shape
-measured there (1667 ms against 881 ms), so a wider tile is not automatically
-safe. Where those spikes fall has no measured explanation yet. Measured with `python3
+patches a 96-row tile is 1940.93 ms against the 2130.11 ms the cap picks (10%).
+The shape curve is also not monotone, and the rounding is a tie-break rather
+than a guarantee: an earlier A4 sweep recorded a 400-row tile at 45050 ms, only
+1.1% off the slowest multiple that sweep measured (352 rows, 44568 ms), and at
+4096 patches 192/256/341/512/1024 rows are 24-89% slower than 128, with 512 — a
+multiple of 32 — the slowest shape measured there (1667 ms against 881 ms), so a
+wider tile is not automatically safe. Where those spikes fall has no measured explanation
+yet. Measured with `python3
 scripts/surya_vision_tiling_cost.py --reps 7` for the 256-6400-patch grids and
-`--reps 2` for the A4 grid, one runner per shape, one discarded warm-up,
-median wall clock around `vision_forward` only; a second two-pass sweep on a
-quiet GPU reproduces the first to a median 0.31% over all 67 rows.
+`--reps 2 --passes 2` for the A4 grid, one runner per shape, one discarded
+warm-up, median wall clock around `vision_forward` only; a second two-pass sweep
+on a quiet GPU reproduces the first to a median 0.31% over all 67 rows, and the
+A4 rows agree between their two passes within `max(10%, 2 ms)`.
 [Old vs new default in one run](results/2026-09-13-gfx1151-surya-tile-shape-ab.json),
 [vision tiling cost](results/2026-09-13-gfx1151-surya-vision-tiling-cost.json),
 [vision tiling cost, two-pass re-check](results/2026-09-13-gfx1151-surya-vision-tiling-cost-v2.json),
-[A4 page shapes](results/2026-09-13-gfx1151-surya-vision-tiling-a4.json).
+[A4 page shapes](results/2026-09-13-gfx1151-surya-vision-tiling-a4.json),
+[A4 page shapes, two-pass](results/2026-09-13-gfx1151-surya-vision-tiling-a4-v2.json),
+[A4 time/memory curve](results/2026-09-13-gfx1151-surya-vision-tiling-a4-curve.json),
+[A4 launch ceiling](results/2026-09-13-gfx1151-surya-vision-tiling-a4-ceiling.json).
 
 Surya's KV write and decode read the same `KVLiveSpans` `(base_offsets,
 live_counts, token_positions, evict_mask)` metadata the rest of the engine uses,

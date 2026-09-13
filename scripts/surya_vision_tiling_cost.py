@@ -276,6 +276,14 @@ def main() -> None:
              "holds both the default path and the shape sweep",
     )
     parser.add_argument(
+        "--budgets", default=None,
+        help="comma-separated tile budgets in MiB for the byte-budget plans, "
+             "or 'dense' for the unbounded tile; default is the full set "
+             "(dense, 512, 64, 8 MiB). A grid that cannot run densely "
+             "(page_a4.png) must not include 'dense', and a budget far below "
+             "the grid makes its row very slow, so both ends are selectable",
+    )
+    parser.add_argument(
         "--passes", type=int, default=1, choices=(1, 2),
         help="run the plans twice, the second time in reverse order, and "
              "record pass_ratio per row; the only check that catches a "
@@ -298,6 +306,24 @@ def main() -> None:
         [int(value) for value in args.blocks.split(",") if value.strip()]
         if args.blocks else None
     )
+    if args.budgets is None:
+        budget_plans: list[dict[str, object]] = [
+            {"budget": budget, "block": None} for budget in BUDGETS
+        ]
+    else:
+        budget_plans = []
+        for value in args.budgets.split(","):
+            value = value.strip().lower()
+            if not value:
+                continue
+            if value in ("dense", "none"):
+                budget_plans.append({"budget": None, "block": None})
+            else:
+                budget_plans.append(
+                    {"budget": int(float(value) * MIB), "block": None}
+                )
+        if not budget_plans:
+            raise SystemExit("--budgets selected no plans")
     rows: list[dict[str, object]] = []
     keys: list[tuple[str, int | None, int | None]] = []
     second: dict[tuple[str, int | None, int | None], dict[str, object]] = {}
@@ -307,9 +333,7 @@ def main() -> None:
         if not (FIXTURES / page).exists():
             raise SystemExit(f"missing {FIXTURES / page}")
         if blocks is None:
-            plans: list[dict[str, object]] = [
-                {"budget": budget, "block": None} for budget in BUDGETS
-            ]
+            plans: list[dict[str, object]] = list(budget_plans)
         else:
             plans = [
                 {"budget": None, "block": block}
@@ -317,9 +341,7 @@ def main() -> None:
                 if block <= expected  # a block larger than the grid is dense
             ]
             if args.with_budgets:
-                plans = [
-                    {"budget": budget, "block": None} for budget in BUDGETS
-                ] + plans
+                plans = [dict(plan) for plan in budget_plans] + plans
         for pass_index in range(args.passes):
             # the second pass reverses the order, so a steady disturbance from
             # a concurrent job cannot land on the same shape twice

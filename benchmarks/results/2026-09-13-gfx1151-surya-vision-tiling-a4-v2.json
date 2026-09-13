@@ -1,0 +1,412 @@
+{
+ "date": "2026-09-13",
+ "model": "datalab-to/surya-ocr-2",
+ "provenance": {
+  "timestamp_utc": "2026-09-13T01:23:11Z",
+  "hostname": "zbook",
+  "cpu": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S",
+  "os": "Linux 6.18.42-1-cachyos-lts",
+  "python": "3.13.13",
+  "numpy": "2.4.4",
+  "command": "scripts/surya_vision_tiling_cost.py --pages page_a4.png --blocks 128,256,288,300,320,325,336,352,512,1024,2048 --budgets 512 --with-budgets --reps 2 --passes 2 --out benchmarks/results/2026-09-13-gfx1151-surya-vision-tiling-a4-v2.json",
+  "git_revision": "563dda057234ad154230670eed57fc9ae2e9aaa7",
+  "git_branch": "surya",
+  "git_dirty": true,
+  "torch": "2.13.0+rocm10.0.0",
+  "torch_hip": "7.15.26333",
+  "gpu": "AMD Radeon 8060S Graphics"
+ },
+ "protocol": "one runner per shape; one discarded warm-up vision_forward; median of --reps wall-clock timings around vision_forward only (preprocessing and scratch allocation excluded)",
+ "boundary": "None disables the tile budget and runs one dense tile; a byte budget selects the largest query block whose vision_num_heads * n * block * 4 tile fits; --blocks names the block directly and solves the budget backwards so the shapes can be swept without the budget's rounding",
+ "shape_envelope": "byte-budget rows are the production plan (envelope and wavefront rounding respected); --blocks rows lift both so shapes the planner would not choose are still measured",
+ "note": "Grids that cannot run densely have no dense baseline: the dense score matrix is 56.5 GB at 34320 patches and 206 GB at 65536, which is why the tiling exists. These rows are the grids that run both ways.",
+ "reps": 2,
+ "passes": 2,
+ "pass_check": "second pass in reverse order; 12/12 rows agree with pass 1 within max(10%, 2 ms), pass_ratio = pass1/pass2 per row",
+ "results": [
+  {
+   "page": "page_a4.png",
+   "grid": [
+    1,
+    220,
+    156
+   ],
+   "patches": 34320,
+   "budget_bytes": 536870912,
+   "query_block": 320,
+   "tiles": 108,
+   "tail_rows": 80,
+   "even": false,
+   "scratch_bytes": 527155200,
+   "scratch_mib": 502.7,
+   "dense_score_bytes": 56537395200,
+   "median_ms": 43301.54,
+   "min_ms": 43268.39,
+   "max_ms": 43334.69,
+   "samples_ms": [
+    43268.39,
+    43334.69
+   ],
+   "envelope_lifted": false,
+   "median_ms_pass2": 44061.35,
+   "samples_ms_pass2": [
+    44057.15,
+    44065.56
+   ],
+   "pass_ratio": 0.983,
+   "vs_best_shape": 0.955
+  },
+  {
+   "page": "page_a4.png",
+   "grid": [
+    1,
+    220,
+    156
+   ],
+   "patches": 34320,
+   "budget_bytes": 210862080,
+   "query_block": 128,
+   "tiles": 269,
+   "tail_rows": 16,
+   "even": false,
+   "scratch_bytes": 210862080,
+   "scratch_mib": 201.1,
+   "dense_score_bytes": 56537395200,
+   "median_ms": 45639.15,
+   "min_ms": 45615.28,
+   "max_ms": 45663.03,
+   "samples_ms": [
+    45615.28,
+    45663.03
+   ],
+   "envelope_lifted": true,
+   "median_ms_pass2": 46457.1,
+   "samples_ms_pass2": [
+    46438.15,
+    46476.06
+   ],
+   "pass_ratio": 0.982,
+   "vs_best_shape": 0.907
+  },
+  {
+   "page": "page_a4.png",
+   "grid": [
+    1,
+    220,
+    156
+   ],
+   "patches": 34320,
+   "budget_bytes": 421724160,
+   "query_block": 256,
+   "tiles": 135,
+   "tail_rows": 16,
+   "even": false,
+   "scratch_bytes": 421724160,
+   "scratch_mib": 402.2,
+   "dense_score_bytes": 56537395200,
+   "median_ms": 43881.08,
+   "min_ms": 43865.26,
+   "max_ms": 43896.91,
+   "samples_ms": [
+    43865.26,
+    43896.91
+   ],
+   "envelope_lifted": true,
+   "median_ms_pass2": 44518.53,
+   "samples_ms_pass2": [
+    44514.85,
+    44522.21
+   ],
+   "pass_ratio": 0.986,
+   "vs_best_shape": 0.943
+  },
+  {
+   "page": "page_a4.png",
+   "grid": [
+    1,
+    220,
+    156
+   ],
+   "patches": 34320,
+   "budget_bytes": 474439680,
+   "query_block": 288,
+   "tiles": 120,
+   "tail_rows": 48,
+   "even": false,
+   "scratch_bytes": 474439680,
+   "scratch_mib": 452.5,
+   "dense_score_bytes": 56537395200,
+   "median_ms": 43960.44,
+   "min_ms": 43938.42,
+   "max_ms": 43982.46,
+   "samples_ms": [
+    43938.42,
+    43982.46
+   ],
+   "envelope_lifted": true,
+   "median_ms_pass2": 44998.83,
+   "samples_ms_pass2": [
+    44996.78,
+    45000.87
+   ],
+   "pass_ratio": 0.977,
+   "vs_best_shape": 0.941
+  },
+  {
+   "page": "page_a4.png",
+   "grid": [
+    1,
+    220,
+    156
+   ],
+   "patches": 34320,
+   "budget_bytes": 494208000,
+   "query_block": 300,
+   "tiles": 115,
+   "tail_rows": 120,
+   "even": false,
+   "scratch_bytes": 494208000,
+   "scratch_mib": 471.3,
+   "dense_score_bytes": 56537395200,
+   "median_ms": 46167.7,
+   "min_ms": 46145.85,
+   "max_ms": 46189.56,
+   "samples_ms": [
+    46189.56,
+    46145.85
+   ],
+   "envelope_lifted": true,
+   "median_ms_pass2": 46807.5,
+   "samples_ms_pass2": [
+    46801.95,
+    46813.06
+   ],
+   "pass_ratio": 0.986,
+   "vs_best_shape": 0.896
+  },
+  {
+   "page": "page_a4.png",
+   "grid": [
+    1,
+    220,
+    156
+   ],
+   "patches": 34320,
+   "budget_bytes": 527155200,
+   "query_block": 320,
+   "tiles": 108,
+   "tail_rows": 80,
+   "even": false,
+   "scratch_bytes": 527155200,
+   "scratch_mib": 502.7,
+   "dense_score_bytes": 56537395200,
+   "median_ms": 43318.3,
+   "min_ms": 43285.8,
+   "max_ms": 43350.81,
+   "samples_ms": [
+    43285.8,
+    43350.81
+   ],
+   "envelope_lifted": true,
+   "median_ms_pass2": 43936.1,
+   "samples_ms_pass2": [
+    43947.9,
+    43924.31
+   ],
+   "pass_ratio": 0.986,
+   "vs_best_shape": 0.955
+  },
+  {
+   "page": "page_a4.png",
+   "grid": [
+    1,
+    220,
+    156
+   ],
+   "patches": 34320,
+   "budget_bytes": 535392000,
+   "query_block": 325,
+   "tiles": 106,
+   "tail_rows": 195,
+   "even": false,
+   "scratch_bytes": 535392000,
+   "scratch_mib": 510.6,
+   "dense_score_bytes": 56537395200,
+   "median_ms": 47836.19,
+   "min_ms": 47785.35,
+   "max_ms": 47887.04,
+   "samples_ms": [
+    47785.35,
+    47887.04
+   ],
+   "envelope_lifted": true,
+   "median_ms_pass2": 48667.82,
+   "samples_ms_pass2": [
+    48645.25,
+    48690.39
+   ],
+   "pass_ratio": 0.983,
+   "vs_best_shape": 0.865
+  },
+  {
+   "page": "page_a4.png",
+   "grid": [
+    1,
+    220,
+    156
+   ],
+   "patches": 34320,
+   "budget_bytes": 553512960,
+   "query_block": 336,
+   "tiles": 103,
+   "tail_rows": 48,
+   "even": false,
+   "scratch_bytes": 553512960,
+   "scratch_mib": 527.9,
+   "dense_score_bytes": 56537395200,
+   "median_ms": 46855.77,
+   "min_ms": 46840.88,
+   "max_ms": 46870.66,
+   "samples_ms": [
+    46840.88,
+    46870.66
+   ],
+   "envelope_lifted": true,
+   "median_ms_pass2": 47363.45,
+   "samples_ms_pass2": [
+    47360.57,
+    47366.33
+   ],
+   "pass_ratio": 0.989,
+   "vs_best_shape": 0.883
+  },
+  {
+   "page": "page_a4.png",
+   "grid": [
+    1,
+    220,
+    156
+   ],
+   "patches": 34320,
+   "budget_bytes": 579870720,
+   "query_block": 352,
+   "tiles": 98,
+   "tail_rows": 176,
+   "even": false,
+   "scratch_bytes": 579870720,
+   "scratch_mib": 553.0,
+   "dense_score_bytes": 56537395200,
+   "median_ms": 44830.77,
+   "min_ms": 44809.66,
+   "max_ms": 44851.87,
+   "samples_ms": [
+    44809.66,
+    44851.87
+   ],
+   "envelope_lifted": true,
+   "median_ms_pass2": 45089.76,
+   "samples_ms_pass2": [
+    45124.15,
+    45055.38
+   ],
+   "pass_ratio": 0.994,
+   "vs_best_shape": 0.923
+  },
+  {
+   "page": "page_a4.png",
+   "grid": [
+    1,
+    220,
+    156
+   ],
+   "patches": 34320,
+   "budget_bytes": 843448320,
+   "query_block": 512,
+   "tiles": 68,
+   "tail_rows": 16,
+   "even": false,
+   "scratch_bytes": 843448320,
+   "scratch_mib": 804.4,
+   "dense_score_bytes": 56537395200,
+   "median_ms": 43766.31,
+   "min_ms": 43760.44,
+   "max_ms": 43772.18,
+   "samples_ms": [
+    43772.18,
+    43760.44
+   ],
+   "envelope_lifted": true,
+   "median_ms_pass2": 44035.0,
+   "samples_ms_pass2": [
+    44013.86,
+    44056.14
+   ],
+   "pass_ratio": 0.994,
+   "vs_best_shape": 0.945
+  },
+  {
+   "page": "page_a4.png",
+   "grid": [
+    1,
+    220,
+    156
+   ],
+   "patches": 34320,
+   "budget_bytes": 1686896640,
+   "query_block": 1024,
+   "tiles": 34,
+   "tail_rows": 528,
+   "even": false,
+   "scratch_bytes": 1686896640,
+   "scratch_mib": 1608.8,
+   "dense_score_bytes": 56537395200,
+   "median_ms": 42246.67,
+   "min_ms": 42242.64,
+   "max_ms": 42250.7,
+   "samples_ms": [
+    42250.7,
+    42242.64
+   ],
+   "envelope_lifted": true,
+   "median_ms_pass2": 42339.82,
+   "samples_ms_pass2": [
+    42341.03,
+    42338.62
+   ],
+   "pass_ratio": 0.998,
+   "vs_best_shape": 0.979
+  },
+  {
+   "page": "page_a4.png",
+   "grid": [
+    1,
+    220,
+    156
+   ],
+   "patches": 34320,
+   "budget_bytes": 3373793280,
+   "query_block": 2048,
+   "tiles": 17,
+   "tail_rows": 1552,
+   "even": false,
+   "scratch_bytes": 3373793280,
+   "scratch_mib": 3217.5,
+   "dense_score_bytes": 56537395200,
+   "median_ms": 41374.2,
+   "min_ms": 41334.74,
+   "max_ms": 41413.67,
+   "samples_ms": [
+    41413.67,
+    41334.74
+   ],
+   "envelope_lifted": true,
+   "median_ms_pass2": 41394.45,
+   "samples_ms_pass2": [
+    41415.2,
+    41373.71
+   ],
+   "pass_ratio": 1.0,
+   "vs_best_shape": 1.0
+  }
+ ]
+}
