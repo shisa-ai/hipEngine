@@ -369,6 +369,14 @@ template<int Q> void run(const void* x, const void* w, void* out,
     }
 }
 
+// Output columns per local32 block. The four local32 owners and their seven
+// launchers must agree on this: the kernel indexes columns from
+// blockIdx.x * COLS, so a launcher that divides N by a different value
+// silently computes only a fraction of the output. Measured 2026-09-13 on the
+// 117 IQ4_XS verifier tensors at rows=3 (per-tensor, W7900): 4 -> 442.1,
+// 8 -> 440.9, 2 -> 421.4, 16 -> 149.3 GB/s, all bit-identical, so 8 stays.
+#define GGUF_IQ_LOCAL32_COLS 8
+
 // Local32 IQ4_XS decode GEMV: one wave per 8 output columns, each lane owns
 // 8 contiguous K values, and the whole 8-column payload for one 256-element
 // block is read as two u32 loads per column. This is the raw-layout analogue
@@ -406,7 +414,7 @@ __global__ __launch_bounds__(32 * WAVES,
 void gguf_iq4_xs_local32_gemv_kernel(
     const uint16_t* __restrict__ x, const uint8_t* __restrict__ w,
     uint16_t* __restrict__ out, int64_t K, int64_t N) {
-    constexpr int COLS = 8;
+    constexpr int COLS = GGUF_IQ_LOCAL32_COLS;
     const int tid = threadIdx.x;
     const int wave = tid >> 5;
     const int lane = tid & 31;
@@ -508,7 +516,7 @@ void gguf_iq4_xs_local32_dual_silu_kernel(
     const uint16_t* __restrict__ x, const uint8_t* __restrict__ wa,
     const uint8_t* __restrict__ wb, uint16_t* __restrict__ out,
     int64_t K, int64_t N) {
-    constexpr int COLS = 8;
+    constexpr int COLS = GGUF_IQ_LOCAL32_COLS;
     const int tid = threadIdx.x;
     const int wave = tid >> 5;
     const int lane = tid & 31;
@@ -622,7 +630,7 @@ __global__ __launch_bounds__(32 * WAVES,
 void gguf_iq4_nl_local32_gemv_kernel(
     const uint16_t* __restrict__ x, const uint8_t* __restrict__ w,
     uint16_t* __restrict__ out, int64_t K, int64_t N) {
-    constexpr int COLS = 8;
+    constexpr int COLS = GGUF_IQ_LOCAL32_COLS;
     const int tid = threadIdx.x;
     const int wave = tid >> 5;
     const int lane = tid & 31;
@@ -709,7 +717,7 @@ extern "C" int hipengine_gguf_iq4_nl_local32_gemv(const void* x,
     int waves, void* stream) {
     if (!x || !w || !out || rows != 1 || K <= 0 || K % 256 || N <= 0 || N % 8)
         return int(hipErrorInvalidValue);
-    const dim3 grid(unsigned(N / 8));
+    const dim3 grid(unsigned((N + GGUF_IQ_LOCAL32_COLS - 1) / GGUF_IQ_LOCAL32_COLS));
     const hipStream_t s = (hipStream_t)stream;
     int err;
     switch (waves) {
@@ -738,7 +746,7 @@ extern "C" int hipengine_gguf_iq4_xs_local32_dual_silu(const void* x,
     int64_t K, int64_t N, int waves, void* stream) {
     if (!x || !wa || !wb || !out || rows != 1 || K <= 0 || K % 256 || N <= 0 || N % 8)
         return int(hipErrorInvalidValue);
-    const dim3 grid(unsigned(N / 8));
+    const dim3 grid(unsigned((N + GGUF_IQ_LOCAL32_COLS - 1) / GGUF_IQ_LOCAL32_COLS));
     const hipStream_t s = (hipStream_t)stream;
     int err;
     switch (waves) {
@@ -789,7 +797,7 @@ __global__ __launch_bounds__(32 * WAVES,
 void gguf_iq_split_local32_gemv_kernel(
     const uint16_t* __restrict__ x, const uint8_t* __restrict__ w,
     uint16_t* __restrict__ out, int64_t K, int64_t N) {
-    constexpr int COLS = 8;
+    constexpr int COLS = GGUF_IQ_LOCAL32_COLS;
     constexpr int S = Q == 2 ? 110 : (Q == 4 ? 98 : (Q == 5 ? 82 : 74));
     constexpr int GRID_BYTES =
         Q == 2 ? 2048 : (Q == 4 ? 1024 : (Q == 6 ? 1024 : 0));
@@ -962,7 +970,7 @@ extern "C" int hipengine_gguf_iq_split_local32_gemv(const void* x,
         return int(hipErrorInvalidValue);
     if (waves != 1 && waves != 2 && waves != 4)
         return int(hipErrorInvalidValue);
-    const dim3 grid(unsigned(N / 8));
+    const dim3 grid(unsigned((N + GGUF_IQ_LOCAL32_COLS - 1) / GGUF_IQ_LOCAL32_COLS));
     const hipStream_t s = (hipStream_t)stream;
     const uint16_t* xp = (const uint16_t*)x;
     const uint8_t* wp = (const uint8_t*)w;
@@ -1005,7 +1013,7 @@ extern "C" int hipengine_gguf_iq4_xs_local32_gemv(const void* x,
     int waves, void* stream) {
     if (!x || !w || !out || rows != 1 || K <= 0 || K % 256 || N <= 0 || N % 8)
         return int(hipErrorInvalidValue);
-    const dim3 grid(unsigned(N / 8));
+    const dim3 grid(unsigned((N + GGUF_IQ_LOCAL32_COLS - 1) / GGUF_IQ_LOCAL32_COLS));
     const hipStream_t s = (hipStream_t)stream;
     int err;
     switch (waves) {
@@ -1040,7 +1048,7 @@ extern "C" int hipengine_gguf_iq4_xs_local32_gemv(const void* x,
 template<int ROWS>
 int launch_iq4_xs_local32_rows(const void* x, const void* w, void* out,
     int64_t K, int64_t N, int waves, hipStream_t s) {
-    const dim3 grid(unsigned(N / 8));
+    const dim3 grid(unsigned((N + GGUF_IQ_LOCAL32_COLS - 1) / GGUF_IQ_LOCAL32_COLS));
     const uint16_t* xp = (const uint16_t*)x;
     const uint8_t* wp = (const uint8_t*)w;
     uint16_t* op = (uint16_t*)out;
@@ -1059,7 +1067,7 @@ int launch_iq4_xs_local32_rows(const void* x, const void* w, void* out,
 template<int ROWS>
 int launch_iq_split_local32_rows(const void* x, const void* w, void* out,
     int64_t K, int64_t N, int quant, int waves, hipStream_t s) {
-    const dim3 grid(unsigned(N / 8));
+    const dim3 grid(unsigned((N + GGUF_IQ_LOCAL32_COLS - 1) / GGUF_IQ_LOCAL32_COLS));
     const uint16_t* xp = (const uint16_t*)x;
     const uint8_t* wp = (const uint8_t*)w;
     uint16_t* op = (uint16_t*)out;
@@ -1122,7 +1130,7 @@ extern "C" int hipengine_gguf_iq_split_local32_rows_gemv(const void* x,
 template<int ROWS>
 int launch_iq4_nl_local32_rows(const void* x, const void* w, void* out,
     int64_t K, int64_t N, int waves, hipStream_t s) {
-    const dim3 grid(unsigned(N / 8));
+    const dim3 grid(unsigned((N + GGUF_IQ_LOCAL32_COLS - 1) / GGUF_IQ_LOCAL32_COLS));
     const uint16_t* xp = (const uint16_t*)x;
     const uint8_t* wp = (const uint8_t*)w;
     uint16_t* op = (uint16_t*)out;
