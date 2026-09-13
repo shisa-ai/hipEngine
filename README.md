@@ -5,24 +5,27 @@ Radeon GPUs. It pairs a small Python host with custom HIP kernels for torch-free
 model loading, generation, and OpenAI-compatible serving on supported hardware.
 
 **Current release: v0.5.0.** In addition to the Qwen 3.6 PARO and GGUF MoE models,
-hipEngine now includes extensive tuning for
-[Qwen 3.8 27B Q4_K_M](#performance), including long-context modes that hold
-up to 232K tokens of context on a 24 GB card.
+hipEngine now includes extensive tuning for [Qwen 3.8 27B Q4_K_M](#performance), 
+including long-context modes that hold up to 232K tokens of context on a 24 GB GPU.
 
-There is also initial support for Qwen 3.8 Flash-Next,
-[Laguna S 2.1](https://poolside.ai/blog/introducing-laguna-s-2-1), [Maple ternary](https://github.com/deepgrove-ai/mlx-lm-deepgrove), and [Moonshine ASR](https://github.com/moonshine-ai/moonshine).
-Additional modalities include TimesFM 2.5 and 3.0, EVIE 4.5B and 8B, and Surya.
+There is also initial support for Qwen 3.8 Flash Next,
+[Laguna S 2.1](https://poolside.ai/blog/introducing-laguna-s-2-1), and [Maple ternary](https://github.com/deepgrove-ai/mlx-lm-deepgrove). 
+
+Additional modalities now include:
+- [Moonshine ASR](https://github.com/moonshine-ai/moonshine) (real-time ASR)
+- [TimesFM 2.5](https://huggingface.co/google/timesfm-2.5-200m-pytorch) and [3.0](https://huggingface.co/google/timesfm-3.0-pytorch) (time series)
+- [EVIE 4.5B](https://huggingface.co/tencent/EVIE-4.5B) and [8B](https://huggingface.co/tencent/EVIE-8B) (visual document retrieval)
 
 ## Why use hipEngine?
 
-- **Native AMD support.** HIP-first kernels are tuned specifically for
+- **Native AMD support.** HIP-first kernels are written from scratch and tuned specifically for
   RDNA 3 (gfx1100) and Strix Halo RDNA 3.5 (gfx1151) instead of being CUDA ports.
 - **No PyTorch runtime required.** There is no PyTorch dependency, which keeps
   hipEngine lightweight. Although it is packaged for Python, almost all of the
   hot path is C++.
 - **Optimized for agents and concurrent requests.** Besides extensive tuning for
-  fast single-request performance (especially prefill), hipEngine also has
-  tuned support for multiple concurrent requests, with continuous batching and a shared KV pool.
+  fast single-request performance, hipEngine is specifically tuned for multiple concurrent request performance.
+  The engine is built with continuous batching, prefix caching, and a shared KV pool.
 - **Drop-in support for existing clients.** The included OpenAI-compatible server
   supports completion, chat, token-level SSE, logprobs, tools, structured-output
   validation, Qwen thinking controls, logprob-biased effort control, and
@@ -32,7 +35,7 @@ Additional modalities include TimesFM 2.5 and 3.0, EVIE 4.5B and 8B, and Surya.
   results, while *production* defaults must pass correctness gates. Optimizations or routes that
   fail these gates are rejected or made explicitly opt-in with measured costs stated.
 
-hipEngine is a from-scratch project and does not inherit any unvetted code or legacy design.
+hipEngine is a from-scratch project and does not inherit any unvetted code or legacy design. It is AGPL 3.0 licensed.
 
 ## Supported models
 
@@ -47,14 +50,14 @@ hipEngine is a from-scratch project and does not inherit any unvetted code or le
 | Maple-Preview 20B-A1B | [2-bit MLX](https://huggingface.co/deepgrove/maple-preview-2bit-mlx) | Yes | Yes | Python API only |
 
 **Qwen3.8-27B** is the dense model to start with: GGUF `Q4_K_M` on both AMD
-backends, measured from one request up to eight running at once. An independent
-[survey of Qwen3.8-27B implementations on Strix Halo](docs/QWEN38-STRIX-HALO-EXTERNAL-SURVEY.md)
-compares hipEngine against other engines on the same host.
+backends, and should provide top-tier performance for both single and multiple requests.
+An independent [survey of Qwen3.8-27B implementations on Strix Halo](docs/QWEN38-STRIX-HALO-EXTERNAL-SURVEY.md)
+compares hipEngine against other engines on a single [Framework Desktop](https://frame.work/desktop) host.
 
 hipEngine includes [DMS](https://arxiv.org/abs/2506.05345) support and training code,
 along with a published [DMS checkpoint for Qwen3.8-27B Q4_K_M](https://huggingface.co/shisa-ai/Qwen3.8-27B-Q4_K_M-DMS-W8192).
-The 24 GB context and quality results below show DMS INT8 reaching about 5.7x the BF16 context capacity.
-The quality test reports 100% top-1 agreement and 0.001 mean row-KL; these are test results, not a lossless guarantee.
+The 24 GB context and quality results below show DMS INT8 reaching about 5.7x the BF16 context capacity,
+with quality tests reportng 100% top-1 agreement and 0.001 mean row-KL:
 
 | KV configuration | Max context | Top-1 agreement vs BF16 | Mean row-KL |
 | --- | ---: | ---: | ---: |
@@ -81,7 +84,7 @@ GGUF has a much larger model and quantization ecosystem. Current development is
 therefore focused on GGUF compatibility. Choose PARO for this exact optimized
 checkpoint or GGUF for broader compatibility.
 
-We've [tested alternative quantization formats](benchmarks/quant/README.md), including ROCmFP4 through ROCmFPX. They trade quality against traditional GGUF Q formats; a smaller format does not necessarily run faster.
+We've [tested alternative quantization formats](benchmarks/quant/README.md), including ROCmFP4/ROCmFPX variants. They trade quality against traditional GGUF Q formats and our testing/analysis did not reveal any intrinsic performance benefits.
 
 ## Performance highlights
 
@@ -391,6 +394,10 @@ hipEngine is an independent project that builds on ideas and software from
 [FastDMS](https://github.com/shisa-ai/FastDMS),
 [llama.cpp](https://github.com/ggml-org/llama.cpp), and other open-source
 projects. See the source and model guides for detailed attribution.
+
+## Thanks
+
+Special thanks to [Framework](https://frame.work/) and [AMD](https://www.amd.com/) for providing Strix Halo test hardware.
 
 ## License
 
