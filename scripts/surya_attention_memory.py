@@ -43,6 +43,14 @@ Usage:
         --text-budget-bytes 0 536870912 --runs 3
     python3 scripts/surya_attention_memory.py --max-seq 8192 16384 32768 \
         --tokens 1024,8580 --decode-steps 16
+    python3 scripts/surya_attention_memory.py --tokens 8580,16384 --runs 3 \
+        --text-budget-bytes 0 536870912 --text-blocks 128,256,512,1024,1955,2048
+
+``--text-blocks`` is the shape sweep for the text prefill: each named query
+block solves the byte budget backwards (``nq * tokens * block * 4``) and lifts
+the planner's shape envelope and wavefront rounding, so a width the production
+planner would not choose is still measured. Byte-budget rows are measured with
+the envelope in force, because they are the production plan.
 """
 
 from __future__ import annotations
@@ -67,6 +75,53 @@ A4_300DPI_GRID = (1, 220, 156)
 # admits a 4096x4096 page, a 256x256 patch grid.
 MAX_PIXELS_GRID = (1, 256, 256)
 PAGE_TOKENS_300DPI = (220 // 2) * (156 // 2)
+
+
+PASS_TOLERANCE = 0.03
+PASS_TOLERANCE_SECONDS = 0.25
+
+
+def _production_envelope() -> tuple[int, int, int]:
+    """The planner's shipped shape envelope, read before anything lifts it."""
+
+    from hipengine.runtime.surya import (
+        SHAPE_TILE_DIVISOR,
+        SHAPE_TILE_MULTIPLE,
+        SHAPE_TILE_ROWS,
+    )
+
+    return (
+        int(SHAPE_TILE_ROWS),
+        int(SHAPE_TILE_DIVISOR),
+        int(SHAPE_TILE_MULTIPLE),
+    )
+
+
+_ENVELOPE = _production_envelope()
+
+
+def _shape_envelope(enable: bool) -> None:
+    """Turn the planner's shape envelope on or off for the next measurement.
+
+    Byte-budget rows are the production plan, so they keep the envelope and the
+    wavefront rounding. Shape rows measure the landscape, so they lift both: a
+    width the planner would never choose still has to be measured to know what
+    it costs, and the envelope's own constants were chosen from widths outside
+    it.
+    """
+
+    import hipengine.runtime.surya as surya
+
+    if enable:
+        (
+            surya.SHAPE_TILE_ROWS,
+            surya.SHAPE_TILE_DIVISOR,
+            surya.SHAPE_TILE_MULTIPLE,
+        ) = _ENVELOPE
+    else:
+        surya.SHAPE_TILE_ROWS = 1 << 40
+        surya.SHAPE_TILE_DIVISOR = 1 << 40
+        surya.SHAPE_TILE_MULTIPLE = 1
 
 
 def _git(*args: str) -> str | None:
@@ -236,6 +291,7 @@ def measure(
     budget_bytes: int | None,
     runs: int = 1,
     decode_steps: int = 0,
+    block: int | None = None,
 ) -> dict:
     from hipengine.core.memory import memory_stats, reset_memory_stats
     from hipengine.kernels.hip_gfx1100.surya.surya_ops import plan_surya_dense_spans
@@ -245,7 +301,7 @@ def measure(
     nq = s.num_attention_heads
     spans = plan_surya_dense_spans(max_seq)
 
-    def fresh():
+    def fresh(effective: int | None):
         """A runner with a clean allocation high-water mark.
 
         The peak counter is process-global, so a fresh runner plus a reset
@@ -253,13 +309,13 @@ def measure(
         runner would carry the previous token count's scratch (and its peak)
         into the next measurement.
 
-        ``budget_bytes=None`` is passed explicitly: it means "no budget, one
+        ``effective=None`` is passed explicitly: it means "no budget, one
         dense tile" at the runner, which is *not* the same as omitting the
         argument (that selects the runner's default budget).
         """
 
         runner = SuryaGpuRunner(
-            weights, spec, max_seq=max_seq, max_prefill_scratch_bytes=budget_bytes
+            weights, spec, max_seq=max_seq, max_prefill_scratch_bytes=effective
         )
         reset_memory_stats()
         return runner
@@ -271,8 +327,15 @@ def measure(
             # a prompt longer than the context cannot be prefilled at all
             skipped.append(int(tokens))
             continue
+        # A named query block solves the byte budget backwards, so the shape
+        # sweep can ask for a width the planner's envelope or the wavefront
+        # rounding would not choose. The runner then has to plan exactly that
+        # width, which is asserted after the measurement.
+        effective = (
+            budget_bytes if block is None else nq * int(tokens) * int(block) * 4
+        )
         ids, pos = _synthetic_prompt(tokens)
-        runner = fresh()
+        runner = fresh(effective)
         try:
             resident = memory_stats()["current_allocated_bytes"]
             runner.prefill(ids, pos)
@@ -302,10 +365,18 @@ def measure(
                     next_pos += 1
         finally:
             runner.close()
-        block, tile = plan_score_tiles(tokens, nq, budget_bytes)
+        planned_block, tile = plan_score_tiles(tokens, nq, effective)
+        if block is not None and planned_block != int(block):
+            raise SystemExit(
+                f"asked for block {block} at {tokens} tokens but the planner "
+                f"returned {planned_block}"
+            )
         row = {
             "tokens": int(tokens),
-            "query_block": block,
+            "query_block": planned_block,
+            "requested_block": None if block is None else int(block),
+            "envelope_lifted": block is not None,
+            "effective_budget_bytes": None if effective is None else int(effective),
             "resident_bytes": int(resident),
             "peak_scratch_bytes": int(peak),
             "retained_scratch_bytes": int(scratch),
@@ -338,6 +409,8 @@ def measure(
     return {
         "max_seq": int(max_seq),
         "budget_bytes": None if budget_bytes is None else int(budget_bytes),
+        "requested_block": None if block is None else int(block),
+        "envelope_lifted": block is not None,
         "split_plan": {
             "chunk_size": int(spans.chunk_size),
             "num_splits": int(spans.num_splits),
@@ -385,6 +458,20 @@ def main() -> int:
         "--runs", type=int, default=1, help="timed prefill repeats per row"
     )
     parser.add_argument(
+        "--text-blocks",
+        default=None,
+        help="comma-separated explicit text-prefill query-block shapes; the "
+             "byte budget is solved backwards for each and the planner's shape "
+             "envelope is lifted, so this is the text shape sweep",
+    )
+    parser.add_argument(
+        "--passes", type=int, default=1, choices=(1, 2),
+        help="run every plan twice, the second time in reverse order, and "
+             "record pass_ratio per row; a prefill this long cannot see a "
+             "steady disturbance (thermal or a concurrent job) inside its own "
+             "spread",
+    )
+    parser.add_argument(
         "--decode-steps",
         type=int,
         default=0,
@@ -414,6 +501,10 @@ def main() -> int:
 
     token_counts = [int(t) for t in args.tokens.split(",") if t.strip()]
     budgets = _parse_budgets(args.text_budget_bytes)
+    text_blocks = (
+        [int(value) for value in args.text_blocks.split(",") if value.strip()]
+        if args.text_blocks else []
+    )
     plan = text_tile_plan(args.model, token_counts, budgets)
     print("text prefill causal score tile:")
     for row in plan:
@@ -430,46 +521,157 @@ def main() -> int:
     spec, weights = _spec_and_weights(args.model)
     for max_seq in args.max_seq:
         components = _resident_components(spec, weights, max_seq)
+        plans = [
+            {
+                "budget": budget,
+                "block": None,
+                "label": "dense" if budget is None else f"{budget / 1024**2:.0f} MiB",
+            }
+            for budget in budgets
+        ] + [
+            {"budget": None, "block": block, "label": f"block={block}"}
+            for block in text_blocks
+        ]
         blocks = []
-        for budget in budgets:
-            result = measure(
-                spec=spec,
-                weights=weights,
-                max_seq=max_seq,
-                token_counts=token_counts,
-                budget_bytes=budget,
-                runs=args.runs,
-                decode_steps=args.decode_steps,
-            )
-            result["fitted_linear_bytes_per_token"] = fit_linear(result["rows"])
-            blocks.append(result)
-            budget_label = "dense" if budget is None else f"{budget / 1024**2:.0f} MiB"
-            print(f"max_seq={max_seq} text budget={budget_label}")
+        second: dict[str, dict] = {}
+        for pass_index in range(args.passes):
+            # the second pass reverses the order, so a steady disturbance from a
+            # concurrent job or thermal drift cannot land on the same shape twice
+            ordered = plans if pass_index == 0 else list(reversed(plans))
+            for plan in ordered:
+                # byte budgets are the production plan, so they keep the
+                # planner's shape envelope and wavefront rounding; a named block
+                # lifts both so shapes the planner would not choose are measured
+                _shape_envelope(plan["block"] is None)
+                result = measure(
+                    spec=spec,
+                    weights=weights,
+                    max_seq=max_seq,
+                    token_counts=token_counts,
+                    budget_bytes=plan["budget"],
+                    runs=args.runs,
+                    decode_steps=args.decode_steps,
+                    block=plan["block"],
+                )
+                result["label"] = plan["label"]
+                result["pass_index"] = pass_index
+                result["fitted_linear_bytes_per_token"] = fit_linear(result["rows"])
+                if pass_index:
+                    second[plan["label"]] = result
+                    continue
+                blocks.append(result)
+                print(f"max_seq={max_seq} text {plan['label']}")
+                for row in result["rows"]:
+                    decode = (
+                        f"  {row['decode_ms_per_token']:6.1f} ms/token"
+                        if row.get("decode_ms_per_token") is not None
+                        else "  (no decode room)"
+                        if args.decode_steps > 0
+                        else ""
+                    )
+                    print(
+                        f"  tokens={row['tokens']:6d}  "
+                        f"block={row['query_block']:6d}  "
+                        f"peak={row['peak_total_bytes'] / 1e6:9.1f} MB  "
+                        f"tile={row['score_tile_bytes'] / 1e6:8.1f} MB  "
+                        f"other={row['non_attention_scratch_bytes'] / 1e6:8.1f} MB  "
+                        f"({row['linear_bytes_per_token'] / 1024:6.1f} KiB/token)  "
+                        f"{row['prefill_seconds']:6.2f}s{decode}"
+                    )
+                slope = result["fitted_linear_bytes_per_token"]
+                if slope is None:
+                    print("  fitted non-attention slope: n/a (needs two token counts)")
+                else:
+                    print(f"  fitted non-attention slope: {slope / 1024:.1f} KiB/token")
+        _shape_envelope(True)
+        if second:
+            unmatched = set(second) - {r["label"] for r in blocks}
+            if unmatched:
+                raise SystemExit(
+                    f"pass-2 rows {sorted(unmatched)} did not match a pass-1 row"
+                )
+
+        # Merge the two passes per (plan, token count): pass_ratio = pass1/pass2
+        # is the drift check, and the pooled mean is what the shape ranking uses
+        # so a shape is not scored on one half of the run.
+        noisy: list[dict] = []
+        for result in blocks:
+            twin = second.get(str(result["label"]))
+            if twin is None:
+                continue
+            twin_by_tokens = {int(r["tokens"]): r for r in twin["rows"]}
             for row in result["rows"]:
-                decode = (
-                    f"  {row['decode_ms_per_token']:6.1f} ms/token"
-                    if row.get("decode_ms_per_token") is not None
-                    else "  (no decode room)"
-                    if args.decode_steps > 0
-                    else ""
+                other = twin_by_tokens.get(int(row["tokens"]))
+                if other is None:
+                    continue
+                row["prefill_seconds_pass2"] = float(other["prefill_seconds"])
+                row["prefill_seconds_runs_pass2"] = list(other["prefill_seconds_runs"])
+                row["pass_ratio"] = round(
+                    float(row["prefill_seconds"]) / float(other["prefill_seconds"]), 4
                 )
-                print(
-                    f"  tokens={row['tokens']:6d}  "
-                    f"peak={row['peak_total_bytes'] / 1e6:9.1f} MB  "
-                    f"tile={row['score_tile_bytes'] / 1e6:8.1f} MB  "
-                    f"other={row['non_attention_scratch_bytes'] / 1e6:8.1f} MB  "
-                    f"({row['linear_bytes_per_token'] / 1024:6.1f} KiB/token)  "
-                    f"{row['prefill_seconds']:6.2f}s{decode}"
+                pooled = list(row["prefill_seconds_runs"]) + list(
+                    other["prefill_seconds_runs"]
                 )
-            slope = result["fitted_linear_bytes_per_token"]
-            if slope is None:
-                print("  fitted non-attention slope: n/a (needs two token counts)")
-            else:
-                print(f"  fitted non-attention slope: {slope / 1024:.1f} KiB/token")
+                row["prefill_seconds_pooled"] = float(np.mean(pooled))
+                row["prefill_runs_pooled"] = len(pooled)
+                drift = abs(
+                    float(row["prefill_seconds"]) - float(other["prefill_seconds"])
+                )
+                if drift > max(PASS_TOLERANCE * float(row["prefill_seconds"]),
+                               PASS_TOLERANCE_SECONDS):
+                    noisy.append(row)
+                    print(
+                        f"WARNING pass disagreement tokens={row['tokens']} "
+                        f"block={row['query_block']}: {row['prefill_seconds']:.2f} vs "
+                        f"{other['prefill_seconds']:.2f} s ({row['pass_ratio']}x) -- "
+                        f"re-measure on a quiet GPU"
+                    )
+        if args.passes > 1:
+            total = sum(len(r["rows"]) for r in blocks)
+            print(
+                f"pass check: {total - len(noisy)}/{total} rows within "
+                f"max({PASS_TOLERANCE:.0%}, {PASS_TOLERANCE_SECONDS:g} s)"
+            )
+
+        # Dense is the baseline at each token count, so a shape's cost is
+        # reported against it and against the best shape the sweep measured
+        # rather than against a number from another protocol. The ranking uses
+        # the pooled mean when a second pass ran.
+        def metric(row: dict) -> float:
+            return float(row.get("prefill_seconds_pooled", row["prefill_seconds"]))
+
+        dense_by_tokens: dict[int, float] = {}
+        best_by_tokens: dict[int, tuple[int, float]] = {}
+        for result in blocks:
+            for row in result["rows"]:
+                tokens = int(row["tokens"])
+                if row["query_block"] == tokens:
+                    dense_by_tokens[tokens] = metric(row)
+                current = best_by_tokens.get(tokens)
+                if current is None or metric(row) < current[1]:
+                    best_by_tokens[tokens] = (int(row["query_block"]), metric(row))
+        for result in blocks:
+            for row in result["rows"]:
+                tokens = int(row["tokens"])
+                dense = dense_by_tokens.get(tokens)
+                if dense:
+                    row["vs_dense"] = round(dense / metric(row), 4)
+                best = best_by_tokens.get(tokens)
+                if best:
+                    row["best_query_block"] = best[0]
+                    row["vs_best_shape"] = round(best[1] / metric(row), 4)
         results.append(
             {
                 "max_seq": int(max_seq),
                 "resident_components": components,
+                "best_shape_by_tokens": {
+                    str(tokens): {
+                        "query_block": best[0],
+                        "prefill_seconds": best[1],
+                        "dense_seconds": dense_by_tokens.get(tokens),
+                    }
+                    for tokens, best in sorted(best_by_tokens.items())
+                },
                 "budgets": blocks,
             }
         )
@@ -485,7 +687,28 @@ def main() -> int:
         },
         "text_attention": {
             "budget_bytes_list": [None if b is None else int(b) for b in budgets],
+            "block_list": [int(b) for b in text_blocks],
+            "shape_envelope": (
+                "byte-budget rows are the production plan (envelope and "
+                "wavefront rounding respected); --text-blocks rows lift both "
+                "and solve the byte budget backwards from the named width"
+            ),
+            "production_envelope": {
+                "rows": _ENVELOPE[0],
+                "divisor": _ENVELOPE[1],
+                "multiple": _ENVELOPE[2],
+            },
             "runs": int(args.runs),
+            "passes": int(args.passes),
+            "pass_check": (
+                "no second pass: run with --passes 2 to detect a steady "
+                "disturbance (thermal drift or a concurrent GPU job), which a "
+                "row's own spread cannot see"
+                if args.passes < 2 else
+                f"second pass in reverse order; pass_ratio = pass1/pass2 per row, "
+                f"flagged outside max({PASS_TOLERANCE:.0%}, "
+                f"{PASS_TOLERANCE_SECONDS:g} s)"
+            ),
             "decode_steps": int(args.decode_steps),
             "tile_plan": plan,
         },

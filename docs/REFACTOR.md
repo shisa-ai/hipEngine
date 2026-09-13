@@ -6541,8 +6541,8 @@ multiple of 32 and the slowest shape measured on that grid.
 `plan_score_tiles` caps the query block at `max(128, ceil(rows / 32))` rows and
 rounds it down to a multiple of 32 (`SHAPE_TILE_ROWS`, `SHAPE_TILE_DIVISOR`,
 `SHAPE_TILE_MULTIPLE` in `hipengine/runtime/surya.py`). The envelope is
-calibrated on the 256/1024/4096/6400/34320-patch vision grids and the
-2048-16384-token text prefill, and two grids disagree with it:
+calibrated on the 256/1024/4096/6400/34320-patch vision grids and has three
+measured disagreements, the third being the text path it is also applied to:
 
 - At 6400 patches the cap picks 192 rows (2130.11 ms) where 96 rows across 67
 tiles is 1940.93 ms, a 10% gap, and 256/341/1024/2048/4096 rows are all
@@ -6551,6 +6551,25 @@ tiles is 1940.93 ms, a 10% gap, and 256/341/1024/2048/4096 rows are all
 multiple the way the A4 page does (64 rows is 2057.20 ms, 96 is 1940.93, 128 is
 2112.64). Revisit when a sweep over more mid-size grids shows what makes it
 different; special-casing one grid would be overfitting.
+- The text prefill, which the same planner tiles, wants the *widest* tile the
+byte budget admits and is monotone in tile count, so the cap is a pure loss
+there. Swept across query blocks at `max_seq` 16384 with a reverse second pass
+(`2026-09-13-gfx1151-surya-text-prefill-shape-sweep.json`), the 512 MiB budget's
+own plan beats the envelope at both measured lengths: at 16384 tokens 1024 rows
+(536.9 MB tile) is 16.927 s against the cap's 512 rows (268.4 MB) at 17.436 s, a
+3.0% gap, and at 8580 tokens 1955 rows (536.8 MB) is 7.535 s against 256 rows
+(70.3 MB) at 7.692 s, 2.1%. Every halving of the tile count is faster at 16384
+(128/64/32/16/9/8 tiles = 17.799/17.611/17.397/16.927/16.853/16.808 s, pooled
+over both passes), and both budget widths are at or below the dense time
+(16.984 s and 7.619 s), so the cap is not buying safety the budget does not
+already buy: it saves 268 MB of a 6.4 GB peak, and a user who needs that memory
+sets a smaller budget, which derives a smaller tile anyway. The arithmetic is
+shape-invariant — each tile computes the full key range and `sum(bq) == tokens`
+— so the cost is in the batched score GEMM shapes and the per-tile key/value
+re-read, not in extra FLOPs; the phase profile puts 66% of prefill kernel time
+in `gemm_library`, 31% in shape-invariant GDN, and 0.3% in softmax. Fix it in
+the planner (task #86) by making the cap text-aware, not by loosening the vision
+constant: the vision grids above still want the cap.
 - The A4 page's time optimum is a plateau at 2048-8192 rows (40076-40618 ms,
 3217.5-12870.0 MiB) and the 320-row default is 7.4% above it, but the byte
 budget is what stops there (512 MiB admits 325 rows), not the envelope — the cap
@@ -6655,7 +6674,7 @@ registry can join the collection-time baseline restore in `tests/conftest.py`
 that already makes the kernel registry order-independent under
 `clear_registry_for_tests()`.
 
-## Compact scoreboard: 6-line headroom at 494/500
+## Compact scoreboard: 2-line headroom at 498/500
 
 - `benchmarks/README.md` was returned to its documented shape on 2026-09-13
   (1962 -> 494 lines). The Qwen4Exp/Framework optimization journal, the
@@ -6665,7 +6684,7 @@ that already makes the kernel registry order-independent under
   line was dropped and every current row stayed.
 - What remains is current by construction (Surya topline, root-README export
   block, the `## Current ...` sections, evidence status, reading, maintenance).
-  Six lines of headroom absorbs a row or two, not a new lane.
+  Two lines of headroom absorbs nothing; the next unit must move a section.
 - When the next substantial lane lands, either raise the line budget in
   `tests/test_benchmark_readme_sync.py` under the 2026-09-06 rationale
   ("guardrails against worklog-style prose, not a content budget"), or move the
