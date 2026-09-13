@@ -595,7 +595,14 @@ Likely investigation order:
   440.9 at rows=3, 399.2 at rows=4. L1 wave-request rate (about 1.5% of
   capacity) and payload over-fetch (1.25x) rule out request and bandwidth
   limits. The layout primitive is retained but has no consumer; see
-  `docs/REFACTOR.md`.
+  `docs/REFACTOR.md`. The one confound in that rejection was removed and
+  re-measured 2026-09-13: the scratch T16 owner paid three header loads per
+  column where the raw owner pays two, because the raw block stores `d` and
+  `scales_h` adjacent. A paired-header owner (one `u32` of `d`+`scales_h` per
+  column, plus one `u32` of `scales_l`) was built, verified bit-exact on all
+  twelve cases, and is still **0.79-0.93x** on the same six tensors, with the
+  single-wave geometry worse on ten of twelve (0.52-1.15x). So the layout
+  loses on its own merits, not on the header count.
 - [x] Q8_0 `ssm_alpha`/`ssm_beta` dual_split block width. **Retained
   2026-09-13.** Measured 2026-09-13. `q8_0_t16_dual_split_gemv` costs 0.877 ms/step over 576 calls
   (48/step) at 18.28 us for 25 MB, which is 28.6 GB/s. The cause is grid
