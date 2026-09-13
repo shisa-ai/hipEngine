@@ -9,6 +9,7 @@ import numpy as np
 
 from hipengine.quant.gguf import QK_K, unpack_q4_k_scale_min
 from hipengine.quant.registry import register_quant
+from hipengine.quant.gguf_repack import Q4_K_PACK8_SHAPE, Q4_K_T16_SHAPE
 
 GGUF_Q4_K_BLOCK_BYTES = 144
 GGUF_Q4_K_SUBBLOCK = 32
@@ -300,15 +301,7 @@ def repack_gguf_q4_k_tile16(raw_qweight: Any) -> GGUFQ4KTile16:
     """
 
     raw = np.ascontiguousarray(raw_qweight, dtype=np.uint8)
-    if raw.ndim != 3:
-        raise ValueError("raw_qweight must have GGUF expert byte shape [experts, out_features, bytes_per_row]")
-    experts, out_features, bytes_per_row = (int(raw.shape[0]), int(raw.shape[1]), int(raw.shape[2]))
-    if experts <= 0:
-        raise ValueError("experts must be positive")
-    if out_features <= 0 or out_features % GGUF_Q4_K_TILE16_COLS != 0:
-        raise ValueError("out_features must be positive and divisible by 16")
-    if bytes_per_row <= 0 or bytes_per_row % GGUF_Q4_K_BLOCK_BYTES != 0:
-        raise ValueError("bytes_per_row must be a positive multiple of 144")
+    experts, out_features, bytes_per_row = Q4_K_T16_SHAPE.validate(raw.shape)
 
     blocks_per_row = bytes_per_row // GGUF_Q4_K_BLOCK_BYTES
     out_tiles = out_features // GGUF_Q4_K_TILE16_COLS
@@ -903,18 +896,7 @@ def repack_gguf_q4_k_tile16_qmicro(
     """Repack Q4_K experts into byte-neutral T16-local qmicro tiles."""
 
     raw = np.ascontiguousarray(raw_qweight, dtype=np.uint8)
-    if raw.ndim != 3:
-        raise ValueError(
-            "raw_qweight must have GGUF expert byte shape "
-            "[experts, out_features, bytes_per_row]"
-        )
-    experts, out_features, bytes_per_row = map(int, raw.shape)
-    if experts <= 0:
-        raise ValueError("experts must be positive")
-    if out_features <= 0 or out_features % GGUF_Q4_K_TILE16_COLS != 0:
-        raise ValueError("out_features must be positive and divisible by 16")
-    if bytes_per_row <= 0 or bytes_per_row % GGUF_Q4_K_BLOCK_BYTES != 0:
-        raise ValueError("bytes_per_row must be a positive multiple of 144")
+    experts, out_features, bytes_per_row = Q4_K_T16_SHAPE.validate(raw.shape)
 
     blocks_per_row = bytes_per_row // GGUF_Q4_K_BLOCK_BYTES
     out_tiles = out_features // GGUF_Q4_K_TILE16_COLS
@@ -1341,13 +1323,7 @@ def repack_gguf_q4_k_pack8(raw_qweight: Any) -> GGUFQ4KPack8:
     """
 
     raw = np.asarray(raw_qweight, dtype=np.uint8)
-    if raw.ndim != 2:
-        raise ValueError("raw_qweight must have GGUF byte shape [out_features, bytes_per_row]")
-    out_features, bytes_per_row = (int(raw.shape[0]), int(raw.shape[1]))
-    if out_features <= 0 or out_features % GGUF_Q4_K_PACK != 0:
-        raise ValueError("out_features must be positive and divisible by 8")
-    if bytes_per_row <= 0 or bytes_per_row % GGUF_Q4_K_BLOCK_BYTES != 0:
-        raise ValueError("bytes_per_row must be a positive multiple of 144")
+    out_features, bytes_per_row = Q4_K_PACK8_SHAPE.validate(raw.shape)
 
     blocks_per_row = bytes_per_row // GGUF_Q4_K_BLOCK_BYTES
     in_features = blocks_per_row * QK_K

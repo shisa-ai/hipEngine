@@ -1,8 +1,28 @@
 # Dense UD Q4_K_S / Q4_K_M Support Campaign
 
-Last updated: 2026-09-06.
-Status: verified analysis and coder handoff; **no implementation or GPU validation**.
-hipEngine source audited: `bf46abefc5ad8fbb00608cd5fb274ca1af21f716`.
+Last updated: 2026-09-07.
+Status: **U0 complete; CPU IQ3_S/IQ2_S decoders and synthetic/real-row oracles
+added; raw IQ4_XS/IQ4_NL/IQ3_S/Q3_K/IQ3_XXS/IQ2_S dense GPU leaves and
+Q3_K embedding pass bounded gfx1151 checks. Published K_M and K_S run through
+public `LLM.generate()` on gfx1151; layer IQ2_XS now plans raw residency in
+the production loading path (no dense-BF16 expansion).**
+The eight-token eager smoke returns finite logits; public generation returns the
+same text without importing torch. A 20-prompt real category/heldout E2E
+suite (chat-template prompts, greedy, EOS enabled) completes on both files
+with three byte-identical fresh-process repeats per file
+(see `benchmarks/results/2026-09-07-zbook-ud-public-c1-generation.json`).
+Teacher-logit quality and broader serving are not qualified. Loader preflight
+has zero K_M or K_S refusals. Q5/Q6 expansion still needs compact resident
+integration. The active lane is zbook/gfx1151 only; gfx1100 work is deferred
+until a separate hardware allocation exists.
+**No gfx1100 numerical validation is claimed.** General certificate
+cleanup is deferred in favor of end-to-end inference. Generic profile lifecycle
+transactions and per-call native authorization scans have been removed.
+hipEngine source audited: `bf46abefc5ad8fbb00608cd5fb274ca1af21f716`;
+U0 audit/identity repair landed on the `ud-quants` branch (see
+[UD-QUANTS-REVIEW-v2.json](UD-QUANTS-REVIEW-v2.json) for its schema-v2
+snapshot and [UD-QUANTS-U0-IDENTITY.json](UD-QUANTS-U0-IDENTITY.json) for
+artifact identity pins).
 
 **Goal:** support the pinned Qwen3.8-27B Unsloth Dynamic Q4_K_M and Q4_K_S
 files as shipped, with compact, operation-complete dense execution on separately
@@ -19,8 +39,10 @@ implementation, runtime replacement, or new registry axis.
 
 This corrects conclusions of the initial audit in `8bd27fe` and `bf46abe`;
 their immutable worklogs remain historical evidence, not current guidance.
-Execution requires a future GPU allocation coordinated with the profiling owner.
-Checkboxes below are future work unless explicitly marked complete.
+The active bring-up lane is zbook / gfx1151; gfx1100 needs a separate hardware
+allocation. Unchecked items remain open unless explicitly excluded by the scoped
+admission decision below. Historical audit and review sections describe their
+stated snapshots, not the integrated model's current refusal inventory.
 
 Related: [architecture](PLAN.md), [intake](GGUF.md), [type portfolio](QUANTS.md),
 [MoE Q3 work](GGUF-Q3-OPT.md), [kernels](KERNELS.md),
@@ -30,14 +52,23 @@ Existing K_M execution/performance charter:
 [QWEN38-UD-Q4KM-GFX11-CAMPAIGN.md](QWEN38-UD-Q4KM-GFX11-CAMPAIGN.md).
 Existing multi-engine evidence:
 [QWEN38-STRIX-HALO-EXTERNAL-SURVEY.md](QWEN38-STRIX-HALO-EXTERNAL-SURVEY.md).
-Reproduction: [executable analysis appendix](UD-QUANTS-REPRO.md) and
-[metadata/accounting snapshot](UD-QUANTS-REVIEW.json).
+Reproduction: [executable analysis appendix](UD-QUANTS-REPRO.md),
+[metadata/accounting snapshot](UD-QUANTS-REVIEW.json) (historical, schema
+implicit v1), [versioned audit snapshot](UD-QUANTS-REVIEW-v2.json) (schema
+v2, current: artifact-qualified policy identity, reproducible from the
+documented CLI command),
+[pre-F5 audit snapshot](UD-QUANTS-REVIEW-v2-pre-f5.json) (byte-frozen
+historical v2, stamp-only policy semantics; see
+[UD-QUANTS-REPRO.md](UD-QUANTS-REPRO.md) "Snapshot history"), and
+[artifact identity pins](UD-QUANTS-U0-IDENTITY.json).
 
 ## 1. Decisions And Findings
 
-1. **The 18/41 refusal counts are real.** Published UD K_M requires Q3_K,
-   IQ4_NL and IQ3_S; K_S additionally requires IQ3_XXS and IQ2_S. IQ4_XS
-   and IQ2_XS currently expand to BF16 on this dense route.
+1. **The baseline had 18/41 refusals.** Published UD K_M requires Q3_K,
+   IQ4_NL and IQ3_S; K_S additionally requires IQ3_XXS and IQ2_S. Raw dense
+   IQ4_XS/Q3_K/IQ4_NL/IQ3_S/IQ3_XXS/IQ2_S and Q3_K embedding integration
+   removes all K_M and K_S base-operation refusals. IQ2_XS still expands to BF16; historical audit tables
+   below describe the pre-integration planner.
 2. **Do not reduce this campaign to a different two-format model.** That is a
    useful optional integration fixture, but it does not support the requested
    published UD files. Deliver K_M first, then the additional K_S surface.
@@ -101,6 +132,36 @@ targets remain open. No equivalent numeric speed promise is invented for K_S:
 freeze its comparator/evaluator before tuning and report losses honestly.
 This review does not loosen the older charter or claim it has passed.
 
+### 1.2 Bring-up Scope And Review Lessons
+
+The immediate milestone is published-file eager c1 generation, followed by
+compact residents and numerical validation. Both published files now generate
+through the public API on gfx1151; this does not close the broader campaign.
+Implementation continues directly, without subagents.
+
+- Retain pre-allocation checks for actual dtype, shape, layout, ordered operands
+  and requested operations. These prevented concrete invalid-pointer routes.
+- Do not turn a valid review counterexample into an automatic requirement.
+  Arbitrary mutation of private pointers, custom-factory transactions, model
+  hot replacement and concurrent profile isolation are not supported bring-up
+  operations. A new session is the reconfiguration boundary.
+- Generic profile lifecycle transactions and repeated native pointer/certificate
+  scans were removed. The remaining cold-path certificate machinery is deferred
+  cleanup, not a prerequisite for adding codecs or running published models.
+- Classify review findings by supported call path, reproducible failure and
+  milestone impact before implementing a remedy. A reviewer can identify a
+  technically real limitation without establishing that a new framework belongs
+  in this task. The coordinator owns that scope decision.
+- A green metadata suite proves only the tested structural contract. Keep
+  published-file generation, independent codec/math checks, model-logit quality
+  and measured memory/performance as separate evidence.
+
+Initial execution uses a fresh process with no named profile or production
+overrides. Process-scoped binders are unchanged; generic profile authorization
+and lifecycle isolation are not claimed. Numerical profile qualification remains
+required before promoting arithmetic-changing optimizations. See the immutable
+`ud-direct-cleanup` and `ud-native-cleanup` worklog entries for removal evidence.
+
 ## 2. Audit Of The Previous Claims
 
 | Previous statement | Verdict and correction |
@@ -144,15 +205,27 @@ metadata, **not the complete model bytes**.
 K_S was growing during this review. At final scan its size equaled the required
 final tensor endpoint, and production `scan_gguf` accepted all three files.
 The earlier "9.64 GiB partial download" is historical, not the handoff state.
-No downloader was started or changed here. Payload checksum verification is
-still required before real fixtures or model-quality claims.
+No downloader was started or changed here.
 
-The existing K_M campaign records full SHA256
-`322e194ff79741c7baa497c240f677f54b201b0efab44ca8e50f122b39123482`
-for this 16,464,440,224-byte artifact. That is prior pinned evidence, not a new
-payload rehash here. U0 should verify it against the execution-host copy and
-reuse its provenance rather than invent a fresh identity. K_S still needs its
-equivalent full-artifact pin.
+All three artifacts are now identity-pinned (UD-U0); see
+[UD-QUANTS-U0-IDENTITY.json](UD-QUANTS-U0-IDENTITY.json):
+
+| File | Upstream revision | Payload SHA256 | Bytes |
+| --- | --- | --- | ---: |
+| `Qwen3.8-27B-Q4_K_M.gguf` | `f1bfb127c64f7072bdd2cad55f258b9c8b2910fe` | `7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169` | 17,106,775,008 |
+| `Qwen3.8-27B-UD-Q4_K_M.gguf` | `4ca720788d1e01f1bff70c033e0d0028fd02e502` | `322e194ff79741c7baa497c240f677f54b201b0efab44ca8e50f122b39123482` | 16,464,440,224 |
+| `Qwen3.8-27B-UD-Q4_K_S.gguf` | `4ca720788d1e01f1bff70c033e0d0028fd02e502` | `75bc9c8adba2842e72f0ab5201aaa07133c5010b566305c09187fcbdcd364017` | 15,358,213,024 |
+
+Payload checksums are prior pinned evidence (the K_M hash from the existing
+K_M campaign; plain K_M and K_S verified against the official pinned GitLFS
+pointers in the parent session); this U0 pass re-fetched all three tiny
+pointers at the pinned revisions on 2026-09-07, re-checked local sizes
+(exact match for all three), and did not rehash the payloads. Header identity
+(SHA256 over the `[0, data_start)` header region, payload bytes excluded; the
+plain K_M value reproduces the historical snapshot byte-for-byte) is recorded
+per file in the identity pins and in the schema-v2 snapshot's
+`header_identity` sections. These pins establish published payload equality,
+not original download history.
 
 ### 3.1 All-file Format Histograms
 
@@ -211,7 +284,10 @@ plugins have distinct artifact, rank-3 routing and consumer contracts.
 
 These are **CPU-calculated weight plans**, not measured GPU residency.
 They use actual AR slots, production allocation formulas, default sidecars,
-and source capability values without importing backend packages.
+and source capability values without importing backend packages. The
+schema-v2 snapshot [UD-QUANTS-REVIEW-v2.json](UD-QUANTS-REVIEW-v2.json)
+reproduces every number in this section and section 4.1 from the pinned local
+files via the documented CLI command.
 
 Count unique `(source, layout)` allocations, including raw/tiles/sidecars, with
 `planned_qwen35_gguf_weight_allocation_nbytes`. Refusals have two explicit
@@ -614,74 +690,751 @@ No speculative optimization precedes its strict fallback.
 
 Dependencies: none; CPU-only.
 Files: `scripts/gguf_quant_route_audit.py`,
-`tests/test_unit_scripts_gguf_quant_route_audit.py`;
+`tests/test_unit_scripts_gguf_quant_route_audit.py`,
+`tests/test_integration_hipengine_public_api.py`, `hipengine/__init__.py` (startup
+isolation only; no runtime arithmetic or dispatch change);
 loader scanner/model-map modules are references, not automatic edits.
 
-- [ ] Pin upstream model revision, payload checksum, file size and header identity
+- [x] Pin upstream model revision, payload checksum, file size and header identity
   for both UD files and the plain control.
-- [ ] Use actual AR and separate NextN maps; report disk/AR/ignored counts and
+- [x] Use actual AR and separate NextN maps; report disk/AR/ignored counts and
   aliases without double counting.
-- [ ] RED: `root.token_embedding`, 64 AR layers, ignored block64, raw Q4
+- [x] RED: `root.token_embedding`, 64 AR layers, ignored block64, raw Q4
   embedding, and MTP-only tensor exclusion.
-- [ ] RED: unsupported version, duplicates, invalid alignment, incomplete table
+- [x] RED: unsupported version, duplicates, invalid alignment, incomplete table
   versus incomplete data. Partial diagnostic mode cannot report loadable.
-- [ ] Report allocation-formula bytes, sidecars, reasons, and both hypothetical
-  refusal treatments.
-- [ ] RED: gfx1100 Q5 sidecar, gfx1151 Q6 exclusion, missing/nonliteral
-  capabilities, env overrides and F32 contraction. Prefer a pure shared policy
-  API over an expanding regex mirror; no backend import for metadata audit.
-- [ ] Reproduce this snapshot and version the repaired report schema.
+- [x] Report allocation-formula bytes, sidecars, reasons, and both hypothetical
+  refusal treatments. Per-scope `allocation` sections in the schema-v2 report
+  use `planned_qwen35_gguf_weight_allocation_nbytes` over unique
+  `(source, layout)` residents, aggregate sidecar counts/bytes with reasons,
+  and report both refusal treatments; real-file totals reproduce the section-4
+  table exactly. The optional planar-Q5 sidecar initially had no production
+  formula and was reported as formula-unavailable rather than guessed; since
+  the 2026-09-07 admission repair it is sized exactly (the INT8 planar-tiles
+  payload of the real converter chain, block formula below in the U1 repair
+  note) and joins the sidecar accounting with the exact bytes.
+- [x] RED: gfx1100 Q5 sidecar, gfx1151 Q6 exclusion, missing/nonliteral
+  capabilities, env overrides and F32 contraction. Capability constants are
+  read from backend source by a bounded AST literal reader (never an import,
+  never expression evaluation); missing/nonliteral constants are reported per
+  capability and resolve to the runtime default. Flag resolution goes through
+  the shared pure policy API `hipengine.loading.qwen35_gguf_policy` used by
+  both the runtime loader and this audit; the per-slot fallback now applies
+  the model-wide F32 contraction, and cross-caller parity against the real
+  backend packages is HIP-guarded in
+  `tests/test_gpu_qwen35_gguf_policy_capability_parity.py`.
+- [x] Reproduce this snapshot and version the repaired report schema.
+  `docs/UD-QUANTS-REVIEW-v2.json` (`schema_version` 2) is the exact CLI output
+  over the three real files; regeneration commands and the snapshot's
+  producing source revision are in
+  [UD-QUANTS-REPRO.md](UD-QUANTS-REPRO.md). The snapshot was refreshed at the
+  UD-U1 F5 repair so `fp16_recurrent_state_default_on` reports the
+  artifact-qualified policy identity (each backend lane carries
+  `artifact_preset_key`); the earlier stamp-only snapshot is preserved
+  byte-frozen as [UD-QUANTS-REVIEW-v2-pre-f5.json](UD-QUANTS-REVIEW-v2-pre-f5.json).
+  Allocation accounting is identical between the two (the refresh changed no
+  planned byte or route).
 
-Run: `.venv/bin/python -m pytest tests/test_unit_scripts_gguf_quant_route_audit.py -q`.
+Run: `.venv/bin/python -m pytest tests/test_unit_scripts_gguf_quant_route_audit.py
+tests/test_unit_loading_qwen35_gguf_policy.py -q`.
 Exit: real planner accounting without device use, clearly distinct from consumer
-qualification. Current five tests are insufficient.
+qualification. U0 is complete (parser validation, production AR/NextN maps,
+shared-policy capability resolution, allocation accounting, identity pins,
+versioned schema, startup isolation); U1+ admission work follows.
+
+Startup isolation (U0 review follow-up, 2026-09-07): a fresh process running
+the audit must load no GPU backend package at all. The engine root
+`hipengine/__init__.py` eagerly imported `hipengine.llm`, whose speculative
+chain loads `hipengine.kernels.hip_gfx1100`; the root package now resolves
+`LLM`/`SamplingParams` lazily (PEP 562) so a bare `import hipengine` is
+CPU-safe and `from hipengine import LLM, SamplingParams, ExecutionProfile` is
+unchanged. Bound by
+`tests/test_scripts_gguf_quant_route_audit.py::test_fresh_process_audit_never_imports_gpu_backend_packages`
+(fresh subprocess installs a meta-path guard rejecting
+`hipengine.kernels.hip_*` / `cuda_*` / torch before any import, then runs the
+actual CLI over a deterministic fixture) and the lazy-export contracts in
+`tests/test_integration_hipengine_public_api.py`. Deliberately untouched: the audit's
+planner, policy, and report logic, and every runtime numerical or dispatch
+path.
 
 ### U1. Role-safe Admission And Policy
+
+**Scoped admission status: implemented and tested.** Load-time role/layout/
+operation checks, resident prerequisites and native route exclusions pass the
+136-test admission/invocation/execution bundle on 2026-09-07. Both published
+files have zero default AR preflight refusals and public eager c1 smoke evidence
+on gfx1151. This establishes the scoped U1 deliverable, not numerical, native
+batch, NextN, named-profile or gfx1100 qualification.
+
+The checked items and review rounds below are implementation history. Their
+18/41 refusal inventories and pending review verdicts describe earlier commits.
+The section 1.2 scope decision excludes generic lifecycle/private-mutation
+frameworks; cold certificate simplification is deferred. Remaining numerical
+and serving acceptance belongs to U2–U6, not further generic U1 authorization.
 
 Dependencies: U0; CPU tests first.
 Files: `hipengine/loading/qwen35_gguf_materialize.py`,
 `hipengine/loading/qwen35_gguf_nextn.py`, backend policy/capabilities,
-profile binders; proposed `tests/test_gguf_ud_admission.py`.
+profile binders; proposed `tests/test_live_gguf_ud_admission.py`.
 
-- [ ] Define cold-path operation coverage records with role/shape/type/layout/
+- [x] Define cold-path operation coverage records with role/shape/type/layout/
   input-output dtype/rows/fallback, using existing registry conventions.
-- [ ] Preserve the existing planned artifact preset `gguf_ud_q4_k_m` for
+  `hipengine/loading/qwen35_gguf_admission.py` ships `CERTIFIED_OPERATION_COVERAGE`:
+  per `(operation, role class, resident layout)` records naming rows scope,
+  input/output dtype, the four-axis `(layer, quant, variant)` consumer family,
+  and a strict fallback; `test_coverage_records_use_existing_registry_layer_names`
+  pins registry conformance. Certified consumers mirror the plain-lane dispatch
+  tables, so unknown layouts/types/roles fail closed.
+- [x] Preserve the existing planned artifact preset `gguf_ud_q4_k_m` for
   model/session admission and concrete per-tensor kernel quant keys; choose an
   equally explicit K_S preset identity. This is not a fifth registry axis.
-- [ ] RED: same stamp/different maps; same histogram/types swapped between
+  Both presets resolve only through pinned role-manifest fingerprints (UD K_M
+  `5535c5bd…`, UD K_S `91130e16…`; distinct from both plain controls despite
+  identical stamps), carry explicit `("ar",)` scopes, and never enter the
+  kernel registry: per-tensor quant keys stay `gguf_*`
+  (`test_preset_keys_are_session_identities_not_registry_axes`,
+  `test_pinned_ud_q4_k_s_has_an_equally_explicit_preset_identity`).
+- [x] RED: same stamp/different maps; same histogram/types swapped between
   recurrent and FFN roles. No unqualified arithmetic or automatic MTP inheritance.
-- [ ] Inventory and constrain all K_M/K_S identity callers while preserving
-  qualified plain controls and rollback.
-- [ ] Separate per-tensor repack from global F32 contraction; retain existing
-  MoE semantics for unchanged manifests.
-- [ ] Preflight all requested operations before allocating; report every
-  unsupported slot, not just first exception.
-- [ ] RED: raw-Q8 and sole-T16 alpha/beta cannot enter a BF16-pointer native-row
+  Manifest fingerprints differ for same-stamp/different-map and
+  histogram-equal swapped-role fixtures, and a certificate bound to one
+  manifest never covers the other
+  (`test_role_manifest_fingerprint_distinguishes_same_stamp_different_maps`,
+  `…_swapped_recurrent_ffn_types`); UD preset keys resolve to no execution
+  profile and no MTP inheritance
+  (`test_ud_quant_key_does_not_inherit_execution_profiles`,
+  `test_mtp_scope_requires_an_explicitly_certified_preset`).
+- [x] Inventory and constrain all K_M/K_S identity callers while preserving
+  qualified plain controls and rollback. Identity callers: the runner policy
+  identity (`_gguf_policy_identity`, all call sites) now appends the resident
+  `artifact_preset_key` so same-stamp UD artifacts miss plain-certified policy
+  tables while plain controls keep the historical key; the packaged
+  hot-vocabulary selection appends the preset key to its identity; MTP serving
+  evidence already binds `artifact.sha256`; execution profiles fail closed for
+  unregistered quants. Plain K_M/K_S/0.8B/MoE-35B controls pass preflight.
+  Review repairs tightened this further: unknown (non-pinned) manifests now
+  get an unqualified sentinel identity instead of inheriting plain policy
+  rows or the packaged hot-vocabulary selection (pinned plain-control
+  fingerprints), the packed-decode-graph caller no longer crashes on
+  preset-bound identities, and every certified coverage family is checked
+  against actual registry registrations.
+- [x] Separate per-tensor repack from global F32 contraction; retain existing
+  MoE semantics for unchanged manifests. `gguf_ar_decode_repack_veto` and
+  `gguf_ar_f32_linear_contraction` are independent predicates over the shared
+  raw-IQ contract (rank-3 MoE exemptions preserved in both);
+  `plan_qwen35_gguf_materialization` takes `repack_veto`/`contract_f32_linear`
+  overrides and derives the previous combined behavior when unset. RED tests
+  in `tests/test_unit_loading_qwen35_gguf_policy.py` and
+  `tests/test_qwen35_gguf_materialize_helpers.py`.
+- [x] Preflight all requested operations before allocating; report every
+  unsupported slot, not just first exception. `materialize_qwen35_gguf_weights`
+  runs `preflight_qwen35_gguf_artifact` over the full plan (NextN-aware
+  fingerprint) before `plan_qwen35_gguf_materialization` and any `malloc`, and
+  raises one aggregated `Qwen35GGUFAdmissionError` naming every refused
+  slot/mode. Measured: UD K_M refuses with exactly its 18 pinned unsupported
+  AR slots, UD K_S with 41 (40 projections + Q3_K embedding), with zero
+  allocator invocations before the refusal.
+- [x] RED: raw-Q8 and sole-T16 alpha/beta cannot enter a BF16-pointer native-row
   owner; unsupported multirow BF16 embedding cannot silently use a singleton.
-- [ ] Keep AR-only and AR+MTP capabilities distinct.
+  `ar_decode_native_rows` is a distinct operation: only a dense-BF16 resident
+  qualifies as the `dense_gemv_out_bf16` BF16-pointer owner; raw Q8_0 (UD),
+  sole-T16 with no raw allocation, and dense-F32 (plain) alpha/beta are all
+  refused; dense-BF16 embeddings have deliberately no certified record (the
+  consumer drops rows), so a multirow gather is refused instead of silently
+  resolving a singleton. Review repair: the refusal is now also bound at load
+  time (`requested_operations`) and enforced at the actual native execution
+  entries (`step_rows_native` / `capture_native_rows_graph`) before any state
+  mutation or device call, using the real resident records.
+- [x] Keep AR-only and AR+MTP capabilities distinct. Both UD presets carry
+  `("ar",)` scopes; `mtp_nextn_draft` is scope-refused for them and for
+  unresolved plain artifacts, and `materialize_qwen35_gguf_nextn_weights`
+  refuses non-MTP-certified presets before draft validation, planning, or
+  allocation.
 
 Run after creating the file:
-`.venv/bin/python -m pytest tests/test_gguf_ud_admission.py -q`.
+`.venv/bin/python -m pytest tests/test_live_gguf_ud_admission.py -q`.
 Exit: unknown layouts fail closed, no plain-artifact certificate reuse for UD.
+
+#### U1 review repairs (2026-09-07)
+
+The U1 completion claim above was premature. An independent review found six
+real defects in the landed work; the closure paragraph overstated what the
+tests proved, and one claim (allocation-sentinel tests for the plain
+K_M/K_S/0.8B/MoE-35B controls reaching allocation) had no test behind it at
+all. Initial repairs were added with RED-then-GREEN CPU tests and immutable
+worklog entries on `ud-quants`; later reviews reopened several findings.
+The table records repair history, not current closure:
+
+| # | Severity | Defect in the original U1 work | Repair (commit) |
+| --- | --- | --- | --- |
+| F1 | HIGH | `ar_decode_native_rows` was never requested by the materializer nor checked at native execution entry; raw-Q8/sole-T16/dense-F32 alpha/beta could reach the BF16-pointer owner. | Load-time binding + entry checks in `step_rows_native`/`capture_native_rows_graph` (`6a9712ee7`) |
+| F2 | HIGH | The moe_experts whitelist omitted rank-3 IQ3_XXS although the materializer keeps it raw and `gguf_iq_gemv` registers selected-expert consumers. | Raw-only IQ3_XXS moe_experts coverage records with rank/shape/backend/dtype contract; rank-2 dense still refused (`cd73d1cef`) |
+| F3 | HIGH | Coverage qualified op/role/layout/source only: unknown backends earned certificates, `cuda_sm120a` (no GGUF consumers) was positively certified, records carried placeholder consumer keys, the dense-F32 lm-head was certified with a convenient F32 input the default caller never supplies, and shapes were checked only via allocation bytes. | Round-1: backend keys restricted to the registered metadata surface; per-slot allocation-accounting aggregates planner refusals before allocation (`d665c01eb`). Round-6 consumer-key repair (not closure): concrete per-backend `GGUF_CONSUMER_LAYERS` declarations (AST-read, parity-tested), every record bound to a concrete four-axis consumer via the parity-tested dispatch-surface mirror, cuda_sm120a refused, dense-F32 lm-head refused under the actual BF16 caller dtype with the declared-F32-input route preserved (see the round-6 subsection) |
+| F4 | HIGH | Certificates ignored slot filters and the effective plan contract: a one-slot preflight certified the full artifact, and contraction-enabled certificates were reusable on uncontracted plans. | `Qwen35GGUFPlanContract` + slot-scope recorded on every certificate; `certificate_covers_artifact` verifies both, legacy certificates fail closed (`39a7d40ae`). Third-round repair: the contract now binds the actual planned residents and coverage always requires the intended plan (see the round-3 subsection below). Fourth-round repair: intended-operation defaults and complete qualification accounting — refused reports can no longer supply authorizing contracts (see the round-4 subsection below) |
+| F5 | HIGH | Unknown manifests (preset=None) inherited the plain stamp-based policy identity and the packaged hot-vocabulary selection. | `GGUF_UNQUALIFIED_MANIFEST_PRESET` sentinel + seven pinned plain-control fingerprints; loader and NextN materializer bind the qualification (`95f9fa2fd`). Fifth-round repair: the actual stamp-only policy callers (runner FP16 recurrent-state default, graph submission transport, private-c1 arena admissions) now bind the artifact qualification too (see the round-5 subsection below) |
+| F6 | MEDIUM | `packed_decode_graph_min_replay_steps` destructively unpacked a 2-tuple identity that now optionally carries a preset key → `ValueError` for preset-bound residents. | Arity-safe unpack; preset-bound identities resolve only preset-keyed rows, never plain rows (`e2bb6d5e2`) |
+
+These repairs closed the round-1 findings: `tests/test_live_gguf_ud_admission.py`
+is green on CPU (real-artifact tests skip without the pinned files), admission binds to
+actual role/shape/type manifests rather than stamps or histograms, the loader
+preflights backend/materializability/scope before any allocation, both
+K_M/K_S identity callers constrain UD, unknown manifests fall back generically
+instead of inheriting plain-certified behavior, certificates carry their exact
+slot/plan scope, and the native-row BF16-pointer owner contract is enforced at
+the real execution entries. UD artifacts remain refused for execution until
+U2-U5 deliver the missing dense consumers; the refusal lists are the honest
+per-slot inventory for those units. Later review rounds (below) found further
+defects, so U1 remains not accepted until every pending finding passes review.
+
+#### U1 review repair regressions (2026-09-07, second review round)
+
+A follow-up review accepted F6 and found two functionality regressions that
+the repair commits themselves introduced; the remaining findings (F1, the
+concrete-consumer substance of F3, F4, F5) stay pending re-review. Both
+regressions are fixed with RED-then-GREEN CPU tests; U1 remains not accepted
+until the pending findings pass review.
+
+- **Raw moe_experts coverage collision (from the F2 repair).** The repair-2
+  IQ3_XXS records reused the earlier raw records' `(operation, role_class,
+  resident_layout)` coverage-index key, and the index was last-write-wins, so
+  the IQ3_XXS record silently displaced Q3_K/Q4_K/Q5_K/Q6_K/IQ2_XS/IQ4_XS raw
+  rank-3 experts: a rank-3 Q4_K MoE map with `decode_repack=False` was refused
+  `consumer_unqualified`, and mixed-IQ expert maps broke. The index is now
+  keyed per concrete source type (`_build_coverage_index` over
+  `(operation, role_class, resident_layout, source_ggml_type)`) and rejects
+  two different records claiming one source type at construction; each raw
+  expert format keeps its own consumer record (gguf_q\*\_k raw family vs
+  gguf_iq3_xxs selected consumers) instead of one merged blob.
+- **Mandatory allocation-formula validation refused the Q5 planar sidecar
+  (from the F3 repair).** The per-slot materializability check added with the
+  F3 repair calls `planned_qwen35_gguf_weight_allocation_nbytes`, which had no
+  formula for the `qmicro_planar` allocation name — so the env-gated
+  (`HIPENGINE_C8_Q5_PLANAR_DP4A=1`) planar Q5 T16 `ssm_out` resident that the
+  C8-P2 route materializes today became a hard `planner_refused`. The exact
+  formula is derived from the actual converter/allocation ABI — the INT8
+  `planar.tiles` payload of
+  `convert_gguf_q5_k_qmicro_tile16_to_planar(repack_gguf_q5_k_qmicro_tile16(raw[None, ...]))`
+  with shape `[experts, out/16, bytes_per_row/176,
+  GGUF_Q5_K_QMICRO_PLANAR_T16_BLOCK_BYTES=3328]` (for the measured 5120x6144
+  `ssm_out`: tiles 22,118,400 + raw 21,626,880 + planar 25,559,040 bytes) —
+  gated to Q5_K T16 residents exactly like the materializer's own sidecar
+  check. Tile-alignment and unsupported-layout refusals are unchanged, and the
+  never-produced standalone `gguf_q5_k_qmicro_planar_v1` resident layout stays
+  refused. The route audit now reports the sidecar formula-sized instead of
+  formula-unavailable.
+
+Re-review status: F6 accepted; F1, F3 (concrete consumer), F5 pending;
+F4 was re-opened by round 3 and repaired there; this regression round is
+subject to the same review.
+
+#### U1 review repair round 3 (2026-09-07): F4 resident-plan binding
+
+A third review accepted the F2/Q5-planar regression repairs and found F4
+still open on two points, both now repaired on CPU with RED-then-GREEN tests
+(`worklog` entry `ud-u1-f4-resident-plan-certificate`):
+
+- **Coverage approval could skip plan verification.**
+  `certificate_covers_artifact` compared the effective plan contract only
+  when the caller volunteered one; omitting it still accepted an
+  override-specific certificate as operation coverage. The intended
+  `plan_contract` is now a required argument and is always verified; a
+  certificate without recorded plan metadata fails closed; the pure
+  source-identity check moved to a distinct
+  `certificate_matches_artifact_identity` whose contract states it can never
+  authorize operations.
+- **The recorded contract missed env-resolved layout selectors.**
+  `Qwen35GGUFPlanContract` recorded caller kwargs and env-resolved booleans,
+  but the layout selectors read inside the planner
+  (`HIPENGINE_GGUF_SELECTED_GATE_UP_X8`, `..._GATE_UP_RAW`,
+  `..._SELECTED_X8_REPACK`, `..._SELECTED_DOWN_RAW`,
+  `HIPENGINE_GGUF_Q8_0_RAW_SIDECAR`, `HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL`,
+  `HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR`) changed actual residents without
+  changing any recorded field: a rank-3 Q4_K MoE preflight with
+  `decode_repack=True` records identical contracts with the gate/up X8 env
+  off (T16 residents) and on (X8 residents). The contract now carries a
+  canonical sorted record per checked slot — logical slot path, source
+  identity (name/shape/GGML type), resident layout, per-tensor quant key,
+  allocation names, planned per-allocation byte counts, sidecar layouts —
+  plus a deterministic sha256 digest that is always re-derived from the
+  records. Coverage verifies the intended contract per slot: full-artifact
+  intent requires a full-artifact certificate whose records subsume the
+  intended records; subset intent requires slot-scope nesting plus exact
+  per-slot record equality (narrowing preserved, enlargement refused);
+  contracts whose records do not cover their claimed slot scope fail closed.
+  The loader (`materialize_qwen35_gguf_weights`) is a real certificate
+  consumer: an `admission_certificate` argument is re-verified against the
+  fresh admission report before any allocation, and residents carry the
+  minted certificate for downstream re-verification. Identical effective
+  plans compare stably regardless of input spelling/order; the pinned UD
+  refusal inventories (18 K_M planner-refused slots / 41 K_S) are unchanged.
+
+Re-review status after round 3: F6, F2, and the Q5-planar regression repair
+accepted; F4 repaired here (two round-3 points above) and F1, F3 (concrete
+consumer), F5 still pending re-review. U1 remains open.
+
+#### U1 review repair round 4 (2026-09-07): F4 operation defaults + complete qualification accounting
+
+A fourth review found two HIGH scope holes in the round-3 certificate work
+(`56dba7d3c`), both repaired on CPU with RED-then-GREEN tests (worklog entry
+`ud-u1-f4-operations-and-completeness`):
+
+- **Operation membership was only checked when the caller volunteered an
+  operation set.** Omitted, `certificate_covers_artifact` verified no
+  operations at all: an `ar_decode_c1`-only certificate returned True for a
+  prefill intended plan with identical residents, and (neighboring
+  counterexample) identical residents would likewise have covered an
+  `ar_decode_native_rows` intent. The intended operation set now defaults to
+  the intended contract's own checked operations — the whole intended
+  contract must be certified — and an explicit set must be non-empty and
+  narrow within BOTH the certificate's certified operations and the intended
+  contract's checked operations. Planned resident bytes establish
+  allocations, never row-operation or dtype qualification.
+- **Refused preflight reports could supply authorizing contracts.** The
+  preflight records only successfully qualified slots, and contract
+  self-consistency merely required a nonempty record set, so the refused
+  F32-alpha/beta native-rows report (alpha/beta omitted from its records)
+  compared True against the contracted certificate under an explicit native
+  operation. The contract now binds complete expected-versus-actual
+  qualification: `required_plan_slots` enumerates every slot the preflight
+  tried to qualify (participating or refused — planner, consumer, unknown
+  role class, and unknown `slot_filter` entries, which are now refused
+  instead of silently ignored) and `operation_scope_refusals` records
+  operation-level scope gates (MTP draft). A contract is
+  authorization-capable (`Qwen35GGUFPlanContract.is_complete`) only when its
+  records cover exactly the required accounting and nothing was refused;
+  `certificate_covers_artifact` requires completeness on both the recorded
+  and intended sides, `Qwen35GGUFAdmissionReport.certificate` refuses to
+  mint an incomplete contract, and a named nonempty slot scope with no
+  verified residents fails closed. Refused reports keep their partial
+  contracts for debugging — they can no longer authorize. The digest still
+  covers only successful records (unchanged format); completeness is bound
+  by the enumeration accounting, so the proof is not circular.
+
+Re-review status after round 4: F6, F2, and the Q5-planar regression repair
+accepted; F4 repaired here (the two round-4 points above) and awaiting
+re-review together with F1, F3 (concrete consumer), and F5. U1 remains open.
+
+#### U1 review repair round 5 (2026-09-07): F5 stamp-only policy callers
+
+A fifth review round accepted the F4 round-4 repair and confirmed the
+remaining F5 hole unchanged since round 1: the sentinel and the 3-tuple
+policy identity existed, but actual production callers still passed only the
+header stamp (or ``(geometry, stamp)``) into artifact-qualified policy
+selection, so an unknown non-pinned manifest sharing a qualified control's
+stamp silently inherited plain-certified policy. All stamp-only callers of
+artifact-qualified tables were inventoried and repaired on CPU with
+RED-then-GREEN tests (worklog entry `ud-u1-f5-policy-callers`):
+
+- **Runner FP16 recurrent-state default**
+  (`Qwen35GGUFFullStackRunner` initialization →
+  `_gguf_fp16_recurrent_state_enabled`): the initializer now passes the
+  loader-resolved `artifact_preset_key` of the actual resident weights. Only
+  a qualified plain control (`artifact_preset_key=None` from admission) may
+  inherit the stamp-certified backend default
+  (`GGUF_FP16_RECURRENT_STATE_DEFAULT_FILE_TYPES`); UD-preset and
+  unknown-manifest artifacts resolve the generic strict FP32 storage default.
+  The `HIPENGINE_GGUF_FP16_RECURRENT_STATE` environment value remains the
+  documented developer opt-out for every identity — it is an explicit
+  override, not a certified default, and no supported arithmetic claims were
+  widened.
+- **Decode-graph submission transport**
+  (`_resolve_gguf_decode_graph_submission_transport` and its two production
+callers, single-slot and packed capture): the policy row lookup is now
+identity-keyed exactly like the F6 packed-floor fix — plain identities keep
+the historical ``(geometry, stamp)`` rows; preset-bound and unknown
+identities resolve only an exact preset-keyed row (none ship today) and
+otherwise the generic hipgraph fallback. No tuple truncation or identity
+stripping; explicit `submission_transport` requests still override for any
+identity.
+- **Private-c1 arena admissions** (same bypass class, found by the caller
+inventory): `_resolve_gguf_private_c1_small_weight_arena`,
+  `_resolve_gguf_private_c1_decode_scratch_arena`, and
+  `_resolve_gguf_private_c1_weight_arena_max_allocation_bytes` are
+  identity-keyed the same way, and `Qwen35GGUFResidentSession`
+  initialization derives the artifact qualification from the actual manifest
+  (header-only tensor map + structural NextN map, exactly like the
+  materializer) before materialization instead of trusting the header stamp.
+  Lazy startup isolation is preserved: the manifest derivation happens only
+  when a backend actually ships arena policy rows.
+- **Caller inventory outcome**: every other stamp/policy-table consumer in
+  the runner already resolves through the full `_gguf_policy_identity`
+  3-tuple (dense-pair/norm-residual/dual-WMMA/rocblas/chunk/scratch tables,
+  whose 3-tuple keys miss plain 2-tuple rows by construction); the packaged
+  hot-vocabulary and NextN materializer paths were already bound by the F5
+  round-1 repair; the remaining stamp consumers are generic type-family
+  policies deliberately left untouched (GDN quant+head-shape recurrence
+  modes, host-token-embedding GGML type gates, shape-keyed rowtile/QK
+  postprocess tables, and default-off env-gated probes) — no blanket
+  disabling and no artifact renaming.
+- **Audit parity**: `gguf_fp16_recurrent_state_default` (the shared pure
+  policy mirror) carries the same artifact binding, and the quant-route
+  audit reports `artifact_preset_key` and an artifact-qualified
+  `fp16_recurrent_state_default_on`, still resolving capabilities from
+  backend sources without importing a backend package. Evidence follow-up
+  (accepted in the round-5 static review as the sole remaining item): the
+  schema-v2 snapshot [UD-QUANTS-REVIEW-v2.json](UD-QUANTS-REVIEW-v2.json) was
+  regenerated at the F5 source revision so the stored evidence matches the
+  repaired audit — the exact-UD K_S file on gfx1151 now reports the FP16
+  default `false` with `artifact_preset_key: gguf_ud_q4_k_s`, the plain K_M
+  control keeps `null`/`false`; the pre-F5 snapshot is preserved byte-frozen
+  as [UD-QUANTS-REVIEW-v2-pre-f5.json](UD-QUANTS-REVIEW-v2-pre-f5.json)
+  (snapshot history and producing revisions in
+  [UD-QUANTS-REPRO.md](UD-QUANTS-REPRO.md)).
+
+Re-review status after round 5: F2, F6, the Q5-planar regression repair, and
+F4 accepted; F5's named stamp-only bypass closure was accepted in static
+review at `c5b9588b8` (172 focused tests pass), with the snapshot-evidence
+mismatch repaired as the follow-up above (current snapshot regenerated at the
+F5 source revision; pre-F5 snapshot frozen); F1 (native-row execution
+dependencies) and F3 (concrete backend/dtype consumer substance) remain
+pending. U1 remains open.
+
+#### U1 review repair round 6 (2026-09-07): F3 concrete consumer qualification
+
+Round 6 added the following consumer-key and dtype metadata repairs on CPU
+(worklog entry `ud-u1-f3-concrete-consumers`; no GPU, no new kernels, no
+numerical change). Its closure claim was rejected by the subsequent integrated
+review: key existence does not prove resident prerequisites or actual operand
+ABIs, and storing an F32-input declaration does not bind authorization.
+
+- **Backend binding is now concrete registration, not a known arch name.**
+  Each hardware backend package declares its `GGUF_CONSUMER_LAYERS` as a
+  source literal (`hip_gfx1100`/`hip_gfx1151` declare the full certified
+  surface; `cuda_sm120a` explicitly declares none after a real inventory —
+  its scaffold registers moonshine/maple/PARO families but no `gguf_*`
+  linear/embedding/dense/router/GDN/selected-expert consumer). Admission
+  reads the declarations with a bounded AST literal reader (the audit
+  capability-reader convention: never an import, never evaluation;
+  annotated and plain assignments); a slot whose certified consumer layer
+  is not declared is refused with the missing layer named, aggregated
+  before any allocation. `tests/test_integration_qwen35_gguf_consumer_surface_parity.py`
+  proves the declarations are neither lies nor stale: every concrete
+  consumer key named by every certified record (both row-mode variants) is
+  actually registered on every declaring backend — with no placeholder
+  skips — the cuda inventory holds, and both HIP declarations equal exactly
+  the certified consumer-layer set.
+- **Coverage now names concrete four-axis consumers bound to the actual
+  runtime dispatch surface.** `hipengine/loading/qwen35_gguf_consumer_surface.py`
+  mirrors `runtime/gguf_linear._DISPATCH_TABLE` row-for-row (layout,
+  activation, output, layer, quant token, variant, ABI, plus the
+  `_variant_for_rows` multirow rewrite including the Q4-T16 special case);
+  a parity test asserts exact equality, so coverage can never name a
+  variant the dispatcher would not resolve. Placeholder records (the
+  former `<from-weight>`/`None` quant/variant forms and the nonexistent
+  `moe_selected`/`gdn_chain` layers) are gone; the selected-expert records
+  name the real registered keys per format (`moe_linear` for Q3_K/IQ* and
+  the T16/X8 repack families, the `linear` raw selected keys for Q5_K/Q6_K),
+  with one documented exception: raw rank-3 Q4_K selected experts are
+  consumed through the direct `gguf_q4_k_gemv` module wrapper the runtime
+  actually calls, so that record names the module symbol (parity-checked)
+  and the registry-mediation gap is filed in `docs/REFACTOR.md`.
+- **The dtype repro is fixed at the actual caller contract.** The default
+  records now mirror what the production callers actually supply: BF16
+  activations without an input override. A dense-F32 lm-head therefore has
+  NO default `lm_head_f32_logits` record — the dispatch table has no
+  `(dense_f32, bf16, f32)` row — and the preflight refuses `root.lm_head`
+  with that reason before any allocation (the F32-head counterexample now
+  RED-fails on the old code and passes on the new). The registered
+  F32-activation route (`dense_gemv/f32/f32_hidden_f32_out`, the c1/verifier
+  F32-input route) stays certifiable when the caller declares
+  `f32_input_operations=(lm_head_f32_logits,)`; the declaration is
+  recorded on the plan contract. However, the integrated review found that
+  BF16 records take precedence even under this declaration and verification
+  does not compare it: certificates can transfer across activation contracts.
+  Only the bounded default dense-F32-head refusal was established here.
+- **Preserved exactly:** the pinned UD refusal inventories (18 K_M / 41 K_S
+  planner-refused slots), all qualified plain/MoE controls on both HIP
+  backends (real-artifact preflights), the Q6 head (257,256) T16 shape
+  refusal, the Q5 planar sidecar formula, the raw MoE 7-format index, the
+  F4 certificate completeness machinery (the contract gains only the
+  additive `f32_input_operations` field), and the audit schema-v2 snapshot
+  (regenerated identically; the audit does not consume admission records).
+  The loader forwards `f32_input_operations` to the preflight, but no
+  production caller supplies it. Native head execution currently passes BF16
+  `scratch.norm`; declaring F32 without a real compatible operand/adapter is
+  not a valid repair. Loader/entry execution dependency closure remains F1.
+
+#### Integrated expert review and resident-prerequisite repair
+
+The integrated review of `a6f79f562` rejected the round-6 F3/F4 closure and
+found an additional F5 profile-binder bypass. F2's seven-format raw-expert index,
+F6's qualified identity propagation, the Q5 planar-sidecar byte formula, and the
+bounded F4 completeness/F5 policy-caller repairs passed focused preservation
+checks. These bounded successes do not establish U1 acceptance.
+
+The first authorized implementation unit adds
+`validate_qwen35_gguf_resident_prerequisites` in
+`loading/qwen35_gguf_materialize.py`. It checks canonical source geometry and
+every selected primary/allocated-sidecar route before allocation-byte
+accounting. The actual materializer converter dispatch and the CPU repackers
+share immutable `GGUFRepackShape` contracts from `quant/gguf_repack.py`.
+Admission aggregates resident failures even when the requested operation does
+not consume that selected slot; single-weight materialization also checks the
+boundary before reading payloads. No allocation formula, arithmetic, kernel,
+repack-selection flag, or policy default changes.
+
+The byte-neutral Q6 planar `(5121,256)`, Q5 qmicro expert `(2,257,256)`, and
+Q4/Q5/Q6 X8 expert `(2,257,256)` cases now refuse at the same rank/tile/block
+boundary as their CPU converters. Legal neighbors, all 11 primary repack
+routes, allocated Q4 T16/Q6 X8/Q5 planar/raw sidecars, and non-repacked
+residents have focused CPU coverage. Optional expert-sidecar eligibility is
+not an allocated sidecar and does not impose tile alignment on raw experts.
+The real tiny-GGUF loader negative covers both full and filtered loads with
+zero payload reads or allocator calls. Exact test outcomes and the full review
+handoff are in the `ud-u1-resident-prerequisites` worklog entry.
+
+**Current status (resident/NextN prerequisites and integrated F3/F4 accepted after GDN geometry closure; F1 pending independent review):**
+
+| Finding | Status and remaining work |
+| --- | --- |
+| F1 | Implemented pending review: additive native execution dependency closure, real session/engine → loader requests, F4 consumption at native eager/capture/replay/direct-layer entries, exact row/state/physical-owner gates. CPU structural evidence only; see the F1 section below. |
+| F2 | Bounded repair accepted: preserve the seven raw expert formats and rank-2 IQ3_XXS refusal. |
+| F3 | Accepted after GDN geometry closure: shared production invocation owners and explicit selected-call intents. C1/indexed/prefill auxiliary ABIs, GDN handoffs, native alpha/beta and ordered selected partners are represented without changing kernels or numerical defaults. |
+| F4 | Accepted: backend plus resolved invocation/partner identity binds alongside actual residents. Independent required slots/calls and scope refusals prevent partial/filter/operation narrowing from promoting incomplete plans. |
+| F5 | Bounded identity-aware policy callers repaired; profile authorization OPEN. Actual LLM auto quant resolution can select the plain production profile for an unknown manifest; its binder sets FP16 state through the environment, bypassing the qualified default without a user FP16 override. |
+| F6 | Bounded repair accepted: retain preset-qualified identity in packed replay policy calls. |
+
+### Integrated F3/F4 invocation-contract repair
+
+The CPU-safe production owners are
+`loading/qwen35_gguf_consumer_surface.py` and
+`loading/gguf_selected_contract.py`. Runtime linear/embedding/router dispatch,
+selected FFN topology and argument marshalling, native alpha/beta, and named
+conv/GDN/RMSNorm wrappers consume their metadata. The former independent
+20-row linear dispatch table is now a generated compatibility view. Consumer
+availability remains distinct from numerical/profile qualification.
+
+`SelectedCallIntent` explicitly names `single`, `dual`, `dual_silu`, or
+`weighted_down`, ordered weight slots, actual input/output types, routing and
+buffer owners, and selected lanes per token. Full-model defaults use the same
+caller-plan owner as production. Load scope is independent: filtering to the
+gate slot cannot silently replace a paired gate/up intent with a singleton.
+A missing required partner refuses before payload access/allocation. An
+explicit singleton diagnostic can qualify a supported single-weight load,
+but its certificate cannot cover a full-model paired intent. An explicit empty
+intent tuple supports non-expert diagnostics, not selected calls with missing
+dependencies. The dual caller now owns the existing ordered two-single fallback
+as well as the direct dual launch; this is host factoring, not new arithmetic.
+
+Certificates bind the canonical resolved invocation records and independently
+required calls as well as the resident records: backend, ordered partners and
+their complete source/resident/allocation/sidecar identity, operand types and
+owners, adapters, operation/row limits, geometry and relevant scalar parameters.
+The intended contract is required; omitted backend/operation arguments derive
+from it. Completeness is checked before any narrowing. Equivalent effective
+contracts can compare equal despite different declarations; a declared F32
+input cannot be backed by a BF16 record. This is ordinary immutable internal
+metadata, not a cryptographic proof against fabricated contracts.
+
+Auxiliary boundaries are explicit: c1 conv/GDN differ from indexed native
+rows; conv writes F32, segmented GDN has F32 conv/state/output and BF16
+gate/alpha/beta operands, and prefill GDN publishes BF16 through its composite
+caller. `ssm_norm` belongs to that composite. The row-local `ssm_out` handoff
+resolves actual F32 input where supported or records the executed BF16 cast.
+Native alpha/beta name the direct BF16 owner, not a rewritten prefill kernel.
+The P2 review follow-up validates GDN geometry through the same CPU-safe rules
+used by the native exports and Python wrappers: positive head counts/dimensions,
+value-head count divisible by key-head count, and a value-head limit of 128
+for both c1/row-local and segmented recurrence (F32 or FP16 state). Only the
+baseline prefill export uses the uncapped positive value-head contract.
+Native-source predicate tests distinguish these boundaries independently of
+mocked launch returns. The runner and admission share exact inner-size/value-head
+division; conv channel/kernel positivity is shared too. Geometry refusals retain required
+slot/invocation accounting and cannot mint or transfer certificates. This
+follow-up is pending independent review, not F1/F5 closure.
+Native head input stays BF16; no F32 declaration was added to force admission.
+The historical Q8T16 `(bf16 selector, fp16 output)` row keeps its runtime key,
+but metadata identifies its actual FP16 pointer ABI and does not qualify a
+supplied BF16 pointer against it.
+
+Limits are fail-closed: optional raw/T16 selected DP4A adapter experiments
+require their own qualified intent; mandatory X8 adapters are represented.
+The baseline prefill GDN contract requires F32 state rather than guessing an
+FP16 prefill plan. Existing runtime implementations and profile/variant
+selectors remain available and unchanged; these metadata contracts do not
+authorize a numerical profile or an unrepresented caller override. Internal
+optimized alternatives share a caller contract only when its supplied operands,
+output/state ownership, geometry and row semantics are identical; arithmetic
+selection still belongs to the existing profile/variant policy. A baseline key
+alone does not certify a different caller adapter or external workspace.
+Borrowed selected partners have no implicit authorization path: every partner
+must be present in the bound resident plan.
+
+F1 complete execution dependencies and runtime-entry certificate consumption,
+and F5 artifact-bound profile authorization, remain OPEN and require the next
+units after review. No new entry guards, profile authorization, codec, kernel,
+math or performance result is claimed here. U2+ and published dense UD execution
+are not implemented; the pinned 18 K_M / 41 K_S planner-refusal inventories
+remain the expected default result.
+
+#### F1 native load dependencies — implemented; runtime authorization simplified
+
+`loading/qwen35_gguf_execution.py` declares the full native weight-consuming
+route, using the accepted linear/embedding/auxiliary and selected-call owners.
+Native operations now include embedding, general projections, recurrent
+auxiliaries, the BF16-input/F32-output head, router and ordered selected
+gate/up/down partners where present. A native-only materializer request adds
+to `DEFAULT_AR_OPERATIONS`; it cannot erase the ordinary required calls.
+`execution_routes=("native_rows",)` or `("native_graph",)` on the resident
+session is passed through the actual full-stack runner to the materializer.
+The generator's selected native batch path passes both routes explicitly.
+Default `("eager",)` preserves the separate existing c1/row-local/prefill scope.
+A later native request on eager-only residents refuses, rather than replanning
+after allocation.
+
+Before payload reads or device allocation, the loader checks the intended
+calls. Session construction also checks shared residents against the full native
+load contract. This check is not repeated during inference. Native entry points
+check the construction-time route choice, row bounds and unsupported adapters;
+graphs also check closed owners, token IDs and their context bound. Private
+resident pointers, scratch views and captured geometry are session-owned and
+must not be replaced while live. Reconfiguration requires a new session.
+
+Unsupported combinations stay explicit: dense-BF16 multirow embedding (the
+registered leaf is singleton-only), native dense-F32 head with BF16 scratch,
+non-BF16 native alpha/beta, rows outside 2–8, non-BF16 native KV,
+unrepresented host/deferred or
+expert-sidecar adapters, and the accepted F4 selected-adapter/state restrictions.
+Known session-level misses refuse before loading; unanticipated later entry
+requests refuse before mutation/device work. The embedding runtime itself now
+uses the shared row predicate before registry resolution and refuses multirow
+BF16 before the singleton leaf; no row loop, numerical adapter or kernel was
+invented. Raw embedding still forwards rows.
+
+The new tests use real tiny GGUF files and mocked allocations/calls. They prove
+structural control/ABI properties, **not numerical or GPU certification**.
+F2/F6, repacks, NextN ordering, GDN geometry and F4 transfer gates are preserved
+by the affected CPU bundle. F5's integrated LLM profile-binder hole remains
+**OPEN**; this unit does not grant named-profile permission or change a profile,
+math, environment flag or numerical default. Exact validation and scope limits
+are recorded in the `ud-u1-f1-execution` worklog entry.
+
+#### F1 physical-operand authorization experiment — historical, removed
+
+The following records the experiment in `6fb94aae9`, not the current runtime.
+Direct cleanup removed its pointer inventories, index receipts, invocation
+contexts and repeated full-model authorization. The experiment tested arbitrary
+private-field mutation as though it were a supported reconfiguration API.
+Construction-time compatibility checks and existing buffer lifetime rules are
+the boundary used for UD bring-up. No GPU speed claim follows from this removal.
+
+Review of `1b3ee1417` accepted the load dependency closure but found two HIGH
+physical-binding gaps: sampler output replacement and named KV/position/rotary
+view replacement could evade the graph key, and direct native layer methods
+did not validate their supplied hidden/output/index pointers. The earlier
+physical-ownership claim was therefore incomplete.
+
+The experiment's `loading/qwen35_gguf_native_operands.py` owned `NativeRowsOperands`, the
+actual native launch **and host-readback** plan: token IDs, BF16 ping-pong
+hidden rows, logits, segmented-index inputs, sampler block values/indices,
+sampler output IDs/values, and the persistent host token destination. Native
+enqueue and replay consume that plan. A recursive inventory walks every named
+scratch dataclass field, including nested KV spans, cache tuples, position and
+rotary Tensor views, their dtype/shape/strides/device, owning buffers and static
+geometry. Merely retaining `scratch.buffers` cannot hide a changed named view.
+Host array contents are dynamic; the invocation's decode bound, graph context
+bounds, physical owners and view geometry are not.
+
+Both direct native layer methods require an owner-issued
+`NativeInvocationContext`. The real enqueue supplies it. Validation checks the
+current certificate/owner plan, actual runner and scratch views, layer geometry,
+BF16 row-prefix inputs/outputs, buffer ranges/dtypes/non-aliasing, and exact
+compact index pointers before any kernel or library access. Prefix views of
+larger resident buffers and the real compact KV/position subview constructor
+are covered; arbitrary nonzero pointers or unrequested offsets are not authority.
+`NativeIndexBinding` records the canonical host metadata and destination after
+the allocator's successful H2D publication. This is producer/ownership evidence,
+**not an assertion that device contents were read or numerically verified**.
+
+Capture stores the issued context. Replay checks it, including freshly derived
+compact views and all sampler/readback operands, before H2D, position publication
+or graph launch. Missing legacy contexts fail closed. CPU tests exercise both
+real layer entries, real enqueue forwarding, legal prefix views, changed named
+operands with unchanged owning lists, and changing contents with stable owners.
+That correction did not include GPU, kernel, math, profile, default-route or
+U2 work. Its mutation-defense tests are historical, not current acceptance gates.
+
+#### F5 named-profile authorization experiment — historical, removed
+
+The following describes the rejected experiment, not the current API. Generic
+factory qualification/rollback was removed during direct cleanup. The
+cancelled lifecycle prototype was also discarded after a local backup. Existing
+profile binders retain their pre-experiment process-scoped behavior; use a fresh
+process without a named profile for initial UD bring-up. Model hot replacement,
+custom-factory transactions and concurrent profile isolation are not bring-up
+requirements. Numerical production-profile validation remains a later gate.
+
+The final known integrated-review bypass was profile-generated permission:
+`LLM` auto or explicit plain quant lookup selected a plain production plan for
+an unknown same-stamp manifest; its binder set FP16 state through the environment
+although the artifact-qualified runner default was false. That internal write
+was not an explicit user override.
+
+`RuntimeProfilePlan.qualifier` now owns the plugin's cold qualification gate.
+`LLM` forwards actual header metadata; resolution checks it before variant
+package loading or factory invocation. `ResolvedRuntimeProfile` binds the
+artifact identity separately from its unchanged variant-manifest hash and
+rechecks construction inputs, custom-generator metadata, and direct public
+binder calls. Missing context fails closed. Generator metadata conflicts and
+invalid artifacts refuse before any binder environment write; failed binder
+application restores the previous environment.
+
+`loading.qwen35_gguf_admission.qwen35_gguf_artifact_identity_from_info` is the
+shared header identity adapter used by both runtime policy and profile callers.
+It includes the same structural NextN map as loader admission and preserves
+pinned plain `None`, unknown sentinel, and exact UD preset identities. Existing
+dense-27B/MoE-35B Q4_K_M profile scopes remain supported. Small-model and Q4_K_S
+controls keep their independent admission/policy identities but do not acquire
+numerical certification of these verifier-shaped plans. Unknown/UD artifacts
+clearly refuse these named profiles (strict, production, and batch-invariant);
+there is no registered qualified generic strict profile to substitute. Generic
+AR admission, native physical qualification and MTP scope remain separate.
+UD K_M/K_S still have their 18/41 missing-consumer refusals.
+
+CPU tests cover actual public LLM auto/explicit selectors, truthful tiny GGUF
+metadata, same-stamp role swaps preserving histograms, exact UD artifacts,
+known plain dense/MoE controls, custom factories, missing/stale context, direct
+resolved binders, strict fallback, environment failure/restore behavior, and
+explicit developer overrides. No synthetic manifest is declared numerically
+certified. Real-header positive tests skip when local control files are absent;
+unknown-header negatives are portable. No GPU, new kernel, math, performance,
+or U2 work is included. Successful binders retain their existing process-scoped
+lifecycle; explicit overrides are not a qualification bypass. **F5 awaits
+independent review; U1 is not complete until its integrated audit.**
 
 ### U2. Independent Codec Oracles
 
 Dependencies: U0; CPU-only before GPU leaf tests.
 Files: `hipengine/quant/gguf.py`, codebook module only if existing conventions
-justify it, proposed `tests/test_gguf_ud_codecs.py`, `tests/fixtures/gguf_ud/`.
+justify it, proposed `tests/test_unit_gguf_ud_codecs.py`, `tests/fixtures/gguf_ud/`.
 
-- [ ] Add llama.cpp-pinned IQ3_S/IQ2_S byte-to-F32 fixtures before CPU decoders;
-  add standalone IQ4_NL independent coverage.
-- [ ] Cover all codebook/sign/high bits, struct sizes, scale corners, row
-  transitions and dimension order.
-- [ ] After payload checksums, extract small real-row fixtures from multiple
-  roles/layers, first/last blocks and actual dense widths.
-- [ ] Record donor revision, fixture hash, generation command and license.
-  New decoder/tables cannot be their own sole oracle.
-- [ ] Gate decoded F32 independently; separately specify BF16/FP16 rounding
-  and strict accumulation/output contracts.
+- [x] Add llama.cpp-pinned IQ3_S/IQ2_S byte-to-F32 fixtures before CPU decoders;
+  add standalone IQ4_NL independent coverage. Synthetic fixtures cover all seven
+  type ABIs at `llama.cpp@17252c769a63c1cb650ce98ae309cf4de0da7778`.
+  The earlier donor pin is unavailable in this host's checkout. Fixtures compile
+  an exact Git archive, not the moving worktree. RED: two missing decoders;
+  GREEN: 136 codec/reader/admission tests. See the `ud-codecs` worklog entry.
+- [x] Cover all codebook/sign/high bits, struct sizes, scale corners, row
+  transitions and dimension order. Selector-domain assertions exposed missing
+  IQ2_XS grids and IQ3_XXS sign selectors in the original random fixture; the
+  pinned C-oracle generator now supplies exhaustive selector coverage at
+  nonzero scale. This is not exhaustive Cartesian-product coverage.
+- [x] After payload checksums, extract small real-row fixtures from multiple
+  roles/layers, first/last blocks and actual dense widths. `real_rows.npz`
+  covers first/last full rows of 20 tensors across both published files, all
+  seven types, and widths 5120/17408. Both full payload hashes were recomputed
+  on zbook before extraction and matched the identity pins.
+- [x] Record donor revision, fixture hash, generation command and license.
+  New decoder/tables cannot be their own sole oracle. The fixture generator
+  compiles the pinned C implementation; tests need neither model nor compiler.
+- [x] Gate decoded F32 independently; separately specify BF16/FP16 rounding
+  and strict accumulation/output contracts. See
+  `tests/fixtures/gguf_ud/README.md`: raw dense leaves keep F32 decoded weights,
+  consume BF16, and use a declared separate-multiply/add F32 reduction with
+  F32 or final RNE-BF16 output. FP16 is unsupported, not implicitly qualified.
+  The CPU codec suite passes 42 tests; model-quality gates remain separate.
 
-Run: `.venv/bin/python -m pytest tests/test_gguf_ud_codecs.py -q`.
+Run: `.venv/bin/python -m pytest tests/test_unit_gguf_ud_codecs.py -q`.
 Exit: independent oracles for all seven type ABIs.
 
 ### U3. Recover Q5/Q6 Roles And Add Raw Dense IQ4_XS
@@ -691,21 +1444,35 @@ Files: existing `hipengine/kernels/hip_gfx11*/quant/gguf_k_gemv.py`,
 IQ decode/source-MMQ donors, proposed
 `hipengine/kernels/hip_gfx1100/quant/gguf_iq_dense.{hip,py}`,
 gfx1151 peer registration, materializer/dense capability maps;
-proposed `tests/test_gguf_ud_dense.py`.
+proposed `tests/test_gpu_gguf_ud_dense.py`.
 
 - [ ] RED role-shaped dispatch/math tests for raw Q5/Q6 in expanded slots;
-  use existing registered variants where operation-complete.
+  use existing registered variants where operation-complete. An 84-case
+  gfx1151 raw-leaf gate passes for sampled and full published K_M tensors at
+  K=5120/6144/17408 and Q6 eh_proj K=10240, rows 1/8/32, BF16/F32 outputs.
+  Hash-pinned samples, exact row-partition/repeat checks, output canaries,
+  float64 elementwise/KL and output-dtype-matched CPU top-1 are covered.
+  Three full-N BF16 cases miss the unrounded FP64 top-1 threshold because
+  rounding merges distinct maxima into ties; these are not model-quality
+  passes. Runtime dispatch and repack qualification are separate. See
+  `tests/test_live_gguf_ud_q56_roles.py` and the `ud-q56-full-n` worklog entry.
 - [ ] Add raw IQ4_XS dense c1 strict GEMV for actual K/N, BF16/F32 outputs,
   and supported tail-N; reuse block math without forcing rank-3 runtime paths.
 - [ ] Supply correct row-batched and bounded prefill execution. A bring-up
   row loop is explicitly a fallback, not a native-batch speed claim.
 - [ ] Keep mixed-pair strict chains, dtypes, graph safety and root behavior
-  while selecting residents per tensor.
+  while selecting residents per tensor. A 120-case CPU runner test covers six
+  mixed raw IQ/Q3 FFN type combinations at rows 1/2/4/7/8/16/32/511/512/513
+  on both backend declarations. Actual pair/singleton dispatch reaches the
+  unfused norm, gate/up, SiLU, down and residual chain with exact pointer and
+  call-order checks. Numerical leaves are captured; this does not qualify
+  GPU math, other mixed residents or graph execution. See
+  `tests/test_unit_gguf_ud_ffn_callers.py` and the `ud-ffn-caller-abi` worklog entry.
 - [ ] Verify no duplicate dense resident; account planned/measured bytes,
   transient load peak and scratch owners.
 - [ ] Register strict fallbacks; qualify gfx1100 and gfx1151 independently.
 
-Run: `.venv/bin/python -m pytest tests/test_gguf_ud_dense.py -q`.
+Run: `.venv/bin/python -m pytest tests/test_gpu_gguf_ud_dense.py -q`.
 Every GPU test needs a HIP availability guard.
 Exit: IQ4_XS/known-format coverage, not yet complete published UD support.
 
@@ -713,15 +1480,52 @@ Exit: IQ4_XS/known-format coverage, not yet complete published UD support.
 
 Dependencies: U3 and U2 oracles.
 Files: Q3 donor, proposed dense IQ family, materializer/registry consumers;
-proposed `tests/test_gguf_ud_km.py`.
+proposed `tests/test_unit_gguf_ud_km.py`.
 
 - [ ] Add dense Q3_K from existing math and explicit dtype contracts.
+  Raw BF16-input BF16/F32-output leaf passes exact real-row gates on gfx1151;
+  Raw dense layer materialization is integrated; gfx1100 numerical validation
+  remains open.
 - [ ] Add standalone IQ4_NL and IQ3_S strict consumers and independent leaf gates.
+  The same bounded gfx1151 leaf evidence exists for both IQ types and IQ4_XS.
+  Combined codec/dense suite: 102 passed; cache-only trace: 72 passed with all
+  eight expected instantiations. See the `ud-dense-iq-leaves` and `ud-q3-dense`
+  worklog entries. This is not model or full-shape qualification.
 - [ ] Cover all 18 refused AR slots and all other incomplete dense operations.
+  Preflight now accepts all K_M AR slots on both backend declarations. Only
+  gfx1151 eager c1 execution has model evidence; other modes remain unqualified.
 - [ ] Validate c1 AR, teacher logits and compact memory before broader modes.
+  gfx1151 published-file smoke generates eight tokens with finite full logits
+  from `The capital of France is`: ` Paris.\nThe capital of Germany is`.
+  A broader public c1 E2E suite (20 real category/heldout chat prompts plus
+  raw string prompts, greedy with EOS enabled, three byte-identical
+  fresh-process repeats per file, torch-free) is retained in
+  `benchmarks/results/2026-09-07-zbook-ud-public-c1-generation.json`;
+  it validates inference delivery and determinism, not task quality.
+  This is a smoke, not a teacher-quality gate or compact-memory claim. See
+  `worklog/entries/20260907T035440.022336Z-lhl-ud-km-c1-integration-c5bbd6.md`.
+  Public `LLM.generate()` matches this completion in a fresh process without
+  importing torch; see the `ud-km-public-smoke` worklog entry.
+  A subsequent zbook/gfx1151 comparison covers all 18 category/heldout prompts
+  at 39–71 input tokens and nine forced positions each. Both files match
+  llama.cpp on 161/162 top-1 choices; default mean/max KL is 0.000873/0.014724
+  (K_M) and 0.000593/0.013256 (K_S). The Q5/Q6 compact candidate is not promoted:
+  K_M p95 KL exceeds 0.005 and K_S prefill top-1 is 17/18 in both arms. Three
+  fresh-process Q5/Q6 candidate captures per model now have byte-identical
+  full logits at all 162 positions; see the `ud-q56-repeats` worklog entry.
+  Task, long-context and serving gates remain open. See
+  `benchmarks/results/2026-09-07-zbook-ud-c1-residency-logits-diagnostic.json`.
+  A separate explicit tokenwise llama.cpp comparison matches 162/162 choices
+  for both files and both residency paths, with maximum KL 0.004469 across
+  those comparisons. This diagnoses a schedule-dependent discrepancy, not
+  batch invariance; the batched-teacher results remain valid. See
+  `benchmarks/results/2026-09-07-zbook-ud-tokenwise-teacher.json`.
+  K_S public generation also returns this completion without torch after raw
+  IQ3_XXS/IQ2_S and Q3_K embedding integration; see
+  `worklog/entries/20260907T041214.806691Z-lhl-ud-ks-integration-e0d117.md`.
 - [ ] Reject unsupported requested modes in preflight; c1 is not full serving.
 
-Run: `.venv/bin/python -m pytest tests/test_gguf_ud_km.py -q`.
+Run: `.venv/bin/python -m pytest tests/test_unit_gguf_ud_km.py -q`.
 Exit: qualified declared K_M AR scope; U6 controls public/batch/MTP completion.
 
 ### U5. Published UD K_S And Embedding
@@ -732,17 +1536,37 @@ completion cannot precede those shared prerequisites.
 Files: IQ2/IQ3 donors, proposed dense family,
 `hipengine/kernels/hip_gfx1100/quant/gguf_q3_k_embedding.{hip,py}`,
 gfx1151 peer, `runtime/gguf_embedding.py`;
-proposed `tests/test_gguf_ud_ks.py`.
+proposed `tests/test_live_gguf_ud_ks.py`.
 
-- [ ] Q3 embedding lookup RED: repeated/boundary IDs, prompt/decode gather,
-  row output ownership and vocabulary bounds.
-- [ ] Dense IQ3_XXS and IQ2_XS from existing math.
+- [x] Q3 embedding lookup RED: repeated/boundary IDs, prompt/decode gather,
+  row output ownership and vocabulary bounds. The real embedding fixture
+  passes 35 boundary/ownership and host-validation checks on gfx1151,
+  including first/last rows at their actual full-vocabulary addresses and row6.
+  See the `ud-q3-vocabulary` worklog entry. Public callers remain open.
+- [ ] Dense IQ3_XXS and IQ2_XS from existing math. Both raw leaves have
+  bounded gfx1151 numerical evidence. IQ2_XS passes exact BF16/F32 real-row
+  projection gates and synthetic one-hot decode coverage; rank-2 layer
+  IQ2_XS now plans raw residency in the production loading path
+  (`tests/test_live_gguf_ud_ks.py`), removing the 152,494,080-byte dense-BF16
+  expansion of `blk.0.ffn_gate.weight` in normal K_S loads. A raw-resident
+  K_S diagnostic matches all 162 baseline top-1 choices on 18 category/heldout
+  prompts, max KL 0.000923. The batched-teacher prefill miss persists. Three
+  fresh-process captures have byte-identical logits and forced tokens. The
+  tokenwise teacher matches all 162 choices with maximum KL 0.003912;
+  broader gates remain open. See
+  `benchmarks/results/2026-09-07-zbook-ud-iq2-xs-diagnostic.json` and
+  `benchmarks/results/2026-09-07-zbook-ud-tokenwise-teacher.json`.
+  Non-layer/rank-3 IQ2_XS keeps the dense-BF16 fallback. gfx1100 remains
+  unverified (deferred: no hardware allocation).
 - [ ] IQ2_S device decoder/strict consumers from U2 oracle.
-- [ ] Clear 41 refusals and IQ2_XS expansion; any temporary fallback reports
-  bytes/removal trigger, not silent permanent debt.
+- [x] Clear 41 refusals and IQ2_XS expansion; any temporary fallback reports
+  bytes/removal trigger, not silent permanent debt. Layer rank-2 IQ2_XS now
+  plans raw residency in production loading (`tests/test_live_gguf_ud_ks.py`);
+  the remaining dense-BF16 IQ2_XS/IQ4_XS fallback covers only non-layer and
+  rank-3 slots, which the published files do not exercise.
 - [ ] Same c1 AR/logit/memory gates as K_M before broader admission.
 
-Run: `.venv/bin/python -m pytest tests/test_gguf_ud_ks.py -q`.
+Run: `.venv/bin/python -m pytest tests/test_live_gguf_ud_ks.py -q`.
 Exit: both artifacts have complete declared AR coverage; no one-tensor omission.
 
 ### U6. Prefill, Batch, NextN And Serving
@@ -750,24 +1574,193 @@ Exit: both artifacts have complete declared AR coverage; no one-tensor omission.
 Dependencies: U4/U5 per artifact.
 Files: existing row/bulk-prefill, NextN, resident runner, profile and server tests.
 
+UD MTP admission is a **separate certification unit** from UD AR admission. The
+AR certificates pin scope `("ar",)` per role-manifest fingerprint. MTP scope is
+granted only by `_UD_MTP_PRESET_FINGERPRINTS` in
+`hipengine/loading/qwen35_gguf_admission.py`, keyed by that same fingerprint and
+carrying its qualification evidence, so a new AR certificate can never widen MTP
+admission and an MTP certificate can be revoked without touching AR.
+
+The unit is defined by `_UD_MTP_CERTIFICATIONS`: one
+`Qwen35GGUFUDMTPCertification` per pinned artifact, carrying the declared
+envelope (backend, execution profile, `context_max`, serving widths) and six
+gated items — NextN residency and `eh_proj`/head ownership, the blk.64 draft
+operation set, draft/verifier state ownership, UD journal requirements, exact
+AR/MTP control, and the supported scope. Each item carries its `contract`, the
+in-tree `evidence`, a `qualified` flag, a `phase`, and — when open — a concrete
+`blocker`. `_UD_MTP_PRESET_FINGERPRINTS` is **derived** from that table and
+admits only a complete unit, so MTP scope cannot be hand-granted and an
+incomplete unit cannot leak admission. Both records currently exist and are
+incomplete, so the pin is empty: no UD artifact is certified for MTP yet.
+
+The `phase` field separates the two kinds of item, because gating the paired
+measurement on the whole unit would be circular:
+
+- `pre_measurement` — structural and control items, verifiable without the run
+  and required before it may start: NextN residency and `eh_proj`/head
+  ownership, the blk.64 draft operation set, draft/verifier state ownership,
+  and the UD journal requirement. All four are qualified.
+- `paired_run` — items the run itself establishes: the control/determinism
+  evidence, and the backend/profile/context/width envelope it measures.
+
+`is_complete()` (the pin) requires every item in both phases;
+`measurement_ready()` requires only the pre-measurement items. Both UD records
+are currently `measurement_ready()` while incomplete, so the paired
+measurement may run while the pin stays withheld.
+
+Two paired timing attempts are **invalid**. The first executed on HIP device 0
+with `HIP_VISIBLE_DEVICES` unset while another worker owned that card. The
+second correctly used physical GPU1, but its no-MTP arm timed synchronous
+scalar `step()` calls rather than the production decode-graph path. A
+protocol-matched GPU1 trace measured equal eager/graph device work (28.77 vs
+28.88 ms/transition) while eager wall was 65-69 ms against 31 ms for graph
+replay, so every rate and ratio from that attempt is withdrawn. The invalid
+artifacts are
+`benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3.json` and
+`benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-xtx.json`.
+
+`scripts/ud_mtp_paired.py` now requires an explicit `--device-index`, verifies
+`--expect-device`, and pins recorded graph replay as the true-AR performance
+denominator. The replacement run on physical GPU1 / RX 7900 XTX is valid
+(c1, natural25, B3, ten prompts, two repeats):
+
+| Tier | UD AR | Plain AR | UD / plain AR | UD MTP B3 | Plain MTP B3 | UD / plain MTP | UD MTP / AR |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `Q4_K_M` | 31.993 | 37.186 | 0.860x | 35.541 | 63.465 | 0.560x | 1.1109x |
+| `Q4_K_S` | 31.311 | 39.565 | 0.791x | 33.061 | 64.094 | 0.516x | 1.0559x |
+
+Every arm passes evidence completeness, timing validity, deterministic-repeat,
+GPU/CPU acceptance, true-AR-denominator, and faster-than-AR gates. K_M and both
+plain controls are generated-ID exact. UD K_S repeats the same two
+`general_ja_plan` near-tie divergences, so its suite provenance remains
+`speed_claim_eligible=false` pending the section 6.1 teacher-forced gate even
+though free-running ID equality is not a production-profile binding gate.
+The artifact is
+`benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-graph-xtx.json`.
+It records the cross-family parity mechanically and regenerates byte-identically
+from the four raw payloads.
+
+Item 5's contract is the **production** one. `docs/EXECUTION-PROFILES.md`
+section 6 states that free-running generated-ID equality "is recorded but is not
+the denominator", and section 4.1 lists "logits and generated IDs at near ties"
+as permitted production drift. The binding requirement is therefore control-
+plane exactness — accepted-token and speculative-transaction accounting, GPU/CPU
+acceptance agreement, and deterministic repeats — with ID equality recorded.
+Requiring exact IDs here would have applied the strict contract to a record that
+declares `execution_profile="production"`.
+
+Enabling work landed and gated (this is mechanism, not a certificate):
+
+- The blk.64 draft operation set is now enforced.
+  `QWEN35_GGUF_OP_MTP_NEXTN_DRAFT` is **slot-scoped**: every `nextn_block.*`
+  slot must resolve a certified record in `_draft_coverage()` (raw
+  `Q6_K`/`Q8_0` projections through the shared `launch_gguf_linear` dispatch,
+  and the registered F32-weight RMSNorm wrapper for the draft's norms), while
+  the AR slot scope is unchanged. Another artifact's draft layout — for example
+  the plain control's `Q4_K` pack8 attention — is refused rather than silently
+  certified.
+- Draft residency and `eh_proj`/head ownership are declared and checked. The
+draft owns its blk.N layer slots plus the NextN slots (including `eh_proj`); the
+token embedding and head are borrowed target root residents, and every fallback
+must name a resident this artifact already plans with the identical source
+tensor (the draft's output norm is its own `shared_head_norm`). A fallback
+naming an unplanned tensor refuses with stage `fallback_unowned` instead of
+materializing a silent extra resident.
+- The UD NextN draft block is quantized Q6_K (`eh_proj`, `attn_q`,
+  `attn_output`, `ffn_gate`, `ffn_up`, `ffn_down`) with Q8_0 `attn_k`/`attn_v`.
+  That signature coincides with the Qwen3.8 native-XL expectation, but the
+  native-XL map is selected by a **caller-claimed** `hipengine.quant.variant`
+  and is therefore unusable here. Each UD preset instead carries a pinned
+  per-slot draft dtype manifest resolved from the admitted preset identity
+  (`resolve_qwen35_gguf_nextn_draft_qtypes`); the validator refuses a manifest
+  that does not cover exactly the validated draft slots, so no slot silently
+  falls back to the plain control's expectation.
+- The speculative accept chain is quant-agnostic (int32 accept buffers) and is
+  registered once per session quant identity that reaches it. The UD
+  `gguf_ud_q4_k_m` / `gguf_ud_q4_k_s` identities were added alongside the
+  pre-existing `gguf_ud_q3_k_m` entry.
+- `scripts/ud_mtp_certification.py` runs the qualification. It refuses to start
+  unless both conditions above hold, grants the MTP scope in-process (candidate
+  mode — it never writes a pin), and runs the full category suite with a true
+  no-MTP AR denominator.
+- `tests/test_live_ud_mtp_certification.py` gates the mechanism: identity binding,
+  exact slot coverage, the AR-only default, and scope composition once a pin
+  exists.
+
+A candidate run on both pinned artifacts (c1, natural25 B3, all four published
+categories, two repeats, true no-MTP AR denominator) separates them:
+
+- **K_M is `complete_exact`**: all ten prompts exact in both runs, GPU/CPU
+  acceptance agreement, deterministic token IDs.
+- **K_S differs from its AR reference on one prompt**: `general_ja_plan`
+  diverges at output position 12 in both runs with identical accepted counts.
+  All other K_S prompts are exact. The difference is localized
+  (`benchmarks/results/ud-mtp-ks-near-tie-localization.json`): at that position
+  the AR path picks token 99720 at logit 21.181459 over token 211768 at
+  21.171841 — a 0.0096 spread — and the MTP verifier picks the AR rank-1 token
+  211768. The AR and MTP routes differ by roughly one part in a thousand in
+  logit space because the verifier evaluates that row inside a 4-row batch
+  while the AR path evaluates it as a single row. That is a
+  batch-composition-invariance deviation, which `docs/EXECUTION-PROFILES.md`
+  treats as a gate separate from arithmetic equality; the plain K_S control and
+  both K_M artifacts agree exactly on this prompt. Because the record declares
+  the production profile, and section 4.1 permits ID differences at near ties,
+  this is recorded rather than binding — see the item-5 contract above.
+
+Both outcomes are evidence for a pin rather than a pin, and neither is
+automatic admission. See the `ud-mtp-certification-u6`,
+`ud-mtp-state-disjointness`, and `ud-mtp-ks-near-tie-localization` result
+artifacts and their worklog entries.
+
+Remaining before `_UD_MTP_PRESET_FINGERPRINTS` may be populated:
+
 - [ ] Caller ABI coverage for rows 1/2/3/4/5/7/8, verifier rows such as
-  6/9/12/16/28/32, prefill tile/chunk boundaries.
+  6/9/12/16/28/32, prefill tile/chunk boundaries. Raw dense leaf tests cover
+  those row counts at N3 with exact/repeat/outer gates and output canaries on
+  gfx1151; all seven synthetic codecs also pass device one-hot checks. This
+  does not qualify full-N runtime math or tile/chunk transitions.
+  A separate 768-case CPU gate exercises `launch_gguf_linear` for the six
+  integrated raw IQ/Q3 formats on both backend declarations, BF16/F32 output,
+  all those rows and 511/512/513. It checks actual registry resolution and
+  pointer/dimension/stream/library forwarding with captured leaves, not GPU
+  numerics. See `tests/test_unit_gguf_ud_linear_callers.py` and the
+  `ud-dense-caller-abi` worklog entry.
 - [ ] Short/512/4096 prompts and separately budgeted long-context point such
   as 32768. Short gates do not authorize long trajectories.
 - [ ] Q8 alpha/beta recurrent transitions, full attention, mixed FFN pairs,
   F32 logits, sampling, eager/graph repeat parity. Replace or exclude the direct
   BF16 alpha/beta calls in `_run_linear_attention_decode_rows_native`.
 - [ ] Block64 Q6 `eh_proj`, attention/FFN, aliases/teardown, exact speculative
-  accept/reject commit/rollback; exact UD NextN admission must not use the
-  unrelated native-XL manifest exception.
+  accept/reject commit/rollback. The draft operation set, the residency and
+  `eh_proj`/head ownership contract, the identity-bound draft dtype pin, and
+  draft/verifier state disjointness are landed and gated (the draft executor's
+  62 device buffers intersect neither the target session's 188 nor the
+  verifier journal's 381); aliases/teardown and exact commit/rollback control
+  remain open. Exact UD NextN admission does not use the unrelated native-XL
+  manifest exception.
 - [ ] c1/c2/c4/c8, ragged/sparse rows, neighbor replacement, permutations,
   delayed arrivals, cancellation/reclaim and width transitions.
 - [ ] Artifact-scoped strict manifest first; production requires section 9.
   Unknown identity/profile/shape uses only certified fallback or rejects.
 - [ ] Complete category/heldout suite and true no-MTP AR denominator before
-  automatic speculative admission.
+  automatic speculative admission. The ten-prompt published category suite and
+  graph-replay denominator are complete at c1/natural25; category-heldouts are
+  still outstanding.
+- [ ] Section 6.1 calibrated teacher-forced gate between the single-row AR route
+  and the multi-row verify route: mean/p95/p99/max row KL and per-category top-1
+  agreement. This is what remains of U6 item 5 under the production profile;
+  free-running ID equality is recorded but is not the denominator.
 
-Exit: explicit AR/MTP/serving/profile/backend/context records, no stamp inheritance.
+Exit: explicit AR/MTP/serving/profile/backend/context records, no stamp
+inheritance. The `_UD_MTP_CERTIFICATIONS` records are the AR/MTP/profile/backend
+carriers and are written; the context and width fields stay undeclared until
+their points are measured, which keeps the derived pin empty. The four
+`pre_measurement` items are qualified, so
+`scripts/ud_mtp_paired.py` has completed the c1/natural25 paired run. The two
+`paired_run` items remain incomplete: exact AR/MTP control still needs the
+section 6.1 teacher-forced gate, and the supported scope still needs the
+c2/c4/c8, context, heldout, and lifecycle envelope. The derived admission pin
+therefore remains empty.
 
 ### U7. Measured Optimization
 

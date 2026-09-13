@@ -1,0 +1,892 @@
+#!/usr/bin/env python3
+"""Paired UD/plain GGUF MTP measurement under one enforced protocol.
+
+Task #22 needs a UD-vs-plain comparison in which every dimension except the
+artifact is identical: host/GPU, model protocol, prompt suite, output horizon,
+candidate budget, KV layout, AR baseline definition, and the correctness and
+lifecycle gates. This driver makes that identity structural rather than
+hopeful:
+
+* one ``PAIRED_PROTOCOL`` mapping supplies every flag, so no pair can carry a
+  per-artifact override;
+* every pair runs the same ``qwen36_dense_gguf_suite.py`` entry point, so the
+  AR baseline is the suite's own true no-MTP greedy path for each artifact and
+  the KV layout comes from the same resident-session construction;
+* the run refuses to start unless every U6 *pre-measurement* item is
+  qualified for the UD artifacts: the structural and control items that can be
+  verified without the run and whose violation would make its numbers
+  meaningless.  The two items the run itself establishes (control/determinism
+  evidence and the backend/profile/context/width envelope) cannot gate the run
+  without circularity, and the admission pin still requires both.
+
+While the pre-measurement items are open the useful action is ``--dry-run``,
+which resolves and prints the exact commands and the certification state
+without touching the GPU.
+
+Usage:
+    python3 scripts/ud_mtp_paired.py --dry-run
+    python3 scripts/ud_mtp_paired.py --runs 2 --output benchmarks/results/<name>.json
+"""
+
+from __future__ import annotations
+
+import argparse
+import contextlib
+import json
+import os
+import sys
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Iterator, Mapping
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+# Every dimension the task names, in one place.  The pairs below differ only in
+# (model, quant); any other difference would have to be added here and would
+# therefore apply to every pair.
+PAIRED_PROTOCOL = {
+    "suite": "scripts/qwen36_dense_gguf_suite.py",
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "max_new_tokens": 25,
+    "candidate_budgets": (3,),
+    "runs": 2,
+    "target_verify_mode": "native",
+    "ar_decode_mode": "graph",
+    "draft_hidden_variant": "pre_output_norm",
+    "warmup": True,
+    "kv_layout": "resident session default (Qwen35GGUFResidentSession, wmma prefill, gemv decode)",
+    "ar_baseline": (
+        "suite true no-MTP single-row greedy per artifact through recorded "
+        "production decode-graph replay"
+    ),
+    "correctness_gates": {
+        "binding": (
+            "true_ar_denominator_present",
+            "all_gpu_accept_match_cpu",
+            "deterministic_repeats",
+            "faster_than_true_ar",
+        ),
+        "recorded_not_binding": (
+            "status_complete_exact",
+            "all_exact_greedy",
+        ),
+        "note": (
+            "docs/EXECUTION-PROFILES.md section 6: free-running generated-ID equality "
+            "is recorded but is not the denominator, and section 4.1 permits logits "
+            "and generated IDs to differ at near ties under the production profile. "
+            "The control-plane gates are binding in every profile."
+        ),
+    },
+}
+
+# label -> (gguf path, session quant identity, family)
+PAIRS = {
+    "ud-q4-k-m": (
+        Path("/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf"),
+        "gguf_ud_q4_k_m",
+        "ud",
+    ),
+    "ud-q4-k-s": (
+        Path("/models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf"),
+        "gguf_ud_q4_k_s",
+        "ud",
+    ),
+    "plain-q4-k-m": (
+        Path("/models/gguf/Qwen3.8-27B-Q4_K_M.gguf"),
+        "gguf_q4_k_m",
+        "plain",
+    ),
+    "plain-q4-k-s": (
+        Path("/models/gguf/Qwen3.8-27B-Q4_K_S.gguf"),
+        "gguf_q4_k_s",
+        "plain",
+    ),
+}
+
+# UD artifacts whose certification unit gates the run.  The plain controls are
+# not UD presets and are not gated here.
+UD_GATED_LABELS = tuple(label for label, (_, _, family) in PAIRS.items() if family == "ud")
+
+
+def u6_gate_state() -> dict[str, object]:
+    """Return the U6 certification state for the gated UD artifacts."""
+
+    from hipengine.loading.qwen35_gguf_admission import (
+        _UD_MTP_CERTIFICATIONS,
+        _UD_MTP_PRESET_FINGERPRINTS,
+    )
+
+    by_preset = {cert.preset_key: cert for cert in _UD_MTP_CERTIFICATIONS.values()}
+    state: dict[str, object] = {"gated": {}, "pin_fingerprints": sorted(_UD_MTP_PRESET_FINGERPRINTS)}
+    blocked_any = False
+    for label in UD_GATED_LABELS:
+        _, quant, _ = PAIRS[label]
+        cert = by_preset.get(quant)
+        if cert is None:
+            state["gated"][label] = {
+                "preset_key": quant,
+                "measurement_ready": False,
+                "pin_complete": False,
+                "reason": "no U6 record",
+            }
+            blocked_any = True
+            continue
+        blocked = [item.item for item in cert.items if not item.qualified]
+        pre_blocked = list(cert.measurement_blockers)
+        blocked_any = blocked_any or bool(pre_blocked)
+        state["gated"][label] = {
+            "preset_key": quant,
+            "measurement_ready": cert.measurement_ready(),
+            "pin_complete": cert.is_complete(),
+            "measurement_blockers": pre_blocked,
+            "open_items": blocked,
+            "blockers": {item.item: item.blocker for item in cert.items if item.blocker},
+        }
+    state["gate_passed"] = not blocked_any
+    return state
+
+
+def resolve_commands(*, runs: int, raw_dir: Path, limit: int | None) -> list[dict[str, object]]:
+    """Resolve the exact suite command for every pair under PAIRED_PROTOCOL."""
+
+    protocol = dict(PAIRED_PROTOCOL)
+    protocol["runs"] = int(runs)
+    commands: list[dict[str, object]] = []
+    for label, (path, quant, family) in PAIRS.items():
+        argv = [
+            protocol["suite"],
+            "--model",
+            str(path),
+            "--quant",
+            quant,
+            "--prompts",
+            protocol["prompts"],
+            "--candidate-budgets",
+            ",".join(str(budget) for budget in protocol["candidate_budgets"]),
+            "--runs",
+            str(protocol["runs"]),
+            "--max-new-tokens",
+            str(protocol["max_new_tokens"]),
+            "--target-verify-mode",
+            protocol["target_verify_mode"],
+            "--ar-decode-mode",
+            protocol["ar_decode_mode"],
+            "--draft-hidden-variant",
+            protocol["draft_hidden_variant"],
+            "--output",
+            str(raw_dir / f"paired-{label}.json"),
+        ]
+        if not protocol["warmup"]:
+            argv.append("--no-warmup")
+        if limit is not None:
+            argv.extend(["--limit", str(limit)])
+        commands.append(
+            {
+                "label": label,
+                "family": family,
+                "model": str(path),
+                "quant": quant,
+                "argv": argv,
+            }
+        )
+    return commands
+
+
+def _grant_mtp_scope_in_process(preset_keys: set[str]) -> object:
+    """Candidate-mode scope grant: in this process only, never a written pin.
+
+    Returns the function it replaced so the caller can restore it; use
+    :func:`mtp_scope_granted` rather than calling this directly.
+    """
+
+    from hipengine.loading import qwen35_gguf_admission as admission
+
+    original = admission.resolve_qwen35_gguf_artifact_preset
+
+    def patched(*args, **kwargs):
+        preset = original(*args, **kwargs)
+        if (
+            preset is not None
+            and preset.preset_key in preset_keys
+            and not preset.scope_certified(admission.GGUF_PRESET_SCOPE_MTP)
+        ):
+            return admission.replace(
+                preset,
+                scopes=(*preset.scopes, admission.GGUF_PRESET_SCOPE_MTP),
+                note=f"{preset.note} [paired run: MTP scope granted in-process]".strip(),
+            )
+        return preset
+
+    admission.resolve_qwen35_gguf_artifact_preset = patched
+    return original
+
+
+@contextmanager
+def mtp_scope_granted(preset_keys: set[str]):
+    """Scope-grant context manager, so the patch never outlives the run.
+
+    ``main()`` is called in-process by the tests; leaving the admission module
+    patched would silently change every later admission assertion in the same
+    interpreter.
+    """
+
+    from hipengine.loading import qwen35_gguf_admission as admission
+
+    original = _grant_mtp_scope_in_process(preset_keys)
+    try:
+        yield
+    finally:
+        admission.resolve_qwen35_gguf_artifact_preset = original
+
+
+@contextmanager
+def device_selected(index: int) -> Iterator[dict[str, str | None]]:
+    """Pin device selection for the child suites, and restore it afterwards.
+
+    ``HIP_VISIBLE_DEVICES`` indexes into whatever ``ROCR_VISIBLE_DEVICES`` left
+    visible, so a stale ``ROCR_VISIBLE_DEVICES`` silently retargets the run:
+    with ``ROCR_VISIBLE_DEVICES=1`` the physical GPU 1 is logical 0, and
+    ``HIP_VISIBLE_DEVICES=1`` then selects nothing.  Clearing it makes
+    ``HIP_VISIBLE_DEVICES`` the single source of truth for the physical index.
+
+    Yields the prior values so the caller can record what it changed.  Both
+    variables are restored on exit, including on failure, so an in-process
+    caller cannot leak the selection into later work.
+    """
+
+    keys = ("HIP_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES")
+    prior = {key: os.environ.get(key) for key in keys}
+    os.environ["HIP_VISIBLE_DEVICES"] = str(int(index))
+    os.environ.pop("ROCR_VISIBLE_DEVICES", None)
+    try:
+        yield prior
+    finally:
+        for key, value in prior.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
+def _run_pair(argv: list[str], output: Path) -> dict[str, object]:
+    from scripts import qwen36_dense_gguf_suite as suite
+
+    original_argv = sys.argv
+    try:
+        sys.argv = list(argv)
+        exit_code = suite.main()
+    finally:
+        sys.argv = original_argv
+    if not output.exists():
+        raise SystemExit(f"paired run produced no payload (suite exit {exit_code}): {output}")
+    return json.loads(output.read_text())
+
+
+def _provenance_summary(payload: dict) -> dict[str, object]:
+    """Host identity and claim eligibility, so the artifact is self-contained."""
+
+    provenance = payload.get("provenance") or {}
+    model = payload.get("model") or {}
+    workload = payload.get("workload") or {}
+    return {
+        "host_name": provenance.get("host_name"),
+        "device_name": provenance.get("device_name"),
+        "resolved_backend": provenance.get("resolved_backend"),
+        "target_arch": provenance.get("target_arch"),
+        "hipengine_commit": provenance.get("hipengine_commit"),
+        "git_branch": provenance.get("git_branch"),
+        "dirty": provenance.get("dirty"),
+        "untracked_count": provenance.get("untracked_count"),
+        "speed_claim_eligible": payload.get("speed_claim_eligible"),
+        "suite_status": payload.get("status"),
+        "model_path": model.get("path"),
+        "model_size_bytes": model.get("size_bytes"),
+        "model_file_type": model.get("file_type"),
+        "prompt_file": workload.get("prompt_file"),
+        "prompt_file_sha256": workload.get("prompt_file_sha256"),
+    }
+
+
+def expected_prompt_ids(prompts_path: Path) -> tuple[str, ...]:
+    """The prompt ids the suite will run, in file order."""
+
+    ids: list[str] = []
+    for line in prompts_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line:
+            ids.append(str(json.loads(line)["id"]))
+    return tuple(ids)
+
+
+def _argv_flag(argv: object, flag: str) -> str | None:
+    """The value following ``flag`` in a resolved argv, or None."""
+
+    items = [str(part) for part in argv]  # type: ignore[union-attr]
+    if flag not in items:
+        return None
+    index = items.index(flag)
+    return items[index + 1] if index + 1 < len(items) else None
+
+
+def _normalized_command(parts: object) -> list[str]:
+    """A command with the payload-location detail removed.
+
+    ``--output`` names where the payload landed, which ``--from-raw`` may
+    legitimately relocate; it is not a protocol dimension.  Everything else is
+    kept, because everything else is a dimension the resolved command fixed.
+    """
+
+    items = [str(part) for part in parts]  # type: ignore[union-attr]
+    out: list[str] = []
+    index = 0
+    while index < len(items):
+        if items[index] == "--output":
+            index += 2
+            continue
+        out.append(items[index])
+        index += 1
+    return out
+
+
+def _evidence_completeness(
+    payload: dict,
+    *,
+    command: dict[str, object],
+    runs: int,
+    prompt_ids: tuple[str, ...],
+) -> dict[str, object]:
+    """Whether the payload is the complete evidence the resolved command asked for.
+
+    Without this, a truncated payload passes every downstream gate trivially: a
+    single-run file gives each prompt one token hash, so ``_determinism`` finds
+    no disagreement and reports deterministic repeats.
+
+    Row coverage alone is not enough.  It says *how many* rows arrived, not
+    *which protocol* produced them: a serial-verifier payload has the same shape
+    as a native-verifier one, so every dimension the resolved command fixed is
+    compared against what the payload itself declares.
+    """
+
+    problems: list[str] = []
+    if payload.get("schema") != 1:
+        problems.append(f"schema {payload.get('schema')!r} != 1")
+    if payload.get("kind") != "qwen36_dense_gguf_ar_mtp_suite":
+        problems.append(f"kind {payload.get('kind')!r}")
+
+    model = payload.get("model") or {}
+    if str(model.get("path")) != str(command["model"]):
+        problems.append(f"model.path {model.get('path')!r} != {command['model']!r}")
+
+    workload = payload.get("workload") or {}
+    if Path(str(workload.get("prompt_file"))).resolve() != Path(
+        str(PAIRED_PROTOCOL["prompts"])
+    ).resolve():
+        problems.append(f"workload.prompt_file {workload.get('prompt_file')!r}")
+    if tuple(str(p) for p in (workload.get("prompt_ids") or ())) != prompt_ids:
+        problems.append("workload.prompt_ids does not match the prompt file")
+    if int(workload.get("prompt_count") or 0) != len(prompt_ids):
+        problems.append(f"workload.prompt_count {workload.get('prompt_count')!r}")
+    if int(workload.get("max_new_tokens_visible") or 0) != int(PAIRED_PROTOCOL["max_new_tokens"]):
+        problems.append(f"workload.max_new_tokens_visible {workload.get('max_new_tokens_visible')!r}")
+    if tuple(int(b) for b in (workload.get("candidate_budgets") or ())) != tuple(
+        int(b) for b in PAIRED_PROTOCOL["candidate_budgets"]
+    ):
+        problems.append(f"workload.candidate_budgets {workload.get('candidate_budgets')!r}")
+
+    provenance = payload.get("provenance") or {}
+    for field in ("host_name", "device_name", "resolved_backend", "target_arch", "hipengine_commit"):
+        if not provenance.get(field):
+            problems.append(f"provenance.{field} missing")
+
+    # --- protocol identity -------------------------------------------------
+    # Every dimension the resolved command pinned, checked against the payload's
+    # own declaration.  Shape checks above cannot see any of these.
+    quant = provenance.get("quant")
+    if str(quant) != str(command["quant"]):
+        problems.append(
+            f"provenance.quant {quant!r} != {command['quant']!r} "
+            "(session quant identity)"
+        )
+    expected_verify_mode = _argv_flag(command["argv"], "--target-verify-mode")
+    if str(workload.get("target_verify_mode")) != str(expected_verify_mode):
+        problems.append(
+            f"workload.target_verify_mode {workload.get('target_verify_mode')!r} != "
+            f"{expected_verify_mode!r} (a serial-verifier payload is not the "
+            "native-verifier result)"
+        )
+    expected_ar_decode_mode = _argv_flag(command["argv"], "--ar-decode-mode")
+    if str(workload.get("ar_decode_mode")) != str(expected_ar_decode_mode):
+        problems.append(
+            f"workload.ar_decode_mode {workload.get('ar_decode_mode')!r} != "
+            f"{expected_ar_decode_mode!r} (the true-AR performance denominator "
+            "must use the pinned production path)"
+        )
+    expected_draft = _argv_flag(command["argv"], "--draft-hidden-variant")
+    if str(workload.get("draft_hidden_variant")) != str(expected_draft):
+        problems.append(
+            f"workload.draft_hidden_variant {workload.get('draft_hidden_variant')!r} "
+            f"!= {expected_draft!r}"
+        )
+    if int(workload.get("runs") or 0) != int(runs):
+        problems.append(
+            f"workload.runs {workload.get('runs')!r} != {int(runs)} (workload run count)"
+        )
+    if bool(workload.get("warmup")) is not bool(PAIRED_PROTOCOL["warmup"]):
+        problems.append(
+            f"workload.warmup {workload.get('warmup')!r} != {PAIRED_PROTOCOL['warmup']!r}"
+        )
+    if int(provenance.get("repetitions") or 0) != int(runs):
+        problems.append(
+            f"provenance.repetitions {provenance.get('repetitions')!r} != {int(runs)}"
+        )
+
+    # The recorded argv is the strongest identity statement available.  The
+    # payload may carry the absolute interpreter that ran it, which is an
+    # environment detail rather than a protocol dimension, so a leading
+    # interpreter element is accepted.
+    resolved_command = _normalized_command(command["argv"])
+    recorded_command = _normalized_command(provenance.get("command") or ())
+    if recorded_command != resolved_command and recorded_command[1:] != resolved_command:
+        problems.append(
+            f"provenance.command {recorded_command} != resolved {resolved_command}"
+        )
+
+    rows = payload.get("rows") or {}
+    groups: dict[str, list[dict]] = {"true_ar": list(rows.get("true_ar") or [])}
+    for budget, budget_rows in (rows.get("mtp") or {}).items():
+        groups[f"mtp_B{budget}"] = list(budget_rows)
+    if "true_ar" not in rows:
+        problems.append("rows.true_ar missing")
+    expected_budgets = {str(int(b)) for b in PAIRED_PROTOCOL["candidate_budgets"]}
+    if {str(b) for b in (rows.get("mtp") or {})} != expected_budgets:
+        problems.append(f"rows.mtp budgets {sorted(rows.get('mtp') or {})} != {sorted(expected_budgets)}")
+
+    for label, group in groups.items():
+        expected_rows = len(prompt_ids) * int(runs)
+        if len(group) != expected_rows:
+            problems.append(f"{label}: {len(group)} rows != {expected_rows} expected")
+            continue
+        seen: dict[str, set[int]] = {}
+        duplicates: set[tuple[str, int]] = set()
+        for row in group:
+            prompt = str(row.get("id"))
+            run = int(row.get("run", -1))
+            if run in seen.setdefault(prompt, set()):
+                duplicates.add((prompt, run))
+            seen[prompt].add(run)
+            if not row.get("token_sha256_i64"):
+                problems.append(f"{label}: {prompt} run {run} has no token_sha256_i64")
+                break
+        if duplicates:
+            problems.append(f"{label}: duplicate (prompt, run) {sorted(duplicates)[:4]}")
+        missing = [p for p in prompt_ids if p not in seen]
+        if missing:
+            problems.append(f"{label}: missing prompts {missing[:4]}")
+        for prompt, seen_runs in seen.items():
+            if seen_runs != set(range(int(runs))):
+                problems.append(f"{label}: {prompt} runs {sorted(seen_runs)} != 0..{int(runs) - 1}")
+                break
+    return {"complete": not problems, "problems": problems, "expected_rows_per_group": len(prompt_ids) * int(runs)}
+
+
+def _determinism(payload: dict, runs: int) -> dict[str, object]:
+    """Whether every prompt repeats bit-identically across runs, AR and MTP."""
+
+    rows = payload.get("rows", {})
+    groups: dict[str, list[dict]] = {"true_ar": list(rows.get("true_ar", []))}
+    for budget, budget_rows in (rows.get("mtp") or {}).items():
+        groups[f"mtp_B{budget}"] = list(budget_rows)
+    unstable: dict[str, list[str]] = {}
+    for label, group in groups.items():
+        by_prompt: dict[str, set[str]] = {}
+        for row in group:
+            by_prompt.setdefault(str(row["id"]), set()).add(str(row["token_sha256_i64"]))
+        differing = sorted(prompt for prompt, hashes in by_prompt.items() if len(hashes) > 1)
+        if differing:
+            unstable[label] = differing
+    return {
+        "runs": int(runs),
+        "deterministic": not unstable,
+        "unstable": unstable,
+    }
+
+
+def _exactness(payload: dict) -> dict[str, object]:
+    """Free-running ID agreement, recorded but not binding (docs section 6)."""
+
+    rows = payload.get("rows", {})
+    divergent: list[str] = []
+    total = 0
+    for group in (rows.get("mtp") or {}).values():
+        for row in group:
+            total += 1
+            if not bool(row.get("exact_greedy_match")):
+                divergent.append(f"{row['id']}#run{row.get('run')}")
+    return {
+        "rows": total,
+        "divergent_rows": sorted(divergent),
+        "divergent_count": len(divergent),
+        "binding": False,
+        "note": (
+            "docs/EXECUTION-PROFILES.md section 6: free-running generated-ID equality "
+            "is recorded but is not the denominator; section 4.1 permits logits and "
+            "generated IDs to differ at near ties in the production profile."
+        ),
+    }
+
+
+def _verdict(
+    payload: dict,
+    runs: int,
+    *,
+    command: dict[str, object],
+    prompt_ids: tuple[str, ...],
+    timing_evidence_valid: bool = True,
+) -> dict[str, object]:
+    """Binding control gates plus the recorded-not-binding exactness evidence.
+
+    ``timing_evidence_valid`` is the mechanical invalidation switch.  When a run
+    is known to have been taken under conditions that make its rates unusable
+    (for example a device owned by another worker), every timing-derived gate
+    must fail rather than stay green behind a descriptive note.
+    """
+
+    summary = payload.get("summary", {})
+    true_ar = summary.get("true_ar", {}).get("full", {})
+    budgets = summary.get("mtp", {})
+    best_budget, best_ratio = None, 0.0
+    for budget, block in budgets.items():
+        ratio = float(block.get("full", {}).get("mtp_vs_true_ar", 0.0) or 0.0)
+        if ratio > best_ratio:
+            best_budget, best_ratio = budget, ratio
+    completeness = _evidence_completeness(
+        payload, command=command, runs=runs, prompt_ids=prompt_ids
+    )
+    determinism = _determinism(payload, runs)
+    correctness = payload.get("correctness", {})
+    # An invalidated run keeps its token-ID evidence (contention changes timing,
+    # not identity) but may not carry any rate-derived claim.
+    timing_gates = {
+        "true_ar_denominator_present": bool(true_ar.get("decode_tok_s_weighted")),
+        "faster_than_true_ar": best_ratio > 1.0,
+    }
+    binding_gates = {
+        "evidence_complete": bool(completeness["complete"]),
+        "timing_evidence_valid": bool(timing_evidence_valid),
+        "true_ar_denominator_present": bool(timing_evidence_valid)
+        and timing_gates["true_ar_denominator_present"],
+        "all_gpu_accept_match_cpu": bool(correctness.get("all_gpu_accept_match_cpu")),
+        "deterministic_repeats": bool(completeness["complete"])
+        and bool(determinism["deterministic"]),
+        "faster_than_true_ar": bool(timing_evidence_valid)
+        and timing_gates["faster_than_true_ar"],
+    }
+    return {
+        "runs": runs,
+        "binding_gates": binding_gates,
+        "binding_passed": all(binding_gates.values()),
+        "timing_evidence_valid": bool(timing_evidence_valid),
+        "evidence_completeness": completeness,
+        "recorded": {
+            "suite_status": payload.get("status"),
+            "all_exact_greedy": bool(correctness.get("all_exact_greedy")),
+            "exactness": _exactness(payload),
+        },
+        "determinism": determinism,
+        "timing_as_measured": timing_gates,
+        "true_ar_tok_s": true_ar.get("decode_tok_s_weighted"),
+        "best_candidate_budget": best_budget,
+        "best_mtp_tok_s": (
+            None if best_budget is None else budgets[best_budget].get("full", {}).get("decode_tok_s_weighted")
+        ),
+        "best_mtp_vs_true_ar": best_ratio,
+    }
+
+
+def _paired_comparisons(pairs: list[dict[str, object]]) -> dict[str, object]:
+    """Derive the UD/plain parity ratios from the validated pair evidence."""
+
+    by_label = {str(pair["label"]): pair for pair in pairs}
+    comparisons: dict[str, object] = {}
+    for tier, ud_label, plain_label in (
+        ("q4_k_m", "ud-q4-k-m", "plain-q4-k-m"),
+        ("q4_k_s", "ud-q4-k-s", "plain-q4-k-s"),
+    ):
+        ud_evidence = by_label[ud_label]["evidence"]
+        plain_evidence = by_label[plain_label]["evidence"]
+        if not isinstance(ud_evidence, dict) or not isinstance(plain_evidence, dict):
+            raise TypeError("paired evidence must be a mapping")
+        ud_ar = float(ud_evidence["true_ar_tok_s"])
+        plain_ar = float(plain_evidence["true_ar_tok_s"])
+        ud_mtp = float(ud_evidence["best_mtp_tok_s"])
+        plain_mtp = float(plain_evidence["best_mtp_tok_s"])
+        if plain_ar <= 0.0 or plain_mtp <= 0.0:
+            raise ValueError("plain rates must be positive before deriving parity")
+        ar_ratio = ud_ar / plain_ar
+        mtp_ratio = ud_mtp / plain_mtp
+        comparisons[tier] = {
+            "ud_label": ud_label,
+            "plain_label": plain_label,
+            "ud_over_plain": {
+                "true_ar": ar_ratio,
+                "mtp_b3": mtp_ratio,
+            },
+            "gap_to_plain_pct": {
+                "true_ar": 100.0 * (1.0 - ar_ratio),
+                "mtp_b3": 100.0 * (1.0 - mtp_ratio),
+            },
+        }
+    return comparisons
+
+
+def _candidate_mode_note(gate: Mapping[str, object]) -> str:
+    """Describe what the artifact is evidence for, from the gate's own state.
+
+    This used to be a constant saying the pin was empty. That was true while the
+    U6 records were incomplete and false the moment they completed, and a
+    retained artifact that misdescribes itself is worse than one that says
+    nothing. The note is derived so it cannot drift again.
+    """
+
+    gated = gate.get("gated", {}) if isinstance(gate, Mapping) else {}
+    entries = [entry for entry in gated.values() if isinstance(entry, Mapping)]
+    if entries and all(bool(entry.get("pin_complete")) for entry in entries):
+        return (
+            "the U6 admission pin is complete for every measured artifact, so this "
+            "artifact is retained admission evidence. The in-process MTP scope grant "
+            "is kept only so the measurement cannot depend on admission state, and it "
+            "is a no-op once the pin is derived."
+        )
+    return (
+        "the U6 admission pin is empty (the paired_run items are still open), so "
+        "MTP scope is granted in-process and this artifact is diagnostic evidence "
+        "for those items, not a retained admission."
+    )
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--output", type=Path)
+    parser.add_argument("--runs", type=int, default=int(PAIRED_PROTOCOL["runs"]))
+    parser.add_argument("--raw-dir", type=Path, default=Path("/tmp"))
+    parser.add_argument("--limit", type=int, default=None, help="prompt limit (diagnostic runs only)")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="print the resolved commands and the U6 gate state; run nothing",
+    )
+    parser.add_argument(
+        "--from-raw",
+        action="store_true",
+        help=(
+            "re-derive the artifact from raw payloads already present in --raw-dir "
+            "instead of running the GPU commands; the raw payloads are the evidence "
+            "and are not modified"
+        ),
+    )
+    parser.add_argument(
+        "--device-index",
+        type=int,
+        default=None,
+        help=(
+            "HIP device index to run on. Required for a real run: this host has more "
+            "than one gfx1100 card and another worker may own one of them, so the "
+            "device is never inferred. Sets HIP_VISIBLE_DEVICES for the child suite."
+        ),
+    )
+    parser.add_argument(
+        "--expect-device",
+        default=None,
+        help=(
+            "substring the suite's reported device_name must contain; a mismatch "
+            "fails the run instead of publishing numbers from the wrong card"
+        ),
+    )
+    parser.add_argument(
+        "--invalidate",
+        default=None,
+        help=(
+            "record this artifact as invalid evidence with the given reason; used when "
+            "a run is known to have been taken under conditions that make its rates "
+            "unusable (for example a device owned by another worker)"
+        ),
+    )
+    args = parser.parse_args()
+
+    gate = u6_gate_state()
+    commands = resolve_commands(runs=args.runs, raw_dir=args.raw_dir, limit=args.limit)
+
+    if args.dry_run:
+        print(json.dumps({"protocol": PAIRED_PROTOCOL, "u6_gate": gate, "commands": commands}, indent=2))
+        return 0 if gate["gate_passed"] else 1
+
+    if not gate["gate_passed"]:
+        print(
+            "refusing to run: a U6 pre-measurement item is unqualified for a gated UD "
+            "artifact. Those items are the ones that can be verified without the run, "
+            "and a violation would make the measured numbers meaningless.",
+            file=sys.stderr,
+        )
+        for label, entry in gate["gated"].items():
+            if entry.get("measurement_ready"):
+                continue
+            print(
+                f"  {label} ({entry['preset_key']}): blocked={entry.get('measurement_blockers')}",
+                file=sys.stderr,
+            )
+            for item in entry.get("measurement_blockers") or ():
+                print(f"      {item}: {(entry.get('blockers') or {}).get(item)}", file=sys.stderr)
+        print("use --dry-run to inspect the resolved protocol and commands.", file=sys.stderr)
+        return 1
+
+    if args.output is None:
+        parser.error("--output is required unless --dry-run is given")
+
+    # Never infer the device.  A previous run of this harness used device 0 by
+    # default and published rates taken while another worker owned that card.
+    if not args.from_raw and args.device_index is None:
+        parser.error(
+            "--device-index is required for a real run: this host has more than "
+            "one gfx1100 card and the device is never inferred"
+        )
+
+    prompt_ids = expected_prompt_ids(REPO_ROOT / str(PAIRED_PROTOCOL["prompts"]))
+    report: dict[str, object] = {
+        "unit": "paired-ud-plain-mtp",
+        "protocol": PAIRED_PROTOCOL,
+        "u6_gate": gate,
+        "candidate_mode": _candidate_mode_note(gate),
+        "host_note": (
+            "single host/GPU by construction; no concurrent GPU work is enforced by "
+            "the operator, not by this script"
+        ),
+        "device": {
+            "device_index": args.device_index,
+            "expect_device": args.expect_device,
+            "selected_environment": {
+                "HIP_VISIBLE_DEVICES": (
+                    None if args.device_index is None else str(int(args.device_index))
+                ),
+                "ROCR_VISIBLE_DEVICES": None,
+            },
+            "note": (
+                "The device is declared, never inferred. A rate measured while another "
+                "worker shares the card is not evidence."
+            ),
+        },
+        "pairs": [],
+    }
+    # The selection is scoped, not global: it is restored when the block exits so
+    # a later in-process run cannot inherit it.
+    device_context = (
+        contextlib.nullcontext()
+        if args.from_raw
+        else device_selected(int(args.device_index))
+    )
+    with mtp_scope_granted(
+        {quant for _, quant, family in PAIRS.values() if family == "ud"}
+    ), device_context:
+        for command in commands:
+            label = str(command["label"])
+            output = Path(str(command["argv"][command["argv"].index("--output") + 1]))
+            if args.from_raw:
+                if not output.exists():
+                    print(f"[paired] {label}: missing raw payload {output}", file=sys.stderr)
+                    return 1
+                print(f"[paired] {label}: re-deriving from {output}", flush=True)
+                payload = json.loads(output.read_text())
+            else:
+                print(
+                    f"[paired] {label}: {command['model']} (quant={command['quant']}) -> {output}",
+                    flush=True,
+                )
+                payload = _run_pair([str(part) for part in command["argv"]], output)
+            evidence = _verdict(
+                payload,
+                args.runs,
+                command=command,
+                prompt_ids=prompt_ids,
+                timing_evidence_valid=not args.invalidate,
+            )
+            if args.expect_device:
+                reported = str((payload.get("provenance") or {}).get("device_name") or "")
+                if args.expect_device not in reported:
+                    print(
+                        f"[paired] {label}: device mismatch: reported {reported!r} does "
+                        f"not contain {args.expect_device!r}; refusing to publish numbers "
+                        f"from an undeclared card.",
+                        file=sys.stderr,
+                    )
+                    return 1
+            if not evidence["evidence_completeness"]["complete"]:
+                print(
+                    f"[paired] {label}: incomplete evidence for the resolved command:",
+                    file=sys.stderr,
+                )
+                for problem in evidence["evidence_completeness"]["problems"][:12]:
+                    print(f"[paired]   {problem}", file=sys.stderr)
+            report["pairs"].append(
+                {
+                    "label": label,
+                    "family": command["family"],
+                    "model": command["model"],
+                    "quant": command["quant"],
+                    "command": " ".join(str(part) for part in command["argv"]),
+                    "raw_payload": str(output),
+                    "provenance": _provenance_summary(payload),
+                    "evidence": evidence,
+                }
+            )
+
+    if args.invalidate:
+        report["invalidation"] = {
+            "invalid": True,
+            "reason": str(args.invalidate),
+            "scope": (
+                "Every rate in this artifact. Contention does not affect the token-ID "
+                "exactness or determinism observations, which stay valid."
+            ),
+        }
+    report["timing_evidence_valid"] = not bool(args.invalidate)
+    report["timing_evidence_valid_note"] = (
+        "False means every rate-derived binding gate is failed by construction: "
+        "an invalidated run may not satisfy a performance gate. Token-ID "
+        "exactness and determinism are unaffected and stay recorded."
+    )
+    if not args.invalidate and all(
+        bool(pair["evidence"]["binding_passed"])
+        for pair in report["pairs"]
+    ):
+        report["comparisons"] = _paired_comparisons(report["pairs"])
+
+    args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    print(f"[paired] wrote {args.output}")
+    failed = False
+    for entry in report["pairs"]:
+        evidence = entry["evidence"]
+        ar_rate = evidence["true_ar_tok_s"] or 0.0
+        mtp_rate = evidence["best_mtp_tok_s"] or 0.0
+        recorded = evidence["recorded"]
+        exact = recorded["exactness"]
+        print(
+            f"[paired] {entry['label']}: binding_passed={evidence['binding_passed']} "
+            f"timing_evidence_valid={evidence['timing_evidence_valid']} "
+            f"AR={ar_rate:.3f} MTP={mtp_rate:.3f} ratio={evidence['best_mtp_vs_true_ar']:.4f}"
+        )
+        print(
+            f"[paired]   recorded (not binding): suite_status={recorded['suite_status']} "
+            f"all_exact_greedy={recorded['all_exact_greedy']} "
+            f"divergent_rows={exact['divergent_count']}/{exact['rows']} "
+            f"{exact['divergent_rows']}"
+        )
+        for gate_name, ok in evidence["binding_gates"].items():
+            if not ok:
+                failed = True
+                print(f"[paired]   BINDING GATE FAILED: {gate_name}")
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

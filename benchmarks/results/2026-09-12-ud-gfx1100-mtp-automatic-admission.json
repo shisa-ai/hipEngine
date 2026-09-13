@@ -1,0 +1,72 @@
+{
+  "schema": "hipengine.ud_mtp_automatic_admission.v1",
+  "kind": "diagnostic_admission_check",
+  "performance_claim": false,
+  "date": "2026-09-12",
+  "plan": "docs/UD-GFX1151-OPTIMIZE.md",
+  "phase": "Phase 5: serving coverage",
+  "protocol": {
+    "harness": "scripts/gguf_mtp_c1c8_server_bench.py",
+    "request_mode": "automatic (speculative_mtp omitted, server auto)",
+    "widths": [
+      1
+    ],
+    "resident_capacity": 1,
+    "candidate_budget": 3,
+    "max_tokens": 24,
+    "max_sequence_length": 1024,
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl canonical ten",
+    "path": "server /v1/completions, blocking barrier-to-last-completion complete wall",
+    "note": "server-path diagnostic denominator: not the resident graph-replay leaf, so these rates do not replace the retained paired rates"
+  },
+  "automatic_admission": {
+    "ud-q4-k-m": {
+      "ar_tok_s": 14.22704064646461,
+      "mtp_tok_s": 34.32423365530082,
+      "mtp_vs_ar_ratio": 2.412605299179371,
+      "engaged_cells": 10,
+      "exact_cells": 10,
+      "cells": 10,
+      "budget_conformed_cells": 10,
+      "correctness_contract": "ar_exact",
+      "decision_reason": "qualified_automatic_ud_c1_k3_d24",
+      "acceptance_rate": 0.9444444444444444,
+      "draft_cycles": 6
+    },
+    "ud-q4-k-s": {
+      "ar_tok_s": 15.185108105339584,
+      "mtp_tok_s": 35.71043079985224,
+      "mtp_vs_ar_ratio": 2.3516744531634437,
+      "engaged_cells": 10,
+      "exact_cells": 10,
+      "cells": 10,
+      "budget_conformed_cells": 10,
+      "correctness_contract": "ar_exact",
+      "decision_reason": "qualified_automatic_ud_c1_k3_d24",
+      "acceptance_rate": 0.9444444444444444,
+      "draft_cycles": 6
+    }
+  },
+  "explicit_control": {
+    "ud-q4-k-m": {
+      "ar": {
+        "wall_seconds": 16.877785433083773,
+        "generated_tokens": 240,
+        "tok_s": 14.219875051234677
+      },
+      "mtp": {
+        "wall_seconds": 6.991312148980796,
+        "generated_tokens": 240,
+        "tok_s": 34.32831990415241
+      },
+      "mtp_vs_ar_ratio": 2.4141084067522636,
+      "exact_cells": 10,
+      "engaged_cells": 10
+    }
+  },
+  "hardware": {
+    "physical_gpu": "GPU1",
+    "device": "RX 7900 XTX (gfx1100)",
+    "vram_total_bytes": 25753026560
+  }
+}

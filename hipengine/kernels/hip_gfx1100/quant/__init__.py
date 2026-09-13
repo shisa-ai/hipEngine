@@ -1,5 +1,7 @@
 """gfx1100 quantized kernel wrappers."""
 
+from hipengine.kernels.hip_gfx1100.quant.gguf_iq_dense import register_gguf_iq_dense_kernels
+
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     build_gguf_k_gemv,
     gguf_q5_k_pair_wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_bf16_out,
@@ -44,6 +46,21 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_mmq_prefill import (
     q8_1_d8r8s8_f32_nbytes,
     q8_1_d8s8_f32_nbytes,
     register_gguf_k_mmq_prefill_kernels,
+)
+from hipengine.kernels.hip_gfx1100.quant.gguf_iq_wmma_prefill import (
+    build_gguf_iq_wmma_prefill,
+    register_gguf_iq_wmma_prefill_kernels,
+)
+from hipengine.kernels.hip_gfx1100.quant.gguf_iq_source_mmq_prefill import (
+    gguf_iq3_xxs_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out,
+    gguf_iq3_s_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out,
+    gguf_iq4_nl_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out,
+    gguf_iq4_xs_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out,
+    iq_dense_mmq_activation_nbytes,
+    iq_dense_mmq_nbytes,
+    iq_dense_mmq_session,
+    iq_dense_mmq_workspace,
+    register_gguf_iq_source_mmq_prefill_kernels,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_iq_gemv import (
     build_gguf_iq_gemv,
@@ -318,7 +335,18 @@ __all__ = [
     "plan_qwen4_exp_q5_1_build",
     "plan_paro_marlin_k_build",
     "plan_w8a16_linear_build",
+    "gguf_iq3_xxs_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out",
+    "gguf_iq3_s_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out",
+    "gguf_iq4_nl_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out",
+    "gguf_iq4_xs_dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out",
+    "iq_dense_mmq_activation_nbytes",
+    "iq_dense_mmq_nbytes",
+    "iq_dense_mmq_session",
+    "iq_dense_mmq_workspace",
     "register_gguf_iq_gemv_kernels",
+    "build_gguf_iq_wmma_prefill",
+    "register_gguf_iq_source_mmq_prefill_kernels",
+    "register_gguf_iq_wmma_prefill_kernels",
     "register_gguf_iq_selected_prefill_kernels",
     "register_gguf_k_gemv_kernels",
     "register_gguf_k_mmq_prefill_kernels",

@@ -1,0 +1,75 @@
+{
+ "kind": "ud_gfx1100_q5_t16_rowtile_tile_cols_pershape",
+ "date": "2026-09-13",
+ "host": "physical GPU1, RX 7900 XTX (gfx1100), ROCm",
+ "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+ "quant": "gguf_ud_q4_k_m",
+ "protocol": "scripts/gguf_mtp_verifier_rocprof.py --mode block-verify --block-rows 3 --block-verify-mode native --native-spec-target-cycle --steps 12 --warmup 3",
+ "verdict": "rejected",
+ "reason": "TILE_COLS 4 -> 8 is equal or worse on every one of the six Q5_K t16 rowtile shapes measured; the a*blocks + b*bytes cost model fits the col4 data but its implied remedy does not hold",
+ "aggregate": {
+  "col4_kernel_ms": 42.872482,
+  "col8_kernel_ms": 42.69155125,
+  "col4_q5_rowtile_ms_per_step": 11.709,
+  "col8_q5_rowtile_ms_per_step": 11.9612,
+  "delta_ms_per_step": 0.2522
+ },
+ "per_shape": [
+  {
+   "n": 5120,
+   "k": 17408,
+   "role": "ffn_down",
+   "col4_us_per_call": 87.1,
+   "col8_us_per_call": 91.4,
+   "col4_gbps": 704,
+   "col8_gbps": 671
+  },
+  {
+   "n": 17408,
+   "k": 5120,
+   "role": "ffn_gate/ffn_up",
+   "col4_us_per_call": 135.1,
+   "col8_us_per_call": 135.1,
+   "col4_gbps": 454,
+   "col8_gbps": 454
+  },
+  {
+   "n": 10240,
+   "k": 5120,
+   "role": "attn_qkv",
+   "col4_us_per_call": 84.5,
+   "col8_us_per_call": 87.9,
+   "col4_gbps": 426,
+   "col8_gbps": 409
+  },
+  {
+   "n": 6144,
+   "k": 5120,
+   "role": "ssm_out/attn_gate/attn_output",
+   "col4_us_per_call": 53.2,
+   "col8_us_per_call": 53.9,
+   "col4_gbps": 406,
+   "col8_gbps": 401
+  },
+  {
+   "n": 12288,
+   "k": 5120,
+   "role": "attn_q",
+   "col4_us_per_call": 100.0,
+   "col8_us_per_call": 99.6,
+   "col4_gbps": 433,
+   "col8_gbps": 435
+  },
+  {
+   "n": 1024,
+   "k": 5120,
+   "role": "attn_k/attn_v",
+   "col4_us_per_call": 20.5,
+   "col8_us_per_call": 29.4,
+   "col4_gbps": 175,
+   "col8_gbps": 122
+  }
+ ],
+ "method": "temporarily rebound the registered t16_gemv_rowtile_bf16_bf16_out variant to the col8 host wrapper, ran the census, then reverted; no source change retained",
+ "note": "the ffn_gate/ffn_up shape is bit-identical in time at 135.1 us/call under both tilings, so halving the block count at fixed K removes no time on that shape; the col4 704 GB/s at (5120,17408) against 454 GB/s at (17408,5120) is therefore not a per-block amortization effect"
+}

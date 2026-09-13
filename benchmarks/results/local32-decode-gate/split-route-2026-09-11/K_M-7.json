@@ -1,0 +1,11 @@
+{
+  "decode_positions": 64,
+  "prompt_tokens": 512,
+  "kl_mean": 6.892753299683946e-06,
+  "kl_max": 0.000154328187464531,
+  "top1_agreement": 1.0,
+  "candidate_finite": true,
+  "prefill_kl_sanity": 0.0,
+  "prefill_clean": true,
+  "probe_gate_pass": true
+}

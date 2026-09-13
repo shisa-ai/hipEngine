@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import subprocess
+import sys
 import threading
 import time
 from datetime import datetime, timezone
@@ -19,13 +20,21 @@ from typing import Any, Mapping, Sequence
 
 from fastapi.testclient import TestClient
 
-from hipengine import LLM
-from hipengine.benchmark.provenance import collect_model_identity
-from hipengine.core.memory import memory_stats
-from hipengine.kernels.backends import backend_package_capability
-from hipengine.server.api import ServerConfig, create_app
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
+# The venv installs ``hipengine`` as an editable pointing at another worktree,
+# and running this file puts ``scripts/`` at ``sys.path[0]``, so ``hipengine``
+# would otherwise resolve to that other tree and the bench would silently
+# measure the wrong source. Put this worktree first, as every sibling script
+# does.
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from hipengine import LLM  # noqa: E402
+from hipengine.benchmark.provenance import collect_model_identity  # noqa: E402
+from hipengine.core.memory import memory_stats  # noqa: E402
+from hipengine.kernels.backends import backend_package_capability  # noqa: E402
+from hipengine.server.api import ServerConfig, create_app  # noqa: E402
+
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-27B-Q4_K_M.gguf")
 DEFAULT_PROMPTS = REPO_ROOT / "benchmarks/prompts/mtpbench-code-general-ja.jsonl"
 FULL_PROMPT_IDS = (
@@ -1056,14 +1065,30 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     requested_profile = (
         None if args.execution_profile == "default" else str(args.execution_profile)
     )
-    llm = LLM(
-        str(args.model),
-        backend=str(args.backend),
-        execution_profile=requested_profile,
-        max_active_requests=resident_capacity,
-        max_sequence_length=int(args.max_sequence_length),
-        speculative_candidate_budget=int(args.candidate_budget),
-    )
+    scope_grant = None
+    if args.mtp_scope_grant:
+        # A UD artifact is certified for the ``ar`` scope only until the U6 MTP
+        # pin mints, and the pin needs the width evidence this run produces.
+        # Grant the scope in process, as ``ud_mtp_paired`` does, so the cell can
+        # be measured; the run is a candidate and its rows are marked diagnostic
+        # by ``--generation2-diagnostic``. Nothing is retained from a grant.
+        from ud_mtp_paired import mtp_scope_granted
+
+        scope_grant = mtp_scope_granted({str(args.quant)})
+        scope_grant.__enter__()
+    try:
+        llm = LLM(
+            str(args.model),
+            backend=str(args.backend),
+            execution_profile=requested_profile,
+            max_active_requests=resident_capacity,
+            max_sequence_length=int(args.max_sequence_length),
+            speculative_candidate_budget=int(args.candidate_budget),
+        )
+    except BaseException:
+        if scope_grant is not None:
+            scope_grant.__exit__(None, None, None)
+        raise
     runtime_profile: dict[str, Any] = {}
     prefill_probe: _NativePrefillProbe | None = None
     try:
@@ -1201,6 +1226,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         # TestClient owns current-server shutdown. Older servers leave close idempotent.
     finally:
         llm.close()
+        if scope_grant is not None:
+            scope_grant.__exit__(None, None, None)
     summary = summarize(
         cells,
         widths=widths,
@@ -1331,6 +1358,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--correctness-contract",
         choices=_CORRECTNESS_CONTRACTS,
         default="ar_exact",
+    )
+    parser.add_argument(
+        "--mtp-scope-grant",
+        action="store_true",
+        help=(
+            "candidate mode: grant the preset's MTP scope in process so a width "
+            "cell can be measured before the U6 pin mints. Requires "
+            "--generation2-diagnostic; rows are diagnostic, never a rate claim"
+        ),
     )
     parser.add_argument("--output", type=Path, required=True)
     return parser

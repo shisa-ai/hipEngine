@@ -443,7 +443,12 @@ def capture_qwen35_gguf_decode_graph(
         runtime.stream_synchronize(stream)
         runtime.stream_begin_capture(stream)
         try:
-            with gemv_decode_session(session.use_gemv_decode):
+            # The dense-IQ execution-owner session must be open during capture:
+            # the local32 decode owner (GGUF_IQ_DENSE_DECODE_POLICY) is admitted
+            # per dispatch, and a graph captured without it bakes in the strict
+            # GEMV for every replay.
+            with gemv_decode_session(session.use_gemv_decode), \
+                    session._iq_dense_mmq_context():
                 for offset in range(int(steps_per_replay)):
                     _enqueue_decode_step(
                         session,

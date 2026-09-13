@@ -147,6 +147,21 @@ _Q4_QMICRO_DENSE_DUAL_WMMA_EXPANDED_META_SILU_BF16 = (
 _Q4_DENSE_UNEQUAL_DUAL_WMMA_BF16 = (
     "hipengine_gguf_q4_k_t16_dense_unequal_dual_wmma_prefill_bf16_bf16_out"
 )
+_Q5_DENSE_DUAL_WMMA_SILU_BF16 = (
+    "hipengine_gguf_q5_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out"
+)
+_Q5_DENSE_DUAL_WMMA_ROW32_SILU_BF16 = (
+    "hipengine_gguf_q5_k_t16_dense_dual_wmma_prefill_row32_silu_bf16_bf16_out"
+)
+_Q5_DENSE_DUAL_WMMA_ROW48_SILU_BF16 = (
+    "hipengine_gguf_q5_k_t16_dense_dual_wmma_prefill_row48_silu_bf16_bf16_out"
+)
+_Q5_DENSE_DUAL_WMMA_ROW64_SILU_BF16 = (
+    "hipengine_gguf_q5_k_t16_dense_dual_wmma_prefill_row64_silu_bf16_bf16_out"
+)
+_Q5_DENSE_DUAL_WMMA_ROW128_SILU_BF16 = (
+    "hipengine_gguf_q5_k_t16_dense_dual_wmma_prefill_row128_silu_bf16_bf16_out"
+)
 _Q5_DENSE_WMMA_BF16 = (
     "hipengine_gguf_q5_k_t16_wmma_prefill_bf16_bf16_out"
 )
@@ -667,6 +682,13 @@ def gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out(
             and 2 <= int(rows) <= _single_wave_max_rows(shape)
         ):
             fn = gguf_q4_k_t16_wmma_prefill_bf16_bf16_out
+        elif int(rows) >= 129:
+            # 64-column blocks since the 2026-09-10 wide-N sweep: halves the
+            # redundant activation traffic and amortizes each a-fragment
+            # load over more WMMA work - bit-exact with the 48-column
+            # shared-B owner, measured 1.1-1.8x across the real Q4 shapes
+            # at 512 rows (up to 65 TFLOPS vs 45).
+            fn = gguf_q4_k_t16_wmma_prefill_shared_b_w64_bf16_bf16_out
         else:
             fn = gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out
     elif shape in GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_SHAPES:
@@ -778,6 +800,35 @@ def gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out(
     del tile_m, tile_n
     _launch_dense_t16(
         _Q4_DENSE_WMMA_SHARED_B_BF16,
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q4_k_t16_wmma_prefill_shared_b_w64_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+    **kwargs,
+) -> None:
+    """Launch the 64-column eight-wave shared-B Q4T16 owner (sweep candidate)."""
+
+    _launch_dense_t16(
+        "hipengine_gguf_q4_k_t16_wmma_prefill_shared_b_w64_bf16_bf16_out",
         x_ptr,
         tiles_ptr,
         out_ptr,
@@ -1291,6 +1342,207 @@ def gguf_q4_k_t16_dense_dual_wmma_smallm_silu_bf16_bf16_out(
         rt.check(int(err))
 
 
+def _launch_q5_t16_dense_dual_wmma_silu(
+    symbol: str,
+    x_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _check_positive(rows, "rows")
+    _check_positive(in_features, "in_features")
+    _check_positive(out_features, "out_features")
+    if in_features % _QK_K != 0:
+        raise ValueError(
+            f"in_features must be divisible by GGUF K-family block size {_QK_K}"
+        )
+    if out_features % 32 != 0:
+        raise ValueError("out_features must be a multiple of 32")
+    lib = library or build_gguf_k_t16_selected_prefill(load=True)
+    rt = runtime or get_hip_runtime()
+    fn = getattr(lib, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(tiles_a_ptr),
+        ctypes.c_void_p(tiles_b_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        rt.check(int(err))
+
+
+def gguf_q5_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out(
+    x_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the exact 256-row dense Q5T16 gate/up WMMA+SiLU parent."""
+
+    _launch_q5_t16_dense_dual_wmma_silu(
+        _Q5_DENSE_DUAL_WMMA_SILU_BF16,
+        x_ptr,
+        tiles_a_ptr,
+        tiles_b_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q5_k_t16_dense_dual_wmma_prefill_row32_silu_bf16_bf16_out(
+    x_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the exact two-active-wave 32-row Q5T16 gate/up retile."""
+
+    _launch_q5_t16_dense_dual_wmma_silu(
+        _Q5_DENSE_DUAL_WMMA_ROW32_SILU_BF16,
+        x_ptr,
+        tiles_a_ptr,
+        tiles_b_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q5_k_t16_dense_dual_wmma_prefill_row48_silu_bf16_bf16_out(
+    x_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the exact three-active-wave 48-row Q5T16 gate/up retile."""
+
+    _launch_q5_t16_dense_dual_wmma_silu(
+        _Q5_DENSE_DUAL_WMMA_ROW48_SILU_BF16,
+        x_ptr,
+        tiles_a_ptr,
+        tiles_b_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q5_k_t16_dense_dual_wmma_prefill_row64_silu_bf16_bf16_out(
+    x_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the exact four-wave 64-row dense Q5T16 gate/up retile."""
+
+    _launch_q5_t16_dense_dual_wmma_silu(
+        _Q5_DENSE_DUAL_WMMA_ROW64_SILU_BF16,
+        x_ptr,
+        tiles_a_ptr,
+        tiles_b_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q5_k_t16_dense_dual_wmma_prefill_row128_silu_bf16_bf16_out(
+    x_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the exact 128-row dense Q5T16 gate/up retile."""
+
+    _launch_q5_t16_dense_dual_wmma_silu(
+        _Q5_DENSE_DUAL_WMMA_ROW128_SILU_BF16,
+        x_ptr,
+        tiles_a_ptr,
+        tiles_b_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def gguf_q4_k_qmicro_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out(
     x_ptr: int,
     tiles_a_ptr: int,
@@ -1523,6 +1775,147 @@ def gguf_q5_k_t16_wmma_prefill_shared8r3_bf16_bf16_out(
         stream=stream,
         library=library,
         runtime=runtime,
+    )
+
+
+def gguf_q5_k_t16_wmma_prefill_shared8r2_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+    tile_m: int | None = None,
+    tile_n: int | None = None,
+) -> None:
+    """Launch the eight-wave, two-row-tile (256-row block) shared Q5T16 owner."""
+
+    del tile_m, tile_n
+    _launch_dense_t16(
+        "hipengine_gguf_q5_k_t16_wmma_prefill_shared8r2_bf16_bf16_out",
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q5_k_t16_wmma_prefill_shared8r2w64_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+    tile_m: int | None = None,
+    tile_n: int | None = None,
+) -> None:
+    """Launch the 64-column eight-wave two-row-tile shared Q5T16 owner."""
+
+    del tile_m, tile_n
+    _launch_dense_t16(
+        "hipengine_gguf_q5_k_t16_wmma_prefill_shared8r2w64_bf16_bf16_out",
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q5_k_t16_wmma_prefill_shared8r4_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+    tile_m: int | None = None,
+    tile_n: int | None = None,
+) -> None:
+    """Launch the eight-wave, four-row-tile (512-row block) shared Q5T16 owner."""
+
+    del tile_m, tile_n
+    _launch_dense_t16(
+        "hipengine_gguf_q5_k_t16_wmma_prefill_shared8r4_bf16_bf16_out",
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q5_k_t16_wmma_prefill_gfx1100_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    **kwargs,
+):
+    """Measured row-qualified Q5T16 dense owner for gfx1100 (2026-09-10).
+
+    Bulk prefill (rows >= 129) takes the eight-wave two-row-tile shared-LDS
+    owner - bit-exact with the plain single (verified on the 17408x5120,
+    10240x5120 and 5120x6144 shapes at rows 129/192/256/257/384/512) and
+    measured 0.51-0.89x its time on the XTX across that whole band (the
+    256-row block removes both the plain owner's per-64-row-block decode
+    redundancy and the 384-row shared8r3 block's tail waste; the boundary
+    was lowered from 257 to 129 after the 129/192-row cells measured the
+    same win, 2026-09-10 review follow-up). Smaller row counts keep the
+    plain single, preserving the low-M owners below.
+    """
+
+    if int(rows) >= 129:
+        # 64-column blocks since the 2026-09-10 wide-N sweep: halves the
+        # redundant activation traffic (each column block re-reads the same
+        # x rows) and amortizes each a-fragment load over twice the WMMA
+        # work - bit-exact with the 32-column owner, 1.0-1.6x its time
+        # across the real Q5 shapes at 512 rows.
+        return gguf_q5_k_t16_wmma_prefill_shared8r2w64_bf16_bf16_out(
+            x_ptr,
+            tiles_ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            **kwargs,
+        )
+    return gguf_q5_k_t16_wmma_prefill_bf16_bf16_out(
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        **kwargs,
     )
 
 
@@ -1860,7 +2253,10 @@ def register_gguf_k_t16_selected_prefill_kernels(*, replace: bool = True) -> Non
             "gguf_q4_k_qmicro_t16_v1",
             gguf_q4_k_qmicro_t16_wmma_prefill_bf16_bf16_out,
         ),
-        ("gguf_q5_k_t16_v1", gguf_q5_k_t16_wmma_prefill_bf16_bf16_out),
+        (
+            "gguf_q5_k_t16_v1",
+            gguf_q5_k_t16_wmma_prefill_gfx1100_bf16_bf16_out,
+        ),
     ):
         register(
             KernelKey(
@@ -1988,6 +2384,38 @@ def register_gguf_k_t16_selected_prefill_kernels(*, replace: bool = True) -> Non
         gguf_q4_k_qmicro_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out,
         replace=replace,
     )
+    for variant, fn in (
+        (
+            "dense_dual_wmma_prefill_bf16_bf16_out",
+            gguf_q5_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out,
+        ),
+        (
+            "dense_dual_wmma_prefill_row32_bf16_bf16_out",
+            gguf_q5_k_t16_dense_dual_wmma_prefill_row32_silu_bf16_bf16_out,
+        ),
+        (
+            "dense_dual_wmma_prefill_row48_bf16_bf16_out",
+            gguf_q5_k_t16_dense_dual_wmma_prefill_row48_silu_bf16_bf16_out,
+        ),
+        (
+            "dense_dual_wmma_prefill_row64_bf16_bf16_out",
+            gguf_q5_k_t16_dense_dual_wmma_prefill_row64_silu_bf16_bf16_out,
+        ),
+        (
+            "dense_dual_wmma_prefill_row128_bf16_bf16_out",
+            gguf_q5_k_t16_dense_dual_wmma_prefill_row128_silu_bf16_bf16_out,
+        ),
+    ):
+        register(
+            KernelKey(
+                "hip_gfx1100",
+                "linear_pair_silu",
+                "gguf_q5_k_t16_v1",
+                variant,
+            ),
+            fn,
+            replace=replace,
+        )
     register(
         KernelKey(
             "hip_gfx1100",
@@ -2115,11 +2543,18 @@ __all__ = [
     "gguf_q5_k_qmicro_t16_selected_wmma_prefill_compact_fp16_fp16_out",
     "gguf_q5_k_t16_selected_wmma_prefill_compact_bf16_bf16_out",
     "gguf_q5_k_t16_selected_wmma_prefill_compact_fp16_fp16_out",
+    "gguf_q5_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out",
+    "gguf_q5_k_t16_dense_dual_wmma_prefill_row32_silu_bf16_bf16_out",
+    "gguf_q5_k_t16_dense_dual_wmma_prefill_row48_silu_bf16_bf16_out",
+    "gguf_q5_k_t16_dense_dual_wmma_prefill_row64_silu_bf16_bf16_out",
+    "gguf_q5_k_t16_dense_dual_wmma_prefill_row128_silu_bf16_bf16_out",
     "gguf_q5_k_t16_wmma_prefill_bf16_bf16_out",
     "gguf_q5_k_t16_wmma_prefill_fp16_in_bf16_out",
     "gguf_q5_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out",
     "gguf_q5_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out",
     "gguf_q5_k_t16_wmma_prefill_shared8r3_fp16_in_bf16_out",
+    "gguf_q5_k_t16_wmma_prefill_shared8r2_bf16_bf16_out",
+    "gguf_q5_k_t16_wmma_prefill_shared8r4_bf16_bf16_out",
     "gguf_q5_k_t16_wmma_prefill_shared8r3_bf16_bf16_out",
     "gguf_q5_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out",
     "gguf_q5_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out",

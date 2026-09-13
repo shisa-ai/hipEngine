@@ -1,0 +1,56 @@
+{
+  "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf",
+  "seed": 23,
+  "prompt_tokens": 512,
+  "tokenized": true,
+  "scopes": {
+    "code": {
+      "positions": 390,
+      "kl_mean": 7.168564968600923e-05,
+      "kl_max": 0.004355873777581922,
+      "top1": 1.0,
+      "calib_mean": 0.00016112289449665695,
+      "calib_max": 0.013580624014139175
+    },
+    "general_en": {
+      "positions": 260,
+      "kl_mean": 7.182105645447135e-05,
+      "kl_max": 0.0014155465925922764,
+      "top1": 0.9961538461538462,
+      "calib_mean": 7.998621003935114e-05,
+      "calib_max": 0.0014013656182214618
+    },
+    "general_ja": {
+      "positions": 260,
+      "kl_mean": 0.00012084554729431524,
+      "kl_max": 0.0026889052826615835,
+      "top1": 1.0,
+      "calib_mean": 0.00012505751510616392,
+      "calib_max": 0.0018701013177633286
+    },
+    "mixed_ja_en": {
+      "positions": 260,
+      "kl_mean": 0.00010009271132446074,
+      "kl_max": 0.005073117128536943,
+      "top1": 0.9961538461538462,
+      "calib_mean": 0.00013672796194441617,
+      "calib_max": 0.007011923938989639
+    }
+  },
+  "overall": {
+    "positions": 1170,
+    "kl_mean": 8.895371138351038e-05,
+    "kl_p95": 0.00042334338650107384,
+    "kl_p99": 0.000854127574712038,
+    "kl_max": 0.005072947591543198,
+    "top1": 0.9982905982905983
+  },
+  "calibration_incumbent_vs_all_strict": {
+    "positions": 1170,
+    "kl_mean": 0.00012965689529664814,
+    "kl_max": 0.013580624014139175
+  },
+  "diagnostics_above_p99_envelope": [],
+  "candidate_finite": true,
+  "gate_pass": true
+}

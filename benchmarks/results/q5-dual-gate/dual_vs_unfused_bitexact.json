@@ -1,0 +1,27 @@
+{
+  "512": {
+    "bf16_mismatches": 0,
+    "exact": true,
+    "finite": true
+  },
+  "128": {
+    "bf16_mismatches": 0,
+    "exact": true,
+    "finite": true
+  },
+  "64": {
+    "bf16_mismatches": 0,
+    "exact": true,
+    "finite": true
+  },
+  "48": {
+    "bf16_mismatches": 0,
+    "exact": true,
+    "finite": true
+  },
+  "32": {
+    "bf16_mismatches": 0,
+    "exact": true,
+    "finite": true
+  }
+}

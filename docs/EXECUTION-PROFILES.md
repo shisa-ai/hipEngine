@@ -550,6 +550,20 @@ batch-invariant plans may override only a subset of strict scopes; absent scopes
 are written into the manifest as strict selections. Captures bind to the
 resulting immutable manifest hash.
 
+Profile plans select registered variants; the generic factory API does not
+validate GGUF artifacts or manage factory side effects. Model loading owns
+storage and consumer compatibility checks. Numerical evidence remains specific
+to the model, quantization, workload and backend on which it was obtained; a
+matching registry key alone does not extend that evidence to another artifact.
+
+Existing GGUF binders write process-wide environment settings. Use one profile
+per model-owning process; switching between models/profiles in one process is
+not an isolation guarantee. Initial UD bring-up uses the unnamed existing path
+(`execution_profile=None`) in a fresh process without production-profile
+overrides. Named production-profile qualification is a later numerical gate,
+not a prerequisite for implementing the missing formats. See
+[UD-QUANTS.md](UD-QUANTS.md) for the bring-up scope.
+
 During migration, omitting the selector bypasses the profile-plan registry and
 preserves the incumbent package behavior. An explicit selector never falls back
 to that unclassified route: without a registered strict plan it errors, and

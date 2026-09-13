@@ -67,6 +67,7 @@ class _AllocRecorder:
 
 def _make_owner(recorder: _AllocRecorder) -> gguf_runner.Qwen35GGUFResidentSession:
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner.runner = SimpleNamespace(weights=None)
     owner.scratch = None
     owner._device_kv_layout = None
@@ -268,6 +269,7 @@ def test_slot_views_delegate_packed_workspace_to_batch_owner(monkeypatch) -> Non
 
     owner._ensure_packed_verify_workspace = MethodType(owner_ensure, owner)
     view = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    view.use_iq_dense_mmq = False
     view.runner = owner.runner
     view.scratch = None
     view._device_kv_layout = None
@@ -296,6 +298,7 @@ def test_slot_views_delegate_packed_workspace_to_batch_owner(monkeypatch) -> Non
 
 def test_slot_view_graph_invalidation_delegates_to_batch_owner() -> None:
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner._resident_batch_owner = None
     owner._resident_slot_views = []
     owner._device_kv_graph_handles = {}
@@ -304,6 +307,7 @@ def test_slot_view_graph_invalidation_delegates_to_batch_owner() -> None:
     owner._decode_graphs = [graph]
 
     view = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    view.use_iq_dense_mmq = False
     view._resident_batch_owner = owner
 
     assert view._invalidate_live_packed_decode_graphs() == 1
@@ -314,6 +318,7 @@ def test_packed_prefill_invalidates_graph_before_flush_and_slot_reuse() -> None:
     """A replay graph must not survive a prefill overwrite of its private slots."""
 
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner._packed_decode_state_dirty = True
     owner._resident_batch_owner = None
     owner._device_kv_graph_handles = {}
@@ -423,6 +428,7 @@ def _shared_view_of(owner: gguf_runner.Qwen35GGUFResidentSession) -> (
     """A slot view: same workspace objects, different session identity."""
 
     view = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    view.use_iq_dense_mmq = False
     view._resident_batch_owner = owner
     view._packed_ar_attention_workspace = owner._packed_ar_attention_workspace
     view._packed_verify_scratch = owner._packed_verify_scratch
@@ -690,6 +696,7 @@ def test_ensure_packed_workspace_upgrades_unleased_for_plane_consumers(
         return real_ensure(self, **kwargs)
 
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner._packed_verify_state = SimpleNamespace(
         slot_count=1,
         max_sequence_length=4096,
@@ -891,6 +898,7 @@ def test_real_ensure_upgrades_unleased_for_plane_consumers(monkeypatch) -> None:
     pool = _fake_kv_pool(layout, pages=(0, 1, 2, 3))
 
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner.__dict__.update(
         runner=_allocator_fake_runner(),
         runtime=SimpleNamespace(memset=lambda ptr, value, nbytes: None),

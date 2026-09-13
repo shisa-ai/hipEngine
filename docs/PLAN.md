@@ -356,6 +356,9 @@ Profile resolution produces an immutable variant manifest over the existing
 `(backend, layer, quant, variant)` registry; it is not a fifth plugin axis and
 must not add `if profile` branches to engine/model hot paths. Missing or
 uncertified production variants fall back to registered strict variants.
+Profile factories remain ordinary plugin construction hooks, not artifact
+validation or transaction frameworks. Model loaders own format/consumer checks;
+numerical evidence is still scoped to the tested artifact and workload.
 
 The exact control-plane, determinism, numerical calibration, evaluator, and
 migration/default rules are normative in
@@ -1049,6 +1052,35 @@ of selected and strict-fallback variants plus evidence identifiers. Dispatch
 and graph capture consume that manifest without backend-, quant-, or profile-
 specific branches in engine/model code. See
 [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md).
+
+GGUF invocation contracts are CPU-safe metadata at the production caller
+boundary, not another registry axis. `loading/qwen35_gguf_consumer_surface.py`
+owns linear/embedding/router resolution and the named auxiliary ABIs;
+`loading/gguf_selected_contract.py` owns selected-expert call interfaces and
+caller topology. Admission consumes these owners rather than maintaining a
+second dispatch table. Explicit selected-call intents distinguish singleton,
+dual, dual-SiLU and weighted-down calls and bind every ordered resident partner.
+A load filter cannot turn a model's paired intent into a singleton; standalone
+diagnostics must name their own intent. Certificates bind resolved operands,
+adapters, state storage, geometry/row domains and backend alongside actual
+planned residents, with independent completeness accounting before narrowing.
+This is invocation/residency qualification, not numerical-profile permission.
+`loading/qwen35_gguf_execution.py` adds the selected native route's complete
+load dependencies before payload reads/allocation and checks shared residents
+once during session construction. Native execution checks route availability,
+row bounds and unsupported adapters without rebuilding admission contracts or
+scanning allocation graphs. Private layer calls consume session-owned pointers;
+weights, buffer views and graph geometry must not be replaced during a session.
+Reconfiguration requires a new session. Graphs retain the existing closed-owner,
+token and context-bound checks.
+The UD campaign is simplifying its admission infrastructure before codec
+bring-up. Generic factory qualification, environment transactions and file-race
+defenses are not part of the profile API. Existing process-scoped profile
+binders are unchanged; initial UD execution uses no named profile in a fresh
+process. Shared storage/consumer contracts and artifact identity helpers remain
+useful independently of the certificate and physical-authorization layers,
+which are being reviewed for removal or simplification. See
+[`UD-QUANTS.md`](UD-QUANTS.md).
 
 Public APIs and server entry points default to `backend="auto"`. Auto is a selector
 resolved before registry lookup, not a registry key: exact `gfx1100`/`gfx1151`

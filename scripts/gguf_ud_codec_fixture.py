@@ -1,0 +1,159 @@
+"""Generate UD codec fixtures from pinned llama.cpp C decoders.
+
+Run with `.venv/bin/python scripts/gguf_ud_codec_fixture.py`. Tests consume the
+committed fixture without a compiler or external checkout. The donor is MIT
+licensed; its license and source hashes are recorded alongside the fixture.
+"""
+from __future__ import annotations
+
+import argparse
+import ctypes
+import hashlib
+import json
+import re
+from pathlib import Path
+import subprocess
+import tempfile
+
+import numpy as np
+
+from gguf_q3km_dequant_oracle_fixture import _build_oracle
+from hipengine.loading.gguf import GGUFReader
+from hipengine.quant.gguf import GGMLQuantizationType
+
+PIN = "17252c769a63c1cb650ce98ae309cf4de0da7778"
+ROOT = Path(__file__).resolve().parents[1]
+# Independent C storage sizes, not hipEngine's layout metadata.
+FORMATS = {"IQ3_S": (110, 256), "IQ2_S": (82, 256), "IQ4_NL": (18, 32),
+           "IQ4_XS": (136, 256), "IQ3_XXS": (98, 256),
+           "IQ2_XS": (74, 256), "Q3_K": (110, 256)}
+
+
+def synthetic_blocks(name: str, size: int) -> np.ndarray:
+    raw = np.random.default_rng(38027).integers(0, 256, (64, size), dtype=np.uint8)
+    # Finite fp16 scales: signed zeros, subnormal, normal, negative and maximum.
+    scales = np.array([0, 0x8000, 1, 0x0400, 0x3c00, 0xbc00, 0x7bff, 0x3555], dtype='<u2')
+    offset = size - 2 if name == 'Q3_K' else 0
+    raw[:, offset:offset+2] = np.tile(scales.view(np.uint8).reshape(8, 2), (8, 1))
+    # Cover every grid at nonzero scale; the final half adds scale corners.
+    raw[:32, offset:offset+2] = np.array([0, 0x3c], dtype=np.uint8)
+    if name == 'IQ2_S':
+        indices = np.arange(64 * 32).reshape(64, 32) % 1024
+        raw[:, 2:34] = indices & 255
+        raw[:, 66:74] = sum(((indices[:, j::4] >> 8) << (2*j)) for j in range(4))
+        raw[:, 34:66] = np.arange(64 * 32).reshape(64, 32) % 256
+    elif name == 'IQ3_S':
+        indices = np.arange(64 * 64).reshape(64, 64) % 512
+        raw[:, 2:66] = indices & 255
+        raw[:, 66:74] = sum(((indices[:, j::8] >> 8) << j) for j in range(8))
+        raw[:, 74:106] = np.arange(64 * 32).reshape(64, 32) % 256
+    elif name == 'IQ4_NL':
+        raw[:, 2:] = np.arange(64 * 16).reshape(64, 16) % 256
+    elif name == 'IQ2_XS':
+        # Exhaust both 9-bit grids and 7-bit sign selectors at unit scale.
+        index = np.arange(32 * 32, dtype=np.uint16).reshape(32, 32)
+        words = ((index % 512) | (((index // 4) % 128) << 9)).astype('<u2')
+        raw[:32, 2:66] = words.view(np.uint8).reshape(32, 64)
+    elif name == 'IQ3_XXS':
+        # Every packed sign field must see all 128 selectors, not just the
+        # union across four fields. Leave the scale-corner half randomized.
+        index = np.arange(32 * 8, dtype=np.uint32).reshape(32, 8)
+        aux = (index % 16) << 28
+        for j in range(4):
+            aux |= ((index + 17 * j) % 128) << (7 * j)
+        raw[:32, 66:98] = aux.astype('<u4').view(np.uint8).reshape(32, 32)
+    return raw
+
+
+def real_rows(lib: ctypes.CDLL, model_dir: Path, out: Path) -> None:
+    """Extract first/last rows after externally verifying the published hashes."""
+    pins = json.loads((ROOT / 'docs/UD-QUANTS-U0-IDENTITY.json').read_text())['files']
+    arrays, entries = {}, []
+    for pin in pins:
+        if '-UD-' not in pin['file']:
+            continue
+        reader = GGUFReader(model_dir / pin['file'])
+        for name in FORMATS:
+            tensors = [t for t in reader.info.tensors if t.ggml_type == GGMLQuantizationType[name]]
+            if not tensors:
+                continue
+            for tensor in {t.name: t for t in (tensors[0], tensors[-1])}.values():
+                data = reader.tensor_data(tensor.name)
+                rows = [0, data.shape[0] - 1]
+                raw = np.ascontiguousarray(data[rows])
+                expected = np.empty((2, tensor.shape[-1]), dtype='<f4')
+                symbol = 'dequantize_row_' + ('q3_K' if name == 'Q3_K' else name.lower())
+                fn = getattr(lib, symbol)
+                fn.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int64]
+                fn.restype = None
+                fn(raw.ctypes.data, expected.ctypes.data, expected.size)
+                key = f'row_{len(entries)}'
+                arrays[key + '_raw'], arrays[key + '_f32'] = raw, expected
+                entries.append({'key': key, 'model': pin['file'], 'published_sha256': pin['published_sha256'],
+                                'tensor': tensor.name, 'type': name, 'shape': tensor.shape, 'rows': rows})
+    out.mkdir(parents=True, exist_ok=True)
+    fixture = out / 'real_rows.npz'
+    np.savez_compressed(fixture, **arrays)
+    (out / 'real_rows.json').write_text(json.dumps({
+        'commit': PIN, 'fixture_sha256': hashlib.sha256(fixture.read_bytes()).hexdigest(),
+        'hash_requirement': 'Verify complete model SHA256 against docs/UD-QUANTS-U0-IDENTITY.json before generation.',
+        'entries': entries}, indent=2) + '\n')
+    print(f'Wrote {fixture}: {len(entries)} tensors, {fixture.stat().st_size} bytes')
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--llamacpp', type=Path, default=Path('/home/lhl/llama.cpp/llama.cpp-hip'))
+    parser.add_argument('--out', type=Path, default=ROOT / 'tests/fixtures/gguf_ud')
+    parser.add_argument('--real-model-dir', type=Path, help='Extract real rows; verify full model hashes against identity pins first')
+    parser.add_argument('--codebooks', type=Path, help='Also write the runtime IQ2_S/IQ3_S codebook module')
+    args = parser.parse_args()
+    arrays = {}
+    with tempfile.TemporaryDirectory(prefix='ud-codec-oracle-') as tmp:
+        source = Path(tmp)
+        archive = subprocess.check_output(['git', '-C', str(args.llamacpp), 'archive', PIN, 'ggml', 'LICENSE'])
+        subprocess.run(['tar', '-x', '-C', str(source)], input=archive, check=True)
+        lib = _build_oracle(source, source)
+        if args.real_model_dir:
+            real_rows(lib, args.real_model_dir, args.out)
+            return
+        hashes = {str(p.relative_to(source)): hashlib.sha256(p.read_bytes()).hexdigest()
+                  for p in sorted((source / 'ggml').rglob('*')) if p.is_file() and p.suffix in ('.c', '.h')}
+        license_text = (source / 'LICENSE').read_text()
+        if args.codebooks:
+            common = (source / 'ggml/src/ggml-common.h').read_text()
+            text = f'\"\"\"IQ2_S/IQ3_S codebooks from llama.cpp@{PIN}.\n\nGenerated by scripts/gguf_ud_codec_fixture.py --codebooks <this-file>.\nSource: ggml/src/ggml-common.h.\n\"\"\"\n'
+            text += '\n'.join(('# ' + line).rstrip() for line in license_text.splitlines()) + '\n\nimport numpy as np\n'
+            for name, count, width in [('iq2s_grid', 1024, 8), ('iq3s_grid', 512, 4)]:
+                match = re.search(r'GGML_TABLE_BEGIN\(uint\d+_t, ' + name + r', \d+\)(.*?)GGML_TABLE_END', common, re.S)
+                values = [int(v, 16) for v in re.findall(r'0x[0-9a-fA-F]+', match[1])]
+                assert len(values) == count
+                data = b''.join(v.to_bytes(width, 'little') for v in values).hex()
+                chunks = '\n'.join('    "' + data[i:i+96] + '"' for i in range(0, len(data), 96))
+                export = 'IQ2_S_GRID' if width == 8 else 'IQ3_S_GRID'
+                text += f'\n{export} = np.frombuffer(bytes.fromhex(\n{chunks}\n), dtype=np.uint8).reshape({count}, {width})\n'
+            args.codebooks.write_text(text)
+        for name, (size, width) in FORMATS.items():
+            raw = synthetic_blocks(name, size)
+            expected = np.empty((64, width), dtype='<f4')
+            symbol = 'dequantize_row_' + ('q3_K' if name == 'Q3_K' else name.lower())
+            fn = getattr(lib, symbol)
+            fn.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int64]
+            fn.restype = None
+            fn(raw.ctypes.data, expected.ctypes.data, expected.size)
+            assert np.isfinite(expected).all()
+            arrays[name + '_raw'] = raw
+            arrays[name + '_f32'] = expected
+    args.out.mkdir(parents=True, exist_ok=True)
+    fixture = args.out / 'synthetic.npz'
+    np.savez_compressed(fixture, **arrays)
+    manifest = {'commit': PIN, 'license': 'MIT', 'license_text': license_text,
+                'command': '.venv/bin/python scripts/gguf_ud_codec_fixture.py',
+                'source_sha256': hashes, 'fixture_sha256': hashlib.sha256(fixture.read_bytes()).hexdigest(),
+                'formats': FORMATS, 'contract': 'bit-exact F32, including signed zero; no activation rounding'}
+    (args.out / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
+    print(f'Wrote {fixture} ({fixture.stat().st_size} bytes)')
+
+
+if __name__ == '__main__':
+    main()

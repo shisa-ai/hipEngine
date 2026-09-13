@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "status": "diagnostic_complete_promotion_blocked",
+  "host": "zbook",
+  "hardware": "AMD RYZEN AI MAX+ PRO 395 / Radeon 8060S",
+  "backend": "hip_gfx1151",
+  "gate_source": "docs/UD-QUANTS.md: Normative numerical gates",
+  "workload": {
+    "prompt_count": 18,
+    "context_tokens": 512,
+    "forced_positions_per_prompt": 9,
+    "synthetic_repeated_chat_tokens": true,
+    "task_quality_evaluation": false,
+    "prefill": "serial eager",
+    "prompt_sources": ["benchmarks/prompts/mtpbench-code-general-ja.jsonl", "benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"]
+  },
+  "model_identity_source": "docs/UD-QUANTS-U0-IDENTITY.json",
+  "km_model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+  "km_model_sha256": "322e194ff79741c7baa497c240f677f54b201b0efab44ca8e50f122b39123482",
+  "km_teacher_command": "/tmp/ud-llama-teacher-tokenwise /models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf /tmp/ud-llama-context512-M.bin /tmp/ud-llama-context512-M.f32 16 999",
+  "km_teacher_input_sha256": "f3557b7c5ed80cf84be9e83266e531351caeff0bcb0c88980a3beae5fb7445d1",
+  "km_teacher_comparison_command": ".venv/bin/python /tmp/ud-context512-teacher-compare.py",
+  "km_raw_command": "PYTHONPATH=. OPENBLAS_NUM_THREADS=4 HIPENGINE_COMPILER_VERSION_FILE=/tmp/ud-hipcc-version.txt .venv/bin/python -u /tmp/ud-q56-raw-context512.py M",
+  "km_comparison_direction": "independent llama.cpp teacher || hipEngine",
+  "thresholds": {"mean_kl_max": 0.001, "p95_kl_max": 0.005, "p99_kl_max": 0.02, "max_kl_max": 0.05, "overall_top1_min": 0.99},
+  "km_results": {
+    "baseline": {"mean_kl": 0.001315300613357916, "p95_kl": 0.005101983748151255, "p99_kl": 0.020003077284408328, "max_kl": 0.03462523072075763, "top1_matches": 161, "positions": 162, "failed_aggregate_gates": ["mean", "p95", "p99"]},
+    "q56_repack": {"mean_kl": 0.0011777484136215447, "p95_kl": 0.005258197798670194, "p99_kl": 0.016972961307682662, "max_kl": 0.037842831739576664, "top1_matches": 161, "positions": 162, "failed_aggregate_gates": ["mean", "p95"]},
+    "q56_raw": {"mean_kl": 0.0011282077788629464, "p95_kl": 0.0033651677915791903, "p99_kl": 0.02457056423979625, "max_kl": 0.040433296979119904, "top1_matches": 161, "positions": 162, "failed_aggregate_gates": ["mean", "p99"], "allocated_weight_buffer_bytes": 16550209536, "raw_q56_residents": 155}
+  },
+  "km_original_hotspot": {
+    "prompt_id": "heldout_code_rate_limiter",
+    "step_after_prefill": 1,
+    "teacher_to_baseline_kl": 0.03462523072075763,
+    "teacher_to_repack_kl": 0.007764939748898365,
+    "teacher_to_raw_kl": 0.001270231771039106,
+    "interpretation": "Both compact candidates are closer to the teacher at this position; baseline-to-candidate drift does not establish that the baseline is correct."
+  },
+  "ks_iq2_xs": {
+    "model": "Qwen3.8-27B-UD-Q4_K_S.gguf",
+    "model_sha256": "75bc9c8adba2842e72f0ab5201aaa07133c5010b566305c09187fcbdcd364017",
+    "command": "PYTHONPATH=. HIPENGINE_COMPILER_VERSION_FILE=/tmp/ud-hipcc-version.txt .venv/bin/python -u /tmp/ud-iq2-xs-context512.py",
+    "comparison_direction": "hipEngine BF16-expansion baseline || raw IQ2_XS candidate",
+    "independent_teacher": false,
+    "mean_kl": 0.0004751239935200375,
+    "max_kl": 0.008327832082133363,
+    "top1_matches": 161,
+    "positions": 162,
+    "allocated_weight_buffer_bytes": 20973418496,
+    "worst_prompt_id": "heldout_general_en_incident",
+    "worst_step_after_prefill": 2,
+    "qualification": "Broad baseline diagnostic only; not an independent-teacher production gate."
+  },
+  "limitations": [
+    "Aggregate failures alone block promotion; this artifact does not certify other category, shape, transition, determinism, isolation, or task gates.",
+    "K_M raw Q5/Q6 still needs diagnosis at general_en_plan step 6 and heldout_mixed_review step 3, where teacher KL exceeds 0.02.",
+    "K_S raw Q5/Q6 whole-model execution has not been tested.",
+    "No gfx1100 model numerical qualification, broader serving qualification, speed claim, or production default change."
+  ]
+}

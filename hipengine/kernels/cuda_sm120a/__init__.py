@@ -118,10 +118,23 @@ def maple_runner_type():
     return MapleCudaRunner
 
 
+# Concrete GGUF consumer layers this backend registers (UD-U1 F3 admission
+# metadata).  Inventory (2026-09-07, verified by
+# tests/test_qwen35_gguf_consumer_surface_parity.py): this scaffold package
+# registers moonshine/maple/PARO families (including rmsnorm bf16/w4_paro
+# and moe_group_compact) but NO consumer under any GGUF artifact contract —
+# no gguf-quant linear/embedding/dense/router/GDN/selected-expert key
+# participates in the GGUF runtime dispatch.  The declaration is therefore
+# empty and GGUF artifact admission refuses this backend until real GGUF
+# consumers are registered here.
+GGUF_CONSUMER_LAYERS: frozenset[str] = frozenset()
+
+
 register_backend_kernels()
 
 __all__ = [
     "BACKEND",
+    "GGUF_CONSUMER_LAYERS",
     "TARGET_ARCH",
     "maple_runner_type",
     "register_backend_kernels",

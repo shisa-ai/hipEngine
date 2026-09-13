@@ -1,0 +1,453 @@
+{
+  "schema": "hipengine.gguf_mtp_verifier_rocprof.v1",
+  "date": "2026-09-13",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "purpose": "Current GGUF MTP target verifier host/GPU split.",
+  "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+  "hardware": "AMD Radeon RX 7900 XTX (gfx1100), visible ordinal 1 of 2",
+  "mode": "block-verify",
+  "quant": "gguf_ud_q4_k_m",
+  "block_rows": 3,
+  "block_verify_mode": "native",
+  "block_wmma_prefill": false,
+  "direct_state_commit": true,
+  "native_spec_target_cycle": true,
+  "native_device_accept_commit": true,
+  "return_logits": false,
+  "verify_dp4a": false,
+  "verify_dense_q8_dp4a": false,
+  "verify_dense_q8_dp4a_all": false,
+  "verify_dense_q8_dp4a_shared": false,
+  "verify_dense_q8_dp4a_f32": false,
+  "selected_down_x8_repack": "off",
+  "selected_gate_up_x8": false,
+  "q8_t16_pair_rowtile": false,
+  "q8_t16_rowtile_all": false,
+  "steps": 12,
+  "warmup": 3,
+  "prompt_ids": [
+    760,
+    4087,
+    369,
+    220,
+    16,
+    17,
+    18,
+    19
+  ],
+  "marker_prefix": "gguf_mtp_verify_block_",
+  "command": "python scripts/gguf_mtp_verifier_rocprof.py --model /models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf --quant gguf_ud_q4_k_m --mode block-verify --block-rows 3 --block-verify-mode native --native-spec-target-cycle --steps 12 --warmup 3",
+  "rocprof_command": "/home/lhl/mambaforge/envs/therock/bin/rocprofv3 --kernel-trace --marker-trace --output-format csv -d /tmp/hipengine-gguf-mtp-verifier-rocprof/block-verify-rows3-gguf_ud_q4_k_m/trace -- /home/lhl/hipEngine-main/.venv/bin/python /home/lhl/hipEngine-ud/scripts/gguf_mtp_verifier_rocprof.py --child --model /models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf --prompt-ids 760,4087,369,220,16,17,18,19 --steps 12 --warmup 3 --max-seq 512 --mode block-verify --block-rows 3 --block-verify-mode native --compiler-version-file /tmp/hipengine-hipcc-version.txt --child-json /tmp/hipengine-gguf-mtp-verifier-rocprof/block-verify-rows3-gguf_ud_q4_k_m/child.json --quant gguf_ud_q4_k_m --native-spec-target-cycle --no-return-logits --direct-state-commit --require-cached",
+  "raw_root": "/tmp/hipengine-gguf-mtp-verifier-rocprof/block-verify-rows3-gguf_ud_q4_k_m",
+  "kernel_trace_csv": "/tmp/hipengine-gguf-mtp-verifier-rocprof/block-verify-rows3-gguf_ud_q4_k_m/trace/epyc/720896_kernel_trace.csv",
+  "marker_trace_csv": "/tmp/hipengine-gguf-mtp-verifier-rocprof/block-verify-rows3-gguf_ud_q4_k_m/trace/epyc/720896_marker_api_trace.csv",
+  "child": {
+    "schema": "hipengine.gguf_mtp_verifier_rocprof.child.v1",
+    "mode": "block-verify",
+    "quant": "gguf_ud_q4_k_m",
+    "steps": 12,
+    "warmup": 3,
+    "return_logits": false,
+    "block_rows": 3,
+    "block_verify_mode": "native",
+    "block_wmma_prefill": false,
+    "direct_state_commit": true,
+    "native_spec_target_cycle": true,
+    "native_device_accept_commit": true,
+    "verify_dp4a": false,
+    "verify_dense_q8_dp4a": false,
+    "verify_dense_q8_dp4a_all": false,
+    "verify_dense_q8_dp4a_shared": false,
+    "verify_dense_q8_dp4a_f32": false,
+    "selected_down_x8_repack": "off",
+    "selected_gate_up_x8": false,
+    "q8_t16_pair_rowtile": false,
+    "q8_t16_rowtile_all": false,
+    "host_ms": [
+      40.10023828595877,
+      40.739196352660656,
+      41.91797040402889,
+      42.34530497342348,
+      41.593676432967186,
+      41.881210170686245,
+      41.834648698568344,
+      41.82364884763956,
+      41.81309975683689,
+      41.80098790675402,
+      42.09326207637787,
+      41.7209779843688
+    ],
+    "avg_host_ms": 41.63868515752256,
+    "token_ids": [
+      24,
+      13,
+      271,
+      9764,
+      579,
+      1436,
+      1204,
+      567,
+      628,
+      615,
+      1017,
+      13
+    ],
+    "stage_timings_ms": null,
+    "stage_timing_totals_ms": null,
+    "native_capture_ms": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "native_submit_ms": [
+      39.389289915561676,
+      40.03738705068827,
+      41.33266303688288,
+      41.50680545717478,
+      41.0521300509572,
+      41.02975036948919,
+      41.25805199146271,
+      41.251772083342075,
+      41.23697243630886,
+      41.25088173896074,
+      41.603696532547474,
+      41.156550869345665
+    ],
+    "native_readback_ms": [
+      0.14939159154891968,
+      0.1345621421933174,
+      0.21973252296447754,
+      0.14247093349695206,
+      0.1448020339012146,
+      0.14052167534828186,
+      0.14048069715499878,
+      0.1491224393248558,
+      0.13959035277366638,
+      0.1175515353679657,
+      0.1382315531373024,
+      0.1365412026643753
+    ]
+  },
+  "summary": {
+    "steps": 12,
+    "kernel_calls": 11820,
+    "kernel_calls_per_step": 985.0,
+    "total_host_ms": 499.6642218902707,
+    "avg_host_ms": 41.63868515752256,
+    "total_kernel_ms": 439.446856,
+    "avg_kernel_ms": 36.62057133333334,
+    "kernel_time_share_of_host_wall": 0.8794843351752033,
+    "host_residual_ms_per_step": 5.018113824189224,
+    "buckets": [
+      {
+        "name": "other",
+        "calls": 6192,
+        "total_ms": 371.3071339999997,
+        "pct_kernel": 84.49420650764642,
+        "ms_per_step": 30.94226116666664,
+        "us_per_call": 59.96562241602062
+      },
+      {
+        "name": "gdn_linear_attn",
+        "calls": 1152,
+        "total_ms": 21.138201999999982,
+        "pct_kernel": 4.810183919031152,
+        "ms_per_step": 1.7615168333333318,
+        "us_per_call": 18.34913368055554
+      },
+      {
+        "name": "dense_q8_0_gemv",
+        "calls": 696,
+        "total_ms": 15.324378000000005,
+        "pct_kernel": 3.487197095796267,
+        "ms_per_step": 1.2770315000000003,
+        "us_per_call": 22.01778448275863
+      },
+      {
+        "name": "rmsnorm_rope",
+        "calls": 972,
+        "total_ms": 11.201089999999994,
+        "pct_kernel": 2.5489066190975302,
+        "ms_per_step": 0.9334241666666662,
+        "us_per_call": 11.523755144032915
+      },
+      {
+        "name": "moe_combine_silu",
+        "calls": 768,
+        "total_ms": 9.363163000000002,
+        "pct_kernel": 2.1306701532073316,
+        "ms_per_step": 0.7802635833333335,
+        "us_per_call": 12.191618489583336
+      },
+      {
+        "name": "attn_core",
+        "calls": 1764,
+        "total_ms": 7.213632000000015,
+        "pct_kernel": 1.6415254544453983,
+        "ms_per_step": 0.6011360000000012,
+        "us_per_call": 4.089360544217696
+      },
+      {
+        "name": "moe_selected_gemv",
+        "calls": 180,
+        "total_ms": 3.4816560000000027,
+        "pct_kernel": 0.7922814675911579,
+        "ms_per_step": 0.29013800000000023,
+        "us_per_call": 19.34253333333335
+      },
+      {
+        "name": "memcpy_fill",
+        "calls": 60,
+        "total_ms": 0.20924099999999998,
+        "pct_kernel": 0.04761463124451162,
+        "ms_per_step": 0.017436749999999997,
+        "us_per_call": 3.4873499999999997
+      },
+      {
+        "name": "lm_head",
+        "calls": 24,
+        "total_ms": 0.14224,
+        "pct_kernel": 0.03236796396604553,
+        "ms_per_step": 0.011853333333333334,
+        "us_per_call": 5.926666666666667
+      },
+      {
+        "name": "embedding",
+        "calls": 12,
+        "total_ms": 0.06611999999999998,
+        "pct_kernel": 0.01504618797409259,
+        "ms_per_step": 0.005509999999999998,
+        "us_per_call": 5.509999999999999
+      }
+    ],
+    "top_kernels": [
+      {
+        "name": "gguf_iq4_xs_local32_gemv",
+        "calls": 1404,
+        "total_ms": 135.7168190000001,
+        "pct_kernel": 30.88355671385213,
+        "ms_per_step": 11.309734916666676,
+        "us_per_call": 96.66440099715108
+      },
+      {
+        "name": "q5_k_t16_dense_rowtile_single_wave_gemv",
+        "calls": 1512,
+        "total_ms": 95.17663800000003,
+        "pct_kernel": 21.658281701303153,
+        "ms_per_step": 7.931386500000002,
+        "us_per_call": 62.94751190476192
+      },
+      {
+        "name": "q4_k_t16_dense_rowtile_gemv",
+        "calls": 1104,
+        "total_ms": 51.387305,
+        "pct_kernel": 11.693633552813493,
+        "ms_per_step": 4.282275416666667,
+        "us_per_call": 46.546471920289854
+      },
+      {
+        "name": "gguf_iq_dense_strict",
+        "calls": 132,
+        "total_ms": 38.218004,
+        "pct_kernel": 8.69684319689387,
+        "ms_per_step": 3.1848336666666666,
+        "us_per_call": 289.5303333333333
+      },
+      {
+        "name": "q6_k_t16_qmicro_planar_gemv_rowtile_col8",
+        "calls": 168,
+        "total_ms": 24.427451999999988,
+        "pct_kernel": 5.558681707805866,
+        "ms_per_step": 2.035620999999999,
+        "us_per_call": 145.4014999999999
+      },
+      {
+        "name": "qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop",
+        "calls": 576,
+        "total_ms": 18.846154999999985,
+        "pct_kernel": 4.288608450073878,
+        "ms_per_step": 1.5705129166666654,
+        "us_per_call": 32.719019097222194
+      },
+      {
+        "name": "q8_0_t16_dual_split_gemv",
+        "calls": 576,
+        "total_ms": 10.555472000000018,
+        "pct_kernel": 2.40199056060604,
+        "ms_per_step": 0.8796226666666681,
+        "us_per_call": 18.325472222222253
+      },
+      {
+        "name": "gguf_rounded_add_rmsnorm_bf16_f32_weight",
+        "calls": 756,
+        "total_ms": 10.108566000000009,
+        "pct_kernel": 2.3002931667350484,
+        "ms_per_step": 0.8423805000000008,
+        "us_per_call": 13.371119047619057
+      },
+      {
+        "name": "gguf_iq4_nl_local32_gemv",
+        "calls": 84,
+        "total_ms": 9.306047000000003,
+        "pct_kernel": 2.117672904684521,
+        "ms_per_step": 0.775503916666667,
+        "us_per_call": 110.78627380952383
+      },
+      {
+        "name": "q4_k_t16_dense_dual_rowtile_silu_gemv",
+        "calls": 60,
+        "total_ms": 7.9165149999999995,
+        "pct_kernel": 1.8014726677211677,
+        "ms_per_step": 0.6597095833333333,
+        "us_per_call": 131.94191666666666
+      },
+      {
+        "name": "q6_k_t16_qmicro_planar_gemv_bf16",
+        "calls": 324,
+        "total_ms": 5.749819,
+        "pct_kernel": 1.3084219221265743,
+        "ms_per_step": 0.4791515833333333,
+        "us_per_call": 17.746354938271605
+      },
+      {
+        "name": "qwen35_paged_full_attn_decode_context_tensor",
+        "calls": 576,
+        "total_ms": 4.4492999999999965,
+        "pct_kernel": 1.012477376786602,
+        "ms_per_step": 0.3707749999999997,
+        "us_per_call": 7.724479166666661
+      },
+      {
+        "name": "q8_0_t16_rowtile_gemv",
+        "calls": 84,
+        "total_ms": 4.282106000000001,
+        "pct_kernel": 0.9744309104807888,
+        "ms_per_step": 0.35684216666666674,
+        "us_per_call": 50.977452380952386
+      },
+      {
+        "name": "linear_state_pair_commit_chunked_i32",
+        "calls": 12,
+        "total_ms": 4.23006,
+        "pct_kernel": 0.9625873850830327,
+        "ms_per_step": 0.352505,
+        "us_per_call": 352.50499999999994
+      },
+      {
+        "name": "gguf_norm_fixed5120_wave256",
+        "calls": 780,
+        "total_ms": 3.986171999999995,
+        "pct_kernel": 0.9070885240330392,
+        "ms_per_step": 0.33218099999999956,
+        "us_per_call": 5.1104769230769165
+      },
+      {
+        "name": "qk_t16_selected_direct_gemv",
+        "calls": 180,
+        "total_ms": 3.4816560000000027,
+        "pct_kernel": 0.7922814675911579,
+        "ms_per_step": 0.29013800000000023,
+        "us_per_call": 19.34253333333335
+      },
+      {
+        "name": "qwen35_linear_attn_chain_conv_decode_lowp_tloop",
+        "calls": 576,
+        "total_ms": 2.292047000000001,
+        "pct_kernel": 0.521575468957275,
+        "ms_per_step": 0.19100391666666675,
+        "us_per_call": 3.9792482638888904
+      },
+      {
+        "name": "q6_k_t16_qmicro_planar_gemv_rowtile_col8_residual",
+        "calls": 12,
+        "total_ms": 1.4852490000000003,
+        "pct_kernel": 0.33798148279390583,
+        "ms_per_step": 0.12377075000000003,
+        "us_per_call": 123.77075000000002
+      },
+      {
+        "name": "silu_mul_separate_out",
+        "calls": 708,
+        "total_ms": 1.4466480000000075,
+        "pct_kernel": 0.3291974854861648,
+        "ms_per_step": 0.12055400000000062,
+        "us_per_call": 2.043288135593231
+      },
+      {
+        "name": "qwen35_write_paged_kv_mixed_value_position_tensor",
+        "calls": 576,
+        "total_ms": 1.3084459999999958,
+        "pct_kernel": 0.2977484039617286,
+        "ms_per_step": 0.10903716666666631,
+        "us_per_call": 2.2716076388888817
+      },
+      {
+        "name": "qwen35_full_attn_gate_mul_bf16",
+        "calls": 576,
+        "total_ms": 0.9204840000000015,
+        "pct_kernel": 0.2094642361032164,
+        "ms_per_step": 0.07670700000000012,
+        "us_per_call": 1.5980625000000026
+      },
+      {
+        "name": "gguf_head_rmsnorm_partial_rotary_positions_f32_weight",
+        "calls": 192,
+        "total_ms": 0.8856029999999997,
+        "pct_kernel": 0.20152675753811736,
+        "ms_per_step": 0.07380024999999997,
+        "us_per_call": 4.612515624999999
+      },
+      {
+        "name": "qwen35_split_qgate_bf16",
+        "calls": 192,
+        "total_ms": 0.6480829999999999,
+        "pct_kernel": 0.14747699093789848,
+        "ms_per_step": 0.054006916666666654,
+        "us_per_call": 3.375432291666666
+      },
+      {
+        "name": "q8_0_t16_gemv",
+        "calls": 36,
+        "total_ms": 0.4867999999999999,
+        "pct_kernel": 0.11077562470944151,
+        "ms_per_step": 0.04056666666666666,
+        "us_per_call": 13.522222222222219
+      }
+    ]
+  },
+  "native_spec_leaf_evidence": {
+    "needle": "copy_i32_to_i64_kernel",
+    "count": 12,
+    "total_duration_ns": 23521,
+    "min_duration_ns": 1800,
+    "max_duration_ns": 2081,
+    "workgroup_sizes_x": [
+      256
+    ],
+    "grid_sizes_x": [
+      256
+    ],
+    "vgpr_counts": [
+      8
+    ],
+    "sgpr_counts": [
+      128
+    ],
+    "scratch_sizes": [
+      0
+    ],
+    "lds_block_sizes": [
+      0
+    ]
+  }
+}

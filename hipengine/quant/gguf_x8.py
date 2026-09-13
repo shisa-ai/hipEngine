@@ -20,6 +20,9 @@ import numpy as np
 from hipengine.quant.gguf import QK_K
 from hipengine.quant.gguf_t16 import GGUF_Q5_K_BLOCK_BYTES, GGUF_Q6_K_BLOCK_BYTES
 from hipengine.quant.registry import register_quant
+from hipengine.quant.gguf_repack import (
+    GGUFRepackShape, Q4_K_X8_SHAPE, Q5_K_X8_SHAPE, Q6_K_X8_SHAPE,
+)
 
 GGUF_X8_COLS = 8
 GGUF_X16_COLS = 16
@@ -146,26 +149,17 @@ GGUF_Q5_K_X8_V1 = register_quant(GGUFQ5KX8Quant())
 GGUF_Q6_K_X8_V1 = register_quant(GGUFQ6KX8Quant())
 
 
-def _as_expert_raw(raw_qweight: Any, *, block_bytes: int, quant_name: str) -> tuple[np.ndarray, int, int, int, int]:
+def _as_expert_raw(raw_qweight: Any, *, shape: GGUFRepackShape) -> tuple[np.ndarray, int, int, int, int]:
     raw = np.ascontiguousarray(raw_qweight, dtype=np.uint8)
-    if raw.ndim != 3:
-        raise ValueError(f"raw_qweight must have GGUF {quant_name} expert byte shape [experts, out_features, bytes_per_row]")
-    experts, out_features, bytes_per_row = (int(raw.shape[0]), int(raw.shape[1]), int(raw.shape[2]))
-    if experts <= 0:
-        raise ValueError("experts must be positive")
-    if out_features <= 0 or out_features % GGUF_X8_COLS != 0:
-        raise ValueError("out_features must be positive and divisible by 8")
-    if bytes_per_row <= 0 or bytes_per_row % block_bytes != 0:
-        raise ValueError(f"bytes_per_row must be a positive multiple of {block_bytes}")
-    return raw, experts, out_features, bytes_per_row, bytes_per_row // block_bytes
+    experts, out_features, bytes_per_row = shape.validate(raw.shape)
+    return raw, experts, out_features, bytes_per_row, bytes_per_row // shape.block_bytes
 
 
-def _repack_x8(raw_qweight: Any, *, block_bytes: int, quant_name: str) -> tuple[np.ndarray, int, int, int]:
+def _repack_x8(raw_qweight: Any, *, shape: GGUFRepackShape) -> tuple[np.ndarray, int, int, int]:
     raw, experts, out_features, _bytes_per_row, blocks_per_row = _as_expert_raw(
-        raw_qweight,
-        block_bytes=block_bytes,
-        quant_name=quant_name,
+        raw_qweight, shape=shape,
     )
+    block_bytes = shape.block_bytes
     out_packed = out_features // GGUF_X8_COLS
     blocks = raw.reshape(experts, out_features, blocks_per_row, block_bytes)
     tiles = np.empty((experts, out_packed, blocks_per_row, GGUF_X8_COLS * block_bytes), dtype=np.uint8)
@@ -201,8 +195,7 @@ def repack_gguf_q5_k_x8(raw_qweight: Any) -> GGUFQ5KX8:
 
     tiles, experts, out_features, in_features = _repack_x8(
         raw_qweight,
-        block_bytes=GGUF_Q5_K_BLOCK_BYTES,
-        quant_name="Q5_K",
+        shape=Q5_K_X8_SHAPE,
     )
     return GGUFQ5KX8(tiles=tiles, experts=experts, out_features=out_features, in_features=in_features)
 
@@ -212,8 +205,7 @@ def repack_gguf_q4_k_x8(raw_qweight: Any) -> GGUFQ4KX8:
 
     tiles, experts, out_features, in_features = _repack_x8(
         raw_qweight,
-        block_bytes=GGUF_Q4_K_BLOCK_BYTES,
-        quant_name="Q4_K",
+        shape=Q4_K_X8_SHAPE,
     )
     return GGUFQ4KX8(tiles=tiles, experts=experts, out_features=out_features, in_features=in_features)
 
@@ -355,9 +347,7 @@ def repack_gguf_q6_k_x8(raw_qweight: Any) -> GGUFQ6KX8:
     """Repack rank-3 raw GGUF Q6_K expert weights into byte-exact X8 tiles."""
 
     tiles, experts, out_features, in_features = _repack_x8(
-        raw_qweight,
-        block_bytes=GGUF_Q6_K_BLOCK_BYTES,
-        quant_name="Q6_K",
+        raw_qweight, shape=Q6_K_X8_SHAPE,
     )
     return GGUFQ6KX8(tiles=tiles, experts=experts, out_features=out_features, in_features=in_features)
 
@@ -370,9 +360,7 @@ def repack_gguf_q6_k_x8_dscale_f32(raw_qweight: Any) -> np.ndarray:
     """
 
     raw, experts, out_features, _bytes_per_row, blocks_per_row = _as_expert_raw(
-        raw_qweight,
-        block_bytes=GGUF_Q6_K_BLOCK_BYTES,
-        quant_name="Q6_K",
+        raw_qweight, shape=Q6_K_X8_SHAPE,
     )
     out_packed = out_features // GGUF_X8_COLS
     blocks = raw.reshape(experts, out_features, blocks_per_row, GGUF_Q6_K_BLOCK_BYTES)

@@ -1,0 +1,124 @@
+{
+  "schema": "hipengine.ud_gfx1100_rows5_budget4_gate.v1",
+  "kind": "correctness_gate",
+  "performance_claim": false,
+  "date": "2026-09-12",
+  "plan": "docs/UD-GFX1151-OPTIMIZE.md",
+  "phase": "Phase 5: lifecycle and serving coverage",
+  "unit": "Numerically qualify the newly reachable rows-5 (budget 4) verifier shape.",
+  "host": {
+    "hostname": "epyc",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+    "physical_gpu": "GPU1 = AMD Radeon RX 7900 XTX, gfx1100 / RDNA3, rocminfo uuid GPU-cc4d02090dc9c3ff",
+    "gpu_selection": "HIP_VISIBLE_DEVICES=1 (device 0 is the W7900, uuid GPU-e282895b62c2b295)"
+  },
+  "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/ud_mtp_ar_verify_numerics_gate.py --model <artifact> --quant <axis> --prompt-tokens 64 --budgets 1,2,3,4 --repeat-runs 2 --require-native-graph --json <out>",
+  "protocol": {
+    "teacher": "production single-row AR route (session.step, return_logits)",
+    "candidate": "production native target block (device accept/commit, bulk_attention_mode=native, remaining_decode=budget)",
+    "prompts": [
+      "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+    ],
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "envelope": {
+      "mean": 0.001,
+      "p95": 0.005,
+      "p99": 0.02,
+      "max": 0.05
+    },
+    "top1_overall": 0.99,
+    "top1_per_scope": 0.97
+  },
+  "arms": {
+    "km": {
+      "quant_axis": "gguf_ud_q4_k_m",
+      "prompt_tokens": 64,
+      "budgets": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "repeat_runs": 2,
+      "pooled_rows_per_repeat": [
+        252,
+        252
+      ],
+      "verifier_route": "native_graph",
+      "kl_mean": 3.479379368220174e-05,
+      "kl_p95": 0.00016958210187115207,
+      "kl_p99": 0.00024623849403874304,
+      "kl_max": 0.00034753386512826896,
+      "top1_agreement": 1.0,
+      "top1_by_budget": {
+        "1": 1.0,
+        "2": 1.0,
+        "3": 1.0,
+        "4": 1.0
+      },
+      "top1_by_scope": {
+        "code": 1.0,
+        "general_en": 1.0,
+        "general_ja": 1.0,
+        "mixed_ja_en": 1.0
+      },
+      "deterministic": true,
+      "passed": true
+    },
+    "ks": {
+      "quant_axis": "gguf_ud_q4_k_s",
+      "prompt_tokens": 64,
+      "budgets": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "repeat_runs": 2,
+      "pooled_rows_per_repeat": [
+        252,
+        252
+      ],
+      "verifier_route": "native_graph",
+      "kl_mean": 3.85530320105525e-05,
+      "kl_p95": 0.0002056361387029483,
+      "kl_p99": 0.0003764282870898504,
+      "kl_max": 0.0006979716486436704,
+      "top1_agreement": 1.0,
+      "top1_by_budget": {
+        "1": 1.0,
+        "2": 1.0,
+        "3": 1.0,
+        "4": 1.0
+      },
+      "top1_by_scope": {
+        "code": 1.0,
+        "general_en": 1.0,
+        "general_ja": 1.0,
+        "mixed_ja_en": 1.0
+      },
+      "deterministic": true,
+      "passed": true
+    }
+  },
+  "verdict": {
+    "all_arms_passed": true,
+    "worst_kl_mean": 3.85530320105525e-05,
+    "worst_kl_max": 0.0006979716486436704,
+    "min_top1_agreement": 1.0,
+    "all_deterministic": true,
+    "budget4_rows": 90,
+    "budget4_top1": 1.0
+  },
+  "notes": [
+    "Budget 4 is the only newly reachable production shape from lifting the four-row cap, because _GGUF_MTP_CANDIDATE_BUDGETS is (1,2,3,4).",
+    "The shape is correct but not economical: see benchmarks/results/2026-09-12-ud-gfx1100-verifier-rows-4-8-census.json, which measures 18.26 ms/row at rows 5 against 12.79 at rows 4.",
+    "This artifact is correctness evidence only. It carries no rate and no ratio."
+  ]
+}

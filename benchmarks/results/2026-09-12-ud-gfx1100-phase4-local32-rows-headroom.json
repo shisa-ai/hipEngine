@@ -1,0 +1,273 @@
+{
+  "schema": 1,
+  "date": "2026-09-12",
+  "kind": "diagnostic",
+  "performance_claim": false,
+  "plan": "docs/UD-GFX1151-OPTIMIZE.md",
+  "phase": "Phase 4: repair the dominant verifier path (candidate A)",
+  "host": {
+    "device_index": 1,
+    "device_name": "AMD Radeon RX 7900 XTX",
+    "backend": "hip_gfx1100",
+    "arch": "gfx1100",
+    "note": "physical GPU1 only; GPU0 (W7900) untouched"
+  },
+  "purpose": "Bound the rows 2-4 local32 IQ verifier sibling at kernel level on real UD tensors, and show the intended kernel ran under rocprofv3.",
+  "protocol": {
+    "headroom": "scripts/gguf_iq_local32_rows_headroom.py, real tensors from the published UD files, 4 largest shapes per quant, interleaved min-of-5 rounds x 3 reps, rows 1/2/4, bit-exactness screened row-for-row against the rows==1 owner",
+    "trace": "rocprofv3 --kernel-trace around scripts/gguf_iq_local32_rows_trace.py with a prebuilt extension and --require-cached-build"
+  },
+  "headroom": {
+    "ud_q4_k_m": {
+      "IQ3_S": {
+        "2": {
+          "tensors": 2,
+          "strict_gemv_ms": 0.5031,
+          "local32_per_row_ms": 0.4382,
+          "sibling_ms": 0.2458,
+          "speedup_vs_strict_gemv": 2.047,
+          "speedup_vs_local32_per_row": 1.783,
+          "sibling_bit_exact_per_row": true,
+          "sibling_max_rel_vs_strict_gemv": 0.0010548523206751054
+        },
+        "4": {
+          "tensors": 2,
+          "strict_gemv_ms": 0.7731,
+          "local32_per_row_ms": 0.754,
+          "sibling_ms": 0.2685,
+          "speedup_vs_strict_gemv": 2.879,
+          "speedup_vs_local32_per_row": 2.808,
+          "sibling_bit_exact_per_row": true,
+          "sibling_max_rel_vs_strict_gemv": 0.0010548523206751054
+        }
+      },
+      "IQ4_NL": {
+        "2": {
+          "tensors": 3,
+          "strict_gemv_ms": 1.0613,
+          "local32_per_row_ms": 0.3587,
+          "sibling_ms": 0.2498,
+          "speedup_vs_strict_gemv": 4.248,
+          "speedup_vs_local32_per_row": 1.436,
+          "sibling_bit_exact_per_row": true,
+          "sibling_max_rel_vs_strict_gemv": 0.002840909090909091
+        },
+        "4": {
+          "tensors": 3,
+          "strict_gemv_ms": 1.1096,
+          "local32_per_row_ms": 0.6676,
+          "sibling_ms": 0.2899,
+          "speedup_vs_strict_gemv": 3.828,
+          "speedup_vs_local32_per_row": 2.303,
+          "sibling_bit_exact_per_row": true,
+          "sibling_max_rel_vs_strict_gemv": 0.002840909090909091
+        }
+      },
+      "IQ4_XS": {
+        "2": {
+          "tensors": 4,
+          "strict_gemv_ms": 0.7546,
+          "local32_per_row_ms": 0.5051,
+          "sibling_ms": 0.3116,
+          "speedup_vs_strict_gemv": 2.421,
+          "speedup_vs_local32_per_row": 1.621,
+          "sibling_bit_exact_per_row": true,
+          "sibling_max_rel_vs_strict_gemv": 0.0004562043795620438
+        },
+        "4": {
+          "tensors": 4,
+          "strict_gemv_ms": 0.881,
+          "local32_per_row_ms": 0.9137,
+          "sibling_ms": 0.3782,
+          "speedup_vs_strict_gemv": 2.329,
+          "speedup_vs_local32_per_row": 2.416,
+          "sibling_bit_exact_per_row": true,
+          "sibling_max_rel_vs_strict_gemv": 0.0012376237623762376
+        }
+      }
+    },
+    "ud_q4_k_s": {
+      "IQ2_S": {
+        "2": {
+          "tensors": 1,
+          "strict_gemv_ms": 0.3139,
+          "local32_per_row_ms": 0.2179,
+          "sibling_ms": 0.1127,
+          "speedup_vs_strict_gemv": 2.786,
+          "speedup_vs_local32_per_row": 1.934,
+          "sibling_bit_exact_per_row": true,
+          "sibling_max_rel_vs_strict_gemv": 0.0014970059880239522
+        },
+        "4": {
+          "tensors": 1,
+          "strict_gemv_ms": 0.3007,
+          "local32_per_row_ms": 0.332,
+          "sibling_ms": 0.1144,
+          "speedup_vs_strict_gemv": 2.628,
+          "speedup_vs_local32_per_row": 2.901,
+          "sibling_bit_exact_per_row": true,
+          "sibling_max_rel_vs_strict_gemv": 0.0014619883040935672
+        }
+      },
+      "IQ2_XS": {
+        "2": {
+          "tensors": 1,
+          "strict_gemv_ms": 0.2806,
+          "local32_per_row_ms": 0.214,
+          "sibling_ms": 0.1188,
+          "speedup_vs_strict_gemv": 2.361,
+          "speedup_vs_local32_per_row": 1.801,
+          "sibling_bit_exact_per_row": true,
+          "sibling_max_rel_vs_strict_gemv": 0.0005896226415094339
+        },
+        "4": {
+          "tensors": 1,
+          "strict_gemv_ms": 0.2685,
+          "local32_per_row_ms": 0.3552,
+          "sibling_ms": 0.126,
+          "speedup_vs_strict_gemv": 2.131,
+          "speedup_vs_local32_per_row": 2.818,
+          "sibling_bit_exact_per_row": true,
+          "sibling_max_rel_vs_strict_gemv": 0.0023584905660377358
+        }
+      },
+      "IQ3_S": {
+        "2": {
+          "tensors": 2,
+          "strict_gemv_ms": 0.4821,
+          "local32_per_row_ms": 0.4198,
+          "sibling_ms": 0.2352,
+          "speedup_vs_strict_gemv": 2.05,
+          "speedup_vs_local32_per_row": 1.785,
+          "sibling_bit_exact_per_row": true,
+          "sibling_max_rel_vs_strict_gemv": 0.00040584415584415587
+        },
+        "4": {
+          "tensors": 2,
+          "strict_gemv_ms": 0.768,
+          "local32_per_row_ms": 0.7625,
+          "sibling_ms": 0.2658,
+          "speedup_vs_strict_gemv": 2.889,
+          "speedup_vs_local32_per_row": 2.869,
+          "sibling_bit_exact_per_row": true,
+          "sibling_max_rel_vs_strict_gemv": 0.0006188118811881188
+        }
+      },
+      "IQ3_XXS": {
+        "2": {
+          "tensors": 2,
+          "strict_gemv_ms": 0.4382,
+          "local32_per_row_ms": 0.3593,
+          "sibling_ms": 0.2223,
+          "speedup_vs_strict_gemv": 1.971,
+          "speedup_vs_local32_per_row": 1.616,
+          "sibling_bit_exact_per_row": true,
+          "sibling_max_rel_vs_strict_gemv": 0.0013440860215053765
+        },
+        "4": {
+          "tensors": 2,
+          "strict_gemv_ms": 0.5356,
+          "local32_per_row_ms": 0.6633,
+          "sibling_ms": 0.2578,
+          "speedup_vs_strict_gemv": 2.077,
+          "speedup_vs_local32_per_row": 2.573,
+          "sibling_bit_exact_per_row": true,
+          "sibling_max_rel_vs_strict_gemv": 0.0013440860215053765
+        }
+      },
+      "IQ4_NL": {
+        "2": {
+          "tensors": 4,
+          "strict_gemv_ms": 1.3062,
+          "local32_per_row_ms": 0.4615,
+          "sibling_ms": 0.3051,
+          "speedup_vs_strict_gemv": 4.281,
+          "speedup_vs_local32_per_row": 1.513,
+          "sibling_bit_exact_per_row": true,
+          "sibling_max_rel_vs_strict_gemv": 0.0009689922480620155
+        },
+        "4": {
+          "tensors": 4,
+          "strict_gemv_ms": 1.3869,
+          "local32_per_row_ms": 0.8569,
+          "sibling_ms": 0.3737,
+          "speedup_vs_strict_gemv": 3.712,
+          "speedup_vs_local32_per_row": 2.293,
+          "sibling_bit_exact_per_row": true,
+          "sibling_max_rel_vs_strict_gemv": 0.0017985611510791368
+        }
+      },
+      "IQ4_XS": {
+        "2": {
+          "tensors": 4,
+          "strict_gemv_ms": 0.7403,
+          "local32_per_row_ms": 0.5043,
+          "sibling_ms": 0.3099,
+          "speedup_vs_strict_gemv": 2.389,
+          "speedup_vs_local32_per_row": 1.627,
+          "sibling_bit_exact_per_row": true,
+          "sibling_max_rel_vs_strict_gemv": 0.00034722222222222224
+        },
+        "4": {
+          "tensors": 4,
+          "strict_gemv_ms": 0.8607,
+          "local32_per_row_ms": 0.8866,
+          "sibling_ms": 0.3771,
+          "speedup_vs_strict_gemv": 2.282,
+          "speedup_vs_local32_per_row": 2.351,
+          "sibling_bit_exact_per_row": true,
+          "sibling_max_rel_vs_strict_gemv": 0.001388888888888889
+        }
+      }
+    }
+  },
+  "kernel_trace": [
+    {
+      "kernel": "void (anonymous namespace)::gguf_iq4_xs_local32_gemv_kernel<2, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+      "launches": 3,
+      "median_ns": 212881,
+      "min_ns": 212609,
+      "max_ns": 218505
+    },
+    {
+      "kernel": "void gguf_iq4_nl_local32_gemv_kernel<4, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+      "launches": 3,
+      "median_ns": 73912,
+      "min_ns": 72234,
+      "max_ns": 78145
+    },
+    {
+      "kernel": "void gguf_iq_split_local32_gemv_kernel<2, 2, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+      "launches": 3,
+      "median_ns": 271022,
+      "min_ns": 267914,
+      "max_ns": 277253
+    },
+    {
+      "kernel": "void gguf_iq_split_local32_gemv_kernel<4, 4, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+      "launches": 3,
+      "median_ns": 84389,
+      "min_ns": 84051,
+      "max_ns": 88611
+    },
+    {
+      "kernel": "void gguf_iq_split_local32_gemv_kernel<5, 4, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+      "launches": 3,
+      "median_ns": 78358,
+      "min_ns": 75924,
+      "max_ns": 84950
+    },
+    {
+      "kernel": "void gguf_iq_split_local32_gemv_kernel<6, 4, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+      "launches": 3,
+      "median_ns": 91001,
+      "min_ns": 87601,
+      "max_ns": 100565
+    }
+  ],
+  "limitations": [
+    "Kernel-level sums over 4 shapes per quant, not end-to-end rates.",
+    "Q3_K has no rows==1 local32 owner, so it has no rows 2-4 sibling and stays on the strict per-row GEMV.",
+    "The sibling is bit-identical to the already-admitted rows==1 local32 owner; the production gate obligation is therefore the teacher-forced AR-versus-verify screen, which the Phase 3 gate re-run covers."
+  ]
+}

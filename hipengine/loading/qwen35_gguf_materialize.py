@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import prod
 import os
 from pathlib import Path
 from types import MappingProxyType
-from typing import Iterable, Mapping
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Mapping
 
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
@@ -27,7 +28,28 @@ from hipengine.loading.qwen35_gguf import (
     Qwen35GGUFModelMap,
     build_qwen35_gguf_tensor_map,
 )
-from hipengine.quant.gguf import GGMLQuantizationType, dequantize_gguf_data
+from hipengine.loading.qwen35_gguf_policy import (
+    resolve_gguf_dense_flags,
+    gguf_ar_f32_linear_contraction,
+    gguf_ar_decode_repack_veto,
+    gguf_tensor_repack_eligible,
+    resolve_ud_repack_eligibility,
+)
+
+if TYPE_CHECKING:  # pragma: no cover - import cycle guard, annotations only
+    from hipengine.loading.gguf_selected_contract import SelectedCallIntent
+    from hipengine.loading.qwen35_gguf_admission import (
+        Qwen35GGUFAdmissionCertificate,
+    )
+from hipengine.quant.gguf import (
+    GGMLQuantizationType, dequantize_gguf_data, dequantization_supported,
+    nbytes_for_shape, quant_shape_to_byte_shape, quant_layout,
+)
+from hipengine.quant.gguf_repack import (
+    GGUFRepackShape, Q4_K_PACK8_SHAPE, Q4_K_T16_SHAPE,
+    Q5_K_T16_SHAPE, Q6_K_T16_SHAPE, Q8_0_T16_SHAPE,
+    Q4_K_X8_SHAPE, Q5_K_X8_SHAPE, Q6_K_X8_SHAPE,
+)
 from hipengine.quant.gguf_q4_k import (
     GGUF_Q4_K_BLOCK_BYTES,
     GGUF_Q4_K_TILE16_BLOCK_BYTES,
@@ -38,6 +60,7 @@ from hipengine.quant.gguf_q4_k import (
 )
 from hipengine.quant.gguf_t16 import (
     GGUF_Q5_K_BLOCK_BYTES,
+    GGUF_Q5_K_QMICRO_PLANAR_T16_BLOCK_BYTES,
     GGUF_Q5_K_T16_BLOCK_BYTES,
     GGUF_Q6_K_BLOCK_BYTES,
     GGUF_Q6_K_T16_BLOCK_BYTES,
@@ -93,6 +116,103 @@ class Qwen35GGUFWeightSpec:
     layout: str
     allocation_names: tuple[str, ...]
     sidecar_layouts: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class _ResidentRepack:
+    """One actual converter route, with its shared source-shape contract."""
+
+    shape: GGUFRepackShape
+    converter: Callable[[Any], Any]
+    promote_dense: bool = False
+
+    def validate(self, source: GGUFTensorInfo) -> None:
+        if int(source.ggml_type) != int(self.shape.source_type):
+            raise ValueError(f"repack requires {self.shape.source_type.name} source")
+        byte_shape = source.byte_shape
+        if self.promote_dense and len(byte_shape) == 2:
+            byte_shape = (1, *byte_shape)
+        self.shape.validate(byte_shape)
+
+    def convert(self, raw):
+        if self.promote_dense and raw.ndim == 2:
+            raw = raw[None, ...]
+        return self.converter(raw)
+
+
+# This is the materializer's converter dispatch, NOT a parallel admission
+# whitelist. Repackers themselves use these same immutable shape contracts.
+_RESIDENT_REPACKS = MappingProxyType({
+    LAYOUT_Q4_K_PACK8: _ResidentRepack(Q4_K_PACK8_SHAPE, repack_gguf_q4_k_pack8),
+    LAYOUT_GGUF_Q4_K_T16: _ResidentRepack(Q4_K_T16_SHAPE, repack_gguf_q4_k_tile16, True),
+    LAYOUT_GGUF_Q4_K_QMICRO_T16: _ResidentRepack(Q4_K_T16_SHAPE, repack_gguf_q4_k_tile16_qmicro, True),
+    LAYOUT_GGUF_Q4_K_X8: _ResidentRepack(Q4_K_X8_SHAPE, repack_gguf_q4_k_x8),
+    LAYOUT_GGUF_Q5_K_T16: _ResidentRepack(Q5_K_T16_SHAPE, repack_gguf_q5_k_tile16, True),
+    LAYOUT_GGUF_Q5_K_QMICRO_T16: _ResidentRepack(Q5_K_T16_SHAPE, repack_gguf_q5_k_qmicro_tile16),
+    LAYOUT_GGUF_Q6_K_T16: _ResidentRepack(Q6_K_T16_SHAPE, repack_gguf_q6_k_tile16, True),
+    LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR: _ResidentRepack(Q6_K_T16_SHAPE, repack_gguf_q6_k_tile16_qmicro_planar, True),
+    LAYOUT_GGUF_Q8_0_T16: _ResidentRepack(Q8_0_T16_SHAPE, repack_gguf_q8_0_tile16),
+    LAYOUT_GGUF_Q5_K_X8: _ResidentRepack(Q5_K_X8_SHAPE, repack_gguf_q5_k_x8),
+    LAYOUT_GGUF_Q6_K_X8: _ResidentRepack(Q6_K_X8_SHAPE, repack_gguf_q6_k_x8),
+})
+_Q6_X8_SIDECAR_REPACK = _ResidentRepack(Q6_K_X8_SHAPE, repack_gguf_q6_k_x8, True)
+_Q5_PLANAR_SIDECAR_REPACK = _ResidentRepack(Q5_K_T16_SHAPE, repack_gguf_q5_k_qmicro_tile16, True)
+
+
+def validate_qwen35_gguf_resident_prerequisites(spec: Qwen35GGUFWeightSpec) -> None:
+    """Validate the selected resident and each allocated sidecar without bytes accounting.
+
+    No payload reads, arrays, backend imports, device work or invocation/profile
+    qualification. The source geometry is checked with canonical GGUF helpers;
+    repack shape constraints are shared with the real CPU converters. Optional
+    expert-sidecar *eligibility* in sidecar_layouts is not an allocated sidecar.
+    """
+
+    source = spec.source
+    try:
+        shape = tuple(int(dim) for dim in source.shape)
+        if not shape or any(dim <= 0 for dim in shape):
+            raise ValueError("source dimensions must be positive")
+        if source.byte_shape != quant_shape_to_byte_shape(shape, source.ggml_type):
+            raise ValueError("source byte_shape disagrees with GGUF logical/block geometry")
+        if source.n_elements != prod(shape) or source.nbytes != nbytes_for_shape(shape, source.ggml_type):
+            raise ValueError("source element/byte counts disagree with GGUF geometry")
+        route = _RESIDENT_REPACKS.get(spec.layout)
+        if route is not None:
+            route.validate(source)
+            if spec.layout == LAYOUT_Q4_K_PACK8:
+                primary = {"qweight", "scales", "mins"}
+                allowed = primary | {Q4_T16_DECODE_TILES, Q4_T16_DECODE_TILES_R3PLUS}
+            else:
+                primary = {"tiles"}
+                allowed = primary | {"raw"}
+                if spec.layout == LAYOUT_GGUF_Q6_K_T16:
+                    allowed.add("x8")
+                if spec.layout == LAYOUT_GGUF_Q5_K_T16:
+                    allowed.add("qmicro_planar")
+        elif spec.layout in {LAYOUT_RAW_GGUF, LAYOUT_DENSE_F32, LAYOUT_DENSE_BF16}:
+            primary = allowed = {"raw"}
+            if spec.layout == LAYOUT_RAW_GGUF and (
+                len(shape) not in (2, 3) or quant_layout(source.ggml_type).storage_dtype != "uint8_blocks"
+            ):
+                raise ValueError("raw GGUF resident requires rank-2 or rank-3 block storage")
+            if spec.layout == LAYOUT_DENSE_F32 and source.ggml_type != GGMLQuantizationType.F32:
+                raise ValueError("dense F32 resident requires F32 source")
+            if spec.layout == LAYOUT_DENSE_BF16 and not dequantization_supported(source.ggml_type):
+                raise ValueError("dense BF16 resident requires a supported CPU decoder")
+        else:
+            raise ValueError(f"unsupported resident layout {spec.layout!r}")
+        names = set(spec.allocation_names)
+        if len(names) != len(spec.allocation_names) or not primary <= names or not names <= allowed:
+            raise ValueError(f"unsupported resident allocations {spec.allocation_names!r} for {spec.layout!r}")
+        if names & {Q4_T16_DECODE_TILES, Q4_T16_DECODE_TILES_R3PLUS}:
+            _RESIDENT_REPACKS[LAYOUT_GGUF_Q4_K_T16].validate(source)
+        if "x8" in names:
+            _Q6_X8_SIDECAR_REPACK.validate(source)
+        if "qmicro_planar" in names:
+            _Q5_PLANAR_SIDECAR_REPACK.validate(source)
+    except ValueError as error:
+        raise ValueError(f"{spec.slot_path}: resident prerequisites: {error}") from error
 
 
 @dataclass(frozen=True)
@@ -202,6 +322,9 @@ class Qwen35GGUFResidentWeights:
     allocation_arena: DeviceMemoryArena | None = None
     allocation_mode: str = "dedicated"
     allocation_arena_reason: str | None = None
+    artifact_preset_key: str | None = None
+    admission_certificate: Qwen35GGUFAdmissionCertificate | None = None
+    execution_binding: object | None = None
 
     def root(self, slot: str) -> Qwen35GGUFDeviceWeight:
         return self.root_weights[slot]
@@ -264,6 +387,9 @@ def plan_qwen35_gguf_materialization(
     model_map: Qwen35GGUFModelMap,
     *,
     decode_repack: bool | None = None,
+    repack_veto: bool | None = None,
+    contract_f32_linear: bool | None = None,
+    slot_filter: Iterable[str] | None = None,
     dense_q4_t16: bool = False,
     dense_q4_qmicro_t16_gate_up: bool = False,
     dense_q4_t16_attn_q_08b: bool = False,
@@ -280,25 +406,59 @@ def plan_qwen35_gguf_materialization(
     q6_planar_excluded = frozenset(
         str(slot) for slot in dense_q6_qmicro_planar_excluded_slots
     )
-    contract_q3_f32_linear = any(
-        GGMLQuantizationType(tensor.ggml_type)
-        in {
-            GGMLQuantizationType.IQ2_XS,
-            GGMLQuantizationType.IQ3_XXS,
-            GGMLQuantizationType.IQ4_XS,
-        }
+    # Shared pure policy predicates (hipengine.loading.qwen35_gguf_policy).
+    # UD-U1: the per-tensor decode-repack veto and the model-wide F32 linear
+    # contraction are separate knobs; both default to the same raw-IQ
+    # predicate so unchanged manifests plan identically, but granting
+    # per-tensor repack eligibility can no longer silently move the F32
+    # alpha/beta/router contraction, and disabling the contraction can no
+    # longer silently grant repack.
+    ar_layer_types = (
+        tensor.ggml_type
         for layer in model_map.layers
         for tensor in layer.tensors.values()
     )
-    # Raw-IQ models' selected kernels consume compressed rank-3 GGUF layouts.
-    # Keep one compatible resident plan instead of silently mixing it with the
-    # Q4-oriented T16 decode residents.
-    use_decode_repack = requested_decode_repack and not contract_q3_f32_linear
+    ar_repack_veto = (
+        gguf_ar_decode_repack_veto(ar_layer_types)
+        if repack_veto is None
+        else bool(repack_veto)
+    )
+    ar_layer_types = (
+        tensor.ggml_type
+        for layer in model_map.layers
+        for tensor in layer.tensors.values()
+    )
+    contract_q3_f32_linear = (
+        gguf_ar_f32_linear_contraction(ar_layer_types)
+        if contract_f32_linear is None
+        else bool(contract_f32_linear)
+    )
+    # UD-U3 layout selection. Per-tensor mode (default) vetoes repack only
+    # for a tensor whose own type is raw-IQ (applied inside _spec_for_tensor);
+    # a dense model carrying raw-IQ tensors keeps its Q4/Q5/Q6/Q8 tensors on
+    # the T16/x8/planar layouts. 'model-wide' (or repack_veto=True) restores
+    # the historical behaviour where any raw-IQ tensor strips every tensor's
+    # repack: raw-IQ models' selected kernels consume compressed rank-3 GGUF
+    # layouts, so one compatible resident plan was kept instead of silently
+    # mixing it with the Q4-oriented T16 decode residents.
+    repack_eligibility = resolve_ud_repack_eligibility()
+    # The model-wide veto applies only when explicitly forced (repack_veto=True)
+    # or when the eligibility mode is 'model-wide' and the policy predicate
+    # fires. Per-tensor mode leaves the decision to each tensor's own type.
+    model_wide_veto = bool(repack_veto) if repack_veto is not None else (
+        repack_eligibility == "model-wide" and ar_repack_veto
+    )
+    use_decode_repack = requested_decode_repack and not model_wide_veto
+    per_tensor_veto = repack_veto is None and repack_eligibility == "per-tensor"
+    allowed_slots = (
+        None if slot_filter is None else frozenset(str(slot) for slot in slot_filter)
+    )
     root_specs = {
         slot: _spec_for_tensor(
             f"root.{slot}",
             tensor,
             decode_repack=use_decode_repack,
+            per_tensor_repack_veto=per_tensor_veto,
             contract_f32_linear=contract_q3_f32_linear,
             dense_q4_t16=bool(dense_q4_t16),
             dense_q4_qmicro_t16_gate_up=bool(dense_q4_qmicro_t16_gate_up),
@@ -313,11 +473,13 @@ def plan_qwen35_gguf_materialization(
             dense_q6_qmicro_planar_excluded_slots=q6_planar_excluded,
         )
         for slot, tensor in model_map.root_tensors.items()
+        if allowed_slots is None or f"root.{slot}" in allowed_slots
     }
     layer_specs = tuple(
         _plan_layer(
             layer,
             decode_repack=use_decode_repack,
+            per_tensor_repack_veto=per_tensor_veto,
             contract_f32_linear=contract_q3_f32_linear,
             dense_q4_t16=bool(dense_q4_t16),
             dense_q4_qmicro_t16_gate_up=bool(dense_q4_qmicro_t16_gate_up),
@@ -330,6 +492,7 @@ def plan_qwen35_gguf_materialization(
             dense_q5_t16_h5120=bool(dense_q5_t16_h5120),
             dense_q6_qmicro_planar=bool(dense_q6_qmicro_planar),
             dense_q6_qmicro_planar_excluded_slots=q6_planar_excluded,
+            slot_filter=allowed_slots,
         )
         for layer in model_map.layers
     )
@@ -510,6 +673,27 @@ def planned_qwen35_gguf_weight_allocation_nbytes(
             )
         elif allocation_name == "x8":
             nbytes = int(source.nbytes)
+        elif allocation_name == "qmicro_planar":
+            # The env-gated Q5 planar-dp4a sidecar (HIPENGINE_C8_Q5_PLANAR_DP4A=1):
+            # the materializer uploads the INT8 ``planar.tiles`` array of
+            # convert_gguf_q5_k_qmicro_tile16_to_planar(
+            #   repack_gguf_q5_k_qmicro_tile16(raw[None, ...]))
+            # whose shape is [experts, out/16, bytes_per_row/Q5_K_block,
+            # GGUF_Q5_K_QMICRO_PLANAR_T16_BLOCK_BYTES] — the same tile
+            # expansion as the T16 tiles payload with the planar block size.
+            # Only Q5_K T16 residents may carry it (the same gate the
+            # materializer enforces); the tile-alignment checks stay mandatory.
+            if spec.layout != LAYOUT_GGUF_Q5_K_T16:
+                raise ValueError(
+                    "qmicro_planar sidecar is only supported for Q5_K T16 "
+                    f"residents, got layout {spec.layout!r} for {spec.slot_path}"
+                )
+            nbytes = _planned_t16_nbytes(
+                source,
+                block_bytes=GGUF_Q5_K_BLOCK_BYTES,
+                tile_block_bytes=GGUF_Q5_K_QMICRO_PLANAR_T16_BLOCK_BYTES,
+                slot_path=spec.slot_path,
+            )
         else:
             raise ValueError(
                 f"unsupported resident allocation {allocation_name!r} for {spec.slot_path}"
@@ -604,6 +788,12 @@ def materialize_qwen35_gguf_weights(
     backend: str = "hip_gfx1100",
     use_selective_weight_arena: bool = False,
     selective_weight_max_allocation_bytes: int = GGUF_SELECTIVE_WEIGHT_ARENA_MAX_ALLOCATION_BYTES,
+    requested_operations: Iterable[str] | None = None,
+    admission_certificate: Qwen35GGUFAdmissionCertificate | None = None,
+    f32_input_operations: Iterable[str] = (),
+    selected_call_intents: Iterable[SelectedCallIntent] | None = None,
+    recurrent_state_dtype: str = "f32",
+    gdn_force_bf16: bool = False,
 ) -> Qwen35GGUFResidentWeights:
     """Materialize a validated Qwen3.5 GGUF map to resident device records.
 
@@ -612,118 +802,127 @@ def materialize_qwen35_gguf_weights(
     unset to materialize the full model. ``deferred_device_slots`` retains the
     validated weight specs but performs no device allocation for those slots;
     callers must materialize them before passing the records to a kernel.
+    ``requested_operations`` binds the operations the resident will run (for
+    example ``ar_decode_native_rows``) to the pre-allocation admission
+    preflight: an artifact that cannot support a requested mode is refused
+    with the aggregated refusal list before the first device allocation. The
+    default is ``DEFAULT_AR_OPERATIONS`` (the historical c1/rows/prefill/
+    embedding/logits set). Native requests add to this default scope and bind
+    embedding, BF16-input head, selected MoE partners/router and recurrent
+    auxiliaries under their actual native row contract. Partial debug loads
+    cannot authorize a native model execution entry.
+    ``admission_certificate`` is an optional previously minted
+    :class:`Qwen35GGUFAdmissionCertificate` the caller asks this load to
+    honor. It is re-verified against the FRESH admission report (fingerprint,
+    backend, operations, slot scope, and the actual planned-resident
+    contract, env-resolved layouts included) before any device allocation; a
+    certificate that does not cover the plan this load would materialize is
+    refused fail-closed. Callers that skip the preflight re-run can rely on
+    it; the minted certificate is attached to the returned residents for
+    downstream re-verification.  ``f32_input_operations`` declares
+    operations whose callers will supply F32 activation inputs (the
+    c1/verifier F32-input override route, for example the dense-F32
+    lm-head's registered ``dense_gemv/f32/f32_hidden_f32_out`` consumer); it
+    is recorded on the admission plan contract so certificates never
+    transfer across activation contracts. ``selected_call_intents`` names
+    explicit selected-expert calls for diagnostic loads; omitted means the
+    full-model caller plan, independent of ``selected_slots``. A paired call
+    whose filter omits a partner is refused, never converted to a singleton.
     """
 
     reader = reader_or_path if isinstance(reader_or_path, GGUFReader) else GGUFReader(reader_or_path)
     model_map = build_qwen35_gguf_tensor_map(reader.info)
     file_type_name = getattr(reader.info, "file_type_name", None)
-    raw_qmicro_file_types = backend_package_capability(
+    selected = None if selected_slots is None else set(selected_slots)
+    deferred_device_slots = tuple(deferred_device_slots or ())
+    # The trailing NextN block participates in the artifact manifest
+    # fingerprint (structural records only; draft admission is gated
+    # separately by the NextN materializer).
+    nextn_map = None
+    if model_map.config.ignored_block_ids:
+        from hipengine.loading.qwen35_gguf_nextn import (
+            build_qwen35_gguf_nextn_tensor_map,
+        )
+
+        nextn_map = build_qwen35_gguf_nextn_tensor_map(reader.info, strict=False)
+    # Dense-capability and environment-override resolution is shared policy
+    # (hipengine.loading.qwen35_gguf_policy); the runtime passes the
+    # backend-package reader, the metadata audit passes a source-reading one.
+    dense_flags = resolve_gguf_dense_flags(
         backend,
-        "GGUF_DENSE_Q4_QMICRO_T16_GATE_UP_FILE_TYPES",
-        (),
+        file_type_name,
+        capability_reader=backend_package_capability,
+        environ=os.environ,
     )
-    qmicro_file_types = (
-        frozenset(str(item) for item in raw_qmicro_file_types)
-        if isinstance(raw_qmicro_file_types, (tuple, list, set, frozenset))
-        else frozenset()
+    # UD-U1 admission preflight: qualify every requested operation over every
+    # planned slot BEFORE any device allocation, aggregating every unsupported
+    # slot/mode. Unknown manifests (plain stamp lane) resolve to no preset and
+    # keep the historical behavior; pinned UD manifests without certified
+    # consumers are refused here with the full refusal list. Imported lazily:
+    # the admission module imports this module's per-slot planner.
+    from hipengine.loading.qwen35_gguf_admission import (
+        DEFAULT_AR_OPERATIONS,
+        Qwen35GGUFAdmissionError,
+        certificate_covers_artifact,
+        preflight_qwen35_gguf_artifact,
+        qwen35_gguf_artifact_preset_key_for_report,
     )
+
+    operations = (
+        DEFAULT_AR_OPERATIONS
+        if requested_operations is None
+        else tuple(str(operation) for operation in requested_operations)
+    )
+    # Native execution is additive, never a diagnostic replacement for the
+    # resident's default calls (embedding/head and selected partners included).
+    if "ar_decode_native_rows" in operations:
+        from hipengine.loading.qwen35_gguf_execution import execution_operations
+        operations = tuple(dict.fromkeys((*execution_operations(("native_rows",)), *operations)))
+        if deferred_device_slots:
+            raise Qwen35GGUFAdmissionError(
+                "ar_decode_native_rows requires resident device operands before execution; "
+                "deferred device slots are not a certified native adapter")
+    admission_report = preflight_qwen35_gguf_artifact(
+        model_map,
+        backend=backend,
+        file_type_stamp=(None if file_type_name is None else str(file_type_name)),
+        operations=operations,
+        decode_repack=decode_repack,
+        slot_filter=None if selected is None else tuple(sorted(selected)),
+        nextn_map=nextn_map,
+        f32_input_operations=f32_input_operations,
+        selected_call_intents=selected_call_intents,
+        recurrent_state_dtype=recurrent_state_dtype,
+        gdn_force_bf16=gdn_force_bf16,
+        **dense_flags,
+    )
+    if not admission_report.supported:
+        admission_report.raise_for_errors()
+    if admission_certificate is not None and not certificate_covers_artifact(
+        admission_certificate,
+        manifest_fingerprint=admission_report.manifest_fingerprint,
+        plan_contract=admission_report.plan_contract,
+        backend=str(backend),
+        operations=operations,
+        slot_filter=None if selected is None else tuple(sorted(selected)),
+    ):
+        # Real certificate consumer: the caller's certificate must cover the
+        # plan THIS load would materialize — same fingerprint/backend/ops/
+        # slot scope and the same actual planned residents (the contract
+        # binds env-resolved layouts, so environment drift between the mint
+        # and this load is caught here) — before any device allocation.
+        raise Qwen35GGUFAdmissionError(
+            "the supplied GGUF admission certificate does not cover the "
+            "plan this load would materialize (fail-closed); re-run "
+            "preflight_qwen35_gguf_artifact under the current artifact "
+            "and plan and retry with the fresh certificate"
+        )
     plan = plan_qwen35_gguf_materialization(
         model_map,
         decode_repack=decode_repack,
-        dense_q4_t16=bool(
-            backend_package_capability(
-                backend,
-                "GGUF_DENSE_Q4_T16",
-                False,
-            )
-        ),
-        dense_q4_qmicro_t16_gate_up=(
-            bool(
-                backend_package_capability(
-                    backend,
-                    "GGUF_DENSE_Q4_QMICRO_T16_GATE_UP",
-                    False,
-                )
-            )
-            and file_type_name in qmicro_file_types
-        ),
-        dense_q4_t16_attn_q_08b=bool(
-            backend_package_capability(
-                backend,
-                "GGUF_DENSE_Q4_T16_ATTN_Q_08B",
-                False,
-            )
-        ),
-        dense_q5_t16_ssm_out=bool(
-            backend_package_capability(
-                backend,
-                "GGUF_DENSE_Q5_T16_SSM_OUT",
-                False,
-            )
-        ),
-        dense_q5_raw_mmq_ssm_out=(
-            os.environ.get("HIPENGINE_GGUF_C8_Q5_RAW_MMQ", "1")
-            .strip()
-            .lower()
-            in {"1", "true", "yes", "on"}
-            and bool(
-                backend_package_capability(
-                    backend,
-                    "GGUF_C8_Q5_RAW_MMQ_SSM_OUT",
-                    False,
-                )
-            )
-        ),
-        dense_q5_qmicro_planar_ssm_out=(
-            os.environ.get("HIPENGINE_C8_Q5_PLANAR_DP4A", "0")
-            .strip()
-            .lower()
-            in {"1", "true", "yes", "on"}
-            and bool(
-                backend_package_capability(
-                    backend,
-                    "GGUF_C8_Q5_RAW_MMQ_SSM_OUT",
-                    False,
-                )
-            )
-        ),
-        dense_q5_t16_ssm_out_08b=bool(
-            backend_package_capability(
-                backend,
-                "GGUF_DENSE_Q5_T16_SSM_OUT_08B",
-                False,
-            )
-        ),
-        dense_q5_t16_qkv=bool(
-            backend_package_capability(
-                backend,
-                "GGUF_DENSE_Q5_T16_QKV",
-                False,
-            )
-        ),
-        dense_q5_t16_h5120=bool(
-            backend_package_capability(
-                backend,
-                "GGUF_DENSE_Q5_T16_H5120",
-                False,
-            )
-        ),
-        dense_q6_qmicro_planar=bool(
-            backend_package_capability(
-                backend,
-                "GGUF_DENSE_Q6_T16_QMICRO_PLANAR",
-                False,
-            )
-        ),
-        dense_q6_qmicro_planar_excluded_slots=tuple(
-            backend_package_capability(
-                backend,
-                "GGUF_DENSE_Q6_T16_QMICRO_PLANAR_EXCLUDED_SLOTS",
-                (),
-            )
-        ),
+        slot_filter=None if selected is None else tuple(sorted(selected)),
+        **dense_flags,
     )
-    selected = None if selected_slots is None else set(selected_slots)
     deferred = set() if deferred_device_slots is None else {str(slot) for slot in deferred_device_slots}
     known_slots = {spec.slot_path for spec in plan.specs}
     unknown_deferred = tuple(sorted(deferred - known_slots))
@@ -838,7 +1037,7 @@ def materialize_qwen35_gguf_weights(
     model_name = None
     if isinstance(metadata, Mapping) and metadata.get("general.name") is not None:
         model_name = str(metadata["general.name"])
-    return Qwen35GGUFResidentWeights(
+    resident = Qwen35GGUFResidentWeights(
         config=plan.config,
         root_weights=MappingProxyType(root_weights),
         layers=layers,
@@ -849,13 +1048,21 @@ def materialize_qwen35_gguf_weights(
         allocation_arena=allocation_arena,
         allocation_mode=allocation_mode,
         allocation_arena_reason=allocation_arena_reason,
+        artifact_preset_key=qwen35_gguf_artifact_preset_key_for_report(
+            admission_report
+        ),
+        admission_certificate=admission_report.certificate(),
     )
+    from dataclasses import replace
+    from hipengine.loading.qwen35_gguf_execution import bind_resident_execution
+    return replace(resident, execution_binding=bind_resident_execution(resident))
 
 
 def _plan_layer(
     layer: Qwen35GGUFLayerMap,
     *,
     decode_repack: bool,
+    per_tensor_repack_veto: bool = False,
     contract_f32_linear: bool = False,
     dense_q4_t16: bool = False,
     dense_q4_qmicro_t16_gate_up: bool = False,
@@ -868,12 +1075,17 @@ def _plan_layer(
     dense_q5_t16_h5120: bool = False,
     dense_q6_qmicro_planar: bool = False,
     dense_q6_qmicro_planar_excluded_slots: frozenset[str] = frozenset(),
+    slot_filter: frozenset[str] | None = None,
 ) -> dict[str, Qwen35GGUFWeightSpec]:
+    def _allowed(slot: str) -> bool:
+        return slot_filter is None or f"layers.{layer.layer_id}.{slot}" in slot_filter
+
     return {
         slot: _spec_for_tensor(
             f"layers.{layer.layer_id}.{slot}",
             tensor,
             decode_repack=decode_repack,
+            per_tensor_repack_veto=per_tensor_repack_veto,
             contract_f32_linear=contract_f32_linear,
             dense_q4_t16=dense_q4_t16,
             dense_q4_qmicro_t16_gate_up=dense_q4_qmicro_t16_gate_up,
@@ -890,6 +1102,7 @@ def _plan_layer(
             ),
         )
         for slot, tensor in layer.tensors.items()
+        if _allowed(slot)
     }
 
 
@@ -1021,6 +1234,7 @@ def plan_qwen35_gguf_weight_spec(
     tensor: GGUFTensorInfo,
     *,
     decode_repack: bool = False,
+    contract_f32_linear: bool = False,
     dense_q4_t16: bool = False,
     dense_q4_qmicro_t16_gate_up: bool = False,
     dense_q4_t16_attn_q_08b: bool = False,
@@ -1033,12 +1247,19 @@ def plan_qwen35_gguf_weight_spec(
     dense_q6_qmicro_planar: bool = False,
     dense_q6_qmicro_planar_excluded_slots: Iterable[str] = (),
 ) -> Qwen35GGUFWeightSpec:
-    """Plan one canonical GGUF weight for AR or draft-model materialization."""
+    """Plan one canonical GGUF weight for AR or draft-model materialization.
+
+    ``contract_f32_linear`` carries the model-wide F32 contraction that the AR
+    planner derives from its raw-IQ predicate; callers that plan a draft or an
+    isolated slot without that model-wide context leave it False (the
+    historical default).
+    """
 
     return _spec_for_tensor(
         slot_path,
         tensor,
         decode_repack=bool(decode_repack),
+        contract_f32_linear=bool(contract_f32_linear),
         dense_q4_t16=bool(dense_q4_t16),
         dense_q4_qmicro_t16_gate_up=bool(dense_q4_qmicro_t16_gate_up),
         dense_q4_t16_attn_q_08b=bool(dense_q4_t16_attn_q_08b),
@@ -1060,6 +1281,7 @@ def _spec_for_tensor(
     tensor: GGUFTensorInfo,
     *,
     decode_repack: bool,
+    per_tensor_repack_veto: bool = False,
     contract_f32_linear: bool = False,
     dense_q4_t16: bool = False,
     dense_q4_qmicro_t16_gate_up: bool = False,
@@ -1073,6 +1295,11 @@ def _spec_for_tensor(
     dense_q6_qmicro_planar: bool = False,
     dense_q6_qmicro_planar_excluded_slots: frozenset[str] = frozenset(),
 ) -> Qwen35GGUFWeightSpec:
+    if per_tensor_repack_veto and not gguf_tensor_repack_eligible(tensor.ggml_type):
+        # UD-U3 per-tensor eligibility: raw-IQ tensors keep their compressed
+        # raw layouts (their dense leaves consume raw rows); every other type
+        # repacks under the same request.
+        decode_repack = False
     qtype = GGMLQuantizationType(tensor.ggml_type)
     if qtype == GGMLQuantizationType.F32:
         bf16_linear_weight = contract_f32_linear and slot_path.endswith(
@@ -1086,6 +1313,7 @@ def _spec_for_tensor(
             allocation_names=("raw",),
         )
     if _is_token_embedding_slot(slot_path) and qtype in (
+        GGMLQuantizationType.Q3_K,
         GGMLQuantizationType.Q4_K,
         GGMLQuantizationType.Q5_K,
         GGMLQuantizationType.Q6_K,
@@ -1241,7 +1469,7 @@ def _spec_for_tensor(
             slot_path=slot_path,
             source=tensor,
             quant_key="gguf_q5_k",
-            layout=LAYOUT_RAW_GGUF if len(tensor.shape) != 2 else LAYOUT_DENSE_BF16,
+            layout=LAYOUT_RAW_GGUF,
             allocation_names=("raw",),
             sidecar_layouts=_sidecar_layouts_for_tensor(slot_path, tensor),
         )
@@ -1330,7 +1558,7 @@ def _spec_for_tensor(
             slot_path=slot_path,
             source=tensor,
             quant_key="gguf_q6_k",
-            layout=LAYOUT_RAW_GGUF if len(tensor.shape) != 2 else LAYOUT_DENSE_BF16,
+            layout=LAYOUT_RAW_GGUF,
             allocation_names=("raw",),
             sidecar_layouts=_sidecar_layouts_for_tensor(slot_path, tensor),
         )
@@ -1355,6 +1583,20 @@ def _spec_for_tensor(
             layout=LAYOUT_RAW_GGUF,
             allocation_names=("raw",),
         )
+    if (
+        qtype in (GGMLQuantizationType.IQ4_XS, GGMLQuantizationType.IQ4_NL,
+                  GGMLQuantizationType.IQ3_S, GGMLQuantizationType.Q3_K,
+                  GGMLQuantizationType.IQ3_XXS, GGMLQuantizationType.IQ2_S,
+                  GGMLQuantizationType.IQ2_XS)
+        and slot_path.startswith("layers.") and len(tensor.shape) == 2
+    ):
+        # Dense leaves consume the original compressed rows. Root lookup and
+        # rank-3 experts retain their independent operation contracts below.
+        return Qwen35GGUFWeightSpec(
+            slot_path=slot_path, source=tensor,
+            quant_key=f"gguf_{tensor.ggml_type_name.lower()}",
+            layout=LAYOUT_RAW_GGUF, allocation_names=("raw",),
+        )
     if qtype in (
         GGMLQuantizationType.IQ3_XXS,
         GGMLQuantizationType.Q3_K,
@@ -1363,8 +1605,8 @@ def _spec_for_tensor(
         and _is_selected_expert_tensor(slot_path, tensor)
     ):
         # Native selected GEMV keeps routed rank-3 IQ2/IQ3/IQ4 experts raw.
-        # Rank-2 IQ2_XS/IQ4_XS tensors keep the dense-BF16 fallback below;
-        # rank-2 IQ3_XXS/Q3_K remain unsupported rather than silently expanding.
+        # Non-expert IQ2_XS/IQ4_XS keep the dense-BF16 fallback below;
+        # other non-expert IQ3_XXS/Q3_K slots remain unsupported.
         if not _is_selected_expert_tensor(slot_path, tensor):
             raise ValueError(
                 f"unsupported Qwen3.5 GGUF tensor type {tensor.ggml_type_name!r} outside "
@@ -1440,6 +1682,9 @@ _DENSE_Q4_T16_SIDECAR_POLICY = (
     ("attn_qkv", (10_240, 5_120), Q4_T16_DECODE_TILES_R3PLUS),
     ("attn_v", (1_024, 5_120), Q4_T16_DECODE_TILES_R3PLUS),
     ("ffn_down", (5_120, 17_408), Q4_T16_DECODE_TILES),
+    # Same (5120, 6144) geometry as attn_output; present at Q4_K in the UD
+    # files, absent from the plain Q4_K_S file the policy was measured on.
+    ("ssm_out", (5_120, 6_144), Q4_T16_DECODE_TILES),
     ("ffn_gate", (17_408, 5_120), Q4_T16_DECODE_TILES),
     ("ffn_up", (17_408, 5_120), Q4_T16_DECODE_TILES),
 )
@@ -1502,21 +1747,38 @@ def _is_dense_q5_t16_qkv_tensor(
     )
 
 
+# Dense-H5120 Q5 roles with operation-complete T16 consumers. The first three
+# are the original scope: the plain Qwen3.8-27B Q4_K_S file carries Q5 only at
+# those roles, so the rest were never exercised. The published UD files carry
+# Q5_K at the remaining dense roles too, and every one of those (role, shape)
+# pairs is already admitted for Q4_K by _DENSE_Q4_T16_SIDECAR_POLICY on the
+# identical geometry, so they resolve to the same T16 family instead of
+# falling to the raw GEMV layout. Shapes are (out_features, in_features).
+_DENSE_H5120_Q5_T16_ROLE_SHAPES = (
+    ("ffn_down", (5_120, 17_408)),
+    ("attn_qkv", (10_240, 5_120)),
+    ("attn_v", (1_024, 5_120)),
+    ("attn_gate", (6_144, 5_120)),
+    ("attn_k", (1_024, 5_120)),
+    ("attn_output", (5_120, 6_144)),
+    ("attn_q", (12_288, 5_120)),
+    ("ffn_gate", (17_408, 5_120)),
+    ("ffn_up", (17_408, 5_120)),
+)
+
+
 def _is_dense_h5120_q5_t16_tensor(
     slot_path: str,
     tensor: GGUFTensorInfo,
 ) -> bool:
-    """Select Q4_K_S Q5 roles with operation-complete dense-H5120 consumers."""
+    """Select Q5 roles with operation-complete dense-H5120 consumers."""
 
     shape = tuple(map(int, tensor.shape))
-    return (
-        len(shape) == 2
-        and slot_path.startswith("layers.")
-        and (
-            (slot_path.endswith(".ffn_down") and shape == (5_120, 17_408))
-            or (slot_path.endswith(".attn_qkv") and shape == (10_240, 5_120))
-            or (slot_path.endswith(".attn_v") and shape == (1_024, 5_120))
-        )
+    if len(shape) != 2 or not slot_path.startswith("layers."):
+        return False
+    return any(
+        shape == expected and slot_path.endswith(f".{role}")
+        for role, expected in _DENSE_H5120_Q5_T16_ROLE_SHAPES
     )
 
 
@@ -1552,12 +1814,21 @@ def _is_wide_rank2_q6_t16_tensor(
     slot_path: str,
     tensor: GGUFTensorInfo,
 ) -> bool:
-    """Select measured wide dense projections without regressing narrow V."""
+    """Select measured wide dense projections without regressing narrow V.
+
+    ``ffn_up``, ``attn_output`` and ``ssm_out`` join the original
+    ``ffn_down``/``attn_qkv`` pair for the published UD files, which carry Q6_K
+    at those roles where the plain Q4_K_S file does not. All are >= 5120 wide,
+    so they keep the wide-path measurement that this predicate encodes; the
+    narrow exclusion below is unchanged.
+    """
 
     return (
         len(tensor.shape) == 2
         and int(tensor.shape[0]) >= 5_120
-        and slot_path.endswith((".ffn_down", ".attn_qkv"))
+        and slot_path.endswith(
+            (".ffn_down", ".attn_qkv", ".ffn_up", ".attn_output", ".ssm_out")
+        )
     )
 
 
@@ -1565,13 +1836,18 @@ def _is_narrow_q6_attn_v_tensor(
     slot_path: str,
     tensor: GGUFTensorInfo,
 ) -> bool:
-    """Select the measured dense-H5120 full-attention V projection."""
+    """Select the narrow dense-H5120 attention projections.
+
+    ``attn_k`` carries the identical (1024, 5120) geometry as ``attn_v`` and
+    appears at Q6_K in the published UD files. Narrow projections stay off the
+    wide T16 path above and take the planar route ``attn_v`` established.
+    """
 
     return (
         len(tensor.shape) == 2
         and tuple(map(int, tensor.shape)) == (1_024, 5_120)
         and slot_path.startswith("layers.")
-        and slot_path.endswith(".attn_v")
+        and slot_path.endswith((".attn_v", ".attn_k"))
     )
 
 
@@ -1665,12 +1941,13 @@ def _materialize_spec(
             allocator=allocator,
         )
 
+    validate_qwen35_gguf_resident_prerequisites(spec)
     raw = np.ascontiguousarray(reader.tensor_data(spec.source.name))
     if spec.slot_path.endswith(".ssm_a"):
         raw = _gguf_ssm_a_to_kernel_a_log(raw)
     allocations: dict[str, DeviceTensorAllocation]
     if spec.layout == LAYOUT_Q4_K_PACK8:
-        packed = repack_gguf_q4_k_pack8(raw)
+        packed = _RESIDENT_REPACKS[spec.layout].convert(raw)
         allocations = {
             "qweight": load_host_array_to_device_as_dtype(
                 f"{spec.source.name}.pack8.qweight",
@@ -1706,9 +1983,7 @@ def _materialize_spec(
             if name in spec.allocation_names
         )
         if q4_t16_sidecar_names:
-            decode_tiles = repack_gguf_q4_k_tile16(
-                raw if raw.ndim == 3 else raw[None, ...]
-            ).tiles
+            decode_tiles = _RESIDENT_REPACKS[LAYOUT_GGUF_Q4_K_T16].convert(raw).tiles
             for sidecar_name in q4_t16_sidecar_names:
                 allocations[sidecar_name] = load_host_array_to_device_as_dtype(
                     f"{spec.source.name}.t16_decode_sidecar",
@@ -1718,46 +1993,8 @@ def _materialize_spec(
                     device=device,
                     runtime=runtime,
                 )
-    elif spec.layout in {
-        LAYOUT_GGUF_Q4_K_T16,
-        LAYOUT_GGUF_Q4_K_QMICRO_T16,
-        LAYOUT_GGUF_Q4_K_X8,
-        LAYOUT_GGUF_Q5_K_T16,
-        LAYOUT_GGUF_Q5_K_QMICRO_T16,
-        LAYOUT_GGUF_Q6_K_T16,
-        LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
-        LAYOUT_GGUF_Q8_0_T16,
-        LAYOUT_GGUF_Q5_K_X8,
-        LAYOUT_GGUF_Q6_K_X8,
-    }:
-        if spec.layout == LAYOUT_GGUF_Q4_K_T16:
-            packed = repack_gguf_q4_k_tile16(
-                raw if raw.ndim == 3 else raw[None, ...]
-            )
-        elif spec.layout == LAYOUT_GGUF_Q4_K_QMICRO_T16:
-            packed = repack_gguf_q4_k_tile16_qmicro(
-                raw if raw.ndim == 3 else raw[None, ...]
-            )
-        elif spec.layout == LAYOUT_GGUF_Q4_K_X8:
-            packed = repack_gguf_q4_k_x8(raw)
-        elif spec.layout == LAYOUT_GGUF_Q5_K_T16:
-            packed = repack_gguf_q5_k_tile16(
-                raw if raw.ndim == 3 else raw[None, ...]
-            )
-        elif spec.layout == LAYOUT_GGUF_Q5_K_QMICRO_T16:
-            packed = repack_gguf_q5_k_qmicro_tile16(raw)
-        elif spec.layout == LAYOUT_GGUF_Q6_K_T16:
-            packed = repack_gguf_q6_k_tile16(raw if raw.ndim == 3 else raw[None, ...])
-        elif spec.layout == LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR:
-            packed = repack_gguf_q6_k_tile16_qmicro_planar(
-                raw if raw.ndim == 3 else raw[None, ...]
-            )
-        elif spec.layout == LAYOUT_GGUF_Q5_K_X8:
-            packed = repack_gguf_q5_k_x8(raw)
-        elif spec.layout == LAYOUT_GGUF_Q6_K_X8:
-            packed = repack_gguf_q6_k_x8(raw)
-        else:
-            packed = repack_gguf_q8_0_tile16(raw)
+    elif spec.layout in _RESIDENT_REPACKS:
+        packed = _RESIDENT_REPACKS[spec.layout].convert(raw)
         allocations = {
             "tiles": load_host_array_to_device_as_dtype(
                 f"{spec.source.name}.t16.tiles",
@@ -1769,9 +2006,7 @@ def _materialize_spec(
             )
         }
         if "x8" in spec.allocation_names:
-            if spec.layout != LAYOUT_GGUF_Q6_K_T16:
-                raise ValueError("X8 sidecar is only supported for Q6_K T16 residents")
-            x8_packed = repack_gguf_q6_k_x8(raw if raw.ndim == 3 else raw[None, ...])
+            x8_packed = _Q6_X8_SIDECAR_REPACK.convert(raw)
             x8_tiles = x8_packed.tiles[0] if raw.ndim == 2 else x8_packed.tiles
             allocations["x8"] = load_host_array_to_device_as_dtype(
                 f"{spec.source.name}.x8_sidecar",
@@ -1782,12 +2017,8 @@ def _materialize_spec(
                 runtime=runtime,
             )
         if "qmicro_planar" in spec.allocation_names:
-            if spec.layout != LAYOUT_GGUF_Q5_K_T16:
-                raise ValueError(
-                    "qmicro_planar sidecar is only supported for Q5_K T16 residents"
-                )
             planar = convert_gguf_q5_k_qmicro_tile16_to_planar(
-                repack_gguf_q5_k_qmicro_tile16(raw if raw.ndim == 3 else raw[None, ...])
+                _Q5_PLANAR_SIDECAR_REPACK.convert(raw)
             )
             allocations["qmicro_planar"] = load_host_array_to_device_as_dtype(
                 f"{spec.source.name}.qmicro_planar",
@@ -1853,6 +2084,7 @@ def _materialize_spec(
 
 
 __all__ = [
+    "validate_qwen35_gguf_resident_prerequisites",
     "LAYOUT_DENSE_BF16",
     "LAYOUT_DENSE_F32",
     "HIPENGINE_GGUF_DECODE_REPACK_ENV",

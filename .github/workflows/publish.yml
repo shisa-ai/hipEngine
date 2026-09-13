@@ -65,6 +65,9 @@ jobs:
       - name: Build
         run: uv run --no-sync python -m build
 
+      - name: Check distribution sizes before upload
+        run: uv run --no-sync python scripts/check_distribution_size.py dist/*.whl dist/*.tar.gz
+
       - name: Verify package metadata
         run: uv run --no-sync python -m twine check dist/*
 

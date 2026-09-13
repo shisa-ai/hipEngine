@@ -104,6 +104,26 @@ from hipengine.kernels.registry import (
 BACKEND = "hip_gfx1151"
 TARGET_ARCH = hip_target_arch_for_backend(BACKEND)
 
+# Concrete GGUF consumer layers this backend registers (UD-U1 F3 admission
+# metadata; see the hip_gfx1100 declaration for the contract).  The gfx1151
+# alias registrar covers the full certified consumer surface (its exclusion
+# list removes only non-admission tuning variants), verified by the parity
+# test that checks every certified consumer key is registered here too.
+GGUF_CONSUMER_LAYERS: frozenset[str] = frozenset(
+    {
+        "linear",
+        "dense_gemv",
+        "embedding",
+        "rmsnorm",
+        "router_logits",
+        "gdn_recurrent_rmsnorm_gate",
+        "gdn_prefill_recurrent",
+        "linear_attn_conv_decode",
+        "linear_attn_conv_prefill",
+        "moe_linear",
+    }
+)
+
 
 def _qwen35_08b_q4_pack8_dual_silu_t128(*args, **kwargs):
     """Bind the qualified 0.8B fused gate/up schedule to 128 threads."""
@@ -1983,6 +2003,87 @@ GGUF_T16_TARGET_VERIFIER_TRUE_ROWTILE_VARIANTS = {
 # B5 changed-arithmetic candidate. Generic dispatch reads this backend-owned
 # map only while a caller-owned integer-MMQ workspace context is active.
 # Standard Q6 QKV and all Q4/Q5 shapes remain on their current owners.
+# UD item 3: dense raw-IQ integer-MMQ prefill. The selected/MoE kernel reads
+# weights as qweight + expert*expert_bytes + out_row*weight_row_bytes, so at
+# expert 0 it consumes the dense raw GGUF layout unchanged - the dense route is
+# the degenerate single-expert case, with no repack and no weight sidecar. The
+# strict per-row GEMV stays the registered fallback and the rows=1 decode owner;
+# this route is inert unless an execution owner binds its workspace.
+#
+# min_rows is a measured crossover, not a capability. The GEMV re-reads the
+# weight column once per 8-row slab so it grows with rows, while the MMQ pads to
+# 128 rows so a short prompt pays for work it does not use. Swept over the six
+# distinct IQ4_XS dense shapes in the published UD file
+# (scripts/gguf_iq_dense_mmq_crossover.py, 2026-09-08, gfx1151), min-of-5
+# interleaved, worst case over shapes:
+#
+#   rows=2  0.59x   rows=4  0.68x   rows=8  1.58x   rows=16  2.62x   rows=32  4.34x
+#
+# so 8 is the first row count where the MMQ wins on every measured shape; 4
+# still loses on attn_gate (6144x5120). Agreement held across all 96
+# (shape, rows) cells at max relative error 0.0025-0.0099.
+# Dense raw-IQ prefill route selection. Scored the way
+# EXECUTION-PROFILES.md section 6 specifies - candidate production against
+# hipEngine strict, not against an external engine - over 162 teacher-forced
+# rows:
+#
+#   route                     prefill      mean       p95       p99       max  >5e-2
+#   two-quant integer MMQ      127.2   0.001038  0.003479  0.014385  0.049730    0
+#   four-quant integer MMQ     171.9   0.002110  0.006797  0.024044  0.170390    1
+#   four-quant W4A16 (below)   150.9   0.000827  0.004547  0.012475  0.023513    0
+#
+# The integer-MMQ route breaches the binding 5e-2 absolute maximum-row ceiling
+# by 3.4x at one position; W4A16 passes every threshold in the calibrated
+# envelope. W4A16 is therefore the default at a 12% throughput cost, and the
+# integer-MMQ variant name is kept below so a route swap is a one-word edit.
+#
+# Route coverage differs. The integer-MMQ route needs each K32 group to be
+# expressible as scale*int8, which excludes Q3_K, IQ2_S and IQ2_XS: they carry
+# a scale per 16 elements, so under a per-32 scale their residuals reach +/-128
+# and +/-1333. W4A16 expands per element and has no such contract, so it serves
+# every dense IQ/Q3_K quant. Measured against the strict GEMV at 512 rows:
+# Q3_K 86.7 -> 14.8 ms (5.9x), IQ2_S 82.3 -> 14.9 (5.5x), IQ2_XS 80.8 -> 13.3
+# (6.1x). Swapping the policy back to the integer variant must therefore also
+# drop these three, or they will find no registered owner and fall through to
+# the strict GEMV - correct, but silently slower.
+_IQ_DENSE_W4A16_VARIANT = "dense_wmma_w4a16_prefill_bf16_bf16_out"
+_IQ_DENSE_INTEGER_MMQ_VARIANT = (
+    "dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out"
+)
+# min_rows is a measured crossover for the integer-MMQ route (worst case over
+# shapes: 0.59x at 2 rows, 0.68x at 4, 1.58x at 8). W4A16 has no 128-row
+# padding so it does not need a floor, but the shared value is kept because it
+# is safe for both and keeps a route swap free of a second variable.
+GGUF_IQ_DENSE_PREFILL_POLICY = {
+    quant: {
+        "min_rows": 8,
+        "max_rows": 131072,
+        "variant": _IQ_DENSE_W4A16_VARIANT,
+    }
+    for quant in ("gguf_iq4_xs", "gguf_iq3_xxs", "gguf_iq3_s", "gguf_iq4_nl",
+                 "gguf_q3_k", "gguf_iq2_s", "gguf_iq2_xs")
+}
+# Q3_K, IQ2_S and IQ2_XS history: the integer-MMQ contract could never
+# express them (per-16 scales put their residuals at +/-128 and +/-1333),
+# but W4A16 expands per element and has no such constraint. Routed unsplit
+# they measured 176.5 tok/s on the zbook - faster than the integer-MMQ route
+# ever was - but moved the strict-referenced mean 0.000827 -> 0.001061, 6%
+# over the calibrated 1e-3 limit, which held them out (2026-09-09 record:
+# the entire delta was Q3_K alone, +0.000234 mean for +26 tok/s).
+#
+# 2026-09-10 unblock (gfx1100 lane, shared source): the W4A16 kernel now
+# expands these three through the hi+lo split path - the WMMA products of
+# fp16 operands are exact in the f32 accumulator, so a second pass over the
+# fp16 rounding residual restores the weight to ~22 mantissa bits and the
+# route's intrinsic error drops under the bf16 output floor (bf16-ULP flip
+# rate 1.1% vs the unsplit 10.4%; verified against an exact f64 dot). On
+# natural self-generated prompts the split route's delta vs the four-quant
+# incumbent measures mean 4.8-6.7e-5 and max <= 1.4e-3 (top-1 100%), 20x
+# under the envelope, at +7.5% leaf cost on the affected quants only. The
+# originally routed four quants keep the single-pass path. The definitive
+# 162-row production-referenced gate on this backend's prompts is owed as
+# the confirming measurement.
+
 GGUF_Q6_DENSE_INTEGER_MMQ_PREFILL_POLICY = {
     "gguf_q6_k_t16_qmicro_planar_v1": {
         "min_rows": 17,
@@ -2550,24 +2651,6 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "moe_linear",
             "gguf_iq4_xs",
             "selected_weighted_down_gemv_decode_bf16_bf16_out",
-        ),
-        # WPF-1 fixed-grid-Y raw Q5/Q6 row reuse is W7900-only pending an
-        # independent gfx1151 gate. Keep every output/slab key unaliased.
-        *(
-            ("linear", quant, f"rowbatch{row_batch}_bf16_{output_dtype}_out")
-            for quant in ("gguf_q5_k", "gguf_q6_k")
-            for row_batch in (4, 8, 16, 32)
-            for output_dtype in ("bf16", "f32")
-        ),
-        *(
-            (
-                "linear",
-                quant,
-                f"coltile{col_tile}_rowbatch{row_batch}_bf16_{output_dtype}_out",
-            )
-            for quant in ("gguf_q5_k", "gguf_q6_k")
-            for col_tile, row_batch in ((2, 16), (4, 8))
-            for output_dtype in ("bf16", "f32")
         ),
         # WPF-H7C transfers the exact H6U reduction instruction form to two
         # W7900 raw-Q6 leaves and remains absent without a gfx1151 screen.
@@ -3503,6 +3586,7 @@ __all__ = [
     "GGUF_Q6_STANDARD_PREFILL_SHARED3R1_SHAPES",
     "GGUF_Q6_STANDARD_PREFILL_SHARED6R1_MIN_ROWS",
     "GGUF_Q6_STANDARD_PREFILL_SHARED6R1_MAX_ROWS",
+    "GGUF_IQ_DENSE_PREFILL_POLICY",
     "GGUF_Q6_DENSE_INTEGER_MMQ_PREFILL_POLICY",
     "GGUF_Q6_PLANAR_PREFILL_SHARED3R1_SHAPES",
     "GGUF_Q6_STANDARD_PREFILL_SHARED4_MIN_ROWS",
@@ -3700,6 +3784,7 @@ __all__ = [
     "PARO_FULL_ATTN_NATIVE_EXACT_WIDTHS",
     "PARO_NATIVE_BATCH_DECODE_DEFAULT",
     "PARO_RETAINED_BATCH_DEFAULTS",
+    "GGUF_CONSUMER_LAYERS",
     "TARGET_ARCH",
     "register_backend_kernels",
     "register_gfx1151_kernels",

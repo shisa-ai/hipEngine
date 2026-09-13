@@ -1,0 +1,30 @@
+{
+  "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+  "seed": 11,
+  "positions": 65,
+  "kl_mean": 4.9718098947782795e-05,
+  "kl_p95": 8.478679956169799e-05,
+  "kl_p99": 0.0009009054629132152,
+  "kl_max": 0.0019243342899637663,
+  "top1_agreement": 1.0,
+  "candidate_finite": true,
+  "gate_pass": true,
+  "incumbent_prefill_variants": {
+    "gguf_iq4_xs": "dense_wmma_w4a16_prefill_bf16_bf16_out",
+    "gguf_iq3_xxs": "dense_wmma_w4a16_prefill_bf16_bf16_out",
+    "gguf_iq3_s": "dense_wmma_w4a16_prefill_bf16_bf16_out",
+    "gguf_iq4_nl": "dense_wmma_w4a16_prefill_bf16_bf16_out"
+  },
+  "shipped_prefill_variants": {
+    "gguf_iq4_xs": "dense_wmma_w4a16_prefill_coop64_bf16_bf16_out",
+    "gguf_iq3_xxs": "dense_wmma_w4a16_prefill_bf16_bf16_out",
+    "gguf_iq3_s": "dense_wmma_w4a16_prefill_coop_bf16_bf16_out",
+    "gguf_iq4_nl": "dense_wmma_w4a16_prefill_coop64_bf16_bf16_out",
+    "gguf_q3_k": "dense_wmma_w4a16_prefill_coop_bf16_bf16_out",
+    "gguf_iq2_s": "dense_wmma_w4a16_prefill_bf16_bf16_out",
+    "gguf_iq2_xs": "dense_wmma_w4a16_prefill_bf16_bf16_out"
+  },
+  "shipped_decode_variants": {
+    "gguf_iq4_xs": "local32_gemv_bf16_bf16_out"
+  }
+}

@@ -52,6 +52,7 @@ def _oracle_session(
 ) -> Qwen35GGUFResidentSession:
     _install_fake_device(monkeypatch)
     session = object.__new__(Qwen35GGUFResidentSession)
+    session.use_iq_dense_mmq = False
     session.__dict__.update(
         runner=_fake_dense_qwen36_runner(),
         runtime=SimpleNamespace(),
@@ -172,6 +173,7 @@ def _flag_recorder(monkeypatch: pytest.MonkeyPatch) -> list[list[bool]]:
 
 def _bare_owner(row_capacity: int) -> Qwen35GGUFResidentSession:
     owner = object.__new__(Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner._bulk_prefill_scratch = SimpleNamespace(rows=int(row_capacity))
     return owner
 
@@ -263,6 +265,7 @@ def test_prefill_batch_native_clears_the_flag_and_releases_when_a_slab_raises(
     monkeypatch.setattr(gguf_runner, "free", lambda buffer, *, runtime: freed.append(buffer))
     _install_fake_device(monkeypatch)
     owner = object.__new__(Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner.__dict__.update(
         runtime=SimpleNamespace(),
         _bulk_prefill_scratch=SimpleNamespace(rows=8),

@@ -3,6 +3,16 @@ from __future__ import annotations
 import pytest
 
 from hipengine.core.memory import DeviceMemoryArena, free, malloc, memory_stats, reset_memory_stats
+import hipengine.core.memory as memory_module
+
+
+@pytest.fixture(autouse=True)
+def isolated_fake_memory_tracker(monkeypatch):
+    # These fake pointers belong to this test, not to other live runtimes.
+    tracker = memory_module._MemoryStatsTracker()
+    monkeypatch.setattr(memory_module, "_MEMORY_STATS", tracker)
+    yield
+    assert tracker.snapshot()["active_allocations"] == 0
 
 
 class FakeRuntime:

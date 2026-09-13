@@ -1,0 +1,61 @@
+{
+  "schema": "hipengine.ud_mtp_width_cells.v1",
+  "kind": "diagnostic_width_census",
+  "performance_claim": false,
+  "date": "2026-09-12",
+  "plan": "docs/UD-GFX1151-OPTIMIZE.md",
+  "phase": "Phase 5: width coverage",
+  "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+  "quant_axis": "gguf_ud_q4_k_m",
+  "protocol": {
+    "harness": "scripts/gguf_mtp_c1c8_server_bench.py",
+    "path": "server /v1/completions, blocking barrier-to-last-completion complete wall",
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl canonical ten",
+    "max_tokens": 24,
+    "correctness_contract": "ar_exact",
+    "candidate_mode": "--generation2-diagnostic (diagnostic physical width plan) plus --mtp-scope-grant (candidate-mode preset scope grant)",
+    "note": "diagnostic rows only: the AR arm here is the server path, so these rates are not the retained paired rates and must not be compared against them"
+  },
+  "cells": {
+    "c1_k3": {
+      "width": 1,
+      "candidate_budget": 3,
+      "resident_capacity": 1,
+      "ar_tok_s": 13.891204497869003,
+      "mtp_tok_s": 34.205446787405386,
+      "mtp_vs_ar_ratio": 2.462381630955956,
+      "exact_cells": 10,
+      "engaged_cells": 10,
+      "budget_conformed_cells": 10,
+      "cells": 10,
+      "correctness_contract": "ar_exact",
+      "route_expectation_passed": true,
+      "source_commit": null
+    },
+    "c2_k2": {
+      "width": 2,
+      "candidate_budget": 2,
+      "resident_capacity": 2,
+      "ar_tok_s": 30.10184714964083,
+      "mtp_tok_s": 31.359017975643273,
+      "mtp_vs_ar_ratio": 1.0417639096947393,
+      "exact_cells": 10,
+      "engaged_cells": 10,
+      "budget_conformed_cells": 10,
+      "cells": 10,
+      "correctness_contract": "ar_exact",
+      "route_expectation_passed": true,
+      "source_commit": null
+    }
+  },
+  "not_measured": {
+    "c4_k3": "c4 is not in GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS['production'] ((1,2),(1,3),(2,2),(8,3))",
+    "c8_k3": "HIP error 2: out of memory at capacity 8, at max-sequence-length 1024, 512 and 256",
+    "c1_k2": "not run separately; c1 K3 covers the c1 width and a deeper budget"
+  },
+  "hardware": {
+    "physical_gpu": "GPU1",
+    "device": "RX 7900 XTX (gfx1100)",
+    "vram_total_bytes": 25753026560
+  }
+}

@@ -250,7 +250,10 @@ __global__ void gguf_norm_fixed1024_wave256_kernel(
   }
 }
 
-template <bool kAddResidual>
+// kRoundSum selects the explicitly-rounded residual: the reduction and the
+// residual output both consume bf16(bf16(x) + bf16(add)) rather than the exact
+// f32 sum. It is only meaningful together with kAddResidual.
+template <bool kAddResidual, bool kRoundSum = false>
 __launch_bounds__(256, 1)
 __global__ void gguf_norm_fixed5120_wave256_kernel(
     const uint16_t* __restrict__ x,
@@ -265,13 +268,20 @@ __global__ void gguf_norm_fixed5120_wave256_kernel(
   constexpr int kWave = 32;
   const int tid = static_cast<int>(threadIdx.x);
   const int lane = tid & (kWave - 1);
+  // One block per row, so the row slab (2026-09-13) costs nothing but the
+  // block index: every per-thread partial, the tree shape and the epilogue are
+  // unchanged, and each row's output is bit-identical to the rows == 1 launch.
+  const int64_t row_base = static_cast<int64_t>(blockIdx.x) * kHidden;
   float values[kValuesPerThread];
   float sum = 0.0f;
 #pragma unroll
   for (int i = 0; i < kValuesPerThread; ++i) {
     const int idx = tid + i * kThreads;
-    const float value = bf16_bits_to_float(x[idx]) +
-        (kAddResidual ? bf16_bits_to_float(add[idx]) : 0.0f);
+    const float raw = bf16_bits_to_float(x[row_base + idx]) +
+        (kAddResidual ? bf16_bits_to_float(add[row_base + idx]) : 0.0f);
+    const float value = kRoundSum
+        ? bf16_bits_to_float(float_to_bf16_bits(raw))
+        : raw;
     values[i] = value;
     sum += value * value;
   }
@@ -307,9 +317,12 @@ __global__ void gguf_norm_fixed5120_wave256_kernel(
   for (int i = 0; i < kValuesPerThread; ++i) {
     const int idx = tid + i * kThreads;
     const float value = values[i];
-    norm_out[idx] = float_to_bf16_bits(value * inv_rms * weight[idx]);
+    norm_out[row_base + idx] =
+        float_to_bf16_bits(value * inv_rms * weight[idx]);
     if constexpr (kAddResidual) {
-      residual_out[idx] = float_to_bf16_bits(value);
+      // With kRoundSum, `value` is already the round-tripped sum, so this
+      // writes exactly the bits the rounded owner writes.
+      residual_out[row_base + idx] = float_to_bf16_bits(value);
     }
   }
 }
@@ -1019,12 +1032,12 @@ extern "C" int hipengine_gguf_rmsnorm_bf16_f32_weight_fixed5120_wave256(
     float eps,
     int64_t threads,
     hipStream_t stream) {
-  if (x == nullptr || weight == nullptr || out == nullptr || rows != 1 ||
-      hidden_size != 5120 || threads != 256) {
+  if (x == nullptr || weight == nullptr || out == nullptr || rows < 1 ||
+      rows > 8 || hidden_size != 5120 || threads != 256) {
     return static_cast<int>(hipErrorInvalidValue);
   }
-  gguf_norm_fixed5120_wave256_kernel<false><<<dim3(1), dim3(256), 0, stream>>>(
-      x, nullptr, weight, out, nullptr, eps);
+  gguf_norm_fixed5120_wave256_kernel<false><<<dim3(static_cast<unsigned int>(rows)),
+      dim3(256), 0, stream>>>(x, nullptr, weight, out, nullptr, eps);
   return static_cast<int>(hipGetLastError());
 }
 
@@ -1040,12 +1053,12 @@ extern "C" int hipengine_gguf_add_rmsnorm_bf16_f32_weight_fixed5120_wave256(
     int64_t threads,
     hipStream_t stream) {
   if (x == nullptr || add == nullptr || weight == nullptr || norm_out == nullptr ||
-      residual_out == nullptr || rows != 1 || hidden_size != 5120 ||
+      residual_out == nullptr || rows < 1 || rows > 8 || hidden_size != 5120 ||
       threads != 256) {
     return static_cast<int>(hipErrorInvalidValue);
   }
-  gguf_norm_fixed5120_wave256_kernel<true><<<dim3(1), dim3(256), 0, stream>>>(
-      x, add, weight, norm_out, residual_out, eps);
+  gguf_norm_fixed5120_wave256_kernel<true><<<dim3(static_cast<unsigned int>(rows)),
+      dim3(256), 0, stream>>>(x, add, weight, norm_out, residual_out, eps);
   return static_cast<int>(hipGetLastError());
 }
 
@@ -1094,6 +1107,28 @@ extern "C" int hipengine_gguf_rounded_add_rmsnorm_bf16_f32_weight(
       dim3(static_cast<unsigned int>(rows)), dim3(256),
       256 * sizeof(float), stream>>>(
       residual, add, weight, norm_out, residual_out, eps, hidden_size);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_gguf_rounded_add_rmsnorm_bf16_f32_weight_fixed5120_wave256(
+    const uint16_t* residual,
+    const uint16_t* add,
+    const float* weight,
+    uint16_t* norm_out,
+    uint16_t* residual_out,
+    int64_t rows,
+    int64_t hidden_size,
+    float eps,
+    int64_t threads,
+    hipStream_t stream) {
+  if (residual == nullptr || add == nullptr || weight == nullptr ||
+      norm_out == nullptr || residual_out == nullptr || rows < 2 || rows > 8 ||
+      hidden_size != 5120 || threads != 256) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  gguf_norm_fixed5120_wave256_kernel<true, true><<<
+      dim3(static_cast<unsigned int>(rows)), dim3(256), 0, stream>>>(
+      residual, add, weight, norm_out, residual_out, eps);
   return static_cast<int>(hipGetLastError());
 }
 

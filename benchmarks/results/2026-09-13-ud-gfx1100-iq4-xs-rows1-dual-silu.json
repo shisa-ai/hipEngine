@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "kind": "kernel-parity-and-rate",
+  "performance_claim": false,
+  "date": "2026-09-13",
+  "plan": "docs/UD-GFX1151-OPTIMIZE.md",
+  "phase": "IQ4_XS rows=1 gate/up dual+SiLU",
+  "model": "Qwen3.8-27B-UD-Q4_K_M",
+  "backend": "hip_gfx1100",
+  "protocol": {
+    "harness": "/tmp/phase8/iq4-dual-r1.py and /tmp/phase8/iq4-dual-exact.py",
+    "shape": "synthetic IQ4_XS bytes, d forced to f16 1.0, random payload",
+    "method": "interleaved paired rounds: two launch_local32 calls and one launch_local32_dual_silu timed back to back, 40 launches per round, 15 rounds after 8 warmup pairs",
+    "reported": "median per-launch ms per route and the median/min/max of the per-round ratio",
+    "correctness_contract": "bit-exact uint16 equality against single + single + f32 SiLU with bf16 rounding"
+  },
+  "cells": [
+    {"k": 5120, "n": 17408, "two_single_ms": 0.255, "dual_ms": 0.191, "ratio_median": 1.336, "ratio_min": 1.236, "ratio_max": 1.599, "bit_exact": true},
+    {"k": 5120, "n": 5120, "two_single_ms": 0.070, "dual_ms": 0.061, "ratio_median": 1.144, "ratio_min": 0.852, "ratio_max": 1.880, "bit_exact": true},
+    {"k": 17408, "n": 5120, "two_single_ms": 0.220, "dual_ms": 0.182, "ratio_median": 1.212, "ratio_min": 1.036, "ratio_max": 1.424, "bit_exact": true},
+    {"k": 5120, "n": 13824, "two_single_ms": 0.193, "dual_ms": 0.141, "ratio_median": 1.366, "ratio_min": 1.132, "ratio_max": 1.817, "bit_exact": true}
+  ],
+  "parity": {
+    "k": 5120,
+    "n": 5120,
+    "mismatches": 0,
+    "reference": "bf16_round(gate) and bf16_round(up), then g / (1 + exp(-g)) * u in f32, then bf16 rounding",
+    "note": "A first reference used numpy float64 exp and a second compared a rounded bf16 output against an unrounded f32 product; both are wrong comparisons. The f32 SiLU with bf16 rounding matches exactly, 0 of 5120 columns differing."
+  },
+  "decision": "Not a new win: the fused owner is already admitted. hipengine/runtime/gguf_linear.py:5877 resolves linear_pair_silu/gguf_iq4_xs/local32_pair_silu_bf16_bf16_out whenever both gate and up dispatch to the local32 decode owner at rows == 1, so these rates are current behaviour rather than an untaken opportunity. The measurement is retained because it settles a question the 2026-09-13 rejection of the rows 2-4 sibling left open: that rejection timed only rows 2, 3 and 4 (1.052x, 0.809x, 0.465x) and never the rows=1 instantiation, which is the register-lean accumulator scheme the rejection note said would be needed to re-open. At rows=1 the owner is 1.144-1.366x faster than two single launches and bit-exact, and it removes one launch per gate/up pair, 30 pairs per step for UD-Q4_K_M.",
+  "not_measured": {
+    "end_to_end_step_effect": "the 30 fewer launches/step are not converted here into a step-level or parity-level number",
+    "real_ud_tensor_rates": "synthetic payload bytes, not the resident UD-Q4_K_M tensors",
+    "rocprofv3_kernel_trace": "not captured"
+  },
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "arch": "gfx1100 / RDNA3",
+    "host": "hipEngine-ud worktree, HIP_VISIBLE_DEVICES=1"
+  }
+}

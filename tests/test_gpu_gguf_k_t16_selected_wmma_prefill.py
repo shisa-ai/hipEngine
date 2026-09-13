@@ -44,6 +44,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
     gguf_q5_k_t16_selected_wmma_prefill_compact_bf16_bf16_out,
     gguf_q5_k_t16_selected_wmma_prefill_compact_fp16_fp16_out,
     gguf_q5_k_t16_wmma_prefill_bf16_bf16_out,
+    gguf_q5_k_t16_wmma_prefill_gfx1100_bf16_bf16_out,
     gguf_q6_k_t16_selected_expert_major_wmma_comp_bf16_bf16_out,
     gguf_q6_k_t16_selected_wmma_prefill_compact_bf16_bf16_out,
     gguf_q6_k_t16_selected_wmma_prefill_compact_fp16_fp16_out,
@@ -159,12 +160,14 @@ def test_gguf_k_t16_selected_wmma_registry_and_build_plan(
 
 
 def test_q5_t16_dense_wmma_registry_and_contract() -> None:
+    # gfx1100 resolves to its ported 8r2 variant of the same owner (the
+    # item-F Q5 T16 role coverage); gfx1151 keeps the original kernel.
     assert resolve(
         backend="hip_gfx1100",
         layer="linear",
         quant="gguf_q5_k_t16_v1",
         variant="t16_wmma_prefill_bf16_bf16_out",
-    ) is gguf_q5_k_t16_wmma_prefill_bf16_bf16_out
+    ) is gguf_q5_k_t16_wmma_prefill_gfx1100_bf16_bf16_out
 
     kwargs = dict(
         x_ptr=1,

@@ -1,0 +1,191 @@
+{
+  "unit": "ud-gfx1100-norm-fixed5120-row-slab",
+  "date": "2026-09-13",
+  "status": "retained",
+  "host": {
+    "name": "epyc",
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "device_index": 1,
+    "HIP_VISIBLE_DEVICES": "1",
+    "ROCR_VISIBLE_DEVICES": null
+  },
+  "change": {
+    "summary": "Both fixed-5120 add+rmsnorm entry points accept the verifier row slab (1 <= rows <= 8) and launch one block per row, and the gfx1100 package declares GGUF_NORM_RESIDUAL_DECODE_POLICIES for (1..8, 5120) under the plain and the UD-preset-extended keys. The kernel and both registry keys already existed but were unreachable on this backend: only gfx1151 declared the policy, and it admitted rows == 1 alone, so every W7900 call fell through to the generic local256 owner - the rows-3 verifier slab and the rows-1 decode alike.",
+    "files": [
+      "hipengine/kernels/hip_gfx1100/fused/gguf_ops.hip",
+      "hipengine/kernels/hip_gfx1100/fused/gguf_ops.py",
+      "hipengine/kernels/hip_gfx1100/__init__.py"
+    ],
+    "owner": "gguf_norm_fixed5120_wave256_kernel (rmsnorm and add_rmsnorm leaves)",
+    "rollback_env": null,
+    "arithmetic_neutral_basis": "One block owns one row, so blockIdx.x only selects the row base. Every per-thread partial, the reduction tree (three explicit levels at 128/64/32 plus five wave exchanges, which reproduces the generic nine-barrier tree level for level), the rsqrtf argument and the epilogue are unchanged, and the register-cached values are exactly the x+add sums the generic owner recomputes in its second pass.",
+    "why_the_generic_owner_was_slow": "The generic local256 owner has a runtime-trip-count loop over hidden_size and no register cache, so it reloads x and add for its second pass and pays nine tree barriers. The fixed-5120 leaf unrolls both passes, caches the 20 per-thread values in registers, and reduces with two block barriers."
+  },
+  "bit_identity": {
+    "method": "Both leaves run against their generic counterparts on real bf16 tensors at hidden_size 5120, rows 1/2/3/4/6/8; norm_out and residual_out compared elementwise.",
+    "rows_tested": [
+      1,
+      2,
+      3,
+      4,
+      6,
+      8
+    ],
+    "differing_elements": 0,
+    "layers": [
+      "rmsnorm",
+      "add_rmsnorm"
+    ],
+    "result": "byte-identical at every row count"
+  },
+  "verifier_census_ab": {
+    "command": "scripts/gguf_mtp_verifier_rocprof.py --model /models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf --quant gguf_ud_q4_k_m --mode block-verify --block-rows 3 --block-verify-mode native --native-spec-target-cycle --steps 12 --warmup 3",
+    "arm_baseline": {
+      "avg_kernel_ms": 37.067,
+      "avg_host_ms": 42.077,
+      "calls_per_step": 985.0,
+      "add_rmsnorm_family_calls_per_step": 64.0,
+      "add_rmsnorm_family_us_per_call": 12.03,
+      "kernel": "gguf_add_rmsnorm_bf16_f32_weight_kernel",
+      "add_rmsnorm_family_us_per_step": 770.07,
+      "add_rmsnorm_family_ms_per_step": 0.7701
+    },
+    "arm_row_slab": {
+      "avg_kernel_ms": 36.6206,
+      "avg_host_ms": 41.639,
+      "calls_per_step": 985.0,
+      "add_rmsnorm_family_calls_per_step": 64.0,
+      "add_rmsnorm_family_us_per_call": 5.13,
+      "kernel": "gguf_norm_fixed5120_wave256_kernel<true>",
+      "add_rmsnorm_family_us_per_step": 328.558,
+      "add_rmsnorm_family_ms_per_step": 0.3286
+    },
+    "family_delta_pct": -57.3,
+    "whole_verifier_delta_pct": -1.21,
+    "unchanged_entries_ms_per_step": {
+      "q5_k_t16_dense_rowtile_single_wave_gemv_kernel": [
+        0.0079,
+        0.0079
+      ],
+      "gguf_iq4_xs_local32_gemv_kernel<2, 3>": [
+        0.0077,
+        0.0077
+      ],
+      "gguf_iq4_xs_local32_gemv_kernel<4, 3>": [
+        0.0036,
+        0.0036
+      ],
+      "q4_k_t16_dense_rowtile_gemv_kernel": [
+        0.0043,
+        0.0043
+      ],
+      "gguf_rounded_add_rmsnorm_bf16_f32_weight_kernel": [
+        0.0008,
+        0.0008
+      ]
+    },
+    "note": "Single-arm sequential runs on the same host and session, baseline measured minutes before the change. The 985 calls/step count is identical in both arms, so no launch was added or removed.",
+    "whole_verifier_delta_ms_per_step": -0.4464,
+    "whole_verifier_delta_us_per_step": -446.4,
+    "unit_note": "Family and per-kernel totals are microseconds per step; the whole-step totals are milliseconds per step. The family saving (770.07 - 328.56 = 441.5 us) accounts for the whole-step delta (446.4 us), which is the cross-check that the family figures are us."
+  },
+  "paired_suite": {
+    "command": "scripts/ud_mtp_paired.py --output <path> --runs 2 --device-index 1 --expect-device \"7900 XTX\"",
+    "arms": {
+      "ud-q4-k-m": {
+        "true_ar_tok_s": 32.75,
+        "mtp_b3_tok_s": 49.371,
+        "mtp_over_ar": 1.5075,
+        "complete_exact": true
+      },
+      "ud-q4-k-s": {
+        "true_ar_tok_s": 32.098,
+        "mtp_b3_tok_s": 48.294,
+        "mtp_over_ar": 1.5046,
+        "complete_exact": true
+      },
+      "plain-q4-k-m": {
+        "true_ar_tok_s": 38.364,
+        "mtp_b3_tok_s": 64.621,
+        "mtp_over_ar": 1.6844
+      },
+      "plain-q4-k-s": {
+        "true_ar_tok_s": 41.091,
+        "mtp_b3_tok_s": 64.774,
+        "mtp_over_ar": 1.5764
+      }
+    },
+    "previous_retained": {
+      "ud-q4-k-m": {
+        "true_ar_tok_s": 31.904,
+        "mtp_b3_tok_s": 49.408,
+        "mtp_over_ar": 1.5487
+      },
+      "ud-q4-k-s": {
+        "true_ar_tok_s": 31.303,
+        "mtp_b3_tok_s": 48.548,
+        "mtp_over_ar": 1.5432
+      }
+    },
+    "true_ar_delta_pct": {
+      "ud-q4-k-m": 2.65,
+      "ud-q4-k-s": 2.54
+    },
+    "mtp_b3_delta_pct": {
+      "ud-q4-k-m": -0.07,
+      "ud-q4-k-s": -0.52
+    },
+    "binding_gates": "all four arms binding_passed=True timing_evidence_valid=True; true no-MTP AR denominator present, GPU/CPU acceptance agreement, deterministic repeats, faster than true AR; ud arms complete_exact 0/20 divergent",
+    "note": "The change is bit-identical, so the true-AR movement is a pure speed effect: 127 norm launches per step at 12.0 -> 5.1 us is about -0.9 ms on a 31.3 ms single-row AR step (-2.9%), which matches the measured +2.5-2.7%. The MTP B3 step is roughly twice as long, so the same absolute saving is about half the percentage and sits inside the acceptance-driven spread."
+  },
+  "tests": {
+    "command": "pytest tests/test_gguf_norm_residual_fixed5120.py tests/test_qwen35_gguf_prefill_scratch_liveness.py tests/test_gfx1151_backend.py -q -p no:randomly",
+    "result": "92 passed",
+    "updated": [
+      "tests/test_gguf_norm_residual_fixed5120.py",
+      "tests/test_qwen35_gguf_prefill_scratch_liveness.py",
+      "tests/test_gfx1151_backend.py"
+    ]
+  },
+  "incident": {
+    "first_attempt": "Declaring the policy for both layers without generalising the plain-rmsnorm entry point. The prefill path (_run_linear_attention_prefill_layer_rows -> _run_attention_norm_rows) resolved the rmsnorm leaf for a row count in 2..8 and the C entry rejected it with HIP error 1.",
+    "resolution": "Both entry points now accept rows 1..8. The policy table is keyed by shape only, so it cannot express 'rows 1-8 for add_rmsnorm but rows 1 for rmsnorm'."
+  },
+  "next_lead": {
+    "kernel": "gguf_rounded_add_rmsnorm_bf16_f32_weight_kernel",
+    "calls_per_step": 63.0,
+    "us_per_call": 13.37,
+    "note": "Separate kernel with no fixed-5120 sibling and no policy table; needs a kRoundSum variant plus a rows-aware resolver at _rounded_add_rmsnorm_fn (qwen35_gguf_runner.py:9079 already knows rows).",
+    "us_per_step": 842.38,
+    "ms_per_step": 0.842
+  },
+  "numerics_gate": {
+    "command": "scripts/ud_mtp_ar_verify_numerics_gate.py --model /models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf --quant gguf_ud_q4_k_m --json <out>",
+    "envelope": {
+      "mean": 0.001,
+      "p95": 0.005,
+      "p99": 0.02,
+      "max": 0.05,
+      "top1_overall": 0.99
+    },
+    "ud_q4_k_m": {
+      "rows": 162,
+      "mean_kl": 2.503408023680291e-05,
+      "p95": 0.0001654278080627903,
+      "p99": 0.0002930217617801769,
+      "max": 0.00029713407659434773,
+      "top1_agreement": 1.0,
+      "top1_by_scope": {
+        "code": 1.0,
+        "general_en": 1.0,
+        "general_ja": 1.0,
+        "mixed_ja_en": 1.0
+      },
+      "deterministic": true,
+      "screen_passed": true,
+      "repeats": 2
+    },
+    "note": "Both repeats are identical to the last digit. The bit-identity proof is the stronger statement: the leaves are byte-identical to the owners they replace, so this gate could not move as a result of the change. Its value here is that it is green on the retained default."
+  }
+}

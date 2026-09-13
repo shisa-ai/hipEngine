@@ -71,7 +71,8 @@ def _isolate_wmma_axis_from_rowtile():
 
     set_q4k_rowtile_enabled(False)
     try:
-        yield
+        with gguf_linear_module.raw_k_prefill_rowbatch_session(0):
+            yield
     finally:
         set_q4k_rowtile_enabled(None)
 
@@ -2232,17 +2233,21 @@ def test_q5_t16_routes_decode_bounded_native_rowtile_and_dense_wmma() -> None:
         quant_key=quant_key,
     )
     keys = {
+        # rows == 1 for (6144, 5120) resolves to the local32 C1 leaf through
+        # GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE, not to the direct decode GEMV.
         "decode": KernelKey(
             "hip_gfx1100",
             "linear",
             quant_key,
-            "t16_gemv_decode_bf16_bf16_out",
+            "dense_single_local32_bf16_bf16_out",
         ),
+        # rows 2-8 select the single-wave owner through
+        # GGUF_T16_NATIVE_ROWTILE_SINGLE_WAVE_BY_QUANT.
         "rowtile": KernelKey(
             "hip_gfx1100",
             "linear",
             quant_key,
-            "t16_gemv_rowtile_bf16_bf16_out",
+            "t16_gemv_rowtile_single_wave_bf16_bf16_out",
         ),
         "wmma": KernelKey(
             "hip_gfx1100",

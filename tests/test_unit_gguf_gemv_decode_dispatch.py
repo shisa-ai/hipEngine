@@ -93,6 +93,16 @@ _Q5_T16_DECODE = KernelKey(
 _Q5_T16_ROWTILE = KernelKey(
     "hip_gfx1100", "linear", "gguf_q5_k_t16_v1", "t16_gemv_rowtile_bf16_bf16_out"
 )
+# Production rows 2-8 owner for Q5T16 since 2026-09-13. The four-wave
+# ``_Q5_T16_ROWTILE`` above stays registered as the parent-parity owner that
+# the grouped rows6/rows8 variants are bit-identical to, so it is no longer
+# what the native-batch-decode and target-verifier routes select by default.
+_Q5_T16_ROWTILE_SINGLE_WAVE = KernelKey(
+    "hip_gfx1100",
+    "linear",
+    "gguf_q5_k_t16_v1",
+    "t16_gemv_rowtile_single_wave_bf16_bf16_out",
+)
 _Q5_T16_WMMA = KernelKey(
     "hip_gfx1100", "linear", "gguf_q5_k_t16_v1", "t16_wmma_prefill_bf16_bf16_out"
 )
@@ -230,7 +240,32 @@ def test_native_batch_decode_q5_t16_rows_5_8_route_to_true_rowtile() -> None:
             native_batch_decode=True,
             quant_key="gguf_q5_k_t16_v1",
             layout=LAYOUT_GGUF_Q5_K_T16,
-            extra_keys=(_Q5_T16_ROWTILE, _Q5_T16_WMMA),
+            extra_keys=(
+                _Q5_T16_ROWTILE,
+                _Q5_T16_ROWTILE_SINGLE_WAVE,
+                _Q5_T16_WMMA,
+            ),
+        )
+        assert key == _Q5_T16_ROWTILE_SINGLE_WAVE
+
+
+def test_native_batch_decode_q5_t16_single_wave_kill_switch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Clearing the policy env switch restores the four-wave parity parent."""
+
+    monkeypatch.setenv("HIPENGINE_GGUF_Q5_T16_ROWTILE_SINGLE_WAVE", "0")
+    for rows in (5, 6, 7, 8):
+        key, _, _ = _capture_launch(
+            rows=rows,
+            native_batch_decode=True,
+            quant_key="gguf_q5_k_t16_v1",
+            layout=LAYOUT_GGUF_Q5_K_T16,
+            extra_keys=(
+                _Q5_T16_ROWTILE,
+                _Q5_T16_ROWTILE_SINGLE_WAVE,
+                _Q5_T16_WMMA,
+            ),
         )
         assert key == _Q5_T16_ROWTILE
 
@@ -377,9 +412,14 @@ def test_target_verifier_scope_routes_only_backend_admitted_q5_q6(
         target_verifier_rowtile=True,
         quant_key="gguf_q5_k_t16_v1",
         layout=LAYOUT_GGUF_Q5_K_T16,
-        extra_keys=(_Q5_T16_DECODE, _Q5_T16_ROWTILE, _Q5_T16_WMMA),
+        extra_keys=(
+            _Q5_T16_DECODE,
+            _Q5_T16_ROWTILE,
+            _Q5_T16_ROWTILE_SINGLE_WAVE,
+            _Q5_T16_WMMA,
+        ),
     )
-    assert key == _Q5_T16_ROWTILE
+    assert key == _Q5_T16_ROWTILE_SINGLE_WAVE
 
     # The target-verifier scope must not act like the broad native-batch scope:
     # unmeasured Q5 shapes retain their old owner.
@@ -390,7 +430,12 @@ def test_target_verifier_scope_routes_only_backend_admitted_q5_q6(
         target_verifier_rowtile=True,
         quant_key="gguf_q5_k_t16_v1",
         layout=LAYOUT_GGUF_Q5_K_T16,
-        extra_keys=(_Q5_T16_DECODE, _Q5_T16_ROWTILE, _Q5_T16_WMMA),
+        extra_keys=(
+            _Q5_T16_DECODE,
+            _Q5_T16_ROWTILE,
+            _Q5_T16_ROWTILE_SINGLE_WAVE,
+            _Q5_T16_WMMA,
+        ),
     )
     assert key == _Q5_T16_DECODE
 
