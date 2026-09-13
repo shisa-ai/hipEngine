@@ -179,6 +179,7 @@ def memory_arm(name: str) -> dict:
     out = {
         "artifact": f"raw/{name}",
         "artifact_sha256": sha256(HERE / "raw" / name),
+        "provenance": data["provenance"],
         "repo_root": data["provenance"]["repo_root"],
         "hipengine_commit": data["provenance"]["hipengine_commit"],
         "dirty": data["provenance"]["dirty"],
@@ -187,8 +188,8 @@ def memory_arm(name: str) -> dict:
     for shape in SHAPES:
         summary = data["summaries"][shape]
         out["rows"][f"{shape}/128"] = {
-            "prefill_tok_s": summary["prefill_tok_s"]["median"],
-            "decode_tok_s": summary["decode_tok_s"]["median"],
+            "prefill_tok_s": summary["prefill_tok_s"],
+            "decode_tok_s": summary["decode_tok_s"],
             "tracked_peak_gib": summary["tracked_peak_allocated_gib"]["median"],
             "session_owned_peak_gib": summary["owned_session_peak_gib"]["median"],
             "device_used_peak_gib": summary["hip_used_peak_sampled_gib"]["median"],
@@ -202,8 +203,55 @@ def main() -> None:
     baseline = arm("prefill-baseline-b984176-16decode.json")
     after16 = arm("prefill-after-fca92ac-16decode.json")
     after128 = arm("prefill-after-fca92ac-128decode.json")
+    clean_tree = arm("prefill-after-a14f9de01-cleantree-128decode.json")
     live_mem = memory_arm("memory-ab-live.json")
     export_mem = memory_arm("memory-ab-export.json")
+    retiled_arms = (after128, live_mem, clean_tree)
+    reproduction = {
+        "kind": "three_retiled_arms_one_command",
+        "note": (
+            "The retained arm, the live arm of the memory A/B, and a rerun from "
+            "the committed revision. The rerun's only dirty flag is "
+            "untracked_dirty from three files owned by another worker; no tracked "
+            "file differs from its commit. Between-sweep spread is larger than "
+            "the within-run stdev, so the spread is the honest error bar for the "
+            "table's rates."
+        ),
+        "arms": [
+            {
+                "artifact": arm_data["artifact"],
+                "hipengine_commit": arm_data["provenance"]["hipengine_commit"],
+                "staged_dirty": arm_data["provenance"]["staged_dirty"],
+                "unstaged_dirty": arm_data["provenance"]["unstaged_dirty"],
+                "untracked_dirty": arm_data["provenance"]["untracked_dirty"],
+                "rows": {
+                    key: {
+                        "prefill_tok_s": row["prefill_tok_s"]["median"],
+                        "stdev_pct_of_median": row["prefill_tok_s"]["stdev_pct_of_median"],
+                        "decode_tok_s": row["decode_tok_s"]["median"],
+                    }
+                    for key, row in arm_data["rows"].items()
+                },
+            }
+            for arm_data in retiled_arms
+        ],
+        "prefill_spread_pct": {
+            key: round(
+                100.0
+                * (
+                    max(a["rows"][key]["prefill_tok_s"]["median"] for a in retiled_arms)
+                    - min(a["rows"][key]["prefill_tok_s"]["median"] for a in retiled_arms)
+                )
+                / min(a["rows"][key]["prefill_tok_s"]["median"] for a in retiled_arms),
+                2,
+            )
+            for key in after128["rows"]
+        },
+        "graph_eager_state_sha256_identical_across_arms": (
+            after128["graph_eager_gate"]["state_sha256"]
+            == clean_tree["graph_eager_gate"]["state_sha256"]
+        ),
+    }
     cross_tree = {
         "kind": "live_checkout_vs_frozen_release_export",
         "note": (
@@ -218,8 +266,11 @@ def main() -> None:
         "live_vs_export_prefill_pct": {
             key: round(
                 100.0
-                * (live_mem["rows"][key]["prefill_tok_s"] - export_mem["rows"][key]["prefill_tok_s"])
-                / export_mem["rows"][key]["prefill_tok_s"],
+                * (
+                    live_mem["rows"][key]["prefill_tok_s"]["median"]
+                    - export_mem["rows"][key]["prefill_tok_s"]["median"]
+                )
+                / export_mem["rows"][key]["prefill_tok_s"]["median"],
                 2,
             )
             for key in live_mem["rows"]
@@ -229,9 +280,9 @@ def main() -> None:
                 100.0
                 * (
                     baseline["rows"][f"{key.split('/')[0]}/16"]["prefill_tok_s"]["median"]
-                    - export_mem["rows"][key]["prefill_tok_s"]
+                    - export_mem["rows"][key]["prefill_tok_s"]["median"]
                 )
-                / export_mem["rows"][key]["prefill_tok_s"],
+                / export_mem["rows"][key]["prefill_tok_s"]["median"],
                 2,
             )
             for key in export_mem["rows"]
@@ -423,22 +474,24 @@ def main() -> None:
             "baseline": baseline,
             "after_16_decode": after16,
             "after_128_decode": after128,
+            "after_128_decode_clean_tree": clean_tree,
             "cross_tree_baseline_export": cross_tree,
         },
+        "reproduction": reproduction,
         "limitations": [
             "One physical gfx1151 host; the same GPU model on another host is an "
             "independent lane and its absolute rates are not an old-to-new "
             "comparison against these numbers.",
-            "Between-sweep variation is larger than the within-run stdev: two "
-            "back-to-back sweeps of the retiled tree gave 435.423/414.749/401.415 "
-            "and 436.062/413.209/400.245 tok/s, a spread of 0.37%, while the "
-            "within-run stdev is 0.03-0.14%.",
+            "Between-sweep variation is larger than the within-run stdev: three "
+            "sweeps of the retiled revision span 0.23-0.37% per shape, while the "
+            "within-run stdev is 0.03-0.15%.",
             "The screen covers the (17408,5120) and (5120,1024) planar shapes. "
             "The (5120,1024) bands were measured but deliberately not changed.",
-            "The clean rerun at fca92ac62 reported dirty=true because benchmark "
+            "The retained arm at fca92ac62 reported dirty=true because benchmark "
             "prose in benchmarks/results/20260913-qwen38-27b-comparison/ was "
             "edited while it ran; no file under hipengine/ differs from that "
-            "commit.",
+            "commit. The rerun at a14f9de01 is clean apart from three untracked "
+            "files owned by another worker.",
             "Decode is unchanged by construction (the planar Q6 decode GEMV "
             "selector is untouched) and measured 0.10-0.26% below the baseline "
             "across the three prompt lengths, which is small and consistent in "
