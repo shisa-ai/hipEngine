@@ -62,6 +62,20 @@ class CandidateSpec:
 
 
 CANDIDATES = {
+    "production_q8down_gdn_fallback": CandidateSpec(
+        name="production_q8down_gdn_fallback",
+        classification="diagnostic",
+        mechanism="incumbent repair candidate: strict Q8 selected-down and GDN prefill",
+        environment={
+            "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN": "0",
+            "HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL": "0",
+            "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "0",
+        },
+        base_profile="production",
+        scenario_id="qwen4exp-ud-q4-k-xl-production-fallback-review",
+        candidate_key=None,
+        fallback_key=None,
+    ),
     "production_baseline": CandidateSpec(
         name="production_baseline",
         classification="diagnostic",
