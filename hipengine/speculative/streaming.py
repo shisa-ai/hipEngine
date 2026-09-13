@@ -59,6 +59,34 @@ class StochasticAcceptanceAccounting:
     uniforms_consumed: tuple[float, ...]
 
 
+def greedy_chain_eos_limit(
+    candidate_tokens: Sequence[int],
+    target_top1: Sequence[int],
+    *,
+    remaining_decode: int,
+    eos_token_id: int | None,
+) -> int:
+    """Bound visible output before acceptance so EOS remains the next token.
+
+    The target consumes the root and accepted prefix, not the final next token.
+    Returning the EOS output length as the accept budget therefore excludes EOS
+    and any later speculative inputs from selected target/provider state.
+    Only predictions reachable before the first rejected edge may limit output.
+    """
+    if remaining_decode < 0 or len(target_top1) != len(candidate_tokens) + 1:
+        raise ValueError("invalid greedy chain termination coordinates")
+    if eos_token_id is None or remaining_decode == 0:
+        return remaining_decode
+    for index, token in enumerate(target_top1):
+        if index >= remaining_decode:
+            break
+        if int(token) == int(eos_token_id):
+            return index + 1
+        if index == len(candidate_tokens) or int(token) != int(candidate_tokens[index]):
+            break
+    return remaining_decode
+
+
 def trim_speculative_output(
     token_ids: Sequence[int],
     *,

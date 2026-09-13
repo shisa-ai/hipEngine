@@ -277,8 +277,8 @@ tests/
   test_pm4_elf.py
   test_pm4_kernarg.py
   test_pm4_graph.py
-  test_pm4_packets.py
-  test_pm4_transport.py
+  test_unit_pm4_packets.py
+  test_unit_pm4_transport.py
   test_pm4_gpu.py       explicit HIP-availability skip
 ```
 

@@ -28,7 +28,7 @@ from hipengine.core.memory import free
 from hipengine.loading.gguf import GGUFReader, discover_gguf_files
 from hipengine.kernels.hip_gfx1100.quant import gguf_q4_k_selected_prefill as q4
 from scripts.qwen4exp_canonical_ar_bench import _host_metadata, _git_metadata
-from tests.test_qwen4_exp_pf3_moe_schedules import (
+from tests.test_gpu_qwen4_exp_pf3_moe_schedules import (
     _upload, _alloc, _download, _make_activation,
 )
 

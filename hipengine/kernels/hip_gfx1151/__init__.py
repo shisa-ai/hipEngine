@@ -1158,6 +1158,9 @@ LAGUNA_DENSE_Q4_PREFILL_MODE = "wmma_pack8"
 # BF16 ULP. The complete p512 A/B also exercised the attention pack8 shapes.
 # Fail closed beyond that measured row/shape matrix until it is expanded.
 GGUF_Q4_PACK8_WMMA_BULK_PREFILL = True
+# Q4T16 gate/up rows33-48: exact 18-prompt gate and +9.2-9.6% complete
+# prefill throughput on the gfx1151 Qwen3.8 Q4_K_M artifact.
+GGUF_Q4_DUAL_SILU_PREFILL_ROW48_MAX_ROWS = 48
 GGUF_Q4_PACK8_WMMA_BULK_PREFILL_SHAPES = frozenset(
     {
         (512, 1_024, 512),
@@ -2244,7 +2247,7 @@ GGUF_SPECDEC2_PROPOSAL_LM_HEAD_ROWTILE_POLICIES = frozenset(
         (5120, 248320, 4),
         # Scaling-campaign M2: the single wide proposal carries rows5-8.
         # The planar T16 rowtile body is bit-identical to the direct parent
-        # across rows 2-8 (tests/test_qwen38_nextn_proposal_head_rowtile.py);
+        # across rows 2-8 (tests/test_live_qwen38_nextn_proposal_head_rowtile.py);
         # without these keys the wide proposal head fell to the per-row
         # direct gemv (measured 36.7 ms/launch vs ~4.8 ms chunked sweeps).
         (5120, 248320, 5),
@@ -2384,13 +2387,11 @@ _SOURCE_BACKEND = "hip_gfx1100"
 # independent gfx1151 parity gate; the proposal graph remains unadmitted here.
 _GFX1151_ALIAS_EXCLUSIONS = frozenset(
     {
-        # Dense-H5120 narrow/selective Q4T16 col4 rowtiles are W7900-only until
-        # gfx1151 receives an independent shape crossover and full-model gate.
-        (
-            "linear",
-            "gguf_q4_k_t16_v1",
-            "dense_rowtile_col4_bf16_bf16_out",
-        ),
+        # The dense-H5120 narrow Q4T16 col4 rowtile and the dense-H5120
+        # down+residual rowtile were admitted on 2026-09-12: independent gfx1151
+        # shape crossovers (rows 2-4, bit-exact) and complete-model gates now
+        # exist. See
+        # benchmarks/results/2026-09-12-gfx1151-qwen38-27b-q4km-dense-rowtile-withheld-variants-qualified.json.
         # The exact scalar F32 alpha/beta pair is independently admitted on
         # gfx1151; wider/native rows retain singleton projections.
         # The cross-family alpha/beta plus snapshot-Conv owner has only been
@@ -2407,13 +2408,9 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "f32+gguf_q5_k_t16_v1",
             "bf16_k5120_n48_hk16_hv48_d128_exact_state_rows_tloop_f32_bf16_out",
         ),
-        # Dense-H5120 down+residual and rounded next-input RMSNorm fusions
-        # are W7900-only pending independent gfx1151 boundary/model gates.
-        (
-            "linear+residual",
-            "gguf_q4_k_t16_v1",
-            "dense_rowtile_bf16_residual_bf16_out",
-        ),
+        # The rounded next-input RMSNorm fusion is W7900-only pending an
+        # independent gfx1151 boundary/model gate. Its sibling dense-H5120
+        # down+residual rowtile is admitted (2026-09-12 qualification).
         (
             "add+rmsnorm",
             "gguf_f32_weight",
@@ -3457,6 +3454,7 @@ __all__ = [
     "GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS",
     "GGUF_PREFILL_SCRATCH_LIVENESS_MIN_ROWS",
     "GGUF_Q4_K_M_FAIR_PREFILL_BURST_CHUNKS",
+    "GGUF_Q4_DUAL_SILU_PREFILL_ROW48_MAX_ROWS",
     "GGUF_Q4_K_M_MAX_PREFILL_CHUNK_TOKENS",
     "GGUF_Q4_K_M_PREFILL_DECODE_POLICY",
     "GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS",

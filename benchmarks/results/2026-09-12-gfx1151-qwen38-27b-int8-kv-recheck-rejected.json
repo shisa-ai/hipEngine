@@ -1,0 +1,134 @@
+{
+  "schema": 1,
+  "kind": "qwen38_27b_gfx1151_int8_kv_quality_recheck",
+  "date": "2026-09-12",
+  "status": "correctness_rejected",
+  "publishable": false,
+  "performance_claim": false,
+  "question": "Does the 2026-08-15 gfx1151 native INT8 K/V quality rejection still reproduce on the current kernel set, or was it a kernel-owned failure that later gfx1151 paged-attention work fixed?",
+  "prior_evidence": "benchmarks/results/2026-08-15-gfx1151-qwen38-27b-int8-kv-quality-rejected.json",
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "size_bytes": 17106775008,
+    "quant": "gguf_q4_k_m"
+  },
+  "model_identity_note": "The file sha256 and size match the 2026-08-15 rejection exactly, so this is a same-artifact reproduction, not a near-miss substitute.",
+  "host": {
+    "name": "gfx1151",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "memory": "125 GiB unified LPDDR5X",
+    "rocm": "HIP version: 7.15.26333-0000000",
+    "note": "Physical Framework Desktop host, distinct from the W7900 gfx1100 lane."
+  },
+  "software": {
+    "hipengine_commit": "f3b20c1f24153f97659869c319e72ebbd099f43d",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "source_tree_state": "no edits under hipengine/ or kernels/ during the run; only docs/ and benchmarks/ rollup files changed concurrently",
+    "compiler_note": "The 2026-08-15 rejection ran on AMD clang 23.0.0git (sha256 4575f2f128d68d1d1c7e99436d20ecac67a363d6d300f6dde6b2fb83a86f8987); this run is on HIP 7.15.26333. The failure still reproduces across that change."
+  },
+  "protocol": {
+    "harness": "scripts/qwen35_native_mixed_kv_suite.py",
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompts_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompt_count": 11,
+    "positions_per_prompt": 9,
+    "prompt_selection": "complete_suite",
+    "teacher_forcing": "candidate consumes BF16-reference token IDs; every logit comparison has matched token history",
+    "quality_gate": {
+      "all_prompts_must_pass": true,
+      "mean_kl_max_per_prompt": 0.05,
+      "top1_agreement_min_per_prompt": 0.9
+    },
+    "candidate_kv_storage": "int8_per_token_head",
+    "kv_scale_dtype": "fp32",
+    "fixed_layer_policy": {
+      "bf16_full_attention_ordinals": [],
+      "int8_full_attention_ordinals": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+    },
+    "session_capacity_tokens": 32786,
+    "diagnostic_capability_injection": true,
+    "injection_note": "--diagnostic-kv-capability was required because the gfx1151 plugin evidence for this lane is a rejection and would otherwise resolve the request to effective_kv_storage=bf16 without exercising the compact route. The injection is recorded as diagnostic and is never a promotion.",
+    "commands": [
+      "python3 scripts/qwen35_native_mixed_kv_suite.py --engine gguf --backend hip_gfx1151 --gguf-model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --paro-model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-length 512 --decode-steps 8 --candidate-kv-storage int8_per_token_head --kv-scale-dtype fp32 --kl-threshold 0.05 --top1-threshold 0.9 --max-sequence-length 32786 --require-no-bf16-mirror --diagnostic-kv-capability --expected-bf16-full-layers none --expected-int8-full-layers 0-15 --compiler-version-file /tmp/hip1151-run/hipcc-version-gfx1151.txt --json /tmp/hip1151-run/int8kv-recheck-512.json",
+      "python3 scripts/qwen35_native_mixed_kv_suite.py --engine gguf --backend hip_gfx1151 --gguf-model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --paro-model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-length 1024 --decode-steps 8 --candidate-kv-storage int8_per_token_head --kv-scale-dtype fp32 --kl-threshold 0.05 --top1-threshold 0.9 --max-sequence-length 32786 --require-no-bf16-mirror --diagnostic-kv-capability --expected-bf16-full-layers none --expected-int8-full-layers 0-15 --compiler-version-file /tmp/hip1151-run/hipcc-version-gfx1151.txt --json /tmp/hip1151-run/int8kv-recheck-1024.json"
+    ],
+    "stop_rule": "Inherited from the 2026-08-15 protocol: stop a representation after the first failed shape. 1024/8 failed, so 4096/16 was not run."
+  },
+  "layout_audit": {
+    "passed": true,
+    "complete_layer_partition": true,
+    "fixed_layer_policy_passed": true,
+    "scale_granularity_passed": true,
+    "bf16_mirror_bytes": 0,
+    "bf16_mirror_requirement_passed": true,
+    "int8_prefill_oracle_buffer_count": 0,
+    "primary_kv_bytes": 1082130432,
+    "scale_bytes": 16908288,
+    "total_kv_bytes": 1099038720,
+    "reduction_vs_bf16_percent": 49.21875
+  },
+  "by_shape": {
+    "512/8": {
+      "status": "passed",
+      "passed_prompt_count": 11,
+      "prompt_count": 11,
+      "positions": 99,
+      "mean_kl": 0.00021912738480155518,
+      "max_kl": 0.012254294886752864,
+      "minimum_prompt_top1_agreement": 1.0,
+      "failing_prompt_ids": [],
+      "reference_elapsed_seconds": 101.33785142702982,
+      "candidate_elapsed_seconds": 101.28355240728706
+    },
+    "1024/8": {
+      "status": "rejected_correctness",
+      "passed_prompt_count": 9,
+      "prompt_count": 11,
+      "positions": 99,
+      "mean_kl": 0.041977959056962555,
+      "max_kl": 3.446476164561575,
+      "top1_agreement": 0.9696969696969697,
+      "minimum_prompt_top1_agreement": 0.7777777777777778,
+      "failing_prompt_ids": ["mixed_ja_en_review", "mixed_v1"],
+      "failing_prompt_detail": {
+        "mixed_ja_en_review": {
+          "category": "mixed_ja_en",
+          "mean_kl": 0.0001641635385819389,
+          "max_kl": 0.0009365624988192844,
+          "top1_agreement": 0.8888888888888888
+        },
+        "mixed_v1": {
+          "category": "mixed_synthetic",
+          "mean_kl": 0.46086208956368346,
+          "max_kl": 3.446476164561575,
+          "top1_agreement": 0.7777777777777778
+        }
+      },
+      "passing_prompt_max_kl_ceiling": 0.000937,
+      "reference_elapsed_seconds": 194.86422795103863,
+      "candidate_elapsed_seconds": 194.78364828880876
+    }
+  },
+  "comparison_with_2026_08_15": {
+    "512/8": {
+      "prior": {"mean_kl": 0.00011838830360015686, "max_kl": 0.004924906619382897, "minimum_prompt_top1_agreement": 1.0},
+      "now": {"mean_kl": 0.00021912738480155518, "max_kl": 0.012254294886752864, "minimum_prompt_top1_agreement": 1.0},
+      "verdict": "still passes; KL roughly doubled but remains ~4x under the per-prompt max-KL gate with perfect top-1"
+    },
+    "1024/8": {
+      "prior": {"mean_kl": 0.041977959056962555, "max_kl": 3.446476164561575, "minimum_prompt_top1_agreement": 0.7777777777777778},
+      "now": {"mean_kl": 0.041977959056962555, "max_kl": 3.446476164561575, "minimum_prompt_top1_agreement": 0.7777777777777778},
+      "verdict": "every aggregate and per-prompt statistic reproduces the 2026-08-15 rejection to the full printed precision of that artifact, including the identical failing prompt set and the identical per-prompt mean/max KL"
+    }
+  },
+  "conclusion": "The gfx1151 native INT8 K/V rejection is representation-owned, not kernel-owned. The 1024/8 failure reproduces unchanged on the current kernel set, across the paged-attention geometry pins and small-row owner work landed since 2026-08-15, and across a compiler change. No gfx1151 kernel work since that date can be expected to clear it. The rejection and the fail-closed capability gate in hipengine/models/qwen35.py are correct as recorded; INT8 K/V is not an available gfx1151 lever for this artifact.",
+  "residual_observation": "The 1024/8 failure is localized: nine of eleven prompts pass with a worst max-KL of 9.37e-04, and the entire failure sits in mixed_ja_en_review and mixed_v1, with mixed_v1 alone carrying a max KL of 3.446 and top-1 of 0.778. The failure is therefore a prompt-class-specific divergence rather than a general quality collapse. That does not make it clearable by reselecting a layer map from these results: the 2026-08-15 protocol declares these prompts as heldout/control for map selection, and the recorded decision requires a materially new input-independent representation signal.",
+  "next": "Leave the gfx1151 INT8 K/V capability as rejected. Do not re-run this representation. Re-open only with a materially new input-independent representation signal, per the 2026-08-15 decision.",
+  "artifacts": {
+    "raw_512": "/tmp/hip1151-run/int8kv-recheck-512.json",
+    "raw_1024": "/tmp/hip1151-run/int8kv-recheck-1024.json"
+  }
+}

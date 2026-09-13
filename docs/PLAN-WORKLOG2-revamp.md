@@ -118,13 +118,13 @@ worklog/
 scripts/
   worklog.py                       # create/check/render/install-hook CLI
 tests/
-  test_worklog.py                  # retained repository tests
+  test_integration_worklog.py                  # retained repository tests
 .worklog/
   WORKLOG.md                       # ignored local generated view
 ```
 
 The implementation will use the repository's existing `tests/` directory, so
-the actual test path is `tests/test_worklog.py`.
+the actual test path is `tests/test_integration_worklog.py`.
 
 ### Root paths
 
@@ -255,10 +255,19 @@ immutable.
 - unfinished placeholders;
 - conflict markers;
 - a staged entry whose working-tree copy differs;
-- unexpected files directly under `worklog/entries/`;
+- unexpected tracked files directly under `worklog/entries/`;
 - any change to the frozen legacy file or its manifest invariant.
 
 Only newly added entry paths are permitted under `worklog/entries/`.
+
+**Scope amendment (2026-09-12).** Validation reads the Git index — the commit
+tree — rather than the working directory. An untracked file under
+`worklog/entries/` is normally some worker's unfinished entry, is not part of the
+commit, and must not block another worker's commit in a shared worktree, so
+`check` reports those files as notes and `--include-unstaged` validates them on
+request. Every bullet above still applies to staged and tracked content,
+including a staged entry whose working-tree copy differs (re-run `git add` to
+commit the final text).
 
 A wrong committed entry is corrected by a new `decision` or `checkpoint` entry
 that names the superseded conclusion and points to the original path. Historical
@@ -471,7 +480,7 @@ Required implementation properties:
 
 ## 14. Retained test plan
 
-Add `tests/test_worklog.py`. Tests use temporary initialized Git repositories so
+Add `tests/test_integration_worklog.py`. Tests use temporary initialized Git repositories so
 behavior is validated mechanically without touching hipEngine history.
 
 ### Unit/format cases
@@ -506,13 +515,13 @@ behavior is validated mechanically without touching hipEngine history.
 The narrow validation command is:
 
 ```bash
-python3 -m pytest -q tests/test_worklog.py
+python3 -m pytest -q tests/test_integration_worklog.py
 ```
 
 Process validation also includes:
 
 ```bash
-python3 -m py_compile scripts/worklog.py tests/test_worklog.py
+python3 -m py_compile scripts/worklog.py tests/test_integration_worklog.py
 python3 scripts/worklog.py check
 python3 scripts/worklog.py render
 python3 scripts/worklog.py render --include-legacy

@@ -65,6 +65,15 @@ DEFAULT_ROUND_DECODE_ROW_BUDGET = 32
 DEFAULT_RESIDENT_STREAM_QUEUE_MAX_CHUNKS = 64
 
 
+def _speculative_sampling_mode(runner, request_id, params):
+    blockers = speculative_mtp_sampling_blockers(params)
+    if blockers == ("eos_token_id",):
+        supports_eos = getattr(runner, "speculative_eos_supported", None)
+        if callable(supports_eos) and supports_eos(int(request_id)):
+            return "greedy"
+    return "processed" if blockers else "greedy"
+
+
 @dataclass(frozen=True, slots=True)
 class EngineLoopConfig:
     """CLI/env-resolved knobs for the C4 scheduler-owned engine loop."""
@@ -79,9 +88,15 @@ class EngineLoopConfig:
     kv_pool_low_water_pages: int = DEFAULT_KV_POOL_LOW_WATER_PAGES
     kv_pool_high_water_pages: int | None = None
     kv_pool_chunk_pages: int = DEFAULT_KV_POOL_CHUNK_PAGES
+    kv_pool_memory_budget_mib: int | None = None
     kv_pool_idle_grace_seconds: float = DEFAULT_KV_POOL_IDLE_GRACE_SECONDS
     max_pending_requests: int | None = None
     prefix_cache: str = "off"
+    # P4 (roadmap F2): the packed KV plane lease is skipped only when no
+    # plane consumer can appear. The MTP verifier is one such consumer,
+    # so the serving policy must reach configure_engine_loop - "off"
+    # means the verifier never runs; anything else keeps the lease.
+    speculative_mtp_serving: str = "auto"
 
     def __post_init__(self) -> None:
         if self.prefill_decode_policy not in PREFILL_DECODE_POLICIES:
@@ -106,6 +121,8 @@ class EngineLoopConfig:
             raise ValueError("kv_pool_high_water_pages cannot be below kv_pool_initial_pages")
         if self.kv_pool_chunk_pages <= 0:
             raise ValueError("kv_pool_chunk_pages must be positive")
+        if self.kv_pool_memory_budget_mib is not None and self.kv_pool_memory_budget_mib <= 0:
+            raise ValueError("kv_pool_memory_budget_mib must be positive when set")
         if self.kv_pool_idle_grace_seconds < 0:
             raise ValueError("kv_pool_idle_grace_seconds must be non-negative")
         if self.max_pending_requests is not None and self.max_pending_requests <= 0:
@@ -1698,6 +1715,12 @@ def add_engine_loop_config_args(
         help="KV pool grow/shrink chunk size in pages (env HIPENGINE_KV_POOL_CHUNK_PAGES; default: 128)",
     )
     parser.add_argument(
+        "--kv-pool-memory-budget-mib",
+        type=_positive_int_arg,
+        default=_env_optional_positive_int(env, "HIPENGINE_KV_POOL_MEMORY_BUDGET_MIB"),
+        help="Optional KV pool memory budget in MiB (env HIPENGINE_KV_POOL_MEMORY_BUDGET_MIB; default: automatic)",
+    )
+    parser.add_argument(
         "--kv-pool-idle-grace-seconds",
         type=_nonnegative_float_arg,
         default=_env_nonnegative_float(
@@ -1755,6 +1778,11 @@ def engine_loop_config_from_args(args: object) -> EngineLoopConfig:
             else int(getattr(args, "kv_pool_high_water_pages"))
         ),
         kv_pool_chunk_pages=int(getattr(args, "kv_pool_chunk_pages")),
+        kv_pool_memory_budget_mib=(
+            None
+            if getattr(args, "kv_pool_memory_budget_mib", None) is None
+            else int(getattr(args, "kv_pool_memory_budget_mib"))
+        ),
         kv_pool_idle_grace_seconds=float(getattr(args, "kv_pool_idle_grace_seconds")),
         max_pending_requests=(
             None
@@ -1762,6 +1790,12 @@ def engine_loop_config_from_args(args: object) -> EngineLoopConfig:
             else int(getattr(args, "max_pending_requests"))
         ),
         prefix_cache=resolve_prefix_cache_mode(getattr(args, "prefix_cache", "off")),
+        speculative_mtp_serving=str(
+            getattr(args, "speculative_mtp_serving", "auto")
+        )
+        .strip()
+        .lower()
+        .replace("-", "_"),
     )
 
 
@@ -1924,6 +1958,7 @@ class ResidentEngineLoop:
             "kv_pool_low_water_pages",
             "kv_pool_high_water_pages",
             "kv_pool_chunk_pages",
+            "kv_pool_memory_budget_mib",
             "kv_pool_idle_grace_seconds",
             "prefix_cache",
         )
@@ -1980,6 +2015,7 @@ class ResidentEngineLoop:
             {
                 "request_ids": list(recent.request_ids),
                 "candidate_counts": list(recent.candidate_counts),
+                "requested_candidate_counts": list(recent.requested_candidate_counts),
                 "reasons": [reason.value for reason in recent.reasons],
                 "k0_classes": [value.value for value in recent.k0_classes],
                 "execution_route": recent.execution_route,
@@ -1992,6 +2028,7 @@ class ResidentEngineLoop:
             else {
                 "request_ids": list(plan.request_ids),
                 "candidate_counts": list(plan.candidate_counts),
+                "requested_candidate_counts": list(plan.requested_candidate_counts),
                 "reasons": [reason.value for reason in plan.reasons],
                 "k0_classes": [value.value for value in plan.k0_classes],
                 "execution_route": plan.execution_route,
@@ -2459,11 +2496,7 @@ class ResidentEngineLoop:
         for request_id in work.request_ids:
             request = self.scheduler.active_batch.requests[int(request_id)]
             params = sampler_block.params_for(int(request_id))
-            sampling_mode = (
-                "greedy"
-                if not speculative_mtp_sampling_blockers(params)
-                else "processed"
-            )
+            sampling_mode = _speculative_sampling_mode(self.runner, request_id, params)
             semantics.append(
                 SpeculativeRequestSemantics(
                     request_id=int(request_id),

@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import concurrent.futures
 import copy
+import logging
 import os
 import socket
+import sys
 import threading
 import time
 import uuid
@@ -13,6 +15,7 @@ import weakref
 from collections import Counter, deque
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
+from types import SimpleNamespace
 from functools import wraps
 from pathlib import Path
 from typing import Any, ClassVar, Iterator, Mapping, Sequence
@@ -20,8 +23,9 @@ from typing import Any, ClassVar, Iterator, Mapping, Sequence
 import numpy as np
 
 from hipengine.benchmark.provenance import collect_model_identity, detect_device_name
-from hipengine.generation.qwen35_gguf_mtp2 import MTP2_MAX_CANDIDATE_DEPTH
+import hipengine.generation.qwen35_gguf_mtp2 as _qwen35_gguf_mtp2_module
 from hipengine.core.dtype import DType
+from hipengine.core.hip import HipError
 from hipengine.core.memory import free, malloc, memory_stats
 from hipengine.dispatch import (
     RequestState,
@@ -62,6 +66,7 @@ from hipengine.generation.sampling import (
 )
 from hipengine.loading.gguf import GGUFModelInfo, GGUFReader
 from hipengine.loading.qwen35_gguf import (
+    FULL_ATTENTION,
     Qwen35GGUFConfig,
     qwen35_gguf_config_from_metadata,
 )
@@ -91,16 +96,203 @@ from hipengine.runtime.qwen35_gguf_runner import (
     Qwen35GGUFFullStackRunner,
     Qwen35GGUFResidentSession,
     _GGUF_PACKED_WORKSPACE_LEASE_KEY,
+    _GGUFResumablePrefillState,
     _PACKED_VERIFY_DEFAULT_SLOT_CAPACITY,
     _PACKED_VERIFY_MIN_MAX_SEQUENCE,
     _gguf_device_kv_contiguous_base_row,
+    _gguf_int8_bf16_full_attention_layer_indices,
+    _gguf_packed_layer_outer_enabled,
+    _qualified_no_mirror_int8_capability,
     _rope_tables as _gguf_rope_tables,
+    estimate_qwen35_gguf_kv_capacity,
 )
 from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def _new_gguf_timing_batch_id(kind: str) -> str:
     return f"gguf-{str(kind)}-{uuid.uuid4().hex}"
+
+
+_RESUMABLE_PREFILL_DONE = object()
+"""Row marker: the resumable prefill produced its first token already."""
+
+
+def _gguf_resumable_layer_count(session: Any) -> int:
+    """Model layer count for scheduling a resumable prefill's layer budget."""
+
+    config = getattr(
+        getattr(getattr(session, "runner", None), "weights", None),
+        "config",
+        None,
+    )
+    layer_types = getattr(config, "layer_types", None)
+    return 0 if layer_types is None else len(layer_types)
+
+
+def packed_workspace_owner_inventory(
+    sessions: Sequence[Any],
+) -> tuple[int, int]:
+    """Return (unique owner bytes, contributing session count).
+
+    Resident slot views share one physical packed workspace through the batch
+    owner: every view's ``packed_workspace_nbytes()`` reports the same buffers,
+    so summing per session inflates the total by the view count (F6 in the
+    server/direct parity roadmap: two views of one 1,024-byte allocation
+    summed to 2,048). This helper deduplicates by buffer pointer across every
+    session first, then sums. Growth owners (``full_attn_split_growth_buffers``)
+    are included by the per-session helper.
+    """
+
+    unique: dict[int, int] = {}
+    contributing = 0
+    for session in sessions:
+        size = getattr(session, "packed_workspace_nbytes", None)
+        if not callable(size):
+            continue
+        contributing += 1
+        for workspace in (
+            getattr(session, "_packed_ar_attention_workspace", None),
+            getattr(session, "_packed_verify_scratch", None),
+            getattr(session, "_packed_verify_state", None),
+        ):
+            if workspace is None:
+                continue
+            for buffer in (
+                *workspace.buffers,
+                *(
+                    getattr(workspace, "full_attn_split_growth_buffers", ())
+                    if workspace is getattr(session, "_packed_verify_scratch", None)
+                    else ()
+                ),
+            ):
+                if buffer is None or int(buffer.ptr) == 0:
+                    continue
+                unique[int(buffer.ptr)] = int(buffer.nbytes)
+    return sum(unique.values()), contributing
+
+
+def prefill_transient_owner_inventory(sessions: Sequence[Any]) -> dict[str, Any]:
+    """Owner-deduplicated prefill transient state for observability.
+
+    Distinct accounting domains (F3/F4 in the server/direct parity roadmap):
+    the per-layer/shared BF16 oracle owners, the bulk-prefill hidden/scratch
+    owner, and the *actual* executor's last packed route - reported separately
+    from the legacy INT8 lifetime plan mode, which the packed executor can
+    override at the point of use (per-layer oracle keying) without the plan
+    knowing.
+    """
+
+    oracle_buffers: dict[int, int] = {}
+    hidden_buffers: dict[int, int] = {}
+    oracle_owner_counts: list[int] = []
+    oracle_capacity_positions: list[int] = []
+    lifetime_modes: list[str] = []
+    executor_routes: list[str] = []
+    executor_modes: list[str] = []
+    per_layer_flags: list[bool] = []
+    kv_attention_sources: list[str | None] = []
+    for session in sessions:
+        # The session's own KV layout, read here because it gates whether the
+        # resumable executor is even attempted (qwen35_gguf.py:8084). The last
+        # execution manifest cannot answer this: by scrape time it is a decode
+        # manifest, whose builder does not populate kv_attention_source.
+        # ``kv_attention_source`` is a live-session property that raises for a
+        # closed or partially constructed session; a telemetry scrape must
+        # report that honestly as unknown rather than propagate the error.
+        try:
+            kv_attention_sources.append(session.kv_attention_source)
+        except (RuntimeError, AttributeError):
+            kv_attention_sources.append(None)
+        oracle_buffers_by_session = getattr(
+            session, "_int8_prefill_oracle_buffers", None
+        )
+        if isinstance(oracle_buffers_by_session, dict):
+            oracle_owner_counts.append(len(oracle_buffers_by_session))
+            for pair in oracle_buffers_by_session.values():
+                try:
+                    key_cache, value_cache = pair
+                except (TypeError, ValueError):
+                    continue
+                for buffer in (key_cache, value_cache):
+                    if buffer is not None and int(getattr(buffer, "ptr", 0)):
+                        oracle_buffers[int(buffer.ptr)] = int(buffer.nbytes)
+            capacity = getattr(session, "_int8_prefill_oracle_capacity_positions", None)
+            if callable(capacity):
+                try:
+                    oracle_capacity_positions.append(int(capacity()))
+                except (RuntimeError, AttributeError, ValueError):
+                    pass
+        plan = getattr(session, "_int8_prefill_lifetime_plan", None)
+        lifetime_modes.append(str(getattr(plan, "mode", None)))
+        last_plan = getattr(session, "last_packed_prefill_plan", None)
+        executor_routes.append(
+            str(last_plan.get("route")) if isinstance(last_plan, dict) else None
+        )
+        # The layer-outer executor records its distinction in executor_mode;
+        # route alone cannot distinguish it from the chunk-outer fallback
+        # (reviewer finding 4, 2026-09-10).
+        executor_modes.append(
+            str(last_plan.get("executor_mode")) if isinstance(last_plan, dict) else None
+        )
+        per_layer_flags.append(
+            bool(getattr(session, "_int8_prefill_oracle_per_layer", False))
+        )
+        for buffer in (
+            getattr(session, "_prefill_hidden_a", None),
+            getattr(session, "_prefill_hidden_b", None),
+            getattr(session, "_prefill_token_buf", None),
+        ):
+            if buffer is not None and int(getattr(buffer, "ptr", 0)):
+                hidden_buffers[int(buffer.ptr)] = int(buffer.nbytes)
+        bulk_scratch = getattr(session, "_bulk_prefill_scratch", None)
+        if bulk_scratch is not None:
+            for buffer in getattr(bulk_scratch, "buffers", ()):
+                if buffer is not None and int(getattr(buffer, "ptr", 0)):
+                    hidden_buffers[int(buffer.ptr)] = int(buffer.nbytes)
+        # P6b: a suspended resumable prefill holds a dedicated copy of its live
+        # hidden planes and linear state so interleaved packed decode cannot
+        # overwrite it. That owner is real resident memory and must be counted
+        # alongside the other prefill transients.
+        suspended = getattr(session, "_resumable_prefill_scratch", None)
+        if suspended is not None:
+            for buffer in getattr(suspended, "buffers", ()):
+                if buffer is not None and int(getattr(buffer, "ptr", 0)):
+                    hidden_buffers[int(buffer.ptr)] = int(buffer.nbytes)
+    return {
+        "oracle_owner_bytes": sum(oracle_buffers.values()),
+        "oracle_owner_counts": oracle_owner_counts,
+        "oracle_owner_count_total": sum(oracle_owner_counts),
+        "oracle_observed_peak_bytes": max(
+            (
+                int(getattr(session, "_int8_prefill_oracle_observed_peak_bytes", 0))
+                for session in sessions
+            ),
+            default=0,
+        ),
+        "oracle_observed_peak_owners": max(
+            (
+                int(getattr(session, "_int8_prefill_oracle_observed_peak_owners", 0))
+                for session in sessions
+            ),
+            default=0,
+        ),
+        "oracle_capacity_positions": oracle_capacity_positions,
+        "hidden_and_bulk_owner_bytes": sum(hidden_buffers.values()),
+        "int8_prefill_lifetime_plan_modes": lifetime_modes,
+        "last_packed_executor_routes": executor_routes,
+        "last_packed_executor_modes": executor_modes,
+        "kv_attention_sources": kv_attention_sources,
+        "oracle_per_layer_flags": per_layer_flags,
+        "note": (
+            "oracle_owner_bytes is the live per-layer/shared BF16 oracle pair"
+            " total (unique buffers); oracle_capacity_positions is per-session"
+            " pool-backed sizing, not prompt length; lifetime_plan_modes is the"
+            " legacy plan while last_packed_executor_routes + oracle_per_layer"
+            " report what actually ran"
+        ),
+    }
 
 
 def _encode_prompt_timed(
@@ -135,6 +327,10 @@ _LLAMA_COMPAT_MTP_ENV = {
 _GGUF_MTP_CONTEXT_REPLAY_MIN_PROMPT_TOKENS = 4
 _MTP_SERVING_TARGET_BATCH_MAX_SLOTS = 4
 _GGUF_AR_NATIVE_MAX_SLOTS = 8
+# Resident request concurrency for the dense GGUF route when the caller does
+# not set --max-active-requests. This is scheduler admission, not a KV-memory
+# multiplier: the shared pool grows against its independent device budget.
+# Pass --max-active-requests to change how many requests may be in flight.
 _GGUF_RESIDENT_MODEL_LOOP_DEFAULT_CAPACITY = 4
 # Superset of every shared-slot AR physical width a backend may register and use.
 # Direct widths c3/c5/c6/c7 are admitted here so they can be certified via an
@@ -214,6 +410,104 @@ _GGUF_MTP_SERVER_VERIFY_MODE_ENV = "HIPENGINE_GGUF_MTP_VERIFY_MODE"
 _GGUF_MTP_SERVER_CANDIDATE_BUDGET_ENV = "HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET"
 _GGUF_MTP_SERVER_DEFAULT_VERIFY_MODE = "native"
 _GGUF_MTP_SERVER_DEFAULT_CANDIDATE_BUDGET = 3
+
+# Automatic resident context sizing.
+#
+# When the caller does not pin a context, the resident GGUF session prices the
+# footprint against free HIP memory after weights load and takes the largest
+# block-aligned context that fits with a safety reserve. Set
+# HIPENGINE_GGUF_AUTO_CONTEXT=0 to keep the historical fixed default instead.
+_GGUF_AUTO_CONTEXT_ENV = "HIPENGINE_GGUF_AUTO_CONTEXT"
+_GGUF_AUTO_CONTEXT_RESERVE_MIB_ENV = "HIPENGINE_GGUF_KV_CAPACITY_RESERVE_MIB"
+_GGUF_AUTO_CONTEXT_TRANSIENT_KIB_ENV = "HIPENGINE_GGUF_KV_TRANSIENT_KIB_PER_TOKEN"
+_GGUF_AUTO_CONTEXT_TRANSIENT_FIXED_MIB_ENV = "HIPENGINE_GGUF_KV_TRANSIENT_FIXED_MIB"
+_GGUF_AUTO_CONTEXT_ATTEMPTS_ENV = "HIPENGINE_GGUF_AUTO_CONTEXT_ATTEMPTS"
+_GGUF_AUTO_CONTEXT_BLOCK_SIZE = 256
+_GGUF_AUTO_CONTEXT_MAX_ATTEMPTS = 4
+_GGUF_AUTO_CONTEXT_FALLBACK_NUMERATOR = 3
+_GGUF_AUTO_CONTEXT_FALLBACK_DENOMINATOR = 4
+
+# The reserve covers device memory the capacity model does not price at all:
+# HIP context, JIT-compiled kernel modules, AOTriton, and the KV pool's pointer
+# tables. Those are allocated lazily *after* the free-memory reading the model
+# prices against, so they cannot be inferred from it.
+#
+# Measured on the W7900 (48 GiB), 27B Q4_K_M, auto-selected 45,568 tokens at 4
+# BF16 slots, after a 43,011-token prefill: whole-card use 42.91 GiB against
+# 40.25 GiB of hipEngine-tracked allocations, i.e. **2.66 GiB untracked**, of
+# which about 2.35 GiB materializes after the selection is made. The previous
+# 512 MiB default did not cover that; the auto-selection only survived a
+# full-depth prompt because the transient term is priced at its worst case
+# (4.22 GiB) against a measured 0.30 GiB, and that 3.9 GiB of slack absorbed
+# the shortfall. On a 24 GiB card the same arithmetic selected a context whose
+# true peak was 26.2 GiB against 23.98 GiB of VRAM.
+_GGUF_AUTO_CONTEXT_RESERVE_MIB_DEFAULT = 3072
+
+
+def _gguf_auto_context_enabled() -> bool:
+    return os.environ.get(_GGUF_AUTO_CONTEXT_ENV, "1").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
+
+
+def _gguf_auto_context_int_env(name: str, default: int, *, minimum: int) -> int:
+    raw = (os.environ.get(name) or "").strip()
+    if not raw:
+        return int(default)
+    try:
+        return max(int(minimum), int(raw))
+    except ValueError:
+        return int(default)
+
+
+def _gguf_auto_context_attempts() -> int:
+    return _gguf_auto_context_int_env(
+        _GGUF_AUTO_CONTEXT_ATTEMPTS_ENV,
+        _GGUF_AUTO_CONTEXT_MAX_ATTEMPTS,
+        minimum=1,
+    )
+
+
+def _gguf_auto_context_reserve_bytes() -> int:
+    return _gguf_auto_context_int_env(
+        _GGUF_AUTO_CONTEXT_RESERVE_MIB_ENV,
+        _GGUF_AUTO_CONTEXT_RESERVE_MIB_DEFAULT,
+        minimum=0,
+    ) * 1024**2
+
+
+def _gguf_auto_context_transient_bytes_per_token() -> int:
+    return _gguf_auto_context_int_env(
+        _GGUF_AUTO_CONTEXT_TRANSIENT_KIB_ENV,
+        74,
+        minimum=0,
+    ) * 1024
+
+
+def _gguf_auto_context_transient_fixed_bytes() -> int:
+    return _gguf_auto_context_int_env(
+        _GGUF_AUTO_CONTEXT_TRANSIENT_FIXED_MIB_ENV,
+        1024,
+        minimum=0,
+    ) * 1024**2
+
+
+def _gguf_allocation_failure(exc: BaseException) -> bool:
+    """Return whether an exception is a device-allocation failure.
+
+    HIP reports out-of-memory as ``HipError``; the host-side and pool paths
+    raise ``MemoryError``. Both mean the same thing to the auto-context
+    fallback, and neither should be swallowed for any other failure.
+    """
+
+    if isinstance(exc, MemoryError):
+        return True
+    message = str(exc).lower()
+    return "out of memory" in message or "oom" in message
+
 _GGUF_PUBLIC_USE_WMMA_PREFILL = True
 _GGUF_PUBLIC_USE_GEMV_DECODE = True
 from hipengine.runtime.gguf_linear import (
@@ -492,7 +786,7 @@ def _gguf_mtp_server_candidate_budget() -> int:
         budget = int(str(raw).strip())
     except ValueError:
         return _GGUF_MTP_SERVER_DEFAULT_CANDIDATE_BUDGET
-    if not 1 <= budget <= MTP2_MAX_CANDIDATE_DEPTH:
+    if not 1 <= budget <= _qwen35_gguf_mtp2_module.MTP2_MAX_CANDIDATE_DEPTH:
         return _GGUF_MTP_SERVER_DEFAULT_CANDIDATE_BUDGET
     return budget
 
@@ -916,6 +1210,18 @@ class Qwen35GGUFBringupGenerator:
         init=False,
         repr=False,
     )
+    _auto_resolved_max_sequence_length: int | None = field(
+        default=None,
+        init=False,
+        repr=False,
+    )
+    _auto_resolved_max_sequence_lengths: dict[tuple[int, bool], int] = field(
+        default_factory=dict,
+        init=False,
+        repr=False,
+    )
+    _auto_context_estimate: Any | None = field(default=None, init=False, repr=False)
+    _resident_model_runner: Any | None = field(default=None, init=False, repr=False)
     _kv_artifact_identity: ModelArtifactIdentity | None = field(
         default=None,
         init=False,
@@ -1074,6 +1380,23 @@ class Qwen35GGUFBringupGenerator:
         requested_storage = getattr(params, "kv_storage", "auto") or "auto"
         if current is not None and str(requested_storage) == "auto":
             return
+        if params is None or str(requested_storage) == "auto":
+            hint = getattr(self, "request_kv_policy_hint", None)
+            if hint is not None:
+                # The eager model-load prepare passes no request. A
+                # server-configured policy hint locks the real policy instead
+                # of auto-resolving BF16, which would later reject the
+                # explicit policy as "cannot change after preparation".
+                hint_storage, hint_scale_dtype, hint_granularity = (
+                    str(hint[0]),
+                    str(hint[1]),
+                    str(hint[2]),
+                )
+                params = SimpleNamespace(
+                    kv_storage=hint_storage,
+                    kv_scale_dtype=hint_scale_dtype,
+                    kv_scale_granularity=hint_granularity,
+                )
         policy, scale_dtype, signature = self._resolve_request_kv_policy(params)
         if current is not None and current != signature:
             raise ValueError(
@@ -1376,7 +1699,7 @@ class Qwen35GGUFBringupGenerator:
     ) -> "Qwen35GGUFResidentModelRunner":
         """Create the single scheduler-facing GGUF model owner for this generator."""
 
-        return Qwen35GGUFResidentModelRunner(
+        runner = Qwen35GGUFResidentModelRunner(
             self,
             capacity=(
                 _GGUF_RESIDENT_MODEL_LOOP_DEFAULT_CAPACITY
@@ -1384,6 +1707,12 @@ class Qwen35GGUFBringupGenerator:
                 else int(capacity)
             ),
         )
+        # The server's resident-session lookups (context reporting, KVCache
+        # summary, /ready payloads) resolve the owner from the generator. Keep
+        # the newest owner reachable rather than requiring the caller to thread
+        # it back through.
+        self._resident_model_runner = runner
+        return runner
 
     def _get_shared_runner(self) -> Qwen35GGUFFullStackRunner:
         runner = getattr(self, "_shared_runner", None)
@@ -1413,6 +1742,389 @@ class Qwen35GGUFBringupGenerator:
         if not hasattr(self, "_shared_mtp_draft_pool_lock"):
             self._shared_mtp_draft_pool_lock = threading.Lock()
 
+    def _packed_workspace_lease_needed(self, *, max_batch_size: int) -> bool:
+        """Mirror ``configure_engine_loop``'s packed-KV lease decision.
+
+        The lease is an execution workspace floor, separate from request
+        concurrency. The capacity estimate has to know about it before the pool exists, so the
+        decision is reproduced here from the same inputs. The policy lives on the
+        resident model runner, not on the generator, so it is read from there.
+        While that runner has not resolved its engine-loop policy yet the lease
+        is assumed: promising context the pool will later need is the failure
+        that costs an OOM.
+        """
+
+        if int(max_batch_size) > 1:
+            return True
+        if os.environ.get("HIPENGINE_GGUF_PACKED_KV_LEASE", "0").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }:
+            return True
+        owner = getattr(self, "_resident_model_runner", None)
+        config = getattr(owner, "_engine_loop_config", None)
+        if config is None:
+            return True
+        if getattr(owner, "_prefix_cache_mode", "off") != "off":
+            return True
+        policy = (
+            str(getattr(config, "speculative_mtp_serving", "auto") or "auto")
+            .strip()
+            .lower()
+            .replace("-", "_")
+        )
+        return policy != "off"
+
+    def _resident_capacity_estimate(
+        self,
+        shared_runner: Qwen35GGUFFullStackRunner,
+        *,
+        max_batch_size: int,
+        defer_kv_allocation: bool,
+        requested_context_tokens: int | None,
+    ) -> Any | None:
+        """Price the resident GGUF footprint against current free HIP memory.
+
+        Returns ``None`` when the inputs a real session needs are unavailable
+        (fake runners in unit tests, no HIP runtime). Auto-sizing is best-effort
+        and must never turn a working fixed-context path into a failure.
+        """
+
+        weights = getattr(shared_runner, "weights", None)
+        cfg = getattr(weights, "config", None)
+        runtime = getattr(shared_runner, "runtime", None)
+        mem_get_info = getattr(runtime, "mem_get_info", None)
+        if cfg is None or not callable(mem_get_info):
+            return None
+        try:
+            free_bytes, _total_bytes = mem_get_info()
+            hidden_size = int(shared_runner.hidden_size)
+            ffn_size = int(shared_runner.ffn_size)
+            q_width = int(shared_runner.q_width)
+            kv_width = int(shared_runner.kv_width)
+            linear_qkv_width = int(shared_runner.linear_qkv_width)
+        except Exception as exc:  # noqa: BLE001 - best-effort sizing probe
+            _LOGGER.debug("GGUF automatic context sizing unavailable: %s", exc)
+            return None
+        signature = getattr(self, "_prepared_kv_signature", None) or (
+            "bf16",
+            "uniform",
+            "fp16",
+            "per_token_head",
+        )
+        storage, storage_layout, scale_dtype, granularity = (str(part) for part in signature)
+        configured_budget_mib = getattr(self, "_kv_pool_memory_budget_mib", None)
+        if configured_budget_mib is not None:
+            free_bytes = min(
+                int(free_bytes),
+                int(configured_budget_mib) * 1024**2
+                + _gguf_auto_context_reserve_bytes(),
+            )
+        model_max = int(getattr(cfg, "context_length", 0) or 0)
+        requested = int(requested_context_tokens or 0) or model_max or _GGUF_AUTO_CONTEXT_BLOCK_SIZE
+        qualified = _qualified_no_mirror_int8_capability(
+            getattr(self, "kv_capability_provenance", None)
+        )
+        full_attention_layers = sum(
+            1 for layer_type in getattr(cfg, "layer_types", ()) if layer_type == FULL_ATTENTION
+        )
+
+        def _layer_indices(max_positions: int) -> tuple[int, ...]:
+            if qualified:
+                return ()
+            return _gguf_int8_bf16_full_attention_layer_indices(
+                kv_storage_dtype=DType.parse(storage),
+                max_positions=int(max_positions),
+                full_attention_layers=int(full_attention_layers),
+            )
+
+        try:
+            return estimate_qwen35_gguf_kv_capacity(
+                cfg,
+                available_bytes=int(free_bytes),
+                requested_context_tokens=int(requested),
+                hidden_size=hidden_size,
+                ffn_size=ffn_size,
+                q_width=q_width,
+                kv_width=kv_width,
+                linear_qkv_width=linear_qkv_width,
+                fp16_recurrent_state=bool(getattr(shared_runner, "fp16_recurrent_state", False)),
+                # Context admission is per request.  The shared device pool
+                # grows against its memory budget, so scheduler concurrency
+                # must not multiply the resident KV footprint estimate.
+                max_batch_size=1,
+                kv_storage_dtype=storage,
+                kv_storage_layout=storage_layout,
+                kv_scale_dtype=scale_dtype,
+                kv_scale_granularity=granularity,
+                int8_kv_no_mirror_qualified=qualified,
+                int8_bf16_layer_indices_resolver=_layer_indices,
+                allocate_kv_cache=not bool(defer_kv_allocation),
+                workspace_lease_needed=self._packed_workspace_lease_needed(
+                    max_batch_size=int(max_batch_size)
+                ),
+                reserve_bytes=_gguf_auto_context_reserve_bytes(),
+                transient_bytes_per_token=_gguf_auto_context_transient_bytes_per_token(),
+                transient_fixed_bytes=_gguf_auto_context_transient_fixed_bytes(),
+            )
+        except Exception as exc:  # noqa: BLE001 - best-effort sizing probe
+            _LOGGER.debug("GGUF automatic context sizing unavailable: %s", exc)
+            return None
+
+    def _auto_context_cache_key(
+        self, *, max_batch_size: int, defer_kv_allocation: bool
+    ) -> tuple[int, bool]:
+        del max_batch_size
+        return (1, bool(defer_kv_allocation))
+
+    def _record_auto_context_selection(
+        self,
+        *,
+        max_batch_size: int,
+        defer_kv_allocation: bool,
+        context_tokens: int,
+        estimate: Any | None = None,
+    ) -> None:
+        """Remember a resolved context and keep the reported value conservative.
+
+        The cache is keyed only by allocation mode. Scheduler concurrency does
+        not change the per-request context ceiling when KV pages come from the
+        shared elastic pool.
+        """
+
+        key = self._auto_context_cache_key(
+            max_batch_size=max_batch_size,
+            defer_kv_allocation=defer_kv_allocation,
+        )
+        self._auto_resolved_max_sequence_lengths[key] = int(context_tokens)
+        current = self._auto_resolved_max_sequence_length
+        self._auto_resolved_max_sequence_length = (
+            int(context_tokens)
+            if current is None
+            else min(int(current), int(context_tokens))
+        )
+        if estimate is not None:
+            self._auto_context_estimate = estimate
+
+    def _resolve_auto_context(
+        self,
+        shared_runner: Qwen35GGUFFullStackRunner,
+        *,
+        max_batch_size: int,
+        defer_kv_allocation: bool,
+    ) -> int | None:
+        """Choose the resident context when the caller did not pin one.
+
+        The selection is cached per allocation mode. Every request shares the
+        same context ceiling; concurrency is enforced by the scheduler and does
+        not cause a second context calculation.
+        """
+
+        cached = self._auto_resolved_max_sequence_lengths.get(
+            self._auto_context_cache_key(
+                max_batch_size=max_batch_size,
+                defer_kv_allocation=defer_kv_allocation,
+            )
+        )
+        if cached is not None:
+            return int(cached)
+        if not _gguf_auto_context_enabled():
+            return None
+        estimate = self._resident_capacity_estimate(
+            shared_runner,
+            max_batch_size=max_batch_size,
+            defer_kv_allocation=defer_kv_allocation,
+            requested_context_tokens=None,
+        )
+        if estimate is None:
+            return None
+        selected = int(estimate.allocatable_context_tokens)
+        if selected <= 0:
+            raise MemoryError(
+                "automatic GGUF resident context sizing found no allocatable context tokens; "
+                "free GPU memory, use --kv-storage int8_per_token_head, or pin a smaller "
+                "--max-context-tokens"
+            )
+        # Re-price at the selected context so the attached estimate describes the
+        # decision that was taken (and its ``requested_context_tokens`` matches
+        # the session) instead of the model-max probe used to find it. Nothing
+        # has been allocated in between, so free memory is unchanged.
+        settled = self._resident_capacity_estimate(
+            shared_runner,
+            max_batch_size=max_batch_size,
+            defer_kv_allocation=defer_kv_allocation,
+            requested_context_tokens=selected,
+        )
+        self._record_auto_context_selection(
+            max_batch_size=max_batch_size,
+            defer_kv_allocation=defer_kv_allocation,
+            context_tokens=selected,
+            estimate=estimate if settled is None else settled,
+        )
+        _LOGGER.info(
+            "GGUF auto context: selected %d tokens (model max %s, allocatable %d, "
+            "usable %.2f GiB after %.2f GiB reserve, ~%d B/token)",
+            selected,
+            "unknown" if estimate.model_max_context_tokens <= 0 else str(estimate.model_max_context_tokens),
+            int(estimate.allocatable_context_tokens),
+            int(estimate.usable_bytes) / 1024**3,
+            int(estimate.reserve_bytes) / 1024**3,
+            int(estimate.marginal_bytes_per_token),
+        )
+        return selected
+
+    def _recalibrated_auto_context(
+        self,
+        shared_runner: Qwen35GGUFFullStackRunner,
+        *,
+        failed_context: int,
+        max_batch_size: int,
+        defer_kv_allocation: bool,
+    ) -> int:
+        """Re-price after an allocation failure and give back extra headroom.
+
+        The failed attempt is a hard upper bound, and the session constructor
+        rolls its partial allocations back, so free memory here is real. Two
+        cases are worth separating:
+
+        * The re-priced model now claims less than what just failed. The model
+          is tracking this machine, so trim its answer by a quarter and keep the
+          context that is left.
+        * The re-priced model still claims more than the allocator refused. Its
+          transient term is not describing this machine, so halve instead of
+          trimming, which converges inside the attempt budget.
+        """
+
+        block = _GGUF_AUTO_CONTEXT_BLOCK_SIZE
+        candidate = int(failed_context)
+        estimate = self._resident_capacity_estimate(
+            shared_runner,
+            max_batch_size=max_batch_size,
+            defer_kv_allocation=defer_kv_allocation,
+            requested_context_tokens=int(failed_context),
+        )
+        model_binds = False
+        if estimate is not None:
+            allocatable = int(estimate.allocatable_context_tokens)
+            if 0 < allocatable < candidate:
+                candidate = allocatable
+                model_binds = True
+        if model_binds:
+            reduced = candidate * _GGUF_AUTO_CONTEXT_FALLBACK_NUMERATOR // _GGUF_AUTO_CONTEXT_FALLBACK_DENOMINATOR
+        else:
+            reduced = candidate // 2
+        reduced = max(block, (reduced // block) * block)
+        return min(reduced, int(failed_context) - block)
+
+    def _construct_shared_session(
+        self,
+        shared_runner: Qwen35GGUFFullStackRunner,
+        *,
+        max_sequence_length: int | None,
+        max_batch_size: int,
+        defer_kv_allocation: bool,
+        use_wmma_prefill: bool | None,
+        use_gemv_decode: bool | None,
+    ) -> Qwen35GGUFResidentSession:
+        """Construct a resident session, backing the context off if it OOMs.
+
+        The capacity model is conservative but not exact. A failed allocation is
+        rolled back by the session constructor, so the honest response is to
+        recompute from the memory that is actually free and retry smaller rather
+        than surface a bare HIP error during startup.
+        """
+
+        context = None if max_sequence_length is None else int(max_sequence_length)
+        # ``HIPENGINE_GGUF_AUTO_CONTEXT=0`` is the full rollback: no automatic
+        # sizing and no backoff, so an allocation failure stays fatal exactly as
+        # it was before automatic sizing existed.
+        attempts = _gguf_auto_context_attempts() if _gguf_auto_context_enabled() else 1
+        for attempt in range(attempts):
+            session_kwargs = {} if context is None else {"max_sequence_length": int(context)}
+            try:
+                session = Qwen35GGUFResidentSession(
+                    self.model_path,
+                    backend=self.backend,
+                    runtime=shared_runner.runtime,
+                    shared_runner=shared_runner,
+                    use_wmma_prefill=use_wmma_prefill,
+                    use_gemv_decode=use_gemv_decode,
+                    defer_kv_allocation=bool(defer_kv_allocation),
+                    max_batch_size=int(max_batch_size),
+                    **self._prepared_session_kv_kwargs(),
+                    **session_kwargs,
+                )
+            except (HipError, MemoryError) as exc:
+                if context is None or not _gguf_allocation_failure(exc):
+                    raise
+                if attempt + 1 >= attempts:
+                    raise MemoryError(
+                        "GGUF resident context sizing could not allocate a "
+                        f"resident session at {context} tokens after {attempts} attempts "
+                        f"(last error: {exc}); free GPU memory, use "
+                        "--kv-storage int8_per_token_head, or pin a smaller --max-context-tokens"
+                    ) from exc
+                next_context = self._recalibrated_auto_context(
+                    shared_runner,
+                    failed_context=int(context),
+                    max_batch_size=int(max_batch_size),
+                    defer_kv_allocation=bool(defer_kv_allocation),
+                )
+                if next_context >= int(context):
+                    raise
+                _LOGGER.warning(
+                    "GGUF context request: requested %d tokens failed to allocate (%s); "
+                    "retrying at %d tokens",
+                    int(context),
+                    exc,
+                    next_context,
+                )
+                context = next_context
+            else:
+                self._attach_capacity_estimate(
+                    session,
+                    shared_runner,
+                    max_batch_size=int(max_batch_size),
+                    defer_kv_allocation=bool(defer_kv_allocation),
+                )
+                return session
+        raise MemoryError(
+            "GGUF resident context sizing exhausted its attempts"
+        )  # pragma: no cover - the loop always returns or raises
+
+    def _attach_capacity_estimate(
+        self,
+        session: Qwen35GGUFResidentSession,
+        shared_runner: Qwen35GGUFFullStackRunner,
+        *,
+        max_batch_size: int,
+        defer_kv_allocation: bool,
+    ) -> None:
+        """Publish a capacity estimate on the session for server reporting.
+
+        The server's KVCache summary and /ready payload read
+        ``session.kv_capacity_estimate``; attaching it here is what makes the
+        GGUF route report the same shape the PARO route already does.
+        """
+
+        context = getattr(session, "max_sequence_length", None)
+        if context is None:
+            return
+        estimate = getattr(self, "_auto_context_estimate", None)
+        if estimate is not None and int(estimate.requested_context_tokens) == int(context):
+            session.kv_capacity_estimate = estimate
+            return
+        repriced = self._resident_capacity_estimate(
+            shared_runner,
+            max_batch_size=int(max_batch_size),
+            defer_kv_allocation=bool(defer_kv_allocation),
+            requested_context_tokens=int(context),
+        )
+        if repriced is not None:
+            session.kv_capacity_estimate = repriced
+
     def _acquire_shared_session(
         self,
         shared_runner: Qwen35GGUFFullStackRunner,
@@ -1428,6 +2140,12 @@ class Qwen35GGUFBringupGenerator:
         if getattr(self, "_prepared_kv_signature", None) is None:
             self._prepare_kv_policy(None)
         assert self._prepared_kv_signature is not None
+        if max_sequence_length is None:
+            max_sequence_length = self._resolve_auto_context(
+                shared_runner,
+                max_batch_size=int(max_batch_size),
+                defer_kv_allocation=bool(defer_kv_allocation),
+            )
         key = (
             str(pool_name),
             use_wmma_prefill,
@@ -1445,23 +2163,36 @@ class Qwen35GGUFBringupGenerator:
                 reset()
             self._configure_session(session)
             return session, key, True
-        session_kwargs = (
-            {}
-            if max_sequence_length is None
-            else {"max_sequence_length": int(max_sequence_length)}
-        )
-        session = Qwen35GGUFResidentSession(
-            self.model_path,
-            backend=self.backend,
-            runtime=shared_runner.runtime,
-            shared_runner=shared_runner,
+        session = self._construct_shared_session(
+            shared_runner,
+            max_sequence_length=max_sequence_length,
+            max_batch_size=int(max_batch_size),
+            defer_kv_allocation=bool(defer_kv_allocation),
             use_wmma_prefill=use_wmma_prefill,
             use_gemv_decode=use_gemv_decode,
-            defer_kv_allocation=bool(defer_kv_allocation),
-            max_batch_size=int(max_batch_size),
-            **self._prepared_session_kv_kwargs(),
-            **session_kwargs,
         )
+        effective = getattr(session, "max_sequence_length", None)
+        if effective is not None and int(effective) != (
+            None if max_sequence_length is None else int(max_sequence_length)
+        ):
+            # The session backed off to a smaller context than the pool key was
+            # built from. Keep the key describing what the session actually owns,
+            # or a later acquire would hand out a mismatched session under the
+            # original key.
+            max_sequence_length = int(effective)
+            self._record_auto_context_selection(
+                max_batch_size=int(max_batch_size),
+                defer_kv_allocation=bool(defer_kv_allocation),
+                context_tokens=int(effective),
+            )
+            key = (
+                str(pool_name),
+                use_wmma_prefill,
+                use_gemv_decode,
+                max_sequence_length,
+                int(max_batch_size),
+                self._prepared_kv_signature,
+            )
         self._configure_session(session)
         return session, key, False
 
@@ -4953,6 +5684,7 @@ class _GGUFResidentLoopRow:
     native_sampler: bool = False
     prefill_tokens_seen: int = 0
     incremental_prefill: bool | None = None
+    resumable_prefill: Any | None = None
     prefill_chunk_count: int = 0
     prefill_ms: float = 0.0
     lease: _GGUFResidentSessionLease | None = None
@@ -5285,6 +6017,9 @@ class Qwen35GGUFResidentModelRunner:
         self._observe_graph_handles(sessions)
         pool = self._kv_pool
         pool_stats = None if pool is None else pool.stats.to_json_dict()
+        if pool_stats is not None:
+            pool_stats["max_pages"] = getattr(pool, "max_pages", None)
+            pool_stats["budget_bytes"] = getattr(pool, "budget_bytes", None)
         active_entries: Counter[str] = Counter()
         for handle in self._graph_handles_for_sessions(sessions):
             if bool(getattr(handle, "closed", False)):
@@ -5295,6 +6030,15 @@ class Qwen35GGUFResidentModelRunner:
         for label, row in buckets.items():
             row["entries"] = int(active_entries.get(label, 0))
         prefix_observability = self._prefix_cache_observability()
+        workspace_owner_bytes, workspace_sessions = packed_workspace_owner_inventory(
+            sessions
+        )
+        prefill_transients = prefill_transient_owner_inventory(sessions)
+        pool_page_bytes = (
+            0
+            if pool_stats is None or not pool_stats.get("current_pages")
+            else int(pool_stats["current_bytes"]) // int(pool_stats["current_pages"])
+        )
         kv_layout_audits = [
             copy.deepcopy(audit())
             for session in sessions
@@ -5305,15 +6049,35 @@ class Qwen35GGUFResidentModelRunner:
         return {
             "model_runner": {
                 "capacity": int(self.capacity),
+                "max_active_requests": int(self.capacity),
+                "max_context_tokens": getattr(
+                    self._available[-1].session,
+                    "max_sequence_length",
+                    None,
+                )
+                if self._available
+                else None,
                 "active_request_ids": list(self.active_request_ids),
                 "active_requests": len(self._rows),
                 "available_sessions": len(self._available),
-                "packed_workspace_current_bytes": sum(
-                    int(size())
-                    for session in sessions
-                    for size in (getattr(session, "packed_workspace_nbytes", None),)
-                    if callable(size)
+                "packed_workspace_current_bytes": workspace_owner_bytes,
+                "packed_workspace_owner_sessions": workspace_sessions,
+                "packed_workspace_leased_pool_bytes": (
+                    int(pool_stats.get("pinned_pages", 0)) * pool_page_bytes
+                    if pool_stats is not None
+                    else 0
                 ),
+                "packed_kv_workspace_lease_skipped": bool(
+                    getattr(self, "_packed_kv_workspace_lease_skipped", False)
+                ),
+                "packed_workspace_note": (
+                    "current_bytes is owner-deduplicated unique allocation bytes"
+                    " (shared slot views report their workspace once, split-growth"
+                    " owners included); leased_pool_bytes counts the pool-plane"
+                    " pages pinned by workspace leases - a different accounting"
+                    " domain, never a substitute for either"
+                ),
+                "prefill_transients": prefill_transients,
                 "packed_workspace_release_events": int(
                     getattr(self, "_packed_workspace_release_events", 0)
                 ),
@@ -5539,41 +6303,88 @@ class Qwen35GGUFResidentModelRunner:
         scratch = getattr(factory_session, "scratch", None)
         if scratch is None:
             raise RuntimeError("GGUF deferred session has no scratch capacity")
+        setattr(
+            factory_session,
+            "kv_pool_memory_budget_mib",
+            getattr(config, "kv_pool_memory_budget_mib", None),
+        )
         max_pages_per_request = max(1, (int(scratch.max_positions) + 255) // 256)
-        total_pages = self.capacity * max_pages_per_request
-        initial_pages = min(int(config.kv_pool_initial_pages), total_pages)
+        initial_pages = int(config.kv_pool_initial_pages)
+        self._kv_pool_memory_budget_mib = getattr(
+            config, "kv_pool_memory_budget_mib", None
+        )
         low_water_pages = min(int(config.kv_pool_low_water_pages), initial_pages)
         requested_high = getattr(config, "kv_pool_high_water_pages", None)
         high_water_pages = None if requested_high is None else int(requested_high)
-        chunk_pages = min(max(1, int(config.kv_pool_chunk_pages)), total_pages)
+        chunk_pages = max(1, int(config.kv_pool_chunk_pages))
         if callable(create_global_pool):
-            global_capacity = total_pages
+            # The initial device backing is a pool floor, not a
+            # max_active_requests * max_context reservation.  The pool grows
+            # on demand up to the runtime-derived memory budget.
+            global_capacity = initial_pages
             if high_water_pages is not None:
                 global_capacity = min(global_capacity, high_water_pages)
             if global_capacity <= 0:
                 raise ValueError("GGUF global KV capacity must be positive")
-            # Eager packed-execution workspace lease: sized to the union-geometry
-            # ceiling (max(8, capacity) slots x max(1024, request context)
-            # tokens), equal to today's peak private mirror footprint, so
-            # admission accounting always sees the pinned pages and the
-            # workspace never grows.
+            # Eager packed-execution workspace lease: sized to the capacity-
+            # honest union-geometry ceiling (serving-capacity slots x
+            # max(1024, request context) tokens). The serving loop cannot
+            # open more resident slots than ``self.capacity``, so the lease
+            # follows it instead of the historical 8-slot floor; admission
+            # accounting still sees every pinned page and the workspace
+            # never grows.
             workspace_pages_per_slot = max(
                 max_pages_per_request,
                 _PACKED_VERIFY_MIN_MAX_SEQUENCE // 256,
             )
-            workspace_pages = (
-                max(_PACKED_VERIFY_DEFAULT_SLOT_CAPACITY, self.capacity)
-                * workspace_pages_per_slot
+            # Workspace is an execution scratch budget, not one full-context
+            # KV reservation per admitted request.  Multi-row execution grows
+            # or falls back to request-owned storage when this shared floor is
+            # insufficient.
+            workspace_slots = 1
+            workspace_pages = workspace_slots * workspace_pages_per_slot
+            # P4 (roadmap F2): the packed KV plane lease exists only for
+            # plane consumers - non-slot-local packed prefill (prefix-cache
+            # COW scatter), packed batch decode above one resident slot, and
+            # the MTP verifier. A C1 server with prefix cache and MTP both
+            # off has no such consumer: slot-local prefill reads request-
+            # owned KV and singleton decode uses the request's direct
+            # session. Creating the pool without the workspace share and
+            # without the lease removes the second full-context KV
+            # reservation outright instead of pinning pages nobody reads.
+            # A plane consumer that appears anyway (misconfiguration, page
+            # fragmentation forcing the non-slot-local fallback) fails safe:
+            # _GGUFPackedTargetState.allocate falls back to a private KV
+            # chunk allocation. HIPENGINE_GGUF_PACKED_KV_LEASE=1 forces the
+            # eager lease for debugging or rollback.
+            mtp_serving_policy = str(
+                getattr(config, "speculative_mtp_serving", "auto")
+            ).strip().lower().replace("-", "_")
+            workspace_lease_needed = (
+                int(self.capacity) > 1
+                or self._prefix_cache_mode != "off"
+                or mtp_serving_policy != "off"
+                or os.environ.get("HIPENGINE_GGUF_PACKED_KV_LEASE", "0")
+                .strip()
+                .lower()
+                in {"1", "true", "yes", "on"}
             )
             self._kv_pool_generation += 1
-            self._kv_pool = create_global_pool(
-                page_capacity=global_capacity + workspace_pages,
-                generation=self._kv_pool_generation,
-            )
-            self._kv_pool.lease_workspace(
-                _GGUF_PACKED_WORKSPACE_LEASE_KEY,
-                workspace_pages,
-            )
+            if workspace_lease_needed:
+                self._kv_pool = create_global_pool(
+                    page_capacity=global_capacity + workspace_pages,
+                    generation=self._kv_pool_generation,
+                )
+                self._kv_pool.lease_workspace(
+                    _GGUF_PACKED_WORKSPACE_LEASE_KEY,
+                    workspace_pages,
+                )
+            else:
+                self._packed_kv_workspace_lease_skipped = True
+                self._kv_pool = create_global_pool(
+                    page_capacity=global_capacity,
+                    generation=self._kv_pool_generation,
+                )
             owner = self._resident_batch_owner
             if owner is not None:
                 bind = getattr(owner, "bind_workspace_kv_pool", None)
@@ -6260,6 +7071,21 @@ class Qwen35GGUFResidentModelRunner:
         for tokens in tuple(self._prefix_state_snapshots):
             self._evict_prefix_snapshot(tokens)
 
+    def evict_prefix_cache_for_pressure(self, required_pages: int) -> int:
+        """Release reclaimable prefix pages before device-pool growth."""
+
+        needed = max(1, int(required_pages))
+        released = 0
+        for tokens, entry in tuple(self._prefix_state_snapshots.items()):
+            if not entry.retained:
+                continue
+            pages = len(tuple(entry.block_ids))
+            if self._evict_prefix_snapshot(tokens):
+                released += pages
+            if released >= needed:
+                break
+        return released
+
     def rollback_admission(self, request: RequestState) -> None:
         """Undo a bound KV/session lease that was never published active."""
 
@@ -6356,7 +7182,7 @@ class Qwen35GGUFResidentModelRunner:
             enabled=True,
             target_verify_mode=_gguf_mtp_server_target_verify_mode(),
             candidate_budget=min(
-                MTP2_MAX_CANDIDATE_DEPTH,
+                _qwen35_gguf_mtp2_module.MTP2_MAX_CANDIDATE_DEPTH,
                 int(
                     getattr(
                         self.generator,
@@ -6398,9 +7224,18 @@ class Qwen35GGUFResidentModelRunner:
     def speculative_desired_candidate_count(self, request: GenerationRequest) -> int:
         adapter = self._resolved_mtp2_adapter()
         max_budget = int(
-            getattr(adapter, "candidate_budget", MTP2_MAX_CANDIDATE_DEPTH)
+            getattr(
+                adapter,
+                "candidate_budget",
+                _qwen35_gguf_mtp2_module.MTP2_MAX_CANDIDATE_DEPTH,
+            )
         )
         return min(max_budget, max(1, int(request.max_tokens)))
+
+    def speculative_eos_supported(self, request_id: int) -> bool:
+        adapter = self._resolved_mtp2_adapter()
+        return bool(adapter is not None and adapter.enabled
+                    and adapter._physical_c1_request(int(request_id)))
 
     def speculative_capability(self, request_semantics):
         adapter = self._resolved_mtp2_adapter()
@@ -6689,14 +7524,71 @@ class Qwen35GGUFResidentModelRunner:
             raise RuntimeError("cannot resize resident GGUF sessions while requests are active")
         with hip_target_arch_environment(self.generator.target_arch):
             config = self._engine_loop_config
-            self._clear_prefix_snapshots()
-            if self._kv_pool is not None:
-                self._teardown_kv_pool(release_workspace_state=True)
-            self._release_available_sessions()
-            self._max_sequence_length = requested
-            self._reserve_sessions()
-            if config is not None:
-                self.configure_engine_loop(config)
+            # The session scratch and the device KV pool are separate
+            # allocations, and the pool is the larger one. The session-level
+            # fallback in ``_acquire_shared_session`` cannot see a pool
+            # failure, so the retry lives here where both are in scope. A pinned
+            # context backs off too, and the warning names the size that was
+            # asked for, so the substitution is never silent.
+            # ``HIPENGINE_GGUF_AUTO_CONTEXT=0`` is the full rollback: it turns
+            # off both the automatic sizing and the backoff, restoring the
+            # historical hard failure.
+            fallback_active = _gguf_auto_context_enabled()
+            attempts = _gguf_auto_context_attempts() if fallback_active else 1
+            for attempt in range(attempts):
+                self._clear_prefix_snapshots()
+                if self._kv_pool is not None:
+                    self._teardown_kv_pool(release_workspace_state=True)
+                self._release_available_sessions()
+                self._max_sequence_length = requested
+                try:
+                    self._reserve_sessions()
+                    if config is not None:
+                        self.configure_engine_loop(config)
+                except (HipError, MemoryError) as exc:
+                    if (
+                        not fallback_active
+                        or not _gguf_allocation_failure(exc)
+                        or attempt + 1 >= attempts
+                    ):
+                        raise
+                    current = requested
+                    if current is None:
+                        current = getattr(
+                            self.generator, "_auto_resolved_max_sequence_length", None
+                        )
+                    if current is None:
+                        raise
+                    next_context = self.generator._recalibrated_auto_context(
+                        self._shared_runner,
+                        failed_context=int(current),
+                        max_batch_size=int(self.capacity),
+                        defer_kv_allocation=True,
+                    )
+                    if next_context >= int(current):
+                        raise
+                    _LOGGER.warning(
+                        "GGUF context request: requested %d tokens failed to allocate "
+                        "(%s); retrying at %d tokens",
+                        int(current),
+                        exc,
+                        next_context,
+                    )
+                    if requested is None:
+                        # Automatic sizing owns the selection, so keep the
+                        # generator's cache in step for the next attempt.
+                        self.generator._record_auto_context_selection(
+                            max_batch_size=int(self.capacity),
+                            defer_kv_allocation=True,
+                            context_tokens=int(next_context),
+                        )
+                    else:
+                        requested = int(next_context)
+                    continue
+                return
+            raise MemoryError(
+                "GGUF resident context sizing exhausted its attempts"
+            )  # pragma: no cover - the loop always returns or raises
 
     def _try_prefill_native_work_batch(self, work: WorkItem) -> frozenset[int]:
         """Run one full-prompt scheduler work item as native cN.
@@ -7231,6 +8123,15 @@ class Qwen35GGUFResidentModelRunner:
         retain_prefix_snapshots: bool = False,
     ) -> None:
         prefix_cache = getattr(self, "_prefix_cache", None)
+        # A row cancelled or reclaimed mid-prefill owns suspended-state buffers
+        # (P6b); they must not outlive the row. release() is idempotent.
+        suspended = row.resumable_prefill
+        if suspended is not None and suspended is not _RESUMABLE_PREFILL_DONE:
+            scratch = getattr(suspended, "scratch", None)
+            if scratch is not None:
+                scratch.release()
+                suspended.scratch = None
+        row.resumable_prefill = None
         if retain_prefix_snapshots:
             self._promote_prefix_snapshots(row)
         else:
@@ -7295,6 +8196,27 @@ class Qwen35GGUFResidentModelRunner:
             int(self._kv_hip_used_peak_sampled_bytes),
             self._current_hip_used_bytes(),
         )
+
+    @property
+    def _session(self) -> Any | None:
+        """Representative resident session, for server reporting lookups.
+
+        The server resolves resident sessions through the generator
+        (``api._resident_session_for_engine``) to report the effective context,
+        the KVCache summary, and /ready memory samples. The batch owner is the
+        canonical session: every slot view shares its declared context.
+        """
+
+        owner = self._resident_batch_owner
+        if owner is not None:
+            return owner
+        if self._available:
+            return self._available[0].session
+        for row in self._rows.values():
+            session = getattr(getattr(row, "lease", None), "session", None)
+            if session is not None:
+                return session
+        return None
 
     def _acquire_lease(self) -> _GGUFResidentSessionLease:
         if not self._available:
@@ -7378,7 +8300,11 @@ class Qwen35GGUFResidentModelRunner:
         native_compact_prefill = False
         # Direct no-mirror INT8 uses one block-table-aware single-row prefill
         # route at every physical base. Keeping base-zero c1 on scalar bulk
-        # prefill would compare different GDN state-capture arithmetic at c>N.
+        # prefill keeps the c1 control on the layer-outer executor (the
+        # historical "different GDN state-capture arithmetic" divergence was
+        # withdrawn 2026-09-10; the entries agree exactly with per-layer
+        # oracles, but mixing executors across bases still compares two
+        # schedules at c>N).
         packed_owner = self._packed_execution_owner(lease.session)
         if (
             getattr(self, "_resident_batch_owner", None) is None
@@ -7789,6 +8715,11 @@ class Qwen35GGUFResidentModelRunner:
         *,
         final_chunk: bool,
     ) -> None:
+        if row.resumable_prefill is _RESUMABLE_PREFILL_DONE:
+            # The resumable layer-outer executor already produced this row's
+            # first token; the scheduler's remaining chunks for this prompt are
+            # bookkeeping only.
+            return
         if row.slot is not None:
             raise RuntimeError("GGUF resident row was prefilled more than once")
         lease = row.lease or self._acquire_lease()
@@ -7813,10 +8744,18 @@ class Qwen35GGUFResidentModelRunner:
                 )
             return
         if getattr(lease.session, "kv_attention_source", None) == "int8_direct":
+            if self._prefill_resumable_int8_chunk(
+                row,
+                chunk,
+                final_chunk=final_chunk,
+            ):
+                return
             # Exact no-mirror prefill owns one bounded transient BF16 oracle.
             # Releasing it between scheduler chunks would lose prior BF16 K/V,
             # so IKV-C1 buffers scheduler work and executes the complete prompt
             # once through the shifted block-table-aware single-row route.
+            # (P6 keeps this as the fail-closed path for shapes the resumable
+            # layer-outer executor declines.)
             self._fallback_reasons["int8_direct_full_prompt_prefill"] += 1
             self._disable_incremental_prefill(row, final_chunk=final_chunk)
             return
@@ -7894,6 +8833,105 @@ class Qwen35GGUFResidentModelRunner:
                 result_list[0],
                 native_compact_prefill=True,
             )
+
+    def _prefill_resumable_int8_chunk(
+        self,
+        row: _GGUFResidentLoopRow,
+        chunk: tuple[int, ...],
+        *,
+        final_chunk: bool,
+    ) -> bool:
+        """Advance one bounded layer segment of a compact-INT8 prefill (P6).
+
+        Roadmap F5: the old route did no model work on any chunk but the last,
+        so a long prompt blocked admission, cancellation, and interleaved
+        decode for its whole duration. The layer-outer packed executor already
+        makes every layer boundary a consistent state, so this runs at most
+        ``budget`` layers per scheduler poll and hands control back with real
+        GPU work done. Returns True when the resumable executor owned this
+        chunk (including the segment that completes the prompt); False when the
+        caller must use the fail-closed full-prompt path.
+        """
+
+        if row.prefix_reused_tokens:
+            # Shared-prefix admission requires incremental prefill support that
+            # the layer-outer executor does not provide.
+            return False
+        if not _gguf_packed_layer_outer_enabled():
+            return False
+        lease = row.lease
+        if lease is None:
+            return False
+        owner = self._packed_execution_owner(lease.session)
+        resume = getattr(
+            owner,
+            "prefill_batch_native_layer_outer_resumable",
+            None,
+        )
+        if not callable(resume):
+            return False
+        layer_count = _gguf_resumable_layer_count(owner)
+        if layer_count <= 0:
+            return False
+        state = row.resumable_prefill
+        if state is None:
+            remaining_layers = layer_count
+            prompts: tuple[tuple[int, ...], ...] | None = (
+                tuple(int(token) for token in row.prompt_ids),
+            )
+            sessions = (lease.session,)
+        else:
+            remaining_layers = max(0, layer_count - int(state.next_layer))
+            prompts = None
+            sessions = None
+        chunk_len = max(1, len(chunk))
+        # Polls still to come for this prompt, including this one. Future chunk
+        # sizes are approximated by the current one; the final chunk always
+        # finishes the remainder, so a misestimate only shifts work between
+        # polls rather than dropping it.
+        remaining_tokens = max(
+            0,
+            len(row.prompt_ids) - int(row.prefill_tokens_seen) + len(chunk),
+        )
+        remaining_polls = max(1, -(-remaining_tokens // chunk_len))
+        if final_chunk:
+            budget: int | None = None
+        else:
+            budget = max(1, -(-remaining_layers // remaining_polls))
+        started = time.perf_counter()
+        try:
+            if state is None:
+                result = resume(prompts, sessions=sessions, layer_budget=budget)
+            else:
+                result = resume(state=state, layer_budget=budget)
+        except NotImplementedError:
+            if state is None:
+                # The layer-outer executor declined this shape before doing any
+                # device work; the caller falls back to the full-prompt route.
+                self._fallback_reasons["resumable_int8_prefill_declined"] += 1
+                return False
+            raise
+        row.prefill_ms += _timing_ms_since(started)
+        row.prefill_chunk_count += 1
+        self._refresh_prefix_cache(row)
+        if isinstance(result, _GGUFResumablePrefillState):
+            row.resumable_prefill = result
+            self._route_counts["resumable_int8_prefill_segments"] += 1
+            return True
+        result_list = [] if result is None else list(result)
+        if len(result_list) != 1:
+            raise RuntimeError(
+                "resumable layer-outer prefill returned"
+                f" {len(result_list)} result(s) for one row"
+            )
+        row.resumable_prefill = _RESUMABLE_PREFILL_DONE
+        self._route_counts["resumable_int8_prefill_completions"] += 1
+        self._finish_native_prefill(
+            row,
+            result_list[0],
+            native_compact_prefill=True,
+        )
+        return True
 
     def _disable_incremental_prefill(
         self,

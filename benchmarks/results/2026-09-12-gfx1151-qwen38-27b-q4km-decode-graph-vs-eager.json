@@ -1,0 +1,116 @@
+{
+  "schema": "hipengine_benchmark_result",
+  "kind": "gfx1151_qwen38_27b_q4km_decode_graph_vs_eager",
+  "created_at": "2026-09-12",
+  "status": "measured_no_graph_advantage",
+  "decision": "The GGUF decode graph is already the engine default (HIPENGINE_GGUF_DECODE_GRAPH defaults to 1) and is gated by the backend GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS floor. On gfx1151 with Qwen3.8-27B Q4_K_M the graph is break-even against eager at every tested decode length, so no default change is warranted and the 128-step floor is confirmed as neutral. The harness flag default was corrected to mirror the engine admission instead of forcing eager.",
+  "host": {
+    "backend": "hip_gfx1151",
+    "device": "Radeon 8060S"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "size_bytes": 17106775008,
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "harness": "scripts/qwen35_readme_sweep.py --engine gguf",
+    "command_template": "scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --backend hip_gfx1151 --workloads 512/{32,64,96,128,256} --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file <pinned> --require-cached-build {--graph-replay-decode | --no-graph-replay-decode}",
+    "arms": "identical prefill config; only the decode submission differs",
+    "warmup_runs": 1,
+    "measured_runs": 3,
+    "capture_excluded_from_decode_throughput": true
+  },
+  "engine_default": {
+    "env": "HIPENGINE_GGUF_DECODE_GRAPH",
+    "env_default": "1 (enabled)",
+    "gfx1151_min_replay_steps": 128,
+    "gfx1100_min_replay_steps": 24,
+    "admission": "enabled AND backend publishes a floor AND remaining transitions >= floor"
+  },
+  "bandwidth_analysis": {
+    "ar_active_weights_gb_per_token": 16.091,
+    "ar_active_source": "benchmarks/CHANGELOG.md 2026-09-12 Q4_K_M AR/prefill refresh entry",
+    "file_size_gb": 17.107,
+    "note": "AR decode reads the AR-active weight set, not the whole file; the AR-active figure keeps this artifact consistent with the published Q4_K_M bandwidth accounting.",
+    "effective_read_gb_s_at_512_256": 196.3,
+    "theoretical_peak_gb_s": 256,
+    "percent_of_theoretical_peak": 76.7,
+    "repo_realistic_read_roof_gb_s": 221,
+    "percent_of_realistic_roof": 88.8,
+    "conclusion": "decode is memory-bandwidth-bound at ~89% of the documented practical read roof, so removing launch overhead cannot materially help"
+  },
+  "rows": [
+    {
+      "workload": "512/32",
+      "prompt_tokens": 512,
+      "decode_tokens": 32,
+      "eager_decode_tok_s": 12.2312,
+      "graph_decode_tok_s": 12.1674,
+      "graph_over_eager": 0.99478,
+      "graph_capture_seconds_median": 0.00965,
+      "graph_over_eager_including_capture": 0.99115,
+      "eager_final_token_id": 9707,
+      "graph_final_token_id": 9707,
+      "token_exact": true
+    },
+    {
+      "workload": "512/64",
+      "prompt_tokens": 512,
+      "decode_tokens": 64,
+      "eager_decode_tok_s": 12.229,
+      "graph_decode_tok_s": 12.2272,
+      "graph_over_eager": 0.99985,
+      "graph_capture_seconds_median": 0.00925,
+      "graph_over_eager_including_capture": 0.99809,
+      "eager_final_token_id": 9707,
+      "graph_final_token_id": 9707,
+      "token_exact": true
+    },
+    {
+      "workload": "512/96",
+      "prompt_tokens": 512,
+      "decode_tokens": 96,
+      "eager_decode_tok_s": 12.2265,
+      "graph_decode_tok_s": 12.2222,
+      "graph_over_eager": 0.99964,
+      "graph_capture_seconds_median": 0.00918,
+      "graph_over_eager_including_capture": 0.99848,
+      "eager_final_token_id": 9707,
+      "graph_final_token_id": 9707,
+      "token_exact": true
+    },
+    {
+      "workload": "512/128",
+      "prompt_tokens": 512,
+      "decode_tokens": 128,
+      "eager_decode_tok_s": 12.2209,
+      "graph_decode_tok_s": 12.2185,
+      "graph_over_eager": 0.9998,
+      "graph_capture_seconds_median": 0.00923,
+      "graph_over_eager_including_capture": 0.99892,
+      "eager_final_token_id": 9707,
+      "graph_final_token_id": 9707,
+      "token_exact": true
+    },
+    {
+      "workload": "512/256",
+      "prompt_tokens": 512,
+      "decode_tokens": 256,
+      "eager_decode_tok_s": 12.2047,
+      "graph_decode_tok_s": 12.1988,
+      "graph_over_eager": 0.99952,
+      "graph_capture_seconds_median": 0.00938,
+      "graph_over_eager_including_capture": 0.99907,
+      "eager_final_token_id": 9707,
+      "graph_final_token_id": 9707,
+      "token_exact": true
+    }
+  ],
+  "cross_check": {
+    "source": "docs/ROOFLINE.md",
+    "quote": "Current production graph replay improves the matched gfx1151 Q4_K_M wall by only +1.00% at 512, +0.86% at 4K, and +0.36% in the bounded 128K confirmation.",
+    "agreement": "independent prior evidence also found the gfx1151 graph benefit near 1%"
+  }
+}

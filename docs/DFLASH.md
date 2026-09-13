@@ -2033,7 +2033,7 @@ with the SAME 256-way LDS-reduce dot pattern as
 unfused path.  After each row's reduction, thread 0 keeps the running
 `(max_value, min_index_on_tie)` and writes one pair to per-block scratch.
 
-**Numerics gate:** parity test `tests/test_w8a16_lm_head_argmax_rows.py`
+**Numerics gate:** parity test `tests/test_gpu_w8a16_lm_head_argmax_rows.py`
 (4 shapes covering rows∈{1,3,4,5}, hidden∈{1024,2048}, vocab∈{2048,4096,8192,16384})
 asserts BIT-EXACT match on both indices and FP32 top-1 values vs the
 unfused `w8a16_linear_bf16_f32_multi_row` → `argmax_f32_rows_i32` chain.
@@ -2104,7 +2104,7 @@ launch-bound at 248K block dispatches in a way RDNA3 isn't.
 - Kernel: `hipengine/kernels/hip_gfx1100/linear/lm_head.hip`
 - Python wrapper + registry: `hipengine/kernels/hip_gfx1100/linear/lm_head.py`
 - Runtime dispatch: `hipengine/runtime/qwen35_paro_runner.py::_sample_verify_rows_from_hidden` + `_dflash_verify_fused_lm_head_enabled()`
-- Tests: `tests/test_w8a16_lm_head_argmax_rows.py` (6 tests, all pass)
+- Tests: `tests/test_gpu_w8a16_lm_head_argmax_rows.py` (6 tests, all pass)
 - Bench artifacts: `/tmp/dflash_r37_fused_on_v2.json`, `/tmp/dflash_r37_fused_off_v2.json`
 - Rocprof DB: `/tmp/dflash_r37_fused_on_rocprof/epyc/*_results.db`
 

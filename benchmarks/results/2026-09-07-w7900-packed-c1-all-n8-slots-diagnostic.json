@@ -1,0 +1,164 @@
+{
+  "schema": 1,
+  "kind": "packed_c1_all_n8_physical_slots_diagnostic",
+  "hardware": {
+    "host": "epyc",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+    "gpu": "AMD Radeon Pro W7900",
+    "uuid": "GPU-e282895b62c2b295",
+    "target_arch": "gfx1100",
+    "rocm": "7.2.4",
+    "identity_source": "campaign-artifacts/packet0/provenance.txt"
+  },
+  "model_path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "quant": "Q4_K_M",
+  "execution_profile": "production",
+  "base_commit": "592c9eb61fd03fe0ce7389f365ce175fa9578b9a",
+  "scope": "Physical C1 at resident capacity N8, K3, D24, all ten canonical/category-heldout suite prompts; each physical slot selected during atomic admission",
+  "performance_claim": false,
+  "full_profile_qualification": false,
+  "slots": [
+    {
+      "resident_slot": 0,
+      "capture": "/tmp/packed-c1-n8k3-slot0-atomic/capture.json",
+      "capture_sha256": "e8168dafb70d65615141ae694e7257f3f903929ad582717c89aa0c86ff8af88b",
+      "complete": true,
+      "cycles": 70,
+      "logical_rows": 267,
+      "prompt_count": 10,
+      "ownership_checks": [
+        "pre_accept_state_isolation",
+        "selected_commit",
+        "aux_commit",
+        "kv_commit"
+      ],
+      "all_ownership_checks_passed": true
+    },
+    {
+      "resident_slot": 1,
+      "capture": "/tmp/packed-c1-n8k3-slot1-atomic/capture.json",
+      "capture_sha256": "9dcfd3d6cca708b807e84b266da851772770951c6c0e6e3466291286de808960",
+      "complete": true,
+      "cycles": 70,
+      "logical_rows": 267,
+      "prompt_count": 10,
+      "ownership_checks": [
+        "pre_accept_state_isolation",
+        "selected_commit",
+        "aux_commit",
+        "kv_commit"
+      ],
+      "all_ownership_checks_passed": true
+    },
+    {
+      "resident_slot": 2,
+      "capture": "/tmp/packed-c1-n8k3-slot2-atomic/capture.json",
+      "capture_sha256": "d1324f4acaf5a81c04041c863df76b620a2815cb4c8f2c243d3e3947f5ed54e9",
+      "complete": true,
+      "cycles": 70,
+      "logical_rows": 267,
+      "prompt_count": 10,
+      "ownership_checks": [
+        "pre_accept_state_isolation",
+        "selected_commit",
+        "aux_commit",
+        "kv_commit"
+      ],
+      "all_ownership_checks_passed": true
+    },
+    {
+      "resident_slot": 3,
+      "capture": "/tmp/packed-c1-n8k3-slot3-atomic/capture.json",
+      "capture_sha256": "f6abe6903d4f4223577fafcaef3fe7cb3e29eee2a2277312c31fe4492f484de8",
+      "complete": true,
+      "cycles": 70,
+      "logical_rows": 267,
+      "prompt_count": 10,
+      "ownership_checks": [
+        "pre_accept_state_isolation",
+        "selected_commit",
+        "aux_commit",
+        "kv_commit"
+      ],
+      "all_ownership_checks_passed": true
+    },
+    {
+      "resident_slot": 4,
+      "capture": "/tmp/packed-c1-n8k3-slot4-atomic/capture.json",
+      "capture_sha256": "555ed3059fcc966b9d47fdea2f30434a68e33feac932967866120eb18eea6328",
+      "complete": true,
+      "cycles": 70,
+      "logical_rows": 267,
+      "prompt_count": 10,
+      "ownership_checks": [
+        "pre_accept_state_isolation",
+        "selected_commit",
+        "aux_commit",
+        "kv_commit"
+      ],
+      "all_ownership_checks_passed": true
+    },
+    {
+      "resident_slot": 5,
+      "capture": "/tmp/packed-c1-n8k3-slot5-atomic/capture.json",
+      "capture_sha256": "39419bba405ff9cce3625c3e1ff14cbc50d77c53112ed3c2cab827acb6cab154",
+      "complete": true,
+      "cycles": 70,
+      "logical_rows": 267,
+      "prompt_count": 10,
+      "ownership_checks": [
+        "pre_accept_state_isolation",
+        "selected_commit",
+        "aux_commit",
+        "kv_commit"
+      ],
+      "all_ownership_checks_passed": true
+    },
+    {
+      "resident_slot": 6,
+      "capture": "/tmp/packed-c1-n8k3-slot6-atomic/capture.json",
+      "capture_sha256": "23b75bfbbdd5e0159eb9a7de3de4b900474ab9f06902451492cdc56a439775c7",
+      "complete": true,
+      "cycles": 70,
+      "logical_rows": 267,
+      "prompt_count": 10,
+      "ownership_checks": [
+        "pre_accept_state_isolation",
+        "selected_commit",
+        "aux_commit",
+        "kv_commit"
+      ],
+      "all_ownership_checks_passed": true
+    },
+    {
+      "resident_slot": 7,
+      "capture": "/tmp/packed-c1-n8k3-slot7-atomic/capture.json",
+      "capture_sha256": "902644c2c27dc353bcb6fedaf45f84bb0c3a762273b18ec79d8eadc467adf1c4",
+      "complete": true,
+      "cycles": 70,
+      "logical_rows": 267,
+      "prompt_count": 10,
+      "ownership_checks": [
+        "pre_accept_state_isolation",
+        "selected_commit",
+        "aux_commit",
+        "kv_commit"
+      ],
+      "all_ownership_checks_passed": true
+    }
+  ],
+  "cross_slot_check": {
+    "actual_npz_arrays_read": true,
+    "finite_float32": true,
+    "recorded_sha256_verified": true,
+    "contexts_equal": true,
+    "shapes_and_full_logit_bytes_equal": true,
+    "cycles_per_slot": 70,
+    "logical_rows_per_slot": 267
+  },
+  "limitations": [
+    "Diagnostic lease selection is not concurrent lifecycle coverage",
+    "Candidate contexts are not strict-teacher trajectories",
+    "No performance or public-admission claim"
+  ]
+}

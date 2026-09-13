@@ -579,7 +579,7 @@ Likely files:
 
 ```text
 hipengine/loading/gguf.py
-tests/test_gguf_reader.py
+tests/test_unit_gguf_reader.py
 scripts/inspect_gguf.py
 ```
 
@@ -741,7 +741,7 @@ Files:
 
 ```text
 hipengine/loading/gguf.py
-tests/test_gguf_reader.py
+tests/test_unit_gguf_reader.py
 scripts/inspect_gguf.py
 ```
 
@@ -773,7 +773,7 @@ Files:
 
 ```text
 hipengine/quant/gguf.py
-tests/test_gguf_quant_layout.py
+tests/test_unit_gguf_quant_layout.py
 ```
 
 Table:
@@ -961,7 +961,7 @@ Implemented target:
   `(block_table, context_len)` shortcut.
 - Keep an unfused CPU/reference path for layer-level oracles.
 
-Validation result: `tests/test_qwen35_gguf_full_attention_gpu.py` compares the
+Validation result: `tests/test_live_qwen35_gguf_full_attention_gpu.py` compares the
 first full-attention layer against the old CPU bridge over two prompt positions
 and asserts hidden tolerance, lm-head top-1 agreement, and KL <= 0.05. The public
 E2E oracle still passes repeat=2 (`" 1.\n\n"`, IDs `[220, 16, 13, 271]`, no
@@ -1551,7 +1551,7 @@ Every new batched prefill kernel must:
    - `tests/fixtures/gguf/qwen36_35b_a3b_q4km_smoke.json` (qwen35moe Qwen3.6),
    with `max_kl <= 0.05`, top-1 agreement `>= 90 %`, and exact generated-ID
    match for greedy decoding at temperature 0.
-3. Add `tests/test_gguf_q8_0_wmma_prefill.py` (and per-quant siblings):
+3. Add `tests/test_gpu_gguf_q8_0_wmma_prefill.py` (and per-quant siblings):
    construct synthetic GGUF block bytes via the existing `make_q8_0_weight` /
    `make_q4_k_weight` / etc., compare F32 output against the CPU reference
    for multiple `(rows, in_features, out_features)` shapes including
@@ -2795,9 +2795,9 @@ Files changed in Wave 1:
 - `hipengine/runtime/gguf_linear.py` — `_wmma_prefill_dispatch` handles `abi=="t16"`, new `_dispatch_can_use_t16_wmma_prefill`, `_WMMA_PREFILL_QUANT_BLOCKS` gains Q8T16, `launch_gguf_linear_pair` / `launch_gguf_linear_pair_concat` / `launch_gguf_linear_triple` decline Q8T16 fusion at rows>1 when WMMA prefill is opted in.
 - `hipengine/kernels/hip_gfx1100/quant/gguf_k_t16_selected_prefill.{hip,py}` — Q5T16 / Q6T16 selected single-output WMMA prefill kernels.
 - `hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.{hip,py}` — Q8T16 dense WMMA prefill kernel.
-- `tests/test_gguf_k_t16_selected_wmma_prefill.py` — 22 fixtures pass.
-- `tests/test_gguf_q8_0_t16_wmma_prefill.py` — 75 fixtures pass.
-- `tests/test_qwen35_gguf_compact_moe_wmma_resolver.py` — 7 fixtures pass.
+- `tests/test_gpu_gguf_k_t16_selected_wmma_prefill.py` — 22 fixtures pass.
+- `tests/test_gpu_gguf_q8_0_t16_wmma_prefill.py` — 75 fixtures pass.
+- `tests/test_unit_qwen35_gguf_compact_moe_wmma_resolver.py` — 7 fixtures pass.
 
 ### P10.X1 — T16 decode-repack model correctness restoration (landed 2026-05-21)
 
@@ -2829,7 +2829,7 @@ Green evidence:
 | Public smoke | `HIPENGINE_GGUF_DECODE_REPACK=1`, `WMMA=0`, `GEMV=0`, fixture `qwen36_35b_a3b_q4km_smoke.json` | **pass**: output `izio.`, token IDs `[43482, 13]`, finite logits |
 | P9 512/1 probe | `REPACK=1`, `WMMA=0`, `GEMV=0` | **pass**: `KL=0`, top-1 `100%`, deterministic |
 | P9 512/1 probe | `REPACK=1`, `WMMA=0`, `GEMV=1` | **pass**: `KL=0`, top-1 `100%`, deterministic |
-| Unit regression | `tests/test_qwen35_gguf_decode_repack_semantics.py` + Q8T16 dual-split bit-equality test | **pass** |
+| Unit regression | `tests/test_unit_qwen35_gguf_decode_repack_semantics.py` + Q8T16 dual-split bit-equality test | **pass** |
 
 Artifact: `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-x1-correctness-plus-x2-wmma-blocker.json`.
 
@@ -2844,11 +2844,11 @@ between the Matrix Core WMMA path and the Vector ALU/GEMV reference.
 
 Resolution evidence:
 
-- Added `tests/test_qwen35_gguf_p10_x2_layer_correctness.py`, a real-weight
+- Added `tests/test_live_qwen35_gguf_p10_x2_layer_correctness.py`, a real-weight
   layer0 gate that compares `WMMA=0` vs `WMMA=1` before any prior expert-routing
   divergence can occur.
 - Recheck command:
-  `PYTHONPATH=. uv run pytest tests/test_qwen35_gguf_p10_x2_layer_correctness.py -q -s`.
+  `PYTHONPATH=. uv run pytest tests/test_live_qwen35_gguf_p10_x2_layer_correctness.py -q -s`.
 - Result: **pass**; layer0 expert selection agreement is `512/512` and MoE
   output max/mean absolute diff is `0.000977 / 0.000004`, within BF16 ULP
   rounding tolerance.
@@ -3150,7 +3150,7 @@ Next-step table:
 | 0 | P10.R0 | profile | **rocprof now** on current Wave-1 HEAD: 512/0 and 512/128 safe-mode traces, plus a launch census. | We need the post-B6 top-kernel and per-token launch baseline before changing correctness code. `docs/ROOFLINE.md` warns that wall time can hide launch gaps that kernel-duration sums do not capture. | no intended perf change | **done**: artifact `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-r0-rocprof-baseline.json`; decode launch census `80262` dispatches / `627.05 per token`. |
 | 1 | P10.X1 | correctness | **Land T16 decode-repack model correctness restoration.** Restore graph semantics under decode-repack and fix Q8T16 dual-split GEMV reduction geometry. | T16 decode-repack alone was model-wrong and hid the next real blocker. | no intended perf change; unlocks clean diagnosis | **done**: public smoke passes; 512/1 probes with `WMMA=0` pass `KL=0`, top-1 `100%` for both `GEMV=0` and `GEMV=1`. |
 | 2 | P10.R1 | profile | **Fresh rocprof after P10.X1**, again with launch census and wall-vs-kernel residue. | Avoid optimizing around a stale dispatch mix. At the time this was diagnostic pending P10.X2; after the layer0 gate landed, use it as the Wave-2 baseline. | no intended perf change | **done**: artifact `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-r1-post-x1-rocprof.json`; 512/0 `262.802 ms / 2346 dispatches`; 512/128 graph8 `1184.018 ms / 85382 dispatches` (`667.05/token`); default graph1 512/128 rocprof timed out twice, but graph1 512/16 and unprofiled graph1 512/128 completed. |
-| 3 | P10.X2 | correctness | **Resolve bulk WMMA prefill model correctness.** Dense Q8T16 WMMA and compact MoE WMMA rows>1 must pass the real-weight layer0 gate before more prefill perf work can retain. | After X1, full-sequence safe-mode fails only when `effective_wmma_prefill=true`; isolation proved the mismatch is MoE hard-router butterfly drift, not WMMA math / dispatch. | no intended perf change; required before C6-C9 retention | **done**: layer0 correctness gate `tests/test_qwen35_gguf_p10_x2_layer_correctness.py` passes; proved layer0 has 100% expert selection agreement and output max abs diff of `0.000977` (under 1 ULP). E2E sequence drift is chaotic MoE routing butterfly effect, not a mathematical bug. |
+| 3 | P10.X2 | correctness | **Resolve bulk WMMA prefill model correctness.** Dense Q8T16 WMMA and compact MoE WMMA rows>1 must pass the real-weight layer0 gate before more prefill perf work can retain. | After X1, full-sequence safe-mode fails only when `effective_wmma_prefill=true`; isolation proved the mismatch is MoE hard-router butterfly drift, not WMMA math / dispatch. | no intended perf change; required before C6-C9 retention | **done**: layer0 correctness gate `tests/test_live_qwen35_gguf_p10_x2_layer_correctness.py` passes; proved layer0 has 100% expert selection agreement and output max abs diff of `0.000977` (under 1 ULP). E2E sequence drift is chaotic MoE routing butterfly effect, not a mathematical bug. |
 | 4 | P10.C6 | prefill | **Full-attention prefill audit / WMMA attention check.** Confirm whether the current `qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel` / AOTriton threshold is still optimal at rows=512. | Wave 1 leaves ~41 ms in full-attention prefill. Even a partial reduction is meaningful when the 2500 tok/s target needs ~60 ms total wall savings from the 1900 tok/s baseline. | +50 to +200 tok/s, bounded by the ~41 ms bucket | per-layer attention correctness fixture + rocprof shows attention bucket shrink; no torch hot-path dependency. |
 | 5 | P10.C7 | prefill | **MoE routing / compact-scheduler / scatter fusion for rows>1.** Revisit `group_count + prefix + scatter/map` fusion for prefill, not the already-rejected decode shape. | The Wave-1 profile killed the giant GEMV buckets; launch-heavy MoE bookkeeping becomes visible again. Prefill rows>1 has different economics from P9.D3 decode. | +30 to +120 tok/s depending on launch census | one merged scheduler/scatter kernel or fewer launches; `other` bucket drops by `>=10 ms` at 512/0; resolver remains registry-keyed. |
 | 6 | P10.C8 | prefill | **Up-gate path audit.** Prove every qwen35moe gate/up rows>1 path in T16 safe-mode routes through WMMA and not a singleton/decode fallback. | B4 found a hidden pair/triple/concat decline-to-singleton issue; the same class of bug may still exist on up-gate or shared-expert paths. | +0 if already correct; +100 to +250 tok/s if a fallback remains | dispatch trace / resolver tests name every dense, selected, shared, pair, and triple projection variant; rocprof has no unexpected `*_gemv*` buckets at rows>1. |
@@ -3233,7 +3233,7 @@ Implemented behavior:
 
 Correctness plan / completed checks:
 
-1. Update `tests/test_qwen35_gguf_decode_repack_semantics.py` so it keeps the
+1. Update `tests/test_unit_qwen35_gguf_decode_repack_semantics.py` so it keeps the
    P10.X1 invariant (`gguf_decode_repack_enabled()` must not appear in
    `_run_full_attention_attn_only`) but no longer forbids split-K by name.
 2. Add/repair a dispatch test proving:
@@ -3242,7 +3242,7 @@ Correctness plan / completed checks:
    - context `>=1024` calls the split-K gated wrapper,
    - decode-repack on/off does not change that routing decision.
 3. Run existing paged-attention wrapper/unit coverage:
-   `PYTHONPATH=. uv run pytest tests/test_qwen35_paged_attn_decode_plan.py tests/test_qwen35_gguf_decode_repack_dispatch.py tests/test_qwen35_gguf_decode_repack_semantics.py -q`.
+   `PYTHONPATH=. uv run pytest tests/test_gpu_qwen35_paged_attn_decode_plan.py tests/test_unit_qwen35_gguf_decode_repack_dispatch.py tests/test_unit_qwen35_gguf_decode_repack_semantics.py -q`.
 4. Run the real-weight layer0 gate and a short 512/128 bench to ensure the
    short-context row is not regressed.
 5. Run 4K/128 retained-shape bench and compare decode against `47.171 tok/s`.

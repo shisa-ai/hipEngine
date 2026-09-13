@@ -4393,7 +4393,7 @@ def run_qwen4_exp_moe(
             # block per (expert, out_col) pair serving every lane of the pair so
             # the expert's weight row is read once. Per-output arithmetic is
             # identical to the strict per-expert selected gemv (bit-exact,
-            # RED-pinned in tests/test_qwen4exp_pf1_forkb_selected_down.py);
+            # RED-pinned in tests/test_gpu_qwen4exp_pf1_forkb_selected_down.py);
             # kernel-level paired A/B at the p4096 compact shape measured
             # 32.42 vs 47.42 ms median (-31.6%). The incumbent strict selected
             # gemv and the legacy P1 grouped/WMMA owners stay available below.
@@ -5948,6 +5948,11 @@ class Qwen4ExpGGUFResidentModelRunner:
         self.resident = resident
         self.config = resident.plan.config
         self.backend = str(backend)
+        if not 0 < int(max_sequence_length) <= self.config.context_length:
+            raise ValueError(
+                "Qwen4Exp runner max_sequence_length must be in "
+                f"1..{self.config.context_length}"
+            )
         self.runtime = runtime or get_hip_runtime()
         # R7 wrapper-host route: populate the PLE table into page cache so
         # decode-step row gathers hit warm pages instead of storage faults
@@ -5969,11 +5974,6 @@ class Qwen4ExpGGUFResidentModelRunner:
         self.prefill_chunk_size = int(prefill_chunk_size)
         if self.prefill_chunk_size <= 0:
             raise ValueError("Qwen4Exp prefill_chunk_size must be positive")
-        if not 0 < self.max_sequence_length <= self.config.context_length:
-            raise ValueError(
-                "Qwen4Exp runner max_sequence_length must be in "
-                f"1..{self.config.context_length}"
-            )
         load_backend_kernel_package(self.backend)
         self.gdn_bindings = {
             layer: bind_qwen4_exp_gdn_layer(resident, layer)

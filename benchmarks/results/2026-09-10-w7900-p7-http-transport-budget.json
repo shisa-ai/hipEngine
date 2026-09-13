@@ -1,0 +1,13 @@
+{
+  "kind": "p7_http_transport_budget",
+  "prompt_rows": 2048,
+  "max_tokens": 32,
+  "blocking_wall_s": 3.8954,
+  "sse_wall_s": 3.8386,
+  "sse_first_chunk_s": 2.7604,
+  "sse_chunk_gap_median_ms": 34.716,
+  "sse_chunk_gap_max_ms": 36.567,
+  "sse_chunks": 33,
+  "per_token_transport_overhead_s": -0.0568,
+  "note": "same fixed rng-20260909 prompt IDs; greedy; server on GPU0"
+}

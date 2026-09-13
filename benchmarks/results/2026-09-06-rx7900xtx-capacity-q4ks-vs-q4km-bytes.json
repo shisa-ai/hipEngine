@@ -1,0 +1,65 @@
+{
+  "schema": 1,
+  "date": "2026-09-06",
+  "kind": "rx7900xtx_qwen38_q4ks_vs_q4km_bytes",
+  "campaign": "docs/QWEN38-27B-GFX1100-24GB-CAPACITY.md",
+  "packet": "Packet 3 Q4_K_M/Q4_K_S bytes comparison",
+  "performance_claim": false,
+  "diagnostic": true,
+  "device": {
+    "pci_id": "0000:10:00.0",
+    "drm_card": "card0",
+    "unique_id": "cc4d02090dc9c3ff",
+    "vram_total_bytes": 25753026560,
+    "hip_visible_devices": "1"
+  },
+  "protocol": "allocation-ledger harness, one cold in-process server per point, BF16 KV, 3072-token context, N=1, MTP off, prefix off, 20 ms sysfs sampling; throughput and quality NOT measured in this artifact",
+  "q4_k_m": {
+    "planned_resident_gib": 15.992,
+    "gguf_file_gib": 15.932,
+    "logical_tensors": 851,
+    "aliases": 0,
+    "tracked_load_peak_gib": 17.849,
+    "load_sysfs_gib": 18.429,
+    "request_peak_sysfs_gib": 20.998,
+    "pool_pages": 24,
+    "workspace_lease_pages": 12
+  },
+  "q4_k_s": {
+    "planned_resident_gib": 16.168,
+    "gguf_file_gib": 15.014,
+    "logical_tensors": 851,
+    "aliases": 0,
+    "tracked_load_peak_gib": 19.978,
+    "load_sysfs_gib": 20.562,
+    "request_peak_sysfs_gib": 23.059,
+    "pool_pages": 24,
+    "workspace_lease_pages": 12
+  },
+  "delta_ks_minus_km": {
+    "planned_resident_gib": 0.176,
+    "load_sysfs_gib": 2.133,
+    "request_peak_sysfs_gib": 2.061
+  },
+  "explanation": {
+    "q4_k_m_layouts_gib": {
+      "gguf_q4_k_t16_v1": 10.049,
+      "gguf_q6_k_t16_v1": 4.112,
+      "gguf_q5_k_t16_v1": 0.989,
+      "raw_gguf": 0.666,
+      "dense_f32": 0.098,
+      "dense_bf16": 0.078
+    },
+    "q4_k_s_layouts_gib": {
+      "gguf_q4_k_t16_v1": 11.814,
+      "dense_bf16": 1.631,
+      "gguf_q5_k_t16_v1": 0.989,
+      "gguf_q6_k_t16_v1": 0.971,
+      "raw_gguf": 0.666,
+      "dense_f32": 0.098
+    },
+    "dense_bf16_sources": "Q4_K_S stores 8 ffn_down (170.00 MiB each), 3 attn_qkv (100.00 MiB each) and 1 attn_v (10.00 MiB) as BF16 in the GGUF itself; they materialize as dense_bf16 residents",
+    "staging": "the Q4_K_S load peak carries ~2 GiB more tracked transient staging than Q4_K_M despite the smaller file"
+  },
+  "conclusion": "On gfx1100 the Q4_K_S variant is memory-DOMINATED by Q4_K_M for capacity: smaller GGUF file (15.02 vs 15.93 GiB) but larger planned residency (+0.176 GiB), larger load peak (+2.13 GiB sysfs) and larger request peak. Throughput and quality comparisons remain open in Packet 3."
+}

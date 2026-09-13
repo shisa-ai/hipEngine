@@ -1851,7 +1851,7 @@ __global__ void qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel(
   }
 }
 
-template <typename scale_t, int64_t quant_group_dim, bool use_hadamard>
+template <typename scale_t, int64_t quant_group_dim, bool use_hadamard, bool out_bf16 = false>
 __global__ void qwen35_paged_full_attn_prefill_gqa_gate_int8_groupwise_kernel(
     const float* __restrict__ query,       // [rows, num_q_heads, head_dim]
     const int8_t* __restrict__ key_cache,
@@ -1859,7 +1859,7 @@ __global__ void qwen35_paged_full_attn_prefill_gqa_gate_int8_groupwise_kernel(
     const scale_t* __restrict__ k_scale,   // [num_blocks, block_size, num_kv_heads]
     const scale_t* __restrict__ v_scale,
     const half_t* __restrict__ gate,       // [rows, num_q_heads, head_dim] view-compatible
-    half_t* __restrict__ out,              // [rows, num_q_heads * head_dim]
+    uint16_t* __restrict__ out,            // [rows, num_q_heads * head_dim] fp16 or bf16 bits
     const int32_t* __restrict__ block_tables,
     const int64_t* __restrict__ context_counts,
     const int64_t* __restrict__ row_positions,
@@ -1972,11 +1972,638 @@ __global__ void qwen35_paged_full_attn_prefill_gqa_gate_int8_groupwise_kernel(
     const int64_t gate_idx = (row * num_q_heads + q_head) * gate_stride1 + tid * gate_stride2;
     const float gate_v = static_cast<float>(gate[gate_idx]);
     const float attn_bf16 = bf16_bits_to_float(float_to_bf16_bits(out_acc * inv_l));
-    out[(row * num_q_heads + q_head) * head_dim + tid] = static_cast<half_t>(attn_bf16 * sigmoid_f32(gate_v));
+    const float gated = attn_bf16 * sigmoid_f32(gate_v);
+    const int64_t out_idx = (row * num_q_heads + q_head) * head_dim + tid;
+    if constexpr (out_bf16) {
+      out[out_idx] = float_to_bf16_bits(gated);
+    } else {
+      union {
+        half_t f;
+        uint16_t u;
+      } fp16_bits;
+      fp16_bits.f = static_cast<half_t>(gated);
+      out[out_idx] = fp16_bits.u;
+    }
   }
 }
 
-// Tree-aware variant of qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel.
+// GQA-grouped flash prefill: one block per (kv head, query row), one warp
+// per q head of the six-head group. Every warp strides the SAME token
+// sequence so the six q heads of a group share each int8 K/V row, and a
+// cooperative 16-byte-vector staging pass loads a 32-token K/V tile into
+// LDS once per tile (one global round trip) instead of per token per
+// warp - removing both the 6x-per-q-head traffic amplification and the
+// dependent global-load chain that serialized the earlier kernels.
+// Online softmax keeps the running max/sum and the eight per-lane output
+// accumulators in registers: no score workspace, no split-K partials,
+// and no reduce pass at any context length. Shipped for the 24 q head /
+// 4 kv head / 256 dim geometry (head_dim = 32 lanes x 8 int8 values).
+template <typename scale_t, int q_per_kv, int num_q_heads, int num_kv_heads, bool out_bf16>
+__global__ void qwen35_paged_full_attn_prefill_gqa_gate_int8_flash_kernel(
+    const float* __restrict__ query,       // [rows, num_q_heads, head_dim]
+    const int8_t* __restrict__ key_cache,  // [blocks, block_size, kv_heads, head_dim]
+    const int8_t* __restrict__ value_cache,
+    const scale_t* __restrict__ k_scale,   // [blocks, block_size, kv_heads]
+    const scale_t* __restrict__ v_scale,
+    const half_t* __restrict__ gate,       // [rows, num_q_heads, head_dim]
+    uint16_t* __restrict__ out,            // [rows, num_q_heads * head_dim]
+    const int32_t* __restrict__ block_tables,
+    const int64_t* __restrict__ context_counts,
+    const int64_t* __restrict__ row_positions,
+    int64_t rows,
+    int64_t max_context_len,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t head_dim,
+    int64_t gate_stride1,
+    int64_t gate_stride2,
+    float scale) {
+  static_assert(q_per_kv * num_kv_heads == num_q_heads, "GQA group must tile the q heads");
+  constexpr int head_dim_const = 256;
+  constexpr int kStage = 32;   // staged tokens per cooperative tile
+  constexpr int kLaneBytes = 8;  // 8 int8 values per lane (256 dims / 32 lanes)
+  if (head_dim != head_dim_const) {
+    return;
+  }
+  const int64_t kv_head = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  if (kv_head >= num_kv_heads || row >= rows) {
+    return;
+  }
+  int64_t context_len = context_counts[row];
+  if (context_len <= 0) {
+    return;
+  }
+  context_len = context_len > max_context_len ? max_context_len : context_len;
+  const int64_t causal_position = row_positions ? row_positions[row] : (context_counts[row] - 1);
+  if (causal_position < 0) {
+    return;
+  }
+  const int64_t causal_len = causal_position + 1;
+  const int64_t visible_len = context_len < causal_len ? context_len : causal_len;
+  if (visible_len <= 0) {
+    return;
+  }
+
+  extern __shared__ float shared[];
+  float* q_shared = shared;  // [q_per_kv, head_dim] (fp32, BF16-rounded query)
+  const int q_head = kv_head * q_per_kv + static_cast<int>(threadIdx.x) / warpSize;
+  const int lane_id = threadIdx.x % warpSize;
+  const int32_t* row_table = block_tables + row * block_table_len;
+  const int dim0 = lane_id * kLaneBytes;
+
+  // Staged-token scratch follows q_shared in LDS: K and V tiles as packed
+  // 32-bit words (four int8 values each), the per-token scales, and the
+  // resolved K/V byte offset per staged token (-1 = skipped token).
+  constexpr int words_per_row = head_dim_const / 4;
+  uint32_t* k_staged = reinterpret_cast<uint32_t*>(q_shared + q_per_kv * head_dim_const);
+  uint32_t* v_staged = k_staged + kStage * words_per_row;
+  float* ks_staged = reinterpret_cast<float*>(v_staged + kStage * words_per_row);
+  float* vs_staged = ks_staged + kStage;
+  int* plane_staged = reinterpret_cast<int*>(vs_staged + kStage);
+
+  const int group_base = static_cast<int>(kv_head) * q_per_kv;
+  for (int idx = static_cast<int>(threadIdx.x); idx < q_per_kv * head_dim_const; idx += static_cast<int>(blockDim.x)) {
+    const int h = idx / head_dim_const;
+    const int d = idx % head_dim_const;
+    q_shared[idx] = bf16_bits_to_float(
+        float_to_bf16_bits(query[(row * num_q_heads + group_base + h) * head_dim + d]));
+  }
+  __syncthreads();
+
+  const float* q_lane0 = q_shared + (threadIdx.x / warpSize) * head_dim_const + dim0;
+  const float* q_lane1 = q_lane0 + 4;
+
+  float run_max = -3.4028234663852886e38f;
+  float run_sum = 0.0f;
+  float vacc[2][4];
+  for (int j = 0; j < 4; ++j) {
+    vacc[0][j] = 0.0f;
+    vacc[1][j] = 0.0f;
+  }
+
+  for (int64_t tile = 0; tile < visible_len; tile += kStage) {
+    const int64_t tile_last = (tile + kStage < visible_len) ? (tile + kStage) : visible_len;
+    const int staged_count = static_cast<int>(tile_last - tile);
+    // Phase 1: one thread per staged token resolves the block table and
+    // loads the scales (one global round trip, <= kStage threads).
+    if (static_cast<int>(threadIdx.x) < kStage) {
+      const int st = static_cast<int>(threadIdx.x);
+      if (st < staged_count) {
+        const int64_t token = tile + st;
+        const int64_t logical_block = token >> 8;  // block_size fixed at 256
+        int64_t physical_block = -1;
+        if (logical_block < block_table_len) {
+          physical_block = static_cast<int64_t>(row_table[logical_block]);
+        }
+        if (physical_block >= 0) {
+          const int64_t token_offset = (physical_block << 8) | (token & 255);
+          const int64_t scale_index = token_offset * num_kv_heads + kv_head;
+          ks_staged[st] = static_cast<float>(k_scale[scale_index]);
+          vs_staged[st] = static_cast<float>(v_scale[scale_index]);
+          plane_staged[st] = static_cast<int>(
+              (token_offset * num_kv_heads + kv_head) * head_dim_const);
+        } else {
+          ks_staged[st] = 0.0f;
+          vs_staged[st] = 0.0f;
+          plane_staged[st] = -1;
+        }
+      } else {
+        ks_staged[st] = 0.0f;
+        vs_staged[st] = 0.0f;
+        plane_staged[st] = -1;
+      }
+    }
+    __syncthreads();
+    // Phase 2: 16-byte vector loads of the K/V rows (256 B per staged
+    // token per array), one global round trip for the whole tile.
+    constexpr int vec_words = 4;  // 16 B per vector load
+    for (int v = static_cast<int>(threadIdx.x);
+         v < kStage * (words_per_row / vec_words);
+         v += static_cast<int>(blockDim.x)) {
+      const int st = v / (words_per_row / vec_words);
+      const int vec = v % (words_per_row / vec_words);
+      const int kv_plane = plane_staged[st];
+      uint4 k_vec = make_uint4(0u, 0u, 0u, 0u);
+      uint4 v_vec = make_uint4(0u, 0u, 0u, 0u);
+      if (kv_plane >= 0) {
+        const int8_t* kbase = key_cache + static_cast<int64_t>(kv_plane) + vec * vec_words * 4;
+        const int8_t* vbase = value_cache + static_cast<int64_t>(kv_plane) + vec * vec_words * 4;
+        k_vec = *reinterpret_cast<const uint4*>(kbase);
+        v_vec = *reinterpret_cast<const uint4*>(vbase);
+      }
+      *reinterpret_cast<uint4*>(&k_staged[st * words_per_row + vec * vec_words]) = k_vec;
+      *reinterpret_cast<uint4*>(&v_staged[st * words_per_row + vec * vec_words]) = v_vec;
+    }
+    __syncthreads();
+
+    for (int st = 0; st < staged_count; ++st) {
+      const int kv_plane = plane_staged[st];
+      if (kv_plane < 0) {
+        continue;
+      }
+      const uint32_t k_p0 = k_staged[st * words_per_row + dim0 / 4];
+      const uint32_t k_p1 = k_staged[st * words_per_row + dim0 / 4 + 1];
+      float dot = 0.0f;
+      dot += q_lane0[0] * static_cast<float>(static_cast<int8_t>(k_p0 & 0xFF));
+      dot += q_lane0[1] * static_cast<float>(static_cast<int8_t>((k_p0 >> 8) & 0xFF));
+      dot += q_lane0[2] * static_cast<float>(static_cast<int8_t>((k_p0 >> 16) & 0xFF));
+      dot += q_lane0[3] * static_cast<float>(static_cast<int8_t>(k_p0 >> 24));
+      dot += q_lane1[0] * static_cast<float>(static_cast<int8_t>(k_p1 & 0xFF));
+      dot += q_lane1[1] * static_cast<float>(static_cast<int8_t>((k_p1 >> 8) & 0xFF));
+      dot += q_lane1[2] * static_cast<float>(static_cast<int8_t>((k_p1 >> 16) & 0xFF));
+      dot += q_lane1[3] * static_cast<float>(static_cast<int8_t>(k_p1 >> 24));
+      #pragma unroll
+      for (int offset = warpSize / 2; offset > 0; offset >>= 1) {
+        dot += __shfl_down(dot, offset);
+      }
+      const float score = __shfl(dot, 0) * ks_staged[st] * scale;
+      const float new_max = fmaxf(run_max, score);
+      if (new_max != run_max) {
+        const float correction = expf(run_max - new_max);
+        run_sum *= correction;
+        for (int j = 0; j < 4; ++j) {
+          vacc[0][j] *= correction;
+          vacc[1][j] *= correction;
+        }
+        run_max = new_max;
+      }
+      const float p = expf(score - run_max);
+      run_sum += p;
+      const float v_s = vs_staged[st];
+      const uint32_t v_p0 = v_staged[st * words_per_row + dim0 / 4];
+      const uint32_t v_p1 = v_staged[st * words_per_row + dim0 / 4 + 1];
+      vacc[0][0] += p * (static_cast<float>(static_cast<int8_t>(v_p0 & 0xFF)) * v_s);
+      vacc[0][1] += p * (static_cast<float>(static_cast<int8_t>((v_p0 >> 8) & 0xFF)) * v_s);
+      vacc[0][2] += p * (static_cast<float>(static_cast<int8_t>((v_p0 >> 16) & 0xFF)) * v_s);
+      vacc[0][3] += p * (static_cast<float>(static_cast<int8_t>(v_p0 >> 24)) * v_s);
+      vacc[1][0] += p * (static_cast<float>(static_cast<int8_t>(v_p1 & 0xFF)) * v_s);
+      vacc[1][1] += p * (static_cast<float>(static_cast<int8_t>((v_p1 >> 8) & 0xFF)) * v_s);
+      vacc[1][2] += p * (static_cast<float>(static_cast<int8_t>((v_p1 >> 16) & 0xFF)) * v_s);
+      vacc[1][3] += p * (static_cast<float>(static_cast<int8_t>(v_p1 >> 24)) * v_s);
+    }
+    __syncthreads();
+  }
+
+  const float inv_sum = 1.0f / fmaxf(run_sum, 1.0e-20f);
+  const int64_t gate_base = (row * num_q_heads + q_head) * gate_stride1 + dim0 * gate_stride2;
+  const int64_t out_base = (row * num_q_heads + q_head) * head_dim + dim0;
+  #pragma unroll
+  for (int half = 0; half < 2; ++half) {
+    const float* qv = q_lane0 + half * 4;
+    #pragma unroll
+    for (int j = 0; j < 4; ++j) {
+      const float gate_v = static_cast<float>(gate[gate_base + (half * 4 + j) * gate_stride2]);
+      const float gated = vacc[half][j] * inv_sum * sigmoid_f32(gate_v);
+      if constexpr (out_bf16) {
+        out[out_base + half * 4 + j] = float_to_bf16_bits(gated);
+      } else {
+        union {
+          half_t f;
+          uint16_t u;
+        } fp16_bits;
+        fp16_bits.f = static_cast<half_t>(gated);
+        out[out_base + half * 4 + j] = fp16_bits.u;
+      }
+    }
+  }
+}
+
+// WMMA flash prefill for the direct INT8 route, adapted from the in-tree
+// Laguna F16-WMMA flash-attention structure (llama.cpp fattn-mma-f16
+// lineage): one block per (kv head, eight query rows), three waves of
+// sixteen (query row, q head) columns, and K48 token batches whose K/V
+// halves are dequantized into a reused LDS tile. The score tiles are
+// computed with RDNA3 wave32 WMMA (fp16 operands, fp32 accumulate);
+// Q is pre-scaled by 1/sqrt(256) (exact power of two) and K by its
+// per-token/head scale during staging, so the WMMA dot reproduces the
+// reference dequantize-then-dot contract. Probabilities and the PV
+// accumulation follow the Laguna f16-accumulate structure. Shipped for
+// the 24 q head / 4 kv head / 256 dim geometry with fp32 per-token/head
+// scales, paged-uniform spans, the fp16 sigmoid gate, and a BF16 output.
+namespace {
+
+using half2_t = half_t __attribute__((ext_vector_type(2)));
+using half8_t = half_t __attribute__((ext_vector_type(8)));
+using half16_t = half_t __attribute__((ext_vector_type(16)));
+using float8_t = float __attribute__((ext_vector_type(8)));
+
+constexpr int INT8_WMMA_QUERY_ROWS = 8;
+constexpr int INT8_WMMA_GQA_HEADS = 6;
+constexpr int INT8_WMMA_Q_HEADS = 24;
+constexpr int INT8_WMMA_KV_HEADS = 4;
+constexpr int INT8_WMMA_HEAD_DIM = 256;
+constexpr int INT8_WMMA_K_BATCH = 48;
+constexpr int INT8_WMMA_COLUMNS =
+    INT8_WMMA_QUERY_ROWS * INT8_WMMA_GQA_HEADS;  // 48
+constexpr int INT8_WMMA_WAVES = 3;
+constexpr int INT8_WMMA_STRIDE = INT8_WMMA_HEAD_DIM + 8;  // halves per row
+
+__device__ __forceinline__ float int8_wmma_lane_xor16(float value) {
+  return __shfl_xor(value, 16, 32);
+}
+
+__global__ void __launch_bounds__(32 * INT8_WMMA_WAVES, 1)
+qwen35_paged_full_attn_prefill_gqa_gate_int8_wmma_kernel(
+    const float* __restrict__ query,       // [rows, 24, 256]
+    const int8_t* __restrict__ key_cache,  // [tokens, 4, 256]
+    const int8_t* __restrict__ value_cache,
+    const float* __restrict__ k_scale,     // [tokens, 4]
+    const float* __restrict__ v_scale,
+    const half_t* __restrict__ gate,       // [rows, 24, 256] fp16
+    uint16_t* __restrict__ out,            // [rows, 24 * 256] bf16 bits
+    const int32_t* __restrict__ block_tables,
+    const int64_t* __restrict__ context_counts,
+    const int64_t* __restrict__ row_positions,
+    int64_t rows,
+    int64_t max_context_len,
+    int64_t block_table_len,
+    int64_t gate_stride1,
+    int64_t gate_stride2,
+    float scale) {
+  const int lane = static_cast<int>(threadIdx.x);
+  const int wave = static_cast<int>(threadIdx.y);
+  const int linear_tid = wave * 32 + lane;
+  const int64_t kv_head = blockIdx.x;
+  const int query_tile = static_cast<int>(blockIdx.y);
+  if (query_tile * INT8_WMMA_QUERY_ROWS >= static_cast<int>(rows)) {
+    return;
+  }
+  const int jc = wave * 16 + (lane & 15);
+  const int query_local = jc / INT8_WMMA_GQA_HEADS;
+  const int gqa_local = jc - query_local * INT8_WMMA_GQA_HEADS;
+  const int query_row = query_tile * INT8_WMMA_QUERY_ROWS + query_local;
+  const bool valid_query = query_row < static_cast<int>(rows);
+  const int q_head =
+      static_cast<int>(kv_head) * INT8_WMMA_GQA_HEADS + gqa_local;
+
+  extern __shared__ half_t wmma_shared[];
+  // q_tile persists in LDS: at head_dim 256 the Laguna register-fragment
+  // layout would need 128 registers per thread, so the B operand is
+  // re-read from LDS per dim tile instead.
+  half_t* q_tile = wmma_shared;  // [COLUMNS][STRIDE]
+  half_t* kv_tile = q_tile + INT8_WMMA_COLUMNS * INT8_WMMA_STRIDE;
+  float* ks_staged =
+      reinterpret_cast<float*>(kv_tile + INT8_WMMA_K_BATCH * INT8_WMMA_STRIDE);
+  float* vs_staged = ks_staged + INT8_WMMA_K_BATCH;
+  int* plane_staged = reinterpret_cast<int*>(vs_staged + INT8_WMMA_K_BATCH);
+
+  // Stage the (query row, q head) columns of Q as pre-scaled fp16. The
+  // query is BF16-rounded first (the route's reference contract) and the
+  // 1/sqrt(256) pre-scale is an exact power of two in fp16.
+  for (int pack = linear_tid;
+       pack < INT8_WMMA_COLUMNS * (INT8_WMMA_HEAD_DIM / 2);
+       pack += 32 * INT8_WMMA_WAVES) {
+    const int tile_jc = pack / (INT8_WMMA_HEAD_DIM / 2);
+    const int dim = (pack - tile_jc * (INT8_WMMA_HEAD_DIM / 2)) * 2;
+    const int tile_query_local = tile_jc / INT8_WMMA_GQA_HEADS;
+    const int tile_gqa_local =
+        tile_jc - tile_query_local * INT8_WMMA_GQA_HEADS;
+    const int tile_row =
+        query_tile * INT8_WMMA_QUERY_ROWS + tile_query_local;
+    const int tile_head =
+        static_cast<int>(kv_head) * INT8_WMMA_GQA_HEADS + tile_gqa_local;
+    float v0 = 0.0f;
+    float v1 = 0.0f;
+    if (tile_row < static_cast<int>(rows)) {
+      const float* src = query +
+          (static_cast<int64_t>(tile_row) * INT8_WMMA_Q_HEADS + tile_head) *
+              INT8_WMMA_HEAD_DIM +
+          dim;
+      v0 = bf16_bits_to_float(float_to_bf16_bits(src[0]));
+      v1 = bf16_bits_to_float(float_to_bf16_bits(src[1]));
+    }
+    q_tile[tile_jc * INT8_WMMA_STRIDE + dim] = static_cast<half_t>(v0 * scale);
+    q_tile[tile_jc * INT8_WMMA_STRIDE + dim + 1] =
+        static_cast<half_t>(v1 * scale);
+  }
+  __syncthreads();
+
+  half2_t output_acc[INT8_WMMA_HEAD_DIM / 32][8];
+#pragma unroll
+  for (int tile = 0; tile < INT8_WMMA_HEAD_DIM / 32; ++tile) {
+#pragma unroll
+    for (int element = 0; element < 8; ++element) {
+      output_acc[tile][element] = half2_t{static_cast<half_t>(0.0f),
+                                          static_cast<half_t>(0.0f)};
+    }
+  }
+  float running_max = -INFINITY;
+  float running_sum = 0.0f;
+
+  int64_t visible_bound = 0;
+  for (int r = 0; r < INT8_WMMA_QUERY_ROWS; ++r) {
+    const int64_t row = query_tile * INT8_WMMA_QUERY_ROWS + r;
+    if (row >= rows) {
+      break;
+    }
+    const int64_t count = context_counts[row];
+    if (count <= 0) {
+      continue;
+    }
+    const int64_t position =
+        row_positions ? row_positions[row] : (count - 1);
+    const int64_t causal = position + 1;
+    const int64_t visible = count < causal ? count : causal;
+    if (visible > visible_bound) {
+      visible_bound = visible;
+    }
+  }
+  if (visible_bound <= 0 || visible_bound > max_context_len) {
+    if (visible_bound <= 0) {
+      return;
+    }
+    visible_bound = max_context_len;
+  }
+  const int32_t* row_table_lo =
+      block_tables +
+      (query_tile * INT8_WMMA_QUERY_ROWS) * block_table_len;
+
+  const int k_batches = static_cast<int>(
+      (visible_bound + INT8_WMMA_K_BATCH - 1) / INT8_WMMA_K_BATCH);
+  for (int batch = 0; batch < k_batches; ++batch) {
+    const int k_base = batch * INT8_WMMA_K_BATCH;
+    if (linear_tid < INT8_WMMA_K_BATCH) {
+      const int token = k_base + linear_tid;
+      int plane = -1;
+      float k_s = 0.0f;
+      float v_s = 0.0f;
+      if (token < static_cast<int>(visible_bound)) {
+        const int logical_block = token >> 8;
+        if (logical_block < static_cast<int>(block_table_len)) {
+          const int physical_block =
+              static_cast<int>(row_table_lo[logical_block]);
+          if (physical_block >= 0) {
+            const int token_offset = (physical_block << 8) | (token & 255);
+            const int scale_index =
+                token_offset * INT8_WMMA_KV_HEADS + static_cast<int>(kv_head);
+            plane = (token_offset * INT8_WMMA_KV_HEADS +
+                     static_cast<int>(kv_head)) * INT8_WMMA_HEAD_DIM;
+            k_s = k_scale[scale_index];
+            v_s = v_scale[scale_index];
+          }
+        }
+      }
+      plane_staged[linear_tid] = plane;
+      ks_staged[linear_tid] = k_s;
+      vs_staged[linear_tid] = v_s;
+    }
+    __syncthreads();
+
+    // Stage K dequantized to fp16 (int8 x per-token/head scale); the
+    // zero rows keep unmapped tokens out of the WMMA dot.
+    for (int pack = linear_tid;
+         pack < INT8_WMMA_K_BATCH * (INT8_WMMA_HEAD_DIM / 8);
+         pack += 32 * INT8_WMMA_WAVES) {
+      const int key_local = pack / (INT8_WMMA_HEAD_DIM / 8);
+      const int dim = (pack - key_local * (INT8_WMMA_HEAD_DIM / 8)) * 8;
+      const int plane = plane_staged[key_local];
+      half_t values[8];
+      if (plane >= 0) {
+        const float k_s = ks_staged[key_local];
+        const int8_t* kptr = key_cache + plane + dim;
+#pragma unroll
+        for (int element = 0; element < 8; ++element) {
+          values[element] =
+              static_cast<half_t>(static_cast<float>(kptr[element]) * k_s);
+        }
+      } else {
+#pragma unroll
+        for (int element = 0; element < 8; ++element) {
+          values[element] = static_cast<half_t>(0.0f);
+        }
+      }
+      *reinterpret_cast<half8_t*>(
+          &kv_tile[key_local * INT8_WMMA_STRIDE + dim]) =
+          *reinterpret_cast<const half8_t*>(values);
+    }
+    __syncthreads();
+
+    // Score tiles: A = K fragment, B = Q fragment, fp32 accumulate.
+    float8_t scores[INT8_WMMA_K_BATCH / 16];
+#pragma unroll
+    for (int key_tile = 0; key_tile < INT8_WMMA_K_BATCH / 16; ++key_tile) {
+      scores[key_tile] = float8_t{0.0f, 0.0f, 0.0f, 0.0f,
+                                  0.0f, 0.0f, 0.0f, 0.0f};
+#pragma unroll
+      for (int dim_tile = 0; dim_tile < INT8_WMMA_HEAD_DIM / 16; ++dim_tile) {
+        half16_t key_fragment;
+        const int key_local = key_tile * 16 + (lane & 15);
+#pragma unroll
+        for (int k = 0; k < 16; ++k) {
+          key_fragment[k] =
+              kv_tile[key_local * INT8_WMMA_STRIDE + dim_tile * 16 + k];
+        }
+        half16_t query_fragment;
+#pragma unroll
+        for (int k = 0; k < 16; ++k) {
+          query_fragment[k] =
+              q_tile[jc * INT8_WMMA_STRIDE + dim_tile * 16 + k];
+        }
+        scores[key_tile] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
+            key_fragment, query_fragment, scores[key_tile]);
+      }
+    }
+    __syncthreads();
+
+    // Visibility: mask scores of tokens beyond this column's causal
+    // position (per query row) or of unmapped blocks.
+    const int64_t query_position =
+        valid_query
+            ? (row_positions ? row_positions[query_row]
+                             : (context_counts[query_row] - 1))
+            : INT64_MIN;
+    float local_max = -INFINITY;
+#pragma unroll
+    for (int key_tile = 0; key_tile < INT8_WMMA_K_BATCH / 16; ++key_tile) {
+#pragma unroll
+      for (int element = 0; element < 8; ++element) {
+        const int key_local = key_tile * 16 + 2 * element + (lane >> 4);
+        const int token = k_base + key_local;
+        const bool visible =
+            valid_query && token < static_cast<int>(visible_bound) &&
+            static_cast<int64_t>(token) <= query_position &&
+            plane_staged[key_local] >= 0;
+        if (!visible) {
+          scores[key_tile][element] = -INFINITY;
+        }
+        local_max = fmaxf(local_max, scores[key_tile][element]);
+      }
+    }
+    const float batch_max = fmaxf(local_max, int8_wmma_lane_xor16(local_max));
+    const bool has_data = isfinite(batch_max);
+    const float next_max = has_data ? fmaxf(running_max, batch_max) : 0.0f;
+    const float previous_scale =
+        !has_data ? 1.0f
+                  : isfinite(running_max) ? expf(running_max - next_max) : 0.0f;
+#pragma unroll
+    for (int tile = 0; tile < INT8_WMMA_HEAD_DIM / 32; ++tile) {
+#pragma unroll
+      for (int element = 0; element < 8; ++element) {
+        output_acc[tile][element][0] = static_cast<half_t>(
+            static_cast<float>(output_acc[tile][element][0]) * previous_scale);
+        output_acc[tile][element][1] = static_cast<half_t>(
+            static_cast<float>(output_acc[tile][element][1]) * previous_scale);
+      }
+    }
+
+    float local_sum = 0.0f;
+#pragma unroll
+    for (int key_tile = 0; key_tile < INT8_WMMA_K_BATCH / 16; ++key_tile) {
+#pragma unroll
+      for (int element = 0; element < 8; ++element) {
+        const float score = scores[key_tile][element];
+        const float probability =
+            has_data && isfinite(score) ? expf(score - next_max) : 0.0f;
+        scores[key_tile][element] = probability;
+        local_sum += probability;
+      }
+    }
+    const float batch_sum = local_sum + int8_wmma_lane_xor16(local_sum);
+    running_sum = previous_scale * running_sum + batch_sum;
+    running_max = has_data ? next_max : running_max;
+
+    // Stage V dequantized to fp16 into the same reused tile.
+    for (int pack = linear_tid;
+         pack < INT8_WMMA_K_BATCH * (INT8_WMMA_HEAD_DIM / 8);
+         pack += 32 * INT8_WMMA_WAVES) {
+      const int key_local = pack / (INT8_WMMA_HEAD_DIM / 8);
+      const int dim = (pack - key_local * (INT8_WMMA_HEAD_DIM / 8)) * 8;
+      const int plane = plane_staged[key_local];
+      half_t values[8];
+      if (plane >= 0) {
+        const float v_s = vs_staged[key_local];
+        const int8_t* vptr = value_cache + plane + dim;
+#pragma unroll
+        for (int element = 0; element < 8; ++element) {
+          values[element] =
+              static_cast<half_t>(static_cast<float>(vptr[element]) * v_s);
+        }
+      } else {
+#pragma unroll
+        for (int element = 0; element < 8; ++element) {
+          values[element] = static_cast<half_t>(0.0f);
+        }
+      }
+      *reinterpret_cast<half8_t*>(
+          &kv_tile[key_local * INT8_WMMA_STRIDE + dim]) =
+          *reinterpret_cast<const half8_t*>(values);
+    }
+    __syncthreads();
+
+#pragma unroll
+    for (int key_tile = 0; key_tile < INT8_WMMA_K_BATCH / 16; ++key_tile) {
+      half2_t probability_pairs[8];
+#pragma unroll
+      for (int element = 0; element < 8; ++element) {
+        const float own = scores[key_tile][element];
+        const float partner = int8_wmma_lane_xor16(own);
+        probability_pairs[element][lane >> 4] = static_cast<half_t>(own);
+        probability_pairs[element][(lane >> 4) ^ 1] =
+            static_cast<half_t>(partner);
+      }
+      const half16_t probability_fragment =
+          *reinterpret_cast<const half16_t*>(probability_pairs);
+#pragma unroll
+      for (int dim_tile = 0; dim_tile < INT8_WMMA_HEAD_DIM / 32; ++dim_tile) {
+        half2_t value_pairs[16];
+        const int dim0 = dim_tile * 32 + 2 * (lane & 15);
+        const int dim1 = dim0 + 1;
+#pragma unroll
+        for (int element = 0; element < 8; ++element) {
+          const int key_row = key_tile * 16 + 2 * element;
+          value_pairs[element] =
+              half2_t{kv_tile[key_row * INT8_WMMA_STRIDE + dim0],
+                      kv_tile[(key_row + 1) * INT8_WMMA_STRIDE + dim0]};
+          value_pairs[element + 8] =
+              half2_t{kv_tile[key_row * INT8_WMMA_STRIDE + dim1],
+                      kv_tile[(key_row + 1) * INT8_WMMA_STRIDE + dim1]};
+        }
+        const half16_t* value_fragments =
+            reinterpret_cast<const half16_t*>(value_pairs);
+        half16_t accumulator =
+            *reinterpret_cast<const half16_t*>(output_acc[dim_tile]);
+        accumulator = __builtin_amdgcn_wmma_f16_16x16x16_f16_w32(
+            value_fragments[0], probability_fragment, accumulator, 0);
+        accumulator = __builtin_amdgcn_wmma_f16_16x16x16_f16_w32(
+            value_fragments[1], probability_fragment, accumulator, 1);
+        *reinterpret_cast<half16_t*>(output_acc[dim_tile]) = accumulator;
+      }
+    }
+    __syncthreads();
+  }
+
+  if (valid_query && running_sum != 0.0f) {
+    const float inverse_sum = 1.0f / running_sum;
+    const int64_t gate_base =
+        (static_cast<int64_t>(query_row) * INT8_WMMA_Q_HEADS + q_head) *
+        gate_stride1;
+    const int64_t out_base =
+        (static_cast<int64_t>(query_row) * INT8_WMMA_Q_HEADS + q_head) *
+            INT8_WMMA_HEAD_DIM;
+#pragma unroll
+    for (int dim_tile = 0; dim_tile < INT8_WMMA_HEAD_DIM / 32; ++dim_tile) {
+#pragma unroll
+      for (int element = 0; element < 8; ++element) {
+        const int dim = dim_tile * 32 + 4 * element + 2 * (lane >> 4);
+        const float g0 =
+            static_cast<float>(gate[gate_base + dim * gate_stride2]);
+        const float g1 = static_cast<float>(
+            gate[gate_base + (dim + 1) * gate_stride2]);
+        const float o0 =
+            static_cast<float>(output_acc[dim_tile][element][0]) * inverse_sum;
+        const float o1 =
+            static_cast<float>(output_acc[dim_tile][element][1]) * inverse_sum;
+        out[out_base + dim] = float_to_bf16_bits(o0 * sigmoid_f32(g0));
+        out[out_base + dim + 1] = float_to_bf16_bits(o1 * sigmoid_f32(g1));
+      }
+    }
+  }
+}
+
+}  // namespace
+
+// Tree-aware variant of qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel.// Tree-aware variant of qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel.// Tree-aware variant of qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel.
 // Identical to the chain kernel except for the per-row ancestor mask applied
 // to verifier rows whose K/V live at global positions [tree_committed_count,
 // tree_committed_count + rows).  Positions strictly below tree_committed_count
@@ -3684,7 +4311,7 @@ __global__ void qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_key_bf
   }
 }
 
-template <bool SHORT_BLOCK256>
+template <bool SHORT_BLOCK256, bool GLOBAL_SCORES = false>
 __global__ void qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel(
     const float* __restrict__ query,       // [rows, num_q_heads, head_dim]
     const uint16_t* __restrict__ key_cache,
@@ -3703,7 +4330,9 @@ __global__ void qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel(
     int64_t head_dim,
     int64_t gate_stride1,
     int64_t gate_stride2,
-    float scale) {
+    float scale,
+    float* __restrict__ score_workspace,
+    int64_t score_stride) {
   const int64_t q_head = blockIdx.x;
   const int64_t row = blockIdx.y;
   if (q_head >= num_q_heads || row >= rows) {
@@ -3725,8 +4354,12 @@ __global__ void qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel(
   }
 
   extern __shared__ float shared[];
-  float* scores = shared;
-  float* warp_buf = scores + visible_len;
+  // Only score storage changes: keep the same warp partition, reductions,
+  // normalization and value accumulation as the shared-score parent.
+  float* scores = GLOBAL_SCORES
+      ? score_workspace + (row * num_q_heads + q_head) * score_stride
+      : shared;
+  float* warp_buf = GLOBAL_SCORES ? shared : scores + visible_len;
   const int num_warps = blockDim.x / warpSize;
   float* q_shared = warp_buf + num_warps;
   const int64_t kv_group = num_q_heads / num_kv_heads;
@@ -4764,7 +5397,7 @@ extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans(
   return static_cast<int>(hipGetLastError());
 }
 
-template <typename scale_t, int64_t quant_group_dim = 256, bool use_hadamard = false>
+template <typename scale_t, int64_t quant_group_dim = 256, bool use_hadamard = false, bool out_bf16 = false>
 int launch_qwen35_paged_full_attn_prefill_gqa_gate_int8(
     const float* query,
     const int8_t* key_cache,
@@ -4772,7 +5405,7 @@ int launch_qwen35_paged_full_attn_prefill_gqa_gate_int8(
     const scale_t* k_scale,
     const scale_t* v_scale,
     const half_t* gate,
-    half_t* out,
+    uint16_t* out,
     const int32_t* block_tables,
     const int64_t* context_counts,
     const int64_t* row_positions,
@@ -4795,7 +5428,7 @@ int launch_qwen35_paged_full_attn_prefill_gqa_gate_int8(
   const int threads = 256;
   const size_t shared = static_cast<size_t>(threads + head_dim) * sizeof(float);
   hipLaunchKernelGGL(
-      HIP_KERNEL_NAME(qwen35_paged_full_attn_prefill_gqa_gate_int8_groupwise_kernel<scale_t, quant_group_dim, use_hadamard>),
+      HIP_KERNEL_NAME(qwen35_paged_full_attn_prefill_gqa_gate_int8_groupwise_kernel<scale_t, quant_group_dim, use_hadamard, out_bf16>),
       dim3(static_cast<unsigned int>(num_q_heads), static_cast<unsigned int>(rows)),
       dim3(threads),
       shared,
@@ -4830,7 +5463,7 @@ extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_int8_scale_f32_
     const float* k_scale,
     const float* v_scale,
     const half_t* gate,
-    half_t* out,
+    uint16_t* out,
     const int32_t* block_tables,
     const int64_t* context_counts,
     const int64_t* row_positions,
@@ -4869,6 +5502,224 @@ extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_int8_scale_f32_
       stream);
 }
 
+// BF16-output sibling for the GGUF resident (BF16-pipeline) route: the
+// gated attention output is stored as BF16 bits so the attn_output
+// projection consumes the same activation dtype as every other owner of
+// the full_gated scratch buffer. The fp16-output symbols above remain
+// the PARO (fp16-pipeline) contract.
+extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_int8_scale_f32_bf16out_spans(
+    const float* query,
+    const int8_t* key_cache,
+    const int8_t* value_cache,
+    const float* k_scale,
+    const float* v_scale,
+    const half_t* gate,
+    uint16_t* out,
+    const int32_t* block_tables,
+    const int64_t* context_counts,
+    const int64_t* row_positions,
+    int64_t rows,
+    int64_t max_context_len,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t gate_stride1,
+    int64_t gate_stride2,
+    float scale,
+    hipStream_t stream) {
+  return launch_qwen35_paged_full_attn_prefill_gqa_gate_int8<float, 256, false, true>(
+      query,
+      key_cache,
+      value_cache,
+      k_scale,
+      v_scale,
+      gate,
+      out,
+      block_tables,
+      context_counts,
+      row_positions,
+      rows,
+      max_context_len,
+      block_size,
+      block_table_len,
+      num_q_heads,
+      num_kv_heads,
+      head_dim,
+      gate_stride1,
+      gate_stride2,
+      scale,
+      stream);
+}
+
+
+int launch_qwen35_paged_full_attn_prefill_gqa_gate_int8_flash(
+    const float* query,
+    const int8_t* key_cache,
+    const int8_t* value_cache,
+    const float* k_scale,
+    const float* v_scale,
+    const half_t* gate,
+    uint16_t* out,
+    const int32_t* block_tables,
+    const int64_t* context_counts,
+    const int64_t* row_positions,
+    int64_t rows,
+    int64_t max_context_len,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t gate_stride1,
+    int64_t gate_stride2,
+    float scale,
+    hipStream_t stream) {
+  if (rows <= 0 || max_context_len <= 0 || block_size != 256 || block_table_len <= 0 ||
+      num_q_heads != 24 || num_kv_heads != 4 || head_dim != 256 || gate_stride1 <= 0 ||
+      gate_stride2 <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 6 * 32;
+  // LDS: q heads (6 x 256 f32) + staged K/V tiles (32 tokens x 256 int8
+  // each) + per-token scales and plane offsets for the staged tile.
+  const size_t shared =
+      static_cast<size_t>(6 * head_dim) * sizeof(float) +
+      static_cast<size_t>(2 * 32 * head_dim) +
+      static_cast<size_t>(3 * 32) * sizeof(float);
+  hipLaunchKernelGGL(
+      HIP_KERNEL_NAME(qwen35_paged_full_attn_prefill_gqa_gate_int8_flash_kernel<float, 6, 24, 4, true>),
+      dim3(static_cast<unsigned int>(num_kv_heads), static_cast<unsigned int>(rows)),
+      dim3(threads),
+      shared,
+      stream,
+      query,
+      key_cache,
+      value_cache,
+      k_scale,
+      v_scale,
+      gate,
+      out,
+      block_tables,
+      context_counts,
+      row_positions,
+      rows,
+      max_context_len,
+      block_size,
+      block_table_len,
+      head_dim,
+      gate_stride1,
+      gate_stride2,
+      scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_int8_scale_f32_bf16out_wmma_spans(
+    const float* query,
+    const int8_t* key_cache,
+    const int8_t* value_cache,
+    const float* k_scale,
+    const float* v_scale,
+    const half_t* gate,
+    uint16_t* out,
+    const int32_t* block_tables,
+    const int64_t* context_counts,
+    const int64_t* row_positions,
+    int64_t rows,
+    int64_t max_context_len,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t gate_stride1,
+    int64_t gate_stride2,
+    float scale,
+    hipStream_t stream) {
+  if (rows <= 0 || max_context_len <= 0 || block_size != 256 ||
+      block_table_len <= 0 || num_q_heads != 24 || num_kv_heads != 4 ||
+      head_dim != 256 || gate_stride1 <= 0 || gate_stride2 <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int query_rows = 8;
+  const int64_t tiles = (rows + query_rows - 1) / query_rows;
+  // LDS: persistent Q tile + reused K/V tile (48 x 264 halves each) plus
+  // the staged scales and plane offsets.
+  const size_t shared =
+      static_cast<size_t>(2 * 48 * 264) * sizeof(half_t) +
+      static_cast<size_t>(3 * 48) * sizeof(float);
+  hipLaunchKernelGGL(
+      HIP_KERNEL_NAME(qwen35_paged_full_attn_prefill_gqa_gate_int8_wmma_kernel),
+      dim3(4, static_cast<unsigned int>(tiles)),
+      dim3(32, 3),
+      shared,
+      stream,
+      query,
+      key_cache,
+      value_cache,
+      k_scale,
+      v_scale,
+      gate,
+      out,
+      block_tables,
+      context_counts,
+      row_positions,
+      rows,
+      max_context_len,
+      block_table_len,
+      gate_stride1,
+      gate_stride2,
+      scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_int8_scale_f32_bf16out_flash_spans(
+    const float* query,
+    const int8_t* key_cache,
+    const int8_t* value_cache,
+    const float* k_scale,
+    const float* v_scale,
+    const half_t* gate,
+    uint16_t* out,
+    const int32_t* block_tables,
+    const int64_t* context_counts,
+    const int64_t* row_positions,
+    int64_t rows,
+    int64_t max_context_len,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t gate_stride1,
+    int64_t gate_stride2,
+    float scale,
+    hipStream_t stream) {
+  return launch_qwen35_paged_full_attn_prefill_gqa_gate_int8_flash(
+      query,
+      key_cache,
+      value_cache,
+      k_scale,
+      v_scale,
+      gate,
+      out,
+      block_tables,
+      context_counts,
+      row_positions,
+      rows,
+      max_context_len,
+      block_size,
+      block_table_len,
+      num_q_heads,
+      num_kv_heads,
+      head_dim,
+      gate_stride1,
+      gate_stride2,
+      scale,
+      stream);
+}
+
 extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_int8_scale_fp16_spans(
     const float* query,
     const int8_t* key_cache,
@@ -4876,7 +5727,7 @@ extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_int8_scale_fp16
     const half_t* k_scale,
     const half_t* v_scale,
     const half_t* gate,
-    half_t* out,
+    uint16_t* out,
     const int32_t* block_tables,
     const int64_t* context_counts,
     const int64_t* row_positions,
@@ -4918,7 +5769,7 @@ extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_int8_scale_fp16
 #define DEFINE_HADAMARD_GROUP32_PREFILL(SUFFIX, SCALE_T)                                      \
 extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_int8_hadamard_group32_scale_##SUFFIX##_spans(\
     const float* query, const int8_t* key_cache, const int8_t* value_cache,                    \
-    const SCALE_T* k_scale, const SCALE_T* v_scale, const half_t* gate, half_t* out,           \
+    const SCALE_T* k_scale, const SCALE_T* v_scale, const half_t* gate, uint16_t* out,         \
     const int32_t* block_tables, const int64_t* context_counts, const int64_t* row_positions,  \
     int64_t rows, int64_t max_context_len, int64_t block_size, int64_t block_table_len,        \
     int64_t num_q_heads, int64_t num_kv_heads, int64_t head_dim, int64_t gate_stride1,         \
@@ -6031,7 +6882,7 @@ int launch_qwen35_paged_full_attn_prefill_gqa_gate_bf16(
   const bool use_short_block256 = block_size == 256 && max_context_len <= 512;
 #define HIPENGINE_LAUNCH_PREFILL_GQA_BF16(SHORT) \
   hipLaunchKernelGGL( \
-      (qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel<SHORT>), \
+      (qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel<SHORT, false>), \
       dim3(static_cast<unsigned int>(num_q_heads), static_cast<unsigned int>(rows)), \
       dim3(threads), \
       shared, \
@@ -6053,13 +6904,56 @@ int launch_qwen35_paged_full_attn_prefill_gqa_gate_bf16(
       head_dim, \
       gate_stride1, \
       gate_stride2, \
-      scale)
+      scale, \
+      nullptr, \
+      0)
   if (use_short_block256) {
     HIPENGINE_LAUNCH_PREFILL_GQA_BF16(true);
   } else {
     HIPENGINE_LAUNCH_PREFILL_GQA_BF16(false);
   }
 #undef HIPENGINE_LAUNCH_PREFILL_GQA_BF16
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_bf16_global_scores_spans(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    const uint16_t* gate,
+    uint16_t* out,
+    const int32_t* block_tables,
+    const int64_t* context_counts,
+    const int64_t* row_positions,
+    int64_t rows,
+    int64_t max_context_len,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t gate_stride1,
+    int64_t gate_stride2,
+    float scale,
+    hipStream_t stream,
+    float* score_workspace,
+    int64_t score_stride) {
+  if (rows <= 0 || max_context_len <= 0 || block_size <= 0 || block_table_len <= 0 ||
+      num_q_heads <= 0 || num_kv_heads <= 0 || head_dim <= 0 || head_dim > 256 ||
+      (head_dim % 4) != 0 || gate_stride1 <= 0 || gate_stride2 <= 0 ||
+      (num_q_heads % num_kv_heads) != 0 || score_workspace == nullptr ||
+      score_stride < max_context_len) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = max_context_len <= 1024 ? 32 : 64;
+  const size_t shared = static_cast<size_t>(threads + head_dim) * sizeof(float);
+  hipLaunchKernelGGL(
+      (qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel<false, true>),
+      dim3(static_cast<unsigned int>(num_q_heads), static_cast<unsigned int>(rows)),
+      dim3(threads), shared, stream,
+      query, key_cache, value_cache, gate, out, block_tables, context_counts, row_positions,
+      rows, max_context_len, block_size, block_table_len, num_q_heads, num_kv_heads,
+      head_dim, gate_stride1, gate_stride2, scale, score_workspace, score_stride);
   return static_cast<int>(hipGetLastError());
 }
 

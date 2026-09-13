@@ -1,0 +1,51 @@
+{
+  "kind": "gguf_decode_boundary_ladder",
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "prompt_rows": 2048,
+  "prompt_kind": "deterministic_varied_rng20260909",
+  "max_sequence_length": 16384,
+  "decode_tokens": 64,
+  "execution_mode": "eager (no graph capture)",
+  "sampler": "greedy",
+  "kv": "int8_per_token_head + fp32 scales",
+  "arms": {
+    "r0_raw_session": {
+      "prefill_wall_seconds": 2.738,
+      "prefill_tok_s": 747.88,
+      "step_walls": {
+        "count": 63,
+        "median_ms": 35.146,
+        "p95_ms": 35.32,
+        "min_ms": 34.45,
+        "max_ms": 48.494
+      },
+      "generated_head": [
+        198,
+        1
+      ]
+    },
+    "r1_packed_entry": {
+      "prefill_wall_seconds": 2.797,
+      "prefill_tok_s": 732.28,
+      "executor_mode": "single_slab",
+      "step_walls": {
+        "count": 63,
+        "median_ms": 35.217,
+        "p95_ms": 35.399,
+        "min_ms": 34.707,
+        "max_ms": 35.663
+      },
+      "generated_head": [
+        198,
+        1
+      ]
+    },
+    "r3_public_llm": {
+      "wall_seconds": 5.003,
+      "tokens_per_s_aggregate": 12.792,
+      "generated_head": "\n\t\t\"\t\t\"\t\t\"\t\t\"\t\t\""
+    }
+  },
+  "r1_over_r0_step_median_ratio": 1.002,
+  "r1_minus_r0_step_median_ms": 0.071
+}

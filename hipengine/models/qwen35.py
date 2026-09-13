@@ -193,6 +193,9 @@ _QWEN36_DENSE_Q4KM_MTP_SERVING_EVIDENCE = (
 
 
 _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
+    # W7900 C1 evidence is withdrawn: its runs used the legacy singleton
+    # target after preparation. Requalify the packed target independently
+    # before adding C1 serving rows (see the better-MTP campaign review).
     SpeculativeMTPServingEvidence(
         evidence_key="qwen38-q4km-gfx1151-strict-bf16-c1-b3-natural25-s0",
         artifact_sha256=(
@@ -433,6 +436,38 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
         automatic_eligible=False,
     ),
     SpeculativeMTPServingEvidence(
+        evidence_key="qwen38-q4km-gfx1100-production-bf16-c2-k3-d24",
+        artifact_sha256=(
+            "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
+        ),
+        artifact_size_bytes=17_106_773_984,
+        backend="hip_gfx1100",
+        target_arch="gfx1100",
+        weight_quant="gguf_q4_k_m",
+        execution_profile="production",
+        execution_profile_manifest_sha256=(
+            "2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960"
+        ),
+        kv_storage="bf16",
+        kv_layout="uniform",
+        realized_group_rows=2,
+        resident_capacity=2,
+        candidate_budget=3,
+        sampling_modes=("greedy_fast",),
+        max_sequence_length=1024,
+        min_context_tokens=4,
+        max_context_tokens=95,
+        min_output_horizon_tokens=24,
+        max_output_horizon_tokens=24,
+        reason="qualified_explicit_gfx1100_production_c2_k3_d24_packet6_grid_selection_2026_09_06",
+        evidence_artifacts=(
+            "benchmarks/results/2026-09-06-w7900-q4km-mtp-packet6-grid-and-c2k3.json",
+        ),
+        max_realized_group_rows=2,
+        strict_fallback_key="gguf_target_ar",
+        automatic_eligible=False,
+    ),
+    SpeculativeMTPServingEvidence(
         evidence_key="qwen38-q4km-gfx1100-production-bf16-c8-k3-d24",
         artifact_sha256=(
             "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
@@ -483,17 +518,20 @@ _QWEN38_GGUF_KV_CAPABILITY_EVIDENCE = (
             scale_granularity="per_token_head",
         ),
         decision="qualified",
-        scope="explicit_no_mirror_c1_direct_c4_serial",
+        scope="explicit_no_mirror_direct_c4",
         quality_artifact=(
             "benchmarks/results/"
             "2026-08-16-qwen38-27b-actual-context-quality-w7900.json"
         ),
         reason=(
             "complete 512/8 and 4K/16 plus bounded 129024/16 quality pass on "
-            "gfx1100; direct compact execution is qualified at physical c1, with "
-            "artifact-scoped serial c1-per-row residency through logical c4"
+            "gfx1100; direct compact row-batched decode is qualified to physical "
+            "c4 because the row-batched 24Q/4KV/D256 producer and its strided "
+            "reducer are bit-identical to the already-qualified c1 leaf at fixed "
+            "width and across retire/admit transitions, so the retained quality "
+            "artifact stays the applicable quality basis"
         ),
-        max_direct_rows=1,
+        max_direct_rows=4,
         max_serial_resident_rows=4,
         persistent_bf16_mirror=False,
         decode_batch_variant=(

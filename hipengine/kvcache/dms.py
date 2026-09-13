@@ -1054,6 +1054,9 @@ class DMSOperation:
     counter_snapshot: tuple[int, int, int, int]
 
 
+_CODEC_EVALUATION_ACCESS = object()
+
+
 class DMSCompactBackend:
     """Compact DMS topology whose codec does not alter scheduler lifecycle."""
 
@@ -1070,21 +1073,26 @@ class DMSCompactBackend:
         codec_qualification: DMSCodecQualification | None = None,
         device_payloads: bool | None = None,
         device_backend: str = "hip_gfx1100",
+        _codec_evaluation_access: object | None = None,
     ) -> None:
         if codec not in _DMS_CODECS:
             raise ValueError(f"unsupported compact DMS codec {codec!r}")
-        if device_payloads_requested(device_payloads) and codec != "bf16":
-            raise ValueError("compact DMS device payloads are BF16-only")
+        evaluation_only = _codec_evaluation_access is _CODEC_EVALUATION_ACCESS
+        if _codec_evaluation_access is not None and not evaluation_only:
+            raise ValueError("invalid DMS codec evaluation access")
+        if evaluation_only and (codec != "int8_per_token_head" or codec_qualification is not None):
+            raise ValueError("codec evaluation cannot carry qualification")
         if codec == "int8_per_token_head":
-            if codec_qualification is None:
+            if codec_qualification is None and not evaluation_only:
                 raise ValueError("compact INT8 DMS requires artifact qualification")
-            if codec_qualification.artifact_fingerprint != retrofit.artifact_fingerprint:
+            if codec_qualification is not None and codec_qualification.artifact_fingerprint != retrofit.artifact_fingerprint:
                 raise ValueError("compact INT8 qualification artifact mismatch")
         elif codec_qualification is not None:
             raise ValueError("BF16 compact DMS does not accept codec qualification")
         self.retrofit = retrofit
         self.codec = codec
         self.codec_qualification = codec_qualification
+        self.codec_evaluation_only = evaluation_only
         self.device_backend = str(device_backend)
         self.slots_per_layer = int(slots_per_layer)
         self.max_request_rows = int(max_request_rows)
@@ -1137,6 +1145,7 @@ class DMSCompactBackend:
                     slots_per_layer=self.slots_per_layer,
                     max_pack_rows=self.max_pack_rows,
                     backend=self.device_backend,
+                    codec=self.codec,
                 )
             except DMSDeviceUnavailable:
                 # Host parent remains the registered fallback.
@@ -1671,38 +1680,40 @@ class DMSCompactBackend:
         expected = (self.retrofit.num_layers, self.retrofit.num_kv_heads)
         if evict_new.shape != expected:
             raise ValueError("DMS direct append eviction metadata shape mismatch")
+        position = int(position)
+        window = int(self.retrofit.window_size)
+        evicted_total = 0
         for layer in range(self.retrofit.num_layers):
             device_live = self._device_store.live_counts(layer)
             for head in range(self.retrofit.num_kv_heads):
                 live = int(state.live_counts[layer, head])
                 prior_positions = state.token_positions[layer, head, :live]
                 prior_evict = state.evict_mask[layer, head, :live]
-                keep = (~prior_evict) | (
-                    int(position) - prior_positions <= self.retrofit.window_size
-                )
-                removed = int(live - np.count_nonzero(keep))
-                combined_positions = np.concatenate(
-                    (
-                        prior_positions[keep],
-                        np.asarray([int(position)], dtype=np.int32),
-                    )
-                )
-                combined_evict = np.concatenate(
-                    (prior_evict[keep], np.asarray([evict_new[layer, head]]))
-                )
-                final_live = int(combined_positions.size)
+                keep = (~prior_evict) | (position - prior_positions <= window)
+                final_live = int(live - np.count_nonzero(~keep)) + 1
                 if final_live != int(device_live[head]):
                     raise RuntimeError("DMS direct append device/host live-count mismatch")
                 capacity = int(state.range_capacity[layer, head])
                 if final_live > capacity:
                     raise MemoryError("DMS direct append exceeded committed extent")
-                state.live_counts[layer, head] = final_live
-                state.token_positions[layer, head, :final_live] = combined_positions
+                removed = live - (final_live - 1)
+                if removed:
+                    # Compact only the eviction case: kept entries to the
+                    # front, then append the new token. The steady state
+                    # evicts ~1 entry per (layer, head) per step, so the
+                    # common path below writes only the appended slot.
+                    state.token_positions[layer, head, : final_live - 1] = prior_positions[keep]
+                    state.evict_mask[layer, head, : final_live - 1] = prior_evict[keep]
+                state.token_positions[layer, head, final_live - 1] = position
                 state.token_positions[layer, head, final_live:capacity] = -1
-                state.evict_mask[layer, head, :final_live] = combined_evict
+                state.evict_mask[layer, head, final_live - 1] = bool(
+                    evict_new[layer, head]
+                )
                 state.evict_mask[layer, head, final_live:capacity] = False
-                self.evicted_tokens += removed
-        state.logical_tokens = max(state.logical_tokens, int(position) + 1)
+                state.live_counts[layer, head] = final_live
+                evicted_total += removed
+        state.logical_tokens = max(state.logical_tokens, position + 1)
+        self.evicted_tokens += evicted_total
         self.decode_appends += 1
 
     def compact_decode_attention(
@@ -1803,6 +1814,8 @@ class DMSCompactBackend:
             self._device_store.split_workspace_ptrs
         )
         return {
+            "codec": self.codec,
+            **self._device_store.layer_scale_ptrs(layer),
             "k_ptr": k_ptr,
             "v_ptr": v_ptr,
             "base_ptr": base_ptr,
@@ -1843,8 +1856,9 @@ class DMSCompactBackend:
         scales = None
         if self.codec == "int8_per_token_head":
             scales = KVScaleMetadata(
-                k_scale=Tensor.from_handle(base + 0x7000, (rows, layers, heads, capacity), DType.FP16, _CPU),
-                v_scale=Tensor.from_handle(base + 0x8000, (rows, layers, heads, capacity), DType.FP16, _CPU),
+                scale_dtype=DType.FP32,
+                k_scale=Tensor.from_handle(base + 0x7000, (rows, layers, heads, capacity), DType.FP32, _CPU),
+                v_scale=Tensor.from_handle(base + 0x8000, (rows, layers, heads, capacity), DType.FP32, _CPU),
             )
         spans = KVLiveSpans(
             base_offsets=Tensor.from_handle(base + 0x1000, (rows, layers, heads), DType.INT32, _CPU),
@@ -2003,6 +2017,7 @@ class DMSCompactBackend:
             "backend": {
                 "topology": "dms_compact",
                 "codec": self.codec,
+                "codec_evaluation_only": self.codec_evaluation_only,
                 "artifact_fingerprint": self.retrofit.artifact_fingerprint,
                 "retrofit_fingerprint": self.retrofit.fingerprint,
                 "decision_source": self.retrofit.decision_source,
@@ -2026,6 +2041,9 @@ class DMSCompactBackend:
                 ),
                 "payload_bytes": payload_bytes,
                 "scale_bytes": scale_bytes,
+                "device_resident_bytes": (
+                    None if self._device_store is None else self._device_store.resident_bytes
+                ),
             },
             "operations": {
                 "streaming_pack_calls": self.pack_calls,
@@ -2234,6 +2252,15 @@ class DMSCompactResidentRunnerAdapter:
 
     def resource_observability_snapshot(self) -> dict[str, Any]:
         return self.admission.resource_observability_snapshot()
+
+
+def create_dms_int8_evaluation_backend(**kwargs: Any) -> DMSCompactBackend:
+    """Create an unqualified candidate for offline codec evaluation, not serving."""
+    return DMSCompactBackend(
+        codec="int8_per_token_head",
+        _codec_evaluation_access=_CODEC_EVALUATION_ACCESS,
+        **kwargs,
+    )
 
 
 def create_dms_bf16_backend(**kwargs: Any) -> DMSCompactBackend:

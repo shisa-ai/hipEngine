@@ -262,9 +262,13 @@ class LLM:
         max_active_requests: int | None = None,
         max_sequence_length: int | None = None,
         prefix_cache: str | None = None,
+        speculative_mtp_serving: str | None = None,
         speculative_provider: str | None = None,
         draft_model: str | None = None,
         speculative_candidate_budget: int = 4,
+        kv_storage: str | None = None,
+        kv_scale_dtype: str | None = None,
+        kv_scale_granularity: str | None = None,
         vision_model: str | None = None,
     ) -> None:
         if max_active_requests is not None and int(max_active_requests) <= 0:
@@ -306,6 +310,11 @@ class LLM:
         self.speculative_provider = provider
         self.draft_model = drafter
         self.speculative_candidate_budget = candidate_budget
+        self.kv_storage = None if kv_storage is None else str(kv_storage)
+        self.kv_scale_dtype = None if kv_scale_dtype is None else str(kv_scale_dtype)
+        self.kv_scale_granularity = (
+            None if kv_scale_granularity is None else str(kv_scale_granularity)
+        )
         self.vision_model = (
             None if vision_model is None else str(vision_model).strip()
         )
@@ -317,6 +326,14 @@ class LLM:
             from hipengine.kvcache import resolve_prefix_cache_mode
 
             self.prefix_cache = resolve_prefix_cache_mode(prefix_cache)
+        # P4 (roadmap F2): the MTP serving policy must reach
+        # configure_engine_loop, where the packed KV plane lease is skipped
+        # only when no plane consumer (MTP verifier included) can appear.
+        self.speculative_mtp_serving = (
+            None
+            if speculative_mtp_serving is None
+            else str(speculative_mtp_serving).strip().lower().replace("-", "_")
+        )
         self._resolved_backend: str | None = None
         self._resolved_quant: str | None = None
         self._resolved_execution_profile: Any | None = None
@@ -959,6 +976,15 @@ class LLM:
             engine_loop_config_from_env(),
             generator,
         )
+        if self.kv_storage is not None:
+            # Publish the server-configured KV policy so the eager model-load
+            # prepare locks it instead of auto-resolving BF16 (which would
+            # reject the explicit per-request policy at startup).
+            generator.request_kv_policy_hint = (
+                self.kv_storage,
+                self.kv_scale_dtype or "fp16",
+                self.kv_scale_granularity or "per_token_head",
+            )
         resident_capacity = self.max_active_requests
         registered_plain_ar_capacity = _server_plain_ar_capacity(
             generator,
@@ -983,6 +1009,11 @@ class LLM:
             )
         if self.prefix_cache is not None:
             loop_config = replace(loop_config, prefix_cache=self.prefix_cache)
+        if self.speculative_mtp_serving is not None:
+            loop_config = replace(
+                loop_config,
+                speculative_mtp_serving=self.speculative_mtp_serving,
+            )
         resident_driver = SubmitPollTextGenerator(
             generator,
             config=loop_config,
@@ -1042,27 +1073,45 @@ class LLM:
         backend: str | None = None,
         quant: str | None = None,
     ) -> Any | None:
-        if self.execution_profile is None:
-            return None
         if self._resolved_execution_profile is not None:
             return self._resolved_execution_profile
         if model_plugin is None:
             _weight_index, model_plugin = self._load_model_metadata()
         concrete_backend = self._resolve_backend() if backend is None else backend
         concrete_quant = self._resolve_quant(model_plugin) if quant is None else quant
-        from hipengine.execution_profiles import resolve_runtime_profile
+        from hipengine.execution_profiles import (
+            resolve_default_execution_profile,
+            resolve_runtime_profile,
+        )
 
+        requested = self.execution_profile
+        if requested is None:
+            # Shipped default: a combination with a certified production plan
+            # runs it without the caller naming a profile. A combination with no
+            # registered plan keeps the migration path, which is not a profile.
+            requested = resolve_default_execution_profile(
+                model=model_plugin.name,
+                backend=concrete_backend,
+                quant=concrete_quant,
+            )
+            if requested is None:
+                return None
         self._resolved_execution_profile = resolve_runtime_profile(
             model=model_plugin.name,
             backend=concrete_backend,
             quant=concrete_quant,
-            profile=self.execution_profile,
+            profile=requested,
         )
         return self._resolved_execution_profile
 
     @property
     def resolved_execution_profile(self) -> str | None:
-        """Return the explicit resolved profile, or ``None`` for legacy migration."""
+        """Return the resolved profile, or ``None`` on the migration path.
+
+        A combination with a certified production plan resolves to
+        ``production`` when no profile was requested; a combination with no
+        registered plan returns ``None``.
+        """
 
         resolution = self._resolve_execution_profile()
         return None if resolution is None else resolution.profile.value

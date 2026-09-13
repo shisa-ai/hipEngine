@@ -1,0 +1,78 @@
+{
+  "kind": "gguf_server_cwidth_decode_baseline",
+  "protocol_tier": 1,
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "kv": "int8_per_token_head + fp32 scales",
+  "route": "repaired C1 route (slot-local prefill, packed batch decode above 1 slot, per-width pool lease)",
+  "prompt_rows": 2048,
+  "max_tokens": 64,
+  "prompt_kind": "deterministic_varied_rng20260909_lanes",
+  "withdrawn": "aggregate_decode_tok_s_est and the 31%/13%-of-serial conclusions from the 2026-09-10 artifact are withdrawn as invalid: they subtracted one isolated prefill from a wall containing width prefills and compared against N x C1, a rate one GPU cannot multiply.",
+  "widths": {
+    "1": {
+      "status": "pass",
+      "concurrent": {
+        "phase": "concurrent",
+        "wall_s": 5.018,
+        "status": "pass",
+        "per_request_wall_s": [
+          5.017
+        ],
+        "prompt_tokens_reported": [
+          2048
+        ],
+        "completion_tokens_reported": [
+          64
+        ],
+        "prompt_tokens_total": 2048,
+        "completion_tokens_total": 64,
+        "complete_request_throughput_tok_s": 420.902,
+        "measured_decode_steps": 64,
+        "measured_prefill_steps": 8,
+        "measured_decode_steps_per_s": 12.755,
+        "measured_decode_steps_note": "measured model decode steps over the phase wall; a scheduling-rate observation, not isolated decode efficiency",
+        "fallback_reasons_delta": {},
+        "route_counts_delta": {
+          "host_sampler_requests": 0.0,
+          "native_c1_decode_steps": 63.0,
+          "native_full_prefill_groups": 0.0,
+          "native_full_prefill_rows": 0.0,
+          "native_incremental_prefill_chunks": 0.0,
+          "native_incremental_prefill_unsampled_chunks": 0.0,
+          "native_packed_decode_steps": 0.0,
+          "native_packed_graph_captures": 0.0,
+          "native_packed_graph_replays": 0.0,
+          "native_sampled_prefill_rows": 0.0,
+          "native_sampler_batch_launches": 0.0,
+          "native_sampler_requests": 0.0,
+          "native_sampler_row_launches": 0.0,
+          "resident_fallback_requests": 0.0,
+          "serial_c1_row_steps": 0.0,
+          "serial_decode_fallback_steps": 0.0
+        },
+        "prefill_executor_modes_delta": {
+          "layer_outer_packed": 1.0
+        },
+        "kv_attention_sources_delta": {
+          "int8_direct": 0.0
+        },
+        "execution_manifest": {
+          "claim_level": "unavailable",
+          "kind": "gguf_ar_c1_execution_manifest",
+          "kv_attention_source": "unavailable",
+          "logical_c": "1",
+          "mode": "native_c1_eager",
+          "physical_execution_width": "1",
+          "rows": "1",
+          "serial_decode_fallback": "false",
+          "throughput_claim_eligible": "false"
+        }
+      },
+      "serial_control": {
+        "status": "skipped"
+      },
+      "vram_free_gib_before_launch": 44.871,
+      "teardown": "clean"
+    }
+  }
+}

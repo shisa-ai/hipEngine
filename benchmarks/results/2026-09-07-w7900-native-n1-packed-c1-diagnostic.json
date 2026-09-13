@@ -1,0 +1,207 @@
+{
+  "schema": 1,
+  "kind": "native_capacity_one_packed_c1_diagnostic",
+  "date": "2026-09-07",
+  "performance_claim": false,
+  "base_commit": "ccf67ca6a570196315cbc5aa98b2384519141545",
+  "source": "Uncommitted ownership changes committed with this artifact; no kernel changes",
+  "hardware": {
+    "host": "epyc",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+    "gpu": "AMD Radeon Pro W7900",
+    "uuid": "GPU-e282895b62c2b295",
+    "target_arch": "gfx1100",
+    "rocm": "7.2.4",
+    "identity_source": "campaign-artifacts/packet0/provenance.txt"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+    "quant": "Q4_K_M",
+    "kv": "bf16",
+    "execution_profile": "production",
+    "manifest_sha256": "2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960"
+  },
+  "provenance_note": "Identity inherited from Packet 0 and merge review; no model/kernel/profile change in this unit. Not a timed performance comparison; GPU1 was active during diagnostics.",
+  "scope": "C1/K3 at N1 and N2; full ten-prompt category/heldout suite; D24 greedy; 1024 sequence limit; 20ms batch window; true no-MTP AR at matching capacity",
+  "results": [
+    {
+      "diagnostic_only": true,
+      "performance_claim": false,
+      "budget": 3,
+      "resident_capacity": 1,
+      "cells": [
+        {
+          "prompt_id": "code_merge_intervals",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 7
+        },
+        {
+          "prompt_id": "code_topological_sort",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 7
+        },
+        {
+          "prompt_id": "code_lru_cache",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 7
+        },
+        {
+          "prompt_id": "code_markdown_table",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 6
+        },
+        {
+          "prompt_id": "general_en_plan",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 6
+        },
+        {
+          "prompt_id": "general_en_explain",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 7
+        },
+        {
+          "prompt_id": "general_ja_plan",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 8
+        },
+        {
+          "prompt_id": "general_ja_explain",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 8
+        },
+        {
+          "prompt_id": "mixed_ja_en_translate",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 7
+        },
+        {
+          "prompt_id": "mixed_ja_en_review",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 7
+        }
+      ],
+      "passed": true,
+      "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 .venv/bin/python campaign-artifacts/review/check_packed_c1.py --capacity 1 --output /tmp/packed-c1-n1.json"
+    },
+    {
+      "diagnostic_only": true,
+      "performance_claim": false,
+      "budget": 3,
+      "resident_capacity": 2,
+      "cells": [
+        {
+          "prompt_id": "code_merge_intervals",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 7
+        },
+        {
+          "prompt_id": "code_topological_sort",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 7
+        },
+        {
+          "prompt_id": "code_lru_cache",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 7
+        },
+        {
+          "prompt_id": "code_markdown_table",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 6
+        },
+        {
+          "prompt_id": "general_en_plan",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 6
+        },
+        {
+          "prompt_id": "general_en_explain",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 7
+        },
+        {
+          "prompt_id": "general_ja_plan",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 8
+        },
+        {
+          "prompt_id": "general_ja_explain",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 8
+        },
+        {
+          "prompt_id": "mixed_ja_en_translate",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 7
+        },
+        {
+          "prompt_id": "mixed_ja_en_review",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 7
+        }
+      ],
+      "passed": true,
+      "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 .venv/bin/python campaign-artifacts/review/check_packed_c1.py --capacity 2 --output /tmp/packed-c1-n2.json"
+    }
+  ],
+  "validation": {
+    "red": "2 failed N1 tests (legacy constructor, partition bound zero), 4 passed N2/8",
+    "cpu_mtp": "458 passed,18 skipped: tests/test_specdec2_*.py tests/test_qwen35_gguf_mtp*.py tests/test_speculative_mtp_serving_capability.py",
+    "cpu_server": "615 passed,2 skipped: tests/test_server_api.py tests/test_qwen35_gguf_nextn_provider.py tests/test_benchmark_readme_sync.py",
+    "final_focused": "33 passed: tests/test_qwen35_gguf_mtp2_c1_physical.py (adds N1/2 state-opening cases after bundle)",
+    "cpu_smoke": "compileall, check_fixtures, registry, cpu-fixtures, smoke-add-plan, diff --check passed"
+  },
+  "decision": {
+    "public_c1": "No public evidence added; diagnostic only",
+    "qwen36_gfx1151": "Default packed_c1_target=False preserves legacy ownership; backend package gate still required",
+    "automatic": "Qwen3.8 K0 unchanged"
+  },
+  "remaining": [
+    "Independent strict-teacher logit/state gates and deterministic repeats",
+    "All slots, grow/shrink, sparse refill, cancellation, rollback/retry, EOS, clean drain",
+    "Packed C1 K1-K7 and missing fixed-N8 C2 controls",
+    "Sustained context/horizon and balanced repeated economics before promotion"
+  ]
+}

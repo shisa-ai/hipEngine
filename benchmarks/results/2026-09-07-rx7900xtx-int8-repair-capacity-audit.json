@@ -1,0 +1,641 @@
+{
+  "schema": 1,
+  "date": "2026-09-07",
+  "kind": "xtx_int8_repair_capacity_and_dms_device_audit",
+  "performance_claim": false,
+  "capacity_claim": true,
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "size_bytes": 17106773984,
+    "sampled_fingerprint_sha256": "9fb7bd4ac04dd0be6946550474299cba8808e11b30e4d94b5a3911c1727b49b1"
+  },
+  "model_sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+  "device": {
+    "gpu_index_requested": 1,
+    "pci_id": "0000:10:00.0",
+    "drm_card": "card0",
+    "unique_id": "cc4d02090dc9c3ff",
+    "vram_total_bytes": 25753026560,
+    "hip_visible_devices": "1",
+    "selection_note": "card resolved by pci_id through hipengine.util.amdgpu_vram; server-reported ordinal cross-checked against the request"
+  },
+  "physical_host": {
+    "hostname": "epyc",
+    "cpu": "AMD Ryzen 9 5950X",
+    "identity_basis": "PCI0000:10:00.0 and unique_id cc4d02090dc9c3ff; host name is not a CPU model"
+  },
+  "protocol": "A point passes only if the server starts from cold on the verified card and completes one request whose prompt and output tokens match exact server accounting at the intended horizon, with clean post-request ownership.",
+  "sampling_note": "Whole-card used VRAM sampled from sysfs mem_info_vram_used during startup and the request. Samples are lower bounds on transients shorter than the sampling interval.",
+  "dense_points": [
+    {
+      "context_tokens": 16128,
+      "prompt": {
+        "target_prompt_tokens": 16111,
+        "counted_prompt_tokens": 16111,
+        "filler_corpus_chars": 248,
+        "suffix_chars": 54
+      },
+      "completion": {
+        "generated_token_ids": [
+          369,
+          264,
+          1603,
+          3065,
+          13,
+          271,
+          760,
+          72103,
+          13236,
+          7189,
+          1754,
+          30957,
+          25347,
+          303,
+          264,
+          45366
+        ],
+        "generated_token_ids_sha256": "d13fbdb7b7e3dab2c1b6d6b328503841383e75cf2b62e907132be4d245a02236",
+        "generated_text": " is a good thing.\n\nThe harbourmaster records each arriving vessel in a ledger",
+        "finish_reason": "length",
+        "prompt_tokens": 16111,
+        "completion_tokens": 16,
+        "speculative_mtp": {
+          "effective_route": "default",
+          "used": false,
+          "draft_tokens": 0,
+          "accepted_draft_tokens": 0,
+          "rejected_draft_tokens": 0,
+          "acceptance_rate": null,
+          "draft_cycles": 0
+        },
+        "exact_accounting": true
+      },
+      "ownership": {
+        "pending_requests": 0,
+        "active_requests": 0,
+        "stream_producers": 0,
+        "model_active_requests": 0,
+        "session_count": 0,
+        "kv_refcounted_pages": 0,
+        "kv_pinned_pages": 0,
+        "graph_owners": 0,
+        "workspace_owners": 0,
+        "cache_resident_entries": 0,
+        "cache_resident_pages": 0,
+        "cache_resident_bytes": 0,
+        "allowed_cache_bytes": 0,
+        "expected_workspace_lease_pages": 63
+      },
+      "source": {
+        "commit": "8e0d8eae1f3da668e8211955842e8c3fe9ed99e9",
+        "tracked_clean": true,
+        "command": "python -m hipengine.server --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage int8_per_token_head --max-context-tokens 16128 --max-active-requests 1 --speculative-mtp-serving off --prefix-cache off",
+        "environment": {
+          "HIP_VISIBLE_DEVICES": "1",
+          "GPU_MAX_HW_QUEUES": "1",
+          "HIPENGINE_KV_POOL_IDLE_GRACE_SECONDS": "0",
+          "ROCR_VISIBLE_DEVICES": null
+        }
+      },
+      "config": {
+        "kv_storage": "int8_per_token_head",
+        "kv_scale_dtype": "fp32",
+        "kv_scale_granularity": "per_token_head",
+        "max_context_tokens": 16128,
+        "max_active_requests": 1,
+        "max_tokens": 16,
+        "prompt_tokens": null,
+        "speculative_mtp_serving": "off",
+        "prefix_cache": "off",
+        "startup_min_free_mib": 0,
+        "batch_window_ms": 5.0,
+        "sample_interval_ms": 20.0
+      },
+      "raw_path": "/tmp/xtx-capacity/int8-fixed-16128.json",
+      "raw_sha256": "ea772b221ed3de1fc93c2207f88f2eec17b4a3cbdbb2dc082e404507befb3d51",
+      "command": "HIP_VISIBLE_DEVICES=1 GPU_MAX_HW_QUEUES=1 .venv/bin/python scripts/gguf_context_ceiling_probe.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage int8_per_token_head --kv-scale-dtype fp32 --kv-scale-granularity per_token_head --context 16128 --max-tokens 16 --max-active-requests 1 --gpu-index 1 --request-timeout 1800 --json /tmp/xtx-capacity/int8-fixed-16128.json",
+      "status": "ok",
+      "memory": {
+        "card": {
+          "card_name": "card0",
+          "pci_id": "0000:10:00.0",
+          "sysfs_path": "/sys/class/drm/card0/device",
+          "vram_total_bytes": 25753026560,
+          "vram_total_gib": 23.984375
+        },
+        "memory_domain": "vram",
+        "memory_total_bytes": 25753026560,
+        "memory_total_gib": 23.984375,
+        "baseline_bytes": 28000256,
+        "baseline_gib": 0.0260772705078125,
+        "peak_bytes": 21857832960,
+        "peak_gib": 20.356693267822266,
+        "peak_delta_bytes": 21829832704,
+        "peak_delta_gib": 20.330615997314453,
+        "final_bytes": 121348096,
+        "final_gib": 0.11301422119140625,
+        "samples_count": 37570,
+        "interval_seconds": 0.02,
+        "elapsed_seconds": 751.3434179183096
+      },
+      "effective_kv": {
+        "storage": "int8_per_token_head",
+        "scale_dtype": "fp32",
+        "scale_granularity": "per_token_head",
+        "estimate": null,
+        "pool": {
+          "current_bytes": 1073479680.0,
+          "high_water_observed_bytes": 545259520.0,
+          "current_pages": 126.0,
+          "high_water_observed_pages": 64.0,
+          "grow_events": 0.0,
+          "grow_failures": 0.0,
+          "shrink_events": 0.0,
+          "free_pages": 63.0,
+          "refcounted_pages": 63.0,
+          "pinned_pages": 63.0,
+          "retired_pages": 0.0,
+          "retired_bytes": 0.0
+        }
+      },
+      "memory_accounting": {
+        "allocated_pool_bytes": 1073479680,
+        "int8_payload_bytes": 1056964608,
+        "fp32_scale_bytes": 16515072,
+        "pool_pages": 126,
+        "workspace_lease_pages": 63,
+        "note": "Pool backing includes pinned workspace lease; do not add it again. This is post-request pool state, not a live request payload census. Whole-card minus pool includes weights, transients and runtime overhead; detailed allocation attribution remains open."
+      }
+    },
+    {
+      "context_tokens": 32768,
+      "prompt": {
+        "target_prompt_tokens": 32751,
+        "counted_prompt_tokens": 32751,
+        "filler_corpus_chars": 248,
+        "suffix_chars": 54
+      },
+      "completion": {
+        "generated_token_ids": [
+          369,
+          264,
+          4047,
+          16629,
+          303,
+          6163,
+          13,
+          271,
+          760,
+          72103,
+          13236,
+          7189,
+          1754,
+          30957,
+          25347,
+          303
+        ],
+        "generated_token_ids_sha256": "779886a48f46c33a99b0de7edb072b446c6bc1af6497545bdbac010d9a9b6ec4",
+        "generated_text": " is a common phrase in English.\n\nThe harbourmaster records each arriving vessel in",
+        "finish_reason": "length",
+        "prompt_tokens": 32751,
+        "completion_tokens": 16,
+        "speculative_mtp": {
+          "effective_route": "default",
+          "used": false,
+          "draft_tokens": 0,
+          "accepted_draft_tokens": 0,
+          "rejected_draft_tokens": 0,
+          "acceptance_rate": null,
+          "draft_cycles": 0
+        },
+        "exact_accounting": true
+      },
+      "ownership": {
+        "pending_requests": 0,
+        "active_requests": 0,
+        "stream_producers": 0,
+        "model_active_requests": 0,
+        "session_count": 0,
+        "kv_refcounted_pages": 0,
+        "kv_pinned_pages": 0,
+        "graph_owners": 0,
+        "workspace_owners": 0,
+        "cache_resident_entries": 0,
+        "cache_resident_pages": 0,
+        "cache_resident_bytes": 0,
+        "allowed_cache_bytes": 0,
+        "expected_workspace_lease_pages": 128
+      },
+      "source": {
+        "commit": "8e0d8eae1f3da668e8211955842e8c3fe9ed99e9",
+        "tracked_clean": true,
+        "command": "python -m hipengine.server --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage int8_per_token_head --max-context-tokens 32768 --max-active-requests 1 --speculative-mtp-serving off --prefix-cache off",
+        "environment": {
+          "HIP_VISIBLE_DEVICES": "1",
+          "GPU_MAX_HW_QUEUES": "1",
+          "HIPENGINE_KV_POOL_IDLE_GRACE_SECONDS": "0",
+          "ROCR_VISIBLE_DEVICES": null
+        }
+      },
+      "config": {
+        "kv_storage": "int8_per_token_head",
+        "kv_scale_dtype": "fp32",
+        "kv_scale_granularity": "per_token_head",
+        "max_context_tokens": 32768,
+        "max_active_requests": 1,
+        "max_tokens": 16,
+        "prompt_tokens": null,
+        "speculative_mtp_serving": "off",
+        "prefix_cache": "off",
+        "startup_min_free_mib": 0,
+        "batch_window_ms": 5.0,
+        "sample_interval_ms": 20.0
+      },
+      "raw_path": "/tmp/xtx-capacity/int8-fixed-32768.json",
+      "raw_sha256": "b59c4fae682ef8469970318017625f66b6980f59ca97b464770e217feba11cec",
+      "command": "HIP_VISIBLE_DEVICES=1 GPU_MAX_HW_QUEUES=1 .venv/bin/python scripts/gguf_context_ceiling_probe.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage int8_per_token_head --kv-scale-dtype fp32 --kv-scale-granularity per_token_head --context 32768 --max-tokens 16 --max-active-requests 1 --gpu-index 1 --request-timeout 3600 --json /tmp/xtx-capacity/int8-fixed-32768.json",
+      "status": "ok",
+      "memory": {
+        "card": {
+          "card_name": "card0",
+          "pci_id": "0000:10:00.0",
+          "sysfs_path": "/sys/class/drm/card0/device",
+          "vram_total_bytes": 25753026560,
+          "vram_total_gib": 23.984375
+        },
+        "memory_domain": "vram",
+        "memory_total_bytes": 25753026560,
+        "memory_total_gib": 23.984375,
+        "baseline_bytes": 28033024,
+        "baseline_gib": 0.0261077880859375,
+        "peak_bytes": 23535816704,
+        "peak_gib": 21.919437408447266,
+        "peak_delta_bytes": 23507783680,
+        "peak_delta_gib": 21.893329620361328,
+        "final_bytes": 121552896,
+        "final_gib": 0.1132049560546875,
+        "samples_count": 85912,
+        "interval_seconds": 0.02,
+        "elapsed_seconds": 1718.2006162265316
+      },
+      "effective_kv": {
+        "storage": "int8_per_token_head",
+        "scale_dtype": "fp32",
+        "scale_granularity": "per_token_head",
+        "estimate": null,
+        "pool": {
+          "current_bytes": 2181038080.0,
+          "high_water_observed_bytes": 1099038720.0,
+          "current_pages": 256.0,
+          "high_water_observed_pages": 129.0,
+          "grow_events": 0.0,
+          "grow_failures": 0.0,
+          "shrink_events": 0.0,
+          "free_pages": 128.0,
+          "refcounted_pages": 128.0,
+          "pinned_pages": 128.0,
+          "retired_pages": 0.0,
+          "retired_bytes": 0.0
+        }
+      },
+      "memory_accounting": {
+        "allocated_pool_bytes": 2181038080,
+        "int8_payload_bytes": 2147483648,
+        "fp32_scale_bytes": 33554432,
+        "pool_pages": 256,
+        "workspace_lease_pages": 128,
+        "note": "Pool backing includes pinned workspace lease; do not add it again. This is post-request pool state, not a live request payload census. Whole-card minus pool includes weights, transients and runtime overhead; detailed allocation attribution remains open."
+      }
+    },
+    {
+      "context_tokens": 49152,
+      "prompt": {
+        "target_prompt_tokens": 49135,
+        "counted_prompt_tokens": 49135,
+        "filler_corpus_chars": 248,
+        "suffix_chars": 54
+      },
+      "completion": {
+        "generated_token_ids": [
+          369,
+          264,
+          1103,
+          314,
+          220,
+          17,
+          15,
+          15,
+          15,
+          15,
+          15,
+          15,
+          15,
+          15,
+          15,
+          15
+        ],
+        "generated_token_ids_sha256": "59e0e9b3a8ef99cd62c9aed7dfdb0218eed44e4960acb806f5cb0b0f3f3f49ad",
+        "generated_text": " is a list of 20000000000",
+        "finish_reason": "length",
+        "prompt_tokens": 49135,
+        "completion_tokens": 16,
+        "speculative_mtp": {
+          "effective_route": "default",
+          "used": false,
+          "draft_tokens": 0,
+          "accepted_draft_tokens": 0,
+          "rejected_draft_tokens": 0,
+          "acceptance_rate": null,
+          "draft_cycles": 0
+        },
+        "exact_accounting": true
+      },
+      "ownership": {
+        "pending_requests": 0,
+        "active_requests": 0,
+        "stream_producers": 0,
+        "model_active_requests": 0,
+        "session_count": 0,
+        "kv_refcounted_pages": 0,
+        "kv_pinned_pages": 0,
+        "graph_owners": 0,
+        "workspace_owners": 0,
+        "cache_resident_entries": 0,
+        "cache_resident_pages": 0,
+        "cache_resident_bytes": 0,
+        "allowed_cache_bytes": 0,
+        "expected_workspace_lease_pages": 192
+      },
+      "source": {
+        "commit": "8e0d8eae1f3da668e8211955842e8c3fe9ed99e9",
+        "tracked_clean": true,
+        "command": "python -m hipengine.server --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage int8_per_token_head --max-context-tokens 49152 --max-active-requests 1 --speculative-mtp-serving off --prefix-cache off",
+        "environment": {
+          "HIP_VISIBLE_DEVICES": "1",
+          "GPU_MAX_HW_QUEUES": "1",
+          "HIPENGINE_KV_POOL_IDLE_GRACE_SECONDS": "0",
+          "ROCR_VISIBLE_DEVICES": null
+        }
+      },
+      "config": {
+        "kv_storage": "int8_per_token_head",
+        "kv_scale_dtype": "fp32",
+        "kv_scale_granularity": "per_token_head",
+        "max_context_tokens": 49152,
+        "max_active_requests": 1,
+        "max_tokens": 16,
+        "prompt_tokens": null,
+        "speculative_mtp_serving": "off",
+        "prefix_cache": "off",
+        "startup_min_free_mib": 0,
+        "batch_window_ms": 5.0,
+        "sample_interval_ms": 20.0
+      },
+      "raw_path": "/tmp/xtx-capacity/int8-fixed-49152.json",
+      "raw_sha256": "9dce493f909a2e8f2e529cb3841acef49fa98df1f71c548c1932db15a8396569",
+      "command": "HIP_VISIBLE_DEVICES=1 GPU_MAX_HW_QUEUES=1 .venv/bin/python scripts/gguf_context_ceiling_probe.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage int8_per_token_head --kv-scale-dtype fp32 --kv-scale-granularity per_token_head --context 49152 --max-tokens 16 --max-active-requests 1 --gpu-index 1 --request-timeout 5400 --json /tmp/xtx-capacity/int8-fixed-49152.json",
+      "status": "ok",
+      "memory": {
+        "card": {
+          "card_name": "card0",
+          "pci_id": "0000:10:00.0",
+          "sysfs_path": "/sys/class/drm/card0/device",
+          "vram_total_bytes": 25753026560,
+          "vram_total_gib": 23.984375
+        },
+        "memory_domain": "vram",
+        "memory_total_bytes": 25753026560,
+        "memory_total_gib": 23.984375,
+        "baseline_bytes": 28000256,
+        "baseline_gib": 0.0260772705078125,
+        "peak_bytes": 25215393792,
+        "peak_gib": 23.483665466308594,
+        "peak_delta_bytes": 25187393536,
+        "peak_delta_gib": 23.45758819580078,
+        "final_bytes": 136835072,
+        "final_gib": 0.12743759155273438,
+        "samples_count": 169035,
+        "interval_seconds": 0.02,
+        "elapsed_seconds": 3380.6537355622277
+      },
+      "effective_kv": {
+        "storage": "int8_per_token_head",
+        "scale_dtype": "fp32",
+        "scale_granularity": "per_token_head",
+        "estimate": null,
+        "pool": {
+          "current_bytes": 3271557120.0,
+          "high_water_observed_bytes": 1644298240.0,
+          "current_pages": 384.0,
+          "high_water_observed_pages": 193.0,
+          "grow_events": 0.0,
+          "grow_failures": 0.0,
+          "shrink_events": 0.0,
+          "free_pages": 192.0,
+          "refcounted_pages": 192.0,
+          "pinned_pages": 192.0,
+          "retired_pages": 0.0,
+          "retired_bytes": 0.0
+        }
+      },
+      "memory_accounting": {
+        "allocated_pool_bytes": 3271557120,
+        "int8_payload_bytes": 3221225472,
+        "fp32_scale_bytes": 50331648,
+        "pool_pages": 384,
+        "workspace_lease_pages": 192,
+        "note": "Pool backing includes pinned workspace lease; do not add it again. This is post-request pool state, not a live request payload census. Whole-card minus pool includes weights, transients and runtime overhead; detailed allocation attribution remains open."
+      }
+    },
+    {
+      "context_tokens": 54272,
+      "prompt": {
+        "target_prompt_tokens": 54255,
+        "counted_prompt_tokens": 54255,
+        "filler_corpus_chars": 248,
+        "suffix_chars": 54
+      },
+      "completion": {
+        "generated_token_ids": [
+          25,
+          271,
+          760,
+          72103,
+          13236,
+          7189,
+          1754,
+          30957,
+          25347,
+          303,
+          264,
+          45366,
+          25,
+          803,
+          11,
+          8501
+        ],
+        "generated_token_ids_sha256": "71e182f0323022b954eea8a498e131dbc303fb8a1e921791397bc8bf0154e359",
+        "generated_text": ":\n\nThe harbourmaster records each arriving vessel in a ledger: name, ton",
+        "finish_reason": "length",
+        "prompt_tokens": 54255,
+        "completion_tokens": 16,
+        "speculative_mtp": {
+          "effective_route": "default",
+          "used": false,
+          "draft_tokens": 0,
+          "accepted_draft_tokens": 0,
+          "rejected_draft_tokens": 0,
+          "acceptance_rate": null,
+          "draft_cycles": 0
+        },
+        "exact_accounting": true
+      },
+      "ownership": {
+        "pending_requests": 0,
+        "active_requests": 0,
+        "stream_producers": 0,
+        "model_active_requests": 0,
+        "session_count": 0,
+        "kv_refcounted_pages": 0,
+        "kv_pinned_pages": 0,
+        "graph_owners": 0,
+        "workspace_owners": 0,
+        "cache_resident_entries": 0,
+        "cache_resident_pages": 0,
+        "cache_resident_bytes": 0,
+        "allowed_cache_bytes": 0,
+        "expected_workspace_lease_pages": 212
+      },
+      "source": {
+        "commit": "8e0d8eae1f3da668e8211955842e8c3fe9ed99e9",
+        "tracked_clean": true,
+        "command": "python -m hipengine.server --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage int8_per_token_head --max-context-tokens 54272 --max-active-requests 1 --speculative-mtp-serving off --prefix-cache off",
+        "environment": {
+          "HIP_VISIBLE_DEVICES": "1",
+          "GPU_MAX_HW_QUEUES": "1",
+          "HIPENGINE_KV_POOL_IDLE_GRACE_SECONDS": "0",
+          "ROCR_VISIBLE_DEVICES": null
+        }
+      },
+      "config": {
+        "kv_storage": "int8_per_token_head",
+        "kv_scale_dtype": "fp32",
+        "kv_scale_granularity": "per_token_head",
+        "max_context_tokens": 54272,
+        "max_active_requests": 1,
+        "max_tokens": 16,
+        "prompt_tokens": null,
+        "speculative_mtp_serving": "off",
+        "prefix_cache": "off",
+        "startup_min_free_mib": 0,
+        "batch_window_ms": 5.0,
+        "sample_interval_ms": 20.0
+      },
+      "raw_path": "/tmp/xtx-capacity/int8-fixed-54272.json",
+      "raw_sha256": "64181f451295a31b01fe72a2bd034fd0924a5b22db82f87f15d9ce14db8998ab",
+      "command": "HIP_VISIBLE_DEVICES=1 GPU_MAX_HW_QUEUES=1 .venv/bin/python scripts/gguf_context_ceiling_probe.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage int8_per_token_head --kv-scale-dtype fp32 --kv-scale-granularity per_token_head --context 54272 --max-tokens 16 --max-active-requests 1 --gpu-index 1 --request-timeout 6000 --json /tmp/xtx-capacity/int8-fixed-54272.json",
+      "status": "ok",
+      "memory": {
+        "card": {
+          "card_name": "card0",
+          "pci_id": "0000:10:00.0",
+          "sysfs_path": "/sys/class/drm/card0/device",
+          "vram_total_bytes": 25753026560,
+          "vram_total_gib": 23.984375
+        },
+        "memory_domain": "vram",
+        "memory_total_bytes": 25753026560,
+        "memory_total_gib": 23.984375,
+        "baseline_bytes": 28000256,
+        "baseline_gib": 0.0260772705078125,
+        "peak_bytes": 25739726848,
+        "peak_gib": 23.971988677978516,
+        "peak_delta_bytes": 25711726592,
+        "peak_delta_gib": 23.945911407470703,
+        "final_bytes": 121413632,
+        "final_gib": 0.11307525634765625,
+        "samples_count": 201634,
+        "interval_seconds": 0.02,
+        "elapsed_seconds": 4032.6232502758503
+      },
+      "effective_kv": {
+        "storage": "int8_per_token_head",
+        "scale_dtype": "fp32",
+        "scale_granularity": "per_token_head",
+        "estimate": null,
+        "pool": {
+          "current_bytes": 3612344320.0,
+          "high_water_observed_bytes": 1814691840.0,
+          "current_pages": 424.0,
+          "high_water_observed_pages": 213.0,
+          "grow_events": 0.0,
+          "grow_failures": 0.0,
+          "shrink_events": 0.0,
+          "free_pages": 212.0,
+          "refcounted_pages": 212.0,
+          "pinned_pages": 212.0,
+          "retired_pages": 0.0,
+          "retired_bytes": 0.0
+        }
+      },
+      "memory_accounting": {
+        "allocated_pool_bytes": 3612344320,
+        "int8_payload_bytes": 3556769792,
+        "fp32_scale_bytes": 55574528,
+        "pool_pages": 424,
+        "workspace_lease_pages": 212,
+        "note": "Pool backing includes pinned workspace lease; do not add it again. This is post-request pool state, not a live request payload census. Whole-card minus pool includes weights, transients and runtime overhead; detailed allocation attribution remains open."
+      }
+    }
+  ],
+  "dense_summary": {
+    "highest_demonstrated_context_tokens": 54272,
+    "peak_gib": 23.971988677978516,
+    "sampled_headroom_mib": 12.68359375,
+    "maximum_established": false,
+    "adjacent_54528": "Cancelled at user request; no pass/fail capacity verdict. Owned orphan server required SIGKILL.",
+    "old_functional_last_pass": 15872,
+    "increase_percent": 241.93548387096774,
+    "bf16_prior_same_card": {
+      "last_pass_tokens": 40960,
+      "first_failure_tokens": 45056,
+      "first_failure_status": "oom_startup"
+    },
+    "bf16_source": "2026-09-06-rx7900xtx-capacity-scratch-row-cap.json",
+    "comparison_caveat": "Same physical card/model/probe shape, different source revisions and times; not a fresh matched BF16-vs-INT8 quality or performance comparison."
+  },
+  "numerical_evidence": {
+    "native_prefill_repair_commit": "8e0d8eae1",
+    "native_prefill_worklog": "worklog/entries/20260907T050310.696976Z-lhl-native-prefill-score-storage-3b0530.md",
+    "dms_device_commit": "e2ec238ab",
+    "dms_device_worklog": "worklog/entries/20260907T085618.847340Z-lhl-dms-int8-device-063b63.md",
+    "dms_device_tests_passed": 44,
+    "dms_gate_scope": "CPU codec bytes/scales exact, exact eviction ownership, overflow no-mutation, snapshot restoration, deterministic attention; allclose3e-5, KL<=0.05/top1>=90% vs CPU on fixtures through16385tokens W8192. Not model-logit quality.",
+    "dms_model_qualified": false,
+    "native_prefill_cpu_tests_passed": 56,
+    "native_prefill_gpu_focused_tests_passed": 27,
+    "native_gate_scope": "Exact parent parity at128,512,1024,2048,15872,16064; CPU-reference and deterministic/workspace-batch checks through81920. Kernel fixtures only, not model quality.",
+    "commands": [
+      ".venv/bin/python -m pytest -q tests/test_qwen35_prefill_long_context_plan.py tests/test_qwen35_paged_attn_decode_plan.py tests/test_qwen35_gguf_int8_kv_policy.py",
+      "HIP_VISIBLE_DEVICES=1 GPU_MAX_HW_QUEUES=1 OPENBLAS_NUM_THREADS=1 .venv/bin/python -m pytest -q tests/test_qwen35_prefill_long_context.py tests/test_qwen35_prefill_long_context_plan.py tests/test_qwen35_paged_attn_decode_direct_gate.py",
+      "HIP_VISIBLE_DEVICES=1 GPU_MAX_HW_QUEUES=1 OPENBLAS_NUM_THREADS=1 .venv/bin/python -m pytest -q tests/test_dms_int8_device_payloads.py tests/test_kvcache_dms_device_hip.py tests/test_dms_streaming_pack_hip.py tests/test_kvcache_dms.py"
+    ]
+  },
+  "completion_audit": {
+    "publication": "complete",
+    "dense_repair": "implemented and server validated",
+    "dense_full_qualification": "incomplete/deferred by user",
+    "dms_device_kernels": "implemented and fixture validated",
+    "dms_serving_integration": "not implemented",
+    "remaining": [
+      "DMSCompactBackend codec plumbing, storage views, scale accounting and resident factory selection",
+      "Artifact-scoped model quality harness with genuine qualification bootstrap; no fabricated evidence",
+      "Same-weight full category and heldout numerical/task gates",
+      "Integrated real eviction, concurrency, cancellation/refill and rollback qualification",
+      "End-to-end DMS INT8 memory/capacity benefit measurement",
+      "Dense detailed allocation attribution and fresh same-host BF16/INT8 quality comparison deferred"
+    ],
+    "ownership": "All INT8 work assigned here; no external owner."
+  }
+}

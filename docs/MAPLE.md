@@ -517,14 +517,14 @@ Then run the qualified paths from the repository root:
 
 ```bash
 # Focused runtime/correctness gates
-python3 -m pytest tests/test_maple_runtime.py tests/test_maple_generation.py -q
+python3 -m pytest tests/test_gpu_maple_runtime.py tests/test_gpu_maple_generation.py -q
 
 # CUDA sm_120a c1 primitive + generation gates on physical GPU0
 CUDA_VISIBLE_DEVICES=0 HIPENGINE_RUN_CUDA_MAPLE=1 \
 uv run --extra dev pytest -q \
-  tests/test_cuda_sm120a_maple.py \
-  tests/test_maple_generation.py \
-  tests/test_maple_correctness_script.py
+  tests/test_gpu_cuda_sm120a_maple.py \
+  tests/test_gpu_maple_generation.py \
+  tests/test_unit_maple_correctness_script.py
 
 # CUDA sm_120a full 18-position packed-formula gate (optional Torch oracle)
 CUDA_VISIBLE_DEVICES=0 PYTHONPATH=$PWD \

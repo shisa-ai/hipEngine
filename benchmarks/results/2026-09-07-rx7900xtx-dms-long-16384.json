@@ -1,0 +1,284 @@
+{
+  "backend": "hip_gfx1100",
+  "decode": [
+    {
+      "finite_logits": true,
+      "input_token": 33639,
+      "output_token": 1685,
+      "seconds": 0.06544118002057076,
+      "step": 0
+    },
+    {
+      "finite_logits": true,
+      "input_token": 1685,
+      "output_token": 8058,
+      "seconds": 0.0469465721398592,
+      "step": 1
+    },
+    {
+      "finite_logits": true,
+      "input_token": 8058,
+      "output_token": 17,
+      "seconds": 0.04791188519448042,
+      "step": 2
+    },
+    {
+      "finite_logits": true,
+      "input_token": 17,
+      "output_token": 24,
+      "seconds": 0.04659380856901407,
+      "step": 3
+    }
+  ],
+  "dms": {
+    "backend": {
+      "artifact_fingerprint": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+      "codec": "bf16",
+      "decision_source": "external_linear_sidecar_v1",
+      "device_backend": "hip_gfx1100",
+      "device_payloads": true,
+      "no_dense_shadow": true,
+      "physical_layer_ids": [
+        3,
+        7,
+        11,
+        15,
+        19,
+        23,
+        27,
+        31,
+        35,
+        39,
+        43,
+        47,
+        51,
+        55,
+        59,
+        63
+      ],
+      "physical_widths": [
+        1,
+        2,
+        4,
+        8
+      ],
+      "prefix_mode": "off",
+      "retrofit_fingerprint": "9b50b58678191da3fc3f3c819d3118ac0fc82026f6cc5d4def05688c538a86f3",
+      "topology": "dms_compact"
+    },
+    "capacity": {
+      "actual_compression_ratio": 1.333116407711706,
+      "live_token_rows": 786752,
+      "logical_token_rows": 1048832,
+      "max_live_count": 12293,
+      "payload_bytes": 805634048,
+      "scale_bytes": 0,
+      "target_compression_ratio": 2
+    },
+    "extent_pool": {
+      "allocation_failures": 0,
+      "capacity_slots": 786816,
+      "free_ranges_by_layer": [
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        []
+      ],
+      "free_slots": 0,
+      "high_water_slots": 786816,
+      "largest_free_extent": 0,
+      "num_layers": 16,
+      "owner_count": 1,
+      "slots_per_layer": 49176
+    },
+    "ledger": {
+      "active_reservations": 1,
+      "backend_fingerprint": "45eaf4880474219394f7a83e029f6a5d7e06284bcb6ddaa06a6b20bdd1a51520",
+      "blocking_counts": {},
+      "generation": 1,
+      "owners": {
+        "dms-lease:0": {
+          "dms.evict_slots": 786816,
+          "dms.extent_descriptors": 64,
+          "dms.k_slots": 786816,
+          "dms.position_slots": 786816,
+          "dms.request_rows": 1,
+          "dms.v_slots": 786816
+        }
+      },
+      "pools": {
+        "dms.evict_slots": {
+          "capacity": 786816,
+          "free": 0,
+          "high_water": 786816,
+          "plane_role": "evict_slots",
+          "unit": "token_slots",
+          "used": 786816,
+          "used_by_lifetime": {
+            "lease": 786816
+          }
+        },
+        "dms.extent_descriptors": {
+          "capacity": 64,
+          "free": 0,
+          "high_water": 64,
+          "plane_role": "extent_metadata",
+          "unit": "descriptors",
+          "used": 64,
+          "used_by_lifetime": {
+            "lease": 64
+          }
+        },
+        "dms.k_slots": {
+          "capacity": 786816,
+          "free": 0,
+          "high_water": 786816,
+          "plane_role": "k_slots",
+          "unit": "token_slots",
+          "used": 786816,
+          "used_by_lifetime": {
+            "lease": 786816
+          }
+        },
+        "dms.pack_workspace_rows": {
+          "capacity": 4096,
+          "free": 4096,
+          "high_water": 0,
+          "plane_role": "streaming_workspace",
+          "unit": "rows",
+          "used": 0,
+          "used_by_lifetime": {}
+        },
+        "dms.position_slots": {
+          "capacity": 786816,
+          "free": 0,
+          "high_water": 786816,
+          "plane_role": "position_slots",
+          "unit": "token_slots",
+          "used": 786816,
+          "used_by_lifetime": {
+            "lease": 786816
+          }
+        },
+        "dms.request_rows": {
+          "capacity": 1,
+          "free": 0,
+          "high_water": 1,
+          "plane_role": "row_metadata",
+          "unit": "rows",
+          "used": 1,
+          "used_by_lifetime": {
+            "lease": 1
+          }
+        },
+        "dms.v_slots": {
+          "capacity": 786816,
+          "free": 0,
+          "high_water": 786816,
+          "plane_role": "v_slots",
+          "unit": "token_slots",
+          "used": 786816,
+          "used_by_lifetime": {
+            "lease": 786816
+          }
+        }
+      },
+      "provisional_reservations": 0,
+      "stats": {
+        "commits": 1,
+        "provisional_reserves": 1
+      }
+    },
+    "operations": {
+      "decode_appends": 4,
+      "evicted_tokens": 0,
+      "released_provisional_slots": 0,
+      "streaming_pack_calls": 1
+    }
+  },
+  "host": "epyc",
+  "kind": "hipengine_qwen38_integrated_dms_long_smoke",
+  "memory": {
+    "after_close": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 19713277784,
+      "peak_allocations": 354,
+      "total_allocated_bytes": 19714491416,
+      "total_freed_bytes": 19714491416
+    },
+    "after_compact_pack_and_dense_release": {
+      "active_allocations": 318,
+      "current_allocated_bytes": 18616860376,
+      "peak_allocated_bytes": 19713277784,
+      "peak_allocations": 354,
+      "total_allocated_bytes": 19713277784,
+      "total_freed_bytes": 1096417408
+    },
+    "after_decode": {
+      "active_allocations": 321,
+      "current_allocated_bytes": 18618074008,
+      "peak_allocated_bytes": 19713277784,
+      "peak_allocations": 354,
+      "total_allocated_bytes": 19714491416,
+      "total_freed_bytes": 1096417408
+    },
+    "before": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 0,
+      "peak_allocations": 0,
+      "total_allocated_bytes": 0,
+      "total_freed_bytes": 0
+    },
+    "constructed_dense_prefill_owner": {
+      "active_allocations": 223,
+      "current_allocated_bytes": 18880898056,
+      "peak_allocated_bytes": 18880898056,
+      "peak_allocations": 223,
+      "total_allocated_bytes": 18880898056,
+      "total_freed_bytes": 0
+    },
+    "dense_release_delta_bytes": 264037680
+  },
+  "metadata": {
+    "path": "/models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json",
+    "sha256": "4c16f9e94d8c870194d37cc46f9e2ec5f6c05b8e97721f799b78d9d2b240ba0b"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
+  },
+  "performance_claim": false,
+  "prompt": {
+    "data_manifest_sha256": "9b8dacd9111ddf5b44dc55a0cd199ca7c3cafed763a21bb13eae0a98cdfc72cc",
+    "token_ids_sha256": "c253f99a30f6da5fe90c2bfb9b8e0103328e449af7877ec49be67e064626e62f",
+    "tokens": 16384
+  },
+  "provenance": {
+    "commit": "6757e0ca7f6876d61e24f907b06660173210c157",
+    "working_tree_clean": false
+  },
+  "schema_version": 1,
+  "status": "passed",
+  "timing": {
+    "construct_seconds": 81.68619825411588,
+    "decode_seconds": 0.2515684589743614,
+    "prefill_gpu_stage_note": "disabled: long chunked prefill exceeds recorder capacity",
+    "prefill_gpu_stages_ms": {},
+    "prefill_seconds": 23.45294268615544,
+    "total_seconds": 105.39070939924568
+  }
+}

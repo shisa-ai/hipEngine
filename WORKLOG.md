@@ -19,11 +19,16 @@ python3 scripts/worklog.py new \
   --title "Short outcome"
 ```
 
-Validate and render the ignored local chronological view with:
+Stage an entry, then validate and render the ignored local chronological view
+with:
 
 ```bash
+git add worklog/entries/<entry>.md
 python3 scripts/worklog.py check
 python3 scripts/worklog.py render
 ```
+
+`check` validates staged and tracked content only, so another worker's unstaged
+entry cannot block a commit.
 
 Do not append to this navigation page or edit the frozen legacy journal.

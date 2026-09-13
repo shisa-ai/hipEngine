@@ -13,7 +13,7 @@ from pathlib import Path
 BEGIN_RE = re.compile(r"^<!-- BEGIN TOPLINE:([A-Z0-9_]+) -->$")
 END_RE = re.compile(r"^<!-- END TOPLINE:([A-Z0-9_]+) -->$")
 DEFAULT_BLOCKS = ("README_HIGHLIGHTS",)
-PUBLIC_README_MAX_LINES = 400
+PUBLIC_README_MAX_LINES = 500
 
 
 @dataclass(frozen=True)
@@ -25,9 +25,9 @@ class PublicExportBudget:
 
 PUBLIC_EXPORT_BUDGETS = {
     "README_HIGHLIGHTS": PublicExportBudget(
-        max_lines=130,
-        max_prose_paragraphs=8,
-        max_prose_chars=2000,
+        max_lines=150,
+        max_prose_paragraphs=10,
+        max_prose_chars=2800,
     ),
 }
 

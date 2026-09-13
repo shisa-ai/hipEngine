@@ -1,0 +1,249 @@
+{
+  "schema": "hipengine.benchmark-artifact/v1",
+  "created_at": "2026-09-06T20:51:55.708406+00:00",
+  "kind": "diagnostic",
+  "status": "ok",
+  "reason": "history completed with drained recovery and bounded reusable capacity",
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "backend": "hip_gfx1100",
+    "quant": "gguf_q4_k_m",
+    "kv_storage": "bf16"
+  },
+  "device": {
+    "sysfs": "/sys/class/drm/card0/device",
+    "gpu_index": 1
+  },
+  "protocol": {
+    "commit": "5c36ac653d9c060b122e1197a869d8ac40eede0d",
+    "command": "/home/lhl/gfx1100-24gb-capacity/.venv/bin/python3 -m hipengine.server --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name pool-history-probe --kv-storage bf16 --max-context-tokens 2048 --max-active-requests 2 --generation-batch-window-ms 5.0 --metrics prometheus --speculative-mtp-serving off --prefix-cache off --startup-min-free-mib 0 --shutdown-grace-seconds 10 --host 127.0.0.1 --port 8077 --log-level INFO",
+    "context_tokens": 2048,
+    "max_active_requests": 2,
+    "max_tokens": 16,
+    "wide_prompt_tokens": 1536,
+    "narrow_prompt_tokens": 64,
+    "kv_pool_idle_grace_seconds": 2.0,
+    "phase_plan": [
+      "wide_1",
+      "c1_a",
+      "c1_b",
+      "wide_2",
+      "c2"
+    ]
+  },
+  "result": {
+    "baseline_mib": 26,
+    "post_load_mib": 22175,
+    "phases": [
+      {
+        "label": "wide_1",
+        "prompt_tokens": 1535,
+        "validated": true,
+        "validation": "exact",
+        "wall_seconds": 2.6779,
+        "held": {
+          "used_mib": 22223,
+          "metrics": {
+            "kv_current_bytes": 536870912.0,
+            "kv_grow_events_total": 0.0,
+            "kv_shrink_events_total": 0.0,
+            "kv_current_pages": 32.0,
+            "kv_free_pages": 16.0,
+            "kv_refcounted_pages": 16.0,
+            "kv_pinned_pages": 16.0,
+            "kv_retired_pages_total": 0.0,
+            "kv_retired_bytes_total": 0.0,
+            "graph_bucket_entries": 0.0
+          }
+        },
+        "drained": {
+          "used_mib": 22223,
+          "metrics": {
+            "kv_current_bytes": 536870912.0,
+            "kv_grow_events_total": 0.0,
+            "kv_shrink_events_total": 0.0,
+            "kv_current_pages": 32.0,
+            "kv_free_pages": 16.0,
+            "kv_refcounted_pages": 16.0,
+            "kv_pinned_pages": 16.0,
+            "kv_retired_pages_total": 0.0,
+            "kv_retired_bytes_total": 0.0,
+            "graph_bucket_entries": 0.0
+          }
+        }
+      },
+      {
+        "label": "c1_a",
+        "prompt_tokens": 63,
+        "validated": true,
+        "validation": "exact",
+        "wall_seconds": 0.6377,
+        "held": {
+          "used_mib": 22223,
+          "metrics": {
+            "kv_current_bytes": 536870912.0,
+            "kv_grow_events_total": 0.0,
+            "kv_shrink_events_total": 0.0,
+            "kv_current_pages": 32.0,
+            "kv_free_pages": 16.0,
+            "kv_refcounted_pages": 16.0,
+            "kv_pinned_pages": 16.0,
+            "kv_retired_pages_total": 0.0,
+            "kv_retired_bytes_total": 0.0,
+            "graph_bucket_entries": 0.0
+          }
+        },
+        "drained": {
+          "used_mib": 22223,
+          "metrics": {
+            "kv_current_bytes": 536870912.0,
+            "kv_grow_events_total": 0.0,
+            "kv_shrink_events_total": 0.0,
+            "kv_current_pages": 32.0,
+            "kv_free_pages": 16.0,
+            "kv_refcounted_pages": 16.0,
+            "kv_pinned_pages": 16.0,
+            "kv_retired_pages_total": 0.0,
+            "kv_retired_bytes_total": 0.0,
+            "graph_bucket_entries": 0.0
+          }
+        }
+      },
+      {
+        "label": "c1_b",
+        "prompt_tokens": 63,
+        "validated": true,
+        "validation": "exact",
+        "wall_seconds": 0.642,
+        "held": {
+          "used_mib": 22223,
+          "metrics": {
+            "kv_current_bytes": 536870912.0,
+            "kv_grow_events_total": 0.0,
+            "kv_shrink_events_total": 0.0,
+            "kv_current_pages": 32.0,
+            "kv_free_pages": 16.0,
+            "kv_refcounted_pages": 16.0,
+            "kv_pinned_pages": 16.0,
+            "kv_retired_pages_total": 0.0,
+            "kv_retired_bytes_total": 0.0,
+            "graph_bucket_entries": 0.0
+          }
+        },
+        "drained": {
+          "used_mib": 22223,
+          "metrics": {
+            "kv_current_bytes": 536870912.0,
+            "kv_grow_events_total": 0.0,
+            "kv_shrink_events_total": 0.0,
+            "kv_current_pages": 32.0,
+            "kv_free_pages": 16.0,
+            "kv_refcounted_pages": 16.0,
+            "kv_pinned_pages": 16.0,
+            "kv_retired_pages_total": 0.0,
+            "kv_retired_bytes_total": 0.0,
+            "graph_bucket_entries": 0.0
+          }
+        }
+      },
+      {
+        "label": "wide_2",
+        "prompt_tokens": 1535,
+        "validated": true,
+        "validation": "exact",
+        "wall_seconds": 2.6276,
+        "held": {
+          "used_mib": 22223,
+          "metrics": {
+            "kv_current_bytes": 536870912.0,
+            "kv_grow_events_total": 0.0,
+            "kv_shrink_events_total": 0.0,
+            "kv_current_pages": 32.0,
+            "kv_free_pages": 16.0,
+            "kv_refcounted_pages": 16.0,
+            "kv_pinned_pages": 16.0,
+            "kv_retired_pages_total": 0.0,
+            "kv_retired_bytes_total": 0.0,
+            "graph_bucket_entries": 0.0
+          }
+        },
+        "drained": {
+          "used_mib": 22223,
+          "metrics": {
+            "kv_current_bytes": 536870912.0,
+            "kv_grow_events_total": 0.0,
+            "kv_shrink_events_total": 0.0,
+            "kv_current_pages": 32.0,
+            "kv_free_pages": 16.0,
+            "kv_refcounted_pages": 16.0,
+            "kv_pinned_pages": 16.0,
+            "kv_retired_pages_total": 0.0,
+            "kv_retired_bytes_total": 0.0,
+            "graph_bucket_entries": 0.0
+          }
+        }
+      },
+      {
+        "label": "c2",
+        "prompt_tokens": 63,
+        "validated": true,
+        "validation": "exact",
+        "wall_seconds": 0.6479,
+        "held": {
+          "used_mib": 22223,
+          "metrics": {
+            "kv_current_bytes": 536870912.0,
+            "kv_grow_events_total": 0.0,
+            "kv_shrink_events_total": 0.0,
+            "kv_current_pages": 32.0,
+            "kv_free_pages": 16.0,
+            "kv_refcounted_pages": 16.0,
+            "kv_pinned_pages": 16.0,
+            "kv_retired_pages_total": 0.0,
+            "kv_retired_bytes_total": 0.0,
+            "graph_bucket_entries": 0.0
+          }
+        },
+        "drained": {
+          "used_mib": 22223,
+          "metrics": {
+            "kv_current_bytes": 536870912.0,
+            "kv_grow_events_total": 0.0,
+            "kv_shrink_events_total": 0.0,
+            "kv_current_pages": 32.0,
+            "kv_free_pages": 16.0,
+            "kv_refcounted_pages": 16.0,
+            "kv_pinned_pages": 16.0,
+            "kv_retired_pages_total": 0.0,
+            "kv_retired_bytes_total": 0.0,
+            "graph_bucket_entries": 0.0
+          }
+        }
+      },
+      {
+        "label": "final_drained",
+        "prompt_tokens": 0,
+        "validated": true,
+        "validation": "pool_parks_full_capacity",
+        "wall_seconds": 0.0,
+        "held": null,
+        "drained": {
+          "used_mib": 22223,
+          "metrics": {
+            "kv_current_bytes": 536870912.0,
+            "kv_grow_events_total": 0.0,
+            "kv_shrink_events_total": 0.0,
+            "kv_current_pages": 32.0,
+            "kv_free_pages": 16.0,
+            "kv_refcounted_pages": 16.0,
+            "kv_pinned_pages": 16.0,
+            "kv_retired_pages_total": 0.0,
+            "kv_retired_bytes_total": 0.0,
+            "graph_bucket_entries": 0.0
+          }
+        }
+      }
+    ],
+    "sampler_peak_gib": 21.703
+  }
+}

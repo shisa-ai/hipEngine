@@ -333,7 +333,7 @@ def _run_native_q3(
             ),
             "compaction_occurred": False,
             "continuous_prompt_list_gate": (
-                "tests/test_generation_qwen35_gguf_sampling.py::"
+                "tests/test_live_generation_qwen35_gguf_sampling.py::"
                 "test_gguf_native_scheduler_reclaims_compacts_and_readmits"
             ),
         },
@@ -379,7 +379,7 @@ def _run_native_q3(
         "correctness": {
             "generated_ids_equal": all(equality),
             "full_logits_gate": (
-                "tests/test_qwen35_gguf_target_rows.py C=2/4/8, C=2 split-attention, "
+                "tests/test_live_qwen35_gguf_target_rows.py C=2/4/8, C=2 split-attention, "
                 "and reclaim/compact/readmit"
             ),
             "kl_threshold": 0.05,
@@ -530,72 +530,78 @@ def _run_equality(
         ignore_eos=bool(fixture["sampling"].get("ignore_eos", False)),
     )
     llm = LLM(model, backend=str(args.backend), quant=str(args.quant))
-    prepared_context_tokens = llm.prepare(
-        max_sequence_length=1024,
-        sampling_params=sampling,
-    )
-
-    independent_c1_token_ids: list[list[int]] = []
-    for prompt in prompt_rows:
-        output = llm.generate_detailed((prompt,), sampling)[0]
-        if output.generated_token_ids is None:
-            raise RuntimeError("GGUF independent c1 generation did not expose generated_token_ids")
-        independent_c1_token_ids.append([int(token) for token in output.generated_token_ids])
-
-    runs: list[dict[str, Any]] = []
-    for repeat_index in range(int(args.repeat_runs)):
-        outputs = llm.generate_detailed(prompt_rows, sampling)
-        if len(outputs) != int(args.rows):
-            raise RuntimeError(
-                f"GGUF c>N generation returned {len(outputs)} rows for requested c={args.rows}"
-            )
-        token_rows: list[list[int]] = []
-        for output in outputs:
-            if output.generated_token_ids is None:
-                raise RuntimeError("GGUF c>N generation did not expose generated_token_ids")
-            token_rows.append([int(token) for token in output.generated_token_ids])
-        row_equal = [
-            tokens == independent_c1_token_ids[row]
-            for row, tokens in enumerate(token_rows)
-        ]
-        batch_execution = _last_batch_generation(llm)
-        runs.append(
-            {
-                "repeat_index": repeat_index,
-                "generated_token_ids": token_rows,
-                "row_equal": row_equal,
-                "all_rows_equal": all(row_equal),
-                "execution_path": batch_execution.get("path"),
-                "native_caware_decode": bool(batch_execution.get("native_caware_decode", False)),
-                "serial_decode_fallback": bool(batch_execution.get("serial_decode_fallback", True)),
-                "batch_execution": batch_execution,
-            }
+    try:
+        prepared_context_tokens = llm.prepare(
+            max_sequence_length=1024,
+            sampling_params=sampling,
         )
 
-    equality_ok = all(bool(item["all_rows_equal"]) for item in runs)
-    native_ok = all(
-        bool(item["native_caware_decode"]) and not bool(item["serial_decode_fallback"])
-        for item in runs
-    )
-    if not equality_ok:
-        status = "rejected_correctness"
-        blockers.append("native GGUF c>N generated tokens differ from independent c1")
-    elif not native_ok:
-        status = "blocked"
-        blockers.append("generation did not stay on the native c-aware GGUF decode route")
-    else:
-        status = "eq_ok"
-    return _equality_payload(
-        args,
-        fixture=fixture,
-        model=model,
-        status=status,
-        blockers=blockers,
-        independent_c1_token_ids=independent_c1_token_ids,
-        runs=runs,
-        prepared_context_tokens=prepared_context_tokens,
-        prompt_metadata=prompt_metadata,
-    )
+        independent_c1_token_ids: list[list[int]] = []
+        for prompt in prompt_rows:
+            output = llm.generate_detailed((prompt,), sampling)[0]
+            if output.generated_token_ids is None:
+                raise RuntimeError("GGUF independent c1 generation did not expose generated_token_ids")
+            independent_c1_token_ids.append([int(token) for token in output.generated_token_ids])
+
+        runs: list[dict[str, Any]] = []
+        for repeat_index in range(int(args.repeat_runs)):
+            outputs = llm.generate_detailed(prompt_rows, sampling)
+            if len(outputs) != int(args.rows):
+                raise RuntimeError(
+                    f"GGUF c>N generation returned {len(outputs)} rows for requested c={args.rows}"
+                )
+            token_rows: list[list[int]] = []
+            for output in outputs:
+                if output.generated_token_ids is None:
+                    raise RuntimeError("GGUF c>N generation did not expose generated_token_ids")
+                token_rows.append([int(token) for token in output.generated_token_ids])
+            row_equal = [
+                tokens == independent_c1_token_ids[row]
+                for row, tokens in enumerate(token_rows)
+            ]
+            batch_execution = _last_batch_generation(llm)
+            runs.append(
+                {
+                    "repeat_index": repeat_index,
+                    "generated_token_ids": token_rows,
+                    "row_equal": row_equal,
+                    "all_rows_equal": all(row_equal),
+                    "execution_path": batch_execution.get("path"),
+                    "native_caware_decode": bool(batch_execution.get("native_caware_decode", False)),
+                    "serial_decode_fallback": bool(batch_execution.get("serial_decode_fallback", True)),
+                    "batch_execution": batch_execution,
+                }
+            )
+
+        equality_ok = all(bool(item["all_rows_equal"]) for item in runs)
+        native_ok = all(
+            bool(item["native_caware_decode"]) and not bool(item["serial_decode_fallback"])
+            for item in runs
+        )
+        if not equality_ok:
+            status = "rejected_correctness"
+            blockers.append("native GGUF c>N generated tokens differ from independent c1")
+        elif not native_ok:
+            status = "blocked"
+            blockers.append("generation did not stay on the native c-aware GGUF decode route")
+        else:
+            status = "eq_ok"
+        payload = _equality_payload(
+            args,
+            fixture=fixture,
+            model=model,
+            status=status,
+            blockers=blockers,
+            independent_c1_token_ids=independent_c1_token_ids,
+            runs=runs,
+            prepared_context_tokens=prepared_context_tokens,
+            prompt_metadata=prompt_metadata,
+        )
+    finally:
+        # One process may run several arms (the rowtile gate does); without an
+        # explicit close each arm's weights stay allocated and the host OOMs.
+        llm.close()
+    return payload
 
 
 def _load_prompt_suite(path: Path) -> list[dict[str, str]]:

@@ -1,0 +1,2574 @@
+{
+  "bf16_control": {
+    "aggregate": {
+      "no_evict": {
+        "all_categories_passed": true,
+        "finite_logits": true,
+        "max_kl": 0.007985583272686947,
+        "mean_kl": 0.00014962136065306805,
+        "p95_kl": 0.0003924998151372929,
+        "p99_kl": 0.0015677134663626912,
+        "passed": true,
+        "rows": 128,
+        "thresholds": {
+          "max_kl": 0.05,
+          "min_top1_agreement": 0.9
+        },
+        "top1_agreement": 1.0
+      },
+      "sidecar": {
+        "all_categories_passed": true,
+        "finite_logits": true,
+        "max_kl": 0.014243932530542012,
+        "mean_kl": 0.0009238514125967335,
+        "p95_kl": 0.004895286480694712,
+        "p99_kl": 0.009358654439020333,
+        "passed": true,
+        "rows": 128,
+        "thresholds": {
+          "max_kl": 0.05,
+          "min_top1_agreement": 0.9
+        },
+        "top1_agreement": 1.0
+      }
+    },
+    "backend": "hip_gfx1100",
+    "categories": {
+      "code": {
+        "candidates": {
+          "no_evict": {
+            "dms": {
+              "backend": {
+                "artifact_fingerprint": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+                "codec": "bf16",
+                "codec_evaluation_only": false,
+                "decision_source": "external_linear_sidecar_v1",
+                "device_backend": "hip_gfx1100",
+                "device_payloads": true,
+                "no_dense_shadow": true,
+                "physical_layer_ids": [
+                  3,
+                  7,
+                  11,
+                  15,
+                  19,
+                  23,
+                  27,
+                  31,
+                  35,
+                  39,
+                  43,
+                  47,
+                  51,
+                  55,
+                  59,
+                  63
+                ],
+                "physical_widths": [
+                  1,
+                  2,
+                  4,
+                  8
+                ],
+                "prefix_mode": "off",
+                "retrofit_fingerprint": "9b50b58678191da3fc3f3c819d3118ac0fc82026f6cc5d4def05688c538a86f3",
+                "topology": "dms_compact"
+              },
+              "capacity": {
+                "actual_compression_ratio": 1.0,
+                "device_resident_bytes": 1099549712,
+                "live_token_rows": 1050624,
+                "logical_token_rows": 1050624,
+                "max_live_count": 16416,
+                "payload_bytes": 1075838976,
+                "scale_bytes": 0,
+                "target_compression_ratio": 2
+              },
+              "operations": {
+                "decode_appends": 32,
+                "evicted_tokens": 0,
+                "released_provisional_slots": 0,
+                "streaming_pack_calls": 1
+              }
+            },
+            "prefill_comparison": {
+              "candidate_top1": 1590,
+              "finite_candidate_logits": true,
+              "kl": 0.0,
+              "teacher_top1": 1590,
+              "top1_agrees": true
+            },
+            "summary": {
+              "finite_logits": true,
+              "max_kl": 2.6739491247944598e-05,
+              "mean_kl": 1.4872373656994307e-06,
+              "p95_kl": 5.446259597320602e-06,
+              "p99_kl": 2.083515404647138e-05,
+              "passed": true,
+              "rows": 32,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            }
+          },
+          "sidecar": {
+            "dms": {
+              "backend": {
+                "artifact_fingerprint": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+                "codec": "bf16",
+                "codec_evaluation_only": false,
+                "decision_source": "external_linear_sidecar_v1",
+                "device_backend": "hip_gfx1100",
+                "device_payloads": true,
+                "no_dense_shadow": true,
+                "physical_layer_ids": [
+                  3,
+                  7,
+                  11,
+                  15,
+                  19,
+                  23,
+                  27,
+                  31,
+                  35,
+                  39,
+                  43,
+                  47,
+                  51,
+                  55,
+                  59,
+                  63
+                ],
+                "physical_widths": [
+                  1,
+                  2,
+                  4,
+                  8
+                ],
+                "prefix_mode": "off",
+                "retrofit_fingerprint": "9b50b58678191da3fc3f3c819d3118ac0fc82026f6cc5d4def05688c538a86f3",
+                "topology": "dms_compact"
+              },
+              "capacity": {
+                "actual_compression_ratio": 1.3323593864134404,
+                "device_resident_bytes": 829473104,
+                "live_token_rows": 788544,
+                "logical_token_rows": 1050624,
+                "max_live_count": 12321,
+                "payload_bytes": 807469056,
+                "scale_bytes": 0,
+                "target_compression_ratio": 2
+              },
+              "operations": {
+                "decode_appends": 32,
+                "evicted_tokens": 0,
+                "released_provisional_slots": 0,
+                "streaming_pack_calls": 1
+              }
+            },
+            "prefill_comparison": {
+              "candidate_top1": 1590,
+              "finite_candidate_logits": true,
+              "kl": 0.0,
+              "teacher_top1": 1590,
+              "top1_agrees": true
+            },
+            "summary": {
+              "finite_logits": true,
+              "max_kl": 0.0003788242412964112,
+              "mean_kl": 3.98425033759539e-05,
+              "p95_kl": 0.00015910145887080586,
+              "p99_kl": 0.0003147409720759559,
+              "passed": true,
+              "rows": 32,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            }
+          }
+        },
+        "prompt": {
+          "sequence_ids": [
+            "xtx-validation-code-32768"
+          ],
+          "token_ids_sha256": "902b76b46c6df6108893cd632956a145ee9408aa871544baa42847fdb77d2de6",
+          "tokens": 16384
+        }
+      },
+      "general_en": {
+        "candidates": {
+          "no_evict": {
+            "dms": {
+              "backend": {
+                "artifact_fingerprint": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+                "codec": "bf16",
+                "codec_evaluation_only": false,
+                "decision_source": "external_linear_sidecar_v1",
+                "device_backend": "hip_gfx1100",
+                "device_payloads": true,
+                "no_dense_shadow": true,
+                "physical_layer_ids": [
+                  3,
+                  7,
+                  11,
+                  15,
+                  19,
+                  23,
+                  27,
+                  31,
+                  35,
+                  39,
+                  43,
+                  47,
+                  51,
+                  55,
+                  59,
+                  63
+                ],
+                "physical_widths": [
+                  1,
+                  2,
+                  4,
+                  8
+                ],
+                "prefix_mode": "off",
+                "retrofit_fingerprint": "9b50b58678191da3fc3f3c819d3118ac0fc82026f6cc5d4def05688c538a86f3",
+                "topology": "dms_compact"
+              },
+              "capacity": {
+                "actual_compression_ratio": 1.0,
+                "device_resident_bytes": 1099549712,
+                "live_token_rows": 1050624,
+                "logical_token_rows": 1050624,
+                "max_live_count": 16416,
+                "payload_bytes": 1075838976,
+                "scale_bytes": 0,
+                "target_compression_ratio": 2
+              },
+              "operations": {
+                "decode_appends": 32,
+                "evicted_tokens": 0,
+                "released_provisional_slots": 0,
+                "streaming_pack_calls": 1
+              }
+            },
+            "prefill_comparison": {
+              "candidate_top1": 279,
+              "finite_candidate_logits": true,
+              "kl": 0.0,
+              "teacher_top1": 279,
+              "top1_agrees": true
+            },
+            "summary": {
+              "finite_logits": true,
+              "max_kl": 0.001593979938477682,
+              "mean_kl": 0.00015294369753320104,
+              "p95_kl": 0.0005424166455936204,
+              "p99_kl": 0.001314630769029363,
+              "passed": true,
+              "rows": 32,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            }
+          },
+          "sidecar": {
+            "dms": {
+              "backend": {
+                "artifact_fingerprint": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+                "codec": "bf16",
+                "codec_evaluation_only": false,
+                "decision_source": "external_linear_sidecar_v1",
+                "device_backend": "hip_gfx1100",
+                "device_payloads": true,
+                "no_dense_shadow": true,
+                "physical_layer_ids": [
+                  3,
+                  7,
+                  11,
+                  15,
+                  19,
+                  23,
+                  27,
+                  31,
+                  35,
+                  39,
+                  43,
+                  47,
+                  51,
+                  55,
+                  59,
+                  63
+                ],
+                "physical_widths": [
+                  1,
+                  2,
+                  4,
+                  8
+                ],
+                "prefix_mode": "off",
+                "retrofit_fingerprint": "9b50b58678191da3fc3f3c819d3118ac0fc82026f6cc5d4def05688c538a86f3",
+                "topology": "dms_compact"
+              },
+              "capacity": {
+                "actual_compression_ratio": 1.3323593864134404,
+                "device_resident_bytes": 829473104,
+                "live_token_rows": 788544,
+                "logical_token_rows": 1050624,
+                "max_live_count": 12321,
+                "payload_bytes": 807469056,
+                "scale_bytes": 0,
+                "target_compression_ratio": 2
+              },
+              "operations": {
+                "decode_appends": 32,
+                "evicted_tokens": 0,
+                "released_provisional_slots": 0,
+                "streaming_pack_calls": 1
+              }
+            },
+            "prefill_comparison": {
+              "candidate_top1": 279,
+              "finite_candidate_logits": true,
+              "kl": 0.0,
+              "teacher_top1": 279,
+              "top1_agrees": true
+            },
+            "summary": {
+              "finite_logits": true,
+              "max_kl": 0.0057997463724485335,
+              "mean_kl": 0.0010107878561494109,
+              "p95_kl": 0.0043999918543882206,
+              "p99_kl": 0.005506061335125186,
+              "passed": true,
+              "rows": 32,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            }
+          }
+        },
+        "prompt": {
+          "sequence_ids": [
+            "xtx-validation-general_en-32768"
+          ],
+          "token_ids_sha256": "c01a525d56008fe1e9e3b460c0cbd2843b33fe5cbbc6ca7449da80503a9d64da",
+          "tokens": 16384
+        }
+      },
+      "general_ja": {
+        "candidates": {
+          "no_evict": {
+            "dms": {
+              "backend": {
+                "artifact_fingerprint": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+                "codec": "bf16",
+                "codec_evaluation_only": false,
+                "decision_source": "external_linear_sidecar_v1",
+                "device_backend": "hip_gfx1100",
+                "device_payloads": true,
+                "no_dense_shadow": true,
+                "physical_layer_ids": [
+                  3,
+                  7,
+                  11,
+                  15,
+                  19,
+                  23,
+                  27,
+                  31,
+                  35,
+                  39,
+                  43,
+                  47,
+                  51,
+                  55,
+                  59,
+                  63
+                ],
+                "physical_widths": [
+                  1,
+                  2,
+                  4,
+                  8
+                ],
+                "prefix_mode": "off",
+                "retrofit_fingerprint": "9b50b58678191da3fc3f3c819d3118ac0fc82026f6cc5d4def05688c538a86f3",
+                "topology": "dms_compact"
+              },
+              "capacity": {
+                "actual_compression_ratio": 1.0,
+                "device_resident_bytes": 1099549712,
+                "live_token_rows": 1050624,
+                "logical_token_rows": 1050624,
+                "max_live_count": 16416,
+                "payload_bytes": 1075838976,
+                "scale_bytes": 0,
+                "target_compression_ratio": 2
+              },
+              "operations": {
+                "decode_appends": 32,
+                "evicted_tokens": 0,
+                "released_provisional_slots": 0,
+                "streaming_pack_calls": 1
+              }
+            },
+            "prefill_comparison": {
+              "candidate_top1": 95901,
+              "finite_candidate_logits": true,
+              "kl": 0.0,
+              "teacher_top1": 95901,
+              "top1_agrees": true
+            },
+            "summary": {
+              "finite_logits": true,
+              "max_kl": 0.00022155505312634622,
+              "mean_kl": 5.046878348072713e-05,
+              "p95_kl": 0.00018300032651218968,
+              "p99_kl": 0.00021037023450405816,
+              "passed": true,
+              "rows": 32,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            }
+          },
+          "sidecar": {
+            "dms": {
+              "backend": {
+                "artifact_fingerprint": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+                "codec": "bf16",
+                "codec_evaluation_only": false,
+                "decision_source": "external_linear_sidecar_v1",
+                "device_backend": "hip_gfx1100",
+                "device_payloads": true,
+                "no_dense_shadow": true,
+                "physical_layer_ids": [
+                  3,
+                  7,
+                  11,
+                  15,
+                  19,
+                  23,
+                  27,
+                  31,
+                  35,
+                  39,
+                  43,
+                  47,
+                  51,
+                  55,
+                  59,
+                  63
+                ],
+                "physical_widths": [
+                  1,
+                  2,
+                  4,
+                  8
+                ],
+                "prefix_mode": "off",
+                "retrofit_fingerprint": "9b50b58678191da3fc3f3c819d3118ac0fc82026f6cc5d4def05688c538a86f3",
+                "topology": "dms_compact"
+              },
+              "capacity": {
+                "actual_compression_ratio": 1.3323593864134404,
+                "device_resident_bytes": 829473104,
+                "live_token_rows": 788544,
+                "logical_token_rows": 1050624,
+                "max_live_count": 12321,
+                "payload_bytes": 807469056,
+                "scale_bytes": 0,
+                "target_compression_ratio": 2
+              },
+              "operations": {
+                "decode_appends": 32,
+                "evicted_tokens": 0,
+                "released_provisional_slots": 0,
+                "streaming_pack_calls": 1
+              }
+            },
+            "prefill_comparison": {
+              "candidate_top1": 95901,
+              "finite_candidate_logits": true,
+              "kl": 0.0,
+              "teacher_top1": 95901,
+              "top1_agrees": true
+            },
+            "summary": {
+              "finite_logits": true,
+              "max_kl": 0.009714555043915371,
+              "mean_kl": 0.0013238996660384116,
+              "p95_kl": 0.007860087741877953,
+              "p99_kl": 0.009305928423480323,
+              "passed": true,
+              "rows": 32,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            }
+          }
+        },
+        "prompt": {
+          "sequence_ids": [
+            "xtx-validation-general_ja-32768"
+          ],
+          "token_ids_sha256": "495deddb799f4b4c339a9058ef75706de3506aaa417643dd9033621c868a7ce5",
+          "tokens": 16384
+        }
+      },
+      "mixed_ja_en": {
+        "candidates": {
+          "no_evict": {
+            "dms": {
+              "backend": {
+                "artifact_fingerprint": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+                "codec": "bf16",
+                "codec_evaluation_only": false,
+                "decision_source": "external_linear_sidecar_v1",
+                "device_backend": "hip_gfx1100",
+                "device_payloads": true,
+                "no_dense_shadow": true,
+                "physical_layer_ids": [
+                  3,
+                  7,
+                  11,
+                  15,
+                  19,
+                  23,
+                  27,
+                  31,
+                  35,
+                  39,
+                  43,
+                  47,
+                  51,
+                  55,
+                  59,
+                  63
+                ],
+                "physical_widths": [
+                  1,
+                  2,
+                  4,
+                  8
+                ],
+                "prefix_mode": "off",
+                "retrofit_fingerprint": "9b50b58678191da3fc3f3c819d3118ac0fc82026f6cc5d4def05688c538a86f3",
+                "topology": "dms_compact"
+              },
+              "capacity": {
+                "actual_compression_ratio": 1.0,
+                "device_resident_bytes": 1099549712,
+                "live_token_rows": 1050624,
+                "logical_token_rows": 1050624,
+                "max_live_count": 16416,
+                "payload_bytes": 1075838976,
+                "scale_bytes": 0,
+                "target_compression_ratio": 2
+              },
+              "operations": {
+                "decode_appends": 32,
+                "evicted_tokens": 0,
+                "released_provisional_slots": 0,
+                "streaming_pack_calls": 1
+              }
+            },
+            "prefill_comparison": {
+              "candidate_top1": 171323,
+              "finite_candidate_logits": true,
+              "kl": 0.0,
+              "teacher_top1": 171323,
+              "top1_agrees": true
+            },
+            "summary": {
+              "finite_logits": true,
+              "max_kl": 0.007985583272686947,
+              "mean_kl": 0.00039358572423264457,
+              "p95_kl": 0.0010185887945223647,
+              "p99_kl": 0.0059740284377648705,
+              "passed": true,
+              "rows": 32,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            }
+          },
+          "sidecar": {
+            "dms": {
+              "backend": {
+                "artifact_fingerprint": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+                "codec": "bf16",
+                "codec_evaluation_only": false,
+                "decision_source": "external_linear_sidecar_v1",
+                "device_backend": "hip_gfx1100",
+                "device_payloads": true,
+                "no_dense_shadow": true,
+                "physical_layer_ids": [
+                  3,
+                  7,
+                  11,
+                  15,
+                  19,
+                  23,
+                  27,
+                  31,
+                  35,
+                  39,
+                  43,
+                  47,
+                  51,
+                  55,
+                  59,
+                  63
+                ],
+                "physical_widths": [
+                  1,
+                  2,
+                  4,
+                  8
+                ],
+                "prefix_mode": "off",
+                "retrofit_fingerprint": "9b50b58678191da3fc3f3c819d3118ac0fc82026f6cc5d4def05688c538a86f3",
+                "topology": "dms_compact"
+              },
+              "capacity": {
+                "actual_compression_ratio": 1.3323593864134404,
+                "device_resident_bytes": 829473104,
+                "live_token_rows": 788544,
+                "logical_token_rows": 1050624,
+                "max_live_count": 12321,
+                "payload_bytes": 807469056,
+                "scale_bytes": 0,
+                "target_compression_ratio": 2
+              },
+              "operations": {
+                "decode_appends": 32,
+                "evicted_tokens": 0,
+                "released_provisional_slots": 0,
+                "streaming_pack_calls": 1
+              }
+            },
+            "prefill_comparison": {
+              "candidate_top1": 171323,
+              "finite_candidate_logits": true,
+              "kl": 0.0,
+              "teacher_top1": 171323,
+              "top1_agrees": true
+            },
+            "summary": {
+              "finite_logits": true,
+              "max_kl": 0.014243932530542012,
+              "mean_kl": 0.001320875624823158,
+              "p95_kl": 0.00608032589347765,
+              "p99_kl": 0.012153458121863466,
+              "passed": true,
+              "rows": 32,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            }
+          }
+        },
+        "prompt": {
+          "sequence_ids": [
+            "xtx-validation-mixed_ja_en-32768"
+          ],
+          "token_ids_sha256": "8f64bb378d8e14a6591d7c60ff7467b6b8bc75d21846ac91ab57ad280def6d2c",
+          "tokens": 16384
+        }
+      }
+    },
+    "command": "HIP_VISIBLE_DEVICES=1 GPU_MAX_HW_QUEUES=1 OPENBLAS_NUM_THREADS=1 .venv/bin/python scripts/qwen38_dms_integrated_quality_suite.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --metadata /models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json --data-manifest /models/dms/xtx-manifests/qwen38-27b-q4km-xtx-capacity-manifest.json --prompt-tokens 16384 --decode-steps 32 --modes no_evict,sidecar --codec bf16 --backend hip_gfx1100 --output /tmp/xtx-capacity/dms-bf16-suite-16384-32.json --fail-on-fail",
+    "command_basis": "reconstructed from recorded arguments and repair worklog",
+    "data_manifest": {
+      "path": "/models/dms/xtx-manifests/qwen38-27b-q4km-xtx-capacity-manifest.json",
+      "sha256": "9b8dacd9111ddf5b44dc55a0cd199ca7c3cafed763a21bb13eae0a98cdfc72cc",
+      "split": "validation"
+    },
+    "host": "epyc",
+    "memory_after_close": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 20693747416,
+      "peak_allocations": 1251,
+      "total_allocated_bytes": 43128351392,
+      "total_freed_bytes": 43128351392
+    },
+    "metadata": {
+      "path": "/models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json",
+      "sha256": "4c16f9e94d8c870194d37cc46f9e2ec5f6c05b8e97721f799b78d9d2b240ba0b"
+    },
+    "model": {
+      "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+      "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
+    },
+    "protocol": {
+      "candidate_owner": "integrated compact device route; dense KV released after prefill",
+      "categories": [
+        "code",
+        "general_en",
+        "general_ja",
+        "mixed_ja_en"
+      ],
+      "codec": "bf16",
+      "decode_steps": 32,
+      "modes": [
+        "no_evict",
+        "sidecar"
+      ],
+      "prompt_tokens": 16384,
+      "serving_qualification": false,
+      "teacher": "dense BF16 KV exact-Q4 resident session",
+      "thresholds": {
+        "max_kl": 0.05,
+        "min_top1_agreement": 0.9
+      },
+      "trajectory": "strict dense-teacher input tokens"
+    },
+    "provenance": {
+      "commit": "0f951bc90890dd6b74648dc1d3ee7db4eef81671",
+      "working_tree_clean": true
+    },
+    "source": {
+      "path": "/tmp/xtx-capacity/dms-bf16-suite-16384-32.json",
+      "sha256": "27817facb0fc99780f34e095a85daad880d7e6f44b80e61f0408c035490b5b8f"
+    },
+    "status": "passed"
+  },
+  "context_capacity_claim": false,
+  "cwd": "/home/lhl/gfx1100-24gb-capacity",
+  "date": "2026-09-07",
+  "environment": "HIP_VISIBLE_DEVICES=1 GPU_MAX_HW_QUEUES=1 OPENBLAS_NUM_THREADS=1",
+  "hardware": {
+    "arch": "gfx1100",
+    "cpu": "Ryzen 5950X",
+    "gpu": "RX 7900 XTX",
+    "gpu_index": 1,
+    "host": "epyc",
+    "identity_basis": "device implementation and repair worklogs; not recollected during publication",
+    "pci": "0000:10:00.0",
+    "unique_id": "cc4d02090dc9c3ff"
+  },
+  "kv": "compact INT8 K/V, FP32 per-token/head scales, W8192 DMS",
+  "limits": [
+    "C1 and interleaved C2 tested; packed multi-request kernels and larger concurrency unqualified.",
+    "Device/backend payload-and-scale rollback tested; full-session speculative/MTP rollback unqualified.",
+    "Numerical smoke gates are not calibrated production-profile or free-running task certification.",
+    "Ten canonical prompts include four category heldouts, not proven disjoint from sidecar training.",
+    "Full canonical prompts are 27-59 tokens, below W8192; long eviction evidence is the separate four-category 16384-token suite.",
+    "No general-serving promotion or DMSCodecQualification created; BF16 fallback preserved.",
+    "No whole-process memory percentage, throughput improvement or new context-capacity claim.",
+    "Dense 54272 tokens is the highest observed passing context, not a proven maximum; no dense probes resumed."
+  ],
+  "memory": {
+    "basis": "same host/model/metadata/manifest/category prompt hashes and retained-row counts; sidecar arm after 16384 prompt + 32 teacher-forced decode steps",
+    "bf16_bytes": 829473104,
+    "domain": "device DMS store resident bytes including workspaces, not whole process",
+    "eviction_scope": "above-window prefill packing removes history; decode evicted_tokens is zero in the 32-step suite",
+    "int8_bytes": 432046928,
+    "live_token_rows": 788544,
+    "logical_token_rows": 1050624,
+    "promotion": "measurement only, not a production-profile performance promotion",
+    "reduction_bytes": 397426176,
+    "reduction_percent": 47.913087728038015
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
+  },
+  "postfix_full_prompt_gate": {
+    "command": "HIP_VISIBLE_DEVICES=1 GPU_MAX_HW_QUEUES=1 OPENBLAS_NUM_THREADS=1 /home/lhl/gfx1100-24gb-capacity/.venv/bin/python scripts/qwen38_dms_int8_prompt_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --metadata /models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json --decode-steps 64 --output /tmp/xtx-capacity/dms-int8-full-prompt-gate-barrier.json",
+    "environment": {
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIP_VISIBLE_DEVICES": "1"
+    },
+    "limitations": [
+      "Heldouts are category-suite splits, not proven disjoint from sidecar training.",
+      "Teacher-forced numerical quality does not establish free-running task success."
+    ],
+    "memory_after_close": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 18414833476,
+      "peak_allocations": 1283,
+      "total_allocated_bytes": 25656883480,
+      "total_freed_bytes": 25656883480
+    },
+    "metadata_sha256": "4c16f9e94d8c870194d37cc46f9e2ec5f6c05b8e97721f799b78d9d2b240ba0b",
+    "model_sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+    "prompts_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "protocol": "raw-user-text, dense-BF16-teacher-forced; full canonical suite",
+    "provenance": {
+      "commit": "9af884bdaee71ab86f8f0e41ef34402d467eeb69",
+      "working_tree_clean": false
+    },
+    "rows": [
+      {
+        "candidates": {
+          "bf16": {
+            "logits_sha256": "844064e68167440decbd651b1bfcdc2b05940c6fd613dbb22fb2ed584f28c1d3",
+            "summary": {
+              "finite_logits": true,
+              "max_kl": 0.0010582464449690183,
+              "mean_kl": 6.624736903106961e-05,
+              "p95_kl": 0.00029730995408360953,
+              "p99_kl": 0.000759871723720409,
+              "passed": true,
+              "rows": 65,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            }
+          },
+          "int8": {
+            "logits_sha256": "8f6f149a936b8c63e00d51e703c2305259adac5abd6ba8223bd10bab63f84e3f",
+            "summary": {
+              "finite_logits": true,
+              "max_kl": 0.0015628219595022422,
+              "mean_kl": 7.648892752783074e-05,
+              "p95_kl": 0.00037767414433196006,
+              "p99_kl": 0.0009272631752368019,
+              "passed": true,
+              "rows": 65,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            },
+            "versus_bf16_dms": {
+              "finite_logits": true,
+              "max_kl": 0.0020831266561841073,
+              "mean_kl": 0.00011838820487321012,
+              "p95_kl": 0.0004379969654917584,
+              "p99_kl": 0.0019665042136341846,
+              "passed": true,
+              "rows": 65,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            }
+          }
+        },
+        "category": "code",
+        "id": "code_merge_intervals",
+        "prompt_sha256": "811f8392ffd07557c0493e7775c2a60fc216bf554a133edcffd8ada80dd27ee4",
+        "prompt_tokens": 28,
+        "split": "train"
+      },
+      {
+        "candidates": {
+          "bf16": {
+            "logits_sha256": "d8f3b405108144f87d695f4bab91626724595075cfa9d0a46d52fee82d370aa6",
+            "summary": {
+              "finite_logits": true,
+              "max_kl": 0.0013231373289974667,
+              "mean_kl": 5.080257269165105e-05,
+              "p95_kl": 0.00017816836530207015,
+              "p99_kl": 0.0009682427113235802,
+              "passed": true,
+              "rows": 65,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            }
+          },
+          "int8": {
+            "logits_sha256": "f0a33f1dd8870bff04c124338aa8da5938eb1fddaff0b8e70ba37ade3270b422",
+            "summary": {
+              "finite_logits": true,
+              "max_kl": 0.006015874449985426,
+              "mean_kl": 0.00017986731277714257,
+              "p95_kl": 0.0008857277825640417,
+              "p99_kl": 0.002981342061396759,
+              "passed": true,
+              "rows": 65,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            },
+            "versus_bf16_dms": {
+              "finite_logits": true,
+              "max_kl": 0.0053558326484078895,
+              "mean_kl": 0.00024284923008661936,
+              "p95_kl": 0.0008659391717867129,
+              "p99_kl": 0.004493622706391814,
+              "passed": true,
+              "rows": 65,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            }
+          }
+        },
+        "category": "code",
+        "id": "code_topological_sort",
+        "prompt_sha256": "a8400ad99963051927d587d8c50428bf7ad56f024979771ac2e50dc1fc1e3d90",
+        "prompt_tokens": 38,
+        "split": "train"
+      },
+      {
+        "candidates": {
+          "bf16": {
+            "logits_sha256": "d3c3a836acc0a4fc4618d8c7bb481949900b0dbda2e6094445c023253a76b12d",
+            "summary": {
+              "finite_logits": true,
+              "max_kl": 0.0011885099298715844,
+              "mean_kl": 9.012357458229414e-05,
+              "p95_kl": 0.0005585091774982659,
+              "p99_kl": 0.0008492402735383808,
+              "passed": true,
+              "rows": 65,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            }
+          },
+          "int8": {
+            "logits_sha256": "20d3eb60a748cd91972ca7c40bd1c03f0552d99d2cefbb67873456744d2d8330",
+            "summary": {
+              "finite_logits": true,
+              "max_kl": 0.002974426389617912,
+              "mean_kl": 0.00014743651526260277,
+              "p95_kl": 0.0007374273756698236,
+              "p99_kl": 0.0017354587912959789,
+              "passed": true,
+              "rows": 65,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 0.9846153846153847
+            },
+            "versus_bf16_dms": {
+              "finite_logits": true,
+              "max_kl": 0.0037430734547574383,
+              "mean_kl": 0.0002376130515285365,
+              "p95_kl": 0.001168048571031773,
+              "p99_kl": 0.003085104143704773,
+              "passed": true,
+              "rows": 65,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 0.9846153846153847
+            }
+          }
+        },
+        "category": "code",
+        "id": "code_lru_cache",
+        "prompt_sha256": "3497022f2b123ea573c67f890ab46cdc92d1f7db5b051278d346bf7be2be7d4c",
+        "prompt_tokens": 35,
+        "split": "train"
+      },
+      {
+        "candidates": {
+          "bf16": {
+            "logits_sha256": "f1c41525a5a96e8b892695f1e58aad173491f6d548437b2642a1264ad3a854c8",
+            "summary": {
+              "finite_logits": true,
+              "max_kl": 0.0011088132283487108,
+              "mean_kl": 5.7747215914006944e-05,
+              "p95_kl": 0.0003540415300557035,
+              "p99_kl": 0.0007229140066496545,
+              "passed": true,
+              "rows": 65,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            }
+          },
+          "int8": {
+            "logits_sha256": "64078e75c8c87c01b90fdabc505c31bb48e2099509005613c34c1a0a01ba5ebd",
+            "summary": {
+              "finite_logits": true,
+              "max_kl": 0.003914629609871081,
+              "mean_kl": 0.00011327557034383487,
+              "p95_kl": 0.0004248645889753916,
+              "p99_kl": 0.0017906135218614086,
+              "passed": true,
+              "rows": 65,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            },
+            "versus_bf16_dms": {
+              "finite_logits": true,
+              "max_kl": 0.001588864322881711,
+              "mean_kl": 0.00010284304063711957,
+              "p95_kl": 0.0007685933375908238,
+              "p99_kl": 0.0012066180190281508,
+              "passed": true,
+              "rows": 65,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            }
+          }
+        },
+        "category": "code",
+        "id": "code_markdown_table",
+        "prompt_sha256": "e65b0cad9af7c36eee247c246e415226e29b468ef7021a6c4f549e023b74f1e7",
+        "prompt_tokens": 40,
+        "split": "heldout"
+      },
+      {
+        "candidates": {
+          "bf16": {
+            "logits_sha256": "4786b5294aae6b52db0b2af4761077c6d0bce8311f0ab608a80da4e4c8cc2530",
+            "summary": {
+              "finite_logits": true,
+              "max_kl": 0.001193347579342996,
+              "mean_kl": 0.0001257265694938069,
+              "p95_kl": 0.0007974241278828175,
+              "p99_kl": 0.0011516355031550689,
+              "passed": true,
+              "rows": 65,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            }
+          },
+          "int8": {
+            "logits_sha256": "8abb43688bc482c9be47d44c69f35d781f161bddeb6e40a642904b2c2c272f5c",
+            "summary": {
+              "finite_logits": true,
+              "max_kl": 0.0011650584121701143,
+              "mean_kl": 0.00010383287896179952,
+              "p95_kl": 0.0005395136561938312,
+              "p99_kl": 0.0009878586302392318,
+              "passed": true,
+              "rows": 65,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            },
+            "versus_bf16_dms": {
+              "finite_logits": true,
+              "max_kl": 0.0016243502839216625,
+              "mean_kl": 0.00012443392798784284,
+              "p95_kl": 0.0006491852579678963,
+              "p99_kl": 0.0013335616943885077,
+              "passed": true,
+              "rows": 65,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            }
+          }
+        },
+        "category": "general_en",
+        "id": "general_en_plan",
+        "prompt_sha256": "da866585f73237fdac7a27975df92278a14f923653cc003a049a97845242b69a",
+        "prompt_tokens": 27,
+        "split": "train"
+      },
+      {
+        "candidates": {
+          "bf16": {
+            "logits_sha256": "04bea3ca4b9efaa2bc1f429c2c55dee069c817f28d6c0520a52905413ef6f508",
+            "summary": {
+              "finite_logits": true,
+              "max_kl": 0.005234039828686345,
+              "mean_kl": 0.00020237258172249955,
+              "p95_kl": 0.0005932697734182937,
+              "p99_kl": 0.00293744069952689,
+              "passed": true,
+              "rows": 65,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            }
+          },
+          "int8": {
+            "logits_sha256": "bb0b0a69a1a2f09fc3e46251914e9460ba780a625cf34455f60f846507f07fed",
+            "summary": {
+              "finite_logits": true,
+              "max_kl": 0.00440846236298735,
+              "mean_kl": 0.00021117661600723007,
+              "p95_kl": 0.0008565093441097774,
+              "p99_kl": 0.002410190275816922,
+              "passed": true,
+              "rows": 65,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            },
+            "versus_bf16_dms": {
+              "finite_logits": true,
+              "max_kl": 0.0010850379041772455,
+              "mean_kl": 0.00014017844178188855,
+              "p95_kl": 0.0006695133109185448,
+              "p99_kl": 0.0009442577807244286,
+              "passed": true,
+              "rows": 65,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            }
+          }
+        },
+        "category": "general_en",
+        "id": "general_en_explain",
+        "prompt_sha256": "b08becb0c855bf9985672ce9064f84b32e17bc327cd7717d6de3ed6c5f85e6ab",
+        "prompt_tokens": 28,
+        "split": "heldout"
+      },
+      {
+        "candidates": {
+          "bf16": {
+            "logits_sha256": "a1b81c0227a83dc4e6dd50732b95a29fbb70f285569a38e36ad70d2f6da84cb8",
+            "summary": {
+              "finite_logits": true,
+              "max_kl": 0.0010000261492530658,
+              "mean_kl": 9.382209284346726e-05,
+              "p95_kl": 0.00042124808566036193,
+              "p99_kl": 0.0007779295706400874,
+              "passed": true,
+              "rows": 65,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            }
+          },
+          "int8": {
+            "logits_sha256": "3ab3873a5321f9d90af2399ad3018ef2e61b319a4dbc1749ab2507b4e7413733",
+            "summary": {
+              "finite_logits": true,
+              "max_kl": 0.003594880798800701,
+              "mean_kl": 0.0002531712525328549,
+              "p95_kl": 0.0010364783222585443,
+              "p99_kl": 0.0028436051632942084,
+              "passed": true,
+              "rows": 65,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            },
+            "versus_bf16_dms": {
+              "finite_logits": true,
+              "max_kl": 0.003188734262122163,
+              "mean_kl": 0.00024312613355631412,
+              "p95_kl": 0.0010374694195693687,
+              "p99_kl": 0.002913586321138829,
+              "passed": true,
+              "rows": 65,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            }
+          }
+        },
+        "category": "general_ja",
+        "id": "general_ja_plan",
+        "prompt_sha256": "15d818a7b48a3ca2d6a42ee2d5aa85d00135b491cedd85bea61e66506119e529",
+        "prompt_tokens": 31,
+        "split": "train"
+      },
+      {
+        "candidates": {
+          "bf16": {
+            "logits_sha256": "ae9137efc4b0ef44e258c7736170ecca46fce6385775c3e091456671064dde46",
+            "summary": {
+              "finite_logits": true,
+              "max_kl": 0.0012147689111221738,
+              "mean_kl": 8.22051244823744e-05,
+              "p95_kl": 0.0004661921527030871,
+              "p99_kl": 0.0009535313239781816,
+              "passed": true,
+              "rows": 65,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            }
+          },
+          "int8": {
+            "logits_sha256": "d3b6b5dc29fb19e20f304a57fe705eb91e214684a7d53254cf8b23a7f7365d5a",
+            "summary": {
+              "finite_logits": true,
+              "max_kl": 0.0008737189542993492,
+              "mean_kl": 8.336020308135604e-05,
+              "p95_kl": 0.0003946501987928077,
+              "p99_kl": 0.0006600699322042282,
+              "passed": true,
+              "rows": 65,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            },
+            "versus_bf16_dms": {
+              "finite_logits": true,
+              "max_kl": 0.0015271166727331541,
+              "mean_kl": 0.00010679864899485313,
+              "p95_kl": 0.0004281119499888335,
+              "p99_kl": 0.0012340122304015685,
+              "passed": true,
+              "rows": 65,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            }
+          }
+        },
+        "category": "general_ja",
+        "id": "general_ja_explain",
+        "prompt_sha256": "0c21117e56e914d647668afb2fceff2321a750b1c46a9bb1deb63e9742a869d1",
+        "prompt_tokens": 31,
+        "split": "heldout"
+      },
+      {
+        "candidates": {
+          "bf16": {
+            "logits_sha256": "21e4794793249afc421d76083babcb23c7850ec6cc9e5a7c4acb4707e227cc39",
+            "summary": {
+              "finite_logits": true,
+              "max_kl": 0.0002977458106180248,
+              "mean_kl": 2.6983562319618897e-05,
+              "p95_kl": 0.00016041580840920035,
+              "p99_kl": 0.00027321218341310436,
+              "passed": true,
+              "rows": 65,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            }
+          },
+          "int8": {
+            "logits_sha256": "1ef681f479271a1940acfb96022d99ec4fba1b95d06848580e6c05020ba7a584",
+            "summary": {
+              "finite_logits": true,
+              "max_kl": 0.0018033761287773633,
+              "mean_kl": 6.511483591600673e-05,
+              "p95_kl": 0.00022444736504460648,
+              "p99_kl": 0.0012057848584182123,
+              "passed": true,
+              "rows": 65,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            },
+            "versus_bf16_dms": {
+              "finite_logits": true,
+              "max_kl": 0.0017687956628232582,
+              "mean_kl": 9.136699676513718e-05,
+              "p95_kl": 0.00040559365789734857,
+              "p99_kl": 0.0016660313975739866,
+              "passed": true,
+              "rows": 65,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            }
+          }
+        },
+        "category": "mixed_ja_en",
+        "id": "mixed_ja_en_translate",
+        "prompt_sha256": "732bdad9b4d4c70c0af8411e2730e7c73f378854ef8745ffaa54c249c630308d",
+        "prompt_tokens": 52,
+        "split": "train"
+      },
+      {
+        "candidates": {
+          "bf16": {
+            "logits_sha256": "af29fa1b3d76ff6e190e999b0ff83a6ab60bfca702768a7c1d4903d1e176de0b",
+            "summary": {
+              "finite_logits": true,
+              "max_kl": 0.0008745728849122115,
+              "mean_kl": 3.157775718353299e-05,
+              "p95_kl": 0.00015543365284096232,
+              "p99_kl": 0.0004851739396909424,
+              "passed": true,
+              "rows": 65,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            }
+          },
+          "int8": {
+            "logits_sha256": "40556c64991400b50a9e6f236b39831b25ff3925bf4312bfe2e9627b3585dd99",
+            "summary": {
+              "finite_logits": true,
+              "max_kl": 0.0003730392262170668,
+              "mean_kl": 2.5751791123471022e-05,
+              "p95_kl": 0.00015128085058359786,
+              "p99_kl": 0.0003059991505661156,
+              "passed": true,
+              "rows": 65,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            },
+            "versus_bf16_dms": {
+              "finite_logits": true,
+              "max_kl": 0.0006366853453405663,
+              "mean_kl": 4.717943328766749e-05,
+              "p95_kl": 0.0003158188601777915,
+              "p99_kl": 0.0005646338103794631,
+              "passed": true,
+              "rows": 65,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            }
+          }
+        },
+        "category": "mixed_ja_en",
+        "id": "mixed_ja_en_review",
+        "prompt_sha256": "cc9ccfe0bbcb7ffab40ff4794dda50e907ec2c0cbce90ca2177bc508c8e91349",
+        "prompt_tokens": 59,
+        "split": "heldout"
+      }
+    ],
+    "serving_qualification": false,
+    "source": {
+      "path": "/tmp/xtx-capacity/dms-int8-full-prompt-gate-barrier.json",
+      "sha256": "7ad02ee9f6d22f7b9fa57b886fe2f344e2b03498a244bdb072f8b028a0fbe91f"
+    },
+    "status": "passed"
+  },
+  "postfix_lifecycle": {
+    "c1": {
+      "cancel_after_steps": null,
+      "command": "HIP_VISIBLE_DEVICES=1 GPU_MAX_HW_QUEUES=1 OPENBLAS_NUM_THREADS=1 .venv/bin/python scripts/qwen38_dms_concurrency_probe.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --metadata /models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json --data-manifest /models/dms/xtx-manifests/qwen38-27b-q4km-xtx-capacity-manifest.json --sessions 1 --prompt-tokens 8192 --decode-steps 1 --refill-cycles 1 --codec int8_evaluation --verify-c1 --backend hip_gfx1100 --output /tmp/xtx-capacity/dms-int8-c1-barrier.json",
+      "command_basis": "reconstructed from recorded arguments and repair worklog",
+      "cycle_errors": [],
+      "cycles": [
+        {
+          "after_close": {
+            "active_allocations": 0,
+            "current_allocated_bytes": 0,
+            "peak_allocated_bytes": 19336187352,
+            "peak_allocations": 1283,
+            "total_allocated_bytes": 20514440496,
+            "total_freed_bytes": 20514440496
+          },
+          "cancellation": null,
+          "close_errors": [],
+          "cycle": 0,
+          "decode": [
+            {
+              "c1_logits_exact": true,
+              "finite_logits": true,
+              "logits_sha256": "4d7f661f8f72bb080ced47ee01984e2e60d6b738794408afb3c5ea31ebdde52c",
+              "output_token": 504,
+              "session": 0,
+              "step": 0
+            }
+          ],
+          "dms_snapshots": [
+            {
+              "capacity": {
+                "actual_compression_ratio": 1.0,
+                "device_resident_bytes": 292983440,
+                "live_token_rows": 524352,
+                "logical_token_rows": 524352,
+                "max_live_count": 8193,
+                "payload_bytes": 268468224,
+                "scale_bytes": 4194816,
+                "target_compression_ratio": 2
+              },
+              "extent_pool": {
+                "allocation_failures": 0,
+                "capacity_slots": 524416,
+                "free_slots": 0
+              },
+              "ledger_active_reservations": 1
+            }
+          ]
+        }
+      ],
+      "data_manifest": {
+        "path": "/models/dms/xtx-manifests/qwen38-27b-q4km-xtx-capacity-manifest.json",
+        "sha256": "9b8dacd9111ddf5b44dc55a0cd199ca7c3cafed763a21bb13eae0a98cdfc72cc"
+      },
+      "decode_steps_each": 1,
+      "heterogeneous_widths": [
+        8192
+      ],
+      "metadata": {
+        "path": "/models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json",
+        "sha256": "4c16f9e94d8c870194d37cc46f9e2ec5f6c05b8e97721f799b78d9d2b240ba0b"
+      },
+      "model": {
+        "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
+      },
+      "prompts": {
+        "disjoint_validation_slices": true,
+        "sha256": "eef8ba3c0ac5d380fd1c725b01102e9d9dd59ecf03474482e4890283033a43a4"
+      },
+      "provenance": {
+        "commit": "9af884bdaee71ab86f8f0e41ef34402d467eeb69",
+        "working_tree_clean": false
+      },
+      "refill_cycles": 1,
+      "sessions": 1,
+      "source": {
+        "path": "/tmp/xtx-capacity/dms-int8-c1-barrier.json",
+        "sha256": "5515e3519136d02b096f00425d79415967aeb5dfdd5e387140fdea5864c49940"
+      },
+      "status": "passed",
+      "verify_c1": true
+    },
+    "c2": {
+      "cancel_after_steps": 2,
+      "command": "HIP_VISIBLE_DEVICES=1 GPU_MAX_HW_QUEUES=1 OPENBLAS_NUM_THREADS=1 .venv/bin/python scripts/qwen38_dms_concurrency_probe.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --metadata /models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json --data-manifest /models/dms/xtx-manifests/qwen38-27b-q4km-xtx-capacity-manifest.json --sessions 2 --prompt-tokens 8192 --heterogeneous --decode-steps 8 --cancel-after-steps 2 --refill-cycles 2 --codec int8_evaluation --verify-c1 --backend hip_gfx1100 --output /tmp/xtx-capacity/dms-int8-c2-exact-refill-barrier.json",
+      "command_basis": "reconstructed from recorded arguments and repair worklog",
+      "cycle_errors": [],
+      "cycles": [
+        {
+          "after_close": {
+            "active_allocations": 0,
+            "current_allocated_bytes": 0,
+            "peak_allocated_bytes": 20651302000,
+            "peak_allocations": 1631,
+            "total_allocated_bytes": 24260947168,
+            "total_freed_bytes": 24260947168
+          },
+          "cancellation": {
+            "after_decode_step": 1,
+            "cancelled_session": 0,
+            "close_seconds": 0.014,
+            "memory_after_cancel_MiB": 18058.9,
+            "survivor_sessions": 1
+          },
+          "close_errors": [],
+          "cycle": 0,
+          "decode": [
+            {
+              "c1_logits_exact": true,
+              "finite_logits": true,
+              "logits_sha256": "4d7f661f8f72bb080ced47ee01984e2e60d6b738794408afb3c5ea31ebdde52c",
+              "output_token": 504,
+              "session": 0,
+              "step": 0
+            },
+            {
+              "c1_logits_exact": true,
+              "finite_logits": true,
+              "logits_sha256": "d08c8df27cd77341ba38b9d041e83207b32ec22f4a10b418ed79ee1fb12a0138",
+              "output_token": 283,
+              "session": 1,
+              "step": 0
+            },
+            {
+              "c1_logits_exact": true,
+              "finite_logits": true,
+              "logits_sha256": "67779db4021808649ab1659fd08c03bc6112feaa4305305f393a99ca41000921",
+              "output_token": 198,
+              "session": 0,
+              "step": 1
+            },
+            {
+              "c1_logits_exact": true,
+              "finite_logits": true,
+              "logits_sha256": "19293ba31e03694a1b4375cba5190c8b0d2eb1ec12f4fc6d50d13fed7f47586f",
+              "output_token": 696,
+              "session": 1,
+              "step": 1
+            },
+            {
+              "c1_logits_exact": true,
+              "finite_logits": true,
+              "logits_sha256": "af0b617cc65b72cb15256299bc78b3ac6eabac2ec2f17e2d2b5e8f1a0c324265",
+              "output_token": 3081,
+              "session": 1,
+              "step": 2
+            },
+            {
+              "c1_logits_exact": true,
+              "finite_logits": true,
+              "logits_sha256": "b812bf357be724a9e14ea9f57f2e231df0107acf8ff61776c50b3575cc0745bc",
+              "output_token": 8119,
+              "session": 1,
+              "step": 3
+            },
+            {
+              "c1_logits_exact": true,
+              "finite_logits": true,
+              "logits_sha256": "97ce2843eb23a260f6599522a2c3af3263cfe5a0c8c0f582f896dccb9438e80a",
+              "output_token": 33111,
+              "session": 1,
+              "step": 4
+            },
+            {
+              "c1_logits_exact": true,
+              "finite_logits": true,
+              "logits_sha256": "830717158ce0e436cf6f92e1665d556763f4037f8da67e1ee47da2f0bd937d5e",
+              "output_token": 18195,
+              "session": 1,
+              "step": 5
+            },
+            {
+              "c1_logits_exact": true,
+              "finite_logits": true,
+              "logits_sha256": "a084cc3e59e42b8d0c35122587bac0c14155e1ea8dc21e32a082ff664fa38723",
+              "output_token": 382,
+              "session": 1,
+              "step": 6
+            },
+            {
+              "c1_logits_exact": true,
+              "finite_logits": true,
+              "logits_sha256": "dedd94b08b248b920262ae3ef8c84821512e7d4a71c4af89a04c586b4c9ee585",
+              "output_token": 30810,
+              "session": 1,
+              "step": 7
+            }
+          ],
+          "dms_snapshots": [
+            {
+              "capacity": {
+                "actual_compression_ratio": 1.333008050744084,
+                "device_resident_bytes": 431274128,
+                "live_token_rows": 787008,
+                "logical_token_rows": 1049088,
+                "max_live_count": 12297,
+                "payload_bytes": 402948096,
+                "scale_bytes": 6296064,
+                "target_compression_ratio": 2
+              },
+              "extent_pool": {
+                "allocation_failures": 0,
+                "capacity_slots": 787072,
+                "free_slots": 0
+              },
+              "ledger_active_reservations": 1
+            }
+          ]
+        },
+        {
+          "after_close": {
+            "active_allocations": 0,
+            "current_allocated_bytes": 0,
+            "peak_allocated_bytes": 20651302000,
+            "peak_allocations": 1631,
+            "total_allocated_bytes": 48521894336,
+            "total_freed_bytes": 48521894336
+          },
+          "cancellation": {
+            "after_decode_step": 1,
+            "cancelled_session": 0,
+            "close_seconds": 0.016,
+            "memory_after_cancel_MiB": 18058.9,
+            "survivor_sessions": 1
+          },
+          "close_errors": [],
+          "cycle": 1,
+          "decode": [
+            {
+              "c1_logits_exact": true,
+              "finite_logits": true,
+              "logits_sha256": "4d7f661f8f72bb080ced47ee01984e2e60d6b738794408afb3c5ea31ebdde52c",
+              "output_token": 504,
+              "session": 0,
+              "step": 0
+            },
+            {
+              "c1_logits_exact": true,
+              "finite_logits": true,
+              "logits_sha256": "d08c8df27cd77341ba38b9d041e83207b32ec22f4a10b418ed79ee1fb12a0138",
+              "output_token": 283,
+              "session": 1,
+              "step": 0
+            },
+            {
+              "c1_logits_exact": true,
+              "finite_logits": true,
+              "logits_sha256": "67779db4021808649ab1659fd08c03bc6112feaa4305305f393a99ca41000921",
+              "output_token": 198,
+              "session": 0,
+              "step": 1
+            },
+            {
+              "c1_logits_exact": true,
+              "finite_logits": true,
+              "logits_sha256": "19293ba31e03694a1b4375cba5190c8b0d2eb1ec12f4fc6d50d13fed7f47586f",
+              "output_token": 696,
+              "session": 1,
+              "step": 1
+            },
+            {
+              "c1_logits_exact": true,
+              "finite_logits": true,
+              "logits_sha256": "af0b617cc65b72cb15256299bc78b3ac6eabac2ec2f17e2d2b5e8f1a0c324265",
+              "output_token": 3081,
+              "session": 1,
+              "step": 2
+            },
+            {
+              "c1_logits_exact": true,
+              "finite_logits": true,
+              "logits_sha256": "b812bf357be724a9e14ea9f57f2e231df0107acf8ff61776c50b3575cc0745bc",
+              "output_token": 8119,
+              "session": 1,
+              "step": 3
+            },
+            {
+              "c1_logits_exact": true,
+              "finite_logits": true,
+              "logits_sha256": "97ce2843eb23a260f6599522a2c3af3263cfe5a0c8c0f582f896dccb9438e80a",
+              "output_token": 33111,
+              "session": 1,
+              "step": 4
+            },
+            {
+              "c1_logits_exact": true,
+              "finite_logits": true,
+              "logits_sha256": "830717158ce0e436cf6f92e1665d556763f4037f8da67e1ee47da2f0bd937d5e",
+              "output_token": 18195,
+              "session": 1,
+              "step": 5
+            },
+            {
+              "c1_logits_exact": true,
+              "finite_logits": true,
+              "logits_sha256": "a084cc3e59e42b8d0c35122587bac0c14155e1ea8dc21e32a082ff664fa38723",
+              "output_token": 382,
+              "session": 1,
+              "step": 6
+            },
+            {
+              "c1_logits_exact": true,
+              "finite_logits": true,
+              "logits_sha256": "dedd94b08b248b920262ae3ef8c84821512e7d4a71c4af89a04c586b4c9ee585",
+              "output_token": 30810,
+              "session": 1,
+              "step": 7
+            }
+          ],
+          "dms_snapshots": [
+            {
+              "capacity": {
+                "actual_compression_ratio": 1.333008050744084,
+                "device_resident_bytes": 431274128,
+                "live_token_rows": 787008,
+                "logical_token_rows": 1049088,
+                "max_live_count": 12297,
+                "payload_bytes": 402948096,
+                "scale_bytes": 6296064,
+                "target_compression_ratio": 2
+              },
+              "extent_pool": {
+                "allocation_failures": 0,
+                "capacity_slots": 787072,
+                "free_slots": 0
+              },
+              "ledger_active_reservations": 1
+            }
+          ]
+        }
+      ],
+      "data_manifest": {
+        "path": "/models/dms/xtx-manifests/qwen38-27b-q4km-xtx-capacity-manifest.json",
+        "sha256": "9b8dacd9111ddf5b44dc55a0cd199ca7c3cafed763a21bb13eae0a98cdfc72cc"
+      },
+      "decode_steps_each": 8,
+      "heterogeneous_widths": [
+        8192,
+        16384
+      ],
+      "metadata": {
+        "path": "/models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json",
+        "sha256": "4c16f9e94d8c870194d37cc46f9e2ec5f6c05b8e97721f799b78d9d2b240ba0b"
+      },
+      "model": {
+        "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
+      },
+      "prompts": {
+        "disjoint_validation_slices": true,
+        "sha256": "0ba2375aeaf74128a36d7ab40f6d85fb88aeedb586a06b1e1043d66a2b3bc46c"
+      },
+      "provenance": {
+        "commit": "9af884bdaee71ab86f8f0e41ef34402d467eeb69",
+        "working_tree_clean": false
+      },
+      "refill_cycles": 2,
+      "sessions": 2,
+      "source": {
+        "path": "/tmp/xtx-capacity/dms-int8-c2-exact-refill-barrier.json",
+        "sha256": "6cb10a009fccc5b9c394727e2bb2bfaa40a532d5acf4bfe5c97ed6d81d46666c"
+      },
+      "status": "passed",
+      "verify_c1": true
+    }
+  },
+  "postfix_long_int8": {
+    "aggregate": {
+      "no_evict": {
+        "all_categories_passed": true,
+        "finite_logits": true,
+        "max_kl": 0.007665684516893874,
+        "mean_kl": 0.0001607609498985753,
+        "p95_kl": 0.00045684459306947686,
+        "p99_kl": 0.00129402871127095,
+        "passed": true,
+        "rows": 128,
+        "thresholds": {
+          "max_kl": 0.05,
+          "min_top1_agreement": 0.9
+        },
+        "top1_agreement": 1.0
+      },
+      "sidecar": {
+        "all_categories_passed": true,
+        "finite_logits": true,
+        "max_kl": 0.01493759233112852,
+        "mean_kl": 0.0010118806582481003,
+        "p95_kl": 0.005126758323932611,
+        "p99_kl": 0.00984524348550563,
+        "passed": true,
+        "rows": 128,
+        "thresholds": {
+          "max_kl": 0.05,
+          "min_top1_agreement": 0.9
+        },
+        "top1_agreement": 1.0
+      }
+    },
+    "backend": "hip_gfx1100",
+    "categories": {
+      "code": {
+        "candidates": {
+          "no_evict": {
+            "dms": {
+              "backend": {
+                "artifact_fingerprint": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+                "codec": "int8_per_token_head",
+                "codec_evaluation_only": true,
+                "decision_source": "external_linear_sidecar_v1",
+                "device_backend": "hip_gfx1100",
+                "device_payloads": true,
+                "no_dense_shadow": true,
+                "physical_layer_ids": [
+                  3,
+                  7,
+                  11,
+                  15,
+                  19,
+                  23,
+                  27,
+                  31,
+                  35,
+                  39,
+                  43,
+                  47,
+                  51,
+                  55,
+                  59,
+                  63
+                ],
+                "physical_widths": [
+                  1,
+                  2,
+                  4,
+                  8
+                ],
+                "prefix_mode": "off",
+                "retrofit_fingerprint": "9b50b58678191da3fc3f3c819d3118ac0fc82026f6cc5d4def05688c538a86f3",
+                "topology": "dms_compact"
+              },
+              "capacity": {
+                "actual_compression_ratio": 1.0,
+                "device_resident_bytes": 570035216,
+                "live_token_rows": 1050624,
+                "logical_token_rows": 1050624,
+                "max_live_count": 16416,
+                "payload_bytes": 537919488,
+                "scale_bytes": 8404992,
+                "target_compression_ratio": 2
+              },
+              "operations": {
+                "decode_appends": 32,
+                "evicted_tokens": 0,
+                "released_provisional_slots": 0,
+                "streaming_pack_calls": 1
+              }
+            },
+            "prefill_comparison": {
+              "candidate_top1": 1590,
+              "finite_candidate_logits": true,
+              "kl": 0.0,
+              "teacher_top1": 1590,
+              "top1_agrees": true
+            },
+            "summary": {
+              "finite_logits": true,
+              "max_kl": 4.2686994487618535e-05,
+              "mean_kl": 4.591104279912659e-06,
+              "p95_kl": 3.635238811137914e-05,
+              "p99_kl": 4.212249702030721e-05,
+              "passed": true,
+              "rows": 32,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            }
+          },
+          "sidecar": {
+            "dms": {
+              "backend": {
+                "artifact_fingerprint": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+                "codec": "int8_per_token_head",
+                "codec_evaluation_only": true,
+                "decision_source": "external_linear_sidecar_v1",
+                "device_backend": "hip_gfx1100",
+                "device_payloads": true,
+                "no_dense_shadow": true,
+                "physical_layer_ids": [
+                  3,
+                  7,
+                  11,
+                  15,
+                  19,
+                  23,
+                  27,
+                  31,
+                  35,
+                  39,
+                  43,
+                  47,
+                  51,
+                  55,
+                  59,
+                  63
+                ],
+                "physical_widths": [
+                  1,
+                  2,
+                  4,
+                  8
+                ],
+                "prefix_mode": "off",
+                "retrofit_fingerprint": "9b50b58678191da3fc3f3c819d3118ac0fc82026f6cc5d4def05688c538a86f3",
+                "topology": "dms_compact"
+              },
+              "capacity": {
+                "actual_compression_ratio": 1.3323593864134404,
+                "device_resident_bytes": 432046928,
+                "live_token_rows": 788544,
+                "logical_token_rows": 1050624,
+                "max_live_count": 12321,
+                "payload_bytes": 403734528,
+                "scale_bytes": 6308352,
+                "target_compression_ratio": 2
+              },
+              "operations": {
+                "decode_appends": 32,
+                "evicted_tokens": 0,
+                "released_provisional_slots": 0,
+                "streaming_pack_calls": 1
+              }
+            },
+            "prefill_comparison": {
+              "candidate_top1": 1590,
+              "finite_candidate_logits": true,
+              "kl": 0.0,
+              "teacher_top1": 1590,
+              "top1_agrees": true
+            },
+            "summary": {
+              "finite_logits": true,
+              "max_kl": 0.00036403391843815223,
+              "mean_kl": 3.534263181818244e-05,
+              "p95_kl": 0.0001794861193835963,
+              "p99_kl": 0.00030874674343329067,
+              "passed": true,
+              "rows": 32,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            }
+          }
+        },
+        "prompt": {
+          "sequence_ids": [
+            "xtx-validation-code-32768"
+          ],
+          "token_ids_sha256": "902b76b46c6df6108893cd632956a145ee9408aa871544baa42847fdb77d2de6",
+          "tokens": 16384
+        }
+      },
+      "general_en": {
+        "candidates": {
+          "no_evict": {
+            "dms": {
+              "backend": {
+                "artifact_fingerprint": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+                "codec": "int8_per_token_head",
+                "codec_evaluation_only": true,
+                "decision_source": "external_linear_sidecar_v1",
+                "device_backend": "hip_gfx1100",
+                "device_payloads": true,
+                "no_dense_shadow": true,
+                "physical_layer_ids": [
+                  3,
+                  7,
+                  11,
+                  15,
+                  19,
+                  23,
+                  27,
+                  31,
+                  35,
+                  39,
+                  43,
+                  47,
+                  51,
+                  55,
+                  59,
+                  63
+                ],
+                "physical_widths": [
+                  1,
+                  2,
+                  4,
+                  8
+                ],
+                "prefix_mode": "off",
+                "retrofit_fingerprint": "9b50b58678191da3fc3f3c819d3118ac0fc82026f6cc5d4def05688c538a86f3",
+                "topology": "dms_compact"
+              },
+              "capacity": {
+                "actual_compression_ratio": 1.0,
+                "device_resident_bytes": 570035216,
+                "live_token_rows": 1050624,
+                "logical_token_rows": 1050624,
+                "max_live_count": 16416,
+                "payload_bytes": 537919488,
+                "scale_bytes": 8404992,
+                "target_compression_ratio": 2
+              },
+              "operations": {
+                "decode_appends": 32,
+                "evicted_tokens": 0,
+                "released_provisional_slots": 0,
+                "streaming_pack_calls": 1
+              }
+            },
+            "prefill_comparison": {
+              "candidate_top1": 279,
+              "finite_candidate_logits": true,
+              "kl": 0.0,
+              "teacher_top1": 279,
+              "top1_agrees": true
+            },
+            "summary": {
+              "finite_logits": true,
+              "max_kl": 0.0011995561280693627,
+              "mean_kl": 0.00016914139751259328,
+              "p95_kl": 0.000639091811129326,
+              "p99_kl": 0.001052128513604718,
+              "passed": true,
+              "rows": 32,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            }
+          },
+          "sidecar": {
+            "dms": {
+              "backend": {
+                "artifact_fingerprint": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+                "codec": "int8_per_token_head",
+                "codec_evaluation_only": true,
+                "decision_source": "external_linear_sidecar_v1",
+                "device_backend": "hip_gfx1100",
+                "device_payloads": true,
+                "no_dense_shadow": true,
+                "physical_layer_ids": [
+                  3,
+                  7,
+                  11,
+                  15,
+                  19,
+                  23,
+                  27,
+                  31,
+                  35,
+                  39,
+                  43,
+                  47,
+                  51,
+                  55,
+                  59,
+                  63
+                ],
+                "physical_widths": [
+                  1,
+                  2,
+                  4,
+                  8
+                ],
+                "prefix_mode": "off",
+                "retrofit_fingerprint": "9b50b58678191da3fc3f3c819d3118ac0fc82026f6cc5d4def05688c538a86f3",
+                "topology": "dms_compact"
+              },
+              "capacity": {
+                "actual_compression_ratio": 1.3323593864134404,
+                "device_resident_bytes": 432046928,
+                "live_token_rows": 788544,
+                "logical_token_rows": 1050624,
+                "max_live_count": 12321,
+                "payload_bytes": 403734528,
+                "scale_bytes": 6308352,
+                "target_compression_ratio": 2
+              },
+              "operations": {
+                "decode_appends": 32,
+                "evicted_tokens": 0,
+                "released_provisional_slots": 0,
+                "streaming_pack_calls": 1
+              }
+            },
+            "prefill_comparison": {
+              "candidate_top1": 279,
+              "finite_candidate_logits": true,
+              "kl": 0.0,
+              "teacher_top1": 279,
+              "top1_agrees": true
+            },
+            "summary": {
+              "finite_logits": true,
+              "max_kl": 0.007374666379684983,
+              "mean_kl": 0.001103728412773394,
+              "p95_kl": 0.004655164406251458,
+              "p99_kl": 0.006796435958175345,
+              "passed": true,
+              "rows": 32,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            }
+          }
+        },
+        "prompt": {
+          "sequence_ids": [
+            "xtx-validation-general_en-32768"
+          ],
+          "token_ids_sha256": "c01a525d56008fe1e9e3b460c0cbd2843b33fe5cbbc6ca7449da80503a9d64da",
+          "tokens": 16384
+        }
+      },
+      "general_ja": {
+        "candidates": {
+          "no_evict": {
+            "dms": {
+              "backend": {
+                "artifact_fingerprint": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+                "codec": "int8_per_token_head",
+                "codec_evaluation_only": true,
+                "decision_source": "external_linear_sidecar_v1",
+                "device_backend": "hip_gfx1100",
+                "device_payloads": true,
+                "no_dense_shadow": true,
+                "physical_layer_ids": [
+                  3,
+                  7,
+                  11,
+                  15,
+                  19,
+                  23,
+                  27,
+                  31,
+                  35,
+                  39,
+                  43,
+                  47,
+                  51,
+                  55,
+                  59,
+                  63
+                ],
+                "physical_widths": [
+                  1,
+                  2,
+                  4,
+                  8
+                ],
+                "prefix_mode": "off",
+                "retrofit_fingerprint": "9b50b58678191da3fc3f3c819d3118ac0fc82026f6cc5d4def05688c538a86f3",
+                "topology": "dms_compact"
+              },
+              "capacity": {
+                "actual_compression_ratio": 1.0,
+                "device_resident_bytes": 570035216,
+                "live_token_rows": 1050624,
+                "logical_token_rows": 1050624,
+                "max_live_count": 16416,
+                "payload_bytes": 537919488,
+                "scale_bytes": 8404992,
+                "target_compression_ratio": 2
+              },
+              "operations": {
+                "decode_appends": 32,
+                "evicted_tokens": 0,
+                "released_provisional_slots": 0,
+                "streaming_pack_calls": 1
+              }
+            },
+            "prefill_comparison": {
+              "candidate_top1": 95901,
+              "finite_candidate_logits": true,
+              "kl": 0.0,
+              "teacher_top1": 95901,
+              "top1_agrees": true
+            },
+            "summary": {
+              "finite_logits": true,
+              "max_kl": 0.000345097877062793,
+              "mean_kl": 7.926070618222813e-05,
+              "p95_kl": 0.0002833254260076414,
+              "p99_kl": 0.0003307732475399113,
+              "passed": true,
+              "rows": 32,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            }
+          },
+          "sidecar": {
+            "dms": {
+              "backend": {
+                "artifact_fingerprint": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+                "codec": "int8_per_token_head",
+                "codec_evaluation_only": true,
+                "decision_source": "external_linear_sidecar_v1",
+                "device_backend": "hip_gfx1100",
+                "device_payloads": true,
+                "no_dense_shadow": true,
+                "physical_layer_ids": [
+                  3,
+                  7,
+                  11,
+                  15,
+                  19,
+                  23,
+                  27,
+                  31,
+                  35,
+                  39,
+                  43,
+                  47,
+                  51,
+                  55,
+                  59,
+                  63
+                ],
+                "physical_widths": [
+                  1,
+                  2,
+                  4,
+                  8
+                ],
+                "prefix_mode": "off",
+                "retrofit_fingerprint": "9b50b58678191da3fc3f3c819d3118ac0fc82026f6cc5d4def05688c538a86f3",
+                "topology": "dms_compact"
+              },
+              "capacity": {
+                "actual_compression_ratio": 1.3323593864134404,
+                "device_resident_bytes": 432046928,
+                "live_token_rows": 788544,
+                "logical_token_rows": 1050624,
+                "max_live_count": 12321,
+                "payload_bytes": 403734528,
+                "scale_bytes": 6308352,
+                "target_compression_ratio": 2
+              },
+              "operations": {
+                "decode_appends": 32,
+                "evicted_tokens": 0,
+                "released_provisional_slots": 0,
+                "streaming_pack_calls": 1
+              }
+            },
+            "prefill_comparison": {
+              "candidate_top1": 95901,
+              "finite_candidate_logits": true,
+              "kl": 0.0,
+              "teacher_top1": 95901,
+              "top1_agrees": true
+            },
+            "summary": {
+              "finite_logits": true,
+              "max_kl": 0.01042450289612984,
+              "mean_kl": 0.001432723052515776,
+              "p95_kl": 0.007051842560887332,
+              "p99_kl": 0.00975942727652426,
+              "passed": true,
+              "rows": 32,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            }
+          }
+        },
+        "prompt": {
+          "sequence_ids": [
+            "xtx-validation-general_ja-32768"
+          ],
+          "token_ids_sha256": "495deddb799f4b4c339a9058ef75706de3506aaa417643dd9033621c868a7ce5",
+          "tokens": 16384
+        }
+      },
+      "mixed_ja_en": {
+        "candidates": {
+          "no_evict": {
+            "dms": {
+              "backend": {
+                "artifact_fingerprint": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+                "codec": "int8_per_token_head",
+                "codec_evaluation_only": true,
+                "decision_source": "external_linear_sidecar_v1",
+                "device_backend": "hip_gfx1100",
+                "device_payloads": true,
+                "no_dense_shadow": true,
+                "physical_layer_ids": [
+                  3,
+                  7,
+                  11,
+                  15,
+                  19,
+                  23,
+                  27,
+                  31,
+                  35,
+                  39,
+                  43,
+                  47,
+                  51,
+                  55,
+                  59,
+                  63
+                ],
+                "physical_widths": [
+                  1,
+                  2,
+                  4,
+                  8
+                ],
+                "prefix_mode": "off",
+                "retrofit_fingerprint": "9b50b58678191da3fc3f3c819d3118ac0fc82026f6cc5d4def05688c538a86f3",
+                "topology": "dms_compact"
+              },
+              "capacity": {
+                "actual_compression_ratio": 1.0,
+                "device_resident_bytes": 570035216,
+                "live_token_rows": 1050624,
+                "logical_token_rows": 1050624,
+                "max_live_count": 16416,
+                "payload_bytes": 537919488,
+                "scale_bytes": 8404992,
+                "target_compression_ratio": 2
+              },
+              "operations": {
+                "decode_appends": 32,
+                "evicted_tokens": 0,
+                "released_provisional_slots": 0,
+                "streaming_pack_calls": 1
+              }
+            },
+            "prefill_comparison": {
+              "candidate_top1": 171323,
+              "finite_candidate_logits": true,
+              "kl": 0.0,
+              "teacher_top1": 171323,
+              "top1_agrees": true
+            },
+            "summary": {
+              "finite_logits": true,
+              "max_kl": 0.007665684516893874,
+              "mean_kl": 0.000390050591619567,
+              "p95_kl": 0.0010359923039787592,
+              "p99_kl": 0.005701303210594574,
+              "passed": true,
+              "rows": 32,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            }
+          },
+          "sidecar": {
+            "dms": {
+              "backend": {
+                "artifact_fingerprint": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+                "codec": "int8_per_token_head",
+                "codec_evaluation_only": true,
+                "decision_source": "external_linear_sidecar_v1",
+                "device_backend": "hip_gfx1100",
+                "device_payloads": true,
+                "no_dense_shadow": true,
+                "physical_layer_ids": [
+                  3,
+                  7,
+                  11,
+                  15,
+                  19,
+                  23,
+                  27,
+                  31,
+                  35,
+                  39,
+                  43,
+                  47,
+                  51,
+                  55,
+                  59,
+                  63
+                ],
+                "physical_widths": [
+                  1,
+                  2,
+                  4,
+                  8
+                ],
+                "prefix_mode": "off",
+                "retrofit_fingerprint": "9b50b58678191da3fc3f3c819d3118ac0fc82026f6cc5d4def05688c538a86f3",
+                "topology": "dms_compact"
+              },
+              "capacity": {
+                "actual_compression_ratio": 1.3323593864134404,
+                "device_resident_bytes": 432046928,
+                "live_token_rows": 788544,
+                "logical_token_rows": 1050624,
+                "max_live_count": 12321,
+                "payload_bytes": 403734528,
+                "scale_bytes": 6308352,
+                "target_compression_ratio": 2
+              },
+              "operations": {
+                "decode_appends": 32,
+                "evicted_tokens": 0,
+                "released_provisional_slots": 0,
+                "streaming_pack_calls": 1
+              }
+            },
+            "prefill_comparison": {
+              "candidate_top1": 171323,
+              "finite_candidate_logits": true,
+              "kl": 0.0,
+              "teacher_top1": 171323,
+              "top1_agrees": true
+            },
+            "summary": {
+              "finite_logits": true,
+              "max_kl": 0.01493759233112852,
+              "mean_kl": 0.001475728535885048,
+              "p95_kl": 0.005578610625791276,
+              "p99_kl": 0.012476760832330965,
+              "passed": true,
+              "rows": 32,
+              "thresholds": {
+                "max_kl": 0.05,
+                "min_top1_agreement": 0.9
+              },
+              "top1_agreement": 1.0
+            }
+          }
+        },
+        "prompt": {
+          "sequence_ids": [
+            "xtx-validation-mixed_ja_en-32768"
+          ],
+          "token_ids_sha256": "8f64bb378d8e14a6591d7c60ff7467b6b8bc75d21846ac91ab57ad280def6d2c",
+          "tokens": 16384
+        }
+      }
+    },
+    "command": "HIP_VISIBLE_DEVICES=1 GPU_MAX_HW_QUEUES=1 OPENBLAS_NUM_THREADS=1 .venv/bin/python scripts/qwen38_dms_integrated_quality_suite.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --metadata /models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json --data-manifest /models/dms/xtx-manifests/qwen38-27b-q4km-xtx-capacity-manifest.json --prompt-tokens 16384 --decode-steps 32 --modes no_evict,sidecar --codec int8_evaluation --backend hip_gfx1100 --output /tmp/xtx-capacity/dms-int8-suite-16384-32-barrier.json --fail-on-fail",
+    "command_basis": "reconstructed from recorded arguments and repair worklog",
+    "data_manifest": {
+      "path": "/models/dms/xtx-manifests/qwen38-27b-q4km-xtx-capacity-manifest.json",
+      "sha256": "9b8dacd9111ddf5b44dc55a0cd199ca7c3cafed763a21bb13eae0a98cdfc72cc",
+      "split": "validation"
+    },
+    "host": "epyc",
+    "memory_after_close": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 20164232920,
+      "peak_allocations": 1283,
+      "total_allocated_bytes": 39420588704,
+      "total_freed_bytes": 39420588704
+    },
+    "metadata": {
+      "path": "/models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json",
+      "sha256": "4c16f9e94d8c870194d37cc46f9e2ec5f6c05b8e97721f799b78d9d2b240ba0b"
+    },
+    "model": {
+      "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+      "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
+    },
+    "protocol": {
+      "candidate_owner": "integrated compact device route; dense KV released after prefill",
+      "categories": [
+        "code",
+        "general_en",
+        "general_ja",
+        "mixed_ja_en"
+      ],
+      "codec": "int8_evaluation",
+      "decode_steps": 32,
+      "modes": [
+        "no_evict",
+        "sidecar"
+      ],
+      "prompt_tokens": 16384,
+      "serving_qualification": false,
+      "teacher": "dense BF16 KV exact-Q4 resident session",
+      "thresholds": {
+        "max_kl": 0.05,
+        "min_top1_agreement": 0.9
+      },
+      "trajectory": "strict dense-teacher input tokens"
+    },
+    "provenance": {
+      "commit": "9af884bdaee71ab86f8f0e41ef34402d467eeb69",
+      "working_tree_clean": false
+    },
+    "source": {
+      "path": "/tmp/xtx-capacity/dms-int8-suite-16384-32-barrier.json",
+      "sha256": "955bf7eade26690d08280bc5ebf97943acfe372e4e1ad5a9a488f0e4c3be0024"
+    },
+    "status": "passed"
+  },
+  "postfix_profiler": {
+    "command": "HIP_VISIBLE_DEVICES=1 GPU_MAX_HW_QUEUES=1 OPENBLAS_NUM_THREADS=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/xtx-capacity/int8-repair-compiler.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/xtx-capacity/dms-int8-device-profile-barrier -- .venv/bin/python -m pytest -xq tests/test_dms_int8_device_payloads.py",
+    "compiler_version": "HIP version: 7.2.53211-3d9ef42\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+    "kernels": {
+      "(anonymous namespace)::dms_int8_append_kernel(unsigned short const*, unsigned short const*, unsigned char const*, int const*, int const*, int const*, int*, signed char*, signed char*, int*, unsigned char*, int*, float*, float*, int, int, int)": {
+        "launches": 10,
+        "max_duration_ns": 14587652,
+        "min_duration_ns": 13080
+      },
+      "(anonymous namespace)::dms_int8_attn_split_kernel(float const*, signed char const*, signed char const*, int const*, int const*, float*, float*, float*, float const*, float const*, int, int, int, float, int, int)": {
+        "launches": 85,
+        "max_duration_ns": 2859426,
+        "min_duration_ns": 8360
+      },
+      "(anonymous namespace)::dms_int8_pack_kernel(unsigned short const*, unsigned short const*, unsigned char const*, int const*, int const*, int*, int const*, int const*, signed char*, signed char*, int*, unsigned char*, float*, float*, int, int, int)": {
+        "launches": 5,
+        "max_duration_ns": 16274908,
+        "min_duration_ns": 35441
+      }
+    },
+    "scope": "execution confirmation only; not a timing comparison",
+    "source": {
+      "path": "/tmp/xtx-capacity/dms-int8-device-profile-barrier/epyc/1494241_kernel_trace.csv",
+      "sha256": "07af801b4e3fc86d08687e37f70e12bd1526803f2043f148e1c1f17e6e979d4b"
+    },
+    "tests_passed": 5
+  },
+  "pytest": {
+    "basis": "post-fix repair worklog; not rerun for publication",
+    "command": "HIP_VISIBLE_DEVICES=1 GPU_MAX_HW_QUEUES=1 OPENBLAS_NUM_THREADS=1 .venv/bin/python -m pytest -q tests/test_dms_int8_device_payloads.py tests/test_kvcache_dms_device_hip.py tests/test_dms_streaming_pack_hip.py tests/test_kvcache_dms.py tests/test_dms_int8_backend_integration.py",
+    "passed": 48
+  },
+  "route": "offline eager resident C1; C2 interleaves independent C1 execution, not packed multi-request kernels; MTP and prefix reuse off",
+  "schema": "hipengine_dms_int8_postfix_scope_audit_v1",
+  "serving_qualification": false,
+  "source_audit": {
+    "missing_provenance": "raw runs lack canonical v2 staged/unstaged/untracked decomposition and resolved execution-profile/variant-manifest hashes; do not fabricate them",
+    "note": "Post-fix runs recorded dirty parent 9af884bda; barrier and tests were subsequently committed as eabb08fc2. BF16 control recorded clean 0f951bc90 and is unaffected by the INT8-only barrier.",
+    "pre_fix_int8_numerical_evidence": "excluded from final qualification",
+    "raw_provenance_preserved": true,
+    "repair_commit": "eabb08fc2"
+  },
+  "status": "offline_integration_gates_passed_serving_unqualified",
+  "task": {
+    "id": 20,
+    "publication_scope": "complete",
+    "requirements_basis": "user handoff plus worklog/entries/20260907T115602.481176Z-lhl-dms-int8-evaluation-2b7b71.md; original external task record unavailable",
+    "status": "open",
+    "title": "Implement and qualify DMS INT8 integration"
+  },
+  "throughput_claim": false,
+  "weight_quant": "Q4_K_M"
+}

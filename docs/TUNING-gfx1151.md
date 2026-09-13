@@ -1,6 +1,6 @@
 # gfx1151 / Strix Halo Tuning Plan
 
-Last updated: 2026-08-30
+Last updated: 2026-09-11
 
 This is the tuning and validation playbook for native Strix Halo / `gfx1151`
 runs. It exists because gfx1151 is not just a smaller W7900. Strix Halo is an
@@ -206,7 +206,8 @@ Concrete audit questions for the gfx1151 pass:
 Reference setup lives in [`THEROCK.md`](THEROCK.md). Current local gfx1151 stack:
 
 - Hardware: AMD Ryzen AI MAX+ 395 / Radeon 8060S, `gfx1151`.
-- ROCm platform: stable TheRock `10.0.0` from `/home/lhl/miniforge3`.
+- ROCm platform: stable TheRock `10.0.0` from
+  `/home/lhl/miniforge3/envs/therock` (Python 3.12).
 - HIP component/compiler: `7.15.26333-0000000`, AMD clang 23 commit
   `8f497e0992f`; the HIP component version is expected inside ROCm 10.
 - TheRock package lane: `https://stable.repo.amd.com/rocm/whl-next/`, with the
@@ -220,10 +221,10 @@ Reference setup lives in [`THEROCK.md`](THEROCK.md). Current local gfx1151 stack
 - For hipEngine JIT/profiling, set:
 
 ```bash
-ENV_PREFIX=/home/lhl/miniforge3
+ENV_PREFIX=/home/lhl/miniforge3/envs/therock
 PYSDK=$ENV_PREFIX/bin/python
 ROOT=$("$PYSDK" -m rocm_sdk path --root)
-SITE=$ENV_PREFIX/lib/python3.13/site-packages
+SITE=$ENV_PREFIX/lib/python3.12/site-packages
 
 export PATH="$ENV_PREFIX/bin:$ROOT/bin:$PATH"
 export LD_LIBRARY_PATH="$SITE/_rocm_sdk_core/lib:$SITE/_rocm_sdk_devel/lib:$SITE/_rocm_sdk_libraries/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"

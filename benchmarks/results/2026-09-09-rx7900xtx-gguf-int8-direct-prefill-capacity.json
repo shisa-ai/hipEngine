@@ -1,0 +1,88 @@
+{
+  "schema": 1,
+  "kind": "rx7900xtx_gguf_int8_direct_prefill_capacity",
+  "date": "2026-09-09",
+  "status": "measured_opt_in_lever",
+  "performance_claim": false,
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "model_sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+  "model_context_length": 262144,
+  "hardware": {
+    "host": "epyc",
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "vram_gib": 23.984375,
+    "physical_gpu_index": 1
+  },
+  "question": "Measure the capacity bound of the oracle-free direct INT8 prefill route (HIPENGINE_GGUF_INT8_PREFILL_DIRECT=1, flash kernel), including whether the model's full 262,144-token context fits.",
+  "memory_model": {
+    "fixed_gib": 16.45,
+    "slope_kib_per_token": 33.6,
+    "slope_decomposition": "16 full-attention layers x 2 (K,V) x 1 KiB int8 per layer per token, plus per-token/head fp32 scales and position metadata; weights are 16.25 GiB of the fixed cost (verified against the 196,608-point allocation census: full_attention_kv_cache 6,152 MiB, kv_scales 96.1 MiB, linear_attention_state 151.5 MiB, metadata_tables 96.1 MiB)",
+    "predicted_full_context_gib": 24.8,
+    "note": "The full 262,144 context cannot fit on a 24 GB card with this route; the card-bound ceiling is ~232-235K tokens."
+  },
+  "protocol": {
+    "tier2_full_prompt_points": "scripts/qwen35_gguf_bench.py --model <27B Q4_K_M> --decode-tokens 8 --persistent-session --force-bulk-prefill --kv-storage int8_per_token_head --kv-scale-dtype fp32 --warmup-runs 0 --measured-runs 1, env HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1, HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS=none, HIPENGINE_GGUF_INT8_PREFILL_DIRECT=1, HIPENGINE_GGUF_INT8_PREFILL_KERNEL=flash. A pass requires the full synthetic repeated-token prefill plus eight timed decode transitions with finite final logits. These prove completion/stability and tok/s at depth.",
+    "tier1_allocation_probe_points": "scripts/gguf_capacity_probe.py --max-sequence-length N with the same route envs (short prompt, finite logits, tracked peak). These prove the memory envelope only - see benchmarks/HARNESSES.md \"Capacity testing\" for why allocation validity does not need the full prompt.",
+    "lesson": "The 163,840/196,608 tier-2 points each cost ~50-70 minutes of prefill while their allocation decision was made in the first ~3 minutes; the 262,144 OOM and the 229,376/232,448/235,520 bracket were answered by tier-1 probes in ~3 minutes each."
+  },
+  "ladder": {
+    "163840": {
+      "tier": 2,
+      "status": "pass",
+      "prefill_tok_s": 51.596366,
+      "decode_tok_s": 20.890666,
+      "peak_gib": 21.701609,
+      "finite_final_logits": true,
+      "lifetime_mode": "chunk_outer_direct_int8"
+    },
+    "196608": {
+      "tier": 2,
+      "status": "pass",
+      "prefill_tok_s": 45.296736,
+      "decode_tok_s": 19.396185,
+      "peak_gib": 22.739131,
+      "finite_final_logits": true
+    },
+    "229376": {
+      "tier": 1,
+      "status": "pass",
+      "tracked_peak_gib": 23.768546,
+      "finite_logits": true
+    },
+    "232448": {
+      "tier": 1,
+      "status": "pass",
+      "tracked_peak_gib": 23.865814,
+      "finite_logits": true,
+      "note": "largest passing context measured"
+    },
+    "235520": {
+      "tier": 1,
+      "status": "oom"
+    },
+    "262144": {
+      "tier": 1,
+      "status": "oom_at_session_allocation",
+      "detail": "hipMalloc fails inside _FullStackScratch.allocate at the full-capacity value_cache; the fixed-cost resident footprint (weights + 262,144-position per-layer INT8 K/V + scales + per-position arrays, predicted ~24.8 GiB) exceeds the 23.98 GiB card before any prefill work. The model's full context length does not fit on 24 GB on this route.",
+      "failing_prompt_length": 262128
+    }
+  },
+  "context": {
+    "before_alias_and_direct": {
+      "largest_passing_prompt": 131072
+    },
+    "after_alias": {
+      "largest_passing_prompt": 155648,
+      "artifact": "results/2026-09-09-rx7900xtx-int8-layer-outer-hidden-alias-capacity.json"
+    },
+    "after_direct_flash": {
+      "largest_measured_passing_prompt": 232448,
+      "bound_bracket": "232,448 pass / 235,520 OOM (tier-1 probes)",
+      "external_engines_q8_0": 196608
+    }
+  },
+  "quality_caveat": "The direct route failed the numerics gate (mean row-KL 0.215 vs BF16 at 4,096 tokens where the oracle route measures 0.003; see results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-gate.json). This capacity is an opt-in lever with that measured quality cost, not a default route.",
+  "created_utc": "2026-09-09T10:30:00+00:00"
+}

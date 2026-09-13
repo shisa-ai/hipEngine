@@ -208,7 +208,11 @@ class _Qwen35GGUFNextNProposalGraph:
 # scalar full-attention context 1,023. Larger cache allocations may still use it
 # while the live chain fits; requests crossing into split-K retain the exact
 # eager chain until that separate topology is gated.
-_NEXTN_EXACT_CHAIN_GRAPH_BUDGETS = (1, 2, 3)
+# The exact-chain graph ladder is the draft runtime's implementation-depth
+# limit. Extending a budget here grows every capacity-derived buffer
+# (``_NEXTN_TOP1_RESULT_CAPACITY`` consumers) coherently; qualified serving
+# maxima remain gated separately by the adapter's width-depth policy.
+_NEXTN_EXACT_CHAIN_GRAPH_BUDGETS = (1, 2, 3, 4, 5, 6, 7)
 _NEXTN_EXACT_CHAIN_GRAPH_MAX_CONTEXT = 1023
 _NEXTN_TOP1_RESULT_DTYPE = np.dtype([("token", np.int32), ("value", np.float32)])
 _NEXTN_TOP1_RESULT_NBYTES = int(_NEXTN_TOP1_RESULT_DTYPE.itemsize)
@@ -1883,19 +1887,13 @@ class Qwen35GGUFNextNExecutor:
             HipMemcpyKind.HOST_TO_DEVICE,
             stream,
         )
-        runtime.memcpy_async(
+        set_decode_position_i64(
             slot_scratch.position_buf.ptr,
-            host_array_ptr(slot_scratch.position_host),
-            slot_scratch.position_host.nbytes,
-            HipMemcpyKind.HOST_TO_DEVICE,
-            stream,
-        )
-        runtime.memcpy_async(
             slot_scratch.context_buf.ptr,
-            host_array_ptr(slot_scratch.context_host),
-            slot_scratch.context_host.nbytes,
-            HipMemcpyKind.HOST_TO_DEVICE,
-            stream,
+            int(position),
+            stream=stream,
+            library=self._proposal_graph_runtime_library,
+            runtime=runtime,
         )
         runtime.graph_launch(graph.graph_exec, stream)
         runtime.event_record(graph.completion_event, stream)

@@ -2,7 +2,7 @@
 candidate selector).
 
 Exact-math native kernels RED-pinned against ``kernels/cpu_reference/dflash2.py``
-(see ``tests/test_dflash2_native_kernels.py``).  The conv reads BF16 inputs and
+(see ``tests/test_gpu_dflash2_native_kernels.py``).  The conv reads BF16 inputs and
 accumulates FP32; the selector projects hidden to the low-rank context gate and
 runs the greedy walk over the top-K candidate table with BF16 codebook gathers.
 """

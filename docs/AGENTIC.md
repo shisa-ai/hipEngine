@@ -264,10 +264,10 @@ Minimum matrix:
 
 Current code reality:
 
-- `tests/test_server_api.py`, `tests/test_agentic_server_conformance.py`,
-  `tests/test_agentic_harness_traces.py`, and `tests/test_local_agent_config.py`
+- `tests/test_integration_server_api.py`, `tests/test_integration_agentic_server_conformance.py`,
+  `tests/test_integration_agentic_harness_traces.py`, and `tests/test_integration_local_agent_config.py`
   cover the current matrix with fake engines and checked-in golden traces.
-- `tests/test_sampling.py` exhaustively maps every advertised
+- `tests/test_unit_sampling.py` exhaustively maps every advertised
   `sampling.speculative_mtp.incompatible_fields` entry to a concrete blocker
   case, and verifies every actual blocker is advertised. This preserves the
   current policy that `logit_bias`, penalties, suppressions, forced-token
@@ -2605,7 +2605,7 @@ Current code reality:
   `--reasoning-smoke` POSTs a small `enable_thinking=true` request, requires
   parsed non-empty `message.reasoning_content`, and rejects raw `<think>` tags
   in assistant text fields as a Qwen thinking/parser mismatch.
-- `tests/test_local_agent_config.py` posts that exact pi smoke payload through a
+- `tests/test_integration_local_agent_config.py` posts that exact pi smoke payload through a
   FastAPI `create_app()` test server with fake Qwen `<tool_call>` output and
   asserts the response is parsed OpenAI `message.tool_calls`, not raw markup. It
   also posts the pi streaming-smoke and reasoning-smoke payloads through the fake
@@ -2664,7 +2664,7 @@ Current code reality:
   HTTP/SSE error metadata, backend cancellation HTTP/SSE errors,
   request-control cancellation,
   and logprob omission-reason payloads.
-- `tests/test_agentic_harness_traces.py` runs those traces against the
+- `tests/test_integration_agentic_harness_traces.py` runs those traces against the
   OpenAI-compatible server with deterministic fake generation and strips only
   dynamic IDs/timestamps from assertions. The runner asserts visible transcript,
   parsed tool calls, reasoning deltas, finish details, and expected absence of
@@ -2674,7 +2674,7 @@ Current code reality:
   validation and compatibility, structured agent outputs, session/snapshot/
   rollback/continuation behavior, finish-phase/sampling contracts, and server
   error paths.
-- `tests/test_agentic_server_conformance.py` adds a compact client-pattern
+- `tests/test_integration_agentic_server_conformance.py` adds a compact client-pattern
   matrix for the FastAPI `/v1/chat/completions` surface: strict
   reasoning-plus-tool responses, prior assistant tool-call/tool-result replay
   rendering exactly once, live and snapshot prior-assistant tool-call shape
@@ -2696,7 +2696,7 @@ Current code reality:
   completion/chat logprob success paths, explicit selected-score omission
   reasons when backend token metadata is partial, and the stable
   `unsupported_feature` fallback when a backend cannot return token metadata.
-- `tests/test_server_api.py` covers server streaming edge paths that need
+- `tests/test_integration_server_api.py` covers server streaming edge paths that need
   direct SSE-shape assertions outside the golden trace harness, including
   backend scheduler token chunks forwarded as buffered completion and plain
   chat answer/reasoning deltas, plus plain chat content logprob and validated

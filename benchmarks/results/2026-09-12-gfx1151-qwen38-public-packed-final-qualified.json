@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "kind": "qwen38_public_packed_ar_numerical_qualification",
+  "status": "passed",
+  "performance_claim": false,
+  "full_release_qualification": false,
+  "source_commit": "684b073b2",
+  "source_worktree": "/tmp/hipengine-qwen38-release-20260913",
+  "tracked_and_untracked_clean": true,
+  "hardware": {
+    "host": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "hardware_queues": 2,
+    "hip_version": "7.15.26333"
+  },
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "model_sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+  "quant": "gguf_q4_k_m",
+  "kv": "bf16",
+  "recurrent_state": "fp32",
+  "production_manifest_sha256": "c4a4a342e2243c2dcc430174606dde682393a2bd2e30acc83129027fcf572acc",
+  "strict_manifest_sha256": "393155123c5e09700ff017f949f338fb5f519579e2f05bea3ffef7a43a09a71b",
+  "command": "GPU_MAX_HW_QUEUES=2 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hip1151-t6/hipcc-version-gfx1151.txt PYTHONPATH=. /home/lhl/hipEngine/.venv/bin/python scripts/execution_profile_gguf_fp16_state_batch_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant-label gguf_q4_k_m --public-profiles --widths 2,4,8 --decode-steps 128 --long-decode-steps 128 --long-prompt-tokens 512 --repeat-runs 3 --compiler-version-file /tmp/hip1151-t6/hipcc-version-gfx1151.txt --json /tmp/qwen38-release-20260913/public-final-packed-d128.json",
+  "protocol": {
+    "prompts": 18,
+    "canonical": 10,
+    "category_heldouts": 8,
+    "canonical_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "heldout_sha256": "8d86154fdb52adf5085dbf278c4097dce78d9510d1a6d04ade29a327560e5280",
+    "teacher_rows": 8716,
+    "decode_steps": 128,
+    "candidate_repeats": 3,
+    "static_widths": [2, 4, 8],
+    "dynamic_schedule": [[0, 8], [6, 4], [12, 2], [18, 1]],
+    "sparse_c8_slots": [0, 2, 5, 7],
+    "long_prompt_tokens": 512,
+    "long_decode_steps": 128
+  },
+  "quality": {
+    "kl_mean": 0.0,
+    "kl_p95": 0.0,
+    "kl_p99": 0.0,
+    "kl_max": 0.0,
+    "top1_agreement": 1.0,
+    "top1_matches": 8716,
+    "max_abs_logit_delta": 0.0,
+    "all_category_shape_transition_gates_passed": true,
+    "determinism_passed": true,
+    "isolation_passed": true,
+    "dispatch_manifest_passed": true,
+    "measurement_valid": true
+  },
+  "raw_evidence": {
+    "path": "/tmp/qwen38-release-20260913/public-final-packed-d128.json",
+    "sha256": "d1e4fa53b7a9de12b023ab7f5985d7bca106df19b2d432b87b4f045d4a98a946"
+  },
+  "remaining": ["HTTP blocking/SSE cancellation and refill", "current MTP behavior", "optimization timing", "README refresh", "longer natural-context/task qualification outside this bounded matrix"]
+}

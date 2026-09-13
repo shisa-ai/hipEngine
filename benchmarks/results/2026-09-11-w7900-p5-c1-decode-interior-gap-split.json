@@ -1,0 +1,59 @@
+{
+ "schema": 1,
+ "kind": "w7900_p5_c1_decode_interior_gap_split",
+ "timestamp": "2026-09-11T18:28:47.836782+00:00",
+ "performance_claim": false,
+ "host": {
+  "observed_device": "AMD Radeon Pro W7900",
+  "target_arch": "gfx1100",
+  "hip_visible_devices": "0",
+  "rocprofv3_version": "1.3.2"
+ },
+ "model": {
+  "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "kv": "int8_per_token_head + fp32 scales"
+ },
+ "question": "Is the 19.4 ms/step interior gap launch latency (host inside the runtime) or host Python between launches? That decides between fusion and a captured graph replay.",
+ "answer": "Mostly host Python between launches: 14.055 ms/step of the 19.218 ms gap (73%) has no HIP API call in flight, against 5.163 ms/step (27%) spent inside an API call. A graph replay removes the per-launch host cost entirely, so it targets the larger share; fusion only reduces it in proportion to the launch-count reduction.",
+ "method": {
+  "source": "re-parse of the existing committed trace, no new GPU run",
+  "split": "per window, merge the kernel intervals, take the gaps between consecutive merged intervals, and intersect each gap with the window's HIP API intervals. Gap time covered by an API interval is host inside the runtime; uncovered gap time is host with no API call in flight"
+ },
+ "interior_gap_split": {
+  "steps": 62,
+  "span_ms": 36.434,
+  "busy_in_span_ms": 17.11,
+  "interior_gap_ms": 19.421,
+  "interior_gap_entries": 24252,
+  "interior_gap_entries_per_step": 391.16,
+  "interior_gap_per_step_ms": 19.218,
+  "interior_gap_with_api_per_step_ms": 5.163,
+  "interior_gap_without_api_per_step_ms": 14.055,
+  "with_api_pct": 26.87,
+  "without_api_pct": 73.13,
+  "mean_gap_us": 49.13,
+  "mean_gap_us_without_api": 35.93,
+  "mean_gap_us_with_api": 13.2
+ },
+ "conclusion": {
+  "dominant_share": "host Python between launches",
+  "lever_ranking": [
+   "1. a captured graph replay: removes the per-launch host cost on replay, so it targets the full 19.218 ms/step gap rather than a fraction of it. Graph capture already exists on the c8 packed route while C1 is eager",
+   "2. fusion (fewer, larger kernels): reduces the number of gap entries and the Python between them, but only in proportion to the launch-count reduction"
+  ],
+  "per_gap_cost": "391 gap entries/step averaging 49.1 us, of which 35.9 us is host Python with no API call in flight and 13.2 us is inside a HIP API call",
+  "note": "391 gap entries/step is lower than the ~793 launches/step because dispatch intervals overlap (overlap ratio 1.83), so many launches fall inside a merged kernel interval and create no gap"
+ },
+ "limits": [
+  "The split attributes gap time to 'inside a HIP API call' versus not; a HIP API interval that spans a gap edge is clipped, so a call straddling a gap boundary is counted only for the part inside it.",
+  "Trace timestamps share the profiler's clock domain, and gap edges inherit whatever rounding the trace applies.",
+  "One trace at one prompt length (2048 rows) and one width (C1). The mix of gap entries may differ at deeper contexts where attention kernels grow.",
+  "This says where the gap is spent, not what a graph replay would actually recover: capture/replay overhead, unsupported operations, and memory-pool constraints are unmeasured here.",
+  "No optimization was attempted."
+ ],
+ "notes": [
+  "performance_claim is false and no scoreboard row changed.",
+  "Completes the chain: the readback is not hideable, the host is not binding, the step window is the GPU span, and the span's recoverable share is mostly host Python between launches."
+ ]
+}

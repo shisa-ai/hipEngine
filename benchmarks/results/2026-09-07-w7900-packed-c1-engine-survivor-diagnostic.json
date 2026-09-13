@@ -1,0 +1,292 @@
+{
+  "schema": 1,
+  "kind": "packed_c1_engine_survivor_diagnostic",
+  "hardware": {
+    "host": "epyc",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+    "gpu": "AMD Radeon Pro W7900",
+    "uuid": "GPU-e282895b62c2b295",
+    "target_arch": "gfx1100",
+    "rocm": "7.2.4",
+    "identity_source": "campaign-artifacts/packet0/provenance.txt"
+  },
+  "model_path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "quant": "Q4_K_M",
+  "execution_profile": "production",
+  "kv": "bf16",
+  "candidate_budget": 3,
+  "horizons": [
+    8,
+    24
+  ],
+  "boundary": "EngineService.submit_speculative_children",
+  "performance_claim": false,
+  "full_profile_qualification": false,
+  "http_usage_qualified": false,
+  "base_commit": "6c4d3fd8c",
+  "runs": [
+    {
+      "capacity": 8,
+      "source": "/tmp/packed-c1-engine-lifecycle-v3-n8.json",
+      "sha256": "cea13c9d9a66c5d13d39c411c12bd723a8bf2c533bb01e4c6f4120384062fd45",
+      "passed": true,
+      "clean_teardown": true,
+      "cells": [
+        {
+          "prompt_id": "code_merge_intervals",
+          "category": "code",
+          "exact": true,
+          "transition": {
+            "survivor_request_id": 3,
+            "resident_slot": 6,
+            "scheduler_slot": 1
+          },
+          "pair_cycles": 2,
+          "native_c1_cycles": 5
+        },
+        {
+          "prompt_id": "code_topological_sort",
+          "category": "code",
+          "exact": true,
+          "transition": {
+            "survivor_request_id": 7,
+            "resident_slot": 7,
+            "scheduler_slot": 1
+          },
+          "pair_cycles": 2,
+          "native_c1_cycles": 5
+        },
+        {
+          "prompt_id": "code_lru_cache",
+          "category": "code",
+          "exact": true,
+          "transition": {
+            "survivor_request_id": 11,
+            "resident_slot": 6,
+            "scheduler_slot": 1
+          },
+          "pair_cycles": 2,
+          "native_c1_cycles": 4
+        },
+        {
+          "prompt_id": "code_markdown_table",
+          "category": "code",
+          "exact": true,
+          "transition": {
+            "survivor_request_id": 15,
+            "resident_slot": 7,
+            "scheduler_slot": 1
+          },
+          "pair_cycles": 2,
+          "native_c1_cycles": 4
+        },
+        {
+          "prompt_id": "general_en_plan",
+          "category": "general_en",
+          "exact": true,
+          "transition": {
+            "survivor_request_id": 19,
+            "resident_slot": 6,
+            "scheduler_slot": 1
+          },
+          "pair_cycles": 2,
+          "native_c1_cycles": 4
+        },
+        {
+          "prompt_id": "general_en_explain",
+          "category": "general_en",
+          "exact": true,
+          "transition": {
+            "survivor_request_id": 23,
+            "resident_slot": 7,
+            "scheduler_slot": 1
+          },
+          "pair_cycles": 2,
+          "native_c1_cycles": 5
+        },
+        {
+          "prompt_id": "general_ja_plan",
+          "category": "general_ja",
+          "exact": true,
+          "transition": {
+            "survivor_request_id": 27,
+            "resident_slot": 6,
+            "scheduler_slot": 1
+          },
+          "pair_cycles": 3,
+          "native_c1_cycles": 5
+        },
+        {
+          "prompt_id": "general_ja_explain",
+          "category": "general_ja",
+          "exact": true,
+          "transition": {
+            "survivor_request_id": 31,
+            "resident_slot": 7,
+            "scheduler_slot": 1
+          },
+          "pair_cycles": 2,
+          "native_c1_cycles": 6
+        },
+        {
+          "prompt_id": "mixed_ja_en_translate",
+          "category": "mixed_ja_en",
+          "exact": true,
+          "transition": {
+            "survivor_request_id": 35,
+            "resident_slot": 6,
+            "scheduler_slot": 1
+          },
+          "pair_cycles": 2,
+          "native_c1_cycles": 5
+        },
+        {
+          "prompt_id": "mixed_ja_en_review",
+          "category": "mixed_ja_en",
+          "exact": true,
+          "transition": {
+            "survivor_request_id": 39,
+            "resident_slot": 7,
+            "scheduler_slot": 1
+          },
+          "pair_cycles": 2,
+          "native_c1_cycles": 5
+        }
+      ]
+    },
+    {
+      "capacity": 2,
+      "source": "/tmp/packed-c1-engine-lifecycle-v3-n2.json",
+      "sha256": "92fd2b65fa9d3865f69f7db5a91296a0740255226a890a74a7e593e827f7d7f1",
+      "passed": true,
+      "clean_teardown": true,
+      "cells": [
+        {
+          "prompt_id": "code_merge_intervals",
+          "category": "code",
+          "exact": true,
+          "transition": {
+            "survivor_request_id": 3,
+            "resident_slot": 0,
+            "scheduler_slot": 1
+          },
+          "pair_cycles": 2,
+          "native_c1_cycles": 5
+        },
+        {
+          "prompt_id": "code_topological_sort",
+          "category": "code",
+          "exact": true,
+          "transition": {
+            "survivor_request_id": 7,
+            "resident_slot": 1,
+            "scheduler_slot": 1
+          },
+          "pair_cycles": 2,
+          "native_c1_cycles": 5
+        },
+        {
+          "prompt_id": "code_lru_cache",
+          "category": "code",
+          "exact": true,
+          "transition": {
+            "survivor_request_id": 11,
+            "resident_slot": 0,
+            "scheduler_slot": 1
+          },
+          "pair_cycles": 2,
+          "native_c1_cycles": 4
+        },
+        {
+          "prompt_id": "code_markdown_table",
+          "category": "code",
+          "exact": true,
+          "transition": {
+            "survivor_request_id": 15,
+            "resident_slot": 1,
+            "scheduler_slot": 1
+          },
+          "pair_cycles": 2,
+          "native_c1_cycles": 4
+        },
+        {
+          "prompt_id": "general_en_plan",
+          "category": "general_en",
+          "exact": true,
+          "transition": {
+            "survivor_request_id": 19,
+            "resident_slot": 0,
+            "scheduler_slot": 1
+          },
+          "pair_cycles": 2,
+          "native_c1_cycles": 4
+        },
+        {
+          "prompt_id": "general_en_explain",
+          "category": "general_en",
+          "exact": true,
+          "transition": {
+            "survivor_request_id": 23,
+            "resident_slot": 1,
+            "scheduler_slot": 1
+          },
+          "pair_cycles": 2,
+          "native_c1_cycles": 5
+        },
+        {
+          "prompt_id": "general_ja_plan",
+          "category": "general_ja",
+          "exact": true,
+          "transition": {
+            "survivor_request_id": 27,
+            "resident_slot": 0,
+            "scheduler_slot": 1
+          },
+          "pair_cycles": 3,
+          "native_c1_cycles": 5
+        },
+        {
+          "prompt_id": "general_ja_explain",
+          "category": "general_ja",
+          "exact": true,
+          "transition": {
+            "survivor_request_id": 31,
+            "resident_slot": 1,
+            "scheduler_slot": 1
+          },
+          "pair_cycles": 2,
+          "native_c1_cycles": 6
+        },
+        {
+          "prompt_id": "mixed_ja_en_translate",
+          "category": "mixed_ja_en",
+          "exact": true,
+          "transition": {
+            "survivor_request_id": 35,
+            "resident_slot": 0,
+            "scheduler_slot": 1
+          },
+          "pair_cycles": 2,
+          "native_c1_cycles": 5
+        },
+        {
+          "prompt_id": "mixed_ja_en_review",
+          "category": "mixed_ja_en",
+          "exact": true,
+          "transition": {
+            "survivor_request_id": 39,
+            "resident_slot": 1,
+            "scheduler_slot": 1
+          },
+          "pair_cycles": 2,
+          "native_c1_cycles": 5
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Runtime-only unqualified D8-D24 C1/C2 evidence, explicit-only combined intent",
+    "Not HTTP lifecycle or public usage qualification",
+    "No cancellation, EOS, delayed refill, strict-teacher numerical, deep-C1 or economics qualification"
+  ]
+}

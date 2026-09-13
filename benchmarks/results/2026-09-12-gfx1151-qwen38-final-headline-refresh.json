@@ -1,0 +1,134 @@
+{
+  "schema": 2,
+  "date": "2026-09-12",
+  "date_timezone": "UTC",
+  "kind": "qwen38_gfx1151_public_headline_refresh",
+  "status": "accepted",
+  "performance_claim": true,
+  "hardware": {
+    "physical_host": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "hardware_queues": 2,
+    "hip_version": "7.15.26333",
+    "compiler_commit": "8f497e0992fb7513f7f78a6f6b6f1056c375e961"
+  },
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "model_sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+  "model_size_bytes": 17106775008,
+  "quant": "gguf_q4_k_m",
+  "kv_storage": "bf16",
+  "recurrent_storage": "fp32",
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 2,
+    "collected_at": "2026-09-12T21:47:14.518370+00:00",
+    "host_name": "gfx1151",
+    "repo_root": "/tmp/hipengine-qwen38-release-20260913",
+    "hipengine_commit": "a2f62c881ba5a2a9c0be280a67de233fd7088091",
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false,
+    "dirty": false,
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "model_path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "warmups": 1,
+    "repetitions": 3,
+    "build_profile": "public_profile_readme_sweep",
+    "timing_protocol": "public_session_reset_each_shape_one_warmup_three_measurements",
+    "command": "GPU_MAX_HW_QUEUES=2 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hip1151-t6/hipcc-version-gfx1151.txt PYTHONPATH=. /home/lhl/hipEngine/.venv/bin/python scripts/qwen38_gfx1151_readme_sweep.py --prompt-lengths 512 1024 4096 --decode-tokens 128 --warmups 1 --repetitions 3 --output /tmp/qwen38-release-20260913/final-headline.json"
+  },
+  "ar_protocol": {
+    "execution_profile_requested": null,
+    "execution_profile": "production",
+    "manifest_sha256": "c4a4a342e2243c2dcc430174606dde682393a2bd2e30acc83129027fcf572acc",
+    "declared_context": 8192,
+    "prompt_token_id": 9707,
+    "prompt_lengths": [512, 1024, 4096],
+    "decode_steps": 128,
+    "warmup_decode_steps": 1,
+    "warmup_runs_per_shape": 1,
+    "measured_runs_per_shape": 3,
+    "session": "one public-configured resident session with reset before every run",
+    "graph": "backend-owned default graph admission; graph capture excluded from decode throughput and reported in raw evidence",
+    "p95_estimator": "linear interpolation over the retained samples"
+  },
+  "ar_measurements": {
+    "512/128": {
+      "prefill_tok_s": {"samples": [404.8393421950821,404.2398520660291,404.4872683666488], "median": 404.4872683666488, "p95": 404.8041348122388, "min": 404.2398520660291, "max": 404.8393421950821, "stdev": 0.3012637884291418},
+      "decode_tok_s": {"samples": [12.226374068113094,12.22996663376837,12.226074105208431], "median": 12.226374068113094, "p95": 12.229607377202843, "min": 12.226074105208431, "max": 12.22996663376837, "stdev": 0.0021659595380027624}
+    },
+    "1024/128": {
+      "prefill_tok_s": {"samples": [393.8383478239021,395.44525781770443,394.9995948938493], "median": 394.9995948938493, "p95": 395.4006915253189, "min": 393.8383478239021, "max": 395.44525781770443, "stdev": 0.8295852304356545},
+      "decode_tok_s": {"samples": [11.994593867613757,11.997589872029698,11.996606463783982], "median": 11.996606463783982, "p95": 11.997491531205126, "min": 11.994593867613757, "max": 11.997589872029698, "stdev": 0.0015271802765491167}
+    },
+    "4096/128": {
+      "prefill_tok_s": {"samples": [373.2180185340693,373.27093927999636,372.50810360450885], "median": 373.2180185340693, "p95": 373.26564720540364, "min": 372.50810360450885, "max": 373.27093927999636, "stdev": 0.4259691069312391},
+      "decode_tok_s": {"samples": [12.153432523654633,12.154069313671217,12.147404923018021], "median": 12.153432523654633, "p95": 12.154005634669558, "min": 12.147404923018021, "max": 12.154069313671217, "stdev": 0.003677670769615594}
+    }
+  },
+  "memory": {
+    "owned_session_peak_gib": 19.809751085937023,
+    "process_tracked_peak_gib": 24.15250550955534,
+    "scope": "prepared 8192-token public session and its pools; process lifetime includes graph/eager preflight",
+    "historical_comparability": "not comparable to older right-sized low-level-session memory rows"
+  },
+  "correctness": {
+    "all_timed_final_logits_finite": true,
+    "all_timed_final_token_ids": 9707,
+    "graph_eager_category_and_heldout_prompts": 18,
+    "graph_eager_decode_steps_per_prompt": 32,
+    "graph_eager_all_generated_ids_exact": true,
+    "graph_eager_final_full_logits_exact": true,
+    "graph_eager_state_fingerprints_exact": true,
+    "public_packed_numerical_gate": "benchmarks/results/2026-09-12-gfx1151-qwen38-public-packed-final-qualified.json",
+    "public_packed_teacher_rows": 8716,
+    "public_packed_kl_max": 0.0,
+    "public_packed_top1": 1.0,
+    "serving_packet": "benchmarks/results/2026-09-12-gfx1151-qwen38-serving-mtp-closure.json"
+  },
+  "strict_mtp": {
+    "execution_profile": "strict",
+    "manifest_sha256": "393155123c5e09700ff017f949f338fb5f519579e2f05bea3ffef7a43a09a71b",
+    "protocol": "all ten canonical category prompts including four category-heldouts; realized C1, capacity4, declared session limit1024, K3, natural25, context1-67, greedy, 20ms batch window; matched true AR and alternating arm order",
+    "command_environment": {"GPU_MAX_HW_QUEUES": "2", "HIPENGINE_HIP_ARCH": "gfx1151", "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hip1151-t6/hipcc-version-gfx1151.txt", "PYTHONPATH": "."},
+    "commands": [
+      "/home/lhl/hipEngine/.venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --execution-profile strict --mtp-request-mode automatic --widths 1,2,4 --resident-capacity 4 --expected-mtp-widths 1 --candidate-budget 3 --max-tokens 25 --output /tmp/qwen38-release-20260913/serving-strict-auto.json",
+      "/home/lhl/hipEngine/.venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --execution-profile strict --mtp-request-mode automatic --widths 1 --resident-capacity 4 --expected-mtp-widths 1 --candidate-budget 3 --max-tokens 25 --output /tmp/qwen38-release-20260913/serving-strict-c1-repeat-2.json",
+      "/home/lhl/hipEngine/.venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --execution-profile strict --mtp-request-mode automatic --widths 1 --resident-capacity 4 --expected-mtp-widths 1 --candidate-budget 3 --max-tokens 25 --output /tmp/qwen38-release-20260913/serving-strict-c1-repeat-3.json"
+    ],
+    "source_commits": ["c6d31627ca89af9dd60d74268625a29efcfc9772", "9f9d473bd19c78229719f3a6c870a72afe7d9680", "9f9d473bd19c78229719f3a6c870a72afe7d9680"],
+    "runtime_unchanged_between_repetitions": true,
+    "mtp_tok_s": {"samples": [20.984538986683802,20.97410901288311,20.98683908987595], "median": 20.984538986683802, "p95": 20.986609079556736, "min": 20.97410901288311, "max": 20.98683908987595, "stdev": 0.006783923255528053},
+    "true_ar_tok_s": {"samples": [11.14177067806112,11.149955549285604,11.150900660673102], "median": 11.149955549285604, "p95": 11.150806149534352, "min": 11.14177067806112, "max": 11.150900660673102, "stdev": 0.005020656248461254},
+    "same_run_ratios": [1.8834114965230564,1.8810935093124164,1.8820756931224532],
+    "median_same_run_ratio": 1.8820756931224532,
+    "exact_engaged_budget_conformed_cells": 30,
+    "generated_ids_repeat_exact": true,
+    "every_category_faster_in_every_run": true,
+    "category_ratios": {
+      "code": [1.9113300691,1.9101345691,1.9103393271],
+      "general_en": [1.9365945320,1.9327217058,1.9335637343],
+      "general_ja": [1.7496496074,1.7474063491,1.7518134620],
+      "mixed_ja_en": [1.9201655510,1.9171326868,1.9158645692]
+    },
+    "production_default": false
+  },
+  "raw_evidence": [
+    {"path": "/tmp/qwen38-release-20260913/final-headline.json", "sha256": "d3de0db04e9ae266ddf5a60d11ae4c42b801156b87870ca05edc3eb23e9db324"},
+    {"path": "/tmp/qwen38-release-20260913/serving-strict-auto.json", "sha256": "fb17c7bd1b1f6314e1af395b40e662f4dc8770de4c7b7d10770e383f93a305eb"},
+    {"path": "/tmp/qwen38-release-20260913/serving-strict-c1-repeat-2.json", "sha256": "ac1b8a218f09ea672bab23a3a50064809d8c55c54081230b616b54b44df5e881"},
+    {"path": "/tmp/qwen38-release-20260913/serving-strict-c1-repeat-3.json", "sha256": "8f9fae73d838a002208725f3e6b1f62cc26cc3093c5f028eff23d8fe96d1c7cb"}
+  ],
+  "decision": {
+    "publish": true,
+    "basis": "Current same-host measurements with graph/eager, numerical, serving and strict-MTP gates; all timing CVs below 0.22%.",
+    "comparison": "Fresh public-profile snapshot, not a paired speedup claim against the older low-level-session headline. Strict MTP ratios use their own matched AR denominator."
+  }
+}

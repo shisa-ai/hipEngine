@@ -1,0 +1,118 @@
+{
+  "schema": 1,
+  "date": "2026-09-06",
+  "kind": "rx7900xtx_qwen38_concurrency_baseline_512_128",
+  "campaign": "docs/QWEN38-27B-GFX1100-24GB-CAPACITY.md",
+  "packet": "Packet 5 concurrent baseline",
+  "performance_claim": false,
+  "diagnostic": true,
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "size_bytes": 17106773984,
+    "sampled_fingerprint_sha256": "9fb7bd4ac04dd0be6946550474299cba8808e11b30e4d94b5a3911c1727b49b1"
+  },
+  "device": {
+    "gpu_index_requested": 1,
+    "pci_id": "0000:10:00.0",
+    "drm_card": "card0",
+    "unique_id": "cc4d02090dc9c3ff",
+    "vram_total_bytes": 25753026560,
+    "hip_visible_devices": "1",
+    "selection_note": "card resolved by pci_id through hipengine.util.amdgpu_vram; server-reported ordinal cross-checked against the request"
+  },
+  "workload": {
+    "prompt_tokens": 512,
+    "output_tokens": 128,
+    "context_tokens": 768,
+    "note": "page-aligned 3-page context; D=128 horizon completed to length on every passing point"
+  },
+  "points": {
+    "n1": {
+      "status": "ok",
+      "startup_peak_gib": 18.712,
+      "request_peak_gib": 18.748,
+      "prompt_tokens": null,
+      "completion_tokens": null,
+      "finish_reason": null,
+      "failure_class": null,
+      "source_commit": "ef492b29122740f7d3533433ea057f636ab4d8e3",
+      "command": "python -m hipengine.server --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage bf16 --max-context-tokens 768 --max-active-requests 1 --speculative-mtp-serving off --prefix-cache off"
+    },
+    "n2": {
+      "status": "ok",
+      "startup_peak_gib": 20.824,
+      "request_peak_gib": 20.859,
+      "prompt_tokens": null,
+      "completion_tokens": null,
+      "finish_reason": null,
+      "failure_class": null,
+      "source_commit": "ef492b29122740f7d3533433ea057f636ab4d8e3",
+      "command": "python -m hipengine.server --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage bf16 --max-context-tokens 768 --max-active-requests 2 --speculative-mtp-serving off --prefix-cache off"
+    },
+    "n4": {
+      "status": "ok",
+      "startup_peak_gib": 22.787,
+      "request_peak_gib": 22.822,
+      "prompt_tokens": null,
+      "completion_tokens": null,
+      "finish_reason": null,
+      "failure_class": null,
+      "source_commit": "ef492b29122740f7d3533433ea057f636ab4d8e3",
+      "command": "python -m hipengine.server --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage bf16 --max-context-tokens 768 --max-active-requests 4 --speculative-mtp-serving off --prefix-cache off"
+    },
+    "n5": {
+      "status": "ok",
+      "startup_peak_gib": 23.322,
+      "request_peak_gib": 23.357,
+      "prompt_tokens": null,
+      "completion_tokens": null,
+      "finish_reason": null,
+      "failure_class": null,
+      "source_commit": "ef492b29122740f7d3533433ea057f636ab4d8e3",
+      "command": "python -m hipengine.server --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage bf16 --max-context-tokens 768 --max-active-requests 5 --speculative-mtp-serving off --prefix-cache off"
+    },
+    "n6": {
+      "status": "ok",
+      "startup_peak_gib": 23.64,
+      "request_peak_gib": 23.676,
+      "prompt_tokens": null,
+      "completion_tokens": null,
+      "finish_reason": null,
+      "failure_class": null,
+      "source_commit": "ef492b29122740f7d3533433ea057f636ab4d8e3",
+      "command": "python -m hipengine.server --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage bf16 --max-context-tokens 768 --max-active-requests 6 --speculative-mtp-serving off --prefix-cache off"
+    },
+    "n7": {
+      "status": "oom_startup",
+      "startup_peak_gib": 0.0,
+      "request_peak_gib": 0.0,
+      "prompt_tokens": null,
+      "completion_tokens": null,
+      "finish_reason": null,
+      "failure_class": null,
+      "source_commit": "ef492b29122740f7d3533433ea057f636ab4d8e3",
+      "command": "python -m hipengine.server --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage bf16 --max-context-tokens 768 --max-active-requests 7 --speculative-mtp-serving off --prefix-cache off",
+      "failure_evidence": "STARTUP_SCRATCH_PROBE failed with out-of-memory evidence during eager warmup (probe_prompt_tokens)"
+    },
+    "n8": {
+      "status": "oom_startup",
+      "startup_peak_gib": 0.0,
+      "request_peak_gib": 0.0,
+      "prompt_tokens": null,
+      "completion_tokens": null,
+      "finish_reason": null,
+      "failure_class": null,
+      "source_commit": "ef492b29122740f7d3533433ea057f636ab4d8e3",
+      "command": "python -m hipengine.server --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage bf16 --max-context-tokens 768 --max-active-requests 8 --speculative-mtp-serving off --prefix-cache off",
+      "failure_evidence": "STARTUP_SCRATCH_PROBE failed with out-of-memory evidence during eager warmup (probe_prompt_tokens)"
+    }
+  },
+  "boundaries": {
+    "last_pass_max_active_requests": 6,
+    "first_failure_max_active_requests": 7,
+    "first_failure_class": "startup scratch-probe OOM (sampled failure peaks 23.972 GiB at N=7, 23.955 GiB at N=8)",
+    "per_request_slope_gib": 0.986
+  },
+  "note": "Rebuilds the previously withdrawn concurrent-capacity sentence with the repaired probe and the capacity-honest workspace lease: one cold server per point, BF16 KV, MTP off, prefix off, exact token accounting, clean post-request ownership on every passing point, 20 ms sysfs peaks across startup and request. The historical 'four to five concurrent requests' estimate is superseded by the measured last pass of 6 under the right-sized lease."
+}

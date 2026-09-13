@@ -19,8 +19,8 @@ from hipengine.core.memory import free
 from hipengine.kernels.hip_gfx1100.quant import gguf_k_gemv as q8
 from hipengine.loading.gguf import GGUFReader, discover_gguf_files
 from scripts.qwen4exp_canonical_ar_bench import _git_metadata, _host_metadata
-from tests.test_qwen4_exp_pf3_moe_schedules import _alloc, _download, _upload
-from tests.test_qwen4exp_q8_wave_scale import CANDIDATE, PARENT
+from tests.test_gpu_qwen4_exp_pf3_moe_schedules import _alloc, _download, _upload
+from tests.test_gpu_qwen4exp_q8_wave_scale import CANDIDATE, PARENT
 
 
 def main():
@@ -44,8 +44,8 @@ def main():
     library = q8.build_gguf_k_gemv(load=True, require_cached=True)
     parent_name, candidate_name = PARENT, CANDIDATE
     if args.gr_composite:
-        from tests.test_qwen4exp_gr_wave_scale import CANDIDATE as GR_CANDIDATE
-        from tests.test_qwen4exp_gr_wave_scale import PARENT as GR_PARENT
+        from tests.test_gpu_qwen4exp_gr_wave_scale import CANDIDATE as GR_CANDIDATE
+        from tests.test_gpu_qwen4exp_gr_wave_scale import PARENT as GR_PARENT
 
         parent_name, candidate_name = GR_PARENT, GR_CANDIDATE
     readers = [GGUFReader(path) for path in discover_gguf_files(args.model_root)]

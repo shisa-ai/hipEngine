@@ -1,0 +1,313 @@
+{
+  "schema": 1,
+  "kind": "qwen38_int8_row_batched_decode_correctness",
+  "timestamp": "2026-09-06T21:05:34.695429+00:00",
+  "status": "passed",
+  "performance_claim": false,
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106773984,
+    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+    "content_verified": true,
+    "error": null
+  },
+  "backend": {
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "hip_visible_devices": "1",
+    "expected_device": "AMD Radeon RX 7900 XTX 24GB when HIP_VISIBLE_DEVICES=1"
+  },
+  "capability": {
+    "capability_id": "3a1055955c47e3a1493d63b0ee7485437769c20679a6d0b7f14f863b5d53827b",
+    "admitted_max_direct_rows": 1,
+    "executed_direct_rows": 4,
+    "diagnostic_width_override": true,
+    "decode_batch_variant": "per_token_head_gqa_splitk_gate_bf16_batch_strided_spans"
+  },
+  "workload": {
+    "rows": 4,
+    "prompt_lengths": [
+      255,
+      256,
+      257,
+      512
+    ],
+    "decode_steps": 4,
+    "prompts": [
+      {
+        "id": "code_merge_intervals",
+        "category": "code",
+        "source_text_sha256": "7224cb33532a875c51134b2ca48c2700328ea39faa156e462cda0b29ef1594d6",
+        "tokens": 255,
+        "token_ids_sha256": "0b61e336657b0b82ec110b70da180cac6f0f11e2fa15dc6fbf827bfa5cd70215"
+      },
+      {
+        "id": "general_en_plan",
+        "category": "general_en",
+        "source_text_sha256": "e17b3e91d28543829ac542ded5af8a317d54a3b7786d6e86207d40663c59eda7",
+        "tokens": 256,
+        "token_ids_sha256": "33527287fe454f324594b5ac0feb6b051637f3cce6343a7c2514db5059d181db"
+      },
+      {
+        "id": "general_ja_plan",
+        "category": "general_ja",
+        "source_text_sha256": "42e20345ac1e92a9c03a7d6453b8982feffe4deae2ca42063519fdc2fb0cb099",
+        "tokens": 257,
+        "token_ids_sha256": "04dc3fa5b57ddecdb07ffc54d084a015b69135ace7c4bd05ff83cadde229d583"
+      },
+      {
+        "id": "mixed_ja_en_translate",
+        "category": "mixed_ja_en",
+        "source_text_sha256": "e0564221797981a111f1aff35928bff0992f892c89326300cef90e27a222e00f",
+        "tokens": 512,
+        "token_ids_sha256": "6284dd6f65f5c494ae75f902cec9672097d8c971ad31c848b67302217fd61ae3"
+      }
+    ]
+  },
+  "correctness": {
+    "passed": true,
+    "token_exact": true,
+    "reference_trajectories": [
+      [
+        248046,
+        198,
+        248045,
+        248045,
+        248068
+      ],
+      [
+        248046,
+        198,
+        248045,
+        248068,
+        198
+      ],
+      [
+        248046,
+        198,
+        248045,
+        248068,
+        198
+      ],
+      [
+        248046,
+        198,
+        248045,
+        248045,
+        248046
+      ]
+    ],
+    "batch_trajectories": [
+      [
+        248046,
+        198,
+        248045,
+        248045,
+        248068
+      ],
+      [
+        248046,
+        198,
+        248045,
+        248068,
+        198
+      ],
+      [
+        248046,
+        198,
+        248045,
+        248068,
+        198
+      ],
+      [
+        248046,
+        198,
+        248045,
+        248045,
+        248046
+      ]
+    ],
+    "max_kl": 0.0,
+    "top1_agreement": 1.0,
+    "max_logit_abs": 0.0,
+    "logit_metrics": [
+      {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "kl": 0.0,
+        "top1_match": true,
+        "row": 0,
+        "step": 0
+      },
+      {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "kl": 0.0,
+        "top1_match": true,
+        "row": 0,
+        "step": 1
+      },
+      {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "kl": 0.0,
+        "top1_match": true,
+        "row": 0,
+        "step": 2
+      },
+      {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "kl": 0.0,
+        "top1_match": true,
+        "row": 0,
+        "step": 3
+      },
+      {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "kl": 0.0,
+        "top1_match": true,
+        "row": 0,
+        "step": 4
+      },
+      {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "kl": 0.0,
+        "top1_match": true,
+        "row": 1,
+        "step": 0
+      },
+      {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "kl": 0.0,
+        "top1_match": true,
+        "row": 1,
+        "step": 1
+      },
+      {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "kl": 0.0,
+        "top1_match": true,
+        "row": 1,
+        "step": 2
+      },
+      {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "kl": 0.0,
+        "top1_match": true,
+        "row": 1,
+        "step": 3
+      },
+      {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "kl": 0.0,
+        "top1_match": true,
+        "row": 1,
+        "step": 4
+      },
+      {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "kl": 0.0,
+        "top1_match": true,
+        "row": 2,
+        "step": 0
+      },
+      {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "kl": 0.0,
+        "top1_match": true,
+        "row": 2,
+        "step": 1
+      },
+      {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "kl": 0.0,
+        "top1_match": true,
+        "row": 2,
+        "step": 2
+      },
+      {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "kl": 0.0,
+        "top1_match": true,
+        "row": 2,
+        "step": 3
+      },
+      {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "kl": 0.0,
+        "top1_match": true,
+        "row": 2,
+        "step": 4
+      },
+      {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "kl": 0.0,
+        "top1_match": true,
+        "row": 3,
+        "step": 0
+      },
+      {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "kl": 0.0,
+        "top1_match": true,
+        "row": 3,
+        "step": 1
+      },
+      {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "kl": 0.0,
+        "top1_match": true,
+        "row": 3,
+        "step": 2
+      },
+      {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "kl": 0.0,
+        "top1_match": true,
+        "row": 3,
+        "step": 3
+      },
+      {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "kl": 0.0,
+        "top1_match": true,
+        "row": 3,
+        "step": 4
+      }
+    ],
+    "hidden_mismatches": [],
+    "state_kv_scale_mismatches": []
+  },
+  "execution": {
+    "route_ok": true,
+    "full_attention_decode_paths": [
+      "kv_live_spans_int8_batch"
+    ],
+    "physical_rows": [
+      4
+    ],
+    "host_model_row_iterations": [
+      0
+    ],
+    "decode_steps_observed": 4
+  },
+  "command": "HIP_VISIBLE_DEVICES=1 /home/lhl/gfx1100-24gb-capacity/.venv/bin/python3 scripts/qwen38_int8_batch_decode_gate.py --diagnostic-direct-rows 4 --compiler-version-file /tmp/he-hipcc.txt --require-cached-build --json /tmp/xtx-capacity/ikv-c2-batch-decode-gate.json",
+  "elapsed_seconds": 92.35074032377452
+}

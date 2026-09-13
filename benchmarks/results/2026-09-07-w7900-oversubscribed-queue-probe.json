@@ -1,0 +1,17 @@
+{
+  "kind": "oversubscribed_service_queue_probe",
+  "date": "2026-09-07",
+  "status": "diagnostic_not_a_benchmark",
+  "hardware": "AMD Radeon Pro W7900 (gfx1100), GPU0",
+  "model": "Qwen3.8-27B GGUF Q4_K_M, production profile, K3, D24 greedy, 20 ms window",
+  "method": "campaign-artifacts/c1-k-sweep/queue_probe.py: capacity-8 product server, 16 concurrent requests (8 explicit-MTP wave A + 8 explicit-AR wave B over the same 8 canonical prompts); MTP-vs-AR exactness within the same run",
+  "result": {
+    "completed": "16/16 (queue drained past the 8-slot resident owner)",
+    "makespan_seconds": 5.294449869543314,
+    "route_flags_match": true,
+    "mtp_ar_token_exact_per_prompt": true,
+    "latency_context": "MTP wave median wall 4.16 s, AR wave median 5.29 s - the MTP cohort (first residence wave) drained earlier; both waves shared one server"
+  },
+  "conclusion": "The dynamic service-owner gate holds: queueing past capacity drains completely, MTP engagement follows the request flag across residence waves, MTP outputs stay token-exact against same-run AR outputs, and the engine shuts down cleanly after the loaded run.",
+  "raw": "/tmp/he-bettermtp-raw/queue-probe.json"
+}

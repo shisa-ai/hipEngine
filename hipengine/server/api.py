@@ -19,6 +19,9 @@ import logging
 import math
 import os
 import re
+import signal
+import sys
+import threading
 import time
 import uuid
 from collections import deque
@@ -2381,6 +2384,34 @@ def _resolve_realized_generation_route(
                 else {}
             )
             artifacts = precomputed_decision.get("evidence_artifacts")
+            # The request-time plan grants evidence-backed static intent for
+            # explicit width misses so the resident owner's fail-closed
+            # physical admission (listed cell or explicit-only screening) can
+            # re-admit this request. Dropping it turns every deferred C1
+            # explicit request into pre-mutation K0 and makes the screening
+            # path unreachable. Automatic routes never enter this branch.
+            static_payload = precomputed_decision.get("static_eligibility")
+            static_mapping = (
+                static_payload if isinstance(static_payload, Mapping) else None
+            )
+            eligibility = (
+                SpeculativeMTPStaticEligibility.from_mapping(static_mapping)
+                if static_mapping is not None
+                else None
+            )
+            # The realized re-resolution (_realized_model_serving_plan) returns
+            # the raw decision payload without the plan layer's
+            # static_intent_allowed key; derive it from the evidence-backed
+            # payload. This branch only fires for explicit batch-route width
+            # misses, where the plan layer grants intent exactly when the
+            # override is eligible; an explicit plan-layer False stays
+            # authoritative.
+            declared_intent = precomputed_decision.get("static_intent_allowed")
+            static_intent_allowed = (
+                bool(declared_intent)
+                if declared_intent is not None
+                else bool(eligibility is not None and eligibility.eligible)
+            )
             return route, {
                 "requested_route": route,
                 "selected_route": route,
@@ -2401,6 +2432,16 @@ def _resolve_realized_generation_route(
                     else "model_plugin_speculative_mtp_serving_plan"
                 ),
                 "deferred_key_rows": int(key.get("realized_group_rows", 0) or 0),
+                "k0_class": "not_k0",
+                "static_eligibility": (
+                    deepcopy(dict(static_mapping))
+                    if static_mapping is not None
+                    else None
+                ),
+                "static_eligibility_fingerprint": (
+                    eligibility.fingerprint if eligibility is not None else None
+                ),
+                "static_intent_allowed": static_intent_allowed,
             }
         return _serving_plan_route_decision(
             precomputed_decision,
@@ -3053,113 +3094,157 @@ class _GenerationBatcher:
                 first = self._queue.popleft()
                 if _queued_generation_cancelled(first):
                     continue
-                engine = self._engine_factory()
-                if first.stream_queue is not None:
-                    if _engine_supports_controlled_streaming(engine):
-                        active_limit = self._route_request_cap(first.route)
-                        if (
-                            active_limit is not None
-                            and self._active_requests >= active_limit
-                        ):
-                            self._queue.appendleft(first)
-                            active_streams = tuple(
-                                task for task in self._stream_tasks if not task.done()
-                            )
-                            if not active_streams:  # pragma: no cover - defensive invariant
-                                raise RuntimeError(
-                                    "controlled stream capacity is full without an active producer"
-                                )
-                            await asyncio.wait(
-                                active_streams,
-                                return_when=asyncio.FIRST_COMPLETED,
-                            )
-                            continue
-                        self._launch_controlled_stream(first, engine)
-                        continue
-                elif (
-                    str(first.route) == _SPECULATIVE_MTP_DEFAULT_ROUTE
-                    and _engine_supports_independent_generation(engine)
-                ):
-                    active_limit = self._route_request_cap(first.route)
-                    child_rows = len(first.prompts)
-                    if active_limit is not None and child_rows > active_limit:
-                        _finish_queued_generation(
-                            first,
-                            exception=GenerationAdmissionRejected(
-                                "independent child group exceeds the resident request limit",
-                                resource="resident_child_limit",
-                                requested_units=child_rows,
-                                current_units=self._active_requests,
-                                capacity_units=active_limit,
-                            ),
-                        )
-                        continue
-                    if active_limit is not None and self._active_requests + child_rows > active_limit:
-                        self._queue.appendleft(first)
-                        active_tasks = tuple(
-                            task
-                            for task in (*self._stream_tasks, *self._independent_tasks)
-                            if not task.done()
-                        )
-                        if not active_tasks:  # pragma: no cover - defensive invariant
-                            raise RuntimeError(
-                                "independent generation capacity is full without an active producer"
-                            )
-                        await asyncio.wait(active_tasks, return_when=asyncio.FIRST_COMPLETED)
-                        continue
-                    submit_ready = getattr(
-                        engine,
-                        "submit_independent_batches_detailed",
-                        None,
-                    )
-                    if not callable(submit_ready) or not _env_flag(
-                        _DEFAULT_AR_READY_COHORT_ENV,
-                        default=True,
-                    ):
-                        self._launch_independent_generation(first)
-                        continue
-                    key = self._group_key(first)
-                    ready_group = [first]
-                    ready_rows = child_rows
-                    capacity = (
-                        None
-                        if active_limit is None
-                        else active_limit - self._active_requests
-                    )
-                    deferred: deque[_QueuedGeneration] = deque()
-                    while self._queue:
-                        item = self._queue.popleft()
-                        if _queued_generation_cancelled(item):
-                            continue
-                        item_rows = len(item.prompts)
-                        fits = capacity is None or ready_rows + item_rows <= capacity
-                        if self._group_key(item) == key and fits:
-                            ready_group.append(item)
-                            ready_rows += item_rows
-                        else:
-                            deferred.append(item)
-                    self._queue.extendleft(reversed(deferred))
-                    self._launch_independent_group(ready_group, engine)
-                    continue
-                key = self._group_key(first)
-                group = [first]
-                deferred: deque[_QueuedGeneration] = deque()
-                while self._queue:
-                    item = self._queue.popleft()
-                    if _queued_generation_cancelled(item):
-                        continue
-                    if self._group_key(item) == key and self._group_has_capacity(group):
-                        group.append(item)
-                    else:
-                        deferred.append(item)
-                self._queue.extendleft(reversed(deferred))
-                await self._run_group(group)
-                if self._queue and self._batch_window_seconds > 0.0:
-                    await asyncio.sleep(self._batch_window_seconds)
+                # Items popped but not yet re-queued or finished. If anything
+                # below raises (route-cap resolution, admission planning,
+                # dispatch), finish them with the exception before letting the
+                # worker die, or their futures never resolve and requests hang
+                # for the full client timeout (observed as the K4 1200 s/3000 s
+                # hangs: a ValueError from lazy adapter construction escaped
+                # here and orphaned the queued items).
+                in_flight: list[_QueuedGeneration] = [first]
+                try:
+                    await self._dispatch_queued_item(first, in_flight)
+                except BaseException as exc:
+                    for item in in_flight:
+                        self._release_independent_item(item)
+                        _finish_queued_generation(item, exception=exc)
+                    raise
+            else:
+                if self._batch_window_seconds > 0.0:
+                    await asyncio.sleep(0.0)
         finally:
             self._worker = None
             if self._queue:
                 self._worker = asyncio.create_task(self._run())
+
+    async def _dispatch_queued_item(
+        self,
+        first: _QueuedGeneration,
+        in_flight: list[_QueuedGeneration],
+    ) -> None:
+        """Dispatch one popped queue item; track popped-not-finished items.
+
+        ``in_flight`` is owned by the caller's exception handler: every item
+        left in it when this coroutine raises is finished with the exception
+        so no queued request can outlive the worker silently.
+        """
+
+        engine = self._engine_factory()
+        if first.stream_queue is not None:
+            if _engine_supports_controlled_streaming(engine):
+                active_limit = self._route_request_cap(first.route)
+                if (
+                    active_limit is not None
+                    and self._active_requests >= active_limit
+                ):
+                    self._queue.appendleft(first)
+                    in_flight.clear()
+                    active_streams = tuple(
+                        task for task in self._stream_tasks if not task.done()
+                    )
+                    if not active_streams:  # pragma: no cover - defensive invariant
+                        raise RuntimeError(
+                            "controlled stream capacity is full without an active producer"
+                        )
+                    await asyncio.wait(
+                        active_streams,
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+                    return
+                self._launch_controlled_stream(first, engine)
+                return
+        elif (
+            str(first.route) == _SPECULATIVE_MTP_DEFAULT_ROUTE
+            and _engine_supports_independent_generation(engine)
+        ):
+            active_limit = self._route_request_cap(first.route)
+            child_rows = len(first.prompts)
+            if active_limit is not None and child_rows > active_limit:
+                _finish_queued_generation(
+                    first,
+                    exception=GenerationAdmissionRejected(
+                        "independent child group exceeds the resident request limit",
+                        resource="resident_child_limit",
+                        requested_units=child_rows,
+                        current_units=self._active_requests,
+                        capacity_units=active_limit,
+                    ),
+                )
+                in_flight.clear()
+                return
+            if active_limit is not None and self._active_requests + child_rows > active_limit:
+                self._queue.appendleft(first)
+                in_flight.clear()
+                active_tasks = tuple(
+                    task
+                    for task in (*self._stream_tasks, *self._independent_tasks)
+                    if not task.done()
+                )
+                if not active_tasks:  # pragma: no cover - defensive invariant
+                    raise RuntimeError(
+                        "independent generation capacity is full without an active producer"
+                    )
+                await asyncio.wait(active_tasks, return_when=asyncio.FIRST_COMPLETED)
+                return
+            submit_ready = getattr(
+                engine,
+                "submit_independent_batches_detailed",
+                None,
+            )
+            if not callable(submit_ready) or not _env_flag(
+                _DEFAULT_AR_READY_COHORT_ENV,
+                default=True,
+            ):
+                self._launch_independent_generation(first)
+                return
+            key = self._group_key(first)
+            ready_group = [first]
+            ready_rows = child_rows
+            capacity = (
+                None
+                if active_limit is None
+                else active_limit - self._active_requests
+            )
+            deferred: deque[_QueuedGeneration] = deque()
+            while self._queue:
+                item = self._queue.popleft()
+                if _queued_generation_cancelled(item):
+                    continue
+                in_flight.append(item)
+                item_rows = len(item.prompts)
+                fits = capacity is None or ready_rows + item_rows <= capacity
+                if self._group_key(item) == key and fits:
+                    ready_group.append(item)
+                    ready_rows += item_rows
+                else:
+                    deferred.append(item)
+            self._queue.extendleft(reversed(deferred))
+            for item in deferred:
+                in_flight.remove(item)
+            in_flight.clear()
+            in_flight.extend(ready_group)
+            self._launch_independent_group(ready_group, engine)
+            return
+        key = self._group_key(first)
+        group = [first]
+        deferred: deque[_QueuedGeneration] = deque()
+        while self._queue:
+            item = self._queue.popleft()
+            if _queued_generation_cancelled(item):
+                continue
+            in_flight.append(item)
+            if self._group_key(item) == key and self._group_has_capacity(group):
+                group.append(item)
+            else:
+                deferred.append(item)
+        self._queue.extendleft(reversed(deferred))
+        for item in deferred:
+            in_flight.remove(item)
+        in_flight.clear()
+        in_flight.extend(group)
+        await self._run_group(group)
+        if self._queue and self._batch_window_seconds > 0.0:
+            await asyncio.sleep(self._batch_window_seconds)
 
     def _launch_controlled_stream(self, item: _QueuedGeneration, engine: Any) -> None:
         self._active_requests += 1
@@ -4545,9 +4630,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 max_active_requests=config.max_active_requests,
                 max_sequence_length=config.max_context_tokens,
                 prefix_cache=prefix_cache_mode,
+                speculative_mtp_serving=config.speculative_mtp_serving,
                 speculative_provider=config.speculative_provider,
                 draft_model=config.draft_model,
                 speculative_candidate_budget=config.speculative_candidate_budget,
+                kv_storage=config.kv_storage,
+                kv_scale_dtype=config.kv_scale_dtype,
+                kv_scale_granularity=config.kv_scale_granularity,
                 vision_model=config.vision_model,
             )
             _log_effective_mtp_config(config, engine=app.state.hipengine_llm)
@@ -4634,13 +4723,55 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         if not callable(preparer):
             return effective_max_context_tokens(engine)
         prepare_started = time.perf_counter()
+        prepare_memory_start = _device_memory_snapshot()
+        model_size = None
         try:
-            prepared_result = await run_in_threadpool(
-                lambda: preparer(
+            model_size = Path(config.model).stat().st_size
+        except OSError:
+            pass
+        prepare_task: asyncio.Task | None = None
+        previous_sigint = None
+        try:
+            prepare_task = asyncio.create_task(
+                asyncio.to_thread(
+                    preparer,
                     max_sequence_length=requested_context,
                     sampling_params=sampling,
                 )
             )
+            if threading.current_thread() is threading.main_thread():
+                loop = asyncio.get_running_loop()
+                previous_sigint = signal.getsignal(signal.SIGINT)
+
+                def interrupt_startup(signum, frame) -> None:
+                    del frame
+                    loop.call_soon_threadsafe(prepare_task.cancel)
+                    if callable(previous_sigint):
+                        previous_sigint(signum, None)
+
+                signal.signal(signal.SIGINT, interrupt_startup)
+            while not prepare_task.done():
+                try:
+                    await asyncio.wait_for(asyncio.shield(prepare_task), timeout=10.0)
+                except asyncio.TimeoutError:
+                    live_memory = _device_memory_snapshot()
+                    _show_model_load_progress(
+                        config.model,
+                        model_size=model_size,
+                        start_memory=prepare_memory_start,
+                        live_memory=live_memory,
+                        interactive=sys.stderr.isatty() and "NO_COLOR" not in os.environ,
+                    )
+            prepared_result = await prepare_task
+        except asyncio.CancelledError:
+            if prepare_task is not None and not prepare_task.done():
+                prepare_task.cancel()
+            _LOGGER.warning(
+                "MODEL_LOAD: startup cancelled during %s after %.1fs",
+                phase,
+                time.perf_counter() - prepare_started,
+            )
+            raise
         except MemoryError as exc:
             _LOGGER.error(
                 "hipEngine %s failed to allocate resident KV cache: %s. "
@@ -4657,6 +4788,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 exc,
             )
             raise
+        finally:
+            if previous_sigint is not None:
+                signal.signal(signal.SIGINT, previous_sigint)
+            if prepare_memory_start is not None and sys.stderr.isatty():
+                print(file=sys.stderr)
         if prepared_result is not None:
             app.state.hipengine_effective_max_context_tokens = max(1, int(prepared_result))
         else:
@@ -4670,6 +4806,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             time.perf_counter() - prepare_started,
             "unknown" if effective is None else str(effective),
         )
+        # Reports the resolved context, the KV policy, and the capacity headroom
+        # on the logger the server already configures, so an automatic context
+        # selection is visible without extra flags.
+        _log_kv_capacity_summary(engine)
         return effective
 
     def mark_startup_failed(
@@ -4751,8 +4891,40 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         )
         async with session_lock:
             engine_started = time.perf_counter()
+            model_size = None
             try:
-                engine = get_llm()
+                model_size = Path(config.model).stat().st_size
+            except OSError:
+                pass
+            _LOGGER.info(
+                "MODEL_LOAD: loading model=%s size=%s backend=%s quant=%s",
+                config.model,
+                "unknown" if model_size is None else _format_bytes(model_size),
+                config.backend,
+                config.quant,
+            )
+            try:
+                load_task = asyncio.create_task(asyncio.to_thread(get_llm))
+                while not load_task.done():
+                    try:
+                        await asyncio.wait_for(asyncio.shield(load_task), timeout=10.0)
+                    except asyncio.TimeoutError:
+                        live_memory = _device_memory_snapshot()
+                        memory_suffix = (
+                            ""
+                            if live_memory is None
+                            else (
+                                f" gpu_used={_format_bytes(int(live_memory['used_bytes']))}"
+                                f"/{_format_bytes(int(live_memory['total_bytes']))}"
+                            )
+                        )
+                        _LOGGER.info(
+                            "MODEL_LOAD: still loading model=%s elapsed=%.1fs%s",
+                            config.model,
+                            time.perf_counter() - engine_started,
+                            memory_suffix,
+                        )
+                engine = await load_task
             except Exception as exc:
                 startup_checks["engine_create"] = {
                     "status": "failed",
@@ -4769,6 +4941,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 _LOGGER.exception("STARTUP_ENGINE_CREATE: failed")
                 return
             engine_create_s = time.perf_counter() - engine_started
+            _LOGGER.info(
+                "MODEL_LOAD: engine created elapsed=%.1fs; preparing weights, "
+                "KV pool, and runtime workspace",
+                engine_create_s,
+            )
             prepare_started = time.perf_counter()
             try:
                 max_context = await ensure_resident_context(engine, sampling, phase="startup")
@@ -5001,6 +5178,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             "skipped" if scratch_probe_s is None else f"{scratch_probe_s:.3f}",
             "skipped" if chat_smoke_s is None else f"{chat_smoke_s:.3f}",
             startup_total_s,
+        )
+        _log_pretty_startup_summary(
+            config,
+            engine=engine,
+            memory=_startup_memory_summary(startup_memory, startup_checks),
         )
         _log_effective_mtp_config(config, engine=app.state.hipengine_llm)
         _LOGGER.info("hipEngine is ready.")
@@ -8647,11 +8829,52 @@ def _resident_loop_metric_values(snapshot: Mapping[str, Any] | None) -> dict[str
             "current_bytes": _non_negative_metric_value(
                 model_runner.get("packed_workspace_current_bytes")
             ),
+            "owner_sessions": _non_negative_metric_value(
+                model_runner.get("packed_workspace_owner_sessions")
+            ),
+            "leased_pool_bytes": _non_negative_metric_value(
+                model_runner.get("packed_workspace_leased_pool_bytes")
+            ),
             "release_events": _non_negative_metric_value(
                 model_runner.get("packed_workspace_release_events")
             ),
             "released_bytes": _non_negative_metric_value(
                 model_runner.get("packed_workspace_released_bytes")
+            ),
+        },
+        "prefill_transients": {
+            "oracle_owner_bytes": _non_negative_metric_value(
+                (model_runner.get("prefill_transients") or {}).get("oracle_owner_bytes")
+            ),
+            "oracle_owner_count_total": _non_negative_metric_value(
+                (model_runner.get("prefill_transients") or {}).get("oracle_owner_count_total")
+            ),
+            "oracle_observed_peak_bytes": _non_negative_metric_value(
+                (model_runner.get("prefill_transients") or {}).get("oracle_observed_peak_bytes")
+            ),
+            "oracle_observed_peak_owners": _non_negative_metric_value(
+                (model_runner.get("prefill_transients") or {}).get("oracle_observed_peak_owners")
+            ),
+            "hidden_and_bulk_owner_bytes": _non_negative_metric_value(
+                (model_runner.get("prefill_transients") or {}).get("hidden_and_bulk_owner_bytes")
+            ),
+            # Which packed-prefill executor actually ran, per resident session.
+            # ``route`` alone cannot distinguish the layer-outer executor from the
+            # chunk-outer fallback (qwen35_gguf_runner.py:212-214), so without this
+            # a run that silently took the fallback is indistinguishable from one
+            # that took the deliverable route. String-valued, hence not a gauge.
+            "executor_modes": _string_value_counts(
+                (model_runner.get("prefill_transients") or {}).get(
+                    "last_packed_executor_modes"
+                )
+            ),
+            # The session's own KV layout, which gates whether the resumable
+            # executor is attempted at all. Distinct from the route manifest's
+            # kv_attention_source label, which describes the last decode.
+            "kv_attention_sources": _string_value_counts(
+                (model_runner.get("prefill_transients") or {}).get(
+                    "kv_attention_sources"
+                )
             ),
         },
         "persistent_kv": {
@@ -8749,6 +8972,13 @@ def _render_prometheus_metrics(
         "hipengine_resident_fair_prefill_burst_chunks": resident["policy"]["fair_prefill_burst_chunks"],
         "hipengine_resident_consecutive_prefill_chunks": resident["policy"]["consecutive_prefill_chunks"],
         "hipengine_resident_packed_workspace_current_bytes": resident["packed_workspace"]["current_bytes"],
+        "hipengine_resident_packed_workspace_owner_sessions": resident["packed_workspace"]["owner_sessions"],
+        "hipengine_resident_packed_workspace_leased_pool_bytes": resident["packed_workspace"]["leased_pool_bytes"],
+        "hipengine_resident_prefill_oracle_owner_bytes": resident["prefill_transients"]["oracle_owner_bytes"],
+        "hipengine_resident_prefill_oracle_owners": resident["prefill_transients"]["oracle_owner_count_total"],
+        "hipengine_resident_prefill_oracle_observed_peak_bytes": resident["prefill_transients"]["oracle_observed_peak_bytes"],
+        "hipengine_resident_prefill_oracle_observed_peak_owners": resident["prefill_transients"]["oracle_observed_peak_owners"],
+        "hipengine_resident_prefill_hidden_owner_bytes": resident["prefill_transients"]["hidden_and_bulk_owner_bytes"],
         "hipengine_resident_packed_workspace_release_events_total": resident["packed_workspace"]["release_events"],
         "hipengine_resident_packed_workspace_released_bytes_total": resident["packed_workspace"]["released_bytes"],
         "hipengine_resident_kv_int8_payload_bytes": resident["persistent_kv"]["int8_payload_bytes"],
@@ -8766,6 +8996,10 @@ def _render_prometheus_metrics(
         "hipengine_kv_pool_free_pages": pool["free_pages"],
         "hipengine_kv_pool_refcounted_pages": pool["refcounted_pages"],
         "hipengine_kv_pool_pinned_pages": pool["pinned_pages"],
+        "hipengine_kv_pool_max_pages": pool["max_pages"],
+        "hipengine_kv_pool_budget_bytes": pool["budget_bytes"],
+        "hipengine_kv_pool_retired_pages_total": pool["retired_pages"],
+        "hipengine_kv_pool_retired_bytes_total": pool["retired_bytes"],
         "hipengine_graph_bucket_entries": graph["entries"],
         "hipengine_graph_bucket_hits_total": graph["hits"],
         "hipengine_graph_bucket_misses_total": graph["misses"],
@@ -8815,7 +9049,14 @@ def _render_prometheus_metrics(
         "hipengine_resident_prefill_chunk_tokens": "Configured maximum tokens in one resident prefill work item.",
         "hipengine_resident_fair_prefill_burst_chunks": "Configured maximum consecutive prefill chunks while fair scheduling also has decode work.",
         "hipengine_resident_consecutive_prefill_chunks": "Current consecutive resident prefill chunks since the last decode work item.",
-        "hipengine_resident_packed_workspace_current_bytes": "Current owner-only packed GGUF workspace bytes.",
+        "hipengine_resident_packed_workspace_current_bytes": "Current owner-only packed GGUF workspace bytes (owner-deduplicated: shared slot views counted once, split-growth owners included).",
+        "hipengine_resident_packed_workspace_owner_sessions": "Resident sessions whose views contributed to the packed workspace inventory (aliasing diagnostic).",
+        "hipengine_resident_packed_workspace_leased_pool_bytes": "Pool-plane bytes pinned by workspace leases (a distinct accounting domain from workspace allocation bytes).",
+        "hipengine_resident_prefill_oracle_owner_bytes": "Live BF16 prefill oracle pair bytes across resident sessions (per-layer during multi-slab packed calls).",
+        "hipengine_resident_prefill_oracle_owners": "Live BF16 prefill oracle owners (pairs) across resident sessions.",
+        "hipengine_resident_prefill_oracle_observed_peak_bytes": "Monotonic while-live peak of BF16 prefill oracle pair bytes, sampled at release time (scrapes cannot observe mid-call).",
+        "hipengine_resident_prefill_oracle_observed_peak_owners": "Monotonic while-live peak of BF16 prefill oracle owners, sampled at release time.",
+        "hipengine_resident_prefill_hidden_owner_bytes": "Bulk prefill hidden/scratch/token owner bytes across resident sessions.",
         "hipengine_resident_packed_workspace_release_events_total": "Reclaimed packed GGUF workspace owners.",
         "hipengine_resident_packed_workspace_released_bytes_total": "Cumulative owner-only packed GGUF workspace bytes reclaimed.",
         "hipengine_resident_kv_int8_payload_bytes": "Current resident request-owned INT8 KV payload bytes.",
@@ -8833,6 +9074,10 @@ def _render_prometheus_metrics(
         "hipengine_kv_pool_free_pages": "Current dynamic KV pool free pages, or 0 when unavailable.",
         "hipengine_kv_pool_refcounted_pages": "Current dynamic KV pool refcounted pages, or 0 when unavailable.",
         "hipengine_kv_pool_pinned_pages": "Current graph-pinned dynamic KV pages, or 0 when unavailable.",
+        "hipengine_kv_pool_max_pages": "Configured maximum dynamic KV pool pages, or 0 when unavailable.",
+        "hipengine_kv_pool_budget_bytes": "Configured maximum dynamic KV pool bytes, or 0 when unavailable.",
+        "hipengine_kv_pool_retired_pages_total": "Cumulative dynamic KV pool pages returned to the device allocator, or 0 when unavailable.",
+        "hipengine_kv_pool_retired_bytes_total": "Cumulative dynamic KV pool bytes returned to the device allocator, or 0 when unavailable.",
         "hipengine_graph_bucket_entries": "Current graph bucket cache entries, or 0 when unavailable.",
         "hipengine_graph_bucket_hits_total": "Graph bucket cache hits, or 0 when unavailable.",
         "hipengine_graph_bucket_misses_total": "Graph bucket cache misses, or 0 when unavailable.",
@@ -8938,6 +9183,20 @@ def _render_prometheus_metrics(
             )
     _append_labeled_counter_metrics(
         lines,
+        "hipengine_resident_prefill_executor_mode_total",
+        "Packed-prefill executor that ran per resident session, by executor mode.",
+        "mode",
+        resident["prefill_transients"]["executor_modes"],
+    )
+    _append_labeled_counter_metrics(
+        lines,
+        "hipengine_resident_kv_attention_source_total",
+        "Resident session KV attention source, which gates the resumable prefill.",
+        "source",
+        resident["prefill_transients"]["kv_attention_sources"],
+    )
+    _append_labeled_counter_metrics(
+        lines,
         "hipengine_resident_route_total",
         "Resident GGUF execution transitions by declared route.",
         "route",
@@ -8996,6 +9255,10 @@ _KV_POOL_METRIC_DEFAULTS = {
     "free_pages": 0.0,
     "refcounted_pages": 0.0,
     "pinned_pages": 0.0,
+    "max_pages": 0.0,
+    "budget_bytes": 0.0,
+    "retired_pages": 0.0,
+    "retired_bytes": 0.0,
 }
 
 
@@ -9035,7 +9298,14 @@ def _kv_pool_stream_payload(engine: Any | None) -> dict[str, float] | None:
     stats = _kv_pool_stats_object(engine)
     if stats is None:
         return None
-    return _kv_pool_metric_values_from_stats(stats)
+    values = _kv_pool_metric_values_from_stats(stats)
+    # Keep the established streaming payload compact and backwards-compatible;
+    # readiness and Prometheus expose the independent budget fields.
+    return {
+        key: value
+        for key, value in values.items()
+        if key not in {"max_pages", "budget_bytes"}
+    }
 
 
 def _generation_queue_metric_values(generation_batcher: Any | None) -> dict[str, float]:
@@ -9162,6 +9432,8 @@ def _stats_to_mapping(stats: Any) -> Mapping[str, Any]:
         "free_pages",
         "refcounted_pages",
         "pinned_pages",
+        "retired_pages",
+        "retired_bytes",
         "entries",
         "hits",
         "misses",
@@ -9178,6 +9450,24 @@ def _non_negative_metric_value(value: Any, *, default: float = 0.0) -> float:
     if not math.isfinite(numeric) or numeric < 0:
         return default
     return numeric
+
+
+def _string_value_counts(value: Any) -> dict[str, float]:
+    """Count occurrences of each distinct string in a list of optional strings.
+
+    Used for diagnostics that report *which* path ran rather than how much of
+    something was used. ``None`` entries become ``"none"`` so an unset field is
+    visible in the export instead of silently disappearing, and an absent or
+    non-list value yields an empty mapping so the metric is simply not emitted.
+    """
+
+    if not isinstance(value, (list, tuple)):
+        return {}
+    counts: dict[str, float] = {}
+    for item in value:
+        key = "none" if item is None else str(item)
+        counts[key] = counts.get(key, 0.0) + 1.0
+    return counts
 
 
 def _non_negative_metric_mapping(value: Any) -> dict[str, float]:
@@ -10331,11 +10621,12 @@ def _log_kv_capacity_summary(engine: Any) -> None:
     if estimate is not None:
         model_max = int(getattr(estimate, "model_max_context_tokens", 0) or 0)
         _LOGGER.info(
-            "KVCache: storage=%s scale=%s max_context_tokens=%d model_max_context_tokens=%s "
-            "allocatable_context_tokens=%d requested_kv=%s metadata=%s total=%s "
-            "bytes_per_token=%d usable=%s reserve=%s",
+            "KVCache: storage=%s scale=%s slots=%d max_context_tokens=%d "
+            "model_max_context_tokens=%s allocatable_context_tokens=%d requested_kv=%s "
+            "metadata=%s total=%s bytes_per_token=%d usable=%s reserve=%s",
             getattr(estimate, "kv_storage_dtype", "unknown"),
             getattr(estimate, "kv_scale_dtype", None) or "none",
+            int(getattr(estimate, "max_batch_size", 0) or 0),
             int(getattr(estimate, "requested_context_tokens", 0) or 0),
             "unknown" if model_max <= 0 else str(model_max),
             int(getattr(estimate, "allocatable_context_tokens", 0) or 0),
@@ -10348,9 +10639,13 @@ def _log_kv_capacity_summary(engine: Any) -> None:
         )
         if model_max > 0 and not bool(getattr(estimate, "fits_model_max", True)):
             _LOGGER.warning(
-                "KVCache: selected policy can fit allocatable_context_tokens=%d, "
-                "below model_max_context_tokens=%d",
-                int(getattr(estimate, "allocatable_context_tokens", 0) or 0),
+                "KVCache: the selected context (%d tokens) is the largest that fits in "
+                "%s free for %d resident slot(s); model_max_context_tokens=%d needs more "
+                "memory. Lower --max-active-requests, use --kv-storage "
+                "int8_per_token_head, or pass an explicit --max-context-tokens.",
+                int(getattr(estimate, "requested_context_tokens", 0) or 0),
+                _format_bytes(int(getattr(estimate, "usable_bytes", 0) or 0)),
+                int(getattr(estimate, "max_batch_size", 0) or 0),
                 model_max,
             )
     int8_estimate = getattr(session, "kv_capacity_int8_estimate", None)
@@ -10384,6 +10679,7 @@ def _kv_capacity_estimate_payload(engine: Any | None) -> dict[str, Any] | None:
         "requested_context_tokens",
         "model_max_context_tokens",
         "allocatable_context_tokens",
+        "max_batch_size",
         "requested_kv_bytes",
         "bytes_per_token",
         "usable_bytes",
@@ -10597,6 +10893,108 @@ def _log_startup_memory_summary(memory: Mapping[str, Any], checks: Mapping[str, 
         _format_bytes(int(summary["total_bytes"])),
         int(summary["sample_count"]),
     )
+
+
+def _log_pretty_startup_summary(
+    config: ServerConfig,
+    *,
+    engine: Any,
+    memory: Mapping[str, Any] | None,
+) -> None:
+    """Emit a compact human-facing startup summary after eager preparation."""
+
+    estimate = _kv_capacity_estimate_payload(engine) or {}
+    snapshot = _live_loop_snapshot(engine) or {}
+    runner = _nested_mapping(snapshot, "runner")
+    pool = _nested_mapping(runner, "kv_pool")
+    context = estimate.get("requested_context_tokens")
+    model_max = estimate.get("model_max_context_tokens")
+    storage = estimate.get("kv_storage_dtype") or config.kv_storage
+    scale = estimate.get("kv_scale_dtype") or config.kv_scale_dtype
+    concurrency = runner.get("max_active_requests")
+    budget = pool.get("budget_bytes")
+    if budget is None:
+        budget = estimate.get("usable_bytes")
+    used = None if memory is None else memory.get("final_used_bytes")
+    total = None if memory is None else memory.get("total_bytes")
+
+    color = bool(sys.stderr.isatty()) and "NO_COLOR" not in os.environ
+    cyan = "\033[36m" if color else ""
+    green = "\033[32m" if color else ""
+    yellow = "\033[33m" if color else ""
+    reset = "\033[0m" if color else ""
+    context_text = (
+        "unknown"
+        if context is None
+        else f"{int(context):,}"
+        + (f" / {int(model_max):,}" if model_max else "")
+    )
+    memory_text = (
+        "unknown"
+        if used is None or total is None
+        else f"{_format_bytes(int(used))} / {_format_bytes(int(total))}"
+    )
+    budget_text = "automatic" if budget is None else _format_bytes(int(budget))
+    _LOGGER.info(
+        "\n%s%s%s\n"
+        "  Model       %s\n"
+        "  Context     %s tokens\n"
+        "  KV cache    %s (%s scales)\n"
+        "  Concurrency %s requests in flight\n"
+        "  KV budget   %s\n"
+        "  GPU memory  %s used\n"
+        "%s%s%s",
+        cyan,
+        "hipEngine ready",
+        reset,
+        config.model,
+        context_text,
+        f"{storage}",
+        scale,
+        "automatic" if concurrency is None else str(int(concurrency)),
+        budget_text,
+        memory_text,
+        green,
+        "  Ready for requests",
+        reset,
+    )
+
+
+def _show_model_load_progress(
+    model: str,
+    *,
+    model_size: int | None,
+    start_memory: Mapping[str, Any] | None,
+    live_memory: Mapping[str, Any] | None,
+    interactive: bool,
+) -> None:
+    """Show an approximate VRAM-backed model-load progress indicator."""
+
+    if live_memory is None:
+        _LOGGER.info("MODEL_LOAD: preparing model=%s (GPU usage unavailable)", model)
+        return
+    used = int(live_memory.get("used_bytes", 0) or 0)
+    start_used = 0 if start_memory is None else int(start_memory.get("used_bytes", 0) or 0)
+    delta = max(0, used - start_used)
+    total = int(live_memory.get("total_bytes", 0) or 0)
+    if model_size and model_size > 0:
+        ratio = min(1.0, delta / model_size)
+        filled = int(ratio * 28)
+        bar = "#" * filled + "-" * (28 - filled)
+        text = (
+            f"MODEL_LOAD: [{bar}] {ratio * 100:5.1f}% "
+            f"approx {_format_bytes(delta)}/{_format_bytes(model_size)} "
+            f"VRAM {_format_bytes(used)}/{_format_bytes(total)}"
+        )
+    else:
+        text = (
+            f"MODEL_LOAD: preparing model={model} "
+            f"VRAM {_format_bytes(used)}/{_format_bytes(total)}"
+        )
+    if interactive:
+        print(f"\r{text}", end="", file=sys.stderr, flush=True)
+    else:
+        _LOGGER.info("%s", text)
 
 
 def _startup_free_memory_guard(
@@ -11487,8 +11885,20 @@ def _validate_generation_request(
     try:
         from hipengine.kvcache import resolve_kv_policy
 
+        # Compare against the policy the server actually allocated, not the one
+        # it was asked for. A generator that is not qualified for the requested
+        # storage fails closed to BF16 (for example an artifact with no INT8 KV
+        # qualification evidence), and rejecting an explicit request that
+        # matches what is really resident would be wrong. The capability
+        # provenance reports the effective storage in all three cases: the BF16
+        # default, a qualified request, and a failed-closed request.
+        effective_storage = config.kv_storage
+        capability = _kv_capability_provenance(engine)
+        reported_storage = capability.get("effective_kv_storage")
+        if isinstance(reported_storage, str) and reported_storage:
+            effective_storage = reported_storage
         server_policy = resolve_kv_policy(
-            config.kv_storage,
+            effective_storage,
             scale_dtype=config.kv_scale_dtype,
             scale_granularity=config.kv_scale_granularity,
         )

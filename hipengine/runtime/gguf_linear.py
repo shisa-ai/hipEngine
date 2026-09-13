@@ -440,7 +440,7 @@ _PACK8_DUAL_ROWTILE_SILU_OUT_FEATURES = 17_408
 # correctness boundary: the fused kernel is bit-identical to the
 # two-singleton+silu_mul chain at the only shape this predicate admits
 # (5120 -> 17408) for rows 45/96/192/511/512 and on the fixture down to rows 2
-# (tests/test_gguf_q4_k_t16_dense.py). W7900 Qwen3.8-27B-Q4_K_M measured +4.2%
+# (tests/test_gpu_gguf_q4_k_t16_dense.py). W7900 Qwen3.8-27B-Q4_K_M measured +4.2%
 # (45 rows), +4.2% (96), +4.9% (192) prefill and unchanged 512, so the floor came
 # down to 33 - one above the largest row count measured SLOWER for this owner.
 # Target verification runs the same shared FFN stage inside captured physical
@@ -2419,7 +2419,15 @@ def _q4_t16_dual_wmma_silu_dispatch(
             )
         if physical_variant is not None:
             variants.append(physical_variant)
-        if rows <= 64:
+        # Measured packet4 row screen (2026-09-06, bit-exact at every screened
+        # row): rows 33-48 run row48 1.9x faster than row64; 49-64 keep row64
+        # and 65-128 keep row128.
+        row48_max = int(backend_package_capability(
+            dispatch_a.key.backend, "GGUF_Q4_DUAL_SILU_PREFILL_ROW48_MAX_ROWS", 0,
+        ))
+        if rows <= row48_max:
+            variants.append("dense_dual_wmma_prefill_row48_bf16_bf16_out")
+        elif rows <= 64:
             variants.append("dense_dual_wmma_prefill_row64_bf16_bf16_out")
         elif rows <= 128:
             variants.append("dense_dual_wmma_prefill_row128_bf16_bf16_out")
@@ -7651,7 +7659,7 @@ def _q6_planar_rowtile_dispatch(
     The per-row decode kernel re-reads the full tile set once per row
     (grid_y = rows); the registered planar rowtile reads each tile once for all
     rows and is bit-identical to it
-    (tests/test_gguf_q6_planar_rowtile_dispatch_route.py). Fires only for rows
+    (tests/test_gpu_gguf_q6_planar_rowtile_dispatch_route.py). Fires only for rows
     2-8 on the decode leaves and never overrides an explicit WMMA opt-in —
     ``_wmma_prefill_dispatch`` runs after this step for that precedence.
     """

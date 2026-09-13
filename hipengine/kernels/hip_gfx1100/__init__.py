@@ -452,6 +452,14 @@ GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA_POLICIES = {
 # The sole-Q4T16 dense gate/up owners already expose an exact c1 dual+SiLU
 # sibling. The complete Qwen3.8 512/128 and natural25 gates admit it for the
 # validated H5120 geometry, removing 128 decode-graph nodes without a sidecar.
+# The gfx1100 Qwen3.8 serial full-attention composite is the same exact
+# registered kernel admitted on gfx1151 (bit-exact + CPU KL/top-1 gated in
+# tests/test_qwen38_full_attn_qk_postprocess.py); the policy admits it for the
+# qualified (rows, heads, kv-heads, key-length) geometry so DMS serving and
+# dense decode share the fused route. Other shapes stay on the unfused chain.
+GGUF_FULL_ATTN_QK_POSTPROCESS_DECODE_POLICIES = {
+    (1, 24, 4, 256): "qwen35_position_qk_bf16_f32",
+}
 GGUF_DENSE_PAIR_SILU_DECODE_POLICIES = {
     (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {
         (1, 5_120, 17_408): "dense_dual_local32_bf16_bf16_out",
@@ -490,15 +498,27 @@ GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT = {
 # top-1, and M64/M512 gates improve; peer backends and unmeasured shapes keep
 # legacy T16 until independently admitted.
 GGUF_DENSE_Q6_T16_QMICRO_PLANAR = True
+# Bulk Q4 gate/up+SiLU row48 is qualified on this backend only.
+GGUF_Q4_DUAL_SILU_PREFILL_ROW48_MAX_ROWS = 48
 # The wide planar-Q6 FFN-down prefill owner uses exact cooperative siblings to
-# avoid one-wave underfill on W7900. Rows33-128 use four waves over one 16-row
-# tile each; rows129-511 use the existing four-wave 256-row owner. Rows<=32 keep
-# verifier ownership unchanged, and rows>=512 retain the independently gated
-# source-F16 route. The one-wave parent remains a registered strict fallback.
+# avoid one-wave underfill on W7900. Rows4-128 use the four-wave row64 sibling
+# over one 16-row tile each (bit-exact to the parent at EVERY row 1-36 on all
+# three cycle shapes per the 2026-09-06 packet3 full-coverage screen, 108/108
+# combos, 1.60-1.89x faster on ffn_down); rows129-511 use the existing
+# four-wave 256-row owner. Rows<=3 keep the one-wave parent, and rows>=512
+# retain the independently gated source-F16 route. The one-wave parent remains
+# a registered strict fallback.
 GGUF_Q6_PLANAR_EXACT_PREFILL_VARIANTS = {
     (17_408, 5_120): (
-        (33, 128, "t16_wmma_prefill_shared4_row64_bf16_bf16_out"),
+        (4, 128, "t16_wmma_prefill_shared4_row64_bf16_bf16_out"),
         (129, 511, "t16_wmma_prefill_shared4_bf16_bf16_out"),
+    ),
+    # Packet 4 screen (2026-09-06, real blk.3.attn_v tensors): shared4_row64
+    # is bit-exact to the one-wave parent at EVERY screened row 1-128 and
+    # faster at every row (1.22-2.64x; cycle frontier rows 4-36 run 1.22-2.0x).
+    # Rows >=129 stay on the parent pending a shared4 screen at this shape.
+    (5_120, 1_024): (
+        (4, 128, "t16_wmma_prefill_shared4_row64_bf16_bf16_out"),
     ),
 }
 # Production-shape Q4 changed-arithmetic screen admits FFN-down plus
@@ -620,10 +640,15 @@ GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK = True
 # here remain in use and unmeasured by that sweep.
 GGUF_SPECDEC2_MTP2_C1 = True
 GGUF_SPECDEC2_MTP2_PHYSICAL = True
+# Physical C1 routes a rows==1-evidence request through the packed one-row
+# provider group + R2/R3/R4 frontier (Packet 2), never the legacy AR-row
+# singleton verifier. Public C1 evidence is withdrawn pending packed-target
+# qualification. gfx1151 has no flag; Qwen3.6 C1 evidence requires capacity 1.
+GGUF_SPECDEC2_MTP2_PHYSICAL_C1 = True
 GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS: dict[
     str, tuple[tuple[int, int], ...]
 ] = {
-    "production": ((1, 2), (1, 3), (2, 2), (8, 3)),
+    "production": ((1, 2), (1, 3), (2, 2), (2, 3), (8, 3)),
     "strict": ((2, 2),),
 }
 # Production prompt streaming follows the same model-local physical evidence.
@@ -633,11 +658,13 @@ GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES = {
     (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "production"): (1, 2, 8),
     (QWEN35_MOE_H2048_E256_GEOMETRY, "MOSTLY_Q4_K_M", "production"): (1, 2),
 }
-# W7900 P2 p128 found deterministic native target-graph NaN/sentinel output;
-# eager/serial target verification remains exact above the locally-qualified
-# natural25 context envelope.  This is graph admission, not model policy.
+# Preserve unrelated routes while removing the obsolete p95 workaround for
+# the dense Q4_K_M verifier. Its cache and graph topology supply the bounds.
 GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT = 95
 GGUF_SPECDEC2_NATIVE_TARGET_MAX_CONTEXT = 95
+GGUF_SPECDEC2_NATIVE_TARGET_CACHE_CAPACITY_POLICIES = frozenset({
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"),
+})
 # Packed-PARO S7 starts with the independently-qualified singleton K1/R2
 # frontier only. C2/C4 remains absent until physical multi-request kernels pass.
 PARO_SPECDEC2_MTP2_C1 = True
@@ -1039,6 +1066,26 @@ GGUF_DENSE_PREFILL_SCRATCH_LIVENESS_POLICIES = {
 # LCP-1 remains a separately registered diagnostic on gfx1100 because its
 # architecture-local full-state and wall gate rejected automatic promotion.
 GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE = "baseline"
+# XTX capacity campaign 2026-09-06: the retained >1K auto policy resolves a
+# 4096-row full-attn query chunk, so every declared context at or below 4096
+# sized the dense bulk-prefill scratch by the full declared context (~1 MiB of
+# scratch per declared token measured on the W7900 at BF16 3,328->3,840 while
+# the KV payload is 64 KiB/token). Bound session scratch rows to the retained
+# 1024-row outer chunk the low-memory (52K+ on 24GB) and gfx1151 8K+ policies
+# already use; prompts below 1,024 rows keep today's unchunked scratch. The
+# 1,024 threshold also covers the d512 concurrency class (declared 1,280:
+# N=4/5 warmup OOMs were unchanged with a 2,048-only threshold). Exactness:
+# per-row full attention is independent of query batching and the GDN chunk
+# sequence is unchanged (linear chunk already 1024); a 2,650-token greedy
+# server request matched the uncapped route token-for-token on the W7900.
+GGUF_DENSE_PREFILL_SCRATCH_ROW_CAP_POLICIES = {
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {
+        "min_capacity": 1_024,
+        "max_rows_by_capacity": {
+            1_024: 1_024,
+        },
+    },
+}
 
 __all__ = [
     "LAGUNA_ACTIVATION_PACK_REUSE",
@@ -1093,6 +1140,7 @@ __all__ = [
     "GGUF_PREFILL_ROUTER_SELECT_THREADS",
     "GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS",
     "GGUF_DENSE_PREFILL_SCRATCH_LIVENESS_POLICIES",
+    "GGUF_DENSE_PREFILL_SCRATCH_ROW_CAP_POLICIES",
     "GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS",
     "GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS_BY_MAX_SEQUENCE_LENGTH",
     "GGUF_Q4_K_M_PREFILL_DECODE_POLICY",
@@ -1140,6 +1188,7 @@ __all__ = [
     "GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_POLICIES",
     "GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA_POLICIES",
     "GGUF_DENSE_PAIR_SILU_DECODE_POLICIES",
+    "GGUF_FULL_ATTN_QK_POSTPROCESS_DECODE_POLICIES",
     "GGUF_C8_Q5_RAW_MMQ_SSM_OUT",
     "GGUF_DENSE_Q5_T16_SSM_OUT",
     "GGUF_DENSE_Q6_T16_QMICRO_PLANAR",
@@ -1164,10 +1213,13 @@ __all__ = [
     "GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK",
     "GGUF_SPECDEC2_MTP2_C1",
     "GGUF_SPECDEC2_MTP2_PHYSICAL",
+    "GGUF_SPECDEC2_MTP2_PHYSICAL_C1",
+    "GGUF_Q4_DUAL_SILU_PREFILL_ROW48_MAX_ROWS",
     "GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS",
     "GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES",
     "GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT",
     "GGUF_SPECDEC2_NATIVE_TARGET_MAX_CONTEXT",
+    "GGUF_SPECDEC2_NATIVE_TARGET_CACHE_CAPACITY_POLICIES",
     "PARO_SPECDEC2_MTP2_C1",
     "PARO_SPECDEC2_MTP2_C4",
     "GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS",
