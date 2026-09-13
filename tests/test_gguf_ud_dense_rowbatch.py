@@ -92,8 +92,36 @@ def test_launch_rejects_unsupported_row_batches(row_batch, monkeypatch):
                      quant='gguf_iq3_s', output='f32', row_batch=row_batch)
 
 
-@pytest.mark.parametrize('rows,expected', [(1, 1), (2, 2), (3, 2), (4, 4), (7, 4),
-                                           (8, 8), (9, 8), (512, 8)])
-def test_default_slab_is_the_largest_one_the_prompt_fills(rows, expected):
+@pytest.mark.parametrize('rows,expected', [(1, 1), (2, 2), (3, 4), (4, 4), (5, 8),
+                                           (6, 8), (7, 8), (8, 8), (9, 8),
+                                           (512, 8)])
+def test_default_slab_is_the_smallest_one_that_covers_the_prompt(rows, expected) -> None:
+    """The default slab keeps the prompt's weight traffic to a single read.
+
+    ``grid.y`` is ``ceil(rows/R)``, so only ``R >= rows`` avoids re-reading
+    every weight slice. Padding rows load ``0.0f`` and are never stored, and
+    the kernel declares every R bit-identical, so the smallest covering slab is
+    available and is never worse on row-lane work either.
+    """
+
     from hipengine.kernels.hip_gfx1100.quant.gguf_iq_dense import _row_batch
     assert _row_batch(rows) == expected
+
+
+@pytest.mark.parametrize('rows,expected', [(1, 1), (2, 2), (3, 2), (4, 4), (7, 4),
+                                           (8, 8), (9, 8), (512, 8)])
+def test_row_batch_round_down_switch_restores_the_old_rule(
+    rows, expected, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``HIPENGINE_GGUF_IQ_DENSE_ROW_BATCH_DOWN=1`` restores the old rule."""
+
+    from hipengine.kernels.hip_gfx1100.quant.gguf_iq_dense import _row_batch
+    monkeypatch.setenv('HIPENGINE_GGUF_IQ_DENSE_ROW_BATCH_DOWN', '1')
+    assert _row_batch(rows) == expected
+
+
+def test_row_batch_rejects_a_non_boolean_switch(monkeypatch: pytest.MonkeyPatch) -> None:
+    from hipengine.kernels.hip_gfx1100.quant.gguf_iq_dense import _row_batch
+    monkeypatch.setenv('HIPENGINE_GGUF_IQ_DENSE_ROW_BATCH_DOWN', 'maybe')
+    with pytest.raises(ValueError):
+        _row_batch(3)

@@ -12,9 +12,9 @@ economically unattractive.
 
 **Status:** phases 0-7 are closed. Both tiers are promoted within width c1 and
 the 4-95 token context bucket, and automatic MTP admission is live there for
-both artifacts. The retained paired result is `UD-Q4_K_M` MTP **49.409** tok/s
-at **1.5487x** over its own AR and `UD-Q4_K_S` **46.955** at **1.5432x**
-(`benchmarks/results/2026-09-13-ud-gfx1100-q5t16-single-wave-rowtile.json`).
+both artifacts. The retained paired result is `UD-Q4_K_M` MTP **49.408** tok/s
+at **1.5482x** over its own AR and `UD-Q4_K_S` **48.548** at **1.5509x**
+(`benchmarks/results/2026-09-13-ud-gfx1100-iq-dense-strict-row-slab-cover.json`).
 The 13 unchecked items below are follow-on work with recorded blockers, not
 unfinished phases; each names what is missing.
 
@@ -35,8 +35,9 @@ unfinished phases; each names what is missing.
 
 ### Current baseline and evidence
 
-- [Current paired GPU1 artifact](../benchmarks/results/2026-09-13-ud-gfx1100-q5t16-single-wave-rowtile.json)
-- [Prior paired GPU1 artifact (superseded)](../benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-q8-rowtile-attn-kv.json)
+- [Current paired GPU1 artifact](../benchmarks/results/2026-09-13-ud-gfx1100-iq-dense-strict-row-slab-cover.json)
+- [Prior paired GPU1 artifact (superseded)](../benchmarks/results/2026-09-13-ud-gfx1100-q5t16-single-wave-rowtile.json)
+- [Earlier paired GPU1 artifact (superseded)](../benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-q8-rowtile-attn-kv.json)
 - [Phase 6 paired artifact (superseded)](../benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-phase6.json)
 - [Phase 4 paired artifact (superseded)](../benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-phase4.json)
 - [Benchmark scoreboard](../benchmarks/README.md)
@@ -414,6 +415,19 @@ Likely investigation order:
   attribution: `qk_t16_selected_direct_gemv` is 0.367 ms/step (0.78%) on
   UD-Q4_K_M and 0.662 (1.46%) on UD-Q4_K_S, below the repair threshold at
   verifier rows.
+- [x] Strict dense IQ row slab at verifier rows. Retained 2026-09-13. The
+  strict owner's `grid.y` is `ceil(rows/R)`, so the largest-slab-at-or-below
+  rule left the 3-row native verifier at `R=2` and read every weight slice
+  **twice**. The smallest slab at or above the row count makes `grid.y` one:
+  the family falls **4.264 -> 3.179 ms/step (-25.4%)** and the whole verifier
+  **38.275 -> 37.039 ms/step (-3.23%)** in an interleaved A/B whose two bands do
+  not overlap, at a section-6.1 gate that is identical to the last digit before
+  and after. The rule is never worse on row-lane work either, and the kernel
+  declares every `R` bit-identical. See
+  `benchmarks/results/2026-09-13-ud-gfx1100-iq-dense-strict-row-slab-cover.json`.
+  The residual lever here is the decode, not the geometry: phase B issues
+  per-element byte loads where the local32 owner reads the same bytes as u32,
+  which leaves the owner at ~155 GB/s of the 960 GB/s roofline.
 - [ ] Q3_K strict decode. Q3_K has no rows==1 local32 owner, so it has no
   rows 2-4 sibling either; it keeps the strict per-row GEMV. Blocked, not
   merely unattempted: routing it was measured on gfx1151 at +176.5 tok/s but
@@ -720,7 +734,7 @@ census artifacts rather than re-measured here, because the paired protocol is
 pinned to the natural-25 shape that produced the retained ratio.
 
 Evidence:
-`benchmarks/results/2026-09-13-ud-gfx1100-q5t16-single-wave-rowtile.json`,
+`benchmarks/results/2026-09-13-ud-gfx1100-iq-dense-strict-row-slab-cover.json`,
 `benchmarks/results/2026-09-12-ud-gfx1100-mtp-width-cells.json`.
 
 Required result fields:
@@ -777,6 +791,8 @@ Use this table for every retained candidate. Add absolute values before ratios.
 | Q8_0 attn_k/attn_v rowtile route | K_S | GPU1, c1, B3 | 31.313 | 47.023 | 39.706 | 66.437 | 1.5017x | 0.789x | 0.708x | Superseded |
 | Q5T16 single-wave verifier rowtile | K_M | GPU1, c1, B3 | 31.904 | 49.409 | 37.313 | 63.885 | **1.5487x** | 0.855x | **0.773x** | Promoted |
 | Q5T16 single-wave verifier rowtile | K_S | GPU1, c1, B3 | 30.428 | 46.955 | 39.774 | 66.709 | **1.5432x** | 0.765x | 0.704x | Promoted |
+| Strict dense IQ row slab covers the verifier rows | K_M | GPU1, c1, B3 | 31.913 | 49.408 | 37.283 | 63.997 | **1.5482x** | 0.856x | 0.772x | Promoted |
+| Strict dense IQ row slab covers the verifier rows | K_S | GPU1, c1, B3 | 31.303 | 48.548 | 39.815 | 66.344 | **1.5509x** | 0.786x | 0.732x | Promoted |
 
 Interpret results in this order:
 

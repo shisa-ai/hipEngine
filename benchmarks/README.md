@@ -451,6 +451,27 @@ these projections and K_S three.
 ([census](results/2026-09-13-ud-gfx1100-q8-rowtile-attn-kv-census.json),
 [numerics gate](results/2026-09-13-ud-gfx1100-q8-rowtile-attn-kv-ar-verify.json).)
 
+The strict dense IQ row slab now covers the verifier's row count instead of
+sitting below it. `gguf_iq_dense_strict_kernel` is the exactness-contract owner
+for Q3_K/IQ3_S/IQ3_XXS/IQ2_S/IQ2_XS, and `grid.y` is `ceil(rows/R)`, so at the
+3-row native verifier the old largest-slab-at-or-below rule picked `R=2` and
+read every weight slice **twice**. The smallest slab at or above the row count
+makes `grid.y` one. An interleaved A/B (three old-rule runs, two new-rule runs)
+puts the strict family at **4.264 -> 3.179 ms/step (-25.4%)** and the whole
+verifier at **38.275 -> 37.039 ms/step (-3.23%)**, with no overlap between the
+two bands. The change is arithmetic-neutral by the kernel's declared contract -
+`R` only changes which prompt rows share a block, padding rows load `0.0f` and
+are never stored - and the section-6.1 gate confirms it directly by reporting
+**identical numbers to the last digit** under both rules on UD-Q4_K_M
+(mean/p95/p99/max **3.435e-05 / 2.112e-04 / 2.904e-04 / 2.952e-04**, top-1
+1.0000, two deterministic repeats); UD-Q4_K_S passes at
+1.871e-05 / 1.115e-04 / 3.704e-04 / 4.865e-04. The paired suite does not
+separate this change from run-to-run spread (UD-Q4_K_M flat, UD-Q4_K_S +3.39%
+against an AR denominator that moved +2.9%), so the retention rests on the
+verifier sub-window A/B and the exact gate identity.
+([artifact](results/2026-09-13-ud-gfx1100-iq-dense-strict-row-slab-cover.json),
+[worklog](../worklog/entries/20260913T063400.608406Z-lhl-ud-iq-dense-row-slab-cover-5bb456.md).)
+
 The Q5T16 single-wave route retires the four-wave WG128 geometry from the
 verifier rows-2-8 rowtile. The four-wave owner runs four wave32 waves and sums
 their partial vectors through shared memory; the single-wave owner runs one
