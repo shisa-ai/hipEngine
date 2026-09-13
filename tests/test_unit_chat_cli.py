@@ -226,6 +226,119 @@ def test_prompt_toolkit_session_quits_on_ctrl_c() -> None:
             session.prompt()
 
 
+def test_usage_rows_sum_server_reports_and_reset_with_the_conversation() -> None:
+    from hipengine.chat_cli import _Conversation, _Settings, _usage_note, _usage_rows
+
+    convo = _Conversation(_Settings(build_parser().parse_args([])))
+    convo.turns = [
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "content": "hello"},
+        {"role": "user", "content": "more"},
+    ]
+    convo.usage.add({"prompt_tokens": 100, "completion_tokens": 20, "reasoning_tokens": 5})
+    convo.usage.add(
+        {
+            "prompt_tokens": 140,
+            "completion_tokens": 30,
+            "completion_tokens_details": {"reasoning_tokens": 7},
+        }
+    )
+    convo.usage.add(None)  # stopped before the server reported usage
+
+    rows = dict(_usage_rows(convo, 1000))
+    assert rows["messages"] == "3 messages  ·  1 turn"
+    assert rows["in"] == "240 tokens"
+    assert rows["out"] == "50 tokens  ·  reasoning 12"
+    assert rows["total"] == "290 tokens"
+    assert rows["context"] == "140 / 1,000 tokens  ·  14.0% used"
+    assert convo.usage.unreported == 1
+    assert _usage_note(convo.usage) == "1 request reported no token usage (stopped or failed)"
+
+    convo.clear()
+    cleared = dict(_usage_rows(convo, 1000))
+    assert cleared["messages"] == "0 messages  ·  0 turns"
+    assert cleared["in"] == "0 tokens" and cleared["total"] == "0 tokens"
+    assert "context" not in cleared
+    assert _usage_note(convo.usage) is None
+
+
+def test_rich_chat_usage_command_reports_tokens_and_context_share(monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("rich")
+    from rich.console import Console
+    from rich.theme import Theme
+
+    from hipengine.chat_cli import _THEME, _RichChat, _Settings
+
+    ready = {"context": {"effective_max_context_tokens": 1000}, "kv_capacity": {}}
+
+    class JsonResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self):
+            return json.dumps(ready).encode()
+
+    class StreamResponse(JsonResponse):
+        def __iter__(self):
+            yield b'data: {"choices":[{"delta":{"content":"ok"}}]}\n'
+            yield b'data: {"choices":[],"usage":{"prompt_tokens":300,"completion_tokens":12}}\n'
+            yield b"data: [DONE]\n"
+
+    def fake_urlopen(request, timeout=None):
+        return StreamResponse() if request.full_url.endswith("/chat/completions") else JsonResponse()
+
+    monkeypatch.setattr("hipengine.chat_cli.urlopen", fake_urlopen)
+    lines = iter(["hello", "/usage", "/quit"])
+    console = Console(file=io.StringIO(), theme=Theme(_THEME), width=100, record=True)
+    chat = _RichChat(
+        console, "http://x", "m", _Settings(build_parser().parse_args([])), read_line=lambda: next(lines)
+    )
+    assert chat.loop() == 0
+    text = console.export_text()
+    assert "2 messages  ·  1 turn" in text
+    assert "300 tokens" in text
+    assert "312 tokens" in text
+    assert "300 / 1,000 tokens  ·  30.0% used" in text
+
+
+def test_plain_chat_usage_command_reports_tokens(monkeypatch: pytest.MonkeyPatch) -> None:
+    ready = {"context": {"effective_max_context_tokens": 1000}, "kv_capacity": {}}
+
+    class JsonResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self):
+            return json.dumps(ready).encode()
+
+    class StreamResponse(JsonResponse):
+        def __iter__(self):
+            yield b'data: {"choices":[{"delta":{"content":"ok"}}]}\n'
+            yield b'data: {"choices":[],"usage":{"prompt_tokens":300,"completion_tokens":12}}\n'
+            yield b"data: [DONE]\n"
+
+    def fake_urlopen(request, timeout=None):
+        return StreamResponse() if request.full_url.endswith("/chat/completions") else JsonResponse()
+
+    monkeypatch.setattr("hipengine.chat_cli.urlopen", fake_urlopen)
+    output = io.StringIO()
+    result = run(
+        build_parser().parse_args(["--model", "m"]),
+        input_stream=io.StringIO("hello\n/usage\n/quit\n"),
+        output_stream=output,
+    )
+    assert result == 0
+    text = output.getvalue()
+    assert "300 tokens" in text and "312 tokens" in text
+    assert "300 / 1,000 tokens  ·  30.0% used" in text
+
+
 def test_chat_settings_map_reasoning_and_sampling_to_request_fields() -> None:
     from hipengine.chat_cli import _Settings, _think_fields
 
