@@ -1,5 +1,11 @@
 # hipEngine Benchmark Changelog
 
+- **2026-09-14 JST (September 13 UTC)**: Framework Flash-Next named production
+  numerical refresh fails max KL0.054642 and prefill-last mean/p95 across
+  594 rows;590/594 top1, deterministic repeats and teardown pass. No speed
+  delta, threshold relaxation or default change.
+  [Baseline evidence](results/2026-09-14-journey-production-baseline/README.md).
+
 - **2026-09-14 JST (2026-09-13 UTC)**: Correct the September 13 dense-prefill
   evidence: target-specific register ceilings, unread-logit flags, fail-closed
   Q6 gates, col16 geometry/provenance and logical-byte limitations. Original

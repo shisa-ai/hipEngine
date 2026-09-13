@@ -11,9 +11,9 @@ compact result. No item is closed by source review alone.
 
 | Work | State | Next evidence |
 | --- | --- | --- |
-| J2 named production versus strict | In progress | Full18, 594 shared-chain rows, three candidate repeats, free trajectories |
+| J2 named production versus strict | Measured failure | Full18/594 rows: max KL0.054642, prefill-last mean0.001475/p950.007070; no threshold change |
 | J2 prefill/decode/PLE/routing census | Pending | Cached-only owner capture, interval-safe gaps, actual profile/source identity |
-| J3 PLE sorted/deduplicated mmap | Pending | Exact gather tests, cold/warm/unique owner A/B, full-model validation |
+| J3 PLE sorted/deduplicated mmap | Screen in progress | Initial sorted-unique wins canonical rows but loses all-unique controls; test copy elision separately |
 | J3 bounded pread / persistent workers / staging | Pending | Separate independent arms and lifetime gates |
 | J4 GDN ISA / DPP / multi-column | Pending | Prefix/suffix engagement and numerical gates; no blind all-layer widening |
 | J5 chunks / mixed-quant matrix owners / routing | Pending | Allocation probes, real expert populations, complete-owner comparisons |
@@ -22,6 +22,16 @@ compact result. No item is closed by source review alone.
 | J8 graph/PM4 transport | Pending | Exposed submission bound, exact runtime-pin review, isolated qualification if justified |
 | J9 batched MTP target verification | Pending | Rejection-depth/accepted-prefix state gates and full-suite true-AR economics |
 | J1 external compatibility gaps / J10 closure | Pending | No unchanged replay of known faults; final counterbalanced comparison |
+
+The current no-override production baseline at `6ba40769f` fails its
+numerical gate despite passing repeat determinism and teardown:
+[baseline evidence](../benchmarks/results/2026-09-14-journey-production-baseline/README.md).
+Overall mean KL0.000625/top1 590/594 passes, but max KL0.054642,
+prefill-last mean/p95 and Japanese mean fail. Four deterministic free32
+differences require task review rather than automatic semantic rejection.
+This is an incumbent failure, not a new candidate regression. Arithmetic
+promotion is blocked pending localization; exact-preserving screens may
+continue without certifying the incumbent envelope.
 
 Independent September 14 JST audit:
 [Prefill and Wilkin audit](PREFILL-WILKIN-INDEPENDENT-AUDIT.md).

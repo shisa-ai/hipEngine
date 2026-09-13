@@ -610,6 +610,13 @@ also remain blocked. [`gfx1151 campaign final`](results/2026-08-24-gfx1151-qwen3
 
 ## Qwen3.8-Flash-Next on Framework (gfx1151)
 
+September 14 JST numerical refresh: the current production profile on
+UD-Q4_K_XL/BF16 KV at chunk1024 fails the full18/594-row strict-teacher
+gate (max KL0.054642; prefill-last mean/p95 also fail), while deterministic
+repeats and teardown pass. The throughput rows below are not a fresh quality
+certificate. No numerical limit or runtime default was changed.
+[Evidence](results/2026-09-14-journey-production-baseline/README.md).
+
 September 5 Framework `gfx1151` screen, UD-Q4_K_XL/BF16 KV,
 four categories, p512/p1024/p4096 + tg128:
 
