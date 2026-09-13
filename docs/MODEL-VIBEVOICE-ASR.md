@@ -1,6 +1,7 @@
 # MODEL-VIBEVOICE-ASR.md — VibeVoice ASR on hipEngine
 
-Status: **reviewed; implementation pending** (2026-09-11).
+Status: **reviewed; implementation pending** (2026-09-11; reuse/dtype amendments
+2026-09-14).
 
 The new work is a pair of causal audio encoders, their embedding connectors,
 and audio-aware Qwen2 generation. There is no vision tower and no synthesis
@@ -22,7 +23,11 @@ Two official artifacts need to be kept distinct:
 | `microsoft/VibeVoice-ASR-HF` | `model_type=vibevoice_asr`, `VibeVoiceAsrForConditionalGeneration`; ships tokenizer, processor and template | Preferred initial native-Transformers fixture source, after a smoke run |
 
 The HF version changes namespaces and serializes encoder configuration
-differently; do not mix weights, config, or token IDs across them. Current
+differently; do not mix weights, config, or token IDs across them. The
+original checkpoint serializes float32 (about 36 GB of weights), while the HF
+checkpoint is bfloat16 (about 18 GB); on the 48 GB W7900 the original only
+fits with an on-load BF16 cast, which is a further memory reason the HF
+artifact is the initial target. Current
 Microsoft source offers an inference-specific ASR class despite the original
 checkpoint's training-class metadata. Both implementations can supply oracle
 fixtures; neither was run for this review. Microsoft's repository also links
@@ -96,6 +101,7 @@ fragmentation; budget the real padded workload before claiming hour-long support
 
 | Piece | In-tree starting point | Work still required |
 | --- | --- | --- |
+| Causal depthwise conv + state carry | `hipengine/kernels/hip_gfx1100/linear_attn/conv.hip` decode/prefill/segments/state variants | Multi-stage strided topology: kernel 7, strides 2–8, pointwise channel mixing, RMSNorm/layer-scale/GELU blocks, 60-second chunk carry |
 | Audio model and lifetime pattern | `hipengine/models/moonshine.py`, `hipengine/loading/moonshine.py`, `hipengine/runtime/moonshine.py` | New causal tokenizer topology and continuous feature contract |
 | Dense decoder primitives | Existing linear/norm/rotary/attention kernels and GGUF runners | Qwen2 layer contract, QKV biases, RoPE, untied LM head; no automatic Qwen3.5 compatibility |
 | Numerical fixtures | `hipengine/kernels/cpu_reference/moonshine_encoder.py` and model oracle scripts | Independent VibeVoice CPU reference and recorded encoder noise |
