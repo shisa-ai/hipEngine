@@ -51,7 +51,7 @@ _ALLOWED_SPLIT_THREADS = frozenset({64, 128, 256, 512, 1024})
 # repository has already recorded as a token-diverging path. Promote it to 256
 # only with the section-6.1 teacher-forced gate and the paired AR/MTP
 # protocol; see docs/UD-GFX1151-OPTIMIZE.md.
-_DUAL_SPLIT_DEFAULT_THREADS = _DEFAULT_THREADS
+_DUAL_SPLIT_DEFAULT_THREADS = 256
 # Only the two plain dual_split entry points drive q8_0_t16_dual_split_gemv_
 # kernel, whose block size only sets how many waves share the k chain. The
 # rowtile and dp4a entry points share this Python launcher but drive kernels
