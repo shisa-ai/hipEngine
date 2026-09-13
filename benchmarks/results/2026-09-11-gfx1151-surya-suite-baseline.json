@@ -1,0 +1,1762 @@
+{
+ "provenance": {
+  "timestamp_utc": "2026-09-11T21:10:11Z",
+  "hostname": "zbook",
+  "cpu": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S",
+  "mem_total_gb": 125.1,
+  "os": "Linux 6.18.42-1-cachyos-lts",
+  "python": "3.13.13",
+  "numpy": "2.4.4",
+  "command": "scripts/surya_perf_compare.py --split all --runs 3 --lanes hipengine_gpu,torch_cuda --out benchmarks/results/2026-09-11-gfx1151-surya-suite-baseline.json",
+  "git_revision": "b838c57c75a7f77e33d994fe029a2428b7194b25",
+  "git_branch": "surya",
+  "git_dirty": true,
+  "torch": "2.13.0+rocm10.0.0",
+  "torch_hip": "7.15.26333",
+  "gpu": "AMD Radeon 8060S Graphics"
+ },
+ "protocol": {
+  "boundary": "page image + prompt in, greedy token ids out",
+  "pipeline": "explicit preprocess -> vision -> prefill -> greedy loop on every lane",
+  "sync": "sync() on both sides of every timed region; CPU lanes are synchronous",
+  "init": "checkpoint load and runner construction measured as init_s, excluded",
+  "runs": 3,
+  "warmup": "one discarded warmup before every timed series",
+  "decode_derivation": "decode timed directly, never subtracted from other stages",
+  "splits": "tuning cases must not be used to report held-out results"
+ },
+ "suite": [
+  {
+   "name": "small",
+   "page": "page_small.png",
+   "prompt": "Transcribe this page.",
+   "max_tokens": 64,
+   "split": "tuning",
+   "format": "markup",
+   "oracle": "oracle_greedy.json",
+   "oracle_key": null
+  },
+  {
+   "name": "rect",
+   "page": "page_rect.png",
+   "prompt": "Transcribe this page.",
+   "max_tokens": 64,
+   "split": "tuning",
+   "format": "any",
+   "oracle": null,
+   "oracle_key": null
+  },
+  {
+   "name": "ja",
+   "page": "page_ja.png",
+   "prompt": "Transcribe this page.",
+   "max_tokens": 384,
+   "split": "tuning",
+   "format": "json_nonempty",
+   "oracle": "oracle_bench.json",
+   "oracle_key": "ja"
+  },
+  {
+   "name": "dense",
+   "page": "page_dense.png",
+   "prompt": "Transcribe this page.",
+   "max_tokens": 384,
+   "split": "tuning",
+   "format": "json_nonempty",
+   "oracle": "oracle_bench.json",
+   "oracle_key": "dense"
+  },
+  {
+   "name": "table",
+   "page": "page_table.png",
+   "prompt": "Transcribe this page.",
+   "max_tokens": 384,
+   "split": "tuning",
+   "format": "json_nonempty",
+   "oracle": "oracle_bench.json",
+   "oracle_key": "table"
+  },
+  {
+   "name": "blank",
+   "page": "page_blank.png",
+   "prompt": "Transcribe this page.",
+   "max_tokens": 32,
+   "split": "tuning",
+   "format": "markup",
+   "oracle": "oracle_bench.json",
+   "oracle_key": "blank"
+  },
+  {
+   "name": "mixed",
+   "page": "page_mixed.png",
+   "prompt": "Transcribe this page.",
+   "max_tokens": 384,
+   "split": "heldout",
+   "format": "markup",
+   "oracle": "oracle_bench.json",
+   "oracle_key": "mixed"
+  },
+  {
+   "name": "scan",
+   "page": "page_scan.png",
+   "prompt": "Transcribe this page.",
+   "max_tokens": 512,
+   "split": "heldout",
+   "format": "markup",
+   "oracle": "oracle_bench.json",
+   "oracle_key": "scan"
+  },
+  {
+   "name": "long",
+   "page": "page_long.png",
+   "prompt": "Transcribe this page.",
+   "max_tokens": 320,
+   "split": "heldout",
+   "format": "json_nonempty",
+   "oracle": "oracle_bench.json",
+   "oracle_key": "long"
+  },
+  {
+   "name": "full",
+   "page": "page_full.png",
+   "prompt": "Transcribe this page.",
+   "max_tokens": 96,
+   "split": "heldout",
+   "format": "json_nonempty",
+   "oracle": "oracle_fullpage_greedy.json",
+   "oracle_key": null
+  },
+  {
+   "name": "columns",
+   "page": "page_columns.png",
+   "prompt": "Transcribe this page.",
+   "max_tokens": 96,
+   "split": "heldout",
+   "format": "json_nonempty",
+   "oracle": "oracle_corpus.json",
+   "oracle_key": "columns"
+  },
+  {
+   "name": "list",
+   "page": "page_list.png",
+   "prompt": "Transcribe this page.",
+   "max_tokens": 96,
+   "split": "heldout",
+   "format": "json_nonempty",
+   "oracle": "oracle_corpus.json",
+   "oracle_key": "list"
+  }
+ ],
+ "results": [
+  {
+   "lane": "hipengine_gpu",
+   "backend": "HIP fp32 (gfx1151): GPU vision tower + GPU prefill/decode",
+   "init_s": 1.1934804789780173,
+   "stages_s": {
+    "preprocess": 0.00028132100123912096,
+    "vision": 0.028060031996574253,
+    "prefill": 0.10052462000749074,
+    "decode": 1.1561830110149458,
+    "vision_prefill": 0.128584652004065
+   },
+   "stage_distributions_s": {
+    "preprocess": {
+     "n": 3,
+     "min_s": 0.000264660018729046,
+     "median_s": 0.00028132100123912096,
+     "mean_s": 0.0004542010040798535,
+     "max_s": 0.0008166219922713935,
+     "stdev_s": 0.00031397631534217603
+    },
+    "vision": {
+     "n": 3,
+     "min_s": 0.027301780006382614,
+     "median_s": 0.028060031996574253,
+     "mean_s": 0.02792843000497669,
+     "max_s": 0.028423478011973202,
+     "stdev_s": 0.0005723119054159274
+    },
+    "prefill": {
+     "n": 3,
+     "min_s": 0.09560744199552573,
+     "median_s": 0.10052462000749074,
+     "mean_s": 0.09904380300819564,
+     "max_s": 0.10099934702157043,
+     "stdev_s": 0.0029854269697184915
+    },
+    "decode": {
+     "n": 3,
+     "min_s": 1.1540285530209076,
+     "median_s": 1.1561830110149458,
+     "mean_s": 1.1585098473490991,
+     "max_s": 1.1653179780114442,
+     "stdev_s": 0.005993613655274305
+    }
+   },
+   "decode_tokens": 64,
+   "decode_tok_per_s": 55.35455839626818,
+   "e2e_distribution_s": {
+    "n": 3,
+    "min_s": 1.292026965005789,
+    "median_s": 1.2990815670054872,
+    "mean_s": 1.2974116716747328,
+    "max_s": 1.301126483012922,
+    "stdev_s": 0.004774067427497406
+   },
+   "e2e_median_s": 1.2990815670054872,
+   "e2e_termination": "length",
+   "generated_tokens": 64,
+   "termination": "length",
+   "correctness_basis": "torch_fixture",
+   "ids_match": true,
+   "reference_tokens": 64,
+   "first_divergence": null,
+   "layout_json": false,
+   "nondegenerate": false,
+   "task_format": true,
+   "decode_repeatable": true,
+   "e2e_agrees": true,
+   "correctness": "PASS",
+   "case": "small"
+  },
+  {
+   "lane": "torch_cuda",
+   "backend": "transformers fp32 (cuda), explicit prefill + greedy loop",
+   "init_s": 6.7116302190115675,
+   "stages_s": {
+    "preprocess": 0.0013720720016863197,
+    "vision": 0.0,
+    "prefill": 0.18131832301151007,
+    "decode": 2.691799194988562,
+    "vision_prefill": 0.18131832301151007
+   },
+   "stage_distributions_s": {
+    "preprocess": {
+     "n": 3,
+     "min_s": 0.0013581549865193665,
+     "median_s": 0.0013720720016863197,
+     "mean_s": 0.001470059990727653,
+     "max_s": 0.001679952983977273,
+     "stdev_s": 0.00018190580609000106
+    },
+    "prefill": {
+     "n": 3,
+     "min_s": 0.1302430630021263,
+     "median_s": 0.18131832301151007,
+     "mean_s": 0.16516357633130005,
+     "max_s": 0.18392934298026375,
+     "stdev_s": 0.030270217123421143
+    },
+    "decode": {
+     "n": 3,
+     "min_s": 2.6814232309989166,
+     "median_s": 2.691799194988562,
+     "mean_s": 2.7005938306586663,
+     "max_s": 2.72855906598852,
+     "stdev_s": 0.02476804286715422
+    }
+   },
+   "decode_tokens": 64,
+   "decode_tok_per_s": 23.775919139567154,
+   "e2e_distribution_s": {
+    "n": 3,
+    "min_s": 2.8439522250264417,
+    "median_s": 2.8526420929993037,
+    "mean_s": 2.859175966674229,
+    "max_s": 2.880933581996942,
+    "stdev_s": 0.019337109911897472
+   },
+   "e2e_median_s": 2.8526420929993037,
+   "e2e_termination": "length",
+   "generated_tokens": 64,
+   "termination": "length",
+   "correctness_basis": "torch_fixture",
+   "ids_match": true,
+   "reference_tokens": 64,
+   "first_divergence": null,
+   "layout_json": false,
+   "nondegenerate": false,
+   "task_format": true,
+   "decode_repeatable": true,
+   "e2e_agrees": true,
+   "correctness": "PASS",
+   "case": "small"
+  },
+  {
+   "lane": "hipengine_gpu",
+   "backend": "HIP fp32 (gfx1151): GPU vision tower + GPU prefill/decode",
+   "init_s": 0.9164759689883795,
+   "stages_s": {
+    "preprocess": 0.0009298860095441341,
+    "vision": 0.03454763500485569,
+    "prefill": 0.10439369900268503,
+    "decode": 0.05540048799593933,
+    "vision_prefill": 0.13894133400754072
+   },
+   "stage_distributions_s": {
+    "preprocess": {
+     "n": 3,
+     "min_s": 0.0009164299990516156,
+     "median_s": 0.0009298860095441341,
+     "mean_s": 0.0009388093409749368,
+     "max_s": 0.0009701120143290609,
+     "stdev_s": 2.793132782253526e-05
+    },
+    "vision": {
+     "n": 3,
+     "min_s": 0.034069731016643345,
+     "median_s": 0.03454763500485569,
+     "mean_s": 0.034390009668034814,
+     "max_s": 0.0345526629826054,
+     "stdev_s": 0.00027738084116051573
+    },
+    "prefill": {
+     "n": 3,
+     "min_s": 0.10421414001029916,
+     "median_s": 0.10439369900268503,
+     "mean_s": 0.10455499067514513,
+     "max_s": 0.10505713301245123,
+     "stdev_s": 0.00044403890946973965
+    },
+    "decode": {
+     "n": 3,
+     "min_s": 0.054566814011195675,
+     "median_s": 0.05540048799593933,
+     "mean_s": 0.05548796666941295,
+     "max_s": 0.05649659800110385,
+     "stdev_s": 0.0009678615348597163
+    }
+   },
+   "decode_tokens": 3,
+   "decode_tok_per_s": 54.151147553427506,
+   "e2e_distribution_s": {
+    "n": 3,
+    "min_s": 0.20809344301233068,
+    "median_s": 0.20818421701551415,
+    "mean_s": 0.20877711535043394,
+    "max_s": 0.21005368602345698,
+    "stdev_s": 0.001106473900428908
+   },
+   "e2e_median_s": 0.20818421701551415,
+   "e2e_termination": "eos",
+   "generated_tokens": 3,
+   "termination": "eos",
+   "correctness_basis": "cpu_reference",
+   "ids_match": null,
+   "layout_json": false,
+   "nondegenerate": true,
+   "task_format": true,
+   "decode_repeatable": true,
+   "e2e_agrees": true,
+   "correctness": "PASS",
+   "case": "rect",
+   "qualification": "unverified: no reference was computed, so ids_match is null",
+   "requalified_by": "results/2026-09-12-gfx1151-surya-rect-reference.json"
+  },
+  {
+   "lane": "torch_cuda",
+   "backend": "transformers fp32 (cuda), explicit prefill + greedy loop",
+   "init_s": 6.381618435989367,
+   "stages_s": {
+    "preprocess": 0.025016304018208757,
+    "vision": 0.0,
+    "prefill": 0.15992366397404112,
+    "decode": 0.11269461800111458,
+    "vision_prefill": 0.15992366397404112
+   },
+   "stage_distributions_s": {
+    "preprocess": {
+     "n": 3,
+     "min_s": 0.024184743990190327,
+     "median_s": 0.025016304018208757,
+     "mean_s": 0.025519176667633776,
+     "max_s": 0.027356481994502246,
+     "stdev_s": 0.0016445793286290397
+    },
+    "prefill": {
+     "n": 3,
+     "min_s": 0.1475237509876024,
+     "median_s": 0.15992366397404112,
+     "mean_s": 0.15619534765331386,
+     "max_s": 0.16113862799829803,
+     "stdev_s": 0.007534353054154227
+    },
+    "decode": {
+     "n": 3,
+     "min_s": 0.10871774100814946,
+     "median_s": 0.11269461800111458,
+     "mean_s": 0.11265299000660889,
+     "max_s": 0.11654661101056263,
+     "stdev_s": 0.003914601007269593
+    }
+   },
+   "decode_tokens": 3,
+   "decode_tok_per_s": 26.620614659435905,
+   "e2e_distribution_s": {
+    "n": 3,
+    "min_s": 0.31491206999635324,
+    "median_s": 0.3155132880201563,
+    "mean_s": 0.31540212966501713,
+    "max_s": 0.3157810309785418,
+    "stdev_s": 0.0004450173390773388
+   },
+   "e2e_median_s": 0.3155132880201563,
+   "e2e_termination": "eos",
+   "generated_tokens": 3,
+   "termination": "eos",
+   "correctness_basis": "cpu_reference",
+   "ids_match": null,
+   "layout_json": false,
+   "nondegenerate": true,
+   "task_format": true,
+   "decode_repeatable": true,
+   "e2e_agrees": true,
+   "correctness": "PASS",
+   "case": "rect",
+   "qualification": "unverified: no reference was computed, so ids_match is null",
+   "requalified_by": "results/2026-09-12-gfx1151-surya-rect-reference.json"
+  },
+  {
+   "lane": "hipengine_gpu",
+   "backend": "HIP fp32 (gfx1151): GPU vision tower + GPU prefill/decode",
+   "init_s": 0.8523060060106218,
+   "stages_s": {
+    "preprocess": 0.0013125279801897705,
+    "vision": 0.1933914260007441,
+    "prefill": 0.2574338070116937,
+    "decode": 2.336419326980831,
+    "vision_prefill": 0.4508252330124378
+   },
+   "stage_distributions_s": {
+    "preprocess": {
+     "n": 3,
+     "min_s": 0.0012686160043813288,
+     "median_s": 0.0013125279801897705,
+     "mean_s": 0.0013103843278562028,
+     "max_s": 0.0013500089989975095,
+     "stdev_s": 4.073881843086285e-05
+    },
+    "vision": {
+     "n": 3,
+     "min_s": 0.1929325980017893,
+     "median_s": 0.1933914260007441,
+     "mean_s": 0.19334883100236766,
+     "max_s": 0.19372246900456958,
+     "stdev_s": 0.00039665451046634484
+    },
+    "prefill": {
+     "n": 3,
+     "min_s": 0.2506234779721126,
+     "median_s": 0.2574338070116937,
+     "mean_s": 0.2565172369941138,
+     "max_s": 0.261494425998535,
+     "stdev_s": 0.0054931278153834365
+    },
+    "decode": {
+     "n": 3,
+     "min_s": 2.335349197004689,
+     "median_s": 2.336419326980831,
+     "mean_s": 2.3376564303277214,
+     "max_s": 2.3412007669976447,
+     "stdev_s": 0.0031157721938198228
+    }
+   },
+   "decode_tokens": 126,
+   "decode_tok_per_s": 53.928675621263494,
+   "e2e_distribution_s": {
+    "n": 3,
+    "min_s": 2.7898922259919345,
+    "median_s": 2.794040576001862,
+    "mean_s": 2.793828479994166,
+    "max_s": 2.7975526379887015,
+    "stdev_s": 0.0038346077410099074
+   },
+   "e2e_median_s": 2.794040576001862,
+   "e2e_termination": "eos",
+   "generated_tokens": 126,
+   "termination": "eos",
+   "correctness_basis": "torch_fixture",
+   "ids_match": true,
+   "reference_tokens": 126,
+   "first_divergence": null,
+   "layout_json": true,
+   "nondegenerate": true,
+   "task_format": true,
+   "decode_repeatable": true,
+   "e2e_agrees": true,
+   "correctness": "PASS",
+   "case": "ja"
+  },
+  {
+   "lane": "torch_cuda",
+   "backend": "transformers fp32 (cuda), explicit prefill + greedy loop",
+   "init_s": 6.443122861994198,
+   "stages_s": {
+    "preprocess": 0.023952825024025515,
+    "vision": 0.0,
+    "prefill": 0.30511407399899326,
+    "decode": 5.314690450002672,
+    "vision_prefill": 0.30511407399899326
+   },
+   "stage_distributions_s": {
+    "preprocess": {
+     "n": 3,
+     "min_s": 0.023911537980893627,
+     "median_s": 0.023952825024025515,
+     "mean_s": 0.02437622134069291,
+     "max_s": 0.025264301017159596,
+     "stdev_s": 0.0007693765585183374
+    },
+    "prefill": {
+     "n": 3,
+     "min_s": 0.29656693202559836,
+     "median_s": 0.30511407399899326,
+     "mean_s": 0.30456092034000903,
+     "max_s": 0.3120017549954355,
+     "stdev_s": 0.0077322651438882116
+    },
+    "decode": {
+     "n": 3,
+     "min_s": 5.257114409003407,
+     "median_s": 5.314690450002672,
+     "mean_s": 5.2984195626631845,
+     "max_s": 5.3234538289834745,
+     "stdev_s": 0.03603867355957595
+    }
+   },
+   "decode_tokens": 126,
+   "decode_tok_per_s": 23.70787182909903,
+   "e2e_distribution_s": {
+    "n": 3,
+    "min_s": 5.525622126995586,
+    "median_s": 5.53493324900046,
+    "mean_s": 5.540158676332794,
+    "max_s": 5.559920653002337,
+    "stdev_s": 0.017736291598388562
+   },
+   "e2e_median_s": 5.53493324900046,
+   "e2e_termination": "eos",
+   "generated_tokens": 126,
+   "termination": "eos",
+   "correctness_basis": "torch_fixture",
+   "ids_match": true,
+   "reference_tokens": 126,
+   "first_divergence": null,
+   "layout_json": true,
+   "nondegenerate": true,
+   "task_format": true,
+   "decode_repeatable": true,
+   "e2e_agrees": true,
+   "correctness": "PASS",
+   "case": "ja"
+  },
+  {
+   "lane": "hipengine_gpu",
+   "backend": "HIP fp32 (gfx1151): GPU vision tower + GPU prefill/decode",
+   "init_s": 0.8565561159921344,
+   "stages_s": {
+    "preprocess": 0.0010806989739648998,
+    "vision": 0.19429705099901184,
+    "prefill": 0.24856534801074304,
+    "decode": 6.2157148999976926,
+    "vision_prefill": 0.4428623990097549
+   },
+   "stage_distributions_s": {
+    "preprocess": {
+     "n": 3,
+     "min_s": 0.001067484001396224,
+     "median_s": 0.0010806989739648998,
+     "mean_s": 0.001099925662856549,
+     "max_s": 0.0011515940132085234,
+     "stdev_s": 4.523132427940278e-05
+    },
+    "vision": {
+     "n": 3,
+     "min_s": 0.1938060639949981,
+     "median_s": 0.19429705099901184,
+     "mean_s": 0.19415754066236937,
+     "max_s": 0.19436950699309818,
+     "stdev_s": 0.00030653605587201274
+    },
+    "prefill": {
+     "n": 3,
+     "min_s": 0.2419546930177603,
+     "median_s": 0.24856534801074304,
+     "mean_s": 0.24850413568007448,
+     "max_s": 0.25499236601172015,
+     "stdev_s": 0.0065190520389414724
+    },
+    "decode": {
+     "n": 3,
+     "min_s": 6.212929572997382,
+     "median_s": 6.2157148999976926,
+     "mean_s": 6.216030177999831,
+     "max_s": 6.219446061004419,
+     "stdev_s": 0.003269664225947142
+    }
+   },
+   "decode_tokens": 334,
+   "decode_tok_per_s": 53.73476830478888,
+   "e2e_distribution_s": {
+    "n": 3,
+    "min_s": 6.659137887007091,
+    "median_s": 6.664241449005203,
+    "mean_s": 6.668981630995404,
+    "max_s": 6.683565556973917,
+    "stdev_s": 0.012885253547261414
+   },
+   "e2e_median_s": 6.664241449005203,
+   "e2e_termination": "eos",
+   "generated_tokens": 334,
+   "termination": "eos",
+   "correctness_basis": "torch_fixture",
+   "ids_match": true,
+   "reference_tokens": 334,
+   "first_divergence": null,
+   "layout_json": true,
+   "nondegenerate": true,
+   "task_format": true,
+   "decode_repeatable": true,
+   "e2e_agrees": true,
+   "correctness": "PASS",
+   "case": "dense"
+  },
+  {
+   "lane": "torch_cuda",
+   "backend": "transformers fp32 (cuda), explicit prefill + greedy loop",
+   "init_s": 6.340626832010457,
+   "stages_s": {
+    "preprocess": 0.0037289439933374524,
+    "vision": 0.0,
+    "prefill": 0.29108694099704735,
+    "decode": 13.751876677997643,
+    "vision_prefill": 0.29108694099704735
+   },
+   "stage_distributions_s": {
+    "preprocess": {
+     "n": 3,
+     "min_s": 0.0022611859894823283,
+     "median_s": 0.0037289439933374524,
+     "mean_s": 0.011686649658561995,
+     "max_s": 0.029069818992866203,
+     "stdev_s": 0.015072143525998246
+    },
+    "prefill": {
+     "n": 3,
+     "min_s": 0.2898390669724904,
+     "median_s": 0.29108694099704735,
+     "mean_s": 0.29094380732082453,
+     "max_s": 0.2919054139929358,
+     "stdev_s": 0.001040582980438218
+    },
+    "decode": {
+     "n": 3,
+     "min_s": 13.69673304099706,
+     "median_s": 13.751876677997643,
+     "mean_s": 13.754472887997204,
+     "max_s": 13.814808944996912,
+     "stdev_s": 0.059080749877747286
+    }
+   },
+   "decode_tokens": 334,
+   "decode_tok_per_s": 24.28759418228236,
+   "e2e_distribution_s": {
+    "n": 3,
+    "min_s": 13.793030564003857,
+    "median_s": 13.952015774004394,
+    "mean_s": 13.936115021002479,
+    "max_s": 14.063298724999186,
+    "stdev_s": 0.13583388815560785
+   },
+   "e2e_median_s": 13.952015774004394,
+   "e2e_termination": "eos",
+   "generated_tokens": 334,
+   "termination": "eos",
+   "correctness_basis": "torch_fixture",
+   "ids_match": true,
+   "reference_tokens": 334,
+   "first_divergence": null,
+   "layout_json": true,
+   "nondegenerate": true,
+   "task_format": true,
+   "decode_repeatable": true,
+   "e2e_agrees": true,
+   "correctness": "PASS",
+   "case": "dense"
+  },
+  {
+   "lane": "hipengine_gpu",
+   "backend": "HIP fp32 (gfx1151): GPU vision tower + GPU prefill/decode",
+   "init_s": 0.8653207989991643,
+   "stages_s": {
+    "preprocess": 0.0012561079929582775,
+    "vision": 0.19467847800115123,
+    "prefill": 0.25255411499529146,
+    "decode": 0.5553231679950841,
+    "vision_prefill": 0.4472325929964427
+   },
+   "stage_distributions_s": {
+    "preprocess": {
+     "n": 3,
+     "min_s": 0.0010647479793988168,
+     "median_s": 0.0012561079929582775,
+     "mean_s": 0.0011998323219207425,
+     "max_s": 0.0012786409934051335,
+     "stdev_s": 0.00011752773597419557
+    },
+    "vision": {
+     "n": 3,
+     "min_s": 0.1946051700215321,
+     "median_s": 0.19467847800115123,
+     "mean_s": 0.1946644650112527,
+     "max_s": 0.1947097470110748,
+     "stdev_s": 5.367829728926952e-05
+    },
+    "prefill": {
+     "n": 3,
+     "min_s": 0.24090416100807488,
+     "median_s": 0.25255411499529146,
+     "mean_s": 0.2507847560045775,
+     "max_s": 0.25889599201036617,
+     "stdev_s": 0.009125484597119636
+    },
+    "decode": {
+     "n": 3,
+     "min_s": 0.5525839070032816,
+     "median_s": 0.5553231679950841,
+     "mean_s": 0.5559470409934875,
+     "max_s": 0.5599340479820967,
+     "stdev_s": 0.0037145734937831867
+    }
+   },
+   "decode_tokens": 30,
+   "decode_tok_per_s": 54.02259752336782,
+   "e2e_distribution_s": {
+    "n": 3,
+    "min_s": 1.0062674679793417,
+    "median_s": 1.0076076530094724,
+    "mean_s": 1.0071845619919866,
+    "max_s": 1.0076785649871454,
+    "stdev_s": 0.0007950177344978076
+   },
+   "e2e_median_s": 1.0076076530094724,
+   "e2e_termination": "eos",
+   "generated_tokens": 30,
+   "termination": "eos",
+   "correctness_basis": "torch_fixture",
+   "ids_match": true,
+   "reference_tokens": 30,
+   "first_divergence": null,
+   "layout_json": true,
+   "nondegenerate": true,
+   "task_format": true,
+   "decode_repeatable": true,
+   "e2e_agrees": true,
+   "correctness": "PASS",
+   "case": "table"
+  },
+  {
+   "lane": "torch_cuda",
+   "backend": "transformers fp32 (cuda), explicit prefill + greedy loop",
+   "init_s": 6.74803966798936,
+   "stages_s": {
+    "preprocess": 0.02392514597158879,
+    "vision": 0.0,
+    "prefill": 0.29117754998151213,
+    "decode": 1.2886756449879613,
+    "vision_prefill": 0.29117754998151213
+   },
+   "stage_distributions_s": {
+    "preprocess": {
+     "n": 3,
+     "min_s": 0.02376154699595645,
+     "median_s": 0.02392514597158879,
+     "mean_s": 0.024547518987674266,
+     "max_s": 0.025955863995477557,
+     "stdev_s": 0.0012224025122521333
+    },
+    "prefill": {
+     "n": 3,
+     "min_s": 0.2858120449818671,
+     "median_s": 0.29117754998151213,
+     "mean_s": 0.29124713464989327,
+     "max_s": 0.2967518089863006,
+     "stdev_s": 0.005470213948076451
+    },
+    "decode": {
+     "n": 3,
+     "min_s": 1.2716824419912882,
+     "median_s": 1.2886756449879613,
+     "mean_s": 1.2837848246563226,
+     "max_s": 1.2909963869897183,
+     "stdev_s": 0.010545008795059081
+    }
+   },
+   "decode_tokens": 30,
+   "decode_tok_per_s": 23.279713647634164,
+   "e2e_distribution_s": {
+    "n": 3,
+    "min_s": 1.535094772989396,
+    "median_s": 1.5426352880022023,
+    "mean_s": 1.5409338863294881,
+    "max_s": 1.5450715979968663,
+    "stdev_s": 0.005201474314687809
+   },
+   "e2e_median_s": 1.5426352880022023,
+   "e2e_termination": "eos",
+   "generated_tokens": 30,
+   "termination": "eos",
+   "correctness_basis": "torch_fixture",
+   "ids_match": true,
+   "reference_tokens": 30,
+   "first_divergence": null,
+   "layout_json": true,
+   "nondegenerate": true,
+   "task_format": true,
+   "decode_repeatable": true,
+   "e2e_agrees": true,
+   "correctness": "PASS",
+   "case": "table"
+  },
+  {
+   "lane": "hipengine_gpu",
+   "backend": "HIP fp32 (gfx1151): GPU vision tower + GPU prefill/decode",
+   "init_s": 0.8881197999871802,
+   "stages_s": {
+    "preprocess": 0.0010839840106200427,
+    "vision": 0.19373420099145733,
+    "prefill": 0.25061579898465425,
+    "decode": 0.056546920008258894,
+    "vision_prefill": 0.4443499999761116
+   },
+   "stage_distributions_s": {
+    "preprocess": {
+     "n": 3,
+     "min_s": 0.0009918599971570075,
+     "median_s": 0.0010839840106200427,
+     "mean_s": 0.0013234650056498747,
+     "max_s": 0.0018945510091725737,
+     "stdev_s": 0.0004967153370178744
+    },
+    "vision": {
+     "n": 3,
+     "min_s": 0.19336840001051314,
+     "median_s": 0.19373420099145733,
+     "mean_s": 0.19489433433045633,
+     "max_s": 0.19758040198939852,
+     "stdev_s": 0.0023333821355976665
+    },
+    "prefill": {
+     "n": 3,
+     "min_s": 0.239286804018775,
+     "median_s": 0.25061579898465425,
+     "mean_s": 0.24814250133931637,
+     "max_s": 0.25452490101451986,
+     "stdev_s": 0.007914404648788025
+    },
+    "decode": {
+     "n": 3,
+     "min_s": 0.05642111200722866,
+     "median_s": 0.056546920008258894,
+     "mean_s": 0.05664169800972255,
+     "max_s": 0.056957062013680115,
+     "stdev_s": 0.0002802637231696492
+    }
+   },
+   "decode_tokens": 3,
+   "decode_tok_per_s": 53.05328742152249,
+   "e2e_distribution_s": {
+    "n": 3,
+    "min_s": 0.5059190769970883,
+    "median_s": 0.50634452002123,
+    "mean_s": 0.507733590338224,
+    "max_s": 0.5109371739963535,
+    "stdev_s": 0.0027825279212748202
+   },
+   "e2e_median_s": 0.50634452002123,
+   "e2e_termination": "eos",
+   "generated_tokens": 3,
+   "termination": "eos",
+   "correctness_basis": "torch_fixture",
+   "ids_match": true,
+   "reference_tokens": 3,
+   "first_divergence": null,
+   "layout_json": false,
+   "nondegenerate": true,
+   "task_format": true,
+   "decode_repeatable": true,
+   "e2e_agrees": true,
+   "correctness": "PASS",
+   "case": "blank"
+  },
+  {
+   "lane": "torch_cuda",
+   "backend": "transformers fp32 (cuda), explicit prefill + greedy loop",
+   "init_s": 6.511697087000357,
+   "stages_s": {
+    "preprocess": 0.015528461983194575,
+    "vision": 0.0,
+    "prefill": 0.30134681198978797,
+    "decode": 0.14678712299792096,
+    "vision_prefill": 0.30134681198978797
+   },
+   "stage_distributions_s": {
+    "preprocess": {
+     "n": 3,
+     "min_s": 0.010396218014648184,
+     "median_s": 0.015528461983194575,
+     "mean_s": 0.01801660266937688,
+     "max_s": 0.02812512801028788,
+     "stdev_s": 0.00912259258456992
+    },
+    "prefill": {
+     "n": 3,
+     "min_s": 0.30019919900223613,
+     "median_s": 0.30134681198978797,
+     "mean_s": 0.30195515166269615,
+     "max_s": 0.30431944399606436,
+     "stdev_s": 0.0021264201302934453
+    },
+    "decode": {
+     "n": 3,
+     "min_s": 0.11726384001667611,
+     "median_s": 0.14678712299792096,
+     "mean_s": 0.13728608300637765,
+     "max_s": 0.14780728600453585,
+     "stdev_s": 0.01734727194385346
+    }
+   },
+   "decode_tokens": 3,
+   "decode_tok_per_s": 20.437760061844735,
+   "e2e_distribution_s": {
+    "n": 3,
+    "min_s": 0.46459387498907745,
+    "median_s": 0.46465250200708397,
+    "mean_s": 0.4662113486653349,
+    "max_s": 0.4693876689998433,
+    "stdev_s": 0.002750930284897951
+   },
+   "e2e_median_s": 0.46465250200708397,
+   "e2e_termination": "eos",
+   "generated_tokens": 3,
+   "termination": "eos",
+   "correctness_basis": "torch_fixture",
+   "ids_match": true,
+   "reference_tokens": 3,
+   "first_divergence": null,
+   "layout_json": false,
+   "nondegenerate": true,
+   "task_format": true,
+   "decode_repeatable": true,
+   "e2e_agrees": true,
+   "correctness": "PASS",
+   "case": "blank"
+  },
+  {
+   "lane": "hipengine_gpu",
+   "backend": "HIP fp32 (gfx1151): GPU vision tower + GPU prefill/decode",
+   "init_s": 0.9120906390016899,
+   "stages_s": {
+    "preprocess": 0.0012849319900851697,
+    "vision": 0.1963737710029818,
+    "prefill": 0.24831654300214723,
+    "decode": 4.8286832210142165,
+    "vision_prefill": 0.44469031400512904
+   },
+   "stage_distributions_s": {
+    "preprocess": {
+     "n": 3,
+     "min_s": 0.001198790007038042,
+     "median_s": 0.0012849319900851697,
+     "mean_s": 0.00126825732877478,
+     "max_s": 0.0013210499892011285,
+     "stdev_s": 6.281249124968467e-05
+    },
+    "vision": {
+     "n": 3,
+     "min_s": 0.19489834998967126,
+     "median_s": 0.1963737710029818,
+     "mean_s": 0.1963324433309026,
+     "max_s": 0.19772520900005475,
+     "stdev_s": 0.0014138825794620257
+    },
+    "prefill": {
+     "n": 3,
+     "min_s": 0.23856133600929752,
+     "median_s": 0.24831654300214723,
+     "mean_s": 0.24624320833633342,
+     "max_s": 0.25185174599755555,
+     "stdev_s": 0.006883515590985912
+    },
+    "decode": {
+     "n": 3,
+     "min_s": 4.823545318009565,
+     "median_s": 4.8286832210142165,
+     "mean_s": 4.828337925670591,
+     "max_s": 4.832785237987991,
+     "stdev_s": 0.00462962762624379
+    }
+   },
+   "decode_tokens": 260,
+   "decode_tok_per_s": 53.84490721372888,
+   "e2e_distribution_s": {
+    "n": 3,
+    "min_s": 5.268222332990263,
+    "median_s": 5.281930626020767,
+    "mean_s": 5.278387853002641,
+    "max_s": 5.285010599996895,
+    "stdev_s": 0.008937276305729833
+   },
+   "e2e_median_s": 5.281930626020767,
+   "e2e_termination": "eos",
+   "generated_tokens": 260,
+   "termination": "eos",
+   "correctness_basis": "torch_fixture",
+   "ids_match": true,
+   "reference_tokens": 260,
+   "first_divergence": null,
+   "layout_json": false,
+   "nondegenerate": true,
+   "task_format": true,
+   "decode_repeatable": true,
+   "e2e_agrees": true,
+   "correctness": "PASS",
+   "case": "mixed"
+  },
+  {
+   "lane": "torch_cuda",
+   "backend": "transformers fp32 (cuda), explicit prefill + greedy loop",
+   "init_s": 6.918067224003607,
+   "stages_s": {
+    "preprocess": 0.0251049849903211,
+    "vision": 0.0,
+    "prefill": 0.30410351598402485,
+    "decode": 10.819057718996191,
+    "vision_prefill": 0.30410351598402485
+   },
+   "stage_distributions_s": {
+    "preprocess": {
+     "n": 3,
+     "min_s": 0.024523940024664626,
+     "median_s": 0.0251049849903211,
+     "mean_s": 0.025006169007004548,
+     "max_s": 0.025389582006027922,
+     "stdev_s": 0.00044120002141178103
+    },
+    "prefill": {
+     "n": 3,
+     "min_s": 0.2983497529930901,
+     "median_s": 0.30410351598402485,
+     "mean_s": 0.3023083399942455,
+     "max_s": 0.3044717510056216,
+     "stdev_s": 0.0034331774702264103
+    },
+    "decode": {
+     "n": 3,
+     "min_s": 10.752010380994761,
+     "median_s": 10.819057718996191,
+     "mean_s": 10.798122929331536,
+     "max_s": 10.823300688003656,
+     "stdev_s": 0.03999094937711675
+    }
+   },
+   "decode_tokens": 260,
+   "decode_tok_per_s": 24.031667706466695,
+   "e2e_distribution_s": {
+    "n": 3,
+    "min_s": 11.032865771005163,
+    "median_s": 11.078351737989578,
+    "mean_s": 11.074900824324382,
+    "max_s": 11.113484963978408,
+    "stdev_s": 0.04042023222048335
+   },
+   "e2e_median_s": 11.078351737989578,
+   "e2e_termination": "eos",
+   "generated_tokens": 260,
+   "termination": "eos",
+   "correctness_basis": "torch_fixture",
+   "ids_match": true,
+   "reference_tokens": 260,
+   "first_divergence": null,
+   "layout_json": false,
+   "nondegenerate": true,
+   "task_format": true,
+   "decode_repeatable": true,
+   "e2e_agrees": true,
+   "correctness": "PASS",
+   "case": "mixed"
+  },
+  {
+   "lane": "hipengine_gpu",
+   "backend": "HIP fp32 (gfx1151): GPU vision tower + GPU prefill/decode",
+   "init_s": 0.8809255399974063,
+   "stages_s": {
+    "preprocess": 0.0010233579960186034,
+    "vision": 0.19476614199811593,
+    "prefill": 0.24727935198461637,
+    "decode": 9.412545964994933,
+    "vision_prefill": 0.4420454939827323
+   },
+   "stage_distributions_s": {
+    "preprocess": {
+     "n": 3,
+     "min_s": 0.0009635160095058382,
+     "median_s": 0.0010233579960186034,
+     "mean_s": 0.0010251816711388528,
+     "max_s": 0.001088671007892117,
+     "stdev_s": 6.259742605311756e-05
+    },
+    "vision": {
+     "n": 3,
+     "min_s": 0.19302922900533304,
+     "median_s": 0.19476614199811593,
+     "mean_s": 0.19525543367490172,
+     "max_s": 0.1979709300212562,
+     "stdev_s": 0.0025069218159772992
+    },
+    "prefill": {
+     "n": 3,
+     "min_s": 0.24434676600503735,
+     "median_s": 0.24727935198461637,
+     "mean_s": 0.24910658766748384,
+     "max_s": 0.2556936450127978,
+     "stdev_s": 0.005889992231297654
+    },
+    "decode": {
+     "n": 3,
+     "min_s": 9.409980249998625,
+     "median_s": 9.412545964994933,
+     "mean_s": 9.412412942328956,
+     "max_s": 9.414712611993309,
+     "stdev_s": 0.00236898370286281
+    }
+   },
+   "decode_tokens": 504,
+   "decode_tok_per_s": 53.54555524874627,
+   "e2e_distribution_s": {
+    "n": 3,
+    "min_s": 9.874115467013326,
+    "median_s": 9.88160141100525,
+    "mean_s": 9.879142375003235,
+    "max_s": 9.881710246991133,
+    "stdev_s": 0.004353770121656092
+   },
+   "e2e_median_s": 9.88160141100525,
+   "e2e_termination": "eos",
+   "generated_tokens": 504,
+   "termination": "eos",
+   "correctness_basis": "torch_fixture",
+   "ids_match": true,
+   "reference_tokens": 504,
+   "first_divergence": null,
+   "layout_json": false,
+   "nondegenerate": true,
+   "task_format": true,
+   "decode_repeatable": true,
+   "e2e_agrees": true,
+   "correctness": "PASS",
+   "case": "scan"
+  },
+  {
+   "lane": "torch_cuda",
+   "backend": "transformers fp32 (cuda), explicit prefill + greedy loop",
+   "init_s": 7.139473380986601,
+   "stages_s": {
+    "preprocess": 0.030646748025901616,
+    "vision": 0.0,
+    "prefill": 0.28143857498071156,
+    "decode": 20.67696944499039,
+    "vision_prefill": 0.28143857498071156
+   },
+   "stage_distributions_s": {
+    "preprocess": {
+     "n": 3,
+     "min_s": 0.025413840980036184,
+     "median_s": 0.030646748025901616,
+     "mean_s": 0.029389950669913862,
+     "max_s": 0.03210926300380379,
+     "stdev_s": 0.003520202226378682
+    },
+    "prefill": {
+     "n": 3,
+     "min_s": 0.2808127960015554,
+     "median_s": 0.28143857498071156,
+     "mean_s": 0.28696439699463855,
+     "max_s": 0.29864182000164874,
+     "stdev_s": 0.010117784139631379
+    },
+    "decode": {
+     "n": 3,
+     "min_s": 20.422648732987,
+     "median_s": 20.67696944499039,
+     "mean_s": 20.599759307990706,
+     "max_s": 20.699659745994722,
+     "stdev_s": 0.15380126551340195
+    }
+   },
+   "decode_tokens": 504,
+   "decode_tok_per_s": 24.374945339105725,
+   "e2e_distribution_s": {
+    "n": 3,
+    "min_s": 20.946676905994536,
+    "median_s": 20.993880495021585,
+    "mean_s": 20.98599287167114,
+    "max_s": 21.017421213997295,
+    "stdev_s": 0.03602568847761525
+   },
+   "e2e_median_s": 20.993880495021585,
+   "e2e_termination": "eos",
+   "generated_tokens": 504,
+   "termination": "eos",
+   "correctness_basis": "torch_fixture",
+   "ids_match": true,
+   "reference_tokens": 504,
+   "first_divergence": null,
+   "layout_json": false,
+   "nondegenerate": true,
+   "task_format": true,
+   "decode_repeatable": true,
+   "e2e_agrees": true,
+   "correctness": "PASS",
+   "case": "scan"
+  },
+  {
+   "lane": "hipengine_gpu",
+   "backend": "HIP fp32 (gfx1151): GPU vision tower + GPU prefill/decode",
+   "init_s": 0.8464901710103732,
+   "stages_s": {
+    "preprocess": 0.0072293019911739975,
+    "vision": 1.0700330760155339,
+    "prefill": 0.8322764199983794,
+    "decode": 3.9841369689966086,
+    "vision_prefill": 1.9023094960139133
+   },
+   "stage_distributions_s": {
+    "preprocess": {
+     "n": 3,
+     "min_s": 0.007159391010645777,
+     "median_s": 0.0072293019911739975,
+     "mean_s": 0.007246361327512811,
+     "max_s": 0.007350390980718657,
+     "stdev_s": 9.663598118299862e-05
+    },
+    "vision": {
+     "n": 3,
+     "min_s": 1.0605990379990544,
+     "median_s": 1.0700330760155339,
+     "mean_s": 1.0787074526694294,
+     "max_s": 1.1054902439936996,
+     "stdev_s": 0.023669362088228108
+    },
+    "prefill": {
+     "n": 3,
+     "min_s": 0.8320851680182386,
+     "median_s": 0.8322764199983794,
+     "mean_s": 0.832388578671574,
+     "max_s": 0.8328041479981039,
+     "stdev_s": 0.00037238116069604124
+    },
+    "decode": {
+     "n": 3,
+     "min_s": 3.9807561360066757,
+     "median_s": 3.9841369689966086,
+     "mean_s": 3.9834737936616875,
+     "max_s": 3.9855282759817783,
+     "stdev_s": 0.0024542170093797525
+    }
+   },
+   "decode_tokens": 206,
+   "decode_tok_per_s": 51.70504970161214,
+   "e2e_distribution_s": {
+    "n": 3,
+    "min_s": 5.898955659009516,
+    "median_s": 5.906156195997028,
+    "mean_s": 5.905031224994066,
+    "max_s": 5.9099818199756555,
+    "stdev_s": 0.0055985021417278265
+   },
+   "e2e_median_s": 5.906156195997028,
+   "e2e_termination": "eos",
+   "generated_tokens": 206,
+   "termination": "eos",
+   "correctness_basis": "torch_fixture",
+   "ids_match": true,
+   "reference_tokens": 206,
+   "first_divergence": null,
+   "layout_json": true,
+   "nondegenerate": true,
+   "task_format": true,
+   "decode_repeatable": true,
+   "e2e_agrees": true,
+   "correctness": "PASS",
+   "case": "long"
+  },
+  {
+   "lane": "torch_cuda",
+   "backend": "transformers fp32 (cuda), explicit prefill + greedy loop",
+   "init_s": 7.326718285999959,
+   "stages_s": {
+    "preprocess": 0.03287699999054894,
+    "vision": 0.0,
+    "prefill": 1.1184837229957338,
+    "decode": 8.619098370982101,
+    "vision_prefill": 1.1184837229957338
+   },
+   "stage_distributions_s": {
+    "preprocess": {
+     "n": 3,
+     "min_s": 0.031423464010003954,
+     "median_s": 0.03287699999054894,
+     "mean_s": 0.03241037533734925,
+     "max_s": 0.03293066201149486,
+     "stdev_s": 0.0008551113255914938
+    },
+    "prefill": {
+     "n": 3,
+     "min_s": 1.0895885580102913,
+     "median_s": 1.1184837229957338,
+     "mean_s": 1.1167349543441862,
+     "max_s": 1.1421325820265338,
+     "stdev_s": 0.026315627653589094
+    },
+    "decode": {
+     "n": 3,
+     "min_s": 8.554858752002474,
+     "median_s": 8.619098370982101,
+     "mean_s": 8.602900857658824,
+     "max_s": 8.634745449991897,
+     "stdev_s": 0.04233486396938841
+    }
+   },
+   "decode_tokens": 206,
+   "decode_tok_per_s": 23.900411752294154,
+   "e2e_distribution_s": {
+    "n": 3,
+    "min_s": 9.66769987999578,
+    "median_s": 9.739269306010101,
+    "mean_s": 9.725971560333468,
+    "max_s": 9.770945494994521,
+    "stdev_s": 0.05289174589836667
+   },
+   "e2e_median_s": 9.739269306010101,
+   "e2e_termination": "eos",
+   "generated_tokens": 206,
+   "termination": "eos",
+   "correctness_basis": "torch_fixture",
+   "ids_match": true,
+   "reference_tokens": 206,
+   "first_divergence": null,
+   "layout_json": true,
+   "nondegenerate": true,
+   "task_format": true,
+   "decode_repeatable": true,
+   "e2e_agrees": true,
+   "correctness": "PASS",
+   "case": "long"
+  },
+  {
+   "lane": "hipengine_gpu",
+   "backend": "HIP fp32 (gfx1151): GPU vision tower + GPU prefill/decode",
+   "init_s": 0.8132616880175192,
+   "stages_s": {
+    "preprocess": 0.007699413981754333,
+    "vision": 1.0783087849849835,
+    "prefill": 0.8294764890160877,
+    "decode": 1.5036446649755817,
+    "vision_prefill": 1.9077852740010712
+   },
+   "stage_distributions_s": {
+    "preprocess": {
+     "n": 3,
+     "min_s": 0.007662714982870966,
+     "median_s": 0.007699413981754333,
+     "mean_s": 0.007912972650956362,
+     "max_s": 0.008376788988243788,
+     "stdev_s": 0.00040209563561521383
+    },
+    "vision": {
+     "n": 3,
+     "min_s": 1.0682040090032388,
+     "median_s": 1.0783087849849835,
+     "mean_s": 1.0777787836559583,
+     "max_s": 1.0868235569796525,
+     "stdev_s": 0.009321081899010954
+    },
+    "prefill": {
+     "n": 3,
+     "min_s": 0.8288647190202028,
+     "median_s": 0.8294764890160877,
+     "mean_s": 0.8298346933443099,
+     "max_s": 0.8311628719966393,
+     "stdev_s": 0.0011902140695454204
+    },
+    "decode": {
+     "n": 3,
+     "min_s": 1.5028912360139657,
+     "median_s": 1.5036446649755817,
+     "mean_s": 1.5042791096590615,
+     "max_s": 1.506301427987637,
+     "stdev_s": 0.0017914358393813254
+    }
+   },
+   "decode_tokens": 78,
+   "decode_tok_per_s": 51.87395786840814,
+   "e2e_distribution_s": {
+    "n": 3,
+    "min_s": 3.4099679920182098,
+    "median_s": 3.4136151840211824,
+    "mean_s": 3.414104627338626,
+    "max_s": 3.418730705976486,
+    "stdev_s": 0.004401812700398091
+   },
+   "e2e_median_s": 3.4136151840211824,
+   "e2e_termination": "eos",
+   "generated_tokens": 78,
+   "termination": "eos",
+   "correctness_basis": "torch_fixture",
+   "ids_match": true,
+   "reference_tokens": 78,
+   "first_divergence": null,
+   "layout_json": true,
+   "nondegenerate": true,
+   "task_format": true,
+   "decode_repeatable": true,
+   "e2e_agrees": true,
+   "correctness": "PASS",
+   "case": "full"
+  },
+  {
+   "lane": "torch_cuda",
+   "backend": "transformers fp32 (cuda), explicit prefill + greedy loop",
+   "init_s": 7.221877686999505,
+   "stages_s": {
+    "preprocess": 0.03591480900649913,
+    "vision": 0.0,
+    "prefill": 1.1184507040015887,
+    "decode": 3.315402488980908,
+    "vision_prefill": 1.1184507040015887
+   },
+   "stage_distributions_s": {
+    "preprocess": {
+     "n": 3,
+     "min_s": 0.024019606004003435,
+     "median_s": 0.03591480900649913,
+     "mean_s": 0.033377415335659556,
+     "max_s": 0.040197830996476114,
+     "stdev_s": 0.008382273913287457
+    },
+    "prefill": {
+     "n": 3,
+     "min_s": 1.0791397099965252,
+     "median_s": 1.1184507040015887,
+     "mean_s": 1.10565092266188,
+     "max_s": 1.1193623539875261,
+     "stdev_s": 0.022963908076914254
+    },
+    "decode": {
+     "n": 3,
+     "min_s": 3.28180747301667,
+     "median_s": 3.315402488980908,
+     "mean_s": 3.312158613669453,
+     "max_s": 3.3392658790107816,
+     "stdev_s": 0.028866228539995337
+    }
+   },
+   "decode_tokens": 78,
+   "decode_tok_per_s": 23.52655530037191,
+   "e2e_distribution_s": {
+    "n": 3,
+    "min_s": 4.36422363499878,
+    "median_s": 4.383413794974331,
+    "mean_s": 4.384318955320244,
+    "max_s": 4.4053194359876215,
+    "stdev_s": 0.020562847593839795
+   },
+   "e2e_median_s": 4.383413794974331,
+   "e2e_termination": "eos",
+   "generated_tokens": 78,
+   "termination": "eos",
+   "correctness_basis": "torch_fixture",
+   "ids_match": true,
+   "reference_tokens": 78,
+   "first_divergence": null,
+   "layout_json": true,
+   "nondegenerate": true,
+   "task_format": true,
+   "decode_repeatable": true,
+   "e2e_agrees": true,
+   "correctness": "PASS",
+   "case": "full"
+  },
+  {
+   "lane": "hipengine_gpu",
+   "backend": "HIP fp32 (gfx1151): GPU vision tower + GPU prefill/decode",
+   "init_s": 0.853750157984905,
+   "stages_s": {
+    "preprocess": 0.0009799539984669536,
+    "vision": 0.1961737599922344,
+    "prefill": 0.2522832980030216,
+    "decode": 1.7396916210127529,
+    "vision_prefill": 0.44845705799525604
+   },
+   "stage_distributions_s": {
+    "preprocess": {
+     "n": 3,
+     "min_s": 0.0009618100011721253,
+     "median_s": 0.0009799539984669536,
+     "mean_s": 0.0009744173342672487,
+     "max_s": 0.0009814880031626672,
+     "stdev_s": 1.0945178318792369e-05
+    },
+    "vision": {
+     "n": 3,
+     "min_s": 0.19477307301713154,
+     "median_s": 0.1961737599922344,
+     "mean_s": 0.19581295066745952,
+     "max_s": 0.1964920189930126,
+     "stdev_s": 0.0009145115328047075
+    },
+    "prefill": {
+     "n": 3,
+     "min_s": 0.2393610040016938,
+     "median_s": 0.2522832980030216,
+     "mean_s": 0.24861094199392633,
+     "max_s": 0.2541885239770636,
+     "stdev_s": 0.008067123784109878
+    },
+    "decode": {
+     "n": 3,
+     "min_s": 1.739153332018759,
+     "median_s": 1.7396916210127529,
+     "mean_s": 1.7403452470122527,
+     "max_s": 1.7421907880052458,
+     "stdev_s": 0.0016207883661593714
+    }
+   },
+   "decode_tokens": 94,
+   "decode_tok_per_s": 54.03256465952188,
+   "e2e_distribution_s": {
+    "n": 3,
+    "min_s": 2.1913068990106694,
+    "median_s": 2.192938871012302,
+    "mean_s": 2.1930443163437303,
+    "max_s": 2.1948871790082194,
+    "stdev_s": 0.001792467643684
+   },
+   "e2e_median_s": 2.192938871012302,
+   "e2e_termination": "eos",
+   "generated_tokens": 94,
+   "termination": "eos",
+   "correctness_basis": "torch_fixture",
+   "ids_match": true,
+   "reference_tokens": 94,
+   "first_divergence": null,
+   "layout_json": true,
+   "nondegenerate": true,
+   "task_format": true,
+   "decode_repeatable": true,
+   "e2e_agrees": true,
+   "correctness": "PASS",
+   "case": "columns"
+  },
+  {
+   "lane": "torch_cuda",
+   "backend": "transformers fp32 (cuda), explicit prefill + greedy loop",
+   "init_s": 6.850264617998619,
+   "stages_s": {
+    "preprocess": 0.024886113009415567,
+    "vision": 0.0,
+    "prefill": 0.29585965900332667,
+    "decode": 3.9392479749803897,
+    "vision_prefill": 0.29585965900332667
+   },
+   "stage_distributions_s": {
+    "preprocess": {
+     "n": 3,
+     "min_s": 0.012177652009995654,
+     "median_s": 0.024886113009415567,
+     "mean_s": 0.020677768673825387,
+     "max_s": 0.024969541002064943,
+     "stdev_s": 0.007361435154338203
+    },
+    "prefill": {
+     "n": 3,
+     "min_s": 0.29229089099681005,
+     "median_s": 0.29585965900332667,
+     "mean_s": 0.2963903306614763,
+     "max_s": 0.3010204419842921,
+     "stdev_s": 0.0043889035552555425
+    },
+    "decode": {
+     "n": 3,
+     "min_s": 3.9187952549837064,
+     "median_s": 3.9392479749803897,
+     "mean_s": 3.932591456648273,
+     "max_s": 3.939731139980722,
+     "stdev_s": 0.011950303233869196
+    }
+   },
+   "decode_tokens": 94,
+   "decode_tok_per_s": 23.862422624071527,
+   "e2e_distribution_s": {
+    "n": 3,
+    "min_s": 4.178131816996029,
+    "median_s": 4.197847105009714,
+    "mean_s": 4.198237261337151,
+    "max_s": 4.218732862005709,
+    "stdev_s": 0.020303334219762926
+   },
+   "e2e_median_s": 4.197847105009714,
+   "e2e_termination": "eos",
+   "generated_tokens": 94,
+   "termination": "eos",
+   "correctness_basis": "torch_fixture",
+   "ids_match": true,
+   "reference_tokens": 94,
+   "first_divergence": null,
+   "layout_json": true,
+   "nondegenerate": true,
+   "task_format": true,
+   "decode_repeatable": true,
+   "e2e_agrees": true,
+   "correctness": "PASS",
+   "case": "columns"
+  },
+  {
+   "lane": "hipengine_gpu",
+   "backend": "HIP fp32 (gfx1151): GPU vision tower + GPU prefill/decode",
+   "init_s": 0.8278949520026799,
+   "stages_s": {
+    "preprocess": 0.0009826399909798056,
+    "vision": 0.19403823500033468,
+    "prefill": 0.24825252799200825,
+    "decode": 0.8494873570161872,
+    "vision_prefill": 0.44229076299234293
+   },
+   "stage_distributions_s": {
+    "preprocess": {
+     "n": 3,
+     "min_s": 0.0009678719798102975,
+     "median_s": 0.0009826399909798056,
+     "mean_s": 0.00097818465049689,
+     "max_s": 0.0009840419807005674,
+     "stdev_s": 8.958503017349553e-06
+    },
+    "vision": {
+     "n": 3,
+     "min_s": 0.1933516029966995,
+     "median_s": 0.19403823500033468,
+     "mean_s": 0.1940943643276114,
+     "max_s": 0.1948932549858,
+     "stdev_s": 0.0007723571647300139
+    },
+    "prefill": {
+     "n": 3,
+     "min_s": 0.24082217400427908,
+     "median_s": 0.24825252799200825,
+     "mean_s": 0.24860840866070552,
+     "max_s": 0.2567505239858292,
+     "stdev_s": 0.007970136232929227
+    },
+    "decode": {
+     "n": 3,
+     "min_s": 0.8488475039775949,
+     "median_s": 0.8494873570161872,
+     "mean_s": 0.8505614316673018,
+     "max_s": 0.8533494340081234,
+     "stdev_s": 0.002435584276322371
+    }
+   },
+   "decode_tokens": 46,
+   "decode_tok_per_s": 54.15030561675971,
+   "e2e_distribution_s": {
+    "n": 3,
+    "min_s": 1.2954988380079158,
+    "median_s": 1.2973456379841082,
+    "mean_s": 1.2972096649949283,
+    "max_s": 1.2987845189927612,
+    "stdev_s": 0.0016470553645471378
+   },
+   "e2e_median_s": 1.2973456379841082,
+   "e2e_termination": "eos",
+   "generated_tokens": 46,
+   "termination": "eos",
+   "correctness_basis": "torch_fixture",
+   "ids_match": true,
+   "reference_tokens": 46,
+   "first_divergence": null,
+   "layout_json": true,
+   "nondegenerate": true,
+   "task_format": true,
+   "decode_repeatable": true,
+   "e2e_agrees": true,
+   "correctness": "PASS",
+   "case": "list"
+  },
+  {
+   "lane": "torch_cuda",
+   "backend": "transformers fp32 (cuda), explicit prefill + greedy loop",
+   "init_s": 7.638589346024673,
+   "stages_s": {
+    "preprocess": 0.023309483018238097,
+    "vision": 0.0,
+    "prefill": 0.3028533399919979,
+    "decode": 1.924069052998675,
+    "vision_prefill": 0.3028533399919979
+   },
+   "stage_distributions_s": {
+    "preprocess": {
+     "n": 3,
+     "min_s": 0.01927510998211801,
+     "median_s": 0.023309483018238097,
+     "mean_s": 0.022407311664816614,
+     "max_s": 0.02463734199409373,
+     "stdev_s": 0.002792636371023815
+    },
+    "prefill": {
+     "n": 3,
+     "min_s": 0.3012109079863876,
+     "median_s": 0.3028533399919979,
+     "mean_s": 0.3044457633319932,
+     "max_s": 0.309273042017594,
+     "stdev_s": 0.00426044133331339
+    },
+    "decode": {
+     "n": 3,
+     "min_s": 1.9202236830024049,
+     "median_s": 1.924069052998675,
+     "mean_s": 1.9289970283280127,
+     "max_s": 1.9426983489829581,
+     "stdev_s": 0.012020455830345195
+    }
+   },
+   "decode_tokens": 46,
+   "decode_tok_per_s": 23.907665854460202,
+   "e2e_distribution_s": {
+    "n": 3,
+    "min_s": 2.20164841299993,
+    "median_s": 2.209238227980677,
+    "mean_s": 2.216111250318742,
+    "max_s": 2.2374471099756192,
+    "stdev_s": 0.018863072478627747
+   },
+   "e2e_median_s": 2.209238227980677,
+   "e2e_termination": "eos",
+   "generated_tokens": 46,
+   "termination": "eos",
+   "correctness_basis": "torch_fixture",
+   "ids_match": true,
+   "reference_tokens": 46,
+   "first_divergence": null,
+   "layout_json": true,
+   "nondegenerate": true,
+   "task_format": true,
+   "decode_repeatable": true,
+   "e2e_agrees": true,
+   "correctness": "PASS",
+   "case": "list"
+  }
+ ],
+ "gate": "at capture time PASS required ids_match is not False, the declared task format, and e2e_agrees; decode_repeatable, termination agreement and a present reference were recorded but not gated",
+ "gate_note": "the two rect rows carry ids_match: null and correctness: PASS because the case declares no captured fixture and the harness did not compute the in-process CPU reference it promised, so those rows have no correctness basis. Under the current gate they fail reference_present and ids_match. They are re-qualified against a computed CPU reference in results/2026-09-12-gfx1151-surya-rect-reference.json, which reproduces their timings (hipengine_gpu 54.15 -> 54.50 tok/s, torch_cuda 26.62 -> 26.25 tok/s) and adds ids_match: true for both lanes. The other 22 rows already satisfy every current gate condition."
+}

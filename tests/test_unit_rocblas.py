@@ -42,6 +42,7 @@ class _Library:
         self.rocblas_set_workspace = _Call()
         self.rocblas_gemm_ex = _Call()
         self.rocblas_sgemm = _Call()
+        self.rocblas_sgemv = _Call()
 
 
 def _value(arg) -> int:
@@ -217,3 +218,53 @@ def test_rocblas_sgemm_rowmajor_nt_rejects_invalid_shapes_before_launch() -> Non
         )
 
     assert library.rocblas_sgemm.args is None
+
+
+def test_rocblas_sgemv_rowmajor_nt_uses_transposed_f32_shape_and_lda() -> None:
+    """``out[out_features] = weight[out,in] @ x[in]`` in column-major terms.
+
+    rocBLAS is column-major, so the weight is passed as the transposed view:
+    ``m`` is ``in_features``, ``n`` is ``out_features`` and the leading
+    dimension is ``in_features``. Getting this wrong is silent -- it reads a
+    differently shaped matrix and returns wrong numbers rather than erroring.
+    """
+
+    library = _Library()
+    blas = Rocblas(library=library, handle=17)
+
+    blas.sgemv_rowmajor_nt(
+        101,
+        202,
+        303,
+        in_features=1152,
+        out_features=3185,
+        stream=404,
+    )
+
+    assert library.rocblas_set_stream.args is not None
+    assert tuple(_value(arg) for arg in library.rocblas_set_stream.args) == (17, 404)
+    args = library.rocblas_sgemv.args
+    assert args is not None
+    # trans, m, n
+    assert _value(args[1]) == 112  # ROCBLAS_OPERATION_TRANSPOSE
+    assert _value(args[2]) == 1152  # m = in_features
+    assert _value(args[3]) == 3185  # n = out_features
+    # alpha, A, lda
+    assert _value(args[5]) == 202  # weight
+    assert _value(args[6]) == 1152  # lda = m
+    # x, incx, beta
+    assert _value(args[7]) == 101
+    assert _value(args[8]) == 1
+    # y, incy
+    assert _value(args[10]) == 303
+    assert _value(args[11]) == 1
+
+
+def test_rocblas_sgemv_rowmajor_nt_rejects_nonpositive_dimensions() -> None:
+    library = _Library()
+    blas = Rocblas(library=library, handle=17)
+
+    with pytest.raises(ValueError, match="out_features must be positive"):
+        blas.sgemv_rowmajor_nt(101, 202, 303, in_features=256, out_features=0)
+
+    assert library.rocblas_sgemv.args is None

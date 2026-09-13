@@ -931,10 +931,20 @@ class GenerationOutput:
     finish_details: FinishDetails | None = None
     telemetry: GenerationTelemetry | None = None
     generated_token_ids: tuple[int, ...] | None = None
+    # Length of the prompt this output was generated from, when the generator
+    # knows it exactly. A vision request's prompt is text *plus* image tokens,
+    # so a text tokenizer count cannot recover it; a serving front end that
+    # reports usage needs the generator to say.
+    prompt_tokens: int | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "text", str(self.text))
         object.__setattr__(self, "token_logprobs", tuple(self.token_logprobs))
+        if self.prompt_tokens is not None:
+            prompt_tokens = int(self.prompt_tokens)
+            if prompt_tokens < 0:
+                raise ValueError("prompt_tokens must be non-negative")
+            object.__setattr__(self, "prompt_tokens", prompt_tokens)
         if self.finish_details is not None:
             object.__setattr__(self, "finish_details", FinishDetails.from_value(self.finish_details))
         if self.telemetry is not None:
@@ -1065,6 +1075,19 @@ def registered_text_generators() -> tuple[GenerationKey, ...]:
 
 
 def clear_generation_registry_for_tests() -> None:
+    """Empty the generation registry.
+
+    Warning: most built-in registrations are import-time side effects of their
+    module, so clearing this registry in a long-lived process cannot be undone by
+    calling :func:`hipengine.generation.register_builtin_generators` again -- the
+    modules are already in ``sys.modules`` and will not re-execute, and the
+    builtins flag stays set, so the registry would stay empty and every later
+    resolution would raise :class:`MissingGeneratorError`. A test that clears it
+    must re-register explicitly with ``register_text_generator``, or the suite
+    must snapshot and restore ``_FACTORIES`` the way ``tests/conftest.py`` does
+    for the kernel registry. Nothing in the tree calls this today.
+    """
+
     _FACTORIES.clear()
 
 

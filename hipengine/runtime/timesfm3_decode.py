@@ -29,6 +29,7 @@ from hipengine.core.memory import (
     DeviceBuffer,
     copy_device_to_host,
     copy_host_to_device,
+    copy_host_array_to_device,
     free,
     host_array_ptr,
     malloc,
@@ -309,6 +310,8 @@ class TimesFM3GPUDecoder:
             q_offset=malloc(batch * variates * 4),
         )
         runtime = get_hip_runtime()
+        # Read-only causal offset: this runner attends a full sequence at once.
+        # Unlike TimesFM 2.5's AR offset, it is never advanced or mutated.
         runtime.memset(buffers.q_offset.ptr, 0, buffers.q_offset.nbytes)
         self._buffers[key] = buffers
         return buffers
@@ -346,12 +349,12 @@ class TimesFM3GPUDecoder:
         dt = "f16" if self.precision == "fp16" else "f32"
         itemsize = 2 if self.precision == "fp16" else 4
 
-        copy_host_to_device(
+        copy_host_array_to_device(
             bufs.front_masked,
-            host_array_ptr(np.ascontiguousarray(front_masked_host.astype(np.int32))),
+            np.ascontiguousarray(front_masked_host.astype(np.int32)),
         )
         pos_host = np.tile(np.arange(n, dtype=np.float32), (seq_batch, 1))
-        copy_host_to_device(bufs.pos, host_array_ptr(np.ascontiguousarray(pos_host)))
+        copy_host_array_to_device(bufs.pos, np.ascontiguousarray(pos_host))
 
         # Tokenizer ResidualBlock (ReLU, no biases).
         self._gemm(bufs.tok_in.ptr, self._w["tok_hidden"], bufs.hidden.ptr, rows, spec.tokenizer_input_dims, d)

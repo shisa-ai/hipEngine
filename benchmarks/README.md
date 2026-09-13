@@ -1,6 +1,65 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-13**
+Last updated: **2026-09-14**
+
+Surya OCR 2 fp32 on **zbook, Ryzen AI MAX+ PRO 395 / Radeon 8060S (gfx1151)**,
+12 pages covering layout/markup, Japanese and mixed script, dense text, tables,
+blank and degraded pages, and longer layouts. Both lanes explicitly execute
+preprocessing, vision, prefill, and a manual greedy loop; loading is excluded.
+Three measured repetitions follow a discarded warmup, in separate lane processes.
+
+| Metric across 12 pages | hipEngine HIP fp32 | transformers torch HIP fp32 |
+| --- | ---: | ---: |
+| Decode rate | 55.4–57.0 tok/s | 25.1–30.2 tok/s |
+| Complete request | 0.199–8.874 s | 0.273–13.732 s |
+
+Median per-page speedup: **2.16x decode, 1.65x end to end**. hipEngine wins
+end to end on 11/12 pages; blank is 0.438 s versus torch's 0.401 s.
+All 24 rows pass reference, termination, repeatability, and output-format gates.
+Eleven pages require exact generated IDs; the degraded scan gates its layout
+structure and records bbox drift (90/1000) under the benchmark's ad-hoc prompt.
+Full-page text accuracy is qualified separately with the real training prompt.
+The final runtime passes 415 Surya tests with zero skips. Removing redundant
+upload synchronization is near-flat in the paired run: decode rate +0.18%,
+request latency +0.22%; no end-to-end speedup is claimed for that cleanup.
+[Final per-page results](results/2026-09-14-gfx1151-surya-final-lanes.json),
+[cleanup A/B](results/2026-09-14-gfx1151-surya-upload-cleanup-ab.json),
+[protocol and environment](../docs/MODEL-SURYA.md#final-lane-comparison-2026-09-14).
+Separate processes follow the established protocol; combined-process qualification
+is tracked in `docs/REFACTOR.md`.
+
+Full-page transcription is gated against the text drawn on each page, not only
+against a captured oracle. Using the checkpoint's real full-page HTML prompt,
+eight documents (Japanese, mixed script, dense small text, a ruled table, a
+blank page, a degraded scan, a 25-line block-heavy page, and a 300-DPI A4 page)
+all reach a natural EOS with line recall 1.000, line exact rate 1.000, character
+error rate 0.0000, and zero reading-order violations; the ruled table reads as
+4x8 with 32/32 cells and a matching header, and a deliberately starved budget
+is reported as truncation with omissions rather than passing a prefix. The A4
+page is the page-scale case at 2480x3508 (220x156 patch grid, 8580 image
+tokens): 2108 tokens to a natural EOS, vision 43.297 s, prefill 7.860 s, decode
+40.504 s (52.04 tok/s), 91.891 s end to end (one request); its ground truth is
+paragraph-level because its body is wrapped prose. One caveat is recorded: on
+the degraded scan the HIP lane differs from torch fp32 on 21 of 616 ids, all
+bbox coordinate digits, with identical labels and text and a worst coordinate
+delta of 4 of 1000 — and torch bf16 differs from torch fp32 on 15 ids there and
+changes the decoded text, so the drift is a property of that page's coordinates
+rather than of the HIP route.
+[Final transcription acceptance](results/2026-09-14-gfx1151-surya-final-transcription.json).
+
+Surya OCR 2 is also reachable through hipEngine's OpenAI-compatible server.
+`scripts/surya_http_e2e.py` serves the A4 page over `/v1/chat/completions` and
+verified output equality with a direct call on 2026-09-12: 2108 completion tokens, 8701
+prompt tokens (121 text plus 8580 image), 13 blocks, 12/12 units, CER 0.0000,
+32/32 table cells, `stop`. Its historical 119.9 s HTTP timing is not a final
+latency measurement. Vision bounds
+and media form are engine declarations, so a page-scale model is admitted
+without editing the server.
+[HTTP serving e2e](results/2026-09-12-gfx1151-surya-http-serving-e2e.json).
+
+Text-prefill score tiles take the byte budget's own width and vision tiles are
+bounded by a shape envelope (`max(128, rows/32)` rows): the budget's widest tile
+is within 1.1% of the text optimum at every measured length, while a dense vision tile costs 19-43% ([text](results/2026-09-13-gfx1151-surya-text-prefill-postfix.json), [vision](results/2026-09-13-gfx1151-surya-vision-tiling-postfix.json)).
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the

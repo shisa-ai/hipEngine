@@ -19,6 +19,49 @@ MODEL = Path("/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf")
 pytestmark = pytest.mark.skipif(not MODEL.exists(), reason=f"local GGUF fixture not found: {MODEL}")
 
 
+def test_fused_state_pair_upload_and_reuse_on_real_decode_state() -> None:
+    if not _hip_available():
+        pytest.skip("HIP runtime is not available")
+    from hipengine.core.memory import copy_device_to_host, free, host_array_ptr, malloc
+
+    with Qwen35GGUFResidentSession(MODEL, max_sequence_length=64) as session:
+        if not session._fused_linear_state_transfer_enabled():
+            pytest.skip("backend does not enable fused state transfer")
+        session.prefill([760, 4087, 369], return_logits=False)
+        pairs = [(conv, rec) for conv, rec in zip(
+            session.scratch.layer_conv_states, session.scratch.layer_recurrent_states,
+            strict=True) if conv is not None and rec is not None][:2]
+        assert len(pairs) == 2
+        runtime = session.runtime
+        destinations = []
+
+        def read(buffer):
+            host = np.empty(buffer.nbytes, dtype=np.uint8)
+            copy_device_to_host(host_array_ptr(host), buffer, runtime=runtime)
+            return host
+
+        try:
+            for conv, rec in pairs:
+                destinations.append(malloc(conv.nbytes, runtime=runtime))
+                destinations.append(malloc(rec.nbytes, runtime=runtime))
+            for sources in (pairs, pairs[::-1], pairs):
+                copies = []
+                for i, (conv, rec) in enumerate(sources):
+                    dst_conv, dst_rec = destinations[2 * i:2 * i + 2]
+                    runtime.memset_async(dst_conv.ptr, 255, dst_conv.nbytes, 0)
+                    runtime.memset_async(dst_rec.ptr, 255, dst_rec.nbytes, 0)
+                    copies.append((conv.ptr, dst_conv.ptr, rec.ptr, dst_rec.ptr,
+                                   conv.nbytes, rec.nbytes))
+                assert session._fused_linear_state_pair_copy(copies, runtime=runtime, stream=0)
+                for source, destination in zip(
+                    [buffer for pair in sources for buffer in pair], destinations, strict=True,
+                ):
+                    np.testing.assert_array_equal(read(destination), read(source))
+        finally:
+            for buffer in reversed(destinations):
+                free(buffer, runtime=runtime)
+
+
 def _kl_divergence(reference_logits: np.ndarray, candidate_logits: np.ndarray) -> float:
     ref = reference_logits.astype(np.float64, copy=False)
     cand = candidate_logits.astype(np.float64, copy=False)

@@ -14,7 +14,7 @@ from hipengine.server import ServerConfig, create_app
 from hipengine.server.__main__ import build_parser
 from hipengine.server.multimodal import (
     decode_bounded_png_data_url,
-    extract_qwen4_exp_chat_media,
+    extract_chat_media,
 )
 
 
@@ -59,7 +59,7 @@ def test_qwen4_exp_chat_media_extracts_image_and_video_in_order() -> None:
     image = np.zeros((32, 32, 3), dtype=np.uint8)
     other = image.copy()
     other[..., 1] = 255
-    prompt, media = extract_qwen4_exp_chat_media(
+    prompt, media = extract_chat_media(
         [
             {
                 "role": "user",
