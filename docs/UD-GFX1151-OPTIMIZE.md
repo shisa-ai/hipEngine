@@ -586,13 +586,17 @@ Likely investigation order:
   3.22 (8.9%), `gguf_iq4_nl_local32_gemv` 0.78 (2.1%) = 15.37 ms/step,
   against UD savings of 9.2 ms/step on Q4_K, 5.0 on Q6_K and 1.0 on the norm
   tail. Ranked next steps, with the measured pair counts that bound each:
-  (a) IQ4_XS has **30** gate/up pairs (60 of its 117 tensors), so the
+  (a) IQ4_XS has **30** gate/up pairs (60 of its 117 tensors), and the
   already-written `gguf_iq4_xs_local32_dual_silu_kernel` would remove 30
-  launches/step and share the activation window, but it is `template<int
-  WAVES>` with no `ROWS` and its `extern "C"` rejects `rows != 1`, and a
-  `ROWS = 4` sibling needs `acc_a[4][8] + acc_b[4][8] + xv[4][8]` = 96 float
-  registers against the single owner's measured 168 VGPRs, so the register
-  budget is the open question and must be measured before the plumbing;
+  launches/step and share the activation window. **Rejected 2026-09-13 by
+  isolated measurement.** A `ROWS` sibling of the single owner's pattern was
+  built (9 instantiations) and timed on `blk.1.ffn_gate` + `blk.1.ffn_up`
+  (both 47.35 MB) at `waves=2` against two `launch_local32_rows` calls: the
+  dual is 1.052x at rows=2, 0.809x at rows=3 and 0.465x at rows=4. Rows 3 is
+  the native target cycle, so the register pressure of two accumulator sets
+  (`acc_a[ROWS][8] + acc_b[ROWS][8] + xv[ROWS][8]`) loses more occupancy than
+  the shared activation window and codebook LUT win back. Do not re-open
+  without a register-lean accumulator scheme.
   (b) Q5_K has only **12** gate/up pairs, so a Q5_K T16 dense dual rowtile
   SiLU sibling of `q4_k_t16_dense_dual_rowtile_silu_gemv` (762 GB/s on the
   Q4 pairs) is worth at most ~0.8 ms/step; (c) the IQ4_XS T16 repack above.
