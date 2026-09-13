@@ -7080,3 +7080,23 @@ pair at 32 or more rows, delete the pair path together with the five
 table, and the `q5_k_t16_dense_dual_wmma_prefill_*` kernels. Confirm first that
 the prefill owner for Q5_K gate/up is the single WMMA prefill
 (`gguf_q5_t16_dense_wmma_prefill_bf16`) and not a chunked call into this pair.
+
+## 2026-09-13 Q8T16 shape-explicit rowtile admission — env kill switch
+
+**State.** `_Q8_T16_ALL_ROWTILE_SHAPES` (`{(5120, 1024)}`) admits the Q8_0
+`attn_k`/`attn_v` projections at rows 2-8 to the 128-thread
+`q8_0_t16_rowtile_gemv` owner instead of the 32-thread
+`gguf_q8_0_t16_prefill_wmma` owner. `HIPENGINE_GGUF_Q8_T16_ROWTILE_SHAPES`
+overrides the set on/off for bisection.
+
+**Why it is retained.** The set is measured, not broad: the broad
+`HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL` boolean stays off because audit packet C1
+rejected that route on gfx1100 for the decode widths, and because the broad
+boolean also reaches the `ssm_alpha`/`ssm_beta` projections and changes their
+arithmetic.
+
+**Removal trigger.** Once the `(5120, 1024)` Q8_0 shape is covered by a
+registered variant policy rather than an admission helper — or once no UD
+artifact carries Q8_0 attention K/V projections — fold the set into the
+registry and delete both the set and the env override, leaving
+`_Q8_T16_QWEN35_ATTN_IN` as the only in-feature admission.

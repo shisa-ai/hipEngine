@@ -12,10 +12,10 @@ economically unattractive.
 
 **Status:** phases 0-7 are closed. Both tiers are promoted within width c1 and
 the 4-95 token context bucket, and automatic MTP admission is live there for
-both artifacts. The retained paired result is `UD-Q4_K_M` MTP **45.973** tok/s
-at **1.4396x** over its own AR and `UD-Q4_K_S` **46.990** at **1.4985x**
-(`benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-q5-pair-row-gate.json`).
-The 14 unchecked items below are follow-on work with recorded blockers, not
+both artifacts. The retained paired result is `UD-Q4_K_M` MTP **46.192** tok/s
+at **1.4476x** over its own AR and `UD-Q4_K_S` **47.023** at **1.5017x**
+(`benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-q8-rowtile-attn-kv.json`).
+The 13 unchecked items below are follow-on work with recorded blockers, not
 unfinished phases; each names what is missing.
 
 ## References
@@ -35,7 +35,7 @@ unfinished phases; each names what is missing.
 
 ### Current baseline and evidence
 
-- [Current paired GPU1 artifact](../benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-q5-pair-row-gate.json)
+- [Current paired GPU1 artifact](../benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-q8-rowtile-attn-kv.json)
 - [Phase 6 paired artifact (superseded)](../benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-phase6.json)
 - [Phase 4 paired artifact (superseded)](../benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-phase4.json)
 - [Benchmark scoreboard](../benchmarks/README.md)
@@ -457,23 +457,26 @@ Likely investigation order:
   control is 824 calls/step, 4.39 ms/step and 5.33 us per launch), so it is
   launch overhead rather than a synchronization stall. Reducing it means
   fewer, wider launches or replay-side launch elision.
-- [ ] Q8_0 prefill WMMA owner at verifier rows. The 2026-09-13 census shows
-  `gguf_q8_0_t16_prefill_wmma` at **0.86 ms/step (2.0% of the UD-Q4_K_M
-  verifier)** with two instantiations: `gridX=1024, wgX=32` for the
-  `attn_k`/`attn_v` shapes (N=1024, K=5120, 5.571 MB) at 121.0 us/call and
-  `gridX=96, wgX=32` for `ssm_alpha`/`ssm_beta` (N=48, K=5120, 0.261 MB) at
-  71.6 us/call. That is **one wave32 per block, and 32 or 3 blocks total** - at
-  most 1024 threads on a 96-CU part - which is a prefill-sized parallelism
-  running at verifier rows, and it puts the 5.571 MB shape at 46 GB/s and the
-  0.261 MB shape at 3.6 GB/s. The obvious repair is a GEMV owner at these
-  shapes: the same step already runs `q8_0_t16_dual_split_gemv` (128 threads,
-  `gridY=rows`) at 18.2 us/call for the `ssm_alpha`/`ssm_beta` pair. Not yet
-  attempted, and **the first attempt was null**: setting
-  `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL=1` left every kernel's ms/step and the
-  985 calls/step unchanged, because `_use_q8_t16_all_rowtile` also requires
-  `in_features == _Q8_T16_QWEN35_ATTN_IN`, which these shapes do not satisfy.
-  A real repair is a dispatch change plus a check that the replacement owner
-  is correct at these shapes.
+- [x] Q8_0 prefill WMMA owner at verifier rows. Retained 2026-09-13. The
+  verifier-window census (kernels attributed to the twelve
+  `gguf_mtp_verify_block_N` marker ranges, not divided by the step count) put
+  `gguf_q8_0_t16_prefill_wmma` at **0.858 ms/step, 2.0% of the UD-Q4_K_M
+  verifier**, running the ten `(5120, 1024)` Q8_0 `attn_k`/`attn_v`
+  projections as **one wave32 per block with 32 blocks total** - at most 1024
+  threads on a 96-CU part - for 84 calls/step at 122.6 us each, which is 45 GB/s
+  on 5.6 MB tensors. The `gridX=96` instantiation for `ssm_alpha`/`ssm_beta`
+  turned out to run **only outside** the verifier windows, so it is prefill cost
+  and was never part of the deficit. Admitting the `(5120, 1024)` shape to the
+  128-thread `q8_0_t16_rowtile_gemv` owner runs the same 84 calls/step at
+  51.8 us each for 0.363 ms/step: **-0.495 ms/step (-57.7%, 2.37x per call)** at
+  an unchanged call count, and UD MTP B3 45.973 -> **46.192** (K_M, 1.4396 ->
+  **1.4476x**) with the section-6.1 gate improving on every metric. The gate is
+  shape-explicit rather than the broad `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL`
+  boolean: the broad route is rejected on gfx1100 for the decode widths (audit
+  packet C1) and stays off, and it also changes `ssm_alpha`/`ssm_beta`
+  arithmetic and diverges generated tokens, while this shape set does not. See
+  `benchmarks/results/2026-09-13-ud-gfx1100-q8-rowtile-attn-kv-census.json` and
+  `benchmarks/results/2026-09-13-ud-gfx1100-q8-rowtile-attn-kv-ar-verify.json`.
 - [ ] IQ4_XS repack into a tile layout. `gguf_iq4_xs_local32_gemv` runs at
   396-461 GB/s across all five of its verifier shapes (11.44 ms/step, 26.7% of
   the UD-Q4_K_M verifier), while the t16 rowtile owner reaches **704 GB/s on the
@@ -682,8 +685,8 @@ recorded production graph replay for the true-AR arm:
 
 | Tier | UD AR | Plain AR | UD / plain AR | UD MTP B3 | Plain MTP B3 | UD / plain MTP | UD MTP / AR |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| `UD-Q4_K_M` | 31.934 | 37.204 | 0.858x | 45.973 | 63.349 | 0.726x | **1.4396x** |
-| `UD-Q4_K_S` | 31.358 | 39.690 | 0.790x | 46.990 | 66.318 | 0.709x | **1.4985x** |
+| `UD-Q4_K_M` | 31.909 | 37.201 | 0.858x | 46.192 | 63.153 | 0.731x | **1.4476x** |
+| `UD-Q4_K_S` | 31.313 | 39.706 | 0.789x | 47.023 | 66.437 | 0.708x | **1.5017x** |
 
 All four arms are `complete_exact`, generated-ID exact across two deterministic
 repeats, GPU/CPU acceptance agreement, `timing_evidence_valid`, and have a
@@ -695,7 +698,7 @@ census artifacts rather than re-measured here, because the paired protocol is
 pinned to the natural-25 shape that produced the retained ratio.
 
 Evidence:
-`benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-q5-pair-row-gate.json`,
+`benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-q8-rowtile-attn-kv.json`,
 `benchmarks/results/2026-09-12-ud-gfx1100-mtp-width-cells.json`.
 
 Required result fields:
@@ -746,8 +749,10 @@ Use this table for every retained candidate. Add absolute values before ratios.
 | Baseline | K_S | GPU1, c1, B3 | 31.311 | 33.061 | 39.565 | 64.094 | 1.0559x | 0.791x | 0.516x | Superseded |
 | Rows 2-4 local32 IQ verifier sibling | K_M | GPU1, c1, B3 | 31.935 | 43.919 | 37.202 | 63.283 | 1.3752x | 0.858x | 0.694x | Superseded |
 | Rows 2-4 local32 IQ verifier sibling | K_S | GPU1, c1, B3 | 31.343 | 45.077 | 39.772 | 64.323 | 1.4382x | 0.788x | 0.701x | Superseded |
-| Q5_K gate/up pair row gate | K_M | GPU1, c1, B3 | 31.934 | 45.973 | 37.204 | 63.349 | **1.4396x** | 0.858x | 0.726x | Promoted |
-| Q5_K gate/up pair row gate | K_S | GPU1, c1, B3 | 31.358 | 46.990 | 39.690 | 66.318 | **1.4985x** | 0.790x | 0.709x | Promoted |
+| Q5_K gate/up pair row gate | K_M | GPU1, c1, B3 | 31.934 | 45.973 | 37.204 | 63.349 | 1.4396x | 0.858x | 0.726x | Superseded |
+| Q5_K gate/up pair row gate | K_S | GPU1, c1, B3 | 31.358 | 46.990 | 39.690 | 66.318 | 1.4985x | 0.790x | 0.709x | Superseded |
+| Q8_0 attn_k/attn_v rowtile route | K_M | GPU1, c1, B3 | 31.909 | 46.192 | 37.201 | 63.153 | **1.4476x** | 0.858x | 0.731x | Promoted |
+| Q8_0 attn_k/attn_v rowtile route | K_S | GPU1, c1, B3 | 31.313 | 47.023 | 39.706 | 66.437 | **1.5017x** | 0.789x | 0.708x | Promoted |
 
 Interpret results in this order:
 
