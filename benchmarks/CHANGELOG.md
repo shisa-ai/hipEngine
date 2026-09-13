@@ -1,5 +1,12 @@
 # hipEngine Benchmark Changelog
 
+- **2026-09-14 JST (September 13 UTC)**: Framework Flash-Next UD-Q4_K_XL/BF16
+  PLE mapping-only random advice becomes production default: cold PP
+  84.161/134.330/225.864 ->260.484/295.260/290.598 tok/s
+  (+209.51%/+119.80%/+28.66%), TG +46.10%/+42.95%/+37.64%;
+  full warm A/B neutral with focused replication. Both72-sample matrices
+  exact IDs/logits/state, zero teardown. [Evidence](results/2026-09-14-journey-ple/README.md).
+
 - **2026-09-14 JST (September 13 UTC)**: Framework Flash-Next named production
   numerical refresh fails max KL0.054642 and prefill-last mean/p95 across
   594 rows;590/594 top1, deterministic repeats and teardown pass. No speed
