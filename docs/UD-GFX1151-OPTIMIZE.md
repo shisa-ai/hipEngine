@@ -12,11 +12,11 @@ economically unattractive.
 
 **Status:** phases 0-7 are closed. Both tiers are promoted within width c1 and
 the 4-95 token context bucket, and automatic MTP admission is live there for
-both artifacts. The retained paired result is `UD-Q4_K_M` MTP **43.919** tok/s
-at **1.3752x** over its own AR and `UD-Q4_K_S` **45.077** at **1.4382x**
-(`benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-phase6.json`). The 14
-unchecked items below are follow-on work with recorded blockers, not unfinished
-phases; each names what is missing.
+both artifacts. The retained paired result is `UD-Q4_K_M` MTP **45.973** tok/s
+at **1.4396x** over its own AR and `UD-Q4_K_S` **46.990** at **1.4985x**
+(`benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-q5-pair-row-gate.json`).
+The 14 unchecked items below are follow-on work with recorded blockers, not
+unfinished phases; each names what is missing.
 
 ## References
 
@@ -35,7 +35,8 @@ phases; each names what is missing.
 
 ### Current baseline and evidence
 
-- [Valid paired GPU1 artifact](../benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-phase6.json)
+- [Current paired GPU1 artifact](../benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-q5-pair-row-gate.json)
+- [Phase 6 paired artifact (superseded)](../benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-phase6.json)
 - [Phase 4 paired artifact (superseded)](../benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-phase4.json)
 - [Benchmark scoreboard](../benchmarks/README.md)
 - [Benchmark changelog](../benchmarks/CHANGELOG.md)
@@ -418,10 +419,26 @@ Likely investigation order:
   moved the calibrated mean KL 0.000827 -> 0.001061, 6% over the 1e-3 limit
   (`GGUF_IQ_DENSE_VERIFY_POLICY` comment in
   `hipengine/kernels/hip_gfx1100/__init__.py`).
-- [x] Q5 gate/up dual execution. Closed 2026-09-12: the Q5_K gate/up dual
-  runs the WMMA prefill owner at verifier rows and the whole pair costs 6.38
-  ms/step against the plain Q4_K dual rowtile's 8.85, so UD's arm is already
-  the cheaper one measured.
+- [x] Q5 gate/up dual execution. **Corrected 2026-09-13.** The 2026-09-12 close
+  of this item was wrong: it compared the UD pair's nine-call per-step total
+  (6.38 ms/step) against the plain control's 64-call per-step total (8.85
+  ms/step), which is a comparison of different work rather than an A/B of the
+  two owners. Per tensor at verifier rows the WMMA prefill pair was 2.19x the
+  t16 rowtile single (317 vs 145 us), because every variant of that owner is a
+  *prefill* owner with a fixed row tile and the row32 entry - the only one that
+  can fire below 33 rows - runs a 32-row WMMA tile to produce 3. A rocprofv3
+  census at the 3-row native target cycle shows the pair at 5.719 ms/step for
+  nine pairs (193 GB/s) while the same step ran the rowtile owner on the
+  model's other 108 Q5_K tensors at 410 GB/s. Gating the pair path on one full
+  row tile (32 rows) removes the pair entirely from the native verifier
+  envelope and moves those nine pairs to two singles: **-2.67 ms/step of
+  kernel time (-5.9%)**, and UD MTP B3 43.919 -> **45.973** (K_M, 1.3752 ->
+  **1.4396x**) and 45.077 -> **46.990** (K_S, 1.4382 -> **1.4985x**) at flat AR,
+  with the section-6.1 gate passing on both artifacts (top-1 1.0000 everywhere).
+  Every pair call in the base trace had `gridY == 1`, so this owner had no
+  caller above 32 rows in the profiled workload. See
+  `benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-q5-pair-row-gate.json`
+  and `benchmarks/results/2026-09-13-ud-gfx1100-q5-pair-row-gate-census-*.json`.
 - [x] Q5/Q6 compact residency and raw consumer qualification. Closed
   2026-09-12: Q6_K col8 is 0.77 ms/step in UD against 6.23 in plain Q4_K_M,
   and the Q5_K col8 alternative lost the column-width measurement below.
@@ -632,8 +649,8 @@ recorded production graph replay for the true-AR arm:
 
 | Tier | UD AR | Plain AR | UD / plain AR | UD MTP B3 | Plain MTP B3 | UD / plain MTP | UD MTP / AR |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| `UD-Q4_K_M` | 31.935 | 37.202 | 0.858x | 43.919 | 63.283 | 0.694x | **1.3752x** |
-| `UD-Q4_K_S` | 31.343 | 39.772 | 0.788x | 45.077 | 64.323 | 0.701x | **1.4382x** |
+| `UD-Q4_K_M` | 31.934 | 37.204 | 0.858x | 45.973 | 63.349 | 0.726x | **1.4396x** |
+| `UD-Q4_K_S` | 31.358 | 39.690 | 0.790x | 46.990 | 66.318 | 0.709x | **1.4985x** |
 
 All four arms are `complete_exact`, generated-ID exact across two deterministic
 repeats, GPU/CPU acceptance agreement, `timing_evidence_valid`, and have a
@@ -645,7 +662,7 @@ census artifacts rather than re-measured here, because the paired protocol is
 pinned to the natural-25 shape that produced the retained ratio.
 
 Evidence:
-`benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-phase6.json`,
+`benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-q5-pair-row-gate.json`,
 `benchmarks/results/2026-09-12-ud-gfx1100-mtp-width-cells.json`.
 
 Required result fields:
@@ -694,8 +711,10 @@ Use this table for every retained candidate. Add absolute values before ratios.
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
 | Baseline | K_M | GPU1, c1, B3 | 31.993 | 35.541 | 37.186 | 63.465 | 1.1109x | 0.860x | 0.560x | Superseded |
 | Baseline | K_S | GPU1, c1, B3 | 31.311 | 33.061 | 39.565 | 64.094 | 1.0559x | 0.791x | 0.516x | Superseded |
-| Rows 2-4 local32 IQ verifier sibling | K_M | GPU1, c1, B3 | 31.935 | 43.919 | 37.202 | 63.283 | **1.3752x** | 0.858x | 0.694x | Promoted |
-| Rows 2-4 local32 IQ verifier sibling | K_S | GPU1, c1, B3 | 31.343 | 45.077 | 39.772 | 64.323 | **1.4382x** | 0.788x | 0.701x | Promoted |
+| Rows 2-4 local32 IQ verifier sibling | K_M | GPU1, c1, B3 | 31.935 | 43.919 | 37.202 | 63.283 | 1.3752x | 0.858x | 0.694x | Superseded |
+| Rows 2-4 local32 IQ verifier sibling | K_S | GPU1, c1, B3 | 31.343 | 45.077 | 39.772 | 64.323 | 1.4382x | 0.788x | 0.701x | Superseded |
+| Q5_K gate/up pair row gate | K_M | GPU1, c1, B3 | 31.934 | 45.973 | 37.204 | 63.349 | **1.4396x** | 0.858x | 0.726x | Promoted |
+| Q5_K gate/up pair row gate | K_S | GPU1, c1, B3 | 31.358 | 46.990 | 39.690 | 66.318 | **1.4985x** | 0.790x | 0.709x | Promoted |
 
 Interpret results in this order:
 

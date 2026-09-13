@@ -403,19 +403,20 @@ recorded production graph replay for the true-AR arm):
 
 | Tier | UD AR | Plain AR | UD / plain AR | UD MTP B3 | Plain MTP B3 | UD / plain MTP | UD MTP / AR |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| `Q4_K_M` | 31.935 | 37.202 | **0.858x** | 43.919 | 63.283 | **0.694x** | **1.3752x** |
-| `Q4_K_S` | 31.343 | 39.772 | **0.788x** | 45.077 | 64.323 | **0.701x** | **1.4382x** |
+| `Q4_K_M` | 31.934 | 37.204 | **0.858x** | 45.973 | 63.349 | **0.726x** | **1.4396x** |
+| `Q4_K_S` | 31.358 | 39.690 | **0.790x** | 46.990 | 66.318 | **0.709x** | **1.4985x** |
 
 All four arms have complete 20-row-per-group evidence, deterministic repeats,
 GPU/CPU acceptance agreement, a positive MTP/AR ratio, and generated-ID
 exactness. The remaining gap is concentrated in MTP compute: UD trails plain by
-14.2%/21.2% in AR but 30.6%/29.9% in MTP.
-([paired artifact](results/paired-ud-plain-mtp-c1-natural25-b3-phase6.json),
+14.2%/21.0% in AR but 27.4%/29.1% in MTP.
+([paired artifact](results/paired-ud-plain-mtp-c1-natural25-b3-q5-pair-row-gate.json),
 [worklog](../worklog/entries/20260912T125745.171165Z-ud-phase4-lane-ud-phase4-rows-sibling-retained-43a671.md).)
 
 Those rates follow the rows 2-4 local32 IQ verifier sibling
-(`2ac44d7a7`), which moved UD MTP B3 35.541 -> **43.919** (K_M, +23.6%) and
-33.061 -> **45.077** (K_S, +36.3%) at flat AR, and made both UD arms
+(`2ac44d7a7`) plus the Q5_K gate/up pair row gate (`2026-09-13`), which moved
+UD MTP B3 35.541 -> **45.973** (K_M, +29.4%) and 33.061 -> **46.990** (K_S,
++42.1%) at flat AR, and made both UD arms
 generated-ID exact. The sibling gives each block several prompt rows over the
 same local32 IQ decode geometry, with every row bit-identical to the rows == 1
 owner's output for that row; at kernel level it is 2.0-4.3x the strict per-row
@@ -432,10 +433,9 @@ fresh-process reproduction matches all sixteen arm numbers to the last digit.
 
 The 2026-09-11 baseline this compares against measured UD-Q4_K_M 31.993 AR /
 35.541 MTP B3 (1.1109x) and UD-Q4_K_S 31.311 / 33.061 (1.0559x), with plain
-controls at 37.186 / 63.465 and 39.565 / 64.094. The plain controls moved by
-+0.04%/-0.3% (K_M) and +0.5%/+0.4% (K_S) between the two runs, which bounds the
-run-to-run MTP spread at well under a percent; both UD AR arms are flat to
-within 0.03%.
+controls at 37.186 / 63.465 and 39.565 / 64.094. Across the runs since, both UD
+AR arms have stayed within 0.3% and the plain controls within 3.2%, which
+bounds the run-to-run spread.
 ([baseline artifact](results/paired-ud-plain-mtp-c1-natural25-b3-graph-xtx.json),
 [invalidated eager-denominator attempt](results/paired-ud-plain-mtp-c1-natural25-b3-xtx.json).)
 
@@ -1058,7 +1058,7 @@ for the current gfx1151 FP32 production profile.
 
 | Platform / model | Contract | True AR | MTP | MTP / AR | Status and evidence |
 | --- | --- | ---: | ---: | ---: | --- |
-| RX 7900 XTX / Qwen3.8-27B Dense `Q4_K_M` | Exact/default natural25 B3 | 37.202 | **63.283** | **1.7011x** | Current `ud-quants` paired control; `complete_exact`, all ten prompts exact across two runs with identical token IDs, GPU/CPU acceptance agree, and the true-AR arm uses recorded production graph replay. [`artifact`](results/paired-ud-plain-mtp-c1-natural25-b3-phase6.json) |
+| RX 7900 XTX / Qwen3.8-27B Dense `Q4_K_M` | Exact/default natural25 B3 | 37.204 | **63.349** | **1.7028x** | Current `ud-quants` paired control; `complete_exact`, all ten prompts exact across two runs with identical token IDs, GPU/CPU acceptance agree, and the true-AR arm uses recorded production graph replay. [`artifact`](results/paired-ud-plain-mtp-c1-natural25-b3-q5-pair-row-gate.json) |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Historical direct-leaf natural25 B3 | 11.692 | 21.158 | 1.8095x | August 26 direct-leaf protocol, not the public-server headline. [`artifact`](results/2026-08-26-gfx1151-qwen38-current-main-ar-mtp.json) |
 | W7900 / Qwen3.6-35B-A3B `UD-Q4_K_M` | Public production/BF16 resident-C2 K2 D24, automatic | 80.973 | **93.644** | **1.1565x** | Latest-source 10/10 engaged and MTP self-exact; three-run ratio 1.1368x; all categories non-regressive; strict-teacher, blocking/SSE/cancel/drain pass. Shares the artifact linked in the row above. |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Public strict/BF16 cap4 realized-C1 K3, natural25 | 11.150 | **20.985** | **1.882x** | Three full-suite runs; all 30 cells exact, engaged and budget-conformed; every category faster. Blocking/SSE and cancellation/refill pass. Production default is AR. [`artifact`](results/2026-09-12-gfx1151-qwen38-final-headline-refresh.json) |

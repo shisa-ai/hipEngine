@@ -7060,3 +7060,23 @@ complete and the pin is derived, since a granted run is then no longer needed to
 reach the cell. A granted run must never be used as a rate claim: it is a
 diagnostic whose only purpose is to decide whether a real evidence row is
 warranted.
+
+## 2026-09-13 Q5_K gate/up WMMA prefill pair — now unreachable in production
+
+**State.** `_q5_t16_dense_pair_silu_variant` returns `None` below one full row
+tile (`_Q5_T16_DENSE_DUAL_SILU_MIN_TILE_ROWS = 32`), so the fused Q5_K gate/up
+pair no longer fires anywhere in the native verifier envelope (2-8 rows). Every
+pair call in the profiled workload had `gridY == 1`, i.e. a 32-row tile, so the
+gate removed the owner's only caller.
+
+**Why it is retained.** The five registered variants and the pair path stay
+registered so a rows >= 32 caller can still take them, and so the change is a
+policy gate rather than a deletion: the section-6.1 gate evidence is tied to
+this dispatch shape.
+
+**Removal trigger.** If no production path is measured taking a Q5_K gate/up
+pair at 32 or more rows, delete the pair path together with the five
+`dense_dual_wmma_prefill*` variants, the `_Q5_T16_DENSE_DUAL_SILU_ROW_VARIANTS`
+table, and the `q5_k_t16_dense_dual_wmma_prefill_*` kernels. Confirm first that
+the prefill owner for Q5_K gate/up is the single WMMA prefill
+(`gguf_q5_t16_dense_wmma_prefill_bf16`) and not a chunked call into this pair.

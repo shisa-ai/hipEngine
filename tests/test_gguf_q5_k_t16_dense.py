@@ -329,6 +329,15 @@ def test_dense_pair_variants_are_registered() -> None:
     from hipengine.kernels.registry import KernelKey, is_registered
     from hipengine.runtime.gguf_linear import _q5_t16_dense_pair_silu_variant
 
+    # Below one full row tile the pair declines and the two singles keep the
+    # verifier-row t16 rowtile owner. Every variant here is a WMMA prefill
+    # owner whose cost is its block's 32/48/64/128/256-row tile, so at the
+    # native verifier envelope (2-8 rows) the row32 entry would run a 32-row
+    # WMMA tile to produce at most 8 rows. Measured at rows 3 on
+    # Qwen3.8-27B-UD-Q4_K_M: the pair path cost 5.719 ms/step for nine
+    # gate/up pairs (193 GB/s) against 2.609 ms/step for the same pairs as
+    # two singles through q5_k_t16_dense_rowtile_gemv (410 GB/s), so the
+    # owner that fires at verifier rows is the single.
     for rows, expected in (
         (512, "dense_dual_wmma_prefill_bf16_bf16_out"),
         (257, "dense_dual_wmma_prefill_bf16_bf16_out"),
@@ -340,7 +349,11 @@ def test_dense_pair_variants_are_registered() -> None:
         (48, "dense_dual_wmma_prefill_row48_bf16_bf16_out"),
         (33, "dense_dual_wmma_prefill_row48_bf16_bf16_out"),
         (32, "dense_dual_wmma_prefill_row32_bf16_bf16_out"),
-        (8, "dense_dual_wmma_prefill_row32_bf16_bf16_out"),
+        (31, None),
+        (8, None),
+        (4, None),
+        (3, None),
+        (2, None),
         (1, None),
     ):
         assert _q5_t16_dense_pair_silu_variant(rows) == expected, rows

@@ -3751,11 +3751,27 @@ _Q5_T16_DENSE_DUAL_SILU_ROW_VARIANTS = (
     (33, "dense_dual_wmma_prefill_row48_bf16_bf16_out"),
     (2, "dense_dual_wmma_prefill_row32_bf16_bf16_out"),
 )
+# Every variant above is a WMMA *prefill* owner whose block owns a fixed
+# 32/48/64/128/256-row tile, so its cost is the tile, not the caller's rows.
+# The table is built so each entry's tile matches its own minimum rows - except
+# the last one, whose tile is 32 rows while its minimum is 2. At the verifier
+# row band (2-4) that entry runs a 32-row WMMA tile to produce 3 rows, which
+# measured 193 GB/s against 410 GB/s for the t16 rowtile owner the two singles
+# already use for every other Q5_K tensor on the same model and the same step.
+# The pair path therefore declines below a full tile and lets the two singles
+# take their normal verifier-row owner.
+_Q5_T16_DENSE_DUAL_SILU_MIN_TILE_ROWS = 32
 
 
 def _q5_t16_dense_pair_silu_variant(rows: int) -> str | None:
-    """Row-qualified Q5T16 gate/up dual fused-SiLU owner, if any."""
+    """Row-qualified Q5T16 gate/up dual fused-SiLU owner, if any.
 
+    Returns ``None`` below one full row tile, so a verifier-row call keeps the
+    two-singles path (see ``_Q5_T16_DENSE_DUAL_SILU_MIN_TILE_ROWS``).
+    """
+
+    if int(rows) < _Q5_T16_DENSE_DUAL_SILU_MIN_TILE_ROWS:
+        return None
     for min_rows, variant in _Q5_T16_DENSE_DUAL_SILU_ROW_VARIANTS:
         if rows >= min_rows:
             return variant
