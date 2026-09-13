@@ -8,6 +8,13 @@ from pathlib import Path
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _isolate_architecture_environment(monkeypatch):
+    # These artifacts describe a W7900, independently of the test host or
+    # suite-level GPU selection. Override-specific tests set their own value.
+    monkeypatch.delenv("HIPENGINE_HIP_ARCH", raising=False)
+
+
 def _load_runner_module():
     path = (
         Path(__file__).resolve().parents[1]
@@ -158,6 +165,30 @@ def test_normalize_dispatch_result_shapes_v2_serial_contract() -> None:
     assert result["measurements"]["grid_sweep_rows"][0]["grid_blocks"] == 128
     assert result["measurements"]["hip_only_wide_diagnostics"][0]["diagnostic"] is True
     json.dumps(result, allow_nan=False)
+
+
+@pytest.mark.parametrize("override, expected", [(None, "gfx1151"), ("gfx1100", "gfx1100")])
+def test_normalize_architecture_override_precedence(monkeypatch, override, expected) -> None:
+    module = _load_runner_module()
+    monkeypatch.setenv("HIPENGINE_HIP_ARCH", "gfx1151")
+    result = module.normalize_legacy_dispatch_result(
+        _legacy_artifact(),
+        environment=_environment(),
+        wrapper_command=["wrapper"],
+        legacy_command=None,
+        source_hash="sha256:test",
+        gfx_arch=override,
+    )
+    assert result["hardware"]["gfx_arch"] == expected
+
+
+def test_comparison_rejects_mismatched_architectures() -> None:
+    module = _load_runner_module()
+    hip = _normalize(module)
+    vulkan = _vulkan_result_from_hip(module, hip)
+    vulkan["hardware"]["gfx_arch"] = "gfx1151"
+    with pytest.raises(ValueError, match="gfx architectures do not match"):
+        module.build_comparison(hip, vulkan, command=["compare"])
 
 
 def test_normalize_independent_contract_validates_all_outputs() -> None:
