@@ -1,0 +1,118 @@
+=== host gfx1151 | 2026-09-13T16:46:28+09:00
+=== dpm=high governor=performance
+=== [hipengine] start 2026-09-13T16:46:28+09:00
+      "max": 19.809751085937023,
+      "stdev": 0.0,
+      "stdev_pct_of_median": 0.0
+    },
+    "hip_used_peak_sampled_gib": {
+      "samples": [
+        24.84903335571289,
+        24.84903335571289,
+        24.84903335571289
+      ],
+      "median": 24.84903335571289,
+      "p95": 24.84903335571289,
+      "min": 24.84903335571289,
+      "max": 24.84903335571289,
+      "stdev": 0.0,
+      "stdev_pct_of_median": 0.0
+    },
+    "finite_final_logits_all": true,
+    "final_token_ids": [
+      9707,
+      9707,
+      9707
+    ]
+  }
+}
+=== [hipengine] done 2026-09-13T16:52:11+09:00
+=== [upstream-hip] start 2026-09-13T16:52:11+09:00 :: /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-bench
+[done] workload=512/128 phase=prefill returncode=0 tok/s=386.151 baseline=0.017 GiB peak=16.201 GiB delta=16.183 GiB samples=1059
+[run] workload=512/128 phase=decode cmd: /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-bench -m /models/gguf/Qwen3.8-27B-Q4_K_M.gguf -ngl 99 -fa 1 -ctk bf16 -ctv bf16 -r 5 -o json -p 0 -n 128 -d 512 -dev ROCm0
+[done] workload=512/128 phase=decode returncode=0 tok/s=12.337 baseline=0.017 GiB peak=16.220 GiB delta=16.203 GiB samples=5597
+[run] workload=1K/128 phase=prefill cmd: /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-bench -m /models/gguf/Qwen3.8-27B-Q4_K_M.gguf -ngl 99 -fa 1 -ctk bf16 -ctv bf16 -r 5 -o json -p 1024 -n 0 -d 0 -dev ROCm0
+[done] workload=1K/128 phase=prefill returncode=0 tok/s=389.111 baseline=0.017 GiB peak=16.232 GiB delta=16.214 GiB samples=1848
+[run] workload=1K/128 phase=decode cmd: /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-bench -m /models/gguf/Qwen3.8-27B-Q4_K_M.gguf -ngl 99 -fa 1 -ctk bf16 -ctv bf16 -r 5 -o json -p 0 -n 128 -d 1024 -dev ROCm0
+[done] workload=1K/128 phase=decode returncode=0 tok/s=12.248 baseline=0.017 GiB peak=16.253 GiB delta=16.236 GiB samples=5768
+[run] workload=4K/128 phase=prefill cmd: /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-bench -m /models/gguf/Qwen3.8-27B-Q4_K_M.gguf -ngl 99 -fa 1 -ctk bf16 -ctv bf16 -r 5 -o json -p 4096 -n 0 -d 0 -dev ROCm0
+[done] workload=4K/128 phase=prefill returncode=0 tok/s=383.402 baseline=0.017 GiB peak=16.421 GiB delta=16.404 GiB samples=6684
+[run] workload=4K/128 phase=decode cmd: /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-bench -m /models/gguf/Qwen3.8-27B-Q4_K_M.gguf -ngl 99 -fa 1 -ctk bf16 -ctv bf16 -r 5 -o json -p 0 -n 128 -d 4096 -dev ROCm0
+[done] workload=4K/128 phase=decode returncode=0 tok/s=11.686 baseline=0.017 GiB peak=16.443 GiB delta=16.425 GiB samples=6826
+[wrote] /tmp/hip1151-4way/upstream-hip.json
+## llama.cpp hip peak GTT (card card1, pci 0000:c1:00.0, total 120.000 GiB, poll 10.0 ms)
+
+| Workload | prefill tok/s | decode tok/s | prefill peak GiB | decode peak GiB | row peak GiB | row peak Δ GiB |
+|---|---:|---:|---:|---:|---:|---:|
+| 512/128 | 386.151 | 12.337 | 16.201 | 16.220 | 16.220 | 16.203 |
+| 1K/128 | 389.111 | 12.248 | 16.232 | 16.253 | 16.253 | 16.236 |
+| 4K/128 | 383.402 | 11.686 | 16.421 | 16.443 | 16.443 | 16.425 |
+
+=== [upstream-hip] done 2026-09-13T16:56:49+09:00
+=== [upstream-vulkan] start 2026-09-13T16:56:49+09:00 :: /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench
+[done] workload=512/128 phase=prefill returncode=0 tok/s=384.447 baseline=0.017 GiB peak=16.187 GiB delta=16.169 GiB samples=1063
+[run] workload=512/128 phase=decode cmd: /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench -m /models/gguf/Qwen3.8-27B-Q4_K_M.gguf -ngl 99 -fa 1 -ctk bf16 -ctv bf16 -r 5 -o json -p 0 -n 128 -d 512 -dev Vulkan0
+[done] workload=512/128 phase=decode returncode=0 tok/s=12.859 baseline=0.017 GiB peak=16.251 GiB delta=16.233 GiB samples=5447
+[run] workload=1K/128 phase=prefill cmd: /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench -m /models/gguf/Qwen3.8-27B-Q4_K_M.gguf -ngl 99 -fa 1 -ctk bf16 -ctv bf16 -r 5 -o json -p 1024 -n 0 -d 0 -dev Vulkan0
+[done] workload=1K/128 phase=prefill returncode=0 tok/s=381.933 baseline=0.017 GiB peak=16.188 GiB delta=16.170 GiB samples=1858
+[run] workload=1K/128 phase=decode cmd: /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench -m /models/gguf/Qwen3.8-27B-Q4_K_M.gguf -ngl 99 -fa 1 -ctk bf16 -ctv bf16 -r 5 -o json -p 0 -n 128 -d 1024 -dev Vulkan0
+[done] workload=1K/128 phase=decode returncode=0 tok/s=12.823 baseline=0.017 GiB peak=16.252 GiB delta=16.234 GiB samples=5615
+[run] workload=4K/128 phase=prefill cmd: /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench -m /models/gguf/Qwen3.8-27B-Q4_K_M.gguf -ngl 99 -fa 1 -ctk bf16 -ctv bf16 -r 5 -o json -p 4096 -n 0 -d 0 -dev Vulkan0
+[done] workload=4K/128 phase=prefill returncode=0 tok/s=369.829 baseline=0.017 GiB peak=16.340 GiB delta=16.322 GiB samples=6902
+[run] workload=4K/128 phase=decode cmd: /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench -m /models/gguf/Qwen3.8-27B-Q4_K_M.gguf -ngl 99 -fa 1 -ctk bf16 -ctv bf16 -r 5 -o json -p 0 -n 128 -d 4096 -dev Vulkan0
+[done] workload=4K/128 phase=decode returncode=0 tok/s=12.681 baseline=0.017 GiB peak=16.404 GiB delta=16.386 GiB samples=6557
+[wrote] /tmp/hip1151-4way/upstream-vulkan.json
+## llama.cpp vulkan peak GTT (card card1, pci 0000:c1:00.0, total 120.000 GiB, poll 10.0 ms)
+
+| Workload | prefill tok/s | decode tok/s | prefill peak GiB | decode peak GiB | row peak GiB | row peak Δ GiB |
+|---|---:|---:|---:|---:|---:|---:|
+| 512/128 | 384.447 | 12.859 | 16.187 | 16.251 | 16.251 | 16.233 |
+| 1K/128 | 381.933 | 12.823 | 16.188 | 16.252 | 16.252 | 16.234 |
+| 4K/128 | 369.829 | 12.681 | 16.340 | 16.404 | 16.404 | 16.386 |
+
+=== [upstream-vulkan] done 2026-09-13T17:01:24+09:00
+=== [halobox-hip] start 2026-09-13T17:01:24+09:00 :: /tmp/hipengine-halobox-head-20260913/build-hip/bin/llama-bench
+[done] workload=512/128 phase=prefill returncode=0 tok/s=437.323 baseline=0.017 GiB peak=16.168 GiB delta=16.151 GiB samples=963
+[run] workload=512/128 phase=decode cmd: /tmp/hipengine-halobox-head-20260913/build-hip/bin/llama-bench -m /models/gguf/Qwen3.8-27B-Q4_K_M.gguf -ngl 99 -fa 1 -ctk bf16 -ctv bf16 -r 5 -o json -p 0 -n 128 -d 512 -dev ROCm0
+[done] workload=512/128 phase=decode returncode=0 tok/s=12.302 baseline=0.017 GiB peak=16.189 GiB delta=16.171 GiB samples=5594
+[run] workload=1K/128 phase=prefill cmd: /tmp/hipengine-halobox-head-20260913/build-hip/bin/llama-bench -m /models/gguf/Qwen3.8-27B-Q4_K_M.gguf -ngl 99 -fa 1 -ctk bf16 -ctv bf16 -r 5 -o json -p 1024 -n 0 -d 0 -dev ROCm0
+[done] workload=1K/128 phase=prefill returncode=0 tok/s=442.193 baseline=0.017 GiB peak=16.199 GiB delta=16.182 GiB samples=1657
+[run] workload=1K/128 phase=decode cmd: /tmp/hipengine-halobox-head-20260913/build-hip/bin/llama-bench -m /models/gguf/Qwen3.8-27B-Q4_K_M.gguf -ngl 99 -fa 1 -ctk bf16 -ctv bf16 -r 5 -o json -p 0 -n 128 -d 1024 -dev ROCm0
+[done] workload=1K/128 phase=decode returncode=0 tok/s=12.212 baseline=0.017 GiB peak=16.222 GiB delta=16.205 GiB samples=5752
+[run] workload=4K/128 phase=prefill cmd: /tmp/hipengine-halobox-head-20260913/build-hip/bin/llama-bench -m /models/gguf/Qwen3.8-27B-Q4_K_M.gguf -ngl 99 -fa 1 -ctk bf16 -ctv bf16 -r 5 -o json -p 4096 -n 0 -d 0 -dev ROCm0
+[done] workload=4K/128 phase=prefill returncode=0 tok/s=432.300 baseline=0.017 GiB peak=16.389 GiB delta=16.371 GiB samples=5947
+[run] workload=4K/128 phase=decode cmd: /tmp/hipengine-halobox-head-20260913/build-hip/bin/llama-bench -m /models/gguf/Qwen3.8-27B-Q4_K_M.gguf -ngl 99 -fa 1 -ctk bf16 -ctv bf16 -r 5 -o json -p 0 -n 128 -d 4096 -dev ROCm0
+[done] workload=4K/128 phase=decode returncode=0 tok/s=11.660 baseline=0.017 GiB peak=16.412 GiB delta=16.394 GiB samples=6709
+[wrote] /tmp/hip1151-4way/halobox-hip.json
+## llama.cpp hip peak GTT (card card1, pci 0000:c1:00.0, total 120.000 GiB, poll 10.0 ms)
+
+| Workload | prefill tok/s | decode tok/s | prefill peak GiB | decode peak GiB | row peak GiB | row peak Δ GiB |
+|---|---:|---:|---:|---:|---:|---:|
+| 512/128 | 437.323 | 12.302 | 16.168 | 16.189 | 16.189 | 16.171 |
+| 1K/128 | 442.193 | 12.212 | 16.199 | 16.222 | 16.222 | 16.205 |
+| 4K/128 | 432.300 | 11.660 | 16.389 | 16.412 | 16.412 | 16.394 |
+
+=== [halobox-hip] done 2026-09-13T17:05:50+09:00
+=== [halobox-vulkan] start 2026-09-13T17:05:50+09:00 :: /tmp/hipengine-halobox-head-20260913/build-vulkan/bin/llama-bench
+[done] workload=512/128 phase=prefill returncode=0 tok/s=409.552 baseline=0.017 GiB peak=16.186 GiB delta=16.169 GiB samples=1009
+[run] workload=512/128 phase=decode cmd: /tmp/hipengine-halobox-head-20260913/build-vulkan/bin/llama-bench -m /models/gguf/Qwen3.8-27B-Q4_K_M.gguf -ngl 99 -fa 1 -ctk bf16 -ctv bf16 -r 5 -o json -p 0 -n 128 -d 512 -dev Vulkan0
+[done] workload=512/128 phase=decode returncode=0 tok/s=12.857 baseline=0.017 GiB peak=16.254 GiB delta=16.236 GiB samples=5369
+[run] workload=1K/128 phase=prefill cmd: /tmp/hipengine-halobox-head-20260913/build-vulkan/bin/llama-bench -m /models/gguf/Qwen3.8-27B-Q4_K_M.gguf -ngl 99 -fa 1 -ctk bf16 -ctv bf16 -r 5 -o json -p 1024 -n 0 -d 0 -dev Vulkan0
+[done] workload=1K/128 phase=prefill returncode=0 tok/s=403.816 baseline=0.017 GiB peak=16.187 GiB delta=16.170 GiB samples=1780
+[run] workload=1K/128 phase=decode cmd: /tmp/hipengine-halobox-head-20260913/build-vulkan/bin/llama-bench -m /models/gguf/Qwen3.8-27B-Q4_K_M.gguf -ngl 99 -fa 1 -ctk bf16 -ctv bf16 -r 5 -o json -p 0 -n 128 -d 1024 -dev Vulkan0
+[done] workload=1K/128 phase=decode returncode=0 tok/s=12.824 baseline=0.017 GiB peak=16.254 GiB delta=16.237 GiB samples=5523
+[run] workload=4K/128 phase=prefill cmd: /tmp/hipengine-halobox-head-20260913/build-vulkan/bin/llama-bench -m /models/gguf/Qwen3.8-27B-Q4_K_M.gguf -ngl 99 -fa 1 -ctk bf16 -ctv bf16 -r 5 -o json -p 4096 -n 0 -d 0 -dev Vulkan0
+[done] workload=4K/128 phase=prefill returncode=0 tok/s=388.340 baseline=0.017 GiB peak=16.339 GiB delta=16.322 GiB samples=6596
+[run] workload=4K/128 phase=decode cmd: /tmp/hipengine-halobox-head-20260913/build-vulkan/bin/llama-bench -m /models/gguf/Qwen3.8-27B-Q4_K_M.gguf -ngl 99 -fa 1 -ctk bf16 -ctv bf16 -r 5 -o json -p 0 -n 128 -d 4096 -dev Vulkan0
+[done] workload=4K/128 phase=decode returncode=0 tok/s=12.642 baseline=0.017 GiB peak=16.411 GiB delta=16.394 GiB samples=6452
+[wrote] /tmp/hip1151-4way/halobox-vulkan.json
+## llama.cpp vulkan peak GTT (card card1, pci 0000:c1:00.0, total 120.000 GiB, poll 10.0 ms)
+
+| Workload | prefill tok/s | decode tok/s | prefill peak GiB | decode peak GiB | row peak GiB | row peak Δ GiB |
+|---|---:|---:|---:|---:|---:|---:|
+| 512/128 | 409.552 | 12.857 | 16.186 | 16.254 | 16.254 | 16.236 |
+| 1K/128 | 403.816 | 12.824 | 16.187 | 16.254 | 16.254 | 16.237 |
+| 4K/128 | 388.340 | 12.642 | 16.339 | 16.411 | 16.411 | 16.394 |
+
+=== [halobox-vulkan] done 2026-09-13T17:10:18+09:00
+=== ALL DONE 2026-09-13T17:10:18+09:00

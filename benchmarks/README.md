@@ -787,6 +787,16 @@ allocator ownership and the llama.cpp peak is an external whole-process GTT
 delta; the two are different scopes and are not comparable as a memory result.
 [`same-file llama.cpp comparator`](results/2026-09-12-gfx1151-qwen38-27b-q4km-same-file-llama-comparator.json).
 
+A 2026-09-13 refresh rebuilt upstream llama.cpp at HIP `002a12ad2` and Vulkan
+`37b3a9e0c` and compared both, halo-box `strix-llama.cpp` `654803517` HIP and
+Vulkan, and hipEngine on that same file at 512/128, 1K/128 and 4K/128.
+`strix-llama.cpp` HIP leads prompt processing at every shape, by
+**+9.2%/+12.2%/+16.1%** over hipEngine's **405.0/394.4/372.1** tok/s; both
+Vulkan builds lead text generation by **+4.4% to +6.9%**; upstream llama.cpp
+HIP is 3.7% behind hipEngine at 512/128, level at 1K/128, and 3.0% ahead at
+4K/128. The hipEngine row reproduces the published **404.5/12.2** to +0.13%.
+[`same-GGUF five-engine comparison`](results/20260913-qwen38-27b-comparison/README.md).
+
 Two dense Q4T16 rowtile variants that this backend previously inherited from
 `gfx1100` only as exclusions are now admitted: the narrow col4 rowtile and the
 fused down+residual rowtile. Both are bit-identical to the retained owners at

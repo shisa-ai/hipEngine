@@ -1,0 +1,278 @@
+{
+ "schema": 1,
+ "kind": "qwen38_27b_gfx1151_same_gguf_engine_comparison",
+ "date": "2026-09-13",
+ "status": "diagnostic_comparison",
+ "performance_claim": false,
+ "model": {
+  "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+  "quant": "Q4_K_M",
+  "kv_storage": "bf16"
+ },
+ "shapes": [
+  "512/128",
+  "1K/128",
+  "4K/128"
+ ],
+ "engines": {
+  "hipengine": {
+   "label": "hipEngine production AR",
+   "tier": "resident sweep (explicit token ids)",
+   "pin": "a2f62c881",
+   "artifact": "raw/hipengine-production-ar.json",
+   "artifact_sha256": "27671add3ba53c00f01ce9f61a4043b664929de08511599e8e0c08a630e301e8",
+   "rows": {
+    "512/128": {
+     "prefill_tok_s": 405.00243572998124,
+     "decode_tok_s": 12.226220863852351,
+     "prefill_stdev_pct": 0.05614901646566908,
+     "decode_stdev_pct": 0.004302018315764714,
+     "final_token_ids": [
+      9707,
+      9707,
+      9707
+     ],
+     "tracked_peak_gib": 24.15250550955534
+    },
+    "1K/128": {
+     "prefill_tok_s": 394.4124447031686,
+     "decode_tok_s": 11.994264041291931,
+     "prefill_stdev_pct": 0.07473467830799828,
+     "decode_stdev_pct": 0.0026869443186543977,
+     "final_token_ids": [
+      9707,
+      9707,
+      9707
+     ],
+     "tracked_peak_gib": 24.15250550955534
+    },
+    "4K/128": {
+     "prefill_tok_s": 372.13756245539105,
+     "decode_tok_s": 12.150024585963957,
+     "prefill_stdev_pct": 0.08687396695802803,
+     "decode_stdev_pct": 0.0008613973780908466,
+     "final_token_ids": [
+      9707,
+      9707,
+      9707
+     ],
+     "tracked_peak_gib": 24.15250550955534
+    }
+   },
+   "protocol": "one_resident_session_per_shape_warmup_then_median_three",
+   "graph_gate_passed": true,
+   "graph_gate_cases": 18
+  },
+  "upstream-hip": {
+   "label": "llama.cpp HIP",
+   "tier": "llama-bench split timing",
+   "pin": "002a12ad2 (build 10939)",
+   "artifact": "raw/upstream-hip.json",
+   "artifact_sha256": "51f303985816a6a202d608cd3803eed36f27985a08de0369577f92d2a2342d87",
+   "rows": {
+    "512/128": {
+     "prefill_tok_s": 390.2,
+     "decode_tok_s": 12.346,
+     "prefill_tok_s_mean": 386.151202,
+     "decode_tok_s_mean": 12.336513,
+     "prefill_cv_percent": 2.321670100615147,
+     "decode_cv_percent": 0.17678415286394136,
+     "peak_delta_gib": 16.202621459960938,
+     "prefill_vs_hipengine_percent": -3.654900421352081,
+     "decode_vs_hipengine_percent": 0.9796905968039837
+    },
+    "1K/128": {
+     "prefill_tok_s": 389.893,
+     "decode_tok_s": 12.2576,
+     "prefill_tok_s_mean": 389.111271,
+     "decode_tok_s_mean": 12.248011,
+     "prefill_cv_percent": 0.2984095004536633,
+     "decode_cv_percent": 0.17469775296576726,
+     "peak_delta_gib": 16.235824584960938,
+     "prefill_vs_hipengine_percent": -1.145867673260137,
+     "decode_vs_hipengine_percent": 2.195515771551282
+    },
+    "4K/128": {
+     "prefill_tok_s": 383.404,
+     "decode_tok_s": 11.7021,
+     "prefill_tok_s_mean": 383.401501,
+     "decode_tok_s_mean": 11.686391,
+     "prefill_cv_percent": 0.021440969789004553,
+     "decode_cv_percent": 0.29806464630526225,
+     "peak_delta_gib": 16.425277709960938,
+     "prefill_vs_hipengine_percent": 3.0274927019654063,
+     "decode_vs_hipengine_percent": -3.686614646701303
+    }
+   },
+   "binary": "/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-bench",
+   "status": "complete_measured"
+  },
+  "upstream-vulkan": {
+   "label": "llama.cpp Vulkan",
+   "tier": "llama-bench split timing",
+   "pin": "37b3a9e0c (build 10940)",
+   "artifact": "raw/upstream-vulkan.json",
+   "artifact_sha256": "056123879e4500b3f2291c492748f28f73ed01e72b849da525578c8b3836c748",
+   "rows": {
+    "512/128": {
+     "prefill_tok_s": 384.437,
+     "decode_tok_s": 12.8601,
+     "prefill_tok_s_mean": 384.446898,
+     "decode_tok_s_mean": 12.859259,
+     "prefill_cv_percent": 0.017615436709805372,
+     "decode_cv_percent": 0.017590438142664366,
+     "peak_delta_gib": 16.233375549316406,
+     "prefill_vs_hipengine_percent": -5.077854826456496,
+     "decode_vs_hipengine_percent": 5.184587643281935
+    },
+    "1K/128": {
+     "prefill_tok_s": 383.276,
+     "decode_tok_s": 12.8241,
+     "prefill_tok_s_mean": 381.933301,
+     "decode_tok_s_mean": 12.823316,
+     "prefill_cv_percent": 0.491853942843282,
+     "decode_cv_percent": 0.018435169187127575,
+     "peak_delta_gib": 16.23426055908203,
+     "prefill_vs_hipengine_percent": -2.8235530731160807,
+     "decode_vs_hipengine_percent": 6.918606726108756
+    },
+    "4K/128": {
+     "prefill_tok_s": 369.867,
+     "decode_tok_s": 12.6818,
+     "prefill_tok_s_mean": 369.828925,
+     "decode_tok_s_mean": 12.681084,
+     "prefill_cv_percent": 0.022067770929491252,
+     "decode_cv_percent": 0.019714402964289172,
+     "peak_delta_gib": 16.38623809814453,
+     "prefill_vs_hipengine_percent": -0.6101406266031506,
+     "decode_vs_hipengine_percent": 4.376743522398852
+    }
+   },
+   "binary": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench",
+   "status": "complete_measured"
+  },
+  "halobox-hip": {
+   "label": "strix-llama.cpp HIP",
+   "tier": "llama-bench split timing",
+   "pin": "6548035 (build 372)",
+   "artifact": "raw/halobox-hip.json",
+   "artifact_sha256": "24cbb00ff01eca0f9a8129cafe9c22b6c65575959d340694d8e4279bc9283c68",
+   "rows": {
+    "512/128": {
+     "prefill_tok_s": 442.293,
+     "decode_tok_s": 12.311,
+     "prefill_tok_s_mean": 437.322552,
+     "decode_tok_s_mean": 12.301828,
+     "prefill_cv_percent": 2.648781533681346,
+     "decode_cv_percent": 0.1712428429335868,
+     "peak_delta_gib": 16.171428680419922,
+     "prefill_vs_hipengine_percent": 9.207491358121288,
+     "decode_vs_hipengine_percent": 0.6934206169815216
+    },
+    "1K/128": {
+     "prefill_tok_s": 442.332,
+     "decode_tok_s": 12.2211,
+     "prefill_tok_s_mean": 442.19299,
+     "decode_tok_s_mean": 12.21194,
+     "prefill_cv_percent": 0.11801883155135498,
+     "decode_cv_percent": 0.1706280902133486,
+     "peak_delta_gib": 16.204631805419922,
+     "prefill_vs_hipengine_percent": 12.149605302868993,
+     "decode_vs_hipengine_percent": 1.89120364473514
+    },
+    "4K/128": {
+     "prefill_tok_s": 431.938,
+     "decode_tok_s": 11.6687,
+     "prefill_tok_s_mean": 432.299681,
+     "decode_tok_s_mean": 11.659838,
+     "prefill_cv_percent": 0.1742855785267165,
+     "decode_cv_percent": 0.16997663260844617,
+     "peak_delta_gib": 16.394084930419922,
+     "prefill_vs_hipengine_percent": 16.0694440921366,
+     "decode_vs_hipengine_percent": -3.9615112097797445
+    }
+   },
+   "binary": "/tmp/hipengine-halobox-head-20260913/build-hip/bin/llama-bench",
+   "status": "complete_measured"
+  },
+  "halobox-vulkan": {
+   "label": "strix-llama.cpp Vulkan",
+   "tier": "llama-bench split timing",
+   "pin": "6548035 (build 372)",
+   "artifact": "raw/halobox-vulkan.json",
+   "artifact_sha256": "95fd61dbbe1a694f1b771e85c75a7fd5b41ba604e7907240082e0fa6d09d36be",
+   "rows": {
+    "512/128": {
+     "prefill_tok_s": 409.401,
+     "decode_tok_s": 12.8581,
+     "prefill_tok_s_mean": 409.552484,
+     "decode_tok_s_mean": 12.857062,
+     "prefill_cv_percent": 0.09911623439207366,
+     "decode_cv_percent": 0.017367887002489372,
+     "peak_delta_gib": 16.236167907714844,
+     "prefill_vs_hipengine_percent": 1.0860587201384941,
+     "decode_vs_hipengine_percent": 5.168229358720677
+    },
+    "1K/128": {
+     "prefill_tok_s": 402.089,
+     "decode_tok_s": 12.8251,
+     "prefill_tok_s_mean": 403.81628,
+     "decode_tok_s_mean": 12.824459,
+     "prefill_cv_percent": 0.6135901702625759,
+     "decode_cv_percent": 0.01662448295089875,
+     "peak_delta_gib": 16.23705291748047,
+     "prefill_vs_hipengine_percent": 1.9463268464078753,
+     "decode_vs_hipengine_percent": 6.926944044651684
+    },
+    "4K/128": {
+     "prefill_tok_s": 388.387,
+     "decode_tok_s": 12.6816,
+     "prefill_tok_s_mean": 388.340279,
+     "decode_tok_s_mean": 12.642336,
+     "prefill_cv_percent": 0.03216766499773772,
+     "decode_cv_percent": 0.5464021839001906,
+     "peak_delta_gib": 16.39391326904297,
+     "prefill_vs_hipengine_percent": 4.366513672361894,
+     "decode_vs_hipengine_percent": 4.375097435194775
+    }
+   },
+   "binary": "/tmp/hipengine-halobox-head-20260913/build-vulkan/bin/llama-bench",
+   "status": "complete_measured"
+  },
+  "halobox-hip-blocking": {
+   "label": "strix-llama.cpp HIP, HIP_LAUNCH_BLOCKING=1",
+   "tier": "llama-bench split timing, diagnostic",
+   "pin": "6548035 (build 372)",
+   "artifact": "raw/halobox-hip-launch-blocking.json",
+   "artifact_sha256": "d672cc90bb749db968ee2d0eaf3d49a176078b22c603fac24a875542d43c7c75",
+   "rows": {
+    "512/128": {
+     "prefill_tok_s": 442.856,
+     "decode_tok_s": 12.2992,
+     "prefill_tok_s_mean": 437.890199,
+     "decode_tok_s_mean": 12.285554,
+     "prefill_cv_percent": 2.6290204773457377,
+     "decode_cv_percent": 0.24821835466272016,
+     "peak_delta_gib": 16.171428680419922,
+     "prefill_vs_hipengine_percent": 9.346502867764483,
+     "decode_vs_hipengine_percent": 0.5969067380699578
+    },
+    "4K/128": {
+     "prefill_tok_s": 418.904,
+     "decode_tok_s": 11.6528,
+     "prefill_tok_s_mean": 418.963535,
+     "decode_tok_s_mean": 11.63974,
+     "prefill_cv_percent": 0.13011585841235565,
+     "decode_cv_percent": 0.25265169153262873,
+     "peak_delta_gib": 16.394084930419922,
+     "prefill_vs_hipengine_percent": 12.566975834430828,
+     "decode_vs_hipengine_percent": -4.092375142502713
+    }
+   },
+   "binary": "/tmp/hipengine-halobox-head-20260913/build-hip/bin/llama-bench",
+   "status": "diagnostic"
+  }
+ },
+ "protocol_note": "hipEngine rows come from its resident sweep with explicit token ids; llama.cpp-family rows come from llama-bench split prefill/decode timing. The two tiers are separate and are not interchangeable."
+}
