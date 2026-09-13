@@ -1283,22 +1283,11 @@ __global__ void gguf_q4_t16_dense_dual_wmma_smallm_silu_bf16_kernel(
 // K16 association. The two 16-KiB weight slabs share LDS; after the final K
 // block that storage holds independently rounded BF16 gate/up tiles so SiLU
 // observes the exact unfused projection boundary without global intermediates.
-//
-// ``out_tiles_per_block`` selects the column width of the block (32 columns at
-// the default 2). It is a pure tiling knob: the K16 WMMA association and the
-// BF16 gate/up rounding boundary do not move, so every instantiation is
-// bit-identical to the default at any row count. A 16-column block halves the
-// per-K-block LDS weight traffic per WMMA at the cost of doubling activation
-// reads per FLOP, and it halves the epilogue LDS union at row counts up to 256.
-// It does not by itself raise resident workgroups: measured on gfx1151, the
-// 16-column 256-row instantiation allocates 219 VGPRs (2 waves/SIMD) against
-// the parent's 241, so both stay VGPR-bound at 2 workgroups per CU.
 template <
     bool qmicro = false,
     bool external_meta = false,
     int row_tiles_per_wave = 4,
-    int active_waves_per_block = 4,
-    int out_tiles_per_block = 2>
+    int active_waves_per_block = 4>
 __launch_bounds__(128, 1)
 __global__ void gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel(
     const uint16_t* __restrict__ x,
@@ -1311,15 +1300,12 @@ __global__ void gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel(
     int64_t in_features,
     int64_t out_features) {
   constexpr int MATRICES = 2;
-  constexpr int OUT_TILES_PER_BLOCK = out_tiles_per_block;
+  constexpr int OUT_TILES_PER_BLOCK = 2;
   constexpr int ROW_TILES_PER_WAVE = row_tiles_per_wave;
   constexpr int WAVES_PER_BLOCK = active_waves_per_block;
   static_assert(
-      ROW_TILES_PER_WAVE >= 1 && ROW_TILES_PER_WAVE <= 8,
-      "dense dual WMMA row tiles per wave must be in [1, 8]");
-  static_assert(
-      OUT_TILES_PER_BLOCK >= 1 && OUT_TILES_PER_BLOCK <= 4,
-      "dense dual WMMA out tiles per block must be in [1, 4]");
+      ROW_TILES_PER_WAVE >= 1 && ROW_TILES_PER_WAVE <= 4,
+      "dense dual WMMA row tiles per wave must be in [1, 4]");
   static_assert(
       WAVES_PER_BLOCK >= 1 && WAVES_PER_BLOCK <= 4,
       "dense dual WMMA active waves per block must be in [1, 4]");
@@ -2210,8 +2196,7 @@ template <
     bool qmicro = false,
     bool external_meta = false,
     int row_tiles_per_wave = 4,
-    int active_waves_per_block = 4,
-    int out_tiles_per_block = 2>
+    int active_waves_per_block = 4>
 int launch_q4_t16_dense_dual_wmma_prefill_silu_bf16(
     const uint16_t* x,
     const uint8_t* tiles_a,
@@ -2226,7 +2211,7 @@ int launch_q4_t16_dense_dual_wmma_prefill_silu_bf16(
   if (x == nullptr || tiles_a == nullptr || tiles_b == nullptr ||
       out == nullptr || rows <= 0 || in_features <= 0 ||
       (in_features % QK_K) != 0 || out_features <= 0 ||
-      (out_features % (out_tiles_per_block * T16_COLS)) != 0 ||
+      (out_features % (2 * T16_COLS)) != 0 ||
       (external_meta && (metadata_a == nullptr || metadata_b == nullptr))) {
     return static_cast<int>(hipErrorInvalidValue);
   }
@@ -2251,7 +2236,7 @@ int launch_q4_t16_dense_dual_wmma_prefill_silu_bf16(
       return static_cast<int>(metadata_status);
     }
   }
-  constexpr int Q4_DENSE_TILE_COLS = out_tiles_per_block * T16_COLS;
+  constexpr int Q4_DENSE_TILE_COLS = 2 * T16_COLS;
   constexpr int Q4_DENSE_TILE_ROWS =
       active_waves_per_block * row_tiles_per_wave * 16;
   const dim3 block(128);
@@ -2262,8 +2247,7 @@ int launch_q4_t16_dense_dual_wmma_prefill_silu_bf16(
           (rows + Q4_DENSE_TILE_ROWS - 1) / Q4_DENSE_TILE_ROWS));
   hipLaunchKernelGGL(
       (gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel<
-          qmicro, external_meta, row_tiles_per_wave, active_waves_per_block,
-          out_tiles_per_block>),
+          qmicro, external_meta, row_tiles_per_wave, active_waves_per_block>),
       grid,
       block,
       0,
@@ -2870,46 +2854,6 @@ extern "C" int hipengine_gguf_q4_k_t16_dense_dual_wmma_prefill_row128_silu_bf16_
     int64_t out_features,
     hipStream_t stream) {
   return launch_q4_t16_dense_dual_wmma_prefill_silu_bf16<false, false, 2>(
-      x, tiles_a, tiles_b, nullptr, nullptr, out, rows, in_features,
-      out_features, stream);
-}
-
-// 16-column dual arms. Registered but unselected: the 32-column default stays
-// the owner until a same-protocol gate admits them. ``row256`` keeps the
-// parent's 256-row block with half the per-K-block weight traffic; ``row512``
-// doubles the row tiles per wave to halve the LDS weight traffic per WMMA.
-//
-// There is deliberately no launch-bounds occupancy arm here. Measured on
-// gfx1151 with this toolchain, ``__launch_bounds__(128, 4)`` on this kernel
-// allocates the same 219 VGPRs as min-blocks 1 (literal and template-parameter
-// spellings both), so the floor cannot raise resident workgroups; a cap that
-// bites would have to spill the accumulators.
-extern "C" int hipengine_gguf_q4_k_t16_dense_dual_wmma_prefill_col16_row256_silu_bf16_bf16_out(
-    const uint16_t* x,
-    const uint8_t* tiles_a,
-    const uint8_t* tiles_b,
-    uint16_t* out,
-    int64_t rows,
-    int64_t in_features,
-    int64_t out_features,
-    hipStream_t stream) {
-  return launch_q4_t16_dense_dual_wmma_prefill_silu_bf16<
-      false, false, 4, 4, 1>(
-      x, tiles_a, tiles_b, nullptr, nullptr, out, rows, in_features,
-      out_features, stream);
-}
-
-extern "C" int hipengine_gguf_q4_k_t16_dense_dual_wmma_prefill_col16_row512_silu_bf16_bf16_out(
-    const uint16_t* x,
-    const uint8_t* tiles_a,
-    const uint8_t* tiles_b,
-    uint16_t* out,
-    int64_t rows,
-    int64_t in_features,
-    int64_t out_features,
-    hipStream_t stream) {
-  return launch_q4_t16_dense_dual_wmma_prefill_silu_bf16<
-      false, false, 8, 4, 1>(
       x, tiles_a, tiles_b, nullptr, nullptr, out, rows, in_features,
       out_features, stream);
 }

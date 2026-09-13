@@ -1,27 +1,38 @@
 # hipEngine Refactor / Dead-Path Ledger
 
-## gfx1151 Q4 dual-SiLU prefill 16-column candidate arms (2026-09-13)
+## gfx1151 Q4 dual-SiLU prefill 16-column arms: removed (2026-09-13)
 
-- `dense_dual_wmma_prefill_col16_row256_bf16_bf16_out` and
-  `dense_dual_wmma_prefill_col16_row512_bf16_bf16_out` are registered under
-  `linear_pair_silu`/`gguf_q4_k_t16_v1` on both `hip_gfx1100` and `hip_gfx1151`
-  but are selected by nothing: the 32-column
-  `dense_dual_wmma_prefill_bf16_bf16_out` stays the strict owner and fallback.
-  They exist to measure the 16-column direction the tile-knob screen ranked
-  first, and they are bit-identical to the parent at every row count.
-- Removal condition: once a same-protocol prefill gate decides the column
-  direction, delete the losing arm's `out_tiles_per_block` instantiation, its
-  `extern "C"` export, its Python wrapper, its registry entry, its `__all__`
-  line, and its test rows. Keep `out_tiles_per_block` on the kernel only while a
-  shipped variant uses it. The winning arm either becomes a dispatch owner (with
-  its own dispatch test) or is removed by the same checklist.
+- `dense_dual_wmma_prefill_col16_row256_bf16_bf16_out`,
+  `dense_dual_wmma_prefill_col16_row512_bf16_bf16_out`, and the
+  `out_tiles_per_block` template parameter they were built on were added,
+  measured, and removed inside one day. Same-host A/B on real Qwen3.8-27B
+  gate/up tiles at rows 256/512/1024/2048/4096, three harness invocations per
+  shape: the parent takes 3.31/6.62/13.12/26.03/52.15 ms, `col16_row256`
+  **0.71/0.67/0.63/0.61/0.61x** and `col16_row512` **0.41/0.71/0.69/0.68/0.67x**,
+  bit-identical output in all 30 cells. Do not re-attempt 16-column blocks for
+  this kernel.
+- Mechanism, so the next attempt starts from the right model: the weight decode
+  needs `threads/4 >= 2 x (columns/2)` pairs, which is exactly saturated at 32
+  columns with 128 threads. Halving columns halves per-block compute but not
+  per-block decode *time* (the same 32 k-values per participating thread, half
+  the threads busy), so the decode share of the issue stream rises while the
+  WMMA work per block falls. The instruction-stream model in
+  `benchmarks/results/2026-09-13-q4-dual-prefill-tile-knob-screen` assumed a
+  decode-time saving that does not exist; the sibling measurement it contradicted
+  (16 columns 1.7x slower) was right.
 - The screen's occupancy arm (16 columns x 256 rows with
   `__launch_bounds__(128, 4)`) was built, measured, and dropped inside the same
-  unit: gfx1151 allocates 219 VGPRs with min-blocks 1 and with min-blocks 4,
+  day: gfx1151 allocates 219 VGPRs with min-blocks 1 and with min-blocks 4,
   literal and template-parameter spellings both, so the floor cannot raise
   resident workgroups. Re-attempt occupancy only with a mechanism that caps
   registers directly (for example `amdgpu_num_vgpr`), and expect accumulator
   spills once the budget falls to 128 VGPRs.
+- Open directions that the removal leaves untouched, with their prerequisites:
+  a wider column tile (48 columns) needs the decode to reach 192 threads or a
+  lane remap, since 128 threads cannot cover 48 decode pairs; 32 columns x 512
+  rows per block is expressible today but the epilogue union becomes the whole
+  64 KiB of LDS, so it needs either that occupancy drop or the 256-thread
+  register-local-SiLU epilogue rewrite.
 
 ## Dense Qwen35 execution-profile module names (architecture-scope rename)
 
