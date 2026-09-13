@@ -75,27 +75,36 @@
   wrong and was corrected in
   `worklog/entries/20260912T000826.517239Z-lhl-p3-c1-graph-floor-correction-5a1217.md`.
 
-## Unpinned H2D sources: conditional copies and helpers that hoist without synchronizing
+## H2D uploads should retain the source instead of taking a bare address
 
-- `tests/test_device_memory_hygiene.py` forbids an *always-allocating* array as
-  the argument of `host_array_ptr`. Two residues are outside that guard and are
-  not yet fixed:
+- `copy_host_to_device(buffer, host_ptr, nbytes)` takes an `int`, so every call
+  site has to keep its own array alive. That is the whole defect class: the
+  inline form (`copy(buf, host_array_ptr(np.zeros_like(x)))`) frees the array
+  before the copy is entered, and no amount of care at the call site makes the
+  next author safe. The durable fix is an upload API that owns the reference,
+  e.g. `upload_host_array(buffer, array, nbytes=None)` doing the
+  `np.ascontiguousarray` + `host_array_ptr` + `memcpy` internally, with
+  `copy_host_to_device` kept only for callers that genuinely hold a raw address.
+  Measured mechanism and the tests that pin it: `tests/test_h2d_source_lifetime.py`.
+- Two residues are outside the AST guard in `tests/test_device_memory_hygiene.py`
+  (which is documented as partial, with its gaps pinned by
+  `test_the_lint_is_documented_as_partial_and_its_gaps_are_pinned`):
   - `host_array_ptr(np.ascontiguousarray(x))` with a non-contiguous `x` copies,
-    so the temporary is the only reference and the DMA can read it after the
-    call returns. On a contiguous `x` it is a no-op and safe, which is why the
-    guard does not flag it. Making it safe everywhere means hoisting the result
-    into a local (and synchronizing) at each of the ~100 call sites.
-  - `_copy_array_to_tensor`-style helpers (e.g.
-    `hipengine/runtime/gguf_native_spec_cycle.py`) already hoist into a local but
-    never `device_synchronize()`, so the local can still be released while the
-    copy is in flight. The durable fix is a persistent *pinned* staging buffer
-    reused across calls; a per-call `device_synchronize()` in the decode path
-    would serialize metadata staging and is not acceptable as a hot-path fix.
-- The host-source class is a heap-choreography race, so it has no deterministic
-  poison probe: it was reproduced once (Surya `test_surya_kv_spans.py`, 4
-  denormal values) by a specific preceding allocation pattern and is documented
-  in `docs/KERNELS.md` "Device-memory hygiene". Remove this entry when the
-  pinned-staging-buffer change lands and the guard covers the conditional form.
+    so the temporary is the only reference and is freed before the copy is
+    entered. On a contiguous `x` it is a no-op and safe, which is why the guard
+    does not flag it; the ~100 existing call sites are safe as written, so this
+    is only worth closing with the upload API above.
+  - an allocation reached through a factory or a view, e.g.
+    `host_array_ptr(_fresh())` or `host_array_ptr(np.zeros(8).reshape(2, -1))`,
+    which a source-level lint cannot see. The first form is demonstrated in
+    `tests/test_h2d_source_lifetime.py`.
+- `_copy_array_to_tensor`-style helpers (e.g.
+  `hipengine/runtime/gguf_native_spec_cycle.py`) do bind the source to a local,
+  which is sufficient on its own -- the transfer is complete when the copy
+  returns (`tests/test_h2d_source_lifetime.py::test_transfer_is_complete_when_the_copy_returns`).
+  Their per-call `device_synchronize()` is defensive only and is the part worth
+  removing; a persistent pinned staging buffer is the alternative if a future
+  async copy path needs one.
 
 ## Qwen4Exp Q8 expanded F32 cache: removed
 
