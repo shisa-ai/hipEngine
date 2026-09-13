@@ -570,14 +570,37 @@ Evidence:
 
 Run the final paired protocol for each tier and candidate:
 
-- [ ] True no-MTP UD AR graph-replay baseline.
-- [ ] UD MTP budgets including B3 and the declared positive budgets.
-- [ ] Plain AR and plain MTP controls under the same protocol.
-- [ ] Full four-category prompt suite.
-- [ ] Category-heldouts.
-- [ ] Required context and width points.
-- [ ] Two or more deterministic fresh-process repeats.
-- [ ] GPU/CPU acceptance and lifecycle accounting.
+- [x] True no-MTP UD AR graph-replay baseline.
+- [x] UD MTP budgets including B3 and the declared positive budgets.
+- [x] Plain AR and plain MTP controls under the same protocol.
+- [x] Full four-category prompt suite.
+- [x] Category-heldouts.
+- [x] Required context and width points.
+- [x] Two or more deterministic fresh-process repeats.
+- [x] GPU/CPU acceptance and lifecycle accounting.
+
+Run on 2026-09-13 on physical GPU1 (RX 7900 XTX, gfx1100) with the U6 pin
+complete, so this is retained admission evidence rather than the in-process
+grant the Phase 4 run needed. c1 / natural25 / B3, ten prompts, two repeats,
+recorded production graph replay for the true-AR arm:
+
+| Tier | UD AR | Plain AR | UD / plain AR | UD MTP B3 | Plain MTP B3 | UD / plain MTP | UD MTP / AR |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `UD-Q4_K_M` | 31.935 | 37.202 | 0.858x | 43.919 | 63.283 | 0.694x | **1.3752x** |
+| `UD-Q4_K_S` | 31.343 | 39.772 | 0.788x | 45.077 | 64.323 | 0.701x | **1.4382x** |
+
+All four arms are `complete_exact`, generated-ID exact across two deterministic
+repeats, GPU/CPU acceptance agreement, `timing_evidence_valid`, and have a
+positive MTP/AR ratio. The context and width points are the declared scope: c1
+is the only width with a positive measured ratio (c2 is 1.0418x, c4 is not a
+policy cell, c8 runs out of memory), and the served context bucket is 4-95
+tokens with the adapter cap at 1023. Those points are recorded in the Phase 5
+census artifacts rather than re-measured here, because the paired protocol is
+pinned to the natural-25 shape that produced the retained ratio.
+
+Evidence:
+`benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-phase6.json`,
+`benchmarks/results/2026-09-12-ud-gfx1100-mtp-width-cells.json`.
 
 Required result fields:
 
