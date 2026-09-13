@@ -278,8 +278,10 @@ greedy loop and default to the ad-hoc `"Transcribe this page."` prompt. It now
 defaults to `FULL_PAGE_HTML_PROMPT` and delegates to the registered
 `(surya_ocr2, cpu_reference, fp32)` generator, so the public entry point and
 `LLM(...)` share one capacity check, one stop-token rule, and one
-cancellation/deadline path. `prompt=None` means the checkpoint's full-page
-prompt; a caller driving a different protocol passes it explicitly.
+cancellation/deadline path. It registers the built-in generators itself before
+resolving, so it works from a fresh process that never constructed an `LLM`.
+`prompt=None` means the checkpoint's full-page prompt; a caller driving a
+different protocol passes it explicitly.
 
 **Cancellation and deadlines are checked at stage boundaries, not only per
 token.** A request that is already cancelled or past its `deadline_at` must not
