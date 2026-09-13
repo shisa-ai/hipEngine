@@ -27,6 +27,7 @@ _S = ctypes.c_void_p
 
 _ARGTYPES_RMSNORM = (_P, _P, _P, _I, _I, _F, _S)
 _ARGTYPES_ADD_BIAS = (_P, _P, _P, _I, _I, _S)
+_ARGTYPES_ADD_BIAS_F32 = (_P, _P, _P, _I, _I, _S)
 _ARGTYPES_ELEMENTWISE_2PTR = (_P, _P, _I, _S)
 _ARGTYPES_SCALE_RESIDUAL = (_P, _P, _P, _P, _I, _I, _S)
 _ARGTYPES_DEPTHWISE = (_P, _P, _P, _P, _P, _P, _P, _I, _I, _I, _I, _S)
@@ -85,6 +86,26 @@ def f32_to_bf16_bits(host: np.ndarray) -> np.ndarray:
     bits = array.view(np.uint32)
     rounded = (bits + np.uint32(0x7FFF) + ((bits >> np.uint32(16)) & np.uint32(1))) & np.uint32(0xFFFF0000)
     return (rounded >> np.uint32(16)).astype(np.uint16)
+
+
+def vv_add_bias_f32(
+    x_ptr: int,
+    b_ptr: int,
+    out_ptr: int,
+    total: int,
+    width: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """``out[i] = x[i] + b[i % width]`` in fp32 (GEMV bias add)."""
+    library = library or _library()
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(library, "hipengine_vv_add_bias_f32", _ARGTYPES_ADD_BIAS_F32, ctypes.c_int)
+    err = fn(x_ptr, b_ptr, out_ptr, total, width, stream)
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
 
 
 def vv_add_bias_bf16(
