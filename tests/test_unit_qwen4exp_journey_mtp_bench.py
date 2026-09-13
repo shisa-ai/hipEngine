@@ -1,6 +1,8 @@
 import pytest
 
-from scripts.qwen4exp_journey_mtp_bench import summarize, validate_output
+from scripts.qwen4exp_journey_mtp_bench import (
+    summarize, validate_output, wait_server, validate_local_mtp,
+)
 
 
 def test_output_requires_exact_token_count():
@@ -35,3 +37,20 @@ def test_summary_rejects_missing_and_duplicate_cells():
         summarize([row], expected_ids=["a"], repetitions=1)
     with pytest.raises(ValueError, match="duplicate"):
         summarize([row, row], expected_ids=["a"], repetitions=1)
+
+
+def test_dead_server_fails_before_health_wait():
+    class DeadServer:
+        def poll(self):
+            return -6
+
+    with pytest.raises(RuntimeError, match="exited.*-6"):
+        wait_server(DeadServer(), "127.0.0.1", 1, 600)
+
+
+def test_mtp_requires_real_proposals():
+    with pytest.raises(ValueError, match="proposals"):
+        validate_local_mtp({})
+    with pytest.raises(ValueError, match="proposals"):
+        validate_local_mtp({"proposed_draft_tokens": 0})
+    validate_local_mtp({"proposed_draft_tokens": 2, "accepted_draft_tokens": 0})
