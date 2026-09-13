@@ -367,6 +367,7 @@ def test_gpu_factory_declares_the_budgets_it_honors() -> None:
     assert "max_sequence_length" in parameters
     assert "vision_max_scratch_bytes" in parameters
     assert "prefill_max_scratch_bytes" in parameters
+    assert "vision_max_seconds" in parameters
 
     forwarded = _factory_capacity_kwargs(
         make_surya_generator_gpu,
@@ -374,10 +375,12 @@ def test_gpu_factory_declares_the_budgets_it_honors() -> None:
         resident_capacity=None,
         vision_max_scratch_bytes=256 * _MIB,
         prefill_max_scratch_bytes=128 * _MIB,
+        vision_max_seconds=45.0,
     )
     assert forwarded["max_sequence_length"] == 16384
     assert forwarded["vision_max_scratch_bytes"] == 256 * _MIB
     assert forwarded["prefill_max_scratch_bytes"] == 128 * _MIB
+    assert forwarded["vision_max_seconds"] == 45.0
 
     # an unset prefill budget is left to the runner default rather than
     # forwarded as an explicit ``None`` (which the runner reads as "no budget")
@@ -390,11 +393,12 @@ def test_gpu_factory_declares_the_budgets_it_honors() -> None:
 
 
 def test_llm_rejects_a_non_positive_score_tile_budget() -> None:
-    """``LLM`` validates both score-tile budgets before it loads anything.
+    """``LLM`` validates the score-tile and vision time budgets up front.
 
-    A zero or negative budget would otherwise be read as "no budget" and
-    silently restore the quadratic score matrix, which is the failure mode the
-    budgets exist to prevent.
+    A zero or negative score-tile budget would otherwise be read as "no
+    budget" and silently restore the quadratic score matrix, which is the
+    failure mode the budgets exist to prevent. A zero vision time budget would
+    reject every page, including the ones the default admits.
     """
 
     from hipengine.llm import LLM
@@ -403,6 +407,10 @@ def test_llm_rejects_a_non_positive_score_tile_budget() -> None:
         LLM("datalab-to/surya-ocr-2", prefill_max_scratch_bytes=0)
     with pytest.raises(ValueError, match="vision_max_scratch_bytes"):
         LLM("datalab-to/surya-ocr-2", vision_max_scratch_bytes=-1)
+    with pytest.raises(ValueError, match="vision_max_seconds"):
+        LLM("datalab-to/surya-ocr-2", vision_max_seconds=0)
+    with pytest.raises(ValueError, match="vision_max_seconds"):
+        LLM("datalab-to/surya-ocr-2", vision_max_seconds=-1.0)
 
 
 def _settings(**overrides) -> SuryaGreedySettings:
@@ -716,3 +724,219 @@ def test_cpu_ocr_does_not_prefill_after_a_cancel_during_vision(
         _multimodal_call(generator, _request(cancellation_token=token))
     assert "vision_forward" in calls
     assert "prefill" not in calls
+
+
+# -- vision compute-time admission -------------------------------------------
+#
+# The byte budget bounds the score tile, not the time. At the checkpoint's
+# ``max_pixels`` ceiling (a 256x256 patch grid, 65536 patches) one vision
+# forward is 1.7e14 FLOPs and about 2.7 minutes on gfx1151, so memory-only
+# admission let a page through that nothing downstream could serve.
+
+
+def _admission_runner(**overrides):
+    """A ``SuryaGpuRunner`` carrying only the admission state.
+
+    ``check_vision_capacity`` reads the spec, the two declared budgets, the
+    scratch cache, and free device memory; nothing else. Building the runner
+    through ``__new__`` keeps these contract tests free of a checkpoint, a
+    device, and HIP.
+    """
+
+    from types import SimpleNamespace
+
+    from hipengine.kernels.cpu_reference.surya import SuryaSpec
+    from hipengine.runtime.surya import SuryaGpuRunner
+
+    runner = SuryaGpuRunner.__new__(SuryaGpuRunner)
+    runner.spec = SuryaSpec()
+    runner.max_vision_scratch_bytes = 512 * _MIB
+    runner.max_vision_seconds = 120.0
+    runner._scratch = {}
+    runner.runtime = SimpleNamespace(mem_get_info=lambda: (1 << 40, 1 << 40))
+    for name, value in overrides.items():
+        setattr(runner, name, value)
+    return runner
+
+
+def test_vision_time_estimate_tracks_the_measured_page_costs() -> None:
+    """The estimate reproduces the measured production rows on gfx1151.
+
+    Calibration rows are the retained vision-tiling artifacts: the 256/1024/
+    4096/6400-patch pages at the 512 MiB budget and the 34320-patch A4 page at
+    its production shape (``benchmarks/results/2026-09-13-gfx1151-surya-vision-
+    tiling-cost.json`` and ``...-a4-v2.json``). The estimate gates admission
+    rather than reporting a benchmark, so the contract is a stated band.
+    """
+
+    from hipengine.kernels.cpu_reference.surya import SuryaSpec
+    from hipengine.runtime.surya import vision_forward_seconds
+
+    spec = SuryaSpec()
+    for patches, tiles, measured in (
+        (256, 2, 0.02807),
+        (1024, 8, 0.13600),
+        (4096, 32, 0.88159),
+        (6400, 34, 2.13113),
+        (34320, 108, 43.31830),
+    ):
+        estimate = vision_forward_seconds(spec, patches, tiles)
+        assert 0.85 * measured <= estimate <= 1.15 * measured, (
+            patches,
+            estimate,
+            measured,
+        )
+
+
+def test_vision_time_estimate_follows_the_tile_plan() -> None:
+    """The estimate is a plan model: more query tiles means more key re-reads.
+
+    On the A4 page the measured curve is 43.3 s at 108 tiles against 49.6 s at
+    358 tiles, so the estimate has to move with ``max_vision_scratch_bytes``
+    rather than being a function of the patch count alone. It is also monotone
+    in the patch count, which is what lets the budget be inverted.
+    """
+
+    from hipengine.kernels.cpu_reference.surya import SuryaSpec
+    from hipengine.runtime.surya import plan_vision_attention, vision_forward_seconds
+
+    spec = SuryaSpec()
+    heads = spec.vision_num_heads
+    patches = 34320
+    wide = plan_vision_attention(patches, heads, 512 * _MIB)[0]
+    # the sweep's 96-row row, whose budget is exactly one 96-row tile
+    narrow = plan_vision_attention(patches, heads, 96 * heads * patches * 4)[0]
+    assert (wide, narrow) == (320, 96)
+    wide_s = vision_forward_seconds(spec, patches, -(-patches // wide))
+    narrow_s = vision_forward_seconds(spec, patches, -(-patches // narrow))
+    assert narrow_s > wide_s, (narrow_s, wide_s)
+    # measured: 43.32 s at 108 tiles, 49.60 s at 358 tiles
+    assert 40.0 <= wide_s <= 46.0
+    assert 47.0 <= narrow_s <= 52.0
+    # monotone in the patch count at a fixed plan
+    estimates = [
+        vision_forward_seconds(spec, n, -(-n // 128)) for n in (256, 1024, 4096, 16384, 65536)
+    ]
+    assert estimates == sorted(estimates)
+
+
+def test_vision_time_budget_rejects_the_checkpoint_ceiling() -> None:
+    """The 65536-patch ceiling passes the byte budget but not the time budget.
+
+    ``SURYA_MAX_PIXELS`` admits a 256x256 patch grid on memory grounds (502 MB
+    of score tile at the default budget) and the estimate puts it at ~161 s, so
+    the default budget has to reject it while still admitting the 34320-patch
+    A4 page that the benchmark suite measures.
+    """
+
+    from hipengine.runtime.surya import DEFAULT_MAX_VISION_SECONDS
+
+    runner = _admission_runner()
+    assert runner.max_vision_seconds == DEFAULT_MAX_VISION_SECONDS
+    a4 = runner.vision_time_seconds([(1, 220, 156)])
+    ceiling = runner.vision_time_seconds([(1, 256, 256)])
+    assert a4 < DEFAULT_MAX_VISION_SECONDS < ceiling, (a4, ceiling)
+    assert 40.0 <= a4 <= 47.0
+    assert 150.0 <= ceiling <= 170.0
+
+
+def test_check_vision_capacity_rejects_a_page_over_the_time_budget() -> None:
+    """An over-large page is rejected by admission, with the estimate named."""
+
+    from hipengine.runtime.surya import SuryaGpuRuntimeError
+
+    runner = _admission_runner()
+    runner.check_vision_capacity([(1, 220, 156)])  # A4: ~43 s, inside 120 s
+    with pytest.raises(SuryaGpuRuntimeError, match="vision time budget"):
+        runner.check_vision_capacity([(1, 256, 256)])
+    with pytest.raises(SuryaGpuRuntimeError, match="161"):
+        runner.check_vision_capacity([(1, 256, 256)])
+    with pytest.raises(SuryaGpuRuntimeError, match="max_vision_seconds"):
+        runner.check_vision_capacity([(1, 256, 256)])
+    # the rejection is still free: nothing was allocated
+    assert runner._scratch == {}
+
+
+def test_check_vision_capacity_time_budget_can_be_raised_or_disabled() -> None:
+    """``max_vision_seconds`` is a declared budget, not a hard ceiling."""
+
+    runner = _admission_runner(max_vision_seconds=200.0)
+    runner.check_vision_capacity([(1, 256, 256)])
+    runner = _admission_runner(max_vision_seconds=None)
+    runner.check_vision_capacity([(1, 256, 256)])
+    runner = _admission_runner(max_vision_seconds=1.0)
+    with pytest.raises(Exception, match="vision time budget"):
+        runner.check_vision_capacity([(1, 64, 64)])
+
+
+def test_vision_patch_ceiling_inverts_the_time_budget() -> None:
+    """The rejection can name the largest page the budget admits."""
+
+    from hipengine.kernels.cpu_reference.surya import SuryaSpec
+    from hipengine.runtime.surya import plan_vision_attention, vision_forward_seconds
+
+    runner = _admission_runner()
+    spec = SuryaSpec()
+    heads = spec.vision_num_heads
+    ceiling = runner.vision_patch_ceiling()
+    assert ceiling is not None and 0 < ceiling < 65536
+
+    def estimate(n: int) -> float:
+        block = plan_vision_attention(n, heads, runner.max_vision_scratch_bytes)[0]
+        return vision_forward_seconds(spec, n, -(-n // block))
+
+    assert estimate(ceiling) <= runner.max_vision_seconds
+    assert estimate(ceiling + 1) > runner.max_vision_seconds
+    # an unbounded budget has no ceiling; a millisecond admits one tiny tile
+    assert _admission_runner(max_vision_seconds=None).vision_patch_ceiling() is None
+    assert runner.vision_patch_ceiling(seconds=0.0) == 0
+    tiny = _admission_runner(max_vision_seconds=0.001).vision_patch_ceiling()
+    assert tiny is not None and 0 < tiny < 64
+
+    # Below the shape envelope's crossing the tile is envelope-chosen, the
+    # estimate dips by under 2% at each tile-count step, and the bisection can
+    # stop slightly short of the true maximum -- but it is never unsound, and
+    # never short by more than the documented band.
+    small = _admission_runner(max_vision_seconds=1.0)
+    short = small.vision_patch_ceiling()
+    assert short is not None and estimate(short) <= 1.0
+    exact = max(n for n in range(1, 20001) if estimate(n) <= 1.0)
+    assert 0.98 * exact <= short <= exact
+
+
+def test_llm_forwards_the_vision_time_budget() -> None:
+    """The public budget reaches a factory that declares it, and only then.
+
+    Same opt-in rule as the score-tile budgets: a factory that does not declare
+    ``vision_max_seconds`` keeps its own default, and an unset value is not
+    forwarded at all so the generator default (not "unbounded") applies.
+    """
+
+    from hipengine.llm import _factory_capacity_kwargs
+
+    def old(*, model_path, weight_index, model_plugin):
+        pass
+
+    def new(
+        *,
+        model_path,
+        weight_index,
+        model_plugin,
+        max_sequence_length=None,
+        vision_max_scratch_bytes=None,
+        vision_max_seconds=None,
+    ):
+        pass
+
+    base = {"max_sequence_length": 8192, "resident_capacity": 1}
+    assert _factory_capacity_kwargs(old, **base) == {}
+    assert _factory_capacity_kwargs(new, **base, vision_max_seconds=30.0) == {
+        "max_sequence_length": 8192,
+        "vision_max_seconds": 30.0,
+    }
+    assert _factory_capacity_kwargs(new, **base, vision_max_seconds=None) == {
+        "max_sequence_length": 8192
+    }
+    # `math.inf` is how a caller disables the budget through the public API
+    forwarded = _factory_capacity_kwargs(new, **base, vision_max_seconds=float("inf"))
+    assert forwarded["vision_max_seconds"] == float("inf")

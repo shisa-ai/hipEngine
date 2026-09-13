@@ -6586,3 +6586,22 @@ Set it in the text-only generators when the fallback is wanted gone: it removes
 a `count_tokens` call per request and one branch in `chat_completions`. There is
 no correctness reason to hurry, since for a text-only prompt the tokenizer count
 is already exact.
+
+## 2026-09-13 Surya vision admission is GPU-only and reports runner errors — open
+
+`SuryaGpuRunner.check_vision_capacity` enforces three budgets before any device
+work: the score-tile bytes, the vision wall clock, and free device memory. Two
+edges of that boundary are unowned.
+
+- The CPU-reference generator (`SuryaOCRGenerator`) has no capacity check at
+  all, so a page-scale grid runs a pure-numpy vision tower for as long as it
+  takes. Give it the same estimate (`vision_forward_seconds` is fitted to
+  device rates, so a CPU lane needs its own constants) or declare a patch
+  ceiling; neither generator is wired into a server yet, so nothing reaches
+  this today.
+- An over-budget page reaches a generator's caller as the runner's
+  `SuryaGpuRuntimeError`, which is a request-level fault: the server maps
+  `SuryaRequestError` to a 400 and anything else to a 500. Convert at the
+  generator boundary when the Surya generators are wired into a server, and
+  decide the free-memory check separately — that one is genuinely a
+  server-state fault rather than a bad request.

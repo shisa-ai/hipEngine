@@ -1175,24 +1175,37 @@ def test_gpu_vision_scratch_admission_matches_the_allocation_when_tiled(
         r.close()
 
 
-def test_gpu_vision_admits_the_grids_the_dense_scratch_could_not(runner) -> None:
-    """The A4 page and the checkpoint ceiling must both pass admission.
+def test_gpu_vision_admission_bounds_the_page_by_memory_and_time(runner) -> None:
+    """Both page-scale grids pass the byte budget; the ceiling fails on time.
 
     Dense scores needed 56.5 GB at 34320 patches (300-DPI A4) and 206 GB at
-    65536 (``SURYA_MAX_PIXELS``). Both are now admitted inside the default
-    budget without any device allocation.
+    65536 (``SURYA_MAX_PIXELS``). Tiling brings both inside the default byte
+    budget without allocating anything, but 65536 patches is 1.7e14 FLOPs of
+    bidirectional attention -- about 2.7 minutes on gfx1151 -- so the time
+    budget rejects it, and the A4 page the benchmark suite measures stays
+    admitted.
     """
 
     _, weights, spec = runner
-    from hipengine.runtime.surya import SuryaGpuRunner
+    from hipengine.runtime.surya import SuryaGpuRunner, SuryaGpuRuntimeError
 
     r = SuryaGpuRunner(weights, spec)
     try:
         for grid in ((1, 220, 156), (1, 256, 256)):
             need = r.vision_scratch_bytes([grid])
             assert need <= r.max_vision_scratch_bytes, (grid, need)
-            r.check_vision_capacity([grid])
+        r.check_vision_capacity([(1, 220, 156)])
+        with pytest.raises(SuryaGpuRuntimeError, match="vision time budget"):
+            r.check_vision_capacity([(1, 256, 256)])
         assert "vis_scores" not in r._scratch, "admission must not allocate"
+        # the declared budget, not a hardware limit: raising or dropping it
+        # admits the same grid on the same device
+        for budget in (200.0, None):
+            raised = SuryaGpuRunner(weights, spec, max_vision_seconds=budget)
+            try:
+                raised.check_vision_capacity([(1, 256, 256)])
+            finally:
+                raised.close()
     finally:
         r.close()
 
@@ -1283,9 +1296,109 @@ def test_gpu_generator_checks_capacity_before_vision() -> None:
         # the advertised budget is the runner's, so callers can admit up front
         assert gen.max_seq == gen.runner.max_seq
         assert gen.max_vision_scratch_bytes == gen.runner.max_vision_scratch_bytes
+        assert gen.max_vision_seconds == gen.runner.max_vision_seconds
         assert gen.max_prefill_scratch_bytes == gen.runner.max_prefill_scratch_bytes
     finally:
         gen.runner.vision_forward = real_vision
+        gen.close()
+
+
+def test_gpu_generator_rejects_an_over_time_page_before_vision() -> None:
+    """A page whose vision forward cannot fit the budget never starts vision.
+
+    The 1024x1024 fixture page is 4096 patches and estimates at ~1.0 s, so a
+    0.25 s budget rejects it -- after preprocessing, which is host-side and
+    cheap, but before any device work or scratch allocation. The byte budget
+    alone would have admitted it: 805 MB dense, ~17 MB tiled.
+    """
+
+    from hipengine.generation.registry import GenerationRequest
+    from hipengine.generation.surya_gpu import SuryaOCRGeneratorGPU
+    from hipengine.runtime.surya import SuryaGpuRuntimeError
+
+    page = FIXTURES / "page_full.png"
+    if not page.exists():
+        pytest.skip("page_full.png fixture not present")
+
+    gen = SuryaOCRGeneratorGPU(model_path=_model_dir(), max_vision_seconds=0.25)
+    ran: list[str] = []
+    real_vision = gen.runner.vision_forward
+    gen.runner.vision_forward = lambda *a, **kw: (ran.append("vision"), real_vision(*a, **kw))[1]
+    try:
+        assert gen.max_vision_seconds == 0.25
+        estimate = gen.runner.vision_time_seconds([(1, 64, 64)])
+        assert estimate > 0.25, estimate
+        with pytest.raises(SuryaGpuRuntimeError, match="vision time budget"):
+            gen.generate_multimodal_detailed(
+                "Transcribe this page.",
+                str(page),
+                GenerationRequest(
+                    prompts=["Transcribe this page."],
+                    max_tokens=4,
+                    temperature=0.0,
+                    top_p=1.0,
+                    ignore_eos=False,
+                ),
+            )
+        assert ran == [], f"vision ran before the time-budget rejection: {ran}"
+    finally:
+        gen.runner.vision_forward = real_vision
+        gen.close()
+
+
+def test_gpu_generator_rejects_a_page_that_cannot_finish_before_the_deadline() -> None:
+    """A vision forward that outlasts the request deadline is not started.
+
+    The deadline is otherwise only observed at phase boundaries, so a
+    page-scale request would run to completion after the client had already
+    given up. Phase 1 is the real estimate on the A4 page against a 5 s
+    deadline (43.4 s estimated); phase 2 pins the estimate to isolate the new
+    check from the pre-existing expiry checks, which raise the same error.
+    """
+
+    import dataclasses
+    import time
+
+    from hipengine.generation.deadline import GenerationDeadlineExceeded
+    from hipengine.generation.registry import GenerationRequest
+    from hipengine.generation.surya_gpu import SuryaOCRGeneratorGPU
+
+    page = FIXTURES / "page_a4.png"
+    if not page.exists():
+        pytest.skip("page_a4.png fixture not present")
+
+    gen = SuryaOCRGeneratorGPU(model_path=_model_dir())
+    ran: list[str] = []
+    real_vision = gen.runner.vision_forward
+    gen.runner.vision_forward = lambda *a, **kw: (ran.append("vision"), real_vision(*a, **kw))[1]
+    real_time = gen.runner.vision_time_seconds
+    try:
+        request = GenerationRequest(
+            prompts=["Transcribe this page."],
+            max_tokens=4,
+            temperature=0.0,
+            top_p=1.0,
+            ignore_eos=False,
+            deadline_at=time.perf_counter() + 5.0,
+        )
+        with pytest.raises(GenerationDeadlineExceeded):
+            gen.generate_multimodal_detailed(
+                "Transcribe this page.", str(page), request
+            )
+        assert ran == [], f"vision ran past the deadline: {ran}"
+
+        gen.runner.vision_time_seconds = lambda grid: 1e6
+        isolated = dataclasses.replace(
+            request, deadline_at=time.perf_counter() + 30.0
+        )
+        with pytest.raises(GenerationDeadlineExceeded):
+            gen.generate_multimodal_detailed(
+                "Transcribe this page.", str(page), isolated
+            )
+        assert ran == [], f"vision ran past the deadline: {ran}"
+    finally:
+        gen.runner.vision_forward = real_vision
+        gen.runner.vision_time_seconds = real_time
         gen.close()
 
 
@@ -1413,9 +1526,9 @@ def test_gpu_generator_forwards_context_and_scratch_budgets() -> None:
     ``LLM._factory_capacity_kwargs`` forwards a limit only to a factory that
     declares the parameter by name. ``make_surya_generator_gpu`` used to accept
     ``**_kwargs`` and drop them, so ``LLM(max_sequence_length=...)`` never
-    reached the runner. The same applies to the two score-tile budgets: a
-    budget the factory does not declare is silently dropped and the runner
-    keeps its default.
+    reached the runner. The same applies to the two score-tile budgets and the
+    vision time budget: a budget the factory does not declare is silently
+    dropped and the runner keeps its default.
     """
 
     from hipengine.generation.surya_gpu import (
@@ -1430,11 +1543,13 @@ def test_gpu_generator_forwards_context_and_scratch_budgets() -> None:
         resident_capacity=None,
         vision_max_scratch_bytes=64 * 1024 * 1024,
         prefill_max_scratch_bytes=32 * 1024 * 1024,
+        vision_max_seconds=45.0,
     )
     assert forwarded == {
         "max_sequence_length": 16384,
         "vision_max_scratch_bytes": 64 * 1024 * 1024,
         "prefill_max_scratch_bytes": 32 * 1024 * 1024,
+        "vision_max_seconds": 45.0,
     }
 
     gen = make_surya_generator_gpu(
@@ -1442,6 +1557,7 @@ def test_gpu_generator_forwards_context_and_scratch_budgets() -> None:
         max_sequence_length=16384,
         vision_max_scratch_bytes=64 * 1024 * 1024,
         prefill_max_scratch_bytes=32 * 1024 * 1024,
+        vision_max_seconds=45.0,
     )
     try:
         assert gen.max_seq == 16384 == gen.runner.max_seq
@@ -1449,6 +1565,7 @@ def test_gpu_generator_forwards_context_and_scratch_budgets() -> None:
         assert gen.runner.max_vision_scratch_bytes == 64 * 1024 * 1024
         assert gen.max_prefill_scratch_bytes == 32 * 1024 * 1024
         assert gen.runner.max_prefill_scratch_bytes == 32 * 1024 * 1024
+        assert gen.max_vision_seconds == 45.0 == gen.runner.max_vision_seconds
     finally:
         gen.close()
 
@@ -1458,6 +1575,8 @@ def test_gpu_generator_forwards_context_and_scratch_budgets() -> None:
         SuryaOCRGeneratorGPU(model_path=_model_dir(), max_seq=0)
     with pytest.raises(ValueError, match="max_prefill_scratch_bytes"):
         SuryaOCRGeneratorGPU(model_path=_model_dir(), max_prefill_scratch_bytes=0)
+    with pytest.raises(ValueError, match="max_vision_seconds"):
+        SuryaOCRGeneratorGPU(model_path=_model_dir(), max_vision_seconds=0)
 
 
 def test_gpu_generator_default_context_admits_a_300dpi_a4_page() -> None:
