@@ -132,6 +132,13 @@ ports, PCIe 4.0 x16 confirmed under load). Artifacts live under
   satisfies the "first rank's collective must not block the second rank's
   enqueue" requirement, and threaded enqueue is measurably worse, so no host
   threads are needed for enqueue.
+- **A TP2 rank holds half the KV pool.** At 8192 context a rank claims 258 MiB
+  of KV against 514 MiB for the whole pool (16 full-attention layers, 2 of the 4
+  KV heads, 32 KiB per token, plus 2 MiB of `KVLiveSpans`), and 1032 against 2056
+  MiB at 32768. The per-rank head partition is the weight planner's own
+  `partition_groups` result, so a rank's KV heads are exactly the heads its
+  weights serve and N=3 is refused with the planner's message. Claims are
+  all-or-nothing across ranks.
 - **RCCL work can be captured into a HIP graph, up to a size limit.** With
   communicator creation outside capture and each rank's whole chain captured on
   its own stream, 40/40 probes across chain depths 1/4/8/16/24 replayed
