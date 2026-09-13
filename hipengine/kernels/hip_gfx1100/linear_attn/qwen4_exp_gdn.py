@@ -59,6 +59,22 @@ def build_qwen4_exp_gdn(
     )
 
 
+def build_qwen4_exp_gdn_dpp(
+    *, compiler_version=None, cache_root=None, require_cached=False, load=True,
+):
+    return build_hip(
+        sources=[_SOURCE], family="qwen4_exp_gdn_dpp", profile="decode",
+        cache_root=cache_root, compiler_version=compiler_version,
+        target_arch="gfx1151", extra_flags=("-DHIPENGINE_QWEN4_GDN_DPP=1",),
+        output_name="qwen4_exp_gdn_dpp.so", require_cached=require_cached, load=load,
+    )
+
+
+def qwen4_exp_gdn_prefill_tiled16_dpp_f32(*args, library=None, **kwargs):
+    library = library or build_qwen4_exp_gdn_dpp()
+    return qwen4_exp_gdn_prefill_tiled16_f32(*args, library=library, **kwargs)
+
+
 def qwen4_exp_gdn_decode_f32(
     conv_ptr: int,
     output_gate_ptr: int,

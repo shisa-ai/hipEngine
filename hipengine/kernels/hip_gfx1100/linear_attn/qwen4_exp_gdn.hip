@@ -374,10 +374,26 @@ qwen4_exp_gdn_prefill_f32_kernel(
 // kernel applies rms-norm * weight * sigmoid(gate).
 // ---------------------------------------------------------------------------
 __device__ inline float warp_sum_f32(float value) {
+#if defined(HIPENGINE_QWEN4_GDN_DPP) && defined(__gfx1151__)
+  // pwilkin/llama.cpp@964c6f2, gated_delta_net.cu: preserve XOR16/8/4/2/1
+  // pairing while avoiding the LDS crossbar used by shuffle instructions.
+  value += __uint_as_float(__builtin_amdgcn_permlanex16(
+      __float_as_uint(value), __float_as_uint(value),
+      0x76543210, 0xFEDCBA98, true, false));
+  value += __uint_as_float(__builtin_amdgcn_update_dpp(
+      0, __float_as_uint(value), 0x168, 0xf, 0xf, true));
+  value += __uint_as_float(__builtin_amdgcn_update_dpp(
+      0, __float_as_uint(value), 0x164, 0xf, 0xf, true));
+  value += __uint_as_float(__builtin_amdgcn_update_dpp(
+      0, __float_as_uint(value), 0x162, 0xf, 0xf, true));
+  value += __uint_as_float(__builtin_amdgcn_update_dpp(
+      0, __float_as_uint(value), 0x161, 0xf, 0xf, true));
+#else
 #pragma unroll
   for (int offset = 16; offset > 0; offset >>= 1) {
     value += __shfl_xor(value, offset);
   }
+#endif
   return value;
 }
 

@@ -1,5 +1,14 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Journey GDN DPP Experiment
+
+- The `qwen4_exp_gdn_dpp` build family and gfx1151
+  `qwen4exp_gdn_tiled16_dpp_prefill` key are experimental. Ordinary tile16
+  and serial strict keys remain registered. Kernel parity/CPU-reference and
+  owner timing pass; retain/promote only after complete-model non-regression.
+  Remove the variant/build flag if complete-owner or model validation fails;
+  no permanently default-off successful path.
+
 ## Qwen4Exp PLE Mapping Advice (2026-09-14 JST)
 
 - gfx1151 production now selects instance-owned mapping-only random advice.
